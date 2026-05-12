@@ -8977,6 +8977,11 @@ a.sidebar-nav-item {
 }
 
 @media (max-width: 600px) {
+  .git-undo-confirm,
+  .git-branch-merge-modal {
+    padding: var(--space-3);
+  }
+
   .git-branch-switch-modal {
     padding: var(--space-2);
   }
