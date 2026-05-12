@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { useI18n } from "../i18n";
 import { getProvider } from "../providers/registry";
+import { SidebarIcons } from "./SidebarNavItem";
 
 export interface SessionMenuProps {
   sessionId: string;
@@ -55,6 +57,7 @@ export function SessionMenu({
   useFixedPositioning = false,
 }: SessionMenuProps) {
   const { t } = useI18n();
+  const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
   const [isCloning, setIsCloning] = useState(false);
   const [isTerminating, setIsTerminating] = useState(false);
@@ -356,6 +359,18 @@ export function SessionMenu({
             : t("sessionMenuTerminate")}
         </button>
       )}
+      <div className="session-menu-divider" />
+      <button
+        type="button"
+        onClick={() =>
+          handleAction(() => {
+            navigate(`/git-status?projectId=${encodeURIComponent(projectId)}`);
+          })
+        }
+      >
+        {SidebarIcons.sourceControl}
+        {t("sessionMenuSourceControl")}
+      </button>
     </div>
   );
 

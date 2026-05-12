@@ -44,7 +44,19 @@ export {
   DEFAULT_PROVIDER,
 } from "./types.js";
 
-export type { GitStatusInfo, GitFileChange } from "./git-status.js";
+export type {
+  GitStatusInfo,
+  GitFileChange,
+  GitBranchInfo,
+  GitLocalCommitInfo,
+  GitCommitRequest,
+  GitUndoCommitResponse,
+  GitMergeBranchRequest,
+  GitMergePreviewRequest,
+  GitMergePreviewResult,
+  GitMergeStrategy,
+  GitSwitchBranchRequest,
+} from "./git-status.js";
 
 export {
   orderByParentChain,
