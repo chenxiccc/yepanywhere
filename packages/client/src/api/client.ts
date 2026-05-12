@@ -10,7 +10,14 @@ import type {
   EnrichedRecentEntry,
   FileContentResponse,
   FreezePublicSessionLiveSharesResponse,
+  GitBranchInfo,
+  GitCommitRequest,
+  GitMergeBranchRequest,
+  GitMergePreviewRequest,
+  GitMergePreviewResult,
   GitStatusInfo,
+  GitSwitchBranchRequest,
+  GitUndoCommitResponse,
   HelperTargetConfig,
   ModelInfo,
   NewSessionDefaults,
@@ -1295,6 +1302,74 @@ export const api = {
       method: "POST",
       body: JSON.stringify(params),
     }),
+
+  commitGit: (projectId: string, message: string, selectedPaths?: string[]) =>
+    fetchJSON<{ status: GitStatusInfo }>(`/projects/${projectId}/git/commit`, {
+      method: "POST",
+      body: JSON.stringify({
+        message,
+        selectedPaths,
+      } satisfies GitCommitRequest),
+    }),
+
+  undoGitCommit: (projectId: string) =>
+    fetchJSON<GitUndoCommitResponse>(`/projects/${projectId}/git/undo`, {
+      method: "POST",
+    }),
+
+  stashGitChanges: (projectId: string, selectedPaths: string[]) =>
+    fetchJSON<{ status: GitStatusInfo }>(`/projects/${projectId}/git/stash`, {
+      method: "POST",
+      body: JSON.stringify({ selectedPaths }),
+    }),
+
+  discardGitChanges: (projectId: string, selectedPaths: string[]) =>
+    fetchJSON<{ status: GitStatusInfo }>(`/projects/${projectId}/git/discard`, {
+      method: "POST",
+      body: JSON.stringify({ selectedPaths }),
+    }),
+
+  pushGit: (projectId: string) =>
+    fetchJSON<{ status: GitStatusInfo }>(`/projects/${projectId}/git/push`, {
+      method: "POST",
+    }),
+
+  fetchGit: (projectId: string) =>
+    fetchJSON<{ status: GitStatusInfo }>(`/projects/${projectId}/git/fetch`, {
+      method: "POST",
+    }),
+
+  getGitBranches: (projectId: string) =>
+    fetchJSON<{ branches: GitBranchInfo[] }>(
+      `/projects/${projectId}/git/branches`,
+    ),
+
+  switchGitBranch: (projectId: string, body: GitSwitchBranchRequest) =>
+    fetchJSON<{ status: GitStatusInfo }>(
+      `/projects/${projectId}/git/switch-branch`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+    ),
+
+  mergeGitBranch: (projectId: string, body: GitMergeBranchRequest) =>
+    fetchJSON<{ status: GitStatusInfo }>(
+      `/projects/${projectId}/git/merge-branch`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+    ),
+
+  previewGitMerge: (projectId: string, body: GitMergePreviewRequest) =>
+    fetchJSON<{ result: GitMergePreviewResult }>(
+      `/projects/${projectId}/git/merge-preview`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+    ),
 
   // Inbox API
   getInbox: (projectId?: string) =>

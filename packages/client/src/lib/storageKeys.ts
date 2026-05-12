@@ -92,6 +92,8 @@ export const UI_KEYS = {
   settingsIconStyle: "yep-anywhere-settings-icon-style",
   // Legacy key from the first checkbox version of this client-local setting.
   flatSettingsIcons: "yep-anywhere-flat-settings-icons-enabled",
+  gitUndoHideWarning: "yep-anywhere-git-undo-hide-warning",
+  gitDiscardHideWarning: "yep-anywhere-git-discard-hide-warning",
 } as const;
 
 // ============================================================================

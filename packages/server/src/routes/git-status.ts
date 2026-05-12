@@ -1,10 +1,20 @@
 import { execFile } from "node:child_process";
-import { readFile } from "node:fs/promises";
-import { extname, resolve } from "node:path";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { extname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import {
+  type GitBranchInfo,
+  type GitCommitRequest,
   type GitFileChange,
+  type GitLocalCommitInfo,
+  type GitMergeBranchRequest,
+  type GitMergePreviewRequest,
+  type GitMergePreviewResult,
+  type GitMergeStrategy,
   type GitStatusInfo,
+  type GitSwitchBranchRequest,
+  type GitUndoCommitResponse,
   type PatchHunk,
   isUrlProjectId,
 } from "@yep-anywhere/shared";
@@ -23,6 +33,7 @@ const NOT_A_GIT_REPO: GitStatusInfo = {
   isGitRepo: false,
   branch: null,
   upstream: null,
+  remote: null,
   ahead: 0,
   behind: 0,
   isClean: true,
@@ -33,25 +44,361 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
   const routes = new Hono();
 
   routes.get("/:projectId/git", async (c) => {
-    const projectId = c.req.param("projectId");
-
-    if (!isUrlProjectId(projectId)) {
-      return c.json({ error: "Invalid project ID format" }, 400);
-    }
-
-    const project = await deps.scanner.getProject(projectId);
-    if (!project) {
-      return c.json({ error: "Project not found" }, 404);
-    }
-
     try {
-      const result = await getGitStatus(project.path);
+      const projectPath = await getProjectPath(deps, c.req.param("projectId"));
+      if (!projectPath) return c.json({ error: "Project not found" }, 404);
+      const result = await getGitStatus(projectPath);
       return c.json(result);
     } catch (err) {
       if (isNotGitRepoError(err)) {
         return c.json(NOT_A_GIT_REPO);
       }
       return c.json({ error: "Failed to get git status" }, 500);
+    }
+  });
+
+  routes.post("/:projectId/git/commit", async (c) => {
+    const body = await readJsonBody<GitCommitRequest>(c);
+    if (!body) return c.json({ error: "Invalid JSON body" }, 400);
+    if (!body.message?.trim()) {
+      return c.json({ error: "Commit message is required" }, 400);
+    }
+
+    try {
+      const projectPath = await getProjectPath(deps, c.req.param("projectId"));
+      if (!projectPath) return c.json({ error: "Project not found" }, 404);
+      const status = await getGitStatus(projectPath);
+      const hasExplicitSelection = Array.isArray(body.selectedPaths);
+      const selectedFiles = hasExplicitSelection
+        ? status.files.filter((file) => body.selectedPaths?.includes(file.path))
+        : status.files;
+      if (selectedFiles.length === 0) {
+        return c.json({ error: "No files selected to commit" }, 400);
+      }
+
+      const pathspecs = Array.from(
+        new Set(
+          selectedFiles.flatMap((file) =>
+            file.origPath ? [file.origPath, file.path] : [file.path],
+          ),
+        ),
+      );
+
+      await runGit(projectPath, ["add", "-A", "--", ...pathspecs]);
+      await runGit(projectPath, [
+        "commit",
+        "-m",
+        body.message.trim(),
+        "--",
+        ...pathspecs,
+      ]);
+      return c.json({ status: await getGitStatus(projectPath) });
+    } catch (err) {
+      return gitActionError(err, "Failed to commit changes");
+    }
+  });
+
+  routes.post("/:projectId/git/undo", async (c) => {
+    try {
+      const projectPath = await getProjectPath(deps, c.req.param("projectId"));
+      if (!projectPath) return c.json({ error: "Project not found" }, 404);
+      const status = await getGitStatus(projectPath);
+      if (status.ahead < 1) {
+        return c.json({ error: "No unpushed local commit to undo" }, 400);
+      }
+      const undoneCommitMessage = (
+        await runGit(projectPath, ["log", "-1", "--pretty=%B"])
+      ).stdout.trim();
+      await runGit(projectPath, ["reset", "--mixed", "HEAD~1"]);
+      const response: GitUndoCommitResponse = {
+        status: await getGitStatus(projectPath),
+        undoneCommitMessage,
+      };
+      return c.json(response);
+    } catch (err) {
+      return gitActionError(err, "Failed to undo commit");
+    }
+  });
+
+  routes.post("/:projectId/git/stash", async (c) => {
+    const body = await readJsonBody<{ selectedPaths: string[] }>(c);
+    if (!body || !Array.isArray(body.selectedPaths)) {
+      return c.json({ error: "Selected paths are required" }, 400);
+    }
+
+    try {
+      const projectPath = await getProjectPath(deps, c.req.param("projectId"));
+      if (!projectPath) return c.json({ error: "Project not found" }, 404);
+      const status = await getGitStatus(projectPath);
+      const selectedFiles = getSelectedGitFiles(
+        status.files,
+        body.selectedPaths,
+      );
+      if (selectedFiles.length === 0) {
+        return c.json({ status });
+      }
+
+      const currentBranch = (await getCurrentBranch(projectPath)) ?? "detached";
+      const pathspecs = getGitPathspecs(selectedFiles);
+      await runGit(projectPath, [
+        "stash",
+        "push",
+        "--include-untracked",
+        "-m",
+        `yepanywhere:${currentBranch}`,
+        "--",
+        ...pathspecs,
+      ]);
+
+      return c.json({ status: await getGitStatus(projectPath) });
+    } catch (err) {
+      return gitActionError(err, "Failed to stash changes");
+    }
+  });
+
+  routes.post("/:projectId/git/discard", async (c) => {
+    const body = await readJsonBody<{ selectedPaths: string[] }>(c);
+    if (!body || !Array.isArray(body.selectedPaths)) {
+      return c.json({ error: "Selected paths are required" }, 400);
+    }
+
+    try {
+      const projectPath = await getProjectPath(deps, c.req.param("projectId"));
+      if (!projectPath) return c.json({ error: "Project not found" }, 404);
+      const status = await getGitStatus(projectPath);
+      const selectedFiles = getSelectedGitFiles(
+        status.files,
+        body.selectedPaths,
+      );
+      if (selectedFiles.length === 0) {
+        return c.json({ status });
+      }
+
+      const trackedFiles = selectedFiles.filter((file) => file.status !== "?");
+      const untrackedFiles = selectedFiles.filter(
+        (file) => file.status === "?",
+      );
+      if (trackedFiles.length > 0) {
+        await runGit(projectPath, [
+          "restore",
+          "--source=HEAD",
+          "--staged",
+          "--worktree",
+          "--",
+          ...getGitPathspecs(trackedFiles),
+        ]);
+      }
+
+      for (const file of untrackedFiles) {
+        await rm(resolve(projectPath, file.path), {
+          force: true,
+          recursive: true,
+        });
+      }
+
+      return c.json({ status: await getGitStatus(projectPath) });
+    } catch (err) {
+      return gitActionError(err, "Failed to discard changes");
+    }
+  });
+
+  routes.post("/:projectId/git/push", async (c) => {
+    try {
+      const projectPath = await getProjectPath(deps, c.req.param("projectId"));
+      if (!projectPath) return c.json({ error: "Project not found" }, 404);
+      const upstream = await getGitUpstream(projectPath);
+      const remoteName = await getDefaultRemoteName(projectPath, upstream);
+      if (upstream) {
+        await runGit(projectPath, ["push"]);
+      } else {
+        await runGit(projectPath, ["push", "-u", remoteName, "HEAD"]);
+      }
+      return c.json({ status: await getGitStatus(projectPath) });
+    } catch (err) {
+      return gitActionError(err, "Failed to push");
+    }
+  });
+
+  routes.post("/:projectId/git/fetch", async (c) => {
+    try {
+      const projectPath = await getProjectPath(deps, c.req.param("projectId"));
+      if (!projectPath) return c.json({ error: "Project not found" }, 404);
+      const upstream = await getGitUpstream(projectPath);
+      const remoteName = await getDefaultRemoteName(projectPath, upstream);
+      await runGit(projectPath, ["fetch", remoteName]);
+      return c.json({ status: await getGitStatus(projectPath) });
+    } catch (err) {
+      return gitActionError(err, "Failed to fetch");
+    }
+  });
+
+  routes.get("/:projectId/git/branches", async (c) => {
+    try {
+      const projectPath = await getProjectPath(deps, c.req.param("projectId"));
+      if (!projectPath) return c.json({ error: "Project not found" }, 404);
+      return c.json({ branches: await getGitBranches(projectPath) });
+    } catch (err) {
+      return gitActionError(err, "Failed to list branches");
+    }
+  });
+
+  routes.post("/:projectId/git/switch-branch", async (c) => {
+    const body = await readJsonBody<GitSwitchBranchRequest>(c);
+    if (!body?.targetBranch?.trim()) {
+      return c.json({ error: "Target branch is required" }, 400);
+    }
+
+    try {
+      const projectPath = await getProjectPath(deps, c.req.param("projectId"));
+      if (!projectPath) return c.json({ error: "Project not found" }, 404);
+
+      if (body.stashCurrentChanges) {
+        const currentBranch =
+          (await getCurrentBranch(projectPath)) ?? "detached";
+        await runGit(projectPath, [
+          "stash",
+          "push",
+          "--include-untracked",
+          "-m",
+          `yepanywhere:${currentBranch}`,
+        ]);
+      }
+
+      const targetBranch = body.targetBranch.trim();
+      const branchArgs = (await hasLocalBranch(projectPath, targetBranch))
+        ? ["switch", targetBranch]
+        : isRemoteBranchName(targetBranch)
+          ? ["switch", "--track", targetBranch]
+          : ["switch", targetBranch];
+      await runGit(projectPath, branchArgs);
+      return c.json({ status: await getGitStatus(projectPath) });
+    } catch (err) {
+      return gitActionError(err, "Failed to switch branch");
+    }
+  });
+
+  routes.post("/:projectId/git/merge-branch", async (c) => {
+    const body = await readJsonBody<GitMergeBranchRequest>(c);
+    if (!body?.sourceBranch?.trim() || !body.strategy) {
+      return c.json({ error: "Source branch and strategy are required" }, 400);
+    }
+
+    try {
+      const projectPath = await getProjectPath(deps, c.req.param("projectId"));
+      if (!projectPath) return c.json({ error: "Project not found" }, 404);
+
+      const sourceBranch = body.sourceBranch.trim();
+      const strategy = body.strategy;
+      const currentBranch = await getCurrentBranch(projectPath);
+      if (!currentBranch) {
+        return c.json(
+          {
+            error:
+              "Cannot merge while HEAD is detached. Switch to a branch first.",
+          },
+          400,
+        );
+      }
+
+      if (sourceBranch === currentBranch) {
+        return c.json(
+          {
+            error: `Choose a different branch to merge into ${currentBranch}.`,
+          },
+          400,
+        );
+      }
+
+      const status = await getGitStatus(projectPath);
+      if (status.files.length > 0) {
+        return c.json(
+          {
+            error:
+              "Cannot merge with uncommitted changes. Commit, stash, or discard them first.",
+          },
+          400,
+        );
+      }
+
+      const preview = await getGitMergePreview(
+        projectPath,
+        currentBranch,
+        sourceBranch,
+        strategy,
+      );
+      if (preview.state === "up_to_date") {
+        return c.json(
+          {
+            error: `${currentBranch} is already up to date with ${sourceBranch}.`,
+          },
+          400,
+        );
+      }
+      if (preview.state === "conflict") {
+        return c.json(
+          {
+            error: buildConflictMessage(
+              currentBranch,
+              sourceBranch,
+              preview.conflictedFiles,
+            ),
+          },
+          409,
+        );
+      }
+
+      try {
+        const resultCommit = await performGitMerge(
+          projectPath,
+          currentBranch,
+          sourceBranch,
+          strategy,
+        );
+        await runGit(projectPath, ["merge", "--ff-only", resultCommit]);
+      } catch (err) {
+        const message =
+          getGitErrorMessage(err) ??
+          `Cannot merge ${sourceBranch} into ${currentBranch}.`;
+        return c.json({ error: message }, 409);
+      }
+
+      return c.json({ status: await getGitStatus(projectPath) });
+    } catch (err) {
+      return gitActionError(err, "Failed to merge branch");
+    }
+  });
+
+  routes.post("/:projectId/git/merge-preview", async (c) => {
+    const body = await readJsonBody<GitMergePreviewRequest>(c);
+    if (!body?.sourceBranch?.trim() || !body.strategy) {
+      return c.json({ error: "Source branch and strategy are required" }, 400);
+    }
+
+    try {
+      const projectPath = await getProjectPath(deps, c.req.param("projectId"));
+      if (!projectPath) return c.json({ error: "Project not found" }, 404);
+
+      const currentBranch = await getCurrentBranch(projectPath);
+      if (!currentBranch) {
+        return c.json(
+          {
+            error:
+              "Cannot preview merge while HEAD is detached. Switch to a branch first.",
+          },
+          400,
+        );
+      }
+
+      const result = await getGitMergePreview(
+        projectPath,
+        currentBranch,
+        body.sourceBranch.trim(),
+        body.strategy,
+      );
+
+      return c.json({ result });
+    } catch (err) {
+      return gitActionError(err, "Failed to preview merge");
     }
   });
 
@@ -137,6 +484,24 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
   return routes;
 }
 
+function getSelectedGitFiles(
+  files: GitFileChange[],
+  selectedPaths: string[],
+): GitFileChange[] {
+  const selectedPathSet = new Set(selectedPaths);
+  return files.filter((file) => selectedPathSet.has(file.path));
+}
+
+function getGitPathspecs(files: GitFileChange[]): string[] {
+  return Array.from(
+    new Set(
+      files.flatMap((file) =>
+        file.origPath ? [file.origPath, file.path] : [file.path],
+      ),
+    ),
+  );
+}
+
 /**
  * Get old and new file content for computing a diff.
  * Handles all git status codes (M, A, D, ?, R, etc.).
@@ -205,6 +570,536 @@ async function runGit(
   });
 }
 
+async function getProjectPath(
+  deps: GitStatusDeps,
+  projectId: string,
+): Promise<string | null> {
+  if (!isUrlProjectId(projectId)) {
+    return null;
+  }
+
+  const project = await deps.scanner.getProject(projectId);
+  return project?.path ?? null;
+}
+
+async function readJsonBody<T extends object>(c: {
+  req: { json: () => Promise<unknown> };
+}): Promise<T | null> {
+  try {
+    return (await c.req.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
+function gitActionError(err: unknown, fallbackMessage: string) {
+  const message = getGitErrorMessage(err) || fallbackMessage;
+  return new Response(JSON.stringify({ error: message }), {
+    status: 500,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function getGitErrorMessage(err: unknown): string | null {
+  if (err && typeof err === "object") {
+    const gitErr = err as {
+      stderr?: string;
+      stdout?: string;
+      message?: string;
+    };
+    const stderr = gitErr.stderr?.trim();
+    if (stderr) return stderr;
+    const stdout = gitErr.stdout?.trim();
+    if (stdout) return stdout;
+    const message = gitErr.message?.trim();
+    if (message) return message;
+  }
+
+  return null;
+}
+
+function isRemoteBranchName(branchName: string): boolean {
+  return /^[^/]+\/.+$/.test(branchName);
+}
+
+async function hasLocalBranch(
+  projectPath: string,
+  branchName: string,
+): Promise<boolean> {
+  const result = await runGit(projectPath, [
+    "show-ref",
+    "--verify",
+    "--quiet",
+    `refs/heads/${branchName}`,
+  ]).catch(() => null);
+  return result !== null;
+}
+
+async function getGitUpstream(projectPath: string): Promise<string | null> {
+  const result = await runGit(projectPath, [
+    "rev-parse",
+    "--abbrev-ref",
+    "--symbolic-full-name",
+    "@{u}",
+  ]).catch(() => null);
+  return result?.stdout.trim() || null;
+}
+
+function getRemoteNameFromBranchName(branchName: string | null): string | null {
+  if (!branchName) return null;
+  const slashIndex = branchName.indexOf("/");
+  if (slashIndex <= 0) return null;
+  return branchName.slice(0, slashIndex);
+}
+
+async function getDefaultRemoteName(
+  projectPath: string,
+  upstream: string | null,
+): Promise<string> {
+  const upstreamRemote = getRemoteNameFromBranchName(upstream);
+  if (upstreamRemote) {
+    return upstreamRemote;
+  }
+
+  const remoteHead = await runGit(projectPath, [
+    "symbolic-ref",
+    "--quiet",
+    "--short",
+    "refs/remotes/origin/HEAD",
+  ]).catch(() => null);
+  const originHeadRemote = getRemoteNameFromBranchName(
+    remoteHead?.stdout.trim() ?? null,
+  );
+  if (originHeadRemote) {
+    return originHeadRemote;
+  }
+
+  const allRemoteHeads = await runGit(projectPath, [
+    "for-each-ref",
+    "--format=%(refname:short)",
+    "refs/remotes/*/HEAD",
+  ]).catch(() => null);
+
+  for (const line of allRemoteHeads?.stdout.split("\n") ?? []) {
+    const remoteName = getRemoteNameFromBranchName(line.trim());
+    if (remoteName) return remoteName;
+  }
+
+  const remotes = await runGit(projectPath, ["remote"]).catch(() => null);
+  const remoteNames =
+    remotes?.stdout
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean) ?? [];
+  if (remoteNames.includes("origin")) {
+    return "origin";
+  }
+  return remoteNames[0] ?? "origin";
+}
+
+async function getCurrentBranch(projectPath: string): Promise<string | null> {
+  const result = await runGit(projectPath, ["branch", "--show-current"]).catch(
+    () => null,
+  );
+  const branch = result?.stdout.trim();
+  return branch || null;
+}
+
+async function getGitMergePreview(
+  projectPath: string,
+  currentBranch: string,
+  sourceBranch: string,
+  strategy: GitMergeStrategy,
+): Promise<GitMergePreviewResult> {
+  const commitCount = await getGitCommitCount(
+    projectPath,
+    currentBranch,
+    sourceBranch,
+  );
+  if (commitCount === 0) {
+    return {
+      state: "up_to_date",
+      targetBranch: currentBranch,
+      sourceBranch,
+      strategy,
+      commitCount: 0,
+      conflictedFiles: 0,
+    };
+  }
+
+  const conflictedFiles = await getGitPreviewConflictCount(
+    projectPath,
+    currentBranch,
+    sourceBranch,
+    strategy,
+  );
+
+  return {
+    state: conflictedFiles > 0 ? "conflict" : "mergeable",
+    targetBranch: currentBranch,
+    sourceBranch,
+    strategy,
+    commitCount,
+    conflictedFiles,
+  };
+}
+
+async function getGitCommitCount(
+  projectPath: string,
+  currentBranch: string,
+  sourceBranch: string,
+): Promise<number> {
+  const result = await runGit(projectPath, [
+    "rev-list",
+    "--count",
+    `${currentBranch}..${sourceBranch}`,
+  ]);
+  return Number.parseInt(result.stdout.trim() || "0", 10) || 0;
+}
+
+async function getGitPreviewConflictCount(
+  projectPath: string,
+  currentBranch: string,
+  sourceBranch: string,
+  strategy: GitMergeStrategy,
+): Promise<number> {
+  const currentRef = await getGitRef(projectPath, currentBranch);
+
+  return withTemporaryGitWorktree(projectPath, currentRef, async (tempPath) => {
+    try {
+      if (strategy === "merge") {
+        await runGit(tempPath, [
+          "merge",
+          "--no-commit",
+          "--no-ff",
+          sourceBranch,
+        ]);
+      } else if (strategy === "squash") {
+        await runGit(tempPath, ["merge", "--squash", sourceBranch]);
+      } else {
+        const tempBranch = createTemporaryBranchName("rebase-preview");
+        await runGit(tempPath, ["switch", "-c", tempBranch, sourceBranch]);
+        await runGit(tempPath, ["rebase", currentRef]);
+      }
+
+      return 0;
+    } catch (err) {
+      const conflictCount = await getGitConflictedFileCount(tempPath);
+      if (conflictCount > 0) {
+        return conflictCount;
+      }
+      throw err;
+    } finally {
+      await cleanupTemporaryGitOperation(tempPath, strategy);
+    }
+  });
+}
+
+async function performGitMerge(
+  projectPath: string,
+  currentBranch: string,
+  sourceBranch: string,
+  strategy: GitMergeStrategy,
+): Promise<string> {
+  const currentRef = await getGitRef(projectPath, currentBranch);
+
+  return withTemporaryGitWorktree(projectPath, currentRef, async (tempPath) => {
+    try {
+      if (strategy === "merge") {
+        await runGit(tempPath, ["merge", "--no-ff", "--no-edit", sourceBranch]);
+      } else if (strategy === "squash") {
+        await runGit(tempPath, ["merge", "--squash", sourceBranch]);
+        await runGit(tempPath, [
+          "commit",
+          "-m",
+          `Squash merge ${sourceBranch} into ${currentBranch}`,
+        ]);
+      } else {
+        const tempBranch = createTemporaryBranchName("rebase");
+        await runGit(tempPath, ["switch", "-c", tempBranch, sourceBranch]);
+        await runGit(tempPath, ["rebase", currentRef]);
+      }
+
+      return await getGitRef(tempPath, "HEAD");
+    } catch (err) {
+      const conflictCount = await getGitConflictedFileCount(tempPath);
+      if (conflictCount > 0) {
+        throw new Error(
+          buildConflictMessage(currentBranch, sourceBranch, conflictCount),
+        );
+      }
+
+      throw err;
+    } finally {
+      await cleanupTemporaryGitOperation(tempPath, strategy);
+    }
+  });
+}
+
+function buildConflictMessage(
+  currentBranch: string,
+  sourceBranch: string,
+  conflictedFiles: number,
+): string {
+  return `There will be ${conflictedFiles} conflicted files when merging ${sourceBranch} into ${currentBranch}.`;
+}
+
+async function getGitRef(projectPath: string, ref: string): Promise<string> {
+  const result = await runGit(projectPath, ["rev-parse", ref]);
+  return result.stdout.trim();
+}
+
+async function getGitConflictedFileCount(projectPath: string): Promise<number> {
+  const conflictedFiles = await runGit(projectPath, [
+    "diff",
+    "--name-only",
+    "--diff-filter=U",
+  ]).catch(() => null);
+
+  return (
+    conflictedFiles?.stdout
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean).length ?? 0
+  );
+}
+
+async function cleanupTemporaryGitOperation(
+  projectPath: string,
+  strategy: GitMergeStrategy,
+): Promise<void> {
+  if (strategy === "rebase") {
+    await runGit(projectPath, ["rebase", "--abort"]).catch(() => null);
+    return;
+  }
+
+  const hasMergeHead = await runGit(projectPath, [
+    "rev-parse",
+    "--verify",
+    "-q",
+    "MERGE_HEAD",
+  ]).catch(() => null);
+
+  if (hasMergeHead) {
+    await runGit(projectPath, ["merge", "--abort"]).catch(() => null);
+  }
+
+  if (strategy === "squash") {
+    await runGit(projectPath, ["reset", "--hard", "HEAD"]).catch(() => null);
+  }
+}
+
+async function withTemporaryGitWorktree<T>(
+  projectPath: string,
+  ref: string,
+  callback: (tempPath: string) => Promise<T>,
+): Promise<T> {
+  const tempPath = await mkdtemp(join(tmpdir(), "yepanywhere-merge-"));
+  await runGit(projectPath, [
+    "worktree",
+    "add",
+    "--detach",
+    "--quiet",
+    tempPath,
+    ref,
+  ]);
+
+  try {
+    return await callback(tempPath);
+  } finally {
+    await runGit(projectPath, [
+      "worktree",
+      "remove",
+      "--force",
+      tempPath,
+    ]).catch(() => null);
+    await rm(tempPath, { recursive: true, force: true }).catch(() => null);
+  }
+}
+
+function createTemporaryBranchName(prefix: string): string {
+  return `yepanywhere-${prefix}-${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
+}
+
+async function getGitBranches(projectPath: string): Promise<GitBranchInfo[]> {
+  const upstream = await getGitUpstream(projectPath);
+  const defaultRemote = await getDefaultRemoteName(projectPath, upstream);
+  const { stdout } = await runGit(projectPath, [
+    "for-each-ref",
+    "--format=%(refname:short)\t%(HEAD)\t%(refname)\t%(committerdate:iso8601-strict)",
+    "refs/heads",
+    "refs/remotes",
+  ]);
+
+  const branches = stdout
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const [name = "", head = "", refname = "", updatedAt = ""] =
+        line.split("\t");
+      return {
+        name,
+        current: head.trim() === "*",
+        remote: refname.startsWith("refs/remotes/"),
+        updatedAt: updatedAt.trim() || null,
+      };
+    })
+    .filter((branch) => !branch.name.endsWith("/HEAD"));
+
+  const localBranches = branches.filter((branch) => !branch.remote);
+  const localBranchNames = new Set(localBranches.map((branch) => branch.name));
+  const currentLocalBranch = localBranches.find(
+    (branch) => branch.current,
+  )?.name;
+  const defaultBranches = await getDefaultLocalBranches(
+    projectPath,
+    localBranchNames,
+  );
+  const recentBranches = await getRecentLocalBranches(
+    projectPath,
+    localBranchNames,
+    defaultBranches,
+    currentLocalBranch,
+  );
+  const recentOrder = new Map(
+    recentBranches.map((branchName, index) => [branchName, index]),
+  );
+
+  const entries = [
+    ...localBranches.map((branch) => ({
+      ...branch,
+      group: defaultBranches.has(branch.name)
+        ? ("default" as const)
+        : recentOrder.has(branch.name)
+          ? ("recent" as const)
+          : ("other" as const),
+    })),
+    ...branches
+      .filter((branch) => branch.remote)
+      .filter(
+        (branch) =>
+          isRemoteBranchName(branch.name) &&
+          !(
+            getRemoteNameFromBranchName(branch.name) === defaultRemote &&
+            localBranchNames.has(getRemoteShortBranchName(branch.name))
+          ),
+      )
+      .map((branch) => ({
+        ...branch,
+        group: "other" as const,
+      })),
+  ];
+
+  const groupOrder = { default: 0, recent: 1, other: 2 };
+
+  return entries.sort((left, right) => {
+    if (groupOrder[left.group] !== groupOrder[right.group]) {
+      return groupOrder[left.group] - groupOrder[right.group];
+    }
+    if (left.group === "recent" && right.group === "recent") {
+      const leftIndex = recentOrder.get(left.name) ?? Number.MAX_SAFE_INTEGER;
+      const rightIndex = recentOrder.get(right.name) ?? Number.MAX_SAFE_INTEGER;
+      if (leftIndex !== rightIndex) return leftIndex - rightIndex;
+    }
+    if (left.current !== right.current) return left.current ? -1 : 1;
+    if ((left.remote ?? false) !== (right.remote ?? false)) {
+      return left.remote ? 1 : -1;
+    }
+    return left.name.localeCompare(right.name);
+  });
+}
+
+async function getDefaultLocalBranches(
+  projectPath: string,
+  localBranchNames: Set<string>,
+): Promise<Set<string>> {
+  const defaults = new Set<string>();
+  const upstream = await getGitUpstream(projectPath);
+  const defaultRemote = await getDefaultRemoteName(projectPath, upstream);
+  const remoteHead = await runGit(projectPath, [
+    "symbolic-ref",
+    "--quiet",
+    "--short",
+    `refs/remotes/${defaultRemote}/HEAD`,
+  ]).catch(() => null);
+  const remoteDefaultName = remoteHead?.stdout.trim();
+  if (remoteDefaultName) {
+    const localName = getRemoteShortBranchName(remoteDefaultName);
+    if (localBranchNames.has(localName)) {
+      defaults.add(localName);
+    }
+  }
+
+  if (defaults.size > 0) {
+    return defaults;
+  }
+
+  for (const candidate of ["main", "master"]) {
+    if (localBranchNames.has(candidate)) {
+      defaults.add(candidate);
+      break;
+    }
+  }
+
+  return defaults;
+}
+
+async function getRecentLocalBranches(
+  projectPath: string,
+  localBranchNames: Set<string>,
+  defaultBranches: Set<string>,
+  currentLocalBranch: string | undefined,
+): Promise<string[]> {
+  const recent = new Set<string>();
+
+  const addBranch = (branchName: string | undefined) => {
+    if (!branchName) return;
+    if (!localBranchNames.has(branchName)) return;
+    if (defaultBranches.has(branchName)) return;
+    recent.add(branchName);
+  };
+
+  addBranch(currentLocalBranch);
+
+  const reflog = await runGit(projectPath, [
+    "reflog",
+    "show",
+    "--format=%gs",
+    "--max-count=80",
+    "HEAD",
+  ]).catch(() => null);
+
+  for (const line of reflog?.stdout.split("\n") ?? []) {
+    const match = /^checkout: moving from .* to (.+)$/.exec(line.trim());
+    if (!match) continue;
+    addBranch(match[1]?.trim());
+    if (recent.size >= 5) break;
+  }
+
+  if (recent.size < 5) {
+    const fallback = await runGit(projectPath, [
+      "for-each-ref",
+      "--sort=-committerdate",
+      "--format=%(refname:short)",
+      "refs/heads",
+    ]).catch(() => null);
+
+    for (const branchName of fallback?.stdout.split("\n") ?? []) {
+      addBranch(branchName.trim());
+      if (recent.size >= 5) break;
+    }
+  }
+
+  return [...recent].slice(0, 5);
+}
+
+function getRemoteShortBranchName(branchName: string): string {
+  const slashIndex = branchName.indexOf("/");
+  return slashIndex === -1 ? branchName : branchName.slice(slashIndex + 1);
+}
+
 function isNotGitRepoError(err: unknown): boolean {
   if (err && typeof err === "object") {
     const e = err as { code?: number | string; stderr?: string };
@@ -249,17 +1144,25 @@ function statusChar(xy: string | undefined, index: 0 | 1): string | null {
 
 async function getGitStatus(projectPath: string): Promise<GitStatusInfo> {
   // Run all three commands in parallel
-  const [statusResult, numstatUnstaged, numstatStaged] = await Promise.all([
-    runGit(projectPath, ["status", "--porcelain=v2", "--branch"]),
-    runGit(projectPath, ["diff", "--numstat"]).catch(() => ({
-      stdout: "",
-      stderr: "",
-    })),
-    runGit(projectPath, ["diff", "--cached", "--numstat"]).catch(() => ({
-      stdout: "",
-      stderr: "",
-    })),
-  ]);
+  const [statusResult, numstatUnstaged, numstatStaged, upstreamRef] =
+    await Promise.all([
+      runGit(projectPath, [
+        "status",
+        "--porcelain=v2",
+        "--branch",
+        "--untracked-files=all",
+      ]),
+      runGit(projectPath, ["diff", "--numstat"]).catch(() => ({
+        stdout: "",
+        stderr: "",
+      })),
+      runGit(projectPath, ["diff", "--cached", "--numstat"]).catch(() => ({
+        stdout: "",
+        stderr: "",
+      })),
+      getGitUpstream(projectPath),
+    ]);
+  const remote = await getDefaultRemoteName(projectPath, upstreamRef);
 
   const unstagedStats = parseNumstat(numstatUnstaged.stdout);
   const stagedStats = parseNumstat(numstatStaged.stdout);
@@ -355,12 +1258,13 @@ async function getGitStatus(projectPath: string): Promise<GitStatusInfo> {
     else if (line.startsWith("? ")) {
       const path = line.slice(2);
       if (!path.endsWith("/")) {
+        const untrackedStats = await getUntrackedFileStats(projectPath, path);
         files.push({
           path,
           status: "?",
           staged: false,
-          linesAdded: null,
-          linesDeleted: null,
+          linesAdded: untrackedStats.added,
+          linesDeleted: untrackedStats.deleted,
         });
       }
     }
@@ -378,13 +1282,55 @@ async function getGitStatus(projectPath: string): Promise<GitStatusInfo> {
     }
   }
 
+  const latestLocalCommit =
+    ahead > 0 ? await getLatestLocalCommit(projectPath) : null;
+
   return {
     isGitRepo: true,
     branch,
     upstream,
+    remote,
     ahead,
     behind,
     isClean: files.length === 0,
+    latestLocalCommit,
     files,
   };
+}
+
+async function getLatestLocalCommit(
+  projectPath: string,
+): Promise<GitLocalCommitInfo | null> {
+  const result = await runGit(projectPath, [
+    "log",
+    "-1",
+    "--pretty=%s%x00%cI",
+  ]).catch(() => null);
+  const output = result?.stdout.trim();
+  if (!output) return null;
+
+  const [message = "", committedAt = ""] = output.split("\0");
+  if (!message || !committedAt) return null;
+
+  return { message, committedAt };
+}
+
+async function getUntrackedFileStats(
+  projectPath: string,
+  path: string,
+): Promise<{ added: number | null; deleted: number | null }> {
+  try {
+    const content = await readFile(resolve(projectPath, path), "utf-8");
+    return {
+      added: countLines(content),
+      deleted: 0,
+    };
+  } catch {
+    return { added: null, deleted: null };
+  }
+}
+
+function countLines(content: string): number {
+  if (content.length === 0) return 0;
+  return content.split("\n").length;
 }
