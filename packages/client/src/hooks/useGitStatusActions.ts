@@ -16,7 +16,9 @@ export type GitAction =
   | "switch"
   | "merge"
   | "stash"
-  | "discard";
+  | "discard"
+  | "restoreStash"
+  | "discardStash";
 
 type Translate = (
   key: string,
@@ -310,6 +312,30 @@ export function useGitStatusActions({
     );
   }, [hideDiscardWarningChecked, projectId, runAction, selectedCommitPaths]);
 
+  const handleRestoreStash = useCallback(
+    (stashRef: string, onSuccess?: () => void) => {
+      if (!stashRef) return;
+      void runAction(
+        "restoreStash",
+        () => api.restoreGitStash(projectId, stashRef),
+        onSuccess,
+      );
+    },
+    [projectId, runAction],
+  );
+
+  const handleDiscardStash = useCallback(
+    (stashRef: string, onSuccess?: () => void) => {
+      if (!stashRef) return;
+      void runAction(
+        "discardStash",
+        () => api.discardGitStash(projectId, stashRef),
+        onSuccess,
+      );
+    },
+    [projectId, runAction],
+  );
+
   return {
     actionError,
     alternateSyncAction,
@@ -325,8 +351,10 @@ export function useGitStatusActions({
     handleCommit,
     handleConfirmUndo,
     handleDiscardAllChanges,
+    handleDiscardStash,
     handleMergeBranch,
     handleOpenMergeModal,
+    handleRestoreStash,
     handleStashAllChanges,
     handleSync,
     handleToggleBranchMenu,

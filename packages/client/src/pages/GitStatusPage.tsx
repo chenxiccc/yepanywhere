@@ -1,12 +1,21 @@
-import type { GitMergeStrategy } from "@yep-anywhere/shared";
-import { useMemo, useState } from "react";
+import type {
+  GitFileChange,
+  GitHistoryCommitDetail,
+  GitHistoryCommitSummary,
+  GitMergeStrategy,
+  GitStashDetail,
+} from "@yep-anywhere/shared";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { api } from "../api/client";
 import { GitBranchMergeModal } from "../components/GitBranchMergeModal";
 import { GitBranchSwitchModal } from "../components/GitBranchSwitchModal";
 import { PageHeader } from "../components/PageHeader";
 import { ProjectSelector } from "../components/ProjectSelector";
+import { GitCommitHistoryPane } from "../components/git-status/GitCommitHistoryPane";
 import { GitConfirmationModal } from "../components/git-status/GitConfirmationModal";
 import { GitPreviewPane } from "../components/git-status/GitPreviewPane";
+import { GitStashPane } from "../components/git-status/GitStashPane";
 import { GitStatusSidebar } from "../components/git-status/GitStatusSidebar";
 import { GitStatusSummaryBar } from "../components/git-status/GitStatusSummaryBar";
 import { FilePathTitle } from "../components/git-status/utils";
@@ -70,8 +79,8 @@ const wrapperClass = isWideScreen
           isSidebarCollapsed={isSidebarCollapsed}
         />
 
-        <main className="page-scroll-container">
-          <div className="page-content-inner">
+        <main className="page-scroll-container git-status-page-scroll">
+          <div className="page-content-inner git-status-page-content">
             {loading || projectsLoading ? (
               <div className="loading">{t("gitStatusLoading")}</div>
             ) : error ? (
@@ -107,9 +116,36 @@ function GitStatusContent({
   t: (key: string, vars?: Record<string, string | number>) => string;
 }) {
   const isNarrowScreen = useMediaQuery("(max-width: 900px)");
+  const isMediumScreen = useMediaQuery("(max-width: 1099px)");
+  const [activeView, setActiveView] = useState<
+    "changes" | "stashed" | "history"
+  >("changes");
   const [commitMessage, setCommitMessage] = useState("");
   const [fileFilter, setFileFilter] = useState("");
   const [fileActionsMenuOpen, setFileActionsMenuOpen] = useState(false);
+  const [historyCommits, setHistoryCommits] = useState<
+    GitHistoryCommitSummary[]
+  >([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyLoadingMore, setHistoryLoadingMore] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyHasMore, setHistoryHasMore] = useState(false);
+  const [historyCursor, setHistoryCursor] = useState<string | null>(null);
+  const [selectedHistoryCommitHash, setSelectedHistoryCommitHash] = useState<
+    string | null
+  >(null);
+  const [historyModalCommit, setHistoryModalCommit] =
+    useState<GitHistoryCommitDetail | null>(null);
+  const [historyPreviewModal, setHistoryPreviewModal] = useState<{
+    file: GitFileChange;
+    historyCommit: { hash: string; previousPath?: string };
+  } | null>(null);
+  const [stashModal, setStashModal] = useState<GitStashDetail | null>(null);
+  const [stashPreviewModal, setStashPreviewModal] = useState<{
+    file: GitFileChange;
+    stashRef: { ref: string; previousPath?: string };
+  } | null>(null);
+  const [selectedStashRef, setSelectedStashRef] = useState<string | null>(null);
 
   const {
     excludedCommitFileKeys,
@@ -142,6 +178,97 @@ function GitStatusContent({
   const selectedCommitPaths = selectedCommitFiles.map((file) => file.path);
   const canCommit = commitMessage.trim().length > 0 && selectedCommitCount > 0;
   const remoteName = status.remote ?? "origin";
+  const historyReloadKey = `${status.branch ?? ""}:${status.ahead}:${status.behind}`;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (activeView !== "history" || historyReloadKey.length === 0) return;
+
+    setHistoryLoading(true);
+    setHistoryLoadingMore(false);
+    setHistoryError(null);
+    setHistoryCommits([]);
+    setHistoryHasMore(false);
+    setHistoryCursor(null);
+    setSelectedHistoryCommitHash(null);
+
+    api
+      .getGitHistory(projectId, { limit: 25 })
+      .then((result) => {
+        if (cancelled) return;
+        setHistoryCommits(result.commits);
+        setHistoryHasMore(result.hasMore);
+        setHistoryCursor(result.nextCursor);
+        setSelectedHistoryCommitHash(null);
+        setHistoryLoading(false);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setHistoryError(
+          err instanceof Error ? err.message : t("gitStatusActionFailed"),
+        );
+        setHistoryLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeView, historyReloadKey, projectId, t]);
+
+  useEffect(() => {
+    if (activeView !== "stashed") return;
+
+    if (status.stashes.length === 0) {
+      setActiveView("changes");
+      setSelectedStashRef(null);
+      return;
+    }
+
+    setSelectedStashRef((current) => {
+      if (status.stashes.length === 0) return null;
+      if (isNarrowScreen) {
+        return current &&
+          status.stashes.some((stash) => stash.ref === current)
+          ? current
+          : null;
+      }
+      if (current && status.stashes.some((stash) => stash.ref === current)) {
+        return current;
+      }
+      return status.stashes[0]?.ref ?? null;
+    });
+  }, [activeView, isNarrowScreen, status.stashes]);
+
+  const handleLoadMoreHistory = async () => {
+    if (!historyHasMore || !historyCursor || historyLoadingMore) return;
+
+    setHistoryLoadingMore(true);
+    setHistoryError(null);
+
+    try {
+      const result = await api.getGitHistory(projectId, {
+        cursor: historyCursor,
+        limit: 25,
+      });
+
+      setHistoryCommits((prev) => {
+        const existingHashes = new Set(prev.map((commit) => commit.hash));
+        const appended = result.commits.filter(
+          (commit) => !existingHashes.has(commit.hash),
+        );
+        return [...prev, ...appended];
+      });
+      setHistoryHasMore(result.hasMore);
+      setHistoryCursor(result.nextCursor);
+    } catch (err) {
+      setHistoryError(
+        err instanceof Error ? err.message : t("gitStatusActionFailed"),
+      );
+    } finally {
+      setHistoryLoadingMore(false);
+    }
+  };
 
   const {
     actionError,
@@ -158,8 +285,10 @@ function GitStatusContent({
     handleCommit,
     handleConfirmUndo,
     handleDiscardAllChanges,
+    handleDiscardStash,
     handleMergeBranch,
     handleOpenMergeModal,
+    handleRestoreStash,
     handleStashAllChanges,
     handleSync,
     handleToggleBranchMenu,
@@ -218,12 +347,21 @@ function GitStatusContent({
       <div className="git-desktop-shell">
         <GitStatusSidebar
           status={status}
+          activeView={activeView}
           commitMessage={commitMessage}
           fileFilter={fileFilter}
           fileActionsMenuOpen={fileActionsMenuOpen}
           selectedCommitCount={selectedCommitCount}
           visibleFiles={visibleFiles}
+          historyCommits={historyCommits}
+          historyLoading={historyLoading}
+          historyLoadingMore={historyLoadingMore}
+          historyError={historyError}
+          historyHasMore={historyHasMore}
+          selectedStashRef={selectedStashRef}
+          selectedHistoryCommitHash={selectedHistoryCommitHash}
           selectedFile={selectedFile}
+          stashes={status.stashes}
           excludedCommitFileKeys={excludedCommitFileKeys}
           busyAction={busyAction}
           canCommit={canCommit}
@@ -234,6 +372,7 @@ function GitStatusContent({
           onUndo={handleUndoClick}
           onFileFilterChange={setFileFilter}
           onClearFileFilter={() => setFileFilter("")}
+          onViewChange={setActiveView}
           onToggleFileActionsMenu={() =>
             setFileActionsMenuOpen((value) => !value)
           }
@@ -247,13 +386,48 @@ function GitStatusContent({
             handleStashAllChanges();
           }}
           onFileClick={handleFileClick}
+          onHistoryCommitSelect={setSelectedHistoryCommitHash}
+          onLoadMoreHistory={handleLoadMoreHistory}
+          onStashSelect={setSelectedStashRef}
           onToggleCommitFile={handleCommitFileToggle}
           onSetCommitFiles={handleCommitFilesSelection}
         />
 
         {!isNarrowScreen && (
           <section className="git-desktop-card git-preview-card">
-            {selectedFile ? (
+            {activeView === "history" ? (
+              <GitCommitHistoryPane
+                projectId={projectId}
+                selectedCommitHash={selectedHistoryCommitHash}
+                t={t}
+                previewInline={!isMediumScreen}
+                onCommitLoaded={setHistoryModalCommit}
+                onFileSelect={(file, historyCommit) =>
+                  setHistoryPreviewModal({ file, historyCommit })
+                }
+              />
+            ) : activeView === "stashed" ? (
+              <GitStashPane
+                projectId={projectId}
+                selectedStashRef={selectedStashRef}
+                busyAction={busyAction}
+                t={t}
+                onDiscard={(stashRef) => {
+                  handleDiscardStash(stashRef);
+                }}
+                onRestore={(stashRef) => {
+                  handleRestoreStash(stashRef, () => {
+                    setActiveView("changes");
+                    setSelectedStashRef(null);
+                  });
+                }}
+                previewInline={!isMediumScreen}
+                onStashLoaded={setStashModal}
+                onFileSelect={(file, stashRef) =>
+                  setStashPreviewModal({ file, stashRef })
+                }
+              />
+            ) : selectedFile ? (
               <GitPreviewPane file={selectedFile} projectId={projectId} t={t} />
             ) : (
               <div className="git-preview-empty">
@@ -264,6 +438,7 @@ function GitStatusContent({
             )}
           </section>
         )}
+
       </div>
 
       {isNarrowScreen && previewModalFile ? (
@@ -276,6 +451,105 @@ function GitStatusContent({
               file={previewModalFile}
               projectId={projectId}
               t={t}
+            />
+          </div>
+        </Modal>
+      ) : null}
+
+      {isNarrowScreen &&
+      activeView === "history" &&
+      selectedHistoryCommitHash ? (
+        <Modal
+          title={historyModalCommit?.message ?? t("gitStatusLoading")}
+          onClose={() => {
+            setSelectedHistoryCommitHash(null);
+            setHistoryModalCommit(null);
+          }}
+        >
+          <div className="git-preview-modal-content">
+            <GitCommitHistoryPane
+              projectId={projectId}
+              selectedCommitHash={selectedHistoryCommitHash}
+              t={t}
+              previewInline={false}
+              onCommitLoaded={setHistoryModalCommit}
+              onFileSelect={(file, historyCommit) =>
+                setHistoryPreviewModal({ file, historyCommit })
+              }
+            />
+          </div>
+        </Modal>
+      ) : null}
+
+      {isMediumScreen && historyPreviewModal ? (
+        <Modal
+          title={<FilePathTitle file={historyPreviewModal.file} />}
+          onClose={() => setHistoryPreviewModal(null)}
+        >
+          <div className="git-preview-modal-content">
+            <GitPreviewPane
+              file={historyPreviewModal.file}
+              projectId={projectId}
+              t={t}
+              historyCommit={historyPreviewModal.historyCommit}
+            />
+          </div>
+        </Modal>
+      ) : null}
+
+      {isNarrowScreen &&
+      activeView === "stashed" &&
+      selectedStashRef ? (
+        <Modal
+          title={
+            stashModal
+              ? stashModal.createdByApp
+                ? t("gitStatusStashedTitle")
+                : stashModal.message
+              : t("gitStatusLoading")
+          }
+          onClose={() => {
+            setSelectedStashRef(null);
+            setStashModal(null);
+          }}
+        >
+          <div className="git-preview-modal-content">
+            <GitStashPane
+              projectId={projectId}
+              selectedStashRef={selectedStashRef}
+              busyAction={busyAction}
+              t={t}
+              onDiscard={(stashRef) => {
+                handleDiscardStash(stashRef);
+              }}
+              onRestore={(stashRef) => {
+                handleRestoreStash(stashRef, () => {
+                  setStashModal(null);
+                  setSelectedStashRef(null);
+                  setActiveView("changes");
+                });
+              }}
+              previewInline={false}
+              onStashLoaded={setStashModal}
+              onFileSelect={(file, stashRef) =>
+                setStashPreviewModal({ file, stashRef })
+              }
+            />
+          </div>
+        </Modal>
+      ) : null}
+
+      {isMediumScreen && stashPreviewModal ? (
+        <Modal
+          title={<FilePathTitle file={stashPreviewModal.file} />}
+          onClose={() => setStashPreviewModal(null)}
+        >
+          <div className="git-preview-modal-content">
+            <GitPreviewPane
+              file={stashPreviewModal.file}
+              projectId={projectId}
+              t={t}
+              stashRef={stashPreviewModal.stashRef}
             />
           </div>
         </Modal>

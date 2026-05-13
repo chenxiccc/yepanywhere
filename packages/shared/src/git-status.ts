@@ -30,6 +30,8 @@ export interface GitStatusInfo {
   isClean: boolean;
   /** Latest local commit that can be undone from this branch state */
   latestLocalCommit?: GitLocalCommitInfo | null;
+  /** Stashed changes, newest first */
+  stashes: GitStashEntry[];
   /** Changed files with status and line counts */
   files: GitFileChange[];
 }
@@ -37,6 +39,52 @@ export interface GitStatusInfo {
 export interface GitLocalCommitInfo {
   message: string;
   committedAt: string;
+}
+
+export interface GitStashEntry {
+  ref: string;
+  message: string;
+  branch: string | null;
+  createdAt: string;
+  createdByApp: boolean;
+}
+
+export interface GitStashFileChange {
+  path: string;
+  status: string;
+  previousPath?: string;
+  linesAdded: number | null;
+  linesDeleted: number | null;
+}
+
+export interface GitStashDetail extends GitStashEntry {
+  files: GitStashFileChange[];
+}
+
+export interface GitHistoryCommitSummary {
+  hash: string;
+  shortHash: string;
+  message: string;
+  authorName: string;
+  authorEmail: string;
+  committedAt: string;
+  refs: string[];
+  filesChanged: number;
+  insertions: number;
+  deletions: number;
+}
+
+export interface GitHistoryFileChange {
+  path: string;
+  status: string;
+  previousPath?: string;
+  linesAdded: number | null;
+  linesDeleted: number | null;
+}
+
+export interface GitHistoryCommitDetail extends GitHistoryCommitSummary {
+  body: string;
+  files: GitHistoryFileChange[];
 }
 
 export interface GitCommitRequest {
