@@ -280,7 +280,9 @@ function GitStatusContent({
     busyAction,
     confirmBranchSwitch,
     confirmDiscardAllChanges,
+    confirmDiscardStash,
     discardConfirmOpen,
+    discardStashConfirmRef,
     handleBranchSelect,
     handleCommit,
     handleConfirmUndo,
@@ -301,6 +303,7 @@ function GitStatusContent({
     setBranchMenuOpen,
     setBranchSwitchMode,
     setDiscardConfirmOpen,
+    setDiscardStashConfirmRef,
     setFileActionWarnings,
     setMergeError,
     setMergeModalOpen,
@@ -606,6 +609,40 @@ function GitStatusContent({
           busy={busyAction !== null}
           onClose={() => setDiscardConfirmOpen(false)}
           onConfirm={confirmDiscardAllChanges}
+        />
+      ) : null}
+
+      {discardStashConfirmRef ? (
+        <GitConfirmationModal
+          title={t("gitStatusStashedDiscardTitle")}
+          message={t("gitStatusStashedDiscardPrompt")}
+          details={
+            <>
+              <div className="git-discard-confirm-target">
+                {stashModal?.createdByApp
+                  ? t("gitStatusStashedTitle")
+                  : stashModal?.message || discardStashConfirmRef}
+              </div>
+              <p className="git-discard-confirm-detail">
+                {t("gitStatusStashedDiscardBody")}
+              </p>
+            </>
+          }
+          cancelLabel={t("gitStatusBranchCancel")}
+          confirmLabel={
+            busyAction === "discardStash"
+              ? t("gitStatusLoading")
+              : t("gitStatusStashedDiscardConfirm")
+          }
+          busy={busyAction !== null}
+          onClose={() => setDiscardStashConfirmRef(null)}
+          onConfirm={() =>
+            confirmDiscardStash(() => {
+              setStashModal(null);
+              setSelectedStashRef(null);
+              setActiveView("changes");
+            })
+          }
         />
       ) : null}
 

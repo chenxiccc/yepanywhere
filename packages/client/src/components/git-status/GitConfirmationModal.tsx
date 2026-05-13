@@ -18,9 +18,9 @@ export function GitConfirmationModal({
   title: string;
   message: string;
   details?: ReactNode;
-  skipChecked: boolean;
-  onSkipCheckedChange: (checked: boolean) => void;
-  skipLabel: string;
+  skipChecked?: boolean;
+  onSkipCheckedChange?: (checked: boolean) => void;
+  skipLabel?: string;
   cancelLabel: string;
   confirmLabel: string;
   busy: boolean;
@@ -52,14 +52,18 @@ export function GitConfirmationModal({
           <div className="git-discard-confirm-copy">
             <p className="git-undo-confirm-message">{message}</p>
             {details}
-            <label className="git-undo-confirm-checkbox">
-              <input
-                type="checkbox"
-                checked={skipChecked}
-                onChange={(event) => onSkipCheckedChange(event.target.checked)}
-              />
-              <span>{skipLabel}</span>
-            </label>
+            {skipLabel && onSkipCheckedChange ? (
+              <label className="git-undo-confirm-checkbox">
+                <input
+                  type="checkbox"
+                  checked={skipChecked ?? false}
+                  onChange={(event) =>
+                    onSkipCheckedChange(event.target.checked)
+                  }
+                />
+                <span>{skipLabel}</span>
+              </label>
+            ) : null}
           </div>
         </div>
         <div className="git-undo-confirm-actions">
