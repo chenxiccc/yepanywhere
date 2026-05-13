@@ -23,12 +23,26 @@ type Translate = ReturnType<typeof useI18n>["t"];
 export function GitPreviewPane({
   file,
   projectId,
+  historyCommit,
+  stashRef,
   t,
 }: {
   file: GitFileChange;
   projectId: string;
+  historyCommit?: {
+    hash: string;
+    previousPath?: string;
+  };
+  stashRef?: {
+    ref: string;
+    previousPath?: string;
+  };
   t: Translate;
 }) {
+  const historyCommitHash = historyCommit?.hash;
+  const historyPreviousPath = historyCommit?.previousPath;
+  const currentStashRef = stashRef?.ref;
+  const stashPreviousPath = stashRef?.previousPath;
   const [diffResult, setDiffResult] = useState<GitDiffResult | null>(null);
   const [fullContextResult, setFullContextResult] =
     useState<GitDiffResult | null>(null);
@@ -50,12 +64,27 @@ export function GitPreviewPane({
     setShowMarkdownPreview(false);
     setFullContextResult(null);
 
-    api
-      .getGitDiff(projectId, {
-        path: file.path,
-        staged: file.staged,
-        status: file.status,
-      })
+    const fetchDiff = historyCommitHash
+      ? api.getGitHistoryDiff(projectId, {
+          commit: historyCommitHash,
+          path: file.path,
+          status: file.status,
+          previousPath: historyPreviousPath,
+        })
+      : currentStashRef
+        ? api.getGitStashDiff(projectId, {
+            stashRef: currentStashRef,
+            path: file.path,
+            status: file.status,
+            previousPath: stashPreviousPath,
+          })
+        : api.getGitDiff(projectId, {
+            path: file.path,
+            staged: file.staged,
+            status: file.status,
+          });
+
+    fetchDiff
       .then((result) => {
         if (cancelled) return;
         setDiffResult(result);
@@ -70,7 +99,17 @@ export function GitPreviewPane({
     return () => {
       cancelled = true;
     };
-  }, [file.path, file.staged, file.status, projectId, t]);
+  }, [
+    file.path,
+    file.staged,
+    file.status,
+    historyCommitHash,
+    historyPreviousPath,
+    projectId,
+    currentStashRef,
+    stashPreviousPath,
+    t,
+  ]);
 
   const isMarkdown = /\.(md|markdown)$/i.test(file.path);
   const markdownHtml =
@@ -84,12 +123,28 @@ export function GitPreviewPane({
       setContextLoading(true);
       setContextError(null);
       try {
-        const result = await api.getGitDiff(projectId, {
-          path: file.path,
-          staged: file.staged,
-          status: file.status,
-          fullContext: true,
-        });
+        const result = historyCommitHash
+          ? await api.getGitHistoryDiff(projectId, {
+              commit: historyCommitHash,
+              path: file.path,
+              status: file.status,
+              previousPath: historyPreviousPath,
+              fullContext: true,
+            })
+          : currentStashRef
+            ? await api.getGitStashDiff(projectId, {
+                stashRef: currentStashRef,
+                path: file.path,
+                status: file.status,
+                previousPath: stashPreviousPath,
+                fullContext: true,
+              })
+            : await api.getGitDiff(projectId, {
+                path: file.path,
+                staged: file.staged,
+                status: file.status,
+                fullContext: true,
+              });
         setFullContextResult(result);
       } catch (err) {
         setContextError(
@@ -107,8 +162,12 @@ export function GitPreviewPane({
     file.staged,
     file.status,
     fullContextResult,
+    historyCommitHash,
+    historyPreviousPath,
     projectId,
     showFullContext,
+    currentStashRef,
+    stashPreviousPath,
     t,
   ]);
 
@@ -175,25 +234,27 @@ export function GitPreviewPane({
         </div>
       </div>
 
-      {contextError ? (
-        <div className="git-diff-error">{contextError}</div>
-      ) : null}
+      <div className="git-preview-body">
+        {contextError ? (
+          <div className="git-diff-error">{contextError}</div>
+        ) : null}
 
-      {showMarkdownPreview && markdownHtml ? (
-        <div className="markdown-preview git-preview-scroll">
-          <div
-            className="markdown-rendered"
-            // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered HTML
-            dangerouslySetInnerHTML={{ __html: markdownHtml }}
+        {showMarkdownPreview && markdownHtml ? (
+          <div className="markdown-preview git-preview-scroll">
+            <div
+              className="markdown-rendered"
+              // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered HTML
+              dangerouslySetInnerHTML={{ __html: markdownHtml }}
+            />
+          </div>
+        ) : displayResult.diffHtml ? (
+          <HighlightedDiff diffHtml={displayResult.diffHtml} />
+        ) : (
+          <DiffLines
+            lines={displayResult.structuredPatch.flatMap((hunk) => hunk.lines)}
           />
-        </div>
-      ) : displayResult.diffHtml ? (
-        <HighlightedDiff diffHtml={displayResult.diffHtml} />
-      ) : (
-        <DiffLines
-          lines={displayResult.structuredPatch.flatMap((hunk) => hunk.lines)}
-        />
-      )}
+        )}
+      </div>
     </div>
   );
 }

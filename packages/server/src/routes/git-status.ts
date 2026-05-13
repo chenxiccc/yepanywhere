@@ -7,11 +7,17 @@ import {
   type GitBranchInfo,
   type GitCommitRequest,
   type GitFileChange,
+  type GitHistoryCommitDetail,
+  type GitHistoryCommitSummary,
+  type GitHistoryFileChange,
   type GitLocalCommitInfo,
   type GitMergeBranchRequest,
   type GitMergePreviewRequest,
   type GitMergePreviewResult,
   type GitMergeStrategy,
+  type GitStashDetail,
+  type GitStashEntry,
+  type GitStashFileChange,
   type GitStatusInfo,
   type GitSwitchBranchRequest,
   type GitUndoCommitResponse,
@@ -37,6 +43,7 @@ const NOT_A_GIT_REPO: GitStatusInfo = {
   ahead: 0,
   behind: 0,
   isClean: true,
+  stashes: [],
   files: [],
 };
 
@@ -156,6 +163,122 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
     }
   });
 
+  routes.post("/:projectId/git/stashes/restore", async (c) => {
+    const body = await readJsonBody<{ stashRef: string }>(c);
+    if (!body?.stashRef?.trim()) {
+      return c.json({ error: "Stash ref is required" }, 400);
+    }
+
+    try {
+      const projectPath = await getProjectPath(deps, c.req.param("projectId"));
+      if (!projectPath) return c.json({ error: "Project not found" }, 404);
+      await runGit(projectPath, ["stash", "pop", "--index", body.stashRef]);
+      return c.json({ status: await getGitStatus(projectPath) });
+    } catch (err) {
+      return gitActionError(err, "Failed to restore stash");
+    }
+  });
+
+  routes.post("/:projectId/git/stashes/discard", async (c) => {
+    const body = await readJsonBody<{ stashRef: string }>(c);
+    if (!body?.stashRef?.trim()) {
+      return c.json({ error: "Stash ref is required" }, 400);
+    }
+
+    try {
+      const projectPath = await getProjectPath(deps, c.req.param("projectId"));
+      if (!projectPath) return c.json({ error: "Project not found" }, 404);
+      await runGit(projectPath, ["stash", "drop", body.stashRef]);
+      return c.json({ status: await getGitStatus(projectPath) });
+    } catch (err) {
+      return gitActionError(err, "Failed to discard stash");
+    }
+  });
+
+  routes.post("/:projectId/git/stashes/detail", async (c) => {
+    const body = await readJsonBody<{ stashRef: string }>(c);
+    if (!body?.stashRef?.trim()) {
+      return c.json({ error: "Stash ref is required" }, 400);
+    }
+
+    try {
+      const projectPath = await getProjectPath(deps, c.req.param("projectId"));
+      if (!projectPath) return c.json({ error: "Project not found" }, 404);
+      return c.json({
+        stash: await getGitStashDetail(projectPath, body.stashRef),
+      });
+    } catch (err) {
+      return gitActionError(err, "Failed to load stash detail");
+    }
+  });
+
+  routes.post("/:projectId/git/stashes/diff", async (c) => {
+    const project = await deps.scanner.getProject(c.req.param("projectId"));
+    if (!project) return c.json({ error: "Project not found" }, 404);
+
+    let body: {
+      stashRef: string;
+      path: string;
+      status: string;
+      previousPath?: string;
+      fullContext?: boolean;
+    };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
+    const { stashRef, path, status, previousPath, fullContext } = body;
+    if (!stashRef || !path || !status) {
+      return c.json(
+        { error: "Missing required fields: stashRef, path, status" },
+        400,
+      );
+    }
+
+    try {
+      const { oldContent, newContent } = await getStashFileVersions(
+        project.path,
+        stashRef,
+        path,
+        status,
+        previousPath,
+      );
+
+      const contextLines = fullContext ? 999999 : 3;
+      const augment = await computeEditAugment(
+        "git-stash-diff",
+        { file_path: path, old_string: oldContent, new_string: newContent },
+        contextLines,
+      );
+
+      const result: {
+        diffHtml: string;
+        structuredPatch: PatchHunk[];
+        markdownHtml?: string;
+      } = {
+        diffHtml: augment.diffHtml,
+        structuredPatch: augment.structuredPatch,
+      };
+
+      const ext = extname(path).toLowerCase();
+      if ((ext === ".md" || ext === ".markdown") && newContent) {
+        try {
+          result.markdownHtml = await renderMarkdownToHtml(newContent);
+        } catch {
+          // Ignore markdown rendering errors
+        }
+      }
+
+      return c.json(result);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to compute stash diff";
+      return c.json({ error: message }, 500);
+    }
+  });
+
   routes.post("/:projectId/git/discard", async (c) => {
     const body = await readJsonBody<{ selectedPaths: string[] }>(c);
     if (!body || !Array.isArray(body.selectedPaths)) {
@@ -224,8 +347,12 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
       const projectPath = await getProjectPath(deps, c.req.param("projectId"));
       if (!projectPath) return c.json({ error: "Project not found" }, 404);
       const upstream = await getGitUpstream(projectPath);
-      const remoteName = await getDefaultRemoteName(projectPath, upstream);
-      await runGit(projectPath, ["fetch", remoteName]);
+      if (upstream) {
+        await runGit(projectPath, ["pull", "--ff-only"]);
+      } else {
+        const remoteName = await getDefaultRemoteName(projectPath, upstream);
+        await runGit(projectPath, ["fetch", remoteName]);
+      }
       return c.json({ status: await getGitStatus(projectPath) });
     } catch (err) {
       return gitActionError(err, "Failed to fetch");
@@ -402,6 +529,103 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
     }
   });
 
+  routes.get("/:projectId/git/history", async (c) => {
+    try {
+      const projectPath = await getProjectPath(deps, c.req.param("projectId"));
+      if (!projectPath) return c.json({ error: "Project not found" }, 404);
+      const cursor = Number.parseInt(c.req.query("cursor") ?? "", 10);
+      const limitParam = Number.parseInt(c.req.query("limit") ?? "", 10);
+      const limit = Number.isFinite(limitParam)
+        ? Math.min(Math.max(limitParam, 1), 100)
+        : 25;
+      const offset = Number.isFinite(cursor) ? Math.max(cursor, 0) : 0;
+      const { commits, hasMore, nextCursor } = await getGitHistory(
+        projectPath,
+        offset,
+        limit,
+      );
+      return c.json({ commits, hasMore, nextCursor });
+    } catch (err) {
+      return gitActionError(err, "Failed to load git history");
+    }
+  });
+
+  routes.get("/:projectId/git/history/:commit", async (c) => {
+    try {
+      const projectPath = await getProjectPath(deps, c.req.param("projectId"));
+      if (!projectPath) return c.json({ error: "Project not found" }, 404);
+      return c.json({
+        commit: await getGitHistoryCommitDetail(
+          projectPath,
+          c.req.param("commit"),
+        ),
+      });
+    } catch (err) {
+      return gitActionError(err, "Failed to load commit details");
+    }
+  });
+
+  routes.post("/:projectId/git/history/diff", async (c) => {
+    const body = await readJsonBody<{
+      commit: string;
+      path: string;
+      status: string;
+      previousPath?: string;
+      fullContext?: boolean;
+    }>(c);
+    if (!body?.commit || !body.path || !body.status) {
+      return c.json({ error: "Commit, path, and status are required" }, 400);
+    }
+
+    try {
+      const projectPath = await getProjectPath(deps, c.req.param("projectId"));
+      if (!projectPath) return c.json({ error: "Project not found" }, 404);
+
+      const { oldContent, newContent } = await getCommitFileVersions(
+        projectPath,
+        body.commit,
+        body.path,
+        body.status,
+        body.previousPath,
+      );
+
+      const contextLines = body.fullContext ? 999999 : 3;
+      const augment = await computeEditAugment(
+        "git-history-diff",
+        {
+          file_path: body.path,
+          old_string: oldContent,
+          new_string: newContent,
+        },
+        contextLines,
+      );
+
+      const result: {
+        diffHtml: string;
+        structuredPatch: PatchHunk[];
+        markdownHtml?: string;
+      } = {
+        diffHtml: augment.diffHtml,
+        structuredPatch: augment.structuredPatch,
+      };
+
+      const ext = extname(body.path).toLowerCase();
+      if ((ext === ".md" || ext === ".markdown") && newContent) {
+        try {
+          result.markdownHtml = await renderMarkdownToHtml(newContent);
+        } catch {
+          // Ignore markdown rendering errors
+        }
+      }
+
+      return c.json(result);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to compute diff";
+      return c.json({ error: message }, 500);
+    }
+  });
+
   /**
    * POST /:projectId/git/diff
    * Get syntax-highlighted diff for a specific file.
@@ -560,6 +784,74 @@ async function getFileVersions(
   return { oldContent: oldResult.stdout, newContent };
 }
 
+async function getCommitFileVersions(
+  cwd: string,
+  commit: string,
+  path: string,
+  status: string,
+  previousPath?: string,
+): Promise<{ oldContent: string; newContent: string }> {
+  const parentCommit = await getFirstParentCommit(cwd, commit);
+  const oldPath = previousPath ?? path;
+
+  if (status === "A") {
+    return {
+      oldContent: "",
+      newContent: await getGitFileContent(cwd, commit, path),
+    };
+  }
+
+  if (status === "D") {
+    return {
+      oldContent: parentCommit
+        ? await getGitFileContent(cwd, parentCommit, oldPath)
+        : "",
+      newContent: "",
+    };
+  }
+
+  const oldContent = parentCommit
+    ? await getGitFileContent(cwd, parentCommit, oldPath)
+    : "";
+  const newContent = await getGitFileContent(cwd, commit, path);
+  return { oldContent, newContent };
+}
+
+async function getFirstParentCommit(
+  cwd: string,
+  commit: string,
+): Promise<string | null> {
+  const result = await runGit(cwd, [
+    "rev-list",
+    "--parents",
+    "-n",
+    "1",
+    commit,
+  ]);
+  const parts = result.stdout.trim().split(" ").filter(Boolean);
+  return parts[1] ?? null;
+}
+
+async function getGitFileContent(
+  cwd: string,
+  revision: string,
+  path: string,
+): Promise<string> {
+  try {
+    const result = await runGit(cwd, ["show", `${revision}:${path}`]);
+    return result.stdout;
+  } catch (err) {
+    const message = getGitErrorMessage(err) ?? "";
+    if (
+      message.includes("exists on disk, but not in") ||
+      message.includes("does not exist in")
+    ) {
+      return "";
+    }
+    throw err;
+  }
+}
+
 async function runGit(
   cwd: string,
   args: string[],
@@ -616,6 +908,11 @@ function getGitErrorMessage(err: unknown): string | null {
   }
 
   return null;
+}
+
+function isGitEmptyHistoryError(err: unknown): boolean {
+  const message = getGitErrorMessage(err) ?? "";
+  return message.includes("does not have any commits yet");
 }
 
 function isRemoteBranchName(branchName: string): boolean {
@@ -1144,7 +1441,7 @@ function statusChar(xy: string | undefined, index: 0 | 1): string | null {
 
 async function getGitStatus(projectPath: string): Promise<GitStatusInfo> {
   // Run all three commands in parallel
-  const [statusResult, numstatUnstaged, numstatStaged, upstreamRef] =
+  const [statusResult, numstatUnstaged, numstatStaged, upstreamRef, stashes] =
     await Promise.all([
       runGit(projectPath, [
         "status",
@@ -1161,6 +1458,7 @@ async function getGitStatus(projectPath: string): Promise<GitStatusInfo> {
         stderr: "",
       })),
       getGitUpstream(projectPath),
+      getGitStashes(projectPath),
     ]);
   const remote = await getDefaultRemoteName(projectPath, upstreamRef);
 
@@ -1294,8 +1592,182 @@ async function getGitStatus(projectPath: string): Promise<GitStatusInfo> {
     behind,
     isClean: files.length === 0,
     latestLocalCommit,
+    stashes,
     files,
   };
+}
+
+async function getGitStashes(projectPath: string): Promise<GitStashEntry[]> {
+  const result = await runGit(projectPath, [
+    "stash",
+    "list",
+    "--format=%gd%x00%gs%x00%cI",
+  ]).catch(() => null);
+  const output = result?.stdout.trim();
+  if (!output) return [];
+
+  return output
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .flatMap((line) => {
+      const [ref = "", subject = "", createdAt = ""] = line.split("\0");
+      if (!ref || !subject || !createdAt) return [];
+
+      const { branch, message, createdByApp } = parseGitStashSubject(subject);
+      return [
+        {
+          ref,
+          branch,
+          message,
+          createdAt,
+          createdByApp,
+        },
+      ];
+    });
+}
+
+async function getGitStashDetail(
+  projectPath: string,
+  stashRef: string,
+): Promise<GitStashDetail> {
+  const stashes = await getGitStashes(projectPath);
+  const stash = stashes.find((entry) => entry.ref === stashRef);
+  if (!stash) {
+    throw new Error("Stash not found");
+  }
+
+  const [nameStatusResult, numstatResult] = await Promise.all([
+    runGit(projectPath, [
+      "stash",
+      "show",
+      "--format=",
+      "--name-status",
+      "--find-renames",
+      "--include-untracked",
+      stashRef,
+    ]),
+    runGit(projectPath, [
+      "stash",
+      "show",
+      "--format=",
+      "--numstat",
+      "--find-renames",
+      "--include-untracked",
+      stashRef,
+    ]),
+  ]);
+
+  return {
+    ...stash,
+    files: parseGitStashFiles(nameStatusResult.stdout, numstatResult.stdout),
+  };
+}
+
+function parseGitStashFiles(
+  nameStatusOutput: string,
+  numstatOutput: string,
+): GitStashFileChange[] {
+  const statsByPath = parseNumstat(numstatOutput);
+
+  return nameStatusOutput
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .flatMap((line) => {
+      const parts = line.split("\t");
+      const statusToken = parts[0] ?? "";
+      const status = statusToken[0] ?? "";
+
+      if (!status) return [];
+
+      if (status === "R" && parts[1] && parts[2]) {
+        const path = parts[2];
+        const stats = statsByPath.get(path);
+        return [
+          {
+            path,
+            status,
+            previousPath: parts[1],
+            linesAdded: stats?.added ?? null,
+            linesDeleted: stats?.deleted ?? null,
+          },
+        ];
+      }
+
+      const path = parts[1];
+      if (!path) return [];
+      const stats = statsByPath.get(path);
+      return [
+        {
+          path,
+          status,
+          linesAdded: stats?.added ?? null,
+          linesDeleted: stats?.deleted ?? null,
+        },
+      ];
+    });
+}
+
+function parseGitStashSubject(subject: string): {
+  branch: string | null;
+  message: string;
+  createdByApp: boolean;
+} {
+  const onBranchMatch = subject.match(/^(?:On|WIP on) (.+?):\s*(.*)$/);
+  const branch = onBranchMatch?.[1]?.trim() || null;
+  const rawMessage = onBranchMatch?.[2]?.trim() || subject.trim();
+  const createdByApp = rawMessage.startsWith("yepanywhere:");
+
+  return {
+    branch,
+    message: rawMessage,
+    createdByApp,
+  };
+}
+
+async function getStashFileVersions(
+  cwd: string,
+  stashRef: string,
+  path: string,
+  status: string,
+  previousPath?: string,
+): Promise<{ oldContent: string; newContent: string }> {
+  const parentRef = `${stashRef}^1`;
+  const oldPath = previousPath ?? path;
+
+  if (status === "A" || status === "?") {
+    return {
+      oldContent: "",
+      newContent: await getGitStashFileContent(cwd, stashRef, path, true),
+    };
+  }
+
+  if (status === "D") {
+    return {
+      oldContent: await getGitFileContent(cwd, parentRef, oldPath),
+      newContent: "",
+    };
+  }
+
+  return {
+    oldContent: await getGitFileContent(cwd, parentRef, oldPath),
+    newContent: await getGitStashFileContent(cwd, stashRef, path, false),
+  };
+}
+
+async function getGitStashFileContent(
+  cwd: string,
+  stashRef: string,
+  path: string,
+  allowUntrackedParentFallback: boolean,
+): Promise<string> {
+  const direct = await getGitFileContent(cwd, stashRef, path).catch(() => "");
+  if (direct || !allowUntrackedParentFallback) {
+    return direct;
+  }
+
+  return getGitFileContent(cwd, `${stashRef}^3`, path).catch(() => "");
 }
 
 async function getLatestLocalCommit(
@@ -1313,6 +1785,257 @@ async function getLatestLocalCommit(
   if (!message || !committedAt) return null;
 
   return { message, committedAt };
+}
+
+async function getGitHistory(
+  projectPath: string,
+  offset: number,
+  limit: number,
+): Promise<{
+  commits: GitHistoryCommitSummary[];
+  hasMore: boolean;
+  nextCursor: string | null;
+}> {
+  const result = await runGit(projectPath, [
+    "log",
+    "--skip",
+    String(offset),
+    "-n",
+    String(limit + 1),
+    "--date=iso-strict",
+    "--pretty=format:__COMMIT__%n%H%x00%h%x00%s%x00%an%x00%ae%x00%cI%x00%D",
+    "--numstat",
+  ]).catch((err) => {
+    if (isGitEmptyHistoryError(err)) {
+      return { stdout: "", stderr: "" };
+    }
+    throw err;
+  });
+
+  const commitsWithExtra = parseGitHistoryLog(result.stdout);
+  const hasMore = commitsWithExtra.length > limit;
+  const commits = commitsWithExtra.slice(0, limit);
+
+  return {
+    commits,
+    hasMore,
+    nextCursor: hasMore ? String(offset + commits.length) : null,
+  };
+}
+
+async function getGitHistoryCommitDetail(
+  projectPath: string,
+  commit: string,
+): Promise<GitHistoryCommitDetail> {
+  const [summaryResult, statusResult, numstatResult] = await Promise.all([
+    runGit(projectPath, [
+      "show",
+      "-s",
+      "--date=iso-strict",
+      "--pretty=format:%H%x00%h%x00%s%x00%b%x00%an%x00%ae%x00%cI%x00%D",
+      commit,
+    ]),
+    runGit(projectPath, [
+      "show",
+      "--format=",
+      "--name-status",
+      "--find-renames",
+      commit,
+    ]),
+    runGit(projectPath, ["show", "--format=", "--numstat", commit]),
+  ]);
+
+  const [
+    hash = "",
+    shortHash = "",
+    message = "",
+    body = "",
+    authorName = "",
+    authorEmail = "",
+    committedAt = "",
+    refs = "",
+  ] = summaryResult.stdout.split("\0");
+
+  const files = parseGitHistoryFiles(statusResult.stdout, numstatResult.stdout);
+  const aggregate = summarizeHistoryFiles(files);
+
+  return {
+    hash,
+    shortHash,
+    message,
+    body: body.trim(),
+    authorName,
+    authorEmail,
+    committedAt,
+    refs: refs
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean),
+    filesChanged: files.length,
+    insertions: aggregate.insertions,
+    deletions: aggregate.deletions,
+    files,
+  };
+}
+
+function parseGitHistoryLog(output: string): GitHistoryCommitSummary[] {
+  const blocks = output
+    .split("__COMMIT__\n")
+    .map((block) => block.trim())
+    .filter(Boolean);
+
+  return blocks.map((block) => {
+    const [headerLine = "", ...statLines] = block.split("\n");
+    const [
+      hash = "",
+      shortHash = "",
+      message = "",
+      authorName = "",
+      authorEmail = "",
+      committedAt = "",
+      refs = "",
+    ] = headerLine.split("\0");
+
+    const stats = parseNumstatLines(statLines);
+
+    return {
+      hash,
+      shortHash,
+      message,
+      authorName,
+      authorEmail,
+      committedAt,
+      refs: refs
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean),
+      filesChanged: stats.filesChanged,
+      insertions: stats.insertions,
+      deletions: stats.deletions,
+    };
+  });
+}
+
+function parseNumstatLines(lines: string[]): {
+  filesChanged: number;
+  insertions: number;
+  deletions: number;
+} {
+  let filesChanged = 0;
+  let insertions = 0;
+  let deletions = 0;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const [addedText, deletedText] = trimmed.split("\t");
+    if (addedText === undefined || deletedText === undefined) continue;
+
+    filesChanged += 1;
+    const added = Number.parseInt(addedText, 10);
+    const deleted = Number.parseInt(deletedText, 10);
+    if (Number.isFinite(added)) insertions += added;
+    if (Number.isFinite(deleted)) deletions += deleted;
+  }
+
+  return { filesChanged, insertions, deletions };
+}
+
+function parseGitHistoryFiles(
+  statusOutput: string,
+  numstatOutput: string,
+): GitHistoryFileChange[] {
+  const files = new Map<string, GitHistoryFileChange>();
+
+  for (const rawLine of statusOutput.split("\n")) {
+    const line = rawLine.trimEnd();
+    if (!line) continue;
+    const parts = line.split("\t");
+
+    const status = parts[0] ?? "";
+    if (status.startsWith("R") && parts.length >= 3) {
+      const previousPath = parts[1];
+      const path = parts[2];
+      if (!previousPath || !path) continue;
+      files.set(path, {
+        path,
+        status: "R",
+        previousPath,
+        linesAdded: null,
+        linesDeleted: null,
+      });
+      continue;
+    }
+
+    if (parts.length >= 2) {
+      const path = parts[1];
+      if (!path) continue;
+      files.set(path, {
+        path,
+        status: normalizeGitHistoryStatus(status),
+        linesAdded: null,
+        linesDeleted: null,
+      });
+    }
+  }
+
+  for (const rawLine of numstatOutput.split("\n")) {
+    const line = rawLine.trimEnd();
+    if (!line) continue;
+    const parts = line.split("\t");
+    if (
+      parts.length < 3 ||
+      !isNumstatField(parts[0]) ||
+      !isNumstatField(parts[1])
+    ) {
+      continue;
+    }
+
+    const path = parts.at(-1) ?? "";
+    const existing = files.get(path);
+    if (!existing) continue;
+
+    const added = parts[0];
+    const deleted = parts[1];
+    if (!added || !deleted) continue;
+
+    existing.linesAdded = parseNumstatValue(added);
+    existing.linesDeleted = parseNumstatValue(deleted);
+  }
+
+  return Array.from(files.values());
+}
+
+function isNumstatField(value: string | undefined): boolean {
+  return value === "-" || /^\d+$/.test(value ?? "");
+}
+
+function parseNumstatValue(value: string): number | null {
+  if (value === "-") return null;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeGitHistoryStatus(status: string): string {
+  if (!status) return "M";
+  if (status.startsWith("R")) return "R";
+  if (status.startsWith("C")) return "A";
+  return status[0] ?? "M";
+}
+
+function summarizeHistoryFiles(files: GitHistoryFileChange[]): {
+  insertions: number;
+  deletions: number;
+} {
+  let insertions = 0;
+  let deletions = 0;
+
+  for (const file of files) {
+    if (typeof file.linesAdded === "number") insertions += file.linesAdded;
+    if (typeof file.linesDeleted === "number") deletions += file.linesDeleted;
+  }
+
+  return { insertions, deletions };
 }
 
 async function getUntrackedFileStats(
