@@ -277,11 +277,12 @@ export function GitStatusSidebar({
             ) : (
               <>
                 <div className="git-history-commit-list" ref={historyListRef}>
-                  {historyCommits.map((commit) => {
+                  {historyCommits.map((commit, index) => {
                     const selected = commit.hash === selectedHistoryCommitHash;
                     const tag = commit.refs.find((ref) =>
                       ref.startsWith("tag: "),
                     );
+                    const isUnpushedCommit = index < status.ahead;
                     return (
                       <button
                         key={commit.hash}
@@ -293,9 +294,18 @@ export function GitStatusSidebar({
                           <span className="git-history-commit-list-title">
                             {commit.message}
                           </span>
-                          {tag ? (
-                            <span className="git-history-commit-list-tag">
-                              {tag.slice("tag: ".length)}
+                          {tag || isUnpushedCommit ? (
+                            <span className="git-history-commit-list-badges">
+                              {tag ? (
+                                <span className="git-history-commit-list-tag">
+                                  {tag.slice("tag: ".length)}
+                                </span>
+                              ) : null}
+                              {isUnpushedCommit ? (
+                                <span className="git-history-commit-list-tag">
+                                  ↑
+                                </span>
+                              ) : null}
                             </span>
                           ) : null}
                         </span>

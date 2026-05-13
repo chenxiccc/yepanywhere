@@ -56,6 +56,9 @@ export function useGitStatusActions({
   const [mergeError, setMergeError] = useState<string | null>(null);
   const [undoConfirmOpen, setUndoConfirmOpen] = useState(false);
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
+  const [discardStashConfirmRef, setDiscardStashConfirmRef] = useState<
+    string | null
+  >(null);
   const [hideUndoWarning, setHideUndoWarning] = useState(() => {
     if (
       typeof localStorage === "undefined" ||
@@ -325,15 +328,25 @@ export function useGitStatusActions({
   );
 
   const handleDiscardStash = useCallback(
-    (stashRef: string, onSuccess?: () => void) => {
-      if (!stashRef) return;
+    (stashRef: string) => {
+      if (busyAction !== null || !stashRef) return;
+      setDiscardStashConfirmRef(stashRef);
+    },
+    [busyAction],
+  );
+
+  const confirmDiscardStash = useCallback(
+    (onSuccess?: () => void) => {
+      if (!discardStashConfirmRef) return;
+      const stashRef = discardStashConfirmRef;
+      setDiscardStashConfirmRef(null);
       void runAction(
         "discardStash",
         () => api.discardGitStash(projectId, stashRef),
         onSuccess,
       );
     },
-    [projectId, runAction],
+    [discardStashConfirmRef, projectId, runAction],
   );
 
   return {
@@ -346,7 +359,9 @@ export function useGitStatusActions({
     busyAction,
     confirmBranchSwitch,
     confirmDiscardAllChanges,
+    confirmDiscardStash,
     discardConfirmOpen,
+    discardStashConfirmRef,
     handleBranchSelect,
     handleCommit,
     handleConfirmUndo,
@@ -367,6 +382,7 @@ export function useGitStatusActions({
     setBranchMenuOpen,
     setBranchSwitchMode,
     setDiscardConfirmOpen,
+    setDiscardStashConfirmRef,
     setFileActionWarnings: {
       setHideDiscardWarningChecked,
       setHideUndoWarningChecked,

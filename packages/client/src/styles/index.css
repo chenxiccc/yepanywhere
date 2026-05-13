@@ -8373,6 +8373,8 @@ a.sidebar-nav-item {
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-2);
+  justify-content: center;
+  align-items: center;
 }
 
 .git-history-commit-list-title-row .git-history-commit-list-title {
@@ -8380,8 +8382,14 @@ a.sidebar-nav-item {
   flex: 1;
 }
 
-.git-history-commit-list-tag {
+.git-history-commit-list-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   flex: 0 0 auto;
+}
+
+.git-history-commit-list-tag {
   padding: 0.08rem 0.32rem;
   border: 1px solid color-mix(in srgb, var(--app-yep-green) 35%, transparent);
   border-radius: 999px;
