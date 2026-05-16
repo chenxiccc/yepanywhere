@@ -18,6 +18,7 @@ export function GitBranchSwitcher({
   onToggle,
   onClose,
   onSelect,
+  onOpenCreateBranch,
   onOpenMerge,
   error,
 }: {
@@ -27,11 +28,13 @@ export function GitBranchSwitcher({
   onToggle: () => void;
   onClose: () => void;
   onSelect: (branchName: string) => void;
+  onOpenCreateBranch: (branchName: string) => void;
   onOpenMerge: () => void;
   error: string | null;
 }) {
   const { t } = useI18n();
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const filterInputRef = useRef<HTMLInputElement>(null);
   const [filter, setFilter] = useState("");
   const normalizedFilter = filter.trim().toLowerCase();
   const branchGroups = [
@@ -76,6 +79,8 @@ export function GitBranchSwitcher({
   useEffect(() => {
     if (!isOpen) return;
 
+    filterInputRef.current?.focus();
+
     const handlePointerDown = (event: MouseEvent) => {
       const target = event.target;
       if (!(target instanceof Node)) return;
@@ -106,30 +111,40 @@ export function GitBranchSwitcher({
           ) : (
             <>
               <div className="git-branch-menu-filter">
-                <div className="git-filter-bar">
-                  <div className="git-filter-field">
-                    <span className="git-filter-icon" aria-hidden="true">
-                      <SearchIcon />
-                    </span>
-                    <input
-                      type="text"
-                      value={filter}
-                      onChange={(event) => setFilter(event.target.value)}
-                      placeholder={t("gitStatusMergeFilterPlaceholder")}
-                      className="git-filter-input"
-                      aria-label={t("gitStatusMergeFilterPlaceholder")}
-                    />
-                    {filter.length > 0 ? (
-                      <button
-                        type="button"
-                        className="git-filter-clear"
-                        onClick={() => setFilter("")}
-                        aria-label={t("activityClear")}
-                      >
-                        <ClearIcon />
-                      </button>
-                    ) : null}
+                <div className="git-branch-menu-filter-row">
+                  <div className="git-filter-bar">
+                    <div className="git-filter-field">
+                      <span className="git-filter-icon" aria-hidden="true">
+                        <SearchIcon />
+                      </span>
+                      <input
+                        ref={filterInputRef}
+                        type="text"
+                        value={filter}
+                        onChange={(event) => setFilter(event.target.value)}
+                        placeholder={t("gitStatusMergeFilterPlaceholder")}
+                        className="git-filter-input"
+                        aria-label={t("gitStatusMergeFilterPlaceholder")}
+                      />
+                      {filter.length > 0 ? (
+                        <button
+                          type="button"
+                          className="git-filter-clear"
+                          onClick={() => setFilter("")}
+                          aria-label={t("activityClear")}
+                        >
+                          <ClearIcon />
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
+                  <button
+                    type="button"
+                    className="git-branch-create-button"
+                    onClick={() => onOpenCreateBranch(filter.trim())}
+                  >
+                    {t("gitStatusBranchCreateButton")}
+                  </button>
                 </div>
               </div>
               {branchGroups.length === 0 ? (

@@ -105,6 +105,11 @@ export interface GitBranchInfo {
   updatedAt?: string | null;
 }
 
+export interface GitCreateBranchRequest {
+  branchName: string;
+  baseBranch?: string;
+}
+
 export type GitMergeStrategy = "merge" | "squash" | "rebase";
 
 export interface GitSwitchBranchRequest {

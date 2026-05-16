@@ -21,6 +21,7 @@ export function GitStatusSummaryBar({
   onBranchMenuToggle,
   onBranchMenuClose,
   onBranchSelect,
+  onOpenCreateBranch,
   onOpenMerge,
   onSync,
   onSyncMenuToggle,
@@ -39,6 +40,7 @@ export function GitStatusSummaryBar({
   onBranchMenuToggle: () => void;
   onBranchMenuClose: () => void;
   onBranchSelect: (branchName: string) => void;
+  onOpenCreateBranch: (branchName: string) => void;
   onOpenMerge: () => void;
   onSync: (action: "fetch" | "push") => void;
   onSyncMenuToggle: () => void;
@@ -72,6 +74,7 @@ export function GitStatusSummaryBar({
           onToggle={onBranchMenuToggle}
           onClose={onBranchMenuClose}
           onSelect={onBranchSelect}
+          onOpenCreateBranch={onOpenCreateBranch}
           onOpenMerge={onOpenMerge}
           error={branchMenuError}
         />
