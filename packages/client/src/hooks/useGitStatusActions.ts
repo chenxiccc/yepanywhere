@@ -20,6 +20,10 @@ export type GitAction =
   | "restoreStash"
   | "discardStash";
 
+type PendingBranchSwitch = {
+  targetBranch: string;
+};
+
 type Translate = (
   key: string,
   vars?: Record<string, string | number>,
@@ -48,12 +52,15 @@ export function useGitStatusActions({
   const [branchMenuOpen, setBranchMenuOpen] = useState(false);
   const [branches, setBranches] = useState<GitBranchInfo[]>([]);
   const [branchMenuError, setBranchMenuError] = useState<string | null>(null);
-  const [pendingBranch, setPendingBranch] = useState<string | null>(null);
+  const [pendingBranch, setPendingBranch] = useState<PendingBranchSwitch | null>(
+    null,
+  );
   const [branchSwitchMode, setBranchSwitchMode] = useState<"stash" | "carry">(
     "stash",
   );
   const [mergeModalOpen, setMergeModalOpen] = useState(false);
   const [mergeError, setMergeError] = useState<string | null>(null);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
   const [undoConfirmOpen, setUndoConfirmOpen] = useState(false);
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
   const [discardStashConfirmRef, setDiscardStashConfirmRef] = useState<
@@ -154,7 +161,7 @@ export function useGitStatusActions({
       if (branchName === status.branch) return;
       if (status.files.length > 0) {
         setBranchSwitchMode("stash");
-        setPendingBranch(branchName);
+        setPendingBranch({ targetBranch: branchName });
         return;
       }
 
@@ -168,10 +175,29 @@ export function useGitStatusActions({
     [projectId, runAction, status.branch, status.files.length],
   );
 
+  const handleCreateBranch = useCallback(
+    (branchName: string, baseBranch?: string) => {
+      void runAction("switch", async () => {
+        await api.createGitBranch(projectId, { branchName, baseBranch });
+        if (status.files.length > 0) {
+          setBranchSwitchMode("stash");
+          setPendingBranch({ targetBranch: branchName });
+          return;
+        }
+
+        await api.switchGitBranch(projectId, {
+          targetBranch: branchName,
+          stashCurrentChanges: false,
+        });
+      });
+    },
+    [projectId, runAction, status.files.length],
+  );
+
   const confirmBranchSwitch = useCallback(
     (stashCurrentChanges: boolean) => {
       if (!pendingBranch) return;
-      const targetBranch = pendingBranch;
+      const { targetBranch } = pendingBranch;
       setPendingBranch(null);
       void runAction("switch", () =>
         api.switchGitBranch(projectId, {
@@ -363,6 +389,7 @@ export function useGitStatusActions({
     discardConfirmOpen,
     discardStashConfirmRef,
     handleBranchSelect,
+    handleCreateBranch,
     handleCommit,
     handleConfirmUndo,
     handleDiscardAllChanges,
@@ -376,11 +403,13 @@ export function useGitStatusActions({
     handleUndoClick,
     hideDiscardWarningChecked,
     hideUndoWarningChecked,
+    createModalOpen,
     mergeError,
     mergeModalOpen,
     pendingBranch,
     setBranchMenuOpen,
     setBranchSwitchMode,
+    setCreateModalOpen,
     setDiscardConfirmOpen,
     setDiscardStashConfirmRef,
     setFileActionWarnings: {

@@ -48,6 +48,7 @@ export type {
   GitStatusInfo,
   GitFileChange,
   GitBranchInfo,
+  GitCreateBranchRequest,
   GitLocalCommitInfo,
   GitStashEntry,
   GitStashDetail,

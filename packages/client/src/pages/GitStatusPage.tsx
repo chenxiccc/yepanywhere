@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { GitBranchMergeModal } from "../components/GitBranchMergeModal";
+import { GitBranchCreateModal } from "../components/GitBranchCreateModal";
 import { GitBranchSwitchModal } from "../components/GitBranchSwitchModal";
 import { PageHeader } from "../components/PageHeader";
 import { ProjectSelector } from "../components/ProjectSelector";
@@ -131,6 +132,7 @@ function GitStatusContent({
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [historyHasMore, setHistoryHasMore] = useState(false);
   const [historyCursor, setHistoryCursor] = useState<string | null>(null);
+  const [createBranchInitialName, setCreateBranchInitialName] = useState("");
   const [selectedHistoryCommitHash, setSelectedHistoryCommitHash] = useState<
     string | null
   >(null);
@@ -284,6 +286,7 @@ function GitStatusContent({
     discardConfirmOpen,
     discardStashConfirmRef,
     handleBranchSelect,
+    handleCreateBranch,
     handleCommit,
     handleConfirmUndo,
     handleDiscardAllChanges,
@@ -297,11 +300,13 @@ function GitStatusContent({
     handleUndoClick,
     hideDiscardWarningChecked,
     hideUndoWarningChecked,
+    createModalOpen,
     mergeError,
     mergeModalOpen,
     pendingBranch,
     setBranchMenuOpen,
     setBranchSwitchMode,
+    setCreateModalOpen,
     setDiscardConfirmOpen,
     setDiscardStashConfirmRef,
     setFileActionWarnings,
@@ -339,6 +344,11 @@ function GitStatusContent({
         onBranchMenuToggle={handleToggleBranchMenu}
         onBranchMenuClose={() => setBranchMenuOpen(false)}
         onBranchSelect={handleBranchSelect}
+        onOpenCreateBranch={(branchName) => {
+          setBranchMenuOpen(false);
+          setCreateBranchInitialName(branchName);
+          setCreateModalOpen(true);
+        }}
         onOpenMerge={handleOpenMergeModal}
         onSync={handleSync}
         onSyncMenuToggle={() => setSyncMenuOpen((value) => !value)}
@@ -649,12 +659,29 @@ function GitStatusContent({
       {pendingBranch ? (
         <GitBranchSwitchModal
           currentBranch={status.branch ?? t("gitStatusCurrentBranchFallback")}
-          targetBranch={pendingBranch}
+          targetBranch={pendingBranch.targetBranch}
           mode={branchSwitchMode}
           busy={busyAction === "switch"}
           onModeChange={setBranchSwitchMode}
           onClose={() => setPendingBranch(null)}
           onConfirm={() => confirmBranchSwitch(branchSwitchMode === "stash")}
+        />
+      ) : null}
+
+      {createModalOpen ? (
+        <GitBranchCreateModal
+          currentBranch={status.branch ?? t("gitStatusCurrentBranchFallback")}
+          branches={branches}
+          initialBranchName={createBranchInitialName}
+          busy={busyAction === "switch"}
+          onClose={() => {
+            if (busyAction === "switch") return;
+            setCreateModalOpen(false);
+          }}
+          onConfirm={(branchName, baseBranch) => {
+            setCreateModalOpen(false);
+            handleCreateBranch(branchName, baseBranch);
+          }}
         />
       ) : null}
 

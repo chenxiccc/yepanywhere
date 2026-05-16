@@ -6,6 +6,7 @@ import type {
   EnrichedRecentEntry,
   FileContentResponse,
   GitBranchInfo,
+  GitCreateBranchRequest,
   GitCommitRequest,
   GitHistoryCommitDetail,
   GitHistoryCommitSummary,
@@ -949,6 +950,15 @@ export const api = {
   getGitBranches: (projectId: string) =>
     fetchJSON<{ branches: GitBranchInfo[] }>(
       `/projects/${projectId}/git/branches`,
+    ),
+
+  createGitBranch: (projectId: string, body: GitCreateBranchRequest) =>
+    fetchJSON<{ status: GitStatusInfo }>(
+      `/projects/${projectId}/git/create-branch`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
     ),
 
   switchGitBranch: (projectId: string, body: GitSwitchBranchRequest) =>

@@ -19,6 +19,7 @@ import {
   type GitStashEntry,
   type GitStashFileChange,
   type GitStatusInfo,
+  type GitCreateBranchRequest,
   type GitSwitchBranchRequest,
   type GitUndoCommitResponse,
   type PatchHunk,
@@ -366,6 +367,35 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
       return c.json({ branches: await getGitBranches(projectPath) });
     } catch (err) {
       return gitActionError(err, "Failed to list branches");
+    }
+  });
+
+  routes.post("/:projectId/git/create-branch", async (c) => {
+    const body = await readJsonBody<GitCreateBranchRequest>(c);
+    if (!body?.branchName?.trim()) {
+      return c.json({ error: "Branch name is required" }, 400);
+    }
+
+    try {
+      const projectPath = await getProjectPath(deps, c.req.param("projectId"));
+      if (!projectPath) return c.json({ error: "Project not found" }, 404);
+
+      const branchName = body.branchName.trim();
+      const baseBranch = body.baseBranch?.trim();
+
+      await runGit(projectPath, ["check-ref-format", "--branch", branchName]);
+      if (await hasLocalBranch(projectPath, branchName)) {
+        return c.json({ error: `Branch ${branchName} already exists.` }, 400);
+      }
+
+      await runGit(projectPath, [
+        "branch",
+        branchName,
+        ...(baseBranch ? [baseBranch] : []),
+      ]);
+      return c.json({ status: await getGitStatus(projectPath) });
+    } catch (err) {
+      return gitActionError(err, "Failed to create branch");
     }
   });
 

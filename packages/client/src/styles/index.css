@@ -8160,6 +8160,11 @@ a.sidebar-nav-item {
   line-height: 1.4;
 }
 
+.git-commit-textarea:focus {
+  outline: none;
+  border-color: var(--app-yep-green);
+}
+
 .git-commit-help {
   margin: 0;
   color: var(--text-muted);
@@ -8720,7 +8725,7 @@ a.sidebar-nav-item {
   position: absolute;
   top: calc(100% + 0.35rem);
   left: 0;
-  min-width: 14rem;
+  min-width: 15.5rem;
   max-height: 27rem;
   overflow: auto;
   padding: 0.3rem;
@@ -8739,6 +8744,42 @@ a.sidebar-nav-item {
   border-bottom: 1px solid var(--border-color);
   background: var(--bg-secondary);
   z-index: 1;
+}
+
+.git-branch-menu-filter .git-filter-bar {
+  align-items: stretch;
+}
+
+.git-branch-menu-filter .git-filter-field {
+  flex: 1 1 auto;
+}
+
+.git-branch-menu-filter-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.35rem;
+}
+
+.git-branch-menu-filter-row .git-filter-bar {
+  flex: 1 1 auto;
+}
+
+.git-branch-create-button {
+  flex: 0 0 auto;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.6rem;
+  font-weight: 600;
+  padding: 0.22rem 0.38rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.git-branch-create-button:hover {
+  background: var(--bg-hover);
 }
 
 .git-branch-menu-group + .git-branch-menu-group {
@@ -9171,12 +9212,162 @@ a.sidebar-nav-item {
   max-width: 460px;
 }
 
+.modal:has(.git-branch-create-modal) {
+  max-width: 470px;
+}
+
+.modal:has(.git-branch-create-modal) .modal-header,
 .modal:has(.git-branch-merge-modal) .modal-header {
   padding: 0.26rem 0.4rem;
 }
 
+.modal:has(.git-branch-create-modal) .modal-title,
 .modal:has(.git-branch-merge-modal) .modal-title {
   font-size: 0.8125rem;
+}
+
+.git-branch-create-modal {
+  display: flex;
+  flex-direction: column;
+}
+
+.git-branch-create-section {
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.git-branch-create-label {
+  display: block;
+  margin-bottom: 0.45rem;
+  color: var(--text-primary);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.git-branch-create-input {
+  width: 100%;
+  min-height: 2rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-md);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.76rem;
+}
+
+.git-branch-create-input:focus {
+  outline: none;
+  border-color: var(--app-yep-green);
+}
+
+.git-branch-create-help {
+  margin: 0.45rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  line-height: 1.4;
+}
+
+.git-branch-create-help.is-error {
+  color: var(--error-color);
+}
+
+.git-branch-create-default-copy {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.git-branch-create-default-copy code {
+  display: inline-block;
+  margin-inline: 0.18rem;
+  padding: 0.08rem 0.34rem;
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: 0.76rem;
+}
+
+.git-branch-create-options {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.git-branch-create-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  width: 100%;
+  padding: 0.72rem 0.78rem;
+  border: none;
+  border-bottom: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  font: inherit;
+}
+
+.git-branch-create-option:last-child {
+  border-bottom: none;
+}
+
+.git-branch-create-option:hover {
+  background: var(--bg-hover);
+}
+
+.git-branch-create-option.is-selected {
+  background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+}
+
+.git-branch-create-option-radio {
+  width: 0.95rem;
+  height: 0.95rem;
+  margin-top: 0.12rem;
+  border: 1px solid var(--text-muted);
+  border-radius: 999px;
+  flex: 0 0 auto;
+  position: relative;
+}
+
+.git-branch-create-option.is-selected .git-branch-create-option-radio {
+  border-color: var(--accent-primary);
+}
+
+.git-branch-create-option.is-selected .git-branch-create-option-radio::after {
+  content: "";
+  position: absolute;
+  inset: 0.18rem;
+  border-radius: 999px;
+  background: var(--accent-primary);
+}
+
+.git-branch-create-option-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.git-branch-create-option-title {
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.git-branch-create-option-description {
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.git-branch-create-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.45rem;
+  padding: 0.75rem;
+  border-top: 1px solid var(--border-color);
 }
 
 .git-branch-merge-modal {
@@ -9508,10 +9699,46 @@ a.sidebar-nav-item {
   overflow: visible;
 }
 
+.git-filter-bar:focus-within {
+  border-color: var(--app-yep-green);
+}
+
+.git-file-filter .git-filter-bar:focus-within {
+  border-color: transparent;
+}
+
 .git-filter-field {
   position: relative;
   flex: 1;
   min-width: 0;
+}
+
+.git-file-filter .git-filter-bar {
+  align-items: stretch;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.git-file-filter .git-filter-field {
+  border: 1px solid var(--border-input);
+  border-right: none;
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+  background: var(--bg-primary);
+  overflow: visible;
+}
+
+.git-file-filter .git-filter-field:focus-within {
+  z-index: 1;
+}
+
+.git-file-filter .git-filter-field:focus-within::after {
+  content: "";
+  position: absolute;
+  inset: -1px 0 -1px -1px;
+  border: 1px solid var(--app-yep-green);
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+  pointer-events: none;
 }
 
 .git-filter-icon {
@@ -9588,10 +9815,10 @@ a.sidebar-nav-item {
   align-items: center;
   justify-content: center;
   padding: 0 0.3rem;
-  border: none;
+  border: 1px solid var(--border-input);
   border-left: 1px solid var(--border-input);
-  border-radius: 0;
-  background: transparent;
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  background: var(--bg-primary);
   color: var(--text-secondary);
   cursor: pointer;
 }
