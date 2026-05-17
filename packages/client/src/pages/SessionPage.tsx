@@ -11,6 +11,7 @@ import { ProviderBadge } from "../components/ProviderBadge";
 import { QuestionAnswerPanel } from "../components/QuestionAnswerPanel";
 import { RecentSessionsDropdown } from "../components/RecentSessionsDropdown";
 import { SessionMenu } from "../components/SessionMenu";
+import { SessionTerminalModal } from "../components/SessionTerminalModal";
 import { ToolApprovalPanel } from "../components/ToolApprovalPanel";
 import { AgentContentProvider } from "../contexts/AgentContentContext";
 import { SessionMetadataProvider } from "../contexts/SessionMetadataContext";
@@ -179,6 +180,7 @@ function SessionPageContent({
 
   const [scrollTrigger, setScrollTrigger] = useState(0);
   const draftControlsRef = useRef<DraftControls | null>(null);
+  const pageContentRef = useRef<HTMLDivElement>(null);
   const handleDraftControlsReady = useCallback((controls: DraftControls) => {
     draftControlsRef.current = controls;
   }, []);
@@ -260,6 +262,52 @@ function SessionPageContent({
     recordSessionVisit(sessionId, projectId);
   }, [sessionId, projectId]);
 
+  useEffect(() => {
+    const content = pageContentRef.current;
+    const sessionPage = content?.closest(".session-page");
+    if (!content || !(sessionPage instanceof HTMLElement)) {
+      return;
+    }
+
+    const isEditableTarget = (target: EventTarget | null) =>
+      target instanceof HTMLElement &&
+      (target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target.isContentEditable);
+
+    const updateKeyboardInputState = () => {
+      const activeElement = document.activeElement;
+      sessionPage.classList.toggle(
+        "keyboard-input-active",
+        content.contains(activeElement) && isEditableTarget(activeElement),
+      );
+    };
+
+    const handleFocusIn = (event: FocusEvent) => {
+      if (!content.contains(event.target as Node)) {
+        return;
+      }
+      updateKeyboardInputState();
+    };
+
+    const handleFocusOut = (event: FocusEvent) => {
+      if (!content.contains(event.target as Node)) {
+        return;
+      }
+      requestAnimationFrame(updateKeyboardInputState);
+    };
+
+    content.addEventListener("focusin", handleFocusIn);
+    content.addEventListener("focusout", handleFocusOut);
+    updateKeyboardInputState();
+
+    return () => {
+      content.removeEventListener("focusin", handleFocusIn);
+      content.removeEventListener("focusout", handleFocusOut);
+      sessionPage.classList.remove("keyboard-input-active");
+    };
+  }, []);
+
   // Navigate to new session ID when temp ID is replaced with real SDK session ID
   // This ensures the URL stays in sync with the actual session
   useEffect(() => {
@@ -298,6 +346,7 @@ function SessionPageContent({
 
   // Model switch modal state
   const [showModelSwitchModal, setShowModelSwitchModal] = useState(false);
+  const [showTerminalModal, setShowTerminalModal] = useState(false);
 
   // Track user engagement to mark session as "seen"
   // Only enabled when not in external session (we own or it's idle)
@@ -890,6 +939,7 @@ function SessionPageContent({
 
   return (
     <div
+      ref={pageContentRef}
       className={isWideScreen ? "main-content-wrapper" : "main-content-mobile"}
     >
       <div
@@ -1028,6 +1078,8 @@ function SessionPageContent({
                     onTerminate={handleTerminate}
                     sharingConfigured={sharingConfigured}
                     onShare={handleShare}
+                    onOpenTerminal={() => setShowTerminalModal(true)}
+                    terminalAvailable={!!project?.path}
                     useFixedPositioning
                     useEllipsisIcon
                   />
@@ -1085,6 +1137,14 @@ function SessionPageContent({
               onClose={() => setShowModelSwitchModal(false)}
             />
           )}
+
+        {showTerminalModal && project?.path && (
+          <SessionTerminalModal
+            projectId={projectId}
+            projectPath={project.path}
+            onClose={() => setShowTerminalModal(false)}
+          />
+        )}
 
         {status.owner === "external" && (
           <div className="external-session-warning">

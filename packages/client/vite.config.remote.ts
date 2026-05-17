@@ -67,6 +67,13 @@ export default defineConfig({
   plugins: [serveRemoteHtml(), react(), cspPlugin({ isRemote: true })],
   resolve: {
     conditions: ["source"],
+    alias: {
+      "@xterm/addon-fit": resolve(
+        __dirname,
+        "../desktop/node_modules/@xterm/addon-fit",
+      ),
+      "@xterm/xterm": resolve(__dirname, "../desktop/node_modules/@xterm/xterm"),
+    },
   },
   // Define build-time constants
   define: {

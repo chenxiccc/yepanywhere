@@ -32,7 +32,12 @@ struct PtyOutput {
 }
 
 #[tauri::command]
-pub async fn spawn_pty(app: AppHandle, command: String, args: Vec<String>) -> Result<(), String> {
+pub async fn spawn_pty(
+    app: AppHandle,
+    command: String,
+    args: Vec<String>,
+    cwd: Option<String>,
+) -> Result<(), String> {
     let pty_system = native_pty_system();
 
     let pair = pty_system
@@ -72,13 +77,21 @@ pub async fn spawn_pty(app: AppHandle, command: String, args: Vec<String>) -> Re
             for arg in &args {
                 c.arg(arg);
             }
-            c.cwd(dirs::home_dir().unwrap_or_else(|| "/".into()));
+            let working_dir = cwd
+                .as_deref()
+                .map(std::path::PathBuf::from)
+                .or_else(dirs::home_dir)
+                .unwrap_or_else(|| "/".into());
+            c.cwd(working_dir);
             c
         }
         _ => {
             let mut c = CommandBuilder::new(&command);
             for arg in &args {
                 c.arg(arg);
+            }
+            if let Some(cwd) = &cwd {
+                c.cwd(cwd);
             }
             c
         }

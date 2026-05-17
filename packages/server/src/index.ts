@@ -48,6 +48,7 @@ import {
   RemoteSessionService,
 } from "./remote-access/index.js";
 import { createUploadRoutes } from "./routes/upload.js";
+import { createTerminalRoutes } from "./routes/terminal.js";
 import { getServerCompatibilityInfo } from "./routes/version.js";
 import { createWsRelayRoutes } from "./routes/ws-relay.js";
 import { createAcceptRelayConnection } from "./routes/ws-relay.js";
@@ -580,6 +581,12 @@ async function startServer() {
     maxUploadSizeBytes: config.maxUploadSizeBytes,
   });
   app.route("/api", uploadRoutes);
+
+  const terminalRoutes = createTerminalRoutes({
+    scanner: uploadScanner,
+    upgradeWebSocket,
+  });
+  app.route("/api", terminalRoutes);
 
   // Add WebSocket relay route for Phase 2b/2c/2d
   // This allows clients to make HTTP-like requests, subscriptions, and uploads over WebSocket

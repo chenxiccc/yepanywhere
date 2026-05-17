@@ -28,6 +28,10 @@ export interface SessionMenuProps {
   sharingConfigured?: boolean;
   /** Called to share the session as a snapshot */
   onShare?: () => void | Promise<void>;
+  /** Called to open the terminal modal */
+  onOpenTerminal?: () => void;
+  /** Whether terminal is available in the current environment */
+  terminalAvailable?: boolean;
   /** Additional class for the wrapper */
   className?: string;
   /** Use fixed positioning for dropdown (escapes overflow clipping) */
@@ -50,6 +54,8 @@ export function SessionMenu({
   onTerminate,
   sharingConfigured,
   onShare,
+  onOpenTerminal,
+  terminalAvailable = false,
   useEllipsisIcon = false,
   className = "",
   useFixedPositioning = false,
@@ -346,7 +352,6 @@ export function SessionMenu({
             strokeWidth="2"
             aria-hidden="true"
           >
-            {/* X in a square (stop/terminate icon) */}
             <rect x="3" y="3" width="18" height="18" rx="2" />
             <line x1="9" y1="9" x2="15" y2="15" />
             <line x1="15" y1="9" x2="9" y2="15" />
@@ -354,6 +359,31 @@ export function SessionMenu({
           {isTerminating
             ? t("sessionMenuTerminating")
             : t("sessionMenuTerminate")}
+        </button>
+      )}
+      <div className="session-menu-divider" />
+      <button
+        type="button"
+        onClick={() =>
+          handleAction(() => {
+            navigate(`/git-status?projectId=${encodeURIComponent(projectId)}`);
+          })
+        }
+      >
+        {SidebarIcons.sourceControl}
+        {t("sessionMenuSourceControl")}
+      </button>
+      {onOpenTerminal && (
+        <button
+          type="button"
+          onClick={() => handleAction(onOpenTerminal)}
+          disabled={!terminalAvailable}
+          title={
+            terminalAvailable ? undefined : t("sessionTerminalUnavailable")
+          }
+        >
+          {SidebarIcons.terminal}
+          {t("sessionMenuOpenTerminal")}
         </button>
       )}
     </div>

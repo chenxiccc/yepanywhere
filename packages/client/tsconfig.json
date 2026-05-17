@@ -3,7 +3,12 @@
   "compilerOptions": {
     "jsx": "react-jsx",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "@xterm/addon-fit": ["../desktop/node_modules/@xterm/addon-fit"],
+      "@xterm/xterm": ["../desktop/node_modules/@xterm/xterm"]
+    }
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]

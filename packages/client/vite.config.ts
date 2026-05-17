@@ -1,4 +1,5 @@
 import { execSync } from "node:child_process";
+import { resolve } from "node:path";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import { cspPlugin } from "./vite-plugin-csp";
@@ -42,6 +43,13 @@ export default defineConfig({
   ],
   resolve: {
     conditions: ["source"],
+    alias: {
+      "@xterm/addon-fit": resolve(
+        __dirname,
+        "../desktop/node_modules/@xterm/addon-fit",
+      ),
+      "@xterm/xterm": resolve(__dirname, "../desktop/node_modules/@xterm/xterm"),
+    },
   },
   server: {
     port: vitePort,
