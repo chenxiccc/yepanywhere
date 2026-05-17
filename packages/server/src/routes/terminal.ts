@@ -1,4 +1,3 @@
-import { constants, accessSync } from "node:fs";
 import { env, platform } from "node:process";
 import { isUrlProjectId } from "@yep-anywhere/shared";
 import { Hono } from "hono";
@@ -6,6 +5,10 @@ import type { Context } from "hono";
 import type { WSContext, WSEvents } from "hono/ws";
 import * as pty from "node-pty";
 import type { ProjectScanner } from "../projects/scanner.js";
+import {
+  ensureNodePtySpawnHelperExecutable,
+  hasExecutableShell,
+} from "./node-pty-helper.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: Complex third-party type from @hono/node-ws
 type UpgradeWebSocketFn = (createEvents: (c: Context) => WSEvents) => any;
@@ -48,10 +51,9 @@ function getShellCommand(): { command: string; args: string[] } {
       continue;
     }
 
-    try {
-      accessSync(candidate, constants.X_OK);
+    if (hasExecutableShell(candidate)) {
       return { command: candidate, args: ["-i"] };
-    } catch {}
+    }
   }
 
   return { command: "/bin/sh", args: ["-i"] };
@@ -72,6 +74,7 @@ function createNodePtyProcess(
   onOutput: (data: string) => void,
   onExit: (exitCode: number | null) => void,
 ): pty.IPty {
+  ensureNodePtySpawnHelperExecutable();
   const shell = getShellCommand();
   const shellProcess = pty.spawn(shell.command, shell.args, {
     cwd: projectPath,

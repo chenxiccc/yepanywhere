@@ -253,6 +253,9 @@ step("Generate package.json for npm", () => {
     version: NPM_VERSION,
     description: "A mobile-first supervisor for Claude Code agents",
     type: "module",
+    scripts: {
+      postinstall: "node ./dist/postinstall/fix-node-pty.js",
+    },
     bin: {
       yepanywhere: "./dist/cli.js",
     },
