@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { useI18n } from "../i18n";
+import { SidebarIcons } from "./SidebarNavItem";
 import { getProvider } from "../providers/registry";
 
 export interface SessionMenuProps {
@@ -61,6 +63,7 @@ export function SessionMenu({
   useFixedPositioning = false,
 }: SessionMenuProps) {
   const { t } = useI18n();
+  const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
   const [isCloning, setIsCloning] = useState(false);
   const [isTerminating, setIsTerminating] = useState(false);
