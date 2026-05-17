@@ -154,6 +154,12 @@ export function getDesktopAuthToken(): string | null {
   return desktopAuthToken;
 }
 
+export function getDesktopTokenQuery(): string {
+  return desktopAuthToken
+    ? `desktop_token=${encodeURIComponent(desktopAuthToken)}`
+    : "";
+}
+
 export interface AuthStatus {
   /** Whether auth is enabled in settings */
   enabled: boolean;
