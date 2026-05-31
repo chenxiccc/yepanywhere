@@ -126,6 +126,16 @@ export interface SessionOptions {
 
 export type { UploadedFile } from "@yep-anywhere/shared";
 
+export interface TerminalTab {
+  id: string;
+  title: string;
+  cwd: string;
+  createdAt: string;
+  updatedAt: string;
+  status: "running" | "exited";
+  exitCode: number | null;
+}
+
 const API_BASE = "/api";
 
 /**
@@ -377,6 +387,35 @@ export const api = {
 
   getProject: (projectId: string) =>
     fetchJSON<{ project: Project }>(`/projects/${projectId}`),
+
+  getProjectTerminalTabs: (projectId: string) =>
+    fetchJSON<{ tabs: TerminalTab[] }>(`/projects/${projectId}/terminal-tabs`),
+
+  createProjectTerminalTab: (
+    projectId: string,
+    payload?: { title?: string; cwd?: string },
+  ) =>
+    fetchJSON<{ tab: TerminalTab }>(`/projects/${projectId}/terminal-tabs`, {
+      method: "POST",
+      body: JSON.stringify(payload ?? {}),
+    }),
+
+  renameProjectTerminalTab: (projectId: string, tabId: string, title: string) =>
+    fetchJSON<{ tab: TerminalTab }>(
+      `/projects/${projectId}/terminal-tabs/${tabId}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ title }),
+      },
+    ),
+
+  deleteProjectTerminalTab: (projectId: string, tabId: string) =>
+    fetchJSON<{ ok: boolean }>(
+      `/projects/${projectId}/terminal-tabs/${tabId}`,
+      {
+        method: "DELETE",
+      },
+    ),
 
   getSession: (
     projectId: string,

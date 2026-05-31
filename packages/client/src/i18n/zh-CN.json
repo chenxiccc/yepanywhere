@@ -231,6 +231,8 @@
   "sessionTerminalUnavailable": "终端仅在桌面应用中可用。",
   "sessionTerminalExited": "进程已退出",
   "sessionTerminalOpenFailed": "打开终端失败",
+  "sessionTerminalPaste": "粘贴",
+  "sessionTerminalPasteFailed": "无法从剪贴板粘贴",
   "sessionTerminalStatusConnecting": "正在连接终端...",
   "sessionTerminalStatusConnected": "终端已连接",
   "sessionTerminalStatusExited": "Shell 已退出",
@@ -892,5 +894,9 @@
   "remoteSetupErrorPasswordMismatch": "两次输入的密码不一致",
   "remoteSetupErrorCustomRelayRequired": "请输入自定义中继地址",
   "remoteSetupErrorSaveFailed": "保存失败",
-  "remoteSetupErrorUpdateFailed": "更新失败"
+  "remoteSetupErrorUpdateFailed": "更新失败",
+  "terminalNewTab": "新建标签",
+  "terminalRenameTab": "重命名标签",
+  "terminalCloseTab": "关闭标签",
+  "terminalTabExited": "已退出"
 }

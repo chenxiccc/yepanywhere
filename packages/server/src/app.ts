@@ -84,6 +84,7 @@ import type { ISessionReader } from "./sessions/types.js";
 import { ExternalSessionTracker } from "./supervisor/ExternalSessionTracker.js";
 import { Supervisor } from "./supervisor/Supervisor.js";
 import type { Project } from "./supervisor/types.js";
+import type { TerminalWorkspaceRegistry } from "./terminal/TerminalWorkspaceRegistry.js";
 import type { EventBus } from "./watcher/index.js";
 import { LifecycleWebhookService } from "./webhooks/LifecycleWebhookService.js";
 
@@ -109,6 +110,8 @@ export interface AppOptions {
   sessionIndexService?: SessionIndexService;
   /** Project scanner cache TTL in ms (0 = rescan every request). */
   projectScanCacheTtlMs?: number;
+  /** Terminal workspace registry for project list counts. */
+  terminalRegistry?: TerminalWorkspaceRegistry;
   /** Maximum concurrent workers. 0 = unlimited (default) */
   maxWorkers?: number;
   /** Idle threshold in milliseconds for preemption */
@@ -529,6 +532,7 @@ export function createApp(options: AppOptions): AppResult {
       sessionMetadataService: options.sessionMetadataService,
       projectMetadataService: options.projectMetadataService,
       sessionIndexService: options.sessionIndexService,
+      terminalRegistry: options.terminalRegistry,
       codexScanner,
       codexSessionsDir: CODEX_SESSIONS_DIR,
       codexReaderFactory,

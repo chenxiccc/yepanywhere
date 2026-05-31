@@ -231,6 +231,8 @@
   "sessionTerminalUnavailable": "Das Terminal ist nur in der Desktop-App verfügbar.",
   "sessionTerminalExited": "Prozess beendet",
   "sessionTerminalOpenFailed": "Terminal konnte nicht geöffnet werden",
+  "sessionTerminalPaste": "Einfügen",
+  "sessionTerminalPasteFailed": "Einfügen aus der Zwischenablage fehlgeschlagen",
   "sessionTerminalStatusConnecting": "Terminal wird verbunden...",
   "sessionTerminalStatusConnected": "Terminal verbunden",
   "sessionTerminalStatusExited": "Shell beendet",
@@ -892,5 +894,9 @@
   "remoteSetupErrorPasswordMismatch": "Passwörter stimmen nicht überein",
   "remoteSetupErrorCustomRelayRequired": "Benutzerdefinierte Relay-URL ist erforderlich",
   "remoteSetupErrorSaveFailed": "Speichern fehlgeschlagen",
-  "remoteSetupErrorUpdateFailed": "Aktualisierung fehlgeschlagen"
+  "remoteSetupErrorUpdateFailed": "Aktualisierung fehlgeschlagen",
+  "terminalNewTab": "Neuer Tab",
+  "terminalRenameTab": "Tab umbenennen",
+  "terminalCloseTab": "Tab schließen",
+  "terminalTabExited": "Beendet"
 }

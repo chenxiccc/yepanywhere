@@ -3,8 +3,8 @@ import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { useI18n } from "../i18n";
-import { SidebarIcons } from "./SidebarNavItem";
 import { getProvider } from "../providers/registry";
+import { SidebarIcons } from "./SidebarNavItem";
 
 export interface SessionMenuProps {
   sessionId: string;
@@ -34,6 +34,8 @@ export interface SessionMenuProps {
   onOpenTerminal?: () => void;
   /** Whether terminal is available in the current environment */
   terminalAvailable?: boolean;
+  /** Number of open terminal tabs for this project */
+  terminalCount?: number;
   /** Additional class for the wrapper */
   className?: string;
   /** Use fixed positioning for dropdown (escapes overflow clipping) */
@@ -58,6 +60,7 @@ export function SessionMenu({
   onShare,
   onOpenTerminal,
   terminalAvailable = false,
+  terminalCount = 0,
   useEllipsisIcon = false,
   className = "",
   useFixedPositioning = false,
@@ -231,6 +234,11 @@ export function SessionMenu({
       }
     : undefined;
 
+  const terminalLabel =
+    terminalCount > 0
+      ? `${t("sessionMenuOpenTerminal")} (${terminalCount})`
+      : t("sessionMenuOpenTerminal");
+
   const dropdownContent = (
     <div
       ref={dropdownRef}
@@ -386,7 +394,7 @@ export function SessionMenu({
           }
         >
           {SidebarIcons.terminal}
-          {t("sessionMenuOpenTerminal")}
+          {terminalLabel}
         </button>
       )}
     </div>

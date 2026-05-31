@@ -695,6 +695,10 @@ h2 {
   white-space: nowrap;
 }
 
+.project-card__terminals {
+  color: var(--warning-color);
+}
+
 .project-card__thinking {
   display: inline-flex;
   align-items: center;

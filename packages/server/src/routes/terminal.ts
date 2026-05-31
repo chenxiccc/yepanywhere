@@ -5,6 +5,12 @@ import type { Context } from "hono";
 import type { WSContext, WSEvents } from "hono/ws";
 import * as pty from "node-pty";
 import type { ProjectScanner } from "../projects/scanner.js";
+import { TerminalWorkspaceRegistry } from "../terminal/TerminalWorkspaceRegistry.js";
+import type {
+  PtyFactory,
+  TerminalClientSink,
+  TerminalServerMessage,
+} from "../terminal/TerminalWorkspaceTypes.js";
 import {
   ensureNodePtySpawnHelperExecutable,
   hasExecutableShell,
@@ -16,24 +22,12 @@ type UpgradeWebSocketFn = (createEvents: (c: Context) => WSEvents) => any;
 export interface TerminalDeps {
   scanner: ProjectScanner;
   upgradeWebSocket: UpgradeWebSocketFn;
+  registry?: TerminalWorkspaceRegistry;
 }
 
 type TerminalClientMessage =
   | { type: "input"; data: string }
   | { type: "resize"; cols: number; rows: number };
-
-const MAX_PENDING_INPUT = 256;
-
-interface PendingTerminalState {
-  cols: number;
-  rows: number;
-  input: string[];
-}
-
-type TerminalServerMessage =
-  | { type: "output"; data: string }
-  | { type: "exit"; exitCode: number | null }
-  | { type: "error"; message: string };
 
 function send(ws: WSContext, message: TerminalServerMessage) {
   ws.send(JSON.stringify(message));
@@ -68,95 +62,177 @@ function clampTerminalSize(value: number, fallback: number): number {
   return rounded > 0 ? rounded : fallback;
 }
 
-function createNodePtyProcess(
-  projectPath: string,
-  pending: PendingTerminalState,
-  onOutput: (data: string) => void,
-  onExit: (exitCode: number | null) => void,
-): pty.IPty {
-  ensureNodePtySpawnHelperExecutable();
-  const shell = getShellCommand();
-  const shellProcess = pty.spawn(shell.command, shell.args, {
-    cwd: projectPath,
-    env: {
-      ...env,
-      TERM: "xterm-256color",
-      COLORTERM: "truecolor",
-    },
-    cols: pending.cols,
-    rows: pending.rows,
-    name: "xterm-256color",
-  });
+export function createNodePtyFactory(): PtyFactory {
+  return (projectPath: string, cols: number, rows: number): pty.IPty => {
+    ensureNodePtySpawnHelperExecutable();
+    const shell = getShellCommand();
+    return pty.spawn(shell.command, shell.args, {
+      cwd: projectPath,
+      env: {
+        ...env,
+        TERM: "xterm-256color",
+        COLORTERM: "truecolor",
+      },
+      cols,
+      rows,
+      name: "xterm-256color",
+    });
+  };
+}
 
-  shellProcess.onData((data) => {
-    onOutput(data);
-  });
+async function validateProjectPath(
+  scanner: ProjectScanner,
+  projectId: string,
+): Promise<string | null> {
+  if (!isUrlProjectId(projectId)) {
+    return null;
+  }
 
-  shellProcess.onExit(({ exitCode }) => {
-    onExit(exitCode);
-  });
+  const project = await scanner.getOrCreateProject(projectId);
+  return project?.path ?? null;
+}
 
-  return shellProcess;
+async function parseJsonBody<T>(request: Request): Promise<T | null> {
+  try {
+    return (await request.json()) as T;
+  } catch {
+    return null;
+  }
 }
 
 export function createTerminalRoutes(deps: TerminalDeps): Hono {
   const routes = new Hono();
+  const registry =
+    deps.registry ??
+    new TerminalWorkspaceRegistry({
+      createPty: createNodePtyFactory(),
+    });
+
+  const requireProjectPath = async (
+    c: Context,
+  ): Promise<{ projectId: string; projectPath: string } | Response> => {
+    const projectId = c.req.param("projectId");
+    const projectPath = await validateProjectPath(deps.scanner, projectId);
+    if (!projectPath) {
+      return c.json({ error: "Project not found" }, 404);
+    }
+
+    return { projectId, projectPath };
+  };
+
+  const detachClient = (
+    projectId: string,
+    tabId: string,
+    sink: TerminalClientSink | null,
+  ): void => {
+    if (!sink) {
+      return;
+    }
+
+    try {
+      registry.detachClient(projectId, tabId, sink);
+    } catch {
+      // Tab may already be gone.
+    }
+  };
+
+  routes.get("/projects/:projectId/terminal-tabs", async (c) => {
+    const project = await requireProjectPath(c);
+    if (project instanceof Response) {
+      return project;
+    }
+
+    return c.json({ tabs: registry.listTabs(project.projectId) });
+  });
+
+  routes.post("/projects/:projectId/terminal-tabs", async (c) => {
+    const project = await requireProjectPath(c);
+    if (project instanceof Response) {
+      return project;
+    }
+
+    const body = await parseJsonBody<{
+      title?: string;
+      cwd?: string;
+    }>(c.req.raw);
+    const tab = registry.createTab({
+      projectId: project.projectId,
+      projectPath: project.projectPath,
+      title: body?.title,
+      cwd: body?.cwd,
+    });
+    return c.json({ tab });
+  });
+
+  routes.patch("/projects/:projectId/terminal-tabs/:tabId", async (c) => {
+    const project = await requireProjectPath(c);
+    if (project instanceof Response) {
+      return project;
+    }
+
+    const body = await parseJsonBody<{ title?: string }>(c.req.raw);
+    if (!body?.title?.trim()) {
+      return c.json({ error: "Title is required" }, 400);
+    }
+
+    try {
+      const tab = registry.renameTab(
+        project.projectId,
+        c.req.param("tabId"),
+        body.title,
+      );
+      return c.json({ tab });
+    } catch {
+      return c.json({ error: "Terminal tab not found" }, 404);
+    }
+  });
+
+  routes.delete("/projects/:projectId/terminal-tabs/:tabId", async (c) => {
+    const project = await requireProjectPath(c);
+    if (project instanceof Response) {
+      return project;
+    }
+
+    try {
+      registry.deleteTab(project.projectId, c.req.param("tabId"));
+      return c.json({ ok: true });
+    } catch {
+      return c.json({ error: "Terminal tab not found" }, 404);
+    }
+  });
 
   routes.get(
-    "/projects/:projectId/terminal/ws",
+    "/projects/:projectId/terminal-tabs/:tabId/ws",
     deps.upgradeWebSocket((c) => {
       const projectId = c.req.param("projectId") as string;
-      let validatedProjectPath: string | null = null;
-      let validationPromise: Promise<string | null> | null = null;
-      let shellProcess: pty.IPty | null = null;
-      const pending: PendingTerminalState = {
-        cols: 80,
-        rows: 24,
-        input: [],
-      };
-
-      const validate = async (): Promise<string | null> => {
-        if (!isUrlProjectId(projectId)) {
-          return null;
-        }
-
-        const project = await deps.scanner.getOrCreateProject(projectId);
-        return project?.path ?? null;
-      };
+      const tabId = c.req.param("tabId") as string;
+      let sink: TerminalClientSink | null = null;
 
       return {
         onOpen(_event, ws) {
-          validationPromise = validate();
-          void validationPromise
+          void validateProjectPath(deps.scanner, projectId)
             .then((projectPath) => {
-              validatedProjectPath = projectPath;
               if (!projectPath) {
                 send(ws, { type: "error", message: "Project not found" });
                 ws.close(1008, "Project not found");
                 return;
               }
 
-              const onOutput = (data: string) => {
-                send(ws, { type: "output", data });
+              sink = {
+                send(message: TerminalServerMessage) {
+                  send(ws, message);
+                },
               };
-
-              const onExit = (exitCode: number | null) => {
-                send(ws, { type: "exit", exitCode });
-                ws.close(1000, "Shell exited");
-              };
-
-              shellProcess = createNodePtyProcess(
-                projectPath,
-                pending,
-                onOutput,
-                onExit,
-              );
-
-              if (pending.input.length > 0) {
-                for (const chunk of pending.input) {
-                  shellProcess.write(chunk);
-                }
-                pending.input.length = 0;
+              try {
+                const attachment = registry.attachClient(
+                  projectId,
+                  tabId,
+                  sink,
+                );
+                send(ws, { type: "snapshot", data: attachment.snapshot });
+              } catch {
+                send(ws, { type: "error", message: "Terminal tab not found" });
+                ws.close(1008, "Terminal tab not found");
               }
             })
             .catch((error: unknown) => {
@@ -175,43 +251,25 @@ export function createTerminalRoutes(deps: TerminalDeps): Hono {
               String(event.data),
             ) as TerminalClientMessage;
             if (message.type === "resize") {
-              pending.cols = clampTerminalSize(message.cols, 80);
-              pending.rows = clampTerminalSize(message.rows, 24);
-
-              if (shellProcess) {
-                shellProcess.resize(pending.cols, pending.rows);
-              }
+              registry.resizeTab(
+                projectId,
+                tabId,
+                clampTerminalSize(message.cols, 80),
+                clampTerminalSize(message.rows, 24),
+              );
               return;
             }
 
-            if (!validatedProjectPath && validationPromise) {
-              validatedProjectPath = await validationPromise;
-            }
-
-            if (!validatedProjectPath) {
-              send(ws, { type: "error", message: "Project not found" });
-              return;
-            }
-
-            if (!shellProcess) {
-              if (pending.input.length < MAX_PENDING_INPUT) {
-                pending.input.push(message.data);
-              }
-              return;
-            }
-
-            shellProcess.write(message.data);
+            registry.writeInput(projectId, tabId, message.data);
           } catch {
             send(ws, { type: "error", message: "Invalid terminal message" });
           }
         },
         onClose() {
-          shellProcess?.kill();
-          shellProcess = null;
+          detachClient(projectId, tabId, sink);
         },
         onError() {
-          shellProcess?.kill();
-          shellProcess = null;
+          detachClient(projectId, tabId, sink);
         },
       };
     }),

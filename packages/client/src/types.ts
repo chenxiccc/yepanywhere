@@ -157,6 +157,7 @@ export interface Project {
   path: string;
   name: string;
   sessionCount: number;
+  terminalCount?: number;
   activeOwnedCount: number;
   activeExternalCount: number;
   lastActivity: string | null;

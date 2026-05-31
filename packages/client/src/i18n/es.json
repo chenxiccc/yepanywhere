@@ -231,6 +231,8 @@
   "sessionTerminalUnavailable": "La terminal solo está disponible en la app de escritorio.",
   "sessionTerminalExited": "Proceso finalizado",
   "sessionTerminalOpenFailed": "No se pudo abrir la terminal",
+  "sessionTerminalPaste": "Pegar",
+  "sessionTerminalPasteFailed": "No se pudo pegar desde el portapapeles",
   "sessionTerminalStatusConnecting": "Conectando terminal...",
   "sessionTerminalStatusConnected": "Terminal conectada",
   "sessionTerminalStatusExited": "Shell finalizada",
@@ -892,5 +894,9 @@
   "remoteSetupErrorPasswordMismatch": "Las contraseñas no coinciden",
   "remoteSetupErrorCustomRelayRequired": "La URL personalizada del relay es obligatoria",
   "remoteSetupErrorSaveFailed": "Error al guardar",
-  "remoteSetupErrorUpdateFailed": "Error al actualizar"
+  "remoteSetupErrorUpdateFailed": "Error al actualizar",
+  "terminalNewTab": "Nueva pestaña",
+  "terminalRenameTab": "Renombrar pestaña",
+  "terminalCloseTab": "Cerrar pestaña",
+  "terminalTabExited": "Finalizada"
 }

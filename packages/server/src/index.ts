@@ -47,11 +47,14 @@ import {
   RemoteAccessService,
   RemoteSessionService,
 } from "./remote-access/index.js";
+import {
+  createNodePtyFactory,
+  createTerminalRoutes,
+} from "./routes/terminal.js";
 import { createUploadRoutes } from "./routes/upload.js";
-import { createTerminalRoutes } from "./routes/terminal.js";
 import { getServerCompatibilityInfo } from "./routes/version.js";
-import { createWsRelayRoutes } from "./routes/ws-relay.js";
 import { createAcceptRelayConnection } from "./routes/ws-relay.js";
+import { createWsRelayRoutes } from "./routes/ws-relay.js";
 import { detectClaudeCli, detectCodexCli } from "./sdk/cli-detection.js";
 import { initMessageLogger } from "./sdk/messageLogger.js";
 import { ClaudeOllamaProvider } from "./sdk/providers/claude-ollama.js";
@@ -67,6 +70,7 @@ import {
   SharingService,
 } from "./services/index.js";
 import { ClaudeSessionReader } from "./sessions/reader.js";
+import { TerminalWorkspaceRegistry } from "./terminal/TerminalWorkspaceRegistry.js";
 import { UploadManager } from "./uploads/manager.js";
 import {
   EventBus,
@@ -114,6 +118,7 @@ let supervisorForShutdown:
   | Awaited<ReturnType<typeof createApp>>["supervisor"]
   | null = null;
 let deviceBridgeForShutdown: DeviceBridgeService | null = null;
+let terminalRegistryForShutdown: TerminalWorkspaceRegistry | null = null;
 let isShuttingDown = false;
 
 /**
@@ -159,6 +164,12 @@ async function gracefulShutdown(signal: string): Promise<void> {
     } catch (error) {
       console.error("[Shutdown] Error shutting down emulator bridge:", error);
     }
+  }
+
+  if (terminalRegistryForShutdown) {
+    terminalRegistryForShutdown.dispose();
+    terminalRegistryForShutdown = null;
+    console.log("[Shutdown] Terminal workspace disposed");
   }
 
   closeCodexCorrelationDebugLogger();
@@ -495,6 +506,11 @@ async function startServer() {
     );
   }
 
+  const terminalRegistry = new TerminalWorkspaceRegistry({
+    createPty: createNodePtyFactory(),
+  });
+  terminalRegistryForShutdown = terminalRegistry;
+
   // Create the app first (without WebSocket support initially)
   // We'll add WebSocket routes after setting up WebSocket support
   const { app, supervisor, scanner } = createApp({
@@ -536,6 +552,7 @@ async function startServer() {
     enabledProviders: config.enabledProviders,
     voiceInputEnabled: config.voiceInputEnabled,
     allowedImagePaths: config.allowedImagePaths,
+    terminalRegistry,
   });
 
   const focusedSessionWatchManager = new FocusedSessionWatchManager({
@@ -585,6 +602,7 @@ async function startServer() {
   const terminalRoutes = createTerminalRoutes({
     scanner: uploadScanner,
     upgradeWebSocket,
+    registry: terminalRegistry,
   });
   app.route("/api", terminalRoutes);
 

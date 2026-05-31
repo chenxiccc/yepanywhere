@@ -31,6 +31,10 @@ function formatRelativeTime(timestamp: string): string {
   return new Date(timestamp).toLocaleDateString();
 }
 
+function formatCount(count: number, singular: string): string {
+  return `${count} ${singular}${count !== 1 ? "s" : ""}`;
+}
+
 /**
  * Card component for displaying a project in the projects list.
  * Matches visual style of SessionListItem card mode.
@@ -92,9 +96,13 @@ export function ProjectCard({
           </span>
           <span className="project-card__stats">
             <span className="project-card__sessions">
-              {project.sessionCount} session
-              {project.sessionCount !== 1 ? "s" : ""}
+              {formatCount(project.sessionCount, "session")}
             </span>
+            {(project.terminalCount ?? 0) > 0 && (
+              <span className="project-card__sessions project-card__terminals">
+                {formatCount(project.terminalCount ?? 0, "terminal")}
+              </span>
+            )}
             {thinkingCount > 0 && (
               <span className="project-card__thinking">
                 <ThinkingIndicator />

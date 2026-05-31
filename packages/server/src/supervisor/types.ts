@@ -33,6 +33,7 @@ export interface Project {
   path: string; // absolute path
   name: string; // directory name
   sessionCount: number;
+  terminalCount?: number;
   sessionDir: string; // path to session directory (e.g., ~/.claude/projects/hostname/-encoded-path/)
   mergedSessionDirs?: string[]; // additional session dirs from cross-machine duplicates
   hasCodexSessions?: boolean; // whether this project also has Codex sessions

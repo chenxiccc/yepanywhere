@@ -1261,6 +1261,140 @@ details[open] .collapsible__icon {
   background: #0a0a0a;
 }
 
+.session-terminal-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent),
+    #111111;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.session-terminal-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.session-terminal-tab-list {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0;
+  scrollbar-width: none;
+}
+
+.session-terminal-tab-list::-webkit-scrollbar {
+  display: none;
+}
+
+.session-terminal-tab-actions {
+  display: flex;
+  align-items: stretch;
+  flex: 0 0 auto;
+  margin-left: 0;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  background: transparent;
+}
+
+.session-terminal-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+  max-width: 12rem;
+  padding: 0.38rem 1.82rem 0.38rem 0.68rem;
+  margin-right: -1px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: none;
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-muted);
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.session-terminal-tab.active {
+  background: #0a0a0a;
+  color: var(--text-primary);
+  border-color: rgba(255, 255, 255, 0.14);
+  border-bottom-color: #0a0a0a;
+  z-index: 1;
+}
+
+.session-terminal-tab-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 7.8rem;
+  font-size: 0.7rem;
+}
+
+.session-terminal-tab-badge {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  flex: 0 0 auto;
+}
+
+.session-terminal-tab-close {
+  position: absolute;
+  right: 0.34rem;
+  top: 0.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.3rem;
+  height: 1.15rem;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  opacity: 0.5;
+  flex: 0 0 auto;
+  line-height: 1;
+  padding: 0;
+}
+
+.session-terminal-tab-close-icon {
+  width: 0.82rem;
+  height: 0.82rem;
+  stroke: currentColor;
+  stroke-width: 1.15;
+  stroke-linecap: round;
+  fill: none;
+}
+
+.session-terminal-tab-close:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.session-terminal-tab-new {
+  min-width: 2rem;
+  justify-content: center;
+  padding-inline: 0.7rem;
+  font-size: 1.05rem;
+  line-height: 1;
+  border-radius: 0;
+  color: var(--text-muted);
+  margin-right: 0;
+  background: rgba(255, 255, 255, 0.03);
+  border: none;
+}
+
+.session-terminal-tab-new:hover {
+  color: var(--text-primary);
+}
+
 .session-terminal-shortcut {
   border: 1px solid var(--border-color);
   background: rgba(255, 255, 255, 0.05);
@@ -1469,6 +1603,7 @@ details[open] .collapsible__icon {
     overflow: hidden;
     display: flex;
     min-width: 0;
+    padding: 0;
   }
 
   .session-terminal-modal {

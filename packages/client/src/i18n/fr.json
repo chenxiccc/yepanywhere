@@ -231,6 +231,8 @@
   "sessionTerminalUnavailable": "Le terminal est uniquement disponible dans l'application desktop.",
   "sessionTerminalExited": "Processus terminé",
   "sessionTerminalOpenFailed": "Impossible d'ouvrir le terminal",
+  "sessionTerminalPaste": "Coller",
+  "sessionTerminalPasteFailed": "Impossible de coller depuis le presse-papiers",
   "sessionTerminalStatusConnecting": "Connexion du terminal...",
   "sessionTerminalStatusConnected": "Terminal connecté",
   "sessionTerminalStatusExited": "Shell terminée",
@@ -892,5 +894,9 @@
   "remoteSetupErrorPasswordMismatch": "Les mots de passe ne correspondent pas",
   "remoteSetupErrorCustomRelayRequired": "L’URL de relais personnalisée est requise",
   "remoteSetupErrorSaveFailed": "Impossible d’enregistrer",
-  "remoteSetupErrorUpdateFailed": "Impossible de mettre à jour"
+  "remoteSetupErrorUpdateFailed": "Impossible de mettre à jour",
+  "terminalNewTab": "Nouvel onglet",
+  "terminalRenameTab": "Renommer l’onglet",
+  "terminalCloseTab": "Fermer l’onglet",
+  "terminalTabExited": "Terminé"
 }

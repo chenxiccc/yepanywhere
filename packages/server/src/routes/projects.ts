@@ -23,6 +23,7 @@ import type {
   Project,
   SessionSummary,
 } from "../supervisor/types.js";
+import type { TerminalWorkspaceRegistry } from "../terminal/TerminalWorkspaceRegistry.js";
 import { buildProviderProjectCatalog } from "./provider-catalog.js";
 
 export interface ProjectsDeps {
@@ -35,6 +36,7 @@ export interface ProjectsDeps {
   /** ProjectMetadataService for persisting added projects */
   projectMetadataService?: ProjectMetadataService;
   sessionIndexService?: SessionIndexService;
+  terminalRegistry?: TerminalWorkspaceRegistry;
   /** Codex scanner for checking if a project has Codex sessions */
   codexScanner?: CodexSessionScanner;
   /** Codex sessions directory (defaults to ~/.codex/sessions) */
@@ -235,6 +237,7 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
       const counts = activityCounts.get(project.id);
       return {
         ...project,
+        terminalCount: deps.terminalRegistry?.listTabs(project.id).length ?? 0,
         activeOwnedCount: counts?.activeOwnedCount ?? 0,
         activeExternalCount: counts?.activeExternalCount ?? 0,
       };
@@ -268,7 +271,12 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
       return c.json({ error: "Project not found" }, 404);
     }
 
-    return c.json({ project });
+    return c.json({
+      project: {
+        ...project,
+        terminalCount: deps.terminalRegistry?.listTabs(project.id).length ?? 0,
+      },
+    });
   });
 
   // POST /api/projects - Add a project by path

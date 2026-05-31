@@ -31,7 +31,15 @@ describe("Projects API", () => {
 
   describe("GET /api/projects", () => {
     it("returns list of projects", async () => {
-      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const terminalRegistry = {
+        listTabs: (projectId: string) => (projectId ? [{}, {}] : []),
+        dispose() {},
+      } as never;
+      const { app } = createApp({
+        sdk: mockSdk,
+        projectsDir: testDir,
+        terminalRegistry,
+      });
 
       const res = await app.request("/api/projects");
       const json = await res.json();
@@ -39,6 +47,7 @@ describe("Projects API", () => {
       expect(res.status).toBe(200);
       expect(json.projects).toBeDefined();
       expect(Array.isArray(json.projects)).toBe(true);
+      expect(json.projects[0]?.terminalCount).toBe(2);
     });
 
     it("returns no scanned projects when projects directory is missing", async () => {

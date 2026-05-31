@@ -231,6 +231,8 @@
   "sessionTerminalUnavailable": "ターミナルはデスクトップアプリでのみ利用できます。",
   "sessionTerminalExited": "プロセスが終了しました",
   "sessionTerminalOpenFailed": "ターミナルを開けませんでした",
+  "sessionTerminalPaste": "貼り付け",
+  "sessionTerminalPasteFailed": "クリップボードから貼り付けできませんでした",
   "sessionTerminalStatusConnecting": "ターミナルに接続中...",
   "sessionTerminalStatusConnected": "ターミナル接続済み",
   "sessionTerminalStatusExited": "シェルが終了しました",
@@ -892,5 +894,9 @@
   "remoteSetupErrorPasswordMismatch": "パスワードが一致しません",
   "remoteSetupErrorCustomRelayRequired": "カスタム Relay URL は必須です",
   "remoteSetupErrorSaveFailed": "保存に失敗しました",
-  "remoteSetupErrorUpdateFailed": "更新に失敗しました"
+  "remoteSetupErrorUpdateFailed": "更新に失敗しました",
+  "terminalNewTab": "新しいタブ",
+  "terminalRenameTab": "タブ名を変更",
+  "terminalCloseTab": "タブを閉じる",
+  "terminalTabExited": "終了"
 }
