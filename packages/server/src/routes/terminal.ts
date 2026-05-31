@@ -112,6 +112,10 @@ export function createTerminalRoutes(deps: TerminalDeps): Hono {
     c: Context,
   ): Promise<{ projectId: string; projectPath: string } | Response> => {
     const projectId = c.req.param("projectId");
+    if (!projectId) {
+      return c.json({ error: "Project not found" }, 404);
+    }
+
     const projectPath = await validateProjectPath(deps.scanner, projectId);
     if (!projectPath) {
       return c.json({ error: "Project not found" }, 404);
