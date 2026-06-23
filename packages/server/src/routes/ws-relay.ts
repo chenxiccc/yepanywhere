@@ -3,7 +3,7 @@ import type { Context, Hono } from "hono";
 import type { WSEvents } from "hono/ws";
 import type { WebSocket as RawWebSocket } from "ws";
 import type { DeviceBridgeService } from "../device/DeviceBridgeService.js";
-import { isAllowedOrigin } from "../middleware/allowed-hosts.js";
+import { isAllowedHostname, isAllowedOrigin } from "../middleware/allowed-hosts.js";
 import type {
   RemoteAccessService,
   RemoteSessionService,
@@ -308,6 +308,10 @@ export function createWsRelayRoutes(
             peerAddress,
             requestHostname,
           ),
+          // Hostname explicitly allowed by user in Local Access settings
+          isAllowedHostname: requestHostname
+            ? isAllowedHostname(requestHostname)
+            : false,
         });
         connState.connectionPolicy = connectionPolicy;
         // Auto-authenticate for:
