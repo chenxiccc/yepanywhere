@@ -666,12 +666,12 @@ export function createApp(options: AppOptions): AppResult {
 
   // Create PushNotifier if push notifications are enabled
   // This sends push notifications when sessions need user input
+  // Notification suppression is handled by the client-side Service Worker
   if (options.eventBus && options.pushService) {
     new PushNotifier({
       eventBus: options.eventBus,
       pushService: options.pushService,
       supervisor,
-      connectedBrowsers: options.connectedBrowsers,
     });
   }
 
