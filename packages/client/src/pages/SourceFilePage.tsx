@@ -160,6 +160,18 @@ export function SourceFilePage() {
     setFileTreeRefreshKey((k) => k + 1);
   }, []);
 
+  // 当变更列表变化时，清除不在列表中的已选 diff 文件
+  // Clear selected diff file if it's no longer in the changes list
+  useEffect(() => {
+    if (!selectedDiffFile || !gitStatus) return;
+    const stillExists = gitStatus.files.some(
+      (f) => f.path === selectedDiffFile.path && f.staged === selectedDiffFile.staged,
+    );
+    if (!stillExists) {
+      setSelectedDiffFile(null);
+    }
+  }, [gitStatus, selectedDiffFile]);
+
   // 项目切换 / Project change
   const handleProjectChange = useCallback(
     (p: { id: string }) => {
