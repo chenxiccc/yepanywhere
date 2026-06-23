@@ -171,10 +171,19 @@ export function GitCommitDetail({
   );
 }
 
-/**
- * 提交变更文件树，将扁平文件列表组织为可展开的文件夹树
- * Commit file tree — organizes flat file list into an expandable folder tree.
- */
+/** 格式化提交日期为浏览器本地时间 / Format commit date to browser local time */
+function formatCommitDate(isoDate: string): string {
+  const d = new Date(isoDate);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const h = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  return `${y}/${m}/${day} ${h}:${min}`;
+}
+
+// ===== 文件树组件（导出供 Changes tab 复用）/ File tree component (exported for Changes tab reuse) =====
+
 interface GitCommitFileTreeProps {
   files: GitFileChange[];
   selectedPath: string | null;
@@ -189,7 +198,7 @@ interface TreeNode {
   file?: GitFileChange;
 }
 
-function GitCommitFileTree({ files, selectedPath, onFileClick }: GitCommitFileTreeProps) {
+export function GitCommitFileTree({ files, selectedPath, onFileClick }: GitCommitFileTreeProps) {
   // 构建文件夹树 / Build folder tree
   const root = useMemo(() => {
     const rootNode: TreeNode = { name: "", path: "", isDirectory: true, children: [] };
@@ -328,15 +337,4 @@ function TreeNodeItem({
       )}
     </div>
   );
-}
-
-/** 格式化提交日期为浏览器本地时间 / Format commit date to browser local time */
-function formatCommitDate(isoDate: string): string {
-  const d = new Date(isoDate);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  const h = String(d.getHours()).padStart(2, "0");
-  const min = String(d.getMinutes()).padStart(2, "0");
-  return `${y}/${m}/${day} ${h}:${min}`;
 }

@@ -2,7 +2,6 @@ import type { GitCommitDetail as GitCommitDetailType, GitFileChange } from "@yep
 import {
   useCallback,
   useEffect,
-  useMemo,
   useState,
 } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -11,7 +10,7 @@ import { BranchSelector } from "../components/BranchSelector";
 import { FileTree } from "../components/FileTree";
 import { FileTreeSearch } from "../components/FileTreeSearch";
 import { FileViewer } from "../components/FileViewer";
-import { GitCommitDetail } from "../components/GitCommitDetail";
+import { GitCommitDetail, GitCommitFileTree } from "../components/GitCommitDetail";
 import { GitDiffPanel } from "../components/GitDiffPanel";
 import { GitHistoryPanel } from "../components/GitHistoryPanel";
 import { PageHeader } from "../components/PageHeader";
@@ -259,19 +258,6 @@ export function SourceFilePage() {
     [navigate, basePath],
   );
 
-  // Git 变更文件分组 / Group git files
-  const stagedFiles = useMemo(
-    () => gitStatus?.files.filter((f) => f.staged) || [],
-    [gitStatus],
-  );
-  const unstagedFiles = useMemo(
-    () => gitStatus?.files.filter((f) => !f.staged && f.status !== "?") || [],
-    [gitStatus],
-  );
-  const untrackedFiles = useMemo(
-    () => gitStatus?.files.filter((f) => f.status === "?") || [],
-    [gitStatus],
-  );
   const totalChanges = (gitStatus?.files.length || 0);
 
   // 手机端内容视图 / Mobile content view
@@ -512,29 +498,14 @@ export function SourceFilePage() {
                   ) : gitStatus && !gitStatus.isGitRepo ? (
                     <div className="git-status-empty">Not a git repository</div>
                   ) : (
-                    <>
-                      {stagedFiles.length > 0 && (
-                        <GitFileSection
-                          title="Staged"
-                          files={stagedFiles}
-                          onFileClick={handleDiffClick}
-                        />
-                      )}
-                      {unstagedFiles.length > 0 && (
-                        <GitFileSection
-                          title="Changes"
-                          files={unstagedFiles}
-                          onFileClick={handleDiffClick}
-                        />
-                      )}
-                      {untrackedFiles.length > 0 && (
-                        <GitFileSection
-                          title="Untracked"
-                          files={untrackedFiles}
-                          onFileClick={handleDiffClick}
-                        />
-                      )}
-                    </>
+                    <GitCommitFileTree
+                      files={gitStatus?.files || []}
+                      selectedPath={null}
+                      onFileClick={(filePath) => {
+                        const file = gitStatus?.files.find((f) => f.path === filePath);
+                        if (file) handleDiffClick(file);
+                      }}
+                    />
                   )}
                 </div>
               ) : (
@@ -549,29 +520,14 @@ export function SourceFilePage() {
                       ) : gitStatus && !gitStatus.isGitRepo ? (
                         <div className="git-status-empty">Not a git repository</div>
                       ) : (
-                        <>
-                          {stagedFiles.length > 0 && (
-                            <GitFileSection
-                              title="Staged"
-                              files={stagedFiles}
-                              onFileClick={handleDiffClick}
-                            />
-                          )}
-                          {unstagedFiles.length > 0 && (
-                            <GitFileSection
-                              title="Changes"
-                              files={unstagedFiles}
-                              onFileClick={handleDiffClick}
-                            />
-                          )}
-                          {untrackedFiles.length > 0 && (
-                            <GitFileSection
-                              title="Untracked"
-                              files={untrackedFiles}
-                              onFileClick={handleDiffClick}
-                            />
-                          )}
-                        </>
+                        <GitCommitFileTree
+                          files={gitStatus?.files || []}
+                          selectedPath={selectedDiffFile?.path ?? null}
+                          onFileClick={(filePath) => {
+                            const file = gitStatus?.files.find((f) => f.path === filePath);
+                            if (file) handleDiffClick(file);
+                          }}
+                        />
                       )}
                     </div>
                   </div>
@@ -643,79 +599,6 @@ export function SourceFilePage() {
         </div>
       </main>
     </MainContent>
-  );
-}
-
-/**
- * Git 文件分组区 / Git file section (staged/unstaged/untracked).
- * 复用自 GitStatusPage 的 GitFileSection 逻辑
- * Reused from GitStatusPage's GitFileSection logic.
- */
-function GitFileSection({
-  title,
-  files,
-  onFileClick,
-}: {
-  title: string;
-  files: GitFileChange[];
-  onFileClick: (file: GitFileChange) => void;
-}) {
-  return (
-    <div className="git-file-section">
-      <h3 className="git-file-section-title">
-        {title} <span className="git-file-count">({files.length})</span>
-      </h3>
-      <ul className="git-file-list">
-        {files.map((file) => (
-          <GitFileItem
-            key={`${file.path}-${file.staged}`}
-            file={file}
-            onClick={onFileClick}
-          />
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function GitFileItem({
-  file,
-  onClick,
-}: {
-  file: GitFileChange;
-  onClick: (file: GitFileChange) => void;
-}) {
-  return (
-    // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard nav not needed for file list
-    <li
-      className="git-file-item git-file-item-clickable"
-      onClick={() => onClick(file)}
-    >
-      <span
-        className={`git-status-badge git-status-${file.status.toLowerCase()}`}
-      >
-        {file.status}
-      </span>
-      <span className="git-file-path">
-        {file.origPath ? (
-          <>
-            {file.origPath} → {file.path}
-          </>
-        ) : (
-          file.path
-        )}
-      </span>
-      {(file.linesAdded !== null || file.linesDeleted !== null) && (
-        <span className="git-line-counts">
-          {file.linesAdded !== null && (
-            <span className="git-lines-added">+{file.linesAdded}</span>
-          )}
-          {file.linesDeleted !== null && (
-            <span className="git-lines-deleted">-{file.linesDeleted}</span>
-          )}
-        </span>
-      )}
-    </li>
   );
 }
 
