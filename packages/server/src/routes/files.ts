@@ -1,5 +1,5 @@
 import { createReadStream, type Stats } from "node:fs";
-import { readFile, realpath, stat } from "node:fs/promises";
+import { readFile, readdir, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import {
   basename,
@@ -14,6 +14,7 @@ import { createInterface } from "node:readline";
 import {
   type FileContentResponse,
   type FileMetadata,
+  type FileNode,
   isUrlProjectId,
   type PatchHunk,
 } from "@yep-anywhere/shared";
@@ -1224,6 +1225,114 @@ export function createFilesRoutes(deps: FilesDeps): Hono {
       structuredPatch: augment.structuredPatch as PatchHunk[],
       diffHtml: augment.diffHtml,
     });
+  });
+
+  /**
+   * GET /api/projects/:projectId/files/list
+   * 浅层目录列表 / Shallow directory listing.
+   * Query params:
+   *   - path: relative path to directory (defaults to project root)
+   */
+  routes.get("/:projectId/files/list", async (c) => {
+    const projectId = c.req.param("projectId");
+    const relativePath = c.req.query("path") || "";
+
+    // 验证项目 ID 格式 / Validate project ID format
+    if (!isUrlProjectId(projectId)) {
+      return c.json({ error: "Invalid project ID format" }, 400);
+    }
+
+    // 获取项目 / Get project
+    const project = await deps.scanner.getProject(projectId);
+    if (!project) {
+      return c.json({ error: "Project not found" }, 404);
+    }
+
+    const projectRoot = project.path;
+
+    // 解析目标目录路径 / Resolve target directory path
+    let targetDir: string;
+    if (!relativePath) {
+      targetDir = projectRoot;
+    } else {
+      // 安全检查：防 .. 遍历 / Security: prevent path traversal
+      const resolved = await resolveFilePath(
+        projectRoot,
+        relativePath,
+        pathPolicy,
+      );
+      if (!resolved) {
+        return c.json({ error: "Invalid path" }, 400);
+      }
+      targetDir = resolved;
+    }
+
+    // 读取目录 / Read directory
+    let entries: Array<{ name: string; isDirectory: () => boolean; isSymbolicLink: () => boolean }>;
+    try {
+      entries = await readdir(targetDir, { withFileTypes: true }) as unknown as Array<{ name: string; isDirectory: () => boolean; isSymbolicLink: () => boolean }>;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to read directory";
+      return c.json({ error: message }, 500);
+    }
+
+    // 构建 FileNode 列表 / Build FileNode list
+    const children: FileNode[] = [];
+    for (const entry of entries) {
+      // 跳过 .git 目录 / Skip .git directory
+      if (entry.name === ".git") continue;
+
+      const isDir = entry.isDirectory();
+      const entryPath = isDir
+        ? entry.name
+        : relativePath
+          ? `${relativePath}/${entry.name}`
+          : entry.name;
+
+      const node: FileNode = {
+        name: entry.name,
+        path: entryPath,
+        isDirectory: isDir,
+      };
+
+      // 对文件获取 size 和 mtime / Get size and mtime for files
+      if (!isDir) {
+        try {
+          const entryStat = await stat(
+            resolve(targetDir, entry.name),
+          );
+          node.size = entryStat.size;
+          node.modifiedAt = entryStat.mtime.toISOString();
+        } catch {
+          // 文件可能已被删除 / File may have been deleted
+          node.size = 0;
+        }
+      }
+
+      // 检测符号链接 / Detect symlinks
+      if (entry.isSymbolicLink()) {
+        node.isSymlink = true;
+        try {
+          const target = await realpath(resolve(targetDir, entry.name));
+          node.symlinkTarget = target;
+        } catch {
+          // 符号链接目标可能不存在 / Symlink target may not exist
+        }
+      }
+
+      children.push(node);
+    }
+
+// 排序：目录在前，文件在后，各自按名称字母排序
+    // Sort: directories first, then files, each alphabetically by name
+    children.sort((a, b) => {
+      if (a.isDirectory !== b.isDirectory) {
+        return a.isDirectory ? -1 : 1;
+      }
+      return a.name.localeCompare(b.name);
+    });
+
+    return c.json({ children });
   });
 
   return routes;

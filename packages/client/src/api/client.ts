@@ -1,7 +1,9 @@
 import type {
   AgentActivity,
   AgentContextHints,
+  BranchInfo,
   BrowserProfilesResponse,
+  CheckoutResult,
   ClientDefaults,
   ConnectionsResponse,
   CreatePublicSessionShareRequest,
@@ -9,7 +11,9 @@ import type {
   DeviceInfo,
   EnrichedRecentEntry,
   FileContentResponse,
+  FileListResponse,
   FreezePublicSessionLiveSharesResponse,
+  GitCommit,
   GitStatusInfo,
   HelperTargetConfig,
   ModelInfo,
@@ -1201,6 +1205,42 @@ export const api = {
       method: "POST",
       body: JSON.stringify(params),
     }),
+
+  // 源码/文件管理 API / Source file manager APIs
+
+  /** 目录列表 / List directory contents */
+  listDirectory: (projectId: string, path?: string) =>
+    fetchJSON<FileListResponse>(
+      `/projects/${projectId}/files/list?path=${encodeURIComponent(path ?? "")}`,
+    ),
+
+  /** 分支列表 / Get branch list */
+  getBranches: (projectId: string) =>
+    fetchJSON<BranchInfo>(`/projects/${projectId}/git/branches`),
+
+  /** 切换分支 / Checkout a branch */
+  checkoutBranch: (projectId: string, branch: string) =>
+    fetchJSON<CheckoutResult>(`/projects/${projectId}/git/checkout`, {
+      method: "POST",
+      body: JSON.stringify({ branch }),
+    }),
+
+  /** 创建分支 / Create a new branch */
+  createBranch: (projectId: string, branch: string) =>
+    fetchJSON<CheckoutResult>(`/projects/${projectId}/git/create-branch`, {
+      method: "POST",
+      body: JSON.stringify({ branch }),
+    }),
+
+  /** 提交历史 / Get commit history */
+  getGitLog: (projectId: string, params?: { limit?: number; skip?: number }) => {
+    const sp = new URLSearchParams();
+    if (params?.limit) sp.set("limit", String(params.limit));
+    if (params?.skip) sp.set("skip", String(params.skip));
+    return fetchJSON<{ commits: GitCommit[] }>(
+      `/projects/${projectId}/git/log?${sp.toString()}`,
+    );
+  },
 
   // Inbox API
   getInbox: (projectId?: string) =>

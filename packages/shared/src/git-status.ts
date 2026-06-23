@@ -29,3 +29,54 @@ export interface GitStatusInfo {
   /** Changed files with status and line counts */
   files: GitFileChange[];
 }
+
+/** 文件树节点 / File tree node */
+export interface FileNode {
+  name: string;
+  /** 相对于项目根目录的路径 / Path relative to project root */
+  path: string;
+  isDirectory: boolean;
+  /** 文件大小（仅文件有）/ File size in bytes (files only) */
+  size?: number;
+  /** ISO 8601 修改时间（仅文件有）/ Last modified time (files only) */
+  modifiedAt?: string;
+  isSymlink?: boolean;
+  symlinkTarget?: string;
+}
+
+/** 目录列表响应 / Directory listing response */
+export interface FileListResponse {
+  children: FileNode[];
+}
+
+/** 分支信息 / Branch information */
+export interface BranchInfo {
+  isGitRepo: boolean;
+  /** 当前分支名 / Current branch name */
+  current: string;
+  /** 本地分支列表 / Local branch names */
+  local: string[];
+  /** 远程分支列表（已去 origin/ 前缀）/ Remote branch names (origin/ prefix stripped) */
+  remote: string[];
+  /** 上游分支 / Upstream branch (e.g. "origin/main") */
+  upstream: string | null;
+}
+
+/** Git 提交记录 / Git commit entry */
+export interface GitCommit {
+  /** 完整 commit hash */
+  hash: string;
+  /** 提交消息第一行 / First line of commit message */
+  message: string;
+  /** 作者名 / Author name */
+  author: string;
+  /** ISO 8601 日期 / ISO 8601 date */
+  date: string;
+}
+
+/** 分支切换/创建结果 / Branch checkout/create result */
+export interface CheckoutResult {
+  success: boolean;
+  branch: string;
+  error?: string;
+}

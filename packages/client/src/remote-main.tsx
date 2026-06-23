@@ -38,7 +38,8 @@ import { AgentsPage } from "./pages/AgentsPage";
 import { DirectLoginPage } from "./pages/DirectLoginPage";
 import { EmulatorPage } from "./pages/EmulatorPage";
 import { FilePage } from "./pages/FilePage";
-import { GitStatusPage } from "./pages/GitStatusPage";
+import { GitStatusRedirect } from "./pages/GitStatusRedirect";
+import { SourceFilePage } from "./pages/SourceFilePage";
 import { GlobalSessionsPage } from "./pages/GlobalSessionsPage";
 import { HostPickerPage } from "./pages/HostPickerPage";
 import { InboxPage } from "./pages/InboxPage";
@@ -85,7 +86,8 @@ const APP_ROUTES = (
       <Route path="sessions" element={<GlobalSessionsPage />} />
       <Route path="agents" element={<AgentsPage />} />
       <Route path="inbox" element={<InboxPage />} />
-      <Route path="git-status" element={<GitStatusPage />} />
+      <Route path="git-status" element={<GitStatusRedirect />} />
+      <Route path="projects/:projectId/source" element={<SourceFilePage />} />
       <Route path="devices" element={<EmulatorPage />} />
       <Route path="devices/:deviceId" element={<EmulatorPage />} />
       <Route path="settings" element={<SettingsLayout />} />

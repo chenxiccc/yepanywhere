@@ -6,6 +6,7 @@ import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext
 import { useDrafts, useNewSessionDraft } from "../hooks/useDrafts";
 import { useGlobalSessions } from "../hooks/useGlobalSessions";
 import { usePublicShareStatus } from "../hooks/usePublicShareStatus";
+import { useProjects } from "../hooks/useProjects";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useServerSettings } from "../hooks/useServerSettings";
 import { SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from "../hooks/useSidebarWidth";
@@ -191,6 +192,7 @@ export function Sidebar({
     poll: publicSharesEnabled,
   });
   const publicShareControlsVisible = publicShareStatus?.canCreate ?? false;
+  const { projects } = useProjects();
 
   // Fetch global sessions for sidebar (non-starred only for recent/older sections)
   const {
@@ -730,9 +732,9 @@ export function Sidebar({
             />
             {capabilities.includes("git-status") && (
               <SidebarNavItem
-                to="/git-status"
+                to={projects[0]?.id ? `/projects/${projects[0].id}/source` : "/git-status"}
                 icon={SidebarIcons.sourceControl}
-                label={t("sidebarSourceControl")}
+                label={t("sidebarSourceFile")}
                 onClick={onNavigate}
                 basePath={basePath}
               />

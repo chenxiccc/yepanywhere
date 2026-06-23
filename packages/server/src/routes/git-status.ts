@@ -134,6 +134,240 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
     }
   });
 
+  // ===== 分支 API / Branch APIs =====
+
+  /**
+   * GET /:projectId/git/branches
+   * 获取分支列表（本地 + 远程）/ Get branch list (local + remote).
+   */
+  routes.get("/:projectId/git/branches", async (c) => {
+    const projectId = c.req.param("projectId");
+
+    if (!isUrlProjectId(projectId)) {
+      return c.json({ error: "Invalid project ID format" }, 400);
+    }
+
+    const project = await deps.scanner.getProject(projectId);
+    if (!project) {
+      return c.json({ error: "Project not found" }, 404);
+    }
+
+    try {
+      // 并行获取本地和远程分支 / Fetch local and remote branches in parallel
+      const [localResult, remoteResult] = await Promise.all([
+        runGit(project.path, [
+          "branch",
+          "--format=%(refname:short)",
+        ]).catch(() => ({ stdout: "", stderr: "" })),
+        runGit(project.path, [
+          "branch",
+          "-r",
+          "--format=%(refname:short)",
+        ]).catch(() => ({ stdout: "", stderr: "" })),
+      ]);
+
+      const local = localResult.stdout
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean);
+
+      // 去重远程分支（去掉 origin/ 前缀）/ Deduplicate remote branches (strip origin/ prefix)
+      const remoteRaw = remoteResult.stdout
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean);
+      const remote = [
+        ...new Set(
+          remoteRaw.map((r) => {
+            // 去掉 origin/ 前缀，保留分支名 / Strip origin/ prefix, keep branch name
+            const withoutOrigin = r.startsWith("origin/")
+              ? r.slice("origin/".length)
+              : r;
+            return withoutOrigin;
+          }),
+        ),
+      ];
+
+      // 获取当前分支 / Get current branch
+      const currentResult = await runGit(project.path, [
+        "rev-parse",
+        "--abbrev-ref",
+        "HEAD",
+      ]).catch(() => ({ stdout: "", stderr: "" }));
+      const current = currentResult.stdout.trim() || "HEAD";
+
+      // 获取上游分支 / Get upstream branch
+      let upstream: string | null = null;
+      try {
+        const upstreamResult = await runGit(project.path, [
+          "rev-parse",
+          "--abbrev-ref",
+          "@{upstream}",
+        ]);
+        upstream = upstreamResult.stdout.trim() || null;
+      } catch {
+        upstream = null;
+      }
+
+      return c.json({
+        isGitRepo: true,
+        current,
+        local,
+        remote,
+        upstream,
+      });
+    } catch (err) {
+      if (isNotGitRepoError(err)) {
+        return c.json({ isGitRepo: false, current: "", local: [], remote: [], upstream: null });
+      }
+      return c.json({ error: "Failed to get branches" }, 500);
+    }
+  });
+
+  /**
+   * POST /:projectId/git/checkout
+   * 切换分支 / Checkout a branch.
+   */
+  routes.post("/:projectId/git/checkout", async (c) => {
+    const projectId = c.req.param("projectId");
+
+    if (!isUrlProjectId(projectId)) {
+      return c.json({ error: "Invalid project ID format" }, 400);
+    }
+
+    const project = await deps.scanner.getProject(projectId);
+    if (!project) {
+      return c.json({ error: "Project not found" }, 404);
+    }
+
+    let body: { branch: string };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
+    const { branch } = body;
+
+    // 安全检查：验证分支名 / Security: validate branch name
+    if (!branch || typeof branch !== "string") {
+      return c.json({ error: "Missing branch name" }, 400);
+    }
+    // 拒绝包含 shell 特殊字符的分支名 / Reject branch names with shell special chars
+    if (/[;&|`$\\]/.test(branch)) {
+      return c.json({ error: "Invalid branch name" }, 400);
+    }
+
+    try {
+      await runGit(project.path, ["checkout", branch]);
+      return c.json({ success: true, branch });
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? (err as Error & { stderr?: string }).stderr || err.message
+          : "Failed to checkout branch";
+      return c.json({ success: false, branch, error: message }, 500);
+    }
+  });
+
+  /**
+   * POST /:projectId/git/create-branch
+   * 创建并切换分支 / Create and checkout a new branch.
+   */
+  routes.post("/:projectId/git/create-branch", async (c) => {
+    const projectId = c.req.param("projectId");
+
+    if (!isUrlProjectId(projectId)) {
+      return c.json({ error: "Invalid project ID format" }, 400);
+    }
+
+    const project = await deps.scanner.getProject(projectId);
+    if (!project) {
+      return c.json({ error: "Project not found" }, 404);
+    }
+
+    let body: { branch: string };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
+    const { branch } = body;
+
+    if (!branch || typeof branch !== "string") {
+      return c.json({ error: "Missing branch name" }, 400);
+    }
+    if (/[;&|`$\\]/.test(branch)) {
+      return c.json({ error: "Invalid branch name" }, 400);
+    }
+
+    try {
+      await runGit(project.path, ["checkout", "-b", branch]);
+      return c.json({ success: true, branch });
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? (err as Error & { stderr?: string }).stderr || err.message
+          : "Failed to create branch";
+      return c.json({ success: false, branch, error: message }, 500);
+    }
+  });
+
+  // ===== 提交历史 API / Commit history API =====
+
+  /**
+   * GET /:projectId/git/log
+   * 获取提交历史 / Get commit history.
+   * Query params:
+   *   - limit: max commits to return (default 50)
+   *   - skip: number of commits to skip (default 0)
+   */
+  routes.get("/:projectId/git/log", async (c) => {
+    const projectId = c.req.param("projectId");
+    const limit = Math.min(
+      Math.max(Number.parseInt(c.req.query("limit") || "50", 10) || 50, 1),
+      100,
+    );
+    const skip = Math.max(
+      Number.parseInt(c.req.query("skip") || "0", 10) || 0,
+      0,
+    );
+
+    if (!isUrlProjectId(projectId)) {
+      return c.json({ error: "Invalid project ID format" }, 400);
+    }
+
+    const project = await deps.scanner.getProject(projectId);
+    if (!project) {
+      return c.json({ error: "Project not found" }, 404);
+    }
+
+    try {
+      const { stdout } = await runGit(project.path, [
+        "log",
+        `--format=%H|%s|%an|%aI`,
+        `--max-count=${limit}`,
+        `--skip=${skip}`,
+      ]);
+
+      const commits = stdout
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => {
+          const [hash, message, author, date] = line.split("|");
+          return { hash: hash ?? "", message: message ?? "", author: author ?? "", date: date ?? "" };
+        });
+
+      return c.json({ commits });
+    } catch (err) {
+      if (isNotGitRepoError(err)) {
+        return c.json({ commits: [] });
+      }
+      return c.json({ error: "Failed to get commit log" }, 500);
+    }
+  });
+
   return routes;
 }
 

@@ -17,7 +17,7 @@ import { ActivityPage } from "./pages/ActivityPage";
 import { AgentsPage } from "./pages/AgentsPage";
 import { EmulatorPage } from "./pages/EmulatorPage";
 import { FilePage } from "./pages/FilePage";
-import { GitStatusPage } from "./pages/GitStatusPage";
+import { GitStatusRedirect } from "./pages/GitStatusRedirect";
 import { GlobalSessionsPage } from "./pages/GlobalSessionsPage";
 import { InboxPage } from "./pages/InboxPage";
 import { LoginPage } from "./pages/LoginPage";
@@ -25,6 +25,7 @@ import { NewSessionPage } from "./pages/NewSessionPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
 import { SessionPage } from "./pages/SessionPage";
 import { SettingsLayout } from "./pages/settings";
+import { SourceFilePage } from "./pages/SourceFilePage";
 import "./styles/index.css";
 
 // Apply saved preferences before React renders to avoid flash
@@ -68,7 +69,11 @@ createRoot(rootElement).render(
                 path="/projects/:projectId"
                 element={<Navigate to="/sessions" replace />}
               />
-              <Route path="/git-status" element={<GitStatusPage />} />
+              <Route path="/git-status" element={<GitStatusRedirect />} />
+              <Route
+                path="/projects/:projectId/source"
+                element={<SourceFilePage />}
+              />
               <Route path="/devices" element={<EmulatorPage />} />
               <Route path="/devices/:deviceId" element={<EmulatorPage />} />
               <Route path="/new-session" element={<NewSessionPage />} />
