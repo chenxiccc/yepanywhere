@@ -1,4 +1,4 @@
-import type { GitFileChange } from "@yep-anywhere/shared";
+import type { GitCommitDetail as GitCommitDetailType, GitFileChange } from "@yep-anywhere/shared";
 import {
   useCallback,
   useEffect,
@@ -11,6 +11,7 @@ import { BranchSelector } from "../components/BranchSelector";
 import { FileTree } from "../components/FileTree";
 import { FileTreeSearch } from "../components/FileTreeSearch";
 import { FileViewer } from "../components/FileViewer";
+import { GitCommitDetail } from "../components/GitCommitDetail";
 import { GitDiffPanel } from "../components/GitDiffPanel";
 import { GitHistoryPanel } from "../components/GitHistoryPanel";
 import { PageHeader } from "../components/PageHeader";
@@ -27,6 +28,8 @@ import { MainContent, useNavigationLayout } from "../layouts";
 type MobileView =
   | { type: "file"; payload: { filePath: string } }
   | { type: "diff"; payload: { filePath: string; staged: boolean } }
+  | { type: "commit"; payload: { commitHash: string } }
+  | { type: "commitDiff"; payload: { commitHash: string; filePath: string } }
   | null;
 
 /**
@@ -68,6 +71,11 @@ export function SourceFilePage() {
   const [selectedDiffFile, setSelectedDiffFile] =
     useState<GitFileChange | null>(null);
 
+  // 提交详情 / Commit detail
+  const [selectedCommitHash, setSelectedCommitHash] = useState<string | null>(null);
+  const [commitDetail, setCommitDetail] = useState<GitCommitDetailType | null>(null);
+  const [commitDetailLoading, setCommitDetailLoading] = useState(false);
+
   // 分栏宽度 / Split panel width
   const {
     width: leftPanelWidth,
@@ -92,6 +100,8 @@ export function SourceFilePage() {
     const hash = window.location.hash;
     const fileMatch = hash.match(/^#file=(.+)$/);
     const diffMatch = hash.match(/^#diff=(.+)&staged=(\d)$/);
+    const commitMatch = hash.match(/^#commit=(.+)$/);
+    const commitDiffMatch = hash.match(/^#commitDiff=(.+)&file=(.+)$/);
     if (fileMatch) {
       const filePath = decodeURIComponent(fileMatch[1]!);
       setMobileView({ type: "file", payload: { filePath } });
@@ -99,19 +109,49 @@ export function SourceFilePage() {
       const filePath = decodeURIComponent(diffMatch[1]!);
       const staged = diffMatch[2] === "1";
       setMobileView({ type: "diff", payload: { filePath, staged } });
+    } else if (commitDiffMatch) {
+      const commitHash = decodeURIComponent(commitDiffMatch[1]!);
+      const filePath = decodeURIComponent(commitDiffMatch[2]!);
+      setMobileView({ type: "commitDiff", payload: { commitHash, filePath } });
+    } else if (commitMatch) {
+      const commitHash = decodeURIComponent(commitMatch[1]!);
+      setMobileView({ type: "commit", payload: { commitHash } });
     }
   }, [isMobile]);
 
   // 监听 popstate / Handle popstate
   useEffect(() => {
-    const handlePopState = () => {
-      if (isMobile && mobileView !== null) {
-        setMobileView(null);
+    const handlePopState = (event: PopStateEvent) => {
+      if (!isMobile) return;
+      // 如果有 state，按 state 恢复 / Restore from state if available
+      if (event.state?.type) {
+        const state = event.state as { type: string; [key: string]: unknown };
+        if (state.type === "commitDiff" && state.commitHash && state.filePath) {
+          setMobileView({
+            type: "commitDiff",
+            payload: { commitHash: state.commitHash as string, filePath: state.filePath as string },
+          });
+          return;
+        }
+        if (state.type === "commit" && state.commitHash) {
+          setMobileView({ type: "commit", payload: { commitHash: state.commitHash as string } });
+          return;
+        }
+        if (state.type === "diff" && state.path) {
+          setMobileView({ type: "diff", payload: { filePath: state.path as string, staged: (state.staged as boolean) ?? false } });
+          return;
+        }
+        if (state.type === "file" && state.path) {
+          setMobileView({ type: "file", payload: { filePath: state.path as string } });
+          return;
+        }
       }
+      // 没有 state 时回退到列表 / No state means go back to list
+      setMobileView(null);
     };
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, [isMobile, mobileView]);
+  }, [isMobile]);
 
   // 点击文件 / File click handler
   const handleFileClick = useCallback(
@@ -147,6 +187,45 @@ export function SourceFilePage() {
     },
     [isMobile],
   );
+
+  // 点击提交历史 / Commit history click handler
+  const handleCommitClick = useCallback(
+    (hash: string) => {
+      if (isMobile) {
+        const hashParam = `#commit=${encodeURIComponent(hash)}`;
+        window.history.pushState({ type: "commit", commitHash: hash }, "", hashParam);
+        setMobileView({ type: "commit", payload: { commitHash: hash } });
+      } else {
+        setSelectedCommitHash(hash);
+        setCommitDetail(null);
+        setCommitDetailLoading(true);
+        api.getGitCommit(projectId!, hash).then((data) => {
+          setCommitDetail(data.commit);
+          setCommitDetailLoading(false);
+        }).catch(() => {
+          setCommitDetailLoading(false);
+        });
+      }
+    },
+    [isMobile, projectId],
+  );
+
+  // 点击提交中的文件（手机端）/ Commit file click handler (mobile)
+  const handleCommitFileClick = useCallback(
+    (commitHash: string, filePath: string) => {
+      const hashParam = `#commitDiff=${encodeURIComponent(commitHash)}&file=${encodeURIComponent(filePath)}`;
+      window.history.pushState(
+        { type: "commitDiff", commitHash, filePath },
+        "",
+        hashParam,
+      );
+      setMobileView({ type: "commitDiff", payload: { commitHash, filePath } });
+    },
+    [],
+  );
+
+  // 加载选中提交的详情（手机端 commit 视图）/ Load commit detail (mobile commit view)
+  const mobileCommitDetail = useMobileCommitDetail(projectId, mobileView);
 
   // 手机端返回 / Mobile back
   const handleMobileBack = useCallback(() => {
@@ -197,6 +276,74 @@ export function SourceFilePage() {
 
   // 手机端内容视图 / Mobile content view
   if (isMobile && mobileView) {
+    if (mobileView.type === "commit") {
+      return (
+        <MainContent isWideScreen={isWideScreen}>
+          <div className="source-file-mobile-view">
+            <div className="source-file-mobile-header">
+              <button
+                type="button"
+                className="source-file-mobile-back"
+                onClick={handleMobileBack}
+              >
+                ← {t("sourceFileBack" as never)}
+              </button>
+              <span className="source-file-mobile-title">
+                {mobileCommitDetail?.message ?? "..."}
+              </span>
+            </div>
+            <div className="source-file-mobile-body">
+              {mobileCommitDetail ? (
+                <GitCommitDetail
+                  projectId={projectId || ""}
+                  detail={mobileCommitDetail}
+                  mobile
+                  onFileClick={(filePath) =>
+                    handleCommitFileClick(mobileView.payload.commitHash, filePath)
+                  }
+                />
+              ) : (
+                <div className="git-history-loading">Loading…</div>
+              )}
+            </div>
+          </div>
+        </MainContent>
+      );
+    }
+
+    if (mobileView.type === "commitDiff") {
+      const title = mobileView.payload.filePath.split("/").pop() || "";
+      return (
+        <MainContent isWideScreen={isWideScreen}>
+          <div className="source-file-mobile-view">
+            <div className="source-file-mobile-header">
+              <button
+                type="button"
+                className="source-file-mobile-back"
+                onClick={handleMobileBack}
+              >
+                ← {t("sourceFileBack" as never)}
+              </button>
+              <span className="source-file-mobile-title">{title}</span>
+            </div>
+            <div className="source-file-mobile-body">
+              <GitDiffPanel
+                projectId={projectId || ""}
+                file={{
+                  path: mobileView.payload.filePath,
+                  staged: false,
+                  status: "M",
+                  linesAdded: null,
+                  linesDeleted: null,
+                }}
+                commitHash={mobileView.payload.commitHash}
+              />
+            </div>
+          </div>
+        </MainContent>
+      );
+    }
+
     const title =
       mobileView.type === "file"
         ? mobileView.payload.filePath.split("/").pop() || ""
@@ -450,9 +597,47 @@ export function SourceFilePage() {
 
             {/* 历史标签页 / History tab */}
             {activeTab === "history" && (
-              <div className="source-file-full-panel">
-                <GitHistoryPanel projectId={projectId} />
-              </div>
+              isMobile ? (
+                <GitHistoryPanel
+                  projectId={projectId}
+                  onCommitClick={handleCommitClick}
+                />
+              ) : (
+                <div className={`source-file-split ${isResizing ? "resizing" : ""}`}>
+                  <div
+                    className="source-file-left"
+                    style={{ width: leftPanelWidth }}
+                  >
+                    <GitHistoryPanel
+                      projectId={projectId}
+                      onCommitClick={handleCommitClick}
+                      selectedHash={selectedCommitHash}
+                    />
+                  </div>
+                  <div
+                    className="source-file-resize-handle"
+                    {...resizeHandleProps}
+                  />
+                  <div className="source-file-right">
+                    {selectedCommitHash ? (
+                      commitDetailLoading ? (
+                        <div className="git-history-loading">Loading…</div>
+                      ) : commitDetail ? (
+                        <GitCommitDetail
+                          projectId={projectId}
+                          detail={commitDetail}
+                        />
+                      ) : (
+                        <div className="git-history-error">Failed to load commit</div>
+                      )
+                    ) : (
+                      <div className="source-file-right-empty">
+                        {t("sourceFileSelectCommitHint" as never)}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
             )}
           </div>
         </div>
@@ -532,4 +717,34 @@ function GitFileItem({
       )}
     </li>
   );
+}
+
+/**
+ * 手机端：加载提交详情 / Mobile: load commit detail.
+ * 当 mobileView 为 commit 或 commitDiff 时加载对应提交的详情。
+ */
+function useMobileCommitDetail(
+  projectId: string | undefined,
+  mobileView: MobileView,
+): GitCommitDetailType | null {
+  const [detail, setDetail] = useState<GitCommitDetailType | null>(null);
+
+  useEffect(() => {
+    if (!projectId) return;
+    const commitHash =
+      mobileView?.type === "commit" || mobileView?.type === "commitDiff"
+        ? mobileView.payload.commitHash
+        : null;
+    if (!commitHash) {
+      setDetail(null);
+      return;
+    }
+    let cancelled = false;
+    api.getGitCommit(projectId, commitHash).then((data) => {
+      if (!cancelled) setDetail(data.commit);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [projectId, mobileView]);
+
+  return detail;
 }

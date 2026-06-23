@@ -1464,5 +1464,10 @@
 	"sourceFileRemoteBranches": "Remote",
 	"sourceFileNewBranch": "New branch",
 	"sourceFileNewBranchName": "Branch name",
-	"sourceFileCreateBranch": "Create"
+	"sourceFileCreateBranch": "Create",
+	"sourceFileSelectCommitHint": "Select a commit to view details",
+	"sourceFileCopyCommitMessage": "Copy commit message",
+	"sourceFileCopyCommitHash": "Copy commit hash",
+	"sourceFileCommitFiles": "Changed files",
+	"sourceFileNoDescription": "No description"
 }

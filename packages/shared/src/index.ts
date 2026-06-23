@@ -96,6 +96,7 @@ export type {
   FileListResponse,
   BranchInfo,
   GitCommit,
+  GitCommitDetail,
   CheckoutResult,
 } from "./git-status.js";
 

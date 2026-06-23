@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { extname, resolve } from "node:path";
 import { promisify } from "node:util";
 import {
+  type GitCommitDetail,
   type GitFileChange,
   type GitStatusInfo,
   type PatchHunk,
@@ -368,6 +369,165 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
     }
   });
 
+  // ===== 提交详情 API / Commit detail API =====
+
+  /**
+   * GET /:projectId/git/commit/:hash
+   * 获取某次提交的详情（含变更文件列表）/ Get commit detail with changed files.
+   */
+  routes.get("/:projectId/git/commit/:hash", async (c) => {
+    const projectId = c.req.param("projectId");
+    const hash = c.req.param("hash");
+
+    if (!isUrlProjectId(projectId)) {
+      return c.json({ error: "Invalid project ID format" }, 400);
+    }
+    // 安全检查：拒绝包含 shell 特殊字符的 hash / Security: reject hash with shell special chars
+    if (!hash || /[;&|`$\\]/.test(hash)) {
+      return c.json({ error: "Invalid commit hash" }, 400);
+    }
+
+    const project = await deps.scanner.getProject(projectId);
+    if (!project) {
+      return c.json({ error: "Project not found" }, 404);
+    }
+
+    try {
+      // 并行获取提交信息、文件变更、分支和统计 / Fetch in parallel
+      const [showResult, numstatResult, bodyResult, branchesResult, shortstatResult] = await Promise.all([
+        runGit(project.path, [
+          "show",
+          "--name-status",
+          "--format=%H|%s|%an|%aI",
+          hash,
+        ]).catch(() => ({ stdout: "", stderr: "" })),
+        runGit(project.path, [
+          "diff",
+          "--numstat",
+          `${hash}^`,
+          hash,
+        ]).catch(() => ({ stdout: "", stderr: "" })),
+        runGit(project.path, [
+          "log",
+          "--format=%B",
+          "-n",
+          "1",
+          hash,
+        ]).catch(() => ({ stdout: "", stderr: "" })),
+        runGit(project.path, [
+          "name-rev",
+          "--name-only",
+          "--refs=refs/heads/*",
+          hash,
+        ]).catch(() => ({ stdout: "", stderr: "" })),
+        runGit(project.path, [
+          "diff",
+          "--shortstat",
+          `${hash}^`,
+          hash,
+        ]).catch(() => ({ stdout: "", stderr: "" })),
+      ]);
+
+      const { commit, files } = parseCommitDetail(
+        showResult.stdout,
+        numstatResult.stdout,
+        bodyResult.stdout,
+        branchesResult.stdout,
+        shortstatResult.stdout,
+      );
+
+      return c.json({ commit, files });
+    } catch (err) {
+      if (isNotGitRepoError(err)) {
+        return c.json({ error: "Not a git repository" }, 400);
+      }
+      return c.json({ error: "Failed to get commit detail" }, 500);
+    }
+  });
+
+  /**
+   * POST /:projectId/git/commit/:hash/diff
+   * 获取某次提交中某个文件的 diff / Get diff for a file in a specific commit.
+   * Body: { path: string }
+   */
+  routes.post("/:projectId/git/commit/:hash/diff", async (c) => {
+    const projectId = c.req.param("projectId");
+    const hash = c.req.param("hash");
+
+    if (!isUrlProjectId(projectId)) {
+      return c.json({ error: "Invalid project ID format" }, 400);
+    }
+    if (!hash || /[;&|`$\\]/.test(hash)) {
+      return c.json({ error: "Invalid commit hash" }, 400);
+    }
+
+    const project = await deps.scanner.getProject(projectId);
+    if (!project) {
+      return c.json({ error: "Project not found" }, 404);
+    }
+
+    let body: { path: string; fullContext?: boolean };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
+    const { path, fullContext } = body;
+    if (!path || typeof path !== "string") {
+      return c.json({ error: "Missing required field: path" }, 400);
+    }
+
+    try {
+      // 获取该文件在提交前后的内容 / Get file content before and after the commit
+      const [oldResult, newResult] = await Promise.all([
+        runGit(project.path, ["show", `${hash}^:${path}`]).catch(() => ({
+          stdout: "",
+          stderr: "",
+        })),
+        runGit(project.path, ["show", `${hash}:${path}`]).catch(() => ({
+          stdout: "",
+          stderr: "",
+        })),
+      ]);
+
+      const oldContent = oldResult.stdout;
+      const newContent = newResult.stdout;
+
+      const contextLines = fullContext ? 999999 : 3;
+      const augment = await computeEditAugment(
+        "git-diff",
+        { file_path: path, old_string: oldContent, new_string: newContent },
+        contextLines,
+      );
+
+      const result: {
+        diffHtml: string;
+        structuredPatch: PatchHunk[];
+        markdownHtml?: string;
+      } = {
+        diffHtml: augment.diffHtml,
+        structuredPatch: augment.structuredPatch,
+      };
+
+      // Render markdown preview for .md files
+      const ext = extname(path).toLowerCase();
+      if ((ext === ".md" || ext === ".markdown") && newContent) {
+        try {
+          result.markdownHtml = await renderMarkdownToHtml(newContent);
+        } catch {
+          // Ignore markdown rendering errors
+        }
+      }
+
+      return c.json(result);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to compute commit diff";
+      return c.json({ error: message }, 500);
+    }
+  });
+
   return routes;
 }
 
@@ -472,6 +632,108 @@ function parseNumstat(
     map.set(path, { added, deleted });
   }
   return map;
+}
+
+/**
+ * Parse `git show --name-status --format=...` output into a commit detail.
+ * 解析 git show 输出为提交详情
+ *
+ * showResult format:
+ *   <hash>|<subject>|<author>|<date>
+ *   (blank line)
+ *   <status>\t<path>          (for M/A/D status)
+ *   <status>\t<origPath>\t<path>  (for R status, may have extra fields)
+ *
+ * numstatResult format:
+ *   <added>\t<deleted>\t<path>
+ *
+ * bodyResult format:
+ *   <full commit message body>
+ */
+function parseCommitDetail(
+  showOutput: string,
+  numstatOutput: string,
+  bodyOutput: string,
+  branchesOutput: string,
+  shortstatOutput: string,
+): { commit: GitCommitDetail; files: GitFileChange[] } {
+  const numstat = parseNumstat(numstatOutput);
+  const lines = showOutput.split("\n").filter((l) => l.length > 0);
+
+  // 第一行是 format 行: hash|subject|author|date
+  const headerLine = lines[0] ?? "";
+  const headerParts = headerLine.split("|");
+  const hash = headerParts[0] ?? "";
+  const message = headerParts[1] ?? "";
+  const author = headerParts[2] ?? "";
+  const date = headerParts[3] ?? "";
+
+  // 解析 body：去掉第一行 subject（body 的第一行和 subject 相同）
+  const body = bodyOutput
+    .trim()
+    .split("\n")
+    .slice(1) // 跳过第一行（与 subject 相同）
+    .join("\n")
+    .trim();
+
+  // 解析分支列表 / Parse branches
+  // git name-rev 输出如 "main" 或 "main~3"，去掉 ~N 后缀，取唯一分支名
+  const branchName = branchesOutput.trim().replace(/~\d+$/, "");
+  const branches = branchName && branchName !== "undefined" ? [branchName] : [];
+
+  // 解析 shortstat / Parse shortstat
+  // 格式: " X files changed, Y insertions(+), Z deletions(-)"
+  const shortstatMatch = shortstatOutput.trim().match(
+    /(\d+)\s+files?\s+changed(?:,\s*(\d+)\s+insertions?\(\+\))?(?:,\s*(\d+)\s+deletions?\(-\))?/,
+  );
+  const filesChanged = shortstatMatch?.[1] ? Number.parseInt(shortstatMatch[1], 10) : 0;
+  const additions = shortstatMatch?.[2] ? Number.parseInt(shortstatMatch[2], 10) : 0;
+  const deletions = shortstatMatch?.[3] ? Number.parseInt(shortstatMatch[3], 10) : 0;
+
+  // 文件变更行从第二行开始 / File change lines start from line 2
+  const files: GitFileChange[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i] ?? "";
+    if (!line) continue;
+
+    // 解析 status 和 path / Parse status and path
+    const parts = line.split("\t");
+    const statusCode = parts[0] ?? "";
+
+    // 处理重命名：R<similarity> origPath \t newPath
+    // 或 R<similarity> origPath \t newPath \t extra
+    // 简化：取第一个字母作为 status
+    const status = statusCode.charAt(0);
+
+    // 对于重命名，path 取最后一个非空段
+    let path: string;
+    let origPath: string | undefined;
+
+    if (status === "R" || status === "C") {
+      // 跳过相似度百分比，如 "R100"
+      // parts[0] = "R100", parts[1] = origPath, parts[2] = newPath
+      origPath = parts[1] ?? "";
+      path = parts[2] ?? "";
+    } else {
+      // parts[0] = "M"/"A"/"D", parts[1] = path
+      path = parts[1] ?? "";
+    }
+
+    const stats = numstat.get(path);
+    files.push({
+      path,
+      status,
+      staged: false, // 历史提交中的文件都是 unstaged
+      linesAdded: stats?.added ?? null,
+      linesDeleted: stats?.deleted ?? null,
+      origPath,
+    });
+  }
+
+  return {
+    commit: { hash, message, body, author, date, branches, filesChanged, additions, deletions, files },
+    files,
+  };
 }
 
 /** Status letter from the XY field for a given position */

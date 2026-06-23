@@ -1284,5 +1284,10 @@
 	"sourceFileRemoteBranches": "远程",
 	"sourceFileNewBranch": "新建分支",
 	"sourceFileNewBranchName": "分支名称",
-	"sourceFileCreateBranch": "创建"
+	"sourceFileCreateBranch": "创建",
+	"sourceFileSelectCommitHint": "选择提交查看详情",
+	"sourceFileCopyCommitMessage": "复制提交说明",
+	"sourceFileCopyCommitHash": "复制提交哈希",
+	"sourceFileCommitFiles": "变更文件",
+	"sourceFileNoDescription": "无说明"
 }

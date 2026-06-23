@@ -14,6 +14,8 @@ import type {
   FileListResponse,
   FreezePublicSessionLiveSharesResponse,
   GitCommit,
+  GitCommitDetail,
+  GitFileChange,
   GitStatusInfo,
   HelperTargetConfig,
   ModelInfo,
@@ -1241,6 +1243,33 @@ export const api = {
       `/projects/${projectId}/git/log?${sp.toString()}`,
     );
   },
+
+  /** 获取提交详情（含变更文件列表）/ Get commit detail with changed files */
+  getGitCommit: (projectId: string, hash: string) =>
+    fetchJSON<{ commit: GitCommitDetail; files: GitFileChange[] }>(
+      `/projects/${projectId}/git/commit/${encodeURIComponent(hash)}`,
+    ),
+
+  /** 获取某次提交中某个文件的 diff / Get diff for a file in a specific commit */
+  getGitCommitDiff: (
+    projectId: string,
+    hash: string,
+    params: { path: string; fullContext?: boolean },
+  ) =>
+    fetchJSON<{
+      diffHtml: string;
+      structuredPatch: Array<{
+        oldStart: number;
+        oldLines: number;
+        newStart: number;
+        newLines: number;
+        lines: string[];
+      }>;
+      markdownHtml?: string;
+    }>(`/projects/${projectId}/git/commit/${encodeURIComponent(hash)}/diff`, {
+      method: "POST",
+      body: JSON.stringify(params),
+    }),
 
   // Inbox API
   getInbox: (projectId?: string) =>

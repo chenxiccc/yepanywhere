@@ -5,6 +5,8 @@ import { GitDiffContent } from "./GitDiffContent";
 interface GitDiffPanelProps {
   projectId: string;
   file: GitFileChange;
+  /** 可选：历史提交的 hash，用于获取 commit-based diff / Optional commit hash for commit-based diff */
+  commitHash?: string;
 }
 
 /**
@@ -14,8 +16,8 @@ interface GitDiffPanelProps {
  * 使用共享的 useGitDiff hook + GitDiffContent 渲染组件
  * Uses shared useGitDiff hook + GitDiffContent render component.
  */
-export function GitDiffPanel({ projectId, file }: GitDiffPanelProps) {
-  const diffState = useGitDiff({ projectId, file });
+export function GitDiffPanel({ projectId, file, commitHash }: GitDiffPanelProps) {
+  const diffState = useGitDiff({ projectId, file, commitHash });
 
   return (
     <div className="git-diff-panel">

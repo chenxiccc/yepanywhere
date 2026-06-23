@@ -74,6 +74,30 @@ export interface GitCommit {
   date: string;
 }
 
+/** Git 提交详情（含变更文件列表）/ Git commit detail (with changed files) */
+export interface GitCommitDetail {
+  /** 完整 commit hash */
+  hash: string;
+  /** 提交消息第一行 / First line of commit message */
+  message: string;
+  /** 提交消息完整内容（含 body）/ Full commit message body */
+  body: string;
+  /** 作者名 / Author name */
+  author: string;
+  /** ISO 8601 日期 / ISO 8601 date */
+  date: string;
+  /** 提交所属分支列表 / Branches that contain this commit */
+  branches: string[];
+  /** 变更文件数 / Number of files changed */
+  filesChanged: number;
+  /** 新增行数 / Lines added */
+  additions: number;
+  /** 删除行数 / Lines deleted */
+  deletions: number;
+  /** 变更的文件列表 / Changed files */
+  files: GitFileChange[];
+}
+
 /** 分支切换/创建结果 / Branch checkout/create result */
 export interface CheckoutResult {
   success: boolean;

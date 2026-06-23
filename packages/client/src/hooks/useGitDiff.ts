@@ -19,6 +19,8 @@ interface GitDiffResult {
 interface UseGitDiffOptions {
   projectId: string;
   file: GitFileChange;
+  /** 可选：历史提交的 hash，用于获取 commit-based diff / Optional commit hash for commit-based diff */
+  commitHash?: string;
 }
 
 /**
@@ -26,10 +28,10 @@ interface UseGitDiffOptions {
  * Shared Diff state hook — encapsulates all diff loading, full-context toggle,
  * and markdown preview logic.
  *
- * 被 GitDiffModal 和 GitDiffPanel 共享使用
- * Used by both GitDiffModal and GitDiffPanel.
+ * 被 GitDiffModal、GitDiffPanel 和 GitCommitDetail 共享使用
+ * Used by GitDiffModal, GitDiffPanel, and GitCommitDetail.
  */
-export function useGitDiff({ projectId, file }: UseGitDiffOptions) {
+export function useGitDiff({ projectId, file, commitHash }: UseGitDiffOptions) {
   const [diffResult, setDiffResult] = useState<GitDiffResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -52,12 +54,17 @@ export function useGitDiff({ projectId, file }: UseGitDiffOptions) {
     setLoading(true);
     setError(null);
 
-    api
-      .getGitDiff(projectId, {
-        path: file.path,
-        staged: file.staged,
-        status: file.status,
-      })
+    const diffPromise = commitHash
+      ? api.getGitCommitDiff(projectId, commitHash, {
+          path: file.path,
+        })
+      : api.getGitDiff(projectId, {
+          path: file.path,
+          staged: file.staged,
+          status: file.status,
+        });
+
+    diffPromise
       .then((result) => {
         if (!cancelled) {
           setDiffResult(result);
@@ -74,7 +81,7 @@ export function useGitDiff({ projectId, file }: UseGitDiffOptions) {
     return () => {
       cancelled = true;
     };
-  }, [projectId, file.path, file.staged, file.status]);
+  }, [projectId, file.path, file.staged, file.status, commitHash]);
 
   // 切换全上下文 / Toggle full context
   const toggleFullContext = useCallback(async () => {
@@ -82,12 +89,17 @@ export function useGitDiff({ projectId, file }: UseGitDiffOptions) {
       setContextLoading(true);
       setContextError(null);
       try {
-        const result = await api.getGitDiff(projectId, {
-          path: file.path,
-          staged: file.staged,
-          status: file.status,
-          fullContext: true,
-        });
+        const result = commitHash
+          ? await api.getGitCommitDiff(projectId, commitHash, {
+              path: file.path,
+              fullContext: true,
+            })
+          : await api.getGitDiff(projectId, {
+              path: file.path,
+              staged: file.staged,
+              status: file.status,
+              fullContext: true,
+            });
         setFullContextResult(result);
       } catch (err) {
         setContextError(
@@ -103,6 +115,7 @@ export function useGitDiff({ projectId, file }: UseGitDiffOptions) {
     showFullContext,
     fullContextResult,
     projectId,
+    commitHash,
     file.path,
     file.staged,
     file.status,
