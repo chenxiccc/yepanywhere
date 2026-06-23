@@ -266,8 +266,8 @@ export function SourceFilePage() {
 
       <main className="page-scroll-container">
         <div className="page-content-inner source-file-page-inner">
-          {/* 标签栏 / Tab bar — always visible */}
-          <div className="source-file-tabs">
+          {/* 标签栏 / Tab bar — always visible, matches left panel width on desktop */}
+          <div className="source-file-tabs" style={isMobile ? undefined : { width: leftPanelWidth, flexShrink: 0 }}>
             <button
               type="button"
               className={`source-file-tab ${activeTab === "files" ? "active" : ""}`}
