@@ -110,6 +110,13 @@ export function GitCommitDetail({
                   <path d="M18 9a9 9 0 0 1-9 9" />
                 </svg>
                 {b}
+                <CopyTextButton
+                  text={b}
+                  label={t("sourceFileCopyCommitHash" as never)}
+                  className="git-commit-detail-branch-copy-btn"
+                  copiedClassName="copied"
+                  copiedLabel={t("sourceFileCopyCommitHash" as never)}
+                />
               </span>
             ))}
           </div>

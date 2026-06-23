@@ -16087,6 +16087,26 @@ body:has(.session-page)
   border-radius: var(--radius-sm);
 }
 
+.git-commit-detail-branch-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--color-accent);
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.git-commit-detail-branch-copy-btn:hover {
+  color: var(--color-text);
+}
+
+.git-commit-detail-branch-copy-btn.copied {
+  color: var(--color-success, #22c55e);
+}
+
 .git-commit-detail-summary {
   display: flex;
   align-items: center;
