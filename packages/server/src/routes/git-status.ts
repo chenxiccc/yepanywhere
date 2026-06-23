@@ -415,10 +415,10 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
           hash,
         ]).catch(() => ({ stdout: "", stderr: "" })),
         runGit(project.path, [
-          "name-rev",
-          "--name-only",
-          "--refs=refs/heads/*",
+          "branch",
+          "--contains",
           hash,
+          "--format=%(refname:short)",
         ]).catch(() => ({ stdout: "", stderr: "" })),
         runGit(project.path, [
           "diff",
@@ -677,9 +677,11 @@ function parseCommitDetail(
     .trim();
 
   // 解析分支列表 / Parse branches
-  // git name-rev 输出如 "main" 或 "main~3"，去掉 ~N 后缀，取唯一分支名
-  const branchName = branchesOutput.trim().replace(/~\d+$/, "");
-  const branches = branchName && branchName !== "undefined" ? [branchName] : [];
+  // git branch --contains 列出所有包含该提交的分支
+  const branches = branchesOutput
+    .split("\n")
+    .map((b) => b.trim())
+    .filter(Boolean);
 
   // 解析 shortstat / Parse shortstat
   // 格式: " X files changed, Y insertions(+), Z deletions(-)"
