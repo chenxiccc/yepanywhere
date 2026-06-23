@@ -12,6 +12,7 @@ import { initializeContentMaxWidth } from "./hooks/useContentMaxWidth";
 import { initializeOutputAppearance } from "./hooks/useOutputAppearance";
 import { initializeTabSize } from "./hooks/useTabSize";
 import { initializeTheme } from "./hooks/useTheme";
+import { registerServiceWorkerAtStartup } from "./lib/registerServiceWorker";
 import { NavigationLayout } from "./layouts";
 import { ActivityPage } from "./pages/ActivityPage";
 import { AgentsPage } from "./pages/AgentsPage";
@@ -34,6 +35,10 @@ initializeFontSize();
 initializeOutputAppearance();
 initializeTabSize();
 initializeContentMaxWidth();
+
+// 应用启动时注册 Service Worker，确保 PWA 安装等能力开箱即用
+// Register SW at startup so PWA install is available without visiting settings
+registerServiceWorkerAtStartup();
 
 // SSE activity stream connection is managed by useActivityBusConnection hook
 // in App.tsx, which connects only when authenticated (or auth is disabled)
