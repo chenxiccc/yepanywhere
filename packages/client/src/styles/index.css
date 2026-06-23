@@ -15750,6 +15750,39 @@ body:has(.session-page)
   border-radius: var(--radius-sm);
 }
 
+.branch-dropdown-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.branch-dropdown-item-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+  margin-left: var(--space-2);
+}
+
+.branch-dropdown-copy {
+  display: flex;
+  align-items: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.branch-dropdown-item:hover .branch-dropdown-copy {
+  opacity: 0.6;
+}
+
+.branch-dropdown-copy:hover {
+  opacity: 1 !important;
+  background: var(--color-bg-hover);
+}
+
 .branch-dropdown-item:hover {
   background: var(--color-bg-hover);
 }

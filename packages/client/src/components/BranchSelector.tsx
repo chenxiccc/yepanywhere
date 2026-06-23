@@ -139,6 +139,14 @@ export function BranchSelector({
     }
   }, [newBranchName, onCreateBranch, handleClose, onBranchChanged]);
 
+  const handleCopyBranch = useCallback(
+    (e: React.MouseEvent, branch: string) => {
+      e.stopPropagation();
+      navigator.clipboard.writeText(branch).catch(() => {});
+    },
+    [],
+  );
+
   const handleCreateKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key === "Enter") {
@@ -192,10 +200,19 @@ export function BranchSelector({
                   onClick={() => handleCheckout(branch)}
                   disabled={actionLoading}
                 >
-                  {branch}
-                  {branch === currentBranch && (
-                    <span className="branch-dropdown-check">✓</span>
-                  )}
+                  <span className="branch-dropdown-item-name">{branch}</span>
+                  <span className="branch-dropdown-item-actions">
+                    {branch === currentBranch && (
+                      <span className="branch-dropdown-check">✓</span>
+                    )}
+                    <span
+                      className="branch-dropdown-copy"
+                      title="Copy branch name"
+                      onClick={(e) => handleCopyBranch(e, branch)}
+                    >
+                      <CopyIcon />
+                    </span>
+                  </span>
                 </button>
               ))}
               {/* 新建分支 / Create branch — 在本地分支下方 */}
@@ -247,7 +264,14 @@ export function BranchSelector({
                   onClick={() => handleCheckout(branch)}
                   disabled={actionLoading}
                 >
-                  {branch}
+                  <span className="branch-dropdown-item-name">{branch}</span>
+                  <span
+                    className="branch-dropdown-copy"
+                    title="Copy branch name"
+                    onClick={(e) => handleCopyBranch(e, branch)}
+                  >
+                    <CopyIcon />
+                  </span>
                 </button>
               ))}
             </div>
@@ -301,5 +325,25 @@ export function BranchSelector({
       </button>
       {dropdown}
     </div>
+  );
+}
+
+/** 复制图标 / Copy icon */
+function CopyIcon() {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="5" y="5" width="9" height="9" rx="1.5" />
+      <path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2H3.5A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5" />
+    </svg>
   );
 }
