@@ -1,16 +1,20 @@
 /**
+ * PushNotifier - 发送推送通知
  * PushNotifier - Sends push notifications for session attention events
  *
+ * 监听 EventBus 的进程状态变化，向所有已订阅设备发送推送通知。
+ * 通知抑制由客户端 Service Worker 负责——SW 能精确判断窗口焦点状态和当前会话，
+ * 服务器不应猜测用户是否在看屏幕。
+ *
  * Listens to EventBus for process state changes and sends push notifications
- * when a session enters waiting-input state (tool approval or user question)
- * or stops after active work. The service worker on the client handles
- * suppressing notifications when the app is already focused.
+ * to all subscribed devices. Notification suppression is delegated to the
+ * client-side Service Worker, which has precise access to window focus state
+ * and current session — the server should not guess whether the user is watching.
  */
 
 import { basename } from "node:path";
 import type { UrlProjectId } from "@yep-anywhere/shared";
 import { decodeProjectId, getProjectName } from "../projects/paths.js";
-import type { ConnectedBrowsersService } from "../services/ConnectedBrowsersService.js";
 import type { Supervisor } from "../supervisor/Supervisor.js";
 import type { InputRequest } from "../supervisor/types.js";
 import type {
@@ -31,15 +35,12 @@ export interface PushNotifierOptions {
   eventBus: EventBus;
   pushService: PushService;
   supervisor: Supervisor;
-  /** Optional: skip push for connected browser profiles */
-  connectedBrowsers?: ConnectedBrowsersService;
 }
 
 export class PushNotifier {
   private eventBus: EventBus;
   private pushService: PushService;
   private supervisor: Supervisor;
-  private connectedBrowsers?: ConnectedBrowsersService;
   private unsubscribe: (() => void) | null = null;
   /** Track sessions we've sent notifications for (to know when to send dismiss) */
   private sessionsWithNotification = new Set<string>();
@@ -50,7 +51,6 @@ export class PushNotifier {
     this.eventBus = options.eventBus;
     this.pushService = options.pushService;
     this.supervisor = options.supervisor;
-    this.connectedBrowsers = options.connectedBrowsers;
 
     // Subscribe to EventBus for process state changes
     this.unsubscribe = this.eventBus.subscribe((event: BusEvent) => {
@@ -131,18 +131,9 @@ export class PushNotifier {
     };
 
     try {
-      // Skip push for browser profiles that are already connected
-      const connectedIds =
-        this.connectedBrowsers?.getConnectedBrowserProfileIds() ?? [];
-      if (connectedIds.length > 0) {
-        console.log(
-          `[PushNotifier] Skipping push for ${connectedIds.length} connected browser profile(s)`,
-        );
-      }
-
-      const results = await this.pushService.sendToAll(payload, {
-        excludeBrowserProfileIds: connectedIds,
-      });
+      // 发送给所有已订阅设备，客户端 SW 自行判断是否展示通知
+      // Send to all subscribed devices; client SW decides whether to show
+      const results = await this.pushService.sendToAll(payload);
       const successCount = results.filter((r) => r.success).length;
       if (successCount > 0) {
         console.log(
@@ -228,17 +219,7 @@ export class PushNotifier {
     };
 
     try {
-      const connectedIds =
-        this.connectedBrowsers?.getConnectedBrowserProfileIds() ?? [];
-      if (connectedIds.length > 0) {
-        console.log(
-          `[PushNotifier] Skipping push for ${connectedIds.length} connected browser profile(s)`,
-        );
-      }
-
-      const results = await this.pushService.sendToAll(payload, {
-        excludeBrowserProfileIds: connectedIds,
-      });
+      const results = await this.pushService.sendToAll(payload);
       const successCount = results.filter((r) => r.success).length;
       if (successCount > 0) {
         console.log(
