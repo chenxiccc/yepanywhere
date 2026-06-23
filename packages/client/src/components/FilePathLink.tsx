@@ -1,5 +1,5 @@
 import { fromUrlProjectId, isUrlProjectId } from "@yep-anywhere/shared";
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   buildPublicShareFileHref,
@@ -234,9 +234,43 @@ export function FileViewerModal({
   openInNewTabUrl?: string | null;
   onClose: () => void;
 }) {
+  // 手机端系统返回（swipe back）关闭 modal / Back gesture closes modal
+  // 打开时 pushState 标记条目，popstate 时关闭 modal 而非回退整个页面
+  const pushedRef = useRef(false);
+  const closingViaPopstateRef = useRef(false);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    window.history.pushState({ __fileViewer: true }, "");
+    pushedRef.current = true;
+    const handlePopState = (event: PopStateEvent) => {
+      if (event.state?.__fileViewer) {
+        closingViaPopstateRef.current = true;
+        onCloseRef.current();
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, []);
+
+  // 包装关闭回调：手动关闭时先 history.back() 移除 pushState 条目
+  const close = useCallback(() => {
+    if (pushedRef.current) {
+      pushedRef.current = false;
+      if (!closingViaPopstateRef.current) {
+        window.history.back();
+      }
+      closingViaPopstateRef.current = false;
+    }
+    onCloseRef.current();
+  }, []);
+
   const handleOverlayClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {
-      onClose();
+      close();
     }
   };
 
@@ -246,12 +280,12 @@ export function FileViewerModal({
       if (e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();
-        onClose();
+        close();
       }
     };
     document.addEventListener("keydown", handleKeyDown, true);
     return () => document.removeEventListener("keydown", handleKeyDown, true);
-  }, [onClose]);
+  }, [close]);
 
   // Prevent body scroll when modal is open
   useEffect(() => {
@@ -285,7 +319,7 @@ export function FileViewerModal({
           viewMode={viewMode}
           source={source}
           openInNewTabUrl={openInNewTabUrl}
-          onClose={onClose}
+          onClose={close}
         />
       </dialog>
     </div>

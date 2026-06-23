@@ -952,6 +952,7 @@ function EditCollapsedPreview({
         </div>
         {isModalOpen && hasProposedDiff && (
           <Modal
+            backCloses
             title={
               <EditModalTitle
                 filePath={filePath}
@@ -1012,6 +1013,7 @@ function EditCollapsedPreview({
           </div>
           {isModalOpen && (
             <Modal
+              backCloses
               title={
                 <EditModalTitle filePath={filePath} displayText={fileName} />
               }
@@ -1074,6 +1076,7 @@ function EditCollapsedPreview({
       </div>
       {isModalOpen && (
         <Modal
+          backCloses
           title={
             <EditModalTitle
               filePath={filePath}
@@ -1179,6 +1182,7 @@ function EditInteractiveSummary({
         </button>
         {showModal && (
           <Modal
+            backCloses
             title={
               <EditModalTitle filePath={filePath} displayText={fileName} />
             }
@@ -1231,6 +1235,7 @@ function EditInteractiveSummary({
       </button>
       {showModal && (
         <Modal
+          backCloses
           title={
             <EditModalTitle
               filePath={filePath}
@@ -1421,6 +1426,7 @@ function EditToolResult({
         </div>
         {showModal && hasProposedDiff && inputWithAugment && (
           <Modal
+            backCloses
             title={
               <EditModalTitle
                 filePath={filePath}
@@ -1521,6 +1527,7 @@ function EditToolResult({
       </div>
       {showModal && (
         <Modal
+          backCloses
           title={
             <EditModalTitle
               filePath={result.filePath}

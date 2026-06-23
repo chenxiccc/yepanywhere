@@ -16316,9 +16316,14 @@ body:has(.session-page)
   border: none;
   color: var(--color-accent);
   cursor: pointer;
-  font-size: var(--font-size-sm);
-  padding: 0;
+  padding: 2px;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  min-width: 28px;
+  min-height: 28px;
 }
 
 .source-file-mobile-title {

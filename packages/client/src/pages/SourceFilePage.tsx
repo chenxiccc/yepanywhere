@@ -2,6 +2,7 @@ import type { GitCommitDetail as GitCommitDetailType, GitFileChange } from "@yep
 import {
   useCallback,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -30,6 +31,18 @@ type MobileView =
   | { type: "commit"; payload: { commitHash: string } }
   | { type: "commitDiff"; payload: { commitHash: string; filePath: string } }
   | null;
+
+/**
+ * 返回箭头图标 `<`，复用 PageHeader 同款 SVG
+ * Back chevron icon — same SVG as PageHeader's BackIcon.
+ */
+function BackChevron() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <polyline points="15 18 9 12 15 6" />
+    </svg>
+  );
+}
 
 /**
  * 源码/文件管理页面
@@ -89,6 +102,9 @@ export function SourceFilePage() {
 
   // 手机端：内容视图 / Mobile: content view
   const [mobileView, setMobileView] = useState<MobileView>(null);
+  // 用 ref 追踪 mobileView，供 popstate handler 读取当前值 / Ref to track mobileView for popstate handler
+  const mobileViewRef = useRef(mobileView);
+  mobileViewRef.current = mobileView;
 
   // 文件树刷新键（分支切换时递增）/ File tree refresh key (incremented on branch switch)
   const [fileTreeRefreshKey, setFileTreeRefreshKey] = useState(0);
@@ -115,6 +131,10 @@ export function SourceFilePage() {
     } else if (commitMatch) {
       const commitHash = decodeURIComponent(commitMatch[1]!);
       setMobileView({ type: "commit", payload: { commitHash } });
+    } else {
+      // 列表视图：标记当前条目为 list，防止 swipe back 整体回退页面
+      // List view: mark current entry as list so swipe back stops here
+      window.history.replaceState({ type: "list" }, "", window.location.pathname + window.location.search);
     }
   }, [isMobile]);
 
@@ -144,9 +164,22 @@ export function SourceFilePage() {
           setMobileView({ type: "file", payload: { filePath: state.path as string } });
           return;
         }
+        // 到达列表条目：如果当前有子视图，阻止继续回退并显示列表
+        // Reached list entry: if currently in a sub-view, prevent further
+        // back navigation and show the list instead.
+        if (state.type === "list") {
+          if (mobileViewRef.current) {
+            window.history.pushState({ type: "list" }, "", window.location.pathname + window.location.search);
+            setMobileView(null);
+          }
+          return;
+        }
       }
       // 没有 state 时回退到列表 / No state means go back to list
-      setMobileView(null);
+      if (mobileViewRef.current) {
+        window.history.pushState({ type: "list" }, "", window.location.pathname + window.location.search);
+        setMobileView(null);
+      }
     };
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
@@ -234,7 +267,7 @@ export function SourceFilePage() {
       window.history.back();
     } else {
       setMobileView(null);
-      window.history.replaceState(null, "", window.location.pathname);
+      window.history.replaceState({ type: "list" }, "", window.location.pathname + window.location.search);
     }
   }, []);
 
@@ -278,8 +311,10 @@ export function SourceFilePage() {
                 type="button"
                 className="source-file-mobile-back"
                 onClick={handleMobileBack}
+                aria-label={t("sourceFileBack" as never)}
+                title={t("sourceFileBack" as never)}
               >
-                ← {t("sourceFileBack" as never)}
+                <BackChevron />
               </button>
               <span className="source-file-mobile-title">
                 {mobileCommitDetail?.message ?? "..."}
@@ -314,8 +349,10 @@ export function SourceFilePage() {
                 type="button"
                 className="source-file-mobile-back"
                 onClick={handleMobileBack}
+                aria-label={t("sourceFileBack" as never)}
+                title={t("sourceFileBack" as never)}
               >
-                ← {t("sourceFileBack" as never)}
+                <BackChevron />
               </button>
               <span className="source-file-mobile-title">{title}</span>
             </div>
@@ -350,8 +387,10 @@ export function SourceFilePage() {
               type="button"
               className="source-file-mobile-back"
               onClick={handleMobileBack}
+              aria-label={t("sourceFileBack" as never)}
+              title={t("sourceFileBack" as never)}
             >
-              ← {t("sourceFileBack" as never)}
+              <BackChevron />
             </button>
             <span className="source-file-mobile-title">{title}</span>
           </div>
