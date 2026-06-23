@@ -6,6 +6,7 @@ import {
   useState,
 } from "react";
 import { useI18n } from "../i18n";
+import { writeClipboardText } from "../lib/clipboard";
 
 interface BranchSelectorProps {
   projectId: string;
@@ -38,6 +39,8 @@ export function BranchSelector({
   const [newBranchName, setNewBranchName] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [copiedBranch, setCopiedBranch] = useState<string | null>(null);
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const createInputRef = useRef<HTMLInputElement>(null);
@@ -86,6 +89,13 @@ export function BranchSelector({
       createInputRef.current.focus();
     }
   }, [showCreateInput]);
+
+  // 清理复制反馈定时器 / Cleanup copy feedback timer
+  useEffect(() => {
+    return () => {
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+    };
+  }, []);
 
   // 过滤分支 / Filter branches
   const filterBranches = useCallback(
@@ -142,7 +152,15 @@ export function BranchSelector({
   const handleCopyBranch = useCallback(
     (e: React.MouseEvent, branch: string) => {
       e.stopPropagation();
-      navigator.clipboard.writeText(branch).catch(() => {});
+      writeClipboardText(branch).then((success) => {
+        if (success) {
+          if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+          setCopiedBranch(branch);
+          copiedTimerRef.current = setTimeout(() => {
+            setCopiedBranch(null);
+          }, 1800);
+        }
+      });
     },
     [],
   );
@@ -206,11 +224,11 @@ export function BranchSelector({
                       <span className="branch-dropdown-check">✓</span>
                     )}
                     <span
-                      className="branch-dropdown-copy"
+                      className={`branch-dropdown-copy${copiedBranch === branch ? " copied" : ""}`}
                       title="Copy branch name"
                       onClick={(e) => handleCopyBranch(e, branch)}
                     >
-                      <CopyIcon />
+                      {copiedBranch === branch ? <CheckIcon /> : <CopyIcon />}
                     </span>
                   </span>
                 </button>
@@ -266,11 +284,11 @@ export function BranchSelector({
                 >
                   <span className="branch-dropdown-item-name">{branch}</span>
                   <span
-                    className="branch-dropdown-copy"
+                    className={`branch-dropdown-copy${copiedBranch === branch ? " copied" : ""}`}
                     title="Copy branch name"
                     onClick={(e) => handleCopyBranch(e, branch)}
                   >
-                    <CopyIcon />
+                    {copiedBranch === branch ? <CheckIcon /> : <CopyIcon />}
                   </span>
                 </button>
               ))}
@@ -344,6 +362,25 @@ function CopyIcon() {
     >
       <rect x="5" y="5" width="9" height="9" rx="1.5" />
       <path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2H3.5A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5" />
+    </svg>
+  );
+}
+
+/** 复制成功图标 / Check icon for copy feedback */
+function CheckIcon() {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M13.5 4.5 6.5 11.5 2.5 7.5" />
     </svg>
   );
 }

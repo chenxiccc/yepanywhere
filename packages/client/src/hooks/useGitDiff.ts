@@ -1,14 +1,6 @@
-import type { GitFileChange } from "@yep-anywhere/shared";
+import type { GitFileChange, PatchHunk } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
-
-interface PatchHunk {
-  oldStart: number;
-  oldLines: number;
-  newStart: number;
-  newLines: number;
-  lines: string[];
-}
 
 interface GitDiffResult {
   diffHtml: string;
@@ -21,6 +13,13 @@ interface UseGitDiffOptions {
   file: GitFileChange;
   /** 可选：历史提交的 hash，用于获取 commit-based diff / Optional commit hash for commit-based diff */
   commitHash?: string;
+  /**
+   * 是否启用 diff 加载，默认 true。
+   * 设为 false 时跳过 API 请求（例如未选中文件时）。
+   * Whether to enable diff loading, default true.
+   * Set to false to skip API requests (e.g. when no file is selected).
+   */
+  enabled?: boolean;
 }
 
 /**
@@ -31,7 +30,7 @@ interface UseGitDiffOptions {
  * 被 GitDiffModal、GitDiffPanel 和 GitCommitDetail 共享使用
  * Used by GitDiffModal, GitDiffPanel, and GitCommitDetail.
  */
-export function useGitDiff({ projectId, file, commitHash }: UseGitDiffOptions) {
+export function useGitDiff({ projectId, file, commitHash, enabled = true }: UseGitDiffOptions) {
   const [diffResult, setDiffResult] = useState<GitDiffResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -50,6 +49,12 @@ export function useGitDiff({ projectId, file, commitHash }: UseGitDiffOptions) {
 
   // 加载 diff / Load diff
   useEffect(() => {
+    if (!enabled || !file.path) {
+      setLoading(false);
+      setDiffResult(null);
+      setError(null);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     setError(null);

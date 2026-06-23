@@ -1,4 +1,4 @@
-import type { GitCommitDetail, GitFileChange } from "@yep-anywhere/shared";
+import type { GitCommitDetail as GitCommitDetailType, GitFileChange } from "@yep-anywhere/shared";
 import { useCallback, useMemo, useState } from "react";
 import { useI18n } from "../i18n";
 import { useGitDiff } from "../hooks/useGitDiff";
@@ -7,7 +7,7 @@ import { CopyTextButton } from "./ui/CopyTextButton";
 
 interface GitCommitDetailProps {
   projectId: string;
-  detail: GitCommitDetail;
+  detail: GitCommitDetailType;
   /** 手机端模式：仅显示文件列表，不显示 diff / Mobile mode: only show file list, no diff */
   mobile?: boolean;
   /** 手机端文件点击回调 / Mobile file click callback */
@@ -38,6 +38,7 @@ export function GitCommitDetail({
     projectId,
     file: selectedFile ?? { path: "", staged: false, status: "M", linesAdded: null, linesDeleted: null },
     commitHash: detail.hash,
+    enabled: selectedFile !== null,
   });
 
   const handleFileClick = useCallback(

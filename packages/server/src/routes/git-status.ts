@@ -347,7 +347,7 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
     try {
       const { stdout } = await runGit(project.path, [
         "log",
-        `--format=%H|%s|%an|%aI`,
+        `--format=%H%x00%s%x00%an%x00%aI`,
         `--max-count=${limit}`,
         `--skip=${skip}`,
       ]);
@@ -356,7 +356,7 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
         .split("\n")
         .filter(Boolean)
         .map((line) => {
-          const [hash, message, author, date] = line.split("|");
+          const [hash, message, author, date] = line.split("\0");
           return { hash: hash ?? "", message: message ?? "", author: author ?? "", date: date ?? "" };
         });
 
@@ -398,7 +398,7 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
         runGit(project.path, [
           "show",
           "--name-status",
-          "--format=%H|%s|%an|%aI",
+          "--format=%H%x00%s%x00%an%x00%aI",
           hash,
         ]).catch(() => ({ stdout: "", stderr: "" })),
         runGit(project.path, [
@@ -660,9 +660,9 @@ function parseCommitDetail(
   const numstat = parseNumstat(numstatOutput);
   const lines = showOutput.split("\n").filter((l) => l.length > 0);
 
-  // 第一行是 format 行: hash|subject|author|date
+  // 第一行是 format 行: hash\0subject\0author\0date
   const headerLine = lines[0] ?? "";
-  const headerParts = headerLine.split("|");
+  const headerParts = headerLine.split("\0");
   const hash = headerParts[0] ?? "";
   const message = headerParts[1] ?? "";
   const author = headerParts[2] ?? "";

@@ -227,8 +227,15 @@ export function SourceFilePage() {
   const mobileCommitDetail = useMobileCommitDetail(projectId, mobileView);
 
   // 手机端返回 / Mobile back
+  // 如果通过 pushState 导航进来（有 state），则 back 回列表；否则直接清空视图
+  // If navigated via pushState (has state), go back to list; otherwise just clear the view
   const handleMobileBack = useCallback(() => {
-    window.history.back();
+    if (window.history.state?.type) {
+      window.history.back();
+    } else {
+      setMobileView(null);
+      window.history.replaceState(null, "", window.location.pathname);
+    }
   }, []);
 
   // 分支切换后 / After branch change

@@ -159,20 +159,23 @@ export function GitHistoryPanel({
   );
 }
 
-/** 格式化相对时间 / Format relative time */
+/** 格式化相对时间 / Format relative time using Intl.RelativeTimeFormat */
 function formatRelativeTime(isoDate: string): string {
   const date = new Date(isoDate);
   const now = Date.now();
-  const diffMs = now - date.getTime();
-  const diffSec = Math.floor(diffMs / 1000);
-  const diffMin = Math.floor(diffSec / 60);
-  const diffHour = Math.floor(diffMin / 60);
-  const diffDay = Math.floor(diffHour / 24);
+  const diffMs = date.getTime() - now;
+  const diffSec = Math.round(diffMs / 1000);
+  const diffMin = Math.round(diffSec / 60);
+  const diffHour = Math.round(diffMin / 60);
+  const diffDay = Math.round(diffHour / 24);
+  const diffMonth = Math.round(diffDay / 30);
+  const diffYear = Math.round(diffDay / 365);
 
-  if (diffSec < 60) return "just now";
-  if (diffMin < 60) return `${diffMin}m ago`;
-  if (diffHour < 24) return `${diffHour}h ago`;
-  if (diffDay < 30) return `${diffDay}d ago`;
-  if (diffDay < 365) return `${Math.floor(diffDay / 30)}mo ago`;
-  return `${Math.floor(diffDay / 365)}y ago`;
+  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+  if (Math.abs(diffSec) < 60) return rtf.format(diffSec, "second");
+  if (Math.abs(diffMin) < 60) return rtf.format(diffMin, "minute");
+  if (Math.abs(diffHour) < 24) return rtf.format(diffHour, "hour");
+  if (Math.abs(diffDay) < 30) return rtf.format(diffDay, "day");
+  if (Math.abs(diffMonth) < 12) return rtf.format(diffMonth, "month");
+  return rtf.format(diffYear, "year");
 }
