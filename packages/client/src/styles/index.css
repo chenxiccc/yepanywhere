@@ -15585,6 +15585,11 @@ body:has(.session-page)
   font-size: var(--font-size-xs);
 }
 
+.file-tree-symlink-icon {
+  color: var(--color-text-muted);
+  font-size: 14px;
+}
+
 .file-tree-git-badge {
   flex-shrink: 0;
   font-size: var(--font-size-xs);

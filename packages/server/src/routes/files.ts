@@ -884,6 +884,8 @@ async function resolveFilePath(
   }
 
   const realResolved = await realpath(resolved).catch(() => null);
+  // 如果 realpath 失败（通常是软链接目标不存在），回退到原始路径
+  // If realpath fails (usually broken symlink), fall back to the original path
   if (!realResolved) {
     return resolved;
   }
@@ -891,8 +893,11 @@ async function resolveFilePath(
   // The lexical check above blocks ordinary traversal. This second check is
   // the security boundary for symlinks inside a project; keeping it here keeps
   // the file API simple while allowing normal in-project symlinks.
+  // 如果 realpath 解析到项目外，回退到原始路径让 OS 跟随链接
+  // If realpath resolves outside the project, fall back to the original path
+  // and let the OS follow the symlink when reading.
   if (!isPathInsideDirectory(realResolved, realRoot)) {
-    return null;
+    return resolved;
   }
 
   return realResolved;

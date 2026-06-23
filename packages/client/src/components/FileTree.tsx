@@ -347,7 +347,7 @@ const FileTreeItem = memo(function FileTreeItem({
         className={`file-tree-item ${isSelected ? "selected" : ""}`}
         style={{ paddingLeft: `${depth * 16 + 4}px` }}
         onClick={handleClick}
-        title={node.path}
+        title={node.isSymlink && node.symlinkTarget ? `${node.path} → ${node.symlinkTarget}` : node.path}
       >
         <div className="file-tree-row">
           {/* 展开/折叠箭头 / Expand/collapse chevron */}
@@ -386,7 +386,11 @@ const FileTreeItem = memo(function FileTreeItem({
           {/* 元信息 / Meta info */}
           {!node.isDirectory && (
             <span className="file-tree-meta">
-              {node.size !== undefined && formatFileSize(node.size)}
+              {node.isSymlink ? (
+                <span className="file-tree-symlink-icon" title={node.symlinkTarget ? `${node.path} → ${node.symlinkTarget}` : node.path}>↗</span>
+              ) : (
+                node.size !== undefined && formatFileSize(node.size)
+              )}
             </span>
           )}
         </div>
