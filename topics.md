@@ -43,3 +43,4 @@
 - prompt-cache-keepalive - Open-client-only provider prompt-cache warming and cost/activity bounds.
 - session-list-display - Session list/sidebar badges, model glyph mapping, and the hover tooltip card.
 - stream-durable-id-dedup - Stream-vs-durable message id alignment and the approx-dedup backstop (codex/opencode steer double-render).
+- mobile-modal-back-navigation - Mobile swipe-back closes file/diff modal instead of navigating away from the page.
