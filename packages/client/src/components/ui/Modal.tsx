@@ -1,6 +1,7 @@
 import {
   type CSSProperties,
   type ReactNode,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -26,6 +27,12 @@ interface ModalProps {
   children: ReactNode;
   onClose: () => void;
   anchorRect?: ModalAnchorRect | null;
+  /**
+   * When true, the browser's back gesture (swipe back on mobile) closes the
+   * modal instead of navigating away from the page. Opens by pushing a
+   * history entry and closes on popstate.
+   */
+  backCloses?: boolean;
 }
 
 /**
@@ -33,16 +40,58 @@ interface ModalProps {
  * Renders via portal to avoid event bubbling issues.
  * Closes on Escape key or clicking the overlay.
  */
-export function Modal({ title, children, onClose, anchorRect }: ModalProps) {
+export function Modal({ title, children, onClose, anchorRect, backCloses }: ModalProps) {
   const { t } = useI18n();
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
   const overlayPointerStartedOnOverlayRef = useRef(false);
+  const backClosesPushedRef = useRef(false);
+  const closingViaPopstateRef = useRef(false);
   const isAnchored =
     !!anchorRect &&
     typeof window !== "undefined" &&
     window.innerWidth > ANCHORED_MODAL_MIN_VIEWPORT_WIDTH_PX;
   const [anchorStyle, setAnchorStyle] = useState<CSSProperties | null>(null);
+
+  // Cache onClose in a ref so the pushState effect doesn't re-run on
+  // reference change (e.g. inline arrow functions on every render).
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  // Back gesture closes modal: pushes a history entry on open; popstate
+  // closes the modal instead of navigating away from the page.
+  useEffect(() => {
+    if (!backCloses) return;
+    window.history.pushState({ __modal: true }, "");
+    backClosesPushedRef.current = true;
+
+    const handlePopState = () => {
+      // popstate event.state is the entry we navigated TO, not the one we
+      // left. Check our own ref instead to know if we pushed an entry.
+      if (backClosesPushedRef.current) {
+        closingViaPopstateRef.current = true;
+        backClosesPushedRef.current = false;
+        onCloseRef.current();
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, [backCloses]);
+
+  // Wrapped close: removes the pushed history entry on manual close, then
+  // calls the parent onClose.
+  const close = useCallback(() => {
+    if (backCloses && backClosesPushedRef.current) {
+      backClosesPushedRef.current = false;
+      if (!closingViaPopstateRef.current) {
+        window.history.back();
+      }
+      closingViaPopstateRef.current = false;
+    }
+    onCloseRef.current();
+  }, [backCloses]);
 
   // Close on Escape key
   useEffect(() => {
@@ -50,12 +99,12 @@ export function Modal({ title, children, onClose, anchorRect }: ModalProps) {
       if (e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();
-        onClose();
+        close();
       }
     };
     document.addEventListener("keydown", handleKeyDown, true);
     return () => document.removeEventListener("keydown", handleKeyDown, true);
-  }, [onClose]);
+  }, [close]);
 
   // Prevent body scroll when modal is open
   useEffect(() => {
@@ -130,7 +179,7 @@ export function Modal({ title, children, onClose, anchorRect }: ModalProps) {
     ) {
       e.preventDefault();
       e.stopPropagation();
-      onClose();
+      close();
     }
     overlayPointerStartedOnOverlayRef.current = false;
   };
@@ -172,7 +221,7 @@ export function Modal({ title, children, onClose, anchorRect }: ModalProps) {
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              onClose();
+              close();
             }}
             aria-label={t("modalClose")}
           >

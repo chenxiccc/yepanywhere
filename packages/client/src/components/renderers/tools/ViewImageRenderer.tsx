@@ -94,7 +94,7 @@ function ViewImageClickable({
         }}
       />
       {showModal && (
-        <Modal title={fileName} onClose={() => setShowModal(false)}>
+        <Modal title={fileName} onClose={() => setShowModal(false)} backCloses>
           <ViewImageModalContent path={path} alt={fileName} />
         </Modal>
       )}
