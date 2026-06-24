@@ -1,5 +1,5 @@
 import { fromUrlProjectId, isUrlProjectId } from "@yep-anywhere/shared";
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   buildPublicShareFileHref,
@@ -234,9 +234,48 @@ export function FileViewerModal({
   openInNewTabUrl?: string | null;
   onClose: () => void;
 }) {
+  // Back gesture closes modal: pushes a history entry on open; popstate
+  // closes the modal instead of navigating away from the session.
+  // Uses refs for onClose to avoid stale closure issues.
+  const pushedRef = useRef(false);
+  const closingViaPopstateRef = useRef(false);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    window.history.pushState({ __fileViewer: true }, "");
+    pushedRef.current = true;
+    const handlePopState = () => {
+      // popstate event.state is the entry we navigated TO, not the one we
+      // left. Check our own ref instead to know if we pushed an entry.
+      if (pushedRef.current) {
+        closingViaPopstateRef.current = true;
+        pushedRef.current = false;
+        onCloseRef.current();
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, []);
+
+  // Wrapped close: removes the pushed history entry on manual close, then
+  // calls the parent onClose.
+  const close = useCallback(() => {
+    if (pushedRef.current) {
+      pushedRef.current = false;
+      if (!closingViaPopstateRef.current) {
+        window.history.back();
+      }
+      closingViaPopstateRef.current = false;
+    }
+    onCloseRef.current();
+  }, []);
+
   const handleOverlayClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {
-      onClose();
+      close();
     }
   };
 
@@ -246,36 +285,12 @@ export function FileViewerModal({
       if (e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();
-        onClose();
+        close();
       }
     };
     document.addEventListener("keydown", handleKeyDown, true);
     return () => document.removeEventListener("keydown", handleKeyDown, true);
-  }, [onClose]);
-
-  // Make the back gesture (mobile edge-swipe or browser Back) close this
-  // pane instead of navigating the underlying session route back to the
-  // session list. Push a history entry on open; popping it (via Back) fires
-  // popstate, which we translate into onClose. The pushed entry keeps the
-  // same URL, so the router does not actually change routes. Closing via the
-  // X or Escape pops our own entry so history does not keep a dead state.
-  useEffect(() => {
-    const priorState =
-      typeof window !== "undefined" ? window.history.state : null;
-    window.history.pushState({ ...priorState, __fileViewerModal: true }, "");
-    let closedByPop = false;
-    const handlePopState = () => {
-      closedByPop = true;
-      onClose();
-    };
-    window.addEventListener("popstate", handlePopState);
-    return () => {
-      window.removeEventListener("popstate", handlePopState);
-      if (!closedByPop) {
-        window.history.back();
-      }
-    };
-  }, [onClose]);
+  }, [close]);
 
   // Prevent body scroll when modal is open
   useEffect(() => {
@@ -309,7 +324,7 @@ export function FileViewerModal({
           viewMode={viewMode}
           source={source}
           openInNewTabUrl={openInNewTabUrl}
-          onClose={onClose}
+          onClose={close}
         />
       </dialog>
     </div>
