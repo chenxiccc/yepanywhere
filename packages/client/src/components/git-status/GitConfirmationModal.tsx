@@ -28,7 +28,7 @@ export function GitConfirmationModal({
   onConfirm: () => void;
 }) {
   return (
-    <Modal title={title} onClose={onClose}>
+    <Modal title={title} onClose={onClose} backCloses>
       <div className="git-undo-confirm">
         <div className="git-undo-confirm-body">
           <span className="git-undo-confirm-icon" aria-hidden="true">

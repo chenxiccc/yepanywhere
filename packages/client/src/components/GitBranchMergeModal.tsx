@@ -185,6 +185,7 @@ export function GitBranchMergeModal({
     <Modal
       title={t("gitStatusMergeDialogTitle", { branch: currentBranch })}
       onClose={onClose}
+      backCloses
     >
       <div className="git-branch-merge-modal">
         <div className="git-branch-merge-filter">
