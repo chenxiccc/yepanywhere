@@ -63,6 +63,7 @@ export interface SessionMenuProps {
 }
 
 export function SessionMenu({
+  projectId,
   isStarred,
   isArchived,
   hasUnread,
