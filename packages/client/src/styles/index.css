@@ -6167,7 +6167,6 @@ a.sidebar-nav-item {
     color 0.15s;
   flex-shrink: 0;
   box-sizing: border-box;
-    color 0.15s;
 }
 
 .voice-input-button:hover {
@@ -7743,7 +7742,6 @@ a.sidebar-nav-item {
     background 0.15s,
     border-color 0.15s,
     color 0.15s;
-    background 0.15s;
   min-width: 90px;
 }
 
@@ -17883,6 +17881,8 @@ body:has(.session-page)
 
   .public-share-header-actions {
     gap: var(--space-1);
+  }
+}
 @media (min-width: 901px) {
   .git-status-page-scroll {
     overflow: hidden;
