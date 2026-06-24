@@ -9,6 +9,7 @@ import type {
   DeviceInfo,
   EnrichedRecentEntry,
   FileContentResponse,
+  FileListResponse,
   FreezePublicSessionLiveSharesResponse,
   GitBranchInfo,
   GitCreateBranchRequest,
@@ -1279,6 +1280,17 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ filePath, oldString, newString, originalFile }),
     }),
+
+  // File listing API
+  /** 浅层目录列表，可递归搜索 / Shallow directory listing, with optional recursive search */
+  listDirectory: (projectId: string, path?: string, search?: string) => {
+    const params = new URLSearchParams();
+    params.set("path", path ?? "");
+    if (search) params.set("search", search);
+    return fetchJSON<FileListResponse>(
+      `/projects/${projectId}/files/list?${params.toString()}`,
+    );
+  },
 
   // Git status API
   getGitStatus: (projectId: string) =>

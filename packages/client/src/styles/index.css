@@ -15565,9 +15565,13 @@ body:has(.session-page)
 
 .git-view-tabs {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   border-bottom: 1px solid var(--border-color);
   background: var(--bg-secondary);
+}
+
+.git-view-tabs-three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .git-view-tabs-two {
@@ -15807,6 +15811,122 @@ body:has(.session-page)
   min-height: 0;
   border: none;
   border-radius: 0;
+}
+
+/* ===== 文件树 / File tree ===== */
+
+.file-tree {
+  padding: var(--space-1) 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  flex: 1;
+  min-height: 0;
+}
+
+.file-tree-item-wrapper {
+  /* wrapper for each tree node and its children */
+}
+
+.file-tree-item {
+  cursor: pointer;
+  user-select: none;
+}
+
+.file-tree-item:hover {
+  background: var(--bg-hover);
+}
+
+.file-tree-item.selected {
+  background: color-mix(in srgb, var(--app-yep-green) 12%, var(--bg-primary));
+  box-shadow: inset 3px 0 0 var(--app-yep-green);
+}
+
+.file-tree-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  padding-right: 10px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.file-tree-chevron {
+  flex-shrink: 0;
+  width: 12px;
+  font-size: 8px;
+  color: var(--text-secondary);
+  transition: transform 0.15s;
+  display: inline-block;
+  text-align: center;
+}
+
+.file-tree-chevron.expanded {
+  transform: rotate(90deg);
+}
+
+.file-tree-chevron-placeholder {
+  width: 12px;
+  flex-shrink: 0;
+}
+
+.file-tree-icon {
+  flex-shrink: 0;
+  font-size: 14px;
+}
+
+.file-tree-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-tree-meta {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+}
+
+.file-tree-symlink-icon {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.file-tree-connector {
+  border-left: 1px solid var(--border-color);
+  margin-left: 10px;
+}
+
+.file-tree-loading {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  padding: 2px var(--space-2);
+}
+
+.file-tree-error {
+  color: var(--error-color);
+  font-size: 0.8rem;
+  padding: 2px var(--space-2);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.file-tree-retry-btn {
+  background: none;
+  border: none;
+  color: var(--app-yep-green);
+  cursor: pointer;
+  font-size: 0.7rem;
+  margin-left: var(--space-1);
+  text-decoration: underline;
+}
+
+.file-tree-empty {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  padding: 2px var(--space-2);
 }
 
 .git-desktop-file-groups {
@@ -17228,6 +17348,12 @@ body:has(.session-page)
   overflow: visible;
 }
 
+/* 独立搜索框（无右侧操作按钮）/ Standalone filter field (no action button next to it) */
+.git-file-filter-standalone .git-filter-field {
+  border-right: 1px solid var(--border-input);
+  border-radius: var(--radius-md);
+}
+
 .git-file-filter .git-filter-field:focus-within {
   z-index: 1;
 }
@@ -17239,6 +17365,11 @@ body:has(.session-page)
   border: 1px solid var(--app-yep-green);
   border-radius: var(--radius-md) 0 0 var(--radius-md);
   pointer-events: none;
+}
+
+.git-file-filter-standalone .git-filter-field:focus-within::after {
+  inset: -1px;
+  border-radius: var(--radius-md);
 }
 
 .git-filter-icon {

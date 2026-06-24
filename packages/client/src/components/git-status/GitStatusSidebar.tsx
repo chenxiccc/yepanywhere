@@ -5,6 +5,8 @@ import type {
   GitStatusInfo,
 } from "@yep-anywhere/shared";
 import { useEffect, useRef } from "react";
+import { FileTree } from "../FileTree";
+import { FileTreeSearch } from "../FileTreeSearch";
 import { Button } from "../ui/Button";
 import { GitFileActionsMenu, GitFileSection } from "./GitFileList";
 import { ClearIcon, SearchIcon } from "./GitStatusIcons";
@@ -17,6 +19,7 @@ type Translate = (
 
 export function GitStatusSidebar({
   status,
+  projectId,
   activeView,
   commitMessage,
   fileFilter,
@@ -53,9 +56,16 @@ export function GitStatusSidebar({
   onStashSelect,
   onToggleCommitFile,
   onSetCommitFiles,
+  /* 文件 tab 相关 / Files tab related */
+  fileTreeSearchQuery,
+  fileTreeSelectedPath,
+  onFileTreeSearchChange,
+  onFileTreeFileClick,
+  fileTreeRefreshKey,
 }: {
   status: GitStatusInfo;
-  activeView: "changes" | "stashed" | "history";
+  projectId: string;
+  activeView: "files" | "changes" | "stashed" | "history";
   commitMessage: string;
   fileFilter: string;
   fileActionsMenuOpen: boolean;
@@ -80,7 +90,7 @@ export function GitStatusSidebar({
   onUndo: () => void;
   onFileFilterChange: (value: string) => void;
   onClearFileFilter: () => void;
-  onViewChange: (view: "changes" | "stashed" | "history") => void;
+  onViewChange: (view: "files" | "changes" | "stashed" | "history") => void;
   onToggleFileActionsMenu: () => void;
   onCloseFileActionsMenu: () => void;
   onDiscardSelected: () => void;
@@ -91,6 +101,12 @@ export function GitStatusSidebar({
   onStashSelect: (stashRef: string) => void;
   onToggleCommitFile: (file: GitFileChange) => void;
   onSetCommitFiles: (files: GitFileChange[], selected: boolean) => void;
+  /* 文件 tab 相关 / Files tab related */
+  fileTreeSearchQuery: string;
+  fileTreeSelectedPath: string | null;
+  onFileTreeSearchChange: (value: string) => void;
+  onFileTreeFileClick: (filePath: string) => void;
+  fileTreeRefreshKey: number;
 }) {
   const latestLocalCommit = status.latestLocalCommit;
   const showStashedTab = stashes.length > 0;
@@ -127,10 +143,19 @@ export function GitStatusSidebar({
     <aside className="git-desktop-sidebar">
       <div className="git-desktop-card git-sidebar-primary-card">
         <div
-          className={`git-view-tabs ${showStashedTab ? "" : "git-view-tabs-two"}`}
+          className={`git-view-tabs ${showStashedTab ? "" : "git-view-tabs-three"}`}
           role="tablist"
           aria-label={t("gitStatusSummary")}
         >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeView === "files"}
+            className={`git-view-tab ${activeView === "files" ? "is-active" : ""}`}
+            onClick={() => onViewChange("files")}
+          >
+            {t("gitStatusFiles")}
+          </button>
           <button
             type="button"
             role="tab"
@@ -162,7 +187,26 @@ export function GitStatusSidebar({
           </button>
         </div>
 
-        {activeView === "changes" ? (
+        {activeView === "files" ? (
+          <div className="git-files-card">
+            <div className="git-file-filter git-file-filter-standalone">
+              <FileTreeSearch
+                value={fileTreeSearchQuery}
+                onChange={onFileTreeSearchChange}
+                placeholder={t("gitStatusFileSearchPlaceholder")}
+                clearLabel={t("gitStatusFileTreeClearSearch")}
+              />
+            </div>
+            <FileTree
+              projectId={projectId}
+              searchQuery={fileTreeSearchQuery}
+              selectedPath={fileTreeSelectedPath}
+              onFileClick={onFileTreeFileClick}
+              refreshKey={fileTreeRefreshKey}
+              t={t}
+            />
+          </div>
+        ) : activeView === "changes" ? (
           <div className="git-files-card">
             {status.files.length === 0 ? (
               <div className="git-status-empty">

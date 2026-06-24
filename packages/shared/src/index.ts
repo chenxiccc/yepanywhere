@@ -115,6 +115,8 @@ export type {
   GitMergePreviewResult,
   GitMergeStrategy,
   GitSwitchBranchRequest,
+  FileNode,
+  FileListResponse,
 } from "./git-status.js";
 
 export type {
