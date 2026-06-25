@@ -185,17 +185,20 @@ export function GitBranchSwitcher({
   useEffect(() => {
     if (!isOpen) return;
 
-    filterInputRef.current?.focus();
-
-    const handlePointerDown = (event: MouseEvent) => {
+    // 在捕获阶段处理 pointerdown，阻止后续 click 触发到被点击的元素
+    // Handle pointerdown in capture phase, preventing subsequent click on the underlying element
+    const handlePointerDown = (event: PointerEvent) => {
       const target = event.target;
       if (!(target instanceof Node)) return;
       if (wrapperRef.current?.contains(target)) return;
+      // 阻止后续的 click 事件，避免误触页面元素
+      // Prevent the subsequent click event from firing on the underlying element
+      event.preventDefault();
       onClose();
     };
 
-    document.addEventListener("mousedown", handlePointerDown);
-    return () => document.removeEventListener("mousedown", handlePointerDown);
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () => document.removeEventListener("pointerdown", handlePointerDown, true);
   }, [isOpen, onClose]);
 
   return (
@@ -359,15 +362,18 @@ export function GitSplitActionButton({
   useEffect(() => {
     if (!menuOpen || !hasAlternateAction) return;
 
-    const handlePointerDown = (event: MouseEvent) => {
+    // 在捕获阶段处理 pointerdown，阻止后续 click 触发到被点击的元素
+    // Handle pointerdown in capture phase, preventing subsequent click on the underlying element
+    const handlePointerDown = (event: PointerEvent) => {
       const target = event.target;
       if (!(target instanceof Node)) return;
       if (menuRef.current?.contains(target)) return;
+      event.preventDefault();
       onCloseMenu();
     };
 
-    document.addEventListener("mousedown", handlePointerDown);
-    return () => document.removeEventListener("mousedown", handlePointerDown);
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () => document.removeEventListener("pointerdown", handlePointerDown, true);
   }, [hasAlternateAction, menuOpen, onCloseMenu]);
 
   return (
