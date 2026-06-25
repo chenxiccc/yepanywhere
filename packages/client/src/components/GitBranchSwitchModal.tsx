@@ -24,7 +24,7 @@ export function GitBranchSwitchModal({
   const { t } = useI18n();
 
   return (
-    <Modal title={t("gitStatusBranchSwitchDialogTitle")} onClose={onClose}>
+    <Modal title={t("gitStatusBranchSwitchDialogTitle")} onClose={onClose} backCloses>
       <div className="git-branch-switch-modal">
         <p className="git-branch-switch-copy">
           {t("gitStatusBranchSwitchPrompt", {
