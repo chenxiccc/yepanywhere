@@ -20,6 +20,7 @@ import { GitStatusSidebar } from "../components/git-status/GitStatusSidebar";
 import { GitStatusSummaryBar } from "../components/git-status/GitStatusSummaryBar";
 import { FilePathTitle } from "../components/git-status/utils";
 import { FileViewer } from "../components/FileViewer";
+import { Button } from "../components/ui/Button";
 import { Modal } from "../components/ui/Modal";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useGitStatus } from "../hooks/useGitStatus";
@@ -95,6 +96,7 @@ export function GitStatusPage() {
               <GitStatusContent
                 status={gitStatus}
                 projectId={effectiveProjectId}
+                projectPath={project?.path}
                 refetch={refetch}
                 t={t as never}
               />
@@ -111,11 +113,13 @@ function GitStatusContent({
   projectId,
   refetch,
   t,
+  projectPath,
 }: {
   status: import("@yep-anywhere/shared").GitStatusInfo;
   projectId: string;
   refetch: () => Promise<void>;
   t: (key: string, vars?: Record<string, string | number>) => string;
+  projectPath?: string;
 }) {
   const isNarrowScreen = useMediaQuery("(max-width: 900px)");
   const isMediumScreen = useMediaQuery("(max-width: 1099px)");
@@ -144,6 +148,21 @@ function GitStatusContent({
   const [refreshingActiveView, setRefreshingActiveView] = useState<
     "files" | "changes" | "stashed" | "history" | null
   >(null);
+  /* 文件重命名 / File rename */
+  const [renameFileState, setRenameFileState] = useState<{
+    path: string;
+    name: string;
+  } | null>(null);
+  const [renameFileNewName, setRenameFileNewName] = useState("");
+  const [renameFileBusy, setRenameFileBusy] = useState(false);
+  const [renameFileError, setRenameFileError] = useState<string | null>(null);
+  /* 文件删除 / File delete */
+  const [deleteFileState, setDeleteFileState] = useState<{
+    path: string;
+    name: string;
+    isDirectory: boolean;
+  } | null>(null);
+  const [deleteFileBusy, setDeleteFileBusy] = useState(false);
   const [selectedHistoryCommitHash, setSelectedHistoryCommitHash] = useState<
     string | null
   >(null);
@@ -234,6 +253,56 @@ function GitStatusContent({
       setActiveViewRefreshKey((k) => k + 1);
     }
   }, [activeView, refetch]);
+
+  // 重命名文件 / Rename file
+  const handleRenameFile = useCallback((path: string, name: string) => {
+    setRenameFileState({ path, name });
+    setRenameFileNewName(name);
+    setRenameFileError(null);
+  }, []);
+
+  const handleRenameFileConfirm = useCallback(async () => {
+    if (!renameFileState || !renameFileNewName.trim()) return;
+    setRenameFileBusy(true);
+    setRenameFileError(null);
+    try {
+      await api.renameFile(projectId, renameFileState.path, renameFileNewName.trim());
+      setRenameFileState(null);
+      setFileTreeRefreshKey((k) => k + 1);
+      // 同时刷新 git status 以更新 Changes tab / Also refresh git status to update Changes tab
+      refetch();
+    } catch (err) {
+      setRenameFileError(
+        err instanceof Error ? err.message : t("gitStatusFileContextActionFailed", { action: "rename" }),
+      );
+    } finally {
+      setRenameFileBusy(false);
+    }
+  }, [renameFileState, renameFileNewName, projectId, t]);
+
+  // 删除文件 / Delete file
+  const handleDeleteFile = useCallback(
+    (path: string, name: string, isDirectory: boolean) => {
+      setDeleteFileState({ path, name, isDirectory });
+    },
+    [],
+  );
+
+  const handleDeleteFileConfirm = useCallback(async () => {
+    if (!deleteFileState) return;
+    setDeleteFileBusy(true);
+    try {
+      await api.deleteFile(projectId, deleteFileState.path);
+      setDeleteFileState(null);
+      setFileTreeRefreshKey((k) => k + 1);
+      // 同时刷新 git status 以更新 Changes tab / Also refresh git status to update Changes tab
+      refetch();
+    } catch (err) {
+      console.error("Failed to delete file:", err);
+    } finally {
+      setDeleteFileBusy(false);
+    }
+  }, [deleteFileState, projectId, refetch]);
 
   useEffect(() => {
     let cancelled = false;
@@ -467,6 +536,9 @@ function GitStatusContent({
           /* 刷新相关 / Refresh related */
           refreshingActiveView={refreshingActiveView}
           onRefreshActiveView={handleRefreshActiveView}
+          projectPath={projectPath}
+          onRenameFile={handleRenameFile}
+          onDeleteFile={handleDeleteFile}
         />
 
         {!isNarrowScreen && (
@@ -492,6 +564,7 @@ function GitStatusContent({
                 onFileSelect={(file, historyCommit) =>
                   setHistoryPreviewModal({ file, historyCommit })
                 }
+                projectPath={projectPath}
               />
             ) : activeView === "stashed" ? (
               <GitStashPane
@@ -513,6 +586,7 @@ function GitStatusContent({
                 onFileSelect={(file, stashRef) =>
                   setStashPreviewModal({ file, stashRef })
                 }
+                projectPath={projectPath}
               />
             ) : selectedFile ? (
               <GitPreviewPane file={selectedFile} projectId={projectId} t={t} />
@@ -582,6 +656,7 @@ function GitStatusContent({
               onFileSelect={(file, historyCommit) =>
                 setHistoryPreviewModal({ file, historyCommit })
               }
+              projectPath={projectPath}
             />
           </div>
         </Modal>
@@ -642,6 +717,7 @@ function GitStatusContent({
               onFileSelect={(file, stashRef) =>
                 setStashPreviewModal({ file, stashRef })
               }
+              projectPath={projectPath}
             />
           </div>
         </Modal>
@@ -794,6 +870,86 @@ function GitStatusContent({
             setMergeError(null);
           }}
           onConfirm={handleMergeBranch}
+        />
+      ) : null}
+
+      {/* 重命名文件模态框 / Rename file modal */}
+      {renameFileState ? (
+        <Modal
+          title={t("gitStatusFileContextRenameTitle")}
+          onClose={() => {
+            if (renameFileBusy) return;
+            setRenameFileState(null);
+          }}
+          backCloses
+        >
+          <div className="git-rename-form">
+            <input
+              id="git-rename-input"
+              type="text"
+              className="git-rename-input"
+              value={renameFileNewName}
+              onChange={(e) => {
+                setRenameFileNewName(e.target.value);
+                setRenameFileError(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleRenameFileConfirm();
+              }}
+              placeholder={renameFileState.name}
+            />
+            {renameFileError && (
+              <p className="git-diff-error">{renameFileError}</p>
+            )}
+            <div className="git-rename-actions">
+              <Button
+                variant="primary"
+                onClick={handleRenameFileConfirm}
+                disabled={renameFileBusy || !renameFileNewName.trim()}
+              >
+                {renameFileBusy
+                  ? t("gitStatusLoading")
+                  : t("gitStatusFileContextRenameConfirm")}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => setRenameFileState(null)}
+              >
+                {t("gitStatusFileContextRenameCancel")}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
+
+      {/* 删除文件确认模态框 / Delete file confirmation modal */}
+      {deleteFileState ? (
+        <GitConfirmationModal
+          title={
+            deleteFileState.isDirectory
+              ? t("gitStatusFileContextDeleteDirTitle")
+              : t("gitStatusFileContextDeleteFileTitle")
+          }
+          message={t("gitStatusFileContextDeleteMessage", {
+            name: deleteFileState.name,
+          })}
+          details={
+            <p className="git-discard-confirm-detail">
+              {t("gitStatusFileContextDeleteBody")}
+            </p>
+          }
+          cancelLabel={t("gitStatusFileContextDeleteCancel")}
+          confirmLabel={
+            deleteFileBusy
+              ? t("gitStatusLoading")
+              : t("gitStatusFileContextDeleteConfirm")
+          }
+          busy={deleteFileBusy}
+          onClose={() => {
+            if (deleteFileBusy) return;
+            setDeleteFileState(null);
+          }}
+          onConfirm={handleDeleteFileConfirm}
         />
       ) : null}
     </div>

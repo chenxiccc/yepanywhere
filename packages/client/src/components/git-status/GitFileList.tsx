@@ -1,8 +1,11 @@
 import type { GitFileChange } from "@yep-anywhere/shared";
 import type { ReactNode } from "react";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "../../i18n";
+import { useLongPressContextMenu } from "../../hooks/useLongPressContextMenu";
 import { ChevronDownIcon } from "./GitStatusIcons";
+import { FileContextMenu } from "./FileContextMenu";
+import type { FileContextMenuState } from "./FileContextMenu";
 import { FilePathLabel, fileKey, formatGitStatusBadge } from "./utils";
 
 export function GitFileActionsMenu({
@@ -89,6 +92,9 @@ export function GitFileSection({
   excludedCommitFileKeys,
   onToggleCommitFile,
   onSetCommitFiles,
+  projectPath,
+  onRenameFile,
+  onDeleteFile,
 }: {
   title: ReactNode;
   files: GitFileChange[];
@@ -97,6 +103,12 @@ export function GitFileSection({
   excludedCommitFileKeys: Set<string>;
   onToggleCommitFile: (file: GitFileChange) => void;
   onSetCommitFiles: (files: GitFileChange[], selected: boolean) => void;
+  /** 项目根目录绝对路径 / Project root absolute path */
+  projectPath?: string;
+  /** 重命名文件回调 / Rename file callback */
+  onRenameFile?: (path: string, name: string) => void;
+  /** 删除文件回调 / Delete file callback */
+  onDeleteFile?: (path: string, name: string, isDirectory: boolean) => void;
 }) {
   const { t } = useI18n();
   const selectAllRef = useRef<HTMLInputElement>(null);
@@ -105,6 +117,8 @@ export function GitFileSection({
   ).length;
   const allSelected = selectedCount === files.length;
   const partiallySelected = selectedCount > 0 && selectedCount < files.length;
+  const [contextMenu, setContextMenu] = useState<FileContextMenuState | null>(null);
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
   useEffect(() => {
     if (!selectAllRef.current) return;
@@ -137,10 +151,22 @@ export function GitFileSection({
               commitSelected={!excludedCommitFileKeys.has(fileKey(file))}
               onClick={onFileClick}
               onToggleCommit={onToggleCommitFile}
+              onContextMenu={setContextMenu}
             />
           );
         })}
       </ul>
+
+      {projectPath && (
+        <FileContextMenu
+          menu={contextMenu}
+          projectPath={projectPath}
+          onClose={closeContextMenu}
+          onRename={onRenameFile}
+          onDelete={onDeleteFile}
+          t={t as (key: string, vars?: Record<string, string | number>) => string}
+        />
+      )}
     </div>
   );
 }
@@ -151,18 +177,48 @@ function GitFileItem({
   commitSelected,
   onClick,
   onToggleCommit,
+  onContextMenu,
 }: {
   file: GitFileChange;
   selected: boolean;
   commitSelected: boolean;
   onClick: (file: GitFileChange) => void;
   onToggleCommit: (file: GitFileChange) => void;
+  onContextMenu: (menu: FileContextMenuState) => void;
 }) {
+  const openContextMenu = useCallback(
+    (x: number, y: number) => {
+      onContextMenu({
+        path: file.path,
+        name: file.path.split("/").pop() ?? file.path,
+        isDirectory: false,
+        x,
+        y,
+        showFileOperations: false,
+      });
+    },
+    [file.path, onContextMenu],
+  );
+
+  const {
+    handleContextMenu,
+    handleTouchStart,
+    handleTouchMove,
+    handleTouchEnd,
+    wrapClick,
+  } = useLongPressContextMenu(openContextMenu);
+
+  const handleClick = wrapClick(() => onClick(file));
+
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard nav not needed for file list
     <li
       className={`git-file-item git-file-item-clickable ${selected ? "git-file-item-selected" : ""} ${commitSelected ? "" : "git-file-item-commit-excluded"}`}
-      onClick={() => onClick(file)}
+      onClick={handleClick}
+      onContextMenu={handleContextMenu}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
     >
       <input
         type="checkbox"

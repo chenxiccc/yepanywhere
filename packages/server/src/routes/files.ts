@@ -1,5 +1,5 @@
 import { createReadStream, type Stats } from "node:fs";
-import { readFile, readdir, realpath, stat } from "node:fs/promises";
+import { readFile, readdir, realpath, rename, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import {
   basename,
@@ -1414,6 +1414,110 @@ export function createFilesRoutes(deps: FilesDeps): Hono {
     });
 
     return c.json({ children });
+  });
+
+  /**
+   * DELETE /api/projects/:projectId/files
+   * 删除文件或文件夹 / Delete a file or directory
+   * Body: { path: string }
+   */
+  routes.delete("/:projectId/files", async (c) => {
+    const projectId = c.req.param("projectId");
+    const body = await c.req.json().catch(() => ({}));
+    const { path: relativePath } = body;
+
+    if (!isUrlProjectId(projectId)) {
+      return c.json({ error: "Invalid project ID format" }, 400);
+    }
+    if (!relativePath || typeof relativePath !== "string") {
+      return c.json({ error: "Missing path parameter" }, 400);
+    }
+
+    const project = await deps.scanner.getProject(projectId);
+    if (!project) {
+      return c.json({ error: "Project not found" }, 404);
+    }
+
+    const projectRoot = project.path;
+    const filePath = await resolveFilePath(projectRoot, relativePath, pathPolicy);
+    if (!filePath) {
+      return c.json({ error: "Invalid file path" }, 400);
+    }
+
+    try {
+      const fileStats = await stat(filePath);
+      if (fileStats.isDirectory()) {
+        await rm(filePath, { recursive: true });
+      } else {
+        await rm(filePath);
+      }
+      return c.json({ success: true });
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        return c.json({ error: "File not found" }, 404);
+      }
+      return c.json(
+        { error: (err as Error).message || "Failed to delete file" },
+        500,
+      );
+    }
+  });
+
+  /**
+   * POST /api/projects/:projectId/files/rename
+   * 重命名文件或文件夹 / Rename a file or directory
+   * Body: { path: string, newName: string }
+   */
+  routes.post("/:projectId/files/rename", async (c) => {
+    const projectId = c.req.param("projectId");
+    const body = await c.req.json().catch(() => ({}));
+    const { path: relativePath, newName } = body;
+
+    if (!isUrlProjectId(projectId)) {
+      return c.json({ error: "Invalid project ID format" }, 400);
+    }
+    if (!relativePath || typeof relativePath !== "string") {
+      return c.json({ error: "Missing path parameter" }, 400);
+    }
+    if (!newName || typeof newName !== "string") {
+      return c.json({ error: "Missing newName parameter" }, 400);
+    }
+    // 防止路径分隔符注入 / Prevent path separator injection
+    if (newName.includes("/") || newName.includes("\\")) {
+      return c.json({ error: "newName must be a filename, not a path" }, 400);
+    }
+
+    const project = await deps.scanner.getProject(projectId);
+    if (!project) {
+      return c.json({ error: "Project not found" }, 404);
+    }
+
+    const projectRoot = project.path;
+    const filePath = await resolveFilePath(projectRoot, relativePath, pathPolicy);
+    if (!filePath) {
+      return c.json({ error: "Invalid file path" }, 400);
+    }
+
+    const newPath = resolve(dirname(filePath), newName);
+
+    // 验证新路径仍在项目根目录下 / Verify new path is still within project root
+    const resolvedRoot = resolve(projectRoot);
+    if (!isPathInsideDirectory(newPath, resolvedRoot)) {
+      return c.json({ error: "Invalid new path" }, 400);
+    }
+
+    try {
+      await rename(filePath, newPath);
+      return c.json({ success: true });
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        return c.json({ error: "File not found" }, 404);
+      }
+      return c.json(
+        { error: (err as Error).message || "Failed to rename file" },
+        500,
+      );
+    }
   });
 
   return routes;

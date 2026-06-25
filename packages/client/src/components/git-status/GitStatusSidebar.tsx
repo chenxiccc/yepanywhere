@@ -65,6 +65,10 @@ export function GitStatusSidebar({
   /* 刷新相关 / Refresh related */
   refreshingActiveView,
   onRefreshActiveView,
+  /* 文件右键菜单 / File context menu */
+  projectPath,
+  onRenameFile,
+  onDeleteFile,
 }: {
   status: GitStatusInfo;
   projectId: string;
@@ -113,6 +117,10 @@ export function GitStatusSidebar({
   /* 刷新相关 / Refresh related */
   refreshingActiveView: "files" | "changes" | "stashed" | "history" | null;
   onRefreshActiveView: () => void;
+  /* 文件右键菜单 / File context menu */
+  projectPath?: string;
+  onRenameFile?: (path: string, name: string) => void;
+  onDeleteFile?: (path: string, name: string, isDirectory: boolean) => void;
 }) {
   const latestLocalCommit = status.latestLocalCommit;
   const showStashedTab = stashes.length > 0;
@@ -325,6 +333,9 @@ export function GitStatusSidebar({
               onFileClick={onFileTreeFileClick}
               refreshKey={fileTreeRefreshKey}
               t={t}
+              projectPath={projectPath}
+              onRenameFile={onRenameFile}
+              onDeleteFile={onDeleteFile}
             />
           </div>
         ) : activeView === "changes" ? (
@@ -390,6 +401,9 @@ export function GitStatusSidebar({
                     excludedCommitFileKeys={excludedCommitFileKeys}
                     onToggleCommitFile={onToggleCommitFile}
                     onSetCommitFiles={onSetCommitFiles}
+                    projectPath={projectPath}
+                    onRenameFile={onRenameFile}
+                    onDeleteFile={onDeleteFile}
                   />
                 ) : null}
               </div>
