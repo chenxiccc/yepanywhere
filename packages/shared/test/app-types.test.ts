@@ -45,6 +45,43 @@ describe("getModelContextWindow", () => {
     );
   });
 
+  it("detects DeepSeek V4 series as 1M context", () => {
+    expect(getModelContextWindow("deepseek-v4-pro")).toBe(
+      CLAUDE_EXTENDED_CONTEXT_WINDOW,
+    );
+    expect(getModelContextWindow("deepseek-v4-flash")).toBe(
+      CLAUDE_EXTENDED_CONTEXT_WINDOW,
+    );
+    expect(getModelContextWindow("deepseek v4 flash")).toBe(
+      CLAUDE_EXTENDED_CONTEXT_WINDOW,
+    );
+    expect(getModelContextWindow("DeepSeek-V4-Pro")).toBe(
+      CLAUDE_EXTENDED_CONTEXT_WINDOW,
+    );
+    expect(getModelContextWindow("DEEPSEEKV4PRO")).toBe(
+      CLAUDE_EXTENDED_CONTEXT_WINDOW,
+    );
+    expect(getModelContextWindow("deepseek-v4-pro[1m]")).toBe(
+      CLAUDE_EXTENDED_CONTEXT_WINDOW,
+    );
+  });
+
+  it("detects GLM 5.2 as 1M context", () => {
+    expect(getModelContextWindow("glm-5.2")).toBe(
+      CLAUDE_EXTENDED_CONTEXT_WINDOW,
+    );
+    expect(getModelContextWindow("glm5.2")).toBe(CLAUDE_EXTENDED_CONTEXT_WINDOW);
+    expect(getModelContextWindow("GLM-5-2")).toBe(
+      CLAUDE_EXTENDED_CONTEXT_WINDOW,
+    );
+    expect(getModelContextWindow("glm 5 2")).toBe(
+      CLAUDE_EXTENDED_CONTEXT_WINDOW,
+    );
+    expect(getModelContextWindow("glm-5.2[1m]")).toBe(
+      CLAUDE_EXTENDED_CONTEXT_WINDOW,
+    );
+  });
+
   it("keeps non-codex provider fallback at default", () => {
     expect(getModelContextWindow(undefined, "codex-oss")).toBe(
       DEFAULT_CONTEXT_WINDOW,
