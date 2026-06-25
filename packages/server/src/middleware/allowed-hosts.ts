@@ -70,9 +70,13 @@ export function allowAllHosts(): boolean {
  * Core check: is this hostname allowed?
  *
  * Matches against built-in patterns, the ALLOWED_HOSTS env var, and in-app settings.
- * Does NOT check for wildcard — callers should check allowAllHosts() first.
+ * When wildcard mode is active (allowAllHosts() returns true), all hostnames are allowed.
  */
 export function isAllowedHostname(hostname: string): boolean {
+  // 通配符模式：允许所有主机名
+  // Wildcard mode: allow all hostnames
+  if (allowAllHosts()) return true;
+
   const h = hostname.toLowerCase();
 
   // Localhost variants (IPv4 + IPv6)
