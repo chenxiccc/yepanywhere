@@ -1,15 +1,98 @@
 import type { GitBranchInfo } from "@yep-anywhere/shared";
 import type { ReactNode } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "../../i18n";
 import {
   BranchMenuIcon,
   CheckIcon,
   ChevronDownIcon,
   ClearIcon,
+  CopyIcon,
   SearchIcon,
 } from "./GitStatusIcons";
 import { formatRelativeTime } from "./utils";
+
+/** 复制分支名按钮（下拉菜单内），用 span[role=button] 避免嵌套 button / Copy button inside dropdown, uses span to avoid nested buttons */
+function CopyBranchButton({
+  branchName,
+  copiedBranch,
+  onCopy,
+}: {
+  branchName: string;
+  copiedBranch: string | null;
+  onCopy: (name: string) => void;
+}) {
+  const { t } = useI18n();
+  const copied = copiedBranch === branchName;
+
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      className={`git-history-copy-button git-branch-copy-button ${copied ? "copied" : ""}`}
+      onClick={(e) => {
+        e.stopPropagation();
+        onCopy(branchName);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.stopPropagation();
+          e.preventDefault();
+          onCopy(branchName);
+        }
+      }}
+      title={
+        copied ? t("gitStatusHistoryHashCopied") : t("gitStatusHistoryCopyHash")
+      }
+      aria-label={
+        copied ? t("gitStatusHistoryHashCopied") : t("gitStatusHistoryCopyHash")
+      }
+    >
+      {copied ? <CheckIcon /> : <CopyIcon />}
+    </span>
+  );
+}
+
+/** 当前分支名旁的复制按钮，用 span[role=button] 避免嵌套 button / Copy button for current branch, uses span to avoid nested buttons */
+function CopyBranchNameSpan({
+  branchName,
+  copiedBranch,
+  onCopy,
+}: {
+  branchName: string;
+  copiedBranch: string | null;
+  onCopy: (name: string) => void;
+}) {
+  const { t } = useI18n();
+  const copied = copiedBranch === branchName;
+
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      className={`git-history-copy-button git-branch-name-copy-button ${copied ? "copied" : ""}`}
+      onClick={(e) => {
+        e.stopPropagation();
+        onCopy(branchName);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.stopPropagation();
+          e.preventDefault();
+          onCopy(branchName);
+        }
+      }}
+      title={
+        copied ? t("gitStatusHistoryHashCopied") : t("gitStatusHistoryCopyHash")
+      }
+      aria-label={
+        copied ? t("gitStatusHistoryHashCopied") : t("gitStatusHistoryCopyHash")
+      }
+    >
+      {copied ? <CheckIcon /> : <CopyIcon />}
+    </span>
+  );
+}
 
 export function GitBranchSwitcher({
   currentBranch,
@@ -36,7 +119,30 @@ export function GitBranchSwitcher({
   const wrapperRef = useRef<HTMLDivElement>(null);
   const filterInputRef = useRef<HTMLInputElement>(null);
   const [filter, setFilter] = useState("");
+  const [copiedBranch, setCopiedBranch] = useState<string | null>(null);
   const normalizedFilter = filter.trim().toLowerCase();
+
+  // Auto-reset copy icon after 2 seconds / 2 秒后自动重置复制图标
+  useEffect(() => {
+    if (!copiedBranch) return;
+    const timeoutId = window.setTimeout(() => {
+      setCopiedBranch(null);
+    }, 2000);
+    return () => window.clearTimeout(timeoutId);
+  }, [copiedBranch]);
+
+  const copyBranchName = useCallback(
+    async (branchName: string) => {
+      try {
+        await navigator.clipboard.writeText(branchName);
+        setCopiedBranch(branchName);
+      } catch (err) {
+        console.error("Failed to copy branch name:", err);
+      }
+    },
+    [],
+  );
+
   const branchGroups = [
     {
       key: "default",
@@ -101,7 +207,12 @@ export function GitBranchSwitcher({
         aria-expanded={isOpen}
         aria-haspopup="menu"
       >
-        <span>{currentBranch}</span>
+        <span className="git-branch-name-text">{currentBranch}</span>
+        <CopyBranchNameSpan
+          branchName={currentBranch}
+          copiedBranch={copiedBranch}
+          onCopy={copyBranchName}
+        />
         <ChevronDownIcon />
       </button>
       {isOpen ? (
@@ -173,6 +284,11 @@ export function GitBranchSwitcher({
                         <span className="git-branch-menu-primary">
                           {branch.name}
                         </span>
+                        <CopyBranchButton
+                          branchName={branch.name}
+                          copiedBranch={copiedBranch}
+                          onCopy={copyBranchName}
+                        />
                       </span>
                       <span className="git-branch-menu-meta">
                         {branch.updatedAt ? (
