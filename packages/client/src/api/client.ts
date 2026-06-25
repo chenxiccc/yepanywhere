@@ -40,6 +40,7 @@ import {
   isRemoteClient,
   whenConnectionReady,
 } from "../lib/connection";
+import { createGitStatusApi } from "./git-status";
 import type {
   AgentSession,
   InputRequest,
@@ -1317,6 +1318,9 @@ export const api = {
       method: "POST",
       body: JSON.stringify(params),
     }),
+
+  // Git status extended API (from git-status.ts)
+  ...createGitStatusApi(fetchJSON),
 
   // Inbox API
   getInbox: (projectId?: string) =>
