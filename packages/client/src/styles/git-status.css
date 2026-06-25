@@ -903,6 +903,16 @@
   z-index: 10;
 }
 
+/* 透明遮罩：点击菜单外部关闭菜单，阻止点击穿透 / Transparent backdrop: close on outside click, block click-through */
+.git-branch-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9;
+  border: none;
+  background: transparent;
+  cursor: default;
+}
+
 .git-branch-menu-filter {
   position: sticky;
   top: -0.3rem;

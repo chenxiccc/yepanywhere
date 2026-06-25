@@ -296,11 +296,19 @@ async function handlePush(data) {
     return self.registration.showNotification("Yep Anywhere", options);
   }
 
-  // 页面可见时，根据设置决定是否抑制通知
-  // 用主线程同步的 isPageVisible 代替 client.focused（手机端不可靠）
-  // When page is visible, use isPageVisible (synced from main thread) instead of
-  // client.focused which is unreliable on mobile
-  if (settings.isPageVisible) {
+  // 综合判断页面是否真正可见
+  // isPageVisible（主线程同步）和 client.focused 互补：
+  //   - 前台：两者都为 true → 确实可见
+  //   - 锁屏：isPageVisible=false 但 client.focused 可能仍为 true → isPageVisible 胜出
+  //   - 后台同步失败：isPageVisible=true（过期）但 client.focused=false → 显示通知
+  // Combine isPageVisible (synced from main thread) and client.focused as fallback:
+  //   - Foreground: both true → genuinely visible
+  //   - Locked: isPageVisible=false but client.focused may still be true → isPageVisible wins
+  //   - Sync failed: isPageVisible=true (stale) but client.focused=false → show notification
+  const hasFocusedClient = clients.some((client) => client.focused);
+  const isGenuinelyVisible = settings.isPageVisible && hasFocusedClient;
+
+  if (isGenuinelyVisible) {
     if (settings.notifyInApp) {
       // 仅当正在查看此会话时抑制通知
       // Only suppress if viewing THIS specific session
@@ -325,8 +333,8 @@ async function handlePush(data) {
       return;
     }
   }
-  // 页面不可见（锁屏、切后台）→ 总是显示通知
-  // Page is hidden (locked, backgrounded) → always show notification
+  // 页面不可见（锁屏、切后台、或同步失败）→ 总是显示通知
+  // Page is hidden (locked, backgrounded, or sync failed) → always show notification
 
   // Handle different notification types
   if (data.type === "pending-input") {
