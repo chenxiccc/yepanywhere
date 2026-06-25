@@ -435,6 +435,7 @@ function WriteCollapsedPreview({
             </span>
           }
           onClose={handleClose}
+          backCloses
         >
           <WriteModalContent
             file={
