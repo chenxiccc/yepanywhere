@@ -10,7 +10,19 @@ import type {
   EnrichedRecentEntry,
   FileContentResponse,
   FreezePublicSessionLiveSharesResponse,
+  GitBranchInfo,
+  GitCreateBranchRequest,
+  GitCommitRequest,
+  GitHistoryCommitDetail,
+  GitHistoryCommitSummary,
+  GitMergeBranchRequest,
+  GitMergePreviewRequest,
+  GitMergePreviewResult,
+  GitStashDetail,
+  GitStashEntry,
   GitStatusInfo,
+  GitSwitchBranchRequest,
+  GitUndoCommitResponse,
   HelperTargetConfig,
   ModelInfo,
   NewSessionDefaults,
@@ -35,6 +47,7 @@ import type {
 } from "@yep-anywhere/shared";
 import { authEvents } from "../lib/authEvents";
 import { getGlobalConnection, isRemoteClient } from "../lib/connection";
+import { createGitStatusApi } from "./git-status";
 import type {
   AgentSession,
   InputRequest,
@@ -1295,6 +1308,9 @@ export const api = {
       method: "POST",
       body: JSON.stringify(params),
     }),
+
+  // Git status extended API (from git-status.ts)
+  ...createGitStatusApi(fetchJSON),
 
   // Inbox API
   getInbox: (projectId?: string) =>
