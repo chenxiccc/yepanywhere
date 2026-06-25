@@ -44,9 +44,6 @@ export function usePushNotifications() {
     browserProfileId: null,
   });
 
-  const [registration, setRegistration] =
-    useState<ServiceWorkerRegistration | null>(null);
-
   // Check browser API support (separate from server-side enablement)
   const hasBrowserSupport =
     typeof window !== "undefined" &&
@@ -104,7 +101,6 @@ export function usePushNotifications() {
       // Register service worker
       try {
         const reg = await navigator.serviceWorker.register(SW_PATH);
-        setRegistration(reg);
 
         // Wait for service worker to be ready
         await navigator.serviceWorker.ready;
@@ -137,7 +133,10 @@ export function usePushNotifications() {
 
   // Subscribe to push notifications
   const subscribe = useCallback(async () => {
-    if (!registration) {
+    // 获取最新的 SW registration，避免使用 React state 中的旧引用
+    // Get the latest SW registration instead of stale React state reference
+    const reg = await navigator.serviceWorker.getRegistration();
+    if (!reg) {
       setState((s) => ({ ...s, error: "Service worker not ready" }));
       return;
     }
@@ -165,7 +164,7 @@ export function usePushNotifications() {
       const applicationServerKey = urlBase64ToUint8Array(publicKey);
 
       // Subscribe to push
-      const subscription = await registration.pushManager.subscribe({
+      const subscription = await reg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: applicationServerKey.buffer as ArrayBuffer,
       });
@@ -195,11 +194,14 @@ export function usePushNotifications() {
         error: err instanceof Error ? err.message : "Failed to subscribe",
       }));
     }
-  }, [registration]);
+  }, []);
 
   // Unsubscribe from push notifications
   const unsubscribe = useCallback(async () => {
-    if (!registration) {
+    // 获取最新的 SW registration，避免使用 React state 中的旧引用
+    // Get the latest SW registration instead of stale React state reference
+    const reg = await navigator.serviceWorker.getRegistration();
+    if (!reg) {
       setState((s) => ({ ...s, error: "Service worker not ready" }));
       return;
     }
@@ -208,7 +210,7 @@ export function usePushNotifications() {
 
     try {
       // Get current subscription
-      const subscription = await registration.pushManager.getSubscription();
+      const subscription = await reg.pushManager.getSubscription();
 
       if (subscription) {
         // Unsubscribe locally
@@ -233,7 +235,7 @@ export function usePushNotifications() {
         error: err instanceof Error ? err.message : "Failed to unsubscribe",
       }));
     }
-  }, [registration]);
+  }, []);
 
   // Send a test notification
   const sendTest = useCallback(
