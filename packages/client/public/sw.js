@@ -27,7 +27,8 @@ function assetUrl(path) {
 
 // Settings synced from main thread
 const settings = {
-  notifyInApp: false, // When true, notify even when app is focused (if session not viewed)
+  notifyInApp: true, // 默认 true：PWA 使用时仅当前会话的通知被抑制
+  isPageVisible: true, // 主线程同步的页面可见性（document.hidden）
 };
 
 // ============ Debug Logging ============
@@ -246,11 +247,16 @@ self.addEventListener("push", (event) => {
     return;
   }
 
+  // 先显示通知再写日志，日志写入不阻塞通知显示
+  // Show notification first, then write logs — logging must not block notification display
   event.waitUntil(
-    swLog("info", "Push received", {
-      type: data.type,
-      sessionId: data.sessionId,
-    }).then(() => handlePush(data)),
+    Promise.all([
+      handlePush(data),
+      swLog("info", "Push received", {
+        type: data.type,
+        sessionId: data.sessionId,
+      }),
+    ]),
   );
 });
 
@@ -294,7 +300,12 @@ async function handlePush(data) {
   }
 
   // Determine if we should suppress notification
-  if (hasFocusedClient) {
+  // 页面不可见时（锁屏、切后台），总是显示通知 —— client.focused 在手机锁屏时不可靠
+  // When page is not visible (locked, backgrounded), always show notification
+  // because client.focused is unreliable when the phone is locked
+  if (!settings.isPageVisible) {
+    // Page is hidden - user can't see the screen, always notify
+  } else if (hasFocusedClient) {
     if (settings.notifyInApp) {
       // Check if any focused client is viewing THIS session
       const sessionId = data.sessionId;
@@ -312,8 +323,8 @@ async function handlePush(data) {
       }
       // Session not open - continue to show notification
     } else {
-      // notifyInApp disabled - skip if any window focused
-      console.log("[SW] App is focused, skipping notification");
+      // notifyInApp disabled - skip if any window focused AND page visible
+      console.log("[SW] App is focused and visible, skipping notification");
       return;
     }
   }

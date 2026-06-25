@@ -33,7 +33,7 @@ import {
 import { SchemaValidationProvider } from "./contexts/SchemaValidationContext";
 import { ToastProvider } from "./contexts/ToastContext";
 import { useNeedsAttentionBadge } from "./hooks/useNeedsAttentionBadge";
-import { useSyncNotifyInAppSetting } from "./hooks/useNotifyInApp";
+import { useSyncNotifyInAppSetting, useSyncPageVisibility } from "./hooks/useNotifyInApp";
 import { useReloadNotifications } from "./hooks/useReloadNotifications";
 import { useRemoteActivityBusConnection } from "./hooks/useRemoteActivityBusConnection";
 import { useRemoteBasePath } from "./hooks/useRemoteBasePath";
@@ -219,6 +219,7 @@ function RemoteAppInner({ children }: Props) {
 export function RemoteApp({ children }: Props) {
   useEffect(() => initClientLogCollection(), []);
   useSyncNotifyInAppSetting();
+  useSyncPageVisibility();
 
   return (
     <ToastProvider>

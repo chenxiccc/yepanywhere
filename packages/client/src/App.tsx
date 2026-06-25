@@ -13,7 +13,7 @@ import { SchemaValidationProvider } from "./contexts/SchemaValidationContext";
 import { ToastProvider } from "./contexts/ToastContext";
 import { useActivityBusConnection } from "./hooks/useActivityBusConnection";
 import { useNeedsAttentionBadge } from "./hooks/useNeedsAttentionBadge";
-import { useSyncNotifyInAppSetting } from "./hooks/useNotifyInApp";
+import { useSyncNotifyInAppSetting, useSyncPageVisibility } from "./hooks/useNotifyInApp";
 import { useOnboarding } from "./hooks/useOnboarding";
 import { useReloadNotifications } from "./hooks/useReloadNotifications";
 import { useSeedCompactThreshold } from "./hooks/useSeedCompactThreshold";
@@ -39,6 +39,10 @@ function AppContent({ children }: Props) {
 
   // Sync notifyInApp setting to service worker on app startup and SW restarts
   useSyncNotifyInAppSetting();
+
+  // 实时同步页面可见性给 SW，解决锁屏时 client.focused 不可靠的问题
+  // Sync page visibility to SW in real-time, fixing unreliable client.focused when locked
+  useSyncPageVisibility();
 
   // Update tab title with needs-attention badge count (uses InboxContext)
   useNeedsAttentionBadge();
