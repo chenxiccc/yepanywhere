@@ -483,6 +483,7 @@ function GitStatusContent({
         <Modal
           title={<FilePathTitle file={previewModalFile} />}
           onClose={() => setPreviewModalFile(null)}
+          backCloses
         >
           <div className="git-preview-modal-content">
             <GitPreviewPane
@@ -500,6 +501,7 @@ function GitStatusContent({
         <Modal
           title={fileTreeSelectedPath}
           onClose={() => setFileTreeSelectedPath(null)}
+          backCloses
         >
           <div className="git-preview-modal-content">
             <FileViewer
@@ -519,6 +521,7 @@ function GitStatusContent({
             setSelectedHistoryCommitHash(null);
             setHistoryModalCommit(null);
           }}
+          backCloses
         >
           <div className="git-preview-modal-content">
             <GitCommitHistoryPane
@@ -539,6 +542,7 @@ function GitStatusContent({
         <Modal
           title={<FilePathTitle file={historyPreviewModal.file} />}
           onClose={() => setHistoryPreviewModal(null)}
+          backCloses
         >
           <div className="git-preview-modal-content">
             <GitPreviewPane
@@ -566,6 +570,7 @@ function GitStatusContent({
             setSelectedStashRef(null);
             setStashModal(null);
           }}
+          backCloses
         >
           <div className="git-preview-modal-content">
             <GitStashPane
@@ -597,6 +602,7 @@ function GitStatusContent({
         <Modal
           title={<FilePathTitle file={stashPreviewModal.file} />}
           onClose={() => setStashPreviewModal(null)}
+          backCloses
         >
           <div className="git-preview-modal-content">
             <GitPreviewPane
