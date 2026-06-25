@@ -350,7 +350,7 @@ function ImageAttachmentChip({
           document.body,
         )}
       {showModal && (
-        <Modal title={originalName} onClose={() => setShowModal(false)}>
+        <Modal title={originalName} onClose={() => setShowModal(false)} backCloses>
           <div className="uploaded-image-modal">
             {loading && <div className="image-loading">Loading...</div>}
             {error && <div className="image-error">Failed to load image</div>}

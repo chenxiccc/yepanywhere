@@ -411,7 +411,7 @@ export function LocalMediaModal({
   }, [mediaSource, path]);
 
   return (
-    <Modal title={fileName} onClose={onClose}>
+    <Modal title={fileName} onClose={onClose} backCloses>
       <div className="local-media-modal-content">
         {loading && <div className="local-media-loading">Loading...</div>}
         {error && <div className="local-media-error">{error}</div>}
@@ -494,7 +494,7 @@ export function LocalFileModal({ resource, onClose }: LocalFileModalProps) {
   }, [apiPath]);
 
   return (
-    <Modal title={fileName} onClose={onClose}>
+    <Modal title={fileName} onClose={onClose} backCloses>
       <div className="local-file-modal-content">
         <div
           className="local-file-modal-meta"

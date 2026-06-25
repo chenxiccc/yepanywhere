@@ -128,6 +128,7 @@ export function SchemaWarning({ toolName, errors }: SchemaWarningProps) {
             </span>
           }
           onClose={handleClose}
+          backCloses
         >
           <div className="schema-warning-modal-content">
             {missing.length > 0 && (

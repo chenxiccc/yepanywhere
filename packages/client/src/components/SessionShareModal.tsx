@@ -243,6 +243,7 @@ export function SessionShareModal({
       anchorRect={anchorRect}
       title={t("sessionShareTitle")}
       onClose={onClose}
+      backCloses
     >
       <div className="session-share-modal">
         <p className="session-share-readonly-note">
