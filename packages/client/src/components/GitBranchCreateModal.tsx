@@ -87,7 +87,7 @@ export function GitBranchCreateModal({
           : null;
 
   return (
-    <Modal title={t("gitStatusBranchCreateDialogTitle")} onClose={onClose}>
+    <Modal title={t("gitStatusBranchCreateDialogTitle")} onClose={onClose} backCloses>
       <div className="git-branch-create-modal">
         <div className="git-branch-create-section">
           <label
