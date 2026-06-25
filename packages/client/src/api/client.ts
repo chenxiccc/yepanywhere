@@ -36,6 +36,7 @@ import type {
 import { authEvents } from "../lib/authEvents";
 import { getGlobalConnection, isRemoteClient } from "../lib/connection";
 import { createGitStatusApi } from "./git-status";
+import { createFileTreeApi } from "./file-tree";
 import type {
   AgentSession,
   InputRequest,
@@ -1299,6 +1300,9 @@ export const api = {
 
   // Git status extended API (from git-status.ts)
   ...createGitStatusApi(fetchJSON),
+
+  // File tree API (from file-tree.ts)
+  ...createFileTreeApi(fetchJSON),
 
   // Inbox API
   getInbox: (projectId?: string) =>
