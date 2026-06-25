@@ -267,9 +267,6 @@ async function handlePush(data) {
     includeUncontrolled: true,
   });
 
-  const focusedClients = clients.filter((client) => client.focused);
-  const hasFocusedClient = focusedClients.length > 0;
-
   // Handle dismiss payload - close matching notification
   if (data.type === "dismiss") {
     const notifications = await self.registration.getNotifications({
@@ -299,35 +296,37 @@ async function handlePush(data) {
     return self.registration.showNotification("Yep Anywhere", options);
   }
 
-  // Determine if we should suppress notification
-  // 页面不可见时（锁屏、切后台），总是显示通知 —— client.focused 在手机锁屏时不可靠
-  // When page is not visible (locked, backgrounded), always show notification
-  // because client.focused is unreliable when the phone is locked
-  if (!settings.isPageVisible) {
-    // Page is hidden - user can't see the screen, always notify
-  } else if (hasFocusedClient) {
+  // 页面可见时，根据设置决定是否抑制通知
+  // 用主线程同步的 isPageVisible 代替 client.focused（手机端不可靠）
+  // When page is visible, use isPageVisible (synced from main thread) instead of
+  // client.focused which is unreliable on mobile
+  if (settings.isPageVisible) {
     if (settings.notifyInApp) {
-      // Check if any focused client is viewing THIS session
+      // 仅当正在查看此会话时抑制通知
+      // Only suppress if viewing THIS specific session
       const sessionId = data.sessionId;
       const isSessionOpen =
         sessionId &&
-        focusedClients.some((client) => {
+        clients.some((client) => {
           return client.url?.includes(`/sessions/${sessionId}`);
         });
 
       if (isSessionOpen) {
         console.log(
-          "[SW] Session is open in focused window, skipping notification",
+          "[SW] Session is open in visible window, skipping notification",
         );
         return;
       }
-      // Session not open - continue to show notification
+      // Other sessions - show notification
     } else {
-      // notifyInApp disabled - skip if any window focused AND page visible
-      console.log("[SW] App is focused and visible, skipping notification");
+      // notifyInApp 关闭时，页面可见则抑制所有通知
+      // notifyInApp disabled - suppress all notifications when page is visible
+      console.log("[SW] App is visible, skipping notification");
       return;
     }
   }
+  // 页面不可见（锁屏、切后台）→ 总是显示通知
+  // Page is hidden (locked, backgrounded) → always show notification
 
   // Handle different notification types
   if (data.type === "pending-input") {
