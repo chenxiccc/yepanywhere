@@ -330,12 +330,23 @@ export function getModelContextWindow(
     return CLAUDE_EXTENDED_CONTEXT_WINDOW;
   }
 
-  if (/(?:^|[./])claude-(?:opus|sonnet)-5$/.test(lowerModel)) {
+if (/(?:^|[./])claude-(?:opus|sonnet)-5$/.test(lowerModel)) {
     return CLAUDE_EXTENDED_CONTEXT_WINDOW;
   }
 
   if (lowerModel.includes("gpt-5.6")) {
     return CODEX_GPT56_CONTEXT_WINDOW;
+  }
+
+  // DeepSeek V4 series — 1M context (case-insensitive, with or without hyphens/spaces)
+  // Covers V4 Pro, V4 Flash, and any other V4 variant
+  if (/deepseek[\s-]*v[\s-]*4/i.test(lowerModel)) {
+    return CLAUDE_EXTENDED_CONTEXT_WINDOW;
+  }
+
+  // GLM 5.2 — 1M context (case-insensitive, with or without hyphens/dots)
+  if (/glm[\s-]*5[\s-]*\.?[\s-]*2/i.test(lowerModel)) {
+    return CLAUDE_EXTENDED_CONTEXT_WINDOW;
   }
 
   // Handle model IDs that may include provider namespace or other prefixes.
