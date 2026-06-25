@@ -1302,6 +1302,7 @@
   "gitStatusHistorySelectFile": "Selecciona un archivo modificado para previsualizarlo aquí.",
   "gitStatusHistoryCopyHash": "Copiar hash del commit",
   "gitStatusHistoryHashCopied": "Hash del commit copiado",
+  "gitStatusRefresh": "Actualizar",
   "gitStatusFetch": "Fetch",
   "gitStatusFetchWithRemote": "Fetch {remote}",
   "gitStatusFetchingWithRemote": "Obteniendo {remote}...",
