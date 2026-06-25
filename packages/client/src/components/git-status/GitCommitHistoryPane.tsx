@@ -2,9 +2,12 @@ import type {
   GitHistoryCommitDetail,
   GitHistoryFileChange,
 } from "@yep-anywhere/shared";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "../../api/client";
+import { useLongPressContextMenu } from "../../hooks/useLongPressContextMenu";
 import type { useI18n } from "../../i18n";
+import { FileContextMenu } from "./FileContextMenu";
+import type { FileContextMenuState } from "./FileContextMenu";
 import { GitPreviewPane } from "./GitPreviewPane";
 import { FilePathLabel, WithStatusBadge, formatRelativeTime } from "./utils";
 
@@ -22,6 +25,7 @@ export function GitCommitHistoryPane({
   previewInline = true,
   onCommitLoaded,
   onFileSelect,
+  projectPath,
 }: {
   projectId: string;
   selectedCommitHash: string | null;
@@ -32,12 +36,16 @@ export function GitCommitHistoryPane({
     file: HistoryDiffFile,
     historyCommit: { hash: string; previousPath?: string },
   ) => void;
+  /** 项目根目录绝对路径 / Project root absolute path */
+  projectPath?: string;
 }) {
   const [commit, setCommit] = useState<GitHistoryCommitDetail | null>(null);
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copiedHash, setCopiedHash] = useState(false);
+  const [contextMenu, setContextMenu] = useState<FileContextMenuState | null>(null);
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
   useEffect(() => {
     if (!selectedCommitHash) {
@@ -166,35 +174,22 @@ export function GitCommitHistoryPane({
               {commit.files.map((file) => {
                 const isSelected = file.path === selectedFilePath;
                 return (
-                  <li key={`${commit.hash}:${file.path}`}>
-                    <button
-                      type="button"
-                      className={`git-history-file-item ${isSelected ? "git-history-file-item-selected" : ""}`}
-                      onClick={() => {
-                        if (previewInline) {
-                          setSelectedFilePath(file.path);
-                          return;
-                        }
-
-                        onFileSelect?.(toPreviewFile(file), {
-                          hash: commit.hash,
-                          previousPath: file.previousPath,
-                        });
-                      }}
-                    >
-                      <span className="git-file-path">
-                        <WithStatusBadge file={toPreviewFile(file)}>
-                            {file.previousPath ? (
-                              <>
-                                <FilePathLabel path={file.previousPath} />
-                                <span className="git-file-path-arrow">→</span>
-                              </>
-                            ) : null}
-                            <FilePathLabel path={file.path} />
-                          </WithStatusBadge>
-                      </span>
-                    </button>
-                  </li>
+                  <HistoryFileItem
+                    key={`${commit.hash}:${file.path}`}
+                    file={file}
+                    isSelected={isSelected}
+                    onSelect={(f) => {
+                      if (previewInline) {
+                        setSelectedFilePath(f.path);
+                        return;
+                      }
+                      onFileSelect?.(toPreviewFile(f), {
+                        hash: commit.hash,
+                        previousPath: f.previousPath,
+                      });
+                    }}
+                    onContextMenu={setContextMenu}
+                  />
                 );
               })}
             </ul>
@@ -207,7 +202,7 @@ export function GitCommitHistoryPane({
               <GitPreviewPane
                 file={previewFile}
                 projectId={projectId}
-                t={t}
+                t={t as (key: string, vars?: Record<string, string | number>) => string}
                 historyCommit={{
                   hash: commit.hash,
                   previousPath: selectedFile?.previousPath,
@@ -221,6 +216,15 @@ export function GitCommitHistoryPane({
           </section>
         ) : null}
       </div>
+
+      {projectPath && (
+        <FileContextMenu
+          menu={contextMenu}
+          projectPath={projectPath}
+          onClose={closeContextMenu}
+          t={t as (key: string, vars?: Record<string, string | number>) => string}
+        />
+      )}
     </div>
   );
 }
@@ -234,6 +238,68 @@ function toPreviewFile(file: GitHistoryFileChange): HistoryDiffFile {
     linesDeleted: file.linesDeleted,
     origPath: file.previousPath,
   };
+}
+
+function HistoryFileItem({
+  file,
+  isSelected,
+  onSelect,
+  onContextMenu,
+}: {
+  file: GitHistoryFileChange;
+  isSelected: boolean;
+  onSelect: (file: GitHistoryFileChange) => void;
+  onContextMenu: (menu: FileContextMenuState) => void;
+}) {
+  const openContextMenu = useCallback(
+    (x: number, y: number) => {
+      onContextMenu({
+        path: file.path,
+        name: file.path.split("/").pop() ?? file.path,
+        isDirectory: false,
+        x,
+        y,
+        showFileOperations: false,
+      });
+    },
+    [file.path, onContextMenu],
+  );
+
+  const {
+    handleContextMenu,
+    handleTouchStart,
+    handleTouchMove,
+    handleTouchEnd,
+    wrapClick,
+  } = useLongPressContextMenu(openContextMenu);
+
+  const handleClick = wrapClick(() => onSelect(file));
+
+  return (
+    <li>
+      <button
+        type="button"
+        className={`git-history-file-item ${isSelected ? "git-history-file-item-selected" : ""}`}
+        onClick={handleClick}
+        onContextMenu={handleContextMenu}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
+        <span className="git-file-path">
+          <WithStatusBadge file={toPreviewFile(file)}>
+            {file.previousPath ? (
+              <>
+                <FilePathLabel path={file.previousPath} />
+                <span className="git-file-path-arrow">→</span>
+              </>
+            ) : null}
+            <FilePathLabel path={file.path} />
+          </WithStatusBadge>
+        </span>
+      </button>
+    </li>
+  );
 }
 
 function CopyIcon() {

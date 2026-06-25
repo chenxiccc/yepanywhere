@@ -8,6 +8,9 @@ import {
   useState,
 } from "react";
 import { api } from "../api/client";
+import { useLongPressContextMenu } from "../hooks/useLongPressContextMenu";
+import { FileContextMenu } from "./git-status/FileContextMenu";
+import type { FileContextMenuState } from "./git-status/FileContextMenu";
 
 const FILE_ICONS: Record<string, string> = {
   ts: "📘", tsx: "📘", js: "📒", jsx: "📒", json: "📋",
@@ -48,6 +51,12 @@ interface FileTreeProps {
     loadingShort?: string;
     emptyDir?: string;
   };
+  /** 项目根目录绝对路径，用于拼接绝对路径 / Project root absolute path */
+  projectPath?: string;
+  /** 重命名文件回调 / Rename file callback */
+  onRenameFile?: (path: string, name: string) => void;
+  /** 删除文件回调 / Delete file callback */
+  onDeleteFile?: (path: string, name: string, isDirectory: boolean) => void;
 }
 
 /**
@@ -63,6 +72,9 @@ export const FileTree = memo(function FileTree({
   refreshKey,
   t,
   labels,
+  projectPath,
+  onRenameFile,
+  onDeleteFile,
 }: FileTreeProps) {
   const [rootNodes, setRootNodes] = useState<FileNode[]>([]);
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
@@ -274,6 +286,9 @@ export const FileTree = memo(function FileTree({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery]);
 
+  const [contextMenu, setContextMenu] = useState<FileContextMenuState | null>(null);
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
+
   const filteredRootNodes = useMemo(
     () => filterNodes(rootNodes),
     [filterNodes, rootNodes],
@@ -310,9 +325,21 @@ export const FileTree = memo(function FileTree({
             onFileClick={onFileClick}
             onToggleExpand={toggleExpand}
             onRetryLoad={loadChildren}
+            onContextMenu={setContextMenu}
             t={t}
           />
         ))
+      )}
+
+      {projectPath && (
+        <FileContextMenu
+          menu={contextMenu}
+          projectPath={projectPath}
+          onClose={closeContextMenu}
+          onRename={onRenameFile}
+          onDelete={onDeleteFile}
+          t={t}
+        />
       )}
     </div>
   );
@@ -329,6 +356,8 @@ interface FileTreeItemProps {
   onFileClick: (filePath: string) => void;
   onToggleExpand: (dirPath: string) => void;
   onRetryLoad: (dirPath: string) => void;
+  /** 右键菜单回调 / Context menu callback */
+  onContextMenu: (menu: FileContextMenuState) => void;
   t: (key: string, vars?: Record<string, string | number>) => string;
   labels?: {
     loading?: string;
@@ -350,6 +379,7 @@ const FileTreeItem = memo(function FileTreeItem({
   onFileClick,
   onToggleExpand,
   onRetryLoad,
+  onContextMenu,
   t,
   labels,
 }: FileTreeItemProps) {
@@ -375,6 +405,31 @@ const FileTreeItem = memo(function FileTreeItem({
     [node.path, onRetryLoad],
   );
 
+  // 右键菜单 + 移动端长按 / Context menu + mobile long-press
+  const openContextMenu = useCallback(
+    (x: number, y: number) => {
+      onContextMenu({
+        path: node.path,
+        name: node.name,
+        isDirectory: node.isDirectory,
+        x,
+        y,
+        showFileOperations: true,
+      });
+    },
+    [node.path, node.name, node.isDirectory, onContextMenu],
+  );
+
+  const {
+    handleContextMenu,
+    handleTouchStart,
+    handleTouchMove,
+    handleTouchEnd,
+    wrapClick,
+  } = useLongPressContextMenu(openContextMenu);
+
+  const handleClickWrapper = wrapClick(handleClick);
+
   return (
     <div className="file-tree-item-wrapper">
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: keyboard nav handled by parent */}
@@ -383,7 +438,11 @@ const FileTreeItem = memo(function FileTreeItem({
         tabIndex={0}
         className={`file-tree-item ${isSelected ? "selected" : ""}`}
         style={{ paddingLeft: `${depth * 12 + 4}px` }}
-        onClick={handleClick}
+        onClick={handleClickWrapper}
+        onContextMenu={handleContextMenu}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
         title={
           node.isSymlink && node.symlinkTarget
             ? `${node.path} → ${node.symlinkTarget}`
@@ -479,6 +538,7 @@ const FileTreeItem = memo(function FileTreeItem({
                 onFileClick={onFileClick}
                 onToggleExpand={onToggleExpand}
                 onRetryLoad={onRetryLoad}
+                onContextMenu={onContextMenu}
                 t={t}
                 labels={labels}
               />
