@@ -181,3 +181,25 @@ export function StatusWarningIcon({ size = DEFAULT_ICON_SIZE }: IconProps) {
     </svg>
   );
 }
+
+/** 刷新图标 — 手动刷新当前 tab 内容 / Refresh icon — manually refresh current tab content */
+export function RefreshIcon({ size = DEFAULT_ICON_SIZE }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M21 12a9 9 0 0 0-15.5-6.36L3 8" />
+      <path d="M3 3v5h5" />
+      <path d="M3 12a9 9 0 0 0 15.5 6.36L21 16" />
+      <path d="M16 16h5v5" />
+    </svg>
+  );
+}

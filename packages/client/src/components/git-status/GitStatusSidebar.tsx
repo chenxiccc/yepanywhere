@@ -9,7 +9,7 @@ import { FileTree } from "../FileTree";
 import { FileTreeSearch } from "../FileTreeSearch";
 import { Button } from "../ui/Button";
 import { GitFileActionsMenu, GitFileSection } from "./GitFileList";
-import { CheckIcon, ClearIcon, CopyIcon, SearchIcon } from "./GitStatusIcons";
+import { CheckIcon, ClearIcon, CopyIcon, RefreshIcon, SearchIcon } from "./GitStatusIcons";
 import { formatRelativeTime } from "./utils";
 
 type Translate = (
@@ -62,6 +62,9 @@ export function GitStatusSidebar({
   onFileTreeSearchChange,
   onFileTreeFileClick,
   fileTreeRefreshKey,
+  /* 刷新相关 / Refresh related */
+  refreshingActiveView,
+  onRefreshActiveView,
 }: {
   status: GitStatusInfo;
   projectId: string;
@@ -107,6 +110,9 @@ export function GitStatusSidebar({
   onFileTreeSearchChange: (value: string) => void;
   onFileTreeFileClick: (filePath: string) => void;
   fileTreeRefreshKey: number;
+  /* 刷新相关 / Refresh related */
+  refreshingActiveView: "files" | "changes" | "stashed" | "history" | null;
+  onRefreshActiveView: () => void;
 }) {
   const latestLocalCommit = status.latestLocalCommit;
   const showStashedTab = stashes.length > 0;
@@ -173,7 +179,31 @@ export function GitStatusSidebar({
             className={`git-view-tab ${activeView === "files" ? "is-active" : ""}`}
             onClick={() => onViewChange("files")}
           >
-            {t("gitStatusFiles")}
+            <span className="git-view-tab-label">
+              {t("gitStatusFiles")}
+              {activeView === "files" ? (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  className={`git-tab-refresh ${refreshingActiveView === "files" ? "is-spinning" : ""}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRefreshActiveView();
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      onRefreshActiveView();
+                    }
+                  }}
+                  title={t("gitStatusRefresh")}
+                  aria-label={t("gitStatusRefresh")}
+                >
+                  <RefreshIcon size={12} />
+                </span>
+              ) : null}
+            </span>
           </button>
           <button
             type="button"
@@ -182,7 +212,31 @@ export function GitStatusSidebar({
             className={`git-view-tab ${activeView === "changes" ? "is-active" : ""}`}
             onClick={() => onViewChange("changes")}
           >
-            {t("gitStatusChanges")}
+            <span className="git-view-tab-label">
+              {t("gitStatusChanges")}
+              {activeView === "changes" ? (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  className={`git-tab-refresh ${refreshingActiveView === "changes" ? "is-spinning" : ""}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRefreshActiveView();
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      onRefreshActiveView();
+                    }
+                  }}
+                  title={t("gitStatusRefresh")}
+                  aria-label={t("gitStatusRefresh")}
+                >
+                  <RefreshIcon size={12} />
+                </span>
+              ) : null}
+            </span>
           </button>
           {showStashedTab ? (
             <button
@@ -192,7 +246,31 @@ export function GitStatusSidebar({
               className={`git-view-tab ${activeView === "stashed" ? "is-active" : ""}`}
               onClick={() => onViewChange("stashed")}
             >
-              {t("gitStatusStashed")}
+              <span className="git-view-tab-label">
+                {t("gitStatusStashed")}
+                {activeView === "stashed" ? (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    className={`git-tab-refresh ${refreshingActiveView === "stashed" ? "is-spinning" : ""}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRefreshActiveView();
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        onRefreshActiveView();
+                      }
+                    }}
+                    title={t("gitStatusRefresh")}
+                    aria-label={t("gitStatusRefresh")}
+                  >
+                    <RefreshIcon size={12} />
+                  </span>
+                ) : null}
+              </span>
             </button>
           ) : null}
           <button
@@ -202,7 +280,31 @@ export function GitStatusSidebar({
             className={`git-view-tab ${activeView === "history" ? "is-active" : ""}`}
             onClick={() => onViewChange("history")}
           >
-            {t("gitStatusHistory")}
+            <span className="git-view-tab-label">
+              {t("gitStatusHistory")}
+              {activeView === "history" ? (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  className={`git-tab-refresh ${refreshingActiveView === "history" ? "is-spinning" : ""}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRefreshActiveView();
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      onRefreshActiveView();
+                    }
+                  }}
+                  title={t("gitStatusRefresh")}
+                  aria-label={t("gitStatusRefresh")}
+                >
+                  <RefreshIcon size={12} />
+                </span>
+              ) : null}
+            </span>
           </button>
         </div>
 

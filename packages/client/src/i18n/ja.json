@@ -1305,6 +1305,7 @@
   "gitStatusHistorySelectFile": "変更されたファイルを選択すると、ここでプレビューできます。",
   "gitStatusHistoryCopyHash": "コミットハッシュをコピー",
   "gitStatusHistoryHashCopied": "コミットハッシュをコピーしました！",
+  "gitStatusRefresh": "更新",
   "gitStatusFetch": "Fetch",
   "gitStatusFetchWithRemote": "{remote} を Fetch",
   "gitStatusFetchingWithRemote": "{remote} を Fetch 中...",

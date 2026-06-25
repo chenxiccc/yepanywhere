@@ -1305,6 +1305,7 @@
   "gitStatusHistorySelectFile": "选择一个变更文件以在这里预览。",
   "gitStatusHistoryCopyHash": "复制提交哈希",
   "gitStatusHistoryHashCopied": "已复制提交哈希！",
+  "gitStatusRefresh": "刷新",
   "gitStatusFetch": "获取",
   "gitStatusFetchWithRemote": "获取 {remote}",
   "gitStatusFetchingWithRemote": "正在获取 {remote}...",

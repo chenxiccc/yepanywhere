@@ -1305,6 +1305,7 @@
   "gitStatusHistorySelectFile": "Sélectionnez un fichier modifié pour l’apercevoir ici.",
   "gitStatusHistoryCopyHash": "Copier le hash du commit",
   "gitStatusHistoryHashCopied": "Hash du commit copié",
+  "gitStatusRefresh": "Actualiser",
   "gitStatusFetch": "Fetch",
   "gitStatusFetchWithRemote": "Fetch {remote}",
   "gitStatusFetchingWithRemote": "Récupération de {remote}...",

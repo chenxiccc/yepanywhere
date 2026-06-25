@@ -4,7 +4,7 @@ import type {
   GitHistoryCommitSummary,
   GitStashDetail,
 } from "@yep-anywhere/shared";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { GitBranchMergeModal } from "../components/GitBranchMergeModal";
@@ -130,7 +130,7 @@ function GitStatusContent({
   const [fileTreeSelectedPath, setFileTreeSelectedPath] = useState<
     string | null
   >(null);
-  const [fileTreeRefreshKey, _setFileTreeRefreshKey] = useState(0);
+  const [fileTreeRefreshKey, setFileTreeRefreshKey] = useState(0);
   const [historyCommits, setHistoryCommits] = useState<
     GitHistoryCommitSummary[]
   >([]);
@@ -140,6 +140,10 @@ function GitStatusContent({
   const [historyHasMore, setHistoryHasMore] = useState(false);
   const [historyCursor, setHistoryCursor] = useState<string | null>(null);
   const [createBranchInitialName, setCreateBranchInitialName] = useState("");
+  const [activeViewRefreshKey, setActiveViewRefreshKey] = useState(0);
+  const [refreshingActiveView, setRefreshingActiveView] = useState<
+    "files" | "changes" | "stashed" | "history" | null
+  >(null);
   const [selectedHistoryCommitHash, setSelectedHistoryCommitHash] = useState<
     string | null
   >(null);
@@ -188,11 +192,53 @@ function GitStatusContent({
   const canCommit = commitMessage.trim().length > 0 && selectedCommitCount > 0;
   const remoteName = status.remote ?? "origin";
   const historyReloadKey = `${status.branch ?? ""}:${status.ahead}:${status.behind}`;
+  // 手动刷新 key，用于刷新按钮 / Manual refresh key for refresh button
+  const historyRefreshKey = `${historyReloadKey}:${activeViewRefreshKey}`;
+
+  // 分支切换时刷新当前激活的 tab / Refresh active tab when branch changes
+  const prevBranchRef = useRef(status.branch);
+  useEffect(() => {
+    const prevBranch = prevBranchRef.current;
+    prevBranchRef.current = status.branch;
+    // 首次加载时跳过 / Skip on initial load
+    if (prevBranch === undefined || prevBranch === status.branch) return;
+    // 分支已切换，触发刷新 / Branch changed, trigger refresh
+    if (activeView === "files") {
+      setFileTreeRefreshKey((k) => k + 1);
+    } else if (activeView === "changes") {
+      refetch();
+    }
+    // history 和 stashed 由 historyReloadKey 自动触发 / history and stashed auto-trigger via historyReloadKey
+  }, [status.branch]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 手动刷新激活的 tab / Manually refresh the active tab
+  const handleRefreshActiveView = useCallback(() => {
+    setRefreshingActiveView(activeView);
+    // 保持 spinning 至少 2 圈动画（0.8s × 2 = 1.6s）/ Keep spinning for at least 2 rotation cycles
+    const minSpinningMs = 1600;
+    const finishSpinning = () => {
+      setRefreshingActiveView(null);
+    };
+    const spinningTimer = window.setTimeout(finishSpinning, minSpinningMs);
+
+    if (activeView === "files") {
+      setFileTreeRefreshKey((k) => k + 1);
+    } else if (activeView === "changes" || activeView === "stashed") {
+      refetch().finally(() => {
+        // 在最短动画时间后清除 / Clear after minimum animation time
+        window.clearTimeout(spinningTimer);
+        finishSpinning();
+      });
+    } else {
+      // history：通过改变 refresh key 触发重新加载 / history: trigger reload via refresh key
+      setActiveViewRefreshKey((k) => k + 1);
+    }
+  }, [activeView, refetch]);
 
   useEffect(() => {
     let cancelled = false;
 
-    if (activeView !== "history" || historyReloadKey.length === 0) return;
+    if (activeView !== "history" || historyRefreshKey.length === 0) return;
 
     setHistoryLoading(true);
     setHistoryLoadingMore(false);
@@ -223,7 +269,7 @@ function GitStatusContent({
     return () => {
       cancelled = true;
     };
-  }, [activeView, historyReloadKey, projectId, t]);
+  }, [activeView, historyRefreshKey, projectId, t]);
 
   useEffect(() => {
     if (activeView !== "stashed") return;
@@ -418,6 +464,9 @@ function GitStatusContent({
           onFileTreeSearchChange={setFileTreeSearchQuery}
           onFileTreeFileClick={setFileTreeSelectedPath}
           fileTreeRefreshKey={fileTreeRefreshKey}
+          /* 刷新相关 / Refresh related */
+          refreshingActiveView={refreshingActiveView}
+          onRefreshActiveView={handleRefreshActiveView}
         />
 
         {!isNarrowScreen && (
