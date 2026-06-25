@@ -1,5 +1,5 @@
 import { createReadStream, type Stats } from "node:fs";
-import { readFile, realpath, stat } from "node:fs/promises";
+import { readFile, readdir, realpath, rename, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import {
   basename,
@@ -11,9 +11,11 @@ import {
   resolve,
 } from "node:path";
 import { createInterface } from "node:readline";
+import { execFile } from "node:child_process";
 import {
   type FileContentResponse,
   type FileMetadata,
+  type FileNode,
   isUrlProjectId,
   type PatchHunk,
 } from "@yep-anywhere/shared";
@@ -1232,6 +1234,302 @@ export function createFilesRoutes(deps: FilesDeps): Hono {
       structuredPatch: augment.structuredPatch as PatchHunk[],
       diffHtml: augment.diffHtml,
     });
+  });
+
+  /**
+   * GET /api/projects/:projectId/files/list
+   * 浅层目录列表 / Shallow directory listing.
+   * Query params:
+   *   - path: relative path to directory (defaults to project root)
+   *   - search: if provided, recursively search for files/dirs matching the query
+   */
+  routes.get("/:projectId/files/list", async (c) => {
+    const projectId = c.req.param("projectId");
+    const relativePath = c.req.query("path") || "";
+    const searchQuery = c.req.query("search")?.toLowerCase() || "";
+
+    // 验证项目 ID 格式 / Validate project ID format
+    if (!isUrlProjectId(projectId)) {
+      return c.json({ error: "Invalid project ID format" }, 400);
+    }
+
+    // 获取项目 / Get project
+    const project = await deps.scanner.getProject(projectId);
+    if (!project) {
+      return c.json({ error: "Project not found" }, 404);
+    }
+
+    const projectRoot = project.path;
+
+    // 解析目标目录路径 / Resolve target directory path
+    let targetDir: string;
+    if (!relativePath) {
+      targetDir = projectRoot;
+    } else {
+      // 安全检查：防 .. 遍历 / Security: prevent path traversal
+      const resolved = await resolveFilePath(
+        projectRoot,
+        relativePath,
+        pathPolicy,
+      );
+      if (!resolved) {
+        return c.json({ error: "Invalid path" }, 400);
+      }
+      targetDir = resolved;
+    }
+
+    // 有搜索词时递归搜索 / Recursive search when query is provided
+    // 读取目录 / Read directory
+    let entries: Array<{
+      name: string;
+      isDirectory: () => boolean;
+      isSymbolicLink: () => boolean;
+    }>;
+    try {
+      entries = (await readdir(targetDir, { withFileTypes: true })) as unknown as Array<{
+        name: string;
+        isDirectory: () => boolean;
+        isSymbolicLink: () => boolean;
+      }>;
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to read directory";
+      return c.json({ error: message }, 500);
+    }
+
+    const children: FileNode[] = [];
+
+    if (searchQuery) {
+      // 递归搜索：用 find 命令匹配 / Recursive search: use find command
+      const escapedDir = targetDir.replace(/'/g, "'\\''");
+      const escapedQuery = searchQuery.replace(/'/g, "'\\''");
+      try {
+        const { stdout } = await new Promise<{ stdout: string; stderr: string }>(
+          (resolvePromise, reject) => {
+            execFile(
+              "find",
+              [
+                escapedDir,
+                "-mindepth",
+                "1",
+                "-iname",
+                `*${escapedQuery}*`,
+                "-not",
+                "-path",
+                `${escapedDir}/.git/*`,
+                "-not",
+                "-name",
+                ".git",
+                "-not",
+                "-path",
+                "*/node_modules/*",
+                "-not",
+                "-path",
+                "*/.*",
+              ],
+              { maxBuffer: 512 * 1024, timeout: 10000 },
+              (error, stdout, stderr) => {
+                if (error) {
+                  reject(error);
+                } else {
+                  resolvePromise({ stdout, stderr });
+                }
+              },
+            );
+          },
+        );
+
+        const lines = stdout.trim().split("\n").filter(Boolean);
+        // 并行读取文件状态，避免串行 I/O 阻塞 / Read file stats in parallel to avoid serial I/O blocking
+        const statResults = await Promise.allSettled(
+          lines.map(async (fullPath) => {
+            const relPath = relative(projectRoot, fullPath);
+            const entryStat = await stat(fullPath);
+            return { fullPath, relPath, entryStat };
+          }),
+        );
+        for (const result of statResults) {
+          if (result.status === "rejected") continue;
+          const { fullPath, relPath, entryStat } = result.value;
+          const node: FileNode = {
+            name: basename(fullPath),
+            path: relPath,
+            isDirectory: entryStat.isDirectory(),
+          };
+          if (!entryStat.isDirectory()) {
+            node.size = entryStat.size;
+            node.modifiedAt = entryStat.mtime.toISOString();
+          }
+          children.push(node);
+        }
+      } catch {
+        // find 失败时降级为浅层过滤 / Fall back to shallow filtering on failure
+      }
+    }
+
+    // 非搜索模式：浅层目录列表 / Non-search mode: shallow directory listing
+    if (!searchQuery || children.length === 0) {
+      // 非搜索模式：浅层列表 / No search: shallow listing
+      if (!searchQuery) {
+        for (const entry of entries) {
+          // 跳过 .git 目录 / Skip .git directory
+          if (entry.name === ".git") continue;
+
+          const isDir = entry.isDirectory();
+          const entryPath = isDir
+            ? entry.name
+            : relativePath
+              ? `${relativePath}/${entry.name}`
+              : entry.name;
+
+          const node: FileNode = {
+            name: entry.name,
+            path: entryPath,
+            isDirectory: isDir,
+          };
+
+          // 对文件获取 size 和 mtime / Get size and mtime for files
+          if (!isDir) {
+            try {
+              const entryStat = await stat(resolve(targetDir, entry.name));
+              node.size = entryStat.size;
+              node.modifiedAt = entryStat.mtime.toISOString();
+            } catch {
+              // 文件可能已被删除 / File may have been deleted
+              node.size = 0;
+            }
+          }
+
+          // 检测符号链接 / Detect symlinks
+          if (entry.isSymbolicLink()) {
+            node.isSymlink = true;
+            try {
+              const target = await realpath(resolve(targetDir, entry.name));
+              node.symlinkTarget = target;
+            } catch {
+              // 符号链接目标可能不存在 / Symlink target may not exist
+            }
+          }
+
+          children.push(node);
+        }
+      }
+    }
+
+    // 排序：目录在前，文件在后，各自按名称字母排序
+    // Sort: directories first, then files, each alphabetically by name
+    children.sort((a, b) => {
+      if (a.isDirectory !== b.isDirectory) {
+        return a.isDirectory ? -1 : 1;
+      }
+      return a.name.localeCompare(b.name);
+    });
+
+    return c.json({ children });
+  });
+
+  /**
+   * DELETE /api/projects/:projectId/files
+   * 删除文件或文件夹 / Delete a file or directory
+   * Body: { path: string }
+   */
+  routes.delete("/:projectId/files", async (c) => {
+    const projectId = c.req.param("projectId");
+    const body = await c.req.json().catch(() => ({}));
+    const { path: relativePath } = body;
+
+    if (!isUrlProjectId(projectId)) {
+      return c.json({ error: "Invalid project ID format" }, 400);
+    }
+    if (!relativePath || typeof relativePath !== "string") {
+      return c.json({ error: "Missing path parameter" }, 400);
+    }
+
+    const project = await deps.scanner.getProject(projectId);
+    if (!project) {
+      return c.json({ error: "Project not found" }, 404);
+    }
+
+    const projectRoot = project.path;
+    const filePath = await resolveFilePath(projectRoot, relativePath, pathPolicy);
+    if (!filePath) {
+      return c.json({ error: "Invalid file path" }, 400);
+    }
+
+    try {
+      const fileStats = await stat(filePath);
+      if (fileStats.isDirectory()) {
+        await rm(filePath, { recursive: true });
+      } else {
+        await rm(filePath);
+      }
+      return c.json({ success: true });
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        return c.json({ error: "File not found" }, 404);
+      }
+      return c.json(
+        { error: (err as Error).message || "Failed to delete file" },
+        500,
+      );
+    }
+  });
+
+  /**
+   * POST /api/projects/:projectId/files/rename
+   * 重命名文件或文件夹 / Rename a file or directory
+   * Body: { path: string, newName: string }
+   */
+  routes.post("/:projectId/files/rename", async (c) => {
+    const projectId = c.req.param("projectId");
+    const body = await c.req.json().catch(() => ({}));
+    const { path: relativePath, newName } = body;
+
+    if (!isUrlProjectId(projectId)) {
+      return c.json({ error: "Invalid project ID format" }, 400);
+    }
+    if (!relativePath || typeof relativePath !== "string") {
+      return c.json({ error: "Missing path parameter" }, 400);
+    }
+    if (!newName || typeof newName !== "string") {
+      return c.json({ error: "Missing newName parameter" }, 400);
+    }
+    // 防止路径分隔符注入 / Prevent path separator injection
+    if (newName.includes("/") || newName.includes("\\")) {
+      return c.json({ error: "newName must be a filename, not a path" }, 400);
+    }
+
+    const project = await deps.scanner.getProject(projectId);
+    if (!project) {
+      return c.json({ error: "Project not found" }, 404);
+    }
+
+    const projectRoot = project.path;
+    const filePath = await resolveFilePath(projectRoot, relativePath, pathPolicy);
+    if (!filePath) {
+      return c.json({ error: "Invalid file path" }, 400);
+    }
+
+    const newPath = resolve(dirname(filePath), newName);
+
+    // 验证新路径仍在项目根目录下 / Verify new path is still within project root
+    const resolvedRoot = resolve(projectRoot);
+    if (!isPathInsideDirectory(newPath, resolvedRoot)) {
+      return c.json({ error: "Invalid new path" }, 400);
+    }
+
+    try {
+      await rename(filePath, newPath);
+      return c.json({ success: true });
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        return c.json({ error: "File not found" }, 404);
+      }
+      return c.json(
+        { error: (err as Error).message || "Failed to rename file" },
+        500,
+      );
+    }
   });
 
   return routes;

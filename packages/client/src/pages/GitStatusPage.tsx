@@ -1,29 +1,36 @@
-import type { GitFileChange } from "@yep-anywhere/shared";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import type {
+  GitFileChange,
+  GitHistoryCommitDetail,
+  GitHistoryCommitSummary,
+  GitStashDetail,
+} from "@yep-anywhere/shared";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
+import { GitBranchMergeModal } from "../components/GitBranchMergeModal";
+import { GitBranchCreateModal } from "../components/GitBranchCreateModal";
+import { GitBranchSwitchModal } from "../components/GitBranchSwitchModal";
 import { PageHeader } from "../components/PageHeader";
 import { ProjectSelector } from "../components/ProjectSelector";
+import { GitCommitHistoryPane } from "../components/git-status/GitCommitHistoryPane";
+import { GitConfirmationModal } from "../components/git-status/GitConfirmationModal";
+import { GitPreviewPane } from "../components/git-status/GitPreviewPane";
+import { GitStashPane } from "../components/git-status/GitStashPane";
+import { GitStatusSidebar } from "../components/git-status/GitStatusSidebar";
+import { GitStatusSummaryBar } from "../components/git-status/GitStatusSummaryBar";
+import { FilePathTitle } from "../components/git-status/utils";
+import { FileViewer } from "../components/FileViewer";
+import { Button } from "../components/ui/Button";
 import { Modal } from "../components/ui/Modal";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useGitStatus } from "../hooks/useGitStatus";
+import { useGitStatusActions } from "../hooks/useGitStatusActions";
+import { useGitStatusSelection } from "../hooks/useGitStatusSelection";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import { useProject, useProjects } from "../hooks/useProjects";
 import { useI18n } from "../i18n";
-import { MainContent, useNavigationLayout } from "../layouts";
-
-interface PatchHunk {
-  oldStart: number;
-  oldLines: number;
-  newStart: number;
-  newLines: number;
-  lines: string[];
-}
-
-interface GitDiffResult {
-  diffHtml: string;
-  structuredPatch: PatchHunk[];
-  markdownHtml?: string;
-}
+import "../styles/git-status.css";
+import { useNavigationLayout } from "../layouts";
 
 export function GitStatusPage() {
   const { t } = useI18n();
@@ -35,7 +42,8 @@ export function GitStatusPage() {
   const { projects, loading: projectsLoading } = useProjects();
   const effectiveProjectId = projectId || projects[0]?.id;
   const { project } = useProject(effectiveProjectId);
-  const { gitStatus, loading, error } = useGitStatus(effectiveProjectId);
+  const { gitStatus, loading, error, refetch } =
+    useGitStatus(effectiveProjectId);
 
   useDocumentTitle(project?.name, t("gitStatusTitle"));
 
@@ -47,441 +55,903 @@ export function GitStatusPage() {
     return <div className="error">{t("gitStatusNoProjects")}</div>;
   }
 
-  return (
-    <MainContent isWideScreen={isWideScreen}>
-      <PageHeader
-        title={project?.name ?? t("gitStatusTitle")}
-        titleElement={
-          effectiveProjectId ? (
-            <ProjectSelector
-              currentProjectId={effectiveProjectId}
-              currentProjectName={project?.name}
-              onProjectChange={(p) => handleProjectChange(p.id)}
-            />
-          ) : undefined
-        }
-        onOpenSidebar={openSidebar}
-        onToggleSidebar={toggleSidebar}
-        isWideScreen={isWideScreen}
-        isSidebarCollapsed={isSidebarCollapsed}
-      />
+  const wrapperClass = isWideScreen
+    ? "main-content-wrapper"
+    : "main-content-mobile";
+  const innerClass = isWideScreen
+    ? "main-content-full"
+    : "main-content-mobile-inner";
 
-      <main className="page-scroll-container">
-        <div className="page-content-inner">
-          {loading || projectsLoading ? (
-            <div className="loading">{t("gitStatusLoading")}</div>
-          ) : error ? (
-            <div className="error">
-              {t("gitStatusErrorPrefix")} {error.message}
-            </div>
-          ) : gitStatus && !gitStatus.isGitRepo ? (
-            <div className="git-status-empty">{t("gitStatusNotRepo")}</div>
-          ) : gitStatus && effectiveProjectId ? (
-            <GitStatusContent
-              status={gitStatus}
-              projectId={effectiveProjectId}
-              t={t as never}
-            />
-          ) : null}
-        </div>
-      </main>
-    </MainContent>
+  return (
+    <div className={wrapperClass}>
+      <div className={innerClass}>
+        <PageHeader
+          title=""
+          titleElement={
+            effectiveProjectId ? (
+              <ProjectSelector
+                currentProjectId={effectiveProjectId}
+                currentProjectName={project?.name}
+                onProjectChange={(p) => handleProjectChange(p.id)}
+              />
+            ) : undefined
+          }
+          onOpenSidebar={openSidebar}
+          onToggleSidebar={toggleSidebar}
+          isWideScreen={isWideScreen}
+          isSidebarCollapsed={isSidebarCollapsed}
+        />
+
+        <main className="page-scroll-container git-status-page-scroll">
+          <div className="page-content-inner git-status-page-content">
+            {loading || projectsLoading ? (
+              <div className="loading">{t("gitStatusLoading")}</div>
+            ) : error ? (
+              <div className="error">
+                {t("gitStatusErrorPrefix")} {error.message}
+              </div>
+            ) : gitStatus && !gitStatus.isGitRepo ? (
+              <div className="git-status-empty">{t("gitStatusNotRepo")}</div>
+            ) : gitStatus && effectiveProjectId ? (
+              <GitStatusContent
+                status={gitStatus}
+                projectId={effectiveProjectId}
+                projectPath={project?.path}
+                refetch={refetch}
+                t={t as never}
+              />
+            ) : null}
+          </div>
+        </main>
+      </div>
+    </div>
   );
 }
 
 function GitStatusContent({
   status,
   projectId,
+  refetch,
   t,
+  projectPath,
 }: {
   status: import("@yep-anywhere/shared").GitStatusInfo;
   projectId: string;
+  refetch: () => Promise<void>;
   t: (key: string, vars?: Record<string, string | number>) => string;
+  projectPath?: string;
 }) {
-  const [selectedFile, setSelectedFile] = useState<GitFileChange | null>(null);
+  const isNarrowScreen = useMediaQuery("(max-width: 900px)");
+  const isMediumScreen = useMediaQuery("(max-width: 1099px)");
+  const [activeView, setActiveView] = useState<
+    "files" | "changes" | "stashed" | "history"
+  >("files");
+  const [commitMessage, setCommitMessage] = useState("");
+  const [fileFilter, setFileFilter] = useState("");
+  const [fileActionsMenuOpen, setFileActionsMenuOpen] = useState(false);
+  /* 文件 tab 相关 / Files tab related */
+  const [fileTreeSearchQuery, setFileTreeSearchQuery] = useState("");
+  const [fileTreeSelectedPath, setFileTreeSelectedPath] = useState<
+    string | null
+  >(null);
+  const [fileTreeRefreshKey, setFileTreeRefreshKey] = useState(0);
+  const [historyCommits, setHistoryCommits] = useState<
+    GitHistoryCommitSummary[]
+  >([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyLoadingMore, setHistoryLoadingMore] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyHasMore, setHistoryHasMore] = useState(false);
+  const [historyCursor, setHistoryCursor] = useState<string | null>(null);
+  const [createBranchInitialName, setCreateBranchInitialName] = useState("");
+  const [activeViewRefreshKey, setActiveViewRefreshKey] = useState(0);
+  const [refreshingActiveView, setRefreshingActiveView] = useState<
+    "files" | "changes" | "stashed" | "history" | null
+  >(null);
+  /* 文件重命名 / File rename */
+  const [renameFileState, setRenameFileState] = useState<{
+    path: string;
+    name: string;
+  } | null>(null);
+  const [renameFileNewName, setRenameFileNewName] = useState("");
+  const [renameFileBusy, setRenameFileBusy] = useState(false);
+  const [renameFileError, setRenameFileError] = useState<string | null>(null);
+  /* 文件删除 / File delete */
+  const [deleteFileState, setDeleteFileState] = useState<{
+    path: string;
+    name: string;
+    isDirectory: boolean;
+  } | null>(null);
+  const [deleteFileBusy, setDeleteFileBusy] = useState(false);
+  const [selectedHistoryCommitHash, setSelectedHistoryCommitHash] = useState<
+    string | null
+  >(null);
+  const [historyModalCommit, setHistoryModalCommit] =
+    useState<GitHistoryCommitDetail | null>(null);
+  const [historyPreviewModal, setHistoryPreviewModal] = useState<{
+    file: GitFileChange;
+    historyCommit: { hash: string; previousPath?: string };
+  } | null>(null);
+  const [stashModal, setStashModal] = useState<GitStashDetail | null>(null);
+  const [stashPreviewModal, setStashPreviewModal] = useState<{
+    file: GitFileChange;
+    stashRef: { ref: string; previousPath?: string };
+  } | null>(null);
+  const [selectedStashRef, setSelectedStashRef] = useState<string | null>(null);
 
-  const stagedFiles = status.files.filter((f) => f.staged);
-  const unstagedFiles = status.files.filter(
-    (f) => !f.staged && f.status !== "?",
+  const {
+    excludedCommitFileKeys,
+    handleCommitFileToggle,
+    handleCommitFilesSelection,
+    handleFileClick,
+    previewModalFile,
+    selectedCommitFiles,
+    selectedFile,
+    setPreviewModalFile,
+  } = useGitStatusSelection(projectId, status.files, isNarrowScreen);
+
+  const normalizedFileFilter = fileFilter.trim().toLowerCase();
+  const visibleFiles = useMemo(
+    () =>
+      [...status.files]
+        .sort((a, b) => a.path.localeCompare(b.path))
+        .filter((file) => {
+          if (normalizedFileFilter.length === 0) return true;
+          return [file.path, file.origPath]
+            .filter((value): value is string => typeof value === "string")
+            .some((value) =>
+              value.toLowerCase().includes(normalizedFileFilter),
+            );
+        }),
+    [normalizedFileFilter, status.files],
   );
-  const untrackedFiles = status.files.filter((f) => f.status === "?");
 
-  return (
-    <div className="git-status">
-      <div className="git-status-branch">
-        <span className="git-branch-icon">
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <line x1="6" y1="3" x2="6" y2="15" />
-            <circle cx="18" cy="6" r="3" />
-            <circle cx="6" cy="18" r="3" />
-            <path d="M18 9a9 9 0 0 1-9 9" />
-          </svg>
-        </span>
-        <span className="git-branch-name">
-          {status.branch ?? t("gitStatusDetachedHead")}
-        </span>
-        {status.upstream && (
-          <span className="git-upstream"> → {status.upstream}</span>
-        )}
-        {(status.ahead > 0 || status.behind > 0) && (
-          <span className="git-ahead-behind">
-            {status.ahead > 0 && ` ↑${status.ahead}`}
-            {status.behind > 0 && ` ↓${status.behind}`}
-          </span>
-        )}
-        <span
-          className={`git-clean-badge ${status.isClean ? "git-clean" : "git-dirty"}`}
-        >
-          {status.isClean ? t("gitStatusClean") : t("gitStatusDirty")}
-        </span>
-      </div>
+  const selectedCommitCount = selectedCommitFiles.length;
+  const selectedCommitPaths = selectedCommitFiles.map((file) => file.path);
+  const canCommit = commitMessage.trim().length > 0 && selectedCommitCount > 0;
+  const remoteName = status.remote ?? "origin";
+  const historyReloadKey = `${status.branch ?? ""}:${status.ahead}:${status.behind}`;
+  // 手动刷新 key，用于刷新按钮 / Manual refresh key for refresh button
+  const historyRefreshKey = `${historyReloadKey}:${activeViewRefreshKey}`;
 
-      {status.isClean ? (
-        <div className="git-status-empty">{t("gitStatusWorkingTreeClean")}</div>
-      ) : (
-        <>
-          {stagedFiles.length > 0 && (
-            <GitFileSection
-              title={t("gitStatusStaged")}
-              files={stagedFiles}
-              onFileClick={setSelectedFile}
-            />
-          )}
-          {unstagedFiles.length > 0 && (
-            <GitFileSection
-              title={t("gitStatusChanges")}
-              files={unstagedFiles}
-              onFileClick={setSelectedFile}
-            />
-          )}
-          {untrackedFiles.length > 0 && (
-            <GitFileSection
-              title={t("gitStatusUntracked")}
-              files={untrackedFiles}
-              onFileClick={setSelectedFile}
-            />
-          )}
-        </>
-      )}
+  // 分支切换时刷新当前激活的 tab / Refresh active tab when branch changes
+  const prevBranchRef = useRef(status.branch);
+  useEffect(() => {
+    const prevBranch = prevBranchRef.current;
+    prevBranchRef.current = status.branch;
+    // 首次加载时跳过 / Skip on initial load
+    if (prevBranch === undefined || prevBranch === status.branch) return;
+    // 分支已切换，触发刷新 / Branch changed, trigger refresh
+    if (activeView === "files") {
+      setFileTreeRefreshKey((k) => k + 1);
+    } else if (activeView === "changes") {
+      refetch();
+    }
+    // history 和 stashed 由 historyReloadKey 自动触发 / history and stashed auto-trigger via historyReloadKey
+  }, [status.branch]); // eslint-disable-line react-hooks/exhaustive-deps
 
-      {selectedFile && (
-        <GitDiffModal
-          file={selectedFile}
-          projectId={projectId}
-          t={t}
-          onClose={() => setSelectedFile(null)}
-        />
-      )}
-    </div>
+  // 手动刷新激活的 tab / Manually refresh the active tab
+  const handleRefreshActiveView = useCallback(() => {
+    setRefreshingActiveView(activeView);
+    // 保持 spinning 至少 2 圈动画（0.8s × 2 = 1.6s）/ Keep spinning for at least 2 rotation cycles
+    const minSpinningMs = 1600;
+    const finishSpinning = () => {
+      setRefreshingActiveView(null);
+    };
+    const spinningTimer = window.setTimeout(finishSpinning, minSpinningMs);
+
+    if (activeView === "files") {
+      setFileTreeRefreshKey((k) => k + 1);
+    } else if (activeView === "changes" || activeView === "stashed") {
+      refetch().finally(() => {
+        // 在最短动画时间后清除 / Clear after minimum animation time
+        window.clearTimeout(spinningTimer);
+        finishSpinning();
+      });
+    } else {
+      // history：通过改变 refresh key 触发重新加载 / history: trigger reload via refresh key
+      setActiveViewRefreshKey((k) => k + 1);
+    }
+  }, [activeView, refetch]);
+
+  // 重命名文件 / Rename file
+  const handleRenameFile = useCallback((path: string, name: string) => {
+    setRenameFileState({ path, name });
+    setRenameFileNewName(name);
+    setRenameFileError(null);
+  }, []);
+
+  const handleRenameFileConfirm = useCallback(async () => {
+    if (!renameFileState || !renameFileNewName.trim()) return;
+    setRenameFileBusy(true);
+    setRenameFileError(null);
+    try {
+      await api.renameFile(projectId, renameFileState.path, renameFileNewName.trim());
+      setRenameFileState(null);
+      setFileTreeRefreshKey((k) => k + 1);
+      // 同时刷新 git status 以更新 Changes tab / Also refresh git status to update Changes tab
+      refetch();
+    } catch (err) {
+      setRenameFileError(
+        err instanceof Error ? err.message : t("gitStatusFileContextActionFailed", { action: "rename" }),
+      );
+    } finally {
+      setRenameFileBusy(false);
+    }
+  }, [renameFileState, renameFileNewName, projectId, t]);
+
+  // 删除文件 / Delete file
+  const handleDeleteFile = useCallback(
+    (path: string, name: string, isDirectory: boolean) => {
+      setDeleteFileState({ path, name, isDirectory });
+    },
+    [],
   );
-}
 
-function GitFileSection({
-  title,
-  files,
-  onFileClick,
-}: {
-  title: string;
-  files: GitFileChange[];
-  onFileClick: (file: GitFileChange) => void;
-}) {
-  return (
-    <div className="git-file-section">
-      <h3 className="git-file-section-title">
-        {title} <span className="git-file-count">({files.length})</span>
-      </h3>
-      <ul className="git-file-list">
-        {files.map((file) => (
-          <GitFileItem
-            key={`${file.path}-${file.staged}`}
-            file={file}
-            onClick={onFileClick}
-          />
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function GitFileItem({
-  file,
-  onClick,
-}: {
-  file: GitFileChange;
-  onClick: (file: GitFileChange) => void;
-}) {
-  return (
-    // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard nav not needed for file list
-    <li
-      className="git-file-item git-file-item-clickable"
-      onClick={() => onClick(file)}
-    >
-      <span
-        className={`git-status-badge git-status-${file.status.toLowerCase()}`}
-      >
-        {file.status}
-      </span>
-      <span className="git-file-path">
-        {file.origPath ? (
-          <>
-            {file.origPath} → {file.path}
-          </>
-        ) : (
-          file.path
-        )}
-      </span>
-      {(file.linesAdded !== null || file.linesDeleted !== null) && (
-        <span className="git-line-counts">
-          {file.linesAdded !== null && (
-            <span className="git-lines-added">+{file.linesAdded}</span>
-          )}
-          {file.linesDeleted !== null && (
-            <span className="git-lines-deleted">-{file.linesDeleted}</span>
-          )}
-        </span>
-      )}
-    </li>
-  );
-}
-
-function GitDiffModal({
-  file,
-  projectId,
-  t,
-  onClose,
-}: {
-  file: GitFileChange;
-  projectId: string;
-  t: (key: string, vars?: Record<string, string | number>) => string;
-  onClose: () => void;
-}) {
-  const [diffResult, setDiffResult] = useState<GitDiffResult | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const handleDeleteFileConfirm = useCallback(async () => {
+    if (!deleteFileState) return;
+    setDeleteFileBusy(true);
+    try {
+      await api.deleteFile(projectId, deleteFileState.path);
+      setDeleteFileState(null);
+      setFileTreeRefreshKey((k) => k + 1);
+      // 同时刷新 git status 以更新 Changes tab / Also refresh git status to update Changes tab
+      refetch();
+    } catch (err) {
+      console.error("Failed to delete file:", err);
+    } finally {
+      setDeleteFileBusy(false);
+    }
+  }, [deleteFileState, projectId, refetch]);
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(null);
+
+    if (activeView !== "history" || historyRefreshKey.length === 0) return;
+
+    setHistoryLoading(true);
+    setHistoryLoadingMore(false);
+    setHistoryError(null);
+    setHistoryCommits([]);
+    setHistoryHasMore(false);
+    setHistoryCursor(null);
+    setSelectedHistoryCommitHash(null);
 
     api
-      .getGitDiff(projectId, {
-        path: file.path,
-        staged: file.staged,
-        status: file.status,
-      })
+      .getGitHistory(projectId, { limit: 25 })
       .then((result) => {
-        if (!cancelled) {
-          setDiffResult(result);
-          setLoading(false);
-        }
+        if (cancelled) return;
+        setHistoryCommits(result.commits);
+        setHistoryHasMore(result.hasMore);
+        setHistoryCursor(result.nextCursor);
+        setSelectedHistoryCommitHash(null);
+        setHistoryLoading(false);
       })
       .catch((err) => {
-        if (!cancelled) {
-          setError(err.message || t("gitStatusLoadDiffFailed"));
-          setLoading(false);
-        }
+        if (cancelled) return;
+        setHistoryError(
+          err instanceof Error ? err.message : t("gitStatusActionFailed"),
+        );
+        setHistoryLoading(false);
       });
 
     return () => {
       cancelled = true;
     };
-  }, [projectId, file.path, file.staged, file.status, t]);
+  }, [activeView, historyRefreshKey, projectId, t]);
 
-  const fileName = file.path.split("/").pop() || file.path;
-
-  return (
-    <Modal title={fileName} onClose={onClose}>
-      {loading ? (
-        <div className="git-diff-loading">{t("gitStatusLoadingDiff")}</div>
-      ) : error ? (
-        <div className="git-diff-error">{error}</div>
-      ) : diffResult ? (
-        <GitDiffModalContent
-          file={file}
-          projectId={projectId}
-          diffResult={diffResult}
-          t={t}
-        />
-      ) : null}
-    </Modal>
-  );
-}
-
-function GitDiffModalContent({
-  file,
-  projectId,
-  diffResult,
-  t,
-}: {
-  file: GitFileChange;
-  projectId: string;
-  diffResult: GitDiffResult;
-  t: (key: string, vars?: Record<string, string | number>) => string;
-}) {
-  const [showFullContext, setShowFullContext] = useState(false);
-  const [fullContextResult, setFullContextResult] =
-    useState<GitDiffResult | null>(null);
-  const [contextLoading, setContextLoading] = useState(false);
-  const [contextError, setContextError] = useState<string | null>(null);
-  const [showMarkdownPreview, setShowMarkdownPreview] = useState(false);
-  const contentRef = useRef<HTMLDivElement>(null);
-
-  const isMarkdown = /\.(md|markdown)$/i.test(file.path);
-  const hasMarkdownPreview =
-    isMarkdown &&
-    !!(fullContextResult?.markdownHtml || diffResult.markdownHtml);
-
-  const handleToggleContext = useCallback(async () => {
-    if (!showFullContext && !fullContextResult) {
-      setContextLoading(true);
-      setContextError(null);
-      try {
-        const result = await api.getGitDiff(projectId, {
-          path: file.path,
-          staged: file.staged,
-          status: file.status,
-          fullContext: true,
-        });
-        setFullContextResult(result);
-      } catch (err) {
-        setContextError(
-          err instanceof Error ? err.message : t("gitStatusLoadContextFailed"),
-        );
-        setContextLoading(false);
-        return;
-      }
-      setContextLoading(false);
-    }
-    setShowFullContext(!showFullContext);
-  }, [
-    showFullContext,
-    fullContextResult,
-    projectId,
-    file.path,
-    file.staged,
-    file.status,
-    t,
-  ]);
-
-  // Scroll to first changed line when showing full context
   useEffect(() => {
-    if (showFullContext && fullContextResult && contentRef.current) {
-      requestAnimationFrame(() => {
-        const firstChange = contentRef.current?.querySelector(
-          ".line-deleted, .line-inserted",
-        );
-        if (firstChange) {
-          firstChange.scrollIntoView({ block: "center", behavior: "instant" });
-        }
-      });
+    if (activeView !== "stashed") return;
+
+    if (status.stashes.length === 0) {
+      setActiveView("changes");
+      setSelectedStashRef(null);
+      return;
     }
-  }, [showFullContext, fullContextResult]);
 
-  const displayResult =
-    showFullContext && fullContextResult ? fullContextResult : diffResult;
+    setSelectedStashRef((current) => {
+      if (status.stashes.length === 0) return null;
+      if (isNarrowScreen) {
+        return current &&
+          status.stashes.some((stash) => stash.ref === current)
+          ? current
+          : null;
+      }
+      if (current && status.stashes.some((stash) => stash.ref === current)) {
+        return current;
+      }
+      return status.stashes[0]?.ref ?? null;
+    });
+  }, [activeView, isNarrowScreen, status.stashes]);
 
-  const markdownHtml =
-    fullContextResult?.markdownHtml || diffResult.markdownHtml;
+  const handleLoadMoreHistory = async () => {
+    if (!historyHasMore || !historyCursor || historyLoadingMore) return;
+
+    setHistoryLoadingMore(true);
+    setHistoryError(null);
+
+    try {
+      const result = await api.getGitHistory(projectId, {
+        cursor: historyCursor,
+        limit: 25,
+      });
+
+      setHistoryCommits((prev) => {
+        const existingHashes = new Set(prev.map((commit) => commit.hash));
+        const appended = result.commits.filter(
+          (commit) => !existingHashes.has(commit.hash),
+        );
+        return [...prev, ...appended];
+      });
+      setHistoryHasMore(result.hasMore);
+      setHistoryCursor(result.nextCursor);
+    } catch (err) {
+      setHistoryError(
+        err instanceof Error ? err.message : t("gitStatusActionFailed"),
+      );
+    } finally {
+      setHistoryLoadingMore(false);
+    }
+  };
+
+  const {
+    actionError,
+    alternateSyncAction,
+    branchMenuError,
+    branchMenuOpen,
+    branchSwitchMode,
+    branches,
+    busyAction,
+    confirmBranchSwitch,
+    confirmDiscardAllChanges,
+    confirmDiscardStash,
+    discardConfirmOpen,
+    discardStashConfirmRef,
+    handleBranchSelect,
+    handleCreateBranch,
+    handleCommit,
+    handleConfirmUndo,
+    handleDiscardAllChanges,
+    handleDiscardStash,
+    handleMergeBranch,
+    handleOpenMergeModal,
+    handleRestoreStash,
+    handleStashAllChanges,
+    handleSync,
+    handleToggleBranchMenu,
+    handleUndoClick,
+    hideDiscardWarningChecked,
+    hideUndoWarningChecked,
+    createModalOpen,
+    mergeError,
+    mergeModalOpen,
+    pendingBranch,
+    setBranchMenuOpen,
+    setBranchSwitchMode,
+    setCreateModalOpen,
+    setDiscardConfirmOpen,
+    setDiscardStashConfirmRef,
+    setFileActionWarnings,
+    setMergeError,
+    setMergeModalOpen,
+    setPendingBranch,
+    setSyncMenuOpen,
+    setUndoConfirmOpen,
+    syncAction,
+    syncMenuOpen,
+    undoConfirmOpen,
+  } = useGitStatusActions({
+    projectId,
+    status,
+    refetch,
+    t,
+    selectedCommitPaths,
+    commitMessage,
+    setCommitMessage,
+  });
 
   return (
-    <div className="diff-modal-content" ref={contentRef}>
-      <div className="diff-context-controls">
-        <span className="diff-context-path">{file.path}</span>
-        <div className="diff-context-buttons">
-          {hasMarkdownPreview && (
-            <button
-              type="button"
-              className={`diff-context-toggle ${showMarkdownPreview ? "active" : ""}`}
-              onClick={() => setShowMarkdownPreview(!showMarkdownPreview)}
-            >
-              {showMarkdownPreview ? t("gitStatusDiff") : t("gitStatusPreview")}
-            </button>
-          )}
-          {!showMarkdownPreview && (
-            <button
-              type="button"
-              className="diff-context-toggle"
-              onClick={handleToggleContext}
-              disabled={contextLoading}
-            >
-              {contextLoading
-                ? t("gitStatusLoading")
-                : showFullContext
-                  ? t("gitStatusDiffOnly")
-                  : t("gitStatusFullContext")}
-            </button>
-          )}
-        </div>
-        {contextError && (
-          <span className="diff-context-error">{contextError}</span>
+    <div className="git-desktop">
+      <GitStatusSummaryBar
+        status={status}
+        branches={branches}
+        branchMenuError={branchMenuError}
+        branchMenuOpen={branchMenuOpen}
+        busyAction={busyAction}
+        syncAction={syncAction}
+        syncMenuOpen={syncMenuOpen}
+        alternateSyncAction={alternateSyncAction}
+        remoteName={remoteName}
+        t={t}
+        onBranchMenuToggle={handleToggleBranchMenu}
+        onBranchMenuClose={() => setBranchMenuOpen(false)}
+        onBranchSelect={handleBranchSelect}
+        onOpenCreateBranch={(branchName) => {
+          setBranchMenuOpen(false);
+          setCreateBranchInitialName(branchName);
+          setCreateModalOpen(true);
+        }}
+        onOpenMerge={handleOpenMergeModal}
+        onSync={handleSync}
+        onSyncMenuToggle={() => setSyncMenuOpen((value) => !value)}
+        onSyncMenuClose={() => setSyncMenuOpen(false)}
+      />
+
+      {actionError && <div className="error">{actionError}</div>}
+
+      <div className="git-desktop-shell">
+        <GitStatusSidebar
+          status={status}
+          projectId={projectId}
+          activeView={activeView}
+          commitMessage={commitMessage}
+          fileFilter={fileFilter}
+          fileActionsMenuOpen={fileActionsMenuOpen}
+          selectedCommitCount={selectedCommitCount}
+          visibleFiles={visibleFiles}
+          historyCommits={historyCommits}
+          historyLoading={historyLoading}
+          historyLoadingMore={historyLoadingMore}
+          historyError={historyError}
+          historyHasMore={historyHasMore}
+          selectedStashRef={selectedStashRef}
+          selectedHistoryCommitHash={selectedHistoryCommitHash}
+          selectedFile={selectedFile}
+          stashes={status.stashes}
+          excludedCommitFileKeys={excludedCommitFileKeys}
+          busyAction={busyAction}
+          canCommit={canCommit}
+          canUndo={status.ahead > 0}
+          t={t}
+          onCommitMessageChange={setCommitMessage}
+          onCommit={handleCommit}
+          onUndo={handleUndoClick}
+          onFileFilterChange={setFileFilter}
+          onClearFileFilter={() => setFileFilter("")}
+          onViewChange={setActiveView}
+          onToggleFileActionsMenu={() =>
+            setFileActionsMenuOpen((value) => !value)
+          }
+          onCloseFileActionsMenu={() => setFileActionsMenuOpen(false)}
+          onDiscardSelected={() => {
+            setFileActionsMenuOpen(false);
+            handleDiscardAllChanges();
+          }}
+          onStashSelected={() => {
+            setFileActionsMenuOpen(false);
+            handleStashAllChanges();
+          }}
+          onFileClick={handleFileClick}
+          onHistoryCommitSelect={setSelectedHistoryCommitHash}
+          onLoadMoreHistory={handleLoadMoreHistory}
+          onStashSelect={setSelectedStashRef}
+          onToggleCommitFile={handleCommitFileToggle}
+          onSetCommitFiles={handleCommitFilesSelection}
+          /* 文件 tab 相关 / Files tab related */
+          fileTreeSearchQuery={fileTreeSearchQuery}
+          fileTreeSelectedPath={fileTreeSelectedPath}
+          onFileTreeSearchChange={setFileTreeSearchQuery}
+          onFileTreeFileClick={setFileTreeSelectedPath}
+          fileTreeRefreshKey={fileTreeRefreshKey}
+          /* 刷新相关 / Refresh related */
+          refreshingActiveView={refreshingActiveView}
+          onRefreshActiveView={handleRefreshActiveView}
+          projectPath={projectPath}
+          onRenameFile={handleRenameFile}
+          onDeleteFile={handleDeleteFile}
+        />
+
+        {!isNarrowScreen && (
+          <section className="git-desktop-card git-preview-card">
+            {activeView === "files" ? (
+              fileTreeSelectedPath ? (
+                <FileViewer
+                  projectId={projectId}
+                  filePath={fileTreeSelectedPath}
+                />
+              ) : (
+                <div className="git-preview-empty">
+                  {t("gitStatusFileSelectToView")}
+                </div>
+              )
+            ) : activeView === "history" ? (
+              <GitCommitHistoryPane
+                projectId={projectId}
+                selectedCommitHash={selectedHistoryCommitHash}
+                t={t}
+                previewInline={!isMediumScreen}
+                onCommitLoaded={setHistoryModalCommit}
+                onFileSelect={(file, historyCommit) =>
+                  setHistoryPreviewModal({ file, historyCommit })
+                }
+                projectPath={projectPath}
+              />
+            ) : activeView === "stashed" ? (
+              <GitStashPane
+                projectId={projectId}
+                selectedStashRef={selectedStashRef}
+                busyAction={busyAction}
+                t={t}
+                onDiscard={(stashRef) => {
+                  handleDiscardStash(stashRef);
+                }}
+                onRestore={(stashRef) => {
+                  handleRestoreStash(stashRef, () => {
+                    setActiveView("changes");
+                    setSelectedStashRef(null);
+                  });
+                }}
+                previewInline={!isMediumScreen}
+                onStashLoaded={setStashModal}
+                onFileSelect={(file, stashRef) =>
+                  setStashPreviewModal({ file, stashRef })
+                }
+                projectPath={projectPath}
+              />
+            ) : selectedFile ? (
+              <GitPreviewPane file={selectedFile} projectId={projectId} t={t} />
+            ) : (
+              <div className="git-preview-empty">
+                {status.files.length === 0
+                  ? t("gitStatusWorkingTreeClean")
+                  : t("gitStatusSelectFilePreview")}
+              </div>
+            )}
+          </section>
         )}
+
       </div>
 
-      {showMarkdownPreview && markdownHtml ? (
-        <div className="markdown-preview">
-          <div
-            className="markdown-rendered"
-            // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered HTML
-            dangerouslySetInnerHTML={{ __html: markdownHtml }}
-          />
-        </div>
-      ) : displayResult.diffHtml ? (
-        <HighlightedDiff diffHtml={displayResult.diffHtml} />
-      ) : (
-        <DiffLines
-          lines={displayResult.structuredPatch.flatMap((h) => h.lines)}
+      {isNarrowScreen && previewModalFile ? (
+        <Modal
+          title={<FilePathTitle file={previewModalFile} />}
+          onClose={() => setPreviewModalFile(null)}
+          backCloses
+        >
+          <div className="git-preview-modal-content">
+            <GitPreviewPane
+              file={previewModalFile}
+              projectId={projectId}
+              t={t}
+            />
+          </div>
+        </Modal>
+      ) : null}
+
+      {isNarrowScreen &&
+      activeView === "files" &&
+      fileTreeSelectedPath ? (
+        <Modal
+          title={fileTreeSelectedPath}
+          onClose={() => setFileTreeSelectedPath(null)}
+          backCloses
+        >
+          <div className="git-preview-modal-content">
+            <FileViewer
+              projectId={projectId}
+              filePath={fileTreeSelectedPath}
+            />
+          </div>
+        </Modal>
+      ) : null}
+
+      {isNarrowScreen &&
+      activeView === "history" &&
+      selectedHistoryCommitHash ? (
+        <Modal
+          title={historyModalCommit?.message ?? t("gitStatusLoading")}
+          onClose={() => {
+            setSelectedHistoryCommitHash(null);
+            setHistoryModalCommit(null);
+          }}
+          backCloses
+        >
+          <div className="git-preview-modal-content">
+            <GitCommitHistoryPane
+              projectId={projectId}
+              selectedCommitHash={selectedHistoryCommitHash}
+              t={t}
+              previewInline={false}
+              onCommitLoaded={setHistoryModalCommit}
+              onFileSelect={(file, historyCommit) =>
+                setHistoryPreviewModal({ file, historyCommit })
+              }
+              projectPath={projectPath}
+            />
+          </div>
+        </Modal>
+      ) : null}
+
+      {isMediumScreen && historyPreviewModal ? (
+        <Modal
+          title={<FilePathTitle file={historyPreviewModal.file} />}
+          onClose={() => setHistoryPreviewModal(null)}
+          backCloses
+        >
+          <div className="git-preview-modal-content">
+            <GitPreviewPane
+              file={historyPreviewModal.file}
+              projectId={projectId}
+              t={t}
+              historyCommit={historyPreviewModal.historyCommit}
+            />
+          </div>
+        </Modal>
+      ) : null}
+
+      {isNarrowScreen &&
+      activeView === "stashed" &&
+      selectedStashRef ? (
+        <Modal
+          title={
+            stashModal
+              ? stashModal.createdByApp
+                ? t("gitStatusStashedTitle")
+                : stashModal.message
+              : t("gitStatusLoading")
+          }
+          onClose={() => {
+            setSelectedStashRef(null);
+            setStashModal(null);
+          }}
+          backCloses
+        >
+          <div className="git-preview-modal-content">
+            <GitStashPane
+              projectId={projectId}
+              selectedStashRef={selectedStashRef}
+              busyAction={busyAction}
+              t={t}
+              onDiscard={(stashRef) => {
+                handleDiscardStash(stashRef);
+              }}
+              onRestore={(stashRef) => {
+                handleRestoreStash(stashRef, () => {
+                  setStashModal(null);
+                  setSelectedStashRef(null);
+                  setActiveView("changes");
+                });
+              }}
+              previewInline={false}
+              onStashLoaded={setStashModal}
+              onFileSelect={(file, stashRef) =>
+                setStashPreviewModal({ file, stashRef })
+              }
+              projectPath={projectPath}
+            />
+          </div>
+        </Modal>
+      ) : null}
+
+      {isMediumScreen && stashPreviewModal ? (
+        <Modal
+          title={<FilePathTitle file={stashPreviewModal.file} />}
+          onClose={() => setStashPreviewModal(null)}
+          backCloses
+        >
+          <div className="git-preview-modal-content">
+            <GitPreviewPane
+              file={stashPreviewModal.file}
+              projectId={projectId}
+              t={t}
+              stashRef={stashPreviewModal.stashRef}
+            />
+          </div>
+        </Modal>
+      ) : null}
+
+      {undoConfirmOpen ? (
+        <GitConfirmationModal
+          title={t("gitStatusUndoConfirmTitle")}
+          message={t("gitStatusUndoConfirmBody")}
+          skipChecked={hideUndoWarningChecked}
+          onSkipCheckedChange={setFileActionWarnings.setHideUndoWarningChecked}
+          skipLabel={t("gitStatusUndoConfirmSkip")}
+          cancelLabel={t("gitStatusBranchCancel")}
+          confirmLabel={
+            busyAction === "undo"
+              ? t("gitStatusLoading")
+              : t("gitStatusUndoConfirmContinue")
+          }
+          busy={busyAction !== null}
+          onClose={() => setUndoConfirmOpen(false)}
+          onConfirm={handleConfirmUndo}
         />
-      )}
+      ) : null}
+
+      {discardConfirmOpen ? (
+        <GitConfirmationModal
+          title={t("gitStatusDiscardAllTitle")}
+          message={t("gitStatusDiscardAllPrompt")}
+          details={
+            <>
+              <div className="git-discard-confirm-target">
+                {selectedCommitCount === 1
+                  ? selectedCommitFiles[0]?.path
+                  : t("gitStatusSelectedFilesCount", {
+                      count: selectedCommitCount,
+                    })}
+              </div>
+              <p className="git-discard-confirm-detail">
+                {t("gitStatusDiscardAllBody")}
+              </p>
+            </>
+          }
+          skipChecked={hideDiscardWarningChecked}
+          onSkipCheckedChange={
+            setFileActionWarnings.setHideDiscardWarningChecked
+          }
+          skipLabel={t("gitStatusUndoConfirmSkip")}
+          cancelLabel={t("gitStatusBranchCancel")}
+          confirmLabel={
+            busyAction === "discard"
+              ? t("gitStatusLoading")
+              : t("gitStatusDiscardAllConfirm")
+          }
+          busy={busyAction !== null}
+          onClose={() => setDiscardConfirmOpen(false)}
+          onConfirm={confirmDiscardAllChanges}
+        />
+      ) : null}
+
+      {discardStashConfirmRef ? (
+        <GitConfirmationModal
+          title={t("gitStatusStashedDiscardTitle")}
+          message={t("gitStatusStashedDiscardPrompt")}
+          details={
+            <>
+              <div className="git-discard-confirm-target">
+                {stashModal?.createdByApp
+                  ? t("gitStatusStashedTitle")
+                  : stashModal?.message || discardStashConfirmRef}
+              </div>
+              <p className="git-discard-confirm-detail">
+                {t("gitStatusStashedDiscardBody")}
+              </p>
+            </>
+          }
+          cancelLabel={t("gitStatusBranchCancel")}
+          confirmLabel={
+            busyAction === "discardStash"
+              ? t("gitStatusLoading")
+              : t("gitStatusStashedDiscardConfirm")
+          }
+          busy={busyAction !== null}
+          onClose={() => setDiscardStashConfirmRef(null)}
+          onConfirm={() =>
+            confirmDiscardStash(() => {
+              setStashModal(null);
+              setSelectedStashRef(null);
+              setActiveView("changes");
+            })
+          }
+        />
+      ) : null}
+
+      {pendingBranch ? (
+        <GitBranchSwitchModal
+          currentBranch={status.branch ?? t("gitStatusCurrentBranchFallback")}
+          targetBranch={pendingBranch.targetBranch}
+          mode={branchSwitchMode}
+          busy={busyAction === "switch"}
+          onModeChange={setBranchSwitchMode}
+          onClose={() => setPendingBranch(null)}
+          onConfirm={() => confirmBranchSwitch(branchSwitchMode === "stash")}
+        />
+      ) : null}
+
+      {createModalOpen ? (
+        <GitBranchCreateModal
+          currentBranch={status.branch ?? t("gitStatusCurrentBranchFallback")}
+          branches={branches}
+          initialBranchName={createBranchInitialName}
+          busy={busyAction === "switch"}
+          onClose={() => {
+            if (busyAction === "switch") return;
+            setCreateModalOpen(false);
+          }}
+          onConfirm={(branchName, baseBranch) => {
+            setCreateModalOpen(false);
+            handleCreateBranch(branchName, baseBranch);
+          }}
+        />
+      ) : null}
+
+      {mergeModalOpen ? (
+        <GitBranchMergeModal
+          projectId={projectId}
+          currentBranch={status.branch ?? t("gitStatusCurrentBranchFallback")}
+          branches={branches}
+          busy={busyAction === "merge"}
+          error={mergeError}
+          onClose={() => {
+            if (busyAction === "merge") return;
+            setMergeModalOpen(false);
+            setMergeError(null);
+          }}
+          onConfirm={handleMergeBranch}
+        />
+      ) : null}
+
+      {/* 重命名文件模态框 / Rename file modal */}
+      {renameFileState ? (
+        <Modal
+          title={t("gitStatusFileContextRenameTitle")}
+          onClose={() => {
+            if (renameFileBusy) return;
+            setRenameFileState(null);
+          }}
+          backCloses
+        >
+          <div className="git-rename-form">
+            <input
+              id="git-rename-input"
+              type="text"
+              className="git-rename-input"
+              value={renameFileNewName}
+              onChange={(e) => {
+                setRenameFileNewName(e.target.value);
+                setRenameFileError(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleRenameFileConfirm();
+              }}
+              placeholder={renameFileState.name}
+            />
+            {renameFileError && (
+              <p className="git-diff-error">{renameFileError}</p>
+            )}
+            <div className="git-rename-actions">
+              <Button
+                variant="primary"
+                onClick={handleRenameFileConfirm}
+                disabled={renameFileBusy || !renameFileNewName.trim()}
+              >
+                {renameFileBusy
+                  ? t("gitStatusLoading")
+                  : t("gitStatusFileContextRenameConfirm")}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => setRenameFileState(null)}
+              >
+                {t("gitStatusFileContextRenameCancel")}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
+
+      {/* 删除文件确认模态框 / Delete file confirmation modal */}
+      {deleteFileState ? (
+        <GitConfirmationModal
+          title={
+            deleteFileState.isDirectory
+              ? t("gitStatusFileContextDeleteDirTitle")
+              : t("gitStatusFileContextDeleteFileTitle")
+          }
+          message={t("gitStatusFileContextDeleteMessage", {
+            name: deleteFileState.name,
+          })}
+          details={
+            <p className="git-discard-confirm-detail">
+              {t("gitStatusFileContextDeleteBody")}
+            </p>
+          }
+          cancelLabel={t("gitStatusFileContextDeleteCancel")}
+          confirmLabel={
+            deleteFileBusy
+              ? t("gitStatusLoading")
+              : t("gitStatusFileContextDeleteConfirm")
+          }
+          busy={deleteFileBusy}
+          onClose={() => {
+            if (deleteFileBusy) return;
+            setDeleteFileState(null);
+          }}
+          onConfirm={handleDeleteFileConfirm}
+        />
+      ) : null}
     </div>
   );
 }
-
-/** Render syntax-highlighted diff HTML from server */
-const HighlightedDiff = memo(function HighlightedDiff({
-  diffHtml,
-}: {
-  diffHtml: string;
-}) {
-  return (
-    <div
-      className="highlighted-diff"
-      // biome-ignore lint/security/noDangerouslySetInnerHtml: shiki output is safe
-      dangerouslySetInnerHTML={{ __html: diffHtml }}
-    />
-  );
-});
-
-/** Fallback plain-text diff renderer */
-const DiffLines = memo(function DiffLines({ lines }: { lines: string[] }) {
-  return (
-    <div className="diff-hunk">
-      <pre className="diff-content">
-        {lines.map((line, i) => {
-          const prefix = line[0];
-          const className =
-            prefix === "-"
-              ? "diff-removed"
-              : prefix === "+"
-                ? "diff-added"
-                : "diff-context";
-          return (
-            <div key={`${i}-${line.slice(0, 50)}`} className={className}>
-              {line}
-            </div>
-          );
-        })}
-      </pre>
-    </div>
-  );
-});
