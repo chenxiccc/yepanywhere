@@ -2003,9 +2003,12 @@ details[open] .collapsible__icon {
 .diff-content {
   margin: 0;
   padding: 0;
+  width: 100%;
+  min-width: 100%;
   background: var(--bg-code);
   overflow-x: auto;
   tab-size: var(--tab-size);
+  box-sizing: border-box;
 }
 
 .diff-content > div {
@@ -2038,9 +2041,12 @@ details[open] .collapsible__icon {
 .highlighted-diff pre.shiki {
   margin: 0;
   padding: 0.5rem;
+  width: 100%;
+  min-width: 100%;
   background: var(--bg-code) !important;
   border-radius: 4px;
   overflow-x: auto;
+  box-sizing: border-box;
 }
 
 .highlighted-diff code {
@@ -4722,7 +4728,6 @@ details[open] .collapsible__icon {
   display: flex;
   gap: 0.5rem;
   align-items: center;
-  margin-bottom: 0.75rem;
   padding: 0.5rem;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-color);

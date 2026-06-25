@@ -960,6 +960,7 @@ function EditCollapsedPreview({
               />
             }
             onClose={handleClose}
+            backCloses
           >
             <DiffModalContent
               diffHtml={diffHtml}
@@ -1016,6 +1017,7 @@ function EditCollapsedPreview({
                 <EditModalTitle filePath={filePath} displayText={fileName} />
               }
               onClose={handleClose}
+              backCloses
             >
               <RawPatchModalContent
                 rawPatch={rawPatch}
@@ -1082,6 +1084,7 @@ function EditCollapsedPreview({
             />
           }
           onClose={handleClose}
+          backCloses
         >
           <DiffModalContent
             diffHtml={diffHtml}
@@ -1183,6 +1186,7 @@ function EditInteractiveSummary({
               <EditModalTitle filePath={filePath} displayText={fileName} />
             }
             onClose={() => setShowModal(false)}
+            backCloses
           >
             <div className="diff-modal-content">
               <div className="diff-context-controls">
@@ -1239,6 +1243,7 @@ function EditInteractiveSummary({
             />
           }
           onClose={() => setShowModal(false)}
+          backCloses
         >
           <DiffModalContent
             diffHtml={diffHtml}
@@ -1429,6 +1434,7 @@ function EditToolResult({
               />
             }
             onClose={() => setShowModal(false)}
+            backCloses
           >
             <DiffModalContent
               diffHtml={inputWithAugment._diffHtml}
@@ -1529,6 +1535,7 @@ function EditToolResult({
             />
           }
           onClose={() => setShowModal(false)}
+          backCloses
         >
           <DiffModalContent
             structuredPatch={result.structuredPatch}

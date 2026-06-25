@@ -153,7 +153,7 @@ function GrepMatchDrilldown({
         {label}
       </button>
       {showModal && (
-        <Modal title={label} onClose={() => setShowModal(false)}>
+        <Modal title={label} onClose={() => setShowModal(false)} backCloses>
           <div className="grep-match-modal">
             <table className="grep-match-table">
               <thead>
