@@ -576,18 +576,95 @@
   line-height: 1.35;
 }
 
-.git-history-commit-meta {
+/* 提交副标题行：作者 + 时间（左） | hash + copy（右） / Commit subtitle: author + time (left) | hash + copy (right) */
+.git-history-commit-subtitle {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
   gap: 0.75rem;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 0.78rem;
+  line-height: 1.3;
+}
+
+.git-history-commit-subtitle-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 0 0 auto;
+}
+
+/* 提交描述正文 — 最多展示 4.5 行，超出可滚动，底部渐变 / Commit body — max 4.5 lines, scrollable, bottom fade */
+.git-history-commit-body-wrapper {
+  position: relative;
+  max-height: 5.2rem; /* ~4.5 lines at 0.8rem × 1.45 line-height */
+  overflow: hidden;
+}
+
+.git-history-commit-body {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  max-height: 5.2rem;
+  overflow-y: auto;
+}
+
+/* 底部渐变遮罩，暗示还有更多内容 / Bottom fade mask to hint more content */
+.git-history-commit-body-wrapper::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1.2rem;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    color-mix(in srgb, var(--bg-primary) 50%, transparent)
+  );
+  pointer-events: none;
+}
+
+/* 作者名 / Author name */
+.git-history-commit-meta-author {
+  flex: 0 0 auto;
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+/* 绝对时间 / Absolute time */
+.git-history-commit-meta-time {
+  flex: 0 0 auto;
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
 }
 
 .git-history-commit-hash-group {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
+  flex: 0 0 auto;
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+/* 文件变更统计，右对齐 / File change stats, right-aligned */
+.git-history-files-header-stats {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: auto;
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
 }
 
 .git-history-copy-button {
@@ -649,6 +726,10 @@
 }
 
 .git-history-files-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
   padding: 0.8rem 0.95rem;
   border-bottom: 1px solid var(--border-color);
   color: var(--text-secondary);

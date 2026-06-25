@@ -9,7 +9,7 @@ import type { useI18n } from "../../i18n";
 import { FileContextMenu } from "./FileContextMenu";
 import type { FileContextMenuState } from "./FileContextMenu";
 import { GitPreviewPane } from "./GitPreviewPane";
-import { FilePathLabel, WithStatusBadge, formatRelativeTime } from "./utils";
+import { FilePathLabel, WithStatusBadge, formatAbsoluteTime } from "./utils";
 
 type Translate = ReturnType<typeof useI18n>["t"];
 
@@ -137,8 +137,13 @@ export function GitCommitHistoryPane({
           <div className="git-history-commit-header">
             <div className="git-history-commit-copy">
               <h2 className="git-history-commit-title">{commit.message}</h2>
-              <div className="git-history-commit-meta">
-                <span>{commit.authorName}</span>
+              <div className="git-history-commit-subtitle">
+                <span className="git-history-commit-subtitle-left">
+                  <span className="git-history-commit-meta-author">{commit.authorName}</span>
+                  <span className="git-history-commit-meta-time">
+                    {formatAbsoluteTime(commit.committedAt)}
+                  </span>
+                </span>
                 <span className="git-history-commit-hash-group">
                   <span>{commit.shortHash}</span>
                   <button
@@ -159,16 +164,22 @@ export function GitCommitHistoryPane({
                     {copiedHash ? <CheckIcon /> : <CopyIcon />}
                   </button>
                 </span>
-                <span>{formatRelativeTime(commit.committedAt, t)}</span>
-                <span className="git-lines-added">+{commit.insertions}</span>
-                <span className="git-lines-deleted">-{commit.deletions}</span>
               </div>
+              {commit.body ? (
+                <div className="git-history-commit-body-wrapper">
+                  <pre className="git-history-commit-body">{commit.body}</pre>
+                </div>
+              ) : null}
             </div>
           </div>
 
           <aside className="git-history-files-panel">
             <div className="git-history-files-header">
-              {t("gitStatusFilesChanged", { count: commit.files.length })}
+              <span>{t("gitStatusFilesChanged", { count: commit.files.length })}</span>
+              <span className="git-history-files-header-stats">
+                <span className="git-lines-added">+{commit.insertions}</span>
+                <span className="git-lines-deleted">-{commit.deletions}</span>
+              </span>
             </div>
             <ul className="git-history-files-list">
               {commit.files.map((file) => {
