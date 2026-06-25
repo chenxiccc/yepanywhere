@@ -406,9 +406,42 @@
 }
 
 .git-history-commit-list-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
   color: var(--text-muted);
   font-size: 0.72rem;
   line-height: 1.3;
+}
+
+.git-history-commit-list-meta-left {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  min-width: 0;
+  flex: 1;
+}
+
+.git-history-commit-list-author {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 8rem;
+}
+
+.git-history-commit-list-meta-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex: 0 0 auto;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+
+.git-history-commit-list-hash {
+  white-space: nowrap;
 }
 
 .git-preview-pane {
