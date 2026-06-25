@@ -137,19 +137,17 @@ export function usePushNotifications() {
 
   // Subscribe to push notifications
   const subscribe = useCallback(async () => {
+    // 获取最新的 SW registration，避免使用 React state 中的旧引用
+    // Get the latest SW registration instead of stale React state reference
+    const reg = await navigator.serviceWorker.getRegistration();
+    if (!reg) {
+      setState((s) => ({ ...s, error: "Service worker not ready" }));
+      return;
+    }
+
     setState((s) => ({ ...s, isLoading: true, error: null }));
 
     try {
-      // 获取最新的 SW registration，避免使用 React state 中的旧引用
-      // 手机上浏览器可能激进清理 SW，getRegistration 返回 null 时重新注册
-      // Get the latest SW registration; on mobile, browsers may aggressively
-      // unregister SW — fall back to re-registering if not found
-      let reg = await navigator.serviceWorker.getRegistration();
-      if (!reg) {
-        reg = await navigator.serviceWorker.register(SW_PATH);
-        await navigator.serviceWorker.ready;
-      }
-
       // Request notification permission
       const permission = await Notification.requestPermission();
       setState((s) => ({ ...s, permission }));
@@ -194,11 +192,10 @@ export function usePushNotifications() {
       }));
     } catch (err) {
       console.error("[usePushNotifications] Subscribe error:", err);
-      const msg = err instanceof Error ? err.message : "Failed to subscribe";
       setState((s) => ({
         ...s,
         isLoading: false,
-        error: msg,
+        error: err instanceof Error ? err.message : "Failed to subscribe",
       }));
     }
   }, []);
