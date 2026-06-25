@@ -112,3 +112,23 @@ export function ChevronDownIcon() {
     </svg>
   );
 }
+
+/** Copy 图标 — 复制到剪贴板的默认图标 / Copy icon — default clipboard icon */
+export function CopyIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="5" y="5" width="9" height="9" rx="1.5" />
+      <path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2H3.5A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5" />
+    </svg>
+  );
+}

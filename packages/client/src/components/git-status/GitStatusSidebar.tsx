@@ -4,12 +4,12 @@ import type {
   GitStashEntry,
   GitStatusInfo,
 } from "@yep-anywhere/shared";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FileTree } from "../FileTree";
 import { FileTreeSearch } from "../FileTreeSearch";
 import { Button } from "../ui/Button";
 import { GitFileActionsMenu, GitFileSection } from "./GitFileList";
-import { ClearIcon, SearchIcon } from "./GitStatusIcons";
+import { CheckIcon, ClearIcon, CopyIcon, SearchIcon } from "./GitStatusIcons";
 import { formatRelativeTime } from "./utils";
 
 type Translate = (
@@ -111,6 +111,25 @@ export function GitStatusSidebar({
   const latestLocalCommit = status.latestLocalCommit;
   const showStashedTab = stashes.length > 0;
   const historyListRef = useRef<HTMLDivElement>(null);
+  const [copiedHash, setCopiedHash] = useState<string | null>(null);
+
+  // Auto-reset copy icon after 2 seconds / 2 秒后自动重置复制图标
+  useEffect(() => {
+    if (!copiedHash) return;
+    const timeoutId = window.setTimeout(() => {
+      setCopiedHash(null);
+    }, 2000);
+    return () => window.clearTimeout(timeoutId);
+  }, [copiedHash]);
+
+  const handleCopyHash = async (hash: string) => {
+    try {
+      await navigator.clipboard.writeText(hash);
+      setCopiedHash(hash);
+    } catch (err) {
+      console.error("Failed to copy commit hash:", err);
+    }
+  };
 
   useEffect(() => {
     if (activeView !== "history") return;
@@ -354,8 +373,42 @@ export function GitStatusSidebar({
                           ) : null}
                         </span>
                         <span className="git-history-commit-list-meta">
-                          {commit.authorName} ·{" "}
-                          {formatRelativeTime(commit.committedAt, t)}
+                          <span className="git-history-commit-list-meta-left">
+                            <span className="git-history-commit-list-author">
+                              {commit.authorName}
+                            </span>
+                            {" · "}
+                            {formatRelativeTime(commit.committedAt, t)}
+                          </span>
+                          <span className="git-history-commit-list-meta-right">
+                            <span className="git-history-commit-list-hash">
+                              {commit.shortHash}
+                            </span>
+                            <button
+                              type="button"
+                              className={`git-history-copy-button ${copiedHash === commit.hash ? "copied" : ""}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleCopyHash(commit.hash);
+                              }}
+                              title={
+                                copiedHash === commit.hash
+                                  ? t("gitStatusHistoryHashCopied")
+                                  : t("gitStatusHistoryCopyHash")
+                              }
+                              aria-label={
+                                copiedHash === commit.hash
+                                  ? t("gitStatusHistoryHashCopied")
+                                  : t("gitStatusHistoryCopyHash")
+                              }
+                            >
+                              {copiedHash === commit.hash ? (
+                                <CheckIcon />
+                              ) : (
+                                <CopyIcon />
+                              )}
+                            </button>
+                          </span>
                         </span>
                       </button>
                     );
