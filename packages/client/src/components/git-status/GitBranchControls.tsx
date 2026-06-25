@@ -116,7 +116,6 @@ export function GitBranchSwitcher({
   error: string | null;
 }) {
   const { t } = useI18n();
-  const wrapperRef = useRef<HTMLDivElement>(null);
   const filterInputRef = useRef<HTMLInputElement>(null);
   const [filter, setFilter] = useState("");
   const [copiedBranch, setCopiedBranch] = useState<string | null>(null);
@@ -182,27 +181,8 @@ export function GitBranchSwitcher({
     }
   }, [isOpen]);
 
-  useEffect(() => {
-    if (!isOpen) return;
-
-    // 在捕获阶段处理 pointerdown，阻止后续 click 触发到被点击的元素
-    // Handle pointerdown in capture phase, preventing subsequent click on the underlying element
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node)) return;
-      if (wrapperRef.current?.contains(target)) return;
-      // 阻止后续的 click 事件，避免误触页面元素
-      // Prevent the subsequent click event from firing on the underlying element
-      event.preventDefault();
-      onClose();
-    };
-
-    document.addEventListener("pointerdown", handlePointerDown, true);
-    return () => document.removeEventListener("pointerdown", handlePointerDown, true);
-  }, [isOpen, onClose]);
-
   return (
-    <div className="git-branch-switcher" ref={wrapperRef}>
+    <div className="git-branch-switcher">
       <button
         type="button"
         className="git-branch-name git-branch-name-button"
@@ -219,7 +199,19 @@ export function GitBranchSwitcher({
         <ChevronDownIcon />
       </button>
       {isOpen ? (
-        <div className="git-branch-menu" role="menu">
+        <>
+          {/* 透明遮罩层：点击菜单外部关闭菜单，不触发底层元素 / Transparent backdrop: blocks click-through when menu is open */}
+          <button
+            type="button"
+            className="git-branch-menu-backdrop"
+            aria-label="Close menu"
+            onClick={onClose}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              onClose();
+            }}
+          />
+          <div className="git-branch-menu" role="menu">
           {error ? (
             <div className="git-branch-menu-error">{error}</div>
           ) : (
@@ -327,6 +319,7 @@ export function GitBranchSwitcher({
             </>
           )}
         </div>
+        </>
       ) : null}
     </div>
   );
@@ -356,28 +349,14 @@ export function GitSplitActionButton({
     onClick: () => void;
   } | null;
 }) {
-  const menuRef = useRef<HTMLDivElement>(null);
   const hasAlternateAction = alternateAction !== null;
 
   useEffect(() => {
     if (!menuOpen || !hasAlternateAction) return;
-
-    // 在捕获阶段处理 pointerdown，阻止后续 click 触发到被点击的元素
-    // Handle pointerdown in capture phase, preventing subsequent click on the underlying element
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node)) return;
-      if (menuRef.current?.contains(target)) return;
-      event.preventDefault();
-      onCloseMenu();
-    };
-
-    document.addEventListener("pointerdown", handlePointerDown, true);
-    return () => document.removeEventListener("pointerdown", handlePointerDown, true);
   }, [hasAlternateAction, menuOpen, onCloseMenu]);
 
   return (
-    <div className="git-split-action" ref={menuRef}>
+    <div className="git-split-action">
       <button
         type="button"
         className="git-split-action-main"
@@ -404,7 +383,18 @@ export function GitSplitActionButton({
         </button>
       ) : null}
       {menuOpen && alternateAction ? (
-        <div className="git-split-action-menu" role="menu">
+        <>
+          <button
+            type="button"
+            className="git-branch-menu-backdrop"
+            aria-label="Close menu"
+            onClick={onCloseMenu}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              onCloseMenu();
+            }}
+          />
+          <div className="git-split-action-menu" role="menu">
           <button
             type="button"
             className="git-split-action-menu-item"
@@ -417,6 +407,7 @@ export function GitSplitActionButton({
             <span>{alternateAction.label}</span>
           </button>
         </div>
+        </>
       ) : null}
     </div>
   );
