@@ -2,7 +2,6 @@ import type {
   GitFileChange,
   GitHistoryCommitDetail,
   GitHistoryCommitSummary,
-  GitMergeStrategy,
   GitStashDetail,
 } from "@yep-anywhere/shared";
 import { useEffect, useMemo, useState } from "react";
@@ -20,6 +19,7 @@ import { GitStashPane } from "../components/git-status/GitStashPane";
 import { GitStatusSidebar } from "../components/git-status/GitStatusSidebar";
 import { GitStatusSummaryBar } from "../components/git-status/GitStatusSummaryBar";
 import { FilePathTitle } from "../components/git-status/utils";
+import { FileViewer } from "../components/FileViewer";
 import { Modal } from "../components/ui/Modal";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useGitStatus } from "../hooks/useGitStatus";
@@ -120,11 +120,17 @@ function GitStatusContent({
   const isNarrowScreen = useMediaQuery("(max-width: 900px)");
   const isMediumScreen = useMediaQuery("(max-width: 1099px)");
   const [activeView, setActiveView] = useState<
-    "changes" | "stashed" | "history"
-  >("changes");
+    "files" | "changes" | "stashed" | "history"
+  >("files");
   const [commitMessage, setCommitMessage] = useState("");
   const [fileFilter, setFileFilter] = useState("");
   const [fileActionsMenuOpen, setFileActionsMenuOpen] = useState(false);
+  /* 文件 tab 相关 / Files tab related */
+  const [fileTreeSearchQuery, setFileTreeSearchQuery] = useState("");
+  const [fileTreeSelectedPath, setFileTreeSelectedPath] = useState<
+    string | null
+  >(null);
+  const [fileTreeRefreshKey, _setFileTreeRefreshKey] = useState(0);
   const [historyCommits, setHistoryCommits] = useState<
     GitHistoryCommitSummary[]
   >([]);
@@ -361,6 +367,7 @@ function GitStatusContent({
       <div className="git-desktop-shell">
         <GitStatusSidebar
           status={status}
+          projectId={projectId}
           activeView={activeView}
           commitMessage={commitMessage}
           fileFilter={fileFilter}
@@ -405,11 +412,28 @@ function GitStatusContent({
           onStashSelect={setSelectedStashRef}
           onToggleCommitFile={handleCommitFileToggle}
           onSetCommitFiles={handleCommitFilesSelection}
+          /* 文件 tab 相关 / Files tab related */
+          fileTreeSearchQuery={fileTreeSearchQuery}
+          fileTreeSelectedPath={fileTreeSelectedPath}
+          onFileTreeSearchChange={setFileTreeSearchQuery}
+          onFileTreeFileClick={setFileTreeSelectedPath}
+          fileTreeRefreshKey={fileTreeRefreshKey}
         />
 
         {!isNarrowScreen && (
           <section className="git-desktop-card git-preview-card">
-            {activeView === "history" ? (
+            {activeView === "files" ? (
+              fileTreeSelectedPath ? (
+                <FileViewer
+                  projectId={projectId}
+                  filePath={fileTreeSelectedPath}
+                />
+              ) : (
+                <div className="git-preview-empty">
+                  {t("gitStatusFileSelectToView")}
+                </div>
+              )
+            ) : activeView === "history" ? (
               <GitCommitHistoryPane
                 projectId={projectId}
                 selectedCommitHash={selectedHistoryCommitHash}
@@ -465,6 +489,22 @@ function GitStatusContent({
               file={previewModalFile}
               projectId={projectId}
               t={t}
+            />
+          </div>
+        </Modal>
+      ) : null}
+
+      {isNarrowScreen &&
+      activeView === "files" &&
+      fileTreeSelectedPath ? (
+        <Modal
+          title={fileTreeSelectedPath}
+          onClose={() => setFileTreeSelectedPath(null)}
+        >
+          <div className="git-preview-modal-content">
+            <FileViewer
+              projectId={projectId}
+              filePath={fileTreeSelectedPath}
             />
           </div>
         </Modal>
