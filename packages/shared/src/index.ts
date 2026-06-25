@@ -117,6 +117,8 @@ export type {
   GitSwitchBranchRequest,
 } from "./git-status.js";
 
+export type { FileNode, FileListResponse } from "./file-tree.js";
+
 export type {
   SessionActiveWorkKind,
   SessionLivenessDerivedStatus,

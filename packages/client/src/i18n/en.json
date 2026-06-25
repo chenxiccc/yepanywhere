@@ -1662,5 +1662,14 @@
   "gitStatusCurrentBranchFallback": "the current branch",
   "gitStatusSelectFilePreview": "Select a changed file to preview it here.",
   "gitStatusNoPreview": "No preview available.",
-  "gitStatusActionFailed": "Git action failed"
+  "gitStatusActionFailed": "Git action failed",
+  "gitStatusFiles": "Files",
+  "gitStatusFileSearchPlaceholder": "Search files...",
+  "gitStatusFileSelectToView": "Select a file to preview it here.",
+  "gitStatusFileTreeLoading": "Loading…",
+  "gitStatusFileTreeLoadingShort": "…",
+  "gitStatusFileTreeEmpty": "Directory is empty",
+  "gitStatusFileTreeRetry": "Retry",
+  "gitStatusFileTreeEmptyDir": "(empty)",
+  "gitStatusFileTreeClearSearch": "Clear search"
 }
