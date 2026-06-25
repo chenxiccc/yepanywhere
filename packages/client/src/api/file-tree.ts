@@ -19,5 +19,27 @@ export function createFileTreeApi(fetchJSON: FetchFn) {
         `/projects/${projectId}/files/list?${params.toString()}`,
       );
     },
+
+    /** 删除文件或文件夹 / Delete a file or directory */
+    deleteFile: (projectId: string, path: string) => {
+      return fetchJSON<{ success: boolean }>(
+        `/projects/${projectId}/files`,
+        {
+          method: "DELETE",
+          body: JSON.stringify({ path }),
+        },
+      );
+    },
+
+    /** 重命名文件或文件夹 / Rename a file or directory */
+    renameFile: (projectId: string, path: string, newName: string) => {
+      return fetchJSON<{ success: boolean }>(
+        `/projects/${projectId}/files/rename`,
+        {
+          method: "POST",
+          body: JSON.stringify({ path, newName }),
+        },
+      );
+    },
   };
 }

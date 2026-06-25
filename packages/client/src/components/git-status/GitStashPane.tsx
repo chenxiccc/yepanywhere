@@ -3,10 +3,13 @@ import type {
   GitStashDetail,
   GitStashFileChange,
 } from "@yep-anywhere/shared";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "../../api/client";
+import { useLongPressContextMenu } from "../../hooks/useLongPressContextMenu";
 import type { useI18n } from "../../i18n";
 import { Button } from "../ui/Button";
+import { FileContextMenu } from "./FileContextMenu";
+import type { FileContextMenuState } from "./FileContextMenu";
 import { GitPreviewPane } from "./GitPreviewPane";
 import { FilePathLabel, WithStatusBadge, formatRelativeTime } from "./utils";
 
@@ -22,6 +25,7 @@ export function GitStashPane({
   previewInline = true,
   onStashLoaded,
   onFileSelect,
+  projectPath,
 }: {
   projectId: string;
   selectedStashRef: string | null;
@@ -35,11 +39,15 @@ export function GitStashPane({
     file: GitFileChange,
     stashRef: { ref: string; previousPath?: string },
   ) => void;
+  /** 项目根目录绝对路径 / Project root absolute path */
+  projectPath?: string;
 }) {
   const [stash, setStash] = useState<GitStashDetail | null>(null);
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<FileContextMenuState | null>(null);
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
   useEffect(() => {
     if (!selectedStashRef) {
@@ -151,35 +159,22 @@ export function GitStashPane({
               {stash.files.map((file) => {
                 const isSelected = file.path === selectedFilePath;
                 return (
-                  <li key={`${stash.ref}:${file.path}`}>
-                    <button
-                      type="button"
-                      className={`git-history-file-item ${isSelected ? "git-history-file-item-selected" : ""}`}
-                      onClick={() => {
-                        if (previewInline) {
-                          setSelectedFilePath(file.path);
-                          return;
-                        }
-
-                        onFileSelect?.(toPreviewFile(file), {
-                          ref: stash.ref,
-                          previousPath: file.previousPath,
-                        });
-                      }}
-                    >
-                      <span className="git-file-path">
-                        <WithStatusBadge file={toPreviewFile(file)}>
-                            {file.previousPath ? (
-                              <>
-                                <FilePathLabel path={file.previousPath} />
-                                <span className="git-file-path-arrow">→</span>
-                              </>
-                            ) : null}
-                            <FilePathLabel path={file.path} />
-                          </WithStatusBadge>
-                      </span>
-                    </button>
-                  </li>
+                  <StashFileItem
+                    key={`${stash.ref}:${file.path}`}
+                    file={file}
+                    isSelected={isSelected}
+                    onSelect={(f) => {
+                      if (previewInline) {
+                        setSelectedFilePath(f.path);
+                        return;
+                      }
+                      onFileSelect?.(toPreviewFile(f), {
+                        ref: stash.ref,
+                        previousPath: f.previousPath,
+                      });
+                    }}
+                    onContextMenu={setContextMenu}
+                  />
                 );
               })}
             </ul>
@@ -192,7 +187,7 @@ export function GitStashPane({
               <GitPreviewPane
                 file={previewFile}
                 projectId={projectId}
-                t={t}
+                t={t as (key: string, vars?: Record<string, string | number>) => string}
                 stashRef={{
                   ref: stash.ref,
                   previousPath: selectedFile?.previousPath,
@@ -206,7 +201,78 @@ export function GitStashPane({
           </section>
         ) : null}
       </div>
+
+      {projectPath && (
+        <FileContextMenu
+          menu={contextMenu}
+          projectPath={projectPath}
+          onClose={closeContextMenu}
+          t={t as (key: string, vars?: Record<string, string | number>) => string}
+        />
+      )}
     </div>
+  );
+}
+
+function StashFileItem({
+  file,
+  isSelected,
+  onSelect,
+  onContextMenu,
+}: {
+  file: GitStashFileChange;
+  isSelected: boolean;
+  onSelect: (file: GitStashFileChange) => void;
+  onContextMenu: (menu: FileContextMenuState) => void;
+}) {
+  const openContextMenu = useCallback(
+    (x: number, y: number) => {
+      onContextMenu({
+        path: file.path,
+        name: file.path.split("/").pop() ?? file.path,
+        isDirectory: false,
+        x,
+        y,
+        showFileOperations: false,
+      });
+    },
+    [file.path, onContextMenu],
+  );
+
+  const {
+    handleContextMenu,
+    handleTouchStart,
+    handleTouchMove,
+    handleTouchEnd,
+    wrapClick,
+  } = useLongPressContextMenu(openContextMenu);
+
+  const handleClick = wrapClick(() => onSelect(file));
+
+  return (
+    <li>
+      <button
+        type="button"
+        className={`git-history-file-item ${isSelected ? "git-history-file-item-selected" : ""}`}
+        onClick={handleClick}
+        onContextMenu={handleContextMenu}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
+        <span className="git-file-path">
+          <WithStatusBadge file={toPreviewFile(file)}>
+            {file.previousPath ? (
+              <>
+                <FilePathLabel path={file.previousPath} />
+                <span className="git-file-path-arrow">→</span>
+              </>
+            ) : null}
+            <FilePathLabel path={file.path} />
+          </WithStatusBadge>
+        </span>
+      </button>
+    </li>
   );
 }
 
