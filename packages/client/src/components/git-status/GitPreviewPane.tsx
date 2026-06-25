@@ -2,6 +2,7 @@ import type { GitFileChange } from "@yep-anywhere/shared";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../api/client";
 import type { useI18n } from "../../i18n";
+import { DiffLines } from "../renderers/DiffLines";
 import { formatGitStatusBadge } from "./utils";
 
 interface PatchHunk {
@@ -273,25 +274,3 @@ const HighlightedDiff = memo(function HighlightedDiff({
   );
 });
 
-const DiffLines = memo(function DiffLines({ lines }: { lines: string[] }) {
-  return (
-    <div className="diff-hunk">
-      <pre className="diff-content">
-        {lines.map((line, index) => {
-          const prefix = line[0];
-          const className =
-            prefix === "-"
-              ? "diff-removed"
-              : prefix === "+"
-                ? "diff-added"
-                : "diff-context";
-          return (
-            <div key={`${index}-${line.slice(0, 50)}`} className={className}>
-              {line}
-            </div>
-          );
-        })}
-      </pre>
-    </div>
-  );
-});
