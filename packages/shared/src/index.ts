@@ -401,6 +401,7 @@ export {
   // Context window utilities
   DEFAULT_CONTEXT_WINDOW,
   CODEX_DEFAULT_CONTEXT_WINDOW,
+  CLAUDE_EXTENDED_CONTEXT_WINDOW,
   getModelContextWindow,
 } from "./app-types.js";
 
