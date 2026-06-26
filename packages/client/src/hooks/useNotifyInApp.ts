@@ -1,6 +1,54 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { BROWSER_LOCAL_KEYS } from "../lib/storageKeys";
+import { openDatabase, putEntryWithKey } from "../lib/diagnostics/idb";
+
+// ⚠️ These constants MUST match packages/client/public/sw.js (SW is a standalone
+// script that cannot import TS). The SW uses the same DB/store to re-hydrate
+// settings after a push-restart.
+// ⚠️ 这些常量必须与 packages/client/public/sw.js 一致（SW 是独立脚本，不能 import TS）。
+// SW 用同一个 DB/store 在 push 重启后重新 hydrate 设置。
+const LOG_DB_NAME = "sw-logs";
+const LOG_DB_VERSION = 2;
+const LOG_STORE_NAME = "logs";
+const SETTINGS_STORE_NAME = "settings"; // 无 keyPath，out-of-line key（与 sw.js 一致）
+
+/**
+ * onUpgrade handler for the sw-logs DB (v2). Equivalent to sw.js openSwDb's
+ * onupgradeneeded: creates the logs store (v1) and settings store (v2, no
+ * keyPath) using objectStoreNames.contains guards for upgrade compatibility.
+ * sw-logs DB 的 onUpgrade 处理（v2）。与 sw.js openSwDb 的 onupgradeneeded 等价：
+ * 用 objectStoreNames.contains 守卫建 logs store（v1）和 settings store（v2，无 keyPath）。
+ */
+function upgradeSwDb(db: IDBDatabase): void {
+  if (!db.objectStoreNames.contains(LOG_STORE_NAME)) {
+    db.createObjectStore(LOG_STORE_NAME, { keyPath: "id", autoIncrement: true });
+  }
+  if (!db.objectStoreNames.contains(SETTINGS_STORE_NAME)) {
+    // 无 keyPath：out-of-line key（setting 名），配合 putEntryWithKey(db, store, key, value)
+    db.createObjectStore(SETTINGS_STORE_NAME);
+  }
+}
+
+/**
+ * Persist a setting to IndexedDB so a push-restarted SW can re-hydrate it
+ * (in-memory settings are lost on SW restart). Fire-and-forget; failures are
+ * swallowed — the in-memory postMessage sync is the primary channel.
+ * 持久化设置到 IndexedDB，使 push 重启的 SW 能重新 hydrate（内存设置在 SW 重启时
+ * 丢失）。fire-and-forget，失败吞错——内存 postMessage 同步是主通道。
+ */
+async function persistSettingToIdb(key: string, value: unknown): Promise<void> {
+  try {
+    const db = await openDatabase(LOG_DB_NAME, LOG_DB_VERSION, upgradeSwDb);
+    try {
+      await putEntryWithKey(db, SETTINGS_STORE_NAME, key, value);
+    } finally {
+      db.close();
+    }
+  } catch {
+    // IDB unavailable (private mode, etc.) — ignore; SW falls back to defaults.
+  }
+}
 
 /**
  * Read the notifyInApp setting from localStorage
@@ -52,6 +100,12 @@ function syncSettingToSW(key: string, value: unknown) {
       // SW registration may be unavailable; ignore — next lifecycle event re-syncs.
       // SW 注册可能不可用，忽略；下次生命周期事件会重新同步。
     });
+
+  // Persist to IDB so a push-restarted SW can re-hydrate (in-memory value is
+  // lost on restart). Fire-and-forget; the postMessage above is the primary.
+  // 持久化到 IDB，使 push 重启的 SW 能重新 hydrate（内存值重启时丢失）。
+  // fire-and-forget；上面的 postMessage 是主通道。
+  persistSettingToIdb(key, value).catch(() => {});
 }
 
 /**

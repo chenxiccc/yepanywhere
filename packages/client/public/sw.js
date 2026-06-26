@@ -33,7 +33,16 @@
 // 1.0.7: notifyInApp 默认值改为 true。SW 被 push 重启后内存设置回默认值，
 //        原 false 默认会导致重启后前台推送被静默丢弃。true 为重启安全默认
 //        （宁可通知；activeSessionId 仍抑制正在看的会话）。
-const SW_VERSION = "1.0.7";
+// 1.0.8: persist activeSessionId/notifyInApp to IndexedDB (sw-logs DB v2,
+//        settings store). A push-restarted SW re-hydrates from IDB in
+//        handlePush, fixing "foreground viewing session A still gets A's push"
+//        (the in-memory activeSessionId was null after restart and the main
+//        thread had no trigger to re-sync while staying on the same session).
+// 1.0.8: 持久化 activeSessionId/notifyInApp 到 IndexedDB（sw-logs DB v2，
+//        settings store）。SW 被 push 重启后在 handlePush 从 IDB 重新 hydrate，
+//        修复"前台看会话 A 仍收到 A 的推送"（重启后内存 activeSessionId 为 null，
+//        且用户停留在同一 session 时主线程无触发点重新同步）。
+const SW_VERSION = "1.0.8";
 void SW_VERSION;
 const FRONTEND_RELOAD_QUERY_PARAM = "__ya_reload";
 
@@ -72,12 +81,20 @@ const settings = {
 // Logs are stored in IndexedDB for retrieval via main thread
 
 const LOG_DB_NAME = "sw-logs";
+const LOG_DB_VERSION = 2; // v2: 加 settings store（持久化 activeSessionId/notifyInApp，跨 SW 重启）
 const LOG_STORE_NAME = "logs";
+const SETTINGS_STORE_NAME = "settings"; // 无 keyPath，out-of-line key（key 即 setting 名）
 const MAX_LOGS = 100;
 
-async function openLogDb() {
+// 打开 sw-logs DB（v2）。logs store 存调试日志，settings store 持久化 SW 设置
+// （activeSessionId/notifyInApp），让 SW 被 push 唤醒重启后能从 IDB 读回设置。
+// onupgradeneeded 用 objectStoreNames.contains 守卫，兼容全新安装与 v1→v2 升级。
+// Open the sw-logs DB (v2). logs store holds debug logs; settings store persists
+// SW settings so a push-restarted SW can re-hydrate them from IDB. The guard
+// handles both fresh install and v1→v2 upgrade.
+async function openSwDb() {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(LOG_DB_NAME, 1);
+    const request = indexedDB.open(LOG_DB_NAME, LOG_DB_VERSION);
     request.onerror = () => reject(request.error);
     request.onsuccess = () => resolve(request.result);
     request.onupgradeneeded = (event) => {
@@ -88,8 +105,56 @@ async function openLogDb() {
           autoIncrement: true,
         });
       }
+      if (!db.objectStoreNames.contains(SETTINGS_STORE_NAME)) {
+        // 无 keyPath：用 out-of-line key（setting 名），配合 put(value, key)
+        db.createObjectStore(SETTINGS_STORE_NAME);
+      }
+    };
+    request.onblocked = () => {
+      // 另一个连接持有旧 version；用完即 close 可缩短等待。
+      console.warn("[SW] sw-logs DB upgrade blocked by another connection");
     };
   });
+}
+
+// 读取持久化设置（SW 重启后 hydrate 用）。失败/不存在返回 null。
+// Read a persisted setting (for hydration after SW restart). Returns null on error/missing.
+async function readSetting(key) {
+  try {
+    const db = await openSwDb();
+    try {
+      return await new Promise((resolve) => {
+        const tx = db.transaction(SETTINGS_STORE_NAME, "readonly");
+        const req = tx.objectStore(SETTINGS_STORE_NAME).get(key);
+        req.onsuccess = () => resolve(req.result ?? null);
+        req.onerror = () => resolve(null);
+      });
+    } finally {
+      db.close();
+    }
+  } catch {
+    return null;
+  }
+}
+
+// 写入持久化设置（message handler 收到 setting-update 时落盘）。
+// Write a persisted setting (called from the message handler on setting-update).
+async function writeSetting(key, value) {
+  try {
+    const db = await openSwDb();
+    try {
+      await new Promise((resolve) => {
+        const tx = db.transaction(SETTINGS_STORE_NAME, "readwrite");
+        tx.objectStore(SETTINGS_STORE_NAME).put(value, key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+      });
+    } finally {
+      db.close();
+    }
+  } catch {
+    // IDB 不可用时忽略；内存值已更新，下次同步会重试
+  }
 }
 
 async function swLog(level, message, data = {}) {
@@ -106,7 +171,7 @@ async function swLog(level, message, data = {}) {
   consoleMethod(`[SW ${level.toUpperCase()}]`, message, data);
 
   try {
-    const db = await openLogDb();
+    const db = await openSwDb();
     const tx = db.transaction(LOG_STORE_NAME, "readwrite");
     const store = tx.objectStore(LOG_STORE_NAME);
 
@@ -141,7 +206,7 @@ async function swLog(level, message, data = {}) {
 // Expose logs retrieval via message
 async function getSwLogs() {
   try {
-    const db = await openLogDb();
+    const db = await openSwDb();
     const tx = db.transaction(LOG_STORE_NAME, "readonly");
     const store = tx.objectStore(LOG_STORE_NAME);
 
@@ -163,7 +228,7 @@ async function getSwLogs() {
 
 async function clearSwLogs() {
   try {
-    const db = await openLogDb();
+    const db = await openSwDb();
     const tx = db.transaction(LOG_STORE_NAME, "readwrite");
     tx.objectStore(LOG_STORE_NAME).clear();
     await tx.complete;
@@ -248,6 +313,9 @@ self.addEventListener("message", async (event) => {
     const { key, value } = event.data;
     if (key in settings) {
       settings[key] = value;
+      // 落盘到 IDB，SW 被 push 唤醒重启后可从 IDB 读回（内存值会随重启丢失）
+      // Persist to IDB so a push-restarted SW can re-hydrate (in-memory value is lost on restart)
+      await writeSetting(key, value);
       await swLog("info", `Setting updated: ${key} = ${value}`);
     }
   }
@@ -353,6 +421,24 @@ async function handlePush(data) {
   // 仅在 app 可见时才考虑抑制；后台/锁屏一律显示（SW 重启后同步值可能过期，
   // 故此处用实时 client 可见性，而非同步布尔值）。
   if (hasVisibleClient) {
+    // Hydrate from IDB: a push-restarted SW reverts in-memory settings to
+    // defaults and the main thread won't re-sync in time (no controllerchange,
+    // and if the user stays on the same session the route-change effect doesn't
+    // fire). Re-read the persisted values here so suppression works post-restart.
+    // 从 IDB hydrate：SW 被 push 重启后内存 settings 回默认值，主线程来不及重新
+    // 同步（无 controllerchange，且用户停留在同一 session 时路由变化 effect 不触发）。
+    // 此处重读持久化值，使重启后抑制仍能生效。
+    if (settings.activeSessionId === null) {
+      const id = await readSetting("activeSessionId");
+      if (typeof id === "string" && id.length > 0) settings.activeSessionId = id;
+    }
+    // notifyInApp 默认 true 是安全方向，但用户真实值可能是 false（方向相反），
+    // 必须读回覆盖，否则重启后会前台多推违背用户意图。
+    // notifyInApp defaults to true (safe), but the user's real value may be false
+    // (opposite direction) — must read back to respect intent.
+    const storedNotify = await readSetting("notifyInApp");
+    if (typeof storedNotify === "boolean") settings.notifyInApp = storedNotify;
+
     if (settings.notifyInApp) {
       // Suppress only if the user is currently viewing THIS session.
       // activeSessionId is synced from the page (client.url does not track SPA
