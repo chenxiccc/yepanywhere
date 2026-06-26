@@ -289,13 +289,9 @@ export const FileTree = memo(function FileTree({
           loadChildren(p);
         }
       }
-      setExpandedPaths((prev) => {
-        const next = new Set(prev);
-        for (const p of ancestorPaths) {
-          next.add(p);
-        }
-        return next;
-      });
+      // 搜索时完全替换展开状态，由搜索结果决定，不依赖搜索前展开状态 /
+      // During search, fully replace expanded state with the search-result set, ignoring pre-search expansion.
+      setExpandedPaths(() => new Set(ancestorPaths));
     });
 
     return () => {
