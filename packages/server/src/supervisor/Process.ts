@@ -21,6 +21,10 @@ import type {
   UrlProjectId,
 } from "@yep-anywhere/shared";
 import {
+  CLAUDE_EXTENDED_CONTEXT_WINDOW,
+  getModelContextWindow,
+} from "@yep-anywhere/shared";
+import {
   DEFAULT_RECAP_AFTER_SECONDS,
   DEFAULT_PATIENT_QUEUE_PATIENCE_SECONDS,
   HELPER_SIDE_MODEL_CHEAPEST,
@@ -4719,6 +4723,16 @@ export class Process {
             >;
             for (const [model, entry] of Object.entries(mu)) {
               if (entry.contextWindow && entry.contextWindow > 0) {
+                // When the heuristic already knows this model is 1M (via [1m]
+                // suffix, known regexes, or explicit mapping), don't let the
+                // SDK's default 200K for unrecognized models override it.
+                const heuristic = getModelContextWindow(model, this.provider);
+                if (
+                  heuristic === CLAUDE_EXTENDED_CONTEXT_WINDOW &&
+                  entry.contextWindow < heuristic
+                ) {
+                  continue;
+                }
                 this._contextWindow = Math.max(
                   this._contextWindow ?? 0,
                   entry.contextWindow,
