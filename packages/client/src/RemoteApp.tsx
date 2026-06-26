@@ -35,7 +35,10 @@ import { SchemaValidationProvider } from "./contexts/SchemaValidationContext";
 import { CurrentSourceRuntimeProvider } from "./contexts/SourceRuntimeContext";
 import { ToastProvider } from "./contexts/ToastContext";
 import { useNeedsAttentionBadge } from "./hooks/useNeedsAttentionBadge";
-import { useSyncNotifyInAppSetting } from "./hooks/useNotifyInApp";
+import {
+  useSyncActiveSessionId,
+  useSyncNotifyInAppSetting,
+} from "./hooks/useNotifyInApp";
 import {
   getVisibleReloadBanners,
   useReloadNotifications,
@@ -234,6 +237,13 @@ function RemoteAppInner({ children }: Props) {
   const isSessionDetailRoute = /\/sessions\/[^/]+/.test(location.pathname);
 
   useNeedsAttentionBadge();
+
+  // Sync the currently-viewed session id to the SW so push notifications can
+  // suppress the session the user is already looking at. Mirrors App.tsx so
+  // the relay/remote entry is covered (the SW cannot read the SPA route).
+  // 把当前正在查看的 session id 同步给 SW，使推送能抑制用户正在看的会话。
+  // 与 App.tsx 对齐，覆盖 relay/remote 入口（SW 读不到 SPA 路由）。
+  useSyncActiveSessionId();
 
   return (
     <>

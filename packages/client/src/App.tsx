@@ -16,7 +16,10 @@ import { CurrentSourceRuntimeProvider } from "./contexts/SourceRuntimeContext";
 import { ToastProvider } from "./contexts/ToastContext";
 import { useActivityBusConnection } from "./hooks/useActivityBusConnection";
 import { useNeedsAttentionBadge } from "./hooks/useNeedsAttentionBadge";
-import { useSyncNotifyInAppSetting } from "./hooks/useNotifyInApp";
+import {
+  useSyncActiveSessionId,
+  useSyncNotifyInAppSetting,
+} from "./hooks/useNotifyInApp";
 import { useOnboarding } from "./hooks/useOnboarding";
 import {
   getVisibleReloadBanners,
@@ -45,6 +48,13 @@ function AppContent({ children }: Props) {
 
   // Sync notifyInApp setting to service worker on app startup and SW restarts
   useSyncNotifyInAppSetting();
+
+  // Sync the currently-viewed session id to the SW so push notifications can
+  // suppress the session the user is already looking at (the SW cannot read
+  // the SPA's current route from client.url, which stays at the start URL).
+  // 把当前正在查看的 session id 同步给 SW，使推送能抑制用户正在看的会话
+  // （SW 无法从 client.url 读到 SPA 当前路由，client.url 停在启动 URL）。
+  useSyncActiveSessionId();
 
   // Update tab title with needs-attention badge count (uses InboxContext)
   useNeedsAttentionBadge();
