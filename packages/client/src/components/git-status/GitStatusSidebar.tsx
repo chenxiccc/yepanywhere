@@ -328,7 +328,6 @@ export function GitStatusSidebar({
             <GitBranchAttribution
               currentBranch={currentBranch}
               viewingBranch={viewingBranch}
-              variant="files"
             />
             <div className="git-file-filter git-file-filter-standalone">
               <FileTreeSearch
@@ -355,7 +354,6 @@ export function GitStatusSidebar({
             <GitBranchAttribution
               currentBranch={currentBranch}
               viewingBranch={viewingBranch}
-              variant="changes"
             />
             {status.files.length === 0 ? (
               <div className="git-status-empty">

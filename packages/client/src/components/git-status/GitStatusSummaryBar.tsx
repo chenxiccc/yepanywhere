@@ -1,6 +1,6 @@
 import type { GitBranchInfo, GitStatusInfo } from "@yep-anywhere/shared";
 import { GitBranchSwitcher, GitSplitActionButton } from "./GitBranchControls";
-import { CheckIcon, SyncIcon } from "./GitStatusIcons";
+import { SyncIcon } from "./GitStatusIcons";
 
 type Translate = (
   key: string,
@@ -75,16 +75,15 @@ export function GitStatusSummaryBar({
             <path d="M18 9a9 9 0 0 1-9 9" />
           </svg>
         </span>
-        {/* 查看的是已 checkout 分支时显示绿色对号；查看其他分支时空着 */}
-        {/* Green check shown when viewing == checked-out branch; empty when viewing another */}
+        {/* 查看=已 checkout 分支时显示 HEAD pill；查看其他分支时不显示（顶部直接显查看分支名） */}
+        {/* HEAD pill shown when viewing == checked-out branch; hidden when viewing another */}
         {isViewingCurrent && (
           <span
-            className="git-branch-checked-badge"
+            className="git-head-badge"
             role="img"
             aria-label={t("gitStatusViewingCurrentBranch")}
-            title={t("gitStatusViewingCurrentBranch")}
           >
-            <CheckIcon />
+            HEAD
           </span>
         )}
         <GitBranchSwitcher

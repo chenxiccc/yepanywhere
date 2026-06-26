@@ -900,14 +900,14 @@
   border-radius: var(--radius-md);
   background: var(--bg-secondary);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
-  z-index: 10;
+  z-index: 21;
 }
 
 /* 透明遮罩：点击菜单外部关闭菜单，阻止点击穿透 / Transparent backdrop: close on outside click, block click-through */
 .git-branch-menu-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 9;
+  z-index: 20;
   border: none;
   background: transparent;
   cursor: default;
@@ -999,7 +999,15 @@
   background-color: var(--bg-hover);
 }
 
+/* 当前已 checkout 分支项：不再整行高亮，仅靠 HEAD pill 标识 */
+/* Currently checked-out branch item: no row highlight, identified by HEAD pill only */
 .git-branch-menu-item.is-current {
+  color: var(--text-primary);
+}
+
+/* 当前查看的分支项（圈查看分支，醒目绿色整行高亮） */
+/* Currently viewing branch item (highlight viewed branch, prominent green row) */
+.git-branch-menu-item.is-viewing {
   background-color: color-mix(
     in srgb,
     var(--app-yep-green) 18%,
@@ -1011,7 +1019,7 @@
   color: var(--app-yep-green);
 }
 
-.git-branch-menu-item.is-current:hover {
+.git-branch-menu-item.is-viewing:hover {
   background-color: color-mix(
     in srgb,
     var(--app-yep-green) 22%,
@@ -1019,15 +1027,8 @@
   );
 }
 
-.git-branch-menu-item.is-current .git-branch-menu-time {
+.git-branch-menu-item.is-viewing .git-branch-menu-time {
   color: color-mix(in srgb, var(--app-yep-green) 70%, var(--text-primary));
-}
-
-/* 当前查看的分支项（未必已 checkout）：弱强调描边，区别于绿色 is-current */
-/* Currently viewing branch item (may not be checked out): subtle accent outline, distinct from green is-current */
-.git-branch-menu-item.is-viewing:not(.is-current) {
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-primary) 40%, transparent);
-  color: var(--accent-primary);
 }
 
 .git-branch-menu-item:not(.is-current) {
@@ -1056,44 +1057,49 @@
   color: var(--accent-primary);
 }
 
-.git-branch-switch-button.is-disabled {
-  cursor: default;
-  opacity: 0.6;
-  background: transparent;
-}
-
-/* 顶部入口：查看=已 checkout 时显示的绿色对号（与下拉菜单 is-current 对号一致） */
-/* Top entry: green check shown when viewing == checked-out (matches dropdown is-current check) */
-.git-branch-checked-badge {
+/* HEAD pill：浅绿色包裹的 HEAD 标签（复用 git-history-commit-list-tag 的浅绿 pill 模式） */
+/* HEAD pill: green-wrapped HEAD label (reuses git-history-commit-list-tag's green pill pattern) */
+.git-head-badge {
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 auto;
+  padding: 0.08rem 0.32rem;
+  border: 1px solid color-mix(in srgb, var(--app-yep-green) 35%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--app-yep-green) 10%, transparent);
   color: var(--app-yep-green);
+  font-size: 0.62rem;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
-.git-branch-checked-badge svg {
-  display: block;
-}
-
-/* 顶部当前分支名旁的"查看: X"小标签 / "viewing: X" tag next to current branch name */
-.git-branch-viewing-tag {
-  font-size: 0.72rem;
-  font-weight: 400;
-  color: var(--accent-primary);
-  opacity: 0.85;
-}
-
-/* 归属标注：files/changes tab 顶部的分支归属提示行 */
-/* Attribution banner: branch-ownership hint at top of files/changes tabs */
+/* 归属标注：files/changes tab 顶部，git图标 + HEAD pill + 当前分支名 */
+/* Attribution banner: top of files/changes tabs, git icon + HEAD pill + current branch name */
 .git-branch-attribution {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
   padding: 0.35rem 0.5rem;
   margin-bottom: 0.4rem;
   border-radius: calc(var(--radius-md) - 4px);
-  background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
-  color: color-mix(in srgb, var(--accent-primary) 85%, var(--text-primary));
+  background: color-mix(in srgb, var(--app-yep-green) 8%, transparent);
+  color: var(--text-secondary);
   font-size: 0.74rem;
   line-height: 1.4;
+}
+
+.git-branch-attribution .git-branch-icon {
+  color: var(--text-muted);
+}
+
+.git-attribution-branch {
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .git-branch-menu-main {
@@ -1322,7 +1328,7 @@
   border-radius: var(--radius-md);
   background: var(--bg-secondary);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
-  z-index: 10;
+  z-index: 21;
 }
 
 .git-split-action-menu-item {
