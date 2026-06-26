@@ -268,13 +268,15 @@ export const FileTree = memo(function FileTree({
       if (cancelled) return;
       const resultSet = new Set(data.children.map((n) => n.path));
 
-      // 收集所有需要展开的祖先目录 / Collect all ancestor directories to expand
+      // 收集需要展开的祖先目录 / Collect ancestor directories to expand
+      // 注意：只展开祖先，不展开命中节点自身。目录名命中但无匹配后代时，保持折叠，避免显示「（空）」/
+      // Only expand ancestors, never the matched node itself. A dir matching by name but with no matched descendants stays collapsed to avoid showing "(empty)".
       const ancestorPaths = new Set<string>();
       for (const p of resultSet) {
         const parts = p.split("/");
-        // 文件路径去掉最后一段，目录路径保留 / Strip last segment for files, keep for dirs
-        const isFile = !data.children.find((n) => n.path === p)?.isDirectory;
-        const segments = isFile ? parts.slice(0, -1) : parts;
+        // 文件和目录都去掉最后一段：只展开父级链，不展开命中节点自身 /
+        // Strip the last segment for both files and dirs: only expand the parent chain, not the matched node itself.
+        const segments = parts.slice(0, -1);
         for (let i = 1; i <= segments.length; i++) {
           ancestorPaths.add(segments.slice(0, i).join("/"));
         }
