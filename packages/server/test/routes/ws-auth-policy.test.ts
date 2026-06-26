@@ -14,6 +14,7 @@ describe("WebSocket Auth Policy", () => {
       hasSessionCookieAuth: true,
       isRelayConnection: true,
       isLoopbackConnection: true,
+      isAllowedHostname: false,
     });
 
     expect(policy).toBe("srp_required");
@@ -25,6 +26,7 @@ describe("WebSocket Auth Policy", () => {
       hasSessionCookieAuth: false,
       isRelayConnection: false,
       isLoopbackConnection: false,
+      isAllowedHostname: false,
     });
 
     expect(policy).toBe("local_unrestricted");
@@ -36,17 +38,19 @@ describe("WebSocket Auth Policy", () => {
       hasSessionCookieAuth: true,
       isRelayConnection: false,
       isLoopbackConnection: false,
+      isAllowedHostname: false,
     });
 
     expect(policy).toBe("local_cookie_trusted");
   });
 
-  it("returns srp_required when remote access is enabled without cookie auth", () => {
+  it("returns srp_required when remote access is enabled without cookie auth or allowed hostname", () => {
     const policy = deriveWsConnectionPolicy({
       remoteAccessEnabled: true,
       hasSessionCookieAuth: false,
       isRelayConnection: false,
       isLoopbackConnection: false,
+      isAllowedHostname: false,
     });
 
     expect(policy).toBe("srp_required");
@@ -58,9 +62,34 @@ describe("WebSocket Auth Policy", () => {
       hasSessionCookieAuth: false,
       isRelayConnection: false,
       isLoopbackConnection: true,
+      isAllowedHostname: false,
     });
 
     expect(policy).toBe("local_unrestricted");
+  });
+
+  it("returns local_unrestricted when hostname is in allowed hosts", () => {
+    const policy = deriveWsConnectionPolicy({
+      remoteAccessEnabled: true,
+      hasSessionCookieAuth: false,
+      isRelayConnection: false,
+      isLoopbackConnection: false,
+      isAllowedHostname: true,
+    });
+
+    expect(policy).toBe("local_unrestricted");
+  });
+
+  it("relay connection still requires srp even with allowed hostname", () => {
+    const policy = deriveWsConnectionPolicy({
+      remoteAccessEnabled: true,
+      hasSessionCookieAuth: false,
+      isRelayConnection: true,
+      isLoopbackConnection: false,
+      isAllowedHostname: true,
+    });
+
+    expect(policy).toBe("srp_required");
   });
 
   it("marks only local policies as trusted without SRP", () => {
