@@ -1,7 +1,6 @@
 import type { GitBranchInfo } from "@yep-anywhere/shared";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { useI18n } from "../../i18n";
 import {
   BranchMenuIcon,
@@ -211,21 +210,18 @@ export function GitBranchSwitcher({
       </button>
       {isOpen ? (
         <>
-          {/* 透明遮罩层：portal 到 body，确保覆盖全屏含顶部 header（不受父级层叠上下文限制） */}
-          {/* Transparent backdrop: portaled to body so it covers full screen incl. header (escapes parent stacking context) */}
-          {createPortal(
-            <button
-              type="button"
-              className="git-branch-menu-backdrop"
-              aria-label="Close menu"
-              onClick={onClose}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                onClose();
-              }}
-            />,
-            document.body,
-          )}
+          {/* 透明遮罩层：在子树内，配合 .git-status-branch 的 z-index 覆盖全屏含顶部 header */}
+          {/* Transparent backdrop: in subtree; .git-status-branch z-index lets it cover full screen incl. header */}
+          <button
+            type="button"
+            className="git-branch-menu-backdrop"
+            aria-label="Close menu"
+            onClick={onClose}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              onClose();
+            }}
+          />
           <div className="git-branch-menu" role="menu">
           {error ? (
             <div className="git-branch-menu-error">{error}</div>
