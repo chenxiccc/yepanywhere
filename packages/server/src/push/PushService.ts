@@ -380,7 +380,12 @@ export class PushService {
   private async doSave(): Promise<void> {
     try {
       const content = JSON.stringify(this.state, null, 2);
-      await fs.writeFile(this.filePath, content, "utf-8");
+      // 原子写入：先写临时文件，再重命名，避免多实例并发写入损坏
+      // Atomic write: write to a temp file first, then rename to avoid
+      // corruption from concurrent writes (e.g. prod 3400 + dev 4000 profiles).
+      const tmpPath = `${this.filePath}.tmp`;
+      await fs.writeFile(tmpPath, content, "utf-8");
+      await fs.rename(tmpPath, this.filePath);
     } catch (error) {
       console.error("[PushService] Failed to save subscriptions:", error);
       throw error;
