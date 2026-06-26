@@ -100,7 +100,9 @@ export function GitBranchSwitcher({
   isOpen,
   onToggle,
   onClose,
-  onSelect,
+  onSelectView,
+  onSwitchBranch,
+  viewingBranch,
   onOpenCreateBranch,
   onOpenMerge,
   error,
@@ -110,7 +112,12 @@ export function GitBranchSwitcher({
   isOpen: boolean;
   onToggle: () => void;
   onClose: () => void;
-  onSelect: (branchName: string) => void;
+  /** 点分支名区域：只设查看分支，不 checkout / Click branch name area: set viewing branch only, no checkout */
+  onSelectView: (branchName: string) => void;
+  /** 点切换按钮：触发 checkout / Click switch button: trigger checkout */
+  onSwitchBranch: (branchName: string) => void;
+  /** 当前查看的分支（null=跟随当前 checkout）/ Currently viewing branch (null=follow checkout) */
+  viewingBranch: string | null;
   onOpenCreateBranch: (branchName: string) => void;
   onOpenMerge: () => void;
   error: string | null;
@@ -191,6 +198,11 @@ export function GitBranchSwitcher({
         aria-haspopup="menu"
       >
         <span className="git-branch-name-text">{currentBranch}</span>
+        {viewingBranch && viewingBranch !== currentBranch ? (
+          <span className="git-branch-viewing-tag">
+            {t("gitStatusViewingTag", { branch: viewingBranch })}
+          </span>
+        ) : null}
         <CopyBranchNameSpan
           branchName={currentBranch}
           copiedBranch={copiedBranch}
@@ -261,39 +273,83 @@ export function GitBranchSwitcher({
               {branchGroups.map((group) => (
                 <div key={group.key} className="git-branch-menu-group">
                   <div className="git-branch-menu-heading">{group.title}</div>
-                  {group.branches.map((branch) => (
-                    <button
-                      key={branch.name}
-                      type="button"
-                      className={`git-branch-menu-item ${branch.current ? "is-current" : ""}`}
-                      onClick={() => onSelect(branch.name)}
-                      role="menuitem"
-                    >
-                      <span className="git-branch-menu-main">
-                        <span
-                          className="git-branch-menu-icon"
-                          aria-hidden="true"
-                        >
-                          {branch.current ? <CheckIcon /> : <BranchMenuIcon />}
-                        </span>
-                        <span className="git-branch-menu-primary">
-                          {branch.name}
-                        </span>
-                        <CopyBranchButton
-                          branchName={branch.name}
-                          copiedBranch={copiedBranch}
-                          onCopy={copyBranchName}
-                        />
-                      </span>
-                      <span className="git-branch-menu-meta">
-                        {branch.updatedAt ? (
-                          <span className="git-branch-menu-time">
-                            {formatRelativeTime(branch.updatedAt, t)}
+                  {group.branches.map((branch) => {
+                    const isViewing =
+                      branch.name === (viewingBranch ?? currentBranch);
+                    return (
+                      <div
+                        key={branch.name}
+                        role="menuitem"
+                        tabIndex={0}
+                        className={`git-branch-menu-item ${branch.current ? "is-current" : ""} ${isViewing ? "is-viewing" : ""}`}
+                        onClick={() => onSelectView(branch.name)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            onSelectView(branch.name);
+                          }
+                        }}
+                      >
+                        <span className="git-branch-menu-main">
+                          <span
+                            className="git-branch-menu-icon"
+                            aria-hidden="true"
+                          >
+                            {branch.current ? <CheckIcon /> : <BranchMenuIcon />}
                           </span>
-                        ) : null}
-                      </span>
-                    </button>
-                  ))}
+                          <span className="git-branch-menu-primary">
+                            {branch.name}
+                          </span>
+                          <CopyBranchButton
+                            branchName={branch.name}
+                            copiedBranch={copiedBranch}
+                            onCopy={copyBranchName}
+                          />
+                        </span>
+                        <span className="git-branch-menu-meta">
+                          {branch.updatedAt ? (
+                            <span className="git-branch-menu-time">
+                              {formatRelativeTime(branch.updatedAt, t)}
+                            </span>
+                          ) : null}
+                          {/* 切换按钮：只有点击它才 checkout；当前分支禁用 */}
+                          {/* Switch button: only clicking it checks out; disabled for current branch */}
+                          <span
+                            role="button"
+                            tabIndex={branch.current ? -1 : 0}
+                            className={`git-branch-switch-button ${branch.current ? "is-disabled" : ""}`}
+                            aria-disabled={branch.current || undefined}
+                            aria-label={
+                              branch.current
+                                ? t("gitStatusBranchCurrent")
+                                : t("gitStatusBranchSwitchButton")
+                            }
+                            title={
+                              branch.current
+                                ? t("gitStatusBranchCurrent")
+                                : t("gitStatusBranchSwitchButton")
+                            }
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (!branch.current) onSwitchBranch(branch.name);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                if (!branch.current)
+                                  onSwitchBranch(branch.name);
+                              }
+                            }}
+                          >
+                            {branch.current
+                              ? t("gitStatusBranchCurrent")
+                              : t("gitStatusBranchSwitchButton")}
+                          </span>
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               ))}
               <div className="git-branch-menu-footer">

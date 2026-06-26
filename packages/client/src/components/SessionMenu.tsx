@@ -2,6 +2,7 @@ import type { PromptSuggestionMode } from "@yep-anywhere/shared";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
+import { api } from "../api/client";
 import { useI18n } from "../i18n";
 import { SidebarIcons } from "./SidebarNavItem";
 
@@ -543,8 +544,19 @@ export function SessionMenu({
       <button
         type="button"
         onClick={() =>
-          handleAction(() => {
-            navigate(`/git-status?projectId=${encodeURIComponent(projectId)}`);
+          handleAction(async () => {
+            // 取实时 checkout 分支，传给源码管理页作为初始查看分支
+            // Fetch real-time checked-out branch to pass as initial viewing branch
+            let branch: string | null = null;
+            try {
+              const result = await api.getGitBranchCurrent(projectId);
+              branch = result.branch;
+            } catch {
+              branch = null;
+            }
+            const params = new URLSearchParams({ projectId });
+            if (branch) params.set("branch", branch);
+            navigate(`/git-status?${params.toString()}`);
           })
         }
       >

@@ -37,6 +37,7 @@ export function useGitStatusActions({
   selectedCommitPaths,
   commitMessage,
   setCommitMessage,
+  onSwitchSuccess,
 }: {
   projectId: string;
   status: GitStatusInfo;
@@ -45,6 +46,8 @@ export function useGitStatusActions({
   selectedCommitPaths: string[];
   commitMessage: string;
   setCommitMessage: (value: string) => void;
+  /** checkout 成功后回调（用于让查看分支跟随新当前分支）/ Callback after successful checkout */
+  onSwitchSuccess?: () => void;
 }) {
   const [actionError, setActionError] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<GitAction | null>(null);
@@ -155,7 +158,7 @@ export function useGitStatusActions({
     });
   }, [loadBranches]);
 
-  const handleBranchSelect = useCallback(
+  const handleSwitchBranch = useCallback(
     (branchName: string) => {
       setBranchMenuOpen(false);
       if (branchName === status.branch) return;
@@ -165,33 +168,46 @@ export function useGitStatusActions({
         return;
       }
 
-      void runAction("switch", () =>
-        api.switchGitBranch(projectId, {
-          targetBranch: branchName,
-          stashCurrentChanges: false,
-        }),
+      void runAction(
+        "switch",
+        () =>
+          api.switchGitBranch(projectId, {
+            targetBranch: branchName,
+            stashCurrentChanges: false,
+          }),
+        onSwitchSuccess,
       );
     },
-    [projectId, runAction, status.branch, status.files.length],
+    [projectId, runAction, status.branch, status.files.length, onSwitchSuccess],
   );
 
   const handleCreateBranch = useCallback(
     (branchName: string, baseBranch?: string) => {
-      void runAction("switch", async () => {
-        await api.createGitBranch(projectId, { branchName, baseBranch });
-        if (status.files.length > 0) {
-          setBranchSwitchMode("stash");
-          setPendingBranch({ targetBranch: branchName });
-          return;
-        }
+      void runAction(
+        "switch",
+        async () => {
+          await api.createGitBranch(projectId, { branchName, baseBranch });
+          if (status.files.length > 0) {
+            // 有未提交改动：交给 modal 处理，此处未真正 switch，不触发跟随
+            // Uncommitted changes: deferred to modal; no real switch here, skip follow
+            setBranchSwitchMode("stash");
+            setPendingBranch({ targetBranch: branchName });
+            return false;
+          }
 
-        await api.switchGitBranch(projectId, {
-          targetBranch: branchName,
-          stashCurrentChanges: false,
-        });
-      });
+          await api.switchGitBranch(projectId, {
+            targetBranch: branchName,
+            stashCurrentChanges: false,
+          });
+          return true;
+        },
+        // 仅在真正 switch 成功时让查看分支跟随 / Only follow when actually switched
+        (switched) => {
+          if (switched) onSwitchSuccess?.();
+        },
+      );
     },
-    [projectId, runAction, status.files.length],
+    [projectId, runAction, status.files.length, onSwitchSuccess],
   );
 
   const confirmBranchSwitch = useCallback(
@@ -199,14 +215,17 @@ export function useGitStatusActions({
       if (!pendingBranch) return;
       const { targetBranch } = pendingBranch;
       setPendingBranch(null);
-      void runAction("switch", () =>
-        api.switchGitBranch(projectId, {
-          targetBranch,
-          stashCurrentChanges,
-        }),
+      void runAction(
+        "switch",
+        () =>
+          api.switchGitBranch(projectId, {
+            targetBranch,
+            stashCurrentChanges,
+          }),
+        onSwitchSuccess,
       );
     },
-    [pendingBranch, projectId, runAction],
+    [pendingBranch, projectId, runAction, onSwitchSuccess],
   );
 
   const handleOpenMergeModal = useCallback(() => {
@@ -388,7 +407,7 @@ export function useGitStatusActions({
     confirmDiscardStash,
     discardConfirmOpen,
     discardStashConfirmRef,
-    handleBranchSelect,
+    handleSwitchBranch,
     handleCreateBranch,
     handleCommit,
     handleConfirmUndo,

@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { FileTree } from "../FileTree";
 import { FileTreeSearch } from "../FileTreeSearch";
 import { Button } from "../ui/Button";
+import { GitBranchAttribution } from "./GitBranchAttribution";
 import { GitFileActionsMenu, GitFileSection } from "./GitFileList";
 import { CheckIcon, ClearIcon, CopyIcon, RefreshIcon, SearchIcon } from "./GitStatusIcons";
 import { formatRelativeTime } from "./utils";
@@ -21,6 +22,8 @@ export function GitStatusSidebar({
   status,
   projectId,
   activeView,
+  viewingBranch,
+  currentBranch,
   commitMessage,
   fileFilter,
   fileActionsMenuOpen,
@@ -73,6 +76,10 @@ export function GitStatusSidebar({
   status: GitStatusInfo;
   projectId: string;
   activeView: "files" | "changes" | "stashed" | "history";
+  /** 当前查看的分支（null=跟随当前 checkout）/ Currently viewing branch (null=follow checkout) */
+  viewingBranch: string | null;
+  /** 当前已 checkout 分支 / Currently checked-out branch */
+  currentBranch: string | null;
   commitMessage: string;
   fileFilter: string;
   fileActionsMenuOpen: boolean;
@@ -318,6 +325,11 @@ export function GitStatusSidebar({
 
         {activeView === "files" ? (
           <div className="git-files-card">
+            <GitBranchAttribution
+              currentBranch={currentBranch}
+              viewingBranch={viewingBranch}
+              variant="files"
+            />
             <div className="git-file-filter git-file-filter-standalone">
               <FileTreeSearch
                 value={fileTreeSearchQuery}
@@ -340,6 +352,11 @@ export function GitStatusSidebar({
           </div>
         ) : activeView === "changes" ? (
           <div className="git-files-card">
+            <GitBranchAttribution
+              currentBranch={currentBranch}
+              viewingBranch={viewingBranch}
+              variant="changes"
+            />
             {status.files.length === 0 ? (
               <div className="git-status-empty">
                 {t("gitStatusWorkingTreeClean")}

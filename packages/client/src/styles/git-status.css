@@ -1023,6 +1023,79 @@
   color: color-mix(in srgb, var(--app-yep-green) 70%, var(--text-primary));
 }
 
+/* 当前查看的分支项（未必已 checkout）：弱强调描边，区别于绿色 is-current */
+/* Currently viewing branch item (may not be checked out): subtle accent outline, distinct from green is-current */
+.git-branch-menu-item.is-viewing:not(.is-current) {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-primary) 40%, transparent);
+  color: var(--accent-primary);
+}
+
+.git-branch-menu-item:not(.is-current) {
+  cursor: pointer;
+}
+
+/* 分支行尾的切换按钮 / Switch button at the end of a branch row */
+.git-branch-switch-button {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.1rem 0.4rem;
+  border-radius: calc(var(--radius-md) - 4px);
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.git-branch-switch-button:hover {
+  background: color-mix(in srgb, var(--accent-primary) 20%, transparent);
+  color: var(--accent-primary);
+}
+
+.git-branch-switch-button.is-disabled {
+  cursor: default;
+  opacity: 0.6;
+  background: transparent;
+}
+
+/* 顶部入口：查看=已 checkout 时显示的绿色对号（与下拉菜单 is-current 对号一致） */
+/* Top entry: green check shown when viewing == checked-out (matches dropdown is-current check) */
+.git-branch-checked-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  color: var(--app-yep-green);
+}
+
+.git-branch-checked-badge svg {
+  display: block;
+}
+
+/* 顶部当前分支名旁的"查看: X"小标签 / "viewing: X" tag next to current branch name */
+.git-branch-viewing-tag {
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: var(--accent-primary);
+  opacity: 0.85;
+}
+
+/* 归属标注：files/changes tab 顶部的分支归属提示行 */
+/* Attribution banner: branch-ownership hint at top of files/changes tabs */
+.git-branch-attribution {
+  padding: 0.35rem 0.5rem;
+  margin-bottom: 0.4rem;
+  border-radius: calc(var(--radius-md) - 4px);
+  background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
+  color: color-mix(in srgb, var(--accent-primary) 85%, var(--text-primary));
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
+
 .git-branch-menu-main {
   min-width: 0;
   display: inline-flex;

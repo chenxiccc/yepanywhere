@@ -29,6 +29,7 @@ import { useGitStatusSelection } from "../hooks/useGitStatusSelection";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { useProject, useProjects } from "../hooks/useProjects";
 import { useI18n } from "../i18n";
+import { getServerScoped, setServerScoped } from "../lib/storageKeys";
 import "../styles/git-status.css";
 import { useNavigationLayout } from "../layouts";
 
@@ -36,6 +37,7 @@ export function GitStatusPage() {
   const { t } = useI18n();
   const [searchParams, setSearchParams] = useSearchParams();
   const projectId = searchParams.get("projectId");
+  const branchParam = searchParams.get("branch");
   const { openSidebar, isWideScreen, toggleSidebar, isSidebarCollapsed } =
     useNavigationLayout();
 
@@ -98,6 +100,7 @@ export function GitStatusPage() {
                 projectId={effectiveProjectId}
                 projectPath={project?.path}
                 refetch={refetch}
+                initialViewingBranch={branchParam}
                 t={t as never}
               />
             ) : null}
@@ -114,15 +117,57 @@ function GitStatusContent({
   refetch,
   t,
   projectPath,
+  initialViewingBranch,
 }: {
   status: import("@yep-anywhere/shared").GitStatusInfo;
   projectId: string;
   refetch: () => Promise<void>;
   t: (key: string, vars?: Record<string, string | number>) => string;
   projectPath?: string;
+  /** 从 URL ?branch= 传入的初始查看分支（仅首次进入生效）/ Initial viewing branch from URL ?branch= (first entry only) */
+  initialViewingBranch?: string | null;
 }) {
   const isNarrowScreen = useMediaQuery("(max-width: 900px)");
   const isMediumScreen = useMediaQuery("(max-width: 1099px)");
+
+  // 查看分支：null = 跟随当前 checkout 分支 / Viewing branch: null = follow current checkout
+  // 初始化优先级：URL ?branch= > localStorage 上次停留 > null（跟随）
+  // Init priority: URL ?branch= > localStorage last viewed > null (follow)
+  const initialBranchConsumed = useRef(false);
+  const [viewingBranch, setViewingBranch] = useState<string | null>(() => {
+    if (initialViewingBranch) {
+      initialBranchConsumed.current = true;
+      return initialViewingBranch;
+    }
+    if (typeof window !== "undefined") {
+      return getServerScoped("lastViewedBranch");
+    }
+    return null;
+  });
+  // 派生：history 实际使用的 ref / Derived: the ref history actually uses
+  const effectiveViewingBranch =
+    viewingBranch ?? status.branch ?? null;
+  // 派生：查看的是否为当前已 checkout 分支 / Derived: whether viewing == checked-out
+  const isViewingCurrent = effectiveViewingBranch === status.branch;
+
+  // 持久化查看分支 / Persist viewing branch
+  useEffect(() => {
+    if (initialBranchConsumed.current) {
+      // 首次进入若来自 URL 参数，先不覆盖 localStorage（等用户主动切换再写）
+      // On first entry from URL param, don't overwrite localStorage yet
+      initialBranchConsumed.current = false;
+      return;
+    }
+    if (viewingBranch) {
+      setServerScoped("lastViewedBranch", viewingBranch);
+    }
+  }, [viewingBranch]);
+
+  // 仅设查看分支，不 checkout / Set viewing branch only, no checkout
+  const handleSelectViewBranch = useCallback((branchName: string) => {
+    setViewingBranch(branchName);
+  }, []);
+
   const [activeView, setActiveView] = useState<
     "files" | "changes" | "stashed" | "history"
   >("files");
@@ -210,9 +255,11 @@ function GitStatusContent({
   const selectedCommitPaths = selectedCommitFiles.map((file) => file.path);
   const canCommit = commitMessage.trim().length > 0 && selectedCommitCount > 0;
   const remoteName = status.remote ?? "origin";
-  const historyReloadKey = `${status.branch ?? ""}:${status.ahead}:${status.behind}`;
+  // history 重载 key：基于查看分支 + 手动刷新，不含 ahead/behind（避免轮询抖动）
+  // History reload key: based on viewing branch + manual refresh, no ahead/behind (avoids polling jitter)
+  const historyReloadKey = `${effectiveViewingBranch ?? "HEAD"}:${activeViewRefreshKey}`;
   // 手动刷新 key，用于刷新按钮 / Manual refresh key for refresh button
-  const historyRefreshKey = `${historyReloadKey}:${activeViewRefreshKey}`;
+  const historyRefreshKey = historyReloadKey;
 
   // 分支切换时刷新当前激活的 tab / Refresh active tab when branch changes
   const prevBranchRef = useRef(status.branch);
@@ -318,7 +365,10 @@ function GitStatusContent({
     setSelectedHistoryCommitHash(null);
 
     api
-      .getGitHistory(projectId, { limit: 25 })
+      .getGitHistory(projectId, {
+        limit: 25,
+        branch: effectiveViewingBranch ?? undefined,
+      })
       .then((result) => {
         if (cancelled) return;
         setHistoryCommits(result.commits);
@@ -338,7 +388,7 @@ function GitStatusContent({
     return () => {
       cancelled = true;
     };
-  }, [activeView, historyRefreshKey, projectId, t]);
+  }, [activeView, historyRefreshKey, projectId, effectiveViewingBranch, t]);
 
   useEffect(() => {
     if (activeView !== "stashed") return;
@@ -374,6 +424,7 @@ function GitStatusContent({
       const result = await api.getGitHistory(projectId, {
         cursor: historyCursor,
         limit: 25,
+        branch: effectiveViewingBranch ?? undefined,
       });
 
       setHistoryCommits((prev) => {
@@ -407,7 +458,7 @@ function GitStatusContent({
     confirmDiscardStash,
     discardConfirmOpen,
     discardStashConfirmRef,
-    handleBranchSelect,
+    handleSwitchBranch,
     handleCreateBranch,
     handleCommit,
     handleConfirmUndo,
@@ -448,7 +499,19 @@ function GitStatusContent({
     selectedCommitPaths,
     commitMessage,
     setCommitMessage,
+    onSwitchSuccess: () => setViewingBranch(null),
   });
+
+  // 失效处理：查看的分支已被删除时回退到跟随当前分支
+  // Invalidation: fall back to following current branch when viewed branch is deleted
+  useEffect(() => {
+    if (!viewingBranch) return;
+    if (branches.length === 0) return; // 分支列表尚未加载，等待
+    const stillExists = branches.some((b) => b.name === viewingBranch);
+    if (!stillExists) {
+      setViewingBranch(null);
+    }
+  }, [viewingBranch, branches]);
 
   return (
     <div className="git-desktop">
@@ -465,7 +528,10 @@ function GitStatusContent({
         t={t}
         onBranchMenuToggle={handleToggleBranchMenu}
         onBranchMenuClose={() => setBranchMenuOpen(false)}
-        onBranchSelect={handleBranchSelect}
+        onBranchSelectView={handleSelectViewBranch}
+        onSwitchBranch={handleSwitchBranch}
+        viewingBranch={viewingBranch}
+        isViewingCurrent={isViewingCurrent}
         onOpenCreateBranch={(branchName) => {
           setBranchMenuOpen(false);
           setCreateBranchInitialName(branchName);
@@ -484,6 +550,8 @@ function GitStatusContent({
           status={status}
           projectId={projectId}
           activeView={activeView}
+          viewingBranch={viewingBranch}
+          currentBranch={status.branch}
           commitMessage={commitMessage}
           fileFilter={fileFilter}
           fileActionsMenuOpen={fileActionsMenuOpen}

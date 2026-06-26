@@ -569,14 +569,28 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
         ? Math.min(Math.max(limitParam, 1), 100)
         : 25;
       const offset = Number.isFinite(cursor) ? Math.max(cursor, 0) : 0;
+      const branch = c.req.query("branch")?.trim() || undefined;
       const { commits, hasMore, nextCursor } = await getGitHistory(
         projectPath,
         offset,
         limit,
+        branch,
       );
       return c.json({ commits, hasMore, nextCursor });
     } catch (err) {
       return gitActionError(err, "Failed to load git history");
+    }
+  });
+
+  // GET /:projectId/git/branch — 轻量端点，仅返回当前 checkout 分支名
+  // Lightweight endpoint: returns only the current checked-out branch name
+  routes.get("/:projectId/git/branch", async (c) => {
+    try {
+      const projectPath = await getProjectPath(deps, c.req.param("projectId"));
+      if (!projectPath) return c.json({ error: "Project not found" }, 404);
+      return c.json({ branch: await getCurrentBranch(projectPath) });
+    } catch (err) {
+      return gitActionError(err, "Failed to get current branch");
     }
   });
 
@@ -1821,13 +1835,39 @@ async function getGitHistory(
   projectPath: string,
   offset: number,
   limit: number,
+  ref?: string,
 ): Promise<{
   commits: GitHistoryCommitSummary[];
   hasMore: boolean;
   nextCursor: string | null;
 }> {
+  // 校验 ref 合法性 + 存在性（本地或远程分支），不 checkout 工作区
+  // Validate ref format + existence (local or remote branch) without checkout
+  let logRef: string | undefined;
+  if (ref) {
+    await runGit(projectPath, ["check-ref-format", "--branch", ref]);
+    const isLocal = await hasLocalBranch(projectPath, ref);
+    if (isLocal) {
+      logRef = ref;
+    } else {
+      // 远程分支允许查看 history（如 origin/feature）
+      // Remote branches (e.g. origin/feature) are allowed for history viewing
+      const remoteOk = await runGit(projectPath, [
+        "show-ref",
+        "--verify",
+        "--quiet",
+        `refs/remotes/${ref}`,
+      ]).then(() => true).catch(() => false);
+      if (!remoteOk) {
+        throw new Error(`Branch not found: ${ref}`);
+      }
+      logRef = ref;
+    }
+  }
+
   const result = await runGit(projectPath, [
     "log",
+    ...(logRef ? [logRef] : []),
     "--skip",
     String(offset),
     "-n",

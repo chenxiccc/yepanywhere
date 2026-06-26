@@ -29,11 +29,13 @@ export function createGitStatusApi(fetchJSON: FetchFn) {
       params?: {
         cursor?: string;
         limit?: number;
+        branch?: string;
       },
     ) => {
       const searchParams = new URLSearchParams();
       if (params?.cursor) searchParams.set("cursor", params.cursor);
       if (params?.limit) searchParams.set("limit", String(params.limit));
+      if (params?.branch) searchParams.set("branch", params.branch);
       const query = searchParams.toString();
 
       return fetchJSON<{
@@ -42,6 +44,13 @@ export function createGitStatusApi(fetchJSON: FetchFn) {
         nextCursor: string | null;
       }>(`/projects/${projectId}/git/history${query ? `?${query}` : ""}`);
     },
+
+    // 轻量端点：仅返回当前 checkout 分支名（供 SessionMenu 取实时分支用）
+    // Lightweight endpoint: returns only the current checked-out branch name
+    getGitBranchCurrent: (projectId: string) =>
+      fetchJSON<{ branch: string | null }>(
+        `/projects/${projectId}/git/branch`,
+      ),
 
     getGitHistoryCommit: (projectId: string, commit: string) =>
       fetchJSON<{ commit: GitHistoryCommitDetail }>(

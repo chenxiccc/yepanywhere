@@ -1,6 +1,6 @@
 import type { GitBranchInfo, GitStatusInfo } from "@yep-anywhere/shared";
 import { GitBranchSwitcher, GitSplitActionButton } from "./GitBranchControls";
-import { SyncIcon } from "./GitStatusIcons";
+import { CheckIcon, SyncIcon } from "./GitStatusIcons";
 
 type Translate = (
   key: string,
@@ -20,7 +20,10 @@ export function GitStatusSummaryBar({
   t,
   onBranchMenuToggle,
   onBranchMenuClose,
-  onBranchSelect,
+  onBranchSelectView,
+  onSwitchBranch,
+  viewingBranch,
+  isViewingCurrent,
   onOpenCreateBranch,
   onOpenMerge,
   onSync,
@@ -39,7 +42,12 @@ export function GitStatusSummaryBar({
   t: Translate;
   onBranchMenuToggle: () => void;
   onBranchMenuClose: () => void;
-  onBranchSelect: (branchName: string) => void;
+  onBranchSelectView: (branchName: string) => void;
+  onSwitchBranch: (branchName: string) => void;
+  /** 当前查看的分支（null=跟随当前 checkout）/ Currently viewing branch (null=follow checkout) */
+  viewingBranch: string | null;
+  /** 查看的是否为当前已 checkout 分支 / Whether viewing == checked-out branch */
+  isViewingCurrent: boolean;
   onOpenCreateBranch: (branchName: string) => void;
   onOpenMerge: () => void;
   onSync: (action: "fetch" | "push") => void;
@@ -67,13 +75,27 @@ export function GitStatusSummaryBar({
             <path d="M18 9a9 9 0 0 1-9 9" />
           </svg>
         </span>
+        {/* 查看的是已 checkout 分支时显示绿色对号；查看其他分支时空着 */}
+        {/* Green check shown when viewing == checked-out branch; empty when viewing another */}
+        {isViewingCurrent && (
+          <span
+            className="git-branch-checked-badge"
+            role="img"
+            aria-label={t("gitStatusViewingCurrentBranch")}
+            title={t("gitStatusViewingCurrentBranch")}
+          >
+            <CheckIcon />
+          </span>
+        )}
         <GitBranchSwitcher
           currentBranch={status.branch ?? t("gitStatusDetachedHead")}
           branches={branches}
           isOpen={branchMenuOpen}
           onToggle={onBranchMenuToggle}
           onClose={onBranchMenuClose}
-          onSelect={onBranchSelect}
+          onSelectView={onBranchSelectView}
+          onSwitchBranch={onSwitchBranch}
+          viewingBranch={viewingBranch}
           onOpenCreateBranch={onOpenCreateBranch}
           onOpenMerge={onOpenMerge}
           error={branchMenuError}
