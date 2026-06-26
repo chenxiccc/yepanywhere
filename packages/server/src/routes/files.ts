@@ -1340,27 +1340,23 @@ export function createFilesRoutes(deps: FilesDeps): Hono {
         );
 
         const lines = stdout.trim().split("\n").filter(Boolean);
-        // 并行读取文件状态，避免串行 I/O 阻塞 / Read file stats in parallel to avoid serial I/O blocking
-        const statResults = await Promise.allSettled(
-          lines.map(async (fullPath) => {
-            const relPath = relative(projectRoot, fullPath);
+        for (const fullPath of lines) {
+          const relPath = relative(projectRoot, fullPath);
+          try {
             const entryStat = await stat(fullPath);
-            return { fullPath, relPath, entryStat };
-          }),
-        );
-        for (const result of statResults) {
-          if (result.status === "rejected") continue;
-          const { fullPath, relPath, entryStat } = result.value;
-          const node: FileNode = {
-            name: basename(fullPath),
-            path: relPath,
-            isDirectory: entryStat.isDirectory(),
-          };
-          if (!entryStat.isDirectory()) {
-            node.size = entryStat.size;
-            node.modifiedAt = entryStat.mtime.toISOString();
+            const node: FileNode = {
+              name: basename(fullPath),
+              path: relPath,
+              isDirectory: entryStat.isDirectory(),
+            };
+            if (!entryStat.isDirectory()) {
+              node.size = entryStat.size;
+              node.modifiedAt = entryStat.mtime.toISOString();
+            }
+            children.push(node);
+          } catch {
+            // 文件可能已被删除 / File may have been deleted
           }
-          children.push(node);
         }
       } catch {
         // find 失败时降级为浅层过滤 / Fall back to shallow filtering on failure
