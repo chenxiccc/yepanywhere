@@ -87,6 +87,8 @@ export const UI_KEYS = {
   emulatorMaxWidth: "yep-anywhere-emulator-max-width",
   emulatorQuality: "yep-anywhere-emulator-quality",
   emulatorAdaptiveFps: "yep-anywhere-emulator-adaptive-fps",
+  gitUndoHideWarning: "yep-anywhere-git-undo-hide-warning",
+  gitDiscardHideWarning: "yep-anywhere-git-discard-hide-warning",
   attachmentUploadQuality: "yep-anywhere-attachment-upload-quality",
   tabTitleActivityEnabled: "yep-anywhere-tab-title-activity-enabled",
   settingsIconStyle: "yep-anywhere-settings-icon-style",

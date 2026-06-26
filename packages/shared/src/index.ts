@@ -97,7 +97,28 @@ export {
   DEFAULT_PROVIDER,
 } from "./types.js";
 
-export type { GitStatusInfo, GitFileChange } from "./git-status.js";
+export type {
+  GitStatusInfo,
+  GitFileChange,
+  GitBranchInfo,
+  GitCreateBranchRequest,
+  GitLocalCommitInfo,
+  GitStashEntry,
+  GitStashDetail,
+  GitStashFileChange,
+  GitHistoryCommitSummary,
+  GitHistoryCommitDetail,
+  GitHistoryFileChange,
+  GitCommitRequest,
+  GitUndoCommitResponse,
+  GitMergeBranchRequest,
+  GitMergePreviewRequest,
+  GitMergePreviewResult,
+  GitMergeStrategy,
+  GitSwitchBranchRequest,
+} from "./git-status.js";
+
+export type { FileNode, FileListResponse } from "./file-tree.js";
 
 export type {
   SessionActiveWorkKind,
