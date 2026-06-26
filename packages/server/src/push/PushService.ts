@@ -211,14 +211,15 @@ export class PushService {
 
   /**
    * Send a push notification to all subscribed browser profiles.
+   * Notification suppression is handled by the client-side Service Worker,
+   * which has precise access to window focus state and current session.
+   *
    * @param payload - The notification payload
    * @param options - Optional settings
-   * @param options.excludeBrowserProfileIds - Browser profile IDs to skip (e.g., already connected)
    */
   async sendToAll(
     payload: PushPayload,
     options?: {
-      excludeBrowserProfileIds?: string[];
       deliveryUrgency?: PushDeliveryUrgency;
     },
   ): Promise<SendResult[]> {
@@ -228,10 +229,7 @@ export class PushService {
       throw new Error("VAPID keys not configured");
     }
 
-    const excludeSet = new Set(options?.excludeBrowserProfileIds ?? []);
-    const browserProfileIds = Object.keys(this.state.subscriptions).filter(
-      (id) => !excludeSet.has(id),
-    );
+    const browserProfileIds = Object.keys(this.state.subscriptions);
 
     if (browserProfileIds.length === 0) {
       return [];
@@ -379,7 +377,12 @@ export class PushService {
   private async doSave(): Promise<void> {
     try {
       const content = JSON.stringify(this.state, null, 2);
-      await fs.writeFile(this.filePath, content, "utf-8");
+      // 原子写入：先写临时文件，再重命名，避免多实例并发写入损坏
+      // Atomic write: write to a temp file first, then rename to avoid
+      // corruption from concurrent writes (e.g. prod 3400 + dev 4000 profiles).
+      const tmpPath = `${this.filePath}.tmp`;
+      await fs.writeFile(tmpPath, content, "utf-8");
+      await fs.rename(tmpPath, this.filePath);
     } catch (error) {
       console.error("[PushService] Failed to save subscriptions:", error);
       throw error;

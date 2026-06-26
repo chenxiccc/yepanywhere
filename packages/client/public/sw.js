@@ -16,7 +16,15 @@
 // Version constant for controlled updates
 // Increment this when making intentional SW changes
 // Browsers reinstall SW only when file content changes
-const SW_VERSION = "1.0.5";
+//
+// 1.0.6: session suppression uses activeSessionId synced from the page (the
+//        SPA's current route is not readable from client.url, which stays at
+//        the navigation start URL). Visibility also falls back to
+//        visibilityState since client.focused alone is unreliable on mobile.
+// 1.0.6: 会话抑制改用页面同步的 activeSessionId（SPA 当前路由无法从
+//        client.url 读取，它停留在导航起始 URL）。可见性判断增加
+//        visibilityState 兜底，因 client.focused 在手机端单独不可靠。
+const SW_VERSION = "1.0.6";
 void SW_VERSION;
 const FRONTEND_RELOAD_QUERY_PARAM = "__ya_reload";
 
@@ -25,9 +33,19 @@ function assetUrl(path) {
   return new URL(path, self.registration.scope).href;
 }
 
-// Settings synced from main thread
+// Settings synced from main thread via postMessage({type:"setting-update",key,value}).
+// The message handler whitelists keys with `key in settings`, so every key
+// that the page may sync MUST be declared here or the update is silently dropped.
+// 通过 postMessage 同步的设置。message handler 用 `key in settings` 做白名单，
+// 故页面可能同步的每个 key 都必须在此声明，否则更新会被静默丢弃。
 const settings = {
   notifyInApp: false, // When true, notify even when app is focused (if session not viewed)
+  // Currently-viewed session id synced from the page (null when not on a
+  // session route). The page tracks the SPA route because client.url does not
+  // update with client-side navigation.
+  // 页面同步的"当前正在查看的 session id"（不在 session 路由时为 null）。
+  // 因 client.url 不随客户端导航更新，由页面追踪 SPA 路由。
+  activeSessionId: null,
 };
 
 // ============ Debug Logging ============
@@ -246,11 +264,18 @@ self.addEventListener("push", (event) => {
     return;
   }
 
+  // Run handlePush and the log write in parallel so IndexedDB log writes do
+  // not delay notification display. Both still resolve before the push event
+  // settles (event.waitUntil keeps the SW alive for both).
+  // 并行执行 handlePush 与日志写入，避免 IndexedDB 日志写入延迟通知显示。
   event.waitUntil(
-    swLog("info", "Push received", {
-      type: data.type,
-      sessionId: data.sessionId,
-    }).then(() => handlePush(data)),
+    Promise.all([
+      handlePush(data),
+      swLog("info", "Push received", {
+        type: data.type,
+        sessionId: data.sessionId,
+      }),
+    ]),
   );
 });
 
@@ -261,8 +286,15 @@ async function handlePush(data) {
     includeUncontrolled: true,
   });
 
-  const focusedClients = clients.filter((client) => client.focused);
-  const hasFocusedClient = focusedClients.length > 0;
+  // A client counts as "visible" if focused OR visibilityState === "visible".
+  // client.focused alone is unreliable on mobile (can be false in foreground),
+  // so visibilityState acts as a fallback. Either signal being visible means
+  // the user can see the app — suppress per the rules below.
+  // 当 focused 或 visibilityState==="visible" 即视为"可见"。client.focused 在
+  // 手机端单独不可靠（前台也可能为 false），故用 visibilityState 兜底。
+  const hasVisibleClient = clients.some(
+    (client) => client.focused || client.visibilityState === "visible",
+  );
 
   // Handle dismiss payload - close matching notification
   if (data.type === "dismiss") {
@@ -293,27 +325,35 @@ async function handlePush(data) {
     return self.registration.showNotification("Yep Anywhere", options);
   }
 
-  // Determine if we should suppress notification
-  if (hasFocusedClient) {
+  // Determine if we should suppress notification.
+  // Only suppress when the app is visible — backgrounded/locked devices always
+  // show (the SW may have stale synced settings after being restarted, so rely
+  // on the live client visibility here, not a synced boolean).
+  // 仅在 app 可见时才考虑抑制；后台/锁屏一律显示（SW 重启后同步值可能过期，
+  // 故此处用实时 client 可见性，而非同步布尔值）。
+  if (hasVisibleClient) {
     if (settings.notifyInApp) {
-      // Check if any focused client is viewing THIS session
+      // Suppress only if the user is currently viewing THIS session.
+      // activeSessionId is synced from the page (client.url does not track SPA
+      // navigation). If it's null (SW just restarted, not synced yet) we treat
+      // it as "not viewing" → show (prefer a spurious notify over a missed one).
+      // 仅当用户正在看此会话时抑制。activeSessionId 由页面同步（client.url 不随
+      // SPA 导航更新）。若为 null（SW 刚重启尚未同步）按"不在看"处理 → 显示
+      //（宁可误推一条，不漏推）。
       const sessionId = data.sessionId;
       const isSessionOpen =
-        sessionId &&
-        focusedClients.some((client) => {
-          return client.url?.includes(`/sessions/${sessionId}`);
-        });
+        sessionId && settings.activeSessionId === sessionId;
 
       if (isSessionOpen) {
         console.log(
-          "[SW] Session is open in focused window, skipping notification",
+          "[SW] Session is open in visible window, skipping notification",
         );
         return;
       }
       // Session not open - continue to show notification
     } else {
-      // notifyInApp disabled - skip if any window focused
-      console.log("[SW] App is focused, skipping notification");
+      // notifyInApp disabled - skip if app is visible
+      console.log("[SW] App is visible, skipping notification");
       return;
     }
   }
