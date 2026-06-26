@@ -26,7 +26,14 @@
 // 1.0.6: 会话抑制改用页面同步的 activeSessionId（SPA 当前路由无法从
 //        client.url 读取，它停留在导航起始 URL）。可见性判断增加
 //        visibilityState 兜底，因 client.focused 在手机端单独不可靠。
-const SW_VERSION = "1.0.6";
+// 1.0.7: notifyInApp default changed to true. A SW restarted by a push reverts
+//        in-memory settings to defaults; defaulting to false silently dropped
+//        foreground pushes after a restart. Defaulting true is restart-safe
+//        (prefer to notify; activeSessionId still suppresses the viewed session).
+// 1.0.7: notifyInApp 默认值改为 true。SW 被 push 重启后内存设置回默认值，
+//        原 false 默认会导致重启后前台推送被静默丢弃。true 为重启安全默认
+//        （宁可通知；activeSessionId 仍抑制正在看的会话）。
+const SW_VERSION = "1.0.7";
 void SW_VERSION;
 const FRONTEND_RELOAD_QUERY_PARAM = "__ya_reload";
 
@@ -41,7 +48,18 @@ function assetUrl(path) {
 // 通过 postMessage 同步的设置。message handler 用 `key in settings` 做白名单，
 // 故页面可能同步的每个 key 都必须在此声明，否则更新会被静默丢弃。
 const settings = {
-  notifyInApp: false, // When true, notify even when app is focused (if session not viewed)
+  // Default true: when the SW is restarted by a push, in-memory settings revert
+  // to these defaults and the main thread won't re-sync until the next
+  // lifecycle event. If this defaulted to false, a foreground push right after
+  // a SW restart would be silently suppressed (notifyInApp=false → "app visible,
+  // skip"). Defaulting to true makes restart-safe behavior "prefer to notify"
+  // (the activeSessionId check still suppresses the session being viewed); the
+  // main thread corrects this to the user's real setting shortly after.
+  // 默认 true：SW 被 push 唤醒重启时内存 settings 回到此默认值，且主线程在下次
+  // 生命周期事件前不会重新同步。若默认 false，SW 重启后前台推送会被静默抑制
+  // （notifyInApp=false → "app 可见，跳过"）。默认 true 使重启后"宁可通知"，
+  // activeSessionId 检查仍会抑制正在看的会话；主线程随后会修正为用户真实设置。
+  notifyInApp: true,
   // Currently-viewed session id synced from the page (null when not on a
   // session route). The page tracks the SPA route because client.url does not
   // update with client-side navigation.
