@@ -202,9 +202,15 @@ export const FileTree = memo(function FileTree({
 
   // 搜索过滤 / Search filtering — 使用服务端搜索结果
   // Search filtering — uses server-side search results
+  // 返回过滤后的根节点与「应渲染路径集合」/ Returns filtered root nodes and the set of paths to render
+  // visiblePaths 为 null 表示非搜索模式，渲染层走原路径 / null means non-search mode; render layer uses original path
   const filterNodes = useCallback(
-    (nodes: FileNode[]): FileNode[] => {
-      if (!searchQuery || !searchResults) return nodes;
+    (nodes: FileNode[]): { nodes: FileNode[]; visiblePaths: Set<string> | null } => {
+      if (!searchQuery || !searchResults) {
+        return { nodes, visiblePaths: null };
+      }
+
+      const visiblePaths = new Set<string>();
 
       const filter = (items: FileNode[]): FileNode[] => {
         return items
@@ -212,12 +218,16 @@ export const FileTree = memo(function FileTree({
             if (item.isDirectory) {
               const children = childCache.get(item.path) || [];
               const filteredChildren = filter(children);
-              if (filteredChildren.length > 0) {
+              // 目录自身名命中，或子节点有命中，则保留 / Keep dir if its own name matches or any descendant matches
+              const selfMatch = searchResults.has(item.path);
+              if (selfMatch || filteredChildren.length > 0) {
+                visiblePaths.add(item.path);
                 return { ...item };
               }
               return null;
             }
             if (searchResults.has(item.path)) {
+              visiblePaths.add(item.path);
               return item;
             }
             return null;
@@ -225,7 +235,7 @@ export const FileTree = memo(function FileTree({
           .filter((n): n is FileNode => n !== null);
       };
 
-      return filter(nodes);
+      return { nodes: filter(nodes), visiblePaths };
     },
     [searchQuery, searchResults, childCache],
   );
@@ -271,6 +281,12 @@ export const FileTree = memo(function FileTree({
       }
 
       setSearchResults(resultSet);
+      // 懒加载未缓存的祖先目录，避免展开后显示「空目录」/ Lazily load uncached ancestor dirs so expanded dirs show children instead of "empty"
+      for (const p of ancestorPaths) {
+        if (!childCache.has(p) && !loadingPaths.has(p)) {
+          loadChildren(p);
+        }
+      }
       setExpandedPaths((prev) => {
         const next = new Set(prev);
         for (const p of ancestorPaths) {
@@ -289,7 +305,7 @@ export const FileTree = memo(function FileTree({
   const [contextMenu, setContextMenu] = useState<FileContextMenuState | null>(null);
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
-  const filteredRootNodes = useMemo(
+  const { nodes: filteredRootNodes, visiblePaths } = useMemo(
     () => filterNodes(rootNodes),
     [filterNodes, rootNodes],
   );
@@ -326,6 +342,7 @@ export const FileTree = memo(function FileTree({
             onToggleExpand={toggleExpand}
             onRetryLoad={loadChildren}
             onContextMenu={setContextMenu}
+            visiblePaths={visiblePaths}
             t={t}
           />
         ))
@@ -358,6 +375,8 @@ interface FileTreeItemProps {
   onRetryLoad: (dirPath: string) => void;
   /** 右键菜单回调 / Context menu callback */
   onContextMenu: (menu: FileContextMenuState) => void;
+  /** 搜索时应渲染的路径集合，null 表示非搜索模式 / Paths to render during search; null means non-search mode */
+  visiblePaths?: Set<string> | null;
   t: (key: string, vars?: Record<string, string | number>) => string;
   labels?: {
     loading?: string;
@@ -380,13 +399,18 @@ const FileTreeItem = memo(function FileTreeItem({
   onToggleExpand,
   onRetryLoad,
   onContextMenu,
+  visiblePaths,
   t,
   labels,
 }: FileTreeItemProps) {
   const isExpanded = expandedPaths.has(node.path);
   const isLoading = loadingPaths.has(node.path);
   const error = errorPaths.get(node.path);
-  const children = childCache.get(node.path) || [];
+  // 搜索模式下只渲染命中集合内的子节点，非搜索模式渲染全部 / In search mode render only matched children; otherwise render all
+  const allChildren = childCache.get(node.path) || [];
+  const children = visiblePaths
+    ? allChildren.filter((c) => visiblePaths.has(c.path))
+    : allChildren;
   const isSelected = selectedPath === node.path;
 
   const handleClick = useCallback(() => {
@@ -539,6 +563,7 @@ const FileTreeItem = memo(function FileTreeItem({
                 onToggleExpand={onToggleExpand}
                 onRetryLoad={onRetryLoad}
                 onContextMenu={onContextMenu}
+                visiblePaths={visiblePaths}
                 t={t}
                 labels={labels}
               />

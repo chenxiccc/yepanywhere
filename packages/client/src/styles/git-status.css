@@ -1924,12 +1924,9 @@
   border-color: transparent;
 }
 
-/* 独立搜索框（无右侧操作按钮）/ Standalone filter field (no action button next to it) */
-.git-file-filter-standalone .git-filter-field {
-  border-right: 1px solid var(--border-input);
-  border-radius: var(--radius-md);
-}
-
+/* 独立搜索框（无右侧操作按钮）/ Standalone filter field (no action button next to it)
+   覆盖规则集中在通用规则之后，确保优先级相同情况下后声明胜出 /
+   Standalone overrides are placed after the generic rules so they win on equal specificity */
 .git-filter-field {
   position: relative;
   flex: 1;
@@ -2082,6 +2079,12 @@
 
 .git-file-filter-standalone .git-filter-field:focus-within::after {
   inset: -1px;
+  border-radius: var(--radius-md);
+}
+
+/* 独立搜索框补回右侧边框与四角圆角（须在通用规则之后）/ Restore right border and full rounded corners for standalone field (must follow generic rule) */
+.git-file-filter-standalone .git-filter-field {
+  border-right: 1px solid var(--border-input);
   border-radius: var(--radius-md);
 }
 
