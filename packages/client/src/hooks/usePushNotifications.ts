@@ -44,9 +44,6 @@ export function usePushNotifications() {
     browserProfileId: null,
   });
 
-  const [registration, setRegistration] =
-    useState<ServiceWorkerRegistration | null>(null);
-
   // Check browser API support (separate from server-side enablement)
   const hasBrowserSupport =
     typeof window !== "undefined" &&
@@ -104,7 +101,6 @@ export function usePushNotifications() {
       // Register service worker
       try {
         const reg = await navigator.serviceWorker.register(SW_PATH);
-        setRegistration(reg);
 
         // Wait for service worker to be ready
         await navigator.serviceWorker.ready;
