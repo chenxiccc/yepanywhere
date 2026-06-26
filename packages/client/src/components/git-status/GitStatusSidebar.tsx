@@ -8,7 +8,6 @@ import { useEffect, useRef, useState } from "react";
 import { FileTree } from "../FileTree";
 import { FileTreeSearch } from "../FileTreeSearch";
 import { Button } from "../ui/Button";
-import { GitBranchAttribution } from "./GitBranchAttribution";
 import { GitFileActionsMenu, GitFileSection } from "./GitFileList";
 import { CheckIcon, ClearIcon, CopyIcon, RefreshIcon, SearchIcon } from "./GitStatusIcons";
 import { formatRelativeTime } from "./utils";
@@ -195,7 +194,14 @@ export function GitStatusSidebar({
             onClick={() => onViewChange("files")}
           >
             <span className="git-view-tab-label">
-              {t("gitStatusFiles")}
+              <span className="git-view-tab-title-group">
+                {t("gitStatusFiles")}
+                {/* "文件"下方常驻 HEAD pill，提示文件树属于当前 checkout 分支 */}
+                {/* Persistent HEAD pill under "Files", hinting file tree belongs to checked-out branch */}
+                {currentBranch ? (
+                  <span className="git-head-badge git-head-badge-mini" title={currentBranch}>HEAD</span>
+                ) : null}
+              </span>
               {activeView === "files" ? (
                 <span
                   role="button"
@@ -325,10 +331,6 @@ export function GitStatusSidebar({
 
         {activeView === "files" ? (
           <div className="git-files-card">
-            <GitBranchAttribution
-              currentBranch={currentBranch}
-              viewingBranch={viewingBranch}
-            />
             <div className="git-file-filter git-file-filter-standalone">
               <FileTreeSearch
                 value={fileTreeSearchQuery}
@@ -351,10 +353,6 @@ export function GitStatusSidebar({
           </div>
         ) : activeView === "changes" ? (
           <div className="git-files-card">
-            <GitBranchAttribution
-              currentBranch={currentBranch}
-              viewingBranch={viewingBranch}
-            />
             {status.files.length === 0 ? (
               <div className="git-status-empty">
                 {t("gitStatusWorkingTreeClean")}

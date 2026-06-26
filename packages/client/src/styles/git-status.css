@@ -120,6 +120,24 @@
   gap: 0.3rem;
 }
 
+/* "文件"tab 标题组：文字上、HEAD pill 下，利用 tab 现有高度不撑高 / Files tab title group: text top, HEAD pill bottom, uses existing tab height */
+.git-view-tab-title-group {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+  line-height: 1.1;
+}
+
+/* mini HEAD pill：用于"文件"tab 标题下方，比常规更小 / mini HEAD pill: under Files tab title, smaller than regular */
+.git-head-badge.git-head-badge-mini {
+  padding: 0 0.2rem;
+  font-size: 0.5rem;
+  font-weight: 600;
+  line-height: 1.15;
+  border-radius: 999px;
+}
+
 /* Tab 刷新图标 / Tab refresh icon */
 .git-tab-refresh {
   display: inline-flex;
