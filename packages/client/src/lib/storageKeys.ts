@@ -118,6 +118,7 @@ export const SERVER_SCOPED_KEYS = {
   notifyInApp: "notify-in-app",
   recentProject: "recent-project",
   lastViewedBranch: "last-viewed-branch",
+  lastViewedProjectGit: "last-viewed-project-git",
 } as const;
 
 /** Build a server-scoped storage key */

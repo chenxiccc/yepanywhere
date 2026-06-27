@@ -42,14 +42,33 @@ export function GitStatusPage() {
     useNavigationLayout();
 
   const { projects, loading: projectsLoading } = useProjects();
-  const effectiveProjectId = projectId || projects[0]?.id;
+  // 侧边栏入口（无 ?projectId）优先恢复上次在源码管理页停留的项目（校验仍存在），
+  // 再 fallback 到 projects[0]（lastActivity 最新）。
+  // Sidebar entry (no ?projectId): prefer last viewed project in git-status (validated to exist),
+  // then fallback to projects[0] (most recent by lastActivity).
+  const lastViewedProject = getServerScoped("lastViewedProjectGit");
+  const lastProjectValid =
+    !!lastViewedProject &&
+    projects.some((project) => project.id === lastViewedProject);
+  const effectiveProjectId =
+    projectId ||
+    (lastProjectValid ? lastViewedProject : undefined) ||
+    projects[0]?.id;
   const { project } = useProject(effectiveProjectId);
   const { gitStatus, loading, error, refetch } =
     useGitStatus(effectiveProjectId);
 
   useDocumentTitle(project?.name, t("gitStatusTitle"));
 
+  // 停留项目持久化：解析出有效项目后写入，下次侧边栏进入恢复 / Persist viewed project
+  useEffect(() => {
+    if (effectiveProjectId) {
+      setServerScoped("lastViewedProjectGit", effectiveProjectId);
+    }
+  }, [effectiveProjectId]);
+
   const handleProjectChange = (newProjectId: string) => {
+    setServerScoped("lastViewedProjectGit", newProjectId);
     setSearchParams({ projectId: newProjectId }, { replace: true });
   };
 
