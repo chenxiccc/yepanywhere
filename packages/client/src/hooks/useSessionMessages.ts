@@ -278,6 +278,19 @@ export function useSessionMessages(
   const messagesRef = useRef<Message[]>(messages);
   const agentContentRef = useRef<AgentContentMap>(agentContent);
   const toolUseToAgentRef = useRef<Map<string, string>>(toolUseToAgent);
+  // [ya-private] cacheAdapter is read via a ref (not a useEffect dep) so that
+  // an adapter identity change -- e.g. SessionPage rebuilding it when server
+  // settings resolve from null to an object -- does NOT re-trigger the
+  // initial-load effect and fire a second getSession. The ref is updated every
+  // render (below), so the effect always reads the latest adapter without
+  // re-running. This is the fix for the "double REST call on first load" bug.
+  // [ya-private] cacheAdapter 经 ref 读取（不作为 useEffect 依赖），使 adapter
+  // 引用变化（如 SessionPage 在服务端设置从 null 解析为对象时重建 adapter）
+  // 不会重新触发 initial-load effect、不会发第二次 getSession。ref 每次渲染
+  // 更新（见下方），effect 始终读最新 adapter 而不重跑。这是"首次加载双重
+  // REST 调用"问题的修复。
+  const cacheAdapterRef = useRef<SessionCacheAdapter>(cacheAdapter);
+  cacheAdapterRef.current = cacheAdapter;
   // Set by the warm-hydration effect when it paints from cache; read by the
   // REST .then to validate staleness and to source warmMessages for merging.
   // 由 warm-hydration effect 在从缓存绘制时设置；REST .then 读取它以校验过期、
@@ -475,7 +488,7 @@ export function useSessionMessages(
     // 将 REST 调用串在缓存读取之后（IndexedDB 几毫秒），使 REST 能用缓存的
     // lastMessageId 作为 afterMessageId 锚点，从而重开时只拉取小增量而非全量尾部。
     // 缓存禁用时 adapter 为 no-op（read 返回 null），自然走冷路径。
-    const hydrationPromise: Promise<void> = cacheAdapter
+    const hydrationPromise: Promise<void> = cacheAdapterRef.current
       .read(projectId, sessionId, tailTurns, tailFrom)
       .then((cached) => {
         if (cancelled || !cached) return;
@@ -536,7 +549,7 @@ export function useSessionMessages(
       markReloadPerfPhase("session_initial_load_complete", {
         messages: taggedMessages.length,
       });
-      cacheAdapter.write(
+      cacheAdapterRef.current.write(
         projectId,
         sessionId,
         {
@@ -663,7 +676,7 @@ export function useSessionMessages(
           markReloadPerfPhase("session_initial_load_complete", {
             messages: taggedMessages.length,
           });
-          cacheAdapter.write(
+          cacheAdapterRef.current.write(
             projectId,
             sessionId,
             {
@@ -707,7 +720,12 @@ export function useSessionMessages(
     sessionId,
     tailTurns,
     tailFrom,
-    cacheAdapter,
+    // cacheAdapter intentionally omitted: read via cacheAdapterRef so an
+    // adapter identity change (settings resolving null -> object in SessionPage)
+    // does not re-trigger this effect and fire a second getSession.
+    // cacheAdapter 故意省略：经 cacheAdapterRef 读取，使 adapter 引用变化
+    //（SessionPage 中 settings 从 null 解析为对象）不会重新触发本 effect、
+    // 不会发第二次 getSession。
     onLoadComplete,
     onLoadError,
     flushBuffer,

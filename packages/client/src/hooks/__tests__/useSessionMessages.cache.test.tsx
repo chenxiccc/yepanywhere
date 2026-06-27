@@ -782,4 +782,63 @@ describe("useSessionMessages cache", () => {
       },
     ]);
   });
+
+  it("does not re-fetch when the cacheAdapter identity changes (settings resolving)", async () => {
+    // Regression: SessionPage rebuilds the adapter when useServerSettings
+    // resolves from null to an object. The effect must NOT re-run and fire a
+    // second getSession just because the adapter reference changed.
+    // 回归：useServerSettings 从 null 解析为对象时 SessionPage 会重建 adapter。
+    // adapter 引用变化不应重新触发 effect、不应发第二次 getSession。
+    apiMocks.getSession.mockResolvedValue({
+      session: {
+        provider: "claude",
+        updatedAt: "2026-05-04T00:00:00.000Z",
+      },
+      messages: [
+        {
+          uuid: "msg-1",
+          type: "user",
+          timestamp: "2026-05-04T00:00:00.000Z",
+          message: { role: "user", content: "hello" },
+        },
+      ],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 1,
+        returnedMessageCount: 1,
+        totalCompactions: 0,
+      },
+    });
+
+    const { rerender, result } = renderHook(
+      ({ adapter }: { adapter: SessionCacheAdapter }) =>
+        useSessionMessages({
+          projectId: "proj-1",
+          sessionId: "sess-1",
+          cacheAdapter: adapter,
+        }),
+      { initialProps: { adapter: cacheAdapter.adapter as SessionCacheAdapter } },
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(apiMocks.getSession).toHaveBeenCalledTimes(1);
+
+    // Re-render with a brand-new adapter object (different identity, same
+    // behavior) — simulating settings resolving null -> { enabled: true }.
+    // 用全新的 adapter 对象（不同引用、相同行为）重渲染 —— 模拟 settings
+    // 从 null 解析为 { enabled: true }。
+    const freshAdapter = {
+      read: cacheAdapter.adapter.read,
+      write: cacheAdapter.adapter.write,
+    } as SessionCacheAdapter;
+    rerender({ adapter: freshAdapter });
+
+    // Give any stray microtasks a chance to fire a second fetch.
+    // 给可能的微任务一点时间看是否会发第二次请求。
+    await new Promise((r) => setTimeout(r, 50));
+    expect(apiMocks.getSession).toHaveBeenCalledTimes(1);
+  });
 });
