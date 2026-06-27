@@ -14,32 +14,66 @@ interface UseServerSettingsResult {
   refetch: () => Promise<void>;
 }
 
-// [ya-private] Module-level cache of the most recent settings. Each component
-// that calls useServerSettings remounts on session switch (SessionPageContent
-// has key={sessionId}), and without this cache the hook would start from null
-// on every remount -- which made the session cache adapter briefly NOOP until
-// the settings refetch resolved, firing a redundant full-tail cold load.
-// With the cache, a remount initializes settings to the last-known value, so
-// the adapter is REAL from the very first render and no NOOP cold load fires.
-// The refetch still runs in the background to keep the cache fresh.
-// [ya-private] 最近一次设置的模块级缓存。每个调用 useServerSettings 的组件在
-// 切换会话时都会重挂载（SessionPageContent 带 key={sessionId}），若无此缓存，
-// hook 每次重挂载都从 null 起步 —— 这会让会话缓存适配器在 settings 重新拉取
-// 解析前短暂为 NOOP，从而触发一次冗余的全量尾部冷加载。有了缓存，重挂载时
-// settings 直接用上次的值初始化，适配器从首帧起即为 REAL，不会发 NOOP 冷加载。
-// 后台仍会重新拉取以保持缓存新鲜。
-let cachedSettings: ServerSettings | null = null;
+// [ya-private] Persisted cache of the most recent settings. Lives in
+// localStorage so it survives a full page reload / PWA restart, not just
+// SPA route changes (the module-level variable alone is lost on reload).
+// This lets the session cache adapter be REAL from the very first render
+// after a refresh, avoiding a NOOP cold-load of the full session tail.
+// Settings are small (a few KB of boolean flags), well within localStorage
+// quotas. The refetch still runs to keep it fresh; if the stored value is
+// stale, the worst case is one transient cold load after it corrects.
+// [ya-private] 最近设置的持久化缓存。存于 localStorage，使其在整页刷新 /
+// PWA 重启后仍存活（仅靠模块级变量在刷新时会丢失）。这让会话缓存适配器在
+// 刷新后首帧即为 REAL，避免 NOOP 全量尾部冷加载。settings 很小（几 KB 布尔
+// 标志），远在 localStorage 配额内。后台仍会重新拉取以保持新鲜；若存储值
+// 过期，最坏情况是纠正后一次短暂的冷加载。
+const SETTINGS_LS_KEY = "yep-server-settings";
+
+function readCachedSettings(): ServerSettings | null {
+  // Module-level variable (fast path, avoids JSON.parse on every hook call).
+  // 模块级变量（快路径，避免每次 hook 调用都 JSON.parse）。
+  if (cachedSettings !== null) return cachedSettings;
+  if (typeof localStorage === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(SETTINGS_LS_KEY);
+    if (raw) {
+      cachedSettings = JSON.parse(raw) as ServerSettings;
+      return cachedSettings;
+    }
+  } catch {
+    // localStorage may be unavailable (private mode) or corrupt — fall back
+    // to null (cold path), same as no cache.
+    // localStorage 可能不可用（隐私模式）或损坏 —— 回退 null（冷路径）。
+  }
+  return null;
+}
+
+function writeCachedSettings(settings: ServerSettings): void {
+  cachedSettings = settings;
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(SETTINGS_LS_KEY, JSON.stringify(settings));
+  } catch {
+    // Quota or private mode — the module-level cache still works for SPA
+    // navigation; only the cross-reload persistence is lost.
+    // 配额或隐私模式 —— 模块级缓存仍可用于 SPA 导航；
+    // 仅跨刷新的持久化丢失。
+  }
+}
+
+let cachedSettings: ServerSettings | null = readCachedSettings();
 
 /**
  * Hook for managing server-wide settings.
  * Fetches settings on mount and provides update functionality.
- * Uses a module-level cache so remounts start from the last-known settings
- * instead of null, avoiding a transient NOOP window for the session cache.
+ * Uses a persisted cache (localStorage + module variable) so remounts and
+ * page reloads start from the last-known settings instead of null, avoiding
+ * a transient NOOP window for the session cache adapter.
  */
 export function useServerSettings(): UseServerSettingsResult {
-  // Initialize from the module cache so a remount (e.g. session switch) starts
+  // Initialize from the persisted cache so a remount or page reload starts
   // with the last-known settings rather than null.
-  // 从模块缓存初始化，使重挂载（如切换会话）以上次的 settings 起步而非 null。
+  // 从持久化缓存初始化，使重挂载或页面刷新以上次的 settings 起步而非 null。
   const [settings, setSettings] = useState<ServerSettings | null>(
     cachedSettings,
   );
@@ -54,7 +88,7 @@ export function useServerSettings(): UseServerSettingsResult {
       setIsLoading(true);
       setError(null);
       const response = await api.getServerSettings();
-      cachedSettings = response.settings;
+      writeCachedSettings(response.settings);
       setSettings(response.settings);
     } catch (err) {
       console.error("[useServerSettings] Failed to fetch settings:", err);
@@ -83,7 +117,7 @@ export function useServerSettings(): UseServerSettingsResult {
       try {
         setError(null);
         const response = await api.updateServerSettings(updates);
-        cachedSettings = response.settings;
+        writeCachedSettings(response.settings);
         setSettings(response.settings);
       } catch (err) {
         console.error("[useServerSettings] Failed to update settings:", err);
