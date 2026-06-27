@@ -23,7 +23,8 @@ const cacheAdapter = vi.hoisted(() => {
       _tailFrom?: string,
     ) => {
       const key = `${projectId}:${sessionId}`;
-      return (map.get(key) as unknown) ?? null;
+      const v = (map.get(key) as unknown) ?? null;
+      return v;
     },
   );
   const write = vi.fn(
@@ -230,8 +231,10 @@ describe("useSessionMessages cache", () => {
         totalCompactions: 0,
       },
     });
-    // Second load: incremental delta (no totalMessageCount change => no discard).
-    // 第二次加载：增量 delta（totalMessageCount 未变 => 不丢弃）。
+    // Second load: incremental delta. Anchor hit => server returns only the
+    // new message with NO pagination field (the incremental branch skips it).
+    // 第二次加载：增量 delta。锚点命中 => 服务端只返回新消息，无 pagination 字段
+    // （增量分支不设 pagination）。
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
         provider: "claude",
@@ -248,12 +251,6 @@ describe("useSessionMessages cache", () => {
       ownership: { owner: "self" },
       pendingInputRequest: null,
       slashCommands: null,
-      pagination: {
-        hasOlderMessages: false,
-        totalMessageCount: 1,
-        returnedMessageCount: 1,
-        totalCompactions: 0,
-      },
     });
 
     const first = renderHook(() =>
@@ -313,9 +310,9 @@ describe("useSessionMessages cache", () => {
     );
   });
 
-  it("discards the warm cache and does a full tail reload when totalMessageCount changes", async () => {
-    // First load writes a cache snapshot with totalMessageCount=1.
-    // 首次加载写入 totalMessageCount=1 的缓存快照。
+  it("discards the warm cache when the anchor was compacted away (anchor miss)", async () => {
+    // First load writes a cache snapshot with lastMessageId=msg-1.
+    // 首次加载写入 lastMessageId=msg-1 的缓存快照。
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
         provider: "claude",
@@ -339,27 +336,13 @@ describe("useSessionMessages cache", () => {
         totalCompactions: 0,
       },
     });
-    // Reopen: incremental response reports totalMessageCount=3 (compacted /
-    // advanced elsewhere) => discard + full tail reload.
-    // 重开：增量响应报告 totalMessageCount=3（别处 compact / 推进）=> 丢弃 + 全量重拉。
-    apiMocks.getSession.mockResolvedValueOnce({
-      session: {
-        provider: "claude",
-        updatedAt: "2026-05-04T00:02:00.000Z",
-      },
-      messages: [],
-      ownership: { owner: "self" },
-      pendingInputRequest: null,
-      slashCommands: null,
-      pagination: {
-        hasOlderMessages: false,
-        totalMessageCount: 3,
-        returnedMessageCount: 0,
-        totalCompactions: 0,
-      },
-    });
-    // Full tail reload (no afterMessageId) returns the fresh tail.
-    // 全量尾部重拉（无 afterMessageId）返回新鲜尾部。
+    // Reopen: the cached anchor (msg-1) was compacted away, so the server's
+    // anchor-miss fallback returns the fresh full tail WITH a `pagination`
+    // field. The client detects the miss via pagination presence, discards the
+    // warm cache, and applies this response directly — no second full fetch.
+    // 重开：缓存锚点（msg-1）被 compact 删除，服务端锚点未中回退返回新鲜全量尾部，
+    // 携带 `pagination` 字段。客户端凭 pagination 存在检测到未中，丢弃 warm 缓存，
+    // 直接应用此响应，不再发起第二次全量拉取。
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
         provider: "claude",
@@ -403,34 +386,19 @@ describe("useSessionMessages cache", () => {
       }),
     );
 
-    // Warm hydration paints the cached msg-1, then the count mismatch triggers
-    // a full tail reload that replaces it with msg-3. Assert the calls and the
-    // final state; the transient msg-1 view is not polled (it can be too brief
-    // when the full reload lands quickly).
-    // warm hydration 先绘制缓存的 msg-1，随后 count 不一致触发全量尾部重拉将其替换为 msg-3。
-    // 此处断言调用次数与最终状态；瞬时 msg-1 视图不做轮询（全量重拉快速到达时可能过短）。
-
-    // Incremental call (with afterMessageId) happens first; the count mismatch
-    // then triggers a full tail reload (no afterMessageId). Wait for both.
-    // 先发增量调用（带 afterMessageId）；随后 count 不一致触发全量尾部重拉（无 afterMessageId）。等待两者完成。
+    // Warm hydration paints the cached msg-1, then the anchor-miss response
+    // (with pagination) replaces it with the fresh tail msg-3. Only ONE
+    // incremental call is made — the miss response is reused, no second fetch.
+    // warm hydration 先绘制缓存的 msg-1，随后锚点未中响应（含 pagination）将其
+    // 替换为新鲜尾部 msg-3。只发一次增量调用 —— 未中响应被复用，无第二次拉取。
     await waitFor(() =>
-      expect(apiMocks.getSession.mock.calls.length).toBeGreaterThanOrEqual(2),
+      expect(apiMocks.getSession).toHaveBeenCalledTimes(2),
     );
     expect(apiMocks.getSession).toHaveBeenNthCalledWith(
       2,
       "proj-1",
       "sess-1",
       "msg-1",
-      { tailCompactions: 2 },
-    );
-    // Then a full tail reload (no afterMessageId) due to count mismatch.
-    // 随后因 count 不一致发起全量尾部重拉（无 afterMessageId）。
-    await waitFor(() => expect(apiMocks.getSession).toHaveBeenCalledTimes(3));
-    expect(apiMocks.getSession).toHaveBeenNthCalledWith(
-      3,
-      "proj-1",
-      "sess-1",
-      undefined,
       { tailCompactions: 2 },
     );
     // Final state is the fresh tail, not the stale cached msg-1.
@@ -442,10 +410,14 @@ describe("useSessionMessages cache", () => {
     );
   });
 
-  it("does not discard the warm cache when only updatedAt changes (count equal)", async () => {
-    // Heartbeat/appends advance updatedAt but totalMessageCount stays equal =>
-    // the incremental delta merges; no full reload.
-    // 心跳/追加会让 updatedAt 前移但 totalMessageCount 相等 => 增量 delta 合并，无全量重拉。
+  it("merges the incremental delta when the anchor still hits (no pagination)", async () => {
+    // A running session appends new messages; the cached anchor is still
+    // present, so the server's incremental branch returns only the new message
+    // with NO pagination field. The client merges it onto the warm cache.
+    // 运行中会话追加新消息；缓存锚点仍存在，服务端增量分支只返回新消息，
+    // 无 pagination 字段。客户端将其合并到 warm 缓存。
+    // First load: cold load writes a cache snapshot with lastMessageId=msg-1.
+    // 首次加载：冷加载写入 lastMessageId=msg-1 的缓存快照。
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
         provider: "claude",
@@ -469,8 +441,9 @@ describe("useSessionMessages cache", () => {
         totalCompactions: 0,
       },
     });
-    // Reopen: updatedAt advanced, count unchanged, delta present.
-    // 重开：updatedAt 前移、count 不变、有 delta。
+    // Reopen: anchor hit => server returns only the new message with NO
+    // pagination field. The client merges it onto the warm cache.
+    // 重开：锚点命中 => 服务端只返回新消息，无 pagination 字段。客户端合并到 warm 缓存。
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
         provider: "claude",
@@ -487,12 +460,6 @@ describe("useSessionMessages cache", () => {
       ownership: { owner: "self" },
       pendingInputRequest: null,
       slashCommands: null,
-      pagination: {
-        hasOlderMessages: false,
-        totalMessageCount: 1,
-        returnedMessageCount: 1,
-        totalCompactions: 0,
-      },
     });
 
     const first = renderHook(() =>
@@ -515,8 +482,8 @@ describe("useSessionMessages cache", () => {
     );
 
     await waitFor(() => expect(apiMocks.getSession).toHaveBeenCalledTimes(2));
-    // No third call: count equal => no discard, no full reload.
-    // 无第三次调用：count 相等 => 不丢弃、无全量重拉。
+    // No third call: anchor hit (no pagination) => merge, no full reload.
+    // 无第三次调用：锚点命中（无 pagination）=> 合并，无全量重拉。
     expect(apiMocks.getSession).toHaveBeenCalledTimes(2);
     // Merged result keeps cached msg-1 and appends msg-2.
     // 合并结果保留缓存 msg-1 并追加 msg-2。

@@ -590,47 +590,38 @@ export function useSessionMessages(
           hasOlderMessages: data.pagination?.hasOlderMessages,
         });
 
-        // Staleness check (only when a warm hydration painted). Reuse this
-        // already-sent incremental response — no extra metadata request.
-        // A totalMessageCount mismatch means the session was compacted /
-        // advanced elsewhere since the cache was written, so the cached
-        // lastMessageId anchor is no longer reliable. Discard the warm view
-        // (keep it visible to avoid a flash) and do a full tail reload.
-        // 过期校验（仅当 warm hydration 已绘制时）。复用本次已发的增量响应 ——
-        // 不额外发 metadata 请求。totalMessageCount 不一致意味着自缓存写入后
-        // 会话在别处被 compact / 推进，缓存的 lastMessageId 锚点不再可靠。
-        // 丢弃 warm 视图（保留可见以避免闪烁），发起全量尾部重拉。
+        // [ya-private] Anchor-based staleness check. The incremental request
+        // (request 1) carried the cached lastMessageId as afterMessageId. The
+        // server signals whether that anchor was found:
+        //   - anchor HIT  -> server returns only messages after it; the response
+        //     has NO `pagination` field (the incremental branch skips pagination).
+        //   - anchor MISS -> the anchor was compacted away; the server falls back
+        //     to sliceAtCompactBoundaries(messages, 2) and the response DOES carry
+        //     `pagination`.
+        // So we discard the warm cache ONLY on an anchor miss, which is the one
+        // case where the cached tail is genuinely unusable. A running session
+        // whose anchor is still present (new messages merely appended) takes the
+        // fast incremental merge path below — no full reload. And when the server
+        // already returned the full tail on the miss, we reuse that response
+        // directly (applyColdLoad(data)) instead of firing a second full fetch.
+        // [ya-private] 基于锚点的过期校验。增量请求（请求1）携带缓存的
+        // lastMessageId 作为 afterMessageId。服务端用响应是否含 `pagination` 标识
+        // 锚点是否命中：
+        //   - 锚点命中 -> 服务端只返回其后的新消息，响应无 `pagination`（增量分支
+        //     不设 pagination）。
+        //   - 锚点未中 -> 锚点被 compact 删除，服务端回退 sliceAtCompactBoundaries
+        //     并在响应中携带 `pagination`。
+        // 故仅在锚点未中时丢弃 warm 缓存（唯一缓存尾部真正不可用的情形）。运行中
+        // 会话若锚点仍在（仅追加了新消息），走下方快速增量合并路径，不再全量重拉。
+        // 且服务端未中时已返回全量尾部，直接复用该响应（applyColdLoad(data)），
+        // 不再发起第二次全量拉取。
         const warm = warmHydrationRef.current;
-        if (
-          warm &&
-          data.pagination?.totalMessageCount !== undefined &&
-          warm.cachedTotalMessageCount !== undefined &&
-          data.pagination.totalMessageCount !== warm.cachedTotalMessageCount
-        ) {
+        if (warm && data.pagination !== undefined) {
+          // Anchor miss: server already returned the fresh full tail. Apply it
+          // directly — no second full fetch needed.
+          // 锚点未中：服务端已返回新鲜全量尾部，直接应用，无需第二次全量拉取。
           warmHydrationRef.current = null;
-          // Keep warm messages visible until the full tail lands; signal activity.
-          // 保留 warm 消息可见直到全量尾部返回；示意活动进行中。
-          setLoadingOlder(true);
-          api
-            .getSession(projectId, sessionId, undefined, {
-              tailCompactions: 2,
-              tailTurns,
-              tailFrom,
-            })
-            .then((fullData) => {
-              if (cancelled) return;
-              setLoadingOlder(false);
-              applyColdLoad(fullData);
-            })
-            .catch((err) => {
-              if (cancelled) return;
-              setLoadingOlder(false);
-              markReloadPerfPhase("session_initial_load_error", {
-                message: err instanceof Error ? err.message : String(err),
-              });
-              setLoading(false);
-              onLoadError?.(err);
-            });
+          applyColdLoad(data);
           return;
         }
 
