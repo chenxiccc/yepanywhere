@@ -70,7 +70,6 @@ vi.mock("../useStreamingEnabled", () => ({
 }));
 
 import {
-  isSessionLoadCacheEnabled,
   useSessionMessages,
 } from "../useSessionMessages";
 import {
@@ -90,29 +89,6 @@ describe("useSessionMessages cache", () => {
   afterEach(() => {
     vi.clearAllMocks();
     vi.unstubAllEnvs();
-  });
-
-  it("keeps the session load cache dev-only and explicit opt-in", () => {
-    // Legacy env gate retained as a dev override; production uses the server setting.
-    // 旧环境开关保留为 dev 覆盖；生产环境用服务端设置。
-    expect(
-      isSessionLoadCacheEnabled({
-        DEV: false,
-        VITE_SESSION_LOAD_CACHE: "true",
-      }),
-    ).toBe(false);
-    expect(
-      isSessionLoadCacheEnabled({
-        DEV: true,
-        VITE_SESSION_LOAD_CACHE: undefined,
-      }),
-    ).toBe(false);
-    expect(
-      isSessionLoadCacheEnabled({
-        DEV: true,
-        VITE_SESSION_LOAD_CACHE: "true",
-      }),
-    ).toBe(true);
   });
 
   it("does not retain session messages across remounts when cache is disabled", async () => {

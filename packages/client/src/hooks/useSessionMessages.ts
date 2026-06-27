@@ -104,21 +104,6 @@ export interface UseSessionMessagesResult {
   loadOlderMessages: () => Promise<void>;
 }
 
-type SessionLoadCacheEnv = Pick<ImportMetaEnv, "DEV" | "VITE_SESSION_LOAD_CACHE">;
-
-/**
- * Legacy dev-only env gate, retained for the dedicated unit test and as an
- * additional dev override. The production gate is the server-side
- * `sessionLoadCacheEnabled` setting threaded in via options.
- * 旧的 dev-only 环境开关，保留用于专属单测及作为额外的 dev 覆盖。
- * 生产环境的开关是经 options 透传的服务端 `sessionLoadCacheEnabled` 设置。
- */
-export function isSessionLoadCacheEnabled(
-  env: SessionLoadCacheEnv = import.meta.env,
-): boolean {
-  return env.DEV === true && env.VITE_SESSION_LOAD_CACHE === "true";
-}
-
 // [ya-private] Default no-op cache adapter used when the cache is disabled or
 // before the caller injects one. Branch-free cold path.
 // [ya-private] 缓存禁用或调用方未注入适配器时使用的默认 no-op 适配器。无分支冷路径。
@@ -278,24 +263,18 @@ export function useSessionMessages(
   const messagesRef = useRef<Message[]>(messages);
   const agentContentRef = useRef<AgentContentMap>(agentContent);
   const toolUseToAgentRef = useRef<Map<string, string>>(toolUseToAgent);
-  // [ya-private] cacheAdapter is read via a ref (not a useEffect dep) so that
-  // an adapter identity change -- e.g. SessionPage rebuilding it when server
-  // settings resolve from null to an object -- does NOT re-trigger the
-  // initial-load effect and fire a second getSession. The ref is updated every
-  // render (below), so the effect always reads the latest adapter without
-  // re-running. This is the fix for the "double REST call on first load" bug.
-  // [ya-private] cacheAdapter 经 ref 读取（不作为 useEffect 依赖），使 adapter
-  // 引用变化（如 SessionPage 在服务端设置从 null 解析为对象时重建 adapter）
-  // 不会重新触发 initial-load effect、不会发第二次 getSession。ref 每次渲染
-  // 更新（见下方），effect 始终读最新 adapter 而不重跑。这是"首次加载双重
-  // REST 调用"问题的修复。
-  const cacheAdapterRef = useRef<SessionCacheAdapter>(cacheAdapter);
-  cacheAdapterRef.current = cacheAdapter;
   // Set by the warm-hydration effect when it paints from cache; read by the
   // REST .then to validate staleness and to source warmMessages for merging.
   // 由 warm-hydration effect 在从缓存绘制时设置；REST .then 读取它以校验过期、
   // 并作为 warmMessages 来源用于合并。
   const warmHydrationRef = useRef<SessionCacheEntry | null>(null);
+  // sessionRef / paginationRef mirror state so the unmount-flush effect (which
+  // uses an empty deps array) can read the latest session/pagination without a
+  // stale closure.
+  // sessionRef / paginationRef 镜像 state，使卸载 flush effect（空依赖数组）
+  // 能读到最新 session/pagination 而无闭包陈旧问题。
+  const sessionRef = useRef<SessionMetadata | null>(session);
+  const paginationRef = useRef<PaginationInfo | undefined>(pagination);
 
   const updatePersistedTimestampWatermark = useCallback(
     (persistedMessages: Message[]) => {
@@ -335,6 +314,135 @@ export function useSessionMessages(
   useEffect(() => {
     toolUseToAgentRef.current = toolUseToAgent;
   }, [toolUseToAgent]);
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
+  useEffect(() => {
+    paginationRef.current = pagination;
+  }, [pagination]);
+
+  // [ya-private] begin -- throttled cache write on state change (private fork)
+  // Keeps the IndexedDB cache fresh as new messages arrive, so reopening a
+  // long-running session (or switching away and back) paints the latest state
+  // instead of the initial-load snapshot. Debounced 2s to bound IDB churn;
+  // flushed synchronously on unmount so navigating away captures the final state.
+  // [ya-private] 状态变化时节流写缓存：随新消息到达保持 IndexedDB 缓存新鲜，
+  // 使重开长期运行的会话（或切走再切回）绘制最新状态而非初始加载快照。
+  // 2 秒防抖以限制 IDB 写入开销；卸载时同步 flush，使导航离开时捕获最终状态。
+  const throttledCacheWriteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  // Holds the latest payload awaiting a throttled write. The throttle effect
+  // sets it when scheduling; its cleanup clears the timer but leaves the
+  // payload so the unmount-flush effect can still write it on navigation away.
+  // 持有等待节流写入的最新载荷。节流 effect 在调度时设置；其 cleanup 清除
+  // 定时器但保留载荷，使卸载 flush effect 在导航离开时仍能写入。
+  const pendingCachePayloadRef = useRef<{
+    messages: Message[];
+    session: SessionMetadata;
+    pagination?: PaginationInfo;
+    agentContent: AgentContentMap;
+    toolUseToAgentEntries: Array<[string, string]>;
+    lastMessageId?: string;
+    maxPersistedTimestampMs: number;
+  } | null>(null);
+
+  useEffect(() => {
+    // Skip while the initial load is still in progress (no useful state yet).
+    // 初始加载进行中时跳过（尚无有用状态）。
+    if (loading) return;
+    if (!session || messages.length === 0) return;
+
+    // Build payload from current state + ref mirrors (refs are fresh via the
+    // mirror effects above).
+    // 从当前 state + ref 镜像构造载荷（ref 经上方镜像 effect 已新鲜）。
+    const payload = {
+      messages,
+      session,
+      pagination,
+      agentContent: agentContentRef.current,
+      toolUseToAgentEntries: Array.from(toolUseToAgentRef.current.entries()),
+      lastMessageId: lastMessageIdRef.current,
+      maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
+    };
+    pendingCachePayloadRef.current = payload;
+
+    if (throttledCacheWriteTimerRef.current) {
+      clearTimeout(throttledCacheWriteTimerRef.current);
+    }
+    throttledCacheWriteTimerRef.current = setTimeout(() => {
+      throttledCacheWriteTimerRef.current = null;
+      // Capture the latest pending payload (may have been updated by a later
+      // state change that reused this timer slot).
+      // 捕获最新挂起载荷（可能被后续复用此定时器槽位的状态变化更新过）。
+      const pending = pendingCachePayloadRef.current;
+      pendingCachePayloadRef.current = null;
+      if (pending) {
+        void cacheAdapter.write(
+          projectId,
+          sessionId,
+          pending,
+          tailTurns,
+          tailFrom,
+        );
+      }
+    }, 2000);
+
+    return () => {
+      // Deps changed (or unmount): clear the pending timer. The pending payload
+      // is intentionally retained so the unmount-flush effect can still write it.
+      // 依赖变化（或卸载）：清除挂起定时器。挂起载荷故意保留，
+      // 使卸载 flush effect 仍能写入。
+      if (throttledCacheWriteTimerRef.current) {
+        clearTimeout(throttledCacheWriteTimerRef.current);
+        throttledCacheWriteTimerRef.current = null;
+      }
+    };
+  }, [
+    loading,
+    messages,
+    session,
+    pagination,
+    projectId,
+    sessionId,
+    tailTurns,
+    tailFrom,
+    // cacheAdapter is a stable singleton per enabled state; not a dep (avoids
+    // re-triggering on identity churn). The closure captures the current value.
+    // cacheAdapter 是按 enabled 状态的稳定单例；不作为依赖（避免引用抖动重触发）。
+    // 闭包捕获当前值。
+    cacheAdapter,
+  ]);
+
+  // Flush a pending throttled write on unmount so navigating away captures the
+  // final state immediately (the highest-value write for "reopen later").
+  // Reads pendingCachePayloadRef (set by the throttle effect) + stable closure
+  // ids. Runs once at unmount.
+  // 卸载时 flush 挂起的节流写入，使导航离开时立即捕获最终状态
+  //（对"稍后重开"价值最高）。读取 pendingCachePayloadRef（由节流 effect 设置）
+  // + 稳定闭包 id。卸载时运行一次。
+  useEffect(() => {
+    return () => {
+      if (throttledCacheWriteTimerRef.current) {
+        clearTimeout(throttledCacheWriteTimerRef.current);
+        throttledCacheWriteTimerRef.current = null;
+      }
+      const pending = pendingCachePayloadRef.current;
+      pendingCachePayloadRef.current = null;
+      if (pending) {
+        void cacheAdapter.write(
+          projectId,
+          sessionId,
+          pending,
+          tailTurns,
+          tailFrom,
+        );
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // [ya-private] end -- throttled cache write on state change
+
   // [ya-private] end -- ref mirrors + warm hydration ref
 
   // Process a stream message event.
