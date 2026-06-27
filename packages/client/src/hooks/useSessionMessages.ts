@@ -833,6 +833,22 @@ export function useSessionMessages(
     if (fetchNewMessagesInFlightRef.current) {
       return fetchNewMessagesInFlightRef.current;
     }
+    // [ya-private] Skip while the initial load (cold load or staleness-triggered
+    // full reload) is still in flight. The initial-load effect already fetches
+    // the tail, so a WebSocket "connected" event arriving during that window
+    // would otherwise fire a redundant full fetch with an undefined afterMessageId
+    // anchor (lastMessageIdRef is not set until the load completes). This mirrors
+    // the same initialLoadCompleteRef guard already used by the stream-message
+    // buffer above. File-change callers always run after the initial load, so
+    // this guard is transparent to them.
+    // [ya-private] 初始加载（冷加载或过期触发的全量重拉）进行中时跳过。初始加载
+    // effect 自己已在拉取尾部，故此窗口内到达的 WebSocket "connected" 事件否则会
+    // 以 undefined 的 afterMessageId 锚点触发一次冗余全量拉取（lastMessageIdRef 在
+    // 加载完成前未设）。这与上方 stream 消息缓冲已有的 initialLoadCompleteRef 守卫
+    // 对称。文件变化调用方总是在初始加载之后运行，故此守卫对其透明。
+    if (!initialLoadCompleteRef.current) {
+      return Promise.resolve();
+    }
 
     const request = (async () => {
       try {
