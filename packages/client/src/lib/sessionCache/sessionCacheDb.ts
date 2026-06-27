@@ -21,10 +21,21 @@ const INDEX_BY_LAST_USED = "byLastUsed";
 /** LRU caps. MAX_SESSIONS bounds count; MAX_STORAGE_BYTES bounds total bytes. */
 // LRU 上限。MAX_SESSIONS 限制条数；MAX_STORAGE_BYTES 限制总字节。
 export const MAX_SESSIONS = 20;
-export const MAX_STORAGE_BYTES = 50 * 1024 * 1024; // 50 MB
-/** Skip writing a single monster entry rather than blowing the budget. */
+// Total budget raised to 100 MB so several large multi-turn sessions (each
+// 6–10 MB after serialization) can coexist in the cache. The LRU trim still
+// bounds growth; going over evicts the oldest entries.
+// 总预算提高到 100 MB，使多个大型多轮会话（序列化后各 6–10 MB）能共存于缓存。
+// LRU 淘汰仍约束增长；超限则淘汰最旧条目。
+export const MAX_STORAGE_BYTES = 100 * 1024 * 1024; // 100 MB
+/** Skip writing a single monster entry rather than blowing the budget.
+ *  Raised to 20 MB: the very large multi-turn sessions are exactly the ones
+ *  that benefit most from caching (a reopen otherwise re-fetches 6–8 MB over
+ *  the tunnel). 8 MB was too low and silently excluded them, leaving the cache
+ *  empty for the cases that matter. */
 // 单条过大时跳过写入，避免击穿预算。
-export const MAX_ENTRY_BYTES = 8 * 1024 * 1024; // 8 MB
+// 提高到 20 MB：大型多轮会话正是最受益于缓存的（否则重开需经隧道重新拉取 6–8 MB）。
+// 8 MB 太低，会静默排除它们，导致最有价值的场景缓存为空。
+export const MAX_ENTRY_BYTES = 20 * 1024 * 1024; // 20 MB
 
 // Low-level IDB primitives (kept local so this module is self-contained).
 // 底层 IDB 原语（保持局部，使本模块自包含）。
