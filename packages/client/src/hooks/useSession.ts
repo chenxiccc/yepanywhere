@@ -478,7 +478,7 @@ export function useSession(
     recapAfterSeconds?: number;
   },
   streamingMarkdownCallbacks?: StreamingMarkdownCallbacks,
-  options?: { tailTurns?: number; tailFrom?: string },
+  options?: { tailTurns?: number; tailFrom?: string; sessionLoadCacheEnabled?: boolean },
 ) {
   // Use initial status if provided (from navigation state) to connect stream immediately
   const [status, setStatus] = useState<SessionStatus>(
@@ -845,6 +845,7 @@ export function useSession(
     sessionId,
     tailTurns: options?.tailTurns,
     tailFrom: options?.tailFrom,
+    sessionLoadCacheEnabled: options?.sessionLoadCacheEnabled,
     onLoadComplete: handleLoadComplete,
     onLoadError: handleLoadError,
   });

@@ -2,6 +2,7 @@ import {
   buildYaClientPublicShareBaseUrl,
   DEFAULT_YA_CLIENT_BASE_URL,
 } from "@yep-anywhere/shared";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { PublicShareStatusResponse } from "../../api/client";
 import { RemoteAccessSetup } from "../../components/RemoteAccessSetup";
@@ -11,6 +12,7 @@ import { useServerSettings } from "../../hooks/useServerSettings";
 import { useI18n } from "../../i18n";
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
 import { getHostById } from "../../lib/hostStorage";
+import { clearAllSessionCache } from "../../lib/sessionCache/sessionCacheDb";
 
 const DEFAULT_PUBLIC_SHARE_VIEWER_BASE_URL = buildYaClientPublicShareBaseUrl(
   DEFAULT_YA_CLIENT_BASE_URL,
@@ -23,6 +25,9 @@ export function RemoteAccessSettings() {
   const remoteConnection = useOptionalRemoteConnection();
   const { settings, isLoading, error, updateSetting } = useServerSettings();
   const publicSharesEnabled = settings?.publicSharesEnabled ?? false;
+  // Transient feedback shown after the user clears the local session cache.
+  // 用户清除本地会话缓存后显示的瞬时反馈。
+  const [cacheClearedAt, setCacheClearedAt] = useState<number | null>(null);
   const { status: publicShareStatus } = usePublicShareStatus({
     poll: publicSharesEnabled,
   });
@@ -174,6 +179,54 @@ export function RemoteAccessSettings() {
     </>
   );
 
+  const sessionCacheToggle = (
+    <>
+      <div className="settings-group">
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <strong>{t("sessionLoadCacheTitle")}</strong>
+            <p>{t("sessionLoadCacheDescription")}</p>
+          </div>
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={settings?.sessionLoadCacheEnabled ?? false}
+              disabled={isLoading}
+              onChange={(e) =>
+                void updateSetting(
+                  "sessionLoadCacheEnabled",
+                  e.target.checked,
+                )
+              }
+            />
+            <span className="toggle-slider" />
+          </label>
+        </div>
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <strong>{t("sessionLoadCacheClearTitle")}</strong>
+            <p>{t("sessionLoadCacheClearDescription")}</p>
+          </div>
+          <button
+            type="button"
+            className="settings-button"
+            disabled={!(settings?.sessionLoadCacheEnabled ?? false)}
+            onClick={() => {
+              void clearAllSessionCache().then(() => {
+                setCacheClearedAt(Date.now());
+              });
+            }}
+          >
+            {t("sessionLoadCacheClearButton")}
+          </button>
+        </div>
+        {cacheClearedAt !== null && (
+          <p className="settings-warning">{t("sessionLoadCacheCleared")}</p>
+        )}
+      </div>
+    </>
+  );
+
   // When connected via relay, show connection info and logout
   if (remoteConnection) {
     // Get current host display name from hostStorage
@@ -220,6 +273,7 @@ export function RemoteAccessSettings() {
           </div>
         </div>
         {persistSessionsToggle}
+        {sessionCacheToggle}
       </section>
     );
   }
@@ -233,6 +287,7 @@ export function RemoteAccessSettings() {
         description={t("remoteAccessSetupDescription")}
       />
       {persistSessionsToggle}
+      {sessionCacheToggle}
     </section>
   );
 }

@@ -12,23 +12,27 @@ import {
   mergeStreamMessage,
 } from "../lib/mergeMessages";
 import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
+import {
+  type SessionCacheEntry,
+  readSessionCache,
+  writeSessionCache,
+} from "../lib/sessionCache/sessionCacheStore";
 import { getProvider } from "../providers/registry";
 import { getStreamingEnabled } from "./useStreamingEnabled";
-import type { Message, SessionMetadata, SessionStatus } from "../types";
+import type {
+  AgentContent,
+  AgentContentMap,
+  Message,
+  SessionMetadata,
+  SessionStatus,
+} from "../types";
 
-/** Content from a subagent (Task tool) */
-export interface AgentContent {
-  messages: Message[];
-  status: "pending" | "running" | "completed" | "failed";
-  /** Real-time context usage from message_start events */
-  contextUsage?: {
-    inputTokens: number;
-    percentage: number;
-  };
-}
+// Re-export so existing `import { AgentContent, AgentContentMap } from "./useSessionMessages"`
+// (and via useSession) keeps working. Canonical definition lives in types.ts.
+// re-export，使既有的 `import { AgentContent, AgentContentMap } from "./useSessionMessages"`
+// （以及经 useSession）仍可用。规范定义在 types.ts。
+export type { AgentContent, AgentContentMap };
 
-/** Map of agentId → agent content */
-export type AgentContentMap = Record<string, AgentContent>;
 
 /** Result from initial session load */
 export interface SessionLoadResult {
@@ -48,6 +52,11 @@ export interface UseSessionMessagesOptions {
   sessionId: string;
   tailTurns?: number;
   tailFrom?: string;
+  /** Server-side toggle (sessionLoadCacheEnabled). When true, the hook
+   * persists message tails to IndexedDB and hydrates from them on reopen. */
+  // 服务端开关（sessionLoadCacheEnabled）。为 true 时，hook 将消息尾部持久化
+  // 到 IndexedDB，并在重开时从中 hydrate。
+  sessionLoadCacheEnabled?: boolean;
   /** Called when initial load completes with session data */
   onLoadComplete?: (result: SessionLoadResult) => void;
   /** Called on load error */
@@ -104,82 +113,61 @@ interface SessionLoadCacheEntry {
   maxPersistedTimestampMs: number;
 }
 
-interface SessionLoadCacheGlobal {
-  __YA_SESSION_LOAD_CACHE__?: Map<string, SessionLoadCacheEntry>;
-}
+type SessionLoadCacheEnv = Pick<ImportMetaEnv, "DEV" | "VITE_SESSION_LOAD_CACHE">;
 
-type SessionLoadCacheEnv = Pick<
-  ImportMetaEnv,
-  "DEV" | "VITE_SESSION_LOAD_CACHE"
->;
-
+/**
+ * Legacy dev-only env gate, retained for the dedicated unit test and as an
+ * additional dev override. The production gate is the server-side
+ * `sessionLoadCacheEnabled` setting threaded in via options.
+ * 旧的 dev-only 环境开关，保留用于专属单测及作为额外的 dev 覆盖。
+ * 生产环境的开关是经 options 透传的服务端 `sessionLoadCacheEnabled` 设置。
+ */
 export function isSessionLoadCacheEnabled(
   env: SessionLoadCacheEnv = import.meta.env,
 ): boolean {
   return env.DEV === true && env.VITE_SESSION_LOAD_CACHE === "true";
 }
 
-function cloneForCache<T>(value: T): T {
-  if (typeof structuredClone === "function") {
-    return structuredClone(value);
-  }
-  return JSON.parse(JSON.stringify(value)) as T;
-}
-
-function getSessionLoadCache(): Map<string, SessionLoadCacheEntry> {
-  const globalCache = globalThis as typeof globalThis & SessionLoadCacheGlobal;
-  if (!globalCache.__YA_SESSION_LOAD_CACHE__) {
-    globalCache.__YA_SESSION_LOAD_CACHE__ = new Map();
-  }
-  return globalCache.__YA_SESSION_LOAD_CACHE__;
-}
-
-function getSessionLoadCacheKey(projectId: string, sessionId: string): string {
-  return `${projectId}:${sessionId}`;
-}
-
-function getSessionLoadVariantKey(options: {
-  projectId: string;
-  sessionId: string;
-  tailTurns?: number;
-  tailFrom?: string;
-}): string {
-  const variant = [
-    options.tailTurns !== undefined ? `tailTurns=${options.tailTurns}` : "",
-    options.tailFrom ? `tailFrom=${options.tailFrom}` : "",
-  ]
-    .filter(Boolean)
-    .join("&");
-  return variant
-    ? `${options.projectId}:${options.sessionId}?${variant}`
-    : getSessionLoadCacheKey(options.projectId, options.sessionId);
-}
-
-function readSessionLoadCache(
+/**
+ * Async read from the persistent IndexedDB cache. Returns null when disabled
+ * (the `enabled` flag is the server-side sessionLoadCacheEnabled setting),
+ * in SSR, or on cache miss. Mirrors the old in-memory read signature but async.
+ * 从持久化 IndexedDB 缓存异步读取。禁用（`enabled` 开关即服务端
+ * sessionLoadCacheEnabled 设置）、SSR 或未命中时返回 null。
+ * 镜像旧内存版 read 签名，但改为异步。
+ */
+async function readSessionLoadCache(
   projectId: string,
   sessionId: string,
   tailTurns?: number,
   tailFrom?: string,
-): SessionLoadCacheEntry | undefined {
-  if (!isSessionLoadCacheEnabled()) return undefined;
-  if (typeof window === "undefined") return undefined;
-  return getSessionLoadCache().get(
-    getSessionLoadVariantKey({ projectId, sessionId, tailTurns, tailFrom }),
-  );
+  enabled = false,
+): Promise<SessionCacheEntry | null> {
+  return readSessionCache(projectId, sessionId, tailTurns, tailFrom, enabled);
 }
 
-function writeSessionLoadCache(
+/**
+ * Async write to the persistent IndexedDB cache (fire-and-forget at call site).
+ * Cloning, size accounting, and LRU trim happen inside the store; never throws
+ * into the load path.
+ * 向持久化 IndexedDB 缓存异步写入（调用处 fire-and-forget）。克隆、体积计算、
+ * LRU 淘汰均在 store 内完成；绝不向加载路径抛错。
+ */
+async function writeSessionLoadCache(
   projectId: string,
   sessionId: string,
   entry: SessionLoadCacheEntry,
   tailTurns?: number,
   tailFrom?: string,
-): void {
-  if (!isSessionLoadCacheEnabled()) return;
-  if (typeof window === "undefined") return;
-  getSessionLoadCache().set(
-    getSessionLoadVariantKey({ projectId, sessionId, tailTurns, tailFrom }),
-    cloneForCache(entry),
+  enabled = false,
+): Promise<void> {
+  return writeSessionCache(
+    projectId,
+    sessionId,
+    entry,
+    tailTurns,
+    tailFrom,
+    enabled,
   );
 }
 
@@ -288,31 +276,22 @@ export function useSessionMessages(
     tailFrom,
     onLoadComplete,
     onLoadError,
+    sessionLoadCacheEnabled,
   } = options;
-  const cachedLoad = readSessionLoadCache(
-    projectId,
-    sessionId,
-    tailTurns,
-    tailFrom,
-  );
 
-  // Core state
-  const [messages, setMessages] = useState<Message[]>(
-    () => cachedLoad?.messages ?? [],
-  );
-  const [agentContent, setAgentContent] = useState<AgentContentMap>(
-    () => cachedLoad?.agentContent ?? {},
-  );
+  // Core state. Initialized empty / loading: the persistent cache hydrates
+  // asynchronously (see warm-hydration effect below) so we never block render
+  // on an IndexedDB read. REST proceeds in parallel from mount.
+  // 核心状态。初始化为空 / loading：持久化缓存异步 hydrate（见下方 warm-hydration
+  // effect），因此绝不阻塞渲染等待 IndexedDB 读取。REST 从挂载即并行发起。
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [agentContent, setAgentContent] = useState<AgentContentMap>({});
   const [toolUseToAgent, setToolUseToAgent] = useState<Map<string, string>>(
-    () => new Map(cachedLoad?.toolUseToAgentEntries ?? []),
+    () => new Map(),
   );
-  const [loading, setLoading] = useState(!cachedLoad);
-  const [session, setSession] = useState<SessionMetadata | null>(
-    () => cachedLoad?.session ?? null,
-  );
-  const [pagination, setPagination] = useState<PaginationInfo | undefined>(
-    () => cachedLoad?.pagination,
-  );
+  const [loading, setLoading] = useState(true);
+  const [session, setSession] = useState<SessionMetadata | null>(null);
+  const [pagination, setPagination] = useState<PaginationInfo | undefined>();
   const [loadingOlder, setLoadingOlder] = useState(false);
 
   // Buffering: queue stream messages until initial load completes
@@ -332,6 +311,21 @@ export function useSessionMessages(
   // Highest timestamp observed from persisted JSONL messages.
   // Used to suppress startup replay events that are already on disk.
   const maxPersistedTimestampMsRef = useRef<number>(Number.NEGATIVE_INFINITY);
+
+  // Ref mirrors of state, so async callbacks (REST .then, hydration) can read
+  // the latest values without re-subscribing. Updated by the [messages] effect
+  // below and dedicated effects for agentContent / toolUseToAgent.
+  // state 的 ref 镜像，使异步回调（REST .then、hydration）能读到最新值而无需
+  // 重新订阅。由下方 [messages] effect 及 agentContent / toolUseToAgent 的
+  // 专属 effect 更新。
+  const messagesRef = useRef<Message[]>(messages);
+  const agentContentRef = useRef<AgentContentMap>(agentContent);
+  const toolUseToAgentRef = useRef<Map<string, string>>(toolUseToAgent);
+  // Set by the warm-hydration effect when it paints from cache; read by the
+  // REST .then to validate staleness and to source warmMessages for merging.
+  // 由 warm-hydration effect 在从缓存绘制时设置；REST .then 读取它以校验过期、
+  // 并作为 warmMessages 来源用于合并。
+  const warmHydrationRef = useRef<SessionCacheEntry | null>(null);
 
   const updatePersistedTimestampWatermark = useCallback(
     (persistedMessages: Message[]) => {
@@ -354,11 +348,23 @@ export function useSessionMessages(
   // Cursor on the newest JSONL-sourced row, not the array tail (see
   // findLastJsonlMessageId).
   useEffect(() => {
+    messagesRef.current = messages;
     const lastJsonlId = findLastJsonlMessageId(messages);
     if (lastJsonlId) {
       lastMessageIdRef.current = lastJsonlId;
     }
   }, [messages]);
+
+  // Ref mirrors for agentContent / toolUseToAgent, so async callbacks (REST
+  // .then, warm hydration, write-on-unmount) read the latest state.
+  // agentContent / toolUseToAgent 的 ref 镜像，使异步回调（REST .then、
+  // warm hydration、卸载时写入）能读到最新状态。
+  useEffect(() => {
+    agentContentRef.current = agentContent;
+  }, [agentContent]);
+  useEffect(() => {
+    toolUseToAgentRef.current = toolUseToAgent;
+  }, [toolUseToAgent]);
 
   // Process a stream message event.
   // When replaying buffered startup events for Codex, suppress entries that are
@@ -474,12 +480,7 @@ export function useSessionMessages(
   // incremental refresh after the cached tail; merge that delta instead of
   // replacing the cached transcript.
   useEffect(() => {
-    const warmLoad = readSessionLoadCache(
-      projectId,
-      sessionId,
-      tailTurns,
-      tailFrom,
-    );
+    let cancelled = false;
     markReloadPerfPhase("session_initial_load_start", {
       projectId,
       sessionId,
@@ -489,133 +490,270 @@ export function useSessionMessages(
     });
     initialLoadCompleteRef.current = false;
     streamBufferRef.current = [];
-    if (warmLoad) {
-      maxPersistedTimestampMsRef.current = warmLoad.maxPersistedTimestampMs;
-      providerRef.current = warmLoad.session.provider;
-      lastMessageIdRef.current = warmLoad.lastMessageId;
-      setMessages(warmLoad.messages);
-      setAgentContent(warmLoad.agentContent);
-      setToolUseToAgent(new Map(warmLoad.toolUseToAgentEntries));
-      setSession(warmLoad.session);
-      setPagination(warmLoad.pagination);
-      setLoading(false);
-    } else {
-      maxPersistedTimestampMsRef.current = Number.NEGATIVE_INFINITY;
-      providerRef.current = undefined;
-      lastMessageIdRef.current = undefined;
-      setLoading(true);
-      setAgentContent({});
-      setToolUseToAgent(new Map());
-      setSession(null);
-      setPagination(undefined);
-    }
+    // Reset to cold-start state. The persistent cache (if any) hydrates below.
+    // 重置为冷启动状态。持久化缓存（若有）在下方 hydrate。
+    maxPersistedTimestampMsRef.current = Number.NEGATIVE_INFINITY;
+    providerRef.current = undefined;
+    lastMessageIdRef.current = undefined;
+    warmHydrationRef.current = null;
+    setLoading(true);
+    setAgentContent({});
+    setToolUseToAgent(new Map());
+    setSession(null);
+    setPagination(undefined);
 
-    api
-      .getSession(projectId, sessionId, lastMessageIdRef.current, {
-        tailCompactions: 2,
+    // Warm hydration: read the persistent cache and paint if it hits, THEN
+    // issue the REST request. Chaining the REST call after the cache read
+    // (a few ms for IndexedDB) lets REST use the cached lastMessageId as the
+    // afterMessageId anchor, so reopen fetches only a small delta instead of
+    // the full tail. Skipped entirely when the cache is disabled (REST runs
+    // immediately via a resolved promise).
+    // warm hydration：读取持久化缓存，命中则绘制，然后再发起 REST 请求。
+    // 将 REST 调用串在缓存读取之后（IndexedDB 几毫秒），使 REST 能用缓存的
+    // lastMessageId 作为 afterMessageId 锚点，从而重开时只拉取小增量而非全量尾部。
+    // 缓存禁用时整段跳过（REST 经已 resolve 的 promise 立即执行）。
+    const hydrationPromise: Promise<void> = sessionLoadCacheEnabled
+      ? readSessionLoadCache(
+          projectId,
+          sessionId,
+          tailTurns,
+          tailFrom,
+          sessionLoadCacheEnabled,
+        )
+          .then((cached) => {
+            if (cancelled || !cached) return;
+            // REST hasn't run yet (we're still before the api.getSession call),
+            // so paint the warm view and set the incremental anchor.
+            // REST 尚未执行（仍在 api.getSession 调用之前），故绘制 warm 视图并设增量锚点。
+            warmHydrationRef.current = cached;
+            maxPersistedTimestampMsRef.current = cached.maxPersistedTimestampMs;
+            providerRef.current = cached.session.provider;
+            lastMessageIdRef.current = cached.lastMessageId;
+            setMessages(cached.messages);
+            setAgentContent(cached.agentContent);
+            setToolUseToAgent(new Map(cached.toolUseToAgentEntries));
+            setSession(cached.session);
+            setPagination(cached.pagination);
+            setLoading(false);
+          })
+          .catch(() => {
+            // Swallow: fall back to cold load (lastMessageIdRef stays undefined).
+            // 吞掉：回退冷加载（lastMessageIdRef 保持 undefined）。
+          })
+      : Promise.resolve();
+
+    // Apply a cold (non-warm) REST result: tag, dedup, set state, mark ready,
+    // write cache. Shared by the initial cold load and the staleness-triggered
+    // full tail reload. 使用返回结果（非 warm）：打标、去重、设状态、标记就绪、
+    // 写缓存。初始冷载与过期触发的全量尾部重拉共用。
+    const applyColdLoad = (
+      data: Awaited<ReturnType<typeof api.getSession>>,
+    ) => {
+      setSession(data.session);
+      providerRef.current = data.session.provider;
+      const taggedMessages = data.messages.map((m) => ({
+        ...m,
+        _source: "jsonl" as const,
+      }));
+      updatePersistedTimestampWatermark(taggedMessages);
+      const loadedMessages = usesApproxMessageDedup(data.session.provider)
+        ? reconcileLinearMessages(
+            taggedMessages,
+            approxDedupOptions(data.session.provider),
+          )
+        : taggedMessages;
+      setMessages(loadedMessages);
+      setPagination(data.pagination);
+      markReloadPerfPhase("session_initial_messages_state_queued", {
+        messages: taggedMessages.length,
+        totalMessages: loadedMessages.length,
+        provider: data.session.provider,
+      });
+      const lastJsonlId = findLastJsonlMessageId(loadedMessages);
+      if (lastJsonlId) {
+        lastMessageIdRef.current = lastJsonlId;
+      }
+      initialLoadCompleteRef.current = true;
+      warmHydrationRef.current = null;
+      flushBuffer();
+      setLoading(false);
+      markReloadPerfPhase("session_initial_load_complete", {
+        messages: taggedMessages.length,
+      });
+      writeSessionLoadCache(
+        projectId,
+        sessionId,
+        {
+          messages: loadedMessages,
+          session: data.session,
+          pagination: data.pagination,
+          agentContent: agentContentRef.current,
+          toolUseToAgentEntries: Array.from(toolUseToAgentRef.current.entries()),
+          lastMessageId: lastMessageIdRef.current,
+          maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
+        },
         tailTurns,
         tailFrom,
+        sessionLoadCacheEnabled,
+      );
+      onLoadComplete?.({
+        session: data.session,
+        status: data.ownership,
+        pendingInputRequest: data.pendingInputRequest,
+        slashCommands: data.slashCommands,
+      });
+    };
+
+    hydrationPromise
+      .then(() => {
+        if (cancelled) return;
+        return api.getSession(projectId, sessionId, lastMessageIdRef.current, {
+          tailCompactions: 2,
+          tailTurns,
+          tailFrom,
+        });
       })
       .then((data) => {
+        if (cancelled || !data) return;
         markReloadPerfPhase("session_initial_load_data_ready", {
           messages: data.messages.length,
           provider: data.session.provider,
           totalMessages: data.pagination?.totalMessageCount,
           hasOlderMessages: data.pagination?.hasOlderMessages,
         });
-        setSession(data.session);
-        providerRef.current = data.session.provider;
 
-        // Tag messages from JSONL as authoritative
-        const taggedMessages = data.messages.map((m) => ({
-          ...m,
-          _source: "jsonl" as const,
-        }));
-        updatePersistedTimestampWatermark(taggedMessages);
-        const warmMessages = warmLoad?.messages;
-        const shouldMergeWarmDelta =
-          warmMessages !== undefined && Boolean(lastMessageIdRef.current);
-        const loadedMessages = shouldMergeWarmDelta
-          ? (() => {
-              const result = mergeJSONLMessages(warmMessages, taggedMessages, {
-                skipDagOrdering: !getProvider(data.session.provider)
-                  .capabilities.supportsDag,
+        // Staleness check (only when a warm hydration painted). Reuse this
+        // already-sent incremental response — no extra metadata request.
+        // A totalMessageCount mismatch means the session was compacted /
+        // advanced elsewhere since the cache was written, so the cached
+        // lastMessageId anchor is no longer reliable. Discard the warm view
+        // (keep it visible to avoid a flash) and do a full tail reload.
+        // 过期校验（仅当 warm hydration 已绘制时）。复用本次已发的增量响应 ——
+        // 不额外发 metadata 请求。totalMessageCount 不一致意味着自缓存写入后
+        // 会话在别处被 compact / 推进，缓存的 lastMessageId 锚点不再可靠。
+        // 丢弃 warm 视图（保留可见以避免闪烁），发起全量尾部重拉。
+        const warm = warmHydrationRef.current;
+        if (
+          warm &&
+          data.pagination?.totalMessageCount !== undefined &&
+          warm.cachedTotalMessageCount !== undefined &&
+          data.pagination.totalMessageCount !== warm.cachedTotalMessageCount
+        ) {
+          warmHydrationRef.current = null;
+          // Keep warm messages visible until the full tail lands; signal activity.
+          // 保留 warm 消息可见直到全量尾部返回；示意活动进行中。
+          setLoadingOlder(true);
+          api
+            .getSession(projectId, sessionId, undefined, {
+              tailCompactions: 2,
+              tailTurns,
+              tailFrom,
+            })
+            .then((fullData) => {
+              if (cancelled) return;
+              setLoadingOlder(false);
+              applyColdLoad(fullData);
+            })
+            .catch((err) => {
+              if (cancelled) return;
+              setLoadingOlder(false);
+              markReloadPerfPhase("session_initial_load_error", {
+                message: err instanceof Error ? err.message : String(err),
               });
-              return usesApproxMessageDedup(data.session.provider)
-                ? reconcileLinearMessages(
-                    result.messages,
-                    approxDedupOptions(data.session.provider),
-                  )
-                : result.messages;
-            })()
-          : usesApproxMessageDedup(data.session.provider)
-            ? reconcileLinearMessages(
-                taggedMessages,
-                approxDedupOptions(data.session.provider),
-              )
-            : taggedMessages;
-        setMessages(loadedMessages);
-        setPagination(data.pagination ?? warmLoad?.pagination);
-        markReloadPerfPhase("session_initial_messages_state_queued", {
-          messages: taggedMessages.length,
-          totalMessages: loadedMessages.length,
-          provider: data.session.provider,
-        });
-
-        // Update lastMessageIdRef synchronously to avoid race condition:
-        // stream "connected" event calls fetchNewMessages() immediately, but the
-        // useEffect that normally updates lastMessageIdRef runs asynchronously.
-        // Without this, fetchNewMessages() would use undefined and refetch everything.
-        const lastJsonlId = findLastJsonlMessageId(loadedMessages);
-        if (lastJsonlId) {
-          lastMessageIdRef.current = lastJsonlId;
+              setLoading(false);
+              onLoadError?.(err);
+            });
+          return;
         }
 
-        // Mark ready and flush buffer
-        initialLoadCompleteRef.current = true;
-        flushBuffer();
-
-        setLoading(false);
-        markReloadPerfPhase("session_initial_load_complete", {
-          messages: taggedMessages.length,
-        });
-
-        writeSessionLoadCache(
-          projectId,
-          sessionId,
-          {
-            messages: loadedMessages,
+        // No staleness, or no warm hydration. Merge incremental delta against
+        // the warm view if present, else cold-apply.
+        // 无过期，或无 warm hydration。命中 warm 则合并增量 delta，否则冷加载应用。
+        const warmMessages = warm?.messages;
+        const shouldMergeWarmDelta =
+          warmMessages !== undefined && Boolean(lastMessageIdRef.current);
+        if (shouldMergeWarmDelta) {
+          setSession(data.session);
+          providerRef.current = data.session.provider;
+          const taggedMessages = data.messages.map((m) => ({
+            ...m,
+            _source: "jsonl" as const,
+          }));
+          updatePersistedTimestampWatermark(taggedMessages);
+          const merged = mergeJSONLMessages(warmMessages, taggedMessages, {
+            skipDagOrdering: !getProvider(data.session.provider).capabilities
+              .supportsDag,
+          });
+          const loadedMessages = usesApproxMessageDedup(data.session.provider)
+            ? reconcileLinearMessages(
+                merged.messages,
+                approxDedupOptions(data.session.provider),
+              )
+            : merged.messages;
+          setMessages(loadedMessages);
+          setPagination(data.pagination ?? warm?.pagination);
+          markReloadPerfPhase("session_initial_messages_state_queued", {
+            messages: taggedMessages.length,
+            totalMessages: loadedMessages.length,
+            provider: data.session.provider,
+          });
+          const lastJsonlId = findLastJsonlMessageId(loadedMessages);
+          if (lastJsonlId) {
+            lastMessageIdRef.current = lastJsonlId;
+          }
+          initialLoadCompleteRef.current = true;
+          warmHydrationRef.current = null;
+          flushBuffer();
+          setLoading(false);
+          markReloadPerfPhase("session_initial_load_complete", {
+            messages: taggedMessages.length,
+          });
+          writeSessionLoadCache(
+            projectId,
+            sessionId,
+            {
+              messages: loadedMessages,
+              session: data.session,
+              pagination: data.pagination ?? warm?.pagination,
+              agentContent: agentContentRef.current,
+              toolUseToAgentEntries: Array.from(
+                toolUseToAgentRef.current.entries(),
+              ),
+              lastMessageId: lastMessageIdRef.current,
+              maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
+            },
+            tailTurns,
+            tailFrom,
+            sessionLoadCacheEnabled,
+          );
+          onLoadComplete?.({
             session: data.session,
-            pagination: data.pagination ?? warmLoad?.pagination,
-            agentContent: {},
-            toolUseToAgentEntries: [],
-            lastMessageId: lastMessageIdRef.current,
-            maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
-          },
-          tailTurns,
-          tailFrom,
-        );
-
-        // Notify parent
-        onLoadComplete?.({
-          session: data.session,
-          status: data.ownership,
-          pendingInputRequest: data.pendingInputRequest,
-          slashCommands: data.slashCommands,
-        });
+            status: data.ownership,
+            pendingInputRequest: data.pendingInputRequest,
+            slashCommands: data.slashCommands,
+          });
+        } else {
+          applyColdLoad(data);
+        }
       })
       .catch((err) => {
+        if (cancelled) return;
         markReloadPerfPhase("session_initial_load_error", {
           message: err instanceof Error ? err.message : String(err),
         });
         setLoading(false);
         onLoadError?.(err);
       });
+
+    return () => {
+      cancelled = true;
+    };
   }, [
     projectId,
     sessionId,
     tailTurns,
     tailFrom,
+    sessionLoadCacheEnabled,
     onLoadComplete,
     onLoadError,
     flushBuffer,

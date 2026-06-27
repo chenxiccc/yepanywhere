@@ -126,6 +126,22 @@ export interface Message {
   [key: string]: unknown;
 }
 
+/** Content from a subagent (Task tool) */
+// 子代理（Task 工具）的内容
+export interface AgentContent {
+  messages: Message[];
+  status: "pending" | "running" | "completed" | "failed";
+  /** Real-time context usage from message_start events */
+  contextUsage?: {
+    inputTokens: number;
+    percentage: number;
+  };
+}
+
+/** Map of agentId → agent content */
+// agentId → agent 内容的映射
+export type AgentContentMap = Record<string, AgentContent>;
+
 // Type aliases for session types
 import type {
   AppSessionSummary,

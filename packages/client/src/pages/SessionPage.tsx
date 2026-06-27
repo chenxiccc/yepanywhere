@@ -716,13 +716,21 @@ function SessionPageContent({
   const initialTitle = navState?.initialTitle;
   const initialModel = navState?.initialModel;
   const initialProvider = navState?.initialProvider;
+  // Server settings fetched before useSession so sessionLoadCacheEnabled can
+  // flow into the message cache gate. null on first render => cache disabled
+  // (cold path) until settings resolve, which is the intended fallback.
+  // 在 useSession 之前获取服务端设置，使 sessionLoadCacheEnabled 能流入消息缓存开关。
+  // 首次渲染为 null => 缓存禁用（冷路径），直到设置加载完成，这是预期的回退行为。
+  const { settings: serverSettings } = useServerSettings();
+  const sessionLoadCacheEnabled = serverSettings?.sessionLoadCacheEnabled ?? false;
   const clientTailParams = useMemo(() => {
     const params = new URLSearchParams(location.search);
     return {
       tailTurns: parsePositiveIntegerParam(params.get("tailTurns")),
       tailFrom: params.get("tailFrom")?.trim() || undefined,
+      sessionLoadCacheEnabled,
     };
-  }, [location.search]);
+  }, [location.search, sessionLoadCacheEnabled]);
   const clientTailActive =
     clientTailParams.tailTurns !== undefined ||
     clientTailParams.tailFrom !== undefined;
@@ -823,7 +831,6 @@ function SessionPageContent({
   // Developer mode settings
   const { showConnectionBars } = useDeveloperMode();
   const { generatedTitleLength } = useGeneratedTitleLength();
-  const { settings: serverSettings } = useServerSettings();
   const publicSharesEnabled = serverSettings?.publicSharesEnabled ?? false;
   const { status: publicShareGlobalStatus } = usePublicShareStatus({
     poll: publicSharesEnabled,

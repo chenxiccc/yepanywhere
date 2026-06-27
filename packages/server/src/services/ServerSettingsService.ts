@@ -45,6 +45,9 @@ export interface ServerSettings {
   serviceWorkerEnabled: boolean;
   /** Whether remote SRP resume sessions should be persisted to disk (default: false/in-memory only) */
   persistRemoteSessionsToDisk: boolean;
+  /** Whether clients may persist conversation message tails to IndexedDB for fast remote reopen (default: false) */
+  // 是否允许客户端将对话消息尾部持久化到 IndexedDB，以加速远程重开（默认关闭）
+  sessionLoadCacheEnabled: boolean;
   /** Whether the server is requesting browser clients to upload diagnostic logs */
   clientLogCollectionRequested: boolean;
   /** Whether users may create public read-only share links */
@@ -131,6 +134,7 @@ export type CodexUpdatePolicy = (typeof CODEX_UPDATE_POLICIES)[number];
 export const DEFAULT_SERVER_SETTINGS: ServerSettings = {
   serviceWorkerEnabled: true,
   persistRemoteSessionsToDisk: false,
+  sessionLoadCacheEnabled: false,
   clientLogCollectionRequested: false,
   publicSharesEnabled: false,
   heartbeatTurnsAfterMinutes: 15,
