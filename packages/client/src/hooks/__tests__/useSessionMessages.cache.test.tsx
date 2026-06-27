@@ -72,7 +72,10 @@ import {
   isSessionLoadCacheEnabled,
   useSessionMessages,
 } from "../useSessionMessages";
-import type { SessionCacheAdapter } from "../../lib/sessionCache/sessionCacheStore";
+import {
+  createSessionCacheAdapter,
+  type SessionCacheAdapter,
+} from "../../lib/sessionCache/sessionCacheStore";
 import { getStreamingEnabled } from "../useStreamingEnabled";
 
 describe("useSessionMessages cache", () => {
@@ -783,12 +786,71 @@ describe("useSessionMessages cache", () => {
     ]);
   });
 
-  it("does not re-fetch when the cacheAdapter identity changes (settings resolving)", async () => {
-    // Regression: SessionPage rebuilds the adapter when useServerSettings
-    // resolves from null to an object. The effect must NOT re-run and fire a
-    // second getSession just because the adapter reference changed.
-    // 回归：useServerSettings 从 null 解析为对象时 SessionPage 会重建 adapter。
-    // adapter 引用变化不应重新触发 effect、不应发第二次 getSession。
+  it("does not re-fetch when the adapter reference is stable across re-renders", async () => {
+    // createSessionCacheAdapter returns a module-level singleton per enabled
+    // state, so SessionPage re-rendering (same enabled) passes the same
+    // reference and the effect must NOT re-run / re-fetch.
+    // createSessionCacheAdapter 按 enabled 状态返回模块级单例，故 SessionPage
+    // 重渲染（相同 enabled）传入相同引用，effect 不应重跑/重新拉取。
+    apiMocks.getSession.mockResolvedValue({
+      session: {
+        provider: "claude",
+        updatedAt: "2026-05-04T00:00:00.000Z",
+      },
+      messages: [
+        {
+          uuid: "msg-1",
+          type: "user",
+          timestamp: "2026-05-04T00:00:00.000Z",
+          message: { role: "user", content: "hello" },
+        },
+      ],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 1,
+        returnedMessageCount: 1,
+        totalCompactions: 0,
+      },
+    });
+
+    // Same enabled => same singleton reference across calls.
+    // 相同 enabled => 多次调用返回同一单例引用。
+    const adapter = createSessionCacheAdapter(true);
+    expect(createSessionCacheAdapter(true)).toBe(adapter);
+
+    const { rerender, result } = renderHook(
+      ({ ad }: { ad: SessionCacheAdapter }) =>
+        useSessionMessages({
+          projectId: "proj-1",
+          sessionId: "sess-1",
+          cacheAdapter: ad,
+        }),
+      { initialProps: { ad: adapter } },
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(apiMocks.getSession).toHaveBeenCalledTimes(1);
+
+    // Re-render passing the same singleton reference (what SessionPage does on
+    // every render when enabled is stable). No second fetch.
+    // 传入相同单例引用重渲染（enabled 稳定时 SessionPage 每次渲染都如此）。
+    // 不应发第二次请求。
+    rerender({ ad: createSessionCacheAdapter(true) });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(apiMocks.getSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-runs the effect (once) when the adapter flips disabled -> enabled", async () => {
+    // Simulates useServerSettings resolving null -> { enabled: true }: the
+    // adapter reference changes from NOOP to REAL, and the effect re-runs so it
+    // can start using the cache. This is the intended behavior -- without it,
+    // a session opened before settings resolve would never use the cache.
+    // 模拟 useServerSettings 从 null 解析为 { enabled: true }：adapter 引用从
+    // NOOP 变为 REAL，effect 重跑以启用缓存。这是预期行为——否则在设置解析前
+    // 打开的会话将永远用不上缓存。
     apiMocks.getSession.mockResolvedValue({
       session: {
         provider: "claude",
@@ -814,31 +876,25 @@ describe("useSessionMessages cache", () => {
     });
 
     const { rerender, result } = renderHook(
-      ({ adapter }: { adapter: SessionCacheAdapter }) =>
+      ({ ad }: { ad: SessionCacheAdapter }) =>
         useSessionMessages({
           projectId: "proj-1",
           sessionId: "sess-1",
-          cacheAdapter: adapter,
+          cacheAdapter: ad,
         }),
-      { initialProps: { adapter: cacheAdapter.adapter as SessionCacheAdapter } },
+      { initialProps: { ad: createSessionCacheAdapter(false) } },
     );
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(apiMocks.getSession).toHaveBeenCalledTimes(1);
 
-    // Re-render with a brand-new adapter object (different identity, same
-    // behavior) — simulating settings resolving null -> { enabled: true }.
-    // 用全新的 adapter 对象（不同引用、相同行为）重渲染 —— 模拟 settings
-    // 从 null 解析为 { enabled: true }。
-    const freshAdapter = {
-      read: cacheAdapter.adapter.read,
-      write: cacheAdapter.adapter.write,
-    } as SessionCacheAdapter;
-    rerender({ adapter: freshAdapter });
-
-    // Give any stray microtasks a chance to fire a second fetch.
-    // 给可能的微任务一点时间看是否会发第二次请求。
+    // Settings resolve: adapter flips NOOP -> REAL. Effect re-runs once.
+    // 设置解析：adapter 从 NOOP 翻转为 REAL。effect 重跑一次。
+    rerender({ ad: createSessionCacheAdapter(true) });
+    await waitFor(() => expect(apiMocks.getSession).toHaveBeenCalledTimes(2));
+    // No further fetches from identity churn (singleton is stable now).
+    // 单例已稳定，不再因引用抖动产生后续拉取。
     await new Promise((r) => setTimeout(r, 50));
-    expect(apiMocks.getSession).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getSession).toHaveBeenCalledTimes(2);
   });
 });

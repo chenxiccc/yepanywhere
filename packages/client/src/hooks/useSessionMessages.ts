@@ -488,7 +488,7 @@ export function useSessionMessages(
     // 将 REST 调用串在缓存读取之后（IndexedDB 几毫秒），使 REST 能用缓存的
     // lastMessageId 作为 afterMessageId 锚点，从而重开时只拉取小增量而非全量尾部。
     // 缓存禁用时 adapter 为 no-op（read 返回 null），自然走冷路径。
-    const hydrationPromise: Promise<void> = cacheAdapterRef.current
+    const hydrationPromise: Promise<void> = cacheAdapter
       .read(projectId, sessionId, tailTurns, tailFrom)
       .then((cached) => {
         if (cancelled || !cached) return;
@@ -549,7 +549,7 @@ export function useSessionMessages(
       markReloadPerfPhase("session_initial_load_complete", {
         messages: taggedMessages.length,
       });
-      cacheAdapterRef.current.write(
+      cacheAdapter.write(
         projectId,
         sessionId,
         {
@@ -676,7 +676,7 @@ export function useSessionMessages(
           markReloadPerfPhase("session_initial_load_complete", {
             messages: taggedMessages.length,
           });
-          cacheAdapterRef.current.write(
+          cacheAdapter.write(
             projectId,
             sessionId,
             {
@@ -720,12 +720,17 @@ export function useSessionMessages(
     sessionId,
     tailTurns,
     tailFrom,
-    // cacheAdapter intentionally omitted: read via cacheAdapterRef so an
-    // adapter identity change (settings resolving null -> object in SessionPage)
-    // does not re-trigger this effect and fire a second getSession.
-    // cacheAdapter 故意省略：经 cacheAdapterRef 读取，使 adapter 引用变化
-    //（SessionPage 中 settings 从 null 解析为对象）不会重新触发本 effect、
-    // 不会发第二次 getSession。
+    // cacheAdapter is a stable singleton per enabled state (see
+    // createSessionCacheAdapter). Its reference only changes when the server
+    // setting resolves null -> { enabled: true }, which is exactly when we want
+    // the effect to re-run so it starts using the cache (hydrate + incremental
+    // fetch) instead of the initial cold load. It does NOT change on every
+    // render, so there is no double-fetch from identity churn.
+    // cacheAdapter 是按 enabled 状态的稳定单例（见 createSessionCacheAdapter）。
+    // 其引用仅在服务端设置从 null 解析为 { enabled: true } 时变化，这正是我们
+    // 希望 effect 重跑以启用缓存（hydrate + 增量拉取）而非初始冷加载的时机。
+    // 它不会每次渲染都变，故不会因引用抖动导致双重拉取。
+    cacheAdapter,
     onLoadComplete,
     onLoadError,
     flushBuffer,

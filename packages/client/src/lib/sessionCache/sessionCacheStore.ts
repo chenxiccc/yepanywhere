@@ -177,26 +177,40 @@ const NOOP_ADAPTER: SessionCacheAdapter = {
 };
 
 /**
- * Build an adapter bound to the given enabled flag. Returns a no-op adapter
- * when disabled, so the hook's call sites stay branch-free.
- * 构造绑定到指定 enabled 开关的适配器。禁用时返回 no-op 适配器，
- * 使 hook 调用点无需分支判断。
+ * Module-level singleton for the enabled adapter. Returning the same reference
+ * on every call (for the same enabled state) lets callers put `cacheAdapter`
+ * in a useEffect dep array: the reference only changes when enabled flips
+ * false<->true (i.e. when server settings resolve), not on every render. This
+ * is what lets the hook re-run exactly once when settings resolve, to start
+ * using the cache, without re-running on every render.
+ * 启用态适配器的模块级单例。每次调用返回相同引用（同一 enabled 状态下），
+ * 使调用方能把 `cacheAdapter` 放入 useEffect 依赖数组：引用仅在 enabled
+ * 翻转 false<->true（即服务端设置解析完成）时变化，而非每次渲染。这让
+ * hook 在设置解析时恰好重跑一次以启用缓存，而不会每次渲染都重跑。
+ */
+const REAL_ADAPTER: SessionCacheAdapter = {
+  read: (projectId, sessionId, tailTurns, tailFrom) =>
+    readSessionCache(projectId, sessionId, tailTurns, tailFrom, true),
+  write: (projectId, sessionId, payload, tailTurns, tailFrom) =>
+    writeSessionCache(
+      projectId,
+      sessionId,
+      payload,
+      tailTurns,
+      tailFrom,
+      true,
+    ),
+};
+
+/**
+ * Build an adapter bound to the given enabled flag. Returns a stable singleton
+ * (NOOP when disabled, REAL when enabled) so the reference only changes when
+ * the flag flips, keeping the hook's effect deps stable.
+ * 构造绑定到指定 enabled 开关的适配器。返回稳定单例（禁用时 NOOP、启用时
+ * REAL），使引用仅在开关翻转时变化，保持 hook effect 依赖稳定。
  */
 export function createSessionCacheAdapter(
   enabled: boolean,
 ): SessionCacheAdapter {
-  if (!enabled) return NOOP_ADAPTER;
-  return {
-    read: (projectId, sessionId, tailTurns, tailFrom) =>
-      readSessionCache(projectId, sessionId, tailTurns, tailFrom, true),
-    write: (projectId, sessionId, payload, tailTurns, tailFrom) =>
-      writeSessionCache(
-        projectId,
-        sessionId,
-        payload,
-        tailTurns,
-        tailFrom,
-        true,
-      ),
-  };
+  return enabled ? REAL_ADAPTER : NOOP_ADAPTER;
 }
