@@ -315,7 +315,7 @@ export function SessionHeartbeatModal({
   );
 
   return (
-    <Modal title={t("sessionHeartbeatTitle")} onClose={onClose}>
+    <Modal title={t("sessionHeartbeatTitle")} onClose={onClose} backCloses>
       <div className="settings-group session-heartbeat-modal">
         <div className="settings-item session-heartbeat-item">
           <div className="settings-item-info">

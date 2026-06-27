@@ -36,7 +36,7 @@ export function RiskAffordance({
         {explanation}
       </div>
       {showModal && (
-        <Modal title={modalTitle} onClose={() => setShowModal(false)}>
+        <Modal title={modalTitle} onClose={() => setShowModal(false)} backCloses>
           {explanation}
         </Modal>
       )}
