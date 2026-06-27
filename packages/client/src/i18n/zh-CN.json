@@ -949,12 +949,6 @@
   "developmentPersistRemoteTitle": "将远程会话持久化到磁盘",
   "developmentPersistRemoteDescriptionPrefix": "把远程 SRP 恢复会话存储到",
   "developmentPersistRemoteDescriptionSuffix": "中，这样服务器重启后中继重连仍可恢复。出于安全考虑默认关闭。",
-  "sessionLoadCacheTitle": "缓存对话以加速重开",
-  "sessionLoadCacheDescription": "将对话消息尾部持久化到本浏览器（IndexedDB），这样在慢速远程链路上重开会话时可瞬间绘制，再在后台刷新。默认关闭；仅缓存最近的若干会话。",
-  "sessionLoadCacheClearTitle": "清除已缓存对话",
-  "sessionLoadCacheClearDescription": "移除所有本地缓存的对话尾部。缓存数据仅存于本设备。",
-  "sessionLoadCacheClearButton": "清除缓存",
-  "sessionLoadCacheCleared": "已清除缓存的对话。",
   "developmentRestartTitle": "重启服务器",
   "developmentRestartDescription": "重启后端服务器以加载代码改动。",
   "developmentChangesPending": "（有待应用改动）",
@@ -1289,5 +1283,11 @@
   "remoteSetupErrorCustomYaRequired": "请输入自定义 YA URL",
   "remoteSetupErrorSaveFailed": "保存失败",
   "remoteSetupErrorUpdateFailed": "更新失败",
-  "publicShareRetrying": "正在重新连接以分享..."
+  "publicShareRetrying": "正在重新连接以分享...",
+  "sessionLoadCacheTitle": "缓存对话以加速重开",
+  "sessionLoadCacheDescription": "将对话消息尾部持久化到本浏览器（IndexedDB），这样在慢速远程链路上重开会话时可瞬间绘制，再在后台刷新。默认关闭；仅缓存最近的若干会话。",
+  "sessionLoadCacheClearTitle": "清除已缓存对话",
+  "sessionLoadCacheClearDescription": "移除所有本地缓存的对话尾部。缓存数据仅存于本设备。",
+  "sessionLoadCacheClearButton": "清除缓存",
+  "sessionLoadCacheCleared": "已清除缓存的对话。"
 }

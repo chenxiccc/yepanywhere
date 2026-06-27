@@ -12,10 +12,9 @@ import {
   mergeStreamMessage,
 } from "../lib/mergeMessages";
 import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
-import {
-  type SessionCacheEntry,
-  readSessionCache,
-  writeSessionCache,
+import type {
+  SessionCacheAdapter,
+  SessionCacheEntry,
 } from "../lib/sessionCache/sessionCacheStore";
 import { getProvider } from "../providers/registry";
 import { getStreamingEnabled } from "./useStreamingEnabled";
@@ -52,11 +51,13 @@ export interface UseSessionMessagesOptions {
   sessionId: string;
   tailTurns?: number;
   tailFrom?: string;
-  /** Server-side toggle (sessionLoadCacheEnabled). When true, the hook
-   * persists message tails to IndexedDB and hydrates from them on reopen. */
-  // 服务端开关（sessionLoadCacheEnabled）。为 true 时，hook 将消息尾部持久化
-  // 到 IndexedDB，并在重开时从中 hydrate。
-  sessionLoadCacheEnabled?: boolean;
+  // [ya-private] begin -- session load cache (private fork)
+  /** Cache adapter bound to the server-side sessionLoadCacheEnabled flag.
+   * When undefined or disabled, the hook takes the cold path (no cache). */
+  // 绑定到服务端 sessionLoadCacheEnabled 开关的缓存适配器。
+  // 为 undefined 或禁用时，hook 走冷路径（无缓存）。
+  cacheAdapter?: SessionCacheAdapter;
+  // [ya-private] end
   /** Called when initial load completes with session data */
   onLoadComplete?: (result: SessionLoadResult) => void;
   /** Called on load error */
@@ -103,16 +104,6 @@ export interface UseSessionMessagesResult {
   loadOlderMessages: () => Promise<void>;
 }
 
-interface SessionLoadCacheEntry {
-  messages: Message[];
-  session: SessionMetadata;
-  pagination?: PaginationInfo;
-  agentContent: AgentContentMap;
-  toolUseToAgentEntries: Array<[string, string]>;
-  lastMessageId?: string;
-  maxPersistedTimestampMs: number;
-}
-
 type SessionLoadCacheEnv = Pick<ImportMetaEnv, "DEV" | "VITE_SESSION_LOAD_CACHE">;
 
 /**
@@ -128,48 +119,13 @@ export function isSessionLoadCacheEnabled(
   return env.DEV === true && env.VITE_SESSION_LOAD_CACHE === "true";
 }
 
-/**
- * Async read from the persistent IndexedDB cache. Returns null when disabled
- * (the `enabled` flag is the server-side sessionLoadCacheEnabled setting),
- * in SSR, or on cache miss. Mirrors the old in-memory read signature but async.
- * 从持久化 IndexedDB 缓存异步读取。禁用（`enabled` 开关即服务端
- * sessionLoadCacheEnabled 设置）、SSR 或未命中时返回 null。
- * 镜像旧内存版 read 签名，但改为异步。
- */
-async function readSessionLoadCache(
-  projectId: string,
-  sessionId: string,
-  tailTurns?: number,
-  tailFrom?: string,
-  enabled = false,
-): Promise<SessionCacheEntry | null> {
-  return readSessionCache(projectId, sessionId, tailTurns, tailFrom, enabled);
-}
-
-/**
- * Async write to the persistent IndexedDB cache (fire-and-forget at call site).
- * Cloning, size accounting, and LRU trim happen inside the store; never throws
- * into the load path.
- * 向持久化 IndexedDB 缓存异步写入（调用处 fire-and-forget）。克隆、体积计算、
- * LRU 淘汰均在 store 内完成；绝不向加载路径抛错。
- */
-async function writeSessionLoadCache(
-  projectId: string,
-  sessionId: string,
-  entry: SessionLoadCacheEntry,
-  tailTurns?: number,
-  tailFrom?: string,
-  enabled = false,
-): Promise<void> {
-  return writeSessionCache(
-    projectId,
-    sessionId,
-    entry,
-    tailTurns,
-    tailFrom,
-    enabled,
-  );
-}
+// [ya-private] Default no-op cache adapter used when the cache is disabled or
+// before the caller injects one. Branch-free cold path.
+// [ya-private] 缓存禁用或调用方未注入适配器时使用的默认 no-op 适配器。无分支冷路径。
+const DEFAULT_NOOP_CACHE_ADAPTER: SessionCacheAdapter = {
+  read: async () => null,
+  write: async () => {},
+};
 
 function usesApproxMessageDedup(provider?: string): boolean {
   return getProvider(provider).capabilities.needsApproxMessageDedup;
@@ -276,7 +232,7 @@ export function useSessionMessages(
     tailFrom,
     onLoadComplete,
     onLoadError,
-    sessionLoadCacheEnabled,
+    cacheAdapter = DEFAULT_NOOP_CACHE_ADAPTER,
   } = options;
 
   // Core state. Initialized empty / loading: the persistent cache hydrates
@@ -312,6 +268,7 @@ export function useSessionMessages(
   // Used to suppress startup replay events that are already on disk.
   const maxPersistedTimestampMsRef = useRef<number>(Number.NEGATIVE_INFINITY);
 
+  // [ya-private] begin -- ref mirrors + warm hydration ref (private fork)
   // Ref mirrors of state, so async callbacks (REST .then, hydration) can read
   // the latest values without re-subscribing. Updated by the [messages] effect
   // below and dedicated effects for agentContent / toolUseToAgent.
@@ -365,6 +322,7 @@ export function useSessionMessages(
   useEffect(() => {
     toolUseToAgentRef.current = toolUseToAgent;
   }, [toolUseToAgent]);
+  // [ya-private] end -- ref mirrors + warm hydration ref
 
   // Process a stream message event.
   // When replaying buffered startup events for Codex, suppress entries that are
@@ -502,6 +460,11 @@ export function useSessionMessages(
     setSession(null);
     setPagination(undefined);
 
+    // [ya-private] begin -- session cache hydration + staleness (private fork).
+    // This entire initial-load effect is rewritten vs upstream to chain REST
+    // after the IndexedDB cache read and validate staleness. Merge carefully.
+    // [ya-private] 该 initial-load effect 相对上游已重写：将 REST 串在 IndexedDB
+    // 缓存读取之后并校验过期。合并时请仔细处理。
     // Warm hydration: read the persistent cache and paint if it hits, THEN
     // issue the REST request. Chaining the REST call after the cache read
     // (a few ms for IndexedDB) lets REST use the cached lastMessageId as the
@@ -511,36 +474,29 @@ export function useSessionMessages(
     // warm hydration：读取持久化缓存，命中则绘制，然后再发起 REST 请求。
     // 将 REST 调用串在缓存读取之后（IndexedDB 几毫秒），使 REST 能用缓存的
     // lastMessageId 作为 afterMessageId 锚点，从而重开时只拉取小增量而非全量尾部。
-    // 缓存禁用时整段跳过（REST 经已 resolve 的 promise 立即执行）。
-    const hydrationPromise: Promise<void> = sessionLoadCacheEnabled
-      ? readSessionLoadCache(
-          projectId,
-          sessionId,
-          tailTurns,
-          tailFrom,
-          sessionLoadCacheEnabled,
-        )
-          .then((cached) => {
-            if (cancelled || !cached) return;
-            // REST hasn't run yet (we're still before the api.getSession call),
-            // so paint the warm view and set the incremental anchor.
-            // REST 尚未执行（仍在 api.getSession 调用之前），故绘制 warm 视图并设增量锚点。
-            warmHydrationRef.current = cached;
-            maxPersistedTimestampMsRef.current = cached.maxPersistedTimestampMs;
-            providerRef.current = cached.session.provider;
-            lastMessageIdRef.current = cached.lastMessageId;
-            setMessages(cached.messages);
-            setAgentContent(cached.agentContent);
-            setToolUseToAgent(new Map(cached.toolUseToAgentEntries));
-            setSession(cached.session);
-            setPagination(cached.pagination);
-            setLoading(false);
-          })
-          .catch(() => {
-            // Swallow: fall back to cold load (lastMessageIdRef stays undefined).
-            // 吞掉：回退冷加载（lastMessageIdRef 保持 undefined）。
-          })
-      : Promise.resolve();
+    // 缓存禁用时 adapter 为 no-op（read 返回 null），自然走冷路径。
+    const hydrationPromise: Promise<void> = cacheAdapter
+      .read(projectId, sessionId, tailTurns, tailFrom)
+      .then((cached) => {
+        if (cancelled || !cached) return;
+        // REST hasn't run yet (we're still before the api.getSession call),
+        // so paint the warm view and set the incremental anchor.
+        // REST 尚未执行（仍在 api.getSession 调用之前），故绘制 warm 视图并设增量锚点。
+        warmHydrationRef.current = cached;
+        maxPersistedTimestampMsRef.current = cached.maxPersistedTimestampMs;
+        providerRef.current = cached.session.provider;
+        lastMessageIdRef.current = cached.lastMessageId;
+        setMessages(cached.messages);
+        setAgentContent(cached.agentContent);
+        setToolUseToAgent(new Map(cached.toolUseToAgentEntries));
+        setSession(cached.session);
+        setPagination(cached.pagination);
+        setLoading(false);
+      })
+      .catch(() => {
+        // Swallow: fall back to cold load (lastMessageIdRef stays undefined).
+        // 吞掉：回退冷加载（lastMessageIdRef 保持 undefined）。
+      });
 
     // Apply a cold (non-warm) REST result: tag, dedup, set state, mark ready,
     // write cache. Shared by the initial cold load and the staleness-triggered
@@ -580,7 +536,7 @@ export function useSessionMessages(
       markReloadPerfPhase("session_initial_load_complete", {
         messages: taggedMessages.length,
       });
-      writeSessionLoadCache(
+      cacheAdapter.write(
         projectId,
         sessionId,
         {
@@ -594,7 +550,6 @@ export function useSessionMessages(
         },
         tailTurns,
         tailFrom,
-        sessionLoadCacheEnabled,
       );
       onLoadComplete?.({
         session: data.session,
@@ -708,7 +663,7 @@ export function useSessionMessages(
           markReloadPerfPhase("session_initial_load_complete", {
             messages: taggedMessages.length,
           });
-          writeSessionLoadCache(
+          cacheAdapter.write(
             projectId,
             sessionId,
             {
@@ -724,7 +679,6 @@ export function useSessionMessages(
             },
             tailTurns,
             tailFrom,
-            sessionLoadCacheEnabled,
           );
           onLoadComplete?.({
             session: data.session,
@@ -753,7 +707,7 @@ export function useSessionMessages(
     sessionId,
     tailTurns,
     tailFrom,
-    sessionLoadCacheEnabled,
+    cacheAdapter,
     onLoadComplete,
     onLoadError,
     flushBuffer,

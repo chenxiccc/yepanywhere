@@ -988,9 +988,6 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
     if (typeof body.persistRemoteSessionsToDisk === "boolean") {
       updates.persistRemoteSessionsToDisk = body.persistRemoteSessionsToDisk;
     }
-    if (typeof body.sessionLoadCacheEnabled === "boolean") {
-      updates.sessionLoadCacheEnabled = body.sessionLoadCacheEnabled;
-    }
     if (typeof body.clientLogCollectionRequested === "boolean") {
       updates.clientLogCollectionRequested = body.clientLogCollectionRequested;
     }
@@ -999,6 +996,10 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
     }
     if (typeof body.composeAnchorsEnabled === "boolean") {
       updates.composeAnchorsEnabled = body.composeAnchorsEnabled;
+    }
+    // [ya-private] session load cache (private fork)
+    if (typeof body.sessionLoadCacheEnabled === "boolean") {
+      updates.sessionLoadCacheEnabled = body.sessionLoadCacheEnabled;
     }
     if ("deferredJoinWindowSeconds" in body) {
       if (

@@ -9,62 +9,52 @@ import {
   vi,
 } from "vitest";
 
-// In-memory stand-in for the IndexedDB-backed session cache. jsdom has no
-// IndexedDB, so we mock the store module; tests drive it synchronously enough
-// via microtask flushes (readSessionCache returns a resolved Promise).
-// IndexedDB 后端的内存替身。jsdom 无 IndexedDB，故 mock store 模块；
-// 测试通过微任务刷新同步驱动（readSessionCache 返回已 resolve 的 Promise）。
-const cacheStore = vi.hoisted(() => {
+// In-memory adapter injected into useSessionMessages. jsdom has no IndexedDB,
+// so tests pass a SessionCacheAdapter backed by a Map; microtask flushes drive it.
+// 注入 useSessionMessages 的内存适配器。jsdom 无 IndexedDB，故测试传入一个由 Map
+// 支撑的 SessionCacheAdapter；通过微任务刷新驱动。
+const cacheAdapter = vi.hoisted(() => {
   const map = new Map<string, unknown>();
-  return {
-    map,
-    readSessionCache: vi.fn(
-      async (
-        projectId: string,
-        sessionId: string,
-        _tailTurns?: number,
-        _tailFrom?: string,
-        enabled = false,
-      ) => {
-        if (!enabled) return null;
-        const key = `${projectId}:${sessionId}`;
-        return (map.get(key) as unknown) ?? null;
-      },
-    ),
-    writeSessionCache: vi.fn(
-      async (
-        projectId: string,
-        sessionId: string,
-        entry: unknown,
-        _tailTurns?: number,
-        _tailFrom?: string,
-        _enabled = false,
-      ) => {
-        const key = `${projectId}:${sessionId}`;
-        // Mirror the real store: snapshot totalMessageCount onto the entry so
-        // the staleness check (cachedTotalMessageCount mismatch) works on reopen.
-        // 镜像真实 store：将 totalMessageCount 快照到 entry，使重开时的过期校验
-        // （cachedTotalMessageCount 不一致）生效。
-        const payload = entry as {
-          pagination?: { totalMessageCount?: number };
-          session?: { updatedAt?: string };
-        };
-        const enriched = {
-          ...(entry as object),
-          cachedTotalMessageCount: payload?.pagination?.totalMessageCount,
-          cachedUpdatedAt: payload?.session?.updatedAt,
-        };
-        map.set(key, enriched);
-      },
-    ),
-    __reset: () => map.clear(),
-  };
+  const read = vi.fn(
+    async (
+      projectId: string,
+      sessionId: string,
+      _tailTurns?: number,
+      _tailFrom?: string,
+    ) => {
+      const key = `${projectId}:${sessionId}`;
+      return (map.get(key) as unknown) ?? null;
+    },
+  );
+  const write = vi.fn(
+    async (
+      projectId: string,
+      sessionId: string,
+      entry: unknown,
+      _tailTurns?: number,
+      _tailFrom?: string,
+    ) => {
+      const key = `${projectId}:${sessionId}`;
+      // Mirror the real store: snapshot totalMessageCount onto the entry so
+      // the staleness check (cachedTotalMessageCount mismatch) works on reopen.
+      // 镜像真实 store：将 totalMessageCount 快照到 entry，使重开时的过期校验
+      // （cachedTotalMessageCount 不一致）生效。
+      const payload = entry as {
+        pagination?: { totalMessageCount?: number };
+        session?: { updatedAt?: string };
+      };
+      const enriched = {
+        ...(entry as object),
+        cachedTotalMessageCount: payload?.pagination?.totalMessageCount,
+        cachedUpdatedAt: payload?.session?.updatedAt,
+      };
+      map.set(key, enriched);
+    },
+  );
+  const adapter = { read, write };
+  return { map, adapter, __reset: () => map.clear() };
 });
 
-vi.mock("../../lib/sessionCache/sessionCacheStore", () => ({
-  readSessionCache: cacheStore.readSessionCache,
-  writeSessionCache: cacheStore.writeSessionCache,
-}));
 
 const apiMocks = vi.hoisted(() => ({
   getSession: vi.fn(),
@@ -82,14 +72,15 @@ import {
   isSessionLoadCacheEnabled,
   useSessionMessages,
 } from "../useSessionMessages";
+import type { SessionCacheAdapter } from "../../lib/sessionCache/sessionCacheStore";
 import { getStreamingEnabled } from "../useStreamingEnabled";
 
 describe("useSessionMessages cache", () => {
   beforeEach(() => {
     (getStreamingEnabled as Mock).mockReturnValue(true);
-    cacheStore.__reset();
-    cacheStore.readSessionCache.mockClear();
-    cacheStore.writeSessionCache.mockClear();
+    cacheAdapter.__reset();
+    cacheAdapter.adapter.read.mockClear();
+    cacheAdapter.adapter.write.mockClear();
   });
 
   afterEach(() => {
@@ -197,7 +188,7 @@ describe("useSessionMessages cache", () => {
     expect(second.result.current.messages).toEqual([]);
     // Disabled => no cache read attempted.
     // 禁用 => 不尝试读缓存。
-    expect(cacheStore.readSessionCache).not.toHaveBeenCalled();
+    expect(cacheAdapter.adapter.read).not.toHaveBeenCalled();
     await waitFor(() => expect(apiMocks.getSession).toHaveBeenCalledTimes(2));
     expect(apiMocks.getSession).toHaveBeenNthCalledWith(
       2,
@@ -266,7 +257,7 @@ describe("useSessionMessages cache", () => {
       useSessionMessages({
         projectId: "proj-1",
         sessionId: "sess-1",
-        sessionLoadCacheEnabled: true,
+        cacheAdapter: cacheAdapter.adapter as SessionCacheAdapter,
       }),
     );
 
@@ -274,15 +265,14 @@ describe("useSessionMessages cache", () => {
     await waitFor(() => expect(first.result.current.loading).toBe(false));
     // Cache must have been written on the first load.
     // 首次加载必须已写入缓存。
-    await waitFor(() => expect(cacheStore.writeSessionCache).toHaveBeenCalled());
-    expect(cacheStore.writeSessionCache).toHaveBeenNthCalledWith(
+    await waitFor(() => expect(cacheAdapter.adapter.write).toHaveBeenCalled());
+    expect(cacheAdapter.adapter.write).toHaveBeenNthCalledWith(
       1,
       "proj-1",
       "sess-1",
       expect.objectContaining({ lastMessageId: "msg-1" }),
       undefined,
       undefined,
-      true,
     );
 
     first.unmount();
@@ -291,7 +281,7 @@ describe("useSessionMessages cache", () => {
       useSessionMessages({
         projectId: "proj-1",
         sessionId: "sess-1",
-        sessionLoadCacheEnabled: true,
+        cacheAdapter: cacheAdapter.adapter as SessionCacheAdapter,
       }),
     );
 
@@ -395,18 +385,18 @@ describe("useSessionMessages cache", () => {
       useSessionMessages({
         projectId: "proj-1",
         sessionId: "sess-1",
-        sessionLoadCacheEnabled: true,
+        cacheAdapter: cacheAdapter.adapter as SessionCacheAdapter,
       }),
     );
     await waitFor(() => expect(first.result.current.loading).toBe(false));
-    await waitFor(() => expect(cacheStore.writeSessionCache).toHaveBeenCalled());
+    await waitFor(() => expect(cacheAdapter.adapter.write).toHaveBeenCalled());
     first.unmount();
 
     const second = renderHook(() =>
       useSessionMessages({
         projectId: "proj-1",
         sessionId: "sess-1",
-        sessionLoadCacheEnabled: true,
+        cacheAdapter: cacheAdapter.adapter as SessionCacheAdapter,
       }),
     );
 
@@ -506,18 +496,18 @@ describe("useSessionMessages cache", () => {
       useSessionMessages({
         projectId: "proj-1",
         sessionId: "sess-1",
-        sessionLoadCacheEnabled: true,
+        cacheAdapter: cacheAdapter.adapter as SessionCacheAdapter,
       }),
     );
     await waitFor(() => expect(first.result.current.loading).toBe(false));
-    await waitFor(() => expect(cacheStore.writeSessionCache).toHaveBeenCalled());
+    await waitFor(() => expect(cacheAdapter.adapter.write).toHaveBeenCalled());
     first.unmount();
 
     const second = renderHook(() =>
       useSessionMessages({
         projectId: "proj-1",
         sessionId: "sess-1",
-        sessionLoadCacheEnabled: true,
+        cacheAdapter: cacheAdapter.adapter as SessionCacheAdapter,
       }),
     );
 

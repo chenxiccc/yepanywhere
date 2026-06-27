@@ -140,3 +140,63 @@ export async function writeSessionCache(
     // 吞掉：缓存是尽力而为；绝不断开加载路径。
   }
 }
+
+/**
+ * Adapter the hook consumes, so it does not import the store directly.
+ * hook 消费的适配器，使其不直接 import store。
+ *
+ * The adapter captures the `enabled` flag at construction; when disabled,
+ * read returns null and write is a no-op (cold path). This lets the hook
+ * call adapter.read/write without branching on enabled itself.
+ * 适配器在构造时捕获 `enabled` 开关；禁用时 read 返回 null、write 为 no-op
+ * （冷路径）。使 hook 调用 adapter.read/write 时无需自行判断 enabled。
+ */
+export interface SessionCacheAdapter {
+  read(
+    projectId: string,
+    sessionId: string,
+    tailTurns?: number,
+    tailFrom?: string,
+  ): Promise<SessionCacheEntry | null>;
+  write(
+    projectId: string,
+    sessionId: string,
+    payload: SessionCachePayload,
+    tailTurns?: number,
+    tailFrom?: string,
+  ): Promise<void>;
+}
+
+/**
+ * No-op adapter used when the cache is disabled (or before settings resolve).
+ * 缓存禁用（或设置加载前）时使用的 no-op 适配器。
+ */
+const NOOP_ADAPTER: SessionCacheAdapter = {
+  read: async () => null,
+  write: async () => {},
+};
+
+/**
+ * Build an adapter bound to the given enabled flag. Returns a no-op adapter
+ * when disabled, so the hook's call sites stay branch-free.
+ * 构造绑定到指定 enabled 开关的适配器。禁用时返回 no-op 适配器，
+ * 使 hook 调用点无需分支判断。
+ */
+export function createSessionCacheAdapter(
+  enabled: boolean,
+): SessionCacheAdapter {
+  if (!enabled) return NOOP_ADAPTER;
+  return {
+    read: (projectId, sessionId, tailTurns, tailFrom) =>
+      readSessionCache(projectId, sessionId, tailTurns, tailFrom, true),
+    write: (projectId, sessionId, payload, tailTurns, tailFrom) =>
+      writeSessionCache(
+        projectId,
+        sessionId,
+        payload,
+        tailTurns,
+        tailFrom,
+        true,
+      ),
+  };
+}

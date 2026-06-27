@@ -1660,6 +1660,7 @@ export interface ServerSettings {
   serviceWorkerEnabled: boolean;
   /** Whether remote SRP resume sessions should be persisted to disk */
   persistRemoteSessionsToDisk: boolean;
+  // [ya-private] session load cache (private fork)
   /** Whether clients may persist conversation message tails to IndexedDB for fast remote reopen */
   // 是否允许客户端将对话消息尾部持久化到 IndexedDB 以加速远程重开
   sessionLoadCacheEnabled?: boolean;

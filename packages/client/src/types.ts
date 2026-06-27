@@ -126,6 +126,11 @@ export interface Message {
   [key: string]: unknown;
 }
 
+// [ya-private] begin -- AgentContent moved here from useSessionMessages (private fork)
+// Moved so the session cache module can import domain types without a cycle
+// through the hook. useSessionMessages re-exports these for back-compat.
+// [ya-private] 从 useSessionMessages 迁移至此，使 session cache 模块能 import
+// 领域类型而不经 hook 形成循环。useSessionMessages re-export 以向后兼容。
 /** Content from a subagent (Task tool) */
 // 子代理（Task 工具）的内容
 export interface AgentContent {
@@ -141,6 +146,7 @@ export interface AgentContent {
 /** Map of agentId → agent content */
 // agentId → agent 内容的映射
 export type AgentContentMap = Record<string, AgentContent>;
+// [ya-private] end -- AgentContent
 
 // Type aliases for session types
 import type {

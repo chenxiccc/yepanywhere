@@ -179,6 +179,7 @@ export function RemoteAccessSettings() {
     </>
   );
 
+  // [ya-private] begin -- session load cache toggle + clear button (private fork)
   const sessionCacheToggle = (
     <>
       <div className="settings-group">
@@ -226,6 +227,7 @@ export function RemoteAccessSettings() {
       </div>
     </>
   );
+  // [ya-private] end -- session load cache toggle
 
   // When connected via relay, show connection info and logout
   if (remoteConnection) {

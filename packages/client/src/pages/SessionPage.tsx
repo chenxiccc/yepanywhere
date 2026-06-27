@@ -87,6 +87,8 @@ import { useI18n } from "../i18n";
 import { MainContent, useNavigationLayout } from "../layouts";
 import { toBrowserAppHref } from "../lib/appHref";
 import { storeUploadedAttachmentPreview } from "../lib/attachmentPreviewCache";
+// [ya-private] session cache adapter factory (private fork)
+import { createSessionCacheAdapter } from "../lib/sessionCache/sessionCacheStore";
 import { getBtwSplitRouting, getBtwToolbarMode } from "../lib/btwAsideRouting";
 import {
   buildBtwAsideParentHref,
@@ -716,6 +718,7 @@ function SessionPageContent({
   const initialTitle = navState?.initialTitle;
   const initialModel = navState?.initialModel;
   const initialProvider = navState?.initialProvider;
+  // [ya-private] begin -- session load cache plumbing (private fork)
   // Server settings fetched before useSession so sessionLoadCacheEnabled can
   // flow into the message cache gate. null on first render => cache disabled
   // (cold path) until settings resolve, which is the intended fallback.
@@ -728,9 +731,11 @@ function SessionPageContent({
     return {
       tailTurns: parsePositiveIntegerParam(params.get("tailTurns")),
       tailFrom: params.get("tailFrom")?.trim() || undefined,
-      sessionLoadCacheEnabled,
+      // [ya-private] cache adapter bound to the server flag (private fork)
+      cacheAdapter: createSessionCacheAdapter(sessionLoadCacheEnabled),
     };
   }, [location.search, sessionLoadCacheEnabled]);
+  // [ya-private] end -- session load cache plumbing
   const clientTailActive =
     clientTailParams.tailTurns !== undefined ||
     clientTailParams.tailFrom !== undefined;

@@ -15,6 +15,8 @@ import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
 import { getMessageId } from "../lib/mergeMessages";
 import { findPendingTasks } from "../lib/pendingTasks";
 import { extractSessionIdFromFileEvent } from "../lib/sessionFile";
+// [ya-private] session cache adapter type (private fork)
+import type { SessionCacheAdapter } from "../lib/sessionCache/sessionCacheStore";
 import type {
   InputRequest,
   Message,
@@ -478,7 +480,12 @@ export function useSession(
     recapAfterSeconds?: number;
   },
   streamingMarkdownCallbacks?: StreamingMarkdownCallbacks,
-  options?: { tailTurns?: number; tailFrom?: string; sessionLoadCacheEnabled?: boolean },
+  // [ya-private] options added cacheAdapter for the cache gate (private fork)
+  options?: {
+    tailTurns?: number;
+    tailFrom?: string;
+    cacheAdapter?: SessionCacheAdapter;
+  },
 ) {
   // Use initial status if provided (from navigation state) to connect stream immediately
   const [status, setStatus] = useState<SessionStatus>(
@@ -845,7 +852,8 @@ export function useSession(
     sessionId,
     tailTurns: options?.tailTurns,
     tailFrom: options?.tailFrom,
-    sessionLoadCacheEnabled: options?.sessionLoadCacheEnabled,
+    // [ya-private] session load cache adapter (private fork)
+    cacheAdapter: options?.cacheAdapter,
     onLoadComplete: handleLoadComplete,
     onLoadError: handleLoadError,
   });
