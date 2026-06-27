@@ -257,6 +257,8 @@ export const LEGACY_KEYS = {
   browserProfileId: "yep-anywhere-device-id",
   notifyInApp: "yep-anywhere-notify-in-app",
   recentProject: "yep-anywhere-recent-project",
+  lastViewedBranch: "yep-anywhere-last-viewed-branch",
+  lastViewedProjectGit: "yep-anywhere-last-viewed-project-git",
   // Draft keys had different prefixes
   draftMessagePrefix: "draft-message-",
   newSessionDraftPrefix: "draft-new-session-",

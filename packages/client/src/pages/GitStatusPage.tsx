@@ -29,7 +29,7 @@ import { useGitStatusSelection } from "../hooks/useGitStatusSelection";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { useProject, useProjects } from "../hooks/useProjects";
 import { useI18n } from "../i18n";
-import { getServerScoped, setServerScoped } from "../lib/storageKeys";
+import { LEGACY_KEYS, getServerScoped, setServerScoped } from "../lib/storageKeys";
 import "../styles/git-status.css";
 import { useNavigationLayout } from "../layouts";
 
@@ -46,7 +46,10 @@ export function GitStatusPage() {
   // 再 fallback 到 projects[0]（lastActivity 最新）。
   // Sidebar entry (no ?projectId): prefer last viewed project in git-status (validated to exist),
   // then fallback to projects[0] (most recent by lastActivity).
-  const lastViewedProject = getServerScoped("lastViewedProjectGit");
+  const lastViewedProject = getServerScoped(
+    "lastViewedProjectGit",
+    LEGACY_KEYS.lastViewedProjectGit,
+  );
   const lastProjectValid =
     !!lastViewedProject &&
     projects.some((project) => project.id === lastViewedProject);
@@ -63,12 +66,20 @@ export function GitStatusPage() {
   // 停留项目持久化：解析出有效项目后写入，下次侧边栏进入恢复 / Persist viewed project
   useEffect(() => {
     if (effectiveProjectId) {
-      setServerScoped("lastViewedProjectGit", effectiveProjectId);
+      setServerScoped(
+        "lastViewedProjectGit",
+        effectiveProjectId,
+        LEGACY_KEYS.lastViewedProjectGit,
+      );
     }
   }, [effectiveProjectId]);
 
   const handleProjectChange = (newProjectId: string) => {
-    setServerScoped("lastViewedProjectGit", newProjectId);
+    setServerScoped(
+      "lastViewedProjectGit",
+      newProjectId,
+      LEGACY_KEYS.lastViewedProjectGit,
+    );
     setSearchParams({ projectId: newProjectId }, { replace: true });
   };
 
@@ -159,7 +170,10 @@ function GitStatusContent({
       return initialViewingBranch;
     }
     if (typeof window !== "undefined") {
-      return getServerScoped("lastViewedBranch");
+      return getServerScoped(
+        "lastViewedBranch",
+        LEGACY_KEYS.lastViewedBranch,
+      );
     }
     return null;
   });
@@ -178,7 +192,11 @@ function GitStatusContent({
       return;
     }
     if (viewingBranch) {
-      setServerScoped("lastViewedBranch", viewingBranch);
+      setServerScoped(
+        "lastViewedBranch",
+        viewingBranch,
+        LEGACY_KEYS.lastViewedBranch,
+      );
     }
   }, [viewingBranch]);
 
