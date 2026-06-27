@@ -7,7 +7,6 @@ import type {
 } from "@yep-anywhere/shared";
 import { DEFAULT_PROMPT_CACHE_KEEPALIVE_INACTIVITY_MINUTES } from "@yep-anywhere/shared";
 import { Hono } from "hono";
-import { compress } from "hono/compress";
 import { join } from "node:path";
 import type { AuthService } from "./auth/AuthService.js";
 import { createAuthRoutes } from "./auth/routes.js";
@@ -20,6 +19,7 @@ import type {
 } from "./metadata/index.js";
 import { updateAllowedHosts } from "./middleware/allowed-hosts.js";
 import { createAuthMiddleware } from "./middleware/auth.js";
+import { createCompressMiddleware } from "./middleware/compress.js";
 import {
   getAllowedFilePaths,
   shouldIncludeProjects,
@@ -292,16 +292,10 @@ export function createApp(options: AppOptions): AppResult {
     );
   }
 
-  // HTTP body compression for JSON REST responses (gzip/deflate via CompressionStream).
-  // 响应体压缩：对 JSON REST 响应启用 gzip/deflate（基于 CompressionStream）。
-  // Skips SSE, binary Content-Types, HEAD, and already-encoded responses automatically.
-  // 自动跳过 SSE、二进制 Content-Type、HEAD 请求以及已编码的响应。
-  // Registered after auth so it wraps the response outermost and sees the final
-  // Content-Type, letting its skip-regex correctly exclude SSE / binary.
-  // 在 auth 之后注册，使其作为最外层包裹响应、能看到最终 Content-Type，
-  // 从而让跳过正则正确排除 SSE / 二进制响应。
-  app.use("/api/*", compress({ threshold: 1024 }));
-  app.use("/public-api/*", compress({ threshold: 1024 }));
+  // HTTP body compression for JSON REST responses (gzip/deflate).
+  // 响应体压缩：对 JSON REST 响应启用 gzip/deflate。
+  app.use("/api/*", createCompressMiddleware());
+  app.use("/public-api/*", createCompressMiddleware());
 
   // Auth routes (always mounted if authService is provided)
   // This allows checking auth status and enabling/disabling from settings
