@@ -3,7 +3,10 @@ import type { Context, Hono } from "hono";
 import type { WSEvents } from "hono/ws";
 import type { WebSocket as RawWebSocket } from "ws";
 import type { DeviceBridgeService } from "../device/DeviceBridgeService.js";
-import { isAllowedHostname, isAllowedOrigin } from "../middleware/allowed-hosts.js";
+import {
+  isAllowedOrigin,
+  isUserAllowedHostname,
+} from "../middleware/allowed-hosts.js";
 import type {
   RemoteAccessService,
   RemoteSessionService,
@@ -308,9 +311,13 @@ export function createWsRelayRoutes(
             peerAddress,
             requestHostname,
           ),
-          // Hostname explicitly allowed by user in Local Access settings
+          // Hostname explicitly allowed by user in Local Access settings.
+          // Only user-configured hostnames (e.g. a Cloudflare Tunnel domain)
+          // bypass SRP — built-in defaults like *.ts.net still require SRP.
+          // 仅用户在 Local Access 设置中显式配置的 hostname 免除 SRP；
+          // *.ts.net 等内置允许项仍需 SRP。
           isAllowedHostname: requestHostname
-            ? isAllowedHostname(requestHostname)
+            ? isUserAllowedHostname(requestHostname)
             : false,
         });
         connState.connectionPolicy = connectionPolicy;
