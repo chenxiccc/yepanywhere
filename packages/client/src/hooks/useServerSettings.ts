@@ -29,6 +29,21 @@ interface UseServerSettingsResult {
 // 过期，最坏情况是纠正后一次短暂的冷加载。
 const SETTINGS_LS_KEY = "yep-server-settings";
 
+// Declare BEFORE the functions that reference it, to avoid a TDZ
+// (Temporal Dead Zone) ReferenceError at module load. `let` is hoisted but
+// uninitialized until the assignment runs; functions defined above the
+// assignment that access it would crash. Declaring here first makes the
+// access safe (reads `null` until the line below populates it from
+// localStorage).
+// 在引用它的函数之前声明，避免模块加载时的 TDZ（临时死区）ReferenceError。
+// let 会被提升但未初始化，直到赋值执行；在其上方定义的函数若访问它将崩溃。
+// 此处先声明使访问安全（在下方从 localStorage 填充前读到 null）。
+let cachedSettings: ServerSettings | null = null;
+
+// Populate from localStorage at module load (survives page reload / PWA restart).
+// 模块加载时从 localStorage 填充（页面刷新 / PWA 重启后仍存活）。
+cachedSettings = readCachedSettings();
+
 function readCachedSettings(): ServerSettings | null {
   // Module-level variable (fast path, avoids JSON.parse on every hook call).
   // 模块级变量（快路径，避免每次 hook 调用都 JSON.parse）。
@@ -60,8 +75,6 @@ function writeCachedSettings(settings: ServerSettings): void {
     // 仅跨刷新的持久化丢失。
   }
 }
-
-let cachedSettings: ServerSettings | null = readCachedSettings();
 
 /**
  * Hook for managing server-wide settings.
