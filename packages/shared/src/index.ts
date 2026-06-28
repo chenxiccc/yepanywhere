@@ -98,27 +98,21 @@ export {
 } from "./types.js";
 
 export type {
-  GitStatusInfo,
   GitFileChange,
-  GitBranchInfo,
-  GitCreateBranchRequest,
-  GitLocalCommitInfo,
-  GitStashEntry,
-  GitStashDetail,
-  GitStashFileChange,
-  GitHistoryCommitSummary,
-  GitHistoryCommitDetail,
-  GitHistoryFileChange,
-  GitCommitRequest,
-  GitUndoCommitResponse,
-  GitMergeBranchRequest,
-  GitMergePreviewRequest,
-  GitMergePreviewResult,
-  GitMergeStrategy,
-  GitSwitchBranchRequest,
+  GitRecentCommit,
+  GitRemoteCheckResult,
+  GitRemoteCheckStatus,
+  GitStatusInfo,
+} from "./git-status.js";
+export {
+  GIT_STATUS_CAPABILITY,
+  GIT_STATUS_ENHANCED_CAPABILITY,
+  GIT_STATUS_REMOTE_CHECK_CAPABILITY,
 } from "./git-status.js";
 
-export type { FileNode, FileListResponse } from "./file-tree.js";
+// 本分支源码管理独有类型（SourceManagerStatusInfo 等），物理隔离自上游 git-status.ts
+// Branch-specific source-manager types, physically isolated from upstream git-status.ts
+export * from "./source-manager-types.js";
 
 export type {
   SessionActiveWorkKind,

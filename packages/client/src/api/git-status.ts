@@ -15,7 +15,7 @@ import type {
   GitMergePreviewResult,
   GitStashDetail,
   GitStashEntry,
-  GitStatusInfo,
+  SourceManagerStatusInfo,
   GitSwitchBranchRequest,
   GitUndoCommitResponse,
 } from "@yep-anywhere/shared";
@@ -24,6 +24,13 @@ type FetchFn = <T>(path: string, options?: RequestInit) => Promise<T>;
 
 export function createGitStatusApi(fetchJSON: FetchFn) {
   return {
+    // 获取源码管理状态（本分支版，含 remote/stashes/latestLocalCommit）
+    // Get source-manager status (branch version, with remote/stashes/latestLocalCommit)
+    getSourceManagerStatus: (projectId: string) =>
+      fetchJSON<SourceManagerStatusInfo>(
+        `/source-manager/${projectId}/git`,
+      ),
+
     getGitHistory: (
       projectId: string,
       params?: {
@@ -42,19 +49,19 @@ export function createGitStatusApi(fetchJSON: FetchFn) {
         commits: GitHistoryCommitSummary[];
         hasMore: boolean;
         nextCursor: string | null;
-      }>(`/projects/${projectId}/git/history${query ? `?${query}` : ""}`);
+      }>(`/source-manager/${projectId}/git/history${query ? `?${query}` : ""}`);
     },
 
     // 轻量端点：仅返回当前 checkout 分支名（供 SessionMenu 取实时分支用）
     // Lightweight endpoint: returns only the current checked-out branch name
     getGitBranchCurrent: (projectId: string) =>
       fetchJSON<{ branch: string | null }>(
-        `/projects/${projectId}/git/branch`,
+        `/source-manager/${projectId}/git/branch`,
       ),
 
     getGitHistoryCommit: (projectId: string, commit: string) =>
       fetchJSON<{ commit: GitHistoryCommitDetail }>(
-        `/projects/${projectId}/git/history/${encodeURIComponent(commit)}`,
+        `/source-manager/${projectId}/git/history/${encodeURIComponent(commit)}`,
       ),
 
     getGitHistoryDiff: (
@@ -77,13 +84,13 @@ export function createGitStatusApi(fetchJSON: FetchFn) {
           lines: string[];
         }>;
         markdownHtml?: string;
-      }>(`/projects/${projectId}/git/history/diff`, {
+      }>(`/source-manager/${projectId}/git/history/diff`, {
         method: "POST",
         body: JSON.stringify(params),
       }),
 
     commitGit: (projectId: string, message: string, selectedPaths?: string[]) =>
-      fetchJSON<{ status: GitStatusInfo }>(`/projects/${projectId}/git/commit`, {
+      fetchJSON<{ status: SourceManagerStatusInfo }>(`/source-manager/${projectId}/git/commit`, {
         method: "POST",
         body: JSON.stringify({
           message,
@@ -92,19 +99,19 @@ export function createGitStatusApi(fetchJSON: FetchFn) {
       }),
 
     undoGitCommit: (projectId: string) =>
-      fetchJSON<GitUndoCommitResponse>(`/projects/${projectId}/git/undo`, {
+      fetchJSON<GitUndoCommitResponse>(`/source-manager/${projectId}/git/undo`, {
         method: "POST",
       }),
 
     stashGitChanges: (projectId: string, selectedPaths: string[]) =>
-      fetchJSON<{ status: GitStatusInfo }>(`/projects/${projectId}/git/stash`, {
+      fetchJSON<{ status: SourceManagerStatusInfo }>(`/source-manager/${projectId}/git/stash`, {
         method: "POST",
         body: JSON.stringify({ selectedPaths }),
       }),
 
     restoreGitStash: (projectId: string, stashRef: string) =>
-      fetchJSON<{ status: GitStatusInfo; stash?: GitStashEntry }>(
-        `/projects/${projectId}/git/stashes/restore`,
+      fetchJSON<{ status: SourceManagerStatusInfo; stash?: GitStashEntry }>(
+        `/source-manager/${projectId}/git/stashes/restore`,
         {
           method: "POST",
           body: JSON.stringify({ stashRef }),
@@ -113,7 +120,7 @@ export function createGitStatusApi(fetchJSON: FetchFn) {
 
     getGitStashDetail: (projectId: string, stashRef: string) =>
       fetchJSON<{ stash: GitStashDetail }>(
-        `/projects/${projectId}/git/stashes/detail`,
+        `/source-manager/${projectId}/git/stashes/detail`,
         {
           method: "POST",
           body: JSON.stringify({ stashRef }),
@@ -140,14 +147,14 @@ export function createGitStatusApi(fetchJSON: FetchFn) {
           lines: string[];
         }>;
         markdownHtml?: string;
-      }>(`/projects/${projectId}/git/stashes/diff`, {
+      }>(`/source-manager/${projectId}/git/stashes/diff`, {
         method: "POST",
         body: JSON.stringify(params),
       }),
 
     discardGitStash: (projectId: string, stashRef: string) =>
-      fetchJSON<{ status: GitStatusInfo }>(
-        `/projects/${projectId}/git/stashes/discard`,
+      fetchJSON<{ status: SourceManagerStatusInfo }>(
+        `/source-manager/${projectId}/git/stashes/discard`,
         {
           method: "POST",
           body: JSON.stringify({ stashRef }),
@@ -155,29 +162,29 @@ export function createGitStatusApi(fetchJSON: FetchFn) {
       ),
 
     discardGitChanges: (projectId: string, selectedPaths: string[]) =>
-      fetchJSON<{ status: GitStatusInfo }>(`/projects/${projectId}/git/discard`, {
+      fetchJSON<{ status: SourceManagerStatusInfo }>(`/source-manager/${projectId}/git/discard`, {
         method: "POST",
         body: JSON.stringify({ selectedPaths }),
       }),
 
     pushGit: (projectId: string) =>
-      fetchJSON<{ status: GitStatusInfo }>(`/projects/${projectId}/git/push`, {
+      fetchJSON<{ status: SourceManagerStatusInfo }>(`/source-manager/${projectId}/git/push`, {
         method: "POST",
       }),
 
     fetchGit: (projectId: string) =>
-      fetchJSON<{ status: GitStatusInfo }>(`/projects/${projectId}/git/fetch`, {
+      fetchJSON<{ status: SourceManagerStatusInfo }>(`/source-manager/${projectId}/git/fetch`, {
         method: "POST",
       }),
 
     getGitBranches: (projectId: string) =>
       fetchJSON<{ branches: GitBranchInfo[] }>(
-        `/projects/${projectId}/git/branches`,
+        `/source-manager/${projectId}/git/branches`,
       ),
 
     createGitBranch: (projectId: string, body: GitCreateBranchRequest) =>
-      fetchJSON<{ status: GitStatusInfo }>(
-        `/projects/${projectId}/git/create-branch`,
+      fetchJSON<{ status: SourceManagerStatusInfo }>(
+        `/source-manager/${projectId}/git/create-branch`,
         {
           method: "POST",
           body: JSON.stringify(body),
@@ -185,8 +192,8 @@ export function createGitStatusApi(fetchJSON: FetchFn) {
       ),
 
     switchGitBranch: (projectId: string, body: GitSwitchBranchRequest) =>
-      fetchJSON<{ status: GitStatusInfo }>(
-        `/projects/${projectId}/git/switch-branch`,
+      fetchJSON<{ status: SourceManagerStatusInfo }>(
+        `/source-manager/${projectId}/git/switch-branch`,
         {
           method: "POST",
           body: JSON.stringify(body),
@@ -194,8 +201,8 @@ export function createGitStatusApi(fetchJSON: FetchFn) {
       ),
 
     mergeGitBranch: (projectId: string, body: GitMergeBranchRequest) =>
-      fetchJSON<{ status: GitStatusInfo }>(
-        `/projects/${projectId}/git/merge-branch`,
+      fetchJSON<{ status: SourceManagerStatusInfo }>(
+        `/source-manager/${projectId}/git/merge-branch`,
         {
           method: "POST",
           body: JSON.stringify(body),
@@ -204,7 +211,7 @@ export function createGitStatusApi(fetchJSON: FetchFn) {
 
     previewGitMerge: (projectId: string, body: GitMergePreviewRequest) =>
       fetchJSON<{ result: GitMergePreviewResult }>(
-        `/projects/${projectId}/git/merge-preview`,
+        `/source-manager/${projectId}/git/merge-preview`,
         {
           method: "POST",
           body: JSON.stringify(body),

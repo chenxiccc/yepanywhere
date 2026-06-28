@@ -1,3 +1,7 @@
+export const GIT_STATUS_CAPABILITY = "git-status";
+export const GIT_STATUS_ENHANCED_CAPABILITY = "git-status-enhanced";
+export const GIT_STATUS_REMOTE_CHECK_CAPABILITY = "git-status-remote-check";
+
 export interface GitFileChange {
   /** Relative file path within the repo */
   path: string;
@@ -13,6 +17,19 @@ export interface GitFileChange {
   origPath?: string;
 }
 
+export interface GitRecentCommit {
+  /** Full commit hash */
+  hash: string;
+  /** Short commit hash for display */
+  shortHash: string;
+  /** Commit subject line */
+  subject: string;
+  /** Author display name */
+  authorName: string;
+  /** Author timestamp as an ISO 8601 string */
+  authorDate: string;
+}
+
 export interface GitStatusInfo {
   /** Whether the project path is a git repository */
   isGitRepo: boolean;
@@ -20,118 +37,29 @@ export interface GitStatusInfo {
   branch: string | null;
   /** Upstream branch (e.g. "origin/main") */
   upstream: string | null;
-  /** Default remote name for fetch/push (e.g. "origin") */
-  remote: string | null;
   /** Commits ahead of upstream */
   ahead: number;
   /** Commits behind upstream */
   behind: number;
   /** Whether the working tree is clean */
   isClean: boolean;
-  /** Latest local commit that can be undone from this branch state */
-  latestLocalCommit?: GitLocalCommitInfo | null;
-  /** Stashed changes, newest first */
-  stashes: GitStashEntry[];
   /** Changed files with status and line counts */
   files: GitFileChange[];
+  /** Recent commits on the current HEAD */
+  recentCommits?: GitRecentCommit[];
+  /** Last successful explicit remote check, if known by this server */
+  checkedRemoteAt?: string | null;
 }
 
-export interface GitLocalCommitInfo {
-  message: string;
-  committedAt: string;
-}
+export type GitRemoteCheckStatus =
+  | "checked"
+  | "busy"
+  | "not-a-git-repo"
+  | "failed";
 
-export interface GitStashEntry {
-  ref: string;
-  message: string;
-  branch: string | null;
-  createdAt: string;
-  createdByApp: boolean;
-}
-
-export interface GitStashFileChange {
-  path: string;
-  status: string;
-  previousPath?: string;
-  linesAdded: number | null;
-  linesDeleted: number | null;
-}
-
-export interface GitStashDetail extends GitStashEntry {
-  files: GitStashFileChange[];
-}
-
-export interface GitHistoryCommitSummary {
-  hash: string;
-  shortHash: string;
-  message: string;
-  authorName: string;
-  authorEmail: string;
-  committedAt: string;
-  refs: string[];
-  filesChanged: number;
-  insertions: number;
-  deletions: number;
-}
-
-export interface GitHistoryFileChange {
-  path: string;
-  status: string;
-  previousPath?: string;
-  linesAdded: number | null;
-  linesDeleted: number | null;
-}
-
-export interface GitHistoryCommitDetail extends GitHistoryCommitSummary {
-  body: string;
-  files: GitHistoryFileChange[];
-}
-
-export interface GitCommitRequest {
-  message: string;
-  selectedPaths?: string[];
-}
-
-export interface GitUndoCommitResponse {
-  status: GitStatusInfo;
-  undoneCommitMessage: string;
-}
-
-export interface GitBranchInfo {
-  name: string;
-  current: boolean;
-  remote?: boolean;
-  group: "default" | "recent" | "other";
-  updatedAt?: string | null;
-}
-
-export interface GitCreateBranchRequest {
-  branchName: string;
-  baseBranch?: string;
-}
-
-export type GitMergeStrategy = "merge" | "squash" | "rebase";
-
-export interface GitSwitchBranchRequest {
-  targetBranch: string;
-  stashCurrentChanges: boolean;
-}
-
-export interface GitMergeBranchRequest {
-  sourceBranch: string;
-  strategy: GitMergeStrategy;
-}
-
-export interface GitMergePreviewRequest {
-  sourceBranch: string;
-  strategy: GitMergeStrategy;
-}
-
-export interface GitMergePreviewResult {
-  state: "up_to_date" | "conflict" | "mergeable";
-  targetBranch: string;
-  sourceBranch: string;
-  strategy: GitMergeStrategy;
-  commitCount: number;
-  conflictedFiles: number;
+export interface GitRemoteCheckResult {
+  status: GitRemoteCheckStatus;
+  checkedRemoteAt: string | null;
+  gitStatus?: GitStatusInfo;
+  detail?: string;
 }

@@ -1,4 +1,4 @@
-import type { GitBranchInfo, GitStatusInfo } from "@yep-anywhere/shared";
+import type { GitBranchInfo, SourceManagerStatusInfo } from "@yep-anywhere/shared";
 import { GitBranchSwitcher, GitSplitActionButton } from "./GitBranchControls";
 import { SyncIcon } from "./GitStatusIcons";
 
@@ -30,7 +30,7 @@ export function GitStatusSummaryBar({
   onSyncMenuToggle,
   onSyncMenuClose,
 }: {
-  status: GitStatusInfo;
+  status: SourceManagerStatusInfo;
   branches: GitBranchInfo[];
   branchMenuError: string | null;
   branchMenuOpen: boolean;

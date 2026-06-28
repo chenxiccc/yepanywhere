@@ -2,7 +2,7 @@ import type {
   GitFileChange,
   GitHistoryCommitSummary,
   GitStashEntry,
-  GitStatusInfo,
+  SourceManagerStatusInfo,
 } from "@yep-anywhere/shared";
 import { useEffect, useRef, useState } from "react";
 import { FileTree } from "../FileTree";
@@ -72,7 +72,7 @@ export function GitStatusSidebar({
   onRenameFile,
   onDeleteFile,
 }: {
-  status: GitStatusInfo;
+  status: SourceManagerStatusInfo;
   projectId: string;
   activeView: "files" | "changes" | "stashed" | "history";
   /** 当前查看的分支（null=跟随当前 checkout）/ Currently viewing branch (null=follow checkout) */

@@ -58,6 +58,7 @@ import { createDevRoutes } from "./routes/dev.js";
 import { createDeviceRoutes } from "./routes/devices.js";
 import { createFilesRoutes } from "./routes/files.js";
 import { createGitStatusRoutes } from "./routes/git-status.js";
+import { createSourceManagerRoutes } from "./routes/source-manager.js";
 import { createGlobalSessionsRoutes } from "./routes/global-sessions.js";
 import { health } from "./routes/health.js";
 import { createInboxRoutes } from "./routes/inbox.js";
@@ -996,6 +997,12 @@ export function createApp(options: AppOptions): AppResult {
 
   // Git status routes
   app.route("/api/projects", createGitStatusRoutes({ scanner }));
+
+  // Source manager routes (branch feature, physically isolated from upstream
+  // git-status routes to avoid merge conflicts). Endpoints live under
+  // /api/source-manager/:projectId/git/...
+  // 源码管理路由（本分支功能，与上游 git-status 路由物理隔离以避免合并冲突）
+  app.route("/api/source-manager", createSourceManagerRoutes({ scanner }));
 
   // Recents routes (recently visited sessions)
   if (options.recentsService) {

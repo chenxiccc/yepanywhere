@@ -1,7 +1,7 @@
 import type {
   GitBranchInfo,
   GitMergeStrategy,
-  GitStatusInfo,
+  SourceManagerStatusInfo,
   GitUndoCommitResponse,
 } from "@yep-anywhere/shared";
 import { useCallback, useMemo, useState } from "react";
@@ -40,7 +40,7 @@ export function useGitStatusActions({
   onSwitchSuccess,
 }: {
   projectId: string;
-  status: GitStatusInfo;
+  status: SourceManagerStatusInfo;
   refetch: () => Promise<void>;
   t: Translate;
   selectedCommitPaths: string[];

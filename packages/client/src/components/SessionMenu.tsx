@@ -556,7 +556,7 @@ export function SessionMenu({
             }
             const params = new URLSearchParams({ projectId });
             if (branch) params.set("branch", branch);
-            navigate(`/git-status?${params.toString()}`);
+            navigate(`/source-manager?${params.toString()}`);
           })
         }
       >

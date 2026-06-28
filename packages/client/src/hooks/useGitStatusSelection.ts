@@ -1,4 +1,4 @@
-import type { GitFileChange, GitStatusInfo } from "@yep-anywhere/shared";
+import type { GitFileChange, SourceManagerStatusInfo } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fileKey } from "../components/git-status/utils";
 
@@ -7,7 +7,7 @@ const gitCommitSelectionKey = (projectId: string) =>
 
 export function useGitStatusSelection(
   projectId: string,
-  files: GitStatusInfo["files"],
+  files: SourceManagerStatusInfo["files"],
   isNarrowScreen: boolean,
 ) {
   const [selectedFile, setSelectedFile] = useState<GitFileChange | null>(null);

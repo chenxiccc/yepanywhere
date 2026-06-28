@@ -26,6 +26,7 @@ import { NewSessionPage } from "./pages/NewSessionPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
 import { SessionPage } from "./pages/SessionPage";
 import { SettingsLayout } from "./pages/settings";
+import { SourceManagerPage } from "./pages/SourceManagerPage";
 import "./styles/index.css";
 
 // Apply saved preferences before React renders to avoid flash
@@ -73,6 +74,7 @@ createRoot(rootElement).render(
                 element={<Navigate to="/sessions" replace />}
               />
               <Route path="/git-status" element={<GitStatusPage />} />
+              <Route path="/source-manager" element={<SourceManagerPage />} />
               <Route path="/devices" element={<EmulatorPage />} />
               <Route path="/devices/:deviceId" element={<EmulatorPage />} />
               <Route path="/new-session" element={<NewSessionPage />} />

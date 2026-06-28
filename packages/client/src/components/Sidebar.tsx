@@ -729,7 +729,7 @@ export function Sidebar({
             />
             {capabilities.includes("git-status") && (
               <SidebarNavItem
-                to="/git-status"
+                to="/source-manager"
                 icon={SidebarIcons.sourceControl}
                 label={t("sidebarSourceControl")}
                 onClick={onNavigate}

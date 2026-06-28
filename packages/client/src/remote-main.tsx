@@ -50,6 +50,7 @@ import { RelayConnectionGate } from "./pages/RelayConnectionGate";
 import { RelayLoginPage } from "./pages/RelayLoginPage";
 import { SessionPage } from "./pages/SessionPage";
 import { SettingsLayout } from "./pages/settings";
+import { SourceManagerPage } from "./pages/SourceManagerPage";
 import { useRemoteBasePath } from "./hooks/useRemoteBasePath";
 import { registerServiceWorkerAtStartup } from "./lib/registerServiceWorker";
 import "./styles/index.css";
@@ -90,6 +91,7 @@ const APP_ROUTES = (
       <Route path="agents" element={<AgentsPage />} />
       <Route path="inbox" element={<InboxPage />} />
       <Route path="git-status" element={<GitStatusPage />} />
+      <Route path="source-manager" element={<SourceManagerPage />} />
       <Route path="devices" element={<EmulatorPage />} />
       <Route path="devices/:deviceId" element={<EmulatorPage />} />
       <Route path="settings" element={<SettingsLayout />} />
