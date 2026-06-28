@@ -1710,5 +1710,9 @@
   "gitStatusFileContextRenameLabel": "New name:",
   "gitStatusFileContextRenameCancel": "Cancel",
   "gitStatusFileContextRenameConfirm": "Rename",
-  "gitStatusFileContextActionFailed": "Failed to {action}"
+  "gitStatusFileContextActionFailed": "Failed to {action}",
+  "gitStatusCloseMenu": "Close menu",
+  "gitStatusCloseContextMenu": "Close context menu",
+  "gitStatusLoadDirectoryFailed": "Failed to load directory",
+  "gitStatusLoadFailed": "Failed to load"
 }

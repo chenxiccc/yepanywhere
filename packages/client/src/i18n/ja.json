@@ -1427,5 +1427,9 @@
   "gitStatusFileContextRenameLabel": "",
   "gitStatusFileContextRenameCancel": "",
   "gitStatusFileContextRenameConfirm": "",
-  "gitStatusFileContextActionFailed": ""
+  "gitStatusFileContextActionFailed": "",
+  "gitStatusCloseMenu": "メニューを閉じる",
+  "gitStatusCloseContextMenu": "コンテキストメニューを閉じる",
+  "gitStatusLoadDirectoryFailed": "ディレクトリの読み込みに失敗しました",
+  "gitStatusLoadFailed": "読み込みに失敗しました"
 }

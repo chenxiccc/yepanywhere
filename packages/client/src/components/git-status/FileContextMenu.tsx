@@ -94,7 +94,7 @@ export function FileContextMenu({
       <button
         type="button"
         className="file-context-overlay"
-        aria-label="Close context menu"
+        aria-label={t("gitStatusCloseContextMenu")}
         onClick={onClose}
         onContextMenu={(e) => {
           e.preventDefault();

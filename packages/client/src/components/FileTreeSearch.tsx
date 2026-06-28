@@ -10,9 +10,9 @@ interface FileTreeSearchProps {
   /** 搜索变化回调（已防抖）/ Change callback (debounced) */
   onChange: (value: string) => void;
   /** 占位文本 / Placeholder text */
-  placeholder?: string;
+  placeholder: string;
   /** 清除按钮无障碍标签 / Clear button aria-label */
-  clearLabel?: string;
+  clearLabel: string;
 }
 
 /**
@@ -27,8 +27,8 @@ interface FileTreeSearchProps {
 export function FileTreeSearch({
   value,
   onChange,
-  placeholder = "搜索文件...",
-  clearLabel = "清除搜索",
+  placeholder,
+  clearLabel,
 }: FileTreeSearchProps) {
   // 本地输入值，即时反映用户输入 / Local input value, reflects user input immediately
   const [localValue, setLocalValue] = useState(value);

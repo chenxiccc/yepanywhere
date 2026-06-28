@@ -102,7 +102,7 @@ export const FileTree = memo(function FileTree({
       setRootNodes(data.children);
     } catch (err) {
       setRootError(
-        err instanceof Error ? err.message : "Failed to load directory",
+        err instanceof Error ? err.message : t("gitStatusLoadDirectoryFailed"),
       );
     } finally {
       setRootLoading(false);
@@ -129,7 +129,7 @@ export const FileTree = memo(function FileTree({
         } catch (err) {
           newErrorPaths.set(
             dirPath,
-            err instanceof Error ? err.message : "Failed to load",
+            err instanceof Error ? err.message : t("gitStatusLoadFailed"),
           );
         }
       }),
@@ -168,7 +168,7 @@ export const FileTree = memo(function FileTree({
         setErrorPaths((prev) =>
           new Map(prev).set(
             dirPath,
-            err instanceof Error ? err.message : "Failed to load",
+            err instanceof Error ? err.message : t("gitStatusLoadFailed"),
           ),
         );
       } finally {

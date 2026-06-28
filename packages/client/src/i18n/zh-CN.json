@@ -1436,5 +1436,9 @@
   "gitStatusFileContextRenameLabel": "新名称：",
   "gitStatusFileContextRenameCancel": "取消",
   "gitStatusFileContextRenameConfirm": "重命名",
-  "gitStatusFileContextActionFailed": "{action} 失败"
+  "gitStatusFileContextActionFailed": "{action} 失败",
+  "gitStatusCloseMenu": "关闭菜单",
+  "gitStatusCloseContextMenu": "关闭右键菜单",
+  "gitStatusLoadDirectoryFailed": "加载目录失败",
+  "gitStatusLoadFailed": "加载失败"
 }

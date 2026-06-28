@@ -215,7 +215,7 @@ export function GitBranchSwitcher({
           <button
             type="button"
             className="git-branch-menu-backdrop"
-            aria-label="Close menu"
+            aria-label={t("gitStatusCloseMenu")}
             onClick={onClose}
             onContextMenu={(e) => {
               e.preventDefault();
@@ -403,6 +403,7 @@ export function GitSplitActionButton({
     onClick: () => void;
   } | null;
 }) {
+  const { t } = useI18n();
   const hasAlternateAction = alternateAction !== null;
 
   useEffect(() => {
@@ -441,7 +442,7 @@ export function GitSplitActionButton({
           <button
             type="button"
             className="git-branch-menu-backdrop"
-            aria-label="Close menu"
+            aria-label={t("gitStatusCloseMenu")}
             onClick={onCloseMenu}
             onContextMenu={(e) => {
               e.preventDefault();
