@@ -46,6 +46,15 @@ import type {
   UserMessageMetadata,
   WorkstreamId,
 } from "@yep-anywhere/shared";
+import { getSourceRuntimeRegistry } from "../lib/sourceRuntime";
+import { authEvents } from "../lib/authEvents";
+import {
+  getGlobalConnection,
+  isRemoteClient,
+  whenConnectionReady,
+} from "../lib/connection";
+import { createFileTreeApi } from "./file-tree";
+import { createGitStatusApi } from "./git-status";
 import type {
   AgentSession,
   InputRequest,
@@ -1389,6 +1398,14 @@ export const api = {
       apkPath?: string;
       error?: string;
     }>("/devices/bridge/download", { method: "POST" }),
+
+  // Source manager API (from git-status.ts, /api/source-manager/* endpoints)
+  // 源码管理 API（来自 git-status.ts，/api/source-manager/* 端点）
+  ...createGitStatusApi(fetchJSON),
+
+  // File tree API (from file-tree.ts)
+  // 文件树 API（来自 file-tree.ts）
+  ...createFileTreeApi(fetchJSON),
 };
 
 /** Result of testing an SSH connection to a remote executor */
