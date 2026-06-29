@@ -42,6 +42,14 @@ export interface WebhookPrivateServiceOptions {
   supervisor: Supervisor;
 }
 
+/**
+ * pending-input 去重窗口（毫秒）。同一 session 在窗口内同类型事件只发第一条，
+ * 避免连续审批刷屏并触发 IM 限流。
+ * Pending-input dedupe window (ms). Only the first event of a given type per
+ * session within the window is sent, to avoid spam and IM rate limits.
+ */
+const PENDING_INPUT_DEDUPE_WINDOW_MS = 30_000;
+
 /** dispatch 上下文 / dispatch context */
 interface DispatchContext {
   process?: {
@@ -58,6 +66,19 @@ interface DispatchContext {
 export class WebhookPrivateService {
   private readonly store: WebhookPrivateConfigStore;
   private readonly unsubscribe: () => void;
+  /**
+   * 去重表：记录每个 session 最近一次发送的 pending-input 事件。
+   * Dedupe map: the last sent pending-input event per session.
+   * waiting-input（tool-approval / user-question）比 idle 频繁得多，同一 session
+   * 连续审批会刷屏并触发钉钉 20 条/分钟限流，故在窗口内只发第一条。
+   * waiting-input fires far more often than idle; consecutive approvals in the
+   * same session would spam and hit DingTalk's 20-msg/min limit, so only the
+   * first occurrence within the window is sent.
+   */
+  private readonly pendingInputLastSent = new Map<
+    string,
+    { type: string; sentAt: number }
+  >();
 
   constructor(private readonly options: WebhookPrivateServiceOptions) {
     this.store = new WebhookPrivateConfigStore({ dataDir: options.dataDir });
@@ -133,6 +154,14 @@ export class WebhookPrivateService {
 
     // idle 分支 / idle branch
     if (event.activity === "idle") {
+      // 收到 idle 即表示当前 turn 结束，无条件清理该 session 的 pending-input
+      // 去重记录，下一次 waiting-input 会被当作新事件正常发送（不依赖下方
+      // process 状态校验，避免 synthetic idle 提前 return 时漏清理）。
+      // Receiving idle means the current turn ended; unconditionally clear the
+      // session's pending-input dedupe record so the next waiting-input is sent
+      // normally (independent of the process-state check below, which may return
+      // early on a synthetic idle and otherwise skip the cleanup).
+      this.pendingInputLastSent.delete(event.sessionId);
       if (!config.events.idle) return;
       const process = this.options.supervisor.getProcessForSession(
         event.sessionId,
@@ -158,16 +187,60 @@ export class WebhookPrivateService {
           ? config.events.toolApproval
           : config.events.userQuestion;
       if (!enabled) return;
+      // 去重：同一 session 在窗口内同类型事件只发第一条，避免连续审批刷屏/限流。
+      // 必须在 await dispatch 之前同步记录，否则并发到达的两个事件都会读到旧记录。
+      // Dedupe: only send the first event of a given type per session within the
+      // window, to avoid spamming on consecutive approvals and hitting limits.
+      // Must record synchronously BEFORE await dispatch, or two concurrently
+      // arriving events both read the stale record and both send.
+      if (this.shouldSkipPendingInput(event.sessionId, sub)) return;
+      this.recordPendingInputSent(event.sessionId, sub);
       const process = this.options.supervisor.getProcessForSession(
         event.sessionId,
       );
+      // process 可能已不在内存（如刚 unregister），此时无 projectPath，
+      // dispatch 会静默跳过。与 idle 分支的强守卫不同，这里不强制 return。
+      // process may already be out of memory (e.g. just unregistered); with no
+      // projectPath, dispatch skips silently. Unlike the idle branch's hard
+      // guard, we don't force a return here.
       await this.dispatch(event, sub, {
         process: process ? this.toProcessInfo(process) : undefined,
         projectPath: process?.projectPath,
       });
+      return;
     }
 
-    // in-turn / terminated：忽略 / in-turn / terminated: ignored
+    // in-turn：忽略（也清理该 session 的 pending-input 去重记录，表示新 turn 开始）
+    // in-turn: ignored (also clear the session's pending-input dedupe record,
+    // signaling the start of a new turn)
+    this.pendingInputLastSent.delete(event.sessionId);
+  }
+
+  /**
+   * 判断同一 session 的同类型 pending-input 是否在去重窗口内已发送过（只读检查）。
+   * Determine whether the same pending-input type for a session was already
+   * sent within the dedupe window (read-only check). The caller records the
+   * send synchronously via recordPendingInputSent right after this returns
+   * false, BEFORE the awaited dispatch — see handleProcessStateChanged.
+   */
+  private shouldSkipPendingInput(
+    sessionId: string,
+    type: string,
+  ): boolean {
+    const last = this.pendingInputLastSent.get(sessionId);
+    if (!last || last.type !== type) return false;
+    return Date.now() - last.sentAt < PENDING_INPUT_DEDUPE_WINDOW_MS;
+  }
+
+  /**
+   * 记录一次 pending-input 发送（仅在确定进入发送流程后调用）。
+   * Record a pending-input send (call only after entering the send path).
+   */
+  private recordPendingInputSent(sessionId: string, type: string): void {
+    this.pendingInputLastSent.set(sessionId, {
+      type,
+      sentAt: Date.now(),
+    });
   }
 
   /**
