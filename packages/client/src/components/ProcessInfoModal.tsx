@@ -633,7 +633,7 @@ export function ProcessInfoBody({
 export function ProcessInfoModal({ onClose, ...rest }: ProcessInfoModalProps) {
   const { t } = useI18n();
   return (
-    <Modal title={t("processInfoTitle")} onClose={onClose}>
+    <Modal title={t("processInfoTitle")} onClose={onClose} backCloses>
       <ProcessInfoBody {...rest} />
     </Modal>
   );

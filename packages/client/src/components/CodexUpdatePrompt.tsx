@@ -133,7 +133,7 @@ export function CodexUpdatePrompt() {
         : null);
 
   return (
-    <Modal title="Codex CLI update available" onClose={handleModalClose}>
+    <Modal title="Codex CLI update available" onClose={handleModalClose} backCloses>
       <div className="settings-group codex-update-prompt">
         <p className="codex-update-prompt__summary">
           {installSucceeded
