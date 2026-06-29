@@ -1,0 +1,170 @@
+/**
+ * Source manager type definitions / 源码管理类型定义
+ *
+ * 独立于上游 git-status.ts，物理隔离本分支源码管理功能所需的类型，
+ * 避免与上游同名类型（GitStatusInfo 字段不兼容）冲突。
+ * 本文件只导出本分支独有的类型；GitFileChange 仍来自上游 git-status.ts，
+ * 此处仅内部 import 引用，不 re-export（否则与上游导出同名冲突）。
+ *
+ * Independent of upstream git-status.ts. Physically isolates the types the
+ * source-manager feature needs, avoiding name clashes with upstream's
+ * GitStatusInfo (incompatible fields). Only branch-specific types live here;
+ * GitFileChange still comes from upstream git-status.ts — imported here for
+ * internal reference only, NOT re-exported (would clash with upstream export).
+ */
+
+/** 仅内部引用上游 GitFileChange，不 re-export / Internal-only import of upstream GitFileChange */
+import type { GitFileChange } from "./git-status.js";
+
+/**
+ * 源码管理状态信息（本分支版 GitStatusInfo，改名以避免与上游同名冲突）。
+ * 与上游 GitStatusInfo 字段不兼容：本分支版有 remote/stashes/latestLocalCommit，
+ * 没有 recentCommits/checkedRemoteAt。
+ *
+ * Source-manager status info (branch version of GitStatusInfo, renamed to
+ * avoid clashing with the upstream name). Incompatible fields with upstream:
+ * this has remote/stashes/latestLocalCommit, not recentCommits/checkedRemoteAt.
+ */
+export interface SourceManagerStatusInfo {
+  /** Whether the project path is a git repository */
+  isGitRepo: boolean;
+  /** Current branch name (null if detached HEAD) */
+  branch: string | null;
+  /** Upstream branch (e.g. "origin/main") */
+  upstream: string | null;
+  /** Default remote name for fetch/push (e.g. "origin") */
+  remote: string | null;
+  /** Commits ahead of upstream */
+  ahead: number;
+  /** Commits behind upstream */
+  behind: number;
+  /** Whether the working tree is clean */
+  isClean: boolean;
+  /** Latest local commit that can be undone from this branch state */
+  latestLocalCommit?: GitLocalCommitInfo | null;
+  /** Stashed changes, newest first */
+  stashes: GitStashEntry[];
+  /** Changed files with status and line counts */
+  files: GitFileChange[];
+}
+
+export interface GitLocalCommitInfo {
+  message: string;
+  committedAt: string;
+}
+
+export interface GitStashEntry {
+  ref: string;
+  message: string;
+  branch: string | null;
+  createdAt: string;
+  createdByApp: boolean;
+}
+
+export interface GitStashFileChange {
+  path: string;
+  status: string;
+  previousPath?: string;
+  linesAdded: number | null;
+  linesDeleted: number | null;
+}
+
+export interface GitStashDetail extends GitStashEntry {
+  files: GitStashFileChange[];
+}
+
+export interface GitHistoryCommitSummary {
+  hash: string;
+  shortHash: string;
+  message: string;
+  authorName: string;
+  authorEmail: string;
+  committedAt: string;
+  refs: string[];
+  filesChanged: number;
+  insertions: number;
+  deletions: number;
+}
+
+export interface GitHistoryFileChange {
+  path: string;
+  status: string;
+  previousPath?: string;
+  linesAdded: number | null;
+  linesDeleted: number | null;
+}
+
+export interface GitHistoryCommitDetail extends GitHistoryCommitSummary {
+  body: string;
+  files: GitHistoryFileChange[];
+}
+
+export interface GitCommitRequest {
+  message: string;
+  selectedPaths?: string[];
+}
+
+export interface GitUndoCommitResponse {
+  status: SourceManagerStatusInfo;
+  undoneCommitMessage: string;
+}
+
+export interface GitBranchInfo {
+  name: string;
+  current: boolean;
+  remote?: boolean;
+  group: "default" | "recent" | "other";
+  updatedAt?: string | null;
+}
+
+export interface GitCreateBranchRequest {
+  branchName: string;
+  baseBranch?: string;
+}
+
+export type GitMergeStrategy = "merge" | "squash" | "rebase";
+
+export interface GitSwitchBranchRequest {
+  targetBranch: string;
+  stashCurrentChanges: boolean;
+}
+
+export interface GitMergeBranchRequest {
+  sourceBranch: string;
+  strategy: GitMergeStrategy;
+}
+
+export interface GitMergePreviewRequest {
+  sourceBranch: string;
+  strategy: GitMergeStrategy;
+}
+
+export interface GitMergePreviewResult {
+  state: "up_to_date" | "conflict" | "mergeable";
+  targetBranch: string;
+  sourceBranch: string;
+  strategy: GitMergeStrategy;
+  commitCount: number;
+  conflictedFiles: number;
+}
+
+// File tree types (merged from file-tree.ts) / 文件树类型（从 file-tree.ts 合并）
+
+/** 文件树节点 / File tree node */
+export interface FileNode {
+  name: string;
+  /** 相对于项目根目录的路径 / Path relative to project root */
+  path: string;
+  isDirectory: boolean;
+  /** 文件大小（仅文件有）/ File size in bytes (files only) */
+  size?: number;
+  /** ISO 8601 修改时间（仅文件有）/ Last modified time (files only) */
+  modifiedAt?: string;
+  isSymlink?: boolean;
+  symlinkTarget?: string;
+}
+
+/** 目录列表响应 / Directory listing response */
+export interface FileListResponse {
+  children: FileNode[];
+}
