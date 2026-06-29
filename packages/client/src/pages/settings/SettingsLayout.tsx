@@ -63,6 +63,7 @@ import { SpeechSettings } from "./SpeechSettings";
 import { SourceControlSettings } from "./SourceControlSettings";
 import { StorageSettings } from "./StorageSettings";
 import { ToolbarSettings } from "./ToolbarSettings";
+import { WebhookPrivateSettings } from "./WebhookPrivateSettings";
 import type { SettingsCategory } from "./types";
 
 // Map category IDs to their components
@@ -78,6 +79,7 @@ const CATEGORY_COMPONENTS: Record<string, React.ComponentType> = {
   "agent-context": AgentContextSettings,
   notifications: NotificationsSettings,
   webhooks: LifecycleWebhooksSettings,
+  "webhook-private": WebhookPrivateSettings,
   devices: DevicesSettings,
   "local-access": LocalAccessSettings,
   remote: RemoteAccessSettings,
@@ -238,6 +240,17 @@ export function SettingsLayout() {
       getEmulatorCategory((key) => t(key as never)),
     );
   }
+  // webhook-private: DingTalk/Feishu group-bot; splice before about so about stays last.
+  // Labels are hardcoded (self-use only; skip i18n to avoid upstream merge conflicts).
+  {
+    const aboutIndex = categories.findIndex((c) => c.id === "about");
+    categories.splice(aboutIndex >= 0 ? aboutIndex : categories.length, 0, {
+      id: "webhook-private",
+      label: "群机器人通知",
+      description: "钉钉/飞书群机器人推送",
+    });
+  }
+
   // Two-column settings can fit before the persistent app sidebar can.
   const effectiveCategory =
     category || (useTwoColumnSettings ? categories[0]?.id : undefined);
