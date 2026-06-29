@@ -1242,6 +1242,24 @@ export const api = {
       ),
     }),
 
+  // Webhook-private API (钉钉/飞书 group-bot notifications, independent of ServerSettings)
+  getWebhookPrivateConfig: () =>
+    fetchJSON<{ config: WebhookPrivateConfig }>("/webhook-private"),
+
+  updateWebhookPrivateConfig: (config: Partial<WebhookPrivateConfig>) =>
+    fetchJSON<{ config: WebhookPrivateConfig }>("/webhook-private", {
+      method: "PUT",
+      body: JSON.stringify(config, (_key, value) =>
+        value === undefined ? null : value,
+      ),
+    }),
+
+  testWebhookPrivate: () =>
+    fetchJSON<{ success: boolean; error?: string; statusCode?: number }>(
+      "/webhook-private/test",
+      { method: "POST" },
+    ),
+
   // Read-only file-access info (env-pin state + resolved hint paths)
   getFileAccessInfo: () => fetchJSON<FileAccessInfo>("/settings/file-access"),
 
@@ -1521,6 +1539,34 @@ export interface ServerSettings {
   composeAnchorsEnabled?: boolean;
   /** Seconds Project Queue waits after whole-project idle before promotion. */
   projectQueueQuietSeconds?: number;
+}
+
+/**
+ * 钉钉/飞书群机器人 webhook 配置（webhook-private，独立于 ServerSettings）
+ * DingTalk/Feishu group-bot webhook config (webhook-private, independent of ServerSettings)
+ * 与服务端 packages/server/src/webhook-private/types.ts 结构保持一致。
+ * Kept in sync with packages/server/src/webhook-private/types.ts on the server.
+ */
+export interface WebhookPrivateConfig {
+  /** Schema 版本 / Schema version */
+  version: 1;
+  /** 总开关 / Master switch */
+  enabled: boolean;
+  /** 群机器人 webhook URL / Group-bot webhook URL */
+  url: string;
+  /** 加签密钥（可选）/ Signing secret (optional) */
+  secret: string;
+  /** 平台选择，默认 auto / Platform selection, defaults to "auto" */
+  platform: "auto" | "dingtalk" | "feishu";
+  /** 各事件类型开关 / Per-event-type toggles */
+  events: {
+    idle: boolean;
+    error: boolean;
+    toolApproval: boolean;
+    userQuestion: boolean;
+  };
+  /** 试运行模式 / Dry-run flag */
+  dryRun: boolean;
 }
 
 export type RelayClientStatus =
