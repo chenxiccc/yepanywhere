@@ -274,6 +274,66 @@ describe("WebhookPrivateService", () => {
     expect(body.markdown.text).toContain("测试"); // 测试消息文本 / test message text
   });
 
+  it("dedupes consecutive same-type pending-input events within the window", async () => {
+    const service = await makeService(
+      FEI_URL,
+      makeSupervisor(makeProcess({ state: { type: "waiting-input" } })),
+    );
+    const emit = (pendingInputType: "tool-approval" | "user-question") =>
+      service["options"].eventBus.emit({
+        type: "process-state-changed",
+        sessionId: "sess-1",
+        projectId: PROJECT_ID as never,
+        activity: "waiting-input",
+        pendingInputType,
+        timestamp: "2026-06-29T00:00:00.000Z",
+      });
+
+    // 连续两次同类型 tool-approval：只应发一条（去重）
+    // Two consecutive tool-approval events: only one should be sent (deduped)
+    emit("tool-approval");
+    emit("tool-approval");
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    // 不同类型 user-question 不被 tool-approval 抑制：应再发一条
+    // A different type (user-question) is not suppressed by tool-approval: sent
+    emit("user-question");
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+  });
+
+  it("resends the same pending-input type after the session goes idle then waiting again", async () => {
+    const service = await makeService(
+      FEI_URL,
+      makeSupervisor(makeProcess({ state: { type: "waiting-input" } })),
+    );
+    const emit = (
+      activity: "waiting-input" | "idle",
+      pendingInputType?: "tool-approval",
+    ) =>
+      service["options"].eventBus.emit({
+        type: "process-state-changed",
+        sessionId: "sess-1",
+        projectId: PROJECT_ID as never,
+        activity,
+        ...(pendingInputType ? { pendingInputType } : {}),
+        timestamp: "2026-06-29T00:00:00.000Z",
+      });
+
+    // 第一次 tool-approval 发送
+    emit("waiting-input", "tool-approval");
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    // 进入 idle 清理去重记录
+    // going idle clears the dedupe record
+    emit("idle");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // 再次 tool-approval：因 idle 已清理，应重新发送
+    // tool-approval again: idle cleared the record, so it's sent again
+    emit("waiting-input", "tool-approval");
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+  });
+
   it("reports a dingtalk business error (errcode != 0) as failure", async () => {
     fetchMock.mockResolvedValue(
       new Response(JSON.stringify({ errcode: 310000, errmsg: "sign not match" }), {
