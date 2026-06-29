@@ -131,6 +131,8 @@
 
 /* mini HEAD pill：用于"文件"tab 标题下方，比常规更小 / mini HEAD pill: under Files tab title, smaller than regular */
 .git-head-badge.git-head-badge-mini {
+  /* 摘要栏的小标签，不受分支菜单固定列宽影响 / Small badge in summary bar, not affected by branch menu fixed column width */
+  min-width: auto;
   padding: 0 0.2rem;
   font-size: 0.5rem;
   font-weight: 600;
@@ -1056,6 +1058,9 @@
 /* 分支行尾的切换按钮 / Switch button at the end of a branch row */
 .git-branch-switch-button {
   flex: 0 0 auto;
+  /* 与 HEAD pill 等宽，使第一列宽度统一，后方的图标+分支名获得一致的视觉间距 */
+  /* Equal width with HEAD pill so the leading column is uniform, giving the following icon+branch name a consistent visual gap */
+  min-width: 3rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1079,6 +1084,9 @@
 /* HEAD pill: green-wrapped HEAD label (reuses git-history-commit-list-tag's green pill pattern) */
 .git-head-badge {
   flex: 0 0 auto;
+  /* 与 switch 按钮等宽，使第一列宽度统一，后方的图标+分支名获得一致的视觉间距 */
+  /* Equal width with switch button so the leading column is uniform, giving the following icon+branch name a consistent visual gap */
+  min-width: 3rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1136,6 +1144,9 @@
 
 .git-branch-menu-main {
   min-width: 0;
+  /* 占满第一列与时间列之间的空间，使图标+分支名紧跟第一列（gap 由容器统一），时间列靠右 */
+  /* Fill space between leading column and time column so icon+name follows the first column (gap unified by container), time column right-aligned */
+  flex: 1;
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
@@ -2730,4 +2741,14 @@
   justify-content: flex-end;
   gap: var(--space-2);
   margin-top: var(--space-3);
+}
+
+/* 源码管理页全宽布局容器（宽屏用）/ Source manager full-width layout container (desktop)
+   原 v3 定义在 index.css，独立化后搬入此处，使页面自包含不依赖 index.css。
+   Originally in index.css (v3); moved here so the page is self-contained. */
+.main-content-full {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
 }
