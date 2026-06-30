@@ -33,6 +33,27 @@ import { BROWSER_LOCAL_KEYS } from "../lib/storageKeys";
 import "../styles/source-manager.css";
 import { useNavigationLayout } from "../layouts";
 
+// 占位 status：切到未访问过的项目时，真 status 还没回来，先用全空占位让框架
+// （四个 tab、顶部栏）渲染出来，避免整页白屏闪烁。isGitRepo 设 true 以走框架分支，
+// 真 status 回来后若 isGitRepo=false 再切换到“非 git 仓库”提示。
+// Placeholder status: when switching to a never-visited project, real status isn't
+// back yet — use an all-empty placeholder so the framework (four tabs, top bar)
+// renders instead of a full-page white flash. isGitRepo=true so the framework branch
+// is taken; if real status comes back with isGitRepo=false, we switch to the
+// "not a git repo" prompt.
+const PLACEHOLDER_STATUS: import("@yep-anywhere/shared").SourceManagerStatusInfo = {
+  isGitRepo: true,
+  branch: null,
+  upstream: null,
+  remote: null,
+  ahead: 0,
+  behind: 0,
+  isClean: true,
+  latestLocalCommit: null,
+  stashes: [],
+  files: [],
+};
+
 export function SourceManagerPage() {
   const { t } = useI18n();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -113,17 +134,20 @@ export function SourceManagerPage() {
 
         <main className="page-scroll-container git-status-page-scroll">
           <div className="page-content-inner git-status-page-content">
-            {loading || projectsLoading ? (
-              <div className="loading">{t("gitStatusLoading")}</div>
-            ) : error ? (
+            {error ? (
               <div className="error">
                 {t("gitStatusErrorPrefix")} {error.message}
               </div>
             ) : gitStatus && !gitStatus.isGitRepo ? (
+              // 非 git 仓库：保留提示，不显示框架 / Not a git repo: keep prompt, no framework
               <div className="git-status-empty">{t("gitStatusNotRepo")}</div>
-            ) : gitStatus && effectiveProjectId ? (
+            ) : effectiveProjectId ? (
+              // 有项目即渲染框架：真 status 没回来时用占位 status，避免整页白屏
+              // Render framework as long as there's a project: use placeholder status
+              // while real status hasn't arrived, avoiding a full-page white flash
               <GitStatusContent
-                status={gitStatus}
+                status={gitStatus ?? PLACEHOLDER_STATUS}
+                isLoading={!gitStatus}
                 projectId={effectiveProjectId}
                 projectPath={project?.path}
                 refetch={refetch}
@@ -131,7 +155,9 @@ export function SourceManagerPage() {
                 initialViewingBranch={branchParam}
                 t={t as never}
               />
-            ) : null}
+            ) : (
+              <div className="loading">{t("gitStatusLoading")}</div>
+            )}
           </div>
         </main>
       </div>
@@ -141,6 +167,7 @@ export function SourceManagerPage() {
 
 function GitStatusContent({
   status,
+  isLoading,
   projectId,
   refetch,
   applyStatus,
@@ -149,6 +176,11 @@ function GitStatusContent({
   initialViewingBranch,
 }: {
   status: import("@yep-anywhere/shared").SourceManagerStatusInfo;
+  /** 真 status 尚未到达（占位 status 期间）：顶部隐藏复制按钮/HEAD pill、分支名占位 —，
+   *  各 tab 不显示误导性空态文案 / Real status not yet arrived (placeholder period):
+   *  top bar hides copy button/HEAD pill, shows — as branch name; tabs hide
+   *  misleading empty-state copy. */
+  isLoading: boolean;
   projectId: string;
   refetch: () => Promise<void>;
   /** 写端点响应含 status 时直接应用，省掉一次 refetch / Apply write-endpoint
@@ -565,6 +597,7 @@ function GitStatusContent({
     <div className="git-desktop">
       <GitStatusSummaryBar
         status={status}
+        isLoading={isLoading}
         branches={branches}
         branchMenuError={branchMenuError}
         branchMenuOpen={branchMenuOpen}
@@ -596,6 +629,7 @@ function GitStatusContent({
       <div className="git-desktop-shell">
         <GitStatusSidebar
           status={status}
+          isLoading={isLoading}
           projectId={projectId}
           activeView={activeView}
           viewingBranch={viewingBranch}

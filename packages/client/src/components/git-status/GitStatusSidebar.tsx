@@ -19,6 +19,7 @@ type Translate = (
 
 export function GitStatusSidebar({
   status,
+  isLoading,
   projectId,
   activeView,
   viewingBranch,
@@ -73,6 +74,9 @@ export function GitStatusSidebar({
   onDeleteFile,
 }: {
   status: SourceManagerStatusInfo;
+  /** 占位期：changes/stashed tab 不显示“干净/无 stash”等误导文案 / Placeholder
+   *  period: changes/stashed tabs hide misleading "clean/no stash" copy */
+  isLoading: boolean;
   projectId: string;
   activeView: "files" | "changes" | "stashed" | "history";
   /** 当前查看的分支（null=跟随当前 checkout）/ Currently viewing branch (null=follow checkout) */
@@ -353,7 +357,11 @@ export function GitStatusSidebar({
           </div>
         ) : activeView === "changes" ? (
           <div className="git-files-card">
-            {status.files.length === 0 ? (
+            {isLoading ? (
+              // 占位期：不显示“工作区干净”误导文案，留空 / Placeholder: don't show
+              // misleading "working tree clean" copy, leave blank
+              <div className="git-status-empty" aria-busy="true" />
+            ) : status.files.length === 0 ? (
               <div className="git-status-empty">
                 {t("gitStatusWorkingTreeClean")}
               </div>
@@ -424,7 +432,11 @@ export function GitStatusSidebar({
           </div>
         ) : activeView === "stashed" ? (
           <div className="git-history-sidebar-card">
-            {stashes.length === 0 ? (
+            {isLoading ? (
+              // 占位期：不显示“无 stash”误导文案，留空 / Placeholder: don't show
+              // misleading "no stash" copy, leave blank
+              <div className="git-status-empty" aria-busy="true" />
+            ) : stashes.length === 0 ? (
               <div className="git-status-empty">
                 {t("sourceManagerStashedEmpty")}
               </div>

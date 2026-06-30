@@ -9,6 +9,7 @@ type Translate = (
 
 export function GitStatusSummaryBar({
   status,
+  isLoading,
   branches,
   branchMenuError,
   branchMenuOpen,
@@ -31,6 +32,9 @@ export function GitStatusSummaryBar({
   onSyncMenuClose,
 }: {
   status: SourceManagerStatusInfo;
+  /** 占位期：顶部分支名显 —、隐藏复制按钮与 HEAD pill / Placeholder period:
+   *  show — as branch name, hide copy button and HEAD pill */
+  isLoading: boolean;
   branches: GitBranchInfo[];
   branchMenuError: string | null;
   branchMenuOpen: boolean;
@@ -77,7 +81,7 @@ export function GitStatusSummaryBar({
         </span>
         {/* 查看=已 checkout 分支时显示 HEAD pill；查看其他分支时不显示（顶部直接显查看分支名） */}
         {/* HEAD pill shown when viewing == checked-out branch; hidden when viewing another */}
-        {isViewingCurrent && (
+        {isViewingCurrent && !isLoading && (
           <span
             className="git-head-badge"
             role="img"
@@ -88,6 +92,7 @@ export function GitStatusSummaryBar({
         )}
         <GitBranchSwitcher
           currentBranch={status.branch ?? t("gitStatusDetachedHead")}
+          isLoading={isLoading}
           branches={branches}
           isOpen={branchMenuOpen}
           onToggle={onBranchMenuToggle}

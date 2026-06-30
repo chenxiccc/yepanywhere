@@ -96,6 +96,7 @@ function CopyBranchNameSpan({
 
 export function GitBranchSwitcher({
   currentBranch,
+  isLoading,
   branches,
   isOpen,
   onToggle,
@@ -108,6 +109,9 @@ export function GitBranchSwitcher({
   error,
 }: {
   currentBranch: string;
+  /** 占位期：分支名显 —、隐藏复制按钮 / Placeholder period: show — as branch
+   *  name, hide copy button */
+  isLoading: boolean;
   branches: GitBranchInfo[];
   isOpen: boolean;
   onToggle: () => void;
@@ -198,14 +202,20 @@ export function GitBranchSwitcher({
         aria-haspopup="menu"
       >
         {/* 显示查看分支名（null 时跟随当前 checkout 分支）/ Show viewing branch name (null = follow checkout) */}
+        {/* 显示查看分支名（null 时跟随当前 checkout 分支）；占位期显 — */}
+        {/* Show viewing branch name (null = follow checkout); show — during placeholder */}
         <span className="git-branch-name-text">
-          {viewingBranch ?? currentBranch}
+          {isLoading ? "—" : viewingBranch ?? currentBranch}
         </span>
-        <CopyBranchNameSpan
-          branchName={viewingBranch ?? currentBranch}
-          copiedBranch={copiedBranch}
-          onCopy={copyBranchName}
-        />
+        {/* 占位期隐藏复制按钮（没有真实分支名可复制）/ Hide copy button during
+            placeholder (no real branch name to copy) */}
+        {!isLoading && (
+          <CopyBranchNameSpan
+            branchName={viewingBranch ?? currentBranch}
+            copiedBranch={copiedBranch}
+            onCopy={copyBranchName}
+          />
+        )}
         <ChevronDownIcon />
       </button>
       {isOpen ? (
