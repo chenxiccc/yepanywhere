@@ -8,6 +8,19 @@ import { useCallback, useMemo, useState } from "react";
 import { api } from "../api/client";
 import { UI_KEYS } from "../lib/storageKeys";
 
+// 分支列表客户端 SWR 缓存：projectId -> { branches, fetchedAt, inFlight }。
+// 打开下拉时先回显缓存秒开，后台刷新；TTL 内重复打开不发请求；inFlight 去重连点。
+// Branch list client SWR cache: projectId -> { branches, fetchedAt, inFlight }.
+// On menu open, replay cache instantly then refresh in background; repeated opens
+// within TTL skip the request; in-flight dedup handles rapid toggles.
+const BRANCHES_TTL_MS = 8000;
+type BranchesCacheEntry = {
+  branches: GitBranchInfo[];
+  fetchedAt: number;
+  inFlight: Promise<GitBranchInfo[]> | null;
+};
+const branchesCache = new Map<string, BranchesCacheEntry>();
+
 export type GitAction =
   | "commit"
   | "undo"
@@ -33,6 +46,7 @@ export function useGitStatusActions({
   projectId,
   status,
   refetch,
+  applyStatus,
   t,
   selectedCommitPaths,
   commitMessage,
@@ -42,6 +56,9 @@ export function useGitStatusActions({
   projectId: string;
   status: SourceManagerStatusInfo;
   refetch: () => Promise<void>;
+  /** 写端点响应若含 status 则直接应用，省掉一次 refetch / If the write-endpoint
+   *  response carries a status field, apply it directly, saving one refetch. */
+  applyStatus: (status: SourceManagerStatusInfo) => void;
   t: Translate;
   selectedCommitPaths: string[];
   commitMessage: string;
@@ -104,7 +121,18 @@ export function useGitStatusActions({
       try {
         const result = await runner();
         onSuccess?.(result);
-        await refetch();
+        // 写端点响应通常含 status（commit/switch/push/fetch/stash/discard/merge 等），
+        // 直接应用新鲜 status，省掉一次 refetch；无 status 字段时回退 refetch。
+        // Write-endpoint responses usually carry status; apply it directly to save a
+        // refetch. Fall back to refetch when there is no status field.
+        const maybeStatus = (
+          result as { status?: SourceManagerStatusInfo }
+        )?.status;
+        if (maybeStatus && typeof maybeStatus === "object") {
+          applyStatus(maybeStatus);
+        } else {
+          await refetch();
+        }
       } catch (err) {
         setActionError(
           err instanceof Error ? err.message : t("sourceManagerActionFailed"),
@@ -113,13 +141,54 @@ export function useGitStatusActions({
         setBusyAction(null);
       }
     },
-    [refetch, t],
+    [applyStatus, refetch, t],
   );
 
   const loadBranches = useCallback(async () => {
     try {
-      const result = await api.getGitBranches(projectId);
-      setBranches(result.branches);
+      const now = Date.now();
+      const existing = branchesCache.get(projectId);
+      // TTL 内且有数据：跳过请求 / Within TTL with existing data: skip the request
+      if (
+        existing?.fetchedAt &&
+        now - existing.fetchedAt < BRANCHES_TTL_MS
+      ) {
+        setBranches(existing.branches);
+        return;
+      }
+      // inFlight 去重：复用进行中的请求 / Dedup: reuse an in-flight request
+      if (existing?.inFlight) {
+        const branches = await existing.inFlight;
+        setBranches(branches);
+        return;
+      }
+      const promise = api
+        .getGitBranches(projectId)
+        .then((result) => {
+          branchesCache.set(projectId, {
+            branches: result.branches,
+            fetchedAt: Date.now(),
+            inFlight: null,
+          });
+          return result.branches;
+        })
+        .finally(() => {
+          // 失败时清 inFlight（不写 branches），下次重试
+          // Clear inFlight on failure (no branches cached); next open retries
+          const current = branchesCache.get(projectId);
+          if (current?.inFlight === promise) current.inFlight = null;
+        });
+      if (existing) {
+        existing.inFlight = promise;
+      } else {
+        branchesCache.set(projectId, {
+          branches: [],
+          fetchedAt: 0,
+          inFlight: promise,
+        });
+      }
+      const branches = await promise;
+      setBranches(branches);
       setBranchMenuError(null);
     } catch (err) {
       setBranchMenuError(
@@ -127,6 +196,13 @@ export function useGitStatusActions({
       );
     }
   }, [projectId, t]);
+
+  // 写后本地失效：switch/create/merge 后当前分支或分支列表变了，下次打开重新拉
+  // Invalidate locally after a write: switch/create/merge change the current
+  // branch or branch list, so the next open must re-fetch.
+  const invalidateBranches = useCallback(() => {
+    branchesCache.delete(projectId);
+  }, [projectId]);
 
   const syncAction = useMemo<"fetch" | "push" | null>(
     () =>
@@ -175,10 +251,22 @@ export function useGitStatusActions({
             targetBranch: branchName,
             stashCurrentChanges: false,
           }),
-        onSwitchSuccess,
+        // switch 后当前分支变了，本地失效分支缓存，下次打开重新拉
+        // After switch the current branch changed; invalidate branch cache locally
+        () => {
+          invalidateBranches();
+          onSwitchSuccess?.();
+        },
       );
     },
-    [projectId, runAction, status.branch, status.files.length, onSwitchSuccess],
+    [
+      projectId,
+      runAction,
+      status.branch,
+      status.files.length,
+      onSwitchSuccess,
+      invalidateBranches,
+    ],
   );
 
   const handleCreateBranch = useCallback(
@@ -203,11 +291,20 @@ export function useGitStatusActions({
         },
         // 仅在真正 switch 成功时让查看分支跟随 / Only follow when actually switched
         (switched) => {
-          if (switched) onSwitchSuccess?.();
+          if (switched) {
+            invalidateBranches();
+            onSwitchSuccess?.();
+          }
         },
       );
     },
-    [projectId, runAction, status.files.length, onSwitchSuccess],
+    [
+      projectId,
+      runAction,
+      status.files.length,
+      onSwitchSuccess,
+      invalidateBranches,
+    ],
   );
 
   const confirmBranchSwitch = useCallback(
@@ -222,10 +319,14 @@ export function useGitStatusActions({
             targetBranch,
             stashCurrentChanges,
           }),
-        onSwitchSuccess,
+        // switch 后当前分支变了，本地失效分支缓存 / Invalidate branch cache after switch
+        () => {
+          invalidateBranches();
+          onSwitchSuccess?.();
+        },
       );
     },
-    [pendingBranch, projectId, runAction, onSwitchSuccess],
+    [pendingBranch, projectId, runAction, onSwitchSuccess, invalidateBranches],
   );
 
   const handleOpenMergeModal = useCallback(() => {
@@ -242,8 +343,16 @@ export function useGitStatusActions({
       setActionError(null);
       setMergeError(null);
       try {
-        await api.mergeGitBranch(projectId, { sourceBranch, strategy });
-        await refetch();
+        // 写端点响应含新鲜 status，直接应用，省掉一次 refetch
+        // Write-endpoint response carries fresh status; apply directly, skip refetch
+        const result = await api.mergeGitBranch(projectId, {
+          sourceBranch,
+          strategy,
+        });
+        applyStatus(result.status);
+        // merge 可能新增 merge commit，影响 recent 分支排序，本地失效分支缓存
+        // merge may add a merge commit affecting recent-branch ordering; invalidate
+        invalidateBranches();
         setMergeModalOpen(false);
       } catch (err) {
         const message =
@@ -254,7 +363,7 @@ export function useGitStatusActions({
         setBusyAction(null);
       }
     },
-    [projectId, refetch, t],
+    [applyStatus, invalidateBranches, projectId, t],
   );
 
   const handleCommit = useCallback(() => {

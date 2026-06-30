@@ -48,6 +48,99 @@ const NOT_A_GIT_REPO: SourceManagerStatusInfo = {
   files: [],
 };
 
+// ---- git 结果内存缓存（TTL + 并发去重）----
+// 模型照搬 ProjectScanner.getSnapshot：fresh 命中直接返回，inFlight 去重并发请求，
+// 失败不写缓存。key 统一用 projectPath（getProjectPath 已把 projectId→path）。
+// 模块级单例：source-manager 路由仅 app.ts 注册一次，按 projectPath 分桶互不串扰。
+// In-memory git result cache (TTL + in-flight dedup).
+// Modeled on ProjectScanner.getSnapshot: fresh hit returns immediately, in-flight
+// concurrent requests dedup to one call, failures are not cached. Key is projectPath.
+// Module-level singleton: source-manager routes are registered once in app.ts;
+// entries are bucketed by projectPath so different projects don't cross-pollute.
+type GitCacheEntry<T> = {
+  value: T;
+  expiresAt: number;
+  inFlight: Promise<T> | null;
+};
+function createGitCache<T>(ttlMs: number) {
+  const store = new Map<string, GitCacheEntry<T>>();
+  return {
+    async get(key: string, loader: () => Promise<T>): Promise<T> {
+      const now = Date.now();
+      const existing = store.get(key);
+      // fresh 命中直接返回 / fresh hit
+      if (existing && now < existing.expiresAt) {
+        return existing.value;
+      }
+      // inFlight 去重：并发请求复用同一个 promise / dedup concurrent requests
+      if (existing?.inFlight) {
+        return existing.inFlight;
+      }
+      const promise = loader()
+        .then((value) => {
+          store.set(key, {
+            value,
+            expiresAt: Date.now() + ttlMs,
+            inFlight: null,
+          });
+          return value;
+        })
+        .finally(() => {
+          // 失败时清掉 inFlight（不写 value），下次请求重试
+          // Clear inFlight on failure (no value cached); next request retries
+          const current = store.get(key);
+          if (current?.inFlight === promise) {
+            current.inFlight = null;
+          }
+        });
+      if (existing) {
+        existing.inFlight = promise;
+      } else {
+        store.set(key, {
+          value: undefined as unknown as T,
+          expiresAt: 0,
+          inFlight: promise,
+        });
+      }
+      return promise;
+    },
+    invalidate(key: string) {
+      store.delete(key);
+    },
+  };
+}
+
+// status：含 files/ahead/behind/stashes，TTL 短（对齐客户端轮询的一半）
+// status: includes files/ahead/behind/stashes; short TTL (half of client poll interval)
+const statusCache = createGitCache<SourceManagerStatusInfo>(3000);
+// branches：分支列表，TTL 略长 / branches: branch list, slightly longer TTL
+const branchesCache = createGitCache<GitBranchInfo[]>(8000);
+// upstream/defaultRemote：极稳定（仅 switch/fetch/push 后变），长 TTL
+// upstream/defaultRemote: very stable (only changes after switch/fetch/push), long TTL
+const remoteCache = createGitCache<{ upstream: string | null; remote: string }>(60000);
+
+// 缓存读取辅助（写前新鲜读直调底层函数，不走这里）/ Cached read helpers
+// (write-path fresh reads call the underlying functions directly, not these)
+const cachedStatus = (projectPath: string) =>
+  statusCache.get(projectPath, () => getGitStatus(projectPath));
+const cachedBranches = (projectPath: string) =>
+  branchesCache.get(projectPath, () => getGitBranches(projectPath));
+const cachedRemote = (projectPath: string) =>
+  remoteCache.get(projectPath, async () => {
+    const upstream = await getGitUpstream(projectPath);
+    const remote = await getDefaultRemoteName(projectPath, upstream);
+    return { upstream, remote };
+  });
+// 失效辅助 / Invalidation helper
+const invalidate = (
+  projectPath: string,
+  opts: { status?: boolean; branches?: boolean; remote?: boolean } = {},
+) => {
+  if (opts.status) statusCache.invalidate(projectPath);
+  if (opts.branches) branchesCache.invalidate(projectPath);
+  if (opts.remote) remoteCache.invalidate(projectPath);
+};
+
 export function createSourceManagerRoutes(deps: SourceManagerDeps): Hono {
   const routes = new Hono();
 
@@ -55,7 +148,7 @@ export function createSourceManagerRoutes(deps: SourceManagerDeps): Hono {
     try {
       const projectPath = await getProjectPath(deps, c.req.param("projectId"));
       if (!projectPath) return c.json({ error: "Project not found" }, 404);
-      const result = await getGitStatus(projectPath);
+      const result = await cachedStatus(projectPath);
       return c.json(result);
     } catch (err) {
       if (isNotGitRepoError(err)) {
@@ -100,6 +193,9 @@ export function createSourceManagerRoutes(deps: SourceManagerDeps): Hono {
         "--",
         ...pathspecs,
       ]);
+      // commit 改了 HEAD/index（ahead 变、latestLocalCommit 变），失效 status+remote 后返回新鲜值
+      // commit changed HEAD/index (ahead/latestLocalCommit); invalidate status+remote, return fresh
+      invalidate(projectPath, { status: true, remote: true });
       return c.json({ status: await getGitStatus(projectPath) });
     } catch (err) {
       return gitActionError(err, "Failed to commit changes");
@@ -118,6 +214,9 @@ export function createSourceManagerRoutes(deps: SourceManagerDeps): Hono {
         await runGit(projectPath, ["log", "-1", "--pretty=%B"])
       ).stdout.trim();
       await runGit(projectPath, ["reset", "--mixed", "HEAD~1"]);
+      // undo 改了 HEAD（ahead 变、latestLocalCommit 变），失效 status+remote 后返回新鲜值
+      // undo changed HEAD (ahead/latestLocalCommit); invalidate status+remote, return fresh
+      invalidate(projectPath, { status: true, remote: true });
       const response: GitUndoCommitResponse = {
         status: await getGitStatus(projectPath),
         undoneCommitMessage,
@@ -157,7 +256,9 @@ export function createSourceManagerRoutes(deps: SourceManagerDeps): Hono {
         "--",
         ...pathspecs,
       ]);
-
+      // stash 改了 index/worktree/stashes，失效 status 后返回新鲜值
+      // stash changed index/worktree/stashes; invalidate status, return fresh
+      invalidate(projectPath, { status: true });
       return c.json({ status: await getGitStatus(projectPath) });
     } catch (err) {
       return gitActionError(err, "Failed to stash changes");
@@ -174,6 +275,9 @@ export function createSourceManagerRoutes(deps: SourceManagerDeps): Hono {
       const projectPath = await getProjectPath(deps, c.req.param("projectId"));
       if (!projectPath) return c.json({ error: "Project not found" }, 404);
       await runGit(projectPath, ["stash", "pop", "--index", body.stashRef]);
+      // restore stash 改了 index/stashes，失效 status 后返回新鲜值
+      // restore stash changed index/stashes; invalidate status, return fresh
+      invalidate(projectPath, { status: true });
       return c.json({ status: await getGitStatus(projectPath) });
     } catch (err) {
       return gitActionError(err, "Failed to restore stash");
@@ -190,6 +294,9 @@ export function createSourceManagerRoutes(deps: SourceManagerDeps): Hono {
       const projectPath = await getProjectPath(deps, c.req.param("projectId"));
       if (!projectPath) return c.json({ error: "Project not found" }, 404);
       await runGit(projectPath, ["stash", "drop", body.stashRef]);
+      // discard stash 改了 stashes，失效 status 后返回新鲜值
+      // discard stash changed stashes; invalidate status, return fresh
+      invalidate(projectPath, { status: true });
       return c.json({ status: await getGitStatus(projectPath) });
     } catch (err) {
       return gitActionError(err, "Failed to discard stash");
@@ -320,6 +427,9 @@ export function createSourceManagerRoutes(deps: SourceManagerDeps): Hono {
         });
       }
 
+      // discard 改了 index/worktree，失效 status 后返回新鲜值
+      // discard changed index/worktree; invalidate status, return fresh
+      invalidate(projectPath, { status: true });
       return c.json({ status: await getGitStatus(projectPath) });
     } catch (err) {
       return gitActionError(err, "Failed to discard changes");
@@ -330,13 +440,17 @@ export function createSourceManagerRoutes(deps: SourceManagerDeps): Hono {
     try {
       const projectPath = await getProjectPath(deps, c.req.param("projectId"));
       if (!projectPath) return c.json({ error: "Project not found" }, 404);
-      const upstream = await getGitUpstream(projectPath);
-      const remoteName = await getDefaultRemoteName(projectPath, upstream);
+      // 读 cachedRemote 决定 push 命令（必须在 invalidate 之前读）
+      // Read cachedRemote to decide push command (must be before invalidate)
+      const { upstream, remote: remoteName } = await cachedRemote(projectPath);
       if (upstream) {
         await runGit(projectPath, ["push"]);
       } else {
         await runGit(projectPath, ["push", "-u", remoteName, "HEAD"]);
       }
+      // 失效后再重算新鲜 status 返回（push 改了 remote refs / ahead）
+      // Invalidate then recompute fresh status to return (push changed remote refs / ahead)
+      invalidate(projectPath, { status: true, branches: true, remote: true });
       return c.json({ status: await getGitStatus(projectPath) });
     } catch (err) {
       return gitActionError(err, "Failed to push");
@@ -347,13 +461,17 @@ export function createSourceManagerRoutes(deps: SourceManagerDeps): Hono {
     try {
       const projectPath = await getProjectPath(deps, c.req.param("projectId"));
       if (!projectPath) return c.json({ error: "Project not found" }, 404);
-      const upstream = await getGitUpstream(projectPath);
+      // 读 cachedRemote 决定 fetch/pull 命令（必须在 invalidate 之前读）
+      // Read cachedRemote to decide fetch/pull command (must be before invalidate)
+      const { upstream, remote: remoteName } = await cachedRemote(projectPath);
       if (upstream) {
         await runGit(projectPath, ["pull", "--ff-only"]);
       } else {
-        const remoteName = await getDefaultRemoteName(projectPath, upstream);
         await runGit(projectPath, ["fetch", remoteName]);
       }
+      // 失效后再重算新鲜 status 返回（fetch 改了 remote refs / behind）
+      // Invalidate then recompute fresh status to return (fetch changed remote refs / behind)
+      invalidate(projectPath, { status: true, branches: true, remote: true });
       return c.json({ status: await getGitStatus(projectPath) });
     } catch (err) {
       return gitActionError(err, "Failed to fetch");
@@ -364,7 +482,7 @@ export function createSourceManagerRoutes(deps: SourceManagerDeps): Hono {
     try {
       const projectPath = await getProjectPath(deps, c.req.param("projectId"));
       if (!projectPath) return c.json({ error: "Project not found" }, 404);
-      return c.json({ branches: await getGitBranches(projectPath) });
+      return c.json({ branches: await cachedBranches(projectPath) });
     } catch (err) {
       return gitActionError(err, "Failed to list branches");
     }
@@ -393,6 +511,9 @@ export function createSourceManagerRoutes(deps: SourceManagerDeps): Hono {
         branchName,
         ...(baseBranch ? [baseBranch] : []),
       ]);
+      // create-branch 新增分支，失效 status+branches 后返回新鲜值
+      // create-branch added a branch; invalidate status+branches, return fresh
+      invalidate(projectPath, { status: true, branches: true });
       return c.json({ status: await getGitStatus(projectPath) });
     } catch (err) {
       return gitActionError(err, "Failed to create branch");
@@ -428,6 +549,10 @@ export function createSourceManagerRoutes(deps: SourceManagerDeps): Hono {
           ? ["switch", "--track", targetBranch]
           : ["switch", targetBranch];
       await runGit(projectPath, branchArgs);
+      // switch 改了 HEAD/upstream（当前分支、当前分支标记、upstream 都变），全失效后返回新鲜值
+      // switch changed HEAD/upstream (current branch, current marker, upstream);
+      // invalidate all, return fresh
+      invalidate(projectPath, { status: true, branches: true, remote: true });
       return c.json({ status: await getGitStatus(projectPath) });
     } catch (err) {
       return gitActionError(err, "Failed to switch branch");
@@ -519,6 +644,9 @@ export function createSourceManagerRoutes(deps: SourceManagerDeps): Hono {
         return c.json({ error: message }, 409);
       }
 
+      // merge 改了 HEAD（可能新增 merge commit、ahead 变），失效 status+branches 后返回新鲜值
+      // merge changed HEAD (possible new merge commit, ahead); invalidate status+branches, return fresh
+      invalidate(projectPath, { status: true, branches: true });
       return c.json({ status: await getGitStatus(projectPath) });
     } catch (err) {
       return gitActionError(err, "Failed to merge branch");
@@ -1265,16 +1393,27 @@ function createTemporaryBranchName(prefix: string): string {
 }
 
 async function getGitBranches(projectPath: string): Promise<GitBranchInfo[]> {
-  const upstream = await getGitUpstream(projectPath);
-  const defaultRemote = await getDefaultRemoteName(projectPath, upstream);
-  const { stdout } = await runGit(projectPath, [
-    "for-each-ref",
-    "--format=%(refname:short)\t%(HEAD)\t%(refname)\t%(committerdate:iso8601-strict)",
-    "refs/heads",
-    "refs/remotes",
+  // Round 1：upstream/remote（走长 TTL 缓存）、枚举所有分支、reflog 三者并行
+  // Round 1: upstream/remote (long-TTL cached), enumerate all branches, reflog in parallel
+  const [remoteInfo, eachRefResult, reflogResult] = await Promise.all([
+    cachedRemote(projectPath),
+    runGit(projectPath, [
+      "for-each-ref",
+      "--format=%(refname:short)\t%(HEAD)\t%(refname)\t%(committerdate:iso8601-strict)",
+      "refs/heads",
+      "refs/remotes",
+    ]),
+    runGit(projectPath, [
+      "reflog",
+      "show",
+      "--format=%gs",
+      "--max-count=80",
+      "HEAD",
+    ]).catch(() => null),
   ]);
+  const { remote: defaultRemote } = remoteInfo;
 
-  const branches = stdout
+  const branches = eachRefResult.stdout
     .split("\n")
     .filter(Boolean)
     .map((line) => {
@@ -1297,12 +1436,14 @@ async function getGitBranches(projectPath: string): Promise<GitBranchInfo[]> {
   const defaultBranches = await getDefaultLocalBranches(
     projectPath,
     localBranchNames,
+    defaultRemote,
   );
   const recentBranches = await getRecentLocalBranches(
     projectPath,
     localBranchNames,
     defaultBranches,
     currentLocalBranch,
+    reflogResult?.stdout ?? "",
   );
   const recentOrder = new Map(
     recentBranches.map((branchName, index) => [branchName, index]),
@@ -1355,10 +1496,11 @@ async function getGitBranches(projectPath: string): Promise<GitBranchInfo[]> {
 async function getDefaultLocalBranches(
   projectPath: string,
   localBranchNames: Set<string>,
+  // 复用调用方已算好的 defaultRemote，避免重复跑 git 命令
+  // Reuse defaultRemote already computed by caller to avoid redundant git calls
+  defaultRemote: string,
 ): Promise<Set<string>> {
   const defaults = new Set<string>();
-  const upstream = await getGitUpstream(projectPath);
-  const defaultRemote = await getDefaultRemoteName(projectPath, upstream);
   const remoteHead = await runGit(projectPath, [
     "symbolic-ref",
     "--quiet",
@@ -1392,6 +1534,9 @@ async function getRecentLocalBranches(
   localBranchNames: Set<string>,
   defaultBranches: Set<string>,
   currentLocalBranch: string | undefined,
+  // 由调用方预取的 reflog stdout，避免函数内部重复跑 git reflog
+  // reflog stdout prefetched by caller to avoid running git reflog again inside
+  reflogStdout: string,
 ): Promise<string[]> {
   const recent = new Set<string>();
 
@@ -1404,15 +1549,7 @@ async function getRecentLocalBranches(
 
   addBranch(currentLocalBranch);
 
-  const reflog = await runGit(projectPath, [
-    "reflog",
-    "show",
-    "--format=%gs",
-    "--max-count=80",
-    "HEAD",
-  ]).catch(() => null);
-
-  for (const line of reflog?.stdout.split("\n") ?? []) {
+  for (const line of reflogStdout.split("\n")) {
     const match = /^checkout: moving from .* to (.+)$/.exec(line.trim());
     if (!match) continue;
     addBranch(match[1]?.trim());
@@ -1484,8 +1621,9 @@ function statusChar(xy: string | undefined, index: 0 | 1): string | null {
 }
 
 async function getGitStatus(projectPath: string): Promise<SourceManagerStatusInfo> {
-  // Run all three commands in parallel
-  const [statusResult, numstatUnstaged, numstatStaged, upstreamRef, stashes] =
+  // status/diff/stashes 与 upstream/remote 并行；remote 走长 TTL 缓存（命中则 0 命令）
+  // status/diff/stashes run in parallel with upstream/remote; remote uses long-TTL cache
+  const [statusResult, numstatUnstaged, numstatStaged, remoteInfo, stashes] =
     await Promise.all([
       runGit(projectPath, [
         "status",
@@ -1501,10 +1639,10 @@ async function getGitStatus(projectPath: string): Promise<SourceManagerStatusInf
         stdout: "",
         stderr: "",
       })),
-      getGitUpstream(projectPath),
+      cachedRemote(projectPath),
       getGitStashes(projectPath),
     ]);
-  const remote = await getDefaultRemoteName(projectPath, upstreamRef);
+  const { remote } = remoteInfo;
 
   const unstagedStats = parseNumstat(numstatUnstaged.stdout);
   const stagedStats = parseNumstat(numstatStaged.stdout);
@@ -1515,7 +1653,27 @@ async function getGitStatus(projectPath: string): Promise<SourceManagerStatusInf
   let behind = 0;
   const files: GitFileChange[] = [];
 
-  for (const line of statusResult.stdout.split("\n")) {
+  // 预扫描未跟踪文件路径，并行读取行数统计，避免循环内逐个串行 readFile
+  // Pre-scan untracked file paths and read line counts in parallel,
+  // avoiding serial readFile one-by-one inside the loop
+  const statusLines = statusResult.stdout.split("\n");
+  const untrackedPaths = statusLines
+    .filter((line) => line.startsWith("? "))
+    .map((line) => line.slice(2))
+    .filter((path) => !path.endsWith("/"));
+  const untrackedStatsMap = new Map<string, { added: number | null; deleted: number | null }>();
+  if (untrackedPaths.length > 0) {
+    const statsResults = await Promise.all(
+      untrackedPaths.map((path) =>
+        getUntrackedFileStats(projectPath, path).then((stats) => [path, stats] as const),
+      ),
+    );
+    for (const [path, stats] of statsResults) {
+      untrackedStatsMap.set(path, stats);
+    }
+  }
+
+  for (const line of statusLines) {
     if (!line) continue;
 
     // Branch headers
@@ -1600,7 +1758,10 @@ async function getGitStatus(projectPath: string): Promise<SourceManagerStatusInf
     else if (line.startsWith("? ")) {
       const path = line.slice(2);
       if (!path.endsWith("/")) {
-        const untrackedStats = await getUntrackedFileStats(projectPath, path);
+        const untrackedStats = untrackedStatsMap.get(path) ?? {
+          added: null,
+          deleted: null,
+        };
         files.push({
           path,
           status: "?",

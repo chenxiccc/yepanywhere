@@ -57,7 +57,7 @@ export function SourceManagerPage() {
     (lastProjectValid ? lastViewedProject : undefined) ||
     projects[0]?.id;
   const { project } = useProject(effectiveProjectId);
-  const { gitStatus, loading, error, refetch } =
+  const { gitStatus, loading, error, refetch, applyStatus } =
     useSourceManagerStatus(effectiveProjectId);
 
   useDocumentTitle(project?.name, t("gitStatusTitle"));
@@ -127,6 +127,7 @@ export function SourceManagerPage() {
                 projectId={effectiveProjectId}
                 projectPath={project?.path}
                 refetch={refetch}
+                applyStatus={applyStatus}
                 initialViewingBranch={branchParam}
                 t={t as never}
               />
@@ -142,6 +143,7 @@ function GitStatusContent({
   status,
   projectId,
   refetch,
+  applyStatus,
   t,
   projectPath,
   initialViewingBranch,
@@ -149,6 +151,9 @@ function GitStatusContent({
   status: import("@yep-anywhere/shared").SourceManagerStatusInfo;
   projectId: string;
   refetch: () => Promise<void>;
+  /** 写端点响应含 status 时直接应用，省掉一次 refetch / Apply write-endpoint
+   *  status directly when the response carries one, skipping a refetch. */
+  applyStatus: (status: import("@yep-anywhere/shared").SourceManagerStatusInfo) => void;
   t: (key: string, vars?: Record<string, string | number>) => string;
   projectPath?: string;
   /** 从 URL ?branch= 传入的初始查看分支（仅首次进入生效）/ Initial viewing branch from URL ?branch= (first entry only) */
@@ -525,6 +530,7 @@ function GitStatusContent({
     projectId,
     status,
     refetch,
+    applyStatus,
     t,
     selectedCommitPaths,
     commitMessage,

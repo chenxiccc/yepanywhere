@@ -9,18 +9,34 @@
  * the upstream basic page; the source-manager page needs SourceManagerStatusInfo
  * fields stashes/latestLocalCommit/remote). Reuses upstream api.getGitStatus
  * (the endpoint returns branch fields at runtime), cast to the branch type.
+ *
+ * stale-while-revalidate：切换项目时不清空旧数据，先显示上次缓存的状态避免闪烁，
+ * 后台刷新到达后覆盖。写操作（commit/switch/push 等）通过 applyStatus 直接喂入
+ * 服务端写端点返回的新鲜 status，无需额外 refetch。
+ *
+ * stale-while-revalidate: on project switch keep the last cached status to avoid
+ * a loading flash, then overwrite once the background refresh arrives. Write
+ * actions (commit/switch/push etc.) feed the fresh status returned by the server
+ * write endpoint via applyStatus, avoiding an extra refetch.
  */
 import type { SourceManagerStatusInfo } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 
-const POLL_INTERVAL_MS = 5000;
+const POLL_INTERVAL_MS = 12000;
+
+// 模块级 SWR 缓存：projectId -> 上次 status。切换项目时先回显，避免白屏闪烁。
+// Module-level SWR cache: projectId -> last status. Replayed on project switch
+// to avoid a blank flash.
+const statusCache = new Map<string, SourceManagerStatusInfo>();
 
 export function useSourceManagerStatus(projectId: string | undefined) {
   const [gitStatus, setGitStatus] = useState<SourceManagerStatusInfo | null>(
-    null,
+    () => (projectId ? (statusCache.get(projectId) ?? null) : null),
   );
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(
+    () => !(projectId && statusCache.has(projectId)),
+  );
   const [error, setError] = useState<Error | null>(null);
   const projectIdRef = useRef(projectId);
 
@@ -30,6 +46,7 @@ export function useSourceManagerStatus(projectId: string | undefined) {
       // 本分支 status 端点，返回 SourceManagerStatusInfo（含 stashes/latestLocalCommit/remote）
       // Branch status endpoint, returns SourceManagerStatusInfo (with stashes/latestLocalCommit/remote)
       const data = await api.getSourceManagerStatus(projectId);
+      statusCache.set(projectId, data);
       setGitStatus(data);
       setError(null);
     } catch (err) {
@@ -39,13 +56,33 @@ export function useSourceManagerStatus(projectId: string | undefined) {
     }
   }, [projectId]);
 
-  // Reset on projectId change + initial fetch
+  // 写操作后直接应用服务端返回的新鲜 status，无需 refetch / Apply fresh status
+  // returned by server write endpoint after a write action, no refetch needed.
+  const applyStatus = useCallback(
+    (status: SourceManagerStatusInfo) => {
+      if (!projectId) return;
+      statusCache.set(projectId, status);
+      setGitStatus(status);
+      setError(null);
+      setLoading(false);
+    },
+    [projectId],
+  );
+
+  // 切换项目：不清空 gitStatus（SWR 回显缓存），仅重置 loading/error 并 fetch
+  // Project switch: don't clear gitStatus (SWR replays cache), just reset
+  // loading/error and fetch.
   useEffect(() => {
     if (projectIdRef.current !== projectId) {
-      setLoading(true);
-      setGitStatus(null);
-      setError(null);
       projectIdRef.current = projectId;
+      if (projectId && statusCache.has(projectId)) {
+        setGitStatus(statusCache.get(projectId) ?? null);
+        setLoading(false);
+      } else {
+        setGitStatus(null);
+        setLoading(true);
+      }
+      setError(null);
     }
     fetchStatus();
   }, [fetchStatus, projectId]);
@@ -89,5 +126,5 @@ export function useSourceManagerStatus(projectId: string | undefined) {
     };
   }, [projectId, fetchStatus]);
 
-  return { gitStatus, loading, error, refetch: fetchStatus };
+  return { gitStatus, loading, error, refetch: fetchStatus, applyStatus };
 }
