@@ -176,6 +176,18 @@ function GitStatusContent({
     }
     return null;
   });
+  // 切换项目时重置查看分支为 null：让顶部跟随新项目当前 checkout 分支，
+  // 而不是沿用旧项目残留的 viewingBranch（lastViewedBranch 是跨项目共享的全局值）。
+  // Reset viewing branch to null on project switch: let the top bar follow the new
+  // project's current checkout instead of reusing the stale viewingBranch from the
+  // previous project (lastViewedBranch is a global, cross-project value).
+  const viewedProjectIdRef = useRef(projectId);
+  useEffect(() => {
+    if (viewedProjectIdRef.current !== projectId) {
+      viewedProjectIdRef.current = projectId;
+      setViewingBranch(null);
+    }
+  }, [projectId]);
   // 派生：history 实际使用的 ref / Derived: the ref history actually uses
   const effectiveViewingBranch =
     viewingBranch ?? status.branch ?? null;

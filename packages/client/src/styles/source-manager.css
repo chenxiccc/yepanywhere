@@ -1288,6 +1288,10 @@
   height: 0.45rem;
   border-radius: 999px;
   background: currentColor;
+  /* 防止 flex 父容器在横向空间紧张时压缩圆点（宽≠高会变椭圆长条）*/
+  /* Prevent the flex parent from shrinking the dot when horizontal space is tight
+     (unequal width/height would render as an elongated ellipse) */
+  flex-shrink: 0;
 }
 
 .git-split-action {
