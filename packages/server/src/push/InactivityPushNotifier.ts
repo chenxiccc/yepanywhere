@@ -10,7 +10,6 @@ import type {
   UrlProjectId,
 } from "@yep-anywhere/shared";
 import { decodeProjectId, getProjectName } from "../projects/paths.js";
-import type { ConnectedBrowsersService } from "../services/ConnectedBrowsersService.js";
 import {
   getProjectWorkIdleStatus,
   type ProjectWorkExternalTracker,
@@ -43,8 +42,6 @@ export interface InactivityPushNotifierOptions {
   supervisor: ProjectWorkSupervisor;
   projectQueueService?: ProjectQueueReader;
   externalTracker?: ProjectWorkExternalTracker;
-  /** Optional: skip push for connected browser profiles */
-  connectedBrowsers?: ConnectedBrowsersService;
   debounceMs?: number;
 }
 
@@ -54,7 +51,6 @@ export class InactivityPushNotifier {
   private readonly supervisor: ProjectWorkSupervisor;
   private readonly projectQueueService?: ProjectQueueReader;
   private readonly externalTracker?: ProjectWorkExternalTracker;
-  private readonly connectedBrowsers?: ConnectedBrowsersService;
   private readonly debounceMs: number;
   private readonly unsubscribe: () => void;
   private readonly projectStates = new Map<UrlProjectId, EdgeState>();
@@ -72,7 +68,6 @@ export class InactivityPushNotifier {
     this.supervisor = options.supervisor;
     this.projectQueueService = options.projectQueueService;
     this.externalTracker = options.externalTracker;
-    this.connectedBrowsers = options.connectedBrowsers;
     this.debounceMs = options.debounceMs ?? DEFAULT_DEBOUNCE_MS;
     this.unsubscribe = this.eventBus.subscribe((event) => {
       this.handleEvent(event);
@@ -335,10 +330,7 @@ export class InactivityPushNotifier {
     }
 
     try {
-      const connectedIds = this.getConnectedBrowserProfileIds();
-      const results = await this.pushService.sendToAll(payload, {
-        excludeBrowserProfileIds: connectedIds,
-      });
+      const results = await this.pushService.sendToAll(payload);
       const successCount = results.filter((result) => result.success).length;
       if (successCount > 0) {
         console.log(
@@ -359,10 +351,7 @@ export class InactivityPushNotifier {
     }
 
     try {
-      const connectedIds = this.getConnectedBrowserProfileIds();
-      const results = await this.pushService.sendToAll(payload, {
-        excludeBrowserProfileIds: connectedIds,
-      });
+      const results = await this.pushService.sendToAll(payload);
       const successCount = results.filter((result) => result.success).length;
       if (successCount > 0) {
         console.log(
@@ -375,17 +364,6 @@ export class InactivityPushNotifier {
         error,
       );
     }
-  }
-
-  private getConnectedBrowserProfileIds(): string[] {
-    const connectedIds =
-      this.connectedBrowsers?.getConnectedBrowserProfileIds() ?? [];
-    if (connectedIds.length > 0) {
-      console.log(
-        `[InactivityPushNotifier] Skipping push for ${connectedIds.length} connected browser profile(s)`,
-      );
-    }
-    return connectedIds;
   }
 
   private getProjectName(projectId: UrlProjectId): string {

@@ -934,7 +934,6 @@ export function createApp(options: AppOptions): AppResult {
       supervisor,
       projectQueueService: options.projectQueueService,
       externalTracker,
-      connectedBrowsers: options.connectedBrowsers,
     });
   }
 

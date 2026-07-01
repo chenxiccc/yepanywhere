@@ -7,7 +7,6 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InactivityPushNotifier } from "../../src/push/InactivityPushNotifier.js";
 import type { PushService } from "../../src/push/PushService.js";
-import type { ConnectedBrowsersService } from "../../src/services/ConnectedBrowsersService.js";
 import type {
   ProjectWorkProcessSnapshot,
   ProjectWorkSupervisor,
@@ -100,17 +99,12 @@ describe("InactivityPushNotifier", () => {
     vi.restoreAllMocks();
   });
 
-  function createNotifier(
-    options: {
-      connectedBrowsers?: ConnectedBrowsersService;
-    } = {},
-  ): InactivityPushNotifier {
+  function createNotifier(): InactivityPushNotifier {
     notifier = new InactivityPushNotifier({
       eventBus,
       pushService,
       supervisor,
       projectQueueService: { listAll: () => queueItems },
-      connectedBrowsers: options.connectedBrowsers,
       debounceMs: 1,
     });
     return notifier;
@@ -238,16 +232,19 @@ describe("InactivityPushNotifier", () => {
     });
   });
 
-  it("excludes connected browser profiles from inactivity pushes", async () => {
+  it("sends inactivity pushes to all subscriptions without excluding connected browsers", async () => {
+    // 5c6ace81 移除了服务器端 connectedBrowsers 抑制：服务器只管发给所有订阅
+    // 设备，通知抑制由客户端 Service Worker 负责。sendToAll 不再带
+    // excludeBrowserProfileIds 选项。
+    // 5c6ace81 removed server-side connectedBrowsers suppression: the server
+    // now sends to all subscriptions and the client SW decides suppression.
+    // sendToAll no longer carries an excludeBrowserProfileIds option.
     vi.mocked(pushService.isNotificationTypeEnabled).mockImplementation(
       (type) => type === "projectInactive",
     );
-    const connectedBrowsers = {
-      getConnectedBrowserProfileIds: vi.fn(() => ["profile-connected"]),
-    } as unknown as ConnectedBrowsersService;
     const process = createProcess(projectId, { state: { type: "in-turn" } });
     supervisor.processes = [process];
-    createNotifier({ connectedBrowsers });
+    createNotifier();
 
     eventBus.emit({
       type: "process-state-changed",
@@ -270,8 +267,8 @@ describe("InactivityPushNotifier", () => {
     await vi.waitFor(() => {
       expect(pushService.sendToAll).toHaveBeenCalledTimes(1);
     });
-    expect(vi.mocked(pushService.sendToAll).mock.calls[0]?.[1]).toEqual({
-      excludeBrowserProfileIds: ["profile-connected"],
-    });
+    // sendToAll called with payload only — no excludeBrowserProfileIds.
+    // sendToAll 仅以 payload 调用，无 excludeBrowserProfileIds。
+    expect(vi.mocked(pushService.sendToAll).mock.calls[0]?.[1]).toBeUndefined();
   });
 });
