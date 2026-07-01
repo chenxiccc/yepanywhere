@@ -16,6 +16,7 @@
   "sidebarAllSessions": "Alle Sitzungen",
   "sidebarProjects": "Projekte",
   "sidebarSourceControl": "Quellcodeverwaltung",
+  "sidebarFileGit": "Datei/Git",
   "sidebarDevices": "Geräte",
   "sidebarSettings": "Einstellungen",
   "sidebarSwitchHost": "Host wechseln",

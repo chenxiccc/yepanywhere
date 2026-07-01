@@ -16,6 +16,7 @@
   "sidebarAllSessions": "全部会话",
   "sidebarProjects": "项目",
   "sidebarSourceControl": "源码控制",
+  "sidebarFileGit": "文件/Git",
   "sidebarDevices": "设备",
   "sidebarSettings": "设置",
   "sidebarSwitchHost": "切换主机",

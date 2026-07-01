@@ -67,6 +67,7 @@
   "sidebarAllSessions": "All Sessions",
   "sidebarProjects": "Projects",
   "sidebarSourceControl": "Source Control",
+  "sidebarFileGit": "File/Git",
   "sidebarDevices": "Devices",
   "sidebarSettings": "Settings",
   "sidebarSwitchHost": "Switch Host",

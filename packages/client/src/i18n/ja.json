@@ -16,6 +16,7 @@
   "sidebarAllSessions": "すべてのセッション",
   "sidebarProjects": "プロジェクト",
   "sidebarSourceControl": "ソース管理",
+  "sidebarFileGit": "ファイル/Git",
   "sidebarDevices": "デバイス",
   "sidebarSettings": "設定",
   "sidebarSwitchHost": "ホストを切り替え",

@@ -47,12 +47,7 @@ import type {
   WorkstreamId,
 } from "@yep-anywhere/shared";
 import { getSourceRuntimeRegistry } from "../lib/sourceRuntime";
-import { authEvents } from "../lib/authEvents";
-import {
-  getGlobalConnection,
-  isRemoteClient,
-  whenConnectionReady,
-} from "../lib/connection";
+import { isRemoteClient } from "../lib/connection";
 import { createFileTreeApi } from "./file-tree";
 import { createGitStatusApi } from "./git-status";
 import type {

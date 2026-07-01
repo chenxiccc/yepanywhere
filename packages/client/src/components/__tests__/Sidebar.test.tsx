@@ -208,6 +208,7 @@ vi.mock("../../i18n", () => ({
         sidebarAllSessions: "All Sessions",
         sidebarProjects: "Projects",
         sidebarSourceControl: "Source Control",
+        sidebarFileGit: "File/Git",
         projectCardQueueCount: "Project Queue items: {count}",
         sidebarSectionPendingSessions: "Pending Sessions",
         sidebarSettings: "Settings",
@@ -592,9 +593,14 @@ describe("Sidebar collapsed toggle", () => {
       </MemoryRouter>,
     );
 
+    // 双入口：上游 "Source Control" → /git-status，我们的 "File/Git" → /source-manager
+    // Dual entries: upstream "Source Control" → /git-status, ours "File/Git" → /source-manager
     expect(
       screen.getByRole("link", { name: "Source Control" }).getAttribute("href"),
     ).toBe("/remote/test/git-status?projectId=project-2");
+    expect(
+      screen.getByRole("link", { name: "File/Git" }).getAttribute("href"),
+    ).toBe("/remote/test/source-manager?projectId=project-2");
   });
 
   it("links Source Control to the current session project", () => {
@@ -619,6 +625,9 @@ describe("Sidebar collapsed toggle", () => {
     expect(
       screen.getByRole("link", { name: "Source Control" }).getAttribute("href"),
     ).toBe("/remote/test/git-status?projectId=project-1");
+    expect(
+      screen.getByRole("link", { name: "File/Git" }).getAttribute("href"),
+    ).toBe("/remote/test/source-manager?projectId=project-1");
   });
 
   it("keeps Source Control active when its link includes project context", () => {
@@ -626,7 +635,7 @@ describe("Sidebar collapsed toggle", () => {
     projectsState.projects = [{ id: "project-1", name: "Alpha" }];
 
     render(
-      <MemoryRouter initialEntries={["/git-status?projectId=project-1"]}>
+      <MemoryRouter initialEntries={["/source-manager?projectId=project-1"]}>
         <Sidebar
           isOpen={true}
           onClose={() => {}}
@@ -637,9 +646,11 @@ describe("Sidebar collapsed toggle", () => {
       </MemoryRouter>,
     );
 
+    // /source-manager 路由下，"File/Git" 链接 active（我们的入口）
+    // On /source-manager route, the "File/Git" link is active (our entry)
     expect(
       screen
-        .getByRole("link", { name: "Source Control" })
+        .getByRole("link", { name: "File/Git" })
         .classList.contains("active"),
     ).toBe(true);
   });
