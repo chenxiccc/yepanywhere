@@ -21,6 +21,8 @@
     "request:census": "node scripts/request-census.mjs"
   },
   "dependencies": {
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
     "@yep-anywhere/shared": "workspace:*",
     "katex": "^0.16.45",
     "react": "^19.0.0",

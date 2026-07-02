@@ -1426,5 +1426,20 @@
   "sourceManagerCloseMenu": "Cerrar menú",
   "sourceManagerCloseContextMenu": "Cerrar menú contextual",
   "sourceManagerLoadDirectoryFailed": "Error al cargar el directorio",
-  "sourceManagerLoadFailed": "Error al cargar"
+  "sourceManagerLoadFailed": "Error al cargar",
+  "terminalNewTab": "Nueva pestaña",
+  "terminalRenameTab": "Renombrar pestaña",
+  "terminalCloseTab": "Cerrar pestaña",
+  "terminalTabExited": "Finalizado",
+  "sessionMenuOpenTerminal": "Terminal",
+  "sessionTerminalUnavailable": "El terminal solo está disponible en la app de escritorio.",
+  "sessionTerminalExited": "Proceso finalizado",
+  "sessionTerminalOpenFailed": "Error al abrir el terminal",
+  "sessionTerminalPaste": "Pegar",
+  "sessionTerminalPasteFailed": "Error al pegar desde el portapapeles",
+  "sessionTerminalStatusConnecting": "Conectando terminal...",
+  "sessionTerminalStatusConnected": "Terminal conectado",
+  "sessionTerminalStatusExited": "Shell finalizado",
+  "sessionTerminalKeyboard": "Teclado",
+  "sessionTerminalInputPlaceholder": "Escribir en el terminal..."
 }

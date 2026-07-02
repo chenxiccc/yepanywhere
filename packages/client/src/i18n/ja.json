@@ -1426,5 +1426,20 @@
   "sourceManagerCloseMenu": "メニューを閉じる",
   "sourceManagerCloseContextMenu": "コンテキストメニューを閉じる",
   "sourceManagerLoadDirectoryFailed": "ディレクトリの読み込みに失敗しました",
-  "sourceManagerLoadFailed": "読み込みに失敗しました"
+  "sourceManagerLoadFailed": "読み込みに失敗しました",
+  "terminalNewTab": "新しいタブ",
+  "terminalRenameTab": "タブ名を変更",
+  "terminalCloseTab": "タブを閉じる",
+  "terminalTabExited": "終了",
+  "sessionMenuOpenTerminal": "ターミナル",
+  "sessionTerminalUnavailable": "ターミナルはデスクトップアプリでのみ利用可能です。",
+  "sessionTerminalExited": "プロセスが終了しました",
+  "sessionTerminalOpenFailed": "ターミナルを開けませんでした",
+  "sessionTerminalPaste": "貼り付け",
+  "sessionTerminalPasteFailed": "クリップボードからの貼り付けに失敗しました",
+  "sessionTerminalStatusConnecting": "ターミナルに接続中...",
+  "sessionTerminalStatusConnected": "ターミナルに接続しました",
+  "sessionTerminalStatusExited": "シェルが終了しました",
+  "sessionTerminalKeyboard": "キーボード",
+  "sessionTerminalInputPlaceholder": "ターミナルに入力..."
 }

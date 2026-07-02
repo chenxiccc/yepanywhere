@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "setup:core": "pnpm --filter yep-anywhere --filter @yep-anywhere/server... --filter @yep-anywhere/client... install",
+    "postinstall": "node scripts/fix-node-pty.mjs",
     "setup-vapid": "tsx scripts/setup-vapid.ts",
     "clone-references": "node scripts/clone-references.mjs --sync",
     "references:sync": "node scripts/clone-references.mjs --sync",

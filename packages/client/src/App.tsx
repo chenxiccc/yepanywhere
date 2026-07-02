@@ -24,6 +24,7 @@ import {
 } from "./hooks/useReloadNotifications";
 import { useSeedCompactThreshold } from "./hooks/useSeedCompactThreshold";
 import { I18nProvider } from "./i18n";
+import { TerminalModalProvider } from "./components/TerminalModalProvider";
 import { initClientLogCollection } from "./lib/diagnostics";
 
 interface Props {
@@ -119,6 +120,7 @@ export function App({ children }: Props) {
 
   return (
     <I18nProvider>
+      <TerminalModalProvider>
       <ToastProvider>
         <AuthProvider>
           <ClientSummarySourceBinding />
@@ -135,6 +137,7 @@ export function App({ children }: Props) {
           </CurrentSourceRuntimeProvider>
         </AuthProvider>
       </ToastProvider>
+      </TerminalModalProvider>
     </I18nProvider>
   );
 }

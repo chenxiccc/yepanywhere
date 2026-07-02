@@ -2142,5 +2142,20 @@
   "sourceManagerCloseMenu": "Close menu",
   "sourceManagerCloseContextMenu": "Close context menu",
   "sourceManagerLoadDirectoryFailed": "Failed to load directory",
-  "sourceManagerLoadFailed": "Failed to load"
+  "sourceManagerLoadFailed": "Failed to load",
+  "terminalNewTab": "New Tab",
+  "terminalRenameTab": "Rename Tab",
+  "terminalCloseTab": "Close Tab",
+  "terminalTabExited": "Exited",
+  "sessionMenuOpenTerminal": "Terminal",
+  "sessionTerminalUnavailable": "Terminal is only available in the desktop app.",
+  "sessionTerminalExited": "Process exited",
+  "sessionTerminalOpenFailed": "Failed to open terminal",
+  "sessionTerminalPaste": "Paste",
+  "sessionTerminalPasteFailed": "Failed to paste from clipboard",
+  "sessionTerminalStatusConnecting": "Connecting terminal...",
+  "sessionTerminalStatusConnected": "Terminal connected",
+  "sessionTerminalStatusExited": "Shell exited",
+  "sessionTerminalKeyboard": "Keyboard",
+  "sessionTerminalInputPlaceholder": "Type into the terminal..."
 }

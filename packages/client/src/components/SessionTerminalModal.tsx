@@ -2,9 +2,11 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import { useCallback, useEffect, useRef, useState } from "react";
 import "@xterm/xterm/css/xterm.css";
-import { type TerminalTab, api, getDesktopTokenQuery } from "../api/client";
+import { type TerminalTab, getDesktopTokenQuery } from "../api/terminal-api";
+import { api } from "../api/client";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { useI18n } from "../i18n";
+import "../styles/terminal.css";
 import {
   clearSelectedTerminalTabId,
   getSelectedTerminalTabId,

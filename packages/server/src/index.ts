@@ -52,6 +52,7 @@ import {
 } from "./remote-access/index.js";
 import { createSpeechRoutes } from "./routes/speech.js";
 import { createUploadRoutes } from "./routes/upload.js";
+import { createNodePtyFactory, createTerminalRoutes } from "./routes/terminal.js";
 import { getServerCompatibilityInfo } from "./routes/version.js";
 import { createWsRelayRoutes } from "./routes/ws-relay.js";
 import { createAcceptRelayConnection } from "./routes/ws-relay.js";
@@ -81,6 +82,7 @@ import {
   registerSpeechBackends,
 } from "./services/voice/registry.js";
 import { ClaudeSessionReader } from "./sessions/reader.js";
+import { TerminalWorkspaceRegistry } from "./terminal/TerminalWorkspaceRegistry.js";
 import { AttachmentStagingService } from "./uploads/AttachmentStagingService.js";
 import { UploadManager } from "./uploads/manager.js";
 import {
@@ -133,6 +135,7 @@ let disposeAppForShutdown:
   | Awaited<ReturnType<typeof createApp>>["disposeSessionReaders"]
   | null = null;
 let deviceBridgeForShutdown: DeviceBridgeService | null = null;
+let terminalRegistryForShutdown: TerminalWorkspaceRegistry | null = null;
 let attachmentStagingCleanupTimer: ReturnType<typeof setInterval> | null = null;
 let isShuttingDown = false;
 
@@ -193,6 +196,14 @@ async function gracefulShutdown(signal: string): Promise<void> {
     } catch (error) {
       console.error("[Shutdown] Error shutting down emulator bridge:", error);
     }
+  }
+
+  // Dispose terminal workspace (kill all PTY processes)
+  // 释放终端工作区（终止所有 PTY 进程）
+  if (terminalRegistryForShutdown) {
+    terminalRegistryForShutdown.dispose();
+    terminalRegistryForShutdown = null;
+    console.log("[Shutdown] Terminal workspace disposed");
   }
 
   closeCodexCorrelationDebugLogger();
@@ -802,6 +813,24 @@ async function startServer() {
     }),
   );
   markStartup("speech routes mounted");
+
+  // Terminal workspace — 终端工作区（项目级 shell 访问）
+  // Terminal workspace — project-level shell access
+  // Mounted here (not in app.ts) because it needs upgradeWebSocket from createNodeWebSocket.
+  // 在此挂载（不在 app.ts）因为需要 createNodeWebSocket 返回的 upgradeWebSocket。
+  const terminalRegistry = new TerminalWorkspaceRegistry({
+    createPty: createNodePtyFactory(),
+  });
+  terminalRegistryForShutdown = terminalRegistry;
+  app.route(
+    "/api",
+    createTerminalRoutes({
+      scanner,
+      upgradeWebSocket,
+      registry: terminalRegistry,
+    }),
+  );
+  markStartup("terminal routes mounted");
 
   // Add WebSocket relay route for Phase 2b/2c/2d
   // This allows clients to make HTTP-like requests, subscriptions, and uploads over WebSocket

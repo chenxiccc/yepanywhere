@@ -1426,5 +1426,20 @@
   "sourceManagerCloseMenu": "Menü schließen",
   "sourceManagerCloseContextMenu": "Kontextmenü schließen",
   "sourceManagerLoadDirectoryFailed": "Verzeichnis konnte nicht geladen werden",
-  "sourceManagerLoadFailed": "Laden fehlgeschlagen"
+  "sourceManagerLoadFailed": "Laden fehlgeschlagen",
+  "terminalNewTab": "Neuer Tab",
+  "terminalRenameTab": "Tab umbenennen",
+  "terminalCloseTab": "Tab schließen",
+  "terminalTabExited": "Beendet",
+  "sessionMenuOpenTerminal": "Terminal",
+  "sessionTerminalUnavailable": "Terminal ist nur in der Desktop-App verfügbar.",
+  "sessionTerminalExited": "Prozess beendet",
+  "sessionTerminalOpenFailed": "Terminal konnte nicht geöffnet werden",
+  "sessionTerminalPaste": "Einfügen",
+  "sessionTerminalPasteFailed": "Einfügen aus der Zwischenablage fehlgeschlagen",
+  "sessionTerminalStatusConnecting": "Terminal verbinden...",
+  "sessionTerminalStatusConnected": "Terminal verbunden",
+  "sessionTerminalStatusExited": "Shell beendet",
+  "sessionTerminalKeyboard": "Tastatur",
+  "sessionTerminalInputPlaceholder": "In das Terminal eingeben..."
 }

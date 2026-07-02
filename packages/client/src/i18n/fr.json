@@ -1426,5 +1426,20 @@
   "sourceManagerCloseMenu": "Fermer le menu",
   "sourceManagerCloseContextMenu": "Fermer le menu contextuel",
   "sourceManagerLoadDirectoryFailed": "Échec du chargement du répertoire",
-  "sourceManagerLoadFailed": "Échec du chargement"
+  "sourceManagerLoadFailed": "Échec du chargement",
+  "terminalNewTab": "Nouvel onglet",
+  "terminalRenameTab": "Renommer l'onglet",
+  "terminalCloseTab": "Fermer l'onglet",
+  "terminalTabExited": "Terminé",
+  "sessionMenuOpenTerminal": "Terminal",
+  "sessionTerminalUnavailable": "Le terminal est uniquement disponible dans l'application de bureau.",
+  "sessionTerminalExited": "Processus terminé",
+  "sessionTerminalOpenFailed": "Échec de l'ouverture du terminal",
+  "sessionTerminalPaste": "Coller",
+  "sessionTerminalPasteFailed": "Échec du collage depuis le presse-papiers",
+  "sessionTerminalStatusConnecting": "Connexion du terminal...",
+  "sessionTerminalStatusConnected": "Terminal connecté",
+  "sessionTerminalStatusExited": "Shell terminé",
+  "sessionTerminalKeyboard": "Clavier",
+  "sessionTerminalInputPlaceholder": "Saisir dans le terminal..."
 }

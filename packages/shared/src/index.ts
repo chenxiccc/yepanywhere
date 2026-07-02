@@ -150,6 +150,7 @@ export {
 // 本分支源码管理独有类型（SourceManagerStatusInfo 等），物理隔离自上游 git-status.ts
 // Branch-specific source-manager types, physically isolated from upstream git-status.ts
 export * from "./source-manager-types.js";
+export * from "./terminal-types.js";
 
 export type {
   SessionActiveWorkKind,

@@ -1,9 +1,11 @@
 /**
- * TerminalModalProvider — 通过 Context + Portal 注入终端弹窗，避免修改 SessionPage。
- * TerminalModalProvider — injects terminal modal via Context + Portal to avoid modifying SessionPage.
+ * TerminalModalProvider — 通过 Context 注入终端弹窗，避免修改 SessionPage。
+ * TerminalModalProvider — injects terminal modal via Context to avoid modifying SessionPage.
+ *
+ * 弹窗作为 children 的兄弟节点渲染（不用 portal），确保在 I18nProvider 的 context 范围内。
+ * The modal renders as a sibling of children (no portal) to stay within I18nProvider context.
  */
 import { createContext, useCallback, useContext, useState } from "react";
-import { createPortal } from "react-dom";
 import { SessionTerminalModal } from "./SessionTerminalModal";
 
 interface TerminalModalState {
@@ -51,15 +53,13 @@ export function TerminalModalProvider({
   return (
     <TerminalModalContext.Provider value={{ openTerminal }}>
       {children}
-      {state &&
-        createPortal(
-          <SessionTerminalModal
-            projectId={state.projectId}
-            projectPath={state.projectPath}
-            onClose={() => setState(null)}
-          />,
-          document.body,
-        )}
+      {state && (
+        <SessionTerminalModal
+          projectId={state.projectId}
+          projectPath={state.projectPath}
+          onClose={() => setState(null)}
+        />
+      )}
     </TerminalModalContext.Provider>
   );
 }
