@@ -90,14 +90,14 @@
   border-bottom: none;
   border-radius: 0;
   background: rgba(255, 255, 255, 0.03);
-  color: var(--text-muted);
+  color: #888;
   cursor: pointer;
   flex: 0 0 auto;
 }
 
 .session-terminal-tab.active {
   background: #0a0a0a;
-  color: var(--text-primary);
+  color: #ddd;
   border-color: rgba(255, 255, 255, 0.14);
   border-bottom-color: #0a0a0a;
   z-index: 1;
@@ -113,7 +113,7 @@
 
 .session-terminal-tab-badge {
   font-size: 0.65rem;
-  color: var(--text-muted);
+  color: #999;
   padding: 0.05rem 0.35rem;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.07);
@@ -160,14 +160,14 @@
   font-size: 1.05rem;
   line-height: 1;
   border-radius: 0;
-  color: var(--text-muted);
+  color: #777;
   margin-right: 0;
   background: rgba(255, 255, 255, 0.03);
   border: none;
 }
 
 .session-terminal-tab-new:hover {
-  color: var(--text-primary);
+  color: #ddd;
 }
 
 /* ===== Terminal Container / 终端容器 ===== */
