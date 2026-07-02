@@ -66,7 +66,12 @@ export function createNodePtyFactory(): PtyFactory {
   return (projectPath: string, cols: number, rows: number): pty.IPty => {
     ensureNodePtySpawnHelperExecutable();
     const shell = getShellCommand();
-    const ptyProcess = pty.spawn(shell.command, shell.args, {
+    // 通过 -c 先执行 stty -echo，再 exec 到交互式 shell
+    // 确保 echo 在 shell 接受用户输入前已关闭，避免本地回显 + 服务端回显的双字符
+    // Run stty -echo via -c before exec'ing interactive shell,
+    // so echo is off before any user input reaches the shell
+    const args = ["-c", `stty -echo 2>/dev/null; exec ${shell.command} -i`];
+    const ptyProcess = pty.spawn(shell.command, args, {
       cwd: projectPath,
       env: {
         ...env,
@@ -77,9 +82,6 @@ export function createNodePtyFactory(): PtyFactory {
       rows,
       name: "xterm-256color",
     });
-    // 关闭服务端回显：客户端已做本地回显，服务端回显会导致重复字符
-    // Disable server-side echo: client handles local echo, server echo would double characters
-    ptyProcess.write("stty -echo\n");
     return ptyProcess;
   };
 }
