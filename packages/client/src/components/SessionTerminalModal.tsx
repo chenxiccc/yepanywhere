@@ -493,6 +493,7 @@ export function SessionTerminalModal({
         </div>
       }
       onClose={onClose}
+      backCloses
     >
       <div className={`session-terminal-modal ${isMobile ? "mobile" : ""}`}>
         <div className="session-terminal-tabs">
