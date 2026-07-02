@@ -160,6 +160,9 @@ export function SessionTerminalModal({
     terminal.focus();
 
     const dataDisposable = terminal.onData((data: string) => {
+      // 本地回显：立即显示输入，不等待服务器返回
+      // Local echo: display input immediately without waiting for server round-trip
+      terminal.write(data);
       sendMessage({ type: "input", data });
     });
 

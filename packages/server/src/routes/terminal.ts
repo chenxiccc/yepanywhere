@@ -66,7 +66,7 @@ export function createNodePtyFactory(): PtyFactory {
   return (projectPath: string, cols: number, rows: number): pty.IPty => {
     ensureNodePtySpawnHelperExecutable();
     const shell = getShellCommand();
-    return pty.spawn(shell.command, shell.args, {
+    const ptyProcess = pty.spawn(shell.command, shell.args, {
       cwd: projectPath,
       env: {
         ...env,
@@ -77,6 +77,10 @@ export function createNodePtyFactory(): PtyFactory {
       rows,
       name: "xterm-256color",
     });
+    // 关闭服务端回显：客户端已做本地回显，服务端回显会导致重复字符
+    // Disable server-side echo: client handles local echo, server echo would double characters
+    ptyProcess.write("stty -echo\n");
+    return ptyProcess;
   };
 }
 
