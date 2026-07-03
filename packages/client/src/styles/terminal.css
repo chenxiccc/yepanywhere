@@ -412,3 +412,25 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* ===== Mobile: Native Touch Selection / 移动端原生选择 (方案 C) ===== */
+
+/* 仅移动端 + 启用 class 时解除 user-select 封印 /
+   only mobile + enabled class lifts the user-select:none set on .xterm */
+.xterm-native-touch-selection .xterm-rows,
+.xterm-native-touch-selection .xterm-rows span {
+  user-select: text;
+  -webkit-user-select: text;
+  -webkit-touch-callout: default; /* iOS 长按菜单 / iOS long-press menu; Android 忽略无副作用 */
+}
+
+/* 选择进行时：确保 .xterm-rows 仍可被 touch 命中（防御性；
+   xterm listener 的阻断靠 capture stopImmediatePropagation，不靠 pointer-events） /
+   during selection: ensure .xterm-rows stays hit-testable (defensive;
+   xterm listener is blocked via capture stopImmediatePropagation, not pointer-events) */
+.xterm-native-touch-selection.xterm-selecting .xterm-rows,
+.xterm-native-touch-selection.xterm-selecting .xterm-rows span {
+  pointer-events: auto;
+  user-select: text;
+  -webkit-user-select: text;
+}

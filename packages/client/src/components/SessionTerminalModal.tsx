@@ -51,6 +51,11 @@ export function SessionTerminalModal({
   const [keyboardInset, setKeyboardInset] = useState(0);
   const tabLongPressTimerRef = useRef<number | null>(null);
   const tabLongPressTriggeredRef = useRef(false);
+  // 方案 C：选择模式标记，供 keepCursorVisible 跳过 scrollToBottom，
+  // 避免选择期间 DomRenderer textContent 替换清空原生选区 /
+  // selection flag, keepCursorVisible checks it to skip scrollToBottom,
+  // avoiding DomRenderer textContent swap clearing the native selection
+  const selectingRef = useRef(false);
   // C3: 心跳定时器，收到 snapshot 后启动 / heartbeat timer, started after snapshot
   const pingIntervalRef = useRef<number | null>(null);
   // C5: resize 网络发送防抖 / resize network send debounce
@@ -94,6 +99,7 @@ export function SessionTerminalModal({
   }, []);
 
   const keepCursorVisible = useCallback(() => {
+    if (selectingRef.current) return; // 选择中不滚动，保护原生选区 / skip scroll during selection
     terminalRef.current?.scrollToBottom();
     containerRef.current?.scrollIntoView({
       block: "nearest",
@@ -234,6 +240,115 @@ export function SessionTerminalModal({
       terminal.dispose();
     };
   }, [keepCursorVisible, sendMessage]);
+
+  // 方案 C：移动端原生长按选择 / mobile native long-press selection
+  // 长按 700ms 进入选择模式，capture 阶段阻断 xterm 的 touchmove listener，
+  // 使其 _bubbleScroll 不 preventDefault，让浏览器原生选择拖拽接管；
+  // 滑动滚动（未进入选择模式）不干预，xterm 正常滚动 /
+  // long-press 700ms enters selection mode; capture-phase blocks xterm's touchmove
+  // listener so its _bubbleScroll won't preventDefault, letting the browser's native
+  // selection drag take over; sliding scroll (not in selection mode) is left untouched
+  useEffect(() => {
+    const terminal = terminalRef.current;
+    const container = containerRef.current;
+    if (!terminal || !container || !isMobile) return;
+
+    const xtermEl = terminal.element;
+    if (!xtermEl) return; // element 可能 undefined / element may be undefined
+    xtermEl.classList.add("xterm-native-touch-selection");
+
+    let longPressTimer: number | null = null;
+    let selecting = false;
+    let activeIdentifier: number | null = null; // 跟踪同一手指，多指不误判 / track same finger
+    let startX = 0;
+    let startY = 0;
+    const LONG_PRESS_MS = 700;
+    const MOVE_THRESHOLD_PX = 12; // 8px 偏小易误判滑动，提到 12px / 8px too small, raise to 12px
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return; // 多指不处理 / ignore multi-touch
+      const touch = e.touches[0];
+      if (!touch) return; // 类型守卫：noUncheckedIndexedAccess 下 [0] 可能 undefined / type guard: [0] may be undefined under noUncheckedIndexedAccess
+      activeIdentifier = touch.identifier;
+      startX = touch.clientX;
+      startY = touch.clientY;
+      selecting = false;
+      selectingRef.current = false;
+      longPressTimer = window.setTimeout(() => {
+        if (!selecting && activeIdentifier !== null) {
+          selecting = true;
+          selectingRef.current = true;
+          xtermEl.classList.add("xterm-selecting");
+          navigator.vibrate?.(10); // 轻震反馈，iOS 无 vibrate 静默忽略 / haptic; iOS no-op
+        }
+      }, LONG_PRESS_MS);
+    };
+
+    const findActiveTouch = (e: TouchEvent) =>
+      Array.from(e.touches).find((t) => t.identifier === activeIdentifier);
+
+    const onTouchMove = (e: TouchEvent) => {
+      const touch = findActiveTouch(e);
+      if (!touch) return;
+      const dx = touch.clientX - startX;
+      const dy = touch.clientY - startY;
+      if (!selecting) {
+        // 未进入选择模式：移动超阈值判为滑动滚动，取消长按 /
+        // not in selection mode: movement beyond threshold = sliding scroll, cancel long-press
+        if (dx * dx + dy * dy > MOVE_THRESHOLD_PX * MOVE_THRESHOLD_PX) {
+          if (longPressTimer) {
+            window.clearTimeout(longPressTimer);
+            longPressTimer = null;
+          }
+        }
+        return; // 不干预，让 xterm 正常滚动 / don't interfere, let xterm scroll
+      }
+      // 已进入选择模式：阻断 xterm 的 bubble 阶段 touchmove listener，
+      // 使 handleTouchMove/_bubbleScroll 不执行 → 不 preventDefault → 原生选择拖拽继续 /
+      // in selection mode: block xterm's bubble-phase touchmove listener so
+      // handleTouchMove/_bubbleScroll won't run → no preventDefault → native selection drag continues
+      e.stopImmediatePropagation();
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      // 仅当抬起的是活跃手指才结束 / only end when the active finger lifts
+      const changed = Array.from(e.changedTouches).find(
+        (t) => t.identifier === activeIdentifier,
+      );
+      if (!changed) return;
+      if (longPressTimer) {
+        window.clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+      if (selecting) {
+        // 阻断合成 click，避免 focusMobileKeyboard 弹键盘遮挡系统菜单 /
+        // block synthetic click so focusMobileKeyboard won't pop keyboard over the system menu
+        e.stopImmediatePropagation();
+        e.preventDefault();
+      }
+      selecting = false;
+      selectingRef.current = false;
+      activeIdentifier = null;
+      xtermEl.classList.remove("xterm-selecting");
+    };
+
+    const opts: AddEventListenerOptions = { capture: true };
+    container.addEventListener("touchstart", onTouchStart, opts);
+    container.addEventListener("touchmove", onTouchMove, opts);
+    container.addEventListener("touchend", onTouchEnd, opts);
+    container.addEventListener("touchcancel", onTouchEnd, opts);
+
+    return () => {
+      if (longPressTimer) window.clearTimeout(longPressTimer);
+      selectingRef.current = false;
+      container.removeEventListener("touchstart", onTouchStart, opts);
+      container.removeEventListener("touchmove", onTouchMove, opts);
+      container.removeEventListener("touchend", onTouchEnd, opts);
+      container.removeEventListener("touchcancel", onTouchEnd, opts);
+      xtermEl.classList.remove("xterm-native-touch-selection");
+      xtermEl.classList.remove("xterm-selecting");
+    };
+  }, [isMobile]);
 
   useEffect(() => {
     void loadTabs().catch((err: unknown) => {
