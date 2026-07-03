@@ -24,7 +24,8 @@ type TerminalServerMessage =
   | { type: "snapshot"; data: string }
   | { type: "output"; data: string }
   | { type: "exit"; exitCode: number | null }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string }
+  | { type: "pong" };
 
 type TerminalClientMessage =
   | { type: "input"; data: string }
@@ -227,6 +228,8 @@ export function SessionTerminalModal({
     const wsUrl = `${protocol}//${window.location.host}/api/projects/${projectId}/terminal-tabs/${activeTabId}/ws${query ? `?${query}` : ""}`;
     const ws = new WebSocket(wsUrl);
     socketRef.current = ws;
+    // 兼容反向代理把文本帧转二进制 / compat: reverse proxy may convert text frames to arraybuffer
+    ws.binaryType = "arraybuffer";
 
     ws.onopen = () => {
       fitAddonRef.current?.fit();
@@ -238,39 +241,65 @@ export function SessionTerminalModal({
     };
 
     ws.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data) as TerminalServerMessage;
-        if (message.type === "snapshot") {
-          terminal.reset();
-          if (message.data) {
-            terminal.write(message.data);
+      // 1. 统一转 string（arraybuffer → TextDecoder 解码）/ normalize to string
+      const raw = event.data;
+      const text =
+        typeof raw === "string"
+          ? raw
+          : raw instanceof ArrayBuffer
+            ? new TextDecoder().decode(raw)
+            : "";
+      if (!text) return;
+
+      // 2. 以 '{' 开头 → 尝试 JSON 控制消息 / leading '{' → try JSON control message
+      if (text.charCodeAt(0) === 123) {
+        try {
+          const message = JSON.parse(text) as TerminalServerMessage;
+          if (message.type === "snapshot") {
+            terminal.reset();
+            if (message.data) {
+              terminal.write(message.data);
+            }
+            requestAnimationFrame(keepCursorVisible);
+          } else if (message.type === "error") {
+            setError(message.message);
+          } else if (message.type === "exit") {
+            setTabs((current) =>
+              current.map((tab) =>
+                tab.id === activeTabId
+                  ? {
+                      ...tab,
+                      status: "exited",
+                      exitCode: message.exitCode ?? null,
+                    }
+                  : tab,
+              ),
+            );
+            terminal.writeln(
+              `\r\n[${t("sessionTerminalExited")}${message.exitCode == null ? "" : `: ${message.exitCode}`}]`,
+            );
+            requestAnimationFrame(keepCursorVisible);
+          } else if (message.type === "pong") {
+            // C3 心跳响应，忽略 / heartbeat response, ignore
+          } else {
+            // 合法 JSON 但 type 未知（如 shell 输出 {"name":"x"}）→ 当裸输出
+            // valid JSON but unknown type (e.g. shell output {"name":"x"}) → treat as raw output
+            terminal.write(text);
+            requestAnimationFrame(keepCursorVisible);
           }
+          return;
+        } catch {
+          // JSON.parse 失败（如 shell 输出 {foo} bar）→ 当裸输出
+          // JSON.parse failed (e.g. shell output {foo} bar) → treat as raw output
+          terminal.write(text);
           requestAnimationFrame(keepCursorVisible);
-        } else if (message.type === "output") {
-          terminal.write(message.data);
-          requestAnimationFrame(keepCursorVisible);
-        } else if (message.type === "error") {
-          setError(message.message);
-        } else if (message.type === "exit") {
-          setTabs((current) =>
-            current.map((tab) =>
-              tab.id === activeTabId
-                ? {
-                    ...tab,
-                    status: "exited",
-                    exitCode: message.exitCode ?? null,
-                  }
-                : tab,
-            ),
-          );
-          terminal.writeln(
-            `\r\n[${t("sessionTerminalExited")}${message.exitCode == null ? "" : `: ${message.exitCode}`}]`,
-          );
-          requestAnimationFrame(keepCursorVisible);
+          return;
         }
-      } catch {
-        setError("Invalid terminal response");
       }
+
+      // 3. 非 '{' 开头 → 原始 PTY 输出，直接 write / non-'{' → raw PTY output, write directly
+      terminal.write(text);
+      requestAnimationFrame(keepCursorVisible);
     };
 
     ws.onerror = () => {

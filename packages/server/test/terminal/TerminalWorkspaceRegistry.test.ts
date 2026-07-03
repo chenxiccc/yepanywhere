@@ -113,8 +113,13 @@ describe("TerminalWorkspaceRegistry", () => {
     });
     const firstClient = {
       messages: [] as unknown[],
-      send(message: unknown) {
+      rawChunks: [] as string[],
+      sendMessage(message: unknown) {
         this.messages.push(message);
+      },
+      sendRaw(data: string, onFlush?: () => void) {
+        this.rawChunks.push(data);
+        onFlush?.();
       },
     };
 
@@ -132,8 +137,13 @@ describe("TerminalWorkspaceRegistry", () => {
 
     const secondClient = {
       messages: [] as unknown[],
-      send(message: unknown) {
+      rawChunks: [] as string[],
+      sendMessage(message: unknown) {
         this.messages.push(message);
+      },
+      sendRaw(data: string, onFlush?: () => void) {
+        this.rawChunks.push(data);
+        onFlush?.();
       },
     };
 
@@ -169,7 +179,8 @@ describe("TerminalWorkspaceRegistry", () => {
 
     expect(() =>
       registry.attachClient("proj-1", "missing", {
-        send() {},
+        sendMessage() {},
+        sendRaw() {},
       }),
     ).toThrow(/Terminal tab not found/);
   });

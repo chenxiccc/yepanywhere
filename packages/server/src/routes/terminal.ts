@@ -223,8 +223,16 @@ export function createTerminalRoutes(deps: TerminalDeps): Hono {
               }
 
               sink = {
-                send(message: TerminalServerMessage) {
+                sendMessage(message: TerminalServerMessage) {
                   send(ws, message);
+                },
+                sendRaw(data: string, onFlush?: () => void) {
+                  // C1: 直接发送原始字节，无背压 callback；C2 会改用 ws.raw
+                  // C1: send raw bytes directly, no backpressure callback; C2 switches to ws.raw
+                  if (ws.readyState === 1) {
+                    ws.send(data);
+                  }
+                  onFlush?.();
                 },
               };
               try {

@@ -21,7 +21,8 @@ export type TerminalServerMessage =
   | { type: "snapshot"; data: string }
   | { type: "output"; data: string }
   | { type: "exit"; exitCode: number | null }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string }
+  | { type: "pong" };
 
 /** 客户端 → 服务端 WebSocket 消息 / Client → Server WebSocket messages */
 export type TerminalClientMessage =

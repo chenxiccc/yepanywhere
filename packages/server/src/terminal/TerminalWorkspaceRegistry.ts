@@ -89,14 +89,14 @@ export class TerminalWorkspaceRegistry {
     pty.onData((data) => {
       record.outputBuffer = this.appendToBuffer(record.outputBuffer, data);
       record.updatedAt = this.now().toISOString();
-      this.broadcast(record, { type: "output", data });
+      this.broadcastRaw(record, data);
     });
 
     pty.onExit(({ exitCode }) => {
       record.status = "exited";
       record.exitCode = exitCode;
       record.updatedAt = this.now().toISOString();
-      this.broadcast(record, { type: "exit", exitCode });
+      this.broadcastMessage(record, { type: "exit", exitCode });
     });
 
     workspace.tabs.set(record.id, record);
@@ -205,12 +205,29 @@ export class TerminalWorkspaceRegistry {
     };
   }
 
-  private broadcast(
+  /**
+   * 广播 JSON 控制消息给所有 attached client / Broadcast JSON control message to all attached clients.
+   */
+  private broadcastMessage(
     record: TerminalTabRecord,
     message: TerminalServerMessage,
   ): void {
     for (const client of record.attachedClients) {
-      client.send(message);
+      client.sendMessage(message);
+    }
+  }
+
+  /**
+   * 广播原始 PTY 输出字节给所有 attached client / Broadcast raw PTY output bytes to all attached clients.
+   * onFlush 在数据 flush 到网络后回调（背压用，C2 接入）/ onFlush fires after flush (backpressure, wired in C2).
+   */
+  private broadcastRaw(
+    record: TerminalTabRecord,
+    data: string,
+    onFlush?: () => void,
+  ): void {
+    for (const client of record.attachedClients) {
+      client.sendRaw(data, onFlush);
     }
   }
 
