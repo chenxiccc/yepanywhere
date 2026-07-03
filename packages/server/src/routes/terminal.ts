@@ -54,13 +54,17 @@ function getShellCommand(): { command: string; args: string[] } {
   return { command: "/bin/sh", args: ["-i"] };
 }
 
-function clampTerminalSize(value: number, fallback: number): number {
+// 裁剪终端尺寸：非有限值/<=0 回退，超上限截断 / clamp terminal size: non-finite/<=0 falls back, caps at max
+function clampTerminalSize(value: number, fallback: number, max = 500): number {
   if (!Number.isFinite(value)) {
     return fallback;
   }
 
   const rounded = Math.floor(value);
-  return rounded > 0 ? rounded : fallback;
+  if (rounded <= 0) {
+    return fallback;
+  }
+  return Math.min(rounded, max);
 }
 
 export function createNodePtyFactory(): PtyFactory {
@@ -279,8 +283,8 @@ export function createTerminalRoutes(deps: TerminalDeps): Hono {
               registry.resizeTab(
                 projectId,
                 tabId,
-                clampTerminalSize(message.cols, 80),
-                clampTerminalSize(message.rows, 24),
+                clampTerminalSize(message.cols, 80, 500),
+                clampTerminalSize(message.rows, 24, 200),
               );
               return;
             }

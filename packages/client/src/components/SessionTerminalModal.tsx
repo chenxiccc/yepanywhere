@@ -53,6 +53,8 @@ export function SessionTerminalModal({
   const tabLongPressTriggeredRef = useRef(false);
   // C3: 心跳定时器，收到 snapshot 后启动 / heartbeat timer, started after snapshot
   const pingIntervalRef = useRef<number | null>(null);
+  // C5: resize 网络发送防抖 / resize network send debounce
+  const resizeDebounceRef = useRef<number | null>(null);
 
   const persistSelectedTabId = useCallback(
     (tabId: string | null) => {
@@ -168,12 +170,20 @@ export function SessionTerminalModal({
     });
 
     const syncSize = () => {
+      // fit 即时（本地视觉，无网络开销）/ fit immediately (local visual, no network cost)
       fitAddon.fit();
-      sendMessage({
-        type: "resize",
-        cols: terminal.cols,
-        rows: terminal.rows,
-      });
+      // resize 网络发送防抖：键盘动画期间避免发几十帧 / debounce resize send during keyboard animation
+      if (resizeDebounceRef.current) {
+        window.clearTimeout(resizeDebounceRef.current);
+      }
+      resizeDebounceRef.current = window.setTimeout(() => {
+        sendMessage({
+          type: "resize",
+          cols: terminal.cols,
+          rows: terminal.rows,
+        });
+        resizeDebounceRef.current = null;
+      }, 120);
     };
 
     const resizeObserver = new ResizeObserver(syncSize);
@@ -203,6 +213,10 @@ export function SessionTerminalModal({
       window.visualViewport?.removeEventListener("resize", updateKeyboardInset);
       resizeObserver.disconnect();
       dataDisposable.dispose();
+      if (resizeDebounceRef.current) {
+        window.clearTimeout(resizeDebounceRef.current);
+        resizeDebounceRef.current = null;
+      }
       socketRef.current = null;
       terminalRef.current = null;
       fitAddonRef.current = null;
