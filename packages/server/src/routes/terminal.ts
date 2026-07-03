@@ -27,7 +27,8 @@ export interface TerminalDeps {
 
 type TerminalClientMessage =
   | { type: "input"; data: string }
-  | { type: "resize"; cols: number; rows: number };
+  | { type: "resize"; cols: number; rows: number }
+  | { type: "ping" };
 
 function send(ws: WSContext, message: TerminalServerMessage) {
   ws.send(JSON.stringify(message));
@@ -281,6 +282,12 @@ export function createTerminalRoutes(deps: TerminalDeps): Hono {
                 clampTerminalSize(message.cols, 80),
                 clampTerminalSize(message.rows, 24),
               );
+              return;
+            }
+
+            // C3: 心跳响应 / heartbeat ping → pong
+            if (message.type === "ping") {
+              send(ws, { type: "pong" });
               return;
             }
 

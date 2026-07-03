@@ -27,4 +27,5 @@ export type TerminalServerMessage =
 /** 客户端 → 服务端 WebSocket 消息 / Client → Server WebSocket messages */
 export type TerminalClientMessage =
   | { type: "input"; data: string }
-  | { type: "resize"; cols: number; rows: number };
+  | { type: "resize"; cols: number; rows: number }
+  | { type: "ping" };

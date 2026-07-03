@@ -29,7 +29,8 @@ type TerminalServerMessage =
 
 type TerminalClientMessage =
   | { type: "input"; data: string }
-  | { type: "resize"; cols: number; rows: number };
+  | { type: "resize"; cols: number; rows: number }
+  | { type: "ping" };
 
 export function SessionTerminalModal({
   projectId,
@@ -50,6 +51,8 @@ export function SessionTerminalModal({
   const [keyboardInset, setKeyboardInset] = useState(0);
   const tabLongPressTimerRef = useRef<number | null>(null);
   const tabLongPressTriggeredRef = useRef(false);
+  // C3: 心跳定时器，收到 snapshot 后启动 / heartbeat timer, started after snapshot
+  const pingIntervalRef = useRef<number | null>(null);
 
   const persistSelectedTabId = useCallback(
     (tabId: string | null) => {
@@ -261,6 +264,16 @@ export function SessionTerminalModal({
               terminal.write(message.data);
             }
             requestAnimationFrame(keepCursorVisible);
+            // C3: 收到 snapshot（服务端就绪）后启动心跳，防止 NAT/路由器静默断连
+            // C3: start heartbeat after snapshot (server ready) to prevent NAT idle timeout
+            if (pingIntervalRef.current) {
+              window.clearInterval(pingIntervalRef.current);
+            }
+            pingIntervalRef.current = window.setInterval(() => {
+              if (socketRef.current?.readyState === WebSocket.OPEN) {
+                socketRef.current.send(JSON.stringify({ type: "ping" }));
+              }
+            }, 25000);
           } else if (message.type === "error") {
             setError(message.message);
           } else if (message.type === "exit") {
@@ -308,6 +321,10 @@ export function SessionTerminalModal({
 
     return () => {
       socketRef.current = null;
+      if (pingIntervalRef.current) {
+        window.clearInterval(pingIntervalRef.current);
+        pingIntervalRef.current = null;
+      }
       ws.close();
     };
   }, [activeTabId, keepCursorVisible, loadingTabs, projectId, sendMessage, t]);
