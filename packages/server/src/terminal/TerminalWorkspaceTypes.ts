@@ -2,6 +2,9 @@ export interface PtyHandle {
   write(data: string): void;
   resize(cols: number, rows: number): void;
   kill(): void;
+  // 暂停/恢复 PTY 读取，用于背压控制 / Pause/resume PTY reads for backpressure
+  pause(): void;
+  resume(): void;
   onData(listener: (data: string) => void): void;
   onExit(listener: (event: { exitCode: number | null }) => void): void;
 }

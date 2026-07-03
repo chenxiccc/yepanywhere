@@ -89,7 +89,26 @@ export class TerminalWorkspaceRegistry {
     pty.onData((data) => {
       record.outputBuffer = this.appendToBuffer(record.outputBuffer, data);
       record.updatedAt = this.now().toISOString();
-      this.broadcastRaw(record, data);
+      // 背压：暂停 PTY 读取，等所有 client flush 后再恢复
+      // backpressure: pause PTY reads, resume after all clients flush
+      pty.pause();
+      const clientCount = record.attachedClients.size;
+      if (clientCount === 0) {
+        // 无 client 不背压，立即恢复 / no clients, resume immediately
+        pty.resume();
+        return;
+      }
+      let pending = clientCount;
+      // 安全网：若某 client 的 onFlush 未触发，下一 tick 强制恢复，防止 PTY 永久暂停
+      // safety net: force resume next tick if any onFlush never fires
+      const safety = setImmediate(() => pty.resume());
+      this.broadcastRaw(record, data, () => {
+        pending--;
+        if (pending <= 0) {
+          clearImmediate(safety);
+          pty.resume();
+        }
+      });
     });
 
     pty.onExit(({ exitCode }) => {

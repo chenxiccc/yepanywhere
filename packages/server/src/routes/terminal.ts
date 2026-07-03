@@ -227,12 +227,24 @@ export function createTerminalRoutes(deps: TerminalDeps): Hono {
                   send(ws, message);
                 },
                 sendRaw(data: string, onFlush?: () => void) {
-                  // C1: 直接发送原始字节，无背压 callback；C2 会改用 ws.raw
-                  // C1: send raw bytes directly, no backpressure callback; C2 switches to ws.raw
-                  if (ws.readyState === 1) {
+                  // 命门：Hono WSContext.send 无 callback，用 ws.raw 拿底层 ws 实例
+                  // critical: Hono WSContext.send has no callback; use ws.raw for the underlying ws
+                  const raw = ws.raw as unknown as
+                    | import("ws").WebSocket
+                    | undefined;
+                  if (raw && raw.readyState === 1) {
+                    // 数据真正 flush 到网络后回调，触发 PTY resume
+                    // callback fires after data is flushed to network, triggering PTY resume
+                    raw.send(data, () => onFlush?.());
+                  } else if (ws.readyState === 1) {
+                    // fallback：非 node 运行时（raw 为 undefined），不背压
+                    // fallback: non-node runtime (raw undefined), no backpressure
                     ws.send(data);
+                    onFlush?.();
+                  } else {
+                    // ws 已关，释放计数器 / ws closed, release counter
+                    onFlush?.();
                   }
-                  onFlush?.();
                 },
               };
               try {
