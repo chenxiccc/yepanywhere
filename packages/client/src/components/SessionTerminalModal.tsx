@@ -55,6 +55,17 @@ export function SessionTerminalModal({
   const pingIntervalRef = useRef<number | null>(null);
   // C5: resize 网络发送防抖 / resize network send debounce
   const resizeDebounceRef = useRef<number | null>(null);
+  // C4: 主动关闭标记，避免 onclose 闪现"断开"overlay / intentional close flag
+  const intentionalCloseRef = useRef(false);
+  // C4: 断连期间暂停 tab 轮询，避免与重连按钮竞争 / pause tab polling during disconnect
+  const pausePollingRef = useRef(false);
+  // C4: tabs 的 ref 镜像，供 connectWebSocket 读最新值而不进依赖 / tabs ref mirror
+  const tabsRef = useRef<TerminalTab[]>(tabs);
+  tabsRef.current = tabs;
+  // C4: 连接状态机 / connection status state machine
+  const [connectionStatus, setConnectionStatus] = useState<
+    "connecting" | "connected" | "disconnected" | "error"
+  >("connecting");
 
   const persistSelectedTabId = useCallback(
     (tabId: string | null) => {
@@ -231,14 +242,28 @@ export function SessionTerminalModal({
     });
   }, [applyTabMutationError, loadTabs]);
 
-  useEffect(() => {
-    if (!activeTabId || !terminalRef.current || loadingTabs) {
+  // C4: 提取连接逻辑，供初始连接和重连复用 / extracted connect logic for initial + reconnect
+  const connectWebSocket = useCallback(() => {
+    if (!activeTabId || !terminalRef.current) {
       return;
+    }
+    // 校验 active tab 仍存在（用 ref 读，不进依赖，避免轮询更新 tabs 触发重连）
+    // verify active tab still exists (read via ref, not in deps, to avoid reconnect on poll)
+    if (!tabsRef.current.some((tab) => tab.id === activeTabId)) {
+      setError(t("sessionTerminalTabNotFound"));
+      pausePollingRef.current = false;
+      return;
+    }
+    // 防快速多次重连堆积连接 / prevent stacking connections on rapid reconnect clicks
+    if (socketRef.current) {
+      intentionalCloseRef.current = true;
+      socketRef.current.close();
+      socketRef.current = null;
     }
 
     const terminal = terminalRef.current;
-    terminal.reset();
-    setError(null);
+    setConnectionStatus("connecting");
+    intentionalCloseRef.current = false;
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const query = getDesktopTokenQuery();
@@ -273,13 +298,21 @@ export function SessionTerminalModal({
         try {
           const message = JSON.parse(text) as TerminalServerMessage;
           if (message.type === "snapshot") {
+            // C4: BSU 同步更新，把 reset+write 合并为单帧，消除空白帧闪烁
+            // C4: BSU merges reset+write into a single frame, eliminating blank-frame flicker
+            terminal.write("\x1b[?2026h");
             terminal.reset();
             if (message.data) {
               terminal.write(message.data);
             }
+            terminal.write("\x1b[?2026l");
             requestAnimationFrame(keepCursorVisible);
-            // C3: 收到 snapshot（服务端就绪）后启动心跳，防止 NAT/路由器静默断连
-            // C3: start heartbeat after snapshot (server ready) to prevent NAT idle timeout
+            // C4: 收到 snapshot = 服务端就绪，恢复连接态 + 恢复轮询
+            // C4: snapshot = server ready, restore connected state + resume polling
+            setConnectionStatus("connected");
+            pausePollingRef.current = false;
+            // C3: 收到 snapshot 后启动心跳，防止 NAT/路由器静默断连
+            // C3: start heartbeat after snapshot to prevent NAT idle timeout
             if (pingIntervalRef.current) {
               window.clearInterval(pingIntervalRef.current);
             }
@@ -290,6 +323,10 @@ export function SessionTerminalModal({
             }, 25000);
           } else if (message.type === "error") {
             setError(message.message);
+            // C4: 重连时 tab 已删等服务端 error → 标记 error 态 + 恢复轮询
+            // C4: server error (e.g. tab deleted on reconnect) → error state + resume polling
+            setConnectionStatus("error");
+            pausePollingRef.current = false;
           } else if (message.type === "exit") {
             setTabs((current) =>
               current.map((tab) =>
@@ -329,22 +366,58 @@ export function SessionTerminalModal({
       requestAnimationFrame(keepCursorVisible);
     };
 
-    ws.onerror = () => {
-      setError(t("sessionTerminalOpenFailed"));
-    };
-
-    return () => {
+    ws.onclose = () => {
       socketRef.current = null;
       if (pingIntervalRef.current) {
         window.clearInterval(pingIntervalRef.current);
         pingIntervalRef.current = null;
       }
-      ws.close();
+      // C4: 非主动关闭 → 显示断开 overlay + 暂停轮询
+      // C4: non-intentional close → show disconnected overlay + pause polling
+      if (!intentionalCloseRef.current) {
+        setConnectionStatus("disconnected");
+        pausePollingRef.current = true;
+      }
     };
-  }, [activeTabId, keepCursorVisible, loadingTabs, projectId, sendMessage, t]);
+
+    ws.onerror = () => {
+      if (!intentionalCloseRef.current) {
+        setConnectionStatus("error");
+        setError(t("sessionTerminalOpenFailed"));
+      }
+    };
+  }, [activeTabId, projectId, keepCursorVisible, sendMessage, t]);
+
+  useEffect(() => {
+    if (!activeTabId || !terminalRef.current || loadingTabs) {
+      return;
+    }
+
+    const terminal = terminalRef.current;
+    terminal.reset();
+    setError(null);
+    connectWebSocket();
+
+    return () => {
+      // cleanup 用闭包内的 ws 引用 / cleanup uses the ws reference in scope
+      intentionalCloseRef.current = true;
+      const ws = socketRef.current;
+      if (pingIntervalRef.current) {
+        window.clearInterval(pingIntervalRef.current);
+        pingIntervalRef.current = null;
+      }
+      socketRef.current = null;
+      ws?.close();
+    };
+  }, [activeTabId, loadingTabs, connectWebSocket]);
 
   useEffect(() => {
     const interval = setInterval(() => {
+      // C4: 断连期间暂停轮询，避免改 activeTabId 与重连按钮竞争
+      // C4: pause polling during disconnect to avoid racing with reconnect
+      if (pausePollingRef.current) {
+        return;
+      }
       void api
         .getProjectTerminalTabs(projectId)
         .then((response) => {
@@ -363,6 +436,13 @@ export function SessionTerminalModal({
 
     return () => clearInterval(interval);
   }, [activeTabId, chooseActiveTab, persistSelectedTabId, projectId]);
+
+  // C4: 关闭弹窗前标记主动关闭，避免 onclose 闪现"断开"overlay
+  // C4: mark intentional close before closing modal to avoid flashing disconnected overlay
+  const handleClose = useCallback(() => {
+    intentionalCloseRef.current = true;
+    onClose();
+  }, [onClose]);
 
   const handleSelectTab = (tabId: string) => {
     setActiveTabId(tabId);
@@ -552,7 +632,7 @@ export function SessionTerminalModal({
           <code>{projectPath}</code>
         </div>
       }
-      onClose={onClose}
+      onClose={handleClose}
       backCloses
     >
       <div className={`session-terminal-modal ${isMobile ? "mobile" : ""}`}>
@@ -692,6 +772,25 @@ export function SessionTerminalModal({
               onClick={isMobile ? focusMobileKeyboard : focusTerminal}
               onKeyDown={handleTerminalContainerKeyDown}
             />
+            {/* C4: 断连重连 overlay / reconnect overlay */}
+            {(connectionStatus === "disconnected" ||
+              connectionStatus === "connecting") && (
+              <div className="session-terminal-overlay">
+                <span>
+                  {connectionStatus === "connecting"
+                    ? t("sessionTerminalReconnecting")
+                    : t("sessionTerminalDisconnected")}
+                </span>
+                <button
+                  type="button"
+                  className="session-terminal-reconnect-button"
+                  onClick={() => connectWebSocket()}
+                  disabled={connectionStatus === "connecting"}
+                >
+                  {t("sessionTerminalReconnect")}
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>
