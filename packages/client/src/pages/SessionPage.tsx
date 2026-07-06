@@ -3906,9 +3906,10 @@ function SessionPageContent({
       <header className="session-header">
         <div className="session-header-inner">
           <div className="session-header-left">
-            {/* Sidebar toggle - on mobile: opens sidebar, on desktop: collapses/expands */}
-            {/* Hide on desktop when collapsed (sidebar has its own toggle) */}
-            {!(isWideScreen && isSidebarCollapsed) && (
+            {/* Sidebar toggle - desktop only: collapses/expands.
+                移动端汉堡已移至 MobileTopNav，此处不渲染。
+                Mobile hamburger moved to MobileTopNav; not rendered here. */}
+            {isWideScreen && !isSidebarCollapsed && (
               <button
                 type="button"
                 className="sidebar-toggle"
