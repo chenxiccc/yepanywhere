@@ -19203,3 +19203,84 @@ body:has(.session-page)
     gap: var(--space-1);
   }
 }
+
+/* ==========================================================================
+   Mobile top nav — 手机端页头横向图标条
+   First sticky row of the mobile header. Mobile-only (≤1099px). Hidden on
+   desktop where the sidebar is the navigation surface. Reuses sidebar nav
+   items (.sidebar-nav-item) — labels are hidden via CSS, items laid out
+   horizontally. 第一行吸顶：纯图标横向排布，仅移动端显示，复用侧边栏导航项。
+   ========================================================================== */
+.mobile-top-nav {
+  display: none; /* 默认隐藏，仅移动端显示 / hidden by default, mobile only */
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0;
+  /* padding-top 由父级 .session-page 的 env(safe-area-inset-top) 提供，此处不重复。
+     Top safe-area comes from the parent .session-page; don't double-pad here. */
+  padding: 0 0.25rem;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-color);
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none; /* 隐藏滚动条 / hide scrollbar */
+  z-index: 20; /* header(10) < 图标条(20) < sidebar-overlay(100) < 抽屉(101) < modal(9999) */
+}
+.mobile-top-nav::-webkit-scrollbar {
+  display: none;
+}
+
+/* 汉堡按钮与各入口项统一样式 / unified style for the hamburger and each entry */
+.mobile-top-nav-item,
+.mobile-top-nav .sidebar-nav-item {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px; /* 触摸热区 ≥44px / touch target ≥44px */
+  min-height: 44px;
+  padding: 0 0.625rem;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  position: relative;
+  text-decoration: none;
+}
+
+/* 只图标不要文字 / icon only, no text */
+.mobile-top-nav .sidebar-nav-text {
+  display: none !important;
+}
+
+.mobile-top-nav-item--toggle {
+  color: var(--text-primary);
+}
+
+/* 当前页激活态，与侧边栏一致（index.css .sidebar-nav-item.active）/ active state, matches sidebar */
+.mobile-top-nav .sidebar-nav-item.active {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+/* 徽标与脉冲点定位到图标右上角 / pin badge & activity dot to the icon's top-right */
+.mobile-top-nav .sidebar-nav-badge {
+  position: absolute;
+  top: 0.25rem;
+  right: 0.25rem;
+  transform: none;
+}
+.mobile-top-nav .thinking-indicator {
+  position: absolute;
+  top: 0.375rem;
+  right: 0.375rem;
+}
+
+/* 仅移动端（≤1099px，与 .session-page 移动端断点一致）显示 /
+   Mobile-only (≤1099px, matches the .session-page mobile breakpoint). */
+@media (max-width: 1099px) {
+  .mobile-top-nav {
+    display: flex;
+  }
+}

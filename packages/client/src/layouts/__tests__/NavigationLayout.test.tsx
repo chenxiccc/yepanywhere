@@ -8,10 +8,15 @@ const mocks = vi.hoisted(() => ({
   Sidebar: vi.fn(({ isDesktop }: { isDesktop?: boolean }) => (
     <div data-testid={isDesktop ? "desktop-sidebar" : "mobile-sidebar"} />
   )),
+  MobileTopNav: vi.fn(() => <div data-testid="mobile-top-nav" />),
 }));
 
 vi.mock("../../components/Sidebar", () => ({
   Sidebar: mocks.Sidebar,
+}));
+
+vi.mock("../../components/MobileTopNav", () => ({
+  MobileTopNav: mocks.MobileTopNav,
 }));
 
 vi.mock("../../hooks/useSidebarSessionFeeds", () => ({
