@@ -1088,7 +1088,7 @@ export function Sidebar({
                 /git-status 共存。用独立路由 + i18n key 保持解耦。 */}
             <SidebarNavItem
               to={sourceManagerPath}
-              icon={SidebarIcons.sourceControl}
+              icon={SidebarIcons.fileGit}
               label={t("sidebarFileGit")}
               onClick={onNavigate}
               basePath={basePath}
