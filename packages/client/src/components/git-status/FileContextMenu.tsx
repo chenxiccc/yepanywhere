@@ -59,7 +59,10 @@ export function FileContextMenu({
 
   const handleCopyAbsolutePath = useCallback(async () => {
     if (!menu) return;
-    const absolutePath = `${projectPath}/${menu.path}`;
+    // browse 模式（访问上一级）下 menu.path 已是绝对路径，直接用；否则拼 projectPath /
+    // In browse mode (go up) menu.path is already absolute; otherwise join with projectPath
+    const isAbs = menu.path.startsWith("/") || /^[A-Za-z]:[\\/]/.test(menu.path);
+    const absolutePath = isAbs ? menu.path : `${projectPath}/${menu.path}`;
     await writeClipboardText(absolutePath);
     onClose();
   }, [menu, projectPath, onClose]);

@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { api } from "../api/client";
+import { useToastContext } from "../contexts/ToastContext";
 import { useLongPressContextMenu } from "../hooks/useLongPressContextMenu";
 import { FileContextMenu } from "./git-status/FileContextMenu";
 import type { FileContextMenuState } from "./git-status/FileContextMenu";
@@ -86,6 +87,17 @@ export const FileTree = memo(function FileTree({
   const [rootLoading, setRootLoading] = useState(true);
   const [rootError, setRootError] = useState<string | null>(null);
 
+  // browse 模式：当前所在目录。"" = 项目根（相对模式）；绝对路径 = browse 模式（访问上一级）/
+  // Browse mode: current directory. "" = project root; absolute path = browse mode (go up)
+  const [currentDir, setCurrentDir] = useState<string>("");
+  // browse 模式下是否已到根目录（不再显示 ..）/ Whether at root in browse mode (hide ..)
+  const [isRoot, setIsRoot] = useState<boolean>(false);
+  // 上一个有效目录（403 无权限时回退用它，保持文件树停留在有权限的目录）/
+  // Last valid directory (rolled back to on 403 so the tree stays on an allowed dir)
+  const prevDirRef = useRef<string>("");
+  // toast 通知（403 等轻量提示，不取代文件树）/ Toast for lightweight notices (403 etc.), doesn't replace the tree
+  const { showToast } = useToastContext();
+
   // 服务端搜索结果（匹配文件路径的 Set）/ Server-side search results (Set of matched file paths)
   const [searchResults, setSearchResults] = useState<Set<string> | null>(null);
   // 搜索前的展开状态快照，用于清空搜索后恢复 / Snapshot of expanded paths before search, restored on clear
@@ -94,20 +106,59 @@ export const FileTree = memo(function FileTree({
   const prevSearchQueryRef = useRef<string>("");
 
   // 加载根目录 / Load root directory
+  // currentDir 为 "" 时加载项目根；为绝对路径时加载该目录（browse 模式）/
+  // currentDir "" -> project root; absolute path -> that directory (browse mode)
   const loadRoot = useCallback(async () => {
     setRootLoading(true);
     setRootError(null);
     try {
-      const data = await api.listDirectory(projectId);
+      const data = await api.listDirectory(projectId, currentDir || undefined);
       setRootNodes(data.children);
+      // 加载成功，记下当前目录为有效目录，供下次 403 回退 /
+      // Load succeeded: remember current dir as valid, for 403 rollback next time
+      prevDirRef.current = currentDir;
     } catch (err) {
-      setRootError(
-        err instanceof Error ? err.message : t("sourceManagerLoadDirectoryFailed"),
-      );
+      const status = (err as { status?: number })?.status;
+      if (status === 403) {
+        // 无权访问该目录：弹 toast 提示，回退到上一个有效目录，不进入 error 屏 /
+        // No access to this dir: toast a notice, roll back to last valid dir, no error screen
+        showToast(t("sourceManagerFileTreeBrowseDenied"), "error");
+        if (prevDirRef.current !== currentDir) {
+          setCurrentDir(prevDirRef.current);
+        }
+        // 回退后仍要把 loading 关掉（rootNodes 保持上一个有效目录的内容）/
+        // Still clear loading on rollback (rootNodes keep the last valid dir's content)
+      } else {
+        setRootError(
+          err instanceof Error
+            ? err.message
+            : t("sourceManagerLoadDirectoryFailed"),
+        );
+      }
     } finally {
       setRootLoading(false);
     }
+  }, [projectId, currentDir, t, showToast]);
+
+  // 切项目时重置 browse 状态与展开缓存 / Reset browse state and expansion cache on project switch
+  useEffect(() => {
+    setCurrentDir("");
+    setIsRoot(false);
+    setExpandedPaths(new Set());
+    setChildCache(new Map());
+    setErrorPaths(new Map());
+    // 清空回退目录，避免切项目后误回退到上个项目的目录 /
+    // Clear rollback dir so we never roll back to the previous project's dir
+    prevDirRef.current = "";
   }, [projectId]);
+
+  // currentDir 变化时清空展开/缓存状态（loadRoot 会重载 rootNodes 覆盖根）/
+  // Clear expansion cache when currentDir changes (loadRoot reloads rootNodes)
+  useEffect(() => {
+    setExpandedPaths(new Set());
+    setChildCache(new Map());
+    setErrorPaths(new Map());
+  }, [currentDir]);
 
   useEffect(() => {
     loadRoot();
@@ -185,6 +236,9 @@ export const FileTree = memo(function FileTree({
   // 切换展开/折叠 / Toggle expand/collapse
   const toggleExpand = useCallback(
     (dirPath: string) => {
+      // browse 模式不展开子树（点文件夹走 enterDirectory 直接进入）/
+      // No subtree expansion in browse mode (clicking a folder enters it via enterDirectory)
+      if (currentDir !== "") return;
       setExpandedPaths((prev) => {
         const next = new Set(prev);
         if (next.has(dirPath)) {
@@ -197,8 +251,28 @@ export const FileTree = memo(function FileTree({
         return next;
       });
     },
-    [loadChildren],
+    [loadChildren, currentDir],
   );
+
+  // browse 模式：点击文件夹直接进入（不展开子树）/ Browse mode: enter folder directly
+  const enterDirectory = useCallback((dirPath: string) => {
+    setIsRoot(false);
+    setCurrentDir(dirPath);
+  }, []);
+
+  // 点击 .. 返回上一级；项目根时用 projectPath 作起点 / Click .. to go up; projectPath as base at project root
+  const handleGoUp = useCallback(() => {
+    const base = currentDir || projectPath;
+    if (!base) return;
+    const parent = parentDir(base);
+    if (parent === base) {
+      // 到根，不再往上 / At root, stop going up
+      setIsRoot(true);
+      return;
+    }
+    setIsRoot(false);
+    setCurrentDir(parent);
+  }, [currentDir, projectPath]);
 
   // 搜索过滤 / Search filtering — 使用服务端搜索结果
   // Search filtering — uses server-side search results
@@ -244,6 +318,12 @@ export const FileTree = memo(function FileTree({
   // 同时懒加载缺失缓存的祖先目录 / Also lazily load uncached ancestor directories
   useEffect(() => {
     const prevQuery = prevSearchQueryRef.current;
+
+    // browse 模式不触发服务端搜索 / No server-side search in browse mode
+    if (currentDir !== "") {
+      prevSearchQueryRef.current = searchQuery ?? "";
+      return;
+    }
 
     // 搜索开始：保存当前展开状态 / Search started: save current expanded state
     if (!prevQuery && searchQuery) {
@@ -298,7 +378,7 @@ export const FileTree = memo(function FileTree({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery]);
+  }, [searchQuery, currentDir]);
 
   const [contextMenu, setContextMenu] = useState<FileContextMenuState | null>(null);
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
@@ -310,6 +390,27 @@ export const FileTree = memo(function FileTree({
 
   return (
     <div className={`file-tree ${className ?? ""}`}>
+      {/* .. 返回上一级（到根时隐藏，loading/error 时也隐藏）/
+          Go up to parent (hidden at root, loading, or error) */}
+      {!rootLoading && !rootError && !isRoot && (
+        // biome-ignore lint/a11y/useKeyWithClickEvents: 与 FileTreeItem 一致，键盘导航由父级处理 /
+        // Same as FileTreeItem, keyboard nav handled by parent
+        <div
+          role="button"
+          tabIndex={0}
+          className="file-tree-item file-tree-up"
+          style={{ paddingLeft: "4px" }}
+          onClick={handleGoUp}
+          title={t("sourceManagerFileTreeGoUp")}
+          aria-label={t("sourceManagerFileTreeGoUp")}
+        >
+          <div className="file-tree-row">
+            <span className="file-tree-chevron-placeholder" />
+            <span className="file-tree-name">..</span>
+          </div>
+        </div>
+      )}
+
       {rootLoading ? (
         <div className="file-tree-loading">{labels?.loading ?? t("sourceManagerFileTreeLoading")}</div>
       ) : rootError ? (
@@ -331,6 +432,8 @@ export const FileTree = memo(function FileTree({
             key={node.path}
             node={node}
             depth={0}
+            browseMode={currentDir !== ""}
+            onEnterDirectory={enterDirectory}
             expandedPaths={expandedPaths}
             childCache={childCache}
             loadingPaths={loadingPaths}
@@ -371,6 +474,10 @@ interface FileTreeItemProps {
   onFileClick: (filePath: string) => void;
   onToggleExpand: (dirPath: string) => void;
   onRetryLoad: (dirPath: string) => void;
+  /** browse 模式（访问上一级）：点击文件夹直接进入而非展开 / Browse mode (go up): clicking a folder enters it instead of expanding */
+  browseMode?: boolean;
+  /** browse 模式下点击文件夹进入该目录 / Enter directory in browse mode */
+  onEnterDirectory?: (dirPath: string) => void;
   /** 右键菜单回调 / Context menu callback */
   onContextMenu: (menu: FileContextMenuState) => void;
   /** 搜索时应渲染的路径集合，null 表示非搜索模式 / Paths to render during search; null means non-search mode */
@@ -396,6 +503,8 @@ const FileTreeItem = memo(function FileTreeItem({
   onFileClick,
   onToggleExpand,
   onRetryLoad,
+  browseMode,
+  onEnterDirectory,
   onContextMenu,
   visiblePaths,
   t,
@@ -413,11 +522,17 @@ const FileTreeItem = memo(function FileTreeItem({
 
   const handleClick = useCallback(() => {
     if (node.isDirectory) {
-      onToggleExpand(node.path);
+      // browse 模式点击文件夹直接进入，否则展开/折叠 /
+      // In browse mode clicking a folder enters it; otherwise toggle expand/collapse
+      if (browseMode) {
+        onEnterDirectory?.(node.path);
+      } else {
+        onToggleExpand(node.path);
+      }
     } else {
       onFileClick(node.path);
     }
-  }, [node.isDirectory, node.path, onToggleExpand, onFileClick]);
+  }, [node.isDirectory, node.path, browseMode, onToggleExpand, onFileClick, onEnterDirectory]);
 
   const handleRetry = useCallback(
     (e: React.MouseEvent) => {
@@ -436,10 +551,12 @@ const FileTreeItem = memo(function FileTreeItem({
         isDirectory: node.isDirectory,
         x,
         y,
-        showFileOperations: true,
+        // browse 模式隐藏重命名/删除（项目外文件只读浏览）/
+        // Hide rename/delete in browse mode (read-only browsing of out-of-project files)
+        showFileOperations: !browseMode,
       });
     },
-    [node.path, node.name, node.isDirectory, onContextMenu],
+    [node.path, node.name, node.isDirectory, onContextMenu, browseMode],
   );
 
   const {
@@ -560,6 +677,8 @@ const FileTreeItem = memo(function FileTreeItem({
                 onFileClick={onFileClick}
                 onToggleExpand={onToggleExpand}
                 onRetryLoad={onRetryLoad}
+                browseMode={browseMode}
+                onEnterDirectory={onEnterDirectory}
                 onContextMenu={onContextMenu}
                 visiblePaths={visiblePaths}
                 t={t}
@@ -577,4 +696,28 @@ function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} b`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} kb`;
   return `${Math.round((bytes / (1024 * 1024)) * 10) / 10} mb`;
+}
+
+
+/**
+ * 跨平台取父目录，到根时返回自身（用于文件树 .. 上一级导航）。
+ * Cross-platform parent directory; returns self at root (for file tree ".." navigation).
+ * - posix: parentDir("/foo/bar") = "/foo", parentDir("/") = "/"
+ * - windows: parentDir("C:\\foo\\bar") = "C:\\foo", parentDir("C:\\") = "C:\\"
+ */
+function parentDir(p: string): string {
+  // posix 绝对路径 / posix absolute path
+  if (p.startsWith("/")) {
+    if (p === "/") return "/";
+    const parent = p.replace(/\/[^/]+$/, "");
+    return parent === "" ? "/" : parent;
+  }
+  // windows 盘根（C:\ 或 C:/）/ windows drive root
+  if (/^[A-Za-z]:[\\/]+$/.test(p)) return p;
+  // windows 绝对路径 / windows absolute path
+  if (/^[A-Za-z]:[\\/]/.test(p)) {
+    const parent = p.replace(/[\\/][^\\/]+$/, "");
+    return parent || p;
+  }
+  return p;
 }

@@ -1343,19 +1343,37 @@ export function createFilesRoutes(deps: FilesDeps): Hono {
 
     const projectRoot = project.path;
 
+    // 判断是否为绝对路径（browse 模式，用于文件树访问上一级文件夹）/
+    // Detect absolute path (browse mode, used by file tree "go up" feature)
+    const normalizedQuery = normalize(expandHomePath(relativePath));
+    const isBrowse =
+      relativePath !== "" &&
+      (isAbsolute(normalizedQuery) || /^[a-zA-Z]:/.test(normalizedQuery));
+
     // 解析目标目录路径 / Resolve target directory path
     let targetDir: string;
     if (!relativePath) {
       targetDir = projectRoot;
     } else {
-      // 安全检查：防 .. 遍历 / Security: prevent path traversal
+      // 安全检查：防 .. 遍历（绝对路径走 pathPolicy 白名单校验）/
+      // Security: prevent path traversal (absolute paths go through pathPolicy allowlist)
       const resolved = await resolveFilePath(
         projectRoot,
         relativePath,
         pathPolicy,
       );
       if (!resolved) {
-        return c.json({ error: "Invalid path" }, 400);
+        // browse 模式被白名单拒绝返回 403，相对路径越界仍 400 /
+        // Browse mode denied by allowlist -> 403; relative path escape -> 400
+        const status = isBrowse ? 403 : 400;
+        return c.json(
+          {
+            error: isBrowse
+              ? "Path not in allowed directories"
+              : "Invalid path",
+          },
+          status,
+        );
       }
       targetDir = resolved;
     }
@@ -1421,7 +1439,9 @@ export function createFilesRoutes(deps: FilesDeps): Hono {
 
         const lines = stdout.trim().split("\n").filter(Boolean);
         for (const fullPath of lines) {
-          const relPath = relative(projectRoot, fullPath);
+          // browse 模式下用绝对路径作为 node.path，否则相对项目根 /
+          // In browse mode use absolute path as node.path, otherwise relative to project root
+          const relPath = isBrowse ? fullPath : relative(projectRoot, fullPath);
           try {
             const entryStat = await stat(fullPath);
             const node: FileNode = {
@@ -1452,11 +1472,15 @@ export function createFilesRoutes(deps: FilesDeps): Hono {
           if (entry.name === ".git") continue;
 
           const isDir = entry.isDirectory();
-          const entryPath = isDir
-            ? entry.name
-            : relativePath
-              ? `${relativePath}/${entry.name}`
-              : entry.name;
+          // browse 模式下子节点 path 用绝对路径（resolve 会规范化分隔符）/
+          // In browse mode child path is absolute (resolve normalizes separators)
+          const entryPath = isBrowse
+            ? resolve(targetDir, entry.name)
+            : isDir
+              ? entry.name
+              : relativePath
+                ? `${relativePath}/${entry.name}`
+                : entry.name;
 
           const node: FileNode = {
             name: entry.name,

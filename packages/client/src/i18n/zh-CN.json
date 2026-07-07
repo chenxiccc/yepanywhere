@@ -1413,6 +1413,8 @@
   "sourceManagerFileTreeRetry": "重试",
   "sourceManagerFileTreeEmptyDir": "（空）",
   "sourceManagerFileTreeClearSearch": "清除搜索",
+  "sourceManagerFileTreeGoUp": "返回上一级文件夹",
+  "sourceManagerFileTreeBrowseDenied": "无权访问该目录，可在开发者设置→文件访问中开放该路径",
   "sourceManagerFileContextCopyName": "复制文件名",
   "sourceManagerFileContextCopyNameCopied": "文件名已复制！",
   "sourceManagerFileContextCopyAbsolutePath": "复制绝对路径",

@@ -2118,6 +2118,8 @@
   "sourceManagerFileTreeRetry": "Retry",
   "sourceManagerFileTreeEmptyDir": "(empty)",
   "sourceManagerFileTreeClearSearch": "Clear search",
+  "sourceManagerFileTreeGoUp": "Go up to parent folder",
+  "sourceManagerFileTreeBrowseDenied": "Access denied. Open Developer Settings → File Access to allow this path",
   "sourceManagerFileContextCopyName": "Copy File Name",
   "sourceManagerFileContextCopyNameCopied": "File name copied!",
   "sourceManagerFileContextCopyAbsolutePath": "Copy Absolute Path",
