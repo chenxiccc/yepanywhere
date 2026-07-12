@@ -14,6 +14,7 @@ import {
   useOutletContext,
 } from "react-router-dom";
 import { Sidebar } from "../components/Sidebar";
+import { MobileTopNav } from "../components/MobileTopNav";
 import { useClientSummarySourceKey } from "../lib/clientSummaryStore";
 import { useSidebarPreference } from "../hooks/useSidebarPreference";
 import { useSessionPerformanceSettings } from "../hooks/useSessionPerformanceSettings";
@@ -380,6 +381,13 @@ export function NavigationLayout({ sessionElement }: NavigationLayoutProps) {
           onNavigate={closeSidebar}
           currentSessionId={currentSessionMatch?.sessionId}
         />
+      )}
+
+      {/* 手机端页头横向图标条 / Mobile header horizontal icon bar.
+          仅移动端、非 content-frame 路由渲染，与移动 Sidebar 抽屉一致。
+          Mobile-only, hidden on content-frame routes — matches the mobile Sidebar. */}
+      {!isWideScreen && !isContentFrameRoute && (
+        <MobileTopNav openSidebar={openSidebar} />
       )}
 
       <NavigationLayoutReactContext.Provider value={context}>

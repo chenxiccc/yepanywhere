@@ -61,7 +61,6 @@ export function PageHeader({
   title,
   titleElement,
   onTitleClick,
-  onOpenSidebar,
   onToggleSidebar,
   isWideScreen = false,
   isSidebarCollapsed = false,
@@ -70,13 +69,15 @@ export function PageHeader({
   actions,
 }: PageHeaderProps) {
   const { t } = useI18n();
-  // On desktop: toggle sidebar collapse. On mobile: open sidebar overlay
-  // Hide the toggle on desktop when sidebar is collapsed (sidebar has its own toggle)
+  // On desktop: toggle sidebar collapse. On mobile: hamburger moved to MobileTopNav,
+  // so no toggle here. Hide the toggle on desktop when sidebar is collapsed
+  // (sidebar has its own toggle).
+  // 桌面端：切换侧栏折叠。移动端：汉堡已移至 MobileTopNav，此处不再渲染。
   const handleToggle = isWideScreen
     ? isSidebarCollapsed
       ? undefined
       : onToggleSidebar
-    : onOpenSidebar;
+    : undefined;
   const toggleTitle = isWideScreen
     ? t("actionToggleSidebar")
     : t("actionOpenSidebar");
