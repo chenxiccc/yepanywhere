@@ -1,0 +1,436 @@
+/**
+ * Terminal styles — 终端样式
+ *
+ * 独立于 renderers.css 以避免与上游合并时的冲突。
+ * Isolated from renderers.css to avoid merge conflicts with upstream.
+ *
+ * Imported by SessionTerminalModal.tsx.
+ */
+
+/* ===== Terminal Modal / 终端弹窗 ===== */
+
+.session-terminal-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.session-terminal-title code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.session-terminal-modal {
+  display: flex;
+  flex-direction: column;
+  position: relative; /* C4: overlay 定位锚点 / overlay positioning anchor */
+  min-height: 50vh;
+  height: min(78vh, 860px);
+  width: 100%;
+  min-width: 0;
+  background: #0a0a0a;
+}
+
+/* ===== Tab Bar / 标签栏 ===== */
+
+.session-terminal-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent),
+    #111111;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.session-terminal-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.session-terminal-tab-list {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0;
+  scrollbar-width: none;
+}
+
+.session-terminal-tab-list::-webkit-scrollbar {
+  display: none;
+}
+
+.session-terminal-tab-actions {
+  display: flex;
+  align-items: stretch;
+  flex: 0 0 auto;
+  margin-left: 0;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  background: transparent;
+}
+
+.session-terminal-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+  max-width: 12rem;
+  padding: 0.38rem 1.82rem 0.38rem 0.68rem;
+  margin-right: -1px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: none;
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.03);
+  color: #888;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.session-terminal-tab.active {
+  background: #0a0a0a;
+  color: #ddd;
+  border-color: rgba(255, 255, 255, 0.14);
+  border-bottom-color: #0a0a0a;
+  z-index: 1;
+}
+
+.session-terminal-tab-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 7.8rem;
+  font-size: 0.7rem;
+}
+
+.session-terminal-tab-badge {
+  font-size: 0.65rem;
+  color: #999;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  flex: 0 0 auto;
+}
+
+.session-terminal-tab-close {
+  position: absolute;
+  right: 0.34rem;
+  top: 0.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.3rem;
+  height: 1.15rem;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  opacity: 0.5;
+  flex: 0 0 auto;
+  line-height: 1;
+  padding: 0;
+}
+
+.session-terminal-tab-close-icon {
+  width: 0.82rem;
+  height: 0.82rem;
+  stroke: currentColor;
+  stroke-width: 1.15;
+  stroke-linecap: round;
+  fill: none;
+}
+
+.session-terminal-tab-close:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.session-terminal-tab-new {
+  min-width: 2rem;
+  justify-content: center;
+  padding-inline: 0.7rem;
+  font-size: 1.05rem;
+  line-height: 1;
+  border-radius: 0;
+  color: #777;
+  margin-right: 0;
+  background: rgba(255, 255, 255, 0.03);
+  border: none;
+}
+
+.session-terminal-tab-new:hover {
+  color: #ddd;
+}
+
+/* ===== Terminal Container / 终端容器 ===== */
+
+.session-terminal-container {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  padding: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: #0a0a0a;
+}
+
+.session-terminal-container .xterm {
+  height: 100%;
+  padding: var(--space-2);
+  box-sizing: border-box;
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+}
+
+.session-terminal-error {
+  margin: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--error-color) 45%, transparent);
+  border-radius: var(--radius-md);
+  color: var(--error-color);
+  background: color-mix(in srgb, var(--error-color) 12%, transparent);
+}
+
+/* ===== Mobile Controls / 移动端控制 ===== */
+
+.session-terminal-mobile-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 0.3rem 0.5rem 0.4rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent),
+    #111111;
+  overflow: hidden;
+}
+
+.session-terminal-mobile-shortcuts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 8.35rem;
+  gap: 0.28rem;
+  width: 100%;
+  min-width: 0;
+  align-items: stretch;
+}
+
+.session-terminal-mobile-shortcuts-main {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  gap: 0.28rem;
+  min-width: 0;
+}
+
+.session-terminal-mobile-shortcuts-arrows {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  grid-template-areas:
+    ". up ."
+    "left down right";
+  gap: 0.28rem;
+  min-width: 0;
+  align-self: center;
+  transform: translateY(0.1rem);
+}
+
+.session-terminal-shortcut {
+  width: 100%;
+  min-width: 0;
+  min-height: 30px;
+  padding: 0.16rem 0.3rem;
+  font-size: 0.8rem;
+  line-height: 1;
+  box-sizing: border-box;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: #ccc;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.session-terminal-shortcut-main {
+  min-height: 18px;
+  padding: 0.04rem 0.14rem;
+  font-size: 0.58rem;
+  border-radius: 9px;
+}
+
+.session-terminal-shortcut-arrow-up {
+  grid-area: up;
+}
+
+.session-terminal-shortcut-arrow-left {
+  grid-area: left;
+}
+
+.session-terminal-shortcut-arrow-right {
+  grid-area: right;
+}
+
+.session-terminal-shortcut-arrow-down {
+  grid-area: down;
+}
+
+.session-terminal-mobile-input {
+  width: 100%;
+  min-height: 44px;
+  max-height: 120px;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--border-input);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+  font: inherit;
+  resize: none;
+}
+
+.session-terminal-mobile-input-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  min-height: 1px;
+  max-height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.session-terminal-mobile-input:focus {
+  outline: none;
+  border-color: var(--focus-border);
+}
+
+/* ===== Mobile: Full-screen Modal / 移动端全屏弹窗 ===== */
+
+@media (max-width: 600px) {
+  .modal:has(.session-terminal-modal) .modal-header {
+    padding-top: max(0.25rem, env(safe-area-inset-top, 0px));
+  }
+
+  .modal:has(.session-terminal-modal) .modal-content {
+    overflow: hidden;
+    display: flex;
+    min-width: 0;
+    padding: 0;
+  }
+
+  .session-terminal-modal {
+    min-height: 100%;
+    height: 100%;
+    max-height: 100%;
+  }
+
+  .session-terminal-container {
+    padding: 0;
+  }
+
+  .session-terminal-mobile-controls {
+    gap: 0.25rem;
+    padding: 0.25rem 0.4rem 0.32rem;
+  }
+
+  .session-terminal-mobile-shortcuts {
+    gap: 0.24rem;
+    grid-template-columns: minmax(0, 1fr) 7.45rem;
+  }
+
+  .session-terminal-shortcut {
+    min-height: 28px;
+    padding: 0.12rem 0.25rem;
+    border-radius: 14px;
+    font-size: 0.76rem;
+  }
+
+  .session-terminal-shortcut-main {
+    min-height: 17px;
+    padding: 0.03rem 0.12rem;
+    font-size: 0.54rem;
+    border-radius: 8px;
+  }
+
+  .session-terminal-mobile-shortcuts-main,
+  .session-terminal-mobile-shortcuts-arrows {
+    gap: 0.24rem;
+  }
+
+  .session-terminal-mobile-input::placeholder {
+    color: var(--text-dimmed);
+  }
+}
+
+/* ===== Reconnect Overlay / 断连重连遮罩 (C4) ===== */
+
+.session-terminal-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  background: rgba(10, 10, 10, 0.82);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  z-index: 100;
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.session-terminal-reconnect-button {
+  padding: 0.5rem 1.25rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--accent);
+  color: var(--background);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.session-terminal-reconnect-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ===== Mobile: Native Touch Selection / 移动端原生选择 (方案 C) ===== */
+
+/* 仅移动端 + 启用 class 时解除 user-select 封印 /
+   only mobile + enabled class lifts the user-select:none set on .xterm */
+.xterm-native-touch-selection .xterm-rows,
+.xterm-native-touch-selection .xterm-rows span {
+  user-select: text;
+  -webkit-user-select: text;
+  -webkit-touch-callout: default; /* iOS 长按菜单 / iOS long-press menu; Android 忽略无副作用 */
+}
+
+/* 选择进行时：确保 .xterm-rows 仍可被 touch 命中（防御性；
+   xterm listener 的阻断靠 capture stopImmediatePropagation，不靠 pointer-events） /
+   during selection: ensure .xterm-rows stays hit-testable (defensive;
+   xterm listener is blocked via capture stopImmediatePropagation, not pointer-events) */
+.xterm-native-touch-selection.xterm-selecting .xterm-rows,
+.xterm-native-touch-selection.xterm-selecting .xterm-rows span {
+  pointer-events: auto;
+  user-select: text;
+  -webkit-user-select: text;
+}

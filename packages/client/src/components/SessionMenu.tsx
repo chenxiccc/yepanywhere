@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { useI18n } from "../i18n";
 import { SidebarIcons } from "./SidebarNavItem";
+import { useTerminalModal } from "./TerminalModalProvider";
 
 export interface SessionMenuProps {
   sessionId: string;
@@ -63,6 +64,8 @@ export interface SessionMenuProps {
   useFixedPositioning?: boolean;
   /** Notified when the menu opens/closes so callers can react to open state. */
   onOpenChange?: (open: boolean) => void;
+  /** Project local path, used to enable terminal menu item / 项目本地路径，用于启用终端菜单项 */
+  projectPath?: string | null;
 }
 
 export function SessionMenu({
@@ -94,9 +97,11 @@ export function SessionMenu({
   className = "",
   useFixedPositioning = false,
   onOpenChange,
+  projectPath,
 }: SessionMenuProps) {
   const { t } = useI18n();
   const navigate = useNavigate();
+  const { openTerminal } = useTerminalModal();
   const [isOpen, setIsOpen] = useState(false);
   const [isTerminating, setIsTerminating] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
@@ -622,6 +627,17 @@ export function SessionMenu({
         {SidebarIcons.sourceControl}
         {t("sessionMenuSourceControl")}
       </button>
+      {projectPath && (
+        <button
+          type="button"
+          onClick={() =>
+            handleAction(() => openTerminal(projectId, projectPath))
+          }
+        >
+          {SidebarIcons.terminal}
+          {t("sessionMenuOpenTerminal")}
+        </button>
+      )}
     </div>
   );
 

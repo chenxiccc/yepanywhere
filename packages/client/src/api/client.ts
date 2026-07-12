@@ -50,6 +50,7 @@ import { getSourceRuntimeRegistry } from "../lib/sourceRuntime";
 import { isRemoteClient } from "../lib/connection";
 import { createFileTreeApi } from "./file-tree";
 import { createGitStatusApi } from "./git-status";
+import { createTerminalApi } from "./terminal-api";
 import type {
   AgentSession,
   InputRequest,
@@ -1401,6 +1402,10 @@ export const api = {
   // File tree API (from file-tree.ts)
   // 文件树 API（来自 file-tree.ts）
   ...createFileTreeApi(fetchJSON),
+
+  // Terminal API (from terminal-api.ts)
+  // 终端 API（来自 terminal-api.ts）
+  ...createTerminalApi(fetchJSON),
 };
 
 /** Result of testing an SSH connection to a remote executor */

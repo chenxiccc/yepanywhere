@@ -13,6 +13,7 @@ import {
   isBinaryData,
 } from "@yep-anywhere/shared";
 import { getDesktopAuthToken } from "../../api/plainFetch";
+import { getDesktopTokenQuery } from "../../api/terminal-api";
 import type { ConnectionManager } from "./ConnectionManager";
 import { RelayProtocol } from "./RelayProtocol";
 import type {
@@ -109,12 +110,8 @@ export class WebSocketConnection implements Connection {
   private getWsUrl(): string {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const base = `${protocol}//${window.location.host}/api/ws`;
-    // Pass desktop token as query param since WebSocket can't set custom headers
-    const token = getDesktopAuthToken();
-    if (token) {
-      return `${base}?desktop_token=${encodeURIComponent(token)}`;
-    }
-    return base;
+    const query = getDesktopTokenQuery();
+    return query ? `${base}?${query}` : base;
   }
 
   async ensureConnected(): Promise<void> {

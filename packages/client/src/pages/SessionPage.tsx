@@ -4302,6 +4302,7 @@ function SessionPageContent({
                   onOpenChange={(open) => {
                     if (open) setShowRecentSessions(false);
                   }}
+                  projectPath={project?.path ?? null}
                 />
               )}
             </div>
