@@ -1,6 +1,7 @@
 import {
   type CSSProperties,
   type ReactNode,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -11,6 +12,17 @@ import { useI18n } from "../../i18n";
 
 const ANCHORED_MODAL_MARGIN_PX = 8;
 const ANCHORED_MODAL_MIN_VIEWPORT_WIDTH_PX = 600;
+
+/**
+ * Global stack of backCloses modal IDs, ordered by open time.
+ * Only the topmost (last) modal responds to popstate so a single back gesture
+ * closes one modal at a time even when modals are nested.
+ *
+ * 全局 backCloses modal 的 ID 栈，按打开顺序排列。只有栈顶（最后一个）modal
+ * 响应 popstate，确保嵌套 modal 时一次返回手势只关闭一层。
+ */
+let modalIdSeq = 0;
+const modalStack: number[] = [];
 
 export interface ModalAnchorRect {
   bottom: number;
@@ -26,6 +38,12 @@ interface ModalProps {
   children: ReactNode;
   onClose: () => void;
   anchorRect?: ModalAnchorRect | null;
+  /**
+   * When true, the browser's back gesture (swipe back on mobile) closes the
+   * modal instead of navigating away from the page. Opens by pushing a
+   * history entry and closes on popstate.
+   */
+  backCloses?: boolean;
 }
 
 /**
@@ -33,16 +51,95 @@ interface ModalProps {
  * Renders via portal to avoid event bubbling issues.
  * Closes on Escape key or clicking the overlay.
  */
-export function Modal({ title, children, onClose, anchorRect }: ModalProps) {
+export function Modal({ title, children, onClose, anchorRect, backCloses }: ModalProps) {
   const { t } = useI18n();
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
   const overlayPointerStartedOnOverlayRef = useRef(false);
+  // Unique id for this modal instance in the global backCloses stack.
+  // 当前 modal 实例在全局 backCloses 栈中的唯一标识。
+  const modalIdRef = useRef<number | null>(null);
+  const backClosesPushedRef = useRef(false);
+  const closingViaPopstateRef = useRef(false);
   const isAnchored =
     !!anchorRect &&
     typeof window !== "undefined" &&
     window.innerWidth > ANCHORED_MODAL_MIN_VIEWPORT_WIDTH_PX;
   const [anchorStyle, setAnchorStyle] = useState<CSSProperties | null>(null);
+
+  // Cache onClose in a ref so the pushState effect doesn't re-run on
+  // reference change (e.g. inline arrow functions on every render).
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  // Back gesture closes modal: pushes a history entry on open; popstate
+  // closes the modal instead of navigating away from the page.
+  // Uses a global modal stack so only the topmost backCloses modal responds
+  // to a single back gesture, even when modals are nested.
+  //
+  // 移动端返回手势关闭 modal：打开时 push 一个 history entry，popstate 时关闭
+  // modal 而不是离开页面。使用全局 modal 栈确保嵌套 modal 时一次返回只关闭一层。
+  useEffect(() => {
+    if (!backCloses) return;
+
+    const modalId = ++modalIdSeq;
+    modalIdRef.current = modalId;
+    modalStack.push(modalId);
+    window.history.pushState({ __modal: true }, "");
+    backClosesPushedRef.current = true;
+
+    const handlePopState = () => {
+      // Only the topmost modal in the stack responds to popstate.
+      // popstate event.state 是导航到的 entry，不是离开的 entry。
+      // 用 ref 确认本实例 push 过 entry，且栈顶是当前 modal。
+      if (
+        backClosesPushedRef.current &&
+        modalStack.length > 0 &&
+        modalStack[modalStack.length - 1] === modalId
+      ) {
+        closingViaPopstateRef.current = true;
+        backClosesPushedRef.current = false;
+        // Remove from stack before calling onClose so the parent
+        // modal (if any) becomes the new top.
+        // 在调用 onClose 前从栈中移除，让父 modal 成为新的栈顶。
+        const idx = modalStack.indexOf(modalId);
+        if (idx >= 0) modalStack.splice(idx, 1);
+        onCloseRef.current();
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+      // Clean up: remove from global stack and clear any pushed history
+      // entry that may have been left behind (e.g. child closed via a
+      // non-Modal close path like a toolbar button).
+      //
+      // 清理：从全局栈中移除，并清理可能残留的 history entry
+      // （例如子 modal 通过非 Modal 关闭路径关闭，如工具栏按钮）。
+      const idx = modalStack.indexOf(modalId);
+      if (idx >= 0) modalStack.splice(idx, 1);
+      if (backClosesPushedRef.current) {
+        backClosesPushedRef.current = false;
+        if (!closingViaPopstateRef.current) {
+          window.history.back();
+        }
+        closingViaPopstateRef.current = false;
+      }
+    };
+  }, [backCloses]);
+
+  // Wrapped close: removes the pushed history entry on manual close, then
+  // calls the parent onClose.
+  const close = useCallback(() => {
+    if (backCloses && backClosesPushedRef.current) {
+      backClosesPushedRef.current = false;
+      if (!closingViaPopstateRef.current) {
+        window.history.back();
+      }
+      closingViaPopstateRef.current = false;
+    }
+    onCloseRef.current();
+  }, [backCloses]);
 
   // Close on Escape key
   useEffect(() => {
@@ -50,12 +147,12 @@ export function Modal({ title, children, onClose, anchorRect }: ModalProps) {
       if (e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();
-        onClose();
+        close();
       }
     };
     document.addEventListener("keydown", handleKeyDown, true);
     return () => document.removeEventListener("keydown", handleKeyDown, true);
-  }, [onClose]);
+  }, [close]);
 
   // Prevent body scroll when modal is open
   useEffect(() => {
@@ -130,7 +227,7 @@ export function Modal({ title, children, onClose, anchorRect }: ModalProps) {
     ) {
       e.preventDefault();
       e.stopPropagation();
-      onClose();
+      close();
     }
     overlayPointerStartedOnOverlayRef.current = false;
   };
@@ -172,7 +269,7 @@ export function Modal({ title, children, onClose, anchorRect }: ModalProps) {
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              onClose();
+              close();
             }}
             aria-label={t("modalClose")}
           >

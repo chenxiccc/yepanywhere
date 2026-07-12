@@ -68,6 +68,7 @@ import { createDevRoutes } from "./routes/dev.js";
 import { createDeviceRoutes } from "./routes/devices.js";
 import { createFilesRoutes } from "./routes/files.js";
 import { createGitStatusRoutes } from "./routes/git-status.js";
+import { createSourceManagerRoutes } from "./routes/source-manager.js";
 import { createGlobalSessionsRoutes } from "./routes/global-sessions.js";
 import { health } from "./routes/health.js";
 import { createInboxRoutes } from "./routes/inbox.js";
@@ -1286,6 +1287,10 @@ export function createApp(options: AppOptions): AppResult {
       }),
     );
   }
+
+  // Source manager routes (branch isolation from upstream git-status)
+  // 源码管理路由（与上游 git-status 物理隔离）
+  app.route("/api/source-manager", createSourceManagerRoutes({ scanner }));
 
   // Recents routes (recently visited sessions)
   if (options.recentsService) {

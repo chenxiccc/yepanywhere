@@ -87,6 +87,10 @@ export const UI_KEYS = {
   settingsIconStyle: "yep-anywhere-settings-icon-style",
   // Legacy key from the first checkbox version of this client-local setting.
   flatSettingsIcons: "yep-anywhere-flat-settings-icons-enabled",
+  // Source manager: hide-warning toggles (client-local, per-device)
+  // 源码管理：隐藏警告开关（客户端本地，按设备）
+  gitUndoHideWarning: "yep-anywhere-git-undo-hide-warning",
+  gitDiscardHideWarning: "yep-anywhere-git-discard-hide-warning",
 } as const;
 
 // ============================================================================
@@ -110,6 +114,10 @@ export const BROWSER_LOCAL_KEYS = {
   browserProfileId: "yep-anywhere-device-id",
   notifyInApp: "yep-anywhere-notify-in-app",
   recentProject: "yep-anywhere-recent-project",
+  // Source manager: remember last viewed project/branch (browser-local)
+  // 源码管理：记住上次查看的项目/分支（浏览器本地）
+  lastViewedBranch: "yep-anywhere-last-viewed-branch",
+  lastViewedProjectGit: "yep-anywhere-last-viewed-project-git",
 } as const;
 
 function isAutomatedBrowserProfile(): boolean {

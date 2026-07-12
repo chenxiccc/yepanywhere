@@ -399,6 +399,12 @@ export function Sidebar({
   const sourceControlPath = sourceControlProjectId
     ? `/git-status?projectId=${encodeURIComponent(sourceControlProjectId)}`
     : "/git-status";
+  // Source manager (our v4 file/git manager) — kept as a separate sidebar entry
+  // alongside upstream's /git-status, so both menus coexist.
+  // 源码管理（v4 文件/Git 管理器）——作为独立侧边栏入口，与上游 /git-status 共存。
+  const sourceManagerPath = sourceControlProjectId
+    ? `/source-manager?projectId=${encodeURIComponent(sourceControlProjectId)}`
+    : "/source-manager";
   const projectQueueSidebarCount = useProjectQueueSidebarCount(
     supportsProjectQueue ? projects : EMPTY_PROJECT_QUEUE_PROJECTS,
   );
@@ -1076,6 +1082,17 @@ export function Sidebar({
                 basePath={basePath}
               />
             )}
+            {/* Source manager (v4 file/git manager) — separate entry, coexists
+                with upstream /git-status. Uses its own route + i18n key to stay
+                decoupled. 源码管理（v4 文件/Git 管理器）——独立入口，与上游
+                /git-status 共存。用独立路由 + i18n key 保持解耦。 */}
+            <SidebarNavItem
+              to={sourceManagerPath}
+              icon={SidebarIcons.fileGit}
+              label={t("sidebarFileGit")}
+              onClick={onNavigate}
+              basePath={basePath}
+            />
             {supportsDeviceBridgeNav && (
               <SidebarNavItem
                 to="/devices"

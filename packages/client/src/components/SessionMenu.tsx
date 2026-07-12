@@ -1,7 +1,10 @@
 import type { PromptSuggestionMode } from "@yep-anywhere/shared";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useNavigate } from "react-router-dom";
+import { api } from "../api/client";
 import { useI18n } from "../i18n";
+import { SidebarIcons } from "./SidebarNavItem";
 
 export interface SessionMenuProps {
   sessionId: string;
@@ -63,6 +66,7 @@ export interface SessionMenuProps {
 }
 
 export function SessionMenu({
+  projectId,
   isStarred,
   isArchived,
   hasUnread,
@@ -92,6 +96,7 @@ export function SessionMenu({
   onOpenChange,
 }: SessionMenuProps) {
   const { t } = useI18n();
+  const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
   const [isTerminating, setIsTerminating] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
@@ -571,7 +576,7 @@ export function SessionMenu({
             : t("sessionMenuTerminate")}
         </button>
       )}
-      {onReload && (
+    {onReload && (
         <button
           type="button"
           onClick={() => {
@@ -594,6 +599,29 @@ export function SessionMenu({
           Reload page
         </button>
       )}
+      <div className="session-menu-divider" />
+      <button
+        type="button"
+        onClick={() =>
+          handleAction(async () => {
+            // 取实时 checkout 分支，传给源码管理页作为初始查看分支
+            // Fetch real-time checked-out branch to pass as initial viewing branch
+            let branch: string | null = null;
+            try {
+              const result = await api.getGitBranchCurrent(projectId);
+              branch = result.branch;
+            } catch {
+              branch = null;
+            }
+            const params = new URLSearchParams({ projectId });
+            if (branch) params.set("branch", branch);
+            navigate(`/source-manager?${params.toString()}`);
+          })
+        }
+      >
+        {SidebarIcons.sourceControl}
+        {t("sessionMenuSourceControl")}
+      </button>
     </div>
   );
 
