@@ -54,6 +54,7 @@ export const settingsCategoryEmojiIcons: Record<string, string> = {
   about: "ℹ️",
   emulator: "🤖",
   development: "🛠️",
+  "webhook-private": "📢",
 };
 
 export const settingsCategoryIcons: Record<string, ReactNode> = {
@@ -264,6 +265,15 @@ export const settingsCategoryIcons: Record<string, ReactNode> = {
       <path d="M17 3l4 4M3 17l4 4" />
       <path d="M10 14l-1.5 1.5" />
       <circle cx="18" cy="6" r="1.5" fill="currentColor" />
+    </Icon>
+  ),
+
+  "webhook-private": (
+    <Icon>
+      {/* Megaphone / bullhorn — group broadcast for DingTalk/Feishu bots */}
+      <path d="M3 11v2a1 1 0 0 0 1 1h2l4 4V6L6 10H4a1 1 0 0 0-1 1z" />
+      <path d="M14 7a5 5 0 0 1 0 10" />
+      <path d="M17 4a9 9 0 0 1 0 16" />
     </Icon>
   ),
 };
