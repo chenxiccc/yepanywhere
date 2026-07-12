@@ -70,9 +70,13 @@ export function allowAllHosts(): boolean {
  * Core check: is this hostname allowed?
  *
  * Matches against built-in patterns, the ALLOWED_HOSTS env var, and in-app settings.
- * Does NOT check for wildcard — callers should check allowAllHosts() first.
+ * When wildcard mode is active (allowAllHosts() returns true), all hostnames are allowed.
  */
 export function isAllowedHostname(hostname: string): boolean {
+  // 通配符模式：允许所有主机名
+  // Wildcard mode: allow all hostnames
+  if (allowAllHosts()) return true;
+
   const h = hostname.toLowerCase();
 
   // Localhost variants (IPv4 + IPv6)
@@ -87,6 +91,34 @@ export function isAllowedHostname(hostname: string): boolean {
 
   // Tailscale (*.ts.net — supports nested subdomains like foo.bar.ts.net)
   if (h.endsWith(".ts.net")) return true;
+
+  // ALLOWED_HOSTS env var entries
+  if (ENV_HOSTS !== "*" && ENV_HOSTS.size > 0 && ENV_HOSTS.has(h)) return true;
+
+  // In-app settings entries
+  if (settingsHosts instanceof Set && settingsHosts.has(h)) return true;
+
+  return false;
+}
+
+/**
+ * Whether the hostname was *explicitly* allowed by the user (env ALLOWED_HOSTS
+ * or in-app Local Access settings), excluding built-in defaults.
+ *
+ * 与 isAllowedHostname() 的区别：此函数不把内置默认项（localhost、私有 IP、
+ * *.ts.net 等）算作"用户明确信任"。WS 准入策略据此判断是否免除 SRP——
+ * 只有用户在 Local Access 设置中显式配置的 hostname（如 Cloudflare Tunnel
+ * 域名）才视为本地可信；Tailscale (*.ts.net) 等内置允许项仍需 SRP。
+ *
+ * Differs from isAllowedHostname(): this excludes built-in defaults
+ * (localhost, private IPs, *.ts.net). Only hostnames the user explicitly
+ * configured in Local Access settings (e.g. a Cloudflare Tunnel domain)
+ * count as trusted for bypassing SRP.
+ */
+export function isUserAllowedHostname(hostname: string): boolean {
+  if (allowAllHosts()) return true;
+
+  const h = hostname.toLowerCase();
 
   // ALLOWED_HOSTS env var entries
   if (ENV_HOSTS !== "*" && ENV_HOSTS.size > 0 && ENV_HOSTS.has(h)) return true;
