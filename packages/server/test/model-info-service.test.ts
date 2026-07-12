@@ -24,6 +24,15 @@ describe("ModelInfoService durable observations", () => {
     expect(svc.getContextWindow("claude-opus-4-8", "claude")).toBe(1_000_000);
   });
 
+  it("ignores smaller observation when heuristic says 1M (custom model via ANTHROPIC_BASE_URL)", () => {
+    const svc = new ModelInfoService();
+    // DeepSeek V4 heuristic is 1M.
+    expect(svc.getContextWindow("deepseek-v4-pro", "claude")).toBe(1_000_000);
+    // SDK reports 200K (doesn't recognize the model) — heuristic wins.
+    svc.recordContextWindow("deepseek-v4-pro", 200_000, "claude");
+    expect(svc.getContextWindow("deepseek-v4-pro", "claude")).toBe(1_000_000);
+  });
+
   it("persists observations and reloads them on a fresh instance (restart)", async () => {
     const svc = new ModelInfoService({ dataDir });
     svc.recordContextWindow("claude-opus-4-8", 1_000_000, "claude");
