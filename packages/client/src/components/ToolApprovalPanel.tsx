@@ -293,6 +293,7 @@ export function ToolApprovalPanel({
                       tool: displayToolName ?? request.toolName,
                     })}
                     onClose={() => setShowPreviewModal(false)}
+                    backCloses
                   >
                     <div className="tool-use-expanded">
                       {toolRegistry.renderToolUse(

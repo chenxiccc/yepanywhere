@@ -968,6 +968,7 @@ export const FileViewer = memo(function FileViewer({
         <Modal
           title={getPathBasename(projectFileModal.filePath)}
           onClose={closeProjectFileModal}
+          backCloses
         >
           <FileViewer
             projectId={projectFileModal.projectId}
