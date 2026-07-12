@@ -18,7 +18,31 @@
 // Version constant for controlled updates
 // Increment this when making intentional SW changes
 // Browsers reinstall SW only when file content changes
-const SW_VERSION = "1.0.6";
+//
+// 1.0.6: session suppression uses activeSessionId synced from the page (the
+//        SPA's current route is not readable from client.url, which stays at
+//        the navigation start URL). Visibility also falls back to
+//        visibilityState since client.focused alone is unreliable on mobile.
+// 1.0.6: 会话抑制改用页面同步的 activeSessionId（SPA 当前路由无法从
+//        client.url 读取，它停留在导航起始 URL）。可见性判断增加
+//        visibilityState 兜底，因 client.focused 在手机端单独不可靠。
+// 1.0.7: notifyInApp default changed to true. A SW restarted by a push reverts
+//        in-memory settings to defaults; defaulting to false silently dropped
+//        foreground pushes after a restart. Defaulting true is restart-safe
+//        (prefer to notify; activeSessionId still suppresses the viewed session).
+// 1.0.7: notifyInApp 默认值改为 true。SW 被 push 重启后内存设置回默认值，
+//        原 false 默认会导致重启后前台推送被静默丢弃。true 为重启安全默认
+//        （宁可通知；activeSessionId 仍抑制正在看的会话）。
+// 1.0.8: persist activeSessionId/notifyInApp to IndexedDB (sw-logs DB v2,
+//        settings store). A push-restarted SW re-hydrates from IDB in
+//        handlePush, fixing "foreground viewing session A still gets A's push"
+//        (the in-memory activeSessionId was null after restart and the main
+//        thread had no trigger to re-sync while staying on the same session).
+// 1.0.8: 持久化 activeSessionId/notifyInApp 到 IndexedDB（sw-logs DB v2，
+//        settings store）。SW 被 push 重启后在 handlePush 从 IDB 重新 hydrate，
+//        修复"前台看会话 A 仍收到 A 的推送"（重启后内存 activeSessionId 为 null，
+//        且用户停留在同一 session 时主线程无触发点重新同步）。
+const SW_VERSION = "1.0.8";
 void SW_VERSION;
 const FRONTEND_RELOAD_QUERY_PARAM = "__ya_reload";
 
@@ -27,21 +51,50 @@ function assetUrl(path) {
   return new URL(path, self.registration.scope).href;
 }
 
-// Settings synced from main thread
+// Settings synced from main thread via postMessage({type:"setting-update",key,value}).
+// The message handler whitelists keys with `key in settings`, so every key
+// that the page may sync MUST be declared here or the update is silently dropped.
+// 通过 postMessage 同步的设置。message handler 用 `key in settings` 做白名单，
+// 故页面可能同步的每个 key 都必须在此声明，否则更新会被静默丢弃。
 const settings = {
-  notifyInApp: false, // When true, notify even when app is focused (if session not viewed)
+  // Default true: when the SW is restarted by a push, in-memory settings revert
+  // to these defaults and the main thread won't re-sync until the next
+  // lifecycle event. If this defaulted to false, a foreground push right after
+  // a SW restart would be silently suppressed (notifyInApp=false → "app visible,
+  // skip"). Defaulting to true makes restart-safe behavior "prefer to notify"
+  // (the activeSessionId check still suppresses the session being viewed); the
+  // main thread corrects this to the user's real setting shortly after.
+  // 默认 true：SW 被 push 唤醒重启时内存 settings 回到此默认值，且主线程在下次
+  // 生命周期事件前不会重新同步。若默认 false，SW 重启后前台推送会被静默抑制
+  // （notifyInApp=false → "app 可见，跳过"）。默认 true 使重启后"宁可通知"，
+  // activeSessionId 检查仍会抑制正在看的会话；主线程随后会修正为用户真实设置。
+  notifyInApp: true,
+  // Currently-viewed session id synced from the page (null when not on a
+  // session route). The page tracks the SPA route because client.url does not
+  // update with client-side navigation.
+  // 页面同步的"当前正在查看的 session id"（不在 session 路由时为 null）。
+  // 因 client.url 不随客户端导航更新，由页面追踪 SPA 路由。
+  activeSessionId: null,
 };
 
 // ============ Debug Logging ============
 // Logs are stored in IndexedDB for retrieval via main thread
 
 const LOG_DB_NAME = "sw-logs";
+const LOG_DB_VERSION = 2; // v2: 加 settings store（持久化 activeSessionId/notifyInApp，跨 SW 重启）
 const LOG_STORE_NAME = "logs";
+const SETTINGS_STORE_NAME = "settings"; // 无 keyPath，out-of-line key（key 即 setting 名）
 const MAX_LOGS = 100;
 
-async function openLogDb() {
+// 打开 sw-logs DB（v2）。logs store 存调试日志，settings store 持久化 SW 设置
+// （activeSessionId/notifyInApp），让 SW 被 push 唤醒重启后能从 IDB 读回设置。
+// onupgradeneeded 用 objectStoreNames.contains 守卫，兼容全新安装与 v1→v2 升级。
+// Open the sw-logs DB (v2). logs store holds debug logs; settings store persists
+// SW settings so a push-restarted SW can re-hydrate them from IDB. The guard
+// handles both fresh install and v1→v2 upgrade.
+async function openSwDb() {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(LOG_DB_NAME, 1);
+    const request = indexedDB.open(LOG_DB_NAME, LOG_DB_VERSION);
     request.onerror = () => reject(request.error);
     request.onsuccess = () => resolve(request.result);
     request.onupgradeneeded = (event) => {
@@ -52,8 +105,56 @@ async function openLogDb() {
           autoIncrement: true,
         });
       }
+      if (!db.objectStoreNames.contains(SETTINGS_STORE_NAME)) {
+        // 无 keyPath：用 out-of-line key（setting 名），配合 put(value, key)
+        db.createObjectStore(SETTINGS_STORE_NAME);
+      }
+    };
+    request.onblocked = () => {
+      // 另一个连接持有旧 version；用完即 close 可缩短等待。
+      console.warn("[SW] sw-logs DB upgrade blocked by another connection");
     };
   });
+}
+
+// 读取持久化设置（SW 重启后 hydrate 用）。失败/不存在返回 null。
+// Read a persisted setting (for hydration after SW restart). Returns null on error/missing.
+async function readSetting(key) {
+  try {
+    const db = await openSwDb();
+    try {
+      return await new Promise((resolve) => {
+        const tx = db.transaction(SETTINGS_STORE_NAME, "readonly");
+        const req = tx.objectStore(SETTINGS_STORE_NAME).get(key);
+        req.onsuccess = () => resolve(req.result ?? null);
+        req.onerror = () => resolve(null);
+      });
+    } finally {
+      db.close();
+    }
+  } catch {
+    return null;
+  }
+}
+
+// 写入持久化设置（message handler 收到 setting-update 时落盘）。
+// Write a persisted setting (called from the message handler on setting-update).
+async function writeSetting(key, value) {
+  try {
+    const db = await openSwDb();
+    try {
+      await new Promise((resolve) => {
+        const tx = db.transaction(SETTINGS_STORE_NAME, "readwrite");
+        tx.objectStore(SETTINGS_STORE_NAME).put(value, key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+      });
+    } finally {
+      db.close();
+    }
+  } catch {
+    // IDB 不可用时忽略；内存值已更新，下次同步会重试
+  }
 }
 
 async function swLog(level, message, data = {}) {
@@ -70,7 +171,7 @@ async function swLog(level, message, data = {}) {
   consoleMethod(`[SW ${level.toUpperCase()}]`, message, data);
 
   try {
-    const db = await openLogDb();
+    const db = await openSwDb();
     const tx = db.transaction(LOG_STORE_NAME, "readwrite");
     const store = tx.objectStore(LOG_STORE_NAME);
 
@@ -105,7 +206,7 @@ async function swLog(level, message, data = {}) {
 // Expose logs retrieval via message
 async function getSwLogs() {
   try {
-    const db = await openLogDb();
+    const db = await openSwDb();
     const tx = db.transaction(LOG_STORE_NAME, "readonly");
     const store = tx.objectStore(LOG_STORE_NAME);
 
@@ -127,7 +228,7 @@ async function getSwLogs() {
 
 async function clearSwLogs() {
   try {
-    const db = await openLogDb();
+    const db = await openSwDb();
     const tx = db.transaction(LOG_STORE_NAME, "readwrite");
     tx.objectStore(LOG_STORE_NAME).clear();
     await tx.complete;
@@ -212,6 +313,9 @@ self.addEventListener("message", async (event) => {
     const { key, value } = event.data;
     if (key in settings) {
       settings[key] = value;
+      // 落盘到 IDB，SW 被 push 唤醒重启后可从 IDB 读回（内存值会随重启丢失）
+      // Persist to IDB so a push-restarted SW can re-hydrate (in-memory value is lost on restart)
+      await writeSetting(key, value);
       await swLog("info", `Setting updated: ${key} = ${value}`);
     }
   }
@@ -248,12 +352,19 @@ self.addEventListener("push", (event) => {
     return;
   }
 
+  // Run handlePush and the log write in parallel so IndexedDB log writes do
+  // not delay notification display. Both still resolve before the push event
+  // settles (event.waitUntil keeps the SW alive for both).
+  // 并行执行 handlePush 与日志写入，避免 IndexedDB 日志写入延迟通知显示。
   event.waitUntil(
-    swLog("info", "Push received", {
-      type: data.type,
-      sessionId: data.sessionId,
-      projectId: data.projectId,
-    }).then(() => handlePush(data)),
+    Promise.all([
+      handlePush(data),
+      swLog("info", "Push received", {
+        type: data.type,
+        sessionId: data.sessionId,
+        projectId: data.projectId,
+      }),
+    ]),
   );
 });
 
@@ -264,8 +375,15 @@ async function handlePush(data) {
     includeUncontrolled: true,
   });
 
-  const focusedClients = clients.filter((client) => client.focused);
-  const hasFocusedClient = focusedClients.length > 0;
+  // A client counts as "visible" if focused OR visibilityState === "visible".
+  // client.focused alone is unreliable on mobile (can be false in foreground),
+  // so visibilityState acts as a fallback. Either signal being visible means
+  // the user can see the app — suppress per the rules below.
+  // 当 focused 或 visibilityState==="visible" 即视为"可见"。client.focused 在
+  // 手机端单独不可靠（前台也可能为 false），故用 visibilityState 兜底。
+  const hasVisibleClient = clients.some(
+    (client) => client.focused || client.visibilityState === "visible",
+  );
 
   // Handle dismiss payload - close matching notification
   if (data.type === "dismiss") {
@@ -296,27 +414,53 @@ async function handlePush(data) {
     return self.registration.showNotification("Yep Anywhere", options);
   }
 
-  // Determine if we should suppress notification
-  if (hasFocusedClient) {
+  // Determine if we should suppress notification.
+  // Only suppress when the app is visible — backgrounded/locked devices always
+  // show (the SW may have stale synced settings after being restarted, so rely
+  // on the live client visibility here, not a synced boolean).
+  // 仅在 app 可见时才考虑抑制；后台/锁屏一律显示（SW 重启后同步值可能过期，
+  // 故此处用实时 client 可见性，而非同步布尔值）。
+  if (hasVisibleClient) {
+    // Hydrate from IDB: a push-restarted SW reverts in-memory settings to
+    // defaults and the main thread won't re-sync in time (no controllerchange,
+    // and if the user stays on the same session the route-change effect doesn't
+    // fire). Re-read the persisted values here so suppression works post-restart.
+    // 从 IDB hydrate：SW 被 push 重启后内存 settings 回默认值，主线程来不及重新
+    // 同步（无 controllerchange，且用户停留在同一 session 时路由变化 effect 不触发）。
+    // 此处重读持久化值，使重启后抑制仍能生效。
+    if (settings.activeSessionId === null) {
+      const id = await readSetting("activeSessionId");
+      if (typeof id === "string" && id.length > 0) settings.activeSessionId = id;
+    }
+    // notifyInApp 默认 true 是安全方向，但用户真实值可能是 false（方向相反），
+    // 必须读回覆盖，否则重启后会前台多推违背用户意图。
+    // notifyInApp defaults to true (safe), but the user's real value may be false
+    // (opposite direction) — must read back to respect intent.
+    const storedNotify = await readSetting("notifyInApp");
+    if (typeof storedNotify === "boolean") settings.notifyInApp = storedNotify;
+
     if (settings.notifyInApp) {
-      // Check if any focused client is viewing THIS session
+      // Suppress only if the user is currently viewing THIS session.
+      // activeSessionId is synced from the page (client.url does not track SPA
+      // navigation). If it's null (SW just restarted, not synced yet) we treat
+      // it as "not viewing" → show (prefer a spurious notify over a missed one).
+      // 仅当用户正在看此会话时抑制。activeSessionId 由页面同步（client.url 不随
+      // SPA 导航更新）。若为 null（SW 刚重启尚未同步）按"不在看"处理 → 显示
+      //（宁可误推一条，不漏推）。
       const sessionId = data.sessionId;
       const isSessionOpen =
-        sessionId &&
-        focusedClients.some((client) => {
-          return client.url?.includes(`/sessions/${sessionId}`);
-        });
+        sessionId && settings.activeSessionId === sessionId;
 
       if (isSessionOpen) {
         console.log(
-          "[SW] Session is open in focused window, skipping notification",
+          "[SW] Session is open in visible window, skipping notification",
         );
         return;
       }
       // Session not open - continue to show notification
     } else {
-      // notifyInApp disabled - skip if any window focused
-      console.log("[SW] App is focused, skipping notification");
+      // notifyInApp disabled - skip if app is visible
+      console.log("[SW] App is visible, skipping notification");
       return;
     }
   }
