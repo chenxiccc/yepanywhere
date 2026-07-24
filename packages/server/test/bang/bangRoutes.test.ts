@@ -1,4 +1,5 @@
 import { toUrlProjectId } from "@yep-anywhere/shared";
+import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
 import {
   type BangCommandsDeps,
@@ -75,6 +76,21 @@ describe("bang command project/session boundary", () => {
     expect(bangCommandService.kill).not.toHaveBeenCalled();
     expect(bangCommandService.readOutput).not.toHaveBeenCalled();
     expect(bangCommandService.remove).not.toHaveBeenCalled();
+  });
+
+  it("does not intercept unrelated API routes while disabled", async () => {
+    const { deps } = createDeps();
+    deps.bangCommandsEnabled = vi.fn(() => false);
+    const app = new Hono();
+    app.route("/api", createBangCommandsRoutes(deps));
+    app.get("/api/projects/:projectId/files", (c) =>
+      c.json({ route: "files" }),
+    );
+
+    const response = await app.request(`/api/projects/${projectId}/files`);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ route: "files" });
   });
 
   it("runs only after the feature and project/session boundary both allow it", async () => {

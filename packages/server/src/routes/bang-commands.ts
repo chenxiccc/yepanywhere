@@ -9,7 +9,7 @@ import {
   looksLikeToon,
   parseToonDocument,
 } from "@yep-anywhere/shared";
-import { Hono } from "hono";
+import { Hono, type MiddlewareHandler } from "hono";
 import { renderMarkdownToHtml } from "../augments/markdown-augments.js";
 import type { SessionMetadataService } from "../metadata/SessionMetadataService.js";
 import type { ProjectScanner } from "../projects/scanner.js";
@@ -116,12 +116,25 @@ export function buildBangOutputMarkdown(text: string): {
 export function createBangCommandsRoutes(deps: BangCommandsDeps): Hono {
   const routes = new Hono();
 
-  routes.use("*", async (c, next) => {
+  const requireBangCommandsEnabled: MiddlewareHandler = async (c, next) => {
     if (!deps.bangCommandsEnabled()) {
       return c.json({ error: "Bang commands are disabled" }, 404);
     }
     await next();
-  });
+  };
+  routes.use("/bang-commands", requireBangCommandsEnabled);
+  routes.use(
+    "/projects/:projectId/bang-completions",
+    requireBangCommandsEnabled,
+  );
+  routes.use(
+    "/projects/:projectId/sessions/:sessionId/bang-commands",
+    requireBangCommandsEnabled,
+  );
+  routes.use(
+    "/projects/:projectId/sessions/:sessionId/bang-commands/*",
+    requireBangCommandsEnabled,
+  );
 
   const resolveProject = async (projectId: string) => {
     if (!isUrlProjectId(projectId)) {
