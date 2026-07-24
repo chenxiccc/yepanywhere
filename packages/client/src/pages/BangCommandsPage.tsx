@@ -26,6 +26,7 @@ export function BangCommandsPage() {
   const { t } = useI18n();
   const { openSidebar, isWideScreen } = useNavigationLayout();
   const [entries, setEntries] = useState<BangHistoryEntry[] | null>(null);
+  const [expandedEntryKey, setExpandedEntryKey] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -55,47 +56,51 @@ export function BangCommandsPage() {
         {entries !== null && entries.length === 0 && (
           <div className="bang-history-empty">{t("bangHistoryEmpty")}</div>
         )}
-        {entries?.map((entry) => (
-          <div
-            className="bang-history-entry"
-            key={`${entry.sessionId}-${entry.object.id}`}
-          >
-            <div className="bang-history-entry-meta">
-              <span className="bang-history-entry-time">
-                {new Date(entry.object.createdAt).toLocaleString()}
-              </span>
-              <span
-                className="bang-history-entry-cwd"
-                title={entry.object.cwd}
-              >
-                {entry.object.cwd.split("/").pop()}
-              </span>
-              {entry.projectId && (
-                <Link
-                  to={`/projects/${entry.projectId}/sessions/${entry.sessionId}`}
-                  className="bang-history-entry-session"
+        {entries?.map((entry) => {
+          const entryKey = `${entry.sessionId}-${entry.object.id}`;
+          return (
+            <div className="bang-history-entry" key={entryKey}>
+              <div className="bang-history-entry-meta">
+                <span className="bang-history-entry-time">
+                  {new Date(entry.object.createdAt).toLocaleString()}
+                </span>
+                <span
+                  className="bang-history-entry-cwd"
+                  title={entry.object.cwd}
                 >
-                  {t("bangHistoryOpenSession")}
-                </Link>
-              )}
+                  {entry.object.cwd.split("/").pop()}
+                </span>
+                {entry.projectId && (
+                  <Link
+                    to={`/projects/${entry.projectId}/sessions/${entry.sessionId}`}
+                    className="bang-history-entry-session"
+                  >
+                    {t("bangHistoryOpenSession")}
+                  </Link>
+                )}
+              </div>
+              <BangCommandDisplayObject
+                object={entry.object}
+                outputExpanded={expandedEntryKey === entryKey}
+                onOutputExpandedChange={(expanded) => {
+                  setExpandedEntryKey(expanded ? entryKey : null);
+                }}
+                handlers={
+                  entry.projectId
+                    ? {
+                        fetchOutput: (objectId: string) =>
+                          api.fetchBangCommandOutput(
+                            entry.projectId as string,
+                            entry.sessionId,
+                            objectId,
+                          ) as Promise<BangCommandOutput>,
+                      }
+                    : undefined
+                }
+              />
             </div>
-            <BangCommandDisplayObject
-              object={entry.object}
-              handlers={
-                entry.projectId
-                  ? {
-                      fetchOutput: (objectId: string) =>
-                        api.fetchBangCommandOutput(
-                          entry.projectId as string,
-                          entry.sessionId,
-                          objectId,
-                        ) as Promise<BangCommandOutput>,
-                    }
-                  : undefined
-              }
-            />
-          </div>
-        ))}
+          );
+        })}
       </div>
     </MainContent>
   );

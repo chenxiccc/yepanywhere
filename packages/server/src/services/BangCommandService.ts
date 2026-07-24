@@ -13,6 +13,7 @@ import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
+import type { Writable } from "node:stream";
 import type {
   BangCommandTranscriptDisplayObject,
   TranscriptDisplayObject,
@@ -26,6 +27,7 @@ const DEFAULT_TIMEOUT_MS = 10 * 60_000;
 const DEFAULT_FLUSH_INTERVAL_MS = 750;
 const SIGKILL_GRACE_MS = 2000;
 const MAX_BANG_OBJECTS_PER_SESSION = 100;
+const MAX_ACTIVE_BANG_COMMANDS_PER_SESSION = 4;
 export const BANG_OUTPUT_READ_MAX_BYTES = 2 * 1024 * 1024;
 
 /**
@@ -59,6 +61,14 @@ export interface BangCommandServiceOptions {
   timeoutMs?: number;
   /** Coalescing interval for streaming preview updates. */
   flushIntervalMs?: number;
+  /** Concurrent command cap per session. */
+  maxActivePerSession?: number;
+  /** Persisted display-object cap per session. */
+  maxObjectsPerSession?: number;
+  /** Stored byte cap for each stdout/stderr file. */
+  outputFileMaxBytes?: number;
+  /** Test seam for output-storage failures. */
+  createOutputStream?: (filePath: string) => Writable;
 }
 
 export interface BangRunRequest {
@@ -78,6 +88,14 @@ interface RunningEntry {
   sessionId: string;
   child: ReturnType<typeof spawn>;
   killedReason?: string;
+  completion?: Promise<BangCommandTranscriptDisplayObject>;
+}
+
+interface OutputCapture {
+  bytes: number;
+  tail: string;
+  truncated: boolean;
+  sinkError?: string;
 }
 
 function safePathSegment(value: string): string {
@@ -88,13 +106,45 @@ function appendTail(tail: string, chunk: string, maxChars: number): string {
   return (tail + chunk).slice(-maxChars);
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function finishWritable(stream: Writable): Promise<void> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const settle = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+    stream.once("finish", settle);
+    stream.once("close", settle);
+    if (stream.destroyed) {
+      settle();
+      return;
+    }
+    try {
+      stream.end();
+    } catch {
+      settle();
+    }
+  });
+}
+
 export class BangCommandService {
   private readonly dataDir: string;
   private readonly metadata: SessionMetadataService;
   private readonly eventBus?: BangEventSink;
   private readonly timeoutMs: number;
   private readonly flushIntervalMs: number;
+  private readonly maxActivePerSession: number;
+  private readonly maxObjectsPerSession: number;
+  private readonly outputFileMaxBytes: number;
+  private readonly createOutputStream: (filePath: string) => Writable;
   private readonly running = new Map<string, RunningEntry>();
+  private readonly startingBySession = new Map<string, number>();
+  private disposed = false;
 
   constructor(options: BangCommandServiceOptions) {
     this.dataDir = options.dataDir;
@@ -102,6 +152,15 @@ export class BangCommandService {
     this.eventBus = options.eventBus;
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.flushIntervalMs = options.flushIntervalMs ?? DEFAULT_FLUSH_INTERVAL_MS;
+    this.maxActivePerSession =
+      options.maxActivePerSession ?? MAX_ACTIVE_BANG_COMMANDS_PER_SESSION;
+    this.maxObjectsPerSession =
+      options.maxObjectsPerSession ?? MAX_BANG_OBJECTS_PER_SESSION;
+    this.outputFileMaxBytes =
+      options.outputFileMaxBytes ?? OUTPUT_FILE_MAX_BYTES;
+    this.createOutputStream =
+      options.createOutputStream ??
+      ((filePath) => fs.createWriteStream(filePath));
   }
 
   isRunning(objectId: string): boolean {
@@ -119,6 +178,20 @@ export class BangCommandService {
 
   async run(request: BangRunRequest): Promise<BangRunHandle> {
     const { sessionId, projectPath, command } = request;
+    if (this.disposed) {
+      throw new Error("Bang command service is shutting down");
+    }
+    const runningForSession = [...this.running.values()].filter(
+      (entry) => entry.sessionId === sessionId,
+    ).length;
+    const startingForSession = this.startingBySession.get(sessionId) ?? 0;
+    if (runningForSession + startingForSession >= this.maxActivePerSession) {
+      throw new Error(
+        `Too many concurrent bang commands for this session (maximum ${this.maxActivePerSession})`,
+      );
+    }
+    this.startingBySession.set(sessionId, startingForSession + 1);
+
     const id = randomUUID();
     const startedAtMs = Date.now();
     const object: BangCommandTranscriptDisplayObject = {
@@ -131,18 +204,37 @@ export class BangCommandService {
       status: "running",
     };
 
-    await this.pruneOldObjects(sessionId);
-    await this.metadata.addTranscriptDisplayObject(sessionId, object);
-    this.emitObjects(sessionId);
+    let objectAdded = false;
+    try {
+      await this.pruneOldObjects(sessionId);
+      await this.metadata.addTranscriptDisplayObject(sessionId, object);
+      objectAdded = true;
+      this.emitObjects(sessionId);
 
-    const outDir = path.dirname(this.outputPath(sessionId, id, "stdout"));
-    await fsp.mkdir(outDir, { recursive: true });
-    const stdoutFile = fs.createWriteStream(
-      this.outputPath(sessionId, id, "stdout"),
-    );
-    const stderrFile = fs.createWriteStream(
-      this.outputPath(sessionId, id, "stderr"),
-    );
+      const outDir = path.dirname(this.outputPath(sessionId, id, "stdout"));
+      await fsp.mkdir(outDir, { recursive: true });
+      if (this.disposed) {
+        const patch: Partial<BangCommandTranscriptDisplayObject> = {
+          status: "killed",
+          durationMs: Date.now() - startedAtMs,
+          error: "Interrupted by server shutdown",
+        };
+        await this.updateObject(sessionId, id, patch).catch(() => {});
+        throw new Error("Bang command service is shutting down");
+      }
+    } catch (error) {
+      if (objectAdded) {
+        await this.updateObject(sessionId, id, {
+          status: this.disposed ? "killed" : "error",
+          durationMs: Date.now() - startedAtMs,
+          error: this.disposed
+            ? "Interrupted by server shutdown"
+            : `Failed to start command: ${errorMessage(error)}`,
+        }).catch(() => {});
+      }
+      this.decrementStarting(sessionId);
+      throw error;
+    }
 
     const env: NodeJS.ProcessEnv = { ...process.env };
     for (const name of SCRUBBED_ENV_VARS) {
@@ -152,71 +244,128 @@ export class BangCommandService {
       ? `${env.PATH}${path.delimiter}${projectPath}`
       : projectPath;
 
-    // detached: the child leads its own process group so kill() can signal
-    // the whole pipeline, not just the bash wrapper.
-    const child = spawn("bash", ["-c", command], {
-      cwd: projectPath,
-      env,
-      detached: true,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    let stdoutFile: Writable;
+    let stderrFile: Writable;
+    let child: ReturnType<typeof spawn>;
+    try {
+      stdoutFile = this.createOutputStream(
+        this.outputPath(sessionId, id, "stdout"),
+      );
+      try {
+        stderrFile = this.createOutputStream(
+          this.outputPath(sessionId, id, "stderr"),
+        );
+      } catch (error) {
+        stdoutFile.destroy();
+        throw error;
+      }
+      try {
+        // detached: the child leads its own process group so kill() can signal
+        // the whole pipeline, not just the bash wrapper.
+        child = spawn("bash", ["-c", command], {
+          cwd: projectPath,
+          env,
+          detached: true,
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+      } catch (error) {
+        stdoutFile.destroy();
+        stderrFile.destroy();
+        throw error;
+      }
+    } catch (error) {
+      await this.updateObject(sessionId, id, {
+        status: "error",
+        durationMs: Date.now() - startedAtMs,
+        error: `Failed to start command: ${errorMessage(error)}`,
+      }).catch(() => {});
+      this.decrementStarting(sessionId);
+      throw error;
+    }
+
     const entry: RunningEntry = { sessionId, child };
     this.running.set(id, entry);
+    this.decrementStarting(sessionId);
 
-    let stdoutTail = "";
-    let stderrTail = "";
-    let stdoutBytes = 0;
-    let stderrBytes = 0;
-    let stdoutTruncated = false;
-    let stderrTruncated = false;
+    const stdoutCapture: OutputCapture = {
+      bytes: 0,
+      tail: "",
+      truncated: false,
+    };
+    const stderrCapture: OutputCapture = {
+      bytes: 0,
+      tail: "",
+      truncated: false,
+    };
     let spawnError: string | undefined;
+    let metadataUpdateError: string | undefined;
     let dirty = false;
 
-    child.stdout?.on("data", (chunk: Buffer) => {
-      if (stdoutBytes < OUTPUT_FILE_MAX_BYTES) {
-        stdoutFile.write(chunk);
-      } else {
-        stdoutTruncated = true;
+    const captureOutput = (
+      capture: OutputCapture,
+      stream: Writable,
+      chunk: Buffer,
+      previewMaxChars: number,
+    ) => {
+      const remaining = Math.max(
+        0,
+        this.outputFileMaxBytes -
+          Math.min(capture.bytes, this.outputFileMaxBytes),
+      );
+      if (chunk.length > remaining) {
+        capture.truncated = true;
       }
-      stdoutBytes += chunk.length;
-      stdoutTail = appendTail(
-        stdoutTail,
+      if (remaining > 0 && !capture.sinkError && !stream.destroyed) {
+        try {
+          stream.write(chunk.subarray(0, remaining));
+        } catch (error) {
+          capture.sinkError = errorMessage(error);
+          capture.truncated = true;
+        }
+      }
+      capture.bytes += chunk.length;
+      capture.tail = appendTail(
+        capture.tail,
         chunk.toString("utf8"),
-        STDOUT_PREVIEW_MAX_CHARS,
+        previewMaxChars,
       );
       dirty = true;
+    };
+
+    stdoutFile.on("error", (error) => {
+      stdoutCapture.sinkError = errorMessage(error);
+      stdoutCapture.truncated = true;
+    });
+    stderrFile.on("error", (error) => {
+      stderrCapture.sinkError = errorMessage(error);
+      stderrCapture.truncated = true;
+    });
+
+    child.stdout?.on("data", (chunk: Buffer) => {
+      captureOutput(stdoutCapture, stdoutFile, chunk, STDOUT_PREVIEW_MAX_CHARS);
     });
     child.stderr?.on("data", (chunk: Buffer) => {
-      if (stderrBytes < OUTPUT_FILE_MAX_BYTES) {
-        stderrFile.write(chunk);
-      } else {
-        stderrTruncated = true;
-      }
-      stderrBytes += chunk.length;
-      stderrTail = appendTail(
-        stderrTail,
-        chunk.toString("utf8"),
-        STDERR_PREVIEW_MAX_CHARS,
-      );
-      dirty = true;
+      captureOutput(stderrCapture, stderrFile, chunk, STDERR_PREVIEW_MAX_CHARS);
     });
     child.on("error", (error) => {
       spawnError = error.message;
     });
 
     const previewPatch = (): Partial<BangCommandTranscriptDisplayObject> => ({
-      stdoutPreview: stdoutTail || undefined,
-      stderrPreview: stderrTail || undefined,
-      stdoutBytes,
-      stderrBytes,
-      stdoutTruncated: stdoutTruncated || undefined,
-      stderrTruncated: stderrTruncated || undefined,
+      stdoutPreview: stdoutCapture.tail || undefined,
+      stderrPreview: stderrCapture.tail || undefined,
+      stdoutBytes: stdoutCapture.bytes,
+      stderrBytes: stderrCapture.bytes,
+      stdoutTruncated: stdoutCapture.truncated || undefined,
+      stderrTruncated: stderrCapture.truncated || undefined,
     });
 
     const flushTimer = setInterval(() => {
       if (!dirty) return;
       dirty = false;
-      void this.updateObject(sessionId, id, previewPatch());
+      void this.updateObject(sessionId, id, previewPatch()).catch((error) => {
+        metadataUpdateError = errorMessage(error);
+      });
     }, this.flushIntervalMs);
     const timeoutTimer = setTimeout(() => {
       this.killEntry(
@@ -227,36 +376,74 @@ export class BangCommandService {
 
     const completion = new Promise<BangCommandTranscriptDisplayObject>(
       (resolve) => {
-        child.on("close", (code, signal) => {
+        child.once("close", (code, signal) => {
           clearInterval(flushTimer);
           clearTimeout(timeoutTimer);
           this.running.delete(id);
           void (async () => {
             await Promise.all([
-              new Promise((r) => stdoutFile.end(r)),
-              new Promise((r) => stderrFile.end(r)),
+              finishWritable(stdoutFile),
+              finishWritable(stderrFile),
             ]);
             const killedReason = entry.killedReason;
+            const storageError = [
+              stdoutCapture.sinkError
+                ? `stdout storage failed: ${stdoutCapture.sinkError}`
+                : null,
+              stderrCapture.sinkError
+                ? `stderr storage failed: ${stderrCapture.sinkError}`
+                : null,
+            ]
+              .filter(Boolean)
+              .join("; ");
+            const commandError =
+              killedReason ??
+              spawnError ??
+              (storageError ||
+                (code === null && signal
+                  ? `Terminated by signal ${signal}`
+                  : undefined));
             const patch: Partial<BangCommandTranscriptDisplayObject> = {
               ...previewPatch(),
               durationMs: Date.now() - startedAtMs,
-              status: killedReason ? "killed" : spawnError ? "error" : "done",
+              status: killedReason ? "killed" : commandError ? "error" : "done",
               exitCode: code ?? undefined,
-              error:
-                killedReason ??
-                spawnError ??
-                (code === null && signal
-                  ? `Terminated by signal ${signal}`
-                  : undefined),
+              error: commandError,
             };
-            const updated = await this.updateObject(sessionId, id, patch);
-            resolve(updated ?? { ...object, ...patch });
+            try {
+              const updated = await this.updateObject(sessionId, id, patch);
+              resolve(updated ?? { ...object, ...patch });
+            } catch (error) {
+              const persistenceError = `Failed to persist command status: ${errorMessage(error)}`;
+              resolve({
+                ...object,
+                ...patch,
+                status: "error",
+                error: [patch.error, metadataUpdateError, persistenceError]
+                  .filter(Boolean)
+                  .join("; "),
+              });
+            }
           })();
         });
       },
     );
+    entry.completion = completion;
 
     return { object, completion };
+  }
+
+  async dispose(reason = "Interrupted by server shutdown"): Promise<void> {
+    this.disposed = true;
+    const entries = [...this.running.entries()];
+    for (const [objectId] of entries) {
+      this.killEntry(objectId, reason);
+    }
+    await Promise.allSettled(
+      entries.flatMap(([, entry]) =>
+        entry.completion ? [entry.completion] : [],
+      ),
+    );
   }
 
   /** Request termination of a running command's process group. */
@@ -322,7 +509,10 @@ export class BangCommandService {
         return { text: "", truncated: false };
       }
     };
-    const [stdout, stderr] = await Promise.all([read("stdout"), read("stderr")]);
+    const [stdout, stderr] = await Promise.all([
+      read("stdout"),
+      read("stderr"),
+    ]);
     return {
       stdout: stdout.text,
       stderr: stderr.text,
@@ -361,11 +551,14 @@ export class BangCommandService {
     const bangObjects = this.metadata
       .getTranscriptDisplayObjects(sessionId)
       .filter((object) => object.kind === "bang-command");
-    const excess = bangObjects.length - (MAX_BANG_OBJECTS_PER_SESSION - 1);
+    const excess = bangObjects.length - (this.maxObjectsPerSession - 1);
     if (excess <= 0) {
       return;
     }
     const oldest = [...bangObjects]
+      .filter(
+        (object) => object.status !== "running" && !this.running.has(object.id),
+      )
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
       .slice(0, excess);
     for (const object of oldest) {
@@ -397,5 +590,14 @@ export class BangCommandService {
         this.metadata.getTranscriptDisplayObjects(sessionId),
       timestamp: new Date().toISOString(),
     });
+  }
+
+  private decrementStarting(sessionId: string): void {
+    const count = this.startingBySession.get(sessionId) ?? 0;
+    if (count <= 1) {
+      this.startingBySession.delete(sessionId);
+    } else {
+      this.startingBySession.set(sessionId, count - 1);
+    }
   }
 }

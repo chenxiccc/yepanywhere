@@ -3,10 +3,7 @@ import { MessageQueue } from "../src/sdk/messageQueue.js";
 import { MockClaudeSDK, createMockScenario } from "../src/sdk/mock.js";
 import type { AgentProvider } from "../src/sdk/providers/types.js";
 import type { RealClaudeSDKInterface } from "../src/sdk/types.js";
-import {
-  createControllableIterator,
-  waitFor,
-} from "./process.test-support.js";
+import { createControllableIterator, waitFor } from "./process.test-support.js";
 import {
   type ResumeCompactionError,
   Supervisor,
@@ -264,6 +261,93 @@ describe("Supervisor", () => {
         expect(setEffort).toHaveBeenCalledWith("medium");
       } finally {
         await supervisorWithProvider.abortProcess(updated?.id ?? process.id);
+      }
+    });
+
+    it("serializes idle effort changes so the latest selection wins", async () => {
+      let aborted = false;
+      let releaseMedium = () => {};
+      const mediumGate = new Promise<void>((resolve) => {
+        releaseMedium = resolve;
+      });
+      const setEffort = vi.fn(async (effort?: string) => {
+        if (effort === "medium") {
+          await mediumGate;
+        }
+      });
+      const startSession = vi.fn(
+        async (options: Parameters<AgentProvider["startSession"]>[0]) => {
+          async function* iterator() {
+            yield {
+              type: "system" as const,
+              subtype: "init" as const,
+              session_id: options.resumeSessionId ?? "effort-race-session",
+            };
+            yield {
+              type: "result" as const,
+              session_id: options.resumeSessionId ?? "effort-race-session",
+            };
+            while (!aborted) {
+              await new Promise((resolve) => setTimeout(resolve, 10));
+            }
+          }
+          return {
+            iterator: iterator(),
+            queue: new MessageQueue(),
+            abort: () => {
+              aborted = true;
+              releaseMedium();
+            },
+            setEffort,
+          };
+        },
+      );
+      const provider: AgentProvider = {
+        name: "claude",
+        displayName: "Claude",
+        supportsPermissionMode: true,
+        supportsThinkingToggle: true,
+        supportsSlashCommands: true,
+        isInstalled: async () => true,
+        isAuthenticated: async () => true,
+        getAuthStatus: async () => ({
+          installed: true,
+          authenticated: true,
+          enabled: true,
+        }),
+        getAvailableModels: async () => [],
+        startSession,
+      };
+      const supervisorWithProvider = new Supervisor({
+        provider,
+        idleTimeoutMs: 100,
+      });
+      const process = await supervisorWithProvider.resumeSession(
+        "effort-race-session",
+        "/tmp/test",
+        { text: "first" },
+        undefined,
+        { thinking: { type: "adaptive" }, effort: "low" },
+      );
+      await vi.waitFor(() => expect(process.state.type).toBe("idle"));
+
+      const mediumUpdate = supervisorWithProvider.reconfigureProcess(
+        process.id,
+        { thinking: { type: "adaptive" }, effort: "medium" },
+      );
+      await vi.waitFor(() => expect(setEffort).toHaveBeenCalledWith("medium"));
+      const highUpdate = supervisorWithProvider.reconfigureProcess(process.id, {
+        thinking: { type: "adaptive" },
+        effort: "high",
+      });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      releaseMedium();
+
+      try {
+        await Promise.all([mediumUpdate, highUpdate]);
+        expect(process.effort).toBe("high");
+      } finally {
+        await supervisorWithProvider.abortProcess(process.id);
       }
     });
 

@@ -472,6 +472,14 @@ export function createApp(options: AppOptions): AppResult {
     eventBus: options.eventBus,
     cacheTtlMs: options.projectScanCacheTtlMs,
   });
+  const bangCommandService =
+    options.sessionMetadataService && options.dataDir
+      ? new BangCommandService({
+          dataDir: options.dataDir,
+          sessionMetadataService: options.sessionMetadataService,
+          eventBus: options.eventBus,
+        })
+      : null;
   const readerCache = new Map<string, ISessionReader>();
   const maxReaderCacheSize = 500;
   const closeReader = async (
@@ -486,11 +494,10 @@ export function createApp(options: AppOptions): AppResult {
     }
   };
   const disposeSessionReaders = async (): Promise<void> => {
+    await bangCommandService?.dispose();
     const entries = Array.from(readerCache.entries());
     readerCache.clear();
-    await Promise.all(
-      entries.map(([key, reader]) => closeReader(key, reader)),
-    );
+    await Promise.all(entries.map(([key, reader]) => closeReader(key, reader)));
   };
 
   const getOrCreateReader = <T extends ISessionReader>(
@@ -1190,17 +1197,30 @@ export function createApp(options: AppOptions): AppResult {
     );
   }
   app.route("/api", createSupervisorQueueRoutes(supervisor));
-  if (options.sessionMetadataService && options.dataDir) {
+  if (options.sessionMetadataService && bangCommandService) {
     app.route(
       "/api",
       createBangCommandsRoutes({
         scanner,
         sessionMetadataService: options.sessionMetadataService,
-        bangCommandService: new BangCommandService({
-          dataDir: options.dataDir,
-          sessionMetadataService: options.sessionMetadataService,
-          eventBus: options.eventBus,
-        }),
+        bangCommandService,
+        bangCommandsEnabled: () =>
+          options.serverSettingsService?.getSetting("clientDefaults")
+            ?.bangCommandsEnabled === true,
+        sessionBelongsToProject: async (project, sessionId) => {
+          const metadataProjectId =
+            options.sessionMetadataService?.getMetadata(
+              sessionId,
+            )?.workingProjectId;
+          if (metadataProjectId) {
+            return metadataProjectId === project.id;
+          }
+          const process = supervisor.getProcessForSession(sessionId);
+          if (process) {
+            return process.projectId === project.id;
+          }
+          return (await getSessionListSummary(sessionId, project.id)) !== null;
+        },
       }),
     );
   }

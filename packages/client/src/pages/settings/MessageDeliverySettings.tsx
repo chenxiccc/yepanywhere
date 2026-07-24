@@ -10,6 +10,7 @@ import { CommittedRangeInput } from "../../components/ui/CommittedRangeInput";
 import { useServerSettings } from "../../hooks/useServerSettings";
 import { useVersion } from "../../hooks/useVersion";
 import { useI18n } from "../../i18n";
+import { serverSupportsBangCommands } from "../../lib/bangCommandAvailability";
 import { serverSupportsProjectQueue } from "../../lib/projectQueueVisibility";
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
 import { useSettingsUndo } from "./SettingsUndoContext";
@@ -40,6 +41,7 @@ interface MessageDeliveryBaseline {
   joinWindowSeconds: number;
   projectQueueQuietSeconds: number;
   composeAnchorsEnabled: boolean;
+  bangCommandsEnabled: boolean;
   busyComposerDefaultAction: BusyComposerDefaultAction;
   steerNowDefault: boolean;
   patientQueueDefault: boolean;
@@ -57,6 +59,7 @@ export function MessageDeliverySettings() {
   const { settings, isLoading, error, updateSettings } = useServerSettings();
   const { version } = useVersion();
   const supportsProjectQueue = serverSupportsProjectQueue(version);
+  const supportsBangCommands = serverSupportsBangCommands(version);
 
   // null drafts mirror the server value; non-null while the user is editing
   // or a save is in flight, cleared once the server catches up.
@@ -65,6 +68,9 @@ export function MessageDeliverySettings() {
     string | null
   >(null);
   const [draftAnchors, setDraftAnchors] = useState<boolean | null>(null);
+  const [draftBangCommands, setDraftBangCommands] = useState<boolean | null>(
+    null,
+  );
   const [draftBusyDefaultAction, setDraftBusyDefaultAction] =
     useState<BusyComposerDefaultAction | null>(null);
   const [draftSteerNow, setDraftSteerNow] = useState<boolean | null>(null);
@@ -81,6 +87,8 @@ export function MessageDeliverySettings() {
     clampProjectQueueQuietSeconds(settings?.projectQueueQuietSeconds) ??
     DEFAULT_PROJECT_QUEUE_QUIET_SECONDS;
   const serverComposeAnchorsEnabled = settings?.composeAnchorsEnabled ?? false;
+  const serverBangCommandsEnabled =
+    settings?.clientDefaults?.bangCommandsEnabled ?? false;
   const serverBusyDefaultAction =
     settings?.clientDefaults?.busyComposerDefaultAction ?? "steer";
   const serverSteerNowDefault =
@@ -99,6 +107,8 @@ export function MessageDeliverySettings() {
           clampProjectQueueQuietSeconds(settings.projectQueueQuietSeconds) ??
           DEFAULT_PROJECT_QUEUE_QUIET_SECONDS,
         composeAnchorsEnabled: settings.composeAnchorsEnabled ?? false,
+        bangCommandsEnabled:
+          settings.clientDefaults?.bangCommandsEnabled ?? false,
         busyComposerDefaultAction:
           settings.clientDefaults?.busyComposerDefaultAction ?? "steer",
         steerNowDefault: settings.clientDefaults?.steerNowDefault ?? false,
@@ -120,6 +130,7 @@ export function MessageDeliverySettings() {
     shownProjectQueueQuietText,
   );
   const shownAnchors = draftAnchors ?? serverComposeAnchorsEnabled;
+  const shownBangCommands = draftBangCommands ?? serverBangCommandsEnabled;
   const shownBusyDefaultAction =
     draftBusyDefaultAction ?? serverBusyDefaultAction;
   const shownSteerNowDefault = draftSteerNow ?? serverSteerNowDefault;
@@ -184,6 +195,14 @@ export function MessageDeliverySettings() {
   }, [draftAnchors, serverComposeAnchorsEnabled]);
   useEffect(() => {
     if (
+      draftBangCommands !== null &&
+      draftBangCommands === serverBangCommandsEnabled
+    ) {
+      setDraftBangCommands(null);
+    }
+  }, [draftBangCommands, serverBangCommandsEnabled]);
+  useEffect(() => {
+    if (
       draftBusyDefaultAction !== null &&
       draftBusyDefaultAction === serverBusyDefaultAction
     ) {
@@ -219,6 +238,8 @@ export function MessageDeliverySettings() {
       (supportsProjectQueue &&
         shownProjectQueueQuietSeconds !== baseline.projectQueueQuietSeconds) ||
       shownAnchors !== baseline.composeAnchorsEnabled ||
+      (supportsBangCommands &&
+        shownBangCommands !== baseline.bangCommandsEnabled) ||
       shownBusyDefaultAction !== baseline.busyComposerDefaultAction ||
       shownSteerNowDefault !== baseline.steerNowDefault ||
       shownPatientQueueDefault !== baseline.patientQueueDefault ||
@@ -231,6 +252,7 @@ export function MessageDeliverySettings() {
     setDraftJoinWindow(null);
     setDraftProjectQueueQuiet(null);
     setDraftAnchors(null);
+    setDraftBangCommands(null);
     setDraftBusyDefaultAction(null);
     setDraftSteerNow(null);
     setDraftPatientQueue(null);
@@ -242,6 +264,9 @@ export function MessageDeliverySettings() {
         : {}),
       composeAnchorsEnabled: snapshot.composeAnchorsEnabled,
       clientDefaults: {
+        ...(supportsBangCommands
+          ? { bangCommandsEnabled: snapshot.bangCommandsEnabled }
+          : {}),
         busyComposerDefaultAction: snapshot.busyComposerDefaultAction,
         steerNowDefault: snapshot.steerNowDefault,
         patientQueueDefault: snapshot.patientQueueDefault,
@@ -255,7 +280,7 @@ export function MessageDeliverySettings() {
     }).catch(() => {
       // surfaced via the hook's error state
     });
-  }, [supportsProjectQueue, updateSettings]);
+  }, [supportsBangCommands, supportsProjectQueue, updateSettings]);
 
   useSettingsUndo(canUndo, undo);
 
@@ -373,6 +398,29 @@ export function MessageDeliverySettings() {
             aria-label={t("messageDeliveryComposeAnchorsTitle")}
           />
         </label>
+
+        {supportsBangCommands && (
+          <label className="settings-item">
+            <div className="settings-item-info">
+              <strong>{t("messageDeliveryBangCommandsTitle")}</strong>
+              <p>{t("messageDeliveryBangCommandsDescription")}</p>
+            </div>
+            <input
+              type="checkbox"
+              checked={shownBangCommands}
+              onChange={(e) => {
+                const next = e.target.checked;
+                setDraftBangCommands(next);
+                void updateSettings({
+                  clientDefaults: { bangCommandsEnabled: next },
+                }).catch(() => {
+                  // surfaced via the hook's error state
+                });
+              }}
+              aria-label={t("messageDeliveryBangCommandsTitle")}
+            />
+          </label>
+        )}
 
         <div className="settings-item">
           <div className="settings-item-info">

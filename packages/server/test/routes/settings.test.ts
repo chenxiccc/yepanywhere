@@ -88,10 +88,7 @@ describe("Settings Routes", () => {
   describe("PUT /", () => {
     it.each([
       [{ hostAwakeMode: "always" }, "hostAwakeMode"],
-      [
-        { hostAwakeBatteryFloorPercent: 10.5 },
-        "hostAwakeBatteryFloorPercent",
-      ],
+      [{ hostAwakeBatteryFloorPercent: 10.5 }, "hostAwakeBatteryFloorPercent"],
       [{ hostAwakeBatteryFloorPercent: 0 }, "hostAwakeBatteryFloorPercent"],
     ])("rejects invalid host-awake settings %j", async (body, errorField) => {
       const routes = createSettingsRoutes({
@@ -635,6 +632,34 @@ describe("Settings Routes", () => {
       const json = await response.json();
       expect(json.error).toBe("Invalid clientDefaults setting");
       expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
+    });
+
+    it("persists the default-off local command setting as a boolean", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientDefaults: { bangCommandsEnabled: true },
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
+        clientDefaults: { bangCommandsEnabled: true },
+      });
+
+      const invalid = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientDefaults: { bangCommandsEnabled: "yes" },
+        }),
+      });
+      expect(invalid.status).toBe(400);
     });
 
     it("merges server-learned session toolbar presence", async () => {

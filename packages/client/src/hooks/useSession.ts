@@ -502,6 +502,11 @@ export function useSession(
     tailTurns?: number;
     tailFrom?: string;
     detailedLoadingProgress?: boolean;
+    onConfigurationError?: (failure: {
+      setting: "effort";
+      requestedValue?: string;
+      message: string;
+    }) => void;
   },
 ) {
   const sourceSummary = useCurrentSourceRuntime().summary;
@@ -1152,12 +1157,7 @@ export function useSession(
 
     pendingAgentsLoadedRef.current = sessionId;
     void loadPendingAgents();
-  }, [
-    loading,
-    loadPendingAgents,
-    messages,
-    sessionId,
-  ]);
+  }, [loading, loadPendingAgents, messages, sessionId]);
 
   // Leading + trailing edge throttle:
   // - Leading: fires immediately on first call
@@ -1193,8 +1193,7 @@ export function useSession(
       }
 
       if (event.fileType === "agent-session") {
-        const parentSessionId =
-          extractParentSessionIdFromAgentFileEvent(event);
+        const parentSessionId = extractParentSessionIdFromAgentFileEvent(event);
         if (parentSessionId !== sessionId) return;
 
         // The JSONL can be created just before its metadata sidecar. Refresh on
@@ -1705,6 +1704,19 @@ export function useSession(
         }
 
         handleStreamMessageEvent(incoming);
+      } else if (data.eventType === "configuration-error") {
+        const setting = data.setting;
+        const message = data.message;
+        if (setting === "effort" && typeof message === "string") {
+          options?.onConfigurationError?.({
+            setting,
+            requestedValue:
+              typeof data.requestedValue === "string"
+                ? data.requestedValue
+                : undefined,
+            message,
+          });
+        }
       } else if (data.eventType === "status") {
         const statusData = data as {
           eventType: string;
@@ -2022,6 +2034,7 @@ export function useSession(
       reportProviderRuntimeStatus,
       session?.provider,
       session?.model,
+      options?.onConfigurationError,
     ],
   );
 

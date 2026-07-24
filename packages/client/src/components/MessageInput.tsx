@@ -290,7 +290,7 @@ interface Props {
    * Absent on composers without a wired bang path.
    */
   bangSupport?: {
-    onRun: (command: string) => void;
+    onRun: (command: string) => Promise<void>;
     fetchCompletions: (
       token: string,
       kind: "command" | "path",
@@ -433,7 +433,7 @@ export function MessageInput({
   const bangQuery =
     bangSupport && !collapsed ? getBangCompletionQuery(text) : null;
   const bangQueryKey = bangQuery
-    ? `${bangQuery.kind} ${bangQuery.token}`
+    ? `${bangQuery.kind} ${bangQuery.token}\0${text.slice(2)}`
     : null;
   const showBangChip = !!bangSupport && !collapsed && text.startsWith("!!");
   const showBangEscapedChip =
@@ -529,8 +529,6 @@ export function MessageInput({
   const speechMirrorSegments = getSpeechMirrorSegments(text, speechPendingTags);
   const bangFetchRef = useRef(bangSupport?.fetchCompletions);
   bangFetchRef.current = bangSupport?.fetchCompletions;
-  const bangLineRef = useRef("");
-  bangLineRef.current = text.startsWith("!!") ? text.slice(2) : "";
   useEffect(() => {
     const fetchCompletions = bangFetchRef.current;
     if (!bangQueryKey || !fetchCompletions) {
@@ -538,15 +536,17 @@ export function MessageInput({
       return;
     }
     const separatorIndex = bangQueryKey.indexOf(" ");
+    const lineSeparatorIndex = bangQueryKey.indexOf("\0");
     const kind = bangQueryKey.slice(0, separatorIndex) as "command" | "path";
-    const token = bangQueryKey.slice(separatorIndex + 1);
+    const token = bangQueryKey.slice(separatorIndex + 1, lineSeparatorIndex);
+    const line = bangQueryKey.slice(lineSeparatorIndex + 1);
     if (!token) {
       setBangCandidates([]);
       return;
     }
     let cancelled = false;
     const timer = setTimeout(() => {
-      fetchCompletions(token, kind, bangLineRef.current).then(
+      fetchCompletions(token, kind, line).then(
         (completions) => {
           if (!cancelled) {
             setBangCandidates(completions);
@@ -986,10 +986,7 @@ export function MessageInput({
     window.visualViewport?.addEventListener("resize", updateKeyboardState);
     return () => {
       window.removeEventListener("resize", updateKeyboardState);
-      window.visualViewport?.removeEventListener(
-        "resize",
-        updateKeyboardState,
-      );
+      window.visualViewport?.removeEventListener("resize", updateKeyboardState);
     };
   }, [textareaFocused]);
 
@@ -1000,7 +997,7 @@ export function MessageInput({
   }, [canSubmit]);
 
   const handleSubmit = useCallback(
-    (
+    async (
       messageOverride?: unknown,
       actionOverride?: "send" | "steer" | "queue",
     ) => {
@@ -1038,11 +1035,15 @@ export function MessageInput({
         if (bangDraft.kind === "empty") {
           return;
         }
-        if (bangDraft.kind === "bang") {
-          controls.clearInput();
-          resetCompositionMetadata();
-          setInterimTranscript("");
-          bangSupport.onRun(bangDraft.command);
+        if (bangDraft.kind === "bang" && !disabled) {
+          try {
+            await bangSupport.onRun(bangDraft.command);
+            controls.clearInput();
+            resetCompositionMetadata();
+            setInterimTranscript("");
+          } catch {
+            // The owner surfaces the run failure; retain the draft for retry.
+          }
           textareaRef.current?.focus();
           return;
         }
@@ -1158,10 +1159,7 @@ export function MessageInput({
   const submitToProjectQueue = useCallback(
     (
       submit:
-        | ((
-            text: string,
-            metadata?: MessageSubmissionMetadata,
-          ) => void)
+        | ((text: string, metadata?: MessageSubmissionMetadata) => void)
         | undefined,
     ) => {
       if (!submit) return;
@@ -1254,9 +1252,7 @@ export function MessageInput({
   // even before their buttons become useful, so Queue or Project Queue can
   // appear without taking space out from under Send/Steer.
   const reserveMobileProjectQueueSlot =
-    !forkSummaryMode &&
-    projectQueueSupported &&
-    toolbarVisibility.projectQueue;
+    !forkSummaryMode && projectQueueSupported && toolbarVisibility.projectQueue;
   const reserveMobileProjectQueueNewSessionSlot =
     !forkSummaryMode &&
     projectQueueSupported &&
@@ -1389,6 +1385,9 @@ export function MessageInput({
     bangSupport
       .fetchCompletions(bangQuery.token, bangQuery.kind, text.slice(2))
       .then((completions) => {
+        if (controls.getDraft() !== text) {
+          return;
+        }
         const single = completions.length === 1 ? completions[0] : undefined;
         if (single) {
           applyCandidate(single);
@@ -2705,20 +2704,20 @@ export function MessageInput({
               )}
               {forkSummaryMode?.onSubmitWithoutSummary &&
                 mobileKeyboardAlternateAction && (
-                <button
-                  type="button"
-                  className={`message-input-keyboard-action message-input-keyboard-alternate ${mobileKeyboardAlternateAction.kind}-mode`}
-                  onPointerDown={(event) => event.preventDefault()}
-                  onClick={mobileKeyboardAlternateAction.onClick}
-                  disabled={disabled}
-                  aria-label={mobileKeyboardAlternateAction.label}
-                >
-                  <span>{mobileKeyboardAlternateAction.displayLabel}</span>
-                  <span aria-hidden="true">
-                    {mobileKeyboardAlternateAction.icon}
-                  </span>
-                </button>
-              )}
+                  <button
+                    type="button"
+                    className={`message-input-keyboard-action message-input-keyboard-alternate ${mobileKeyboardAlternateAction.kind}-mode`}
+                    onPointerDown={(event) => event.preventDefault()}
+                    onClick={mobileKeyboardAlternateAction.onClick}
+                    disabled={disabled}
+                    aria-label={mobileKeyboardAlternateAction.label}
+                  >
+                    <span>{mobileKeyboardAlternateAction.displayLabel}</span>
+                    <span aria-hidden="true">
+                      {mobileKeyboardAlternateAction.icon}
+                    </span>
+                  </button>
+                )}
               {bangQuery !== null && (
                 <button
                   type="button"

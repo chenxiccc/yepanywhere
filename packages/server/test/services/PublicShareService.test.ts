@@ -130,7 +130,55 @@ describe("PublicShareService", () => {
     expect(share?.session.lastSeenAt).toBeUndefined();
     expect(share?.session.hasUnread).toBeUndefined();
     expect(
-      (share?.session as typeof session).heartbeatTurnsEnabled,
+      (share?.session as typeof session | undefined)?.heartbeatTurnsEnabled,
+    ).toBeUndefined();
+  });
+
+  it("strips transcript display objects from frozen and live shares", async () => {
+    const session = makeSession({
+      transcriptDisplayObjects: [
+        {
+          id: "bang-1",
+          kind: "bang-command",
+          createdAt: "2026-05-01T00:00:30.000Z",
+          placementAfterMessageId: "",
+          command: "cat .env",
+          cwd: "/private/project",
+          status: "done",
+          exitCode: 0,
+          stdoutPreview: "SECRET=value",
+        },
+      ],
+    });
+    const frozen = await service.createShare({
+      mode: "frozen",
+      source: {
+        projectId,
+        sessionId: "session-1",
+        projectName: "project",
+        provider: "codex",
+      },
+      snapshot: session,
+    });
+    const live = await service.createShare({
+      mode: "live",
+      source: {
+        projectId,
+        sessionId: "session-1",
+        projectName: "project",
+        provider: "codex",
+      },
+    });
+
+    expect(
+      service.getFrozenShareBySecret(frozen.secret)?.session
+        .transcriptDisplayObjects,
+    ).toBeUndefined();
+    expect(
+      service.buildLiveResponse(
+        service.getRecordBySecret(live.secret)!,
+        session,
+      ).session.transcriptDisplayObjects,
     ).toBeUndefined();
   });
 

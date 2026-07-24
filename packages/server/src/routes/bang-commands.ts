@@ -14,6 +14,7 @@ import { renderMarkdownToHtml } from "../augments/markdown-augments.js";
 import type { SessionMetadataService } from "../metadata/SessionMetadataService.js";
 import type { ProjectScanner } from "../projects/scanner.js";
 import type { BangCommandService } from "../services/BangCommandService.js";
+import type { Project } from "../supervisor/types.js";
 import {
   listAcliArgCompletions,
   listBangCommandCompletions,
@@ -26,6 +27,11 @@ export interface BangCommandsDeps {
   scanner: ProjectScanner;
   sessionMetadataService: SessionMetadataService;
   bangCommandService: BangCommandService;
+  bangCommandsEnabled: () => boolean;
+  sessionBelongsToProject: (
+    project: Project,
+    sessionId: string,
+  ) => Promise<boolean>;
 }
 
 export type BangOutputMode = "markdown" | "json" | "ansi" | "toon" | "raw";
@@ -81,10 +87,9 @@ export function classifyBangOutput(text: string): BangOutputMode {
 }
 
 function fence(text: string, language: string): string {
-  const longestRun = text.match(/`+/g)?.reduce(
-    (max, run) => Math.max(max, run.length),
-    0,
-  );
+  const longestRun = text
+    .match(/`+/g)
+    ?.reduce((max, run) => Math.max(max, run.length), 0);
   const marker = "`".repeat(Math.max(3, (longestRun ?? 0) + 1));
   return `${marker}${language}\n${text}\n${marker}`;
 }
@@ -111,6 +116,13 @@ export function buildBangOutputMarkdown(text: string): {
 export function createBangCommandsRoutes(deps: BangCommandsDeps): Hono {
   const routes = new Hono();
 
+  routes.use("*", async (c, next) => {
+    if (!deps.bangCommandsEnabled()) {
+      return c.json({ error: "Bang commands are disabled" }, 404);
+    }
+    await next();
+  });
+
   const resolveProject = async (projectId: string) => {
     if (!isUrlProjectId(projectId)) {
       return null;
@@ -125,14 +137,28 @@ export function createBangCommandsRoutes(deps: BangCommandsDeps): Hono {
         (object) => object.kind === "bang-command" && object.id === objectId,
       );
 
+  const resolveOwnedSessionProject = async (
+    projectId: string,
+    sessionId: string,
+  ) => {
+    const project = await resolveProject(projectId);
+    if (!project || !(await deps.sessionBelongsToProject(project, sessionId))) {
+      return null;
+    }
+    return project;
+  };
+
   routes.post(
     "/projects/:projectId/sessions/:sessionId/bang-commands",
     async (c) => {
-      const project = await resolveProject(c.req.param("projectId"));
-      if (!project) {
-        return c.json({ error: "Project not found" }, 404);
-      }
       const sessionId = c.req.param("sessionId");
+      const project = await resolveOwnedSessionProject(
+        c.req.param("projectId"),
+        sessionId,
+      );
+      if (!project) {
+        return c.json({ error: "Session not found in project" }, 404);
+      }
       let body: { command?: unknown; placementAfterMessageId?: unknown };
       try {
         body = await c.req.json();
@@ -169,6 +195,13 @@ export function createBangCommandsRoutes(deps: BangCommandsDeps): Hono {
     "/projects/:projectId/sessions/:sessionId/bang-commands/:objectId/kill",
     async (c) => {
       const sessionId = c.req.param("sessionId");
+      const project = await resolveOwnedSessionProject(
+        c.req.param("projectId"),
+        sessionId,
+      );
+      if (!project) {
+        return c.json({ error: "Session not found in project" }, 404);
+      }
       const objectId = c.req.param("objectId");
       if (!findSessionObject(sessionId, objectId)) {
         return c.json({ error: "Bang command not found" }, 404);
@@ -182,6 +215,13 @@ export function createBangCommandsRoutes(deps: BangCommandsDeps): Hono {
     "/projects/:projectId/sessions/:sessionId/bang-commands/:objectId/output",
     async (c) => {
       const sessionId = c.req.param("sessionId");
+      const project = await resolveOwnedSessionProject(
+        c.req.param("projectId"),
+        sessionId,
+      );
+      if (!project) {
+        return c.json({ error: "Session not found in project" }, 404);
+      }
       const objectId = c.req.param("objectId");
       const object = findSessionObject(sessionId, objectId);
       if (!object) {
@@ -209,6 +249,13 @@ export function createBangCommandsRoutes(deps: BangCommandsDeps): Hono {
     "/projects/:projectId/sessions/:sessionId/bang-commands/:objectId",
     async (c) => {
       const sessionId = c.req.param("sessionId");
+      const project = await resolveOwnedSessionProject(
+        c.req.param("projectId"),
+        sessionId,
+      );
+      if (!project) {
+        return c.json({ error: "Session not found in project" }, 404);
+      }
       const objectId = c.req.param("objectId");
       if (!findSessionObject(sessionId, objectId)) {
         return c.json({ error: "Bang command not found" }, 404);

@@ -109,8 +109,14 @@ canonical ID:
   canonical ID and no provisional ID in query lists, inbox tiers, draft
   decorations, provider-runtime status, Project Queue targets or origins,
   recovered queues, or parent-session links.
-- If both records exist, canonical fields remain authoritative and provisional
-  fields only backfill information that the canonical record does not carry.
+- If both records exist, identity is canonical but data authority is decided
+  independently for content, metadata, project, lifecycle, and unread field
+  groups. The record with the newer group observation wins that complete
+  group; canonical wins ties, and the other record only backfills fields the
+  winner does not carry. Observation timestamps take their maxima and the
+  earliest creation event remains retained. A stale canonical lifecycle
+  snapshot therefore cannot overwrite newer provisional activity merely
+  because its ID is canonical.
 - Later activity events and collection snapshots that still name a retained
   old ID resolve to the canonical entity and cannot recreate the duplicate.
 - List projections contain a canonical ID at most once. Inbox tier priority
@@ -147,6 +153,8 @@ Focused coverage includes:
 - Activity bus accepts and dispatches the new event type.
 - Client summary reducer merges a temporary `session-created` record into a
   canonical record without leaving the old ID in query lists or inbox tiers.
+- Group freshness survives the merge when a provisional lifecycle observation
+  is newer than the canonical content snapshot.
 - Provider runtime / activity maps keyed by the temporary ID move to the
   canonical ID.
 - Recent/inbox projections do not show two rows for the same remapped session.

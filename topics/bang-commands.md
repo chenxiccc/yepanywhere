@@ -9,7 +9,7 @@
 
 Topic: bang-commands
 
-Status: implemented v1 (2026-07-24). Server:
+Status: implemented v1, explicit opt-in (2026-07-24). Server:
 `BangCommandService`, `bangCompletions`, `createBangCommandsRoutes`
 (`packages/server/src`). Client: `lib/bangCommands`,
 `BangCommandDisplayObject`, `MessageInput` `bangSupport`,
@@ -61,6 +61,13 @@ project directory:
 
 ## Contracts
 
+- **Default-off feature gate.** Bang commands are available only when the
+  server advertises the permanent `bang-commands` capability and
+  `clientDefaults.bangCommandsEnabled` is explicitly `true`. Absence means
+  off. The server returns 404 from every bang route while disabled; clients
+  hide the sidebar entry and do not give composers `bangSupport`. The opt-in
+  lives in Message Delivery settings because it changes composer submission
+  routing.
 - **`!!` is YA-routed, never provider ingress.** Routing happens in the
   composer (`MessageInput` resolves the draft before its trim/send step,
   because the leading-space escape depends on pre-trim text) and only on
@@ -86,9 +93,12 @@ project directory:
 - **Trust boundary.** No new one: YA already executes arbitrary code as the
   server user via agent sessions. Bang exec is gated by the same
   authentication as sending a turn (owner clients over direct or E2E relay
-  transport), and is absent — UI and API — from public share surfaces.
-  Bang history blocks are session content for censorship purposes: share
-  rendering and redaction rules apply to them like any other block.
+  transport), the explicit default-off feature setting, and a
+  project/session ownership check on every session-scoped route. A URL cannot
+  pair a session from one project with another project's working directory.
+  Bang APIs and display objects are absent from public share surfaces; until
+  display-object censorship exists, the share sanitizer omits the complete
+  `transcriptDisplayObjects` collection.
 - **Environment hygiene.** Inherit the server's baseline subprocess
   environment, but scrub agent-session identity markers
   (`AGENTCTL_SESSION_ID`, `CLAUDE_CODE_SESSION_ID`, `CLAUDECODE`) **and
@@ -111,15 +121,22 @@ project directory:
   metadata, and bounded preview tails (4 KiB stdout / 2 KiB stderr); full
   output lands in `{dataDir}/bang-commands/<sessionId>/<objectId>.stdout` /
   `.stderr` (8 MiB cap per stream, truncation flagged), fetched on demand
-  (2 MiB response cap). Per-session bang objects are pruned oldest-first
-  past 100. Truncated display states that it was cut — the acli truncation
-  principle applied to our own UI.
-- **Timeout and restart.** 10-minute wall-clock cap with a visible
-  timed-out kill reason; cancel always available. On server restart,
-  persisted `running` objects are recovered as `killed`
-  ("Interrupted by server restart"). Known gap: the detached child itself
-  can outlive an abrupt server death; the recovery marker is about honest
-  display state, not process supervision.
+  (2 MiB response cap per stream, 4 MiB combined). Full output is loaded only
+  after an explicit user action; the 500-entry history view retains at most one
+  expanded full-output response at a time. Per-session bang objects are pruned
+  oldest-first past 100, but a running object is never pruned. Truncated
+  display states that it was cut — the acli truncation principle applied to
+  our own UI.
+- **Concurrency and lifecycle.** At most four commands run concurrently per
+  session. The app owns one service instance. Graceful restart/shutdown
+  terminates every running process group, waits for each completion, and
+  records a visible shutdown reason. A 10-minute wall-clock cap records a
+  timed-out kill reason; cancel is always available. Write-stream and metadata
+  failures settle the run as an error rather than crashing the server or
+  leaving its completion pending. On an abrupt server death, startup recovery
+  marks persisted `running` objects `killed` ("Interrupted by server
+  restart"); an uncatchable process death can still leave an OS child until it
+  exits or an external supervisor reaps it.
 
 ## Output rendering: classify, then the standard render paths
 
@@ -139,7 +156,9 @@ render path the repo already has — no bang-private renderer:
   converts to a markdown table, so it renders as a real table. The same
   shared parser also powers a TOON block in the client fixed-font chain
   (`renderFixedFontRichContent`), so agent Bash tool output containing a
-  strict TOON table renders as a table under the sigma toggle too.
+  strict TOON table renders as a table under the sigma toggle too. Quoted
+  cells must close, doubled quotes are the only quote escape, and no bytes may
+  trail a closing quote before the delimiter.
 - **raw** — anything else (including TOON-looking-but-malformed): plain
   fence.
 
@@ -157,6 +176,10 @@ menu on ambiguity. Typing also auto-suggests (150 ms debounce) once the
 token is non-empty. Touch keyboards have no Tab key, so while the draft is
 a bang draft the mobile-keyboard compact action row gains a temporary
 "Tab ⇥" button that triggers the same completion action.
+
+Completion responses are draft-versioned: a response for an older full bang
+line is discarded even when the trailing token is unchanged. A failed run
+keeps the submitted draft intact so the user can correct or retry it.
 
 - **Command position** — the first token, and the first token after `|`,
   `;`, or `&`: candidates are executable names from the server's PATH plus
@@ -178,8 +201,9 @@ a bang draft the mobile-keyboard compact action row gains a temporary
 ## Block actions
 
 - **Echo to session.** Fetches the output and sends a single ordinary user
-  turn (provenance-labeled, command and output fenced, 16 KiB clip per
-  stream) through the normal send path. Always an explicit user action —
+  turn (provenance-labeled, command and output dynamically fenced beyond any
+  backtick run in the content, 16 KiB clip per stream) through the normal
+  send path. Always an explicit user action —
   mirroring the `/btw` rule that result injection is never automatic. The
   display object remains.
 - **Recall to composer.** Drafts `!!<command>` into the composer for
@@ -199,9 +223,9 @@ a bang draft the mobile-keyboard compact action row gains a temporary
 `/bang-commands` (sidebar: "!! Commands") lists all bang runs across
 sessions, newest first (capped 500), with time, project directory, an
 open-session link, and the same block component fetching rendered output on
-demand. Reads only the bounded metadata already in
-`session-metadata.json` plus on-demand output fetches — bounded by
-construction.
+demand. It starts from bounded previews and keeps at most one entry's full
+output expanded and retained. Reads only the bounded metadata already in
+`session-metadata.json` plus that single on-demand output fetch.
 
 ## Fork views may omit bang blocks
 

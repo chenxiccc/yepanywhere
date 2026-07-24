@@ -24,10 +24,11 @@ export function looksLikeToon(text: string): boolean {
   return false;
 }
 
-function splitToonRow(line: string): string[] {
+function splitToonRow(line: string): string[] | null {
   const values: string[] = [];
   let current = "";
   let inQuotes = false;
+  let closedQuotedCell = false;
   for (let index = 0; index < line.length; index += 1) {
     const char = line[index];
     if (inQuotes) {
@@ -37,18 +38,31 @@ function splitToonRow(line: string): string[] {
           index += 1;
         } else {
           inQuotes = false;
+          closedQuotedCell = true;
         }
       } else {
         current += char;
       }
+    } else if (closedQuotedCell) {
+      if (char !== ",") {
+        return null;
+      }
+      values.push(current);
+      current = "";
+      closedQuotedCell = false;
     } else if (char === '"' && current === "") {
       inQuotes = true;
+    } else if (char === '"') {
+      return null;
     } else if (char === ",") {
       values.push(current);
       current = "";
     } else {
       current += char;
     }
+  }
+  if (inQuotes) {
+    return null;
   }
   values.push(current);
   return values;
@@ -85,7 +99,7 @@ export function parseToonDocument(text: string): ToonTable[] | null {
         return null;
       }
       const values = splitToonRow(line.trim());
-      if (values.length !== columns.length) {
+      if (!values || values.length !== columns.length) {
         return null;
       }
       rows.push(values);

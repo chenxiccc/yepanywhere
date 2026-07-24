@@ -101,6 +101,7 @@ function sanitizeSessionForPublicShare(session: AppSession): AppSession {
     heartbeatTurnsEnabled: _heartbeatTurnsEnabled,
     heartbeatTurnsAfterMinutes: _heartbeatTurnsAfterMinutes,
     heartbeatTurnText: _heartbeatTurnText,
+    transcriptDisplayObjects: _transcriptDisplayObjects,
     ...rest
   } = session as AppSession & {
     heartbeatTurnsEnabled?: boolean;

@@ -499,11 +499,7 @@ function installMobileKeyboardViewport(initialHeight = 800) {
         Reflect.deleteProperty(window, "matchMedia");
       }
       if (previousVisualViewport) {
-        Object.defineProperty(
-          window,
-          "visualViewport",
-          previousVisualViewport,
-        );
+        Object.defineProperty(window, "visualViewport", previousVisualViewport);
       } else {
         Reflect.deleteProperty(window, "visualViewport");
       }
@@ -743,7 +739,10 @@ describe("MessageInput", () => {
   it("keeps the normal toolbar while empty and uses compact actions for content", () => {
     const viewport = installMobileKeyboardViewport();
     const onSend = vi.fn();
-    const textarea = renderMessageInput(vi.fn(() => true), { onSend });
+    const textarea = renderMessageInput(
+      vi.fn(() => true),
+      { onSend },
+    );
 
     try {
       expect(textarea.getAttribute("enterkeyhint")).toBe("enter");
@@ -778,9 +777,7 @@ describe("MessageInput", () => {
       expect(
         document.querySelector(".message-input-keyboard-primary"),
       ).toBeNull();
-      expect(
-        document.querySelector(".message-input-keyboard-more"),
-      ).toBeNull();
+      expect(document.querySelector(".message-input-keyboard-more")).toBeNull();
       expect(document.querySelector(".message-input-toolbar")).toBeTruthy();
 
       act(() => viewport.setHeight(800));
@@ -804,11 +801,14 @@ describe("MessageInput", () => {
     };
     const onSend = vi.fn();
     const onQueue = vi.fn();
-    const textarea = renderMessageInput(vi.fn(() => true), {
-      onSend,
-      onQueue,
-      supportsSteering: true,
-    });
+    const textarea = renderMessageInput(
+      vi.fn(() => true),
+      {
+        onSend,
+        onQueue,
+        supportsSteering: true,
+      },
+    );
 
     try {
       act(() => textarea.focus());
@@ -823,9 +823,7 @@ describe("MessageInput", () => {
       expect(actions[0]?.getAttribute("aria-label")).toBe("toolbarQueueLabel");
       expect(actions[0]?.textContent).toBe("→");
       expect(actions[1]?.classList.contains("steer-mode")).toBe(true);
-      expect(actions[1]?.getAttribute("aria-label")).toBe(
-        "Steer current turn",
-      );
+      expect(actions[1]?.getAttribute("aria-label")).toBe("Steer current turn");
       expect(actions[1]?.textContent).toBe("↗");
 
       fireEvent.click(actions[0] as HTMLButtonElement);
@@ -884,9 +882,7 @@ describe("MessageInput", () => {
       expect(
         document.querySelectorAll(".message-input-keyboard-action"),
       ).toHaveLength(0);
-      expect(
-        document.querySelector(".message-input-keyboard-more"),
-      ).toBeNull();
+      expect(document.querySelector(".message-input-keyboard-more")).toBeNull();
       expect(document.querySelector(".message-input-toolbar")).toBeTruthy();
     } finally {
       viewport.restore();
@@ -931,9 +927,7 @@ describe("MessageInput", () => {
         ".message-input-keyboard-more-panel",
       );
       expect(
-        morePanel?.querySelector(
-          '[aria-label="Queue for Project Queue"]',
-        ),
+        morePanel?.querySelector('[aria-label="Queue for Project Queue"]'),
       ).toBeNull();
       expect(
         morePanel?.querySelector(
@@ -979,10 +973,7 @@ describe("MessageInput", () => {
       const [actionsAvailable, setActionsAvailable] = useState(false);
       return (
         <>
-          <button
-            type="button"
-            onClick={() => setActionsAvailable(true)}
-          >
+          <button type="button" onClick={() => setActionsAvailable(true)}>
             Make queue actions available
           </button>
           <MessageInput
@@ -1017,9 +1008,7 @@ describe("MessageInput", () => {
       const projectQueueNewSessionSlot = document.querySelector(
         ".message-input-keyboard-project-queue-new-session-slot",
       );
-      const primary = document.querySelector(
-        ".message-input-keyboard-primary",
-      );
+      const primary = document.querySelector(".message-input-keyboard-primary");
 
       expect(projectQueueSlot).toBeTruthy();
       expect(projectQueueNewSessionSlot).toBeTruthy();
@@ -1038,15 +1027,13 @@ describe("MessageInput", () => {
         }),
       );
 
-      expect(
-        document.querySelector(".message-input-keyboard-primary"),
-      ).toBe(primary);
+      expect(document.querySelector(".message-input-keyboard-primary")).toBe(
+        primary,
+      );
       expect(
         projectQueueSlot?.querySelector(".project-queue-mode"),
       ).toBeTruthy();
-      expect(
-        sessionAlternateSlot?.querySelector(".queue-mode"),
-      ).toBeTruthy();
+      expect(sessionAlternateSlot?.querySelector(".queue-mode")).toBeTruthy();
     } finally {
       viewport.restore();
     }
@@ -3855,7 +3842,9 @@ describe("MessageInput", () => {
     );
     fireEvent.click(screen.getAllByLabelText("Start /btw aside").at(-1)!);
     fireEvent.click(screen.getAllByLabelText("Steer now").at(-1)!);
-    fireEvent.click(screen.getAllByLabelText("Queue for Project Queue").at(-1)!);
+    fireEvent.click(
+      screen.getAllByLabelText("Queue for Project Queue").at(-1)!,
+    );
 
     expect(onRenderToggle).toHaveBeenCalledTimes(1);
     expect(onNudgeClick).toHaveBeenCalledTimes(1);
@@ -3986,7 +3975,8 @@ describe("MessageInput", () => {
         ) {
           return rect(1);
         }
-        if (this.classList.contains("composer-bottom-overflow")) return rect(24);
+        if (this.classList.contains("composer-bottom-overflow"))
+          return rect(24);
         if (this.classList.contains("attach-button")) return rect(80);
         if (this.classList.contains("send-button-with-help")) return rect(40);
         if (
@@ -4114,7 +4104,28 @@ describe("MessageInput bang commands", () => {
     fireEvent.keyDown(textarea, { key: "Enter" });
     expect(support.onRun).toHaveBeenCalledWith("git status");
     expect(onSend).not.toHaveBeenCalled();
-    expect((textarea as HTMLTextAreaElement).value).toBe("");
+    await waitFor(() =>
+      expect((textarea as HTMLTextAreaElement).value).toBe(""),
+    );
+  });
+
+  it("keeps a bang draft when the server rejects the run", async () => {
+    const onSend = vi.fn();
+    const support = bangSupport({
+      onRun: vi.fn(async () => {
+        throw new Error("route unavailable");
+      }),
+    });
+    const textarea = renderMessageInput(undefined, {
+      onSend,
+      bangSupport: support,
+    });
+    fireEvent.change(textarea, { target: { value: "!!git status" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    await waitFor(() => expect(support.onRun).toHaveBeenCalled());
+    expect(onSend).not.toHaveBeenCalled();
+    expect((textarea as HTMLTextAreaElement).value).toBe("!!git status");
   });
 
   it("strips one leading space as the literal-!! escape and sends", () => {
@@ -4154,6 +4165,26 @@ describe("MessageInput bang commands", () => {
     await waitFor(() =>
       expect((textarea as HTMLTextAreaElement).value).toBe("!!gitalike "),
     );
+  });
+
+  it("discards a Tab completion after the draft changes", async () => {
+    let resolveCompletions: (completions: string[]) => void = () => {};
+    const fetchCompletions = vi.fn(
+      () =>
+        new Promise<string[]>((resolve) => {
+          resolveCompletions = resolve;
+        }),
+    );
+    const textarea = renderMessageInput(undefined, {
+      bangSupport: bangSupport({ fetchCompletions }),
+    });
+    fireEvent.change(textarea, { target: { value: "!!gi" } });
+    fireEvent.keyDown(textarea, { key: "Tab" });
+    fireEvent.change(textarea, { target: { value: "!!git status" } });
+    resolveCompletions(["gitalike"]);
+
+    await waitFor(() => expect(fetchCompletions).toHaveBeenCalled());
+    expect((textarea as HTMLTextAreaElement).value).toBe("!!git status");
   });
 
   it("recalls bang history with Ctrl+ArrowUp", () => {

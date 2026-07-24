@@ -255,6 +255,37 @@ describe("useSession completion reconciliation", () => {
     expect(fetchNewMessages).toHaveBeenCalledTimes(1);
   });
 
+  it("surfaces deferred effort configuration failures", () => {
+    const onConfigurationError = vi.fn();
+    renderHook(() =>
+      useSession(
+        PROJECT_ID,
+        "sess-1",
+        {
+          owner: "self",
+          processId: "proc-1",
+        },
+        undefined,
+        { onConfigurationError },
+      ),
+    );
+
+    act(() => {
+      sessionStreamHandler?.({
+        eventType: "configuration-error",
+        setting: "effort",
+        requestedValue: "high",
+        message: "queued work remains blocked",
+      });
+    });
+
+    expect(onConfigurationError).toHaveBeenCalledWith({
+      setting: "effort",
+      requestedValue: "high",
+      message: "queued work remains blocked",
+    });
+  });
+
   it("clears compacting state when the live stream completes", () => {
     const { result } = renderHook(() =>
       useSession(PROJECT_ID, "sess-1", {

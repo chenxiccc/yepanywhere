@@ -117,17 +117,23 @@ export function buildBangEchoText(
     text.length > maxChars
       ? `${text.slice(0, maxChars)}\n[... truncated ...]`
       : text;
+  const fenced = (text: string) => {
+    const longestBacktickRun = Math.max(
+      0,
+      ...Array.from(text.matchAll(/`+/g), (match) => match[0].length),
+    );
+    const fence = "`".repeat(Math.max(3, longestBacktickRun + 1));
+    return `${fence}\n${text}\n${fence}`;
+  };
   const parts = [
     "I ran this local command myself (outside this conversation):",
-    "```",
-    `$ ${object.command}`,
-    "```",
+    fenced(`$ ${object.command}`),
   ];
   if (output.stdout.trim()) {
-    parts.push("Output:", "```", clip(output.stdout.trimEnd()), "```");
+    parts.push("Output:", fenced(clip(output.stdout.trimEnd())));
   }
   if (output.stderr.trim()) {
-    parts.push("Stderr:", "```", clip(output.stderr.trimEnd()), "```");
+    parts.push("Stderr:", fenced(clip(output.stderr.trimEnd())));
   }
   parts.push(
     `Exit code ${object.exitCode ?? "unknown"}${

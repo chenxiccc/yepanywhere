@@ -2,14 +2,15 @@
 
 Topic: transcript-display-objects
 
-Status: first kind implemented. Fork-after-summary progress/follow state is a
-server-persisted display object placed in the source transcript. The schema is
-deliberately a tagged union so later comments/status chips can share the
-placement mechanism without entering provider context.
+Status: two kinds implemented. Fork-after-summary progress/follow state and
+user-authored `!!` command runs are server-persisted display objects placed in
+the source transcript. The tagged union keeps kind-specific lifecycle and
+authorship rules explicit while sharing placement and convergence.
 
 See also:
 [fork-from-turn](fork-from-turn.md) (the motivating instance — the
 "Forking…/Forked link" object),
+[bang-commands](bang-commands.md) (the user-authored local-command instance),
 [synthetic-turn-injection](synthetic-turn-injection.md) (the deliberate contrast
 — that is about putting turns *into* model context; these are explicitly *not*
 in context),
@@ -34,9 +35,19 @@ in a session's transcript — a comment, a status chip, a follow link. Crucially
   is not a permanent float; if the session sees continued use it scrolls off,
   which is desirable — a float that stayed forever would be annoying.
 
-## Behavior (from the fork-after-summary instance)
+## Behavior and authorship
 
-The fork-send follow link is the first such object (see
+All kinds are created at a transcript position, update in place through
+complete metadata snapshots/events, and remain outside provider context.
+Authorship determines mutation rights:
+
+- `fork-summary` is system-authored. Its link/open/click lifecycle is durable;
+  users do not edit or delete it.
+- `bang-command` is user-authored. It may be cancelled while running and
+  deleted only after reaching a terminal state; deletion while running returns
+  409 and successful deletion removes its separately stored output.
+
+The fork-send follow link has additional behavior (see
 [fork-from-turn](fork-from-turn.md)). Its lifecycle generalizes:
 
 - Created and placed at-end at creation time.
@@ -51,7 +62,7 @@ The fork-send follow link is the first such object (see
 
 ## Persistence
 
-The objects should survive **two** things, and that pair is the whole rationale
+The objects survive **two** things, and that pair is the whole rationale
 for the storage choice:
 
 1. **Migrating the view to a new device** — open the same session on another
@@ -63,14 +74,16 @@ for the storage choice:
   associated with the source YA session. Metadata REST responses and
   `session-metadata-changed` events carry the complete current object set, so
   clients converge across tabs and devices.
-- Schema version 2 is additive over existing metadata. Version-1 files migrate
-  in place. A persisted `generating` object cannot resume after a server
-  restart, so initialization deterministically marks it `error` with an
-  interrupted-by-restart message.
+- Schema versions are additive over existing metadata. Older files migrate in
+  place. A persisted fork `generating` object cannot resume after a server
+  restart and becomes `error`; a persisted bang `running` object becomes
+  `killed`. Graceful shutdown first terminates owned bang children and records
+  their terminal state.
 
 ## Implemented schema and placement
 
-- `kind: "fork-summary"` identifies the first object variant.
+- `kind: "fork-summary"` and `kind: "bang-command"` identify the implemented
+  variants.
 - `placementAfterMessageId` anchors the object after the source transcript tail
   observed when the job is accepted. Later turns render below it. A client with
   a compact scrollback window omits the object until that anchor is loaded.
@@ -83,9 +96,8 @@ for the storage choice:
 
 ## Open design questions
 
-- **Authorship scope.** System-generated objects are implemented. User-authored
-  comments may share the mechanism, but need editing/deletion and authorization
-  rules first.
+- **Editable comments.** A future free-form user comment would need editing,
+  authorization, and conflict rules beyond bang commands' terminal deletion.
 - **Placement repair.** Message-id anchoring is stable for append-only
   transcripts. A future transcript rewrite that removes the anchor needs an
   explicit re-anchoring or orphan-display policy.

@@ -17,6 +17,13 @@ assistant-visible `Read`, `Edit`, and command output should be considered public
 with stronger wording for live shares. This is only a warning; it is not a
 redaction layer.
 
+Until the censorship layer covers every display-object kind, frozen snapshots,
+live responses, and per-viewer frozen snapshots omit
+`transcriptDisplayObjects` entirely. In particular, local bang-command lines,
+previews, and errors never reach public-share payloads. This conservative
+interim boundary may hide benign fork-status links as well; authenticated
+session views remain unchanged.
+
 ## Problem
 
 Public shares expose transcript content to unauthenticated bearer-link viewers.

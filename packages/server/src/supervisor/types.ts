@@ -291,6 +291,12 @@ export type ProcessEvent =
       contextWindow: number;
       provider: ProviderName;
     }
+  | {
+      type: "configuration-error";
+      setting: "effort";
+      requestedValue?: EffortLevel;
+      error: Error;
+    }
   | { type: "error"; error: Error }
   | { type: "idle-reap" }
   | { type: "complete" }

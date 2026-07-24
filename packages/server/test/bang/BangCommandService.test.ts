@@ -8,10 +8,14 @@ import { execSync } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { Writable } from "node:stream";
 import type { BangCommandTranscriptDisplayObject } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionMetadataService } from "../../src/metadata/SessionMetadataService.js";
-import { BangCommandService } from "../../src/services/BangCommandService.js";
+import {
+  BangCommandService,
+  type BangCommandServiceOptions,
+} from "../../src/services/BangCommandService.js";
 
 const SESSION = "session-1";
 
@@ -20,7 +24,18 @@ let projectDir: string;
 let metadata: SessionMetadataService;
 let events: Array<{ type: string; sessionId: string }>;
 
-function createService(options: { timeoutMs?: number } = {}) {
+function createService(
+  options: Partial<
+    Pick<
+      BangCommandServiceOptions,
+      | "createOutputStream"
+      | "maxActivePerSession"
+      | "maxObjectsPerSession"
+      | "outputFileMaxBytes"
+      | "timeoutMs"
+    >
+  > = {},
+) {
   return new BangCommandService({
     dataDir,
     sessionMetadataService: metadata,
@@ -137,6 +152,174 @@ describe("BangCommandService", () => {
     expect(output.stdout.startsWith("1\n2\n")).toBe(true);
   });
 
+  it("caps each stored output stream at the documented byte limit", async () => {
+    const service = createService();
+    const { object, completion } = await service.run({
+      sessionId: SESSION,
+      projectPath: projectDir,
+      command: "head -c 8400000 /dev/zero",
+      placementAfterMessageId: "",
+    });
+    const final = await completion;
+    const outputStat = await fs.stat(
+      service.outputPath(SESSION, object.id, "stdout"),
+    );
+
+    expect(outputStat.size).toBe(8 * 1024 * 1024);
+    expect(final.stdoutTruncated).toBe(true);
+  });
+
+  it("rejects a fifth concurrent command in one session", async () => {
+    const service = createService();
+    const handles = [];
+    try {
+      for (let index = 0; index < 4; index += 1) {
+        handles.push(
+          await service.run({
+            sessionId: SESSION,
+            projectPath: projectDir,
+            command: "sleep 30",
+            placementAfterMessageId: "",
+          }),
+        );
+      }
+
+      await expect(
+        service.run({
+          sessionId: SESSION,
+          projectPath: projectDir,
+          command: "sleep 30",
+          placementAfterMessageId: "",
+        }),
+      ).rejects.toThrow(/concurrent/i);
+    } finally {
+      for (const handle of handles) {
+        service.kill(handle.object.id);
+      }
+      await Promise.all(handles.map((handle) => handle.completion));
+    }
+  });
+
+  it("never prunes a running command to make room", async () => {
+    const service = createService({
+      maxActivePerSession: 2,
+      maxObjectsPerSession: 1,
+    });
+    const first = await service.run({
+      sessionId: SESSION,
+      projectPath: projectDir,
+      command: "sleep 30",
+      placementAfterMessageId: "",
+    });
+    const second = await service.run({
+      sessionId: SESSION,
+      projectPath: projectDir,
+      command: "sleep 30",
+      placementAfterMessageId: "",
+    });
+
+    expect(bangObjects().map((entry) => entry.id)).toEqual([
+      first.object.id,
+      second.object.id,
+    ]);
+
+    service.kill(first.object.id);
+    service.kill(second.object.id);
+    await Promise.all([first.completion, second.completion]);
+  });
+
+  it("settles as an error when output storage fails", async () => {
+    const service = createService({
+      createOutputStream: () =>
+        new Writable({
+          write(_chunk, _encoding, callback) {
+            callback(new Error("disk full"));
+          },
+        }),
+    });
+    const { completion } = await service.run({
+      sessionId: SESSION,
+      projectPath: projectDir,
+      command: "echo hello",
+      placementAfterMessageId: "",
+    });
+
+    const final = await completion;
+    expect(final.status).toBe("error");
+    expect(final.error).toMatch(/storage failed.*disk full/);
+  });
+
+  it("records a terminal error when output setup fails synchronously", async () => {
+    const service = createService({
+      maxActivePerSession: 1,
+      createOutputStream: () => {
+        throw new Error("cannot create output file");
+      },
+    });
+
+    await expect(
+      service.run({
+        sessionId: SESSION,
+        projectPath: projectDir,
+        command: "echo hello",
+        placementAfterMessageId: "",
+      }),
+    ).rejects.toThrow(/cannot create output file/);
+    expect(bangObjects()).toEqual([
+      expect.objectContaining({
+        status: "error",
+        error: expect.stringMatching(/cannot create output file/),
+      }),
+    ]);
+  });
+
+  it("settles even when final metadata persistence fails", async () => {
+    vi.spyOn(metadata, "updateTranscriptDisplayObject").mockRejectedValue(
+      new Error("metadata disk full"),
+    );
+    const service = createService();
+    const { completion } = await service.run({
+      sessionId: SESSION,
+      projectPath: projectDir,
+      command: "echo hello",
+      placementAfterMessageId: "",
+    });
+
+    const final = await Promise.race([
+      completion,
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error("completion stranded")), 1000);
+      }),
+    ]);
+    expect(final.status).toBe("error");
+    expect(final.error).toMatch(/Failed to persist.*metadata disk full/);
+  });
+
+  it("kills and settles running commands during disposal", async () => {
+    const service = createService();
+    const handle = await service.run({
+      sessionId: SESSION,
+      projectPath: projectDir,
+      command: "sleep 30",
+      placementAfterMessageId: "",
+    });
+
+    await service.dispose();
+
+    await expect(handle.completion).resolves.toMatchObject({
+      status: "killed",
+      error: "Interrupted by server shutdown",
+    });
+    await expect(
+      service.run({
+        sessionId: SESSION,
+        projectPath: projectDir,
+        command: "true",
+        placementAfterMessageId: "",
+      }),
+    ).rejects.toThrow(/shutting down/);
+  });
+
   it("kills a running command's process group", async () => {
     const service = createService();
     const { object, completion } = await service.run({
@@ -204,10 +387,7 @@ describe("BangCommandService", () => {
   it("runs the harness-check acli fixture end to end", async () => {
     const fixtures = path.join(__dirname, "fixtures");
     for (const name of ["harness-check"]) {
-      await fs.copyFile(
-        path.join(fixtures, name),
-        path.join(projectDir, name),
-      );
+      await fs.copyFile(path.join(fixtures, name), path.join(projectDir, name));
       execSync(`chmod +x ${path.join(projectDir, name)}`);
     }
     const service = createService();

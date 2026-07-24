@@ -339,6 +339,74 @@ describe("clientSummaryState", () => {
     );
   });
 
+  it("merges remapped field groups by their own observation freshness", () => {
+    const temporaryId = "temporary-session";
+    const canonicalId = "canonical-session";
+    let state = applySessionCollectionProcessStateChanged(
+      createEmptyClientSummaryState(),
+      {
+        type: "process-state-changed",
+        sessionId: temporaryId,
+        projectId: PROJECT_ID,
+        activity: "waiting-input",
+        pendingInputType: "tool-approval",
+        timestamp: RECENT,
+      },
+      300,
+    );
+    state = applyGlobalSessionsCollectionSnapshot(
+      state,
+      {
+        query: { scope: "global-sessions", limit: 50 },
+        sessions: [
+          globalSession(canonicalId, {
+            activity: "in-turn",
+            ownership: { owner: "self", processId: "process-1" },
+          }),
+        ],
+        hasMore: false,
+      },
+      250,
+    );
+
+    state = applySessionCollectionIdRemapped(state, {
+      type: "session-id-remapped",
+      oldSessionId: temporaryId,
+      newSessionId: canonicalId,
+      projectId: PROJECT_ID,
+      processId: "process-1",
+      provider: "claude",
+      timestamp: RECENT,
+    });
+
+    expect(selectSessionCollectionRecord(state, canonicalId)).toMatchObject({
+      activity: "waiting-input",
+      pendingInputType: "tool-approval",
+      lifecycleObservedAt: 300,
+    });
+
+    state = applyGlobalSessionsCollectionSnapshot(
+      state,
+      {
+        query: { scope: "global-sessions", limit: 50 },
+        sessions: [
+          globalSession(canonicalId, {
+            activity: "in-turn",
+            ownership: { owner: "self", processId: "process-1" },
+          }),
+        ],
+        hasMore: false,
+      },
+      275,
+    );
+
+    expect(selectSessionCollectionRecord(state, canonicalId)).toMatchObject({
+      activity: "waiting-input",
+      pendingInputType: "tool-approval",
+      lifecycleObservedAt: 300,
+    });
+  });
+
   it("stores and clears provider runtime status by session", () => {
     let state = createEmptyClientSummaryState();
 
@@ -600,7 +668,9 @@ describe("clientSummaryState", () => {
     });
 
     expect(
-      selectRecentSessionRecordsFromRecords(globalRecords, NOW).map((s) => s.id),
+      selectRecentSessionRecordsFromRecords(globalRecords, NOW).map(
+        (s) => s.id,
+      ),
     ).toEqual(["recent-unstarred"]);
     expect(
       selectStarredSessionRecordsFromRecords(starredRecords).map((s) => s.id),
@@ -1229,9 +1299,7 @@ describe("clientSummaryState", () => {
       200,
     );
 
-    expect(
-      selectSessionCollectionRecord(state, "rich-session"),
-    ).toMatchObject({
+    expect(selectSessionCollectionRecord(state, "rich-session")).toMatchObject({
       title: "Fresh list title",
       updatedAt: "2026-05-02T00:00:00.000Z",
       fullTitle: "Complete full title",
@@ -1275,10 +1343,12 @@ describe("clientSummaryState", () => {
       200,
     );
 
-    expect(selectSessionCollectionRecord(state, "queued-active")).toMatchObject({
-      activity: "in-turn",
-      activityInferredFromInboxTier: false,
-    });
+    expect(selectSessionCollectionRecord(state, "queued-active")).toMatchObject(
+      {
+        activity: "in-turn",
+        activityInferredFromInboxTier: false,
+      },
+    );
     expect(selectInboxResponse(state).active[0]).toMatchObject({
       activity: "in-turn",
       activityInferredFromInboxTier: false,
@@ -1983,7 +2053,11 @@ describe("clientSummaryState", () => {
       200,
     );
 
-    state = applyProjectQueueGlobalCollectionSnapshot(state, { items: [] }, 150);
+    state = applyProjectQueueGlobalCollectionSnapshot(
+      state,
+      { items: [] },
+      150,
+    );
 
     expect(selectProjectQueueItems(state, PROJECT_ID)).toMatchObject([
       { id: "2", status: "failed" },

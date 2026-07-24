@@ -159,29 +159,78 @@ function mergeRemappedSessionRecords(
   if (!provisional) return canonical;
   if (!canonical) return { ...provisional, id: canonicalId };
 
-  const merged = {
-    ...provisional,
-    ...canonical,
+  const pickGroup = (
+    observedField:
+      | "contentObservedAt"
+      | "metadataObservedAt"
+      | "projectObservedAt"
+      | "lifecycleObservedAt"
+      | "unreadObservedAt",
+    fields: readonly (keyof SessionCollectionRecord)[],
+  ): Partial<SessionCollectionRecord> => {
+    const provisionalObservedAt = provisional[observedField] ?? NO_OBSERVATION;
+    const canonicalObservedAt = canonical[observedField] ?? NO_OBSERVATION;
+    const [primary, secondary] =
+      canonicalObservedAt >= provisionalObservedAt
+        ? [canonical, provisional]
+        : [provisional, canonical];
+    const entries: Array<[keyof SessionCollectionRecord, unknown]> = [];
+    for (const field of fields) {
+      const value =
+        primary[field] !== undefined ? primary[field] : secondary[field];
+      if (value !== undefined) {
+        entries.push([field, value]);
+      }
+    }
+    const groupObservedAt = Math.max(
+      provisionalObservedAt,
+      canonicalObservedAt,
+    );
+    if (groupObservedAt !== NO_OBSERVATION) {
+      entries.push([observedField, groupObservedAt]);
+    }
+    return Object.fromEntries(entries) as Partial<SessionCollectionRecord>;
+  };
+
+  const merged: SessionCollectionRecord = {
     id: canonicalId,
     observedAt: Math.max(provisional.observedAt, canonical.observedAt),
+    ...pickGroup("contentObservedAt", [
+      "title",
+      "fullTitle",
+      "createdAt",
+      "updatedAt",
+      "messageCount",
+      "provider",
+      "model",
+      "initialPrompt",
+      "lastAgentText",
+    ]),
+    ...pickGroup("metadataObservedAt", [
+      "customTitle",
+      "isArchived",
+      "isStarred",
+      "parentSessionId",
+      "executor",
+    ]),
+    ...pickGroup("projectObservedAt", ["projectId", "projectName"]),
+    ...pickGroup("lifecycleObservedAt", [
+      "ownership",
+      "activity",
+      "activityInferredFromInboxTier",
+      "pendingInputType",
+      "activeStartedAt",
+    ]),
+    ...pickGroup("unreadObservedAt", ["hasUnread"]),
   };
-  const observationFields = [
-    "snapshotObservedAt",
-    "contentObservedAt",
-    "metadataObservedAt",
-    "projectObservedAt",
-    "lifecycleObservedAt",
-    "unreadObservedAt",
-  ] as const;
-  for (const field of observationFields) {
-    const provisionalValue = provisional[field];
-    const canonicalValue = canonical[field];
-    if (provisionalValue !== undefined || canonicalValue !== undefined) {
-      merged[field] = Math.max(
-        provisionalValue ?? NO_OBSERVATION,
-        canonicalValue ?? NO_OBSERVATION,
-      );
-    }
+  if (
+    provisional.snapshotObservedAt !== undefined ||
+    canonical.snapshotObservedAt !== undefined
+  ) {
+    merged.snapshotObservedAt = Math.max(
+      provisional.snapshotObservedAt ?? NO_OBSERVATION,
+      canonical.snapshotObservedAt ?? NO_OBSERVATION,
+    );
   }
   if (
     provisional.eventCreatedAt !== undefined ||
@@ -201,10 +250,7 @@ function remapProjectQueueItemSessionIds(
 ): ProjectQueueItemSummary {
   let target = item.target;
   if (item.target.type === "existing-session") {
-    const sessionId = resolveSessionCollectionId(
-      state,
-      item.target.sessionId,
-    );
+    const sessionId = resolveSessionCollectionId(state, item.target.sessionId);
     if (sessionId !== item.target.sessionId) {
       target = { ...item.target, sessionId };
     }
@@ -970,8 +1016,7 @@ function upsertInboxItemRecord(
   );
 
   const inferredActivity =
-    item.activity ??
-    (item.pendingInputType ? "waiting-input" : null);
+    item.activity ?? (item.pendingInputType ? "waiting-input" : null);
   record = withLifecycleFields(
     record,
     {

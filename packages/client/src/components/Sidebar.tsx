@@ -29,6 +29,7 @@ import { SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from "../hooks/useSidebarWidth";
 import { useVersion } from "../hooks/useVersion";
 import { useI18n } from "../i18n";
 import { toBrowserAppHref } from "../lib/appHref";
+import { bangCommandsAreEnabled } from "../lib/bangCommandAvailability";
 import { isNearScrollEnd } from "../lib/predictiveScroll";
 import { serverSupportsProjectQueue } from "../lib/projectQueueVisibility";
 import { sessionCollectionRecordToGlobalSessionItem } from "../lib/sessionCollectionRecords";
@@ -389,6 +390,10 @@ export function Sidebar({
 
   // Server capabilities for feature gating
   const { version: versionInfo } = useVersion();
+  const bangCommandsEnabled = bangCommandsAreEnabled(
+    versionInfo,
+    serverSettings?.clientDefaults,
+  );
   const supportsProjectQueue = serverSupportsProjectQueue(versionInfo);
   const supportsSourceControl = serverHasCapability(
     versionInfo,
@@ -1028,13 +1033,15 @@ export function Sidebar({
               onClick={onNavigate}
               basePath={basePath}
             />
-            <SidebarNavItem
-              to="/bang-commands"
-              icon={SidebarIcons.bang}
-              label={t("sidebarBangCommands")}
-              onClick={onNavigate}
-              basePath={basePath}
-            />
+            {bangCommandsEnabled && (
+              <SidebarNavItem
+                to="/bang-commands"
+                icon={SidebarIcons.bang}
+                label={t("sidebarBangCommands")}
+                onClick={onNavigate}
+                basePath={basePath}
+              />
+            )}
             <SidebarNavItem
               to="/projects"
               icon={SidebarIcons.projects}

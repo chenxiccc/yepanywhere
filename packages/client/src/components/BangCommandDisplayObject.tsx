@@ -37,35 +37,75 @@ function formatDuration(ms: number): string {
 export function BangCommandDisplayObject({
   object,
   handlers,
+  outputExpanded,
+  onOutputExpandedChange,
 }: {
   object: BangCommandTranscriptDisplayObject;
   handlers?: BangCommandHandlers;
+  outputExpanded?: boolean;
+  onOutputExpandedChange?: (expanded: boolean) => void;
 }) {
   const { t } = useI18n();
   const [output, setOutput] = useState<BangCommandOutput | null>(null);
+  const [locallyExpanded, setLocallyExpanded] = useState(false);
+  const [outputLoading, setOutputLoading] = useState(false);
+  const [outputLoadFailed, setOutputLoadFailed] = useState(false);
+  const [outputLoadAttempt, setOutputLoadAttempt] = useState(0);
   const [showRaw, setShowRaw] = useState(false);
   const fetchedForRef = useRef<string | null>(null);
 
   const finished = object.status !== "running";
   const fetchOutput = handlers?.fetchOutput;
+  const expanded = outputExpanded ?? locallyExpanded;
+  const setExpanded = (next: boolean) => {
+    if (outputExpanded === undefined) {
+      setLocallyExpanded(next);
+    }
+    onOutputExpandedChange?.(next);
+  };
   useEffect(() => {
+    void outputLoadAttempt;
+    if (!expanded) {
+      fetchedForRef.current = null;
+      setOutput(null);
+      setOutputLoading(false);
+      setOutputLoadFailed(false);
+      setShowRaw(false);
+      return;
+    }
     if (!finished || !fetchOutput) return;
     const fetchKey = `${object.id}:${object.status}`;
     if (fetchedForRef.current === fetchKey) return;
     fetchedForRef.current = fetchKey;
+    setOutputLoading(true);
+    setOutputLoadFailed(false);
     let cancelled = false;
     fetchOutput(object.id).then(
       (result) => {
-        if (!cancelled) setOutput(result);
+        if (!cancelled) {
+          setOutput(result);
+          setOutputLoading(false);
+        }
       },
       () => {
-        if (!cancelled) fetchedForRef.current = null;
+        if (!cancelled) {
+          fetchedForRef.current = null;
+          setOutputLoading(false);
+          setOutputLoadFailed(true);
+        }
       },
     );
     return () => {
       cancelled = true;
     };
-  }, [finished, fetchOutput, object.id, object.status]);
+  }, [
+    expanded,
+    finished,
+    fetchOutput,
+    object.id,
+    object.status,
+    outputLoadAttempt,
+  ]);
 
   const stderrText = output?.stderr ?? object.stderrPreview ?? "";
   const rawStdout = output?.stdout ?? object.stdoutPreview ?? "";
@@ -162,6 +202,29 @@ export function BangCommandDisplayObject({
             onClick={() => setShowRaw((value) => !value)}
           >
             {showRaw ? t("bangRendered") : t("bangRaw")}
+          </button>
+        )}
+        {finished && fetchOutput && (
+          <button
+            type="button"
+            className="bang-command-action"
+            disabled={outputLoading}
+            onClick={() => {
+              if (outputLoadFailed) {
+                setOutputLoadFailed(false);
+                setOutputLoadAttempt((attempt) => attempt + 1);
+              } else {
+                setExpanded(!expanded);
+              }
+            }}
+          >
+            {outputLoading
+              ? t("bangLoadingOutput")
+              : outputLoadFailed
+                ? t("bangRetryOutput")
+                : expanded
+                  ? t("bangHideOutput")
+                  : t("bangLoadOutput")}
           </button>
         )}
         {handlers?.onRecall && (

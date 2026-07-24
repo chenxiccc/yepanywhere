@@ -55,6 +55,16 @@ turn. Manual stop remains independently available; treating a configuration
 choice as a stop can discard nearly completed, already-paid-for reasoning on a
 high-cost turn.
 
+Effort control writes are serialized and latest-selection-wins: a slower older
+provider call cannot overwrite a newer choice. At a turn boundary, failure to
+apply the selected effort retains that selection and keeps the process
+non-idle, so deferred work cannot start under the previous effort. A later
+selection retries the provider control; only a successful application
+completes the idle transition and releases queued work. The failed control
+write is surfaced to the active client as a configuration error and logged
+without terminating the process's provider-message consumer, so the resumed
+turn can still report progress and completion.
+
 YA's initial Codex `CodexErrorInfo` normalization maps as follows:
 
 - `serverOverloaded` -> `overloaded`

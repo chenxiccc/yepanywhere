@@ -99,9 +99,9 @@ describe("applyBangCompletion and longestCommonPrefix", () => {
     const query = getBangCompletionQuery("!!gi");
     expect(query && applyBangCompletion("!!gi", query, "git")).toBe("!!git ");
     const pathQuery = getBangCompletionQuery("!!cat sr");
-    expect(pathQuery && applyBangCompletion("!!cat sr", pathQuery, "src/")).toBe(
-      "!!cat src/",
-    );
+    expect(
+      pathQuery && applyBangCompletion("!!cat sr", pathQuery, "src/"),
+    ).toBe("!!cat src/");
   });
 
   it("computes shell-style common prefixes", () => {
@@ -137,5 +137,18 @@ describe("buildBangEchoText", () => {
     expect(text).toContain("clean");
     expect(text).toContain("Stderr:");
     expect(text).toContain("Exit code 2 after 3s.");
+  });
+
+  it("uses fences that command text and output cannot close", () => {
+    const text = buildBangEchoText(
+      bangObject({ command: "printf '```escaped```'" }),
+      {
+        stdout: "before\n```\nafter\n",
+        stderr: "",
+      },
+    );
+
+    expect(text).toContain("````\n$ printf '```escaped```'\n````");
+    expect(text).toContain("````\nbefore\n```\nafter\n````");
   });
 });

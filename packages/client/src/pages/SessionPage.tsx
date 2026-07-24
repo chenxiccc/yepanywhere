@@ -23,10 +23,8 @@ import {
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { BangCommandHandlers } from "../components/BangCommandDisplayObject";
-import {
-  buildBangEchoText,
-  collectBangHistory,
-} from "../lib/bangCommands";
+import { buildBangEchoText, collectBangHistory } from "../lib/bangCommands";
+import { bangCommandsAreEnabled } from "../lib/bangCommandAvailability";
 import { BtwAsidePane } from "../components/BtwAsidePane";
 import { BtwAsideStickyCards } from "../components/BtwAsideStickyCards";
 import { ClientLogRecordingBadge } from "../components/ClientLogRecordingBadge";
@@ -127,9 +125,7 @@ import {
   thinkingOptionFromProcess,
   thinkingOptionFromSelection,
 } from "../lib/liveThinkingConfig";
-import {
-  getCachedWebTranscriptProjection,
-} from "../lib/webTranscriptProjection";
+import { getCachedWebTranscriptProjection } from "../lib/webTranscriptProjection";
 import { createPendingElsewhereDismissKey } from "../lib/sessionUiStorageKeys";
 import { parseCodexConfigAck } from "../lib/sessionCodexConfigAck";
 import {
@@ -159,9 +155,7 @@ import {
   createSessionDraftStorageKey,
   saveSessionDraft,
 } from "../lib/sessionDraftStorage";
-import {
-  turnContentText,
-} from "../lib/sessionMessageText";
+import { turnContentText } from "../lib/sessionMessageText";
 import {
   getEstimatedServerOffsetMs,
   getServerClockTimestamp,
@@ -355,6 +349,7 @@ function SessionPageContent({
   isDomLingerParked: boolean;
 }) {
   const { t } = useI18n();
+  const { showToast } = useToastContext();
   const { openSidebar, isWideScreen, toggleSidebar, isSidebarCollapsed } =
     useNavigationLayout();
   const basePath = useRemoteBasePath();
@@ -434,8 +429,13 @@ function SessionPageContent({
     () => ({
       ...clientTailParams,
       detailedLoadingProgress: sessionLoadingProgressEnabled,
+      onConfigurationError: (failure: { setting: "effort" }) => {
+        if (failure.setting === "effort") {
+          showToast(t("effortChangeApplyFailed"), "error");
+        }
+      },
     }),
-    [clientTailParams, sessionLoadingProgressEnabled],
+    [clientTailParams, sessionLoadingProgressEnabled, showToast, t],
   );
 
   const updateClientTailParams = useCallback(
@@ -548,6 +548,10 @@ function SessionPageContent({
   const { generatedTitleLength } = useGeneratedTitleLength();
   const { generatedTitleEnabled } = useGeneratedTitleEnabled();
   const { settings: serverSettings } = useServerSettings();
+  const bangCommandsEnabled = bangCommandsAreEnabled(
+    versionInfo,
+    serverSettings?.clientDefaults,
+  );
   const publicSharesEnabled = serverSettings?.publicSharesEnabled ?? false;
   const { status: publicShareGlobalStatus } = usePublicShareStatus({
     poll: publicSharesEnabled,
@@ -633,7 +637,6 @@ function SessionPageContent({
   const effectiveModel = session?.model ?? initialModel;
   const [liveModelConfig, setLiveModelConfig] =
     useState<LiveModelConfig | null>(null);
-  const { showToast } = useToastContext();
 
   const [scrollTrigger, setScrollTrigger] = useState(0);
   const draftControlsRef = useRef<DraftControls | null>(null);
@@ -2202,8 +2205,9 @@ function SessionPageContent({
           () => result.transcriptDisplayObjects,
         );
         setScrollTrigger((prev) => prev + 1);
-      } catch {
+      } catch (error) {
         showToast(t("bangRunFailed"), "error");
+        throw error;
       }
     },
     [
@@ -2234,7 +2238,9 @@ function SessionPageContent({
   const bangCommandHandlers = useMemo<BangCommandHandlers>(
     () => ({
       onKill: (objectId) => {
-        void api.killBangCommand(projectId, sessionId, objectId).catch(() => {});
+        void api
+          .killBangCommand(projectId, sessionId, objectId)
+          .catch(() => {});
       },
       onDelete: (objectId) => {
         void api
@@ -2248,7 +2254,7 @@ function SessionPageContent({
           .catch(() => {});
       },
       onRerun: (command) => {
-        void runBangCommand(command);
+        void runBangCommand(command).catch(() => {});
       },
       onRecall: (command) => {
         draftControlsRef.current?.setDraft(`!!${command}`);
@@ -2275,9 +2281,7 @@ function SessionPageContent({
 
   const composerBangSupport = useMemo(
     () => ({
-      onRun: (command: string) => {
-        void runBangCommand(command);
-      },
+      onRun: (command: string) => runBangCommand(command),
       fetchCompletions: (
         token: string,
         kind: "command" | "path",
@@ -4632,15 +4636,14 @@ function SessionPageContent({
                 className="session-header-thinking"
                 label={
                   providerRuntimeStatus
-                      ? t("toolbarProviderRuntimeAria", {
-                          summary:
-                            providerRuntimeStatus.kind === "terminal"
-                              ? providerRuntimeStatus.scope ===
-                                "provider_process"
-                                ? t("processInfoRuntimeProcessTerminal")
-                                : t("processInfoRuntimeTerminal")
-                              : t("processInfoRuntimeRetrying"),
-                        })
+                    ? t("toolbarProviderRuntimeAria", {
+                        summary:
+                          providerRuntimeStatus.kind === "terminal"
+                            ? providerRuntimeStatus.scope === "provider_process"
+                              ? t("processInfoRuntimeProcessTerminal")
+                              : t("processInfoRuntimeTerminal")
+                            : t("processInfoRuntimeRetrying"),
+                      })
                     : undefined
                 }
               />
@@ -4931,9 +4934,7 @@ function SessionPageContent({
                   progressiveRenderKey={`${clientSummarySourceKey}:${projectId}:${sessionId}:${location.search}`}
                   initialScrollSnapshot={initialScrollSnapshot}
                   onScrollSnapshotChange={updateRouteScrollSnapshot}
-                  onFollowingBottomChange={
-                    updateActiveWindowFollowingBottom
-                  }
+                  onFollowingBottomChange={updateActiveWindowFollowingBottom}
                   scrollBehaviorMode={sessionScrollBehaviorMode}
                   offscreenTranscriptRenderingEnabled={
                     sessionOffscreenTranscriptRenderingEnabled
@@ -5131,7 +5132,9 @@ function SessionPageContent({
                 onDraftControlsReady={handleDraftControlsReady}
                 onDraftTextChange={handleComposerDraftTextChange}
                 bangSupport={
-                  mainComposerForAside ? undefined : composerBangSupport
+                  mainComposerForAside || !bangCommandsEnabled
+                    ? undefined
+                    : composerBangSupport
                 }
                 correctionActive={
                   !mainComposerForAside && correctionDraft !== null

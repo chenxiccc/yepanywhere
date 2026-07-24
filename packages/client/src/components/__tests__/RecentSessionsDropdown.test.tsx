@@ -131,4 +131,27 @@ describe("RecentSessionsDropdown", () => {
     fireEvent.pointerDown(item, { pointerType: "touch" });
     expect(item.getAttribute("title")).toBeNull();
   });
+
+  it("exposes the complete session title to keyboard focus", () => {
+    globalSessionsState.sessions = [session()];
+
+    render(
+      <MemoryRouter>
+        <RecentSessionsDropdown
+          currentSessionId="session-1"
+          isOpen={true}
+          onClose={vi.fn()}
+          onNavigate={vi.fn()}
+          triggerRef={triggerRef()}
+        />
+      </MemoryRouter>,
+    );
+
+    const item = screen.getByRole("link");
+    fireEvent.focus(item);
+
+    expect(item.getAttribute("title")).toBe(
+      "Longer complete title text that should be visible in the recent sessions dropdown",
+    );
+  });
 });

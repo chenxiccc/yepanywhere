@@ -23,9 +23,7 @@ describe("TOON rendering", () => {
   });
 
   it("renders a toon fence as an HTML table", async () => {
-    const html = await renderMarkdownToHtml(
-      `\`\`\`toon\n${TOON}\n\`\`\``,
-    );
+    const html = await renderMarkdownToHtml(`\`\`\`toon\n${TOON}\n\`\`\``);
     expect(html).toContain("<table>");
     expect(html).toContain("<th>harness</th>");
     expect(html).toContain("up,to,date");
@@ -42,5 +40,10 @@ describe("TOON rendering", () => {
     );
     expect(html).not.toContain("<table>");
     expect(html).toContain("items[3]{a,b}:");
+  });
+
+  it("rejects unterminated and trailing quoted-cell syntax", () => {
+    expect(parseToonDocument('items[1]{a}:\n"unterminated')).toBeNull();
+    expect(parseToonDocument('items[1]{a}:\n"value"trailing')).toBeNull();
   });
 });

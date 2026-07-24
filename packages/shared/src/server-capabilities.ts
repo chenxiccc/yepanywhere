@@ -184,6 +184,33 @@ export const SERVER_CAPABILITIES = {
         "Hosted clients must not offer server-backed browser settings controls to older servers without the storage route.",
     },
   },
+  bangCommands: {
+    name: "bang-commands",
+    kind: "permanent",
+    area: "localAccess",
+    introducedIn: "0.6.3",
+    description:
+      "Server supports explicitly enabled local shell commands and persisted bang-command history.",
+    clientFallback: "Hide bang-command entry points and composer routing.",
+    serverContract: {
+      routes: [
+        "GET /api/settings",
+        "PUT /api/settings",
+        "POST /api/projects/:projectId/sessions/:sessionId/bang-commands",
+        "POST /api/projects/:projectId/sessions/:sessionId/bang-commands/:objectId/kill",
+        "GET /api/projects/:projectId/sessions/:sessionId/bang-commands/:objectId/output",
+        "DELETE /api/projects/:projectId/sessions/:sessionId/bang-commands/:objectId",
+        "GET /api/projects/:projectId/bang-completions",
+        "GET /api/bang-commands",
+      ],
+      responseFields: ["settings.clientDefaults.bangCommandsEnabled"],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Local command execution is an explicit server security boundary and older servers may not expose the routes or setting.",
+    },
+  },
   hostIdentity: {
     name: "host-identity",
     kind: "permanent",
@@ -414,8 +441,9 @@ export const APPROVAL_AUDIT_LOG_CAPABILITY =
 export const BROWSER_SETTINGS_BACKUP_CAPABILITY =
   SERVER_CAPABILITIES.browserSettingsBackup.name;
 
-export const HOST_IDENTITY_CAPABILITY =
-  SERVER_CAPABILITIES.hostIdentity.name;
+export const BANG_COMMANDS_CAPABILITY = SERVER_CAPABILITIES.bangCommands.name;
+
+export const HOST_IDENTITY_CAPABILITY = SERVER_CAPABILITIES.hostIdentity.name;
 
 export const HOST_AWAKE_CONTROL_CAPABILITY =
   SERVER_CAPABILITIES.hostAwakeControl.name;

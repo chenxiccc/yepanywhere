@@ -352,9 +352,7 @@ function readPositiveInteger(value: unknown): number | undefined {
 }
 
 function readNonEmptyString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim()
-    ? value.trim()
-    : undefined;
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
 function readCodexHttpStatus(codexErrorInfo: unknown): number | undefined {
@@ -522,8 +520,7 @@ function buildCodexTerminalStatus(
     return null;
   }
 
-  const errorMessage =
-    readNonEmptyString(message.error) ?? "Codex turn failed";
+  const errorMessage = readNonEmptyString(message.error) ?? "Codex turn failed";
   const turnId = readNonEmptyString(message.codexTurnId);
   const requestId = readNonEmptyString(message.codexRequestId);
   const details = readNonEmptyString(message.codexAdditionalDetails);
@@ -846,6 +843,11 @@ export class Process {
   /** Latest effort selected while the current provider turn is still active. */
   private pendingEffortUpdate: { effort: EffortLevel | undefined } | null =
     null;
+  /** Serializes provider effort controls so slower writes cannot win late. */
+  private effortApplyTail: Promise<void> = Promise.resolve();
+  /** A failed turn-boundary effort write keeps the process non-idle. */
+  private effortBoundaryBlocked = false;
+  private effortBoundaryTransition: Promise<void> | null = null;
 
   /** Function to change max thinking tokens at runtime (SDK 0.2.7+) */
   private setMaxThinkingTokensFn:
@@ -1719,11 +1721,12 @@ export class Process {
       return false;
     }
 
+    this.pendingEffortUpdate = { effort };
     if (
-      this._state.type === "in-turn" ||
-      this._state.type === "waiting-input"
+      (this._state.type === "in-turn" ||
+        this._state.type === "waiting-input") &&
+      !this.effortBoundaryBlocked
     ) {
-      this.pendingEffortUpdate = { effort };
       getLogger().info(
         {
           event: "effort_change_queued",
@@ -1737,7 +1740,11 @@ export class Process {
       return true;
     }
 
-    await this.applyEffort(effort);
+    if (this.effortBoundaryBlocked) {
+      await this.completeEffortBoundaryTransition();
+    } else {
+      await this.enqueuePendingEffortApplication();
+    }
     return true;
   }
 
@@ -1766,8 +1773,8 @@ export class Process {
       try {
         await this.applyEffort(pending.effort);
       } catch (error) {
-        if (this.pendingEffortUpdate === pending) {
-          this.pendingEffortUpdate = null;
+        if (this.pendingEffortUpdate !== pending) {
+          continue;
         }
         throw new Error("Failed to apply queued effort change", {
           cause: error,
@@ -1777,6 +1784,38 @@ export class Process {
         this.pendingEffortUpdate = null;
       }
     }
+  }
+
+  private enqueuePendingEffortApplication(): Promise<void> {
+    const application = this.effortApplyTail.then(() =>
+      this.applyPendingEffort(),
+    );
+    this.effortApplyTail = application.catch(() => {});
+    return application;
+  }
+
+  private completeEffortBoundaryTransition(): Promise<void> {
+    if (this.effortBoundaryTransition) {
+      return this.effortBoundaryTransition;
+    }
+    const transition = this.enqueuePendingEffortApplication().then(() => {
+      this.effortBoundaryBlocked = false;
+      this.finishTransitionToIdle();
+    });
+    this.effortBoundaryTransition = transition;
+    void transition.then(
+      () => {
+        if (this.effortBoundaryTransition === transition) {
+          this.effortBoundaryTransition = null;
+        }
+      },
+      () => {
+        if (this.effortBoundaryTransition === transition) {
+          this.effortBoundaryTransition = null;
+        }
+      },
+    );
+    return transition;
   }
 
   /**
@@ -2820,10 +2859,7 @@ export class Process {
   }
 
   private persistPatientDeferredEntry(entry: DeferredQueueEntry): void {
-    if (
-      !this.sessionQueuePersistenceService ||
-      !hasPatientQueueIntent(entry)
-    ) {
+    if (!this.sessionQueuePersistenceService || !hasPatientQueueIntent(entry)) {
       return;
     }
 
@@ -2843,10 +2879,7 @@ export class Process {
     status: PersistedSessionQueuedMessage["status"],
     updatedAt = entry.timestamp,
   ): PersistedSessionQueuedMessage | null {
-    if (
-      !this.sessionQueuePersistenceService ||
-      !hasPatientQueueIntent(entry)
-    ) {
+    if (!this.sessionQueuePersistenceService || !hasPatientQueueIntent(entry)) {
       return null;
     }
 
@@ -3694,7 +3727,10 @@ export class Process {
       // leader exits. When it exposes stronger liveness, let its shutdown
       // promise finish and require that group-level check to agree.
       const providerAliveAfterPidExit = this._isProcessAlive?.();
-      if (providerAliveAfterPidExit !== undefined && providerAliveAfterPidExit) {
+      if (
+        providerAliveAfterPidExit !== undefined &&
+        providerAliveAfterPidExit
+      ) {
         const abortOutcome = await waitUntilAbortDeadline(
           providerAbortOutcome,
           deadline,
@@ -3958,7 +3994,7 @@ export class Process {
       }
 
       // Don't transition to idle if we're waiting for input
-      if (this._state.type !== "waiting-input") {
+      if (this._state.type !== "waiting-input" && !this.effortBoundaryBlocked) {
         const effortUpdate = this.transitionToIdle();
         if (effortUpdate) {
           await effortUpdate;
@@ -4057,15 +4093,36 @@ export class Process {
     // the short gap before the provider's durable transcript becomes visible.
     this.releaseActiveSteerEchoes();
 
-    if (
-      options?.applyPendingEffort !== false &&
-      this.pendingEffortUpdate
-    ) {
-      return this.applyPendingEffort().then(() => {
-        this.finishTransitionToIdle();
+    if (options?.applyPendingEffort !== false && this.pendingEffortUpdate) {
+      this.effortBoundaryBlocked = true;
+      return this.completeEffortBoundaryTransition().catch((error) => {
+        const requestedEffort = this.pendingEffortUpdate?.effort;
+        const configurationError = new Error(
+          "Failed to apply effort; queued work remains blocked until retry",
+          { cause: error },
+        );
+        getLogger().error(
+          {
+            event: "effort_change_boundary_failed",
+            sessionId: this._sessionId,
+            processId: this.id,
+            projectId: this.projectId,
+            requestedEffort,
+            errorMessage:
+              error instanceof Error ? error.message : String(error),
+          },
+          "Failed to apply effort before queued work",
+        );
+        this.emit({
+          type: "configuration-error",
+          setting: "effort",
+          requestedValue: requestedEffort,
+          error: configurationError,
+        });
       });
     }
 
+    this.effortBoundaryBlocked = false;
     this.finishTransitionToIdle();
   }
 

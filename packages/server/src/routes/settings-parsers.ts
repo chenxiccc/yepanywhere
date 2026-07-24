@@ -76,6 +76,7 @@ const TOOLBAR_CONTROL_PRESENCES = [
 ] as const satisfies readonly ToolbarControlPresence[];
 const CLIENT_DEFAULT_KEYS = [
   "speech",
+  "bangCommandsEnabled",
   "busyComposerDefaultAction",
   "collapsedComposerButton",
   "sessionToolbarPresence",
@@ -287,7 +288,9 @@ const MAX_FILE_ACCESS_CUSTOM_LENGTH = 1024;
  * - `undefined` when the setting should be cleared (reset to secure defaults)
  * - a normalized object when valid
  */
-export function parseFileAccess(raw: unknown): FileAccessSettings | undefined | null {
+export function parseFileAccess(
+  raw: unknown,
+): FileAccessSettings | undefined | null {
   if (raw === undefined) return null;
   if (raw === null || raw === "") return undefined;
   if (!isRecord(raw)) return null;
@@ -641,7 +644,9 @@ function parseCompactAtContextPercent(
   return Object.keys(cleaned).length > 0 ? cleaned : undefined;
 }
 
-export function parseClientDefaults(raw: unknown): ClientDefaults | undefined | null {
+export function parseClientDefaults(
+  raw: unknown,
+): ClientDefaults | undefined | null {
   if (raw === undefined) return null;
   if (raw === null || raw === "") return undefined;
   if (!isRecord(raw)) return null;
@@ -653,6 +658,18 @@ export function parseClientDefaults(raw: unknown): ClientDefaults | undefined | 
   if (Object.keys(raw).length === 0) return null;
 
   const parsed: ClientDefaults = {};
+  if ("bangCommandsEnabled" in raw) {
+    if (
+      raw.bangCommandsEnabled === undefined ||
+      raw.bangCommandsEnabled === null
+    ) {
+      parsed.bangCommandsEnabled = undefined;
+    } else if (typeof raw.bangCommandsEnabled !== "boolean") {
+      return null;
+    } else {
+      parsed.bangCommandsEnabled = raw.bangCommandsEnabled;
+    }
+  }
   if ("speech" in raw) {
     if (raw.speech === undefined || raw.speech === null || raw.speech === "") {
       parsed.speech = undefined;
@@ -787,6 +804,13 @@ export function mergeClientDefaults(
 ): ClientDefaults | undefined {
   if (!update) return undefined;
   const merged: ClientDefaults = { ...current };
+  if ("bangCommandsEnabled" in update) {
+    if (update.bangCommandsEnabled === undefined) {
+      delete merged.bangCommandsEnabled;
+    } else {
+      merged.bangCommandsEnabled = update.bangCommandsEnabled;
+    }
+  }
   if ("speech" in update) {
     if (update.speech === undefined) {
       delete merged.speech;

@@ -100,6 +100,7 @@ export function RecentSessionsDropdown({
   basePath = "",
 }: RecentSessionsDropdownProps) {
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const lastTouchPointerAtRef = useRef(0);
   const navigate = useNavigate();
 
   // Feed recent sessions across all projects; rows render from the collection.
@@ -226,8 +227,17 @@ export function RecentSessionsDropdown({
                 }}
                 onPointerDown={(event) => {
                   if (event.pointerType === "touch") {
+                    lastTouchPointerAtRef.current = Date.now();
                     setElementTextTooltip(event.currentTarget, null);
                   }
+                }}
+                onFocus={(event) => {
+                  if (Date.now() - lastTouchPointerAtRef.current > 1000) {
+                    setElementTextTooltip(event.currentTarget, titleTooltip);
+                  }
+                }}
+                onBlur={(event) => {
+                  setElementTextTooltip(event.currentTarget, null);
                 }}
               >
                 <div className="recent-session-content">
