@@ -198,13 +198,12 @@ Reach tiers, preferred in order when available:
 2. **Cloudflare tunnel** — automatic when tunnel exposure is enabled *and* a
    Cloudflare tunnel capability is discoverable ("present + authed +
    effective"); details below.
-3. **Relay fallback** — the same YA-auth'd proxy over the existing
-   end-to-end-encrypted relay channel; always available, zero external
-   dependencies. Caveat: a *standard* (unmodified) local web app needs
-   significant tunneling-type proxying to be usable over relay — possible in
-   theory so long as the view/URL is a YA-server one (see the hosted-client
-   wrinkle under *Security*); template-scaffolded apps dodge most of it by
-   convention.
+3. **Proposed relay fallback** — the existing end-to-end-encrypted relay is a
+   transport substrate, but arbitrary interactive asset, navigation, and
+   WebSocket forwarding is not implemented. Making a YA-owned URL space work
+   over relay is part of this proposal, not an always-available capability.
+   Template conventions reduce absolute-origin breakage but do not remove the
+   proxy work.
 
 The YA proxy route:
 
@@ -223,16 +222,22 @@ The YA proxy route:
 Cloudflare tunnels/ngrok as the standard localhost-exposure tools and an
 authenticated Cloudflare CLI as the agent-operable path, like `gh`): prefer
 the Cloudflare tool when it is present + authed + effective, over ad hoc
-"use relay"; fall back to relay reach otherwise. Mechanics:
+"use relay." Without an effective tunnel, remote reach remains unavailable
+until the proposed relay proxy exists. Mechanics:
 
-- The general-purpose CLI is `cloudflared` (`cloudflared tunnel --url
-  http://127.0.0.1:<port>` yields a quick `*.trycloudflare.com` URL; named
-  tunnels give stable hostnames and can front Cloudflare Access). `wrangler`
-  — the Workers/Pages CLI with `gh`-style login — has integrated tunnels but
-  scoped to `wrangler dev` Workers sessions, so discovery should test for an
-  effective tunnel capability rather than hardcode one binary name.
+- Both current CLIs can expose an arbitrary localhost URL. `cloudflared
+  tunnel --url http://127.0.0.1:<port>` and `wrangler tunnel quick-start
+  http://127.0.0.1:<port>` create quick `*.trycloudflare.com` tunnels;
+  Wrangler also exposes general `tunnel create`, `list`, and `run` commands.
+  Discovery must probe the exact intended command rather than infer capability
+  from a binary name. See the official
+  [Wrangler tunnel commands](https://developers.cloudflare.com/workers/wrangler/commands/tunnel/)
+  and
+  [Quick Tunnel constraints](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/trycloudflare/).
 - Auth comes in distinct capability levels and discovery must distinguish
-  them: **quick tunnels need no auth at all** (binary presence suffices); a
+  them: **quick tunnels need no account auth**, but an executable capability
+  probe is still required — for example, `cloudflared` Quick Tunnels are not
+  supported when a `.cloudflared/config.yaml` file is present. A
   **named-tunnel run token** (dashboard-managed; no local `cert.pem`) can
   only run its one tunnel, not create tunnels or hostname routes; **origin
   cert or API auth** is what permits creating named tunnels and routing
