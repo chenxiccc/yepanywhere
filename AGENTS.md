@@ -152,20 +152,6 @@ chatty, run `pnpm console:scan` with the pre-commit checks and read
 the budget policy, the remediation preference order, the measurement
 tools, and the ratcheting baseline.
 
-## Personal Development Remote
-
-`origin` (`graehl/yepanywhere`) is the development/CI staging remote for
-`kzahel`. Push coherent commits to `origin/main` often once they are believed
-likely to pass CI; do not wait for full satisfaction, but delay known-broken,
-super-WIP, or amend-likely work so routine progress stays fast-forwardable.
-`origin/main` need not mirror local `main`. Ordinary and force pushes to
-`origin` do not require the big-effect push gate, though force pushes still use
-the repository's lease-protected force form. Every commit pushed to
-`kzahel/main` must already be reachable from `origin/main`. `origin/main` may
-lead `kzahel/main`, but it may trail only when local `main` itself trails. Only
-the `kzahel` push is gated; before it, follow
-[`topics/graehl-ci-pre-kzahel-gate.md`](topics/graehl-ci-pre-kzahel-gate.md).
-
 ## Commit Lock Protocol
 
 Before staging or committing, acquire `.git/yepanywhere-commit.lock`. The
