@@ -189,6 +189,37 @@ Performance Path Coverage*).
 inside JSON strings) — the YA-side reader must split on `\n` only and strip a
 trailing `\r`. The docs call this out explicitly.
 
+### Installed-binary compatibility check
+
+The normal Pi suite remains synthetic: provider lifecycle tests use fabricated
+events, the RPC client uses fake streams, tool normalization uses known shapes,
+and the durable reader uses checked-in JSONL fixtures. Those tests are the fast
+default suite, but updating Pi on a test host does not exercise the installed
+binary by itself.
+
+The explicit zero-token check is:
+
+```bash
+PI_CONTRACT_TEST=true pnpm --filter @yep-anywhere/server test:e2e
+```
+
+`pi-contract.e2e.test.ts` runs the installed `pi --version`, requires YA to
+recognize its lifecycle boundary, launches the same
+`pi --mode rpc --no-session` command used for production model discovery, and
+requires successful `get_state` and `get_available_models` responses with the
+fields YA consumes. It sends no prompt and closes RPC stdin only after both
+responses arrive; Pi must then exit successfully rather than leaving a child
+process behind. The probe captures stdout, stderr, and extension UI requests
+and fails with the emitted notice if either command reports an `Update
+Available` / `New version ... available` banner.
+
+Run this check after upgrading the Pi installation used for YA development.
+It deliberately bypasses `PiProvider.getAvailableModels()` because that
+production convenience path falls back to a synthetic `Default` model on RPC
+failure and could otherwise make a broken protocol look healthy. An
+authenticated one-turn check covering live events plus a real persisted JSONL
+reload remains separate because it spends tokens and depends on credentials.
+
 ## Plan B — in-process SDK embed (alternative bypass)
 
 YA imports `@earendil-works/pi-coding-agent` and drives the session directly:

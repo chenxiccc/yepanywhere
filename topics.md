@@ -36,6 +36,7 @@
 - ui-architecture - Shared rendering boundaries and anti-DOM-rewrite discipline.
 - opencode-backend - OpenCode provider capability and transcript-rendering parity.
 - provider-refresh - Provider upstream/source refresh triggers, probes, and due-refresh evidence.
+- pi-provider - Pi installed-binary contract coverage and upstream compatibility refreshes.
 - provider-model-glyphs - Compact provider/model identity for narrow status surfaces.
 - graehl-ci-pre-kzahel-gate - Retired to a checkout-local note (maintainer-personal remote policy); topic string stays reserved for the existing commit series.
 - claude - Claude provider control, restart/resume safety, interviews, and YA-owned process bridges.
