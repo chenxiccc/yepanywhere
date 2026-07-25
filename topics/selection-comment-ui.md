@@ -15,6 +15,9 @@ See also:
   the tint↔draft link to be reconciled against a plain string, not real nodes.
 - [`session-ui-customization.md`](session-ui-customization.md) — whether the
   per-paragraph quote circle is always-on or a hideable/optional control.
+- [`source-review-to-session.md`](source-review-to-session.md) — generalizes this
+  quote-comment into a click-a-diff-line source-control review that accumulates
+  comments across commits/revisions and submits them all as one new session.
 
 Topic: selection-comment-ui
 
