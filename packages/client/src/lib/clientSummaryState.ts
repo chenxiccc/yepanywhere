@@ -150,6 +150,54 @@ function uniqueResolvedSessionIds(
   return resolvedIds;
 }
 
+// Field-group assignment for the remap merge below: every group's fields win
+// or lose together on the group's observation timestamp.
+const REMAP_MERGE_GROUPS = {
+  contentObservedAt: [
+    "title",
+    "fullTitle",
+    "createdAt",
+    "updatedAt",
+    "messageCount",
+    "provider",
+    "model",
+    "initialPrompt",
+    "lastAgentText",
+  ],
+  metadataObservedAt: [
+    "customTitle",
+    "isArchived",
+    "isStarred",
+    "parentSessionId",
+    "executor",
+  ],
+  projectObservedAt: ["projectId", "projectName"],
+  lifecycleObservedAt: [
+    "ownership",
+    "activity",
+    "activityInferredFromInboxTier",
+    "pendingInputType",
+    "activeStartedAt",
+  ],
+  unreadObservedAt: ["hasUnread"],
+} as const satisfies Record<string, readonly (keyof SessionCollectionRecord)[]>;
+
+// Compile-time exhaustiveness: every SessionCollectionRecord field must be in
+// a merge group above or merged individually below; a new field fails this
+// assignment instead of silently dropping during remap merges.
+type RemapMergedField =
+  | keyof typeof REMAP_MERGE_GROUPS
+  | (typeof REMAP_MERGE_GROUPS)[keyof typeof REMAP_MERGE_GROUPS][number]
+  | "id"
+  | "observedAt"
+  | "snapshotObservedAt"
+  | "eventCreatedAt";
+type RemapUnmergedField = Exclude<keyof SessionCollectionRecord, RemapMergedField>;
+const _remapMergeCoversAllRecordFields: [RemapUnmergedField] extends [never]
+  ? true
+  : { missingFromRemapMergeGroups: RemapUnmergedField } = true;
+void _remapMergeCoversAllRecordFields;
+
 function mergeRemappedSessionRecords(
   provisional: SessionCollectionRecord | undefined,
   canonical: SessionCollectionRecord | undefined,
@@ -160,12 +208,7 @@ function mergeRemappedSessionRecords(
   if (!canonical) return { ...provisional, id: canonicalId };
 
   const pickGroup = (
-    observedField:
-      | "contentObservedAt"
-      | "metadataObservedAt"
-      | "projectObservedAt"
-      | "lifecycleObservedAt"
-      | "unreadObservedAt",
+    observedField: keyof typeof REMAP_MERGE_GROUPS,
     fields: readonly (keyof SessionCollectionRecord)[],
   ): Partial<SessionCollectionRecord> => {
     const provisionalObservedAt = provisional[observedField] ?? NO_OBSERVATION;
@@ -195,33 +238,11 @@ function mergeRemappedSessionRecords(
   const merged: SessionCollectionRecord = {
     id: canonicalId,
     observedAt: Math.max(provisional.observedAt, canonical.observedAt),
-    ...pickGroup("contentObservedAt", [
-      "title",
-      "fullTitle",
-      "createdAt",
-      "updatedAt",
-      "messageCount",
-      "provider",
-      "model",
-      "initialPrompt",
-      "lastAgentText",
-    ]),
-    ...pickGroup("metadataObservedAt", [
-      "customTitle",
-      "isArchived",
-      "isStarred",
-      "parentSessionId",
-      "executor",
-    ]),
-    ...pickGroup("projectObservedAt", ["projectId", "projectName"]),
-    ...pickGroup("lifecycleObservedAt", [
-      "ownership",
-      "activity",
-      "activityInferredFromInboxTier",
-      "pendingInputType",
-      "activeStartedAt",
-    ]),
-    ...pickGroup("unreadObservedAt", ["hasUnread"]),
+    ...pickGroup("contentObservedAt", REMAP_MERGE_GROUPS.contentObservedAt),
+    ...pickGroup("metadataObservedAt", REMAP_MERGE_GROUPS.metadataObservedAt),
+    ...pickGroup("projectObservedAt", REMAP_MERGE_GROUPS.projectObservedAt),
+    ...pickGroup("lifecycleObservedAt", REMAP_MERGE_GROUPS.lifecycleObservedAt),
+    ...pickGroup("unreadObservedAt", REMAP_MERGE_GROUPS.unreadObservedAt),
   };
   if (
     provisional.snapshotObservedAt !== undefined ||
