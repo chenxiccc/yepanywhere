@@ -145,19 +145,31 @@ Net-new:
 
 ## Phasing
 
-1. **(optional, cheap) isearch-preview select.** Let the existing Ctrl+R
-   match preview select text other than the most recent match — a
-   stepping stone graehl called acceptable, though the drawer is the
-   real target.
-2. **Recall drawer, desktop Ctrl+Up.** Prefix match + drawer list +
-   Enter-recall + restore-draft + dismiss-on-typing.
-3. **Go-to-turn column** and **mobile open affordance.** Fast follow.
+1. **Recall drawer, desktop Ctrl+Up** — shipped (commit `b6bbae63`):
+   prefix match + drawer list (reusing the Tab-completion menu markup) +
+   Enter-recall + restore-draft + dismiss-on-typing, over prior user
+   turns. Source = user turns only; plain-ArrowUp last-recall kept; the
+   old bang Ctrl+Up cycling left in place (drawer handler runs after it).
+2. **Go-to-turn control + mobile open affordance** — fast-follow, building
+   now:
+   - *Go-to-turn:* a per-row secondary control that scrolls the transcript
+     to that turn. Requires the recall entry to carry its source
+     message/render id (add to `getComposerTurnRecallEntries`), then reuse
+     `scrollToRenderId` / `findRenderRow`. Navigation only — does not alter
+     the composer or close-restore the draft.
+   - *Mobile open:* a tap affordance near the composer collapse (down-arrow)
+     toggle that opens the drawer where there is no Ctrl+Up, over the same
+     matches (empty draft → full history).
+3. **Later:** fold bang history into the `!!`-context source (but see
+   bang-commands.md — the `!!`+Tab completion covers the bang-history case),
+   and retire the old bang Ctrl+Up cycling.
 
-## Open decisions
+## Settled decisions
 
-- Recall source = user turns only (recommended) vs. including other turn
-  kinds; assistant turns reachable only via the go-to-turn control.
-- Default state of the "!! Commands" sidebar entry once execution is
-  always-on.
-- Keep or subsume plain-ArrowUp single-last recall.
-- Drawer vs. interim isearch-preview reuse for the first shipped revision.
+- Recall source = user turns only; assistant turns reachable only via the
+  go-to-turn control.
+- Plain-ArrowUp single-last recall kept (drawer generalizes it, does not
+  replace it).
+- The drawer (not the interim isearch-preview reuse) is the shipped form.
+- The drawer is always-on with no setting; the "!! Commands" sidebar entry
+  is the only bang opt-in (default TBD).

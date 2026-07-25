@@ -194,6 +194,17 @@ keeps the submitted draft intact so the user can correct or retry it.
   project-root executables (`GET
   /api/projects/:id/bang-completions?kind=command`), served from a 30 s
   cached scan.
+- **Global command history (planned) — ranked first at command position.**
+  Typing `!!` then Tab (the `! ! Tab` sequence) offers, before the PATH /
+  project-executable candidates, prior *whole* `!!` command lines that
+  prefix-match the current `!!` body. The source is YA-global: every bang
+  command run across all sessions and all time — the same corpus the
+  top-level "!! Commands" view lists (bounded bang objects in
+  `session-metadata.json`), deduped by command line, most-recent-first,
+  prefix-filtered server-side. This is the bang-side twin of the composer
+  recall drawer (composer-recall-drawer.md): same menu UI, but the corpus
+  is bang history and selecting *completes the command* rather than
+  drafting a turn.
 - **Argument tokens** (not starting with `-`): per-tool acli completion
   first, then project-relative path completion (directories suffixed `/`,
   `..` escapes refused).
@@ -234,6 +245,20 @@ open-session link, and the same block component fetching rendered output on
 demand. It starts from bounded previews and keeps at most one entry's full
 output expanded and retained. Reads only the bounded metadata already in
 `session-metadata.json` plus that single on-demand output fetch.
+
+**Per-entry actions (planned) — three small icons.** Each entry knows its
+source session id, bang object id, and project directory (cwd), so it can
+offer, all scoped to that entry's **project cwd via its source session**
+(no session-less or project-less run):
+
+1. **Edit / re-issue** — open the source session and prefill its composer
+   with `!!<command>` for modification and resubmission (the existing
+   Recall action, exposed from the history view).
+2. **New** — open the source session with an empty composer, to issue a
+   different command in that same flow.
+3. **Jump** — navigate to the source session scrolled to the pseudo-turn
+   where the bang block appears (the `scrollToRenderId` target for its
+   anchor), read-only, no composer prefill.
 
 ## Fork views may omit bang blocks
 
