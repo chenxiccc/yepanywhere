@@ -1,6 +1,6 @@
 # Opt-In Previous Model Catalog
 
-Status: authorized; implementation in progress.
+Status: implemented; all slices complete.
 
 Topic: older-claude-models
 
@@ -175,6 +175,17 @@ strings.
 - Run focused tests, full lint/typecheck/tests, `pnpm i18n:scan`, and
   `pnpm console:scan`.
 - Confirm every touched-area test run is warning-free.
+
+Completed 2026-07-25. `pnpm test` passes in every participating workspace,
+including 424 shared tests, 2,802 server tests with 6 skipped, and 2,379 client
+tests. `pnpm build`, root lint, and root typecheck pass. The aggregate Vite
+build retains the repository's existing browser-crypto and chunk-size
+advisories.
+
+All focused touched-area runs are warning-free. The advisory i18n scan remains
+at its three pre-existing dev-server strings, and the console scan remains
+within its 110-site baseline with a +0 delta. No paid or live provider turn was
+run.
 
 ## Acceptance Gates
 
