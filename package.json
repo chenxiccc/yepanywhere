@@ -57,7 +57,9 @@
   },
   "pnpm": {
     "overrides": {
-      "bn.js": "5.2.3"
+      "bn.js": "5.2.3",
+      "fast-uri": "3.1.4",
+      "postcss": "^8.5.23"
     }
   },
   "yepAnywhere": {
