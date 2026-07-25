@@ -1743,6 +1743,8 @@
   "messageDeliveryProjectQueueShortcutDescription": "When the Project Queue button is visible, Ctrl+Enter uses it instead of the per-session queue shortcut.",
   "appearanceToolbarSteerNowTitle": "\"Now\" steering selector",
   "appearanceToolbarSteerNowDescription": "Per-turn switch that delivers a steer immediately instead of after the current step.",
+  "appearanceToolbarComposerRecallTitle": "Message recall button",
+  "appearanceToolbarComposerRecallDescription": "Experimental. On-screen-keyboard button that lists earlier messages in this session starting with what you have typed, so you can resend or edit one. Ctrl+Up opens the same list whether or not the button is shown.",
   "lifecycleWebhooksTitle": "Lifecycle Webhooks",
   "lifecycleWebhooksLoading": "Loading...",
   "lifecycleWebhooksDescription": "Send a webhook when a session becomes inactive. Yep only emits the event; any automation stays outside the server.",

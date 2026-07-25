@@ -44,6 +44,14 @@ Three separable concerns, each enabled independently:
   always-on plain-ArrowUp recall, is keystroke-invoked (no default UI
   surface), and touches no provider routing, so it does not trip the
   Vanilla Defaults "novel visible concept" bar.
+- **Mobile open button — default-off toolbar control** (`composerRecall`,
+  added 2026-07-25). The "no default UI surface" argument above covers the
+  keystroke, not the phase-2 keyboard-row button, which is a persistent
+  visible surface and does trip that bar. It is now a presence-configurable
+  control like any other, shipping `hidden`; the setting governs the button
+  alone, leaving Ctrl+Up unaffected. Rationale: graehl, on seeing it ship
+  visible-by-default with no way to turn it off. Re-defaulting it to shown
+  should wait on the open items in § Known gaps.
 - **"!! Commands" sidebar section — the one opt-in.** The top-level
   sidebar entry (the discoverable history view) is what a first-timer
   might not understand, so its display stays behind a setting. This is the
@@ -171,5 +179,29 @@ Net-new:
 - Plain-ArrowUp single-last recall kept (drawer generalizes it, does not
   replace it).
 - The drawer (not the interim isearch-preview reuse) is the shipped form.
-- The drawer is always-on with no setting; the "!! Commands" sidebar entry
-  is the only bang opt-in (default TBD).
+- The drawer *keystroke* (Ctrl+Up) is always-on with no setting; the "!!
+  Commands" sidebar entry is the only bang opt-in (default TBD). The phase-2
+  mobile open button is separately presence-configurable and default-hidden
+  (see § Enablement).
+
+## Known gaps
+
+Open as of 2026-07-25, and the reason the mobile open button ships hidden:
+
+- **Silent no-op on a non-matching draft.** `openRecallDrawer` returns false
+  with no feedback when the draft prefix-matches nothing, while the button
+  renders on `entries.length > 0`. The compact keyboard row that hosts the
+  button only appears once `canSubmit` is true (non-empty draft), so the
+  button is visible almost exclusively in the state most likely to have zero
+  matches. Either gate the button on the filtered match count, or have an
+  explicit tap ignore the draft filter and open over all entries — an
+  affordance a user deliberately tapped reads as "show me my history", not
+  "filter by what I typed". The unit tests seed a draft that matches by
+  construction, so the dead-tap path has no coverage.
+- **No styling.** `composer-recall-open` has no CSS rule, so the button
+  inherits `.message-input-keyboard-action`'s `--app-yep-green` fill and
+  reads as a primary action beside Send. `.bang-tab-mode`, the sibling
+  autocomplete affordance, sets `border-color` on an element the base rule
+  gives `border: 0`, so it is also un-de-emphasized.
+- **Inline aria-label.** The button and the per-row go-to control still use
+  literal strings pending en.json keys.

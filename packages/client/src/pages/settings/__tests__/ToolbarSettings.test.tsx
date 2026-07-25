@@ -31,6 +31,7 @@ const state = vi.hoisted(() => {
     sessionStatus: "pin",
     projectQueue: "pin",
     projectQueueNewSessionShortcut: "hidden",
+    composerRecall: "hidden",
   };
   return {
     defaultPresence,
@@ -143,6 +144,9 @@ vi.mock("../../../i18n", () => ({
             "Queue as New Session Shortcut",
           appearanceToolbarProjectQueueNewSessionShortcutDescription:
             "Queue a separate session from an existing composer",
+          appearanceToolbarComposerRecallTitle: "Message recall button",
+          appearanceToolbarComposerRecallDescription:
+            "Open the earlier-message recall list",
           appearanceSessionToolbarDescription: "Toolbar controls",
           appearanceToolbarDefaultActionTitle: "Default action",
           appearanceToolbarDefaultActionDescription: "Choose an action",
@@ -224,11 +228,27 @@ describe("ToolbarSettings", () => {
     ).toBe("0");
   });
 
+  it("ships the message recall button hidden, with only Hide / Show always", () => {
+    render(<ToolbarSettings />);
+
+    const row = screen
+      .getByText("Message recall button")
+      .closest(".session-toolbar-control-row");
+    expect(row).toBeTruthy();
+    const slider = within(row as HTMLElement).getByRole<HTMLInputElement>(
+      "slider",
+      { name: "Message recall button visibility" },
+    );
+    expect(slider.value).toBe("0");
+    // Keyboard-row only, so it never enters the toolbar overflow engine.
+    expect(slider.getAttribute("max")).toBe("1");
+  });
+
   it("shows a presence slider for every control row", () => {
     render(<ToolbarSettings />);
 
-    // 13 controls without the projectQueue capability, one slider each.
-    expect(screen.getAllByRole("slider")).toHaveLength(13);
+    // 14 controls without the projectQueue capability, one slider each.
+    expect(screen.getAllByRole("slider")).toHaveLength(14);
     // Overflow-supported controls get the full notch scale...
     expect(
       screen

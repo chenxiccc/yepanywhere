@@ -42,6 +42,12 @@ export interface SessionToolbarPresence {
   sessionStatus: ToolbarControlPresence;
   projectQueue: ToolbarControlPresence;
   projectQueueNewSessionShortcut: ToolbarControlPresence;
+  /**
+   * Composer opener for the prior-turn recall drawer. Shown only in the mobile
+   * keyboard action row, never on the toolbar proper, so it has no narrowing
+   * tier of its own. See topics/composer-recall-drawer.md.
+   */
+  composerRecall: ToolbarControlPresence;
 }
 
 export type SessionToolbarVisibilityKey = keyof SessionToolbarPresence;
@@ -72,6 +78,7 @@ export const DEFAULT_SESSION_TOOLBAR_PRESENCE: SessionToolbarPresence = {
   sessionStatus: "pin",
   projectQueue: "hidden",
   projectQueueNewSessionShortcut: "hidden",
+  composerRecall: "hidden",
 };
 
 /**
@@ -96,6 +103,7 @@ export const DEFAULT_SESSION_TOOLBAR_PRIORITY: SessionToolbarPriority = {
   sessionStatus: "pin",
   projectQueue: "pin",
   projectQueueNewSessionShortcut: "pin",
+  composerRecall: "pin",
 };
 
 export const SESSION_TOOLBAR_CONTROL_KEYS = Object.keys(

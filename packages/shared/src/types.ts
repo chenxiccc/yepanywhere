@@ -470,6 +470,7 @@ export interface SessionToolbarPresenceClientDefaults {
   sessionStatus?: ToolbarControlPresence;
   projectQueue?: ToolbarControlPresence;
   projectQueueNewSessionShortcut?: ToolbarControlPresence;
+  composerRecall?: ToolbarControlPresence;
 }
 
 export type BusyComposerDefaultAction = "steer" | "queue";

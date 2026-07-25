@@ -46,7 +46,18 @@ interface ToolbarControlMeta {
   description: string;
   side: ToolbarSide;
   canSetPriority: boolean;
+  /**
+   * Whether the control has a toolbar rendering to preview. Controls that only
+   * appear elsewhere in the composer would render an empty preview tile, so
+   * they get the copy and slider alone.
+   */
+  hasToolbarPreview: boolean;
 }
+
+/** Presence-configurable controls that never render on the toolbar itself. */
+const NON_TOOLBAR_CONTROLS = new Set<SessionToolbarVisibilityKey>([
+  "composerRecall",
+]);
 
 const PRIORITY_EDITABLE_CONTROLS = new Set<SessionToolbarVisibilityKey>([
   "modeSelector",
@@ -232,6 +243,7 @@ export function ToolbarSettings() {
     description,
     side,
     canSetPriority: PRIORITY_EDITABLE_CONTROLS.has(key),
+    hasToolbarPreview: !NON_TOOLBAR_CONTROLS.has(key),
   });
 
   const toolbarControls: ToolbarControlMeta[] = [
@@ -313,6 +325,12 @@ export function ToolbarSettings() {
       t("appearanceToolbarSteerNowDescription"),
       "right",
     ),
+    controlMeta(
+      "composerRecall",
+      t("appearanceToolbarComposerRecallTitle"),
+      t("appearanceToolbarComposerRecallDescription"),
+      "right",
+    ),
   ];
   if (supportsProjectQueue) {
     toolbarControls.push(
@@ -374,17 +392,19 @@ export function ToolbarSettings() {
       }`}
       key={control.key}
     >
-      <span className="session-toolbar-control-preview-cell">
-        <ToolbarControlPreview
-          activationLabel={t("appearanceToolbarActivateControl", {
-            control: control.title,
-          })}
-          controlKey={control.key}
-          onActivate={() => {
-            document.getElementById(presenceSliderId(control.key))?.focus();
-          }}
-        />
-      </span>
+      {control.hasToolbarPreview && (
+        <span className="session-toolbar-control-preview-cell">
+          <ToolbarControlPreview
+            activationLabel={t("appearanceToolbarActivateControl", {
+              control: control.title,
+            })}
+            controlKey={control.key}
+            onActivate={() => {
+              document.getElementById(presenceSliderId(control.key))?.focus();
+            }}
+          />
+        </span>
+      )}
       <span className="session-toolbar-control-copy">
         <strong>{control.title}</strong>
         <span>{control.description}</span>

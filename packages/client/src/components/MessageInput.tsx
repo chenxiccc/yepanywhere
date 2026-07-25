@@ -3006,14 +3006,17 @@ export function MessageInput({
                   <span aria-hidden="true">⇥</span>
                 </button>
               )}
-              {turnRecall &&
+              {toolbarVisibility.composerRecall &&
+                turnRecall &&
                 turnRecall.entries.length > 0 &&
                 !recallDrawer &&
                 bangQuery === null && (
                   // Touch-keyboard opener for the recall drawer, where there is
                   // no Ctrl+↑. Opens over the same prefix-matched turns (empty
-                  // draft → all). Inline aria-label pending an en.json key (peer
-                  // WIP holds en.json). See topics/composer-recall-drawer.md.
+                  // draft → all). Off by default while the drawer is still being
+                  // fleshed out; Ctrl+↑ is unaffected by the setting. Inline
+                  // aria-label still pending an en.json key.
+                  // See topics/composer-recall-drawer.md.
                   <button
                     type="button"
                     className="message-input-keyboard-action message-input-keyboard-secondary composer-recall-open"

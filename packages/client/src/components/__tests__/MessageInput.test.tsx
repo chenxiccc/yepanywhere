@@ -185,6 +185,30 @@ vi.mock("../../hooks/useModelSettings", () => ({
   }),
 }));
 
+// Toolbar presence is mocked all-visible so control-gating never masks an
+// unrelated failure. Tests that care about a specific control's gate flip it
+// on this mutable map and restore it in a finally/afterEach.
+const toolbarVisibilityOverrides = vi.hoisted(() => ({
+  value: {
+    modeSelector: true,
+    steerNow: true,
+    attachments: true,
+    slashMenu: true,
+    thinkingToggle: true,
+    renderMode: true,
+    microphone: true,
+    waveform: true,
+    shortcutsHelp: true,
+    contextUsage: true,
+    btw: true,
+    nudge: true,
+    sessionStatus: true,
+    projectQueue: true,
+    projectQueueNewSessionShortcut: true,
+    composerRecall: true,
+  },
+}));
+
 vi.mock("../../hooks/useSessionToolbarPresence", async () => {
   const actual = await vi.importActual<
     typeof import("../../hooks/useSessionToolbarPresence")
@@ -193,23 +217,7 @@ vi.mock("../../hooks/useSessionToolbarPresence", async () => {
     ...actual,
     useSessionToolbarPresence: () => ({
       presence: actual.DEFAULT_SESSION_TOOLBAR_PRIORITY,
-      visibility: {
-        modeSelector: true,
-        steerNow: true,
-        attachments: true,
-        slashMenu: true,
-        thinkingToggle: true,
-        renderMode: true,
-        microphone: true,
-        waveform: true,
-        shortcutsHelp: true,
-        contextUsage: true,
-        btw: true,
-        nudge: true,
-        sessionStatus: true,
-        projectQueue: true,
-        projectQueueNewSessionShortcut: true,
-      },
+      visibility: toolbarVisibilityOverrides.value,
       priority: actual.DEFAULT_SESSION_TOOLBAR_PRIORITY,
       setControlPresence: vi.fn(),
       resetPresence: vi.fn(),
@@ -584,6 +592,7 @@ const toolbarVisibility: MessageInputToolbarViewProps["visibility"] = {
   sessionStatus: false,
   projectQueue: false,
   projectQueueNewSessionShortcut: false,
+  composerRecall: false,
 };
 
 const toolbarT = ((key: string, params?: Record<string, string>) => {
@@ -1372,6 +1381,51 @@ describe("MessageInput", () => {
         ).toBeNull();
       } finally {
         viewport.restore();
+      }
+    });
+
+    it("hides the mobile keyboard recall button when the toolbar control is hidden", () => {
+      const viewport = installMobileKeyboardViewport();
+      const visibility = toolbarVisibilityOverrides.value;
+      toolbarVisibilityOverrides.value = {
+        ...visibility,
+        composerRecall: false,
+      };
+      try {
+        const textarea = renderMessageInput(vi.fn(), { turnRecall });
+        fireEvent.focus(textarea);
+        act(() => viewport.setHeight(480));
+        fireEvent.change(textarea, { target: { value: "de" } });
+
+        expect(
+          document.querySelector(
+            ".message-input-keyboard-compact .composer-recall-open",
+          ),
+        ).toBeNull();
+      } finally {
+        toolbarVisibilityOverrides.value = visibility;
+        viewport.restore();
+      }
+    });
+
+    it("still opens the recall drawer with Ctrl+Up when the button is hidden", () => {
+      const visibility = toolbarVisibilityOverrides.value;
+      toolbarVisibilityOverrides.value = {
+        ...visibility,
+        composerRecall: false,
+      };
+      try {
+        const textarea = renderMessageInput(vi.fn(), { turnRecall });
+        fireEvent.change(textarea, { target: { value: "de" } });
+
+        fireEvent.keyDown(textarea, { key: "ArrowUp", ctrlKey: true });
+
+        expect(recallItems().map((item) => item.textContent)).toEqual([
+          "deploy the app",
+          "debug the crash",
+        ]);
+      } finally {
+        toolbarVisibilityOverrides.value = visibility;
       }
     });
   });
