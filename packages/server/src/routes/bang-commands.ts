@@ -171,8 +171,9 @@ export function createBangCommandsRoutes(deps: BangCommandsDeps): Hono {
 
   // Cached prefix index over the global command-history corpus: rebuilt at
   // most every BANG_HISTORY_INDEX_TTL_MS instead of rescanning and sorting
-  // every session's display objects per completion keystroke. A brand-new run
-  // appears in completions after at most one TTL.
+  // every session's display objects per completion keystroke. Corpus edits —
+  // a new run, or a deleted/edited history entry — settle in completions
+  // within one TTL; the prior per-keystroke scan reflected them immediately.
   let bangHistoryIndexCache: {
     index: BangHistoryIndex;
     expiresAt: number;

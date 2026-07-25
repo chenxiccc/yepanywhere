@@ -18,6 +18,25 @@ function containsControlCharacter(value: string): boolean {
   return false;
 }
 
+/** A persistable exact model id: non-empty, bounded, whitespace-free. */
+export function isValidClaudeAdditionalModelId(id: string): boolean {
+  return (
+    id.length > 0 &&
+    id.length <= MAX_CLAUDE_ADDITIONAL_MODEL_ID_LENGTH &&
+    !/\s/u.test(id)
+  );
+}
+
+/** A persistable display label: non-empty, bounded, trimmed, no control chars. */
+export function isValidClaudeAdditionalModelLabel(label: string): boolean {
+  return (
+    label.length > 0 &&
+    label.length <= MAX_CLAUDE_ADDITIONAL_MODEL_LABEL_LENGTH &&
+    label.trim() === label &&
+    !containsControlCharacter(label)
+  );
+}
+
 /**
  * Parse the persisted/wire representation without consulting the current
  * registry. Registry-removed selections must remain valid and loadable.
@@ -38,14 +57,9 @@ export function parseClaudeAdditionalModelSelections(
     const record = entry as Record<string, unknown>;
     if (
       typeof record.id !== "string" ||
-      record.id.length === 0 ||
-      record.id.length > MAX_CLAUDE_ADDITIONAL_MODEL_ID_LENGTH ||
-      /\s/u.test(record.id) ||
+      !isValidClaudeAdditionalModelId(record.id) ||
       typeof record.label !== "string" ||
-      record.label.length === 0 ||
-      record.label.length > MAX_CLAUDE_ADDITIONAL_MODEL_LABEL_LENGTH ||
-      record.label.trim() !== record.label ||
-      containsControlCharacter(record.label) ||
+      !isValidClaudeAdditionalModelLabel(record.label) ||
       (record.origin !== "registry" && record.origin !== "custom") ||
       seen.has(record.id)
     ) {

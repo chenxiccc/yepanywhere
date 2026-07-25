@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   MAX_CLAUDE_ADDITIONAL_MODELS,
+  MAX_CLAUDE_ADDITIONAL_MODEL_ID_LENGTH,
+  MAX_CLAUDE_ADDITIONAL_MODEL_LABEL_LENGTH,
+  isValidClaudeAdditionalModelId,
+  isValidClaudeAdditionalModelLabel,
   parseClaudeAdditionalModelSelections,
 } from "../src/claude-additional-models.js";
+
+const CONTROL_CHAR = String.fromCharCode(1);
 
 describe("parseClaudeAdditionalModelSelections", () => {
   it("preserves valid exact ids and saved provenance", () => {
@@ -49,5 +55,48 @@ describe("parseClaudeAdditionalModelSelections", () => {
     })),
   ])("rejects invalid selections %#", (value) => {
     expect(parseClaudeAdditionalModelSelections(value)).toBeNull();
+  });
+});
+
+describe("isValidClaudeAdditionalModelId", () => {
+  it("accepts a bounded whitespace-free id", () => {
+    expect(isValidClaudeAdditionalModelId("claude-opus-4-8[1m]")).toBe(true);
+  });
+
+  it.each([
+    "",
+    "has space",
+    "line\nbreak",
+    "x".repeat(MAX_CLAUDE_ADDITIONAL_MODEL_ID_LENGTH + 1),
+  ])("rejects %j", (id) => {
+    expect(isValidClaudeAdditionalModelId(id)).toBe(false);
+  });
+});
+
+describe("isValidClaudeAdditionalModelLabel", () => {
+  it("accepts a bounded trimmed control-free label", () => {
+    expect(isValidClaudeAdditionalModelLabel("Opus 4.8")).toBe(true);
+  });
+
+  it.each([
+    "",
+    " untrimmed",
+    `ctrl${CONTROL_CHAR}char`,
+    "x".repeat(MAX_CLAUDE_ADDITIONAL_MODEL_LABEL_LENGTH + 1),
+  ])("rejects %#", (label) => {
+    expect(isValidClaudeAdditionalModelLabel(label)).toBe(false);
+  });
+
+  it("rejects a custom id that is a valid id but an invalid label", () => {
+    // The exact divergence the client add-custom path must also catch: a custom
+    // entry stores label = id, so an over-long or control-char id is a valid id
+    // yet an invalid label, and would 400 at the server if only id-checked.
+    const longId = "x".repeat(MAX_CLAUDE_ADDITIONAL_MODEL_LABEL_LENGTH + 1);
+    expect(isValidClaudeAdditionalModelId(longId)).toBe(true);
+    expect(isValidClaudeAdditionalModelLabel(longId)).toBe(false);
+
+    const controlId = `claude${CONTROL_CHAR}custom`;
+    expect(isValidClaudeAdditionalModelId(controlId)).toBe(true);
+    expect(isValidClaudeAdditionalModelLabel(controlId)).toBe(false);
   });
 });

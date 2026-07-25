@@ -192,7 +192,10 @@ type RemapMergedField =
   | "observedAt"
   | "snapshotObservedAt"
   | "eventCreatedAt";
-type RemapUnmergedField = Exclude<keyof SessionCollectionRecord, RemapMergedField>;
+type RemapUnmergedField = Exclude<
+  keyof SessionCollectionRecord,
+  RemapMergedField
+>;
 const _remapMergeCoversAllRecordFields: [RemapUnmergedField] extends [never]
   ? true
   : { missingFromRemapMergeGroups: RemapUnmergedField } = true;
@@ -238,12 +241,19 @@ function mergeRemappedSessionRecords(
   const merged: SessionCollectionRecord = {
     id: canonicalId,
     observedAt: Math.max(provisional.observedAt, canonical.observedAt),
-    ...pickGroup("contentObservedAt", REMAP_MERGE_GROUPS.contentObservedAt),
-    ...pickGroup("metadataObservedAt", REMAP_MERGE_GROUPS.metadataObservedAt),
-    ...pickGroup("projectObservedAt", REMAP_MERGE_GROUPS.projectObservedAt),
-    ...pickGroup("lifecycleObservedAt", REMAP_MERGE_GROUPS.lifecycleObservedAt),
-    ...pickGroup("unreadObservedAt", REMAP_MERGE_GROUPS.unreadObservedAt),
   };
+  // Drive the merge off the group table itself, so a group added to
+  // REMAP_MERGE_GROUPS is picked up here automatically. The exhaustiveness
+  // assertion above only proves every field is assigned to some group; this
+  // loop is what guarantees each group is actually merged.
+  for (const observedField of Object.keys(REMAP_MERGE_GROUPS) as Array<
+    keyof typeof REMAP_MERGE_GROUPS
+  >) {
+    Object.assign(
+      merged,
+      pickGroup(observedField, REMAP_MERGE_GROUPS[observedField]),
+    );
+  }
   if (
     provisional.snapshotObservedAt !== undefined ||
     canonical.snapshotObservedAt !== undefined

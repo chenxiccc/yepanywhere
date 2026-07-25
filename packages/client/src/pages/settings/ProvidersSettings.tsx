@@ -10,6 +10,8 @@ import {
 import {
   CLAUDE_ADDITIONAL_MODELS_CAPABILITY,
   MAX_CLAUDE_ADDITIONAL_MODEL_ID_LENGTH,
+  isValidClaudeAdditionalModelId,
+  isValidClaudeAdditionalModelLabel,
   type ClaudeAdditionalModelSelection,
   type HelperTargetConfig,
   type ModelInfo,
@@ -912,11 +914,7 @@ function ClaudeAdditionalModelsSettings({
 
   const addCustomModel = useCallback(() => {
     const id = customId.trim();
-    if (
-      !id ||
-      id.length > MAX_CLAUDE_ADDITIONAL_MODEL_ID_LENGTH ||
-      /\s/u.test(id)
-    ) {
+    if (!isValidClaudeAdditionalModelId(id)) {
       setError(t("providersAdditionalModelsInvalidId"));
       return;
     }
@@ -926,6 +924,12 @@ function ClaudeAdditionalModelsSettings({
     }
 
     const maintained = modelOptions.find((model) => model.id === id);
+    // A custom entry stores label = id, so the id must also satisfy the label
+    // bounds the server enforces; a registry match carries the maintained name.
+    if (!maintained && !isValidClaudeAdditionalModelLabel(id)) {
+      setError(t("providersAdditionalModelsInvalidId"));
+      return;
+    }
     const nextSelection: ClaudeAdditionalModelSelection = maintained
       ? {
           id,
@@ -1005,9 +1009,7 @@ function ClaudeAdditionalModelsSettings({
                     <strong>{model.name}</strong>
                     <code>{model.id}</code>
                     {model.description && (
-                      <span className="settings-hint">
-                        {model.description}
-                      </span>
+                      <span className="settings-hint">{model.description}</span>
                     )}
                   </span>
                 </label>

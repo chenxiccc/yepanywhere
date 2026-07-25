@@ -16,6 +16,8 @@ export {
   MAX_CLAUDE_ADDITIONAL_MODELS,
   MAX_CLAUDE_ADDITIONAL_MODEL_ID_LENGTH,
   MAX_CLAUDE_ADDITIONAL_MODEL_LABEL_LENGTH,
+  isValidClaudeAdditionalModelId,
+  isValidClaudeAdditionalModelLabel,
   parseClaudeAdditionalModelSelections,
   type ClaudeAdditionalModelOrigin,
   type ClaudeAdditionalModelSelection,
