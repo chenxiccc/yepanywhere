@@ -359,7 +359,11 @@ function getPreservedRestartWork(
 }
 
 export function createApp(options: AppOptions): AppResult {
-  configureProviderRuntime({ codexCliPath: options.codexCliPath });
+  configureProviderRuntime({
+    codexCliPath: options.codexCliPath,
+    getClaudeAdditionalModels: () =>
+      options.serverSettingsService?.getSetting("claudeAdditionalModels"),
+  });
   const codexSessionsDir = options.codexSessionsDir ?? CODEX_SESSIONS_DIR;
 
   const app = new Hono<{ Bindings: HttpBindings }>();

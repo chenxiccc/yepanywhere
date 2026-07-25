@@ -24,6 +24,7 @@ export interface ServerCapabilityDefinition {
     | "gitStatus"
     | "localAccess"
     | "projectQueue"
+    | "providers"
     | "remoteAccess"
     | "settings"
     | "speech";
@@ -182,6 +183,36 @@ export const SERVER_CAPABILITIES = {
       kind: "permanent",
       reason:
         "Hosted clients must not offer server-backed browser settings controls to older servers without the storage route.",
+    },
+  },
+  claudeAdditionalModels: {
+    name: "claude-additional-models",
+    kind: "transitional",
+    area: "providers",
+    introducedIn: "0.6.3",
+    description:
+      "Server persists opt-in previous/custom Claude model ids and exposes the maintained optional catalog.",
+    clientFallback: "Hide the Additional models provider setting.",
+    serverContract: {
+      routes: [
+        "GET /api/settings",
+        "PUT /api/settings",
+        "GET /api/providers",
+        "GET /api/processes/:processId/models",
+      ],
+      responseFields: [
+        "settings.claudeAdditionalModels",
+        "providers[].additionalModelOptions",
+        "providers[].models[].catalogGroup",
+      ],
+    },
+    lifecycle: {
+      kind: "transitional",
+      reviewAfter: "2026-10-25",
+      removeClientGateWhen:
+        "The hosted-client compatibility floor excludes servers older than the additional-model settings/catalog API.",
+      removeServerAdvertisementWhen:
+        "No maintained client still branches on claude-additional-models.",
     },
   },
   bangCommands: {
@@ -440,6 +471,9 @@ export const APPROVAL_AUDIT_LOG_CAPABILITY =
 
 export const BROWSER_SETTINGS_BACKUP_CAPABILITY =
   SERVER_CAPABILITIES.browserSettingsBackup.name;
+
+export const CLAUDE_ADDITIONAL_MODELS_CAPABILITY =
+  SERVER_CAPABILITIES.claudeAdditionalModels.name;
 
 export const BANG_COMMANDS_CAPABILITY = SERVER_CAPABILITIES.bangCommands.name;
 

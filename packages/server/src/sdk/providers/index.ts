@@ -4,6 +4,7 @@
  * Re-exports all provider implementations and types.
  */
 
+import type { ClaudeAdditionalModelSelection } from "@yep-anywhere/shared";
 // Types
 import type { AgentProvider, ProviderName } from "./types.js";
 export type {
@@ -81,9 +82,16 @@ export { PiProvider, piProvider, type PiProviderConfig } from "./pi.js";
 export interface ProviderRuntimeConfig {
   /** Explicit Codex CLI path supplied by an embedding runtime such as desktop. */
   codexCliPath?: string;
+  /** Current server-persisted opt-ins for the Claude model catalog. */
+  getClaudeAdditionalModels?: () =>
+    | readonly ClaudeAdditionalModelSelection[]
+    | undefined;
 }
 
 export function configureProviderRuntime(config: ProviderRuntimeConfig): void {
+  claudeProvider.setAdditionalModelsGetter(
+    config.getClaudeAdditionalModels ?? (() => []),
+  );
   codexProvider.setCodexPath(config.codexCliPath);
   codexOSSProvider.setCodexPath(config.codexCliPath);
 }

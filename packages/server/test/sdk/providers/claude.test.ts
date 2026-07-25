@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  ClaudeProvider,
   claudeProvider,
   formatClaudeLoginCommand,
   mergeClaudeModels,
@@ -54,6 +55,40 @@ function control(
 }
 
 describe("ClaudeProvider model list", () => {
+  it("projects server-selected models without caching the setting value", async () => {
+    const provider = new ClaudeProvider();
+    let selected = false;
+    provider.setAdditionalModelsGetter(() =>
+      selected
+        ? [
+            {
+              id: "claude-opus-4-8",
+              label: "Opus 4.8",
+              origin: "registry",
+            },
+          ]
+        : [],
+    );
+    vi.spyOn(provider, "getAuthStatus").mockResolvedValue({
+      installed: true,
+      authenticated: false,
+      enabled: false,
+    });
+
+    expect(
+      (await provider.getAvailableModels()).map((model) => model.id),
+    ).not.toContain("claude-opus-4-8");
+    selected = true;
+    expect(
+      (await provider.getAvailableModels()).find(
+        (model) => model.id === "claude-opus-4-8",
+      ),
+    ).toMatchObject({
+      name: "Opus 4.8",
+      catalogGroup: "additional",
+    });
+  });
+
   it("keeps the default option generic when SDK returns a concrete-looking label", () => {
     const models = mergeClaudeModels([
       {

@@ -964,6 +964,58 @@ describe("Settings Routes", () => {
       });
     });
 
+    it("accepts exact opt-in Claude model selections", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+      const selections = [
+        {
+          id: "claude-opus-4-8",
+          label: "Opus 4.8",
+          origin: "registry",
+        },
+        {
+          id: "claude-future-6[1m]",
+          label: "claude-future-6[1m]",
+          origin: "custom",
+        },
+      ];
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ claudeAdditionalModels: selections }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
+        claudeAdditionalModels: selections,
+      });
+    });
+
+    it("rejects duplicate opt-in Claude model ids", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          claudeAdditionalModels: [
+            { id: "same", label: "Same", origin: "custom" },
+            { id: "same", label: "Same again", origin: "custom" },
+          ],
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({
+        error: "Invalid claudeAdditionalModels setting",
+      });
+      expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
+    });
+
     it("rejects invalid provider-scoped helper model defaults", async () => {
       const routes = createSettingsRoutes({
         serverSettingsService: mockServerSettingsService,

@@ -133,6 +133,18 @@ approval and are not part of this feature's tests.
 - Cover loading, grandfathering, de-duplication, cache freshness, and route
   behavior.
 
+Completed 2026-07-25. The shared wire parser bounds and validates exact-id
+selections without consulting registry membership. The server registry and
+pure projection cover maintained, custom, removed-registry, and duplicate
+cases. Claude's provider catalog and live `supportedModels()` path read the
+current server setting, while provider-route caching uses a settings-derived
+key. `/api/version` advertises the transitional capability.
+
+Focused shared/server coverage passes 128 tests, including settings route and
+restart persistence, provider route cache invalidation, provider projection,
+the existing Claude catalog suite, and version advertisement. Root lint and
+typecheck are warning-free. No live model turn was run.
+
 ### Slice 2 — Client settings and model grouping
 
 - Add the capability-gated Providers-settings row and editor.

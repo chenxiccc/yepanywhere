@@ -1,4 +1,5 @@
 import {
+  CLAUDE_ADDITIONAL_MODELS_CAPABILITY,
   DEVICE_BRIDGE_CAPABILITY,
   DEVICE_BRIDGE_DOWNLOAD_CAPABILITY,
   DEVICE_BRIDGE_UPDATE_CAPABILITY,
@@ -218,6 +219,7 @@ describe("GET /version", () => {
     expect(json.resumeProtocolVersion).toBeTypeOf("number");
     expect(json.remoteCompatibilityLevel).toBe(REMOTE_COMPATIBILITY_LEVEL);
     expect(Array.isArray(json.capabilities)).toBe(true);
+    expect(json.capabilities).toContain(CLAUDE_ADDITIONAL_MODELS_CAPABILITY);
   });
 
   it("advertises validated server-routed voice backends", async () => {

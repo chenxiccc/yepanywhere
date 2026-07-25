@@ -10,6 +10,7 @@ import * as path from "node:path";
 import type {
   AgentContextHints,
   CacheMissBillingSettings,
+  ClaudeAdditionalModelSelection,
   ClientDefaults,
   HelperTargetConfig,
   HostIdentity,
@@ -27,6 +28,7 @@ import {
   normalizeYaClientBaseUrlFromShareViewerUrl,
   isHostAwakeBatteryFloorPercent,
   isHostAwakeMode,
+  parseClaudeAdditionalModelSelections,
 } from "@yep-anywhere/shared";
 import type { FileAccessSettings } from "../middleware/file-access.js";
 import { publishDeferredDeliverySettings } from "../supervisor/deferredDeliverySettings.js";
@@ -105,6 +107,8 @@ export interface ServerSettings {
   ollamaUseFullSystemPrompt?: boolean;
   /** Whether Grok Build may receive the scrubbed ambient XAI_API_KEY. */
   grokBuildUseXaiApiKey?: boolean;
+  /** Exact previous/custom Claude model ids opted into provider catalogs. */
+  claudeAdditionalModels?: ClaudeAdditionalModelSelection[];
   /** Whether the device bridge (emulator/device streaming) feature is enabled */
   deviceBridgeEnabled?: boolean;
   /** Defaults applied when opening the new session form */
@@ -289,6 +293,9 @@ function normalizeLoadedSettings(settings: ServerSettings): ServerSettings {
   normalized.clientDefaults = mergeLoadedClientDefaults(
     settings.clientDefaults,
   );
+  normalized.claudeAdditionalModels =
+    parseClaudeAdditionalModelSelections(settings.claudeAdditionalModels) ??
+    undefined;
   const loadedHeartbeatText = settings.heartbeatTurnText?.trim();
   if (
     loadedHeartbeatText &&

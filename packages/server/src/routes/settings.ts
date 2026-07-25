@@ -12,6 +12,7 @@ import {
   isHostAwakeMode,
   normalizeYaClientBaseUrl,
   normalizeYaClientBaseUrlFromShareViewerUrl,
+  parseClaudeAdditionalModelSelections,
 } from "@yep-anywhere/shared";
 import { Hono } from "hono";
 import { type FileAccessSettings, getFileAccessInfo } from "../middleware/file-access.js";
@@ -446,6 +447,19 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
 
     if (typeof body.grokBuildUseXaiApiKey === "boolean") {
       updates.grokBuildUseXaiApiKey = body.grokBuildUseXaiApiKey;
+    }
+
+    if ("claudeAdditionalModels" in body) {
+      const parsedSelections = parseClaudeAdditionalModelSelections(
+        body.claudeAdditionalModels,
+      );
+      if (parsedSelections === null) {
+        return c.json(
+          { error: "Invalid claudeAdditionalModels setting" },
+          400,
+        );
+      }
+      updates.claudeAdditionalModels = parsedSelections;
     }
 
     // Handle deviceBridgeEnabled boolean

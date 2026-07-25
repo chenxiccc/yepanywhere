@@ -132,6 +132,75 @@ describe("Providers Routes", () => {
     expect(provider.getAvailableModels).toHaveBeenCalledTimes(1);
   });
 
+  it("invalidates cached model projection when its settings key changes", async () => {
+    let selected = false;
+    const provider = createProvider({
+      getModelCatalogCacheKey: () => String(selected),
+      getAvailableModels: vi.fn(async () => [
+        { id: "opus", name: "Opus" },
+        ...(selected
+          ? [
+              {
+                id: "claude-opus-4-8",
+                name: "Opus 4.8",
+                catalogGroup: "additional" as const,
+              },
+            ]
+          : []),
+      ]),
+    });
+    const routes = createProvidersRoutes({
+      providers: [provider],
+      cacheTtlMs: 60_000,
+    });
+
+    await routes.request("/");
+    selected = true;
+    const response = await routes.request("/");
+    const json = (await response.json()) as {
+      providers: Array<{ models: ModelInfo[] }>;
+    };
+
+    expect(provider.getAvailableModels).toHaveBeenCalledTimes(2);
+    expect(json.providers[0]?.models).toContainEqual(
+      expect.objectContaining({
+        id: "claude-opus-4-8",
+        catalogGroup: "additional",
+      }),
+    );
+  });
+
+  it("serializes provider-maintained opt-in model choices", async () => {
+    const provider = createProvider({
+      getAdditionalModelOptions: () => [
+        {
+          id: "claude-opus-4-8",
+          name: "Opus 4.8",
+          catalogGroup: "additional",
+        },
+      ],
+    });
+    const routes = createProvidersRoutes({
+      providers: [provider],
+      cacheTtlMs: 60_000,
+    });
+
+    const response = await routes.request("/");
+    const json = (await response.json()) as { providers: Array<unknown> };
+
+    expect(json.providers).toEqual([
+      expect.objectContaining({
+        additionalModelOptions: [
+          {
+            id: "claude-opus-4-8",
+            name: "Opus 4.8",
+            catalogGroup: "additional",
+          },
+        ],
+      }),
+    ]);
+  });
+
   it("serializes active-turn steering capability flags", async () => {
     const provider = createProvider({
       supportsSteering: true,

@@ -98,6 +98,8 @@ export interface ModelInfo {
   supportsPersonality?: boolean;
   /** Provider-reported opt-in service tiers, e.g. faster paid processing. */
   serviceTiers?: ModelServiceTier[];
+  /** Non-primary provider catalog group, omitted for the curated/default list. */
+  catalogGroup?: "additional";
 }
 
 export interface ModelServiceTier {
@@ -327,6 +329,8 @@ export interface ProviderInfo {
   user?: { email?: string; name?: string };
   /** Available models for this provider */
   models?: ModelInfo[];
+  /** Server-maintained opt-in choices that do not enter models by default. */
+  additionalModelOptions?: ModelInfo[];
   /** Long-edge image sizing guidance for client-side attachment rescaling. */
   imageSizing?: ProviderImageSizing;
   /** Whether this provider supports permission modes (default: true for backward compat) */

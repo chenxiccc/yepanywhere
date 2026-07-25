@@ -12,6 +12,15 @@ export {
   LATEX_MATH_RENDERING_CLIENT_CAPABILITY,
 } from "./agent-context.js";
 
+export {
+  MAX_CLAUDE_ADDITIONAL_MODELS,
+  MAX_CLAUDE_ADDITIONAL_MODEL_ID_LENGTH,
+  MAX_CLAUDE_ADDITIONAL_MODEL_LABEL_LENGTH,
+  parseClaudeAdditionalModelSelections,
+  type ClaudeAdditionalModelOrigin,
+  type ClaudeAdditionalModelSelection,
+} from "./claude-additional-models.js";
+
 export type { HostIdentity } from "./host-identity.js";
 export {
   MAX_HOST_IDENTITY_ICON_CODE_UNITS,
@@ -258,6 +267,7 @@ export {
   APPROVAL_AUDIT_LOG_CAPABILITY,
   BANG_COMMANDS_CAPABILITY,
   BROWSER_SETTINGS_BACKUP_CAPABILITY,
+  CLAUDE_ADDITIONAL_MODELS_CAPABILITY,
   DEVICE_BRIDGE_AVAILABLE_CAPABILITY,
   DEVICE_BRIDGE_CAPABILITY,
   DEVICE_BRIDGE_DOWNLOAD_CAPABILITY,

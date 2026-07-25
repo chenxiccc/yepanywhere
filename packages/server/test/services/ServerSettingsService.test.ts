@@ -73,6 +73,46 @@ describe("ServerSettingsService", () => {
     expect(reloaded.getSetting("hostIdentity")).toEqual({ icon: "💻" });
   });
 
+  it("persists registry provenance without consulting the current catalog", async () => {
+    const selection = {
+      id: "claude-opus-4-5",
+      label: "Opus 4.5",
+      origin: "registry" as const,
+    };
+    const service = new ServerSettingsService({ dataDir: testDir });
+    await service.initialize();
+    await service.updateSettings({ claudeAdditionalModels: [selection] });
+
+    const reloaded = new ServerSettingsService({ dataDir: testDir });
+    await reloaded.initialize();
+
+    expect(reloaded.getSetting("claudeAdditionalModels")).toEqual([selection]);
+  });
+
+  it("drops malformed persisted additional model settings", async () => {
+    await fs.writeFile(
+      path.join(testDir, "server-settings.json"),
+      JSON.stringify({
+        version: 2,
+        settings: {
+          claudeAdditionalModels: [
+            {
+              id: "model with spaces",
+              label: "Invalid",
+              origin: "custom",
+            },
+          ],
+        },
+      }),
+      "utf-8",
+    );
+    const service = new ServerSettingsService({ dataDir: testDir });
+
+    await service.initialize();
+
+    expect(service.getSetting("claudeAdditionalModels")).toBeUndefined();
+  });
+
   it.each([
     "heartbeat",
     "yepanywhere heartbeat",

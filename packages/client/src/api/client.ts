@@ -5,6 +5,7 @@ import type {
   CacheMissBillingSettings,
   BrowserSettingsBackupResponse,
   BrowserSettingsBackupValues,
+  ClaudeAdditionalModelSelection,
   ClientDefaults,
   ConnectionsResponse,
   CreateProjectWorkstreamRequest,
@@ -1593,6 +1594,8 @@ export interface ServerSettings {
   ollamaUseFullSystemPrompt?: boolean;
   /** Whether Grok Build may receive the server's XAI_API_KEY */
   grokBuildUseXaiApiKey?: boolean;
+  /** Exact previous/custom Claude model ids opted into provider catalogs. */
+  claudeAdditionalModels?: ClaudeAdditionalModelSelection[];
   /** Whether the device bridge (emulator/device streaming) feature is enabled */
   deviceBridgeEnabled?: boolean;
   /** Defaults applied when opening the new session form */

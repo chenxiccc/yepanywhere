@@ -22,6 +22,7 @@ import {
 import {
   DEFAULT_PROMPT_CACHE_KEEPALIVE_INACTIVITY_MINUTES,
   HELPER_SIDE_MODEL_CHEAPEST,
+  type ClaudeAdditionalModelSelection,
   type EffortLevel,
   type ModelInfo,
   type PromptCacheKeepaliveProviderInfo,
@@ -32,6 +33,11 @@ import { getLogger } from "../../logging/logger.js";
 import { detectClaudeCli } from "../cli-detection.js";
 import { logSDKMessage } from "../messageLogger.js";
 import { MessageQueue } from "../messageQueue.js";
+import {
+  getClaudeAdditionalModelOptions,
+  getClaudeModelCatalogCacheKey,
+  projectClaudeAdditionalModels,
+} from "./claude-additional-models.js";
 import { ClaudeProviderRetentionTracker } from "./claude-retention.js";
 import {
   checkRemotePath,
@@ -725,6 +731,30 @@ export class ClaudeProvider implements AgentProvider {
     defaultMode: "auto" as const,
     defaultInactivityMinutes: DEFAULT_PROMPT_CACHE_KEEPALIVE_INACTIVITY_MINUTES,
   };
+  private getAdditionalModelSelections: () =>
+    | readonly ClaudeAdditionalModelSelection[]
+    | undefined = () => [];
+
+  setAdditionalModelsGetter(
+    getter: () => readonly ClaudeAdditionalModelSelection[] | undefined,
+  ): void {
+    this.getAdditionalModelSelections = getter;
+  }
+
+  getAdditionalModelOptions(): ModelInfo[] {
+    return getClaudeAdditionalModelOptions();
+  }
+
+  getModelCatalogCacheKey(): string {
+    return getClaudeModelCatalogCacheKey(this.getAdditionalModelSelections());
+  }
+
+  private projectAdditionalModels(models: readonly ModelInfo[]): ModelInfo[] {
+    return projectClaudeAdditionalModels(
+      models,
+      this.getAdditionalModelSelections(),
+    );
+  }
 
   /**
    * Check if Claude SDK is available.
@@ -899,18 +929,18 @@ export class ClaudeProvider implements AgentProvider {
   async getAvailableModels(): Promise<ModelInfo[]> {
     // Return cached models if available
     if (cachedModels) {
-      return cachedModels;
+      return this.projectAdditionalModels(cachedModels);
     }
 
     // Check if user is authenticated before trying to probe
     const authStatus = await this.getAuthStatus();
     if (!authStatus.authenticated) {
-      return CLAUDE_MODELS_FALLBACK;
+      return this.projectAdditionalModels(CLAUDE_MODELS_FALLBACK);
     }
 
     // If probe is already in progress, wait for it
     if (probePromise) {
-      return probePromise;
+      return this.projectAdditionalModels(await probePromise);
     }
 
     // Start a new probe
@@ -918,10 +948,10 @@ export class ClaudeProvider implements AgentProvider {
     try {
       const models = await probePromise;
       cachedModels = mergeClaudeModels(models);
-      return cachedModels;
+      return this.projectAdditionalModels(cachedModels);
     } catch (error) {
       console.warn("[Claude] Failed to probe models, using fallback:", error);
-      return CLAUDE_MODELS_FALLBACK;
+      return this.projectAdditionalModels(CLAUDE_MODELS_FALLBACK);
     } finally {
       probePromise = null;
     }
@@ -1784,7 +1814,7 @@ export class ClaudeProvider implements AgentProvider {
         );
         // Update cache for future getAvailableModels() calls
         cachedModels = mappedModels;
-        return mappedModels;
+        return this.projectAdditionalModels(mappedModels);
       },
       supportedCommands: async (): Promise<SlashCommand[]> => {
         const commands = await sdkQuery.supportedCommands();

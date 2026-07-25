@@ -19,8 +19,10 @@ interface ProviderRouteDeps {
 
 interface ProviderInfoCacheEntry {
   expiresAt: number;
+  catalogCacheKey?: string;
   value?: ProviderInfo;
   inFlight?: Promise<ProviderInfo>;
+  inFlightCatalogCacheKey?: string;
 }
 
 function getProviderImageSizing(
@@ -64,10 +66,19 @@ export function createProvidersRoutes(deps: ProviderRouteDeps = {}): Hono {
     const providerName = provider.name as ProviderName;
     const now = Date.now();
     const cached = cache.get(providerName);
-    if (!forceRefresh && cached?.value && cached.expiresAt > now) {
+    const catalogCacheKey = provider.getModelCatalogCacheKey?.();
+    if (
+      !forceRefresh &&
+      cached?.value &&
+      cached.expiresAt > now &&
+      cached.catalogCacheKey === catalogCacheKey
+    ) {
       return cached.value;
     }
-    if (cached?.inFlight) {
+    if (
+      cached?.inFlight &&
+      cached.inFlightCatalogCacheKey === catalogCacheKey
+    ) {
       return cached.inFlight;
     }
 
@@ -87,6 +98,7 @@ export function createProvidersRoutes(deps: ProviderRouteDeps = {}): Hono {
         user: authStatus.user,
         loginCommand: authStatus.loginCommand,
         models,
+        additionalModelOptions: provider.getAdditionalModelOptions?.(),
         imageSizing: getProviderImageSizing(provider.name),
         supportsPermissionMode: provider.supportsPermissionMode,
         supportsThinkingToggle: provider.supportsThinkingToggle,
@@ -104,8 +116,10 @@ export function createProvidersRoutes(deps: ProviderRouteDeps = {}): Hono {
 
     cache.set(providerName, {
       expiresAt: cached?.expiresAt ?? 0,
+      catalogCacheKey: cached?.catalogCacheKey,
       value: forceRefresh ? undefined : cached?.value,
       inFlight,
+      inFlightCatalogCacheKey: catalogCacheKey,
     });
 
     try {
@@ -113,6 +127,7 @@ export function createProvidersRoutes(deps: ProviderRouteDeps = {}): Hono {
       cache.set(providerName, {
         value,
         expiresAt: Date.now() + cacheTtlMs,
+        catalogCacheKey,
       });
       return value;
     } catch (error) {

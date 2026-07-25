@@ -268,6 +268,18 @@ export interface AgentProvider {
   getAvailableModels(): Promise<ModelInfo[]>;
 
   /**
+   * Server-maintained choices users may opt into separately from the primary
+   * provider catalog. Absence means the provider has no such settings surface.
+   */
+  getAdditionalModelOptions?(): ModelInfo[];
+
+  /**
+   * Synchronous key for settings-dependent model projection. Provider-route
+   * caches are reused only while this key remains unchanged.
+   */
+  getModelCatalogCacheKey?(): string;
+
+  /**
    * Map a provider-reported model id (e.g. "claude-opus-4-8") back to a YA model
    * id / launch alias (e.g. "opus"), or `undefined` when no mapping is known.
    * This is the imperfect inverse of how YA aliases resolve at launch — properly
