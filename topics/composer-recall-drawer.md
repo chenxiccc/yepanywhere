@@ -76,11 +76,18 @@ reversal is surfaced in that topic and the commit for kzahel's review.
   entries whose text begins with the current draft (case-insensitive,
   normalized). Empty draft → full history, newest-first, deduplicated.
   This is the net-new matching mode (everything today is substring).
-- **Drawer UI.** A list drawer folding up from the composer (into the
-  `.session-input-inner` above-composer region the isearch panel already
-  portals into), one scannable row per entry: a one-line preview plus a
-  secondary "go to this turn" control. Distinct from the isearch *input*
-  panel and from the right-edge `UserTurnNavigator` rail.
+- **Drawer UI — reuse the existing Tab-completion menu.** The bang/slash
+  completion dropdown (`slash-command-menu` / `composer-slash-command-menu`
+  / `bang-completion-menu`, `MessageInput.tsx:2374`: a `role="menu"` list
+  of `slash-command-item` buttons folding up from the composer, arrow-key
+  selection with an `active` row, mouse-hover select) is already the
+  compact scannable list this drawer wants — confirmed by graehl watching
+  Tab in a `!!` draft open "a nice compact list menuish thing that opens as
+  I imagined." Reuse that component/styling, feeding it recall rows (a
+  one-line preview plus a secondary "go to this turn" control) instead of
+  completion candidates, rather than building a new list. It already lives
+  in the same above-composer region; distinct from the isearch *input*
+  panel and the right-edge `UserTurnNavigator` rail.
 - **Navigation.** Up/down move the selection (reuse the isearch
   arrow-repeat selection engine); Enter recalls the selected entry's full
   text into the composer (reuse the `setDraft`/correction plumbing, but
@@ -118,8 +125,9 @@ Net-new:
 
 1. Prefix matching against the live draft (all matching today is
    substring `.includes`).
-2. The list-drawer UI (isearch's is a search *input*; the rail is a
-   minimap, not a scan list).
+2. Feeding recall rows into the existing Tab-completion menu component
+   (`slash-command-menu`/`bang-completion-menu`) — not a new list UI, just
+   a new data source and a per-row "go to turn" control.
 3. Enter = recall text, over a *multi-turn* history (vs single-last ref).
 4. Restore-original-draft on cancel.
 5. Dismiss-on-any-keystroke.
