@@ -12,9 +12,9 @@ deployment stays with the local build-and-push flow for now. Recorded
 because the design is sound and may be worth adopting later or offering
 upstream as a self-hoster feature.
 
-See also: `topics/trusted-client-packaging.md` (serving trust model),
-`topics/graehl-ci-pre-kzahel-gate.md` (graehl CI as pre-upstream
-testbed).
+See also: `topics/trusted-client-packaging.md` (serving trust model).
+The maintainer's fork-CI-before-upstream gating notes are checkout-local
+(a `topics/*.local.md` file), not committed policy.
 
 ## Motivation
 

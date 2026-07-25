@@ -53,6 +53,8 @@ tasks/
 .snapshots/
 /last-session.md
 /AGENTS.local.md
+# Checkout-local topic notes (personal/maintainer policy that must not ship)
+/topics/*.local.md
 /ui-report/
 
 # Agent session/run state (local, any depth: root + packages/*)
