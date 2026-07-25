@@ -12,7 +12,9 @@ import { useVersion } from "../../hooks/useVersion";
 import { useI18n } from "../../i18n";
 import { serverSupportsBangCommands } from "../../lib/bangCommandAvailability";
 import { serverSupportsProjectQueue } from "../../lib/projectQueueVisibility";
+import { SettingsItem } from "./SettingsItem";
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
+import { SettingsSection } from "./SettingsSection";
 import { useSettingsUndo } from "./SettingsUndoContext";
 
 const BUSY_COMPOSER_DEFAULT_ACTIONS: BusyComposerDefaultAction[] = [
@@ -285,27 +287,18 @@ export function MessageDeliverySettings() {
   useSettingsUndo(canUndo, undo);
 
   if (isLoading) {
-    return (
-      <section className="settings-section">
-        <p className="settings-section-description">
-          {t("messageDeliveryLoading")}
-        </p>
-      </section>
-    );
+    return <SettingsSection description={t("messageDeliveryLoading")} />;
   }
 
   return (
-    <section className="settings-section">
-      <p className="settings-section-description">
-        {t("messageDeliveryDescription")}
-      </p>
-
+    <SettingsSection description={t("messageDeliveryDescription")}>
       <div className="settings-group">
-        <div className="settings-item model-settings-item">
-          <div className="settings-item-info">
-            <strong>{t("messageDeliveryJoinWindowTitle")}</strong>
-            <p>{t("messageDeliveryJoinWindowDescription")}</p>
-          </div>
+        <SettingsItem
+          label={t("messageDeliveryJoinWindowTitle")}
+          description={t("messageDeliveryJoinWindowDescription")}
+          valueText={shownJoinWindowText}
+          className="model-settings-item"
+        >
           <span className="output-appearance-slider-row">
             <CommittedRangeInput
               id="message-delivery-join-window"
@@ -339,14 +332,15 @@ export function MessageDeliverySettings() {
                   seconds: String(shownJoinWindowSeconds),
                 })}
           </span>
-        </div>
+        </SettingsItem>
 
         {supportsProjectQueue && (
-          <div className="settings-item model-settings-item">
-            <div className="settings-item-info">
-              <strong>{t("messageDeliveryProjectQueueQuietTitle")}</strong>
-              <p>{t("messageDeliveryProjectQueueQuietDescription")}</p>
-            </div>
+          <SettingsItem
+            label={t("messageDeliveryProjectQueueQuietTitle")}
+            description={t("messageDeliveryProjectQueueQuietDescription")}
+            valueText={shownProjectQueueQuietText}
+            className="model-settings-item"
+          >
             <span className="output-appearance-slider-row">
               <CommittedRangeInput
                 id="message-delivery-project-queue-quiet"
@@ -377,14 +371,14 @@ export function MessageDeliverySettings() {
                     seconds: String(shownProjectQueueQuietSeconds),
                   })}
             </span>
-          </div>
+          </SettingsItem>
         )}
 
-        <label className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("messageDeliveryComposeAnchorsTitle")}</strong>
-            <p>{t("messageDeliveryComposeAnchorsDescription")}</p>
-          </div>
+        <SettingsItem
+          as="label"
+          label={t("messageDeliveryComposeAnchorsTitle")}
+          description={t("messageDeliveryComposeAnchorsDescription")}
+        >
           <input
             type="checkbox"
             checked={shownAnchors}
@@ -397,14 +391,14 @@ export function MessageDeliverySettings() {
             }}
             aria-label={t("messageDeliveryComposeAnchorsTitle")}
           />
-        </label>
+        </SettingsItem>
 
         {supportsBangCommands && (
-          <label className="settings-item">
-            <div className="settings-item-info">
-              <strong>{t("messageDeliveryBangCommandsTitle")}</strong>
-              <p>{t("messageDeliveryBangCommandsDescription")}</p>
-            </div>
+          <SettingsItem
+            as="label"
+            label={t("messageDeliveryBangCommandsTitle")}
+            description={t("messageDeliveryBangCommandsDescription")}
+          >
             <input
               type="checkbox"
               checked={shownBangCommands}
@@ -419,14 +413,13 @@ export function MessageDeliverySettings() {
               }}
               aria-label={t("messageDeliveryBangCommandsTitle")}
             />
-          </label>
+          </SettingsItem>
         )}
 
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("appearanceToolbarDefaultActionTitle")}</strong>
-            <p>{t("appearanceToolbarDefaultActionDescription")}</p>
-          </div>
+        <SettingsItem
+          label={t("appearanceToolbarDefaultActionTitle")}
+          description={t("appearanceToolbarDefaultActionDescription")}
+        >
           <select
             className="settings-select"
             value={shownBusyDefaultAction}
@@ -449,13 +442,13 @@ export function MessageDeliverySettings() {
               {t("appearanceToolbarDefaultActionQueue")}
             </option>
           </select>
-        </div>
+        </SettingsItem>
 
-        <label className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("messageDeliverySteerNowDefaultTitle")}</strong>
-            <p>{t("messageDeliverySteerNowDefaultDescription")}</p>
-          </div>
+        <SettingsItem
+          as="label"
+          label={t("messageDeliverySteerNowDefaultTitle")}
+          description={t("messageDeliverySteerNowDefaultDescription")}
+        >
           <input
             type="checkbox"
             checked={shownSteerNowDefault}
@@ -470,13 +463,13 @@ export function MessageDeliverySettings() {
             }}
             aria-label={t("messageDeliverySteerNowDefaultTitle")}
           />
-        </label>
+        </SettingsItem>
 
-        <label className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("messageDeliveryPatientQueueDefaultTitle")}</strong>
-            <p>{t("messageDeliveryPatientQueueDefaultDescription")}</p>
-          </div>
+        <SettingsItem
+          as="label"
+          label={t("messageDeliveryPatientQueueDefaultTitle")}
+          description={t("messageDeliveryPatientQueueDefaultDescription")}
+        >
           <input
             type="checkbox"
             checked={shownPatientQueueDefault}
@@ -491,14 +484,14 @@ export function MessageDeliverySettings() {
             }}
             aria-label={t("messageDeliveryPatientQueueDefaultTitle")}
           />
-        </label>
+        </SettingsItem>
 
         {supportsProjectQueue && (
-          <label className="settings-item">
-            <div className="settings-item-info">
-              <strong>{t("messageDeliveryProjectQueueShortcutTitle")}</strong>
-              <p>{t("messageDeliveryProjectQueueShortcutDescription")}</p>
-            </div>
+          <SettingsItem
+            as="label"
+            label={t("messageDeliveryProjectQueueShortcutTitle")}
+            description={t("messageDeliveryProjectQueueShortcutDescription")}
+          >
             <input
               type="checkbox"
               checked={shownProjectQueueCtrlEnter}
@@ -513,11 +506,11 @@ export function MessageDeliverySettings() {
               }}
               aria-label={t("messageDeliveryProjectQueueShortcutTitle")}
             />
-          </label>
+          </SettingsItem>
         )}
 
         {error && <p className="settings-warning">{error}</p>}
       </div>
-    </section>
+    </SettingsSection>
   );
 }

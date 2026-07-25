@@ -6,7 +6,10 @@ import { useCodexUpdateStatus } from "../../hooks/useCodexUpdateStatus";
 import { useProviders } from "../../hooks/useProviders";
 import { useServerSettings } from "../../hooks/useServerSettings";
 import { useI18n } from "../../i18n";
+import { SettingsItem } from "./SettingsItem";
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
+import { HideInSettingsSearch } from "./SettingsSearchContext";
+import { SettingsSection } from "./SettingsSection";
 import {
   helperTargetDescription,
   helperTargetValue,
@@ -209,152 +212,159 @@ function HelperTargetsSettings({
   const modelOptions = mergeModelOptions(draft.model, discoveredModels);
 
   return (
-    <div className="settings-item helper-targets-settings">
-      <div className="settings-item-info">
-        <strong>{t("helperTargetsTitle")}</strong>
-        <p>{t("helperTargetsDescription")}</p>
-        <p className="settings-hint">{t("helperTargetsRuntimeNote")}</p>
-      </div>
-
-      <div className="helper-targets-panel">
-        {targets.length === 0 ? (
-          <p className="settings-hint">{t("helperTargetsEmpty")}</p>
-        ) : (
-          <div className="helper-target-list">
-            {targets.map((target) => (
-              <div key={target.id} className="helper-target-row">
-                <div className="helper-target-row-main">
-                  <strong>{target.name}</strong>
-                  <span>{helperTargetDescription(target)}</span>
-                  <code>
-                    {t("helperTargetsIdPrefix")} {helperTargetValue(target)}
-                  </code>
+    <SettingsItem
+      label={t("helperTargetsTitle")}
+      description={t("helperTargetsDescription")}
+      className="helper-targets-settings"
+      info={
+        <>
+          <strong>{t("helperTargetsTitle")}</strong>
+          <p>{t("helperTargetsDescription")}</p>
+          <p className="settings-hint">{t("helperTargetsRuntimeNote")}</p>
+        </>
+      }
+    >
+      <HideInSettingsSearch>
+        <div className="helper-targets-panel">
+          {targets.length === 0 ? (
+            <p className="settings-hint">{t("helperTargetsEmpty")}</p>
+          ) : (
+            <div className="helper-target-list">
+              {targets.map((target) => (
+                <div key={target.id} className="helper-target-row">
+                  <div className="helper-target-row-main">
+                    <strong>{target.name}</strong>
+                    <span>{helperTargetDescription(target)}</span>
+                    <code>
+                      {t("helperTargetsIdPrefix")} {helperTargetValue(target)}
+                    </code>
+                  </div>
+                  <div className="helper-target-row-actions">
+                    <button
+                      type="button"
+                      className="settings-button settings-button-secondary"
+                      onClick={() => beginEdit(target)}
+                      disabled={isSaving}
+                    >
+                      {t("helperTargetsEdit")}
+                    </button>
+                    <button
+                      type="button"
+                      className="settings-button settings-button-secondary"
+                      onClick={() => void deleteTarget(target.id)}
+                      disabled={isSaving}
+                    >
+                      {t("helperTargetsDelete")}
+                    </button>
+                  </div>
                 </div>
-                <div className="helper-target-row-actions">
-                  <button
-                    type="button"
-                    className="settings-button settings-button-secondary"
-                    onClick={() => beginEdit(target)}
-                    disabled={isSaving}
-                  >
-                    {t("helperTargetsEdit")}
-                  </button>
-                  <button
-                    type="button"
-                    className="settings-button settings-button-secondary"
-                    onClick={() => void deleteTarget(target.id)}
-                    disabled={isSaving}
-                  >
-                    {t("helperTargetsDelete")}
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
 
-        <div className="helper-target-editor">
-          <label>
-            <span>{t("helperTargetsNameLabel")}</span>
-            <input
-              type="text"
-              className="settings-input"
-              value={draft.name}
-              onChange={(event) =>
-                setDraft((prev) => ({ ...prev, name: event.target.value }))
-              }
-            />
-          </label>
-          <label>
-            <span>{t("helperTargetsBaseUrlLabel")}</span>
-            <input
-              type="text"
-              className="settings-input"
-              value={draft.baseUrl}
-              placeholder={t("helperTargetsBaseUrlPlaceholder")}
-              onChange={(event) =>
-                setDraft((prev) => ({ ...prev, baseUrl: event.target.value }))
-              }
-            />
-          </label>
-          <label htmlFor={modelFieldId}>
-            <span>{t("helperTargetsModelLabel")}</span>
-            {modelOptions.length > 0 ? (
-              <select
-                id={modelFieldId}
-                className="settings-select"
-                value={draft.model}
-                onChange={(event) =>
-                  setDraft((prev) => ({
-                    ...prev,
-                    model: event.target.value,
-                  }))
-                }
-              >
-                <option value="">{t("helperTargetsModelDefault")}</option>
-                {modelOptions.map((model) => (
-                  <option key={model.id} value={model.id}>
-                    {model.name}
-                  </option>
-                ))}
-              </select>
-            ) : (
+          <div className="helper-target-editor">
+            <label>
+              <span>{t("helperTargetsNameLabel")}</span>
               <input
-                id={modelFieldId}
                 type="text"
                 className="settings-input"
-                value={draft.model}
-                placeholder={t("helperTargetsModelPlaceholder")}
+                value={draft.name}
                 onChange={(event) =>
-                  setDraft((prev) => ({
-                    ...prev,
-                    model: event.target.value,
-                  }))
+                  setDraft((prev) => ({ ...prev, name: event.target.value }))
                 }
               />
-            )}
-          </label>
-        </div>
+            </label>
+            <label>
+              <span>{t("helperTargetsBaseUrlLabel")}</span>
+              <input
+                type="text"
+                className="settings-input"
+                value={draft.baseUrl}
+                placeholder={t("helperTargetsBaseUrlPlaceholder")}
+                onChange={(event) =>
+                  setDraft((prev) => ({ ...prev, baseUrl: event.target.value }))
+                }
+              />
+            </label>
+            <label htmlFor={modelFieldId}>
+              <span>{t("helperTargetsModelLabel")}</span>
+              {modelOptions.length > 0 ? (
+                <select
+                  id={modelFieldId}
+                  className="settings-select"
+                  value={draft.model}
+                  onChange={(event) =>
+                    setDraft((prev) => ({
+                      ...prev,
+                      model: event.target.value,
+                    }))
+                  }
+                >
+                  <option value="">{t("helperTargetsModelDefault")}</option>
+                  {modelOptions.map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  id={modelFieldId}
+                  type="text"
+                  className="settings-input"
+                  value={draft.model}
+                  placeholder={t("helperTargetsModelPlaceholder")}
+                  onChange={(event) =>
+                    setDraft((prev) => ({
+                      ...prev,
+                      model: event.target.value,
+                    }))
+                  }
+                />
+              )}
+            </label>
+          </div>
 
-        <div className="helper-target-actions">
-          <button
-            type="button"
-            className="settings-button settings-button-secondary"
-            onClick={() => void discoverModels()}
-            disabled={isDiscovering || !draft.baseUrl.trim()}
-          >
-            {isDiscovering
-              ? t("helperTargetsDiscovering")
-              : t("helperTargetsDiscover")}
-          </button>
-          {editingId && (
+          <div className="helper-target-actions">
             <button
               type="button"
               className="settings-button settings-button-secondary"
-              onClick={resetDraft}
+              onClick={() => void discoverModels()}
+              disabled={isDiscovering || !draft.baseUrl.trim()}
+            >
+              {isDiscovering
+                ? t("helperTargetsDiscovering")
+                : t("helperTargetsDiscover")}
+            </button>
+            {editingId && (
+              <button
+                type="button"
+                className="settings-button settings-button-secondary"
+                onClick={resetDraft}
+                disabled={isSaving}
+              >
+                {t("helperTargetsCancelEdit")}
+              </button>
+            )}
+            <button
+              type="button"
+              className="settings-button"
+              onClick={() => void saveTarget()}
               disabled={isSaving}
             >
-              {t("helperTargetsCancelEdit")}
+              {isSaving
+                ? t("providersSaving")
+                : editingId
+                  ? t("helperTargetsSave")
+                  : t("helperTargetsAdd")}
             </button>
-          )}
-          <button
-            type="button"
-            className="settings-button"
-            onClick={() => void saveTarget()}
-            disabled={isSaving}
-          >
-            {isSaving
-              ? t("providersSaving")
-              : editingId
-                ? t("helperTargetsSave")
-                : t("helperTargetsAdd")}
-          </button>
-        </div>
+          </div>
 
-        {message && <p className="settings-hint">{message}</p>}
-        {error && <p className="settings-warning">{error}</p>}
-      </div>
-    </div>
+          {message && <p className="settings-hint">{message}</p>}
+          {error && <p className="settings-warning">{error}</p>}
+        </div>
+      </HideInSettingsSearch>
+    </SettingsItem>
   );
 }
 
@@ -826,10 +836,7 @@ export function ProvidersSettings() {
   });
 
   return (
-    <section className="settings-section">
-      <p className="settings-section-description">
-        {t("providersSectionDescription")}
-      </p>
+    <SettingsSection description={t("providersSectionDescription")}>
       {SHOW_HELPER_TARGETS_SETTINGS && (
         <div className="settings-group">
           <HelperTargetsSettings
@@ -840,51 +847,58 @@ export function ProvidersSettings() {
       )}
       <div className="settings-group">
         {providerDisplayList.map((provider) => (
-          <div key={provider.id} className="settings-item">
-            <div className="settings-item-info">
-              <div className="settings-item-header">
-                <strong>{provider.displayName}</strong>
-                {provider.installed ? (
-                  <span className="settings-status-badge settings-status-detected">
-                    {t("providersDetected")}
-                  </span>
-                ) : (
-                  <span className="settings-status-badge settings-status-not-detected">
-                    {t("providersNotDetected")}
-                  </span>
+          <SettingsItem
+            key={provider.id}
+            id={`provider-${provider.id}`}
+            label={provider.displayName}
+            description={provider.metadata.description}
+            info={
+              <>
+                <div className="settings-item-header">
+                  <strong>{provider.displayName}</strong>
+                  {provider.installed ? (
+                    <span className="settings-status-badge settings-status-detected">
+                      {t("providersDetected")}
+                    </span>
+                  ) : (
+                    <span className="settings-status-badge settings-status-not-detected">
+                      {t("providersNotDetected")}
+                    </span>
+                  )}
+                </div>
+                <p>{provider.metadata.description}</p>
+                {provider.metadata.limitations.length > 0 && (
+                  <ul className="settings-limitations">
+                    {provider.metadata.limitations.map((limitation) => (
+                      <li key={limitation}>{limitation}</li>
+                    ))}
+                  </ul>
                 )}
-              </div>
-              <p>{provider.metadata.description}</p>
-              {provider.metadata.limitations.length > 0 && (
-                <ul className="settings-limitations">
-                  {provider.metadata.limitations.map((limitation) => (
-                    <li key={limitation}>{limitation}</li>
-                  ))}
-                </ul>
-              )}
-              {provider.id === "claude" &&
-                provider.installed &&
-                !provider.authenticated && (
-                  <div style={{ marginTop: "var(--space-2)" }}>
-                    <p className="settings-hint">
-                      {t("providersClaudeLoginHint")}
-                    </p>
-                    <ClaudeLoginCommandPanel
-                      command={
-                        provider.loginCommand ?? DEFAULT_CLAUDE_LOGIN_COMMAND
-                      }
-                      onCopy={(command) =>
-                        void handleCopyClaudeLoginCommand(command)
-                      }
-                    />
-                  </div>
+                {provider.id === "claude" &&
+                  provider.installed &&
+                  !provider.authenticated && (
+                    <div style={{ marginTop: "var(--space-2)" }}>
+                      <p className="settings-hint">
+                        {t("providersClaudeLoginHint")}
+                      </p>
+                      <ClaudeLoginCommandPanel
+                        command={
+                          provider.loginCommand ?? DEFAULT_CLAUDE_LOGIN_COMMAND
+                        }
+                        onCopy={(command) =>
+                          void handleCopyClaudeLoginCommand(command)
+                        }
+                      />
+                    </div>
+                  )}
+                {provider.id === "claude-ollama" && <OllamaSettings />}
+                {provider.id === "grok" && <GrokBuildApiKeySettings />}
+                {provider.id === "codex" && provider.installed && (
+                  <CodexUpdatePanel />
                 )}
-              {provider.id === "claude-ollama" && <OllamaSettings />}
-              {provider.id === "grok" && <GrokBuildApiKeySettings />}
-              {provider.id === "codex" && provider.installed && (
-                <CodexUpdatePanel />
-              )}
-            </div>
+              </>
+            }
+          >
             {provider.metadata.website && (
               <a
                 href={provider.metadata.website}
@@ -895,9 +909,9 @@ export function ProvidersSettings() {
                 {t("providersWebsite")}
               </a>
             )}
-          </div>
+          </SettingsItem>
         ))}
       </div>
-    </section>
+    </SettingsSection>
   );
 }

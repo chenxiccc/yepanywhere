@@ -5,7 +5,15 @@ import {
   BROWSER_SETTINGS_BACKUP_CAPABILITY,
   serverHasCapability,
 } from "@yep-anywhere/shared";
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { PageHeader } from "../../components/PageHeader";
 import { useReloadNotifications } from "../../hooks/useReloadNotifications";
@@ -35,8 +43,14 @@ import { PerformanceSettings } from "./PerformanceSettings";
 import { ProvidersSettings } from "./ProvidersSettings";
 import { RemoteAccessSettings } from "./RemoteAccessSettings";
 import { RemoteExecutorsSettings } from "./RemoteExecutorsSettings";
-import { SettingsCategoryIcon } from "./SettingsCategoryIcons";
 import { SettingsBackupActions } from "./SettingsBackupActions";
+import { SettingsCategoryItem } from "./SettingsCategoryItem";
+import {
+  SettingsSearchBar,
+  useSettingsSearchMatchValues,
+} from "./SettingsSearchBar";
+import { SettingsJumpTargetProvider } from "./SettingsSearchContext";
+import { SettingsSearchResults } from "./SettingsSearchResults";
 import {
   SettingsPaneTitleProvider,
   useSettingsPaneTitleRegistration,
@@ -151,35 +165,6 @@ function scrollElementToTop(element: HTMLElement): void {
   element.scrollTop = 0;
 }
 
-interface SettingsCategoryItemProps {
-  category: SettingsCategory;
-  isActive: boolean;
-  onClick: () => void;
-}
-
-function SettingsCategoryItem({
-  category,
-  isActive,
-  onClick,
-}: SettingsCategoryItemProps) {
-  return (
-    <button
-      type="button"
-      className={`settings-category-item ${isActive ? "active" : ""}`}
-      onClick={onClick}
-    >
-      <SettingsCategoryIcon id={category.id} />
-      <div className="settings-category-text">
-        <span className="settings-category-label">{category.label}</span>
-        <span className="settings-category-description">
-          {category.description}
-        </span>
-      </div>
-      <span className="settings-category-chevron">›</span>
-    </button>
-  );
-}
-
 export function SettingsLayout() {
   const { t } = useI18n();
   const { category } = useParams<{ category?: string }>();
@@ -206,6 +191,26 @@ export function SettingsLayout() {
   } = useSettingsUndoRegistration();
   const { title: paneTitle, setTitle: setPaneTitle } =
     useSettingsPaneTitleRegistration();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [matchValues, setMatchValues] = useSettingsSearchMatchValues();
+  const deferredSearchQuery = useDeferredValue(searchQuery.trim());
+  const searchActive = searchQuery.trim() !== "";
+
+  // One-shot jump target: a search result's jump link navigates to the
+  // category pane with the row id in navigation state; the matching
+  // SettingsItem scrolls itself into view, flashes, and consumes it.
+  const [jumpTarget, setJumpTarget] = useState<string | null>(null);
+  useEffect(() => {
+    const state: unknown = location.state;
+    if (isRecord(state) && typeof state.settingsJumpTarget === "string") {
+      setJumpTarget(state.settingsJumpTarget);
+    }
+  }, [location.state]);
+  const consumeJumpTarget = useCallback(() => setJumpTarget(null), []);
+  const jumpTargetValue = useMemo(
+    () => ({ target: jumpTarget, consume: consumeJumpTarget }),
+    [jumpTarget, consumeJumpTarget],
+  );
 
   const categories: SettingsCategory[] = [
     ...getSettingsCategories((key) => t(key as never)),
@@ -268,17 +273,50 @@ export function SettingsLayout() {
     scrollSettingsToTop();
   };
 
-  const handleCategoryClick = (categoryId: string) => {
+  const handleCategoryClick = (categoryId: string, jumpToItemId?: string) => {
     const openedFromList =
       !category || shouldPopSettingsDetailBack(location.state);
+    const navigationState = createSettingsDetailNavigationState(openedFromList);
     navigate(`${basePath}/settings/${categoryId}`, {
       replace: shouldReplaceSettingsCategoryNavigation({
         currentCategory: category,
         useTwoColumnSettings,
       }),
-      state: createSettingsDetailNavigationState(openedFromList),
+      state: jumpToItemId
+        ? { ...navigationState, settingsJumpTarget: jumpToItemId }
+        : navigationState,
     });
   };
+
+  const handleSearchOpenCategory = (categoryId: string) => {
+    setSearchQuery("");
+    handleCategoryClick(categoryId);
+  };
+
+  const handleSearchJumpToItem = (categoryId: string, itemId: string) => {
+    setSearchQuery("");
+    handleCategoryClick(categoryId, itemId);
+  };
+
+  const searchBar = (
+    <SettingsSearchBar
+      query={searchQuery}
+      onQueryChange={setSearchQuery}
+      matchValues={matchValues}
+      onMatchValuesChange={setMatchValues}
+    />
+  );
+
+  const searchResults = searchActive ? (
+    <SettingsSearchResults
+      categories={categories}
+      components={CATEGORY_COMPONENTS}
+      query={deferredSearchQuery || searchQuery.trim()}
+      matchValues={matchValues}
+      onJumpToItem={handleSearchJumpToItem}
+      onOpenCategory={handleSearchOpenCategory}
+    />
+  ) : null;
 
   const handleBack = () => {
     navigateToSettingsRoot();
@@ -365,17 +403,20 @@ export function SettingsLayout() {
             className="page-scroll-container"
           >
             <div className="page-content-inner settings-category-list-shell">
-              <div className="settings-category-list">
-                {categories.map((cat) => (
-                  <SettingsCategoryItem
-                    key={cat.id}
-                    category={cat}
-                    isActive={false}
-                    onClick={() => handleCategoryClick(cat.id)}
-                  />
-                ))}
-                {canBackUpBrowserSettings && <SettingsBackupActions />}
-              </div>
+              {searchBar}
+              {searchResults ?? (
+                <div className="settings-category-list">
+                  {categories.map((cat) => (
+                    <SettingsCategoryItem
+                      key={cat.id}
+                      category={cat}
+                      isActive={false}
+                      onClick={() => handleCategoryClick(cat.id)}
+                    />
+                  ))}
+                  {canBackUpBrowserSettings && <SettingsBackupActions />}
+                </div>
+              )}
             </div>
           </main>
         </MainContent>
@@ -397,11 +438,13 @@ export function SettingsLayout() {
           className="page-scroll-container"
         >
           <div className="page-content-inner">
-            <SettingsPaneTitleProvider value={setPaneTitle}>
-              <SettingsUndoProvider value={setUndoRegistration}>
-                {CategoryComponent && <CategoryComponent />}
-              </SettingsUndoProvider>
-            </SettingsPaneTitleProvider>
+            <SettingsJumpTargetProvider value={jumpTargetValue}>
+              <SettingsPaneTitleProvider value={setPaneTitle}>
+                <SettingsUndoProvider value={setUndoRegistration}>
+                  {CategoryComponent && <CategoryComponent />}
+                </SettingsUndoProvider>
+              </SettingsPaneTitleProvider>
+            </SettingsJumpTargetProvider>
           </div>
         </main>
       </MainContent>
@@ -426,12 +469,13 @@ export function SettingsLayout() {
       >
         <div className="settings-two-column">
           <nav className="settings-category-nav">
+            {searchBar}
             <div className="settings-category-list">
               {categories.map((cat) => (
                 <SettingsCategoryItem
                   key={cat.id}
                   category={cat}
-                  isActive={effectiveCategory === cat.id}
+                  isActive={!searchActive && effectiveCategory === cat.id}
                   onClick={() => handleCategoryClick(cat.id)}
                 />
               ))}
@@ -439,11 +483,15 @@ export function SettingsLayout() {
             </div>
           </nav>
           <div className="settings-content-panel">
-            <SettingsPaneTitleProvider value={setPaneTitle}>
-              <SettingsUndoProvider value={setUndoRegistration}>
-                {CategoryComponent && <CategoryComponent />}
-              </SettingsUndoProvider>
-            </SettingsPaneTitleProvider>
+            {searchResults ?? (
+              <SettingsJumpTargetProvider value={jumpTargetValue}>
+                <SettingsPaneTitleProvider value={setPaneTitle}>
+                  <SettingsUndoProvider value={setUndoRegistration}>
+                    {CategoryComponent && <CategoryComponent />}
+                  </SettingsUndoProvider>
+                </SettingsPaneTitleProvider>
+              </SettingsJumpTargetProvider>
+            )}
           </div>
         </div>
       </main>

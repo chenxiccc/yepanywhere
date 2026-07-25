@@ -58,6 +58,7 @@ export const UI_KEYS = {
   sessionGeneratedTitleLength: "yep-anywhere-session-generated-title-length",
   quoteReplyButtonMode: "yep-anywhere-quote-reply-button-mode",
   sessionThinkingVisible: "yep-anywhere-session-thinking-visible",
+  settingsSearchMatchValues: "yep-anywhere-settings-search-match-values",
   sessionThinkingLatestOnly: "yep-anywhere-session-thinking-latest-only",
   sessionLoadingProgress: "yep-anywhere-session-loading-progress-enabled",
   sessionDomLinger: "yep-anywhere-session-dom-linger-enabled",

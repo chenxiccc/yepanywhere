@@ -3,6 +3,8 @@ import { useConnectedDevices } from "../../hooks/useConnectedDevices";
 import { usePushNotifications } from "../../hooks/usePushNotifications";
 import { useI18n } from "../../i18n";
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
+import { HideInSettingsSearch } from "./SettingsSearchContext";
+import { SettingsSection } from "./SettingsSection";
 import { parseUserAgent } from "../../lib/deviceDetection";
 
 /**
@@ -63,96 +65,94 @@ export function DevicesSettings() {
   const { connections } = useConnectedDevices();
 
   return (
-    <section className="settings-section">
-      <p className="settings-section-description">
-        {t("devicesProfilesDescription")}
-      </p>
+    <SettingsSection description={t("devicesProfilesDescription")}>
+      <HideInSettingsSearch>
+        {error && <p className="form-error">{error}</p>}
 
-      {error && <p className="form-error">{error}</p>}
+        <div className="settings-group">
+          {isLoading ? (
+            <p className="settings-hint">{t("devicesLoadingProfiles")}</p>
+          ) : profiles.length === 0 ? (
+            <p className="settings-hint">{t("devicesEmpty")}</p>
+          ) : (
+            <div className="device-list">
+              {profiles.map((profile) => {
+                const isCurrentDevice =
+                  profile.browserProfileId === currentBrowserProfileId;
+                const isConnected = connections.has(profile.browserProfileId);
+                const displayName =
+                  profile.deviceName ||
+                  `${profile.browserProfileId.slice(0, 8)}...`;
 
-      <div className="settings-group">
-        {isLoading ? (
-          <p className="settings-hint">{t("devicesLoadingProfiles")}</p>
-        ) : profiles.length === 0 ? (
-          <p className="settings-hint">{t("devicesEmpty")}</p>
-        ) : (
-          <div className="device-list">
-            {profiles.map((profile) => {
-              const isCurrentDevice =
-                profile.browserProfileId === currentBrowserProfileId;
-              const isConnected = connections.has(profile.browserProfileId);
-              const displayName =
-                profile.deviceName ||
-                `${profile.browserProfileId.slice(0, 8)}...`;
+                return (
+                  <div
+                    key={profile.browserProfileId}
+                    className="device-list-item device-profile-item"
+                  >
+                    <div className="device-list-info">
+                      <strong>
+                        <span
+                          className={`device-status ${isConnected ? "device-status-online" : "device-status-offline"}`}
+                          title={
+                            isConnected
+                              ? t("devicesConnected")
+                              : t("devicesDisconnected")
+                          }
+                        />
+                        {displayName}
+                        {isCurrentDevice && (
+                          <span className="device-current-badge">
+                            {t("devicesThisDevice")}
+                          </span>
+                        )}
+                      </strong>
 
-              return (
-                <div
-                  key={profile.browserProfileId}
-                  className="device-list-item device-profile-item"
-                >
-                  <div className="device-list-info">
-                    <strong>
-                      <span
-                        className={`device-status ${isConnected ? "device-status-online" : "device-status-offline"}`}
-                        title={
-                          isConnected
-                            ? t("devicesConnected")
-                            : t("devicesDisconnected")
-                        }
-                      />
-                      {displayName}
-                      {isCurrentDevice && (
-                        <span className="device-current-badge">
-                          {t("devicesThisDevice")}
-                        </span>
-                      )}
-                    </strong>
+                      {/* Origin list */}
+                      <div className="device-origins">
+                        {profile.origins.map((origin) => {
+                          const { browser, os } = parseUserAgent(
+                            origin.userAgent,
+                          );
+                          return (
+                            <div key={origin.origin} className="device-origin">
+                              <code className="device-origin-url">
+                                {formatOrigin(origin.origin)}
+                              </code>
+                              <span className="device-origin-details">
+                                {browser} · {os}
+                              </span>
+                              <span className="device-origin-time">
+                                {t("devicesLastSeen", {
+                                  date: formatDate(origin.lastSeen, t),
+                                })}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
 
-                    {/* Origin list */}
-                    <div className="device-origins">
-                      {profile.origins.map((origin) => {
-                        const { browser, os } = parseUserAgent(
-                          origin.userAgent,
-                        );
-                        return (
-                          <div key={origin.origin} className="device-origin">
-                            <code className="device-origin-url">
-                              {formatOrigin(origin.origin)}
-                            </code>
-                            <span className="device-origin-details">
-                              {browser} · {os}
-                            </span>
-                            <span className="device-origin-time">
-                              {t("devicesLastSeen", {
-                                date: formatDate(origin.lastSeen, t),
-                              })}
-                            </span>
-                          </div>
-                        );
-                      })}
+                      <p className="device-profile-meta">
+                        {t("devicesFirstSeen", {
+                          date: formatDate(profile.createdAt, t),
+                        })}
+                      </p>
                     </div>
 
-                    <p className="device-profile-meta">
-                      {t("devicesFirstSeen", {
-                        date: formatDate(profile.createdAt, t),
-                      })}
-                    </p>
+                    <button
+                      type="button"
+                      className="settings-button settings-button-danger-subtle"
+                      onClick={() => deleteProfile(profile.browserProfileId)}
+                      title={t("devicesForgetThisDevice")}
+                    >
+                      {t("devicesForget")}
+                    </button>
                   </div>
-
-                  <button
-                    type="button"
-                    className="settings-button settings-button-danger-subtle"
-                    onClick={() => deleteProfile(profile.browserProfileId)}
-                    title={t("devicesForgetThisDevice")}
-                  >
-                    {t("devicesForget")}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </section>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </HideInSettingsSearch>
+    </SettingsSection>
   );
 }

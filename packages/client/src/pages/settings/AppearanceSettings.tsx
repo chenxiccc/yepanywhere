@@ -68,7 +68,10 @@ import {
   type QuoteReplyButtonMode,
   useQuoteReplyButtonMode,
 } from "../../hooks/useQuoteReplyButtonMode";
+import { SettingsItem } from "./SettingsItem";
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
+import { HideInSettingsSearch } from "./SettingsSearchContext";
+import { SettingsSection } from "./SettingsSection";
 import { useSettingsUndoBaseline } from "./SettingsUndoContext";
 import { useRemoteBasePath } from "../../hooks/useRemoteBasePath";
 import {
@@ -192,12 +195,8 @@ export function AppearanceSettings() {
   const { contentMaxWidth, setContentMaxWidth } = useContentMaxWidth();
   const { hoverCardMaxHeightPx, setHoverCardMaxHeightPx } =
     useHoverCardAppearance();
-  const {
-    tooltipMode,
-    tooltipDelayMs,
-    setTooltipMode,
-    setTooltipDelayMs,
-  } = useTooltipAppearance();
+  const { tooltipMode, tooltipDelayMs, setTooltipMode, setTooltipDelayMs } =
+    useTooltipAppearance();
   const { generatedTitleLength, setGeneratedTitleLength } =
     useGeneratedTitleLength();
   const { generatedTitleEnabled, setGeneratedTitleEnabled } =
@@ -460,13 +459,21 @@ export function AppearanceSettings() {
   };
 
   return (
-    <section className="settings-section">
+    <SettingsSection
+      keywords={[
+        "font",
+        "typography",
+        "text size",
+        "line spacing",
+        "generated titles",
+      ]}
+    >
       <div className="settings-group">
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("appearanceLanguageTitle")}</strong>
-            <p>{t("appearanceLanguageDescription")}</p>
-          </div>
+        <SettingsItem
+          label={t("appearanceLanguageTitle")}
+          description={t("appearanceLanguageDescription")}
+          valueText={getLocaleLabel(locale, translate)}
+        >
           <select
             className="settings-select"
             value={locale}
@@ -481,11 +488,11 @@ export function AppearanceSettings() {
               </option>
             ))}
           </select>
-        </div>
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("appearanceThemeTitle")}</strong>
-          </div>
+        </SettingsItem>
+        <SettingsItem
+          label={t("appearanceThemeTitle")}
+          valueText={getThemeLabel(theme, translate)}
+        >
           <div className="font-size-selector">
             {THEMES.map((themeValue) => (
               <button
@@ -498,12 +505,13 @@ export function AppearanceSettings() {
               </button>
             ))}
           </div>
-        </div>
-        <div className="settings-item settings-item--wide-control">
-          <div className="settings-item-info">
-            <strong>{t("appearanceSettingsIconStyleTitle")}</strong>
-            <p>{t("appearanceSettingsIconStyleDescription")}</p>
-          </div>
+        </SettingsItem>
+        <SettingsItem
+          label={t("appearanceSettingsIconStyleTitle")}
+          description={t("appearanceSettingsIconStyleDescription")}
+          valueText={getSettingsIconStyleLabel(settingsIconStyle, translate)}
+          className="settings-item--wide-control"
+        >
           <div
             className="font-size-selector settings-icon-style-selector"
             role="group"
@@ -534,12 +542,12 @@ export function AppearanceSettings() {
               );
             })}
           </div>
-        </div>
-        <div className="settings-item settings-item--wide-control">
-          <div className="settings-item-info">
-            <strong>{t("appearanceContentWidthTitle")}</strong>
-            <p>{t("appearanceContentWidthDescription")}</p>
-          </div>
+        </SettingsItem>
+        <SettingsItem
+          label={t("appearanceContentWidthTitle")}
+          description={t("appearanceContentWidthDescription")}
+          className="settings-item--wide-control"
+        >
           <div className="settings-item-actions">
             <CommittedRangeInput
               min={MIN_CONTENT_MAX_WIDTH_PX}
@@ -583,11 +591,11 @@ export function AppearanceSettings() {
               ×
             </button>
           </div>
-        </div>
-        <div className="settings-item settings-item--wide-control">
-          <div className="settings-item-info">
-            <strong>{t("appearanceOutputToolPreviewLinesLabel")}</strong>
-          </div>
+        </SettingsItem>
+        <SettingsItem
+          label={t("appearanceOutputToolPreviewLinesLabel")}
+          className="settings-item--wide-control"
+        >
           <div className="settings-item-actions">
             <CommittedRangeInput
               min={OUTPUT_TOOL_PREVIEW_LINE_COUNT_MIN}
@@ -623,12 +631,12 @@ export function AppearanceSettings() {
               {t("appearanceOutputToolPreviewLinesUnit")}
             </span>
           </div>
-        </div>
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("appearanceTabSizeTitle")}</strong>
-            <p>{t("appearanceTabSizeDescription")}</p>
-          </div>
+        </SettingsItem>
+        <SettingsItem
+          label={t("appearanceTabSizeTitle")}
+          description={t("appearanceTabSizeDescription")}
+          valueText={getTabSizeLabel(tabSize)}
+        >
           <div className="font-size-selector">
             {TAB_SIZES.map((size) => (
               <button
@@ -641,7 +649,7 @@ export function AppearanceSettings() {
               </button>
             ))}
           </div>
-        </div>
+        </SettingsItem>
         <div className="settings-item-group generated-title-settings">
           <div className="settings-item-group-row">
             <div className="settings-item-info">
@@ -715,11 +723,11 @@ export function AppearanceSettings() {
             </div>
           )}
         </div>
-        <div className="settings-item settings-item--wide-control settings-item--tooltip-control">
-          <div className="settings-item-info">
-            <strong>{t("appearanceTooltipDelayTitle")}</strong>
-            <p>{t("appearanceTooltipDelayDescription")}</p>
-          </div>
+        <SettingsItem
+          label={t("appearanceTooltipDelayTitle")}
+          description={t("appearanceTooltipDelayDescription")}
+          className="settings-item--wide-control settings-item--tooltip-control"
+        >
           <div className="settings-item-actions tooltip-settings-actions">
             <div
               className="font-size-selector tooltip-mode-selector"
@@ -768,12 +776,12 @@ export function AppearanceSettings() {
               ×
             </button>
           </div>
-        </div>
-        <div className="settings-item settings-item--wide-control">
-          <div className="settings-item-info">
-            <strong>{t("appearanceHoverCardHeightTitle")}</strong>
-            <p>{t("appearanceHoverCardHeightDescription")}</p>
-          </div>
+        </SettingsItem>
+        <SettingsItem
+          label={t("appearanceHoverCardHeightTitle")}
+          description={t("appearanceHoverCardHeightDescription")}
+          className="settings-item--wide-control"
+        >
           <div className="settings-item-actions">
             <CommittedRangeInput
               min={HOVERCARD_MAX_HEIGHT_MIN_PX}
@@ -826,12 +834,11 @@ export function AppearanceSettings() {
               ×
             </button>
           </div>
-        </div>
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("appearanceInlineImagesTitle")}</strong>
-            <p>{t("appearanceInlineImagesDescription")}</p>
-          </div>
+        </SettingsItem>
+        <SettingsItem
+          label={t("appearanceInlineImagesTitle")}
+          description={t("appearanceInlineImagesDescription")}
+        >
           <label className="toggle-switch">
             <input
               type="checkbox"
@@ -842,12 +849,16 @@ export function AppearanceSettings() {
             />
             <span className="toggle-slider" />
           </label>
-        </div>
-        <div className="settings-item settings-item--wide-control">
-          <div className="settings-item-info">
-            <strong>{t("appearanceQuoteReplyButtonsTitle")}</strong>
-            <p>{t("appearanceQuoteReplyButtonsDescription")}</p>
-          </div>
+        </SettingsItem>
+        <SettingsItem
+          label={t("appearanceQuoteReplyButtonsTitle")}
+          description={t("appearanceQuoteReplyButtonsDescription")}
+          valueText={getQuoteReplyButtonModeLabel(
+            quoteReplyButtonMode,
+            translate,
+          )}
+          className="settings-item--wide-control"
+        >
           <div
             className="font-size-selector"
             role="radiogroup"
@@ -869,12 +880,11 @@ export function AppearanceSettings() {
               );
             })}
           </div>
-        </div>
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("appearanceFunPhrasesTitle")}</strong>
-            <p>{t("appearanceFunPhrasesDescription")}</p>
-          </div>
+        </SettingsItem>
+        <SettingsItem
+          label={t("appearanceFunPhrasesTitle")}
+          description={t("appearanceFunPhrasesDescription")}
+        >
           <label className="toggle-switch">
             <input
               type="checkbox"
@@ -883,12 +893,11 @@ export function AppearanceSettings() {
             />
             <span className="toggle-slider" />
           </label>
-        </div>
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("appearanceFloatingActionButtonTitle")}</strong>
-            <p>{t("appearanceFloatingActionButtonDescription")}</p>
-          </div>
+        </SettingsItem>
+        <SettingsItem
+          label={t("appearanceFloatingActionButtonTitle")}
+          description={t("appearanceFloatingActionButtonDescription")}
+        >
           <label className="toggle-switch">
             <input
               type="checkbox"
@@ -897,12 +906,11 @@ export function AppearanceSettings() {
             />
             <span className="toggle-slider" />
           </label>
-        </div>
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("appearanceSidebarDuplicateHidingTitle")}</strong>
-            <p>{t("appearanceSidebarDuplicateHidingDescription")}</p>
-          </div>
+        </SettingsItem>
+        <SettingsItem
+          label={t("appearanceSidebarDuplicateHidingTitle")}
+          description={t("appearanceSidebarDuplicateHidingDescription")}
+        >
           <label className="toggle-switch">
             <input
               type="checkbox"
@@ -913,12 +921,11 @@ export function AppearanceSettings() {
             />
             <span className="toggle-slider" />
           </label>
-        </div>
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("appearanceTabTitleActivityTitle")}</strong>
-            <p>{t("appearanceTabTitleActivityDescription")}</p>
-          </div>
+        </SettingsItem>
+        <SettingsItem
+          label={t("appearanceTabTitleActivityTitle")}
+          description={t("appearanceTabTitleActivityDescription")}
+        >
           <div className="settings-item-actions">
             <label className="toggle-switch">
               <input
@@ -929,12 +936,11 @@ export function AppearanceSettings() {
               <span className="toggle-slider" />
             </label>
           </div>
-        </div>
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("appearanceConnectionBarsTitle")}</strong>
-            <p>{t("appearanceConnectionBarsDescription")}</p>
-          </div>
+        </SettingsItem>
+        <SettingsItem
+          label={t("appearanceConnectionBarsTitle")}
+          description={t("appearanceConnectionBarsDescription")}
+        >
           <label className="toggle-switch">
             <input
               type="checkbox"
@@ -943,12 +949,11 @@ export function AppearanceSettings() {
             />
             <span className="toggle-slider" />
           </label>
-        </div>
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("appearanceToolbarSettingsShortcutTitle")}</strong>
-            <p>{t("appearanceToolbarSettingsShortcutDescription")}</p>
-          </div>
+        </SettingsItem>
+        <SettingsItem
+          label={t("appearanceToolbarSettingsShortcutTitle")}
+          description={t("appearanceToolbarSettingsShortcutDescription")}
+        >
           <div className="settings-item-actions">
             <button
               type="button"
@@ -958,442 +963,450 @@ export function AppearanceSettings() {
               {t("appearanceToolbarSettingsShortcutAction")}
             </button>
           </div>
-        </div>
-        <div className="settings-item output-appearance-settings">
-          <div className="output-appearance-panel">
-            <div className="output-appearance-controls">
-              <div className="output-appearance-title settings-item-info">
-                <strong>{t("appearanceOutputTypographyTitle")}</strong>
-              </div>
-              <div className="output-appearance-control">
-                <span className="output-appearance-label">
-                  {t("appearanceOutputUiFontLabel")}
-                </span>
-                <div className="font-size-selector output-font-selector">
-                  {OUTPUT_PROSE_FONTS.map((font) => (
-                    <button
-                      key={font}
-                      type="button"
-                      className={`font-size-option output-font-option output-font-option-${font} ${outputUiFont === font ? "active" : ""}`}
-                      onClick={() => setOutputUiFont(font)}
-                    >
-                      {getOutputProseFontLabel(font, translate)}
-                    </button>
-                  ))}
+        </SettingsItem>
+        <HideInSettingsSearch>
+          <div className="settings-item output-appearance-settings">
+            <div className="output-appearance-panel">
+              <div className="output-appearance-controls">
+                <div className="output-appearance-title settings-item-info">
+                  <strong>{t("appearanceOutputTypographyTitle")}</strong>
                 </div>
-              </div>
-
-              <div className="output-appearance-control">
-                <span className="output-appearance-label">
-                  {t("appearanceFontSizeTitle")}
-                </span>
-                <div className="font-size-selector output-font-selector">
-                  {FONT_SIZES.map((size) => (
-                    <button
-                      key={size}
-                      type="button"
-                      className={`font-size-option ${fontSize === size ? "active" : ""}`}
-                      onClick={() => setFontSize(size)}
-                    >
-                      {getFontSizeLabel(size, translate)}
-                    </button>
-                  ))}
+                <div className="output-appearance-control">
+                  <span className="output-appearance-label">
+                    {t("appearanceOutputUiFontLabel")}
+                  </span>
+                  <div className="font-size-selector output-font-selector">
+                    {OUTPUT_PROSE_FONTS.map((font) => (
+                      <button
+                        key={font}
+                        type="button"
+                        className={`font-size-option output-font-option output-font-option-${font} ${outputUiFont === font ? "active" : ""}`}
+                        onClick={() => setOutputUiFont(font)}
+                      >
+                        {getOutputProseFontLabel(font, translate)}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
 
-              <div className="output-appearance-control">
-                <span className="output-appearance-label">
-                  {t("appearanceOutputFontLabel")}
-                </span>
-                <div className="font-size-selector output-font-selector">
-                  {OUTPUT_PROSE_FONTS.map((font) => (
-                    <button
-                      key={font}
-                      type="button"
-                      className={`font-size-option output-font-option output-font-option-${font} ${outputFont === font ? "active" : ""}`}
-                      onClick={() => setOutputFont(font)}
-                    >
-                      {getOutputProseFontLabel(font, translate)}
-                    </button>
-                  ))}
+                <div className="output-appearance-control">
+                  <span className="output-appearance-label">
+                    {t("appearanceFontSizeTitle")}
+                  </span>
+                  <div className="font-size-selector output-font-selector">
+                    {FONT_SIZES.map((size) => (
+                      <button
+                        key={size}
+                        type="button"
+                        className={`font-size-option ${fontSize === size ? "active" : ""}`}
+                        onClick={() => setFontSize(size)}
+                      >
+                        {getFontSizeLabel(size, translate)}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
 
-              <label
-                className="output-appearance-control"
-                htmlFor="output-font-size"
-              >
-                <span className="output-appearance-label">
-                  {t("appearanceOutputFontSizeLabel")}
-                </span>
-                <span className="output-appearance-slider-row">
-                  <CommittedRangeInput
-                    id="output-font-size"
-                    min={OUTPUT_FONT_SIZE_MIN_PX}
-                    max={OUTPUT_FONT_SIZE_MAX_PX}
-                    step={OUTPUT_FONT_SIZE_STEP_PX}
-                    value={outputFontSizePx}
-                    list="output-font-size-presets"
-                    onDraftChange={(value) =>
-                      setOutputFontSizeDraft(formatNumberSetting(value))
-                    }
-                    onCommit={setOutputFontSizePx}
-                  />
-                  <span className="output-appearance-number-wrap">
-                    <input
-                      type="number"
-                      className="settings-input-small output-appearance-number"
+                <div className="output-appearance-control">
+                  <span className="output-appearance-label">
+                    {t("appearanceOutputFontLabel")}
+                  </span>
+                  <div className="font-size-selector output-font-selector">
+                    {OUTPUT_PROSE_FONTS.map((font) => (
+                      <button
+                        key={font}
+                        type="button"
+                        className={`font-size-option output-font-option output-font-option-${font} ${outputFont === font ? "active" : ""}`}
+                        onClick={() => setOutputFont(font)}
+                      >
+                        {getOutputProseFontLabel(font, translate)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <label
+                  className="output-appearance-control"
+                  htmlFor="output-font-size"
+                >
+                  <span className="output-appearance-label">
+                    {t("appearanceOutputFontSizeLabel")}
+                  </span>
+                  <span className="output-appearance-slider-row">
+                    <CommittedRangeInput
+                      id="output-font-size"
                       min={OUTPUT_FONT_SIZE_MIN_PX}
                       max={OUTPUT_FONT_SIZE_MAX_PX}
                       step={OUTPUT_FONT_SIZE_STEP_PX}
-                      value={outputFontSizeDraft}
-                      onChange={(e) => setOutputFontSizeDraft(e.target.value)}
-                      onBlur={commitOutputFontSize}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          commitOutputFontSize();
-                          e.currentTarget.blur();
-                        }
-                      }}
-                      aria-label={t("appearanceOutputFontSizeLabel")}
+                      value={outputFontSizePx}
+                      list="output-font-size-presets"
+                      onDraftChange={(value) =>
+                        setOutputFontSizeDraft(formatNumberSetting(value))
+                      }
+                      onCommit={setOutputFontSizePx}
                     />
-                    <span className="output-appearance-unit">px</span>
+                    <span className="output-appearance-number-wrap">
+                      <input
+                        type="number"
+                        className="settings-input-small output-appearance-number"
+                        min={OUTPUT_FONT_SIZE_MIN_PX}
+                        max={OUTPUT_FONT_SIZE_MAX_PX}
+                        step={OUTPUT_FONT_SIZE_STEP_PX}
+                        value={outputFontSizeDraft}
+                        onChange={(e) => setOutputFontSizeDraft(e.target.value)}
+                        onBlur={commitOutputFontSize}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            commitOutputFontSize();
+                            e.currentTarget.blur();
+                          }
+                        }}
+                        aria-label={t("appearanceOutputFontSizeLabel")}
+                      />
+                      <span className="output-appearance-unit">px</span>
+                    </span>
                   </span>
-                </span>
-              </label>
-              <datalist id="output-font-size-presets">
-                {OUTPUT_FONT_SIZE_PRESETS.map((preset) => (
-                  <option
-                    key={preset.value}
-                    value={preset.value}
-                    label={preset.label}
-                  />
-                ))}
-              </datalist>
+                </label>
+                <datalist id="output-font-size-presets">
+                  {OUTPUT_FONT_SIZE_PRESETS.map((preset) => (
+                    <option
+                      key={preset.value}
+                      value={preset.value}
+                      label={preset.label}
+                    />
+                  ))}
+                </datalist>
 
-              <label
-                className="output-appearance-control"
-                htmlFor="output-thinking-size-offset"
-              >
-                <span className="output-appearance-label">
-                  {t("appearanceOutputThinkingSizeOffsetLabel")}
-                </span>
-                <span className="output-appearance-slider-row">
-                  <CommittedRangeInput
-                    id="output-thinking-size-offset"
-                    min={OUTPUT_THINKING_FONT_SIZE_OFFSET_MIN_PX}
-                    max={OUTPUT_THINKING_FONT_SIZE_OFFSET_MAX_PX}
-                    step={OUTPUT_THINKING_FONT_SIZE_OFFSET_STEP_PX}
-                    value={outputThinkingFontSizeOffsetPx}
-                    onDraftChange={(value) =>
-                      setOutputThinkingFontSizeOffsetDraft(
-                        formatNumberSetting(value),
-                      )
-                    }
-                    onCommit={setOutputThinkingFontSizeOffsetPx}
-                  />
-                  <span className="output-appearance-number-wrap">
-                    <input
-                      type="number"
-                      className="settings-input-small output-appearance-number"
+                <label
+                  className="output-appearance-control"
+                  htmlFor="output-thinking-size-offset"
+                >
+                  <span className="output-appearance-label">
+                    {t("appearanceOutputThinkingSizeOffsetLabel")}
+                  </span>
+                  <span className="output-appearance-slider-row">
+                    <CommittedRangeInput
+                      id="output-thinking-size-offset"
                       min={OUTPUT_THINKING_FONT_SIZE_OFFSET_MIN_PX}
                       max={OUTPUT_THINKING_FONT_SIZE_OFFSET_MAX_PX}
                       step={OUTPUT_THINKING_FONT_SIZE_OFFSET_STEP_PX}
-                      value={outputThinkingFontSizeOffsetDraft}
-                      onChange={(e) =>
-                        setOutputThinkingFontSizeOffsetDraft(e.target.value)
+                      value={outputThinkingFontSizeOffsetPx}
+                      onDraftChange={(value) =>
+                        setOutputThinkingFontSizeOffsetDraft(
+                          formatNumberSetting(value),
+                        )
                       }
-                      onBlur={commitOutputThinkingFontSizeOffset}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          commitOutputThinkingFontSizeOffset();
-                          e.currentTarget.blur();
-                        }
-                      }}
-                      aria-label={t("appearanceOutputThinkingSizeOffsetLabel")}
+                      onCommit={setOutputThinkingFontSizeOffsetPx}
                     />
-                    <span className="output-appearance-unit">px</span>
+                    <span className="output-appearance-number-wrap">
+                      <input
+                        type="number"
+                        className="settings-input-small output-appearance-number"
+                        min={OUTPUT_THINKING_FONT_SIZE_OFFSET_MIN_PX}
+                        max={OUTPUT_THINKING_FONT_SIZE_OFFSET_MAX_PX}
+                        step={OUTPUT_THINKING_FONT_SIZE_OFFSET_STEP_PX}
+                        value={outputThinkingFontSizeOffsetDraft}
+                        onChange={(e) =>
+                          setOutputThinkingFontSizeOffsetDraft(e.target.value)
+                        }
+                        onBlur={commitOutputThinkingFontSizeOffset}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            commitOutputThinkingFontSizeOffset();
+                            e.currentTarget.blur();
+                          }
+                        }}
+                        aria-label={t(
+                          "appearanceOutputThinkingSizeOffsetLabel",
+                        )}
+                      />
+                      <span className="output-appearance-unit">px</span>
+                    </span>
                   </span>
-                </span>
-              </label>
+                </label>
 
-              <div className="output-appearance-control">
-                <span className="output-appearance-label">
-                  {t("appearanceOutputFixedFontLabel")}
-                </span>
-                <div className="font-size-selector output-font-selector">
-                  {OUTPUT_FIXED_FONTS.map((font) => (
-                    <button
-                      key={font}
-                      type="button"
-                      className={`font-size-option output-font-option output-fixed-font-option-${font} ${outputFixedFont === font ? "active" : ""}`}
-                      onClick={() => setOutputFixedFont(font)}
-                    >
-                      {getOutputFixedFontLabel(font, translate)}
-                    </button>
-                  ))}
+                <div className="output-appearance-control">
+                  <span className="output-appearance-label">
+                    {t("appearanceOutputFixedFontLabel")}
+                  </span>
+                  <div className="font-size-selector output-font-selector">
+                    {OUTPUT_FIXED_FONTS.map((font) => (
+                      <button
+                        key={font}
+                        type="button"
+                        className={`font-size-option output-font-option output-fixed-font-option-${font} ${outputFixedFont === font ? "active" : ""}`}
+                        onClick={() => setOutputFixedFont(font)}
+                      >
+                        {getOutputFixedFontLabel(font, translate)}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
 
-              <label
-                className="output-appearance-control"
-                htmlFor="output-fixed-size-offset"
-              >
-                <span className="output-appearance-label">
-                  {t("appearanceOutputFixedSizeOffsetLabel")}
-                </span>
-                <span className="output-appearance-slider-row">
-                  <CommittedRangeInput
-                    id="output-fixed-size-offset"
-                    min={OUTPUT_FIXED_FONT_SIZE_OFFSET_MIN_PX}
-                    max={OUTPUT_FIXED_FONT_SIZE_OFFSET_MAX_PX}
-                    step={OUTPUT_FIXED_FONT_SIZE_OFFSET_STEP_PX}
-                    value={outputFixedFontSizeOffsetPx}
-                    onDraftChange={(value) =>
-                      setOutputFixedFontSizeOffsetDraft(
-                        formatNumberSetting(value),
-                      )
-                    }
-                    onCommit={setOutputFixedFontSizeOffsetPx}
-                  />
-                  <span className="output-appearance-number-wrap">
-                    <input
-                      type="number"
-                      className="settings-input-small output-appearance-number"
+                <label
+                  className="output-appearance-control"
+                  htmlFor="output-fixed-size-offset"
+                >
+                  <span className="output-appearance-label">
+                    {t("appearanceOutputFixedSizeOffsetLabel")}
+                  </span>
+                  <span className="output-appearance-slider-row">
+                    <CommittedRangeInput
+                      id="output-fixed-size-offset"
                       min={OUTPUT_FIXED_FONT_SIZE_OFFSET_MIN_PX}
                       max={OUTPUT_FIXED_FONT_SIZE_OFFSET_MAX_PX}
                       step={OUTPUT_FIXED_FONT_SIZE_OFFSET_STEP_PX}
-                      value={outputFixedFontSizeOffsetDraft}
-                      onChange={(e) =>
-                        setOutputFixedFontSizeOffsetDraft(e.target.value)
+                      value={outputFixedFontSizeOffsetPx}
+                      onDraftChange={(value) =>
+                        setOutputFixedFontSizeOffsetDraft(
+                          formatNumberSetting(value),
+                        )
                       }
-                      onBlur={commitOutputFixedFontSizeOffset}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          commitOutputFixedFontSizeOffset();
-                          e.currentTarget.blur();
-                        }
-                      }}
-                      aria-label={t("appearanceOutputFixedSizeOffsetLabel")}
+                      onCommit={setOutputFixedFontSizeOffsetPx}
                     />
-                    <span className="output-appearance-unit">px</span>
+                    <span className="output-appearance-number-wrap">
+                      <input
+                        type="number"
+                        className="settings-input-small output-appearance-number"
+                        min={OUTPUT_FIXED_FONT_SIZE_OFFSET_MIN_PX}
+                        max={OUTPUT_FIXED_FONT_SIZE_OFFSET_MAX_PX}
+                        step={OUTPUT_FIXED_FONT_SIZE_OFFSET_STEP_PX}
+                        value={outputFixedFontSizeOffsetDraft}
+                        onChange={(e) =>
+                          setOutputFixedFontSizeOffsetDraft(e.target.value)
+                        }
+                        onBlur={commitOutputFixedFontSizeOffset}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            commitOutputFixedFontSizeOffset();
+                            e.currentTarget.blur();
+                          }
+                        }}
+                        aria-label={t("appearanceOutputFixedSizeOffsetLabel")}
+                      />
+                      <span className="output-appearance-unit">px</span>
+                    </span>
                   </span>
-                </span>
-              </label>
+                </label>
 
-              <label
-                className="output-appearance-control"
-                htmlFor="output-math-size-offset"
-              >
-                <span className="output-appearance-label">
-                  {t("appearanceOutputMathSizeOffsetLabel")}
-                </span>
-                <span className="output-appearance-slider-row">
-                  <CommittedRangeInput
-                    id="output-math-size-offset"
-                    min={OUTPUT_MATH_FONT_SIZE_OFFSET_MIN_PX}
-                    max={OUTPUT_MATH_FONT_SIZE_OFFSET_MAX_PX}
-                    step={OUTPUT_MATH_FONT_SIZE_OFFSET_STEP_PX}
-                    value={outputMathFontSizeOffsetPx}
-                    onDraftChange={(value) =>
-                      setOutputMathFontSizeOffsetDraft(
-                        formatNumberSetting(value),
-                      )
-                    }
-                    onCommit={setOutputMathFontSizeOffsetPx}
-                  />
-                  <span className="output-appearance-number-wrap">
-                    <input
-                      type="number"
-                      className="settings-input-small output-appearance-number"
+                <label
+                  className="output-appearance-control"
+                  htmlFor="output-math-size-offset"
+                >
+                  <span className="output-appearance-label">
+                    {t("appearanceOutputMathSizeOffsetLabel")}
+                  </span>
+                  <span className="output-appearance-slider-row">
+                    <CommittedRangeInput
+                      id="output-math-size-offset"
                       min={OUTPUT_MATH_FONT_SIZE_OFFSET_MIN_PX}
                       max={OUTPUT_MATH_FONT_SIZE_OFFSET_MAX_PX}
                       step={OUTPUT_MATH_FONT_SIZE_OFFSET_STEP_PX}
-                      value={outputMathFontSizeOffsetDraft}
-                      onChange={(e) =>
-                        setOutputMathFontSizeOffsetDraft(e.target.value)
+                      value={outputMathFontSizeOffsetPx}
+                      onDraftChange={(value) =>
+                        setOutputMathFontSizeOffsetDraft(
+                          formatNumberSetting(value),
+                        )
                       }
-                      onBlur={commitOutputMathFontSizeOffset}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          commitOutputMathFontSizeOffset();
-                          e.currentTarget.blur();
-                        }
-                      }}
-                      aria-label={t("appearanceOutputMathSizeOffsetLabel")}
+                      onCommit={setOutputMathFontSizeOffsetPx}
                     />
-                    <span className="output-appearance-unit">px</span>
+                    <span className="output-appearance-number-wrap">
+                      <input
+                        type="number"
+                        className="settings-input-small output-appearance-number"
+                        min={OUTPUT_MATH_FONT_SIZE_OFFSET_MIN_PX}
+                        max={OUTPUT_MATH_FONT_SIZE_OFFSET_MAX_PX}
+                        step={OUTPUT_MATH_FONT_SIZE_OFFSET_STEP_PX}
+                        value={outputMathFontSizeOffsetDraft}
+                        onChange={(e) =>
+                          setOutputMathFontSizeOffsetDraft(e.target.value)
+                        }
+                        onBlur={commitOutputMathFontSizeOffset}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            commitOutputMathFontSizeOffset();
+                            e.currentTarget.blur();
+                          }
+                        }}
+                        aria-label={t("appearanceOutputMathSizeOffsetLabel")}
+                      />
+                      <span className="output-appearance-unit">px</span>
+                    </span>
                   </span>
-                </span>
-              </label>
+                </label>
 
-              <label
-                className="output-appearance-control"
-                htmlFor="output-line-spacing"
-              >
-                <span className="output-appearance-label">
-                  {t("appearanceOutputLineSpacingLabel")}
-                </span>
-                <span className="output-appearance-slider-row">
-                  <CommittedRangeInput
-                    id="output-line-spacing"
-                    min={OUTPUT_LINE_SPACING_MIN_PERCENT}
-                    max={OUTPUT_LINE_SPACING_MAX_PERCENT}
-                    step={OUTPUT_LINE_SPACING_STEP_PERCENT}
-                    value={outputLineSpacingPercent}
-                    onDraftChange={(value) =>
-                      setOutputLineSpacingDraft(formatNumberSetting(value))
-                    }
-                    onCommit={setOutputLineSpacingPercent}
-                  />
-                  <span className="output-appearance-number-wrap">
-                    <input
-                      type="number"
-                      className="settings-input-small output-appearance-number"
+                <label
+                  className="output-appearance-control"
+                  htmlFor="output-line-spacing"
+                >
+                  <span className="output-appearance-label">
+                    {t("appearanceOutputLineSpacingLabel")}
+                  </span>
+                  <span className="output-appearance-slider-row">
+                    <CommittedRangeInput
+                      id="output-line-spacing"
                       min={OUTPUT_LINE_SPACING_MIN_PERCENT}
                       max={OUTPUT_LINE_SPACING_MAX_PERCENT}
                       step={OUTPUT_LINE_SPACING_STEP_PERCENT}
-                      value={outputLineSpacingDraft}
-                      onChange={(e) =>
-                        setOutputLineSpacingDraft(e.target.value)
+                      value={outputLineSpacingPercent}
+                      onDraftChange={(value) =>
+                        setOutputLineSpacingDraft(formatNumberSetting(value))
                       }
-                      onBlur={commitOutputLineSpacing}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          commitOutputLineSpacing();
-                          e.currentTarget.blur();
-                        }
-                      }}
-                      aria-label={t("appearanceOutputLineSpacingLabel")}
+                      onCommit={setOutputLineSpacingPercent}
                     />
-                    <span className="output-appearance-unit">%</span>
+                    <span className="output-appearance-number-wrap">
+                      <input
+                        type="number"
+                        className="settings-input-small output-appearance-number"
+                        min={OUTPUT_LINE_SPACING_MIN_PERCENT}
+                        max={OUTPUT_LINE_SPACING_MAX_PERCENT}
+                        step={OUTPUT_LINE_SPACING_STEP_PERCENT}
+                        value={outputLineSpacingDraft}
+                        onChange={(e) =>
+                          setOutputLineSpacingDraft(e.target.value)
+                        }
+                        onBlur={commitOutputLineSpacing}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            commitOutputLineSpacing();
+                            e.currentTarget.blur();
+                          }
+                        }}
+                        aria-label={t("appearanceOutputLineSpacingLabel")}
+                      />
+                      <span className="output-appearance-unit">%</span>
+                    </span>
                   </span>
-                </span>
-              </label>
+                </label>
 
-              <label
-                className="output-appearance-control"
-                htmlFor="output-vertical-spacing"
-              >
-                <span className="output-appearance-label">
-                  {t("appearanceOutputVerticalSpacingLabel")}
-                </span>
-                <span className="output-appearance-slider-row">
-                  <CommittedRangeInput
-                    id="output-vertical-spacing"
-                    min={OUTPUT_VERTICAL_SPACING_MIN_PERCENT}
-                    max={OUTPUT_VERTICAL_SPACING_MAX_PERCENT}
-                    step={OUTPUT_VERTICAL_SPACING_STEP_PERCENT}
-                    value={outputVerticalSpacingPercent}
-                    onDraftChange={(value) =>
-                      setOutputVerticalSpacingDraft(formatNumberSetting(value))
-                    }
-                    onCommit={setOutputVerticalSpacingPercent}
-                  />
-                  <span className="output-appearance-number-wrap">
-                    <input
-                      type="number"
-                      className="settings-input-small output-appearance-number"
+                <label
+                  className="output-appearance-control"
+                  htmlFor="output-vertical-spacing"
+                >
+                  <span className="output-appearance-label">
+                    {t("appearanceOutputVerticalSpacingLabel")}
+                  </span>
+                  <span className="output-appearance-slider-row">
+                    <CommittedRangeInput
+                      id="output-vertical-spacing"
                       min={OUTPUT_VERTICAL_SPACING_MIN_PERCENT}
                       max={OUTPUT_VERTICAL_SPACING_MAX_PERCENT}
                       step={OUTPUT_VERTICAL_SPACING_STEP_PERCENT}
-                      value={outputVerticalSpacingDraft}
-                      onChange={(e) =>
-                        setOutputVerticalSpacingDraft(e.target.value)
+                      value={outputVerticalSpacingPercent}
+                      onDraftChange={(value) =>
+                        setOutputVerticalSpacingDraft(
+                          formatNumberSetting(value),
+                        )
                       }
-                      onBlur={commitOutputVerticalSpacing}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          commitOutputVerticalSpacing();
-                          e.currentTarget.blur();
+                      onCommit={setOutputVerticalSpacingPercent}
+                    />
+                    <span className="output-appearance-number-wrap">
+                      <input
+                        type="number"
+                        className="settings-input-small output-appearance-number"
+                        min={OUTPUT_VERTICAL_SPACING_MIN_PERCENT}
+                        max={OUTPUT_VERTICAL_SPACING_MAX_PERCENT}
+                        step={OUTPUT_VERTICAL_SPACING_STEP_PERCENT}
+                        value={outputVerticalSpacingDraft}
+                        onChange={(e) =>
+                          setOutputVerticalSpacingDraft(e.target.value)
                         }
-                      }}
-                      aria-label={t("appearanceOutputVerticalSpacingLabel")}
-                    />
-                    <span className="output-appearance-unit">%</span>
+                        onBlur={commitOutputVerticalSpacing}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            commitOutputVerticalSpacing();
+                            e.currentTarget.blur();
+                          }
+                        }}
+                        aria-label={t("appearanceOutputVerticalSpacingLabel")}
+                      />
+                      <span className="output-appearance-unit">%</span>
+                    </span>
                   </span>
-                </span>
-              </label>
-            </div>
-
-            <div className="output-appearance-specimen">
-              <div className="output-appearance-specimen-header">
-                <span className="output-appearance-specimen-label">
-                  {t("appearanceOutputSpecimenLabel")}
-                </span>
-                <button
-                  type="button"
-                  className="settings-button settings-button-secondary"
-                  onClick={resetOutputAppearance}
-                >
-                  {t("appearanceOutputTypographyReset")}
-                </button>
+                </label>
               </div>
-              <div
-                className="output-appearance-preview"
-                role="region"
-                aria-label={t("appearanceOutputPreviewLabel")}
-              >
-                <div className="output-preview-system">
-                  <span className="output-preview-system-icon">ok</span>
-                  <span>System note: applied after reconnect.</span>
+
+              <div className="output-appearance-specimen">
+                <div className="output-appearance-specimen-header">
+                  <span className="output-appearance-specimen-label">
+                    {t("appearanceOutputSpecimenLabel")}
+                  </span>
+                  <button
+                    type="button"
+                    className="settings-button settings-button-secondary"
+                    onClick={resetOutputAppearance}
+                  >
+                    {t("appearanceOutputTypographyReset")}
+                  </button>
                 </div>
-                <div className="output-preview-prose">
-                  <p>
-                    Inline code like <code>codex update</code> stays fixed
-                    width; prose wraps at phone width.
-                  </p>
-                  <pre className="output-preview-fixed">
-                    <code>
-                      {
-                        'f0 = (x: 0) => ({ ok: x + 1 });\nfn S(v) -> { return v[0] ?? false }'
-                      }
-                    </code>
-                  </pre>
-                  <p>
-                    Inline math:{" "}
-                    <span
-                      className="output-preview-math"
-                      // biome-ignore lint/security/noDangerouslySetInnerHtml: KaTeX output is generated from a static settings preview sample
-                      dangerouslySetInnerHTML={{ __html: outputInlineMathHtml }}
-                    />
-                  </p>
-                  <ul>
-                    <li>
-                      Tokens: <code>fixed width</code>
-                    </li>
-                    <li>Math uses a TeX-like face.</li>
-                  </ul>
-                </div>
-                <div className="output-preview-thinking thinking-content">
-                  <ThinkingText text="**Spacing** — thinking text stays quieter and smaller." />
-                </div>
-                <div className="output-preview-diff" aria-hidden="true">
-                  <div>
-                    <span className="output-preview-diff-gutter">+</span>
-                    <span>Diff prose follows the prose font.</span>
+                <div
+                  className="output-appearance-preview"
+                  role="region"
+                  aria-label={t("appearanceOutputPreviewLabel")}
+                >
+                  <div className="output-preview-system">
+                    <span className="output-preview-system-icon">ok</span>
+                    <span>System note: applied after reconnect.</span>
                   </div>
-                  <div>
-                    <span className="output-preview-diff-gutter">-</span>
-                    <span>Paragraph space can be dialed down.</span>
+                  <div className="output-preview-prose">
+                    <p>
+                      Inline code like <code>codex update</code> stays fixed
+                      width; prose wraps at phone width.
+                    </p>
+                    <pre className="output-preview-fixed">
+                      <code>
+                        {
+                          "f0 = (x: 0) => ({ ok: x + 1 });\nfn S(v) -> { return v[0] ?? false }"
+                        }
+                      </code>
+                    </pre>
+                    <p>
+                      Inline math:{" "}
+                      <span
+                        className="output-preview-math"
+                        // biome-ignore lint/security/noDangerouslySetInnerHtml: KaTeX output is generated from a static settings preview sample
+                        dangerouslySetInnerHTML={{
+                          __html: outputInlineMathHtml,
+                        }}
+                      />
+                    </p>
+                    <ul>
+                      <li>
+                        Tokens: <code>fixed width</code>
+                      </li>
+                      <li>Math uses a TeX-like face.</li>
+                    </ul>
                   </div>
-                </div>
-                <div className="output-preview-ui" aria-hidden="true">
-                  <div className="output-preview-ui-title">
-                    Session title — uses the UI font and size
+                  <div className="output-preview-thinking thinking-content">
+                    <ThinkingText text="**Spacing** — thinking text stays quieter and smaller." />
                   </div>
-                  <div className="output-preview-ui-composer">
-                    Composer: type a message to the agent…
+                  <div className="output-preview-diff" aria-hidden="true">
+                    <div>
+                      <span className="output-preview-diff-gutter">+</span>
+                      <span>Diff prose follows the prose font.</span>
+                    </div>
+                    <div>
+                      <span className="output-preview-diff-gutter">-</span>
+                      <span>Paragraph space can be dialed down.</span>
+                    </div>
                   </div>
-                  <div className="output-preview-ui-caption">
-                    Caption · updated 2m ago · 3 files
+                  <div className="output-preview-ui" aria-hidden="true">
+                    <div className="output-preview-ui-title">
+                      Session title — uses the UI font and size
+                    </div>
+                    <div className="output-preview-ui-composer">
+                      Composer: type a message to the agent…
+                    </div>
+                    <div className="output-preview-ui-caption">
+                      Caption · updated 2m ago · 3 files
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
+        </HideInSettingsSearch>
       </div>
-    </section>
+    </SettingsSection>
   );
 }

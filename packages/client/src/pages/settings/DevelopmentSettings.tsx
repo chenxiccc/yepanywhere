@@ -10,7 +10,10 @@ import {
   SESSION_SCROLL_BEHAVIOR_MODES,
   type SessionScrollBehaviorMode,
 } from "../../lib/sessionScrollBehavior";
+import { SettingsItem } from "./SettingsItem";
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
+import { HideInSettingsSearch } from "./SettingsSearchContext";
+import { SettingsSection } from "./SettingsSection";
 import { useSettingsUndoBaseline } from "./SettingsUndoContext";
 
 type SessionScrollMemoryModeDescriptionKey =
@@ -136,13 +139,12 @@ export function DevelopmentSettings() {
   }
 
   return (
-    <section className="settings-section">
+    <SettingsSection>
       <div className="settings-group">
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("developmentSchemaTitle")}</strong>
-            <p>{t("developmentSchemaDescription")}</p>
-          </div>
+        <SettingsItem
+          label={t("developmentSchemaTitle")}
+          description={t("developmentSchemaDescription")}
+        >
           <label className="toggle-switch">
             <input
               type="checkbox"
@@ -151,20 +153,25 @@ export function DevelopmentSettings() {
             />
             <span className="toggle-slider" />
           </label>
-        </div>
+        </SettingsItem>
         {ignoredTools.length > 0 && (
-          <div className="settings-item">
-            <div className="settings-item-info">
-              <strong>{t("developmentIgnoredToolsTitle")}</strong>
-              <p>{t("developmentIgnoredToolsDescription")}</p>
-              <div className="ignored-tools-list">
-                {ignoredTools.map((tool) => (
-                  <span key={tool} className="ignored-tool-badge">
-                    {tool}
-                  </span>
-                ))}
-              </div>
-            </div>
+          <SettingsItem
+            label={t("developmentIgnoredToolsTitle")}
+            description={t("developmentIgnoredToolsDescription")}
+            info={
+              <>
+                <strong>{t("developmentIgnoredToolsTitle")}</strong>
+                <p>{t("developmentIgnoredToolsDescription")}</p>
+                <div className="ignored-tools-list">
+                  {ignoredTools.map((tool) => (
+                    <span key={tool} className="ignored-tool-badge">
+                      {tool}
+                    </span>
+                  ))}
+                </div>
+              </>
+            }
+          >
             <button
               type="button"
               className="settings-button settings-button-secondary"
@@ -172,13 +179,12 @@ export function DevelopmentSettings() {
             >
               {t("developmentClearIgnored")}
             </button>
-          </div>
+          </SettingsItem>
         )}
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("developmentRelayDebugTitle")}</strong>
-            <p>{t("developmentRelayDebugDescription")}</p>
-          </div>
+        <SettingsItem
+          label={t("developmentRelayDebugTitle")}
+          description={t("developmentRelayDebugDescription")}
+        >
           <label className="toggle-switch">
             <input
               type="checkbox"
@@ -188,12 +194,11 @@ export function DevelopmentSettings() {
             />
             <span className="toggle-slider" />
           </label>
-        </div>
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("developmentDiagnosticsTitle")}</strong>
-            <p>{t("developmentDiagnosticsDescription")}</p>
-          </div>
+        </SettingsItem>
+        <SettingsItem
+          label={t("developmentDiagnosticsTitle")}
+          description={t("developmentDiagnosticsDescription")}
+        >
           <label className="toggle-switch">
             <input
               type="checkbox"
@@ -202,12 +207,11 @@ export function DevelopmentSettings() {
             />
             <span className="toggle-slider" />
           </label>
-        </div>
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("developmentServiceWorkerTitle")}</strong>
-            <p>{t("developmentServiceWorkerDescription")}</p>
-          </div>
+        </SettingsItem>
+        <SettingsItem
+          label={t("developmentServiceWorkerTitle")}
+          description={t("developmentServiceWorkerDescription")}
+        >
           <label className="toggle-switch">
             <input
               type="checkbox"
@@ -218,12 +222,11 @@ export function DevelopmentSettings() {
             />
             <span className="toggle-slider" />
           </label>
-        </div>
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("developmentWorkstreamsTitle")}</strong>
-            <p>{t("developmentWorkstreamsDescription")}</p>
-          </div>
+        </SettingsItem>
+        <SettingsItem
+          label={t("developmentWorkstreamsTitle")}
+          description={t("developmentWorkstreamsDescription")}
+        >
           <label className="toggle-switch">
             <input
               type="checkbox"
@@ -234,73 +237,93 @@ export function DevelopmentSettings() {
             />
             <span className="toggle-slider" />
           </label>
-        </div>
+        </SettingsItem>
       </div>
 
-      <div className="settings-group">
-        <details>
-          <summary className="settings-hint">
-            <strong>{t("developmentSessionScrollMemoryTitle")}</strong>
-          </summary>
-          <div className="settings-item settings-item--wide-control">
-            <div className="settings-item-info">
-              <strong>{t("developmentSessionScrollMemoryControlTitle")}</strong>
-              <p>{t("developmentSessionScrollMemoryDescription")}</p>
-              <ul className="settings-option-description-list">
-                {SESSION_SCROLL_BEHAVIOR_MODES.map((mode) => (
-                  <li key={mode}>
-                    <strong>{t(sessionScrollMemoryModeLabelKeys[mode])}</strong>
-                    <span>
-                      {t(sessionScrollMemoryModeDescriptionKeys[mode])}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div className="settings-item-actions">
-              <select
-                className="settings-select"
-                value={sessionScrollBehaviorMode}
-                onChange={(event) =>
-                  setSessionScrollBehaviorMode(
-                    event.target.value as SessionScrollBehaviorMode,
-                  )
-                }
-                aria-label={t("developmentSessionScrollMemoryControlTitle")}
-              >
-                {SESSION_SCROLL_BEHAVIOR_MODES.map((mode) => (
-                  <option key={mode} value={mode}>
-                    {t(sessionScrollMemoryModeLabelKeys[mode])}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </details>
-      </div>
-
-      <div className="settings-group">
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("developmentRestartTitle")}</strong>
-            <p>
-              {t("developmentRestartDescription")}
-              {pendingReloads.backend && (
-                <span className="settings-pending">
-                  {" "}
-                  {t("developmentChangesPending")}
-                </span>
+      <HideInSettingsSearch>
+        <div className="settings-group">
+          <details>
+            <summary className="settings-hint">
+              <strong>{t("developmentSessionScrollMemoryTitle")}</strong>
+            </summary>
+            <SettingsItem
+              label={t("developmentSessionScrollMemoryControlTitle")}
+              description={t("developmentSessionScrollMemoryDescription")}
+              valueText={t(
+                sessionScrollMemoryModeLabelKeys[sessionScrollBehaviorMode],
               )}
-            </p>
-            {unsafeToRestart && (
-              <p className="settings-warning">
-                {t("developmentInterruptedWarning", {
-                  count: interruptibleSessionCount,
-                  suffix: interruptibleSessionCount !== 1 ? "s " : " ",
-                })}
+              className="settings-item--wide-control"
+              info={
+                <>
+                  <strong>
+                    {t("developmentSessionScrollMemoryControlTitle")}
+                  </strong>
+                  <p>{t("developmentSessionScrollMemoryDescription")}</p>
+                  <ul className="settings-option-description-list">
+                    {SESSION_SCROLL_BEHAVIOR_MODES.map((mode) => (
+                      <li key={mode}>
+                        <strong>
+                          {t(sessionScrollMemoryModeLabelKeys[mode])}
+                        </strong>
+                        <span>
+                          {t(sessionScrollMemoryModeDescriptionKeys[mode])}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              }
+            >
+              <div className="settings-item-actions">
+                <select
+                  className="settings-select"
+                  value={sessionScrollBehaviorMode}
+                  onChange={(event) =>
+                    setSessionScrollBehaviorMode(
+                      event.target.value as SessionScrollBehaviorMode,
+                    )
+                  }
+                  aria-label={t("developmentSessionScrollMemoryControlTitle")}
+                >
+                  {SESSION_SCROLL_BEHAVIOR_MODES.map((mode) => (
+                    <option key={mode} value={mode}>
+                      {t(sessionScrollMemoryModeLabelKeys[mode])}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </SettingsItem>
+          </details>
+        </div>
+      </HideInSettingsSearch>
+
+      <div className="settings-group">
+        <SettingsItem
+          label={t("developmentRestartTitle")}
+          description={t("developmentRestartDescription")}
+          info={
+            <>
+              <strong>{t("developmentRestartTitle")}</strong>
+              <p>
+                {t("developmentRestartDescription")}
+                {pendingReloads.backend && (
+                  <span className="settings-pending">
+                    {" "}
+                    {t("developmentChangesPending")}
+                  </span>
+                )}
               </p>
-            )}
-          </div>
+              {unsafeToRestart && (
+                <p className="settings-warning">
+                  {t("developmentInterruptedWarning", {
+                    count: interruptibleSessionCount,
+                    suffix: interruptibleSessionCount !== 1 ? "s " : " ",
+                  })}
+                </p>
+              )}
+            </>
+          }
+        >
           <button
             type="button"
             className={`settings-button ${unsafeToRestart ? "settings-button-danger" : ""}`}
@@ -313,8 +336,8 @@ export function DevelopmentSettings() {
                 ? t("developmentRestartAnyway")
                 : t("developmentRestart")}
           </button>
-        </div>
+        </SettingsItem>
       </div>
-    </section>
+    </SettingsSection>
   );
 }

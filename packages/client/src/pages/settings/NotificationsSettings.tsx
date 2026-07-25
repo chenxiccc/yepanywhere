@@ -15,7 +15,10 @@ import {
   useSubscribedDevices,
 } from "../../hooks/useSubscribedDevices";
 import { useI18n } from "../../i18n";
+import { SettingsItem } from "./SettingsItem";
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
+import { HideInSettingsSearch } from "./SettingsSearchContext";
+import { SettingsSection } from "./SettingsSection";
 import { useSettingsUndoBaseline } from "./SettingsUndoContext";
 
 /**
@@ -190,6 +193,8 @@ function isMobilePushDevice(device: UnifiedDevice): boolean {
  */
 const SERVER_NOTIFICATION_ROWS: ReadonlyArray<{
   key: keyof NotificationSettings;
+  /** Stable search/jump id (row labels are locale-dependent). */
+  id: string;
   titleKey:
     | "notificationsToolApprovalsTitle"
     | "notificationsQuestionsTitle"
@@ -206,30 +211,35 @@ const SERVER_NOTIFICATION_ROWS: ReadonlyArray<{
 }> = [
   {
     key: "toolApproval",
+    id: "notifications-tool-approvals",
     titleKey: "notificationsToolApprovalsTitle",
     descriptionKey: "notificationsToolApprovalsDescription",
     defaultValue: true,
   },
   {
     key: "userQuestion",
+    id: "notifications-questions",
     titleKey: "notificationsQuestionsTitle",
     descriptionKey: "notificationsQuestionsDescription",
     defaultValue: true,
   },
   {
     key: "sessionHalted",
+    id: "notifications-session-halted",
     titleKey: "notificationsSessionHaltedTitle",
     descriptionKey: "notificationsSessionHaltedDescription",
     defaultValue: false,
   },
   {
     key: "projectInactive",
+    id: "notifications-project-inactive",
     titleKey: "notificationsProjectInactiveTitle",
     descriptionKey: "notificationsProjectInactiveDescription",
     defaultValue: false,
   },
   {
     key: "yaInactive",
+    id: "notifications-ya-inactive",
     titleKey: "notificationsYaInactiveTitle",
     descriptionKey: "notificationsYaInactiveDescription",
     defaultValue: false,
@@ -441,35 +451,36 @@ export function NotificationsSettings() {
       {/* Push notifications, with the server-side notification types they
           gate scoped underneath: without a subscribed device the server has
           nowhere to deliver, so the type toggles are disabled. */}
-      <section className="settings-section">
-        <h2>{t("notificationsPushTitle")}</h2>
-        <p className="settings-section-description">
-          {t("notificationsPushDescription")}
-        </p>
-        <div className="settings-group">
-          <PushNotificationToggle />
-        </div>
+      <SettingsSection
+        title={t("notificationsPushTitle")}
+        description={t("notificationsPushDescription")}
+      >
+        <HideInSettingsSearch>
+          <div className="settings-group">
+            <PushNotificationToggle />
+          </div>
+        </HideInSettingsSearch>
         <div className="settings-subsection">
-          <h3>{t("notificationsServerTitle")}</h3>
-          <p className="settings-section-description">
-            {t("notificationsServerDescription")}
-          </p>
-          {serverTogglesGated && !devicesLoading && (
-            <div className="settings-info-box settings-subsection-hint">
-              <p>{t("notificationsNoSubscribedDevices")}</p>
-            </div>
-          )}
+          <HideInSettingsSearch>
+            <h3>{t("notificationsServerTitle")}</h3>
+            <p className="settings-section-description">
+              {t("notificationsServerDescription")}
+            </p>
+            {serverTogglesGated && !devicesLoading && (
+              <div className="settings-info-box settings-subsection-hint">
+                <p>{t("notificationsNoSubscribedDevices")}</p>
+              </div>
+            )}
+          </HideInSettingsSearch>
           <div className="settings-group">
             {SERVER_NOTIFICATION_ROWS.map((row) => (
-              <div
+              <SettingsItem
                 key={row.key}
-                className="settings-item"
+                id={row.id}
                 title={gatedTooltip}
+                label={t(row.titleKey)}
+                description={t(row.descriptionKey)}
               >
-                <div className="settings-item-info">
-                  <strong>{t(row.titleKey)}</strong>
-                  <p>{t(row.descriptionKey)}</p>
-                </div>
                 <label className="toggle-switch" title={gatedTooltip}>
                   <input
                     type="checkbox"
@@ -479,186 +490,199 @@ export function NotificationsSettings() {
                   />
                   <span className="toggle-slider" />
                 </label>
-              </div>
+              </SettingsItem>
             ))}
           </div>
         </div>
-      </section>
+      </SettingsSection>
 
       {/* Desktop notifications - browser Notification API (not available on mobile) */}
       {!isMobile && (
-        <section className="settings-section">
-          <h2>{t("notificationsDesktopTitle")}</h2>
-          <p className="settings-section-description">
-            {t("notificationsDesktopDescription")}
-          </p>
-          <div className="settings-group">
-            <BrowserNotificationToggle />
-          </div>
-        </section>
+        <SettingsSection
+          title={t("notificationsDesktopTitle")}
+          description={t("notificationsDesktopDescription")}
+        >
+          <HideInSettingsSearch>
+            <div className="settings-group">
+              <BrowserNotificationToggle />
+            </div>
+          </HideInSettingsSearch>
+        </SettingsSection>
       )}
 
       {/* Unified devices list */}
-      <section className="settings-section">
-        <h2>{t("notificationsDevicesTitle")}</h2>
-        <p className="settings-section-description">
-          {t("notificationsDevicesDescription")}
-        </p>
-        <div className="settings-group">
-          {hasSubscriptions && (
-            <div className="settings-item push-test-controls">
-              <div className="settings-item-info">
-                <strong>{t("notificationsTestPushTitle")}</strong>
-                <p>{t("notificationsTestPushDescription")}</p>
-                <p
-                  className={`push-test-status ${
-                    testStatus?.kind === "error"
-                      ? "settings-error"
-                      : "settings-hint"
-                  }`}
-                  aria-live="polite"
-                >
-                  {testStatus?.message ?? "\u00a0"}
-                </p>
-              </div>
-              <div className="settings-item-actions">
-                <select
-                  className="settings-select"
-                  aria-label={t("pushToggleDisplayBehavior")}
-                  value={testDisplayUrgency}
-                  onChange={(e) =>
-                    setTestDisplayUrgency(
-                      e.target.value as TestNotificationUrgency,
-                    )
-                  }
-                  disabled={isTestingMobileDevices}
-                >
-                  <option value="normal">{t("pushToggleUrgencyNormal")}</option>
-                  <option value="persistent">
-                    {t("pushToggleUrgencyPersistent")}
-                  </option>
-                  <option value="silent">{t("pushToggleUrgencySilent")}</option>
-                </select>
-                <select
-                  className="settings-select"
-                  aria-label={t("pushTestDeliveryPriority")}
-                  value={testDeliveryUrgency}
-                  onChange={(e) =>
-                    setTestDeliveryUrgency(
-                      e.target.value as PushDeliveryUrgency,
-                    )
-                  }
-                  disabled={isTestingMobileDevices}
-                >
-                  <option value="high">{t("pushDeliveryHigh")}</option>
-                  <option value="normal">{t("pushDeliveryNormal")}</option>
-                  <option value="low">{t("pushDeliveryLow")}</option>
-                  <option value="very-low">{t("pushDeliveryVeryLow")}</option>
-                </select>
-                <button
-                  type="button"
-                  className="settings-button"
-                  onClick={sendTestToMobileDevices}
-                  disabled={
-                    mobilePushDevices.length === 0 || isTestingMobileDevices
-                  }
-                  title={
-                    mobilePushDevices.length === 0
-                      ? t("notificationsNoMobilePushDevices")
-                      : t("notificationsSendToMobileDevices", {
-                          count: mobilePushDevices.length,
-                        })
-                  }
-                >
-                  {t("notificationsSendToMobileDevices", {
-                    count: mobilePushDevices.length,
-                  })}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {isLoading ? (
-            <p className="settings-hint">{t("notificationsLoadingDevices")}</p>
-          ) : unifiedDevices.length === 0 ? (
-            <p className="settings-hint">{t("notificationsNoDevices")}</p>
-          ) : (
-            <div className="device-list">
-              {unifiedDevices.map((device) => (
-                <div key={device.browserProfileId} className="device-list-item">
-                  <div className="device-list-info">
-                    <strong>
-                      {device.displayName}
-                      {device.browserType && ` ${device.browserType}`}
-                      {device.isCurrentDevice && (
-                        <span className="device-current-badge">
-                          {t("notificationsThisDevice")}
-                        </span>
-                      )}
-                    </strong>
-                    <p>
-                      {/* Status indicator */}
-                      {device.isConnected ? (
-                        <span className="device-status device-status-online">
-                          {device.tabCount === 1
-                            ? t("notificationsOneTab")
-                            : t("notificationsTabs", {
-                                count: device.tabCount,
-                              })}
-                        </span>
-                      ) : (
-                        <span className="device-status device-status-offline">
-                          {t("notificationsOffline")}
-                        </span>
-                      )}
-                      {/* No push indicator for connected-only devices */}
-                      {!device.isSubscribed && (
-                        <span className="device-no-push">
-                          {t("notificationsNoPush")}
-                        </span>
-                      )}
-                      {/* Subscription date for subscribed devices */}
-                      {device.subscribedAt && (
-                        <span className="device-subscribed-date">
-                          {t("notificationsSubscribed", {
-                            date: formatDate(device.subscribedAt, t),
-                          })}
-                        </span>
-                      )}
-                    </p>
-                  </div>
-                  {/* Only show remove button for subscribed devices */}
-                  {device.isSubscribed && (
-                    <div className="device-list-actions">
-                      <button
-                        type="button"
-                        className="settings-button"
-                        onClick={() => sendTestToDevice(device)}
-                        disabled={testingDeviceIds.has(device.browserProfileId)}
-                        title={t("notificationsTestDevice")}
-                      >
-                        {t("notificationsTest")}
-                      </button>
-                      <button
-                        type="button"
-                        className="settings-button settings-button-danger-subtle"
-                        onClick={() => removeDevice(device.browserProfileId)}
-                        title={
-                          device.isCurrentDevice
-                            ? t("notificationsRemoveThisDevice")
-                            : t("notificationsRemoveDevice")
-                        }
-                      >
-                        {t("notificationsRemove")}
-                      </button>
-                    </div>
-                  )}
+      <SettingsSection
+        title={t("notificationsDevicesTitle")}
+        description={t("notificationsDevicesDescription")}
+      >
+        <HideInSettingsSearch>
+          <div className="settings-group">
+            {hasSubscriptions && (
+              <div className="settings-item push-test-controls">
+                <div className="settings-item-info">
+                  <strong>{t("notificationsTestPushTitle")}</strong>
+                  <p>{t("notificationsTestPushDescription")}</p>
+                  <p
+                    className={`push-test-status ${
+                      testStatus?.kind === "error"
+                        ? "settings-error"
+                        : "settings-hint"
+                    }`}
+                    aria-live="polite"
+                  >
+                    {testStatus?.message ?? "\u00a0"}
+                  </p>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </section>
+                <div className="settings-item-actions">
+                  <select
+                    className="settings-select"
+                    aria-label={t("pushToggleDisplayBehavior")}
+                    value={testDisplayUrgency}
+                    onChange={(e) =>
+                      setTestDisplayUrgency(
+                        e.target.value as TestNotificationUrgency,
+                      )
+                    }
+                    disabled={isTestingMobileDevices}
+                  >
+                    <option value="normal">
+                      {t("pushToggleUrgencyNormal")}
+                    </option>
+                    <option value="persistent">
+                      {t("pushToggleUrgencyPersistent")}
+                    </option>
+                    <option value="silent">
+                      {t("pushToggleUrgencySilent")}
+                    </option>
+                  </select>
+                  <select
+                    className="settings-select"
+                    aria-label={t("pushTestDeliveryPriority")}
+                    value={testDeliveryUrgency}
+                    onChange={(e) =>
+                      setTestDeliveryUrgency(
+                        e.target.value as PushDeliveryUrgency,
+                      )
+                    }
+                    disabled={isTestingMobileDevices}
+                  >
+                    <option value="high">{t("pushDeliveryHigh")}</option>
+                    <option value="normal">{t("pushDeliveryNormal")}</option>
+                    <option value="low">{t("pushDeliveryLow")}</option>
+                    <option value="very-low">{t("pushDeliveryVeryLow")}</option>
+                  </select>
+                  <button
+                    type="button"
+                    className="settings-button"
+                    onClick={sendTestToMobileDevices}
+                    disabled={
+                      mobilePushDevices.length === 0 || isTestingMobileDevices
+                    }
+                    title={
+                      mobilePushDevices.length === 0
+                        ? t("notificationsNoMobilePushDevices")
+                        : t("notificationsSendToMobileDevices", {
+                            count: mobilePushDevices.length,
+                          })
+                    }
+                  >
+                    {t("notificationsSendToMobileDevices", {
+                      count: mobilePushDevices.length,
+                    })}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {isLoading ? (
+              <p className="settings-hint">
+                {t("notificationsLoadingDevices")}
+              </p>
+            ) : unifiedDevices.length === 0 ? (
+              <p className="settings-hint">{t("notificationsNoDevices")}</p>
+            ) : (
+              <div className="device-list">
+                {unifiedDevices.map((device) => (
+                  <div
+                    key={device.browserProfileId}
+                    className="device-list-item"
+                  >
+                    <div className="device-list-info">
+                      <strong>
+                        {device.displayName}
+                        {device.browserType && ` ${device.browserType}`}
+                        {device.isCurrentDevice && (
+                          <span className="device-current-badge">
+                            {t("notificationsThisDevice")}
+                          </span>
+                        )}
+                      </strong>
+                      <p>
+                        {/* Status indicator */}
+                        {device.isConnected ? (
+                          <span className="device-status device-status-online">
+                            {device.tabCount === 1
+                              ? t("notificationsOneTab")
+                              : t("notificationsTabs", {
+                                  count: device.tabCount,
+                                })}
+                          </span>
+                        ) : (
+                          <span className="device-status device-status-offline">
+                            {t("notificationsOffline")}
+                          </span>
+                        )}
+                        {/* No push indicator for connected-only devices */}
+                        {!device.isSubscribed && (
+                          <span className="device-no-push">
+                            {t("notificationsNoPush")}
+                          </span>
+                        )}
+                        {/* Subscription date for subscribed devices */}
+                        {device.subscribedAt && (
+                          <span className="device-subscribed-date">
+                            {t("notificationsSubscribed", {
+                              date: formatDate(device.subscribedAt, t),
+                            })}
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                    {/* Only show remove button for subscribed devices */}
+                    {device.isSubscribed && (
+                      <div className="device-list-actions">
+                        <button
+                          type="button"
+                          className="settings-button"
+                          onClick={() => sendTestToDevice(device)}
+                          disabled={testingDeviceIds.has(
+                            device.browserProfileId,
+                          )}
+                          title={t("notificationsTestDevice")}
+                        >
+                          {t("notificationsTest")}
+                        </button>
+                        <button
+                          type="button"
+                          className="settings-button settings-button-danger-subtle"
+                          onClick={() => removeDevice(device.browserProfileId)}
+                          title={
+                            device.isCurrentDevice
+                              ? t("notificationsRemoveThisDevice")
+                              : t("notificationsRemoveDevice")
+                          }
+                        >
+                          {t("notificationsRemove")}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </HideInSettingsSearch>
+      </SettingsSection>
     </>
   );
 }

@@ -12634,6 +12634,219 @@ div.bang-command-error-message {
   display: none;
 }
 
+/* ==========================================================================
+   Settings search (contract: topics/settings-search.md)
+   While a query is active the results view mounts every category pane for
+   real, so matched rows stay operable in place. Visibility keys off the
+   .settings-search-match class matched SettingsItem rows render and the
+   .settings-search-section-match class a fully-matched SettingsSection adds.
+   ========================================================================== */
+
+.settings-search-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.settings-search-input-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-search-input {
+  width: 100%;
+  padding-right: calc(var(--space-4) + var(--space-2));
+  box-sizing: border-box;
+}
+
+.settings-search-input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.settings-search-clear {
+  position: absolute;
+  top: 50%;
+  right: var(--space-1);
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-size-lg);
+  line-height: 1;
+  padding: var(--space-1);
+  cursor: pointer;
+}
+
+.settings-search-clear:hover {
+  color: var(--text-primary);
+}
+
+.settings-search-values-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.settings-search-mark {
+  background: color-mix(in srgb, var(--primary-color) 24%, transparent);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+  box-decoration-break: clone;
+}
+
+.settings-search-results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.settings-search-heading {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.settings-search-pane {
+  margin-bottom: var(--space-4);
+}
+
+.settings-search-pane-title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-base);
+}
+
+.settings-search-pane-title button {
+  border: none;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.settings-search-pane-title button:hover {
+  color: var(--text-primary);
+}
+
+.settings-search-origin {
+  display: block;
+  margin-top: var(--space-1);
+  border: none;
+  background: transparent;
+  padding: 0;
+  font-size: var(--font-size-xs);
+  color: var(--primary-color);
+  cursor: pointer;
+  text-align: left;
+}
+
+.settings-search-origin:hover {
+  text-decoration: underline;
+}
+
+.settings-search-no-results {
+  margin: var(--space-3) 0;
+  color: var(--text-muted);
+}
+
+.settings-search-live-count {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Filtering: inside search panes only matched rows render visible; hints,
+   warnings, and grouped sub-rows that are not row-owned stay hidden. */
+.settings-search-pane .settings-item:not(.settings-search-match) {
+  display: none;
+}
+
+.settings-search-pane .settings-hint,
+.settings-search-pane .settings-warning,
+.settings-search-pane .settings-item-group-row {
+  display: none;
+}
+
+/* Collapse structures left with no matched row, and whole matchless panes. */
+.settings-search-pane .settings-item-group:not(:has(.settings-search-match)) {
+  display: none;
+}
+
+.settings-search-pane .settings-group:not(:has(.settings-search-match)) {
+  display: none;
+}
+
+.settings-search-pane
+  .settings-section:not(.settings-search-section-match):not(
+    :has(.settings-search-match)
+  ) {
+  display: none;
+}
+
+.settings-search-pane:not(
+    :has(.settings-search-match, .settings-search-section-match)
+  ) {
+  display: none;
+}
+
+/* A section matched as a whole shows everything inside it, operable.
+   These overrides sit after the hide rules and share their specificity. */
+.settings-search-pane .settings-search-section-match .settings-item {
+  display: flex;
+}
+
+.settings-search-pane .settings-search-section-match .settings-hint,
+.settings-search-pane .settings-search-section-match .settings-warning {
+  display: block;
+}
+
+.settings-search-pane .settings-search-section-match .settings-item-group-row {
+  display: flex;
+}
+
+.settings-search-pane .settings-search-section-match .settings-item-group,
+.settings-search-pane .settings-search-section-match .settings-group {
+  display: flex;
+}
+
+/* Jump-link landing: flash the targeted row, then settle. */
+@keyframes settings-item-jump-flash {
+  0% {
+    box-shadow: 0 0 0 2px var(--primary-color);
+    background: color-mix(in srgb, var(--primary-color) 16%, var(--bg-code));
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+    background: var(--bg-code);
+  }
+}
+
+.settings-item--jump-flash {
+  animation: settings-item-jump-flash 1.6s ease-out 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-item--jump-flash {
+    animation: none;
+    box-shadow: 0 0 0 2px var(--primary-color);
+  }
+}
+
 /* Font size selector */
 .font-size-selector {
   display: flex;

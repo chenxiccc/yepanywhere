@@ -22,7 +22,10 @@ import { useServerSettings } from "../../hooks/useServerSettings";
 import { useVersion } from "../../hooks/useVersion";
 import { useI18n } from "../../i18n";
 import { getHostById } from "../../lib/hostStorage";
+import { SettingsItem } from "./SettingsItem";
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
+import { HideInSettingsSearch } from "./SettingsSearchContext";
+import { SettingsSection } from "./SettingsSection";
 
 const DEFAULT_PUBLIC_SHARE_VIEWER_BASE_URL = buildYaClientPublicShareBaseUrl(
   DEFAULT_YA_CLIENT_BASE_URL,
@@ -71,11 +74,11 @@ function HostIdentitySettings({
   };
 
   return (
-    <div className="settings-item settings-item--wide-control host-identity-settings">
-      <div className="settings-item-info">
-        <strong>{t("hostIdentityTitle")}</strong>
-        <p>{t("hostIdentityDescription")}</p>
-      </div>
+    <SettingsItem
+      label={t("hostIdentityTitle")}
+      description={t("hostIdentityDescription")}
+      className="settings-item--wide-control host-identity-settings"
+    >
       <div className="host-identity-controls">
         <div
           className="host-identity-presets"
@@ -147,7 +150,7 @@ function HostIdentitySettings({
           </p>
         )}
       </div>
-    </div>
+    </SettingsItem>
   );
 }
 
@@ -224,40 +227,45 @@ function HostAwakeSettings({
 
   return (
     <div className="settings-group">
-      <div className="settings-item">
-        <div className="settings-item-info">
-          <strong>{t("hostAwakeTitle")}</strong>
-          <p>{t("hostAwakeDescription")}</p>
-          <p
-            className={
-              status?.state === "error" || unavailable
-                ? "settings-warning"
-                : "settings-hint"
-            }
-          >
-            {statusText}
-          </p>
-          {status?.batteryPercent !== undefined && (
-            <p className="settings-hint">
-              {t("hostAwakeBatteryObserved", {
-                percent: status.batteryPercent,
-                time: status.powerObservedAt
-                  ? new Date(status.powerObservedAt).toLocaleString()
-                  : t("hostAwakeBatteryObservedUnknownTime"),
-              })}
-            </p>
-          )}
-          {!enabled && (
-            <button
-              type="button"
-              className="settings-button settings-button-secondary"
-              disabled={statusLoading || saving}
-              onClick={() => void onRefresh()}
+      <SettingsItem
+        label={t("hostAwakeTitle")}
+        description={t("hostAwakeDescription")}
+        info={
+          <>
+            <strong>{t("hostAwakeTitle")}</strong>
+            <p>{t("hostAwakeDescription")}</p>
+            <p
+              className={
+                status?.state === "error" || unavailable
+                  ? "settings-warning"
+                  : "settings-hint"
+              }
             >
-              {t("hostAwakeRefresh")}
-            </button>
-          )}
-        </div>
+              {statusText}
+            </p>
+            {status?.batteryPercent !== undefined && (
+              <p className="settings-hint">
+                {t("hostAwakeBatteryObserved", {
+                  percent: status.batteryPercent,
+                  time: status.powerObservedAt
+                    ? new Date(status.powerObservedAt).toLocaleString()
+                    : t("hostAwakeBatteryObservedUnknownTime"),
+                })}
+              </p>
+            )}
+            {!enabled && (
+              <button
+                type="button"
+                className="settings-button settings-button-secondary"
+                disabled={statusLoading || saving}
+                onClick={() => void onRefresh()}
+              >
+                {t("hostAwakeRefresh")}
+              </button>
+            )}
+          </>
+        }
+      >
         <label className="toggle-switch">
           <input
             type="checkbox"
@@ -277,16 +285,16 @@ function HostAwakeSettings({
           />
           <span className="toggle-slider" />
         </label>
-      </div>
+      </SettingsItem>
 
       {enabled &&
         status?.hasInternalBattery === true &&
         status.support.batteryFloor && (
-          <div className="settings-item settings-item--wide-control">
-            <div className="settings-item-info">
-              <strong>{t("hostAwakeBatteryFloorTitle")}</strong>
-              <p>{t("hostAwakeBatteryFloorDescription")}</p>
-            </div>
+          <SettingsItem
+            label={t("hostAwakeBatteryFloorTitle")}
+            description={t("hostAwakeBatteryFloorDescription")}
+            className="settings-item--wide-control"
+          >
             <form
               className="host-awake-floor-controls"
               onSubmit={(event) => {
@@ -312,9 +320,7 @@ function HostAwakeSettings({
                 type="submit"
                 className="settings-button"
                 disabled={
-                  saving ||
-                  !validFloor ||
-                  parsedFloor === batteryFloorPercent
+                  saving || !validFloor || parsedFloor === batteryFloorPercent
                 }
               >
                 {t("hostAwakeBatteryFloorSave")}
@@ -325,7 +331,7 @@ function HostAwakeSettings({
                 {t("hostAwakeBatteryFloorInvalid")}
               </p>
             )}
-          </div>
+          </SettingsItem>
         )}
     </div>
   );
@@ -431,26 +437,31 @@ export function RemoteAccessSettings() {
   // so its controls live at the top of this tab.
   const publicShareConfig = (
     <div className="settings-group">
-      <div className="settings-item">
-        <div className="settings-item-info">
-          <strong>{t("advancedPublicShareTitle")}</strong>
-          <p>{t("advancedPublicShareDescription")}</p>
-          <p>{t("advancedPublicSharePrivacyWarning")}</p>
-          <p>{t("advancedPublicShareExistingManagement")}</p>
-          {shareReadinessMessage && (
-            <p className={shareReadinessMessage.className}>
-              {shareReadinessMessage.text}
-            </p>
-          )}
-          {publicShareStatus?.relayUrl && (
-            <p className="settings-hint" style={{ wordBreak: "break-all" }}>
-              {t("advancedPublicShareRelayEffective", {
-                username: publicShareStatus.relayUsername ?? "",
-                url: publicShareStatus.relayUrl,
-              })}
-            </p>
-          )}
-        </div>
+      <SettingsItem
+        label={t("advancedPublicShareTitle")}
+        description={t("advancedPublicShareDescription")}
+        info={
+          <>
+            <strong>{t("advancedPublicShareTitle")}</strong>
+            <p>{t("advancedPublicShareDescription")}</p>
+            <p>{t("advancedPublicSharePrivacyWarning")}</p>
+            <p>{t("advancedPublicShareExistingManagement")}</p>
+            {shareReadinessMessage && (
+              <p className={shareReadinessMessage.className}>
+                {shareReadinessMessage.text}
+              </p>
+            )}
+            {publicShareStatus?.relayUrl && (
+              <p className="settings-hint" style={{ wordBreak: "break-all" }}>
+                {t("advancedPublicShareRelayEffective", {
+                  username: publicShareStatus.relayUsername ?? "",
+                  url: publicShareStatus.relayUrl,
+                })}
+              </p>
+            )}
+          </>
+        }
+      >
         <label className="toggle-switch">
           <input
             type="checkbox"
@@ -462,47 +473,54 @@ export function RemoteAccessSettings() {
           />
           <span className="toggle-slider" />
         </label>
-      </div>
+      </SettingsItem>
 
-      <div
-        className="settings-item"
-        style={{ flexDirection: "column", alignItems: "stretch" }}
-      >
-        <div className="settings-item-info">
-          <strong>{t("advancedYaClientTitle")}</strong>
-          <p>{t("advancedYaClientDescription")}</p>
-          <p className="settings-hint" style={{ wordBreak: "break-all" }}>
-            {t("advancedYaClientEffective", {
-              url: effectiveYaClientBaseUrl,
-            })}
-          </p>
-          <p className="settings-hint" style={{ wordBreak: "break-all" }}>
-            {t("advancedPublicShareViewerEffective", {
-              url: effectiveViewerBaseUrl,
-            })}
-          </p>
-          {publicShareStatus?.yaClientBaseUrlError && (
-            <p className="settings-warning">
-              {publicShareStatus.yaClientBaseUrlError}
+      <HideInSettingsSearch>
+        <div
+          className="settings-item"
+          style={{ flexDirection: "column", alignItems: "stretch" }}
+        >
+          <div className="settings-item-info">
+            <strong>{t("advancedYaClientTitle")}</strong>
+            <p>{t("advancedYaClientDescription")}</p>
+            <p className="settings-hint" style={{ wordBreak: "break-all" }}>
+              {t("advancedYaClientEffective", {
+                url: effectiveYaClientBaseUrl,
+              })}
             </p>
-          )}
+            <p className="settings-hint" style={{ wordBreak: "break-all" }}>
+              {t("advancedPublicShareViewerEffective", {
+                url: effectiveViewerBaseUrl,
+              })}
+            </p>
+            {publicShareStatus?.yaClientBaseUrlError && (
+              <p className="settings-warning">
+                {publicShareStatus.yaClientBaseUrlError}
+              </p>
+            )}
+          </div>
         </div>
-      </div>
+      </HideInSettingsSearch>
     </div>
   );
 
   const persistSessionsToggle = (
     <>
       <div className="settings-group">
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("developmentPersistRemoteTitle")}</strong>
-            <p>
-              {t("developmentPersistRemoteDescriptionPrefix")}{" "}
-              <code>remote-sessions.json</code>{" "}
-              {t("developmentPersistRemoteDescriptionSuffix")}
-            </p>
-          </div>
+        <SettingsItem
+          label={t("developmentPersistRemoteTitle")}
+          description={`${t("developmentPersistRemoteDescriptionPrefix")} remote-sessions.json ${t("developmentPersistRemoteDescriptionSuffix")}`}
+          info={
+            <>
+              <strong>{t("developmentPersistRemoteTitle")}</strong>
+              <p>
+                {t("developmentPersistRemoteDescriptionPrefix")}{" "}
+                <code>remote-sessions.json</code>{" "}
+                {t("developmentPersistRemoteDescriptionSuffix")}
+              </p>
+            </>
+          }
+        >
           <label className="toggle-switch">
             <input
               type="checkbox"
@@ -517,7 +535,7 @@ export function RemoteAccessSettings() {
             />
             <span className="toggle-slider" />
           </label>
-        </div>
+        </SettingsItem>
       </div>
 
       {error && <p className="settings-warning">{error}</p>}
@@ -536,18 +554,14 @@ export function RemoteAccessSettings() {
       t("remoteAccessDefaultHost");
 
     return (
-      <section className="settings-section">
-        <p className="settings-section-description">
-          {t("remoteAccessConnectedDescription")}
-        </p>
+      <SettingsSection description={t("remoteAccessConnectedDescription")}>
         {hostAwakeConfig}
         {publicShareConfig}
         <div className="settings-group">
-          <div className="settings-item">
-            <div className="settings-item-info">
-              <strong>{t("remoteAccessCurrentHostTitle")}</strong>
-              <p>{displayName}</p>
-            </div>
+          <SettingsItem
+            label={t("remoteAccessCurrentHostTitle")}
+            description={displayName}
+          >
             <button
               type="button"
               className="settings-button"
@@ -555,13 +569,12 @@ export function RemoteAccessSettings() {
             >
               {t("sidebarSwitchHost")}
             </button>
-          </div>
+          </SettingsItem>
           {hostIdentityItem}
-          <div className="settings-item">
-            <div className="settings-item-info">
-              <strong>{t("remoteAccessLogoutTitle")}</strong>
-              <p>{t("remoteAccessLogoutDescription")}</p>
-            </div>
+          <SettingsItem
+            label={t("remoteAccessLogoutTitle")}
+            description={t("remoteAccessLogoutDescription")}
+          >
             <button
               type="button"
               className="settings-button settings-button-danger"
@@ -569,26 +582,28 @@ export function RemoteAccessSettings() {
             >
               {t("remoteAccessLogout")}
             </button>
-          </div>
+          </SettingsItem>
         </div>
         {persistSessionsToggle}
-      </section>
+      </SettingsSection>
     );
   }
 
   // Server-side: show relay configuration
   return (
-    <section className="settings-section">
+    <SettingsSection>
       {hostIdentityItem && (
         <div className="settings-group">{hostIdentityItem}</div>
       )}
       {hostAwakeConfig}
       {publicShareConfig}
-      <RemoteAccessSetup
-        title={t("remoteAccessConnectedTitle")}
-        description={t("remoteAccessSetupDescription")}
-      />
+      <HideInSettingsSearch>
+        <RemoteAccessSetup
+          title={t("remoteAccessConnectedTitle")}
+          description={t("remoteAccessSetupDescription")}
+        />
+      </HideInSettingsSearch>
       {persistSessionsToggle}
-    </section>
+    </SettingsSection>
   );
 }

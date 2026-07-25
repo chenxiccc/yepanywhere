@@ -11,7 +11,10 @@ import { useServerSettings } from "../../hooks/useServerSettings";
 import { useRemoteBasePath } from "../../hooks/useRemoteBasePath";
 import { useI18n } from "../../i18n";
 import { activityBus } from "../../lib/activityBus";
+import { SettingsItem } from "./SettingsItem";
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
+import { HideInSettingsSearch } from "./SettingsSearchContext";
+import { SettingsSection } from "./SettingsSection";
 import { useSettingsUndoBaseline } from "./SettingsUndoContext";
 
 const MAX_EVENTS = 200;
@@ -242,28 +245,18 @@ export function CacheMissBillingSettings() {
   }, []);
 
   if (isLoading) {
-    return (
-      <section className="settings-section">
-        <p className="settings-section-description">
-          {t("cacheMissBillingLoading")}
-        </p>
-      </section>
-    );
+    return <SettingsSection description={t("cacheMissBillingLoading")} />;
   }
 
   return (
     <>
-      <section className="settings-section">
-        <p className="settings-section-description">
-          {t("cacheMissBillingDescription")}
-        </p>
-
+      <SettingsSection description={t("cacheMissBillingDescription")}>
         <div className="settings-group">
-          <label className="settings-item">
-            <div className="settings-item-info">
-              <strong>{t("cacheMissBillingEnableTitle")}</strong>
-              <p>{t("cacheMissBillingEnableDescription")}</p>
-            </div>
+          <SettingsItem
+            as="label"
+            label={t("cacheMissBillingEnableTitle")}
+            description={t("cacheMissBillingEnableDescription")}
+          >
             <input
               type="checkbox"
               checked={effective.enabled}
@@ -274,13 +267,13 @@ export function CacheMissBillingSettings() {
               }
               aria-label={t("cacheMissBillingEnableTitle")}
             />
-          </label>
+          </SettingsItem>
 
-          <label className="settings-item">
-            <div className="settings-item-info">
-              <strong>{t("cacheMissBillingToastTitle")}</strong>
-              <p>{t("cacheMissBillingToastDescription")}</p>
-            </div>
+          <SettingsItem
+            as="label"
+            label={t("cacheMissBillingToastTitle")}
+            description={t("cacheMissBillingToastDescription")}
+          >
             <input
               type="checkbox"
               checked={effective.showToasts}
@@ -292,13 +285,13 @@ export function CacheMissBillingSettings() {
               }
               aria-label={t("cacheMissBillingToastTitle")}
             />
-          </label>
+          </SettingsItem>
 
-          <div className="settings-item settings-item--wide-control">
-            <div className="settings-item-info">
-              <strong>{t("cacheMissBillingClaudeFreshWindowTitle")}</strong>
-              <p>{t("cacheMissBillingClaudeFreshWindowDescription")}</p>
-            </div>
+          <SettingsItem
+            label={t("cacheMissBillingClaudeFreshWindowTitle")}
+            description={t("cacheMissBillingClaudeFreshWindowDescription")}
+            className="settings-item--wide-control"
+          >
             <div className="settings-item-actions">
               <span className="settings-input-unit">
                 <input
@@ -332,13 +325,13 @@ export function CacheMissBillingSettings() {
                 <span>{t("cacheMissBillingMinutesUnit")}</span>
               </span>
             </div>
-          </div>
+          </SettingsItem>
 
-          <div className="settings-item settings-item--wide-control">
-            <div className="settings-item-info">
-              <strong>{t("cacheMissBillingCodexFreshWindowTitle")}</strong>
-              <p>{t("cacheMissBillingCodexFreshWindowDescription")}</p>
-            </div>
+          <SettingsItem
+            label={t("cacheMissBillingCodexFreshWindowTitle")}
+            description={t("cacheMissBillingCodexFreshWindowDescription")}
+            className="settings-item--wide-control"
+          >
             <div className="settings-item-actions">
               <span className="settings-input-unit">
                 <input
@@ -372,13 +365,13 @@ export function CacheMissBillingSettings() {
                 <span>{t("cacheMissBillingMinutesUnit")}</span>
               </span>
             </div>
-          </div>
+          </SettingsItem>
 
-          <div className="settings-item settings-item--wide-control">
-            <div className="settings-item-info">
-              <strong>{t("cacheMissBillingMinimumTokensTitle")}</strong>
-              <p>{t("cacheMissBillingMinimumTokensDescription")}</p>
-            </div>
+          <SettingsItem
+            label={t("cacheMissBillingMinimumTokensTitle")}
+            description={t("cacheMissBillingMinimumTokensDescription")}
+            className="settings-item--wide-control"
+          >
             <div className="settings-item-actions">
               <span className="settings-input-unit">
                 <input
@@ -409,44 +402,43 @@ export function CacheMissBillingSettings() {
                 <span>{t("cacheMissBillingTokensUnit")}</span>
               </span>
             </div>
-          </div>
+          </SettingsItem>
         </div>
 
         {error && <p className="settings-warning">{error}</p>}
-      </section>
+      </SettingsSection>
 
-      <section className="settings-section">
-        <p className="settings-section-description">
-          {t("cacheMissBillingEventsDescription")}
-        </p>
+      <SettingsSection description={t("cacheMissBillingEventsDescription")}>
         {eventsError && <p className="settings-warning">{eventsError}</p>}
-        <div className="cache-miss-billing-event-log">
-          <div className="cache-miss-billing-event-columns">
-            <div className="cache-miss-billing-event-column">
-              <h3 className="cache-miss-billing-event-column-title">
-                {t("cacheMissBillingFailuresTitle")}
-              </h3>
-              <CacheMissBillingEventList
-                emptyMessage={t("cacheMissBillingFailuresEmpty")}
-                events={failureEvents}
-                t={t}
-                basePath={basePath}
-              />
-            </div>
-            <div className="cache-miss-billing-event-column">
-              <h3 className="cache-miss-billing-event-column-title">
-                {t("cacheMissBillingSuccessesTitle")}
-              </h3>
-              <CacheMissBillingEventList
-                emptyMessage={t("cacheMissBillingSuccessesEmpty")}
-                events={successEvents}
-                t={t}
-                basePath={basePath}
-              />
+        <HideInSettingsSearch>
+          <div className="cache-miss-billing-event-log">
+            <div className="cache-miss-billing-event-columns">
+              <div className="cache-miss-billing-event-column">
+                <h3 className="cache-miss-billing-event-column-title">
+                  {t("cacheMissBillingFailuresTitle")}
+                </h3>
+                <CacheMissBillingEventList
+                  emptyMessage={t("cacheMissBillingFailuresEmpty")}
+                  events={failureEvents}
+                  t={t}
+                  basePath={basePath}
+                />
+              </div>
+              <div className="cache-miss-billing-event-column">
+                <h3 className="cache-miss-billing-event-column-title">
+                  {t("cacheMissBillingSuccessesTitle")}
+                </h3>
+                <CacheMissBillingEventList
+                  emptyMessage={t("cacheMissBillingSuccessesEmpty")}
+                  events={successEvents}
+                  t={t}
+                  basePath={basePath}
+                />
+              </div>
             </div>
           </div>
-        </div>
-      </section>
+        </HideInSettingsSearch>
+      </SettingsSection>
     </>
   );
 }

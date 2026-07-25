@@ -17,7 +17,10 @@ import { useServerInfo } from "../../hooks/useServerInfo";
 import { useServerSettings } from "../../hooks/useServerSettings";
 import { useVersion } from "../../hooks/useVersion";
 import { useI18n } from "../../i18n";
+import { SettingsItem } from "./SettingsItem";
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
+import { HideInSettingsSearch } from "./SettingsSearchContext";
+import { SettingsSection } from "./SettingsSection";
 import { useSettingsUndo } from "./SettingsUndoContext";
 
 /** File-access form state — `custom` is edited as newline-separated text. */
@@ -466,15 +469,14 @@ export function LocalAccessSettings() {
   };
 
   const renderApprovalAuditSettings = () => (
-    <div className="settings-item">
-      <div className="settings-item-info">
-        <strong>{t("localAccessApprovalAuditTitle")}</strong>
-        <p>
-          {supportsApprovalAuditLog
-            ? t("localAccessApprovalAuditDescription")
-            : t("localAccessApprovalAuditUnsupportedDescription")}
-        </p>
-      </div>
+    <SettingsItem
+      label={t("localAccessApprovalAuditTitle")}
+      description={
+        supportsApprovalAuditLog
+          ? t("localAccessApprovalAuditDescription")
+          : t("localAccessApprovalAuditUnsupportedDescription")
+      }
+    >
       <label className="toggle-switch">
         <input
           type="checkbox"
@@ -487,7 +489,7 @@ export function LocalAccessSettings() {
         />
         <span className="toggle-slider" />
       </label>
-    </div>
+    </SettingsItem>
   );
 
   const handleApplyChanges = async () => {
@@ -613,90 +615,82 @@ export function LocalAccessSettings() {
       !formInitialized;
 
     if (isLoading) {
-      return (
-        <section className="settings-section">
-          <p className="settings-section-description">
-            {t("localAccessLoading")}
-          </p>
-        </section>
-      );
+      return <SettingsSection description={t("localAccessLoading")} />;
     }
 
     // Show password fields when auth is enabled or being enabled
     const showPasswordFields = requirePassword;
 
     return (
-      <section className="settings-section">
-        <p className="settings-section-description">
-          {t("localAccessDescription")}
-        </p>
-
+      <SettingsSection description={t("localAccessDescription")}>
         {/* Current status */}
-        <div className="settings-group">
-          <div className="settings-item">
-            <div className="settings-item-info">
-              <strong>{t("localAccessStatusTitle")}</strong>
-              <p>
-                {serverInfo
-                  ? (() => {
-                      const networkHost = binding?.network.host;
-                      const networkPort =
-                        binding?.network.port ?? serverInfo.port;
-                      const isAllInterfaces =
-                        networkHost === "0.0.0.0" || networkHost === "::";
-                      const samePort = networkPort === serverInfo.port;
+        <HideInSettingsSearch>
+          <div className="settings-group">
+            <div className="settings-item">
+              <div className="settings-item-info">
+                <strong>{t("localAccessStatusTitle")}</strong>
+                <p>
+                  {serverInfo
+                    ? (() => {
+                        const networkHost = binding?.network.host;
+                        const networkPort =
+                          binding?.network.port ?? serverInfo.port;
+                        const isAllInterfaces =
+                          networkHost === "0.0.0.0" || networkHost === "::";
+                        const samePort = networkPort === serverInfo.port;
 
-                      // If bound to all interfaces on same port, just show that
-                      if (
-                        binding?.network.enabled &&
-                        isAllInterfaces &&
-                        samePort
-                      ) {
-                        return (
-                          <>
-                            {t("localAccessListeningOn")}{" "}
-                            <code>
-                              {networkHost}:{networkPort}
-                            </code>
-                          </>
-                        );
-                      }
-
-                      // Otherwise show localhost, and optionally network
-                      return (
-                        <>
-                          {t("localAccessListeningOn")}{" "}
-                          <code>
-                            {serverInfo.host}:{serverInfo.port}
-                          </code>
-                          {binding?.network.enabled && networkHost && (
+                        // If bound to all interfaces on same port, just show that
+                        if (
+                          binding?.network.enabled &&
+                          isAllInterfaces &&
+                          samePort
+                        ) {
+                          return (
                             <>
-                              {" "}
-                              {t("localAccessListeningAnd")}{" "}
+                              {t("localAccessListeningOn")}{" "}
                               <code>
                                 {networkHost}:{networkPort}
                               </code>
                             </>
-                          )}
-                        </>
-                      );
-                    })()
-                  : t("localAccessUnableToFetch")}
-              </p>
-            </div>
-            {serverInfo?.localhostOnly && !binding?.network.enabled && (
-              <span className="settings-status-badge settings-status-detected">
-                {t("localAccessBadgeLocalOnly")}
-              </span>
-            )}
-            {(serverInfo?.boundToAllInterfaces || binding?.network.enabled) &&
-              !auth.authEnabled && (
-                <span className="settings-status-badge settings-status-warning">
-                  {t("localAccessBadgeNetworkExposed")}
+                          );
+                        }
+
+                        // Otherwise show localhost, and optionally network
+                        return (
+                          <>
+                            {t("localAccessListeningOn")}{" "}
+                            <code>
+                              {serverInfo.host}:{serverInfo.port}
+                            </code>
+                            {binding?.network.enabled && networkHost && (
+                              <>
+                                {" "}
+                                {t("localAccessListeningAnd")}{" "}
+                                <code>
+                                  {networkHost}:{networkPort}
+                                </code>
+                              </>
+                            )}
+                          </>
+                        );
+                      })()
+                    : t("localAccessUnableToFetch")}
+                </p>
+              </div>
+              {serverInfo?.localhostOnly && !binding?.network.enabled && (
+                <span className="settings-status-badge settings-status-detected">
+                  {t("localAccessBadgeLocalOnly")}
                 </span>
               )}
+              {(serverInfo?.boundToAllInterfaces || binding?.network.enabled) &&
+                !auth.authEnabled && (
+                  <span className="settings-status-badge settings-status-warning">
+                    {t("localAccessBadgeNetworkExposed")}
+                  </span>
+                )}
+            </div>
           </div>
-        </div>
+        </HideInSettingsSearch>
 
         {/* Network Configuration */}
         <form
@@ -706,11 +700,10 @@ export function LocalAccessSettings() {
             handleApplyChanges();
           }}
         >
-          <div className="settings-item">
-            <div className="settings-item-info">
-              <strong>{t("localAccessListeningPortTitle")}</strong>
-              <p>{t("localAccessListeningPortDescription")}</p>
-            </div>
+          <SettingsItem
+            label={t("localAccessListeningPortTitle")}
+            description={t("localAccessListeningPortDescription")}
+          >
             {binding?.localhost.overriddenByCli ? (
               <span className="settings-value-readonly">
                 {binding.localhost.port}{" "}
@@ -732,13 +725,12 @@ export function LocalAccessSettings() {
                 autoComplete="off"
               />
             )}
-          </div>
+          </SettingsItem>
 
-          <div className="settings-item">
-            <div className="settings-item-info">
-              <strong>{t("localAccessNetworkTitle")}</strong>
-              <p>{t("localAccessNetworkDescription")}</p>
-            </div>
+          <SettingsItem
+            label={t("localAccessNetworkTitle")}
+            description={t("localAccessNetworkDescription")}
+          >
             {binding?.network.overriddenByCli ? (
               <span className="settings-value-readonly">
                 {binding.network.host}:{binding.network.port}{" "}
@@ -759,14 +751,13 @@ export function LocalAccessSettings() {
                 <span className="toggle-slider" />
               </label>
             )}
-          </div>
+          </SettingsItem>
 
           {networkEnabled && !binding?.network.overriddenByCli && binding && (
-            <div className="settings-item">
-              <div className="settings-item-info">
-                <strong>{t("localAccessInterfaceTitle")}</strong>
-                <p>{t("localAccessInterfaceDescription")}</p>
-              </div>
+            <SettingsItem
+              label={t("localAccessInterfaceTitle")}
+              description={t("localAccessInterfaceDescription")}
+            >
               <FilterDropdown
                 label={t("localAccessInterfaceTitle")}
                 placeholder={t("localAccessInterfacePlaceholder")}
@@ -790,17 +781,17 @@ export function LocalAccessSettings() {
                   updateHasChanges({ iface: newInterface });
                 }}
               />
-            </div>
+            </SettingsItem>
           )}
 
           {networkEnabled &&
             !binding?.network.overriddenByCli &&
             selectedInterface === "custom" && (
-              <div className="settings-item settings-item-inline-field">
-                <div className="settings-item-info">
-                  <strong>{t("localAccessCustomIpTitle")}</strong>
-                  <p>{t("localAccessCustomIpDescription")}</p>
-                </div>
+              <SettingsItem
+                label={t("localAccessCustomIpTitle")}
+                description={t("localAccessCustomIpDescription")}
+                className="settings-item-inline-field"
+              >
                 <input
                   type="text"
                   className="settings-input"
@@ -808,15 +799,14 @@ export function LocalAccessSettings() {
                   value={customIp}
                   onChange={(e) => setCustomIp(e.target.value)}
                 />
-              </div>
+              </SettingsItem>
             )}
 
           {/* Allowed Hosts — applies even on localhost (reverse proxy may use different hostname) */}
-          <div className="settings-item">
-            <div className="settings-item-info">
-              <strong>{t("localAccessAllowAllHostsTitle")}</strong>
-              <p>{t("localAccessAllowAllHostsDescription")}</p>
-            </div>
+          <SettingsItem
+            label={t("localAccessAllowAllHostsTitle")}
+            description={t("localAccessAllowAllHostsDescription")}
+          >
             <label className="toggle-switch">
               <input
                 type="checkbox"
@@ -828,13 +818,13 @@ export function LocalAccessSettings() {
               />
               <span className="toggle-slider" />
             </label>
-          </div>
+          </SettingsItem>
           {!allowAllHostsToggle && (
-            <div className="settings-item settings-item-inline-field">
-              <div className="settings-item-info">
-                <strong>{t("localAccessAllowedHostsTitle")}</strong>
-                <p>{t("localAccessAllowedHostsDescription")}</p>
-              </div>
+            <SettingsItem
+              label={t("localAccessAllowedHostsTitle")}
+              description={t("localAccessAllowedHostsDescription")}
+              className="settings-item-inline-field"
+            >
               <input
                 type="text"
                 className="settings-input"
@@ -845,19 +835,22 @@ export function LocalAccessSettings() {
                   updateHasChanges({ hostsText: e.target.value });
                 }}
               />
-            </div>
+            </SettingsItem>
           )}
-          <p className="form-hint">{t("localAccessAllowedHostsHint")}</p>
+          <HideInSettingsSearch>
+            <p className="form-hint">{t("localAccessAllowedHostsHint")}</p>
+          </HideInSettingsSearch>
 
-          {renderFileAccessSettings()}
+          <HideInSettingsSearch>
+            {renderFileAccessSettings()}
+          </HideInSettingsSearch>
 
           {/* Require Password toggle */}
           {!auth.authDisabledByEnv && (
-            <div className="settings-item">
-              <div className="settings-item-info">
-                <strong>{t("localAccessRequirePasswordTitle")}</strong>
-                <p>{t("localAccessRequirePasswordDescription")}</p>
-              </div>
+            <SettingsItem
+              label={t("localAccessRequirePasswordTitle")}
+              description={t("localAccessRequirePasswordDescription")}
+            >
               <label className="toggle-switch">
                 <input
                   type="checkbox"
@@ -869,33 +862,35 @@ export function LocalAccessSettings() {
                 />
                 <span className="toggle-slider" />
               </label>
-            </div>
+            </SettingsItem>
           )}
 
           {/* Password fields - shown when auth is on */}
           {showPasswordFields && (
             <>
               {/* Hidden username field to prevent Chrome from using port as username */}
-              <input
-                type="text"
-                name="username"
-                autoComplete="username"
-                style={{
-                  position: "absolute",
-                  visibility: "hidden",
-                  pointerEvents: "none",
-                }}
-                tabIndex={-1}
-              />
-              <div className="settings-item settings-item-inline-field">
-                <div className="settings-item-info">
-                  <strong>{t("localAccessPasswordTitle")}</strong>
-                  <p>
-                    {auth.authEnabled
-                      ? t("localAccessPasswordKeepCurrent")
-                      : t("localAccessPasswordMinLength")}
-                  </p>
-                </div>
+              <HideInSettingsSearch>
+                <input
+                  type="text"
+                  name="username"
+                  autoComplete="username"
+                  style={{
+                    position: "absolute",
+                    visibility: "hidden",
+                    pointerEvents: "none",
+                  }}
+                  tabIndex={-1}
+                />
+              </HideInSettingsSearch>
+              <SettingsItem
+                label={t("localAccessPasswordTitle")}
+                description={
+                  auth.authEnabled
+                    ? t("localAccessPasswordKeepCurrent")
+                    : t("localAccessPasswordMinLength")
+                }
+                className="settings-item-inline-field"
+              >
                 <input
                   type="password"
                   className="settings-input"
@@ -911,12 +906,12 @@ export function LocalAccessSettings() {
                       : t("localAccessPasswordPlaceholder")
                   }
                 />
-              </div>
+              </SettingsItem>
               {authPassword.length > 0 && (
-                <div className="settings-item settings-item-inline-field">
-                  <div className="settings-item-info">
-                    <strong>{t("localAccessConfirmPasswordTitle")}</strong>
-                  </div>
+                <SettingsItem
+                  label={t("localAccessConfirmPasswordTitle")}
+                  className="settings-item-inline-field"
+                >
                   <input
                     type="password"
                     className="settings-input"
@@ -925,10 +920,14 @@ export function LocalAccessSettings() {
                     autoComplete="new-password"
                     placeholder={t("localAccessConfirmPasswordPlaceholder")}
                   />
-                </div>
+                </SettingsItem>
               )}
               {!auth.authEnabled && (
-                <p className="form-hint">{t("localAccessPasswordResetHint")}</p>
+                <HideInSettingsSearch>
+                  <p className="form-hint">
+                    {t("localAccessPasswordResetHint")}
+                  </p>
+                </HideInSettingsSearch>
               )}
             </>
           )}
@@ -937,11 +936,10 @@ export function LocalAccessSettings() {
           {auth.hasDesktopToken &&
             !requirePassword &&
             !auth.authDisabledByEnv && (
-              <div className="settings-item">
-                <div className="settings-item-info">
-                  <strong>{t("localAccessLocalhostOpenTitle")}</strong>
-                  <p>{t("localAccessLocalhostOpenDescription")}</p>
-                </div>
+              <SettingsItem
+                label={t("localAccessLocalhostOpenTitle")}
+                description={t("localAccessLocalhostOpenDescription")}
+              >
                 <label className="toggle-switch">
                   <input
                     type="checkbox"
@@ -953,26 +951,30 @@ export function LocalAccessSettings() {
                   />
                   <span className="toggle-slider" />
                 </label>
-              </div>
+              </SettingsItem>
             )}
 
           {auth.authDisabledByEnv && (
-            <p className="form-warning">{t("localAccessAuthDisabled")}</p>
+            <HideInSettingsSearch>
+              <p className="form-warning">{t("localAccessAuthDisabled")}</p>
+            </HideInSettingsSearch>
           )}
 
           {/* Apply button - always visible */}
-          <div className="settings-item">
-            {formError && <p className="form-error">{formError}</p>}
-            <button
-              type="submit"
-              className="settings-button"
-              disabled={!hasChanges || isApplying || applying}
-            >
-              {isApplying || applying
-                ? t("localAccessApplying")
-                : t("localAccessApply")}
-            </button>
-          </div>
+          <HideInSettingsSearch>
+            <div className="settings-item">
+              {formError && <p className="form-error">{formError}</p>}
+              <button
+                type="submit"
+                className="settings-button"
+                disabled={!hasChanges || isApplying || applying}
+              >
+                {isApplying || applying
+                  ? t("localAccessApplying")
+                  : t("localAccessApply")}
+              </button>
+            </div>
+          </HideInSettingsSearch>
         </form>
 
         <div className="settings-group">{renderApprovalAuditSettings()}</div>
@@ -980,11 +982,11 @@ export function LocalAccessSettings() {
         {/* Logout - shown when auth is enabled */}
         {auth.authEnabled && auth.isAuthenticated && (
           <div className="settings-group">
-            <div className="settings-item">
-              <div className="settings-item-info">
-                <strong>{t("remoteAccessLogoutTitle")}</strong>
-                <p>{t("localAccessLogoutDescription")}</p>
-              </div>
+            <SettingsItem
+              id="local-access-logout"
+              label={t("remoteAccessLogoutTitle")}
+              description={t("localAccessLogoutDescription")}
+            >
               <button
                 type="button"
                 className="settings-button settings-button-danger"
@@ -992,10 +994,10 @@ export function LocalAccessSettings() {
               >
                 {t("remoteAccessLogout")}
               </button>
-            </div>
+            </SettingsItem>
           </div>
         )}
-      </section>
+      </SettingsSection>
     );
   }
 
@@ -1004,11 +1006,7 @@ export function LocalAccessSettings() {
     const remoteFileAccessReady = !!serverSettings && formInitialized;
 
     return (
-      <section className="settings-section">
-        <p className="settings-section-description">
-          {t("localAccessRemoteDescription")}
-        </p>
-
+      <SettingsSection description={t("localAccessRemoteDescription")}>
         {remoteFileAccessReady ? (
           <form
             className="settings-group"
@@ -1017,39 +1015,45 @@ export function LocalAccessSettings() {
               handleApplyRemoteFileAccess();
             }}
           >
-            {renderFileAccessSettings()}
-            <div className="settings-item">
-              {formError && <p className="form-error">{formError}</p>}
-              <button
-                type="submit"
-                className="settings-button"
-                disabled={
-                  !hasChanges || isApplying || fileAccessInfo?.envPinned
-                }
-              >
-                {isApplying ? t("localAccessApplying") : t("localAccessApply")}
-              </button>
-            </div>
+            <HideInSettingsSearch>
+              {renderFileAccessSettings()}
+              <div className="settings-item">
+                {formError && <p className="form-error">{formError}</p>}
+                <button
+                  type="submit"
+                  className="settings-button"
+                  disabled={
+                    !hasChanges || isApplying || fileAccessInfo?.envPinned
+                  }
+                >
+                  {isApplying
+                    ? t("localAccessApplying")
+                    : t("localAccessApply")}
+                </button>
+              </div>
+            </HideInSettingsSearch>
           </form>
         ) : (
-          <div className="settings-group">
-            <div className="settings-item">
-              <div className="settings-item-info">
-                <strong>{t("fileAccessTitle")}</strong>
-                <p>{settingsError ?? t("localAccessLoading")}</p>
+          <HideInSettingsSearch>
+            <div className="settings-group">
+              <div className="settings-item">
+                <div className="settings-item-info">
+                  <strong>{t("fileAccessTitle")}</strong>
+                  <p>{settingsError ?? t("localAccessLoading")}</p>
+                </div>
               </div>
             </div>
-          </div>
+          </HideInSettingsSearch>
         )}
 
         <div className="settings-group">{renderApprovalAuditSettings()}</div>
 
         <div className="settings-group">
-          <div className="settings-item">
-            <div className="settings-item-info">
-              <strong>{t("remoteAccessLogoutTitle")}</strong>
-              <p>{t("localAccessRemoteLogoutDescription")}</p>
-            </div>
+          <SettingsItem
+            id="local-access-remote-logout"
+            label={t("remoteAccessLogoutTitle")}
+            description={t("localAccessRemoteLogoutDescription")}
+          >
             <button
               type="button"
               className="settings-button settings-button-danger"
@@ -1057,9 +1061,9 @@ export function LocalAccessSettings() {
             >
               {t("remoteAccessLogout")}
             </button>
-          </div>
+          </SettingsItem>
         </div>
-      </section>
+      </SettingsSection>
     );
   }
 

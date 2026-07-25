@@ -11,7 +11,10 @@ See also:
 [vanilla-defaults](vanilla-defaults.md) (novel user-visible behavior ships
 configurable + default-off — governs whether an option is even default-on),
 [fork-from-turn](fork-from-turn.md) (the worked example below: fork-after-summary
-auto-open).
+auto-open),
+[settings-search](settings-search.md) (how options are found: the shared
+`SettingsItem`/`SettingsSection` row layer every pane's rows should use so
+they stay searchable).
 
 ## Persistence mechanisms (pick one deliberately)
 

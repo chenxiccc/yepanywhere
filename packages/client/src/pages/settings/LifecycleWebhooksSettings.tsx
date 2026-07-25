@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useServerSettings } from "../../hooks/useServerSettings";
 import { useI18n } from "../../i18n";
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
+import { HideInSettingsSearch } from "./SettingsSearchContext";
+import { SettingsSection } from "./SettingsSection";
 import { useSettingsUndoBaseline } from "./SettingsUndoContext";
 
 const MAX_URL_LENGTH = 2000;
@@ -103,126 +105,126 @@ export function LifecycleWebhooksSettings() {
   }, [dryRun, enabled, normalizedToken, normalizedUrl, t, updateSettings]);
 
   if (isLoading) {
-    return (
-      <section className="settings-section">
-        <p className="settings-section-description">
-          {t("lifecycleWebhooksLoading")}
-        </p>
-      </section>
-    );
+    return <SettingsSection description={t("lifecycleWebhooksLoading")} />;
   }
 
   return (
-    <section className="settings-section">
-      <p className="settings-section-description">
-        {t("lifecycleWebhooksDescription")}
-      </p>
+    <SettingsSection
+      description={t("lifecycleWebhooksDescription")}
+      keywords={[
+        t("lifecycleWebhooksEnableTitle"),
+        t("lifecycleWebhooksUrlTitle"),
+        t("lifecycleWebhooksTokenTitle"),
+        t("lifecycleWebhooksDryRunTitle"),
+      ]}
+    >
+      <HideInSettingsSearch>
+        <div className="settings-group">
+          <label className="settings-item">
+            <div className="settings-item-info">
+              <strong>{t("lifecycleWebhooksEnableTitle")}</strong>
+              <p>{t("lifecycleWebhooksEnableDescription")}</p>
+            </div>
+            <input
+              type="checkbox"
+              checked={enabled}
+              onChange={(e) => {
+                setEnabled(e.target.checked);
+                setHasDraftEdits(true);
+                setSaveError(null);
+              }}
+            />
+          </label>
 
-      <div className="settings-group">
-        <label className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("lifecycleWebhooksEnableTitle")}</strong>
-            <p>{t("lifecycleWebhooksEnableDescription")}</p>
-          </div>
-          <input
-            type="checkbox"
-            checked={enabled}
-            onChange={(e) => {
-              setEnabled(e.target.checked);
-              setHasDraftEdits(true);
-              setSaveError(null);
-            }}
-          />
-        </label>
-
-        <div
-          className="settings-item"
-          style={{ flexDirection: "column", alignItems: "stretch" }}
-        >
-          <div className="settings-item-info">
-            <strong>{t("lifecycleWebhooksUrlTitle")}</strong>
-            <p>{t("lifecycleWebhooksUrlDescription")}</p>
-          </div>
-          <input
-            aria-label={t("lifecycleWebhooksUrlTitle")}
-            autoComplete="off"
-            type="url"
-            className="settings-input"
-            id="lifecycle-webhook-url"
-            name="yep-lifecycle-webhook-url"
-            value={url}
-            onChange={(e) => {
-              const value = e.target.value.slice(0, MAX_URL_LENGTH);
-              setUrl(value);
-              setHasDraftEdits(true);
-              setSaveError(null);
-            }}
-            placeholder="https://example.com/hooks/yep"
-            spellCheck={false}
-          />
-        </div>
-
-        <div
-          className="settings-item"
-          style={{ flexDirection: "column", alignItems: "stretch" }}
-        >
-          <div className="settings-item-info">
-            <strong>{t("lifecycleWebhooksTokenTitle")}</strong>
-            <p>{t("lifecycleWebhooksTokenDescription")}</p>
-          </div>
-          <input
-            aria-label={t("lifecycleWebhooksTokenTitle")}
-            autoComplete="new-password"
-            type="password"
-            className="settings-input"
-            id="lifecycle-webhook-token"
-            name="yep-lifecycle-webhook-token"
-            value={token}
-            onChange={(e) => {
-              const value = e.target.value.slice(0, MAX_TOKEN_LENGTH);
-              setToken(value);
-              setHasDraftEdits(true);
-              setSaveError(null);
-            }}
-            placeholder={t("lifecycleWebhooksTokenPlaceholder")}
-            spellCheck={false}
-          />
-        </div>
-
-        <label className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("lifecycleWebhooksDryRunTitle")}</strong>
-            <p>{t("lifecycleWebhooksDryRunDescription")}</p>
-          </div>
-          <input
-            type="checkbox"
-            checked={dryRun}
-            onChange={(e) => {
-              setDryRun(e.target.checked);
-              setHasDraftEdits(true);
-              setSaveError(null);
-            }}
-          />
-        </label>
-
-        <div
-          className="settings-item"
-          style={{ justifyContent: "flex-end", gap: "var(--space-2)" }}
-        >
-          <button
-            type="button"
-            className="settings-button"
-            disabled={!hasChanges || isSaving}
-            onClick={handleSave}
+          <div
+            className="settings-item"
+            style={{ flexDirection: "column", alignItems: "stretch" }}
           >
-            {isSaving ? t("providersSaving") : t("providersSave")}
-          </button>
-        </div>
+            <div className="settings-item-info">
+              <strong>{t("lifecycleWebhooksUrlTitle")}</strong>
+              <p>{t("lifecycleWebhooksUrlDescription")}</p>
+            </div>
+            <input
+              aria-label={t("lifecycleWebhooksUrlTitle")}
+              autoComplete="off"
+              type="url"
+              className="settings-input"
+              id="lifecycle-webhook-url"
+              name="yep-lifecycle-webhook-url"
+              value={url}
+              onChange={(e) => {
+                const value = e.target.value.slice(0, MAX_URL_LENGTH);
+                setUrl(value);
+                setHasDraftEdits(true);
+                setSaveError(null);
+              }}
+              placeholder="https://example.com/hooks/yep"
+              spellCheck={false}
+            />
+          </div>
 
-        {(saveError || error) && (
-          <p className="settings-warning">{saveError || error}</p>
-        )}
-      </div>
-    </section>
+          <div
+            className="settings-item"
+            style={{ flexDirection: "column", alignItems: "stretch" }}
+          >
+            <div className="settings-item-info">
+              <strong>{t("lifecycleWebhooksTokenTitle")}</strong>
+              <p>{t("lifecycleWebhooksTokenDescription")}</p>
+            </div>
+            <input
+              aria-label={t("lifecycleWebhooksTokenTitle")}
+              autoComplete="new-password"
+              type="password"
+              className="settings-input"
+              id="lifecycle-webhook-token"
+              name="yep-lifecycle-webhook-token"
+              value={token}
+              onChange={(e) => {
+                const value = e.target.value.slice(0, MAX_TOKEN_LENGTH);
+                setToken(value);
+                setHasDraftEdits(true);
+                setSaveError(null);
+              }}
+              placeholder={t("lifecycleWebhooksTokenPlaceholder")}
+              spellCheck={false}
+            />
+          </div>
+
+          <label className="settings-item">
+            <div className="settings-item-info">
+              <strong>{t("lifecycleWebhooksDryRunTitle")}</strong>
+              <p>{t("lifecycleWebhooksDryRunDescription")}</p>
+            </div>
+            <input
+              type="checkbox"
+              checked={dryRun}
+              onChange={(e) => {
+                setDryRun(e.target.checked);
+                setHasDraftEdits(true);
+                setSaveError(null);
+              }}
+            />
+          </label>
+
+          <div
+            className="settings-item"
+            style={{ justifyContent: "flex-end", gap: "var(--space-2)" }}
+          >
+            <button
+              type="button"
+              className="settings-button"
+              disabled={!hasChanges || isSaving}
+              onClick={handleSave}
+            >
+              {isSaving ? t("providersSaving") : t("providersSave")}
+            </button>
+          </div>
+
+          {(saveError || error) && (
+            <p className="settings-warning">{saveError || error}</p>
+          )}
+        </div>
+      </HideInSettingsSearch>
+    </SettingsSection>
   );
 }

@@ -2,7 +2,10 @@ import { useCallback, useMemo, useState } from "react";
 import type { RemoteExecutorTestResult } from "../../api/client";
 import { useRemoteExecutors } from "../../hooks/useRemoteExecutors";
 import { useI18n } from "../../i18n";
+import { SettingsItem } from "./SettingsItem";
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
+import { HideInSettingsSearch } from "./SettingsSearchContext";
+import { SettingsSection } from "./SettingsSection";
 import { useSettingsUndoBaseline } from "./SettingsUndoContext";
 
 interface ExecutorStatus {
@@ -114,18 +117,13 @@ export function RemoteExecutorsSettings() {
   };
 
   return (
-    <section className="settings-section">
-      <p className="settings-section-description">
-        {t("remoteExecutorsDescription")}
-      </p>
-
+    <SettingsSection description={t("remoteExecutorsDescription")}>
       {/* Add new executor */}
       <div className="settings-group">
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("remoteExecutorsAddTitle")}</strong>
-            <p>{t("remoteExecutorsAddDescription")}</p>
-          </div>
+        <SettingsItem
+          label={t("remoteExecutorsAddTitle")}
+          description={t("remoteExecutorsAddDescription")}
+        >
           <div className="remote-executor-add">
             <input
               type="text"
@@ -146,86 +144,90 @@ export function RemoteExecutorsSettings() {
             </button>
           </div>
           {addError && <p className="settings-error">{addError}</p>}
-        </div>
+        </SettingsItem>
       </div>
 
       {/* Executor list */}
-      <div className="settings-group">
-        <h3>{t("remoteExecutorsConfigured")}</h3>
-        {loading ? (
-          <p className="settings-loading">{t("loginLoading")}</p>
-        ) : executors.length === 0 ? (
-          <p className="settings-empty">{t("remoteExecutorsEmpty")}</p>
-        ) : (
-          <div className="remote-executor-list">
-            {executors.map((host) => {
-              const status = executorStatus[host];
-              return (
-                <div key={host} className="remote-executor-item">
-                  <div className="remote-executor-item-info">
-                    <span className="remote-executor-host">{host}</span>
-                    {status?.result && (
-                      <span
-                        className={`settings-status-badge ${status.result.success ? "settings-status-detected" : "settings-status-not-detected"}`}
-                      >
-                        {status.result.success
-                          ? t("remoteExecutorsConnected")
-                          : t("remoteExecutorsFailed")}
-                      </span>
+      <HideInSettingsSearch>
+        <div className="settings-group">
+          <h3>{t("remoteExecutorsConfigured")}</h3>
+          {loading ? (
+            <p className="settings-loading">{t("loginLoading")}</p>
+          ) : executors.length === 0 ? (
+            <p className="settings-empty">{t("remoteExecutorsEmpty")}</p>
+          ) : (
+            <div className="remote-executor-list">
+              {executors.map((host) => {
+                const status = executorStatus[host];
+                return (
+                  <div key={host} className="remote-executor-item">
+                    <div className="remote-executor-item-info">
+                      <span className="remote-executor-host">{host}</span>
+                      {status?.result && (
+                        <span
+                          className={`settings-status-badge ${status.result.success ? "settings-status-detected" : "settings-status-not-detected"}`}
+                        >
+                          {status.result.success
+                            ? t("remoteExecutorsConnected")
+                            : t("remoteExecutorsFailed")}
+                        </span>
+                      )}
+                    </div>
+                    {status?.result && !status.result.success && (
+                      <p className="settings-error remote-executor-error">
+                        {status.result.error}
+                      </p>
                     )}
+                    {status?.result?.success && (
+                      <p className="remote-executor-details">
+                        {status.result.claudeAvailable
+                          ? status.result.claudeVersion
+                            ? t("remoteExecutorsClaudeVersion", {
+                                version: status.result.claudeVersion,
+                              })
+                            : t("remoteExecutorsClaudeAvailable")
+                          : t("remoteExecutorsClaudeMissing")}
+                      </p>
+                    )}
+                    <div className="remote-executor-actions">
+                      <button
+                        type="button"
+                        onClick={() => handleTestExecutor(host)}
+                        disabled={status?.testing}
+                        className="remote-executor-test-button"
+                      >
+                        {status?.testing
+                          ? t("remoteExecutorsTesting")
+                          : t("remoteExecutorsTestConnection")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveExecutor(host)}
+                        className="remote-executor-remove-button"
+                      >
+                        {t("remoteExecutorsRemove")}
+                      </button>
+                    </div>
                   </div>
-                  {status?.result && !status.result.success && (
-                    <p className="settings-error remote-executor-error">
-                      {status.result.error}
-                    </p>
-                  )}
-                  {status?.result?.success && (
-                    <p className="remote-executor-details">
-                      {status.result.claudeAvailable
-                        ? status.result.claudeVersion
-                          ? t("remoteExecutorsClaudeVersion", {
-                              version: status.result.claudeVersion,
-                            })
-                          : t("remoteExecutorsClaudeAvailable")
-                        : t("remoteExecutorsClaudeMissing")}
-                    </p>
-                  )}
-                  <div className="remote-executor-actions">
-                    <button
-                      type="button"
-                      onClick={() => handleTestExecutor(host)}
-                      disabled={status?.testing}
-                      className="remote-executor-test-button"
-                    >
-                      {status?.testing
-                        ? t("remoteExecutorsTesting")
-                        : t("remoteExecutorsTestConnection")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveExecutor(host)}
-                      className="remote-executor-remove-button"
-                    >
-                      {t("remoteExecutorsRemove")}
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </HideInSettingsSearch>
 
       {/* Help text */}
-      <div className="settings-group">
-        <h3>{t("remoteExecutorsSetupRequirements")}</h3>
-        <ul className="settings-requirements">
-          <li>{t("remoteExecutorsRequirementSshConfig")}</li>
-          <li>{t("remoteExecutorsRequirementKeyAuth")}</li>
-          <li>{t("remoteExecutorsRequirementClaude")}</li>
-          <li>{t("remoteExecutorsRequirementPaths")}</li>
-        </ul>
-      </div>
-    </section>
+      <HideInSettingsSearch>
+        <div className="settings-group">
+          <h3>{t("remoteExecutorsSetupRequirements")}</h3>
+          <ul className="settings-requirements">
+            <li>{t("remoteExecutorsRequirementSshConfig")}</li>
+            <li>{t("remoteExecutorsRequirementKeyAuth")}</li>
+            <li>{t("remoteExecutorsRequirementClaude")}</li>
+            <li>{t("remoteExecutorsRequirementPaths")}</li>
+          </ul>
+        </div>
+      </HideInSettingsSearch>
+    </SettingsSection>
   );
 }

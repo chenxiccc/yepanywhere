@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { api, type EnvSettingEntry } from "../../api/client";
 import { useI18n } from "../../i18n";
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
+import { HideInSettingsSearch } from "./SettingsSearchContext";
+import { SettingsSection } from "./SettingsSection";
 
 interface EnvGroup {
   group: string;
@@ -51,23 +53,23 @@ export function EnvironmentSettings() {
   );
 
   return (
-    <section className="settings-section">
-      <p className="settings-section-description">
-        {t("environmentSectionDescription")}
-      </p>
+    <SettingsSection description={t("environmentSectionDescription")}>
+      <HideInSettingsSearch>
+        {error && (
+          <p className="settings-warning">{t("environmentLoadError")}</p>
+        )}
+        {!error && entries === null && <p>{t("environmentLoading")}</p>}
 
-      {error && <p className="settings-warning">{t("environmentLoadError")}</p>}
-      {!error && entries === null && <p>{t("environmentLoading")}</p>}
-
-      {groups.map((group) => (
-        <div key={group.group} className="settings-group env-var-group">
-          <h3 className="env-var-group-title">{group.group}</h3>
-          {group.entries.map((entry) => (
-            <EnvVarRow key={entry.name} entry={entry} />
-          ))}
-        </div>
-      ))}
-    </section>
+        {groups.map((group) => (
+          <div key={group.group} className="settings-group env-var-group">
+            <h3 className="env-var-group-title">{group.group}</h3>
+            {group.entries.map((entry) => (
+              <EnvVarRow key={entry.name} entry={entry} />
+            ))}
+          </div>
+        ))}
+      </HideInSettingsSearch>
+    </SettingsSection>
   );
 }
 

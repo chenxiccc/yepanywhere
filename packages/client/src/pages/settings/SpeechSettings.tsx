@@ -38,7 +38,9 @@ import {
   resolveParakeetModelBackend,
 } from "../../lib/speechProviders/parakeetModels";
 import { prewarmYaServerSpeechBackend } from "../../lib/speechProviders/YaServerProvider";
+import { SettingsItem } from "./SettingsItem";
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
+import { SettingsSection } from "./SettingsSection";
 import { useSettingsUndoBaseline } from "./SettingsUndoContext";
 
 export function SpeechSettings() {
@@ -234,22 +236,23 @@ export function SpeechSettings() {
   );
 
   return (
-    <section className="settings-section">
-      <p className="settings-section-description">
-        {t("speechSettingsDescription")}
-      </p>
-
+    <SettingsSection description={t("speechSettingsDescription")}>
       <div className="settings-group">
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("speechSettingsVoiceInputTitle")}</strong>
-            <p>{t("speechSettingsVoiceInputDescription")}</p>
-            {!serverVoiceEnabled && (
-              <p className="settings-hint">
-                {t("speechSettingsServerDisabled")}
-              </p>
-            )}
-          </div>
+        <SettingsItem
+          label={t("speechSettingsVoiceInputTitle")}
+          description={t("speechSettingsVoiceInputDescription")}
+          info={
+            <>
+              <strong>{t("speechSettingsVoiceInputTitle")}</strong>
+              <p>{t("speechSettingsVoiceInputDescription")}</p>
+              {!serverVoiceEnabled && (
+                <p className="settings-hint">
+                  {t("speechSettingsServerDisabled")}
+                </p>
+              )}
+            </>
+          }
+        >
           <label className="toggle-switch">
             <input
               type="checkbox"
@@ -260,14 +263,14 @@ export function SpeechSettings() {
             />
             <span className="toggle-slider" />
           </label>
-        </div>
+        </SettingsItem>
 
         {showParakeetModelControls && (
-          <div className="settings-item model-settings-item">
-            <div className="settings-item-info">
-              <strong>{t("speechSettingsParakeetModelTitle")}</strong>
-              <p>{t("speechSettingsParakeetModelDescription")}</p>
-            </div>
+          <SettingsItem
+            label={t("speechSettingsParakeetModelTitle")}
+            description={t("speechSettingsParakeetModelDescription")}
+            className="model-settings-item"
+          >
             <div className="speech-backend-settings-field">
               <select
                 id={parakeetModelPresetId}
@@ -328,14 +331,23 @@ export function SpeechSettings() {
                 {t("speechSettingsParakeetModelHint")}
               </p>
             </div>
-          </div>
+          </SettingsItem>
         )}
 
-        <div className="settings-item model-settings-item">
-          <div className="settings-item-info">
-            <strong>{t("speechSettingsBackendTitle")}</strong>
-            <p>{t("speechSettingsBackendDescription")}</p>
-          </div>
+        <SettingsItem
+          label={t("speechSettingsBackendTitle")}
+          description={t("speechSettingsBackendDescription")}
+          valueText={selectedBackendLabel}
+          className="model-settings-item"
+          after={
+            relayTransport &&
+            selectedBackend === "ya-grok" && (
+              <p className="settings-hint">
+                {t("speechSettingsStreamingRelayUnavailable")}
+              </p>
+            )
+          }
+        >
           <div className="speech-backend-settings-field">
             <FilterDropdown
               label={t("speechSettingsBackendTitle")}
@@ -358,19 +370,13 @@ export function SpeechSettings() {
               </p>
             )}
           </div>
-        </div>
+        </SettingsItem>
 
-        {relayTransport && selectedBackend === "ya-grok" && (
-          <p className="settings-hint">
-            {t("speechSettingsStreamingRelayUnavailable")}
-          </p>
-        )}
-
-        <div className="settings-item model-settings-item">
-          <div className="settings-item-info">
-            <strong>{t("speechSettingsXaiKeyTitle")}</strong>
-            <p>{t("speechSettingsXaiKeyDescription")}</p>
-          </div>
+        <SettingsItem
+          label={t("speechSettingsXaiKeyTitle")}
+          description={t("speechSettingsXaiKeyDescription")}
+          className="model-settings-item"
+        >
           <input
             type="password"
             className="settings-input"
@@ -383,13 +389,12 @@ export function SpeechSettings() {
             }}
             aria-label={t("speechSettingsXaiKeyTitle")}
           />
-        </div>
+        </SettingsItem>
 
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("speechSettingsKeepMicWarmTitle")}</strong>
-            <p>{t("speechSettingsKeepMicWarmDescription")}</p>
-          </div>
+        <SettingsItem
+          label={t("speechSettingsKeepMicWarmTitle")}
+          description={t("speechSettingsKeepMicWarmDescription")}
+        >
           <label className="toggle-switch">
             <input
               type="checkbox"
@@ -399,17 +404,15 @@ export function SpeechSettings() {
             />
             <span className="toggle-slider" />
           </label>
-        </div>
+        </SettingsItem>
 
-        <div className="settings-item model-settings-item">
-          <div className="settings-item-info">
-            <strong>{t("speechSettingsSmartTurnTitle")}</strong>
-            <p>
-              {t("speechSettingsSmartTurnDescription", {
-                backend: selectedBackendLabel,
-              })}
-            </p>
-          </div>
+        <SettingsItem
+          label={t("speechSettingsSmartTurnTitle")}
+          description={t("speechSettingsSmartTurnDescription", {
+            backend: selectedBackendLabel,
+          })}
+          className="model-settings-item"
+        >
           {supportsSelectedSmartTurn ? (
             <SpeechSmartTurnControls
               settings={speechSmartTurnSettings}
@@ -418,8 +421,8 @@ export function SpeechSettings() {
           ) : (
             <p className="settings-hint">{smartTurnUnavailableHint}</p>
           )}
-        </div>
+        </SettingsItem>
       </div>
-    </section>
+    </SettingsSection>
   );
 }

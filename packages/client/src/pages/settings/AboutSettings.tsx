@@ -12,7 +12,10 @@ import {
   getInterruptibleSessionCount,
   type WorkerActivityEvent,
 } from "../../lib/activityBus";
+import { SettingsItem } from "./SettingsItem";
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
+import { HideInSettingsSearch } from "./SettingsSearchContext";
+import { SettingsSection } from "./SettingsSection";
 import {
   formatRemoteServerVersion,
   getRemoteCompatibilityNotices,
@@ -115,19 +118,18 @@ export function AboutSettings() {
   ]);
 
   return (
-    <section className="settings-section">
+    <SettingsSection>
       <div className="settings-group">
         {/* Only show Install option if install is possible or already installed */}
         {(canInstall || isInstalled) && (
-          <div className="settings-item">
-            <div className="settings-item-info">
-              <strong>{t("aboutInstallTitle")}</strong>
-              <p>
-                {isInstalled
-                  ? t("aboutInstalledDescription")
-                  : t("aboutInstallDescription")}
-              </p>
-            </div>
+          <SettingsItem
+            label={t("aboutInstallTitle")}
+            description={
+              isInstalled
+                ? t("aboutInstalledDescription")
+                : t("aboutInstallDescription")
+            }
+          >
             {isInstalled ? (
               <span className="settings-status-badge">
                 {t("aboutInstalled")}
@@ -141,84 +143,91 @@ export function AboutSettings() {
                 {t("aboutInstall")}
               </button>
             )}
-          </div>
+          </SettingsItem>
         )}
-        <div className="settings-item settings-version-item">
-          <div className="settings-version-item__row">
-            <div className="settings-item-info">
-              <strong>{t("aboutVersionTitle")}</strong>
-              <p>
-                {t("aboutServerVersion")}{" "}
-                {versionInfo ? (
-                  <>
-                    {formatRemoteServerVersion(
-                      versionInfo.current,
-                      versionInfo.installSource,
-                    )}
-                    {parseSemver(versionInfo.current) &&
-                    versionInfo.updateAvailable &&
-                    versionInfo.latest ? (
-                      <span className="settings-update-available">
-                        {" "}
-                        {t("aboutVersionAvailable", {
-                          version: versionInfo.latest,
-                        })}
-                      </span>
-                    ) : parseSemver(versionInfo.current) &&
+        <HideInSettingsSearch>
+          <div className="settings-item settings-version-item">
+            <div className="settings-version-item__row">
+              <div className="settings-item-info">
+                <strong>{t("aboutVersionTitle")}</strong>
+                <p>
+                  {t("aboutServerVersion")}{" "}
+                  {versionInfo ? (
+                    <>
+                      {formatRemoteServerVersion(
+                        versionInfo.current,
+                        versionInfo.installSource,
+                      )}
+                      {parseSemver(versionInfo.current) &&
+                      versionInfo.updateAvailable &&
                       versionInfo.latest ? (
-                      <span className="settings-up-to-date">
-                        {" "}
-                        {t("aboutUpToDate")}
-                      </span>
-                    ) : null}
-                  </>
-                ) : (
-                  t("loginLoading")
+                        <span className="settings-update-available">
+                          {" "}
+                          {t("aboutVersionAvailable", {
+                            version: versionInfo.latest,
+                          })}
+                        </span>
+                      ) : parseSemver(versionInfo.current) &&
+                        versionInfo.latest ? (
+                        <span className="settings-up-to-date">
+                          {" "}
+                          {t("aboutUpToDate")}
+                        </span>
+                      ) : null}
+                    </>
+                  ) : (
+                    t("loginLoading")
+                  )}
+                </p>
+                <p>
+                  {t("aboutClientVersion")} v{__APP_VERSION__}
+                </p>
+                {versionError && (
+                  <p className="settings-warning">{t("aboutUnableRefresh")}</p>
                 )}
-              </p>
-              <p>
-                {t("aboutClientVersion")} v{__APP_VERSION__}
-              </p>
-              {versionError && (
-                <p className="settings-warning">{t("aboutUnableRefresh")}</p>
-              )}
-              {versionInfo?.updateAvailable && !remoteCompatibilityNotice && (
-                <p className="settings-update-hint">{t("aboutUpdateHint")}</p>
-              )}
+                {versionInfo?.updateAvailable && !remoteCompatibilityNotice && (
+                  <p className="settings-update-hint">{t("aboutUpdateHint")}</p>
+                )}
+              </div>
+              <div className="settings-item-actions">
+                <button
+                  type="button"
+                  className="settings-button"
+                  onClick={() => void handleCheckUpdates()}
+                  disabled={versionLoading}
+                >
+                  {versionLoading ? t("aboutChecking") : t("aboutCheckUpdates")}
+                </button>
+              </div>
             </div>
-            <div className="settings-item-actions">
-              <button
-                type="button"
-                className="settings-button"
-                onClick={() => void handleCheckUpdates()}
-                disabled={versionLoading}
-              >
-                {versionLoading ? t("aboutChecking") : t("aboutCheckUpdates")}
-              </button>
-            </div>
-          </div>
-          {inlineRemoteCompatibilityNotice && (
-            <RemoteCompatibilityNoticeCard
-              notice={inlineRemoteCompatibilityNotice}
-              noticeCount={remoteCompatibilityNotices.length}
-              placement="inline"
-              onRestore={handleShowRemoteCompatibilityBanner}
-            />
-          )}
-        </div>
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("developmentRestartTitle")}</strong>
-            <p>{t("developmentRestartDescription")}</p>
-            {interruptibleSessionCount > 0 && !restarting && (
-              <p className="settings-warning">
-                {t("developmentInterruptedWarning", {
-                  count: interruptibleSessionCount,
-                  suffix: interruptibleSessionCount !== 1 ? "s " : " ",
-                })}
-              </p>
+            {inlineRemoteCompatibilityNotice && (
+              <RemoteCompatibilityNoticeCard
+                notice={inlineRemoteCompatibilityNotice}
+                noticeCount={remoteCompatibilityNotices.length}
+                placement="inline"
+                onRestore={handleShowRemoteCompatibilityBanner}
+              />
             )}
           </div>
+        </HideInSettingsSearch>
+        <SettingsItem
+          label={t("developmentRestartTitle")}
+          description={t("developmentRestartDescription")}
+          info={
+            <>
+              <strong>{t("developmentRestartTitle")}</strong>
+              <p>{t("developmentRestartDescription")}</p>
+              {interruptibleSessionCount > 0 && !restarting && (
+                <p className="settings-warning">
+                  {t("developmentInterruptedWarning", {
+                    count: interruptibleSessionCount,
+                    suffix: interruptibleSessionCount !== 1 ? "s " : " ",
+                  })}
+                </p>
+              )}
+            </>
+          }
+        >
           <button
             type="button"
             className={`settings-button ${interruptibleSessionCount > 0 ? "settings-button-danger" : ""}`}
@@ -231,12 +240,11 @@ export function AboutSettings() {
                 ? t("developmentRestartAnyway")
                 : t("developmentRestart")}
           </button>
-        </div>
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("aboutReportBugTitle")}</strong>
-            <p>{t("aboutReportBugDescription")}</p>
-          </div>
+        </SettingsItem>
+        <SettingsItem
+          label={t("aboutReportBugTitle")}
+          description={t("aboutReportBugDescription")}
+        >
           <a
             href="https://github.com/kzahel/yepanywhere/issues"
             target="_blank"
@@ -245,12 +253,11 @@ export function AboutSettings() {
           >
             {t("aboutReportBug")}
           </a>
-        </div>
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("aboutSetupWizardTitle")}</strong>
-            <p>{t("aboutSetupWizardDescription")}</p>
-          </div>
+        </SettingsItem>
+        <SettingsItem
+          label={t("aboutSetupWizardTitle")}
+          description={t("aboutSetupWizardDescription")}
+        >
           <button
             type="button"
             className="settings-button"
@@ -258,8 +265,8 @@ export function AboutSettings() {
           >
             {t("aboutLaunchWizard")}
           </button>
-        </div>
+        </SettingsItem>
       </div>
-    </section>
+    </SettingsSection>
   );
 }

@@ -176,3 +176,6 @@
   enablement change makes !! execution and the recall drawer always-on,
   with only the "!! Commands" sidebar section opt-in. Vanilla Defaults
   amended with an established-convention carve-out to allow it.
+- settings-search - live substring filter over the Settings UI: shared
+  SettingsItem/SettingsSection row layer, operable-in-place results with
+  highlighted matches and jump links, default-off "Match values" toggle.

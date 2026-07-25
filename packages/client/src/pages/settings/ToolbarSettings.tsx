@@ -21,7 +21,10 @@ import {
   serverSupportsProjectQueue,
   serverSupportsProjectQueueNewSessionShortcutSetting,
 } from "../../lib/projectQueueVisibility";
+import { SettingsItem } from "./SettingsItem";
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
+import { HideInSettingsSearch } from "./SettingsSearchContext";
+import { SettingsSection } from "./SettingsSection";
 import { useSettingsUndoBaseline } from "./SettingsUndoContext";
 
 const BUSY_COMPOSER_DEFAULT_ACTIONS: BusyComposerDefaultAction[] = [
@@ -410,17 +413,12 @@ export function ToolbarSettings() {
   );
 
   return (
-    <section className="settings-section">
-      <p className="settings-section-description">
-        {t("appearanceSessionToolbarDescription")}
-      </p>
-
+    <SettingsSection description={t("appearanceSessionToolbarDescription")}>
       <div className="settings-group">
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("appearanceToolbarDefaultActionTitle")}</strong>
-            <p>{t("appearanceToolbarDefaultActionDescription")}</p>
-          </div>
+        <SettingsItem
+          label={t("appearanceToolbarDefaultActionTitle")}
+          description={t("appearanceToolbarDefaultActionDescription")}
+        >
           <select
             className="settings-select"
             value={busyComposerDefaultAction}
@@ -442,13 +440,12 @@ export function ToolbarSettings() {
               {t("appearanceToolbarDefaultActionQueue")}
             </option>
           </select>
-        </div>
+        </SettingsItem>
 
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("appearanceToolbarCollapsedButtonTitle")}</strong>
-            <p>{t("appearanceToolbarCollapsedButtonDescription")}</p>
-          </div>
+        <SettingsItem
+          label={t("appearanceToolbarCollapsedButtonTitle")}
+          description={t("appearanceToolbarCollapsedButtonDescription")}
+        >
           <select
             className="settings-select"
             value={collapsedComposerButton}
@@ -474,48 +471,55 @@ export function ToolbarSettings() {
               {t("appearanceToolbarCollapsedButtonMicrophone")}
             </option>
           </select>
-        </div>
+        </SettingsItem>
 
-        <div className="settings-item session-toolbar-settings">
-          <SessionToolbarPreview />
+        <HideInSettingsSearch>
+          <div className="settings-item session-toolbar-settings">
+            <SessionToolbarPreview />
 
-          <div className="session-toolbar-zone">
-            <div className="session-toolbar-zone-heading">
-              <strong>{t("appearanceToolbarHiddenHeading")}</strong>
-              <span>{t("appearanceToolbarHiddenDescription")}</span>
+            <div className="session-toolbar-zone">
+              <div className="session-toolbar-zone-heading">
+                <strong>{t("appearanceToolbarHiddenHeading")}</strong>
+                <span>{t("appearanceToolbarHiddenDescription")}</span>
+              </div>
+              <div className="session-toolbar-hidden-groups">
+                {renderHiddenGroup(t("appearanceToolbarSideLeft"), hiddenLeft)}
+                {renderHiddenGroup(
+                  t("appearanceToolbarSideRight"),
+                  hiddenRight,
+                )}
+              </div>
             </div>
-            <div className="session-toolbar-hidden-groups">
-              {renderHiddenGroup(t("appearanceToolbarSideLeft"), hiddenLeft)}
-              {renderHiddenGroup(t("appearanceToolbarSideRight"), hiddenRight)}
+
+            <div className="session-toolbar-zone-separator" />
+
+            <div className="session-toolbar-zone">
+              <div className="session-toolbar-zone-heading">
+                <strong>{t("appearanceToolbarShownHeading")}</strong>
+                <span>{t("appearanceToolbarShownDescription")}</span>
+              </div>
+              <div className="session-toolbar-control-list">
+                {shownControls.map((control) =>
+                  renderControlRow(control, "shown"),
+                )}
+              </div>
+            </div>
+
+            <div className="settings-item-actions">
+              <button
+                type="button"
+                className="settings-button settings-button-secondary"
+                onClick={() => {
+                  resetPresence();
+                }}
+              >
+                {t("appearanceSessionToolbarReset")}
+              </button>
             </div>
           </div>
-
-          <div className="session-toolbar-zone-separator" />
-
-          <div className="session-toolbar-zone">
-            <div className="session-toolbar-zone-heading">
-              <strong>{t("appearanceToolbarShownHeading")}</strong>
-              <span>{t("appearanceToolbarShownDescription")}</span>
-            </div>
-            <div className="session-toolbar-control-list">
-              {shownControls.map((control) => renderControlRow(control, "shown"))}
-            </div>
-          </div>
-
-          <div className="settings-item-actions">
-            <button
-              type="button"
-              className="settings-button settings-button-secondary"
-              onClick={() => {
-                resetPresence();
-              }}
-            >
-              {t("appearanceSessionToolbarReset")}
-            </button>
-          </div>
-        </div>
+        </HideInSettingsSearch>
         {error && <p className="settings-warning">{error}</p>}
       </div>
-    </section>
+    </SettingsSection>
   );
 }
