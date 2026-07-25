@@ -1,26 +1,35 @@
 import { BANG_COMMANDS_CAPABILITY } from "@yep-anywhere/shared";
 import { describe, expect, it } from "vitest";
 import {
-  bangCommandsAreEnabled,
+  bangHistoryViewEnabled,
   serverSupportsBangCommands,
 } from "../bangCommandAvailability";
 
 describe("bang command availability", () => {
-  it("requires both server support and an explicit opt-in", () => {
+  it("execution needs only server support", () => {
     expect(serverSupportsBangCommands(undefined)).toBe(false);
+    expect(serverSupportsBangCommands({ capabilities: [] })).toBe(false);
     expect(
-      bangCommandsAreEnabled({
+      serverSupportsBangCommands({
+        capabilities: [BANG_COMMANDS_CAPABILITY],
+      }),
+    ).toBe(true);
+  });
+
+  it("the history view requires both server support and an explicit opt-in", () => {
+    expect(
+      bangHistoryViewEnabled({
         capabilities: [BANG_COMMANDS_CAPABILITY],
       }),
     ).toBe(false);
     expect(
-      bangCommandsAreEnabled({
+      bangHistoryViewEnabled({
         capabilities: [],
         clientDefaults: { bangCommandsEnabled: true },
       }),
     ).toBe(false);
     expect(
-      bangCommandsAreEnabled({
+      bangHistoryViewEnabled({
         capabilities: [BANG_COMMANDS_CAPABILITY],
         clientDefaults: { bangCommandsEnabled: true },
       }),

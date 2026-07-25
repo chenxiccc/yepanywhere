@@ -50,6 +50,9 @@ vi.mock("../../i18n", () => ({
         bangHistoryTitle: "!! Commands",
         bangHistoryEmpty: "No bang commands yet",
         bangHistoryOpenSession: "Open session",
+        bangHistoryActionEdit: "Edit / re-issue command",
+        bangHistoryActionNew: "New command in session",
+        bangHistoryActionJump: "Jump to command in session",
       };
       return messages[key] ?? key;
     },

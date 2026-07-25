@@ -55,9 +55,8 @@ Three separable concerns, each enabled independently:
 - **"!! Commands" sidebar section — the one opt-in.** The top-level
   sidebar entry (the discoverable history view) is what a first-timer
   might not understand, so its display stays behind a setting. This is the
-  only thing `clientDefaults.bangCommandsEnabled` (or a renamed successor)
-  should gate. Default for the sidebar entry: TBD (off keeps the current
-  first-run surface unchanged).
+  only thing `clientDefaults.bangCommandsEnabled` gates. Default: off (see
+  bang-commands.md § Contracts).
 
 ### Vanilla Defaults: resolved by amendment
 
@@ -86,7 +85,7 @@ reversal is surfaced in that topic and the commit for kzahel's review.
   This is the net-new matching mode (everything today is substring).
 - **Drawer UI — reuse the existing Tab-completion menu.** The bang/slash
   completion dropdown (`slash-command-menu` / `composer-slash-command-menu`
-  / `bang-completion-menu`, `MessageInput.tsx:2374`: a `role="menu"` list
+  / `bang-completion-menu`, `MessageInput.tsx`: a `role="menu"` list
   of `slash-command-item` buttons folding up from the composer, arrow-key
   selection with an `active` row, mouse-hover select) is already the
   compact scannable list this drawer wants — confirmed by graehl watching
@@ -158,8 +157,7 @@ Net-new:
    Enter-recall + restore-draft + dismiss-on-typing, over prior user
    turns. Source = user turns only; plain-ArrowUp last-recall kept; the
    old bang Ctrl+Up cycling left in place (drawer handler runs after it).
-2. **Go-to-turn control + mobile open affordance** — fast-follow, building
-   now:
+2. **Go-to-turn control + mobile open affordance** — shipped:
    - *Go-to-turn:* a per-row secondary control that scrolls the transcript
      to that turn. Requires the recall entry to carry its source
      message/render id (add to `getComposerTurnRecallEntries`), then reuse
@@ -180,7 +178,8 @@ Net-new:
   replace it).
 - The drawer (not the interim isearch-preview reuse) is the shipped form.
 - The drawer *keystroke* (Ctrl+Up) is always-on with no setting; the "!!
-  Commands" sidebar entry is the only bang opt-in (default TBD). The phase-2
+  Commands" sidebar entry and top-level history view are the only bang
+  opt-in (default off; see bang-commands.md § Contracts). The phase-2
   mobile open button is separately presence-configurable and default-hidden
   (see § Enablement).
 
@@ -202,6 +201,6 @@ Open as of 2026-07-25, and the reason the mobile open button ships hidden:
   inherits `.message-input-keyboard-action`'s `--app-yep-green` fill and
   reads as a primary action beside Send. `.bang-tab-mode`, the sibling
   autocomplete affordance, sets `border-color` on an element the base rule
-  gives `border: 0`, so it is also un-de-emphasized.
-- **Inline aria-label.** The button and the per-row go-to control still use
-  literal strings pending en.json keys.
+  gives `border: 0`, so it is also un-de-emphasized. (The drawer rows and
+  the per-row go-to control do have classes: `composer-recall-row` /
+  `composer-recall-goto`.)

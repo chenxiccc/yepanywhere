@@ -18,10 +18,10 @@ import type { ProjectScanner } from "../projects/scanner.js";
 import type { BangCommandService } from "../services/BangCommandService.js";
 import type { Project } from "../supervisor/types.js";
 import {
+  BangHistoryIndex,
   listAcliArgCompletions,
   listBangCommandCompletions,
   listBangPathCompletions,
-  matchBangHistory,
 } from "../services/bangCompletions.js";
 
 const COMMAND_MAX_CHARS = 8192;
@@ -30,7 +30,8 @@ export interface BangCommandsDeps {
   scanner: ProjectScanner;
   sessionMetadataService: SessionMetadataService;
   bangCommandService: BangCommandService;
-  bangCommandsEnabled: () => boolean;
+  /** Gates only the discoverable top-level "!! Commands" history view. */
+  bangHistoryViewEnabled: () => boolean;
   sessionBelongsToProject: (
     project: Project,
     sessionId: string,
@@ -102,11 +103,13 @@ export function buildBangOutputMarkdown(text: string): {
   mode: BangOutputMode;
 } {
   const mode = classifyBangOutput(text);
-  if (mode === "json") {
-    // Uniform JSONL (the acli default for list-shaped output, e.g. almanac)
-    // renders as real tables rather than a fenced JSON blob; the per-block
-    // Raw toggle still shows the original lines. Mixed/non-uniform JSONL
-    // (no qualifying run) falls through to the plain json fence below.
+  if (mode === "json" || mode === "markdown") {
+    // Any run of 2+ consecutive same-key-set JSONL lines (the acli default
+    // for list-shaped output, e.g. almanac) renders as a real table, with
+    // surrounding prose passed through verbatim — including prose-led output
+    // the whole-document classifier calls markdown. The per-block Raw toggle
+    // still shows the original lines. Output with no qualifying run falls
+    // through to its classified path below.
     const { markdown, tableCount } = jsonlTablesToMarkdown(text);
     if (tableCount > 0) {
       return { markdown, mode: "markdown" };
@@ -148,28 +151,44 @@ function collectGlobalBangCommands(
   return [...new Set(commands)];
 }
 
+/** Corpus/index rebuild cadence for history completion (per-keystroke reads). */
+const BANG_HISTORY_INDEX_TTL_MS = 5_000;
+
 export function createBangCommandsRoutes(deps: BangCommandsDeps): Hono {
   const routes = new Hono();
 
-  const requireBangCommandsEnabled: MiddlewareHandler = async (c, next) => {
-    if (!deps.bangCommandsEnabled()) {
-      return c.json({ error: "Bang commands are disabled" }, 404);
+  // Execution, per-session object routes, and completions are always-on
+  // (vanilla-defaults.md § Known Exceptions: `!!` is an established,
+  // deliberately invoked shell-escape). Only the discoverable "!! Commands"
+  // history surface stays behind the explicit default-off setting.
+  const requireBangHistoryViewEnabled: MiddlewareHandler = async (c, next) => {
+    if (!deps.bangHistoryViewEnabled()) {
+      return c.json({ error: "Bang command history view is disabled" }, 404);
     }
     await next();
   };
-  routes.use("/bang-commands", requireBangCommandsEnabled);
-  routes.use(
-    "/projects/:projectId/bang-completions",
-    requireBangCommandsEnabled,
-  );
-  routes.use(
-    "/projects/:projectId/sessions/:sessionId/bang-commands",
-    requireBangCommandsEnabled,
-  );
-  routes.use(
-    "/projects/:projectId/sessions/:sessionId/bang-commands/*",
-    requireBangCommandsEnabled,
-  );
+  routes.use("/bang-commands", requireBangHistoryViewEnabled);
+
+  // Cached prefix index over the global command-history corpus: rebuilt at
+  // most every BANG_HISTORY_INDEX_TTL_MS instead of rescanning and sorting
+  // every session's display objects per completion keystroke. A brand-new run
+  // appears in completions after at most one TTL.
+  let bangHistoryIndexCache: {
+    index: BangHistoryIndex;
+    expiresAt: number;
+  } | null = null;
+  const getBangHistoryIndex = (): BangHistoryIndex => {
+    const now = Date.now();
+    if (!bangHistoryIndexCache || now >= bangHistoryIndexCache.expiresAt) {
+      bangHistoryIndexCache = {
+        index: new BangHistoryIndex(
+          collectGlobalBangCommands(deps.sessionMetadataService),
+        ),
+        expiresAt: now + BANG_HISTORY_INDEX_TTL_MS,
+      };
+    }
+    return bangHistoryIndexCache.index;
+  };
 
   const resolveProject = async (projectId: string) => {
     if (!isUrlProjectId(projectId)) {
@@ -331,12 +350,7 @@ export function createBangCommandsRoutes(deps: BangCommandsDeps): Hono {
     // Global command history is a separate axis from the token candidates: it
     // prefix-matches the whole `!!` body regardless of command/path position,
     // and the client ranks it ahead of the PATH/project/path candidates.
-    const history = line
-      ? matchBangHistory(
-          collectGlobalBangCommands(deps.sessionMetadataService),
-          line,
-        )
-      : [];
+    const history = line ? getBangHistoryIndex().match(line) : [];
     if (kind === "path" && line) {
       const acli = await listAcliArgCompletions({
         line,

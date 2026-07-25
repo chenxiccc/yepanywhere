@@ -75,3 +75,12 @@ newer, but retain `agent_end` for version-probed 0.79.9 through 0.80.3
 binaries because they never emit the newer event and would otherwise hang.
 Fail startup when `pi --version` is unrecognized rather than guessing a
 boundary that could either hang or finalize before retry/compaction completes.
+
+2026-07-25 `clientDefaults.bangCommandsEnabled` — keep the persisted key and
+routes but narrow its meaning from "all bang commands" to "the discoverable
+!! Commands history surface" (sidebar entry + `GET /api/bang-commands`);
+execution, completions, and session-scoped bang routes became always-on under
+the vanilla-defaults established-convention carve-out. Key kept because it is
+a persisted server setting named in the `bang-commands` capability contract;
+older co-deployed clients that still gate the composer on it merely under-use
+the server.

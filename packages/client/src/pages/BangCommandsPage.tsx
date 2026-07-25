@@ -42,6 +42,7 @@ function BangHistoryEntryActions({
   command: string;
   objectId: string;
 }) {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const sessionPath = `/projects/${projectId}/sessions/${sessionId}`;
   return (
@@ -49,10 +50,8 @@ function BangHistoryEntryActions({
       <button
         type="button"
         className="bang-history-entry-action"
-        // TODO(i18n): needs an en.json key (e.g. bangHistoryActionEdit);
-        // inline literal while packages/client/src/i18n/en.json is peer-held.
-        aria-label="Edit / re-issue command"
-        title="Edit / re-issue command"
+        aria-label={t("bangHistoryActionEdit")}
+        title={t("bangHistoryActionEdit")}
         onClick={() =>
           navigate(sessionPath, {
             state: createSessionNavigationState({
@@ -78,9 +77,8 @@ function BangHistoryEntryActions({
       <button
         type="button"
         className="bang-history-entry-action"
-        // TODO(i18n): needs an en.json key (e.g. bangHistoryActionNew).
-        aria-label="New command in session"
-        title="New command in session"
+        aria-label={t("bangHistoryActionNew")}
+        title={t("bangHistoryActionNew")}
         onClick={() =>
           navigate(sessionPath, {
             state: createSessionNavigationState({ focusComposer: true }),
@@ -104,9 +102,8 @@ function BangHistoryEntryActions({
       <button
         type="button"
         className="bang-history-entry-action"
-        // TODO(i18n): needs an en.json key (e.g. bangHistoryActionJump).
-        aria-label="Jump to command in session"
-        title="Jump to command in session"
+        aria-label={t("bangHistoryActionJump")}
+        title={t("bangHistoryActionJump")}
         onClick={() =>
           navigate(sessionPath, {
             state: createSessionNavigationState({

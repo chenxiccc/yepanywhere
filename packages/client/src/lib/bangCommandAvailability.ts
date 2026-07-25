@@ -9,13 +9,22 @@ interface BangCommandAvailabilitySource {
   clientDefaults?: ClientDefaults;
 }
 
+/**
+ * Whether `!!` execution, completions, and per-session bang routes exist on
+ * this server. Execution is always-on where supported (vanilla-defaults.md
+ * § Known Exceptions); only the history view below has a setting.
+ */
 export function serverSupportsBangCommands(
   source: BangCommandAvailabilitySource | null | undefined,
 ): boolean {
   return serverHasCapability(source, BANG_COMMANDS_CAPABILITY);
 }
 
-export function bangCommandsAreEnabled(
+/**
+ * Whether the discoverable "!! Commands" surface (sidebar entry + top-level
+ * history view) is enabled — the sole default-off part of bang commands.
+ */
+export function bangHistoryViewEnabled(
   source: BangCommandAvailabilitySource | null | undefined,
   clientDefaults = source?.clientDefaults,
 ): boolean {

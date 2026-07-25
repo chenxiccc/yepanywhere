@@ -1,4 +1,5 @@
 import type { ContentBlock, Message } from "../types";
+import { isPlainUserTurn } from "./linearMessageDedup";
 import { getMessageContent, getMessageId } from "./mergeMessages";
 import {
   getPromptTextForCorrection,
@@ -22,47 +23,6 @@ export interface ComposerTurnRecallEntry {
   text: string;
   /** Single-line, whitespace-collapsed, ~180-char preview for the menu row. */
   preview: string;
-}
-
-function getMessageRole(message: Message): string {
-  const nestedRole = (message.message as { role?: unknown } | undefined)?.role;
-  if (
-    nestedRole === "user" ||
-    nestedRole === "assistant" ||
-    nestedRole === "system"
-  ) {
-    return nestedRole;
-  }
-  if (
-    message.role === "user" ||
-    message.role === "assistant" ||
-    message.role === "system"
-  ) {
-    return message.role;
-  }
-  return "unknown";
-}
-
-/**
- * A plain user prompt turn (mirrors linearMessageDedup's private predicate):
- * user type + user role, excluding tool_use/tool_result echoes that also
- * render under the user role.
- */
-function isPlainUserTurn(message: Message): boolean {
-  if (message.type !== "user" || getMessageRole(message) !== "user") {
-    return false;
-  }
-  const content = getMessageContent(message);
-  if (Array.isArray(content)) {
-    const hasToolBlock = content.some((block) => {
-      const type = (block as { type?: unknown } | null)?.type;
-      return type === "tool_use" || type === "tool_result";
-    });
-    if (hasToolBlock) {
-      return false;
-    }
-  }
-  return true;
 }
 
 function extractUserTurnText(message: Message): string {

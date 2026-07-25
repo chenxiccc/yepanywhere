@@ -61,13 +61,17 @@ project directory:
 
 ## Contracts
 
-- **Default-off feature gate.** Bang commands are available only when the
-  server advertises the permanent `bang-commands` capability and
-  `clientDefaults.bangCommandsEnabled` is explicitly `true`. Absence means
-  off. The server returns 404 from every bang route while disabled; clients
-  hide the sidebar entry and do not give composers `bangSupport`. The opt-in
-  lives in Message Delivery settings because it changes composer submission
-  routing.
+- **Execution always-on; the history surface default-off.** Wherever the
+  server advertises the permanent `bang-commands` capability, `!!`
+  execution, completions, and the per-session object routes are always
+  available (vanilla-defaults.md § Known Exceptions: an established,
+  deliberately invoked shell-escape adds no default-visible surface).
+  Only the discoverable "!! Commands" surface — the sidebar entry and the
+  top-level `GET /api/bang-commands` history view — is gated on
+  `clientDefaults.bangCommandsEnabled` being explicitly `true`; absence
+  means hidden, and the server returns 404 from that route while hidden.
+  The toggle stays in Message Delivery settings next to the composer
+  routing it documents.
 - **`!!` is YA-routed, never provider ingress.** Routing happens in the
   composer (`MessageInput` resolves the draft before its trim/send step,
   because the leading-space escape depends on pre-trim text) and only on
@@ -93,7 +97,7 @@ project directory:
 - **Trust boundary.** No new one: YA already executes arbitrary code as the
   server user via agent sessions. Bang exec is gated by the same
   authentication as sending a turn (owner clients over direct or E2E relay
-  transport), the explicit default-off feature setting, and a
+  transport) and a
   project/session ownership check on every session-scoped route. A URL cannot
   pair a session from one project with another project's working directory.
   Bang APIs and display objects are absent from public share surfaces; until
@@ -143,19 +147,24 @@ project directory:
 `classifyBangOutput` (server) classifies stdout once, then forks to the
 render path the repo already has — no bang-private renderer:
 
+- **Uniform JSONL runs render as tables, regardless of surrounding
+  prose.** Before the markdown/json fork, any run of >= 2 consecutive
+  JSON-object lines sharing an identical key set is rendered as a GFM
+  markdown table via the shared `jsonlTablesToMarkdown` →
+  `toonDocumentToMarkdown` path (mode reported as `markdown`), with every
+  non-tabular line — prose before, between, or after the runs — passed
+  through verbatim. The run itself is the trigger; a prose-led document
+  still tabulates. This is the common list-shaped acli output (e.g.
+  `almanac query`); the per-block Raw toggle still shows the original
+  lines. Output with no qualifying run falls through to its classified
+  path below.
 - **markdown** (the default): rendered as-is through the assistant-text
   markdown pipeline (`renderMarkdownToHtml`).
 - **json** — a whole-document JSON parse or first-lines JSONL parse (the
   acli spec mandates compact JSONL for non-TTY callers, so spec-compliant
-  tools land here): fenced as ```json for shiki highlighting. **Exception —
-  uniform JSONL renders as a table:** when the output contains one or more
-  consecutive runs of JSON-object lines that share an identical key set
-  (>= 2 rows), each run is rendered as a GFM markdown table via the shared
-  `jsonlTablesToMarkdown` → `toonDocumentToMarkdown` path (mode reported as
-  `markdown`), with any non-tabular lines passed through verbatim. This is
-  the common list-shaped acli output (e.g. `almanac query`); the per-block
-  Raw toggle still shows the original JSONL. Single objects, JSON arrays,
-  and non-uniform JSONL keep the plain ```json fence.
+  tools land here): fenced as ```json for shiki highlighting. Single
+  objects, JSON arrays, and non-uniform JSONL keep the plain ```json
+  fence.
 - **ansi** — CSI escapes detected: fenced as ```ansi; the augment layer's
   existing ANSI renderer produces colored HTML. acli tools that respect a
   TTY-ish TERM and emit color render correctly.
@@ -201,7 +210,9 @@ keeps the submitted draft intact so the user can correct or retry it.
   across all sessions and all time — the same corpus the top-level "!!
   Commands" view lists (`collectGlobalBangCommands` over
   `listTranscriptDisplayObjectSessions`), deduped by command line,
-  most-recent-first, prefix-filtered server-side (`matchBangHistory`). The
+  most-recent-first, prefix-filtered server-side through a cached prefix
+  index (`BangHistoryIndex`, rebuilt at most every few seconds rather than
+  rescanning per keystroke). The
   completion endpoint returns `{ completions, history }`; the client merges
   them into one menu (history rows first, `bang-history-item`), and
   selecting a history row replaces the whole `!!` body, while a token row

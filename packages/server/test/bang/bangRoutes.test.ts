@@ -42,16 +42,16 @@ function createDeps() {
       listTranscriptDisplayObjectSessions: vi.fn(() => []),
     },
     bangCommandService,
-    bangCommandsEnabled: vi.fn(() => true),
+    bangHistoryViewEnabled: vi.fn(() => true),
     sessionBelongsToProject: vi.fn(async () => false),
   } as unknown as BangCommandsDeps;
   return { deps, bangCommandService };
 }
 
 describe("bang command project/session boundary", () => {
-  it("keeps every command route unavailable until explicitly enabled", async () => {
+  it("keeps execution and completions available while only the history view is hidden", async () => {
     const { deps, bangCommandService } = createDeps();
-    deps.bangCommandsEnabled = vi.fn(() => false);
+    deps.bangHistoryViewEnabled = vi.fn(() => false);
     deps.sessionBelongsToProject = vi.fn(async () => true);
     const app = createBangCommandsRoutes(deps);
     const prefix = `/projects/${projectId}/sessions/${sessionId}/bang-commands`;
@@ -64,23 +64,21 @@ describe("bang command project/session boundary", () => {
       }),
       app.request(`${prefix}/${object.id}/kill`, { method: "POST" }),
       app.request(`${prefix}/${object.id}/output`),
-      app.request(`${prefix}/${object.id}`, { method: "DELETE" }),
       app.request(`/projects/${projectId}/bang-completions?token=git`),
       app.request("/bang-commands"),
     ]);
 
     expect(responses.map((response) => response.status)).toEqual([
-      404, 404, 404, 404, 404, 404,
+      200, 200, 200, 200, 404,
     ]);
-    expect(bangCommandService.run).not.toHaveBeenCalled();
-    expect(bangCommandService.kill).not.toHaveBeenCalled();
-    expect(bangCommandService.readOutput).not.toHaveBeenCalled();
-    expect(bangCommandService.remove).not.toHaveBeenCalled();
+    expect(bangCommandService.run).toHaveBeenCalled();
+    expect(bangCommandService.kill).toHaveBeenCalled();
+    expect(bangCommandService.readOutput).toHaveBeenCalled();
   });
 
-  it("does not intercept unrelated API routes while disabled", async () => {
+  it("does not intercept unrelated API routes while the history view is hidden", async () => {
     const { deps } = createDeps();
-    deps.bangCommandsEnabled = vi.fn(() => false);
+    deps.bangHistoryViewEnabled = vi.fn(() => false);
     const app = new Hono();
     app.route("/api", createBangCommandsRoutes(deps));
     app.get("/api/projects/:projectId/files", (c) =>
@@ -93,7 +91,7 @@ describe("bang command project/session boundary", () => {
     await expect(response.json()).resolves.toEqual({ route: "files" });
   });
 
-  it("runs only after the feature and project/session boundary both allow it", async () => {
+  it("runs when the project/session boundary allows it", async () => {
     const { deps, bangCommandService } = createDeps();
     deps.sessionBelongsToProject = vi.fn(async () => true);
     const app = createBangCommandsRoutes(deps);

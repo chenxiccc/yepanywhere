@@ -196,34 +196,106 @@ export async function listAcliArgCompletions(options: {
   return completions;
 }
 
+const HISTORY_INDEX_MAX_PREFIX_CHARS = 24;
+const HISTORY_INDEX_MIN_OCCUPANCY = 3;
+
 /**
- * Prefix-match prior whole `!!` command lines against the current bang body
- * for the global command-history completion axis (ranked ahead of token
- * candidates). Case-insensitive prefix match; input order is preserved (the
- * caller passes commands most-recent-first, already deduped); the command
- * exactly equal to the current body is excluded (completing to itself is a
- * no-op); capped at `limit`. Contract: topics/bang-commands.md § Tab
- * completion (global command history).
+ * Prefix index over the global `!!` command-history corpus, so per-keystroke
+ * completion requests don't rescan the whole corpus. Trie-like as a flat map:
+ * every lowercased prefix (up to a length cap) shared by
+ * `HISTORY_INDEX_MIN_OCCUPANCY`+ commands gets a bucket of corpus indices;
+ * rarer or longer prefixes fall back to filtering the longest indexed
+ * ancestor's bucket (or the full corpus when none exists), which is small by
+ * construction on the rare-prefix side. Buckets hold ascending corpus indices,
+ * so the caller's newest-first order is preserved.
+ *
+ * Match semantics (contract: topics/bang-commands.md § Tab completion, global
+ * command history): case-insensitive prefix match against whole prior command
+ * lines, commands assumed most-recent-first and deduped, the command exactly
+ * equal to the current body excluded (completing to itself is a no-op),
+ * capped at `limit`.
+ */
+export class BangHistoryIndex {
+  private readonly commands: readonly string[];
+  private readonly lowered: string[];
+  private readonly buckets = new Map<string, number[]>();
+
+  constructor(commands: readonly string[]) {
+    this.commands = commands;
+    this.lowered = commands.map((command) => command.toLowerCase());
+    const occupancy = new Map<string, number>();
+    for (const lowered of this.lowered) {
+      const max = Math.min(lowered.length, HISTORY_INDEX_MAX_PREFIX_CHARS);
+      for (let end = 1; end <= max; end += 1) {
+        const prefix = lowered.slice(0, end);
+        occupancy.set(prefix, (occupancy.get(prefix) ?? 0) + 1);
+      }
+    }
+    for (const [index, lowered] of this.lowered.entries()) {
+      const max = Math.min(lowered.length, HISTORY_INDEX_MAX_PREFIX_CHARS);
+      for (let end = 1; end <= max; end += 1) {
+        const prefix = lowered.slice(0, end);
+        if ((occupancy.get(prefix) ?? 0) < HISTORY_INDEX_MIN_OCCUPANCY) {
+          continue;
+        }
+        let bucket = this.buckets.get(prefix);
+        if (!bucket) {
+          bucket = [];
+          this.buckets.set(prefix, bucket);
+        }
+        bucket.push(index);
+      }
+    }
+  }
+
+  match(bodyPrefix: string, limit = 20): string[] {
+    const needle = bodyPrefix.toLowerCase();
+    let candidates: readonly number[] | null = null;
+    for (
+      let end = Math.min(needle.length, HISTORY_INDEX_MAX_PREFIX_CHARS);
+      end >= 1;
+      end -= 1
+    ) {
+      const bucket = this.buckets.get(needle.slice(0, end));
+      if (bucket) {
+        candidates = bucket;
+        break;
+      }
+    }
+    const matches: string[] = [];
+    const consider = (index: number) => {
+      if (this.commands[index] === bodyPrefix) {
+        return false;
+      }
+      if (!this.lowered[index]?.startsWith(needle)) {
+        return false;
+      }
+      matches.push(this.commands[index] as string);
+      return matches.length >= limit;
+    };
+    if (candidates) {
+      for (const index of candidates) {
+        if (consider(index)) break;
+      }
+    } else {
+      for (let index = 0; index < this.commands.length; index += 1) {
+        if (consider(index)) break;
+      }
+    }
+    return matches;
+  }
+}
+
+/**
+ * One-shot form of {@link BangHistoryIndex} matching, for callers without a
+ * cached index.
  */
 export function matchBangHistory(
   commands: readonly string[],
   bodyPrefix: string,
   limit = 20,
 ): string[] {
-  const needle = bodyPrefix.toLowerCase();
-  const matches: string[] = [];
-  for (const command of commands) {
-    if (command === bodyPrefix) {
-      continue;
-    }
-    if (command.toLowerCase().startsWith(needle)) {
-      matches.push(command);
-      if (matches.length >= limit) {
-        break;
-      }
-    }
-  }
-  return matches;
+  return new BangHistoryIndex(commands).match(bodyPrefix, limit);
 }
 
 /** Test hook: drop the PATH scan cache. */

@@ -30,6 +30,22 @@ describe("JSONL bang output → table", () => {
     expect(html).toContain("Echo Form");
   });
 
+  it("tabulates a prose-led document whose JSONL run starts after prose", () => {
+    const output = [
+      "Almanac results for defect tier S:",
+      "",
+      ALMANAC_JSONL,
+      "",
+      "3 rows.",
+    ].join("\n");
+    const { markdown, mode } = buildBangOutputMarkdown(output);
+    expect(mode).toBe("markdown");
+    expect(markdown).toContain("Almanac results for defect tier S:");
+    expect(markdown).toContain("| card | section | tier |");
+    expect(markdown).toContain("3 rows.");
+    expect(markdown).not.toContain("```json");
+  });
+
   it("leaves a single JSON document as a fenced json blob", () => {
     const { markdown, mode } = buildBangOutputMarkdown('{"count":0,"of":"records"}');
     expect(mode).toBe("json");

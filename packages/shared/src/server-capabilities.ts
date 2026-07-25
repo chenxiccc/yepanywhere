@@ -221,7 +221,7 @@ export const SERVER_CAPABILITIES = {
     area: "localAccess",
     introducedIn: "0.6.3",
     description:
-      "Server supports explicitly enabled local shell commands and persisted bang-command history.",
+      "Server supports always-on local `!!` shell commands, completions, and persisted bang-command history; the top-level history view stays behind an explicit default-off setting.",
     clientFallback: "Hide bang-command entry points and composer routing.",
     serverContract: {
       routes: [

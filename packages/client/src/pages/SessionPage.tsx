@@ -24,7 +24,7 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { BangCommandHandlers } from "../components/BangCommandDisplayObject";
 import { buildBangEchoText, collectBangHistory } from "../lib/bangCommands";
-import { bangCommandsAreEnabled } from "../lib/bangCommandAvailability";
+import { serverSupportsBangCommands } from "../lib/bangCommandAvailability";
 import { BtwAsidePane } from "../components/BtwAsidePane";
 import { BtwAsideStickyCards } from "../components/BtwAsideStickyCards";
 import { ClientLogRecordingBadge } from "../components/ClientLogRecordingBadge";
@@ -269,6 +269,8 @@ export interface SessionPageRouteLocation {
   pathname: string;
   search: string;
   state: unknown;
+  /** Router history entry id; distinguishes repeat navigations to one path. */
+  key?: string;
 }
 
 export interface SessionPageProps {
@@ -549,10 +551,9 @@ function SessionPageContent({
   const { generatedTitleLength } = useGeneratedTitleLength();
   const { generatedTitleEnabled } = useGeneratedTitleEnabled();
   const { settings: serverSettings } = useServerSettings();
-  const bangCommandsEnabled = bangCommandsAreEnabled(
-    versionInfo,
-    serverSettings?.clientDefaults,
-  );
+  // Composer `!!` routing is always-on where the server supports it
+  // (vanilla-defaults.md § Known Exceptions); no setting gates execution.
+  const bangCommandsSupported = serverSupportsBangCommands(versionInfo);
   const publicSharesEnabled = serverSettings?.publicSharesEnabled ?? false;
   const { status: publicShareGlobalStatus } = usePublicShareStatus({
     poll: publicSharesEnabled,
@@ -2326,23 +2327,26 @@ function SessionPageContent({
   // Bang-history per-entry actions arrive as navigation state (edit →
   // composerPrefill, new → focusComposer, jump → scrollToRenderId; see
   // topics/bang-commands.md § Top-level history view). Read off navState like
-  // initialStatus/initialTitle, but these drive side effects: a ref guards
-  // against re-firing on re-render, and we clear the consumed fields from
-  // history state so Back/refresh does not replay them. Gated on !loading so
-  // the jump target row and the footer composer are mounted before we act
-  // (draftControlsRef is populated during commit, before this passive effect).
+  // initialStatus/initialTitle, but these drive side effects: consumption is
+  // keyed on location.key — one navigation consumes once, while a fresh
+  // navigation to a still-mounted page (route retention) consumes again — and
+  // we clear the consumed fields from history state so Back/refresh does not
+  // replay them. Gated on !loading so the jump target row and the footer
+  // composer are mounted before we act (draftControlsRef is populated during
+  // commit, before this passive effect).
   const navComposerPrefill = navState?.composerPrefill;
   const navFocusComposer = navState?.focusComposer;
   const navScrollToRenderId = navState?.scrollToRenderId;
-  const navActionsConsumedRef = useRef(false);
+  const navActionsConsumedKeyRef = useRef<string | null>(null);
   useEffect(() => {
-    if (navActionsConsumedRef.current || loading) {
+    const navigationKey = location.key ?? "keyless";
+    if (navActionsConsumedKeyRef.current === navigationKey || loading) {
       return;
     }
     if (!navComposerPrefill && !navFocusComposer && !navScrollToRenderId) {
       return;
     }
-    navActionsConsumedRef.current = true;
+    navActionsConsumedKeyRef.current = navigationKey;
 
     if (navComposerPrefill) {
       draftControlsRef.current?.setDraft(navComposerPrefill);
@@ -2375,6 +2379,7 @@ function SessionPageContent({
     navFocusComposer,
     navScrollToRenderId,
     navigate,
+    location.key,
     location.pathname,
     location.search,
     initialStatus,
@@ -5221,7 +5226,7 @@ function SessionPageContent({
                 onDraftControlsReady={handleDraftControlsReady}
                 onDraftTextChange={handleComposerDraftTextChange}
                 bangSupport={
-                  mainComposerForAside || !bangCommandsEnabled
+                  mainComposerForAside || !bangCommandsSupported
                     ? undefined
                     : composerBangSupport
                 }

@@ -323,7 +323,11 @@ interface Props {
  */
 type BangMenuItem = { source: "history" | "candidate"; value: string };
 
-/** The completion-fetch cache key for a draft (kind, token, and full body). */
+/**
+ * Opaque identity of a draft's completion query (kind, token, full body),
+ * compared — never parsed — to decide whether a dismissed menu stays
+ * dismissed for the current draft.
+ */
 function bangCompletionQueryKey(draft: string): string | null {
   const query = getBangCompletionQuery(draft);
   return query ? `${query.kind} ${query.token}\0${draft.slice(2)}` : null;
@@ -583,26 +587,24 @@ export function MessageInput({
   const speechMirrorSegments = getSpeechMirrorSegments(text, speechPendingTags);
   const bangFetchRef = useRef(bangSupport?.fetchCompletions);
   bangFetchRef.current = bangSupport?.fetchCompletions;
+  const bangFetchKind = bangQuery?.kind ?? null;
+  const bangFetchToken = bangQuery?.token ?? null;
+  const bangFetchLine = bangQuery ? text.slice(2) : null;
   useEffect(() => {
     const fetchCompletions = bangFetchRef.current;
-    if (!bangQueryKey || !fetchCompletions) {
-      setBangCandidates([]);
-      setBangHistoryCandidates([]);
-      return;
-    }
-    const separatorIndex = bangQueryKey.indexOf(" ");
-    const lineSeparatorIndex = bangQueryKey.indexOf("\0");
-    const kind = bangQueryKey.slice(0, separatorIndex) as "command" | "path";
-    const token = bangQueryKey.slice(separatorIndex + 1, lineSeparatorIndex);
-    const line = bangQueryKey.slice(lineSeparatorIndex + 1);
-    if (!token) {
+    if (
+      !fetchCompletions ||
+      !bangFetchKind ||
+      !bangFetchToken ||
+      bangFetchLine === null
+    ) {
       setBangCandidates([]);
       setBangHistoryCandidates([]);
       return;
     }
     let cancelled = false;
     const timer = setTimeout(() => {
-      fetchCompletions(token, kind, line).then(
+      fetchCompletions(bangFetchToken, bangFetchKind, bangFetchLine).then(
         (result) => {
           if (!cancelled) {
             setBangCandidates(result.completions);
@@ -622,7 +624,7 @@ export function MessageInput({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [bangQueryKey]);
+  }, [bangFetchKind, bangFetchToken, bangFetchLine]);
 
   // Any edit that diverges from the last Ctrl+↑ recall resets history cycling.
   useEffect(() => {
@@ -2622,27 +2624,15 @@ export function MessageInput({
           <div
             className="slash-command-menu composer-slash-command-menu composer-recall-menu"
             role="menu"
-            aria-label="Recall a previous message"
+            aria-label={t("composerRecallMenuLabel")}
           >
             {recallDrawer.matches.map((entry, index) => (
-              <div
-                key={`${index}-${entry.id}`}
-                className="composer-recall-row"
-                style={{ display: "flex", alignItems: "stretch" }}
-              >
+              <div key={`${index}-${entry.id}`} className="composer-recall-row">
                 <button
                   type="button"
-                  className={`slash-command-item${
+                  className={`slash-command-item composer-recall-preview${
                     index === recallDrawer.index ? " active" : ""
                   }`}
-                  style={{
-                    flex: 1,
-                    minWidth: 0,
-                    width: "auto",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
                   onMouseEnter={() =>
                     setRecallDrawer((current) =>
                       current ? { ...current, index } : current,
@@ -2657,23 +2647,9 @@ export function MessageInput({
                 {turnRecall?.onGoToTurn && (
                   // Navigation-only secondary control: scroll the transcript to
                   // this turn and close the drawer (no composer/draft change).
-                  // Inline aria-label pending an en.json key (peer WIP holds
-                  // en.json). See topics/composer-recall-drawer.md.
                   <button
                     type="button"
                     className="composer-recall-goto"
-                    style={{
-                      flex: "0 0 auto",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      padding: "0 var(--space-2)",
-                      background: "transparent",
-                      border: "none",
-                      color: "inherit",
-                      cursor: "pointer",
-                      opacity: 0.7,
-                    }}
                     onMouseEnter={() =>
                       setRecallDrawer((current) =>
                         current ? { ...current, index } : current,
@@ -2681,8 +2657,8 @@ export function MessageInput({
                     }
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={() => goToRecallTurn(entry)}
-                    aria-label="Go to this turn"
-                    title="Go to this turn"
+                    aria-label={t("composerRecallGoToTurn")}
+                    title={t("composerRecallGoToTurn")}
                   >
                     <svg
                       width="14"
@@ -3013,9 +2989,8 @@ export function MessageInput({
                 bangQuery === null && (
                   // Touch-keyboard opener for the recall drawer, where there is
                   // no Ctrl+↑. Opens over the same prefix-matched turns (empty
-                  // draft → all). Off by default while the drawer is still being
-                  // fleshed out; Ctrl+↑ is unaffected by the setting. Inline
-                  // aria-label still pending an en.json key.
+                  // draft → all). Hidden by default via the composerRecall
+                  // toolbar control; Ctrl+↑ is unaffected by the setting.
                   // See topics/composer-recall-drawer.md.
                   <button
                     type="button"
@@ -3023,8 +2998,8 @@ export function MessageInput({
                     onPointerDown={(event) => event.preventDefault()}
                     onClick={() => openRecallDrawer()}
                     disabled={disabled}
-                    aria-label="Recall a previous message"
-                    title="Recall a previous message"
+                    aria-label={t("composerRecallOpenButton")}
+                    title={t("composerRecallOpenButton")}
                   >
                     <svg
                       width="16"

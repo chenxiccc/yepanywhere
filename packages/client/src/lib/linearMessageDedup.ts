@@ -125,7 +125,12 @@ function isToolMessage(message: Message): boolean {
   });
 }
 
-function isPlainUserTurn(message: Message): boolean {
+/**
+ * A plain user prompt turn: user type + user role, excluding tool_use /
+ * tool_result echoes that also render under the user role. Shared with the
+ * composer recall drawer's entry derivation (composerTurnRecall).
+ */
+export function isPlainUserTurn(message: Message): boolean {
   return (
     message.type === "user" &&
     getMessageRole(message) === "user" &&

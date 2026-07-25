@@ -5209,6 +5209,29 @@ div.bang-command-error-message {
   text-decoration: underline;
 }
 
+.bang-history-entry-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.bang-history-entry-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-1);
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.bang-history-entry-action:hover {
+  color: var(--text-primary);
+  background: var(--bg-code);
+}
+
 .fork-summary-display-object {
   display: flex;
   align-items: center;
@@ -8091,6 +8114,39 @@ div.bang-command-error-message {
   bottom: calc(100% - var(--space-1));
   left: var(--space-2);
   z-index: 120;
+}
+
+/* Composer recall drawer rows (contract: topics/composer-recall-drawer.md):
+   a preview button filling the row plus an optional go-to-turn control. */
+.composer-recall-row {
+  display: flex;
+  align-items: stretch;
+}
+
+.composer-recall-row .composer-recall-preview {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-recall-goto {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--space-2);
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.composer-recall-goto:hover {
+  opacity: 1;
 }
 
 /* Attachment list */

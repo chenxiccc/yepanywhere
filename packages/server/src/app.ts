@@ -1208,7 +1208,7 @@ export function createApp(options: AppOptions): AppResult {
         scanner,
         sessionMetadataService: options.sessionMetadataService,
         bangCommandService,
-        bangCommandsEnabled: () =>
+        bangHistoryViewEnabled: () =>
           options.serverSettingsService?.getSetting("clientDefaults")
             ?.bangCommandsEnabled === true,
         sessionBelongsToProject: async (project, sessionId) => {

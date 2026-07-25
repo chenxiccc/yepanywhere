@@ -29,7 +29,7 @@ import { SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from "../hooks/useSidebarWidth";
 import { useVersion } from "../hooks/useVersion";
 import { useI18n } from "../i18n";
 import { toBrowserAppHref } from "../lib/appHref";
-import { bangCommandsAreEnabled } from "../lib/bangCommandAvailability";
+import { bangHistoryViewEnabled } from "../lib/bangCommandAvailability";
 import { isNearScrollEnd } from "../lib/predictiveScroll";
 import { serverSupportsProjectQueue } from "../lib/projectQueueVisibility";
 import { sessionCollectionRecordToGlobalSessionItem } from "../lib/sessionCollectionRecords";
@@ -390,7 +390,7 @@ export function Sidebar({
 
   // Server capabilities for feature gating
   const { version: versionInfo } = useVersion();
-  const bangCommandsEnabled = bangCommandsAreEnabled(
+  const bangHistoryVisible = bangHistoryViewEnabled(
     versionInfo,
     serverSettings?.clientDefaults,
   );
@@ -1033,7 +1033,7 @@ export function Sidebar({
               onClick={onNavigate}
               basePath={basePath}
             />
-            {bangCommandsEnabled && (
+            {bangHistoryVisible && (
               <SidebarNavItem
                 to="/bang-commands"
                 icon={SidebarIcons.bang}
