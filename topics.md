@@ -171,3 +171,8 @@
   monolith convenience wins absent a contributing community.
 - project-settings-overrides - Banked seed: project-scoped settings
   overriding global; easy mechanically, painful to visualize; no current use.
+- composer-recall-drawer - Ctrl+Up prefix-match history drawer folding up
+  from the composer (reuses isearch/UserTurnNavigator machinery); bundled
+  enablement change makes !! execution and the recall drawer always-on,
+  with only the "!! Commands" sidebar section opt-in. Vanilla Defaults
+  amended with an established-convention carve-out to allow it.

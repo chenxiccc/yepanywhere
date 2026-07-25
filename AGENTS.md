@@ -53,7 +53,12 @@ provider UIs users already know (Claude Code TUI, claude.ai, Codex): a
 first-time user must not have to learn, or even notice, a new concept. Any
 YA-novel user-visible behavior — including anything that modifies the user's
 submitted text before it reaches the provider — ships configurable and
-default-off. A believed-but-unproven benefit earns an option, never a default.
+default-off. Narrow carve-out: an established cross-harness convention that
+stays invisible until the user deliberately invokes it (e.g. a `!!`
+shell-escape prefix, echoing Claude Code's `!` bash mode) is not YA-novel and
+may ship always-on; any discoverable surface it adds (a sidebar entry) still
+ships default-off. See `topics/vanilla-defaults.md` § Known Exceptions.
+A believed-but-unproven benefit earns an option, never a default.
 Novel features remain welcome; do not assume first-party harnesses already
 cover all useful behavior. Read the topic before adding or enabling any
 user-visible feature that is not configurable default-off.

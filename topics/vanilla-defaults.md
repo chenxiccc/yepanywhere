@@ -36,6 +36,21 @@ novelty must never be the out-of-the-box experience.
   apart from explicitly invoked transforms (emulated slash-command
   expansion, attachment references): "when I send a message I want my
   exact message to be sent", with no YA-added framing or annotations.
+- **Established-convention affordances, invisible until invoked, may
+  ship always-on.** A behavior a first-party-trained user already
+  recognizes from common harnesses — a shell-escape command prefix such
+  as `!!`, echoing the Claude Code TUI's `!` bash mode — is not
+  YA-*novel*, so the novelty test that drives default-off does not fire.
+  It may ship always-on when all three hold: (1) it mirrors an
+  established cross-harness convention, (2) it manifests only when the
+  user deliberately types its trigger, and (3) it adds no default-visible
+  UI surface. This is the same "explicitly invoked transform" logic
+  carved out above (slash-command expansion), applied to a command prefix
+  that *diverts* rather than annotates: a `!!` line runs locally and is
+  never sent to the provider, so the verbatim-to-provider invariant is
+  untouched. Any *discoverable* surface such an affordance introduces (a
+  sidebar entry, a toolbar section) is itself YA-novel and still ships
+  default-off.
 - **Believed-useful is not proven-useful.** A plausible, even
   well-argued benefit does not earn default-on; it earns an option.
   Promotion to default-on is a product decision that should state why
@@ -47,6 +62,18 @@ novelty must never be the out-of-the-box experience.
   surface is itself a user-visible cost.
 
 ## Known Exceptions
+
+**`!!` bang commands** ([bang-commands](bang-commands.md); recall drawer
+in [composer-recall-drawer](composer-recall-drawer.md)) run a local shell
+command from the composer instead of sending the line to the provider.
+Under the established-convention carve-out above — shell-escape is
+familiar (Claude Code `!` bash mode), the `!!` prefix is typed
+deliberately, and provider-bound text is untouched — bang *execution* and
+the Ctrl+Up recall drawer ship always-on; only the discoverable "!!
+Commands" sidebar section stays default-off. Authorized by graehl
+(2026-07-25) as an explicit amendment reversing an earlier default-off
+decision, and canonized here (and in the commit) for kzahel's review
+given the default-disabled preference ([kzahel-disabled](kzahel-disabled.md)).
 
 [prompt-cache-keepalive](prompt-cache-keepalive.md) is a deliberate
 default-on exception for active-enough live clients, but only where a provider
