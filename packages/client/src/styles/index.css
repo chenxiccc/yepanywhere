@@ -1844,6 +1844,35 @@ body.session-transcript-selection-active .reload-banner * {
   background: var(--bg-hover);
 }
 
+.sidebar-floating-restore {
+  position: fixed;
+  top: 2px;
+  left: 2px;
+  z-index: 102;
+}
+
+.sidebar-minimize {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.sidebar-minimize:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
 .host-identity-marker {
   display: inline-flex;
   align-items: center;
@@ -5157,7 +5186,11 @@ div.bang-command-error-message {
 /* Mobile-keyboard Tab-complete action, shown only for !! drafts (touch
    keyboards have no Tab key). */
 .message-input-keyboard-action.bang-tab-mode {
-  border-color: color-mix(in srgb, var(--accent-primary) 45%, var(--border-color));
+  border-color: color-mix(
+    in srgb,
+    var(--accent-primary) 45%,
+    var(--border-color)
+  );
   color: var(--accent-primary);
   gap: 2px;
 }
@@ -6317,8 +6350,7 @@ div.bang-command-error-message {
   }
 }
 
-.message-input-keyboard-actions.has-alternate
-  .message-input-keyboard-action {
+.message-input-keyboard-actions.has-alternate .message-input-keyboard-action {
   padding-inline: var(--space-2);
 }
 
@@ -6327,10 +6359,7 @@ div.bang-command-error-message {
 }
 
 .message-input-keyboard-action.project-queue-mode {
-  background: var(
-    --project-queue-button-bg,
-    var(--project-queue-action-bg)
-  );
+  background: var(--project-queue-button-bg, var(--project-queue-action-bg));
 }
 
 .project-queue-new-session-button {
@@ -6401,10 +6430,7 @@ div.bang-command-error-message {
 }
 
 .send-button.project-queue-button {
-  background: var(
-    --project-queue-button-bg,
-    var(--project-queue-action-bg)
-  );
+  background: var(--project-queue-button-bg, var(--project-queue-action-bg));
   color: white;
   box-shadow:
     0 0 0 1px
@@ -12946,8 +12972,8 @@ div.bang-command-error-message {
 }
 
 .settings-search-pane:not(
-    :has(.settings-search-match, .settings-search-section-match)
-  ) {
+  :has(.settings-search-match, .settings-search-section-match)
+) {
   display: none;
 }
 
@@ -15443,6 +15469,7 @@ div.bang-command-error-message {
   }
 
   .sidebar-collapsed .sidebar-header {
+    position: relative;
     justify-content: center;
     padding: 0.5rem;
   }

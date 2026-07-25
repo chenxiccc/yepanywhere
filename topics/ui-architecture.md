@@ -60,6 +60,22 @@ measured demand exceeds available width, and on any >1px widening resets to
 is history-free and identical from either direction, so restore is
 reverse-of-removal by construction — form 1 above.
 
+## Desktop Sidebar Display Modes
+
+The desktop sidebar has three browser-persisted display modes. Expanded mode
+reserves the configured sidebar width; collapsed mode reserves only the icon
+rail; minimized mode reserves no width and leaves the standard sidebar toggle
+fixed over the page at 2px from the top-left viewport edge. The floating toggle
+is an overlay: page headers and content do not add padding or otherwise reflow
+around it.
+
+Minimize is available only from the collapsed desktop rail. Its small
+bottom-line control removes the entire rail, and the floating standard toggle
+restores the collapsed rail rather than expanding it. Mobile overlay behavior
+is unchanged. The normal default remains the expanded sidebar, so the new
+control appears only after the user has already selected or reached collapsed
+desktop mode.
+
 ## Public Share Example
 
 Public shares have a valid reason for an independent unauthenticated top-level

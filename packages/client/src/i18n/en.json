@@ -61,6 +61,8 @@
   "actionToggleSidebar": "Toggle sidebar",
   "actionCloseSidebar": "Close sidebar",
   "actionExpandSidebar": "Expand sidebar",
+  "actionMinimizeSidebar": "Minimize sidebar",
+  "actionRestoreSidebar": "Restore sidebar",
   "actionResizeSidebar": "Resize sidebar",
   "sidebarNewSession": "New Session",
   "sidebarInbox": "Inbox",

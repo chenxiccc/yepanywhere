@@ -13,6 +13,7 @@ describe("browser settings backup", () => {
 
   it("captures portable preferences without identity, secrets, or drafts", () => {
     localStorage.setItem(UI_KEYS.theme, "verydark");
+    localStorage.setItem(UI_KEYS.sidebarMinimized, "true");
     localStorage.setItem(UI_KEYS.tooltipMode, "native");
     localStorage.setItem(UI_KEYS.tooltipDelayMs, "80");
     localStorage.setItem(BROWSER_LOCAL_KEYS.model, "gpt-5.6");
@@ -22,6 +23,7 @@ describe("browser settings backup", () => {
 
     expect(captureBrowserSettings()).toEqual({
       [UI_KEYS.theme]: "verydark",
+      [UI_KEYS.sidebarMinimized]: "true",
       [UI_KEYS.tooltipMode]: "native",
       [UI_KEYS.tooltipDelayMs]: "80",
       [BROWSER_LOCAL_KEYS.model]: "gpt-5.6",

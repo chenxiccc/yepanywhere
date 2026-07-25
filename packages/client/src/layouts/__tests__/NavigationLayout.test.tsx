@@ -1,17 +1,39 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { I18nProvider } from "../../i18n";
 import { UI_KEYS } from "../../lib/storageKeys";
 
 const mocks = vi.hoisted(() => ({
   useRetainSidebarSessionFeeds: vi.fn(),
-  Sidebar: vi.fn(({ isDesktop }: { isDesktop?: boolean }) => (
-    <div data-testid={isDesktop ? "desktop-sidebar" : "mobile-sidebar"} />
-  )),
+  Sidebar: vi.fn(
+    ({
+      isDesktop,
+      onMinimize,
+    }: {
+      isDesktop?: boolean;
+      onMinimize?: () => void;
+    }) => (
+      <div data-testid={isDesktop ? "desktop-sidebar" : "mobile-sidebar"}>
+        {onMinimize && (
+          <button type="button" onClick={onMinimize}>
+            Minimize sidebar
+          </button>
+        )}
+      </div>
+    ),
+  ),
 }));
 
 vi.mock("../../components/Sidebar", () => ({
   Sidebar: mocks.Sidebar,
+  SidebarToggleIcon: () => <svg aria-hidden="true" />,
 }));
 
 vi.mock("../../hooks/useSidebarSessionFeeds", () => ({
@@ -25,13 +47,18 @@ import {
 
 function renderNavigationLayout(path = "/agents") {
   render(
-    <MemoryRouter initialEntries={[path]}>
-      <Routes>
-        <Route element={<NavigationLayout />}>
-          <Route path="/agents" element={<div data-testid="route-content" />} />
-        </Route>
-      </Routes>
-    </MemoryRouter>,
+    <I18nProvider>
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route element={<NavigationLayout />}>
+            <Route
+              path="/agents"
+              element={<div data-testid="route-content" />}
+            />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    </I18nProvider>,
   );
 }
 
@@ -42,59 +69,61 @@ function renderNavigationLayoutWithSessionLinger(
   } = {},
 ) {
   render(
-    <MemoryRouter initialEntries={[path]}>
-      <Routes>
-        <Route
-          element={
-            <NavigationLayout
-              sessionElement={(route, { parked }) => {
-                options.onSessionRender?.(parked, route.sessionId);
-                return (
-                  <div
-                    data-testid="session-layer"
-                    data-session-id={route.sessionId}
-                    data-parked={parked ? "true" : "false"}
-                  >
-                    <Link to="/agents">Agents</Link>
-                    <Link to="/projects/project-1/file?path=README.md">
-                      File
-                    </Link>
-                    <Link to="/projects/project-1/sessions/session-2">
-                      Session 2
-                    </Link>
-                  </div>
-                );
-              }}
+    <I18nProvider>
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route
+            element={
+              <NavigationLayout
+                sessionElement={(route, { parked }) => {
+                  options.onSessionRender?.(parked, route.sessionId);
+                  return (
+                    <div
+                      data-testid="session-layer"
+                      data-session-id={route.sessionId}
+                      data-parked={parked ? "true" : "false"}
+                    >
+                      <Link to="/agents">Agents</Link>
+                      <Link to="/projects/project-1/file?path=README.md">
+                        File
+                      </Link>
+                      <Link to="/projects/project-1/sessions/session-2">
+                        Session 2
+                      </Link>
+                    </div>
+                  );
+                }}
+              />
+            }
+          >
+            <Route
+              path="/agents"
+              element={
+                <div data-testid="route-content">
+                  <Link to="/projects/project-1/sessions/session-1">
+                    Session 1
+                  </Link>
+                </div>
+              }
             />
-          }
-        >
-          <Route
-            path="/agents"
-            element={
-              <div data-testid="route-content">
-                <Link to="/projects/project-1/sessions/session-1">
-                  Session 1
-                </Link>
-              </div>
-            }
-          />
-          <Route
-            path="/projects/:projectId/file"
-            element={
-              <div data-testid="file-frame">
-                <Link to="/projects/project-1/sessions/session-1">
-                  Session 1
-                </Link>
-              </div>
-            }
-          />
-          <Route
-            path="/projects/:projectId/sessions/:sessionId"
-            element={<SessionDomLingerRouteMarker />}
-          />
-        </Route>
-      </Routes>
-    </MemoryRouter>,
+            <Route
+              path="/projects/:projectId/file"
+              element={
+                <div data-testid="file-frame">
+                  <Link to="/projects/project-1/sessions/session-1">
+                    Session 1
+                  </Link>
+                </div>
+              }
+            />
+            <Route
+              path="/projects/:projectId/sessions/:sessionId"
+              element={<SessionDomLingerRouteMarker />}
+            />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    </I18nProvider>,
   );
 }
 
@@ -107,6 +136,10 @@ describe("NavigationLayout", () => {
     mocks.useRetainSidebarSessionFeeds.mockClear();
     mocks.Sidebar.mockClear();
     window.localStorage.clear();
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1024,
+    });
   });
 
   afterEach(() => {
@@ -120,6 +153,36 @@ describe("NavigationLayout", () => {
 
     expect(screen.getByTestId("route-content")).toBeTruthy();
     expect(mocks.useRetainSidebarSessionFeeds).toHaveBeenCalledTimes(1);
+  });
+
+  it("removes the collapsed desktop rail and restores it from the floating toggle", () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1400,
+    });
+    window.localStorage.setItem(UI_KEYS.sidebarExpanded, "false");
+    renderNavigationLayout();
+
+    expect(screen.getByTestId("desktop-sidebar")).toBeTruthy();
+
+    fireEvent.click(screen.getByText("Minimize sidebar"));
+
+    expect(screen.queryByTestId("desktop-sidebar")).toBeNull();
+    const restoreButton = screen.getByRole("button", {
+      name: "Restore sidebar",
+    });
+    expect(restoreButton.classList.contains("sidebar-floating-restore")).toBe(
+      true,
+    );
+    expect(window.localStorage.getItem(UI_KEYS.sidebarMinimized)).toBe("true");
+
+    fireEvent.click(restoreButton);
+
+    expect(screen.getByTestId("desktop-sidebar")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Restore sidebar" }),
+    ).toBeNull();
+    expect(window.localStorage.getItem(UI_KEYS.sidebarMinimized)).toBe("false");
   });
 
   it("parks one session DOM layer under a non-session route and reveals it", () => {

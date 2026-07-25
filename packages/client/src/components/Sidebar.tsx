@@ -62,6 +62,25 @@ import { YepAnywhereLogo } from "./YepAnywhereLogo";
 const SWIPE_THRESHOLD = 50; // Minimum distance to trigger close
 const SWIPE_ENGAGE_THRESHOLD = 15; // Minimum horizontal distance before swipe engages
 
+export function SidebarToggleIcon() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <line x1="9" y1="3" x2="9" y2="21" />
+    </svg>
+  );
+}
+
 const DEFAULT_SECTION_EXPANSION = {
   projectQueue: true,
   starred: true,
@@ -318,6 +337,8 @@ interface SidebarProps {
   isCollapsed?: boolean;
   /** Desktop mode: callback to toggle expanded/collapsed state */
   onToggleExpanded?: () => void;
+  /** Desktop collapsed mode: remove the rail and leave a floating restore toggle */
+  onMinimize?: () => void;
   /** Desktop mode: current sidebar width in pixels */
   sidebarWidth?: number;
   /** Desktop mode: called when resize starts */
@@ -337,6 +358,7 @@ export function Sidebar({
   isDesktop = false,
   isCollapsed = false,
   onToggleExpanded,
+  onMinimize,
   sidebarWidth,
   onResizeStart,
   onResize,
@@ -899,24 +921,6 @@ export function Sidebar({
   // In desktop mode, always render. In mobile mode, only render when open.
   if (!isDesktop && !isOpen) return null;
 
-  // Sidebar toggle icon for desktop mode
-  const SidebarToggleIcon = () => (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <rect x="3" y="3" width="18" height="18" rx="2" />
-      <line x1="9" y1="3" x2="9" y2="21" />
-    </svg>
-  );
-
   return (
     <>
       {/* Only show overlay in non-desktop mode */}
@@ -944,18 +948,42 @@ export function Sidebar({
       >
         <div className="sidebar-header">
           {isDesktop && isCollapsed ? (
-            /* Desktop collapsed mode: show toggle button to expand */
-            <button
-              type="button"
-              className="sidebar-toggle"
-              onClick={handleCollapsedToggleClick}
-              onMouseDown={handleCollapsedToggleMouseDown}
-              onAuxClick={handleCollapsedToggleAuxClick}
-              title={t("actionExpandSidebar")}
-              aria-label={t("actionExpandSidebar")}
-            >
-              <SidebarToggleIcon />
-            </button>
+            /* Desktop collapsed mode: expand from the main icon or minimize the rail. */
+            <>
+              <button
+                type="button"
+                className="sidebar-toggle"
+                onClick={handleCollapsedToggleClick}
+                onMouseDown={handleCollapsedToggleMouseDown}
+                onAuxClick={handleCollapsedToggleAuxClick}
+                title={t("actionExpandSidebar")}
+                aria-label={t("actionExpandSidebar")}
+              >
+                <SidebarToggleIcon />
+              </button>
+              {onMinimize && (
+                <button
+                  type="button"
+                  className="sidebar-minimize"
+                  onClick={onMinimize}
+                  title={t("actionMinimizeSidebar")}
+                  aria-label={t("actionMinimizeSidebar")}
+                >
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 12 12"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    aria-hidden="true"
+                  >
+                    <line x1="2" y1="10" x2="10" y2="10" />
+                  </svg>
+                </button>
+              )}
+            </>
           ) : isDesktop ? (
             /* Desktop expanded mode: show brand (toggle is in toolbar) */
             <Link

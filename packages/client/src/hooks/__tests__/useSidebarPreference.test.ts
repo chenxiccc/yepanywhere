@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { renderHook } from "@testing-library/react";
+import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { UI_KEYS } from "../../lib/storageKeys";
 import { useSidebarPreference } from "../useSidebarPreference";
@@ -30,5 +30,22 @@ describe("useSidebarPreference", () => {
 
     expect(result.current.isExpanded).toBe(true);
     expect(localStorage.getItem(UI_KEYS.sidebarExpanded)).toBe("false");
+  });
+
+  it("minimizes to a persisted floating toggle and restores the collapsed rail", () => {
+    const { result } = renderHook(() => useSidebarPreference());
+
+    act(() => result.current.minimizeToFloatingToggle());
+
+    expect(result.current.isExpanded).toBe(false);
+    expect(result.current.isMinimized).toBe(true);
+    expect(localStorage.getItem(UI_KEYS.sidebarExpanded)).toBe("false");
+    expect(localStorage.getItem(UI_KEYS.sidebarMinimized)).toBe("true");
+
+    act(() => result.current.restoreCollapsedSidebar());
+
+    expect(result.current.isExpanded).toBe(false);
+    expect(result.current.isMinimized).toBe(false);
+    expect(localStorage.getItem(UI_KEYS.sidebarMinimized)).toBe("false");
   });
 });
