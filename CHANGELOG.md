@@ -7,11 +7,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-07-25
+
+### Added
+- Add `!!` bang commands: a composer draft starting with `!!` runs the rest as a
+  local shell command in the session's project directory and persists inline as
+  a transcript block with exit status, duration, bounded streaming previews, and
+  on-demand full output. Includes cancel, raw/rendered toggle, re-run,
+  recall-to-composer with shell-style history, echo-to-session, and delete, plus
+  Tab completion over PATH, project-relative paths, and global `!!` history. A
+  `/bang-commands` page lists runs across sessions with per-entry edit, new, and
+  jump actions. Server-enforced, capability-gated, default-off, and excluded
+  from public shares.
+- Add settings search: a substring filter whose matched rows stay operable in
+  place, highlight matched tokens, and link to their named section. Value
+  matching ships as an adjacent default-off toggle.
+- Add a composer recall drawer: Ctrl+Up opens prefix-matched prior user turns
+  with per-row go-to-turn navigation, plus a default-hidden mobile open button.
+- Add an opt-in additional model catalog: a server-owned registry of maintained
+  and exact-ID model selections, projected into new-session and live-switch
+  choosers as a separate group and disabled by default.
+- Add a battery-aware host-awake control so a remote host stays reachable
+  through macOS `caffeinate` or Windows power requests down to a configured
+  battery reserve. Default off; Linux remains unsupported.
+- Add server-owned per-host identity markers: an opt-in emoji shown beside
+  headers and in browser-tab titles so remote tabs identify their server.
+- Add server-backed browser settings backup with Save and Load controls that
+  move an allowlisted set of browser-local preferences through one server-stored
+  snapshot, omitting credentials, identity, drafts, and cache contents.
+- Add a themed tooltip layer with a standard delay, pointer-rest timing, warm
+  adjacency scanning, keyboard association, and secondary-click copy/enlarge.
+  Browser-native tooltips remain the default and stay selectable.
+- Show provider child sessions nested under their canonical parent in the Agents
+  page and session lists, covering Claude parent-scoped child transcripts and
+  Codex `spawn_agent` child rollouts.
+- Add a keyboard-open mobile composer action row with large delivery targets,
+  inline Project Queue and Steer slots, and a More panel for the remaining
+  toolbar controls.
+- Add a Project Queue new-session action behind its own default-off Toolbar
+  setting, distinguished from the current-session action by a darker violet and
+  a prominent `+` badge, and share Copy, Edit, Steer now, and Cancel across live
+  queued rows.
+
 ### Changed
-- Split the active-session `+` Project Queue new-session shortcut into its own
-  default-off Toolbar setting so enabling current-session Project Queue does not
-  expose a cross-session submission target, and distinguish it from the
-  current-session action with a darker violet and prominent `+` badge.
+- Refresh provider compatibility: Claude Agent SDK 0.3.220 with the Claude Code
+  marker at 2.1.220 and Opus 5 on the stable family alias, Codex app-server
+  0.145.0, Pi 0.81.1 `agent_settled` turn boundaries (version-gated so 0.79.9
+  through 0.80.3 retain `agent_end`), and Grok ACP model discovery with
+  question and plan-exit bridging.
+- Queue live effort changes until turn completion instead of restarting the
+  provider process mid-turn.
+- Serve Inbox refresh, resolver-only routes, and heartbeat discovery from
+  bounded session summaries rather than full transcript scans.
+- Copy rendered Markdown and Σ previews as semantic HTML without presentation
+  styles, retaining table structure and MathML, and keep text selections through
+  Edit diff expansion.
+- Render uniform JSONL and TOON command output as real tables instead of fenced
+  JSON blobs.
+- Recognize bracketed `\( \)` and `\[ \]` LaTeX delimiters in Σ rendering.
+- Refactor transcript projection into a browser-free portable transcript
+  compiler with separate cache, semantic-folding, and web-adapter layers, with
+  no change to projection output or diagnostics.
+- Raise the declared Node runtime floor to 20.12.
+
+### Fixed
+- Verify provider shutdown before unregistering a killed agent, escalate Codex
+  process groups through SIGKILL, and exempt explicitly killed and archived
+  sessions from heartbeat auto-resume so they cannot be resurrected.
+- Reset provider retries when switching models so a held retry on the old model
+  no longer blocks sends on the replacement.
+- Merge provisional session IDs on canonical remap so a just-created session
+  cannot appear twice.
+- Keep accepted steer messages visible through reconnect, and preserve Codex
+  patient queue entries across a server restart.
+- Stop relay login from redirecting to an offline host after signing in to a
+  different one, and keep cached pages readable after a remote disconnect
+  instead of replacing them with a non-dismissible error.
+- Title Claude slash-command session openers from the first non-meta user turn
+  instead of the provider's local-command caveat.
+- Keep touch taps from opening or stranding hover-only tooltips and session
+  previews.
 
 ## [0.6.2] - 2026-07-11
 

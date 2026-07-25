@@ -6,6 +6,75 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [site-v1.8.0] - 2026-07-25
+
+### Added
+- Add `!!` bang commands to the hosted composer: a draft starting with `!!`
+  runs the rest as a local shell command on the connected server and renders
+  inline as a transcript block with exit status, duration, streaming previews,
+  and on-demand full output. Includes cancel, raw/rendered toggle, re-run,
+  recall-to-composer, echo-to-session, delete, Tab completion (with a mobile
+  Tab button), and a `/bang-commands` page listing runs across sessions. Hidden
+  unless the connected server advertises the default-off capability, and never
+  offered on public shares.
+- Add hosted settings search: a substring filter whose matched rows stay
+  operable in place, highlight matched tokens, and link to their named section,
+  with a default-off value-matching toggle.
+- Add a hosted composer recall drawer: Ctrl+Up opens prefix-matched prior user
+  turns with per-row go-to-turn navigation, plus a default-hidden mobile open
+  button.
+- Add opt-in additional model controls so hosted model choosers surface a
+  server-maintained catalog of extra and exact-ID models as a separate group,
+  disabled by default and gated on the server capability.
+- Add hosted controls for the battery-aware host-awake setting and server-owned
+  per-host emoji identity markers, which appear beside headers and in
+  browser-tab titles. Both stay hidden against servers that do not advertise
+  them.
+- Add server-backed browser settings backup with Save and Load controls that
+  move an allowlisted set of browser-local preferences through one server-stored
+  snapshot.
+- Add a themed tooltip layer to the hosted client with a standard delay,
+  pointer-rest timing, warm adjacency scanning, keyboard association, and
+  secondary-click copy/enlarge. Browser-native tooltips remain the default.
+- Show provider child sessions nested under their canonical parent in the hosted
+  Agents page and session lists.
+- Add a keyboard-open mobile composer action row with large delivery targets,
+  inline Project Queue and Steer slots, and a More panel for the remaining
+  toolbar controls.
+- Add a hosted Project Queue new-session action behind its own default-off
+  Toolbar setting, distinguished by a darker violet and a prominent `+` badge,
+  and share Copy, Edit, Steer now, and Cancel across live queued rows.
+
+### Changed
+- Refresh hosted provider support for Claude Agent SDK 0.3.220 / Claude Code
+  2.1.220 with Opus 5 on the stable family alias, Codex app-server 0.145.0, Pi
+  0.81.1, and Grok ACP.
+- Queue live effort changes until turn completion instead of restarting the
+  provider process mid-turn.
+- Serve hosted Inbox refresh from bounded session summaries rather than full
+  transcript scans.
+- Copy rendered Markdown and Σ previews as semantic HTML without presentation
+  styles, retaining table structure and MathML, and keep text selections through
+  Edit diff expansion.
+- Render uniform JSONL and TOON command output as real tables instead of fenced
+  JSON blobs.
+- Recognize bracketed `\( \)` and `\[ \]` LaTeX delimiters in Σ rendering.
+- Rebuild hosted transcript rendering on the browser-free portable transcript
+  compiler with separate cache, semantic-folding, and web-adapter layers, with
+  no change to rendered output.
+
+### Fixed
+- Stop relay login from redirecting to an offline host after signing in to a
+  different one, and keep cached pages readable after a remote disconnect
+  instead of replacing them with a non-dismissible error.
+- Keep accepted steer messages visible through reconnect.
+- Merge provisional session IDs on canonical remap so a just-created session
+  cannot appear twice in hosted session lists.
+- Title Claude slash-command session openers from the first non-meta user turn
+  instead of the provider's local-command caveat.
+- Keep touch taps from opening or stranding hover-only tooltips and session
+  previews.
+
 ## [site-v1.7.4] - 2026-07-11
 
 ### Added
