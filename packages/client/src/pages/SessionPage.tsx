@@ -155,6 +155,7 @@ import {
   createSessionDraftStorageKey,
   saveSessionDraft,
 } from "../lib/sessionDraftStorage";
+import { getComposerTurnRecallEntries } from "../lib/composerTurnRecall";
 import { turnContentText } from "../lib/sessionMessageText";
 import {
   getEstimatedServerOffsetMs,
@@ -2293,6 +2294,15 @@ function SessionPageContent({
       history: bangHistory,
     }),
     [projectId, runBangCommand, bangHistory],
+  );
+
+  const composerTurnRecallEntries = useMemo(
+    () => getComposerTurnRecallEntries(messages),
+    [messages],
+  );
+  const composerTurnRecall = useMemo(
+    () => ({ entries: composerTurnRecallEntries }),
+    [composerTurnRecallEntries],
   );
 
   const handleQueue = async (
@@ -5136,6 +5146,7 @@ function SessionPageContent({
                     ? undefined
                     : composerBangSupport
                 }
+                turnRecall={composerTurnRecall}
                 correctionActive={
                   !mainComposerForAside && correctionDraft !== null
                 }

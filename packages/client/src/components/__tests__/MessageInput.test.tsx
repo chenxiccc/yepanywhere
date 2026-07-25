@@ -1157,6 +1157,137 @@ describe("MessageInput", () => {
     expect(onRecallLastSubmission).toHaveBeenCalledTimes(2);
   });
 
+  describe("composer recall drawer", () => {
+    const turnRecall = {
+      entries: [
+        { text: "deploy the app", preview: "deploy the app" },
+        { text: "debug the crash", preview: "debug the crash" },
+        { text: "run the tests", preview: "run the tests" },
+      ],
+    };
+
+    function recallItems() {
+      return Array.from(
+        document.querySelectorAll(".composer-recall-menu .slash-command-item"),
+      );
+    }
+
+    function activeRecallItem() {
+      return document.querySelector(
+        ".composer-recall-menu .slash-command-item.active",
+      );
+    }
+
+    it("opens on Ctrl+ArrowUp and lists prior user turns newest-first", () => {
+      const textarea = renderMessageInput(vi.fn(), { turnRecall });
+
+      fireEvent.keyDown(textarea, { key: "ArrowUp", ctrlKey: true });
+
+      expect(recallItems().map((item) => item.textContent)).toEqual([
+        "deploy the app",
+        "debug the crash",
+        "run the tests",
+      ]);
+      expect(activeRecallItem()?.textContent).toBe("deploy the app");
+    });
+
+    it("prefix-matches the current draft and drops non-matches", () => {
+      const textarea = renderMessageInput(vi.fn(), { turnRecall });
+      fireEvent.change(textarea, { target: { value: "de" } });
+
+      fireEvent.keyDown(textarea, { key: "ArrowUp", ctrlKey: true });
+
+      expect(recallItems().map((item) => item.textContent)).toEqual([
+        "deploy the app",
+        "debug the crash",
+      ]);
+    });
+
+    it("does not open when nothing prefix-matches", () => {
+      const textarea = renderMessageInput(vi.fn(), { turnRecall });
+      fireEvent.change(textarea, { target: { value: "zzz" } });
+
+      fireEvent.keyDown(textarea, { key: "ArrowUp", ctrlKey: true });
+
+      expect(document.querySelector(".composer-recall-menu")).toBeNull();
+    });
+
+    it("moves the selection with Arrow keys and drafts on Enter", () => {
+      const textarea = renderMessageInput(vi.fn(), {
+        turnRecall,
+      }) as HTMLTextAreaElement;
+
+      fireEvent.keyDown(textarea, { key: "ArrowUp", ctrlKey: true });
+      fireEvent.keyDown(textarea, { key: "ArrowDown" });
+      expect(activeRecallItem()?.textContent).toBe("debug the crash");
+
+      fireEvent.keyDown(textarea, { key: "Enter" });
+      expect(textarea.value).toBe("debug the crash");
+      expect(document.querySelector(".composer-recall-menu")).toBeNull();
+    });
+
+    it("drafts the clicked entry", () => {
+      const textarea = renderMessageInput(vi.fn(), {
+        turnRecall,
+      }) as HTMLTextAreaElement;
+
+      fireEvent.keyDown(textarea, { key: "ArrowUp", ctrlKey: true });
+      const runItem = recallItems().find(
+        (item) => item.textContent === "run the tests",
+      ) as HTMLElement;
+      fireEvent.click(runItem);
+
+      expect(textarea.value).toBe("run the tests");
+      expect(document.querySelector(".composer-recall-menu")).toBeNull();
+    });
+
+    it("closes and keeps the draft on Escape", () => {
+      const textarea = renderMessageInput(vi.fn(), {
+        turnRecall,
+      }) as HTMLTextAreaElement;
+      fireEvent.change(textarea, { target: { value: "de" } });
+
+      fireEvent.keyDown(textarea, { key: "ArrowUp", ctrlKey: true });
+      expect(document.querySelector(".composer-recall-menu")).not.toBeNull();
+
+      fireEvent.keyDown(textarea, { key: "Escape" });
+      expect(document.querySelector(".composer-recall-menu")).toBeNull();
+      expect(textarea.value).toBe("de");
+    });
+
+    it("dismisses on any other key so typing continues", () => {
+      const textarea = renderMessageInput(vi.fn(), { turnRecall });
+
+      fireEvent.keyDown(textarea, { key: "ArrowUp", ctrlKey: true });
+      expect(document.querySelector(".composer-recall-menu")).not.toBeNull();
+
+      const handled = fireEvent.keyDown(textarea, { key: "a" });
+      // Not consumed: the keystroke is allowed to reach the composer.
+      expect(handled).toBe(true);
+      expect(document.querySelector(".composer-recall-menu")).toBeNull();
+    });
+
+    it("restores focus loss by closing the drawer", () => {
+      const textarea = renderMessageInput(vi.fn(), { turnRecall });
+
+      fireEvent.keyDown(textarea, { key: "ArrowUp", ctrlKey: true });
+      expect(document.querySelector(".composer-recall-menu")).not.toBeNull();
+
+      fireEvent.blur(textarea);
+      expect(document.querySelector(".composer-recall-menu")).toBeNull();
+    });
+
+    it("leaves plain ArrowUp last-submission recall intact", () => {
+      const onRecall = vi.fn(() => true);
+      const textarea = renderMessageInput(onRecall, { turnRecall });
+
+      fireEvent.keyDown(textarea, { key: "ArrowUp" });
+
+      expect(onRecall).toHaveBeenCalledTimes(1);
+      expect(document.querySelector(".composer-recall-menu")).toBeNull();
+    });
+  });
+
   it("opens explicit thinking choices from the toolbar button", () => {
     const onSetMode = vi.fn();
     renderToolbarView({

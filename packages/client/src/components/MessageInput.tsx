@@ -45,6 +45,10 @@ import {
   resizeComposerTextarea,
   scrollCollapsedTextareaToCursor,
 } from "../lib/composerTextarea";
+import {
+  type ComposerTurnRecallEntry,
+  filterComposerTurnRecall,
+} from "../lib/composerTurnRecall";
 import { hasCoarsePointer } from "../lib/deviceDetection";
 import type {
   SpeechTranscriptionContext,
@@ -298,6 +302,11 @@ interface Props {
     ) => Promise<string[]>;
     history: readonly string[];
   };
+  /**
+   * Prior user turns for the always-on Ctrl+↑ composer recall drawer,
+   * newest-first. See topics/composer-recall-drawer.md.
+   */
+  turnRecall?: { entries: { text: string; preview: string }[] };
 }
 
 export function MessageInput({
@@ -357,6 +366,7 @@ export function MessageInput({
   forkSummaryMode,
   onForkSummaryShortcut,
   bangSupport,
+  turnRecall,
 }: Props) {
   const { t } = useI18n();
   const { visibility: toolbarVisibility } = useSessionToolbarPresence();
@@ -405,6 +415,14 @@ export function MessageInput({
   >(null);
   const bangHistoryIndexRef = useRef(-1);
   const bangRecalledTextRef = useRef<string | null>(null);
+  // Composer recall drawer (always-on Ctrl+↑ prior-user-turn recall). Open
+  // while non-null; matches are frozen at open time (any editing keystroke
+  // closes it), so the draft stays constant while it is shown.
+  const [recallDrawer, setRecallDrawer] = useState<{
+    matches: ComposerTurnRecallEntry[];
+    index: number;
+    originalDraft: string;
+  } | null>(null);
   const [textareaFocused, setTextareaFocused] = useState(false);
   const [mobileKeyboardOpen, setMobileKeyboardOpen] = useState(false);
   const [mobileKeyboardMoreOpen, setMobileKeyboardMoreOpen] = useState(false);
@@ -1405,6 +1423,21 @@ export function MessageInput({
     return true;
   };
 
+  // Cancel the recall drawer, restoring the pre-open draft (Esc / click-away).
+  const cancelRecallDrawer = () => {
+    if (recallDrawer) {
+      setText(recallDrawer.originalDraft);
+      setRecallDrawer(null);
+    }
+  };
+  // Accept a recall entry: draft its full text and close the drawer.
+  const acceptRecallEntry = (entry: ComposerTurnRecallEntry) => {
+    noteComposerEdit(entry.text);
+    setText(entry.text);
+    setRecallDrawer(null);
+    textareaRef.current?.focus();
+  };
+
   const handleKeyDown = (e: KeyboardEvent) => {
     // Ctrl+↑/↓: shell-style recall of prior bang commands.
     if (
@@ -1448,6 +1481,82 @@ export function MessageInput({
       noteComposerEdit(nextText);
       setText(nextText);
       return;
+    }
+
+    // Composer recall drawer. Runs after the bang Ctrl+↑ history block above,
+    // so bang shell-recall still wins for empty / "!!" drafts when bang
+    // support is enabled; otherwise Ctrl+↑ opens this drawer.
+    // See topics/composer-recall-drawer.md.
+    if (recallDrawer) {
+      if (
+        (e.key === "ArrowUp" || e.key === "ArrowDown") &&
+        !e.metaKey &&
+        !e.altKey
+      ) {
+        e.preventDefault();
+        const delta = e.key === "ArrowDown" ? 1 : -1;
+        setRecallDrawer((current) =>
+          current
+            ? {
+                ...current,
+                index:
+                  (current.index + delta + current.matches.length) %
+                  current.matches.length,
+              }
+            : current,
+        );
+        return;
+      }
+      if (
+        e.key === "Enter" &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.shiftKey &&
+        !e.altKey
+      ) {
+        e.preventDefault();
+        const entry = recallDrawer.matches[recallDrawer.index];
+        if (entry) {
+          acceptRecallEntry(entry);
+        } else {
+          setRecallDrawer(null);
+        }
+        return;
+      }
+      if (
+        e.key === "Escape" &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.shiftKey &&
+        !e.altKey
+      ) {
+        e.preventDefault();
+        cancelRecallDrawer();
+        return;
+      }
+      // Any other key dismisses the drawer and types normally (no
+      // preventDefault, falls through to the composer).
+      setRecallDrawer(null);
+    }
+
+    // Ctrl+↑ opens the recall drawer over prior user turns prefix-matched by
+    // the current draft. Only reached when no bang shell-recall claimed it.
+    if (
+      e.key === "ArrowUp" &&
+      e.ctrlKey &&
+      !e.metaKey &&
+      !e.shiftKey &&
+      !e.altKey &&
+      !recallDrawer &&
+      turnRecall &&
+      turnRecall.entries.length > 0
+    ) {
+      const matches = filterComposerTurnRecall(turnRecall.entries, text);
+      if (matches.length > 0) {
+        e.preventDefault();
+        setRecallDrawer({ matches, index: 0, originalDraft: text });
+        return;
+      }
     }
 
     // Tab always completes inside a bang draft, shell-style.
@@ -2313,6 +2422,7 @@ export function MessageInput({
                 }
               }}
               onBlur={() => {
+                cancelRecallDrawer();
                 controls.flushDraft();
                 setTextareaFocused(false);
               }}
@@ -2429,6 +2539,34 @@ export function MessageInput({
                 </button>
               );
             })}
+          </div>
+        )}
+
+        {recallDrawer && (
+          <div
+            className="slash-command-menu composer-slash-command-menu composer-recall-menu"
+            role="menu"
+            aria-label="Recall a previous message"
+          >
+            {recallDrawer.matches.map((entry, index) => (
+              <button
+                key={`${index}-${entry.preview}`}
+                type="button"
+                className={`slash-command-item${
+                  index === recallDrawer.index ? " active" : ""
+                }`}
+                onMouseEnter={() =>
+                  setRecallDrawer((current) =>
+                    current ? { ...current, index } : current,
+                  )
+                }
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => acceptRecallEntry(entry)}
+                role="menuitem"
+              >
+                <span>{entry.preview}</span>
+              </button>
+            ))}
           </div>
         )}
 
