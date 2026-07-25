@@ -53,6 +53,16 @@ describe("getModelContextWindow", () => {
     expect(getModelContextWindow("claude-opus-4-8[1m]")).toBe(
       CLAUDE_EXTENDED_CONTEXT_WINDOW,
     );
+    expect(getModelContextWindow("claude-opus-5")).toBe(
+      CLAUDE_EXTENDED_CONTEXT_WINDOW,
+    );
+    expect(getModelContextWindow("claude-sonnet-5")).toBe(
+      CLAUDE_EXTENDED_CONTEXT_WINDOW,
+    );
+    expect(getModelContextWindow("anthropic.claude-opus-5")).toBe(
+      CLAUDE_EXTENDED_CONTEXT_WINDOW,
+    );
+    expect(getModelContextWindow("claude-opus-4-8")).toBe(200_000);
   });
 
   it("keeps non-codex provider fallback at default", () => {

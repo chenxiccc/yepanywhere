@@ -75,6 +75,27 @@ describe("Claude SDK schema", () => {
       content: "<command-name>/model</command-name>",
       level: "info",
     },
+    {
+      type: "system",
+      subtype: "informational",
+      content: "Provider status warning.",
+      level: "warning",
+    },
+    {
+      type: "system",
+      subtype: "model_refusal_fallback",
+      direction: "retry",
+      content: "Retrying with the fallback model.",
+      level: "warning",
+      trigger: "refusal",
+      originalModel: "claude-fable-5",
+      fallbackModel: "claude-opus-4-8",
+      requestId: "req-1",
+      apiRefusalCategory: null,
+      apiRefusalExplanation: null,
+      retractedMessageUuids: ["11111111-1111-4111-8111-111111111114"],
+      refusedUserMessageUuid: "11111111-1111-4111-8111-111111111115",
+    },
   ])("parses current Claude conversation entry %#", (entry) => {
     const result = ClaudeSessionEntrySchema.safeParse({
       ...entry,
@@ -85,6 +106,42 @@ describe("Claude SDK schema", () => {
       version: "2.1.215",
       uuid: "11111111-1111-4111-8111-111111111113",
       timestamp: "2026-07-19T00:00:00.000Z",
+      parentUuid: null,
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("parses assistant model fallback content", () => {
+    const result = ClaudeSessionEntrySchema.safeParse({
+      type: "assistant",
+      message: {
+        id: "msg-1",
+        type: "message",
+        role: "assistant",
+        model: "claude-opus-4-8",
+        content: [
+          {
+            type: "fallback",
+            from: { model: "claude-fable-5" },
+            to: { model: "claude-opus-4-8" },
+          },
+        ],
+        stop_reason: "tool_use",
+        stop_sequence: null,
+        usage: {
+          input_tokens: 1,
+          output_tokens: 1,
+        },
+      },
+      requestId: "req-1",
+      isSidechain: false,
+      userType: "external",
+      cwd: "/repo",
+      sessionId: "11111111-1111-4111-8111-111111111111",
+      version: "2.1.199",
+      uuid: "11111111-1111-4111-8111-111111111113",
+      timestamp: "2026-07-03T00:00:00.000Z",
       parentUuid: null,
     });
 

@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# This fixture intentionally models Gemini as unavailable, even when the host
+# running the test has a globally installed Gemini CLI.
+exit 127

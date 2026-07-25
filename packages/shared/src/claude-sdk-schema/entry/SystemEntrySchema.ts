@@ -88,6 +88,32 @@ const ApiErrorSystemEntrySchema = BaseEntrySchema.extend({
   maxRetries: z.number().optional(),
 });
 
+// User-visible provider status banner.
+const InformationalSystemEntrySchema = BaseEntrySchema.extend({
+  type: z.literal("system"),
+  subtype: z.literal("informational"),
+  content: z.string(),
+  level: z.enum(["info", "notice", "suggestion", "warning"]),
+  toolUseID: z.string().optional(),
+});
+
+// Audit row emitted when a refusal is retried on a fallback model.
+const ModelRefusalFallbackSystemEntrySchema = BaseEntrySchema.extend({
+  type: z.literal("system"),
+  subtype: z.literal("model_refusal_fallback"),
+  content: z.string(),
+  level: z.enum(["info", "notice", "suggestion", "warning"]).optional(),
+  trigger: z.literal("refusal"),
+  direction: z.enum(["retry", "revert", "sticky"]),
+  originalModel: z.string(),
+  fallbackModel: z.string(),
+  requestId: z.string().nullable(),
+  apiRefusalCategory: z.string().nullable().optional(),
+  apiRefusalExplanation: z.string().nullable().optional(),
+  retractedMessageUuids: z.array(z.string()).optional(),
+  refusedUserMessageUuid: z.string().nullable().optional(),
+});
+
 // Stop hook summary system entry
 const StopHookSummarySystemEntrySchema = BaseEntrySchema.extend({
   type: z.literal("system"),
@@ -144,6 +170,8 @@ export const SystemEntrySchema = z.union([
   StatusSystemEntrySchema,
   SessionStateChangedSystemEntrySchema,
   ApiErrorSystemEntrySchema,
+  InformationalSystemEntrySchema,
+  ModelRefusalFallbackSystemEntrySchema,
   StopHookSummarySystemEntrySchema,
   BridgeStatusSystemEntrySchema,
   TurnDurationSystemEntrySchema,

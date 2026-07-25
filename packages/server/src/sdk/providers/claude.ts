@@ -408,9 +408,10 @@ async function* withCleanup<T>(
  * `--model sonnet` as `claude-sonnet-5[1m]` at a 1,000,000 window on the
  * standard tier with no error. The "Sonnet 5" label is pinned in the
  * description (the name stays the generic "Sonnet") rather than taken from the
- * SDK, because `supportedModels()` still reports the `sonnet` alias as
- * "Sonnet 4.6" even though it routes to Sonnet 5 at runtime; that pin will
- * drift once the SDK catalog catches up, and we accept it. See
+ * SDK, because older `supportedModels()` responses reported the `sonnet` alias
+ * as "Sonnet 4.6" even when it routed to Sonnet 5 at runtime. Opus 5 is
+ * reported as `opus[1m]`, so mergeClaudeModels() transfers that row's live
+ * capability metadata to the visible `opus` alias. See
  * topics/claude-1m-context.md.
  */
 const ALWAYS_EXTENDED_CONTEXT_ALIASES: Record<string, string> = {
@@ -419,7 +420,7 @@ const ALWAYS_EXTENDED_CONTEXT_ALIASES: Record<string, string> = {
 };
 
 const ALWAYS_EXTENDED_DESCRIPTIONS: Record<string, string> = {
-  opus: "Opus 4.8 with the full 1M-token context window",
+  opus: "Opus 5 with the full 1M-token context window",
   sonnet:
     "Sonnet 5 with the full 1M-token context window · newer tokenizer bills ~30% more tokens",
 };
@@ -436,15 +437,13 @@ const CLAUDE_MODELS_FALLBACK: ModelInfo[] = [
   {
     id: "default",
     name: "Default",
-    description:
-      "Claude Code chooses the recommended model for your account (probably Sonnet)",
+    description: "Claude Code chooses the recommended model for your account",
     contextWindow: getModelContextWindow("default", "claude"),
   },
   {
     id: "best",
     name: "Best",
-    description:
-      "Highest-capability Claude Code alias (probably Opus 4.8, full 1M context)",
+    description: "Highest-capability Claude Code alias (full 1M context)",
     contextWindow: getModelContextWindow("opus[1m]", "claude"),
   },
   {
@@ -471,6 +470,12 @@ const CLAUDE_MODELS_FALLBACK: ModelInfo[] = [
     name: "Opus",
     description: ALWAYS_EXTENDED_DESCRIPTIONS.opus,
     contextWindow: getModelContextWindow("opus[1m]", "claude"),
+    supportsAdaptiveThinking: true,
+    supportsAutoMode: true,
+    supportsEffort: true,
+    supportsFastMode: true,
+    supportedEffortLevels: CLAUDE_EFFORT_LEVELS,
+    defaultEffortLevel: "high",
   },
   {
     id: "haiku",
@@ -482,7 +487,7 @@ const CLAUDE_MODELS_FALLBACK: ModelInfo[] = [
     id: "opusplan",
     name: "Opus Plan",
     description: "Uses Opus for planning, then Sonnet for execution",
-    contextWindow: getModelContextWindow("opus", "claude"),
+    contextWindow: getModelContextWindow("opus[1m]", "claude"),
   },
 ];
 
@@ -537,6 +542,9 @@ function mapClaudeSdkModel(model: ClaudeSdkModelInfo): ModelInfo {
     id: model.value,
     name: model.displayName,
     description: model.description,
+    contextWindow: model.resolvedModel
+      ? getModelContextWindow(model.resolvedModel, "claude")
+      : undefined,
     supportsEffort: model.supportsEffort,
     supportedEffortLevels: mapClaudeSupportedEffortLevels(
       model.supportedEffortLevels,
@@ -556,6 +564,17 @@ export function mergeClaudeModels(models: ModelInfo[]): ModelInfo[] {
 
   for (const model of models) {
     if (model.id === "default") {
+      const fallback = byId.get("default");
+      byId.set(
+        "default",
+        enrichClaudeModel({
+          ...fallback,
+          ...model,
+          id: "default",
+          name: fallback?.name ?? model.name,
+          description: fallback?.description ?? model.description,
+        }),
+      );
       continue;
     }
     byId.set(model.id, enrichClaudeModel(model));
@@ -572,23 +591,30 @@ export function mergeClaudeModels(models: ModelInfo[]): ModelInfo[] {
 
   // Opus and Sonnet always use the 1M window (withExtendedClaudeContext), so
   // drop the redundant "opus[1m]"/"sonnet[1m]" entries and surface the 1M
-  // window + label on the base alias — including when the SDK probe supplies a
-  // 200K window. Sonnet also forces its description (not its name) because the
-  // SDK catalog still reports the alias as "Sonnet 4.6" while it routes to
-  // Sonnet 5.
+  // window + label on the base alias. Transfer live capability metadata from
+  // the extended row first: current Claude Code reports Opus 5 as `opus[1m]`,
+  // while YA deliberately exposes the stable `opus` selection token.
   return merged
     .filter((model) => model.id !== "opus[1m]" && model.id !== "sonnet[1m]")
     .map((model) => {
       if (model.id === "opus") {
+        const extended = byId.get("opus[1m]");
         return {
           ...model,
+          ...extended,
+          id: model.id,
+          name: model.name,
           contextWindow: getModelContextWindow("opus[1m]", "claude"),
           description: ALWAYS_EXTENDED_DESCRIPTIONS.opus,
         };
       }
       if (model.id === "sonnet") {
+        const extended = byId.get("sonnet[1m]");
         return {
           ...model,
+          ...extended,
+          id: model.id,
+          name: model.name,
           contextWindow: getModelContextWindow("sonnet[1m]", "claude"),
           description: ALWAYS_EXTENDED_DESCRIPTIONS.sonnet,
         };

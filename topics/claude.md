@@ -97,6 +97,14 @@ shell-startup and test-hermeticity rules for the local `BASH_ENV` bridge.
   behavior that YA consumes. Unknown SDK message types may be temporarily
   passed through for forward compatibility, but they must not become silent
   data loss or invisible state-machine drift.
+- Claude model discovery keeps YA's stable family selection tokens even when
+  the SDK reports only an extended-context variant. In particular,
+  `opus[1m]` supplies live capability metadata to the visible `opus` row rather
+  than appearing as a duplicate or losing adaptive-thinking, fast-mode, auto,
+  or effort support. Canonical Claude 5 Opus and Sonnet ids are 1M models; the
+  auth/probe-failure fallback must describe the current Opus generation and
+  retain the provider-native capability controls that are known without a
+  handshake.
 - Claude provider-native interviews are `AskUserQuestion` tool calls surfaced
   through the SDK `canUseTool` path, not ordinary approval prompts and not a
   distinct session-state mode. YA must classify them as pending user questions,

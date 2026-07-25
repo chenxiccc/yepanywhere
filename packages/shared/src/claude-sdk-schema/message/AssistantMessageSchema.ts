@@ -4,11 +4,18 @@ import { ThinkingContentSchema } from "../content/ThinkingContentSchema.js";
 import { ToolResultContentSchema } from "../content/ToolResultContentSchema.js";
 import { ToolUseContentSchema } from "../content/ToolUseContentSchema.js";
 
+const FallbackContentSchema = z.object({
+  type: z.literal("fallback"),
+  from: z.object({ model: z.string() }).passthrough(),
+  to: z.object({ model: z.string() }).passthrough(),
+});
+
 const AssistantMessageContentSchema = z.union([
   ThinkingContentSchema,
   TextContentSchema,
   ToolUseContentSchema,
   ToolResultContentSchema,
+  FallbackContentSchema,
 ]);
 
 export type AssistantMessageContent = z.infer<

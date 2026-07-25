@@ -386,6 +386,41 @@ Difference detectors:
 - Model ids, effort levels, or context windows change enough to make fallback
   constants or model glyph rules misleading.
 
+Current source refresh, 2026-07-25:
+
+- `@anthropic-ai/claude-agent-sdk` was refreshed from `0.3.218` to `0.3.220`;
+  its native executable reports Claude Code `2.1.220`. Claude Code `2.1.219`
+  introduced Claude Opus 5 as `claude-opus-5`, the default Opus model with a
+  1M context window; `2.1.220` contains reliability fixes.
+- An authenticated, no-turn SDK handshake reports `default` and `opus[1m]`
+  resolving to `claude-opus-5[1m]` on this account. Both rows advertise
+  adaptive thinking, fast mode, auto permission mode, and
+  `low`/`medium`/`high`/`xhigh`/`max` effort. The live command inventory
+  contains both `/goal` and `/loop`, so YA's conditional `/goal` alias
+  correctly steps aside for the native command.
+- YA now transfers the live `opus[1m]` capability fields to its stable visible
+  `opus` selection token, preserves live capability/context metadata while
+  keeping the generic `default` label, and identifies canonical
+  `claude-opus-5`/`claude-sonnet-5` model ids as 1M. The auth/probe-failure
+  fallback describes Opus 5 and retains its adaptive, fast, auto, and effort
+  controls.
+- SDK type drift is additive on unconsumed surfaces: `DirectoryAdded` hooks,
+  fast-mode disabled reasons, strict sandbox-network allowlists, workflow size
+  guidance, and an interrupt capability that can cancel queued commands. YA's
+  model/command discovery, model and thinking updates, ordinary interrupt,
+  MCP status, and existing message union remain source-compatible. Adopting
+  cancel-queued interrupt semantics would be a separate queue/control design
+  change, not an Opus 5 compatibility requirement.
+- The durable transcript census also found three older Claude records outside
+  the schema: an informational warning, assistant `fallback` content, and its
+  paired `model_refusal_fallback` system audit row. YA now retains all three
+  shapes without changing their renderer behavior; all 975,598 lines across
+  7,100 local Claude transcript files validate.
+
+Status: Claude Opus 5 is available through Claude Code `2.1.220` / SDK
+`0.3.220`, with provider catalog, fallback metadata, and context-window
+normalization refreshed.
+
 Current source refresh, 2026-07-23:
 
 - `@anthropic-ai/claude-agent-sdk` was refreshed from `0.3.215` to `0.3.218`;
@@ -708,7 +743,7 @@ The server package currently pins provider-adjacent packages as follows:
 
 | package | current/wanted | latest observed | role |
 |---|---:|---:|---|
-| `@anthropic-ai/claude-agent-sdk` | `0.3.218` | `0.3.218` | Active Claude provider dependency |
+| `@anthropic-ai/claude-agent-sdk` | `0.3.220` | `0.3.220` | Active Claude provider dependency |
 | `@agentclientprotocol/sdk` | `0.12.0` | `0.24.0` | Active ACP client dependency for Grok/Gemini |
 
 Treat both rows as provider-refresh inputs.

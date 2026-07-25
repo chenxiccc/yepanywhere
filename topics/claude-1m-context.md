@@ -154,6 +154,33 @@ yepanywhere consequence: `sonnet` gets the always-1M treatment `opus` already
 had — normalized to `sonnet[1m]` at the SDK-query chokepoints, the separate
 "Sonnet 1M" picker entry dropped, `sonnet[1m]` kept as a hidden valid id.
 
+### Update 2026-07-25: Opus 5 has a native 1M window
+
+Claude Code 2.1.219 introduced Claude Opus 5. Anthropic's model documentation
+lists `claude-opus-5` with a 1M-token context window as both its default and
+maximum; this is model metadata, not the account-dependent Opus 4.8 auto-1M
+behavior investigated above.
+
+An authenticated, no-turn handshake through
+`@anthropic-ai/claude-agent-sdk@0.3.220` / Claude Code 2.1.220 reported:
+
+| SDK selection value | `resolvedModel` | advertised capabilities |
+|---|---|---|
+| `default` | `claude-opus-5[1m]` | adaptive, fast, auto, five effort levels |
+| `opus[1m]` | `claude-opus-5[1m]` | adaptive, fast, auto, five effort levels |
+
+The `default` resolution remains account-specific; it is evidence for this
+account, not a global YA default. The model-level 1M fact is global enough for
+the static resolver: canonical `claude-opus-5` (and the already-current
+`claude-sonnet-5`) now resolves to 1M before the durable observation cache is
+warm. Older Opus ids retain their historical 200K static fallback unless they
+carry `[1m]` or a real completed turn has recorded a different window.
+
+yepanywhere still sends the stable `opus` selection token through the existing
+`opus[1m]` launch normalization. Because the SDK catalog exposes Opus 5 under
+that extended value, the provider merge copies its live capability fields onto
+the one visible `opus` row before dropping the redundant extended row.
+
 ## How yepanywhere consumes this
 
 yepanywhere never persists a session's real context window. It derives the
@@ -453,12 +480,13 @@ record is intentionally just `{ contextWindow, observedAt }` (no cost/usage).
 ## Open questions (unresolved on purpose)
 
 - **(Addressed by the fix above for the restart case.)** The remaining piece
-  is whether to also ship a bolder static default for known auto-1M ids
-  (opus-4-8/4-7, fable-5, mythos-5) so the *first* view of a never-run model
+  is whether to also ship a bolder static default for older auto-1M ids
+  (opus-4-8/4-7 and mythos-5) so the *first* view of a never-run model
   on a fresh install doesn't briefly read 200K. Now low-risk because the
   durable observation overrides it on the first completed turn, but still
   account-specific (would understate on a non-qualifying account until then).
-  Not done yet.
+  Not done yet. Opus 5 is not part of this open question: its documented
+  native window is statically recognized as 1M.
 - Whether yepanywhere should expose a way to request a 200K Opus session.
   The only lever found is the CLI env var `CLAUDE_CODE_DISABLE_1M_CONTEXT`.
   Correction to an earlier assumption that this is unavoidably process-wide:
