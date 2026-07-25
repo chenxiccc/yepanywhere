@@ -5,6 +5,7 @@
  */
 
 import {
+  type BangCommandTranscriptDisplayObject,
   isUrlProjectId,
   jsonlTablesToMarkdown,
   looksLikeToon,
@@ -20,6 +21,7 @@ import {
   listAcliArgCompletions,
   listBangCommandCompletions,
   listBangPathCompletions,
+  matchBangHistory,
 } from "../services/bangCompletions.js";
 
 const COMMAND_MAX_CHARS = 8192;
@@ -122,6 +124,28 @@ export function buildBangOutputMarkdown(text: string): {
     default:
       return { markdown: fence(text, ""), mode };
   }
+}
+
+/**
+ * YA-global bang command lines, most-recent-first and deduped (first/newest
+ * occurrence kept), across every session and all time — the same bounded
+ * corpus the top-level history view lists. Source for the global
+ * command-history completion axis.
+ */
+function collectGlobalBangCommands(
+  sessionMetadataService: SessionMetadataService,
+): string[] {
+  const commands = sessionMetadataService
+    .listTranscriptDisplayObjectSessions()
+    .flatMap(({ objects }) =>
+      objects.filter(
+        (object): object is BangCommandTranscriptDisplayObject =>
+          object.kind === "bang-command",
+      ),
+    )
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .map((object) => object.command);
+  return [...new Set(commands)];
 }
 
 export function createBangCommandsRoutes(deps: BangCommandsDeps): Hono {
@@ -304,13 +328,22 @@ export function createBangCommandsRoutes(deps: BangCommandsDeps): Hono {
     const token = c.req.query("token") ?? "";
     const kind = c.req.query("kind") === "path" ? "path" : "command";
     const line = c.req.query("line") ?? "";
+    // Global command history is a separate axis from the token candidates: it
+    // prefix-matches the whole `!!` body regardless of command/path position,
+    // and the client ranks it ahead of the PATH/project/path candidates.
+    const history = line
+      ? matchBangHistory(
+          collectGlobalBangCommands(deps.sessionMetadataService),
+          line,
+        )
+      : [];
     if (kind === "path" && line) {
       const acli = await listAcliArgCompletions({
         line,
         projectPath: project.path,
       });
       if (acli && acli.length > 0) {
-        return c.json({ completions: acli });
+        return c.json({ completions: acli, history });
       }
     }
     const completions =
@@ -323,7 +356,7 @@ export function createBangCommandsRoutes(deps: BangCommandsDeps): Hono {
             prefix: token,
             projectPath: project.path,
           });
-    return c.json({ completions });
+    return c.json({ completions, history });
   });
 
   routes.get("/bang-commands", (c) => {

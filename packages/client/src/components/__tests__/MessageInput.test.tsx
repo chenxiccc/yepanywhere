@@ -4301,6 +4301,13 @@ describe("MessageInput bang commands", () => {
     vi.restoreAllMocks();
   });
 
+  // Completion fetch result shape: token candidates plus the global
+  // command-history matches the client ranks ahead of them.
+  const completionsResult = (completions: string[], history: string[] = []) => ({
+    completions,
+    history,
+  });
+
   function bangSupport(
     overrides: Partial<{
       onRun: ReturnType<typeof vi.fn>;
@@ -4311,7 +4318,8 @@ describe("MessageInput bang commands", () => {
     return {
       onRun: overrides.onRun ?? vi.fn(),
       fetchCompletions:
-        overrides.fetchCompletions ?? vi.fn(async () => [] as string[]),
+        overrides.fetchCompletions ??
+        vi.fn(async () => completionsResult([])),
       history: overrides.history ?? [],
     };
   }
@@ -4364,7 +4372,9 @@ describe("MessageInput bang commands", () => {
   });
 
   it("fetches typing-triggered completions with token, kind, and line", async () => {
-    const fetchCompletions = vi.fn(async () => ["gitalike", "gizmo"]);
+    const fetchCompletions = vi.fn(async () =>
+      completionsResult(["gitalike", "gizmo"]),
+    );
     const support = bangSupport({ fetchCompletions });
     const textarea = renderMessageInput(undefined, {
       bangSupport: support,
@@ -4379,7 +4389,7 @@ describe("MessageInput bang commands", () => {
   });
 
   it("applies a single Tab completion immediately", async () => {
-    const fetchCompletions = vi.fn(async () => ["gitalike"]);
+    const fetchCompletions = vi.fn(async () => completionsResult(["gitalike"]));
     const textarea = renderMessageInput(undefined, {
       bangSupport: bangSupport({ fetchCompletions }),
     });
@@ -4391,10 +4401,12 @@ describe("MessageInput bang commands", () => {
   });
 
   it("discards a Tab completion after the draft changes", async () => {
-    let resolveCompletions: (completions: string[]) => void = () => {};
+    let resolveCompletions: (
+      result: { completions: string[]; history: string[] },
+    ) => void = () => {};
     const fetchCompletions = vi.fn(
       () =>
-        new Promise<string[]>((resolve) => {
+        new Promise<{ completions: string[]; history: string[] }>((resolve) => {
           resolveCompletions = resolve;
         }),
     );
@@ -4404,7 +4416,7 @@ describe("MessageInput bang commands", () => {
     fireEvent.change(textarea, { target: { value: "!!gi" } });
     fireEvent.keyDown(textarea, { key: "Tab" });
     fireEvent.change(textarea, { target: { value: "!!git status" } });
-    resolveCompletions(["gitalike"]);
+    resolveCompletions(completionsResult(["gitalike"]));
 
     await waitFor(() => expect(fetchCompletions).toHaveBeenCalled());
     expect((textarea as HTMLTextAreaElement).value).toBe("!!git status");
@@ -4420,5 +4432,111 @@ describe("MessageInput bang commands", () => {
     expect((textarea as HTMLTextAreaElement).value).toBe("!!ls");
     fireEvent.keyDown(textarea, { key: "ArrowDown", ctrlKey: true });
     expect((textarea as HTMLTextAreaElement).value).toBe("!!git status");
+  });
+
+  const bangMenuLabels = () =>
+    Array.from(
+      document.querySelectorAll(".bang-completion-menu .slash-command-item"),
+    ).map((el) => el.textContent);
+
+  it("ranks global history above token candidates in the menu", async () => {
+    const fetchCompletions = vi.fn(async () =>
+      completionsResult(["gitalike"], ["git status", "git log"]),
+    );
+    const textarea = renderMessageInput(undefined, {
+      bangSupport: bangSupport({ fetchCompletions }),
+    });
+    fireEvent.change(textarea, { target: { value: "!!git" } });
+    await waitFor(() =>
+      expect(bangMenuLabels()).toEqual(["git status", "git log", "gitalike"]),
+    );
+    // History rows carry the distinguishing class; candidates do not.
+    const items = document.querySelectorAll(
+      ".bang-completion-menu .slash-command-item",
+    );
+    expect(items[0]?.classList.contains("bang-history-item")).toBe(true);
+    expect(items[2]?.classList.contains("bang-history-item")).toBe(false);
+  });
+
+  it("applies a highlighted history row as the whole !! body", async () => {
+    const fetchCompletions = vi.fn(async () =>
+      completionsResult(["gitalike"], ["git status", "git log"]),
+    );
+    const textarea = renderMessageInput(undefined, {
+      bangSupport: bangSupport({ fetchCompletions }),
+    });
+    fireEvent.change(textarea, { target: { value: "!!git" } });
+    await waitFor(() =>
+      expect(bangMenuLabels()).toEqual(["git status", "git log", "gitalike"]),
+    );
+    // Tab accepts the highlighted (first = history) row, replacing the body.
+    fireEvent.keyDown(textarea, { key: "Tab" });
+    expect((textarea as HTMLTextAreaElement).value).toBe("!!git status");
+    // The menu closes after a whole-line history apply.
+    expect(document.querySelector(".bang-completion-menu")).toBeNull();
+  });
+
+  it("applies a token candidate by replacing only the token", async () => {
+    const fetchCompletions = vi.fn(async () =>
+      completionsResult(["gitalike", "gitother"], ["git status"]),
+    );
+    const textarea = renderMessageInput(undefined, {
+      bangSupport: bangSupport({ fetchCompletions }),
+    });
+    fireEvent.change(textarea, { target: { value: "!!git" } });
+    await waitFor(() =>
+      expect(bangMenuLabels()).toEqual([
+        "git status",
+        "gitalike",
+        "gitother",
+      ]),
+    );
+    // Move selection down to the first token candidate ("gitalike").
+    fireEvent.keyDown(textarea, { key: "ArrowDown" });
+    fireEvent.keyDown(textarea, { key: "Tab" });
+    expect((textarea as HTMLTextAreaElement).value).toBe("!!gitalike ");
+  });
+
+  it("opens the menu on Tab when only history matches (no auto-apply)", async () => {
+    let resolve: (
+      result: { completions: string[]; history: string[] },
+    ) => void = () => {};
+    const fetchCompletions = vi.fn(
+      () =>
+        new Promise<{ completions: string[]; history: string[] }>((r) => {
+          resolve = r;
+        }),
+    );
+    const textarea = renderMessageInput(undefined, {
+      bangSupport: bangSupport({ fetchCompletions }),
+    });
+    fireEvent.change(textarea, { target: { value: "!!gi" } });
+    fireEvent.keyDown(textarea, { key: "Tab" });
+    resolve(completionsResult([], ["git status", "git log"]));
+    await waitFor(() =>
+      expect(bangMenuLabels()).toEqual(["git status", "git log"]),
+    );
+    // Whole-line history never auto-applies on Tab; the draft is unchanged.
+    expect((textarea as HTMLTextAreaElement).value).toBe("!!gi");
+  });
+
+  it("keeps Escape-dismiss and re-show-on-typing for history matches", async () => {
+    const fetchCompletions = vi.fn(async () =>
+      completionsResult([], ["git status"]),
+    );
+    const textarea = renderMessageInput(undefined, {
+      bangSupport: bangSupport({ fetchCompletions }),
+    });
+    fireEvent.change(textarea, { target: { value: "!!gi" } });
+    await waitFor(() =>
+      expect(document.querySelector(".bang-completion-menu")).toBeTruthy(),
+    );
+    fireEvent.keyDown(textarea, { key: "Escape" });
+    expect(document.querySelector(".bang-completion-menu")).toBeNull();
+    // Typing further changes the query key, so the menu is eligible again.
+    fireEvent.change(textarea, { target: { value: "!!git" } });
+    await waitFor(() =>
+      expect(document.querySelector(".bang-completion-menu")).toBeTruthy(),
+    );
   });
 });

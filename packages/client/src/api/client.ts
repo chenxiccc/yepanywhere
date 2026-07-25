@@ -911,7 +911,7 @@ export const api = {
     kind: "command" | "path",
     line: string,
   ) =>
-    fetchJSON<{ completions: string[] }>(
+    fetchJSON<{ completions: string[]; history: string[] }>(
       `/projects/${projectId}/bang-completions?token=${encodeURIComponent(token)}&kind=${kind}&line=${encodeURIComponent(line)}`,
     ),
 

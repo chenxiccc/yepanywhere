@@ -194,17 +194,23 @@ keeps the submitted draft intact so the user can correct or retry it.
   project-root executables (`GET
   /api/projects/:id/bang-completions?kind=command`), served from a 30 s
   cached scan.
-- **Global command history (planned) — ranked first at command position.**
-  Typing `!!` then Tab (the `! ! Tab` sequence) offers, before the PATH /
-  project-executable candidates, prior *whole* `!!` command lines that
-  prefix-match the current `!!` body. The source is YA-global: every bang
-  command run across all sessions and all time — the same corpus the
-  top-level "!! Commands" view lists (bounded bang objects in
-  `session-metadata.json`), deduped by command line, most-recent-first,
-  prefix-filtered server-side. This is the bang-side twin of the composer
+- **Global command history — ranked first.** Typing `!!` then Tab (the
+  `! ! Tab` sequence) offers, before the PATH / project-executable / path
+  candidates, prior *whole* `!!` command lines that prefix-match the
+  current `!!` body. The source is YA-global: every bang command run
+  across all sessions and all time — the same corpus the top-level "!!
+  Commands" view lists (`collectGlobalBangCommands` over
+  `listTranscriptDisplayObjectSessions`), deduped by command line,
+  most-recent-first, prefix-filtered server-side (`matchBangHistory`). The
+  completion endpoint returns `{ completions, history }`; the client merges
+  them into one menu (history rows first, `bang-history-item`), and
+  selecting a history row replaces the whole `!!` body, while a token row
+  keeps token replacement. This is the bang-side twin of the composer
   recall drawer (composer-recall-drawer.md): same menu UI, but the corpus
   is bang history and selecting *completes the command* rather than
-  drafting a turn.
+  drafting a turn. Known limit: history engages on the same gate as token
+  completion (non-empty trailing token), so `!!git` offers history but
+  `!!git ` (trailing space) does not — loosening that is a separate change.
 - **Argument tokens** (not starting with `-`): per-tool acli completion
   first, then project-relative path completion (directories suffixed `/`,
   `..` escapes refused).

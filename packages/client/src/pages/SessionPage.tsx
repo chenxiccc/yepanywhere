@@ -2287,10 +2287,7 @@ function SessionPageContent({
         token: string,
         kind: "command" | "path",
         line: string,
-      ) =>
-        api
-          .fetchBangCompletions(projectId, token, kind, line)
-          .then((result) => result.completions),
+      ) => api.fetchBangCompletions(projectId, token, kind, line),
       history: bangHistory,
     }),
     [projectId, runBangCommand, bangHistory],

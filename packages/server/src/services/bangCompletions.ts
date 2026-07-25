@@ -196,6 +196,36 @@ export async function listAcliArgCompletions(options: {
   return completions;
 }
 
+/**
+ * Prefix-match prior whole `!!` command lines against the current bang body
+ * for the global command-history completion axis (ranked ahead of token
+ * candidates). Case-insensitive prefix match; input order is preserved (the
+ * caller passes commands most-recent-first, already deduped); the command
+ * exactly equal to the current body is excluded (completing to itself is a
+ * no-op); capped at `limit`. Contract: topics/bang-commands.md § Tab
+ * completion (global command history).
+ */
+export function matchBangHistory(
+  commands: readonly string[],
+  bodyPrefix: string,
+  limit = 20,
+): string[] {
+  const needle = bodyPrefix.toLowerCase();
+  const matches: string[] = [];
+  for (const command of commands) {
+    if (command === bodyPrefix) {
+      continue;
+    }
+    if (command.toLowerCase().startsWith(needle)) {
+      matches.push(command);
+      if (matches.length >= limit) {
+        break;
+      }
+    }
+  }
+  return matches;
+}
+
 /** Test hook: drop the PATH scan cache. */
 export function resetBangCompletionCache(): void {
   commandScanCache = null;

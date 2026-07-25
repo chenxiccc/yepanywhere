@@ -299,7 +299,7 @@ interface Props {
       token: string,
       kind: "command" | "path",
       line: string,
-    ) => Promise<string[]>;
+    ) => Promise<{ completions: string[]; history: string[] }>;
     history: readonly string[];
   };
   /**
@@ -313,6 +313,20 @@ interface Props {
     entries: ComposerTurnRecallEntry[];
     onGoToTurn?: (id: string) => void;
   };
+}
+
+/**
+ * One row of the bang completion menu. Global command-history matches
+ * (`history`) are ranked ahead of PATH/project/path token candidates
+ * (`candidate`); selecting a history row replaces the whole `!!` body,
+ * a candidate keeps the token-replacement behavior.
+ */
+type BangMenuItem = { source: "history" | "candidate"; value: string };
+
+/** The completion-fetch cache key for a draft (kind, token, and full body). */
+function bangCompletionQueryKey(draft: string): string | null {
+  const query = getBangCompletionQuery(draft);
+  return query ? `${query.kind} ${query.token}\0${draft.slice(2)}` : null;
 }
 
 export function MessageInput({
@@ -415,6 +429,9 @@ export function MessageInput({
   );
   const [selectedSlashIndex, setSelectedSlashIndex] = useState(0);
   const [bangCandidates, setBangCandidates] = useState<string[]>([]);
+  const [bangHistoryCandidates, setBangHistoryCandidates] = useState<string[]>(
+    [],
+  );
   const [selectedBangIndex, setSelectedBangIndex] = useState(0);
   const [dismissedBangQueryKey, setDismissedBangQueryKey] = useState<
     string | null
@@ -456,24 +473,37 @@ export function MessageInput({
     matchingSlashCommands.length > 0;
   const bangQuery =
     bangSupport && !collapsed ? getBangCompletionQuery(text) : null;
-  const bangQueryKey = bangQuery
-    ? `${bangQuery.kind} ${bangQuery.token}\0${text.slice(2)}`
-    : null;
+  const bangQueryKey = bangQuery ? bangCompletionQueryKey(text) : null;
   const showBangChip = !!bangSupport && !collapsed && text.startsWith("!!");
   const showBangEscapedChip =
     !!bangSupport && !collapsed && text.startsWith(" !!");
+  // Global history rows first, then PATH/project/path token candidates; the
+  // selection index and arrow navigation span this combined list.
+  const bangMenuItems: BangMenuItem[] = [
+    ...bangHistoryCandidates.map(
+      (value): BangMenuItem => ({ source: "history", value }),
+    ),
+    ...bangCandidates.map(
+      (value): BangMenuItem => ({ source: "candidate", value }),
+    ),
+  ];
+  // A lone token candidate equal to the current token is nothing to complete;
+  // suppress that (unless history offers whole-line matches).
+  const hasUsefulBangCandidates =
+    bangCandidates.length > 0 &&
+    !(
+      bangCandidates.length === 1 &&
+      bangQuery !== null &&
+      (bangCandidates[0] === bangQuery.token ||
+        bangCandidates[0] === `${bangQuery.token}/`)
+    );
   const showBangSuggestions =
     !collapsed &&
     !disabled &&
     bangQuery !== null &&
     bangQuery.token.length > 0 &&
     dismissedBangQueryKey !== bangQueryKey &&
-    bangCandidates.length > 0 &&
-    !(
-      bangCandidates.length === 1 &&
-      (bangCandidates[0] === bangQuery.token ||
-        bangCandidates[0] === `${bangQuery.token}/`)
-    );
+    (bangHistoryCandidates.length > 0 || hasUsefulBangCandidates);
   const canSubmit = forkSummaryMode
     ? !forkSummaryMode.submitting &&
       attachments.length === 0 &&
@@ -557,6 +587,7 @@ export function MessageInput({
     const fetchCompletions = bangFetchRef.current;
     if (!bangQueryKey || !fetchCompletions) {
       setBangCandidates([]);
+      setBangHistoryCandidates([]);
       return;
     }
     const separatorIndex = bangQueryKey.indexOf(" ");
@@ -566,20 +597,23 @@ export function MessageInput({
     const line = bangQueryKey.slice(lineSeparatorIndex + 1);
     if (!token) {
       setBangCandidates([]);
+      setBangHistoryCandidates([]);
       return;
     }
     let cancelled = false;
     const timer = setTimeout(() => {
       fetchCompletions(token, kind, line).then(
-        (completions) => {
+        (result) => {
           if (!cancelled) {
-            setBangCandidates(completions);
+            setBangCandidates(result.completions);
+            setBangHistoryCandidates(result.history);
             setSelectedBangIndex(0);
           }
         },
         () => {
           if (!cancelled) {
             setBangCandidates([]);
+            setBangHistoryCandidates([]);
           }
         },
       );
@@ -1384,35 +1418,62 @@ export function MessageInput({
     [text, setText, onCustomCommand, noteComposerEdit, noteDraftTextChange],
   );
 
-  // Shared Tab-complete action for bang drafts: accept the highlighted
-  // candidate, else fetch immediately and extend to the longest common
-  // prefix (menu opens on ambiguity). Reused by the Tab key and by the
+  // Apply a highlighted/clicked bang menu row. A history row replaces the
+  // whole `!!` body (and dismisses the menu, since the body is now a complete
+  // prior command); a token candidate keeps the token-replacement behavior.
+  const applyBangMenuItem = (item: BangMenuItem) => {
+    if (!bangQuery) {
+      return;
+    }
+    if (item.source === "history") {
+      const nextText = `!!${item.value}`;
+      noteComposerEdit(nextText);
+      setText(nextText);
+      setDismissedBangQueryKey(bangCompletionQueryKey(nextText));
+      return;
+    }
+    const nextText = applyBangCompletion(text, bangQuery, item.value);
+    noteComposerEdit(nextText);
+    setText(nextText);
+  };
+
+  // Shared Tab-complete action for bang drafts: accept the highlighted row if
+  // the menu is open; else fetch immediately. Whole-line history matches never
+  // participate in the token longest-common-prefix logic — when the fetch
+  // returns any, open the menu (history first) instead of auto-applying;
+  // otherwise apply a single token match or extend to the longest common
+  // prefix (menu opens on ambiguity). Reused by the Tab key and the
   // mobile-keyboard button, since touch keyboards have no Tab key.
   const performBangTabComplete = (): boolean => {
     if (!bangQuery || !bangSupport) {
       return false;
     }
-    const applyCandidate = (candidate: string) => {
-      const nextText = applyBangCompletion(text, bangQuery, candidate);
-      noteComposerEdit(nextText);
-      setText(nextText);
-    };
     if (showBangSuggestions) {
-      const candidate = bangCandidates[selectedBangIndex];
-      if (candidate) {
-        applyCandidate(candidate);
+      const item = bangMenuItems[selectedBangIndex];
+      if (item) {
+        applyBangMenuItem(item);
       }
       return true;
     }
     bangSupport
       .fetchCompletions(bangQuery.token, bangQuery.kind, text.slice(2))
-      .then((completions) => {
+      .then((result) => {
         if (controls.getDraft() !== text) {
           return;
         }
+        if (result.history.length > 0) {
+          setBangCandidates(result.completions);
+          setBangHistoryCandidates(result.history);
+          setSelectedBangIndex(0);
+          setDismissedBangQueryKey(null);
+          return;
+        }
+        const completions = result.completions;
         const single = completions.length === 1 ? completions[0] : undefined;
         if (single) {
-          applyCandidate(single);
+          const nextText = applyBangCompletion(text, bangQuery, single);
+          noteComposerEdit(nextText);
+          setText(nextText);
           return;
         }
         const prefix = longestCommonPrefix(completions);
@@ -1422,6 +1483,7 @@ export function MessageInput({
           setText(nextText);
         }
         setBangCandidates(completions);
+        setBangHistoryCandidates([]);
         setSelectedBangIndex(0);
         setDismissedBangQueryKey(null);
       })
@@ -1599,7 +1661,7 @@ export function MessageInput({
         setSelectedBangIndex((current) => {
           const delta = e.key === "ArrowDown" ? 1 : -1;
           return (
-            (current + delta + bangCandidates.length) % bangCandidates.length
+            (current + delta + bangMenuItems.length) % bangMenuItems.length
           );
         });
         return;
@@ -1612,11 +1674,9 @@ export function MessageInput({
         !e.altKey
       ) {
         e.preventDefault();
-        const candidate = bangCandidates[selectedBangIndex];
-        if (candidate) {
-          const nextText = applyBangCompletion(text, bangQuery, candidate);
-          noteComposerEdit(nextText);
-          setText(nextText);
+        const item = bangMenuItems[selectedBangIndex];
+        if (item) {
+          applyBangMenuItem(item);
         }
         return;
       }
@@ -2507,29 +2567,22 @@ export function MessageInput({
             className="slash-command-menu composer-slash-command-menu bang-completion-menu"
             role="menu"
           >
-            {bangCandidates.map((candidate, index) => (
+            {bangMenuItems.map((item, index) => (
               <button
-                key={candidate}
+                key={`${item.source}:${item.value}`}
                 type="button"
                 className={`slash-command-item${
-                  index === selectedBangIndex ? " active" : ""
-                }`}
+                  item.source === "history" ? " bang-history-item" : ""
+                }${index === selectedBangIndex ? " active" : ""}`}
                 onMouseEnter={() => setSelectedBangIndex(index)}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => {
-                  if (!bangQuery) return;
-                  const nextText = applyBangCompletion(
-                    text,
-                    bangQuery,
-                    candidate,
-                  );
-                  noteComposerEdit(nextText);
-                  setText(nextText);
+                  applyBangMenuItem(item);
                   textareaRef.current?.focus();
                 }}
                 role="menuitem"
               >
-                <span>{candidate}</span>
+                <span>{item.value}</span>
               </button>
             ))}
           </div>
