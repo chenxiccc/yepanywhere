@@ -2300,9 +2300,30 @@ function SessionPageContent({
     () => getComposerTurnRecallEntries(messages),
     [messages],
   );
+  // Go-to-turn: the recall drawer row asks to scroll the transcript to a prior
+  // user turn by its render id. Mirror the isearch jump path (which reaches
+  // MessageList.scrollToRenderId) by handing MessageList a bumped request; it
+  // resolves the id via findRenderRow. Token makes repeat jumps to the same id
+  // distinct so the effect re-fires. See topics/composer-recall-drawer.md.
+  const [scrollToTurnRequest, setScrollToTurnRequest] = useState<{
+    id: string;
+    token: number;
+  } | null>(null);
+  const handleGoToRecallTurn = useCallback((id: string) => {
+    if (!id) {
+      return;
+    }
+    setScrollToTurnRequest((previous) => ({
+      id,
+      token: (previous?.token ?? 0) + 1,
+    }));
+  }, []);
   const composerTurnRecall = useMemo(
-    () => ({ entries: composerTurnRecallEntries }),
-    [composerTurnRecallEntries],
+    () => ({
+      entries: composerTurnRecallEntries,
+      onGoToTurn: handleGoToRecallTurn,
+    }),
+    [composerTurnRecallEntries, handleGoToRecallTurn],
   );
 
   const handleQueue = async (
@@ -4890,6 +4911,7 @@ function SessionPageContent({
                   isProcessing={sessionActivityUi.showProcessingIndicator}
                   isCompacting={isCompacting}
                   scrollTrigger={scrollTrigger}
+                  scrollToTurnRequest={scrollToTurnRequest}
                   pendingMessages={pendingMessages}
                   deferredMessages={deferredMessages}
                   projectQueueMessages={inlineProjectQueueMessages}

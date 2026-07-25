@@ -304,9 +304,15 @@ interface Props {
   };
   /**
    * Prior user turns for the always-on Ctrl+↑ composer recall drawer,
-   * newest-first. See topics/composer-recall-drawer.md.
+   * newest-first. `onGoToTurn`, when provided, powers the per-row go-to
+   * control that scrolls the transcript to that turn by its render id
+   * (navigation only — no composer/draft change). See
+   * topics/composer-recall-drawer.md.
    */
-  turnRecall?: { entries: { text: string; preview: string }[] };
+  turnRecall?: {
+    entries: ComposerTurnRecallEntry[];
+    onGoToTurn?: (id: string) => void;
+  };
 }
 
 export function MessageInput({
@@ -1423,6 +1429,20 @@ export function MessageInput({
     return true;
   };
 
+  // Open the recall drawer over the prior user turns that prefix-match the
+  // current draft (empty draft → all). No-op with nothing to show. Shared by
+  // Ctrl+↑ and the mobile open button. Returns whether it opened.
+  const openRecallDrawer = (): boolean => {
+    if (!turnRecall || turnRecall.entries.length === 0) {
+      return false;
+    }
+    const matches = filterComposerTurnRecall(turnRecall.entries, text);
+    if (matches.length === 0) {
+      return false;
+    }
+    setRecallDrawer({ matches, index: 0, originalDraft: text });
+    return true;
+  };
   // Cancel the recall drawer, restoring the pre-open draft (Esc / click-away).
   const cancelRecallDrawer = () => {
     if (recallDrawer) {
@@ -1436,6 +1456,13 @@ export function MessageInput({
     setText(entry.text);
     setRecallDrawer(null);
     textareaRef.current?.focus();
+  };
+  // Go to a recalled turn: scroll the transcript to it and close the drawer.
+  // Navigation, not recall — the composer text is left untouched and the Esc
+  // draft-restore is deliberately skipped (nothing was drafted to restore).
+  const goToRecallTurn = (entry: ComposerTurnRecallEntry) => {
+    turnRecall?.onGoToTurn?.(entry.id);
+    setRecallDrawer(null);
   };
 
   const handleKeyDown = (e: KeyboardEvent) => {
@@ -1547,14 +1574,10 @@ export function MessageInput({
       !e.metaKey &&
       !e.shiftKey &&
       !e.altKey &&
-      !recallDrawer &&
-      turnRecall &&
-      turnRecall.entries.length > 0
+      !recallDrawer
     ) {
-      const matches = filterComposerTurnRecall(turnRecall.entries, text);
-      if (matches.length > 0) {
+      if (openRecallDrawer()) {
         e.preventDefault();
-        setRecallDrawer({ matches, index: 0, originalDraft: text });
         return;
       }
     }
@@ -2549,23 +2572,85 @@ export function MessageInput({
             aria-label="Recall a previous message"
           >
             {recallDrawer.matches.map((entry, index) => (
-              <button
-                key={`${index}-${entry.preview}`}
-                type="button"
-                className={`slash-command-item${
-                  index === recallDrawer.index ? " active" : ""
-                }`}
-                onMouseEnter={() =>
-                  setRecallDrawer((current) =>
-                    current ? { ...current, index } : current,
-                  )
-                }
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => acceptRecallEntry(entry)}
-                role="menuitem"
+              <div
+                key={`${index}-${entry.id}`}
+                className="composer-recall-row"
+                style={{ display: "flex", alignItems: "stretch" }}
               >
-                <span>{entry.preview}</span>
-              </button>
+                <button
+                  type="button"
+                  className={`slash-command-item${
+                    index === recallDrawer.index ? " active" : ""
+                  }`}
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    width: "auto",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                  onMouseEnter={() =>
+                    setRecallDrawer((current) =>
+                      current ? { ...current, index } : current,
+                    )
+                  }
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => acceptRecallEntry(entry)}
+                  role="menuitem"
+                >
+                  <span>{entry.preview}</span>
+                </button>
+                {turnRecall?.onGoToTurn && (
+                  // Navigation-only secondary control: scroll the transcript to
+                  // this turn and close the drawer (no composer/draft change).
+                  // Inline aria-label pending an en.json key (peer WIP holds
+                  // en.json). See topics/composer-recall-drawer.md.
+                  <button
+                    type="button"
+                    className="composer-recall-goto"
+                    style={{
+                      flex: "0 0 auto",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: "0 var(--space-2)",
+                      background: "transparent",
+                      border: "none",
+                      color: "inherit",
+                      cursor: "pointer",
+                      opacity: 0.7,
+                    }}
+                    onMouseEnter={() =>
+                      setRecallDrawer((current) =>
+                        current ? { ...current, index } : current,
+                      )
+                    }
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => goToRecallTurn(entry)}
+                    aria-label="Go to this turn"
+                    title="Go to this turn"
+                  >
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <circle cx="12" cy="12" r="3" />
+                      <line x1="12" y1="2" x2="12" y2="5" />
+                      <line x1="12" y1="19" x2="12" y2="22" />
+                      <line x1="2" y1="12" x2="5" y2="12" />
+                      <line x1="19" y1="12" x2="22" y2="12" />
+                    </svg>
+                  </button>
+                )}
+              </div>
             ))}
           </div>
         )}
@@ -2868,6 +2953,40 @@ export function MessageInput({
                   <span aria-hidden="true">⇥</span>
                 </button>
               )}
+              {turnRecall &&
+                turnRecall.entries.length > 0 &&
+                !recallDrawer &&
+                bangQuery === null && (
+                  // Touch-keyboard opener for the recall drawer, where there is
+                  // no Ctrl+↑. Opens over the same prefix-matched turns (empty
+                  // draft → all). Inline aria-label pending an en.json key (peer
+                  // WIP holds en.json). See topics/composer-recall-drawer.md.
+                  <button
+                    type="button"
+                    className="message-input-keyboard-action message-input-keyboard-secondary composer-recall-open"
+                    onPointerDown={(event) => event.preventDefault()}
+                    onClick={() => openRecallDrawer()}
+                    disabled={disabled}
+                    aria-label="Recall a previous message"
+                    title="Recall a previous message"
+                  >
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M3 3v5h5" />
+                      <path d="M3.05 13A9 9 0 1 0 6 5.3L3 8" />
+                      <path d="M12 7v5l3 3" />
+                    </svg>
+                  </button>
+                )}
               <button
                 type="button"
                 className={`message-input-keyboard-action message-input-keyboard-primary ${effectivePrimaryActionKind}-mode`}

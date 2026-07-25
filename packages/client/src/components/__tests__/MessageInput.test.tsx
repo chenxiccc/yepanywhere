@@ -1160,9 +1160,9 @@ describe("MessageInput", () => {
   describe("composer recall drawer", () => {
     const turnRecall = {
       entries: [
-        { text: "deploy the app", preview: "deploy the app" },
-        { text: "debug the crash", preview: "debug the crash" },
-        { text: "run the tests", preview: "run the tests" },
+        { id: "turn-deploy", text: "deploy the app", preview: "deploy the app" },
+        { id: "turn-debug", text: "debug the crash", preview: "debug the crash" },
+        { id: "turn-run", text: "run the tests", preview: "run the tests" },
       ],
     };
 
@@ -1175,6 +1175,14 @@ describe("MessageInput", () => {
     function activeRecallItem() {
       return document.querySelector(
         ".composer-recall-menu .slash-command-item.active",
+      );
+    }
+
+    function recallGoToButtons() {
+      return Array.from(
+        document.querySelectorAll<HTMLButtonElement>(
+          ".composer-recall-menu .composer-recall-goto",
+        ),
       );
     }
 
@@ -1285,6 +1293,86 @@ describe("MessageInput", () => {
 
       expect(onRecall).toHaveBeenCalledTimes(1);
       expect(document.querySelector(".composer-recall-menu")).toBeNull();
+    });
+
+    it("omits the per-row go-to control when onGoToTurn is absent", () => {
+      const textarea = renderMessageInput(vi.fn(), { turnRecall });
+
+      fireEvent.keyDown(textarea, { key: "ArrowUp", ctrlKey: true });
+
+      expect(recallItems()).toHaveLength(3);
+      expect(recallGoToButtons()).toHaveLength(0);
+    });
+
+    it("go-to control navigates to the turn id, closing the drawer without changing the draft", () => {
+      const onGoToTurn = vi.fn();
+      const textarea = renderMessageInput(vi.fn(), {
+        turnRecall: { ...turnRecall, onGoToTurn },
+      }) as HTMLTextAreaElement;
+      fireEvent.change(textarea, { target: { value: "de" } });
+
+      fireEvent.keyDown(textarea, { key: "ArrowUp", ctrlKey: true });
+      // "de" prefix-matches deploy + debug; move selection to the second.
+      fireEvent.keyDown(textarea, { key: "ArrowDown" });
+      expect(activeRecallItem()?.textContent).toBe("debug the crash");
+
+      const gotoButtons = recallGoToButtons();
+      expect(gotoButtons).toHaveLength(2);
+      fireEvent.click(gotoButtons[1] as HTMLButtonElement);
+
+      // Navigation only: fires the render id, closes the drawer, and leaves the
+      // draft untouched (no recall, and no Esc-style restore).
+      expect(onGoToTurn).toHaveBeenCalledTimes(1);
+      expect(onGoToTurn).toHaveBeenCalledWith("turn-debug");
+      expect(document.querySelector(".composer-recall-menu")).toBeNull();
+      expect(textarea.value).toBe("de");
+    });
+
+    it("opens the drawer from the mobile keyboard recall button", () => {
+      const viewport = installMobileKeyboardViewport();
+      try {
+        const textarea = renderMessageInput(vi.fn(), { turnRecall });
+        fireEvent.focus(textarea);
+        act(() => viewport.setHeight(480));
+        // A prefix draft makes canSubmit true so the compact action row shows.
+        fireEvent.change(textarea, { target: { value: "de" } });
+
+        const openButton = document.querySelector(
+          ".message-input-keyboard-compact .composer-recall-open",
+        ) as HTMLButtonElement | null;
+        expect(openButton).toBeTruthy();
+        expect(document.querySelector(".composer-recall-menu")).toBeNull();
+
+        fireEvent.pointerDown(openButton as HTMLButtonElement);
+        fireEvent.click(openButton as HTMLButtonElement);
+
+        expect(recallItems().map((item) => item.textContent)).toEqual([
+          "deploy the app",
+          "debug the crash",
+        ]);
+      } finally {
+        viewport.restore();
+      }
+    });
+
+    it("hides the mobile keyboard recall button when there are no entries", () => {
+      const viewport = installMobileKeyboardViewport();
+      try {
+        const textarea = renderMessageInput(vi.fn(), {
+          turnRecall: { entries: [] },
+        });
+        fireEvent.focus(textarea);
+        act(() => viewport.setHeight(480));
+        fireEvent.change(textarea, { target: { value: "de" } });
+
+        expect(
+          document.querySelector(
+            ".message-input-keyboard-compact .composer-recall-open",
+          ),
+        ).toBeNull();
+      } finally {
+        viewport.restore();
+      }
     });
   });
 

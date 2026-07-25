@@ -459,6 +459,12 @@ interface Props {
   isCompacting?: boolean;
   /** Increment this to force scroll to bottom (e.g., when user sends a message) */
   scrollTrigger?: number;
+  /**
+   * Request to scroll the transcript to a render row by id (e.g. the composer
+   * recall drawer's go-to-turn control). `token` distinguishes repeat requests
+   * for the same id. Resolved via `scrollToRenderId` / `findRenderRow`.
+   */
+  scrollToTurnRequest?: { id: string; token: number } | null;
   /** Messages waiting for server confirmation (shown as "Sending...") */
   pendingMessages?: PendingMessage[];
   /** Deferred messages queued server-side (shown as "Queued") */
@@ -805,6 +811,7 @@ export const MessageList = memo(function MessageList({
   isProcessing = false,
   isCompacting = false,
   scrollTrigger = 0,
+  scrollToTurnRequest = null,
   pendingMessages = [],
   deferredMessages = [],
   projectQueueMessages = [],
@@ -2226,6 +2233,26 @@ export const MessageList = memo(function MessageList({
       forceScrollToCurrent(SEND_CATCH_UP_DELAYS_MS);
     }
   }, [forceScrollToCurrent, scrollTrigger]);
+
+  // Scroll to a specific turn on request (composer recall drawer go-to-turn),
+  // mirroring the isearch Enter jump (rAF → scrollToRenderId). The token guard
+  // makes each distinct request scroll exactly once; the initial null request
+  // and re-renders that don't bump the token are ignored.
+  const lastScrollToTurnTokenRef = useRef<number | null>(null);
+  useEffect(() => {
+    const request = scrollToTurnRequest;
+    if (!request?.id) {
+      return;
+    }
+    if (lastScrollToTurnTokenRef.current === request.token) {
+      return;
+    }
+    lastScrollToTurnTokenRef.current = request.token;
+    const frame = requestAnimationFrame(() =>
+      scrollToRenderId(request.id, "auto", "center", true),
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [scrollToTurnRequest, scrollToRenderId]);
 
   useLayoutEffect(() => {
     const wasInert = previousInertRef.current;

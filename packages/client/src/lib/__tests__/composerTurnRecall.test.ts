@@ -4,6 +4,8 @@ import {
   filterComposerTurnRecall,
   getComposerTurnRecallEntries,
 } from "../composerTurnRecall";
+import { buildSessionDetailRenderItems } from "../sessionDetail/renderItems";
+import { getUserTurnNavAnchors } from "../sessionDetail/search";
 
 function userTurn(content: Message["content"]): Message {
   return { type: "user", role: "user", content };
@@ -84,13 +86,56 @@ describe("getComposerTurnRecallEntries", () => {
     // Full text is preserved even when the preview is clamped.
     expect(entries[0]?.text).toBe(longText);
   });
+
+  it("carries the message id, preferring uuid over id", () => {
+    const entries = getComposerTurnRecallEntries([
+      { uuid: "uuid-1", id: "id-1", type: "user", message: { role: "user", content: "with uuid" } },
+      { id: "id-2", type: "user", message: { role: "user", content: "id only" } },
+    ]);
+    expect(entries.map((entry) => ({ id: entry.id, text: entry.text }))).toEqual(
+      [
+        { id: "id-2", text: "id only" },
+        { id: "uuid-1", text: "with uuid" },
+      ],
+    );
+  });
+
+  // The go-to-turn control scrolls via scrollToRenderId/findRenderRow, which
+  // match on the row's data-render-id. That attribute is set to the render
+  // item's id (RenderItemComponent: data-render-id={item.id}), the same id
+  // getUserTurnNavAnchors exposes. This proves the id we store on each recall
+  // entry is exactly the id the scroll path resolves.
+  it("stores an id equal to the transcript render row id (getUserTurnNavAnchors)", () => {
+    const messages: Message[] = [
+      { uuid: "u1", type: "user", message: { role: "user", content: "deploy the app" } },
+      { uuid: "a1", type: "assistant", message: { role: "assistant", content: "on it" } },
+      { uuid: "u2", type: "user", message: { role: "user", content: "run the tests" } },
+    ];
+
+    const entryIds = getComposerTurnRecallEntries(messages).map(
+      (entry) => entry.id,
+    );
+    const renderItems = buildSessionDetailRenderItems({ messages });
+    const anchorIds = getUserTurnNavAnchors(renderItems).map(
+      (anchor) => anchor.id,
+    );
+    const renderRowIds = renderItems
+      .filter((item) => item.type === "user_prompt")
+      .map((item) => item.id);
+
+    // Anchors and data-render-id rows are in render order; recall is newest
+    // first, so reverse to compare.
+    expect(anchorIds).toEqual(["u1", "u2"]);
+    expect(renderRowIds).toEqual(["u1", "u2"]);
+    expect([...entryIds].reverse()).toEqual(anchorIds);
+  });
 });
 
 describe("filterComposerTurnRecall", () => {
   const entries = [
-    { text: "hello world", preview: "hello world" },
-    { text: "help me", preview: "help me" },
-    { text: "goodbye", preview: "goodbye" },
+    { id: "a", text: "hello world", preview: "hello world" },
+    { id: "b", text: "help me", preview: "help me" },
+    { id: "c", text: "goodbye", preview: "goodbye" },
   ];
 
   it("returns every entry for an empty or whitespace draft", () => {

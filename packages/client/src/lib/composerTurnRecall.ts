@@ -1,5 +1,5 @@
 import type { ContentBlock, Message } from "../types";
-import { getMessageContent } from "./mergeMessages";
+import { getMessageContent, getMessageId } from "./mergeMessages";
 import {
   getPromptTextForCorrection,
   getSearchPreviewFallback,
@@ -10,6 +10,14 @@ import {
  * See topics/composer-recall-drawer.md.
  */
 export interface ComposerTurnRecallEntry {
+  /**
+   * Render id of the source user-turn message (`getMessageId` = uuid ?? id).
+   * This is exactly the `data-render-id` of the transcript row and the `id`
+   * that `getUserTurnNavAnchors` / `scrollToRenderId` / `findRenderRow` use,
+   * so the go-to-turn control can scroll to this turn. See
+   * topics/composer-recall-drawer.md.
+   */
+  id: string;
   /** Full prompt text, drafted verbatim into the composer on Enter. */
   text: string;
   /** Single-line, whitespace-collapsed, ~180-char preview for the menu row. */
@@ -85,7 +93,13 @@ export function getComposerTurnRecallEntries(
       continue;
     }
     seen.add(text);
-    entries.push({ text, preview: getSearchPreviewFallback(text) });
+    // Newest-first + dedup-by-text means the retained entry is the most recent
+    // occurrence, so its id points at the latest rendered row for that text.
+    entries.push({
+      id: getMessageId(message),
+      text,
+      preview: getSearchPreviewFallback(text),
+    });
   }
   return entries;
 }
