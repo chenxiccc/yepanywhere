@@ -22,6 +22,10 @@ import {
   extractParentSessionIdFromAgentFileEvent,
   extractSessionIdFromFileEvent,
 } from "../lib/sessionFile";
+import {
+  loadStoredSessionModel,
+  saveStoredSessionModel,
+} from "../lib/sessionModelStorage";
 import type {
   InputRequest,
   Message,
@@ -2087,12 +2091,34 @@ export function useSession(
         ? sessionWatchConnected
         : false;
 
-  // Allow external model update (e.g., after /model command switches mid-session)
+  // Restore the user's last per-session model pick when reopening a session
+  // that no self-owned process is running, mirroring the permission-mode restore
+  // above. A live process's model stays authoritative (its config arrives via the
+  // stream), so we only overlay the stored pick when idle, and only once per
+  // loaded session id so later metadata updates and the stream can still move it.
+  const restoredModelSessionRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!session) return;
+    if (restoredModelSessionRef.current === sessionId) return;
+    restoredModelSessionRef.current = sessionId;
+    if (status.owner === "self") return;
+    const stored = loadStoredSessionModel(sessionId);
+    if (stored && stored !== session.model) {
+      updateSession((prev) => (prev ? { ...prev, model: stored } : prev));
+    }
+  }, [session, sessionId, status.owner, updateSession]);
+
+  // Allow external model update (e.g., after /model command switches mid-session).
+  // Persist the pick per session so reopening an idle session restores it
+  // instead of falling back to the JSONL-derived model — the model change only
+  // reaches the server at the next turn, so an abandoned pick would otherwise be
+  // lost (mirrors the per-session permission-mode persistence above).
   const setSessionModel = useCallback(
     (model: string) => {
+      saveStoredSessionModel(sessionId, model);
       updateSession((prev) => (prev ? { ...prev, model } : prev));
     },
-    [updateSession],
+    [sessionId, updateSession],
   );
 
   return {
