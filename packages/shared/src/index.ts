@@ -50,6 +50,10 @@ export {
   toonDocumentToMarkdown,
   type ToonTable,
 } from "./toon.js";
+export {
+  jsonlTablesToMarkdown,
+  type JsonlTablesResult,
+} from "./jsonlTable.js";
 
 export type {
   ProviderName,

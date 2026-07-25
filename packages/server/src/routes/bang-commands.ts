@@ -6,6 +6,7 @@
 
 import {
   isUrlProjectId,
+  jsonlTablesToMarkdown,
   looksLikeToon,
   parseToonDocument,
 } from "@yep-anywhere/shared";
@@ -99,6 +100,16 @@ export function buildBangOutputMarkdown(text: string): {
   mode: BangOutputMode;
 } {
   const mode = classifyBangOutput(text);
+  if (mode === "json") {
+    // Uniform JSONL (the acli default for list-shaped output, e.g. almanac)
+    // renders as real tables rather than a fenced JSON blob; the per-block
+    // Raw toggle still shows the original lines. Mixed/non-uniform JSONL
+    // (no qualifying run) falls through to the plain json fence below.
+    const { markdown, tableCount } = jsonlTablesToMarkdown(text);
+    if (tableCount > 0) {
+      return { markdown, mode: "markdown" };
+    }
+  }
   switch (mode) {
     case "markdown":
       return { markdown: text, mode };

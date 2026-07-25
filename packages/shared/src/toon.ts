@@ -114,14 +114,19 @@ export function toonDocumentToMarkdown(tables: ToonTable[]): string {
   const escapeCell = (value: string) =>
     value.replace(/\|/g, "\\|").replace(/\n/g, " ");
   return tables
-    .map((table) =>
-      [
-        `**${escapeCell(table.name)}** (${table.rows.length})`,
-        "",
+    .map((table) => {
+      // A named table (every TOON header carries a name) gets a caption;
+      // a nameless table (e.g. one synthesized from JSONL) omits it rather
+      // than rendering an empty `**** (n)`.
+      const caption = table.name
+        ? [`**${escapeCell(table.name)}** (${table.rows.length})`, ""]
+        : [];
+      return [
+        ...caption,
         `| ${table.columns.map(escapeCell).join(" | ")} |`,
         `| ${table.columns.map(() => "---").join(" | ")} |`,
         ...table.rows.map((row) => `| ${row.map(escapeCell).join(" | ")} |`),
-      ].join("\n"),
-    )
+      ].join("\n");
+    })
     .join("\n\n");
 }

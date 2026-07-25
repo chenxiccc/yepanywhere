@@ -147,7 +147,15 @@ render path the repo already has — no bang-private renderer:
   markdown pipeline (`renderMarkdownToHtml`).
 - **json** — a whole-document JSON parse or first-lines JSONL parse (the
   acli spec mandates compact JSONL for non-TTY callers, so spec-compliant
-  tools land here): fenced as ```json for shiki highlighting.
+  tools land here): fenced as ```json for shiki highlighting. **Exception —
+  uniform JSONL renders as a table:** when the output contains one or more
+  consecutive runs of JSON-object lines that share an identical key set
+  (>= 2 rows), each run is rendered as a GFM markdown table via the shared
+  `jsonlTablesToMarkdown` → `toonDocumentToMarkdown` path (mode reported as
+  `markdown`), with any non-tabular lines passed through verbatim. This is
+  the common list-shaped acli output (e.g. `almanac query`); the per-block
+  Raw toggle still shows the original JSONL. Single objects, JSON arrays,
+  and non-uniform JSONL keep the plain ```json fence.
 - **ansi** — CSI escapes detected: fenced as ```ansi; the augment layer's
   existing ANSI renderer produces colored HTML. acli tools that respect a
   TTY-ish TERM and emit color render correctly.
