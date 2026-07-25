@@ -69,6 +69,20 @@ that choice explicit. See [cost-efficiency](cost-efficiency.md).
    audit rule in `AGENTS.md`: the read-only drift check is allowed immediately;
    code edits should be explicitly approved.
 
+## Pi
+
+YA drives the user's installed `pi` binary over RPC. Root `package.json`
+`yepAnywhere.piCli.compatibleThroughVersion` records the latest Pi CLI release
+whose startup flags, consumed RPC shapes, lifecycle events, model fields, and
+session JSONL assumptions were checked. It is an audited-through marker, not a
+pin or minimum version.
+
+After updating Pi, run the opt-in installed-binary check documented in
+[pi provider](pi-provider.md#installed-binary-compatibility-check). Compare the
+matching upstream release tags when the version changed; the real zero-token
+probe covers the production model-discovery command but intentionally does not
+exercise authenticated assistant events or persisted sessions.
+
 ## Codex
 
 YA's active Codex backend is the installed `codex` CLI app-server path.

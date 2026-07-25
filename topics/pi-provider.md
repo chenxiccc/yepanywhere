@@ -57,14 +57,13 @@ deltas: `text_delta`, etc.), `tool_execution_start/update/end`, plus
 `auto_retry_start/end`, and (from 0.80.4) `agent_settled`. This is already
 close to a normalized envelope.
 
-### Settled-turn boundary — refreshed for pi 0.81.1
+### Settled-turn boundary — compatible through Pi 0.82.1
 
-The installed and npm-latest `@earendil-works/pi-coding-agent` version is
-`0.81.1`. The official `v0.79.9..v0.81.1` source diff changes the RPC lifecycle
-contract: `agent_end` ends one low-level agent run and now reports
-`willRetry`, while `agent_settled` fires only after no automatic retry,
-compaction, or queued continuation remains. Upstream's RPC client now uses
-`agent_settled` for both `waitForIdle()` and event collection.
+The official `v0.79.9..v0.81.1` source diff changed the RPC lifecycle contract:
+`agent_end` ends one low-level agent run and reports `willRetry`, while
+`agent_settled` fires only after no automatic retry, compaction, or queued
+continuation remains. Upstream's RPC client uses `agent_settled` for both
+`waitForIdle()` and event collection.
 
 For Pi 0.80.4 and newer, YA therefore treats only `agent_settled` as the
 provider-turn boundary. `agent_end` must not emit a YA `result`, even when its
@@ -85,6 +84,17 @@ Evidence: official `earendil-works/pi` tag `v0.81.1`
 `packages/coding-agent/src/core/agent-session.ts` and
 `packages/coding-agent/src/modes/rpc/rpc-client.ts`. The event first appears
 in `v0.80.4` (`e9fa5a68`).
+
+The 2026-07-25 refresh compared official tags `v0.81.1`
+(`20be4b18d4c57487f8993d2762bace129f0cf7c6`) and `v0.82.1`
+(`b4f293684bba718d59cc1157679bcf6157b3a7f5`), then passed the real-binary
+contract against installed Pi 0.82.1. The flags and RPC responses YA consumes,
+the lifecycle boundary, and session JSONL format are unchanged; model-catalog
+additions preserve the `provider` / `id` / `name` fields YA reads. Pi 0.82.0
+adds `bash_execution_update` only for the direct RPC `bash` command. YA does
+not issue that command, while model-driven Bash continues to arrive through
+the existing `tool_execution_update` path, so the provider needs no new event
+branch.
 
 ## Why YA cares
 
