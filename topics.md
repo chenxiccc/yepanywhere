@@ -151,6 +151,8 @@
   renderers.
 - provider-child-sessions - Provider-launched delegated work discovered from
   provider persistence and nested beneath its canonical YA parent session.
+- older-claude-models - Default-off server registry and grandfathered custom
+  selections for previous provider model versions.
 - host-awake - Server-owned, process-lifetime idle-sleep inhibition with an
   optional macOS closed-lid-on-external-power strategy.
 - host-identity - Optional server-owned emoji marker for connected headers and

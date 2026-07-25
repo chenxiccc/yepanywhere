@@ -7,6 +7,15 @@ Topic: backward-compat
 
 ## Decisions
 
+2026-07-25 previous/custom Claude model settings — persist selections on the
+server and advertise one exact transitional capability. A new client hides the
+control when an older compatible server lacks that capability, avoiding a
+write the old settings parser would silently ignore. A new server's optional
+provider metadata is additive for older clients. If a maintained registry item
+is later removed, keep an existing saved exact id and label as unlisted/custom
+instead of deleting or remapping it. This does not raise
+`remoteCompatibilityLevel`.
+
 2026-06-23 `session-metadata.json` — add optional transcript display objects in
 schema version 2 while retaining all version-1 session metadata; the additive
 migration preserves existing configured state, and interrupted generating

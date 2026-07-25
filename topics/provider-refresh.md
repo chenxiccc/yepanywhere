@@ -385,6 +385,22 @@ Difference detectors:
   by `claude-sdk-schema` or visible normalization tests.
 - Model ids, effort levels, or context windows change enough to make fallback
   constants or model glyph rules misleading.
+- A model disappears from the live/latest catalog, changes lifecycle status,
+  reaches a published retirement boundary, starts rejecting requests, or
+  silently resolves to another id. Compare those changes with the opt-in
+  previous-model registry in
+  [older-claude-models](older-claude-models.md).
+
+Previous-model registry review:
+
+1. Treat a displaced model as a candidate, not an automatic registry addition.
+2. Retain only exact ids that remain usable and have a concrete product reason.
+3. Add deprecation/retirement copy when it helps users make a choice.
+4. Remove an entry when upstream retires, rejects, or remaps it.
+5. Preserve existing saved selections as unlisted/custom entries; never
+   auto-migrate them.
+6. Use read-only catalog and lifecycle checks routinely. Do not spend tokens
+   on live model turns without explicit approval.
 
 Current source refresh, 2026-07-25:
 

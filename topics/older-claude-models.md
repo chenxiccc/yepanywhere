@@ -1,16 +1,39 @@
 # Exposing Older Claude Models
 
-> How yepanywhere could let users opt into older Claude versions (Opus 4.7 /
-> 4.6 / 4.5, Sonnet 4.5) while keeping the latest models as the primary,
-> correctly-handled path — and how that interacts with the 200K-vs-1M
-> context-window machinery. This is a findings + design record. No feature is
-> shipped here.
+> How yepanywhere lets users opt previous Claude versions into model choosers
+> while keeping the provider-native latest catalog primary, and how that
+> interacts with model discovery and context-window machinery.
 
 Topic: older-claude-models
 
 Related topics: [claude-1m-context](claude-1m-context.md),
 [claude](claude.md), [provider-refresh](provider-refresh.md),
 [provider-model-glyphs](provider-model-glyphs.md).
+
+Status: implementation authorized 2026-07-25. Tactical plan:
+[`docs/tactical/062-claude-additional-models.md`](../docs/tactical/062-claude-additional-models.md).
+
+## Implementation contract
+
+- Previous models are individual, default-off choices in Providers > Claude,
+  not members of the default curated catalog.
+- The initial server-owned registry contains `claude-opus-4-8`,
+  `claude-opus-4-6`, and `claude-sonnet-4-6`. It intentionally omits 4.7,
+  4.5, and earlier models.
+- The compact settings row opens a checklist plus an advanced custom exact-id
+  input. An empty selection is the off state.
+- Server settings retain the exact id, registry/custom origin, and a label
+  snapshot. Registry metadata takes precedence while present.
+- Removing a selected registry entry from a later release stops offering it
+  for new opt-ins but preserves the saved selection as unlisted/custom. YA
+  never silently deletes or remaps it.
+- Enabled entries are marked and grouped as **Previous models** in choosers.
+  Disabling one affects future choices only; a current session or saved default
+  remains legible until changed.
+- A transitional server capability hides the control against older compatible
+  servers. No coarse remote compatibility-level increase is required.
+- Provider refreshes own registry additions, deprecations, retirement, and
+  remapping review. Paid model probes still require explicit approval.
 
 ## Why this doc exists
 
@@ -168,7 +191,7 @@ driven by the *resolved/SDK-reported window*, not parsed from the id (the id
 omits `[1m]` even when running 1M — see [claude-1m-context](claude-1m-context.md)).
 See [provider-model-glyphs](provider-model-glyphs.md) for the badge contract.
 
-## Finding 6 — Dependency: land the window-persistence fix first or together
+## Finding 6 — Window persistence prerequisite is satisfied
 
 Exposing more models multiplies the window-mapping surface — more
 `ModelInfoService` keys to warm (`packages/server/src/services/ModelInfoService.ts:67`,
@@ -179,14 +202,12 @@ catalogued in [claude-1m-context](claude-1m-context.md)). The auto-1M latest
 models are where the static map is wrong, so the more a user flips between
 models, the more often a wrong cold-cache window appears.
 
-Recommendation: treat the per-session SDK-window persistence fix from
-[claude-1m-context](claude-1m-context.md) as a **prerequisite or co-requisite**
-of older-model exposure. With the live window persisted (and tracking
-mid-session `setModel` changes), the displayed percentage is correct for any
-selected model regardless of cache warmth, and older-model exposure becomes a
-pure surfacing change.
+The per-session SDK-window persistence work from
+[claude-1m-context](claude-1m-context.md) landed before this feature. The live
+window is persisted and tracks mid-session `setModel` changes, so catalog
+exposure does not add a new static-window ownership path.
 
-## Open questions
+## Remaining operational questions
 
 - Exact account/version boundary for "honored vs resolved-up" concrete ids
   (here: opus-4-5+ honored, opus-4-1/4-0 resolved). Worth a periodic re-probe
@@ -194,8 +215,9 @@ pure surfacing change.
 - Whether `claude-opus-4-6[1m]` (and `sonnet-4-x[1m]`) actually provision 1M on
   this account or credit-gate like `sonnet[1m]` did (429 in
   [claude-1m-context](claude-1m-context.md)). Not re-probed here.
-- Whether exposure should be a developer-mode toggle, a settings list, or a
-  free-text id field — and how to label "legacy".
+- Which currently accepted concrete ids should remain in the maintained
+  registry as upstream lifecycle status changes. This is decided during each
+  provider refresh rather than by a permanent historical cutoff.
 
 ## How to re-check
 
