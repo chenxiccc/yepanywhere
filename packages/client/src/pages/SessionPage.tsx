@@ -155,7 +155,7 @@ import {
   createSessionDraftStorageKey,
   saveSessionDraft,
 } from "../lib/sessionDraftStorage";
-import { getComposerTurnRecallEntries } from "../lib/composerTurnRecall";
+import { createComposerTurnRecallCache } from "../lib/composerTurnRecall";
 import { turnContentText } from "../lib/sessionMessageText";
 import {
   getEstimatedServerOffsetMs,
@@ -2294,8 +2294,11 @@ function SessionPageContent({
     [projectId, runBangCommand, bangHistory],
   );
 
+  // Incremental across renders: streaming ticks that only churn the assistant
+  // tail cost a pointer-compare walk and return the same entries array.
+  const composerTurnRecallCacheRef = useRef(createComposerTurnRecallCache());
   const composerTurnRecallEntries = useMemo(
-    () => getComposerTurnRecallEntries(messages),
+    () => composerTurnRecallCacheRef.current.derive(messages),
     [messages],
   );
   // Go-to-turn: the recall drawer row asks to scroll the transcript to a prior

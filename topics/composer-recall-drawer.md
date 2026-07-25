@@ -170,6 +170,25 @@ Net-new:
    bang-commands.md — the `!!`+Tab completion covers the bang-history case),
    and retire the old bang Ctrl+Up cycling.
 
+## Incremental entry derivation
+
+Recall entries derive from the live `messages` array on every array
+identity change, not on drawer open, because the touch-keyboard opener's
+visibility needs `entries.length` before the user acts. To keep that off
+the high-rate render path, `createComposerTurnRecallCache` diffs each new
+array against the previous one by reference equality and rescans only the
+changed suffix; the first scan is the same increment against an empty
+previous array. The incremental state is the *undeduped* ordered
+user-turn list — dedup keeps only a text's newest occurrence, so a
+deduped list could not survive tail replacements (pending→confirmed turn
+swaps, steer-echo release) that must resurrect an older occurrence. The
+deduped entries rebuild only when a user turn changed and keep array
+identity when equal, so a streaming tick that churns the assistant tail
+costs a pointer-compare walk and returns the same array. Correctness
+rests on the render path's standing assumption that message objects are
+immutable snapshots (reference-equal ⇒ content-equal); randomized
+sequence tests pin equivalence with the one-shot derivation.
+
 ## Settled decisions
 
 - Recall source = user turns only; assistant turns reachable only via the
