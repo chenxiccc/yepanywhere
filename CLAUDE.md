@@ -159,6 +159,20 @@ Fix any errors before considering the task complete.
 
 Periodically run `pnpm audit --prod` and pay special attention to the `web-push -> asn1.js -> bn.js` chain. Keep `bn.js` patched (currently via pnpm override) until `web-push` ships an upstream fix.
 
+When a transitive dep has no direct upgrade path, prefer a pnpm override. Pin it exactly if a newer major would escape the parent's declared range — `fast-uri` is pinned to `3.1.4` rather than `^3.1.4` because 4.x is published and `ajv` declares `^3.0.1`.
+
+### Known-unreachable advisories
+
+`pnpm audit --prod` is expected to report a non-zero count. As of 2026-07-25 three advisories remain, each triaged as unreachable with no safe fix available. Re-check when the listed trigger fires rather than re-deriving the analysis:
+
+| Advisory | Why unreachable | Revisit when |
+|---|---|---|
+| `react-router` RSC-mode CSRF (GHSA-qwww-vcr4-c8h2) | Client is SPA-only — `BrowserRouter`/`Routes`, no `createBrowserRouter`, RSC, or server actions | Migrating to react-router v8. The fix lands in 8.3.0 and `react-router-dom` never reaches it (v8 consolidated into `react-router`) |
+| `@hono/node-server` serve-static traversal (GHSA-frvp-7c67-39w9) | `serveStatic` is never imported; only `serve`, `getRequestListener`, `HttpBindings`, `RESPONSE_ALREADY_SENT` | `@hono/node-ws` supports node-server 2.x — its peer is currently `^1.19.11`, so 2.x breaks the WebSocket path |
+| `body-parser` limit DoS (GHSA-v422-hmwv-36x6) | Arrives via `@modelcontextprotocol/sdk`'s express *server* transports; YA is an MCP client and never loads express | `@modelcontextprotocol/sdk` bumps its express dep |
+
+Anything not on this list is untriaged — treat a new advisory as actionable.
+
 ## Git Commits
 
 Never mention Claude, AI, or any AI assistant in commit messages. Write commit messages as if a human developer wrote them.
