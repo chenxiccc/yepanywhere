@@ -80,6 +80,7 @@ export function SettingsSearchResults({
   // Row matching happens inside each pane; count the committed results here
   // (a contained DOM read, no DOM writes) for the no-results state and the
   // screen-reader announcement.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: query/matchValues are intentional recount triggers (body reads only the rendered DOM).
   useLayoutEffect(() => {
     const container = containerRef.current;
     if (!container) return;

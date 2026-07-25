@@ -72,12 +72,10 @@ export function renderSettingsSearchHighlight(
   if (!segments.some((segment) => segment.match)) return text;
   return segments.map((segment, index) =>
     segment.match ? (
-      // biome-ignore lint/suspicious/noArrayIndexKey: segments are positional
       <mark key={index} className="settings-search-mark">
         {segment.text}
       </mark>
     ) : (
-      // biome-ignore lint/suspicious/noArrayIndexKey: segments are positional
       <Fragment key={index}>{segment.text}</Fragment>
     ),
   );
