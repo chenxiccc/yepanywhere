@@ -52,6 +52,14 @@ minus any obligation to perform the git actions yourself.
 side-by-side diff option would make it 4 columns. Linked to the upstream asset
 rather than committed, to avoid polluting the repo.*
 
+**Reference implementation, not a template.** The issue #95 submitter's
+archived
+[`source-file-manager-v3` branch](https://github.com/chenxiccc/yepanywhere/tree/archive/source-file-manager-v3)
+is useful for interaction and layout inspiration only. Do not copy it wholesale:
+it is deliberately more feature-rich than YA's goals here, especially around
+file and git management. Any borrowed idea must first pass this topic's
+read-only, agent-directing scope.
+
 ## Design stance
 
 - **Read-only by contract.** This surface never mutates the repo: no branch

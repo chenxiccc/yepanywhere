@@ -182,3 +182,5 @@
 - settings-search - live substring filter over the Settings UI: shared
   SettingsItem/SettingsSection row layer, operable-in-place results with
   highlighted matches and jump links, default-off "Match values" toggle.
+- source-review-to-session - Read-only source review comments accumulated into
+  a new agent session; issue #95's broader source manager is inspiration only.
