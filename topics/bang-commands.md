@@ -252,19 +252,26 @@ demand. It starts from bounded previews and keeps at most one entry's full
 output expanded and retained. Reads only the bounded metadata already in
 `session-metadata.json` plus that single on-demand output fetch.
 
-**Per-entry actions (planned) — three small icons.** Each entry knows its
-source session id, bang object id, and project directory (cwd), so it can
-offer, all scoped to that entry's **project cwd via its source session**
-(no session-less or project-less run):
+**Per-entry actions — three small icons.** Each entry knows its source
+session id, bang object id, and project directory (cwd), so it offers,
+all scoped to that entry's **project cwd via its source session** (no
+session-less or project-less run), each navigating to the source session
+with `SessionNavigationState` fields consumed once on mount (then cleared
+via a `replace` so Back/refresh does not replay them):
 
-1. **Edit / re-issue** — open the source session and prefill its composer
-   with `!!<command>` for modification and resubmission (the existing
-   Recall action, exposed from the history view).
-2. **New** — open the source session with an empty composer, to issue a
-   different command in that same flow.
-3. **Jump** — navigate to the source session scrolled to the pseudo-turn
-   where the bang block appears (the `scrollToRenderId` target for its
-   anchor), read-only, no composer prefill.
+1. **Edit / re-issue** (`composerPrefill: "!!<command>"`) — opens the
+   source session and prefills its composer for modification/resubmission.
+2. **New** (`focusComposer: true`) — opens the source session and focuses
+   the composer without changing any existing draft.
+3. **Jump** (`scrollToRenderId: object.id`) — scrolls the source session to
+   the bang block's pseudo-turn (its row's `data-render-id` is exactly the
+   display object id), reusing the composer-recall `scrollToTurnRequest`
+   path. Lands only if the target row is within the loaded active window
+   (bang blocks anchor at the tail, so a fresh load normally shows it).
+
+Icon aria-labels are inline literals pending en.json keys
+(`bangHistoryAction{Edit,New,Jump}`) and the action-row CSS is a follow-up
+(`styles/index.css` was peer-held this session).
 
 ## Fork views may omit bang blocks
 

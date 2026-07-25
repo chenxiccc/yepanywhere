@@ -77,6 +77,51 @@ describe("session navigation state", () => {
     });
   });
 
+  it("round-trips the bang-history action fields", () => {
+    const created = createSessionNavigationState({
+      composerPrefill: "!!git status",
+      focusComposer: true,
+      scrollToRenderId: "bang-object-1",
+    });
+    expect(created).toEqual({
+      composerPrefill: "!!git status",
+      focusComposer: true,
+      scrollToRenderId: "bang-object-1",
+    });
+    expect(parseSessionNavigationState(created)).toEqual(created);
+  });
+
+  it("parses each bang-history action field independently and defensively", () => {
+    expect(
+      parseSessionNavigationState({ composerPrefill: "!!ls" }),
+    ).toEqual({ composerPrefill: "!!ls" });
+    expect(parseSessionNavigationState({ focusComposer: true })).toEqual({
+      focusComposer: true,
+    });
+    expect(
+      parseSessionNavigationState({ scrollToRenderId: "row-9" }),
+    ).toEqual({ scrollToRenderId: "row-9" });
+
+    // Wrong types are dropped, not coerced.
+    expect(
+      parseSessionNavigationState({
+        composerPrefill: 42,
+        focusComposer: "yes",
+        scrollToRenderId: { id: "x" },
+      }),
+    ).toEqual({});
+  });
+
+  it("drops the action fields when creating from falsy values", () => {
+    expect(
+      createSessionNavigationState({
+        composerPrefill: "",
+        focusComposer: false,
+        scrollToRenderId: "",
+      }),
+    ).toEqual({});
+  });
+
   it("creates canonical navigation state", () => {
     expect(
       createSessionNavigationState({

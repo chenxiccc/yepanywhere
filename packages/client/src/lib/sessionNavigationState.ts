@@ -19,6 +19,16 @@ export interface SessionNavigationState {
   initialTitle?: string;
   initialModel?: string;
   initialProvider?: ProviderName;
+  /**
+   * Bang-history per-entry actions (topics/bang-commands.md § Top-level
+   * history view). Consumed once on arrival at the session page.
+   */
+  /** Prefill the composer draft with this text (e.g. `!!<command>`) and focus. */
+  composerPrefill?: string;
+  /** Focus the composer without changing its draft. */
+  focusComposer?: boolean;
+  /** Scroll the transcript to the row with this `data-render-id`. */
+  scrollToRenderId?: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -94,6 +104,13 @@ export function parseSessionNavigationState(
     ...(isProviderName(value.initialProvider)
       ? { initialProvider: value.initialProvider }
       : {}),
+    ...(typeof value.composerPrefill === "string"
+      ? { composerPrefill: value.composerPrefill }
+      : {}),
+    ...(value.focusComposer === true ? { focusComposer: true } : {}),
+    ...(typeof value.scrollToRenderId === "string"
+      ? { scrollToRenderId: value.scrollToRenderId }
+      : {}),
   };
 }
 
@@ -106,6 +123,11 @@ export function createSessionNavigationState(
     ...(state.initialModel ? { initialModel: state.initialModel } : {}),
     ...(state.initialProvider
       ? { initialProvider: state.initialProvider }
+      : {}),
+    ...(state.composerPrefill ? { composerPrefill: state.composerPrefill } : {}),
+    ...(state.focusComposer ? { focusComposer: true } : {}),
+    ...(state.scrollToRenderId
+      ? { scrollToRenderId: state.scrollToRenderId }
       : {}),
   };
 }

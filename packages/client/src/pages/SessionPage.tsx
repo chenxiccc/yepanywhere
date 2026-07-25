@@ -2323,6 +2323,66 @@ function SessionPageContent({
     [composerTurnRecallEntries, handleGoToRecallTurn],
   );
 
+  // Bang-history per-entry actions arrive as navigation state (edit →
+  // composerPrefill, new → focusComposer, jump → scrollToRenderId; see
+  // topics/bang-commands.md § Top-level history view). Read off navState like
+  // initialStatus/initialTitle, but these drive side effects: a ref guards
+  // against re-firing on re-render, and we clear the consumed fields from
+  // history state so Back/refresh does not replay them. Gated on !loading so
+  // the jump target row and the footer composer are mounted before we act
+  // (draftControlsRef is populated during commit, before this passive effect).
+  const navComposerPrefill = navState?.composerPrefill;
+  const navFocusComposer = navState?.focusComposer;
+  const navScrollToRenderId = navState?.scrollToRenderId;
+  const navActionsConsumedRef = useRef(false);
+  useEffect(() => {
+    if (navActionsConsumedRef.current || loading) {
+      return;
+    }
+    if (!navComposerPrefill && !navFocusComposer && !navScrollToRenderId) {
+      return;
+    }
+    navActionsConsumedRef.current = true;
+
+    if (navComposerPrefill) {
+      draftControlsRef.current?.setDraft(navComposerPrefill);
+      draftControlsRef.current?.focus?.();
+    } else if (navFocusComposer) {
+      draftControlsRef.current?.focus?.();
+    }
+
+    if (navScrollToRenderId) {
+      setScrollToTurnRequest((previous) => ({
+        id: navScrollToRenderId,
+        token: (previous?.token ?? 0) + 1,
+      }));
+    }
+
+    // Drop the consumed action fields; preserve the seed fields (status/title/
+    // model/provider) so an optimistic first render is unaffected.
+    navigate(`${location.pathname}${location.search}`, {
+      replace: true,
+      state: createSessionNavigationState({
+        ...(initialStatus ? { initialStatus } : {}),
+        ...(initialTitle ? { initialTitle } : {}),
+        ...(initialModel ? { initialModel } : {}),
+        ...(initialProvider ? { initialProvider } : {}),
+      }),
+    });
+  }, [
+    loading,
+    navComposerPrefill,
+    navFocusComposer,
+    navScrollToRenderId,
+    navigate,
+    location.pathname,
+    location.search,
+    initialStatus,
+    initialTitle,
+    initialModel,
+    initialProvider,
+  ]);
+
   const handleQueue = async (
     text: string,
     metadata?: MessageSubmissionMetadata,
