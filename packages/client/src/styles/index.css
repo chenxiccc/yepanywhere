@@ -6273,13 +6273,25 @@ div.bang-command-error-message {
 }
 
 .message-input-keyboard-action.message-input-keyboard-primary.steer-mode {
-  width: 48px;
-  height: 48px;
   min-width: 48px;
-  flex: 0 0 48px;
-  margin-left: auto;
-  padding: 0;
+  flex: 1 1 48px;
+  container-name: mobile-keyboard-primary-action;
+  container-type: inline-size;
+}
+
+.message-input-keyboard-primary.steer-mode
+  .message-input-keyboard-primary-icon {
   font-size: 1.2rem;
+}
+
+/* The button grows only into space left after stable queue slots. Its content
+   box needs roughly 4rem for "Steer", the gap, and the arrow; below that,
+   preserve the 48px target and its accessible name but omit the visible text. */
+@container mobile-keyboard-primary-action (max-width: 4rem) {
+  .message-input-keyboard-primary.steer-mode
+    .message-input-keyboard-primary-label {
+    display: none;
+  }
 }
 
 .message-input-keyboard-actions.has-alternate

@@ -200,15 +200,17 @@ with slack**. Two latch/oscillation traps live here:
   Queue/Steer buttons when clearing the draft and starting the provider turn
   happen together.
 - With submittable content, the configured primary action remains right
-  aligned. Send, Queue, and fork actions keep the large remaining-width target;
-  Steer is a 48px arrow-only target with its full accessible name so it does not
-  crowd the adjacent queue controls. Steering-capable sessions reserve another
-  48px slot for the alternate Queue/Steer action, and Project Queue reserves one
-  48px slot for each of its current-session and new-session targets when that
-  toolbar feature is enabled and supported. An unavailable action leaves its
-  slot visually empty rather than letting the primary action grow into it; when
-  live session or project state makes the action available, its square button
-  fills the existing slot without moving or shrinking the primary hit target.
+  aligned. Send, Queue, fork, and Steer actions use the large remaining-width
+  target after stable queue slots are reserved. Steer shows its short label and
+  arrow whenever that target has enough content space; when constrained, only
+  the visible label folds away while the full accessible name and a minimum
+  48px arrow target remain. Steering-capable sessions reserve another 48px slot
+  for the alternate Queue/Steer action, and Project Queue reserves one 48px slot
+  for each of its current-session and new-session targets when that toolbar
+  feature is enabled and supported. An unavailable action leaves its slot
+  visually empty rather than letting the primary action grow into it; when live
+  session or project state makes the action available, its square button fills
+  the existing slot without moving or shrinking the primary hit target.
   Non-steering sessions do not reserve a redundant alternate slot: their
   primary control can change from Send to Queue in place. Fork-summary's
   explicit two-submit mode may continue sharing the remaining width because

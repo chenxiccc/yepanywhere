@@ -824,7 +824,11 @@ describe("MessageInput", () => {
       expect(actions[0]?.textContent).toBe("→");
       expect(actions[1]?.classList.contains("steer-mode")).toBe(true);
       expect(actions[1]?.getAttribute("aria-label")).toBe("Steer current turn");
-      expect(actions[1]?.textContent).toBe("↗");
+      expect(
+        actions[1]?.querySelector(".message-input-keyboard-primary-label")
+          ?.textContent,
+      ).toBe("Steer");
+      expect(actions[1]?.textContent).toBe("Steer↗");
 
       fireEvent.click(actions[0] as HTMLButtonElement);
       expectSubmission(onQueue, "wait until done", "patient");
