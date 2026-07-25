@@ -16,6 +16,7 @@ export function getPreferredModelId(
       (m) => m.id === preferredModelId,
     );
     if (matchingPreferredModel) return matchingPreferredModel.id;
+    return preferredModelId;
   }
 
   return models[0]?.id ?? null;

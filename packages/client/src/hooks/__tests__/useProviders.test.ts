@@ -1,43 +1,69 @@
-import type { ProviderInfo } from "@yep-anywhere/shared";
-import { cleanup, renderHook, waitFor } from "@testing-library/react";
+// @vitest-environment jsdom
+
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useProviders } from "../useProviders";
 
-const apiMock = vi.hoisted(() => ({
-  getProviders: vi.fn(),
+const { mockGetProviders } = vi.hoisted(() => ({
+  mockGetProviders: vi.fn(),
 }));
 
 vi.mock("../../api/client", () => ({
-  api: apiMock,
+  api: {
+    getProviders: mockGetProviders,
+  },
 }));
 
-afterEach(() => {
-  cleanup();
-});
-
 describe("useProviders", () => {
-  it("reuses cached providers when the hook remounts", async () => {
-    const providers: ProviderInfo[] = [
-      {
-        name: "claude",
-        displayName: "Claude",
-        installed: true,
-        authenticated: true,
-        enabled: true,
-        models: [{ id: "sonnet", name: "Sonnet" }],
-      },
-    ];
-    apiMock.getProviders.mockResolvedValue({ providers });
+  afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
+  });
 
-    const first = renderHook(() => useProviders());
-    await waitFor(() => expect(first.result.current.loading).toBe(false));
-    expect(first.result.current.providers).toEqual(providers);
-    first.unmount();
+  it("reloads the client catalog without forcing a server-wide provider probe", async () => {
+    mockGetProviders
+      .mockResolvedValueOnce({
+        providers: [
+          {
+            name: "claude",
+            displayName: "Claude",
+            installed: true,
+            authenticated: true,
+            enabled: true,
+            models: [{ id: "latest", name: "Latest" }],
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        providers: [
+          {
+            name: "claude",
+            displayName: "Claude",
+            installed: true,
+            authenticated: true,
+            enabled: true,
+            models: [
+              { id: "latest", name: "Latest" },
+              {
+                id: "previous",
+                name: "Previous",
+                catalogGroup: "additional",
+              },
+            ],
+          },
+        ],
+      });
+    const { result } = renderHook(() => useProviders());
 
-    const second = renderHook(() => useProviders());
+    await waitFor(() => {
+      expect(result.current.providers[0]?.models).toHaveLength(1);
+    });
+    await act(async () => {
+      await result.current.reload();
+    });
 
-    expect(second.result.current.loading).toBe(false);
-    expect(second.result.current.providers).toEqual(providers);
-    expect(apiMock.getProviders).toHaveBeenCalledTimes(1);
+    expect(result.current.providers[0]?.models).toHaveLength(2);
+    expect(mockGetProviders).toHaveBeenNthCalledWith(1, { refresh: false });
+    expect(mockGetProviders).toHaveBeenNthCalledWith(2, { refresh: false });
   });
 });

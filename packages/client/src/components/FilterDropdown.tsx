@@ -21,6 +21,7 @@ export interface FilterOption<T extends string> {
   color?: string; // For provider colors (colored dot)
   clearSelection?: false;
   dividerBefore?: boolean;
+  groupLabelBefore?: string;
   disabled?: boolean;
 }
 
@@ -33,6 +34,7 @@ export interface FilterResetOption {
   color?: string;
   clearSelection: true; // Option row that resets selected values
   dividerBefore?: boolean;
+  groupLabelBefore?: string;
   disabled?: boolean;
 }
 
@@ -216,8 +218,13 @@ export function FilterDropdown<T extends string>({
         const showCheckbox = multiSelect && !option.clearSelection;
         return (
           <Fragment key={option.value}>
-            {option.dividerBefore && (
+            {(option.dividerBefore || option.groupLabelBefore) && (
               <div className="filter-dropdown-divider" />
+            )}
+            {option.groupLabelBefore && (
+              <div className="filter-dropdown-group-label">
+                {option.groupLabelBefore}
+              </div>
             )}
             <button
               type="button"

@@ -10,6 +10,7 @@ import {
 } from "@testing-library/react";
 import { PROJECT_QUEUE_CAPABILITY } from "@yep-anywhere/shared";
 import {
+  Fragment,
   forwardRef,
   useCallback,
   useImperativeHandle,
@@ -121,6 +122,7 @@ const {
         id: string;
         name: string;
         description?: string;
+        catalogGroup?: "additional";
         supportsAutoMode?: boolean;
       }>;
     }>,
@@ -483,7 +485,11 @@ vi.mock("../FilterDropdown", () => ({
     selected,
     onChange,
   }: {
-    options: Array<{ value: string; label: string }>;
+    options: Array<{
+      value: string;
+      label: string;
+      groupLabelBefore?: string;
+    }>;
     selected: string[];
     onChange: (selected: string[]) => void;
   }) => {
@@ -492,13 +498,15 @@ vi.mock("../FilterDropdown", () => ({
       <div>
         <div data-testid="filter-selected">{selected[0] ?? ""}</div>
         {options.map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            onClick={() => onChange([option.value])}
-          >
-            {option.label}
-          </button>
+          <Fragment key={option.value}>
+            {option.groupLabelBefore && <p>{option.groupLabelBefore}</p>}
+            <button
+              type="button"
+              onClick={() => onChange([option.value])}
+            >
+              {option.label}
+            </button>
+          </Fragment>
         ))}
       </div>
     );
@@ -842,6 +850,51 @@ describe("NewSessionForm", () => {
         "active",
       );
     });
+  });
+
+  it("groups previous models and keeps an unlisted saved default selected", async () => {
+    const claudeProvider = providersState.providers[0];
+    if (!claudeProvider) throw new Error("expected Claude provider fixture");
+    providersState.providers[0] = {
+      ...claudeProvider,
+      models: [
+        { id: "latest", name: "Latest" },
+        {
+          id: "previous",
+          name: "Previous",
+          catalogGroup: "additional",
+        },
+      ],
+    };
+    serverSettingsState.settings = {
+      newSessionDefaults: {
+        provider: "claude",
+        permissionMode: "default",
+        providers: {
+          claude: { model: "removed-default" },
+        },
+      },
+    };
+    serverSettingsState.isLoading = false;
+
+    render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("filter-selected")[0]!.textContent).toBe(
+        "removed-default",
+      );
+    });
+    expect(screen.getAllByText("previousModelsGroup").length).toBeGreaterThan(
+      0,
+    );
+    expect(screen.getAllByRole("button", { name: "removed-default" }).length)
+      .toBeGreaterThan(0);
   });
 
   it("preserves Auto as the all-provider permission default across unsupported providers", async () => {

@@ -11361,6 +11361,97 @@ div.bang-command-error-message {
   flex-direction: column;
 }
 
+.providers-additional-models-setting {
+  padding-left: var(--space-4);
+}
+
+.providers-additional-models-trigger {
+  display: inline-flex;
+  min-width: 9rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.providers-additional-models-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-2);
+}
+
+.providers-additional-models-editor > p {
+  margin: 0;
+}
+
+.providers-additional-models-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.providers-additional-model-option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.providers-additional-model-option:hover {
+  background: var(--bg-hover);
+}
+
+.providers-additional-model-option input {
+  margin-top: 0.2rem;
+}
+
+.providers-additional-model-option > span {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.providers-additional-model-option code {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  overflow-wrap: anywhere;
+}
+
+.providers-additional-models-custom {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--space-2);
+}
+
+.providers-additional-models-custom summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.providers-additional-models-custom-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.providers-additional-models-custom-row .settings-input {
+  min-width: 0;
+  flex: 1;
+}
+
+@media (max-width: 600px) {
+  .providers-additional-models-setting {
+    padding-left: 0;
+  }
+
+  .providers-additional-models-editor {
+    padding: var(--space-3);
+  }
+}
+
 .helper-targets-panel {
   display: flex;
   flex-direction: column;
@@ -17709,6 +17800,15 @@ div.bang-command-error-message {
   margin: var(--space-2) var(--space-4);
 }
 
+.filter-dropdown-group-label {
+  padding: var(--space-1) var(--space-4);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
 .filter-dropdown-dropdown {
   display: none;
 }
@@ -17744,6 +17844,10 @@ div.bang-command-error-message {
 
   .filter-dropdown-dropdown .filter-dropdown-divider {
     margin: var(--space-1) var(--space-3);
+  }
+
+  .filter-dropdown-dropdown .filter-dropdown-group-label {
+    padding-inline: var(--space-3);
   }
 
   @keyframes filterDropdownFadeIn {

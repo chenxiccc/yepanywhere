@@ -1,10 +1,27 @@
-import { useCallback, useEffect, useId, useState } from "react";
-import type { HelperTargetConfig, ModelInfo } from "@yep-anywhere/shared";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  CLAUDE_ADDITIONAL_MODELS_CAPABILITY,
+  MAX_CLAUDE_ADDITIONAL_MODEL_ID_LENGTH,
+  type ClaudeAdditionalModelSelection,
+  type HelperTargetConfig,
+  type ModelInfo,
+  serverHasCapability,
+} from "@yep-anywhere/shared";
 import { api, type ServerSettings } from "../../api/client";
+import { Modal, type ModalAnchorRect } from "../../components/ui/Modal";
 import { useToastContext } from "../../contexts/ToastContext";
 import { useCodexUpdateStatus } from "../../hooks/useCodexUpdateStatus";
 import { useProviders } from "../../hooks/useProviders";
 import { useServerSettings } from "../../hooks/useServerSettings";
+import { useVersion } from "../../hooks/useVersion";
 import { useI18n } from "../../i18n";
 import { SettingsItem } from "./SettingsItem";
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
@@ -802,12 +819,254 @@ function ClaudeLoginCommandPanel({
   );
 }
 
+interface ClaudeAdditionalModelsSettingsProps {
+  modelOptions: readonly ModelInfo[];
+  selections: readonly ClaudeAdditionalModelSelection[];
+  updateSetting: UpdateServerSetting;
+  reloadProviders: () => Promise<void>;
+}
+
+function ClaudeAdditionalModelsSettings({
+  modelOptions,
+  selections,
+  updateSetting,
+  reloadProviders,
+}: ClaudeAdditionalModelsSettingsProps) {
+  const { t } = useI18n();
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+  const [anchorRect, setAnchorRect] = useState<ModalAnchorRect | null>(null);
+  const [customId, setCustomId] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const selectedIds = useMemo(
+    () => new Set(selections.map((selection) => selection.id)),
+    [selections],
+  );
+  const choices = useMemo(() => {
+    const maintainedIds = new Set(modelOptions.map((model) => model.id));
+    return [
+      ...modelOptions,
+      ...selections
+        .filter((selection) => !maintainedIds.has(selection.id))
+        .map(
+          (selection): ModelInfo => ({
+            id: selection.id,
+            name: selection.label,
+            description:
+              selection.origin === "registry"
+                ? t("providersAdditionalModelsUnlistedDescription")
+                : t("providersAdditionalModelsCustomDescription"),
+            catalogGroup: "additional",
+          }),
+        ),
+    ];
+  }, [modelOptions, selections, t]);
+
+  const summary =
+    selections.length === 0
+      ? t("providersAdditionalModelsNone")
+      : selections.length === 1
+        ? t("providersAdditionalModelsOne")
+        : t("providersAdditionalModelsMany", {
+            count: String(selections.length),
+          });
+
+  const saveSelections = useCallback(
+    async (nextSelections: ClaudeAdditionalModelSelection[]) => {
+      setIsSaving(true);
+      setError(null);
+      try {
+        await updateSetting("claudeAdditionalModels", nextSelections);
+        await reloadProviders();
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : t("providersAdditionalModelsSaveError"),
+        );
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [reloadProviders, t, updateSetting],
+  );
+
+  const toggleModel = useCallback(
+    (model: ModelInfo) => {
+      const nextSelections = selectedIds.has(model.id)
+        ? selections.filter((selection) => selection.id !== model.id)
+        : [
+            ...selections,
+            {
+              id: model.id,
+              label: model.name,
+              origin: "registry" as const,
+            },
+          ];
+      void saveSelections(nextSelections);
+    },
+    [saveSelections, selectedIds, selections],
+  );
+
+  const addCustomModel = useCallback(() => {
+    const id = customId.trim();
+    if (
+      !id ||
+      id.length > MAX_CLAUDE_ADDITIONAL_MODEL_ID_LENGTH ||
+      /\s/u.test(id)
+    ) {
+      setError(t("providersAdditionalModelsInvalidId"));
+      return;
+    }
+    if (selectedIds.has(id)) {
+      setError(t("providersAdditionalModelsDuplicateId"));
+      return;
+    }
+
+    const maintained = modelOptions.find((model) => model.id === id);
+    const nextSelection: ClaudeAdditionalModelSelection = maintained
+      ? {
+          id,
+          label: maintained.name,
+          origin: "registry",
+        }
+      : {
+          id,
+          label: id,
+          origin: "custom",
+        };
+    setCustomId("");
+    void saveSelections([...selections, nextSelection]);
+  }, [customId, modelOptions, saveSelections, selectedIds, selections, t]);
+
+  const openEditor = useCallback(() => {
+    const rect = triggerRef.current?.getBoundingClientRect();
+    setAnchorRect(
+      rect
+        ? {
+            bottom: rect.bottom,
+            height: rect.height,
+            left: rect.left,
+            right: rect.right,
+            top: rect.top,
+            width: rect.width,
+          }
+        : null,
+    );
+    setError(null);
+    setOpen(true);
+  }, []);
+
+  return (
+    <>
+      <SettingsItem
+        id="provider-claude-additional-models"
+        label={t("providersAdditionalModelsTitle")}
+        description={t("providersAdditionalModelsDescription")}
+        valueText={summary}
+        className="providers-additional-models-setting"
+      >
+        <button
+          ref={triggerRef}
+          type="button"
+          className="settings-button settings-button-secondary providers-additional-models-trigger"
+          onClick={openEditor}
+          aria-haspopup="dialog"
+        >
+          <span>{summary}</span>
+          <span aria-hidden="true">▾</span>
+        </button>
+      </SettingsItem>
+      {open && (
+        <Modal
+          title={t("providersAdditionalModelsTitle")}
+          onClose={() => setOpen(false)}
+          anchorRect={anchorRect}
+        >
+          <div className="providers-additional-models-editor">
+            <p className="settings-hint">
+              {t("providersAdditionalModelsEditorDescription")}
+            </p>
+            <div className="providers-additional-models-list">
+              {choices.map((model) => (
+                <label
+                  key={model.id}
+                  className="providers-additional-model-option"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(model.id)}
+                    disabled={isSaving}
+                    onChange={() => toggleModel(model)}
+                  />
+                  <span>
+                    <strong>{model.name}</strong>
+                    <code>{model.id}</code>
+                    {model.description && (
+                      <span className="settings-hint">
+                        {model.description}
+                      </span>
+                    )}
+                  </span>
+                </label>
+              ))}
+            </div>
+            <details className="providers-additional-models-custom">
+              <summary>{t("providersAdditionalModelsCustomTitle")}</summary>
+              <p className="settings-hint">
+                {t("providersAdditionalModelsCustomHint")}
+              </p>
+              <div className="providers-additional-models-custom-row">
+                <input
+                  type="text"
+                  className="settings-input"
+                  value={customId}
+                  maxLength={MAX_CLAUDE_ADDITIONAL_MODEL_ID_LENGTH}
+                  placeholder={t("providersAdditionalModelsCustomPlaceholder")}
+                  aria-label={t("providersAdditionalModelsCustomInputAria")}
+                  onChange={(event) => setCustomId(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      addCustomModel();
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  className="settings-button"
+                  disabled={isSaving || !customId.trim()}
+                  onClick={addCustomModel}
+                >
+                  {t("providersAdditionalModelsAdd")}
+                </button>
+              </div>
+            </details>
+            {isSaving && (
+              <p className="settings-hint">{t("providersSaving")}</p>
+            )}
+            {error && <p className="settings-warning">{error}</p>}
+          </div>
+        </Modal>
+      )}
+    </>
+  );
+}
+
 export function ProvidersSettings() {
   const { t } = useI18n();
   useSettingsPaneTitle(t("providersSectionTitle"));
   const { showToast } = useToastContext();
-  const { providers: serverProviders } = useProviders();
+  const { providers: serverProviders, reload: reloadProviders } =
+    useProviders();
   const { settings, updateSetting } = useServerSettings();
+  const { version } = useVersion();
+  const supportsAdditionalModels = serverHasCapability(
+    version,
+    CLAUDE_ADDITIONAL_MODELS_CAPABILITY,
+  );
 
   const handleCopyClaudeLoginCommand = useCallback(
     async (command: string) => {
@@ -832,6 +1091,7 @@ export function ProvidersSettings() {
       installed: serverInfo?.installed ?? false,
       authenticated: serverInfo?.authenticated ?? false,
       loginCommand: serverInfo?.loginCommand,
+      additionalModelOptions: serverInfo?.additionalModelOptions,
     };
   });
 
@@ -847,69 +1107,79 @@ export function ProvidersSettings() {
       )}
       <div className="settings-group">
         {providerDisplayList.map((provider) => (
-          <SettingsItem
-            key={provider.id}
-            id={`provider-${provider.id}`}
-            label={provider.displayName}
-            description={provider.metadata.description}
-            info={
-              <>
-                <div className="settings-item-header">
-                  <strong>{provider.displayName}</strong>
-                  {provider.installed ? (
-                    <span className="settings-status-badge settings-status-detected">
-                      {t("providersDetected")}
-                    </span>
-                  ) : (
-                    <span className="settings-status-badge settings-status-not-detected">
-                      {t("providersNotDetected")}
-                    </span>
+          <Fragment key={provider.id}>
+            <SettingsItem
+              id={`provider-${provider.id}`}
+              label={provider.displayName}
+              description={provider.metadata.description}
+              info={
+                <>
+                  <div className="settings-item-header">
+                    <strong>{provider.displayName}</strong>
+                    {provider.installed ? (
+                      <span className="settings-status-badge settings-status-detected">
+                        {t("providersDetected")}
+                      </span>
+                    ) : (
+                      <span className="settings-status-badge settings-status-not-detected">
+                        {t("providersNotDetected")}
+                      </span>
+                    )}
+                  </div>
+                  <p>{provider.metadata.description}</p>
+                  {provider.metadata.limitations.length > 0 && (
+                    <ul className="settings-limitations">
+                      {provider.metadata.limitations.map((limitation) => (
+                        <li key={limitation}>{limitation}</li>
+                      ))}
+                    </ul>
                   )}
-                </div>
-                <p>{provider.metadata.description}</p>
-                {provider.metadata.limitations.length > 0 && (
-                  <ul className="settings-limitations">
-                    {provider.metadata.limitations.map((limitation) => (
-                      <li key={limitation}>{limitation}</li>
-                    ))}
-                  </ul>
-                )}
-                {provider.id === "claude" &&
-                  provider.installed &&
-                  !provider.authenticated && (
-                    <div style={{ marginTop: "var(--space-2)" }}>
-                      <p className="settings-hint">
-                        {t("providersClaudeLoginHint")}
-                      </p>
-                      <ClaudeLoginCommandPanel
-                        command={
-                          provider.loginCommand ?? DEFAULT_CLAUDE_LOGIN_COMMAND
-                        }
-                        onCopy={(command) =>
-                          void handleCopyClaudeLoginCommand(command)
-                        }
-                      />
-                    </div>
+                  {provider.id === "claude" &&
+                    provider.installed &&
+                    !provider.authenticated && (
+                      <div style={{ marginTop: "var(--space-2)" }}>
+                        <p className="settings-hint">
+                          {t("providersClaudeLoginHint")}
+                        </p>
+                        <ClaudeLoginCommandPanel
+                          command={
+                            provider.loginCommand ??
+                            DEFAULT_CLAUDE_LOGIN_COMMAND
+                          }
+                          onCopy={(command) =>
+                            void handleCopyClaudeLoginCommand(command)
+                          }
+                        />
+                      </div>
+                    )}
+                  {provider.id === "claude-ollama" && <OllamaSettings />}
+                  {provider.id === "grok" && <GrokBuildApiKeySettings />}
+                  {provider.id === "codex" && provider.installed && (
+                    <CodexUpdatePanel />
                   )}
-                {provider.id === "claude-ollama" && <OllamaSettings />}
-                {provider.id === "grok" && <GrokBuildApiKeySettings />}
-                {provider.id === "codex" && provider.installed && (
-                  <CodexUpdatePanel />
-                )}
-              </>
-            }
-          >
-            {provider.metadata.website && (
-              <a
-                href={provider.metadata.website}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="settings-link"
-              >
-                {t("providersWebsite")}
-              </a>
+                </>
+              }
+            >
+              {provider.metadata.website && (
+                <a
+                  href={provider.metadata.website}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="settings-link"
+                >
+                  {t("providersWebsite")}
+                </a>
+              )}
+            </SettingsItem>
+            {provider.id === "claude" && supportsAdditionalModels && (
+              <ClaudeAdditionalModelsSettings
+                modelOptions={provider.additionalModelOptions ?? []}
+                selections={settings?.claudeAdditionalModels ?? []}
+                updateSetting={updateSetting}
+                reloadProviders={reloadProviders}
+              />
             )}
-          </SettingsItem>
+          </Fragment>
         ))}
       </div>
     </SettingsSection>

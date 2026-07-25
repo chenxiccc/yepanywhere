@@ -15,7 +15,14 @@ import {
   normalizeRecapAfterSeconds,
   resolveModel,
 } from "@yep-anywhere/shared";
-import { type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  type MouseEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { api } from "../api/client";
 import { getModelSetting } from "../hooks/useModelSettings";
 import {
@@ -35,7 +42,14 @@ import {
   resolveSupportedEffortLevel,
   resolveSupportedThinkingMode,
 } from "../lib/effortLevels";
-import { getProviderSessionDefaults } from "../lib/newSessionDefaults";
+import {
+  getPreferredModelId,
+  getProviderSessionDefaults,
+} from "../lib/newSessionDefaults";
+import {
+  startsAdditionalModelGroup,
+  withVisibleModelSelection,
+} from "../lib/modelCatalog";
 import { Modal } from "./ui/Modal";
 
 type ThinkingMode = "off" | "auto" | "on";
@@ -73,20 +87,6 @@ function toThinkingOption(
   if (mode === "off") return "off";
   if (mode === "auto") return "auto";
   return `on:${effort}`;
-}
-
-function getPreferredModelId(
-  models: ModelInfo[],
-  preferredModelId?: string | null,
-): string | null {
-  if (preferredModelId) {
-    const matchingPreferredModel = models.find(
-      (m) => m.id === preferredModelId,
-    );
-    if (matchingPreferredModel) return matchingPreferredModel.id;
-  }
-
-  return models[0]?.id ?? null;
 }
 
 function getRestartDefaultModel(params: {
@@ -329,21 +329,30 @@ export function RestartSessionModal({
       getProviderModels(selectedProvider, providerOptions, provider, models),
     [models, provider, providerOptions, selectedProvider],
   );
-  const modelOptions = useMemo<ModelInfo[]>(() => {
+  const baseModelOptions = useMemo<ModelInfo[]>(() => {
     if (selectedProviderModels.length > 0) return selectedProviderModels;
     return [{ id: "default", name: t("processInfoDefaultModel") }];
   }, [selectedProviderModels, t]);
-  const helperSelectableModels = useMemo(
-    () => [...modelOptions],
-    [modelOptions],
-  );
   const [selectedModel, setSelectedModel] = useState<string>(
     getRestartDefaultModel({
       provider: selectedProvider,
-      models: modelOptions,
+      models: baseModelOptions,
       currentModel: selectedProvider === provider ? currentModel : undefined,
       defaults: settings?.newSessionDefaults,
     }),
+  );
+  const modelOptions = useMemo(
+    () =>
+      withVisibleModelSelection(
+        baseModelOptions,
+        selectedModel,
+        t("modelSelectionUnavailable"),
+      ),
+    [baseModelOptions, selectedModel, t],
+  );
+  const helperSelectableModels = useMemo(
+    () => [...modelOptions],
+    [modelOptions],
   );
   const hasUserSelectedModelRef = useRef(false);
   const selectedProviderInfo = providerOptions.find(
@@ -460,14 +469,14 @@ export function RestartSessionModal({
     setSelectedModel(
       getRestartDefaultModel({
         provider: selectedProvider,
-        models: modelOptions,
+        models: baseModelOptions,
         currentModel: selectedProvider === provider ? currentModel : undefined,
         defaults: settings?.newSessionDefaults,
       }),
     );
   }, [
     currentModel,
-    modelOptions,
+    baseModelOptions,
     provider,
     selectedProvider,
     settings,
@@ -788,43 +797,50 @@ export function RestartSessionModal({
             <strong>{t("newSessionModelTitle")}</strong>
           </div>
           <div className="model-switch-list">
-            {modelOptions.map((model) => {
+            {modelOptions.map((model, index) => {
               const isCurrent = currentModel === model.id;
               const isSelected = selectedModel === model.id;
               return (
-                <div key={model.id} className="model-switch-item-row">
-                  <button
-                    type="button"
-                    className={`model-switch-item ${isCurrent ? "current" : ""} ${isSelected ? "active" : ""}`}
-                    onClick={() => {
-                      hasUserSelectedModelRef.current = true;
-                      setSelectedModel(model.id);
-                    }}
-                    disabled={restarting}
-                  >
-                    <span className="model-switch-item-main">
-                      <span className="model-switch-name">{model.name}</span>
-                      {model.description && (
-                        <span className="model-switch-description">
-                          {model.description}
-                        </span>
-                      )}
-                    </span>
-                    <span className="model-switch-item-meta">
-                      {isCurrent && (
-                        <span className="model-switch-tag">
-                          {t("modelSwitchCurrent")}
-                        </span>
-                      )}
-                      <span
-                        className={`model-switch-radio ${isSelected ? "selected" : ""}`}
-                        aria-hidden="true"
-                      >
-                        {isSelected ? "●" : "○"}
+                <Fragment key={model.id}>
+                  {startsAdditionalModelGroup(modelOptions, index) && (
+                    <div className="model-switch-group-label">
+                      {t("previousModelsGroup")}
+                    </div>
+                  )}
+                  <div className="model-switch-item-row">
+                    <button
+                      type="button"
+                      className={`model-switch-item ${isCurrent ? "current" : ""} ${isSelected ? "active" : ""}`}
+                      onClick={() => {
+                        hasUserSelectedModelRef.current = true;
+                        setSelectedModel(model.id);
+                      }}
+                      disabled={restarting}
+                    >
+                      <span className="model-switch-item-main">
+                        <span className="model-switch-name">{model.name}</span>
+                        {model.description && (
+                          <span className="model-switch-description">
+                            {model.description}
+                          </span>
+                        )}
                       </span>
-                    </span>
-                  </button>
-                </div>
+                      <span className="model-switch-item-meta">
+                        {isCurrent && (
+                          <span className="model-switch-tag">
+                            {t("modelSwitchCurrent")}
+                          </span>
+                        )}
+                        <span
+                          className={`model-switch-radio ${isSelected ? "selected" : ""}`}
+                          aria-hidden="true"
+                        >
+                          {isSelected ? "●" : "○"}
+                        </span>
+                      </span>
+                    </button>
+                  </div>
+                </Fragment>
               );
             })}
           </div>

@@ -155,6 +155,20 @@ typecheck are warning-free. No live model turn was run.
 - Cover compact summary, add/remove/custom flows, capability absence, and
   picker grouping.
 
+Completed 2026-07-25. Providers settings now presents a capability-gated
+summary row with a maintained checklist and advanced exact-id entry. Saves use
+the existing source-aware settings path, then refresh the connected server's
+catalog without forcing a provider rediscovery. Removed maintained entries
+remain selected and removable, while custom entries preserve their exact ids.
+
+New-session, restart, and in-session switch controls group additional entries
+under **Previous models** and synthesize a visible row for saved or current ids
+that are absent from the catalog. Focused client coverage passes 61 tests
+without runtime warnings. Root lint and typecheck are warning-free; the client
+production build completes; the console scan remains at its 110-site baseline
+(+0); and the advisory i18n scan reports only its three pre-existing dev-server
+strings.
+
 ### Slice 3 — Closeout
 
 - Reconcile this plan's status and evidence.

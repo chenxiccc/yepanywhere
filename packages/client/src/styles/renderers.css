@@ -2231,6 +2231,12 @@ details[open] .collapsible__icon {
   height: auto;
 }
 
+.modal:has(.providers-additional-models-editor) {
+  width: min(32rem, calc(100vw - 1rem));
+  max-width: min(32rem, calc(100vw - 1rem));
+  height: auto;
+}
+
 .modal:has(.session-heartbeat-modal) .modal-content {
   padding: 0.75rem 0.75rem 0.875rem;
 }
@@ -2308,6 +2314,12 @@ details[open] .collapsible__icon {
     max-width: min(520px, calc(100vw - 24px));
     height: auto;
     border-radius: var(--radius-md);
+  }
+
+  .modal:has(.providers-additional-models-editor) {
+    width: 100vw;
+    max-width: 100vw;
+    height: 100dvh;
   }
 
   .modal:has(.session-heartbeat-modal) .modal-content {
@@ -2565,6 +2577,16 @@ details[open] .collapsible__icon {
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
+}
+
+.model-switch-group-label {
+  padding: 0.45rem 0.35rem 0.15rem;
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
 
 .model-switch-section-note {

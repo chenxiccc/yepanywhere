@@ -12,12 +12,20 @@ interface ProviderCacheEntry {
 let providerCache: ProviderCacheEntry | null = null;
 let providerFetchPromise: Promise<ProviderInfo[]> | null = null;
 
-async function loadProviders(forceRefresh: boolean): Promise<ProviderInfo[]> {
+async function loadProviders(
+  forceRefresh: boolean,
+  bypassClientCache = false,
+): Promise<ProviderInfo[]> {
   const now = Date.now();
-  if (!forceRefresh && providerCache && providerCache.expiresAt > now) {
+  if (
+    !forceRefresh &&
+    !bypassClientCache &&
+    providerCache &&
+    providerCache.expiresAt > now
+  ) {
     return providerCache.providers;
   }
-  if (!forceRefresh && providerFetchPromise) {
+  if (!forceRefresh && !bypassClientCache && providerFetchPromise) {
     return providerFetchPromise;
   }
 
@@ -56,20 +64,26 @@ export function useProviders() {
   const [error, setError] = useState<Error | null>(null);
   const hasFetchedRef = useRef(false);
 
-  const fetch = useCallback(async (forceRefresh = false) => {
-    if (forceRefresh || !providerCache) {
-      setLoading(true);
-    }
-    setError(null);
-    try {
-      const nextProviders = await loadProviders(forceRefresh);
-      setProviders(nextProviders);
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const fetch = useCallback(
+    async (forceRefresh = false, bypassClientCache = false) => {
+      if (forceRefresh || bypassClientCache || !providerCache) {
+        setLoading(true);
+      }
+      setError(null);
+      try {
+        const nextProviders = await loadProviders(
+          forceRefresh,
+          bypassClientCache,
+        );
+        setProviders(nextProviders);
+      } catch (err) {
+        setError(err instanceof Error ? err : new Error(String(err)));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [],
+  );
 
   // Initial fetch - only once (avoid StrictMode double-fetch)
   useEffect(() => {
@@ -79,8 +93,9 @@ export function useProviders() {
   }, [fetch]);
 
   const refetch = useCallback(() => fetch(true), [fetch]);
+  const reload = useCallback(() => fetch(false, true), [fetch]);
 
-  return { providers, loading, error, refetch };
+  return { providers, loading, error, refetch, reload };
 }
 
 /**

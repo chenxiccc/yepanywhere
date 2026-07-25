@@ -10,8 +10,13 @@ export interface ClaudeAdditionalModelSelection {
   origin: ClaudeAdditionalModelOrigin;
 }
 
-const CONTROL_OR_WHITESPACE = /[\s\u0000-\u001f\u007f]/u;
-const CONTROL = /[\u0000-\u001f\u007f]/u;
+function containsControlCharacter(value: string): boolean {
+  for (const character of value) {
+    const code = character.codePointAt(0);
+    if (code !== undefined && (code < 32 || code === 127)) return true;
+  }
+  return false;
+}
 
 /**
  * Parse the persisted/wire representation without consulting the current
@@ -35,12 +40,12 @@ export function parseClaudeAdditionalModelSelections(
       typeof record.id !== "string" ||
       record.id.length === 0 ||
       record.id.length > MAX_CLAUDE_ADDITIONAL_MODEL_ID_LENGTH ||
-      CONTROL_OR_WHITESPACE.test(record.id) ||
+      /\s/u.test(record.id) ||
       typeof record.label !== "string" ||
       record.label.length === 0 ||
       record.label.length > MAX_CLAUDE_ADDITIONAL_MODEL_LABEL_LENGTH ||
       record.label.trim() !== record.label ||
-      CONTROL.test(record.label) ||
+      containsControlCharacter(record.label) ||
       (record.origin !== "registry" && record.origin !== "custom") ||
       seen.has(record.id)
     ) {

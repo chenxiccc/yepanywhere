@@ -67,6 +67,10 @@ import {
   withProviderSessionDefaults,
 } from "../lib/newSessionDefaults";
 import {
+  startsAdditionalModelGroup,
+  withVisibleModelSelection,
+} from "../lib/modelCatalog";
+import {
   type PendingFile,
   type PendingLocalFile,
   type PendingStagedFile,
@@ -734,9 +738,18 @@ export function NewSessionForm({
     (p) => p.name === selectedProvider,
   );
   const availableModels: ModelInfo[] = selectedProviderInfo?.models ?? [];
+  const visibleModels = useMemo(
+    () =>
+      withVisibleModelSelection(
+        availableModels,
+        selectedModel,
+        t("modelSelectionUnavailable"),
+      ),
+    [availableModels, selectedModel, t],
+  );
   const helperSelectableModels = useMemo(
-    () => [...availableModels],
-    [availableModels],
+    () => [...visibleModels],
+    [visibleModels],
   );
   const helperSideModelOptions: FilterOption<string>[] = useMemo(
     () => [
@@ -762,7 +775,7 @@ export function NewSessionForm({
     selectedProviderInfo?.supportsPermissionMode ?? true;
   const supportsThinkingToggle =
     selectedProviderInfo?.supportsThinkingToggle ?? true;
-  const selectedModelInfo = availableModels.find(
+  const selectedModelInfo = visibleModels.find(
     (model) => model.id === selectedModel,
   );
   const effortOptions = useMemo(
@@ -1229,7 +1242,7 @@ export function NewSessionForm({
 
   // Build model options for FilterDropdown
   const modelOptions = useMemo((): FilterOption<string>[] => {
-    return availableModels.map((model) => {
+    return visibleModels.map((model, index) => {
       const label = model.size
         ? `${model.name} (${(model.size / (1024 * 1024 * 1024)).toFixed(1)} GB)`
         : model.name;
@@ -1250,6 +1263,9 @@ export function NewSessionForm({
         value: model.id,
         label,
         description,
+        groupLabelBefore: startsAdditionalModelGroup(visibleModels, index)
+          ? t("previousModelsGroup")
+          : undefined,
         // Reuse the session-header/tooltip badge so the model's route (e.g.
         // pi's "copilot") is visible in the picker, in the same provider →
         // route → model order the badge already establishes.
@@ -1258,7 +1274,7 @@ export function NewSessionForm({
         ) : undefined,
       };
     });
-  }, [availableModels, selectedProvider]);
+  }, [selectedProvider, t, visibleModels]);
 
   // Handle model selection from FilterDropdown
   const handleModelSelect = useCallback((selected: string[]) => {

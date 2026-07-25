@@ -142,6 +142,56 @@ describe("RestartSessionModal", () => {
     });
   });
 
+  it("groups additional models and preserves an unlisted saved default", async () => {
+    serverSettingsState.settings = {
+      newSessionDefaults: {
+        provider: "claude",
+        permissionMode: "default",
+        providers: {
+          claude: {
+            model: "removed-default",
+          },
+        },
+      },
+    };
+
+    render(
+      <RestartSessionModal
+        projectId="proj-1"
+        sessionId="sess-1"
+        provider="claude"
+        models={[
+          { id: "latest", name: "Latest" },
+          {
+            id: "previous",
+            name: "Previous",
+            catalogGroup: "additional",
+          },
+        ]}
+        currentModel="latest"
+        mode="default"
+        thinking="off"
+        onRestarted={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByText("previousModelsGroup")).toHaveLength(1);
+    expect(screen.getAllByText("removed-default").length).toBeGreaterThan(0);
+    expect(screen.getByText("modelSelectionUnavailable")).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "sessionRestartStart" }),
+    );
+    await waitFor(() => {
+      expect(mockRestartSession).toHaveBeenCalledWith(
+        "proj-1",
+        "sess-1",
+        expect.objectContaining({ model: "removed-default" }),
+      );
+    });
+  });
+
   it("uses provider-scoped model and thinking defaults for handoff", async () => {
     serverSettingsState.settings = {
       newSessionDefaults: {
