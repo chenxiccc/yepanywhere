@@ -23,6 +23,7 @@ const getGitCommit = vi.fn();
 const getGitCommitDiff = vi.fn();
 const listReviewComments = vi.fn();
 const addReviewComment = vi.fn();
+const searchGit = vi.fn();
 vi.mock("../api/client", () => ({
   api: {
     getGitCommits: (...args: unknown[]) => getGitCommits(...args),
@@ -30,6 +31,7 @@ vi.mock("../api/client", () => ({
     getGitCommitDiff: (...args: unknown[]) => getGitCommitDiff(...args),
     listReviewComments: (...args: unknown[]) => listReviewComments(...args),
     addReviewComment: (...args: unknown[]) => addReviewComment(...args),
+    searchGit: (...args: unknown[]) => searchGit(...args),
   },
 }));
 
@@ -137,5 +139,41 @@ describe("CommitBrowser", () => {
     expect(anchor.revision).toEqual({ kind: "sha", sha: SHA });
     expect(anchor.side).toBe("new");
     expect(anchor.newLine).toBe(1);
+  });
+
+  it("replaces the list with commit-delta search results", async () => {
+    primeApis();
+    const OTHER = "c".repeat(40);
+    searchGit.mockResolvedValue({
+      commits: [
+        {
+          hash: OTHER,
+          shortHash: "ccccccc",
+          subject: "touched needle",
+          authorName: "Dev",
+          authorDate: "2026-07-20T00:00:00Z",
+        },
+      ],
+      truncated: false,
+    });
+    render(
+      <MemoryRouter>
+        <CommitBrowser projectId="p1" isWideScreen={false} t={t} />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("first commit");
+    fireEvent.change(screen.getByPlaceholderText("sourceSearchCommits"), {
+      target: { value: "needle" },
+    });
+
+    await waitFor(() =>
+      expect(searchGit).toHaveBeenCalledWith("p1", {
+        q: "needle",
+        kind: "delta",
+      }),
+    );
+    await screen.findByText("touched needle");
+    expect(screen.queryByText("first commit")).toBeNull();
   });
 });

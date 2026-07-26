@@ -41,6 +41,13 @@ export function CommitBrowser({
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<GitRecentCommit[] | null>(
+    null,
+  );
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const displayedCommits = searchResults ?? commits;
 
   // Load the first page of commits when the project changes.
   useEffect(() => {
@@ -69,12 +76,13 @@ export function CommitBrowser({
     };
   }, [projectId, t]);
 
-  // Auto-select the newest commit on wide screens (mobile starts on the list).
+  // Auto-select the newest shown commit on wide screens (mobile starts on
+  // the list). Follows search results when a search is active.
   useEffect(() => {
-    if (isWideScreen && selectedSha === null && commits[0]) {
-      setSelectedSha(commits[0].hash);
+    if (isWideScreen && selectedSha === null && displayedCommits[0]) {
+      setSelectedSha(displayedCommits[0].hash);
     }
-  }, [isWideScreen, selectedSha, commits]);
+  }, [isWideScreen, selectedSha, displayedCommits]);
 
   const loadMore = useCallback(async () => {
     try {
@@ -88,6 +96,41 @@ export function CommitBrowser({
       setListError(err instanceof Error ? err.message : t("gitStatusLoading"));
     }
   }, [projectId, commits.length, t]);
+
+  // Debounced commit-delta search (git log -G): commits whose diff touched the
+  // query. An empty query restores the paged list.
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (!q) {
+      setSearchResults(null);
+      setSearching(false);
+      setSearchError(null);
+      return;
+    }
+    let cancelled = false;
+    setSearching(true);
+    setSearchError(null);
+    const timer = setTimeout(() => {
+      api
+        .searchGit(projectId, { q, kind: "delta" })
+        .then((res) => {
+          if (cancelled) return;
+          setSearchResults(res.commits ?? []);
+          setSearching(false);
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          setSearchError(
+            err instanceof Error ? err.message : t("gitStatusLoading"),
+          );
+          setSearching(false);
+        });
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [projectId, searchQuery, t]);
 
   // Load the selected commit's changed-file list.
   useEffect(() => {
@@ -141,16 +184,31 @@ export function CommitBrowser({
     <div className="commit-browser">
       <div className="commit-browser-columns">
         <div className="commit-list-column">
-          {loadingList ? (
+          <input
+            type="search"
+            className="source-search-input"
+            value={searchQuery}
+            placeholder={t("sourceSearchCommits")}
+            onChange={(event) => setSearchQuery(event.target.value)}
+          />
+          {loadingList && searchResults === null ? (
             <div className="git-diff-loading">{t("gitStatusLoading")}</div>
-          ) : listError ? (
+          ) : listError && searchResults === null ? (
             <div className="git-diff-error">{listError}</div>
-          ) : commits.length === 0 ? (
-            <div className="git-status-empty">{t("sourceNoCommits")}</div>
+          ) : searching ? (
+            <div className="git-diff-loading">{t("sourceSearching")}</div>
+          ) : searchError ? (
+            <div className="git-diff-error">{searchError}</div>
+          ) : displayedCommits.length === 0 ? (
+            <div className="git-status-empty">
+              {searchResults !== null
+                ? t("sourceNoMatches")
+                : t("sourceNoCommits")}
+            </div>
           ) : (
             <>
               <ol className="commit-list">
-                {commits.map((commit) => (
+                {displayedCommits.map((commit) => (
                   <li key={commit.hash} className="commit-list-row">
                     <button
                       type="button"
@@ -178,7 +236,7 @@ export function CommitBrowser({
                   </li>
                 ))}
               </ol>
-              {hasMore && (
+              {hasMore && searchResults === null && (
                 <button
                   type="button"
                   className="commit-load-more"
