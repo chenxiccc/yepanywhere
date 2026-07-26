@@ -424,6 +424,41 @@ couple to it. — Pending.
 
 — Pending.
 
+### Commit message display
+
+- Clicking the compact commit body opens the **verbatim original message**
+  (subject + body, hard breaks preserved) with the exact author date/time in
+  the detail pane, until a file is picked (`CommitMessageView`; mobile modal).
+  The banner hash tooltips `sha + date/time`; newer/older jump is glyph-only
+  (↑/↓), adjacent, at the banner's left edge nearest the list. — Done
+  (a977f1f9).
+- **Soft-reflow of the compact body — pending; do not implement without
+  review.** The compact commit body currently shows the raw hard-wrapped git
+  body (jagged in a narrow column). It should reflow width-wrapped prose to the
+  column while preserving *intentional* breaks, mirroring the AGENTS.md
+  commit-wrap rule: "Wrap body prose manually at 71 columns — a visual rule,
+  not greedy fill: preserve bullets, hanging indents, aligned continuations,
+  short tables, and ASCII diagrams even when that leaves a short line." A break
+  before a line is intentional (kept) when the line is blank, a
+  `[spaces]* `/`-`/`•`/`N.` bullet, indented (hanging/ASCII), or short while its
+  predecessor is also short (two consecutive short lines). Otherwise the line
+  is a wrapped continuation and folds into the previous with a space; render
+  with `white-space: pre-wrap`. No reusable reflow util exists in the tree
+  (searched 2026-07-26 — the "wrap" hits are DOM-layout and shell-unwrap); build
+  a tested pure function. The verbatim view above is the escape hatch and is
+  already shipped.
+
+### Search completions + match tooltips — pending
+
+- Focused commit/file search shows a **completions/hints dropdown** to the
+  right of the input.
+- While focused with matches, **float per-match tooltips** — `…context…` with
+  the matched **substring bolded** — reusing the session incremental-search
+  (Ctrl-R / Ctrl-S) hit presentation. Find and reuse that presentation, don't
+  re-derive it.
+
+— Pending.
+
 ## Open questions
 
 - **Provenance rendering.** Reuse the compose-time-context-anchors framing so
