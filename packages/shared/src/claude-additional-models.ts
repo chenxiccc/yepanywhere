@@ -18,12 +18,13 @@ function containsControlCharacter(value: string): boolean {
   return false;
 }
 
-/** A persistable exact model id: non-empty, bounded, whitespace-free. */
+/** A persistable exact model id: non-empty, bounded, no whitespace or control chars. */
 export function isValidClaudeAdditionalModelId(id: string): boolean {
   return (
     id.length > 0 &&
     id.length <= MAX_CLAUDE_ADDITIONAL_MODEL_ID_LENGTH &&
-    !/\s/u.test(id)
+    !/\s/u.test(id) &&
+    !containsControlCharacter(id)
   );
 }
 

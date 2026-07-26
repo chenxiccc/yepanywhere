@@ -67,6 +67,7 @@ describe("isValidClaudeAdditionalModelId", () => {
     "",
     "has space",
     "line\nbreak",
+    `ctrl${CONTROL_CHAR}char`,
     "x".repeat(MAX_CLAUDE_ADDITIONAL_MODEL_ID_LENGTH + 1),
   ])("rejects %j", (id) => {
     expect(isValidClaudeAdditionalModelId(id)).toBe(false);
@@ -89,14 +90,10 @@ describe("isValidClaudeAdditionalModelLabel", () => {
 
   it("rejects a custom id that is a valid id but an invalid label", () => {
     // The exact divergence the client add-custom path must also catch: a custom
-    // entry stores label = id, so an over-long or control-char id is a valid id
-    // yet an invalid label, and would 400 at the server if only id-checked.
+    // entry stores label = id, so an id longer than the label bound is a valid
+    // id yet an invalid label, and would 400 at the server if only id-checked.
     const longId = "x".repeat(MAX_CLAUDE_ADDITIONAL_MODEL_LABEL_LENGTH + 1);
     expect(isValidClaudeAdditionalModelId(longId)).toBe(true);
     expect(isValidClaudeAdditionalModelLabel(longId)).toBe(false);
-
-    const controlId = `claude${CONTROL_CHAR}custom`;
-    expect(isValidClaudeAdditionalModelId(controlId)).toBe(true);
-    expect(isValidClaudeAdditionalModelLabel(controlId)).toBe(false);
   });
 });
