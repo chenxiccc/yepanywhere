@@ -1,14 +1,19 @@
+import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   UploadManager,
+  getProjectAttachmentUploadDir,
   getUploadDir,
   resolveUploadStoragePath,
   sanitizeFilename,
 } from "../../src/uploads/manager.js";
+
+const execFileAsync = promisify(execFile);
 
 describe("sanitizeFilename", () => {
   it("generates unique ID for each call", () => {
@@ -401,5 +406,29 @@ describe("UploadManager", () => {
       expect(state).toBeDefined();
       expect(state?.originalName).toBe("test.txt");
     });
+  });
+});
+
+describe("getProjectAttachmentUploadDir", () => {
+  let projectDir: string;
+
+  beforeEach(async () => {
+    projectDir = await mkdtemp(join(tmpdir(), "yep-attach-"));
+  });
+
+  afterEach(async () => {
+    await rm(projectDir, { recursive: true, force: true });
+  });
+
+  it("creates .attachments/<session> and git-excludes .attachments on first use", async () => {
+    await execFileAsync("git", ["-C", projectDir, "init"]);
+    const dir = await getProjectAttachmentUploadDir(projectDir, "sess-1");
+    expect(dir).toBe(join(projectDir, ".attachments", "sess-1"));
+    expect((await stat(dir)).isDirectory()).toBe(true);
+    const exclude = await readFile(
+      join(projectDir, ".git", "info", "exclude"),
+      "utf-8",
+    );
+    expect(exclude).toContain(".attachments/");
   });
 });

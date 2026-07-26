@@ -4,6 +4,7 @@ import { mkdir, rm, stat } from "node:fs/promises";
 import { extname, isAbsolute, join, relative, resolve } from "node:path";
 import type { UploadedFile } from "@yep-anywhere/shared";
 import { getDataDir } from "../config.js";
+import { ensureManagedProjectDir } from "../projects/managedProjectDir.js";
 
 /** Legacy root directory for uploads (kept for old files during transition). */
 export const UPLOADS_DIR = join(getDataDir(), "uploads");
@@ -157,9 +158,9 @@ export async function getProjectAttachmentUploadDir(
   projectPath: string,
   sessionId: string,
 ): Promise<string> {
-  const dir = getProjectAttachmentDir(projectPath, sessionId);
-  await mkdir(dir, { recursive: true });
-  return dir;
+  // Creates `{projectPath}/.attachments/{sessionId}`, git-excluding
+  // `.attachments/` by default the first time YA creates it.
+  return ensureManagedProjectDir(projectPath, ATTACHMENTS_DIR_NAME, sessionId);
 }
 
 export interface UploadManagerOptions {
