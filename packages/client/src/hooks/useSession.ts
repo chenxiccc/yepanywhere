@@ -23,9 +23,9 @@ import {
   extractSessionIdFromFileEvent,
 } from "../lib/sessionFile";
 import {
-  loadStoredSessionModel,
-  saveStoredSessionModel,
-} from "../lib/sessionModelStorage";
+  sessionModelPick,
+  sessionPermissionModePick,
+} from "../lib/sessionPickStorage";
 import type {
   InputRequest,
   Message,
@@ -380,50 +380,6 @@ function userTextContainsDeferredContent(
     .some(partMatches);
 }
 
-const PERMISSION_MODE_KEY_PREFIX = "permission-mode-";
-
-function getPermissionModeStorageKey(sessionId: string): string {
-  return `${PERMISSION_MODE_KEY_PREFIX}${sessionId}`;
-}
-
-// The UI-selected permission mode is persisted per session so a page reload or
-// server-process teardown restores the user's choice instead of silently
-// dropping to "default" — which would re-enable provider sandboxing and approval
-// prompts the user had deliberately turned off.
-function loadStoredPermissionMode(
-  sessionId: string,
-): PermissionMode | undefined {
-  if (typeof localStorage === "undefined") {
-    return undefined;
-  }
-  try {
-    const raw = localStorage.getItem(getPermissionModeStorageKey(sessionId));
-    return raw === "default" ||
-      raw === "acceptEdits" ||
-      raw === "plan" ||
-      raw === "bypassPermissions"
-      ? raw
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function saveStoredPermissionMode(
-  sessionId: string,
-  mode: PermissionMode,
-): void {
-  if (typeof localStorage === "undefined") {
-    return;
-  }
-  try {
-    localStorage.setItem(getPermissionModeStorageKey(sessionId), mode);
-  } catch {
-    // localStorage may be unavailable or full; the in-memory mode still applies
-    // for the current page.
-  }
-}
-
 function removeEchoedQueueMessage<
   T extends { tempId?: string; content: string },
 >(messages: T[], tempIds?: string[], incomingText?: string | null): T[] {
@@ -696,7 +652,7 @@ export function useSession(
   // of dropping to "default".
   const initialPermissionMode =
     initialStatus?.permissionMode ??
-    loadStoredPermissionMode(sessionId) ??
+    sessionPermissionModePick.load(sessionId) ??
     "default";
   const initialModeVersion = initialStatus?.modeVersion ?? 0;
   const [localMode, setLocalMode] = useState<PermissionMode>(
@@ -714,7 +670,7 @@ export function useSession(
       return;
     }
     restoredModeSessionRef.current = sessionId;
-    setLocalMode(loadStoredPermissionMode(sessionId) ?? "default");
+    setLocalMode(sessionPermissionModePick.load(sessionId) ?? "default");
   }, [sessionId]);
   // Track whether we've already processed a stream "connected" event in this mount.
   // For Codex providers, the first connected-event catch-up fetch can duplicate
@@ -823,7 +779,7 @@ export function useSession(
         setModeVersion(version);
         localModeRef.current = mode;
         setLocalMode(mode);
-        saveStoredPermissionMode(sessionId, mode);
+        sessionPermissionModePick.save(sessionId, mode);
       }
     },
     [sessionId],
@@ -1021,7 +977,7 @@ export function useSession(
     async (mode: PermissionMode) => {
       localModeRef.current = mode;
       setLocalMode(mode);
-      saveStoredPermissionMode(sessionId, mode);
+      sessionPermissionModePick.save(sessionId, mode);
 
       // If there's an active process, immediately sync to server
       if (status.owner === "self" || status.owner === "external") {
@@ -2102,7 +2058,7 @@ export function useSession(
     if (restoredModelSessionRef.current === sessionId) return;
     restoredModelSessionRef.current = sessionId;
     if (status.owner === "self") return;
-    const stored = loadStoredSessionModel(sessionId);
+    const stored = sessionModelPick.load(sessionId);
     if (stored && stored !== session.model) {
       updateSession((prev) => (prev ? { ...prev, model: stored } : prev));
     }
@@ -2115,7 +2071,7 @@ export function useSession(
   // lost (mirrors the per-session permission-mode persistence above).
   const setSessionModel = useCallback(
     (model: string) => {
-      saveStoredSessionModel(sessionId, model);
+      sessionModelPick.save(sessionId, model);
       updateSession((prev) => (prev ? { ...prev, model } : prev));
     },
     [sessionId, updateSession],

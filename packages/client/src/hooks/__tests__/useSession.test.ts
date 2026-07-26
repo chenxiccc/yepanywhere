@@ -9,7 +9,7 @@ import type {
   SessionStatusEvent,
   SessionUpdatedEvent,
 } from "../../lib/activityBus";
-import { saveStoredSessionModel } from "../../lib/sessionModelStorage";
+import { sessionModelPick } from "../../lib/sessionPickStorage";
 import type { SessionStatus } from "../../types";
 import { __resetAwayRecapTimersForTest, useSession } from "../useSession";
 
@@ -1426,9 +1426,9 @@ describe("useSession permission mode persistence", () => {
 
   it("restores the stored per-session model when reopening an idle session", () => {
     // A model picked earlier in this session and abandoned before the next turn
-    // only lives in localStorage (see sessionModelStorage). The mocked session
+    // only lives in localStorage (see sessionPickStorage). The mocked session
     // reports "gpt-5.4", so a restore to "opus" proves the pick was reapplied.
-    saveStoredSessionModel("sess-1", "opus");
+    sessionModelPick.save("sess-1", "opus");
     // No initialStatus → the hook defaults to an idle { owner: "none" } session.
     renderHook(() => useSession(PROJECT_ID, "sess-1", undefined));
 
@@ -1445,7 +1445,7 @@ describe("useSession permission mode persistence", () => {
   it("does not override a live self-owned process's model on load", () => {
     // A running process's model is authoritative; the stored pick must not clobber
     // it on reopen — it only overlays when the session is idle.
-    saveStoredSessionModel("sess-1", "opus");
+    sessionModelPick.save("sess-1", "opus");
     renderHook(() =>
       useSession(PROJECT_ID, "sess-1", { owner: "self", processId: "proc-1" }),
     );
