@@ -5751,7 +5751,7 @@ pre.code-highlighter-plain,
   padding: var(--space-3, 12px);
   border: 1px solid var(--border-color, #30363d);
   border-radius: var(--radius-md, 8px);
-  background: var(--surface-raised, var(--bg-elevated, #161b22));
+  background: var(--bg-tertiary);
   box-shadow: var(--shadow-md, 0 8px 24px rgba(0, 0, 0, 0.4));
 }
 
@@ -5767,7 +5767,7 @@ pre.code-highlighter-plain,
   overflow: auto;
   padding: var(--space-2, 8px);
   border-radius: var(--radius-sm, 4px);
-  background: var(--bg-subtle, rgba(255, 255, 255, 0.04));
+  background: var(--bg-secondary);
   font-family: var(--font-mono, monospace);
   font-size: var(--font-size-sm, 0.8em);
   white-space: pre;
@@ -5779,7 +5779,7 @@ pre.code-highlighter-plain,
   padding: var(--space-2, 8px);
   border: 1px solid var(--border-color, #30363d);
   border-radius: var(--radius-sm, 4px);
-  background: var(--bg-input, var(--bg-subtle, #0d1117));
+  background: var(--bg-input);
   color: var(--text-primary, #e6edf3);
   font: inherit;
 }
@@ -5933,7 +5933,7 @@ pre.code-highlighter-plain,
 }
 
 .side-by-side-diff .sbs-cell.sbs-empty {
-  background: var(--bg-subtle, rgba(255, 255, 255, 0.02));
+  background: var(--bg-secondary);
 }
 
 /* Each cell is its own .highlighted-diff; trim the block margins so rows line up. */
@@ -5957,14 +5957,14 @@ pre.code-highlighter-plain,
   padding: var(--space-2, 8px) var(--space-3, 12px);
   margin-bottom: var(--space-3, 12px);
   font-size: 0.85rem;
-  background: var(--bg-elevated, #161b22);
+  background: var(--bg-secondary);
   border: 1px solid var(--border-subtle, #21262d);
   border-radius: var(--radius-md, 8px);
 }
 
 .repo-status-bar.repo-status-bar-warn {
-  border-color: var(--warning, #d29922);
-  box-shadow: inset 3px 0 0 var(--warning, #d29922);
+  border-color: var(--warning-color);
+  box-shadow: inset 3px 0 0 var(--warning-color);
 }
 
 .repo-status-name {
@@ -5998,13 +5998,13 @@ pre.code-highlighter-plain,
 }
 
 .repo-status-badge.clean {
-  color: var(--success, #3fb950);
-  background: color-mix(in srgb, var(--success, #3fb950) 14%, transparent);
+  color: var(--success-color);
+  background: color-mix(in srgb, var(--success-color) 14%, transparent);
 }
 
 .repo-status-badge.dirty {
-  color: var(--warning, #d29922);
-  background: color-mix(in srgb, var(--warning, #d29922) 16%, transparent);
+  color: var(--warning-color);
+  background: color-mix(in srgb, var(--warning-color) 16%, transparent);
 }
 
 /* Copy affordance shared by status bar, commit rows, file rows. */
@@ -6013,7 +6013,7 @@ pre.code-highlighter-plain,
   align-items: center;
   justify-content: center;
   padding: 2px;
-  color: var(--text-tertiary, #6e7681);
+  color: var(--text-muted);
   background: transparent;
   border: none;
   border-radius: 4px;
@@ -6026,22 +6026,15 @@ pre.code-highlighter-plain,
 }
 
 .copy-button.copied {
-  color: var(--success, #3fb950);
+  color: var(--success-color);
 }
 
-/* Mode tabs + review tray toolbar. */
-.source-mode-toolbar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2, 8px);
-  margin-bottom: var(--space-3, 12px);
-}
-
+/* Mode tabs (rendered inside the repo status bar's leading slot). */
 .source-mode-tabs {
   display: inline-flex;
   gap: 2px;
   padding: 2px;
-  background: var(--bg-subtle, rgba(255, 255, 255, 0.03));
+  background: var(--bg-secondary);
   border: 1px solid var(--border-subtle, #21262d);
   border-radius: var(--radius-md, 8px);
 }
@@ -6060,13 +6053,10 @@ pre.code-highlighter-plain,
   color: var(--text-primary, #e6edf3);
 }
 
+/* Distinct from bg-elevated: the tabs sit inside the elevated status bar. */
 .source-mode-tab.active {
   color: var(--text-primary, #e6edf3);
-  background: var(--bg-elevated, #161b22);
-}
-
-.source-mode-toolbar .review-tray-button {
-  margin-left: auto;
+  background: var(--bg-hover, rgba(255, 255, 255, 0.08));
 }
 
 /* Commit browser: commits · files · diff. */
@@ -6120,7 +6110,7 @@ pre.code-highlighter-plain,
   flex-shrink: 0;
   padding: 2px 6px;
   font-size: 0.72rem;
-  color: var(--text-tertiary, #6e7681);
+  color: var(--text-muted);
   background: transparent;
   border: 1px solid var(--border-subtle, #21262d);
   border-radius: 4px;
@@ -6225,7 +6215,7 @@ pre.code-highlighter-plain,
   padding: 3px 10px;
   font-size: 0.78rem;
   color: var(--text-secondary, #8b949e);
-  background: var(--bg-subtle, rgba(255, 255, 255, 0.03));
+  background: var(--bg-secondary);
   border: 1px solid var(--border-subtle, #21262d);
   border-radius: 6px;
   cursor: pointer;
@@ -6254,7 +6244,7 @@ pre.code-highlighter-plain,
   font-size: 0.8rem;
   white-space: pre-wrap;
   color: var(--text-secondary, #8b949e);
-  background: var(--bg-subtle, rgba(255, 255, 255, 0.03));
+  background: var(--bg-secondary);
   border-radius: 6px;
 }
 
@@ -6265,7 +6255,7 @@ pre.code-highlighter-plain,
 }
 
 .commit-file-item .git-lines-added {
-  color: var(--success, #3fb950);
+  color: var(--success-color);
 }
 
 .commit-file-item .git-lines-deleted {
@@ -6297,7 +6287,7 @@ pre.code-highlighter-plain,
   padding: 5px 10px;
   font-size: 0.85rem;
   color: var(--text-primary, #e6edf3);
-  background: var(--bg-subtle, rgba(255, 255, 255, 0.03));
+  background: var(--bg-secondary);
   border: 1px solid var(--border-subtle, #21262d);
   border-radius: 6px;
 }
@@ -6334,7 +6324,7 @@ pre.code-highlighter-plain,
 .blame-file-more {
   padding: 6px 8px;
   font-size: 0.75rem;
-  color: var(--text-tertiary, #6e7681);
+  color: var(--text-muted);
 }
 
 /* Blame view: gutter · line number · highlighted code. */
@@ -6352,7 +6342,7 @@ pre.code-highlighter-plain,
   position: sticky;
   top: 0;
   padding: 6px 10px;
-  background: var(--bg-elevated, #161b22);
+  background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-subtle, #21262d);
 }
 
@@ -6383,45 +6373,39 @@ pre.code-highlighter-plain,
 }
 
 .blame-row.has-review-comment {
-  background: color-mix(in srgb, var(--success, #3fb950) 12%, transparent);
+  background: color-mix(in srgb, var(--success-color) 12%, transparent);
 }
 
 .blame-gutter {
   padding: 0 6px;
-  color: var(--text-tertiary, #6e7681);
+  color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .blame-gutter.uncommitted {
-  color: var(--warning, #d29922);
+  color: var(--warning-color);
 }
 
 .blame-lineno {
   padding: 0 8px;
   text-align: right;
-  color: var(--text-tertiary, #6e7681);
+  color: var(--text-muted);
   user-select: none;
 }
 
+/* Token spans carry inline colors from the server highlight; the cell only
+   needs pre whitespace and a foreground for un-highlighted text. */
 .blame-code {
   min-width: 0;
   overflow-x: auto;
-}
-
-.blame-code.highlighted-diff pre.shiki {
-  margin: 0;
-  padding: 0;
-  background: transparent;
-}
-
-.blame-code-plain {
   white-space: pre;
+  color: var(--shiki-foreground, var(--text-primary, #e6edf3));
 }
 
 .blame-truncated {
   padding: 8px 10px;
   font-size: 0.75rem;
-  color: var(--text-tertiary, #6e7681);
+  color: var(--text-muted);
 }

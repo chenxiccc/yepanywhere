@@ -165,18 +165,14 @@ export function BlameView({
               {line.uncommitted ? "·······" : line.shortSha}
             </span>
             <span className="blame-lineno">{line.line}</span>
-            {codeLines ? (
+            {codeLines?.[index] ? (
               <span
-                className="blame-code highlighted-diff"
+                className="blame-code"
                 // biome-ignore lint/security/noDangerouslySetInnerHtml: server-highlighted line
-                dangerouslySetInnerHTML={{
-                  __html: `<pre class="shiki"><code>${codeLines[index] ?? ""}</code></pre>`,
-                }}
+                dangerouslySetInnerHTML={{ __html: codeLines[index] }}
               />
             ) : (
-              <span className="blame-code blame-code-plain">
-                {line.content || " "}
-              </span>
+              <span className="blame-code">{line.content || " "}</span>
             )}
           </button>
         ))}

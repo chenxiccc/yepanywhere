@@ -721,21 +721,32 @@ function GitStatusContent({
 
   return (
     <div className="git-status">
-      <RepoStatusBar repoName={projectName} status={status} t={t} />
-      <div className="source-mode-toolbar">
-        <SourceModeTabs tab={tab} tabs={SOURCE_TABS} onSelect={setTab} t={t} />
-        {reviewComments.pending.length > 0 && (
-          <button
-            type="button"
-            className="git-status-action-button review-tray-button"
-            onClick={() => setShowReviewModal(true)}
-          >
-            {t("sourceReviewReview", {
-              count: reviewComments.pending.length,
-            })}
-          </button>
-        )}
-      </div>
+      <RepoStatusBar
+        repoName={projectName}
+        status={status}
+        tabs={
+          <SourceModeTabs
+            tab={tab}
+            tabs={SOURCE_TABS}
+            onSelect={setTab}
+            t={t}
+          />
+        }
+        actions={
+          reviewComments.pending.length > 0 && (
+            <button
+              type="button"
+              className="git-status-action-button review-tray-button"
+              onClick={() => setShowReviewModal(true)}
+            >
+              {t("sourceReviewReview", {
+                count: reviewComments.pending.length,
+              })}
+            </button>
+          )
+        }
+        t={t}
+      />
 
       {tab === "commits" ? (
         <CommitBrowser

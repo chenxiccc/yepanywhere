@@ -1,4 +1,5 @@
 import type { GitStatusInfo } from "@yep-anywhere/shared";
+import type { ReactNode } from "react";
 import { CopyButton } from "../components/CopyButton";
 
 type TranslationFn = (
@@ -12,15 +13,23 @@ type TranslationFn = (
  * dirty or the branch is ahead/behind upstream. Read-only — it surfaces status
  * and offers copy affordances (branch name), never mutating actions (pull/push
  * stay in the changes view). Shown across all source-control modes, so the
- * status stays visible while browsing commits or files.
+ * status stays visible while browsing commits or files. The mode tabs and the
+ * review-tray button live in this same row (via the slots) so the surface has
+ * a single toolbar row instead of stacking a second one.
  */
 export function RepoStatusBar({
   repoName,
   status,
+  tabs,
+  actions,
   t,
 }: {
   repoName?: string;
   status: GitStatusInfo;
+  /** The source-mode tabs, rendered leading (navigation first). */
+  tabs?: ReactNode;
+  /** Trailing controls (e.g. the review-tray button), after the badge. */
+  actions?: ReactNode;
   t: TranslationFn;
 }) {
   const outOfSync = status.ahead > 0 || status.behind > 0;
@@ -28,6 +37,7 @@ export function RepoStatusBar({
 
   return (
     <div className={`repo-status-bar ${warn ? "repo-status-bar-warn" : ""}`}>
+      {tabs}
       {repoName && <span className="repo-status-name">{repoName}</span>}
       <span className="repo-status-branch">
         <svg
@@ -67,6 +77,7 @@ export function RepoStatusBar({
       >
         {status.isClean ? t("gitStatusClean") : t("gitStatusDirty")}
       </span>
+      {actions}
     </div>
   );
 }
