@@ -10,7 +10,9 @@
  */
 
 import {
+  ALL_PROVIDERS,
   MAX_REVIEW_COMMENT_TEXT_LENGTH,
+  type ReviewNewSessionOptions,
   isUrlProjectId,
   parseReviewCommentAnchor,
 } from "@yep-anywhere/shared";
@@ -189,6 +191,16 @@ export function createReviewCommentsRoutes(deps: ReviewCommentsDeps): Hono {
     if (target !== "new" && typeof target !== "string") {
       return c.json({ error: "target must be 'new' or a session id" }, 400);
     }
+    const newSession = parseNewSessionOptions(body.newSession);
+    if (newSession === null) {
+      return c.json({ error: "Invalid new-session provider or model" }, 400);
+    }
+    if (target !== "new" && body.newSession !== undefined) {
+      return c.json(
+        { error: "newSession options apply only to a new session" },
+        400,
+      );
+    }
 
     const pending = await service.listPending(resolved.path);
     const includeSet = new Set(include);
@@ -218,6 +230,7 @@ export function createReviewCommentsRoutes(deps: ReviewCommentsDeps): Hono {
       const result = await deps.launcher.startReviewSession(
         resolved.path,
         turn,
+        newSession,
       );
       if (result.status === "queue-full") {
         return c.json(
@@ -257,6 +270,39 @@ export function createReviewCommentsRoutes(deps: ReviewCommentsDeps): Hono {
   });
 
   return routes;
+}
+
+function parseNewSessionOptions(
+  value: unknown,
+): ReviewNewSessionOptions | undefined | null {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const options: ReviewNewSessionOptions = {};
+  if (record.provider !== undefined) {
+    if (
+      typeof record.provider !== "string" ||
+      !ALL_PROVIDERS.includes(
+        record.provider as NonNullable<ReviewNewSessionOptions["provider"]>,
+      )
+    ) {
+      return null;
+    }
+    options.provider = record.provider as NonNullable<
+      ReviewNewSessionOptions["provider"]
+    >;
+  }
+  if (record.model !== undefined) {
+    if (
+      typeof record.model !== "string" ||
+      record.model.trim().length === 0 ||
+      record.model.length > 200
+    ) {
+      return null;
+    }
+    options.model = record.model;
+  }
+  return options;
 }
 
 function parseStringArray(value: unknown): string[] | null {

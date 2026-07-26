@@ -1,4 +1,4 @@
-import type { PatchHunk } from "./types.js";
+import type { PatchHunk, ProviderName } from "./types.js";
 
 /**
  * Source-review draft comments (topic: source-review-to-session).
@@ -101,6 +101,13 @@ export interface ReviewBatch {
   targetSessionId: string;
   /** Comments consumed by this batch. */
   commentIds: string[];
+}
+
+/** Explicit launch choices when a submitted review starts a fresh session. */
+export interface ReviewNewSessionOptions {
+  provider?: ProviderName;
+  /** Provider model id. Omitted means the provider's normal default. */
+  model?: string;
 }
 
 export interface ReviewCommentsFile {

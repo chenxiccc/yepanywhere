@@ -5867,23 +5867,43 @@ pre.code-highlighter-plain,
   white-space: pre-wrap;
 }
 
-.review-submit-target {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3, 12px);
-  align-items: center;
-  border: none;
-  padding: 0;
+.review-submit-destination {
+  display: grid;
+  gap: var(--space-2, 8px);
+  padding: var(--space-3, 12px);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle, #21262d);
+  border-radius: var(--radius-md, 8px);
 }
 
-.review-submit-target-other {
-  display: inline-flex;
+.review-submit-field {
+  display: grid;
+  grid-template-columns: 5rem minmax(0, 1fr);
   align-items: center;
-  gap: 4px;
+  gap: var(--space-2, 8px);
+  color: var(--text-secondary, #8b949e);
+  font-size: 0.82rem;
 }
 
-.review-submit-session-select {
-  max-width: 180px;
+.review-submit-field select {
+  min-width: 0;
+  width: 100%;
+  padding: 5px 8px;
+  color: var(--text-primary, #e6edf3);
+  background: var(--bg-input, var(--bg-primary));
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm, 4px);
+}
+
+.review-submit-new-session {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2, 8px);
+}
+
+.review-submit-target-error {
+  color: var(--color-error, #f85149);
+  font-size: 0.78rem;
 }
 
 .review-submit-actions {
@@ -5906,6 +5926,16 @@ pre.code-highlighter-plain,
 
 .review-submit-error {
   color: var(--color-error, #f85149);
+}
+
+@media (max-width: 600px) {
+  .review-submit-modal {
+    min-width: 0;
+  }
+
+  .review-submit-new-session {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Side-by-side diff (topic: source-review-to-session, P8). */
@@ -6032,8 +6062,7 @@ pre.code-highlighter-plain,
 
 /* Persistent repo/branch status header. */
 .repo-status-bar {
-  position: sticky;
-  top: 0;
+  position: static;
   z-index: 3;
   display: flex;
   align-items: center;
@@ -6050,6 +6079,23 @@ pre.code-highlighter-plain,
 .repo-status-bar.repo-status-bar-warn {
   border-color: var(--warning-color);
   box-shadow: inset 3px 0 0 var(--warning-color);
+}
+
+.repo-status-bar.inline {
+  width: 100%;
+  flex-wrap: nowrap;
+  gap: 6px;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.repo-status-bar.inline.repo-status-bar-warn .repo-status-branch,
+.repo-status-bar.inline.repo-status-bar-warn .repo-status-sync {
+  color: var(--warning-color);
 }
 
 .repo-status-name {
@@ -6075,11 +6121,70 @@ pre.code-highlighter-plain,
   font-family: var(--font-mono, monospace);
 }
 
+.repo-status-upstream {
+  max-width: 9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .repo-status-badge {
   margin-left: auto;
   padding: 1px 8px;
   border-radius: 999px;
   font-size: 0.75rem;
+}
+
+.repo-status-bar.inline .repo-status-badge {
+  margin-left: 0;
+}
+
+.repo-status-bar.inline .source-mode-tabs {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.repo-status-bar.inline .source-mode-tab {
+  padding-inline: 9px;
+}
+
+.repo-status-action-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 759px) {
+  .repo-status-bar:not(.inline) .source-mode-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr 0.7fr 1.25fr;
+    box-sizing: border-box;
+    width: 100%;
+  }
+
+  .repo-status-bar:not(.inline) .source-mode-tab {
+    min-width: 0;
+    padding-inline: 4px;
+    font-size: 0.8rem;
+  }
+
+  .repo-status-bar:not(.inline) .source-mode-tab-count {
+    margin-left: 3px;
+    padding-inline: 4px;
+  }
+
+  .repo-status-bar:not(.inline) .repo-status-action-group {
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    width: 100%;
+  }
+
+  .repo-status-bar:not(.inline) .repo-status-action-group > button {
+    min-width: 0;
+    padding-inline: 8px;
+    white-space: nowrap;
+  }
 }
 
 .repo-status-badge.clean {
@@ -6582,10 +6687,26 @@ pre.code-highlighter-plain,
   border-radius: 6px;
 }
 
+.source-search-index-status {
+  margin: calc(-1 * var(--space-1, 4px)) 2px var(--space-2, 8px);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.source-search-index-status.error {
+  color: var(--color-error, #f85149);
+}
+
 .blame-file-list {
   list-style: none;
   margin: 0;
   padding: 0;
+}
+
+.blame-file-list > .commit-file-row {
+  content-visibility: auto;
+  contain-intrinsic-size: 34px;
 }
 
 .blame-file-item {

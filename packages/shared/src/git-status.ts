@@ -56,6 +56,27 @@ export interface GitCommitListResult {
   hasMore: boolean;
 }
 
+/**
+ * Complete commit order for the on-demand browser search index. Metadata is
+ * intentionally small; changed-line text is fetched in bounded batches.
+ */
+export interface GitCommitSearchManifest {
+  /** Current repository HEAD, or null for an empty repository. */
+  head: string | null;
+  /** Every reachable commit, newest first. */
+  commits: GitRecentCommit[];
+}
+
+/** Searchable changed-line/path text for one commit. */
+export interface GitCommitSearchRecord {
+  hash: string;
+  deltaText: string;
+}
+
+export interface GitCommitSearchRecordsResult {
+  records: GitCommitSearchRecord[];
+}
+
 /** One source line's blame in the all-files provenance browser. */
 export interface GitBlameLine {
   /** 1-based line number in the blamed revision. */

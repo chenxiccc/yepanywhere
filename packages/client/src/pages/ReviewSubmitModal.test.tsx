@@ -14,11 +14,13 @@ import { I18nProvider } from "../i18n";
 const previewReview = vi.fn();
 const submitReview = vi.fn();
 const getGlobalSessions = vi.fn();
+const getProviders = vi.fn();
 vi.mock("../api/client", () => ({
   api: {
     previewReview: (...a: unknown[]) => previewReview(...a),
     submitReview: (...a: unknown[]) => submitReview(...a),
     getGlobalSessions: (...a: unknown[]) => getGlobalSessions(...a),
+    getProviders: (...a: unknown[]) => getProviders(...a),
   },
 }));
 vi.mock("../lib/reviewCommentsBus", () => ({
@@ -94,8 +96,22 @@ function renderModal(recentReviewSessionId: string | null) {
 
 describe("ReviewSubmitModal", () => {
   beforeEach(() => {
-    // Default: no other sessions, so the arbitrary-session picker stays hidden.
     getGlobalSessions.mockResolvedValue({ sessions: [] });
+    getProviders.mockResolvedValue({
+      providers: [
+        {
+          name: "claude",
+          displayName: "Claude",
+          installed: true,
+          authenticated: true,
+          enabled: true,
+          models: [
+            { id: "sonnet", name: "Sonnet" },
+            { id: "opus", name: "Opus" },
+          ],
+        },
+      ],
+    });
   });
   afterEach(() => {
     cleanup();
@@ -133,26 +149,29 @@ describe("ReviewSubmitModal", () => {
     renderModal("sess-recent");
 
     await screen.findByText("stale one");
-    const recent = screen.getByLabelText(
-      "sourceReviewTargetRecent",
-    ) as HTMLInputElement;
-    const fresh = screen.getByLabelText(
-      "sourceReviewTargetNew",
-    ) as HTMLInputElement;
-    expect(recent.checked).toBe(true);
-    expect(fresh.checked).toBe(false);
+    const target = screen.getByLabelText(
+      "sourceReviewTargetLegend",
+    ) as HTMLSelectElement;
+    expect(target.value).toBe("sess-recent");
   });
 
-  it("offers only a new session when there is no recent review", async () => {
+  it("offers a new session with explicit provider and model controls", async () => {
     previewReview.mockResolvedValue(PREVIEW);
     renderModal(null);
 
     await screen.findByText("stale one");
-    expect(screen.queryByLabelText("sourceReviewTargetRecent")).toBeNull();
     expect(
-      (screen.getByLabelText("sourceReviewTargetNew") as HTMLInputElement)
-        .checked,
-    ).toBe(true);
+      (screen.getByLabelText("sourceReviewTargetLegend") as HTMLSelectElement)
+        .value,
+    ).toBe("new");
+    expect(
+      (await screen.findByLabelText(
+        "sourceReviewProvider",
+      )) as HTMLSelectElement,
+    ).toBeTruthy();
+    expect(
+      screen.getByLabelText("sourceReviewModel") as HTMLSelectElement,
+    ).toBeTruthy();
   });
 
   it("submits the included comments to the chosen target and navigates", async () => {
@@ -172,6 +191,7 @@ describe("ReviewSubmitModal", () => {
         "proj1",
         ["live1"],
         "sess-recent",
+        undefined,
       ),
     );
     expect(onNavigateSession).toHaveBeenCalledWith("sess-9");
@@ -181,8 +201,20 @@ describe("ReviewSubmitModal", () => {
     previewReview.mockResolvedValue(PREVIEW);
     getGlobalSessions.mockResolvedValue({
       sessions: [
-        { id: "sess-A", title: "Session A", customTitle: null },
-        { id: "sess-B", title: "Session B", customTitle: null },
+        {
+          id: "sess-A",
+          title: "Session A",
+          customTitle: null,
+          provider: "claude",
+          model: "sonnet",
+        },
+        {
+          id: "sess-B",
+          title: "Session B",
+          customTitle: null,
+          provider: "codex",
+          model: "gpt-5",
+        },
       ],
     });
     submitReview.mockResolvedValue({
@@ -192,13 +224,42 @@ describe("ReviewSubmitModal", () => {
     const { onNavigateSession } = renderModal(null);
 
     await screen.findByText("live one");
-    const select = (await screen.findByRole("combobox")) as HTMLSelectElement;
+    const select = screen.getByLabelText(
+      "sourceReviewTargetLegend",
+    ) as HTMLSelectElement;
     fireEvent.change(select, { target: { value: "sess-B" } });
     fireEvent.click(screen.getByText("sourceReviewSubmitReview"));
 
     await waitFor(() =>
-      expect(submitReview).toHaveBeenCalledWith("proj1", ["live1"], "sess-B"),
+      expect(submitReview).toHaveBeenCalledWith(
+        "proj1",
+        ["live1"],
+        "sess-B",
+        undefined,
+      ),
     );
     expect(onNavigateSession).toHaveBeenCalledWith("sess-B");
+  });
+
+  it("submits the selected provider and model for a new review session", async () => {
+    previewReview.mockResolvedValue(PREVIEW);
+    submitReview.mockResolvedValue({
+      sessionId: "sess-new",
+      consumed: ["live1"],
+    });
+    renderModal(null);
+
+    await screen.findByText("live one");
+    fireEvent.change(await screen.findByLabelText("sourceReviewModel"), {
+      target: { value: "opus" },
+    });
+    fireEvent.click(screen.getByText("sourceReviewSubmitReview"));
+
+    await waitFor(() =>
+      expect(submitReview).toHaveBeenCalledWith("proj1", ["live1"], "new", {
+        provider: "claude",
+        model: "opus",
+      }),
+    );
   });
 });

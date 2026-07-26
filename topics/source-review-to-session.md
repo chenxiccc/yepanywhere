@@ -182,8 +182,11 @@ submit-time relocation below.
   was recently started from this surface, submit defaults to delivering the
   new batch to it as a **follow-up turn** — that agent already holds the
   earlier review context. The submit flow lets the user override: pick any
-  existing session manually, or opt for a fresh one. "Recent" is a default,
-  not a gate; each consumed batch records which session it went to.
+  existing session manually, or opt for a fresh one. Existing choices identify
+  their provider/model; a fresh session exposes provider and model choices
+  explicitly. "Recent" is a default, not a gate; absent a prior review session,
+  the most recently updated project session is a reasonable follow-up default.
+  Each consumed batch records which session it went to.
 - **The seeded turn: short prompt + review file, small snippets inline.** The
   delivered turn is a short prompt — naming what this is (a source review),
   instructing the agent to address each comment and report per-comment
@@ -226,13 +229,15 @@ the multi-comment, drain-all-unconsumed flow.
 
 The polished viewer graehl wanted, kept strictly read-only:
 
-- **Repo/branch status bar.** A small persistent top bar naming the repo and
-  current branch, with a **yellow warning when the worktree is dirty or the
-  branch is out of sync** (ahead/behind its upstream). It consolidates the git
-  ops YA's source-control surface **already** exposes against upstream/origin
-  (fetch and friends) into one always-visible header — surfacing status, not
-  adding new mutating actions; the write actions in Non-goals stay excluded. A
-  reasonable concept on large screens especially, but useful at any width.
+- **Repo/branch status bar.** At tablet/desktop widths, one small persistent
+  top row carries project identity, current branch, sync/dirty state, source
+  modes, and the Review entry point. A **yellow warning when the worktree is
+  dirty or the branch is out of sync** (ahead/behind its upstream) stays
+  visible without spending a second toolbar row. On phone widths only the
+  small project header persists; repo state, modes, and review controls may
+  wrap into scrolling rows and must scroll away with content. The surface
+  exposes status and existing upstream actions, not the write actions in
+  Non-goals.
 - Multipane commit/diff navigation: browse the working-tree (uncommitted) diff,
   recent commit(s) and history/log, and a commit's diff **without switching
   branches** (extends GitStatusDiffPreview, which is already the working-tree
@@ -379,13 +384,19 @@ that would crush a multi-column layout. The diff/blame column is the one that
 otherwise grows unbounded; leftover width stays as gutter
 (`justify-content: start`), never stretched tracks. — Done (8c9be031).
 
-### Mode tabs share the title row (wide screens)
+### One discoverable source header; phone rows scroll
 
-On wide screens the mode selector (Changes/Commits/Files/Comments) renders in
-the page-header row beside the project title, not a second toolbar row beneath
-a title row whose right half sat empty (a staggered "diagonal" waste). Mobile
-is a vertical stack with no such empty space, so its tabs stay in the status
-bar. Both drive the same `?tab=` URL state (`useSourceTab`). — Done (1cf08c20).
+When the row fits (including tablet widths), project identity, repo/branch
+state, Changes/Commits/Files/Comments, and an always-visible Review action
+compose into one page-header row. There is no second persistent repo toolbar.
+Review with no pending comments opens Comments and its "click a line" guidance;
+with drafts it opens submit preview directly, so a first-time explorer can
+discover the complete comment → review-session path from the header.
+
+Phone widths keep only the small project header fixed. Repo status, tabs, and
+Review may use additional rows in the page body, but those rows are ordinary
+scrolling content and disappear while reading. Both placements drive the same
+`?tab=` URL state (`useSourceTab`). — Done (2026-07-26).
 
 ### Context menus — pending
 
@@ -475,22 +486,22 @@ mobile modal keeps the compact controls-row fallback beneath its path title.
 
 — Pending.
 
-### Fast client-side search index — proposal
+### Fast client-side search index
 
 Typing in either source-browser search must update at interactive speed. The
-current two paths fail in different ways:
+previous two paths failed in different ways:
 
-- **Files loses coverage.** `/git/files` runs `git ls-files` and returns at
+- **Files lost coverage.** `/git/files` ran `git ls-files` and returned at
   most 2,000 paths; `BlameBrowser` then filters that client-side corpus and
   renders at most 500 matches. A path outside the first server slice cannot be
   found at all. Repositories in scope will have at most 10,000 committed files,
   so the client can own the complete filename-search corpus.
-- **Commit delta search repeats expensive work.** After a 300 ms debounce,
-  every changed query starts a new server-side `git log -G` history scan. Live
+- **Commit delta search repeated expensive work.** After a 300 ms debounce,
+  every changed query started a new server-side `git log -G` history scan. Live
   use has shown these scans taking more than a second, so typing feels like a
   sequence of cold searches rather than incremental search.
 
-Proposed contract:
+Contract:
 
 1. **One complete client corpus, no per-keystroke git process.** Files mode
    fetches all tracked paths once and builds normalized search entries in the
@@ -519,7 +530,18 @@ Proposed contract:
    needed to build the index; it does not become the typing-time search engine
    or the persistent index owner.
 
-— Proposed, not implemented.
+Items 1, 2, 4, and 5 are implemented (2026-07-26): Files receives the complete
+tracked-path corpus up to the stated 10,000-file product bound and normalizes
+it once; Commit search requests the complete lightweight history plus bounded
+changed-path/changed-line batches on demand. Prefix-query candidate sets update
+as batches arrive, typing launches no `git log -G`, ordinary Commit paging is
+not a search ceiling, and progress is explicit while history is indexing. The
+commit index survives source-tab remounts for the browser lifetime.
+
+Item 3 remains a proposal: persist the in-browser indexes in IndexedDB and
+append/invalidate them from the prior git horizon. A cross-device server cache
+remains a possible later first-use accelerator, not part of the requested
+ownership boundary.
 
 ## Open questions
 

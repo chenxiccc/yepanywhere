@@ -265,6 +265,39 @@ describe("review-comments routes", () => {
     expect(await service.listPending(dir)).toHaveLength(0);
   });
 
+  it("passes an explicit provider and model to a new review session", async () => {
+    let launchOptions: unknown;
+    const launcher: ReviewSessionLauncher = {
+      async startReviewSession(_projectPath, _text, options) {
+        launchOptions = options;
+        return { status: "started", sessionId: "new-sess" };
+      },
+      async deliverFollowUp() {
+        return { status: "delivered" };
+      },
+    };
+    const c = await service.addComment(dir, {
+      anchor: anchor({ path: "src/missing.ts" }),
+      text: "look here",
+    });
+
+    const res = await routesWithLauncher(launcher).request(
+      `/${projectId}/review/submit`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          include: [c.id],
+          target: "new",
+          newSession: { provider: "codex", model: "gpt-5.4" },
+        }),
+      },
+    );
+
+    expect(res.status).toBe(200);
+    expect(launchOptions).toEqual({ provider: "codex", model: "gpt-5.4" });
+  });
+
   it("submit as a follow-up delivers to an existing session id", async () => {
     const c = await service.addComment(dir, {
       anchor: anchor({ path: "src/missing.ts" }),
@@ -348,6 +381,24 @@ describe("review-comments routes", () => {
 
     expect((await submit({ include: [], target: "new" })).status).toBe(400);
     expect((await submit({ include: [c.id] })).status).toBe(400);
+    expect(
+      (
+        await submit({
+          include: [c.id],
+          target: "new",
+          newSession: { provider: "not-real" },
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await submit({
+          include: [c.id],
+          target: "existing",
+          newSession: { provider: "codex" },
+        })
+      ).status,
+    ).toBe(400);
     expect((await submit({ include: ["ghost"], target: "new" })).status).toBe(
       400,
     );

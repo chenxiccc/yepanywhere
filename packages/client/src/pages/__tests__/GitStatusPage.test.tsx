@@ -1,6 +1,6 @@
 import type { GitStatusInfo } from "@yep-anywhere/shared";
 import type { ReactNode } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GIT_STATUS_ENHANCED_CAPABILITY } from "@yep-anywhere/shared";
@@ -11,17 +11,20 @@ import { GitStatusPage } from "../GitStatusPage";
 const mocks = vi.hoisted(() => ({
   getGitDiff: vi.fn(),
   getGitUntrackedFolder: vi.fn(),
+  listReviewComments: vi.fn(),
   useProjects: vi.fn(),
   useProject: vi.fn(),
   useVersion: vi.fn(),
   useGitStatus: vi.fn(),
   useNavigationLayout: vi.fn(),
+  useMediaQuery: vi.fn(),
 }));
 
 vi.mock("../../api/client", () => ({
   api: {
     getGitDiff: mocks.getGitDiff,
     getGitUntrackedFolder: mocks.getGitUntrackedFolder,
+    listReviewComments: mocks.listReviewComments,
     checkGitRemote: vi.fn(),
     pullGit: vi.fn(),
     pushGit: vi.fn(),
@@ -34,6 +37,10 @@ vi.mock("../../hooks/useDocumentTitle", () => ({
 
 vi.mock("../../hooks/useGitStatus", () => ({
   useGitStatus: mocks.useGitStatus,
+}));
+
+vi.mock("../../hooks/useMediaQuery", () => ({
+  useMediaQuery: mocks.useMediaQuery,
 }));
 
 vi.mock("../../hooks/useProjects", () => ({
@@ -123,6 +130,12 @@ beforeEach(() => {
   resetRouteRetentionForTests();
   mocks.getGitDiff.mockReset();
   mocks.getGitUntrackedFolder.mockReset();
+  mocks.listReviewComments.mockReset();
+  mocks.listReviewComments.mockResolvedValue({
+    comments: [],
+    batches: [],
+    pendingCount: 0,
+  });
   mocks.getGitDiff.mockResolvedValue({
     diffHtml: "",
     structuredPatch: [
@@ -166,6 +179,45 @@ beforeEach(() => {
     isSidebarCollapsed: false,
     toggleSidebar: vi.fn(),
   });
+  mocks.useMediaQuery.mockReturnValue(true);
+});
+
+describe("GitStatusPage source header", () => {
+  it("composes status, tabs, and the Review entry into one tablet/desktop row", async () => {
+    renderPage();
+    await screen.findByRole("button", { name: "gitStatusFullContext" });
+    await waitFor(() =>
+      expect(mocks.listReviewComments).toHaveBeenCalledWith("project-a"),
+    );
+
+    const header = document.querySelector(".session-header") as HTMLElement;
+    expect(header.querySelectorAll(".repo-status-bar")).toHaveLength(1);
+    expect(header.querySelector(".source-mode-tabs")).not.toBeNull();
+    expect(header.querySelector(".review-tray-button")?.textContent).toContain(
+      "sourceReviewStart",
+    );
+    expect(document.querySelector(".git-status > .repo-status-bar")).toBeNull();
+  });
+
+  it("keeps mobile source controls in scrolling content", async () => {
+    mocks.useMediaQuery.mockReturnValue(false);
+    mocks.useNavigationLayout.mockReturnValue({
+      openSidebar: vi.fn(),
+      isWideScreen: false,
+      isSidebarCollapsed: false,
+      toggleSidebar: vi.fn(),
+    });
+    renderPage();
+    await waitFor(() =>
+      expect(mocks.listReviewComments).toHaveBeenCalledWith("project-a"),
+    );
+
+    const header = document.querySelector(".session-header") as HTMLElement;
+    expect(header.querySelector(".repo-status-bar")).toBeNull();
+    expect(
+      document.querySelector(".git-status > .repo-status-bar"),
+    ).not.toBeNull();
+  });
 });
 
 describe("GitStatusPage route retention", () => {
@@ -193,7 +245,7 @@ describe("GitStatusPage route retention", () => {
 
 describe("GitStatusPage diff preview guards", () => {
   it("shows server skipped-preview metadata instead of diff content", async () => {
-    mocks.getGitDiff.mockResolvedValueOnce({
+    mocks.getGitDiff.mockResolvedValue({
       diffHtml: "",
       structuredPatch: [],
       previewSkipped: {
@@ -206,7 +258,9 @@ describe("GitStatusPage diff preview guards", () => {
 
     renderPage();
 
-    expect(await screen.findByText("gitStatusDiffPreviewSkipped")).toBeDefined();
+    expect(
+      await screen.findByText("gitStatusDiffPreviewSkipped"),
+    ).toBeDefined();
     expect(
       screen.getByText("gitStatusDiffPreviewSkippedLineTooLong"),
     ).toBeDefined();
@@ -216,7 +270,7 @@ describe("GitStatusPage diff preview guards", () => {
   });
 
   it("does not inject oversized highlighted diff html", async () => {
-    mocks.getGitDiff.mockResolvedValueOnce({
+    mocks.getGitDiff.mockResolvedValue({
       diffHtml: "x".repeat(1_000_001),
       structuredPatch: [
         {

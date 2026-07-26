@@ -33,6 +33,7 @@ import { ProjectSelector } from "../components/ProjectSelector";
 import { Modal } from "../components/ui/Modal";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useGitStatus } from "../hooks/useGitStatus";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import { useProject, useProjects } from "../hooks/useProjects";
 import { useProjectReviewComments } from "../hooks/useProjectReviewComments";
 import { useRelativeNow } from "../hooks/useRelativeNow";
@@ -122,28 +123,352 @@ function useSourceTab(): {
   return { tab, setTab };
 }
 
+function useGitActions({
+  projectId,
+  status,
+  routeRetentionKey,
+  supportsRemoteCheck,
+  supportsPull,
+  supportsPush,
+  supportsIntegrationOptions,
+  onRefreshStatus,
+  t,
+}: {
+  projectId: string | undefined;
+  status: GitStatusInfo | null | undefined;
+  routeRetentionKey: RouteRetentionKeyInput | null;
+  supportsRemoteCheck: boolean;
+  supportsPull: boolean;
+  supportsPush: boolean;
+  supportsIntegrationOptions: boolean;
+  onRefreshStatus: () => Promise<void>;
+  t: (key: string, vars?: Record<string, string | number>) => string;
+}) {
+  const [remoteCheckResult, setRemoteCheckResult] =
+    useState<GitRemoteCheckResult | null>(null);
+  const [isCheckingRemote, setIsCheckingRemote] = useState(false);
+  const [remoteCheckError, setRemoteCheckError] = useState<string | null>(null);
+  const [pullResult, setPullResult] = useState<GitPullResult | null>(null);
+  const [isPulling, setIsPulling] = useState(false);
+  const [pullError, setPullError] = useState<string | null>(null);
+  const [pushResult, setPushResult] = useState<GitPushResult | null>(null);
+  const [isPushing, setIsPushing] = useState(false);
+  const [pushError, setPushError] = useState<string | null>(null);
+  const [integrationOptions, setIntegrationOptions] =
+    useState<GitIntegrationOptionsResult | null>(null);
+  const [isLoadingIntegrationOptions, setIsLoadingIntegrationOptions] =
+    useState(false);
+  const [integrationOptionsError, setIntegrationOptionsError] = useState<
+    string | null
+  >(null);
+
+  useEffect(() => {
+    void projectId;
+    setRemoteCheckResult(null);
+    setRemoteCheckError(null);
+    setIsCheckingRemote(false);
+    setPullResult(null);
+    setPullError(null);
+    setIsPulling(false);
+    setPushResult(null);
+    setPushError(null);
+    setIsPushing(false);
+    setIntegrationOptions(null);
+    setIntegrationOptionsError(null);
+    setIsLoadingIntegrationOptions(false);
+  }, [projectId]);
+
+  const isRunning = isCheckingRemote || isPulling || isPushing;
+  const divergedActionStatus = getDivergedActionStatus(pullResult, pushResult);
+  const divergedActionKey = divergedActionStatus
+    ? `${divergedActionStatus.ahead}:${divergedActionStatus.behind}:${divergedActionStatus.upstream ?? ""}`
+    : "";
+
+  useEffect(() => {
+    if (!projectId || !supportsIntegrationOptions || !divergedActionKey) {
+      setIntegrationOptions(null);
+      setIntegrationOptionsError(null);
+      setIsLoadingIntegrationOptions(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoadingIntegrationOptions(true);
+    setIntegrationOptions(null);
+    setIntegrationOptionsError(null);
+    api
+      .getGitIntegrationOptions(projectId)
+      .then((result) => {
+        if (!cancelled) setIntegrationOptions(result);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setIntegrationOptionsError(
+            err instanceof Error
+              ? err.message
+              : t("gitStatusAutoOptionsFailed"),
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingIntegrationOptions(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [divergedActionKey, projectId, supportsIntegrationOptions, t]);
+
+  const handleCheckRemote = useCallback(async () => {
+    if (!projectId || !supportsRemoteCheck || isRunning) return;
+    setIsCheckingRemote(true);
+    setRemoteCheckResult(null);
+    setRemoteCheckError(null);
+    setPullResult(null);
+    setPullError(null);
+    setPushResult(null);
+    setPushError(null);
+    setIntegrationOptions(null);
+    setIntegrationOptionsError(null);
+    try {
+      const result = await api.checkGitRemote(projectId);
+      setRemoteCheckResult(result);
+      if (result.status === "checked") await onRefreshStatus();
+    } catch (err) {
+      setRemoteCheckError(
+        err instanceof Error ? err.message : t("gitStatusRemoteCheckFailed"),
+      );
+    } finally {
+      setIsCheckingRemote(false);
+    }
+  }, [isRunning, onRefreshStatus, projectId, supportsRemoteCheck, t]);
+
+  const handlePull = useCallback(async () => {
+    if (!projectId || !supportsPull || isRunning) return;
+    setIsPulling(true);
+    setPullResult(null);
+    setPullError(null);
+    setRemoteCheckResult(null);
+    setRemoteCheckError(null);
+    setPushResult(null);
+    setPushError(null);
+    setIntegrationOptions(null);
+    setIntegrationOptionsError(null);
+    try {
+      const result = await api.pullGit(projectId);
+      setPullResult(result);
+      if (result.status === "pulled") {
+        if (routeRetentionKey) invalidateRouteRetention(routeRetentionKey);
+        await onRefreshStatus();
+      }
+    } catch (err) {
+      setPullError(
+        err instanceof Error ? err.message : t("gitStatusPullFailed"),
+      );
+    } finally {
+      setIsPulling(false);
+    }
+  }, [
+    isRunning,
+    onRefreshStatus,
+    projectId,
+    routeRetentionKey,
+    supportsPull,
+    t,
+  ]);
+
+  const handlePush = useCallback(async () => {
+    if (!projectId || !supportsPush || isRunning) return;
+    setIsPushing(true);
+    setPushResult(null);
+    setPushError(null);
+    setRemoteCheckResult(null);
+    setRemoteCheckError(null);
+    setPullResult(null);
+    setPullError(null);
+    setIntegrationOptions(null);
+    setIntegrationOptionsError(null);
+    try {
+      const result = await api.pushGit(projectId);
+      setPushResult(result);
+      if (
+        result.status === "pushed" ||
+        result.status === "published" ||
+        result.status === "up-to-date"
+      ) {
+        if (routeRetentionKey) invalidateRouteRetention(routeRetentionKey);
+        await onRefreshStatus();
+      }
+    } catch (err) {
+      setPushError(
+        err instanceof Error ? err.message : t("gitStatusPushFailed"),
+      );
+    } finally {
+      setIsPushing(false);
+    }
+  }, [
+    isRunning,
+    onRefreshStatus,
+    projectId,
+    routeRetentionKey,
+    supportsPush,
+    t,
+  ]);
+
+  return {
+    supportsRemoteCheck,
+    supportsPull,
+    supportsPush,
+    supportsIntegrationOptions,
+    isRunning,
+    isCheckingRemote,
+    isPulling,
+    isPushing,
+    handleCheckRemote,
+    handlePull,
+    handlePush,
+    checkedRemoteAt:
+      pushResult?.checkedRemoteAt ??
+      pullResult?.checkedRemoteAt ??
+      remoteCheckResult?.checkedRemoteAt ??
+      status?.checkedRemoteAt ??
+      null,
+    message: getGitActionMessage({
+      remoteCheckResult,
+      remoteCheckError,
+      pullResult,
+      pullError,
+      pushResult,
+      pushError,
+      t,
+    }),
+    messageClass: getGitActionMessageClass({
+      remoteCheckResult,
+      remoteCheckError,
+      pullResult,
+      pullError,
+      pushResult,
+      pushError,
+    }),
+    divergedActionStatus,
+    integrationOptions,
+    isLoadingIntegrationOptions,
+    integrationOptionsError,
+  };
+}
+
+type GitActionState = ReturnType<typeof useGitActions>;
+
 /**
  * The mode tabs rendered in the page-header row on wide screens, so the
  * selector shares the title/project row instead of stacking a second toolbar
  * beneath it (the mobile stack keeps them in the status bar).
  */
-function SourceTabsHeaderActions({
-  projectId,
+function SourceHeaderActions({
+  status,
+  pendingCount,
+  onOpenReview,
+  gitActions,
   t,
 }: {
-  projectId: string;
+  status: GitStatusInfo;
+  pendingCount: number;
+  onOpenReview: () => void;
+  gitActions: GitActionState;
   t: (key: string, vars?: Record<string, string | number>) => string;
 }) {
   const { tab, setTab } = useSourceTab();
-  const { pending } = useProjectReviewComments(projectId);
   return (
-    <SourceModeTabs
-      tab={tab}
-      tabs={SOURCE_TABS}
-      counts={{ comments: pending.length }}
-      onSelect={setTab}
+    <RepoStatusBar
+      status={status}
+      inline
+      tabs={
+        <SourceModeTabs
+          tab={tab}
+          tabs={SOURCE_TABS}
+          counts={{ comments: pendingCount }}
+          onSelect={setTab}
+          t={t}
+        />
+      }
+      actions={
+        <SourceHeaderControls
+          gitActions={gitActions}
+          pendingCount={pendingCount}
+          compact
+          onReview={() => {
+            if (pendingCount > 0) onOpenReview();
+            else setTab("comments");
+          }}
+          t={t}
+        />
+      }
       t={t}
     />
+  );
+}
+
+function SourceHeaderControls({
+  gitActions,
+  pendingCount,
+  compact = false,
+  onReview,
+  t,
+}: {
+  gitActions: GitActionState;
+  pendingCount: number;
+  compact?: boolean;
+  onReview: () => void;
+  t: (key: string, vars?: Record<string, string | number>) => string;
+}) {
+  const nowMs = useRelativeNow();
+  const remoteTitle = t("gitStatusLastCheckedRemote", {
+    time: formatRemoteCheckTime(gitActions.checkedRemoteAt, nowMs, t),
+  });
+  return (
+    <div className="repo-status-action-group">
+      {gitActions.supportsPull && (
+        <button
+          type="button"
+          className="git-status-action-button"
+          onClick={gitActions.handlePull}
+          disabled={gitActions.isRunning}
+        >
+          {gitActions.isPulling ? t("gitStatusPulling") : t("gitStatusPull")}
+        </button>
+      )}
+      {gitActions.supportsPush && (
+        <button
+          type="button"
+          className="git-status-action-button"
+          onClick={gitActions.handlePush}
+          disabled={gitActions.isRunning}
+        >
+          {gitActions.isPushing ? t("gitStatusPushing") : t("gitStatusPush")}
+        </button>
+      )}
+      {gitActions.supportsRemoteCheck && (
+        <button
+          type="button"
+          className="git-status-action-button git-status-check-remote"
+          title={remoteTitle}
+          onClick={gitActions.handleCheckRemote}
+          disabled={gitActions.isRunning}
+        >
+          {gitActions.isCheckingRemote
+            ? t("gitStatusCheckingRemote")
+            : t(compact ? "gitStatusCheckRemoteShort" : "gitStatusCheckRemote")}
+        </button>
+      )}
+      <button
+        type="button"
+        className="git-status-action-button review-tray-button"
+        onClick={onReview}
+      >
+        {pendingCount > 0
+          ? t("sourceReviewReview", { count: pendingCount })
+          : t("sourceReviewStart")}
+      </button>
+    </div>
   );
 }
 
@@ -196,6 +521,10 @@ export function GitStatusPage() {
   const sourceKey = useClientSummarySourceKey();
   const { openSidebar, isWideScreen, toggleSidebar, isSidebarCollapsed } =
     useNavigationLayout();
+  // Header composition is independent from the 1100px multipane breakpoint:
+  // tablet widths can fit one compact banner even though their content panes
+  // still use the mobile drill-in flow.
+  const sourceControlsFitHeader = useMediaQuery("(min-width: 760px)");
   const pageScrollRef = useRef<HTMLElement | null>(null);
 
   const { projects, loading: projectsLoading } = useProjects();
@@ -224,6 +553,8 @@ export function GitStatusPage() {
   const { gitStatus, loading, error, refetch } = useGitStatus(
     supportsEnhancedGitStatus ? effectiveProjectId : undefined,
   );
+  const reviewComments = useProjectReviewComments(effectiveProjectId);
+  const [showReviewModal, setShowReviewModal] = useState(false);
   const routeRetentionKey = useMemo(
     () =>
       effectiveProjectId
@@ -232,6 +563,17 @@ export function GitStatusPage() {
     [effectiveProjectId, sourceKey],
   );
   const retainedRouteState = useSourceControlRouteState(routeRetentionKey);
+  const gitActions = useGitActions({
+    projectId: effectiveProjectId,
+    status: gitStatus,
+    routeRetentionKey,
+    supportsRemoteCheck,
+    supportsPull,
+    supportsPush,
+    supportsIntegrationOptions,
+    onRefreshStatus: refetch,
+    t: t as never,
+  });
 
   useDocumentTitle(project?.name, t("gitStatusTitle"));
 
@@ -292,9 +634,14 @@ export function GitStatusPage() {
         isWideScreen={isWideScreen}
         isSidebarCollapsed={isSidebarCollapsed}
         actions={
-          isWideScreen && effectiveProjectId ? (
-            <SourceTabsHeaderActions
-              projectId={effectiveProjectId}
+          sourceControlsFitHeader &&
+          effectiveProjectId &&
+          gitStatus?.isGitRepo ? (
+            <SourceHeaderActions
+              status={gitStatus}
+              pendingCount={reviewComments.pending.length}
+              onOpenReview={() => setShowReviewModal(true)}
+              gitActions={gitActions}
               t={t as never}
             />
           ) : undefined
@@ -326,13 +673,14 @@ export function GitStatusPage() {
               projectId={effectiveProjectId}
               projectName={project?.name}
               isWideScreen={isWideScreen}
+              sourceControlsFitHeader={sourceControlsFitHeader}
               routeRetentionKey={routeRetentionKey}
               retainedRouteState={retainedRouteState}
-              supportsRemoteCheck={supportsRemoteCheck}
-              supportsPull={supportsPull}
-              supportsPush={supportsPush}
-              supportsIntegrationOptions={supportsIntegrationOptions}
-              onRefreshStatus={refetch}
+              gitActions={gitActions}
+              reviewComments={reviewComments}
+              showReviewModal={showReviewModal}
+              onOpenReview={() => setShowReviewModal(true)}
+              onCloseReview={() => setShowReviewModal(false)}
               t={t as never}
             />
           ) : null}
@@ -360,26 +708,28 @@ function GitStatusContent({
   projectId,
   projectName,
   isWideScreen,
+  sourceControlsFitHeader,
   routeRetentionKey,
   retainedRouteState,
-  supportsRemoteCheck,
-  supportsPull,
-  supportsPush,
-  supportsIntegrationOptions,
-  onRefreshStatus,
+  gitActions,
+  reviewComments,
+  showReviewModal,
+  onOpenReview,
+  onCloseReview,
   t,
 }: {
   status: GitStatusInfo;
   projectId: string;
   projectName?: string;
   isWideScreen: boolean;
+  sourceControlsFitHeader: boolean;
   routeRetentionKey: RouteRetentionKeyInput | null;
   retainedRouteState: SourceControlRouteState | null;
-  supportsRemoteCheck: boolean;
-  supportsPull: boolean;
-  supportsPush: boolean;
-  supportsIntegrationOptions: boolean;
-  onRefreshStatus: () => Promise<void>;
+  gitActions: GitActionState;
+  reviewComments: ReturnType<typeof useProjectReviewComments>;
+  showReviewModal: boolean;
+  onOpenReview: () => void;
+  onCloseReview: () => void;
   t: (key: string, vars?: Record<string, string | number>) => string;
 }) {
   const navigate = useNavigate();
@@ -400,8 +750,6 @@ function GitStatusContent({
     },
     [setSearchParams],
   );
-  const reviewComments = useProjectReviewComments(projectId);
-  const [showReviewModal, setShowReviewModal] = useState(false);
   const [selectedFileKey, setSelectedFileKey] = useState<string | null>(
     () => retainedRouteState?.selectedFileKey ?? null,
   );
@@ -411,24 +759,6 @@ function GitStatusContent({
   const [untrackedFolderCache, setUntrackedFolderCache] = useState<
     Record<string, GitUntrackedFolderInfo>
   >({});
-  const [remoteCheckResult, setRemoteCheckResult] =
-    useState<GitRemoteCheckResult | null>(null);
-  const [isCheckingRemote, setIsCheckingRemote] = useState(false);
-  const [remoteCheckError, setRemoteCheckError] = useState<string | null>(null);
-  const [pullResult, setPullResult] = useState<GitPullResult | null>(null);
-  const [isPulling, setIsPulling] = useState(false);
-  const [pullError, setPullError] = useState<string | null>(null);
-  const [pushResult, setPushResult] = useState<GitPushResult | null>(null);
-  const [isPushing, setIsPushing] = useState(false);
-  const [pushError, setPushError] = useState<string | null>(null);
-  const [integrationOptions, setIntegrationOptions] =
-    useState<GitIntegrationOptionsResult | null>(null);
-  const [isLoadingIntegrationOptions, setIsLoadingIntegrationOptions] =
-    useState(false);
-  const [integrationOptionsError, setIntegrationOptionsError] = useState<
-    string | null
-  >(null);
-  const nowMs = useRelativeNow();
 
   const {
     stagedFiles,
@@ -592,206 +922,13 @@ function GitStatusContent({
     }));
   }, [routeRetentionKey, statusRevision]);
 
-  useEffect(() => {
-    void projectId;
-    setRemoteCheckResult(null);
-    setRemoteCheckError(null);
-    setIsCheckingRemote(false);
-    setPullResult(null);
-    setPullError(null);
-    setIsPulling(false);
-    setPushResult(null);
-    setPushError(null);
-    setIsPushing(false);
-    setIntegrationOptions(null);
-    setIntegrationOptionsError(null);
-    setIsLoadingIntegrationOptions(false);
-  }, [projectId]);
-
-  const isGitActionRunning = isCheckingRemote || isPulling || isPushing;
-  const divergedActionStatus = getDivergedActionStatus(pullResult, pushResult);
-  const divergedActionKey = divergedActionStatus
-    ? `${divergedActionStatus.ahead}:${divergedActionStatus.behind}:${divergedActionStatus.upstream ?? ""}`
-    : "";
-
-  useEffect(() => {
-    if (!supportsIntegrationOptions || !divergedActionKey) {
-      setIntegrationOptions(null);
-      setIntegrationOptionsError(null);
-      setIsLoadingIntegrationOptions(false);
-      return;
-    }
-
-    let cancelled = false;
-    setIsLoadingIntegrationOptions(true);
-    setIntegrationOptions(null);
-    setIntegrationOptionsError(null);
-
-    api
-      .getGitIntegrationOptions(projectId)
-      .then((result) => {
-        if (!cancelled) {
-          setIntegrationOptions(result);
-        }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setIntegrationOptionsError(
-            err instanceof Error
-              ? err.message
-              : t("gitStatusAutoOptionsFailed"),
-          );
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setIsLoadingIntegrationOptions(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [divergedActionKey, projectId, supportsIntegrationOptions, t]);
-
-  const handleCheckRemote = useCallback(async () => {
-    if (!supportsRemoteCheck || isGitActionRunning) return;
-
-    setIsCheckingRemote(true);
-    setRemoteCheckResult(null);
-    setRemoteCheckError(null);
-    setPullResult(null);
-    setPullError(null);
-    setPushResult(null);
-    setPushError(null);
-    setIntegrationOptions(null);
-    setIntegrationOptionsError(null);
-    try {
-      const result = await api.checkGitRemote(projectId);
-      setRemoteCheckResult(result);
-      if (result.status === "checked") {
-        await onRefreshStatus();
-      }
-    } catch (err) {
-      setRemoteCheckError(
-        err instanceof Error ? err.message : t("gitStatusRemoteCheckFailed"),
-      );
-    } finally {
-      setIsCheckingRemote(false);
-    }
-  }, [isGitActionRunning, onRefreshStatus, projectId, supportsRemoteCheck, t]);
-
-  const handlePull = useCallback(async () => {
-    if (!supportsPull || isGitActionRunning) return;
-
-    setIsPulling(true);
-    setPullResult(null);
-    setPullError(null);
-    setRemoteCheckResult(null);
-    setRemoteCheckError(null);
-    setPushResult(null);
-    setPushError(null);
-    setIntegrationOptions(null);
-    setIntegrationOptionsError(null);
-    try {
-      const result = await api.pullGit(projectId);
-      setPullResult(result);
-      if (result.status === "pulled") {
-        if (routeRetentionKey) {
-          invalidateRouteRetention(routeRetentionKey);
-        }
-        await onRefreshStatus();
-      }
-    } catch (err) {
-      setPullError(
-        err instanceof Error ? err.message : t("gitStatusPullFailed"),
-      );
-    } finally {
-      setIsPulling(false);
-    }
-  }, [
-    isGitActionRunning,
-    onRefreshStatus,
-    projectId,
-    routeRetentionKey,
-    supportsPull,
-    t,
-  ]);
-
-  const handlePush = useCallback(async () => {
-    if (!supportsPush || isGitActionRunning) return;
-
-    setIsPushing(true);
-    setPushResult(null);
-    setPushError(null);
-    setRemoteCheckResult(null);
-    setRemoteCheckError(null);
-    setPullResult(null);
-    setPullError(null);
-    setIntegrationOptions(null);
-    setIntegrationOptionsError(null);
-    try {
-      const result = await api.pushGit(projectId);
-      setPushResult(result);
-      if (
-        result.status === "pushed" ||
-        result.status === "published" ||
-        result.status === "up-to-date"
-      ) {
-        if (routeRetentionKey) {
-          invalidateRouteRetention(routeRetentionKey);
-        }
-        await onRefreshStatus();
-      }
-    } catch (err) {
-      setPushError(
-        err instanceof Error ? err.message : t("gitStatusPushFailed"),
-      );
-    } finally {
-      setIsPushing(false);
-    }
-  }, [
-    isGitActionRunning,
-    onRefreshStatus,
-    projectId,
-    routeRetentionKey,
-    supportsPush,
-    t,
-  ]);
-
-  const checkedRemoteAt =
-    pushResult?.checkedRemoteAt ??
-    pullResult?.checkedRemoteAt ??
-    remoteCheckResult?.checkedRemoteAt ??
-    status.checkedRemoteAt ??
-    null;
-  const gitActionMessage = getGitActionMessage({
-    remoteCheckResult,
-    remoteCheckError,
-    pullResult,
-    pullError,
-    pushResult,
-    pushError,
-    t,
-  });
-  const gitActionMessageClass = getGitActionMessageClass({
-    remoteCheckResult,
-    remoteCheckError,
-    pullResult,
-    pullError,
-    pushResult,
-    pushError,
-  });
-
   return (
     <div className="git-status">
-      <RepoStatusBar
-        repoName={projectName}
-        status={status}
-        tabs={
-          // Wide screens show the tabs in the page-header title row instead
-          // (see SourceTabsHeaderActions); mobile keeps them here in the stack.
-          isWideScreen ? undefined : (
+      {!sourceControlsFitHeader && (
+        <RepoStatusBar
+          repoName={projectName}
+          status={status}
+          tabs={
             <SourceModeTabs
               tab={tab}
               tabs={SOURCE_TABS}
@@ -799,23 +936,21 @@ function GitStatusContent({
               onSelect={setTab}
               t={t}
             />
-          )
-        }
-        actions={
-          reviewComments.pending.length > 0 && (
-            <button
-              type="button"
-              className="git-status-action-button review-tray-button"
-              onClick={() => setShowReviewModal(true)}
-            >
-              {t("sourceReviewReview", {
-                count: reviewComments.pending.length,
-              })}
-            </button>
-          )
-        }
-        t={t}
-      />
+          }
+          actions={
+            <SourceHeaderControls
+              gitActions={gitActions}
+              pendingCount={reviewComments.pending.length}
+              onReview={() => {
+                if (reviewComments.pending.length > 0) onOpenReview();
+                else setTab("comments");
+              }}
+              t={t}
+            />
+          }
+          t={t}
+        />
+      )}
 
       {tab === "commits" ? (
         <CommitBrowser
@@ -829,7 +964,7 @@ function GitStatusContent({
           projectId={projectId}
           pending={reviewComments.pending}
           onOpenFile={handleBlameFile}
-          onSubmit={() => setShowReviewModal(true)}
+          onSubmit={onOpenReview}
           t={t}
         />
       ) : tab === "files" ? (
@@ -843,100 +978,22 @@ function GitStatusContent({
         <>
           <div className="git-status-workspace">
             <div className="git-status-left-pane">
-              <div className="git-status-branch">
-                <span className="git-branch-icon">
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                  >
-                    <line x1="6" y1="3" x2="6" y2="15" />
-                    <circle cx="18" cy="6" r="3" />
-                    <circle cx="6" cy="18" r="3" />
-                    <path d="M18 9a9 9 0 0 1-9 9" />
-                  </svg>
-                </span>
-                <span className="git-branch-name">
-                  {status.branch ?? t("gitStatusDetachedHead")}
-                </span>
-                {status.upstream && (
-                  <span className="git-upstream"> → {status.upstream}</span>
-                )}
-                {(status.ahead > 0 || status.behind > 0) && (
-                  <span className="git-ahead-behind">
-                    {status.ahead > 0 && ` ↑${status.ahead}`}
-                    {status.behind > 0 && ` ↓${status.behind}`}
-                  </span>
-                )}
-                <span className="git-remote-check-time">
-                  {t("gitStatusLastCheckedRemote", {
-                    time: formatRemoteCheckTime(checkedRemoteAt, nowMs, t),
-                  })}
-                </span>
-                <span
-                  className={`git-clean-badge ${status.isClean ? "git-clean" : "git-dirty"}`}
-                >
-                  {status.isClean ? t("gitStatusClean") : t("gitStatusDirty")}
-                </span>
-                {(supportsPull || supportsPush || supportsRemoteCheck) && (
-                  <div className="git-status-actions">
-                    {supportsPull && (
-                      <button
-                        type="button"
-                        className="git-status-action-button"
-                        onClick={handlePull}
-                        disabled={isGitActionRunning}
-                      >
-                        {isPulling ? t("gitStatusPulling") : t("gitStatusPull")}
-                      </button>
-                    )}
-                    {supportsPush && (
-                      <button
-                        type="button"
-                        className="git-status-action-button"
-                        onClick={handlePush}
-                        disabled={isGitActionRunning}
-                      >
-                        {isPushing ? t("gitStatusPushing") : t("gitStatusPush")}
-                      </button>
-                    )}
-                    {supportsRemoteCheck && (
-                      <button
-                        type="button"
-                        className="git-status-action-button"
-                        onClick={handleCheckRemote}
-                        disabled={isGitActionRunning}
-                      >
-                        {isCheckingRemote
-                          ? t("gitStatusCheckingRemote")
-                          : t("gitStatusCheckRemote")}
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {gitActionMessage && (
+              {gitActions.message && (
                 <div
-                  className={`git-status-action-message ${gitActionMessageClass}`}
+                  className={`git-status-action-message ${gitActions.messageClass}`}
                 >
-                  {gitActionMessage}
+                  {gitActions.message}
                 </div>
               )}
-              {divergedActionStatus && supportsIntegrationOptions && (
-                <GitIntegrationOptionsPanel
-                  options={integrationOptions}
-                  loading={isLoadingIntegrationOptions}
-                  error={integrationOptionsError}
-                  t={t}
-                />
-              )}
+              {gitActions.divergedActionStatus &&
+                gitActions.supportsIntegrationOptions && (
+                  <GitIntegrationOptionsPanel
+                    options={gitActions.integrationOptions}
+                    loading={gitActions.isLoadingIntegrationOptions}
+                    error={gitActions.integrationOptionsError}
+                    t={t}
+                  />
+                )}
 
               <div className="git-status-file-pane">
                 {status.isClean ? (
@@ -1012,7 +1069,7 @@ function GitStatusContent({
         <ReviewSubmitModal
           projectId={projectId}
           recentReviewSessionId={reviewComments.recentReviewSessionId}
-          onClose={() => setShowReviewModal(false)}
+          onClose={onCloseReview}
           onNavigateSession={(sessionId) =>
             navigate(`${basePath}/projects/${projectId}/sessions/${sessionId}`)
           }

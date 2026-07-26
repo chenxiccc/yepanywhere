@@ -2,14 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import { Modal } from "../components/ui/Modal";
 import { useProjectReviewComments } from "../hooks/useProjectReviewComments";
+import { FileSearchIndex } from "../lib/fileSearchIndex";
 import { BlameView } from "./BlameView";
 
 type TranslationFn = (
   key: string,
   vars?: Record<string, string | number>,
 ) => string;
-
-const FILE_LIST_RENDER_CAP = 500;
 
 /**
  * The all-files blame browser (topic: source-review-to-session, stage 3): the
@@ -73,11 +72,8 @@ export function BlameBrowser({
     };
   }, [projectId, initialPath, t]);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const list = q ? files.filter((f) => f.toLowerCase().includes(q)) : files;
-    return list;
-  }, [files, query]);
+  const fileIndex = useMemo(() => new FileSearchIndex(files), [files]);
+  const filtered = useMemo(() => fileIndex.search(query), [fileIndex, query]);
 
   // A wide file browser is a master-detail view: keep the detail pane useful
   // by selecting the first visible file when there is no still-visible
@@ -108,7 +104,7 @@ export function BlameBrowser({
             <div className="git-status-empty">{t("sourceNoFiles")}</div>
           ) : (
             <ul className="blame-file-list">
-              {filtered.slice(0, FILE_LIST_RENDER_CAP).map((file) => {
+              {filtered.map((file) => {
                 const count = pathCommentCount.get(file) ?? 0;
                 return (
                   <li key={file} className="commit-file-row">
@@ -134,14 +130,6 @@ export function BlameBrowser({
                   </li>
                 );
               })}
-              {filtered.length > FILE_LIST_RENDER_CAP && (
-                <li className="blame-file-more">
-                  {t("sourceFilesTruncated", {
-                    shown: FILE_LIST_RENDER_CAP,
-                    total: filtered.length,
-                  })}
-                </li>
-              )}
             </ul>
           )}
         </div>

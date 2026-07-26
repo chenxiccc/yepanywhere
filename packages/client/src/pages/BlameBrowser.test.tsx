@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -64,5 +70,39 @@ describe("BlameBrowser", () => {
         .querySelector(".blame-file-item.selected")
         ?.textContent?.includes("src/first.ts"),
     ).toBe(true);
+  });
+
+  it("finds a tracked file beyond the old 500-row rendering limit", async () => {
+    const files = Array.from(
+      { length: 650 },
+      (_, index) => `src/file-${index.toString().padStart(3, "0")}.ts`,
+    );
+    const tail = "src/file-649.ts";
+    listGitFiles.mockResolvedValue({ files, truncated: false });
+    getGitBlame.mockResolvedValue({
+      path: files[0],
+      rev: "HEAD",
+      lines: [],
+      truncated: false,
+    });
+    listReviewComments.mockResolvedValue({
+      comments: [],
+      batches: [],
+      pendingCount: 0,
+    });
+
+    render(
+      <MemoryRouter>
+        <BlameBrowser projectId="p1" isWideScreen={false} t={t} />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText(files[0] as string);
+    fireEvent.change(screen.getByPlaceholderText("sourceFilterFiles"), {
+      target: { value: "file-649" },
+    });
+
+    expect(await screen.findByText(tail)).toBeTruthy();
+    expect(screen.queryByText("sourceFilesTruncated")).toBeNull();
   });
 });

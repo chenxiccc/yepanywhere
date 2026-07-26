@@ -22,22 +22,29 @@ export function RepoStatusBar({
   status,
   tabs,
   actions,
+  inline = false,
   t,
 }: {
   repoName?: string;
   status: GitStatusInfo;
-  /** The source-mode tabs, rendered leading (navigation first). */
+  /** The source-mode tabs. Leading in the scrollable mobile row, trailing inline. */
   tabs?: ReactNode;
   /** Trailing controls (e.g. the review-tray button), after the badge. */
   actions?: ReactNode;
+  /** Compose status into PageHeader chrome instead of rendering a separate bar. */
+  inline?: boolean;
   t: TranslationFn;
 }) {
   const outOfSync = status.ahead > 0 || status.behind > 0;
   const warn = !status.isClean || outOfSync;
 
   return (
-    <div className={`repo-status-bar ${warn ? "repo-status-bar-warn" : ""}`}>
-      {tabs}
+    <div
+      className={`repo-status-bar ${inline ? "inline" : ""} ${
+        warn ? "repo-status-bar-warn" : ""
+      }`}
+    >
+      {!inline && tabs}
       {repoName && <span className="repo-status-name">{repoName}</span>}
       <span className="repo-status-branch">
         <svg
@@ -64,7 +71,9 @@ export function RepoStatusBar({
         )}
       </span>
       {status.upstream && (
-        <span className="repo-status-upstream">→ {status.upstream}</span>
+        <span className="repo-status-upstream" title={status.upstream}>
+          → {status.upstream}
+        </span>
       )}
       {outOfSync && (
         <span className="repo-status-sync">
@@ -77,6 +86,7 @@ export function RepoStatusBar({
       >
         {status.isClean ? t("gitStatusClean") : t("gitStatusDirty")}
       </span>
+      {inline && tabs}
       {actions}
     </div>
   );

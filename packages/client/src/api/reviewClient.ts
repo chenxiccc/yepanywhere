@@ -2,6 +2,7 @@ import type {
   ReviewBatch,
   ReviewComment,
   ReviewCommentAnchor,
+  ReviewNewSessionOptions,
 } from "@yep-anywhere/shared";
 import { fetchJSON } from "./sourceApiFetch";
 
@@ -91,9 +92,10 @@ export const reviewApi = {
     projectId: string,
     include: string[],
     target: "new" | string,
+    newSession?: ReviewNewSessionOptions,
   ) =>
     fetchJSON<ReviewSubmitResult>(`/projects/${projectId}/review/submit`, {
       method: "POST",
-      body: JSON.stringify({ include, target }),
+      body: JSON.stringify({ include, target, newSession }),
     }),
 };

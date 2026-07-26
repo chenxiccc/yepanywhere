@@ -1,8 +1,17 @@
-import { useCallback, useEffect, useState } from "react";
+import type {
+  ProviderName,
+  ReviewNewSessionOptions,
+} from "@yep-anywhere/shared";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 import type { GlobalSessionItem } from "../api/client";
 import type { ReviewPreviewItem } from "../api/reviewClient";
 import { Modal } from "../components/ui/Modal";
+import {
+  getAvailableProviders,
+  getDefaultProvider,
+  useProviders,
+} from "../hooks/useProviders";
 import { notifyReviewCommentsChanged } from "../lib/reviewCommentsBus";
 
 /**
@@ -19,8 +28,6 @@ type TranslationFn = (
   vars?: Record<string, string | number>,
 ) => string;
 
-type Target = "new" | "recent" | "other";
-
 export function ReviewSubmitModal({
   projectId,
   recentReviewSessionId,
@@ -36,35 +43,60 @@ export function ReviewSubmitModal({
 }) {
   const [items, setItems] = useState<ReviewPreviewItem[] | null>(null);
   const [included, setIncluded] = useState<Set<string>>(new Set());
-  const [target, setTarget] = useState<Target>(
-    recentReviewSessionId ? "recent" : "new",
+  const [targetSessionId, setTargetSessionId] = useState(
+    recentReviewSessionId ?? "new",
   );
+  const targetTouchedRef = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [queued, setQueued] = useState(false);
   const [sessions, setSessions] = useState<GlobalSessionItem[] | null>(null);
-  const [otherSessionId, setOtherSessionId] = useState("");
+  const [sessionsError, setSessionsError] = useState<string | null>(null);
+  const { providers, loading: providersLoading } = useProviders();
+  const availableProviders = useMemo(
+    () => getAvailableProviders(providers),
+    [providers],
+  );
+  const [providerName, setProviderName] = useState<ProviderName | "">("");
+  const [model, setModel] = useState("");
+  const selectedProvider = availableProviders.find(
+    (provider) => provider.name === providerName,
+  );
+
+  useEffect(() => {
+    const preferred = getDefaultProvider(providers);
+    if (preferred) setProviderName((current) => current || preferred.name);
+  }, [providers]);
 
   // Load the project's sessions so a review can target any of them, not just a
   // fresh one or the recent review session.
   useEffect(() => {
     let cancelled = false;
-    api
-      .getGlobalSessions({ project: projectId, limit: 50 })
+    loadProjectSessions(projectId)
       .then((result) => {
         if (cancelled) return;
-        setSessions(result.sessions);
-        const first = result.sessions[0];
-        if (first) setOtherSessionId((prev) => prev || first.id);
+        setSessions(result);
+        if (!targetTouchedRef.current) {
+          setTargetSessionId(
+            recentReviewSessionId
+              ? recentReviewSessionId
+              : (result[0]?.id ?? "new"),
+          );
+        }
       })
-      .catch(() => {
-        // The arbitrary-session picker is optional; on failure it stays hidden.
+      .catch((cause) => {
+        if (cancelled) return;
+        setSessionsError(
+          cause instanceof Error
+            ? cause.message
+            : t("sourceReviewSessionsUnavailable"),
+        );
       });
     return () => {
       cancelled = true;
     };
-  }, [projectId]);
+  }, [projectId, recentReviewSessionId, t]);
 
   useEffect(() => {
     let cancelled = false;
@@ -107,13 +139,19 @@ export function ReviewSubmitModal({
     setBusy(true);
     setError(null);
     try {
-      const targetValue =
-        target === "recent" && recentReviewSessionId
-          ? recentReviewSessionId
-          : target === "other" && otherSessionId
-            ? otherSessionId
-            : "new";
-      const result = await api.submitReview(projectId, include, targetValue);
+      const newSession: ReviewNewSessionOptions | undefined =
+        targetSessionId === "new"
+          ? {
+              provider: providerName || undefined,
+              model: model || undefined,
+            }
+          : undefined;
+      const result = await api.submitReview(
+        projectId,
+        include,
+        targetSessionId,
+        newSession,
+      );
       notifyReviewCommentsChanged(projectId);
       if (result.sessionId) {
         onNavigateSession(result.sessionId);
@@ -132,9 +170,9 @@ export function ReviewSubmitModal({
     }
   }, [
     included,
-    target,
-    recentReviewSessionId,
-    otherSessionId,
+    targetSessionId,
+    providerName,
+    model,
     projectId,
     onNavigateSession,
     onClose,
@@ -167,55 +205,85 @@ export function ReviewSubmitModal({
         )}
 
         {items && items.length > 0 && (
-          <fieldset className="review-submit-target">
-            <legend>{t("sourceReviewTargetLegend")}</legend>
-            {recentReviewSessionId && (
-              <label>
-                <input
-                  type="radio"
-                  name="review-target"
-                  checked={target === "recent"}
-                  onChange={() => setTarget("recent")}
-                />
-                {t("sourceReviewTargetRecent")}
-              </label>
-            )}
-            <label>
-              <input
-                type="radio"
-                name="review-target"
-                checked={target === "new"}
-                onChange={() => setTarget("new")}
-              />
-              {t("sourceReviewTargetNew")}
-            </label>
-            {sessions && sessions.length > 0 && (
-              <label className="review-submit-target-other">
-                <input
-                  type="radio"
-                  name="review-target"
-                  checked={target === "other"}
-                  onChange={() => setTarget("other")}
-                />
-                {t("sourceReviewTargetOther")}
-                <select
-                  className="review-submit-session-select"
-                  value={otherSessionId}
-                  disabled={target !== "other"}
-                  onChange={(event) => {
-                    setOtherSessionId(event.target.value);
-                    setTarget("other");
-                  }}
-                >
-                  {sessions.map((session) => (
-                    <option key={session.id} value={session.id}>
-                      {sessionLabel(session)}
+          <div className="review-submit-destination">
+            <label className="review-submit-field">
+              <span>{t("sourceReviewTargetLegend")}</span>
+              <select
+                className="review-submit-session-select"
+                value={targetSessionId}
+                onChange={(event) => {
+                  targetTouchedRef.current = true;
+                  setTargetSessionId(event.target.value);
+                }}
+              >
+                <option value="new">{t("sourceReviewTargetNew")}</option>
+                {recentReviewSessionId &&
+                  !sessions?.some(
+                    (session) => session.id === recentReviewSessionId,
+                  ) && (
+                    <option value={recentReviewSessionId}>
+                      {t("sourceReviewTargetRecent")} ·{" "}
+                      {recentReviewSessionId.slice(0, 8)}
                     </option>
-                  ))}
-                </select>
-              </label>
+                  )}
+                {sessions?.map((session) => (
+                  <option key={session.id} value={session.id}>
+                    {sessionLabel(
+                      session,
+                      session.id === recentReviewSessionId
+                        ? t("sourceReviewRecentSuffix")
+                        : undefined,
+                    )}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {sessionsError && (
+              <div className="review-submit-target-error">
+                {t("sourceReviewSessionsUnavailable")}: {sessionsError}
+              </div>
             )}
-          </fieldset>
+
+            {targetSessionId === "new" && (
+              <div className="review-submit-new-session">
+                <label className="review-submit-field">
+                  <span>{t("sourceReviewProvider")}</span>
+                  <select
+                    value={providerName}
+                    disabled={
+                      providersLoading || availableProviders.length === 0
+                    }
+                    onChange={(event) => {
+                      setProviderName(event.target.value as ProviderName);
+                      setModel("");
+                    }}
+                  >
+                    {availableProviders.map((provider) => (
+                      <option key={provider.name} value={provider.name}>
+                        {provider.displayName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="review-submit-field">
+                  <span>{t("sourceReviewModel")}</span>
+                  <select
+                    value={model}
+                    disabled={!selectedProvider}
+                    onChange={(event) => setModel(event.target.value)}
+                  >
+                    <option value="">{t("sourceReviewModelDefault")}</option>
+                    {selectedProvider?.models?.map((providerModel) => (
+                      <option key={providerModel.id} value={providerModel.id}>
+                        {providerModel.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            )}
+          </div>
         )}
 
         <div className="review-submit-actions">
@@ -236,8 +304,33 @@ export function ReviewSubmitModal({
   );
 }
 
-function sessionLabel(session: GlobalSessionItem): string {
-  return session.customTitle || session.title || session.id.slice(0, 8);
+async function loadProjectSessions(
+  projectId: string,
+): Promise<GlobalSessionItem[]> {
+  const sessions: GlobalSessionItem[] = [];
+  let after: string | undefined;
+  for (;;) {
+    const page = await api.getGlobalSessions({
+      project: projectId,
+      limit: 500,
+      after,
+    });
+    sessions.push(...page.sessions);
+    if (!page.hasMore) return sessions;
+    const nextAfter = page.sessions[page.sessions.length - 1]?.updatedAt;
+    if (!nextAfter || nextAfter === after) {
+      throw new Error("Existing-session list did not advance");
+    }
+    after = nextAfter;
+  }
+}
+
+function sessionLabel(session: GlobalSessionItem, suffix?: string): string {
+  const title = session.customTitle || session.title || session.id.slice(0, 8);
+  const runtime = session.model
+    ? `${session.provider}/${session.model}`
+    : session.provider;
+  return suffix ? `${title} · ${runtime} · ${suffix}` : `${title} · ${runtime}`;
 }
 
 function ReviewPreviewRow({

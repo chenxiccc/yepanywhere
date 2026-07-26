@@ -21,17 +21,21 @@ vi.mock("../hooks/useRemoteBasePath", () => ({
 const getGitCommits = vi.fn();
 const getGitCommit = vi.fn();
 const getGitCommitDiff = vi.fn();
+const getGitCommitSearchManifest = vi.fn();
+const getGitCommitSearchRecords = vi.fn();
 const listReviewComments = vi.fn();
 const addReviewComment = vi.fn();
-const searchGit = vi.fn();
 vi.mock("../api/client", () => ({
   api: {
     getGitCommits: (...args: unknown[]) => getGitCommits(...args),
     getGitCommit: (...args: unknown[]) => getGitCommit(...args),
     getGitCommitDiff: (...args: unknown[]) => getGitCommitDiff(...args),
+    getGitCommitSearchManifest: (...args: unknown[]) =>
+      getGitCommitSearchManifest(...args),
+    getGitCommitSearchRecords: (...args: unknown[]) =>
+      getGitCommitSearchRecords(...args),
     listReviewComments: (...args: unknown[]) => listReviewComments(...args),
     addReviewComment: (...args: unknown[]) => addReviewComment(...args),
-    searchGit: (...args: unknown[]) => searchGit(...args),
   },
 }));
 
@@ -168,20 +172,47 @@ describe("CommitBrowser", () => {
     expect(anchor.newLine).toBe(1);
   });
 
-  it("replaces the list with commit-delta search results", async () => {
+  it("searches the complete client index beyond the loaded commit page", async () => {
     primeApis();
     const OTHER = "c".repeat(40);
-    searchGit.mockResolvedValue({
-      commits: [
-        {
-          hash: OTHER,
-          shortHash: "ccccccc",
-          subject: "touched needle",
-          authorName: "Dev",
-          authorDate: "2026-07-20T00:00:00Z",
-        },
-      ],
-      truncated: false,
+    const indexedCommits = [
+      {
+        hash: SHA,
+        shortHash: "aaaaaaa",
+        subject: "first commit",
+        authorName: "Dev",
+        authorDate: "2026-07-26T00:00:00Z",
+      },
+      ...Array.from({ length: 60 }, (_, index) => ({
+        hash: `${(index + 1).toString(16).padStart(40, "0")}`,
+        shortHash: (index + 1).toString(16).padStart(7, "0"),
+        subject: `older ${index}`,
+        authorName: "Dev",
+        authorDate: "2026-07-20T00:00:00Z",
+      })),
+      {
+        hash: OTHER,
+        shortHash: "ccccccc",
+        subject: "touched needle",
+        authorName: "Dev",
+        authorDate: "2026-07-19T00:00:00Z",
+      },
+    ];
+    getGitCommitSearchManifest.mockResolvedValue({
+      head: SHA,
+      commits: indexedCommits,
+    });
+    getGitCommitSearchRecords.mockImplementation(
+      (_projectId: string, shas: string[]) => ({
+        records: shas.map((hash) => ({
+          hash,
+          deltaText: hash === OTHER ? "src/deep.ts\nneedle" : "",
+        })),
+      }),
+    );
+    getGitCommits.mockResolvedValue({
+      commits: indexedCommits.slice(0, 50),
+      hasMore: true,
     });
     render(
       <MemoryRouter>
@@ -194,14 +225,43 @@ describe("CommitBrowser", () => {
       target: { value: "needle" },
     });
 
-    await waitFor(() =>
-      expect(searchGit).toHaveBeenCalledWith("p1", {
-        q: "needle",
-        kind: "delta",
-      }),
-    );
     await screen.findByText("touched needle");
     expect(screen.queryByText("first commit")).toBeNull();
+    expect(getGitCommitSearchManifest).toHaveBeenCalledWith("p1");
+    expect(getGitCommitSearchRecords).toHaveBeenCalled();
+    expect(screen.queryByText("sourceLoadMore")).toBeNull();
+  });
+
+  it("searches commit metadata before delta batches finish", async () => {
+    primeApis();
+    const OTHER = "c".repeat(40);
+    getGitCommitSearchManifest.mockResolvedValue({
+      head: OTHER,
+      commits: [
+        {
+          hash: OTHER,
+          shortHash: "ccccccc",
+          subject: "touched needle",
+          authorName: "Dev",
+          authorDate: "2026-07-20T00:00:00Z",
+        },
+      ],
+    });
+    getGitCommitSearchRecords.mockResolvedValue({
+      records: [{ hash: OTHER, deltaText: "" }],
+    });
+    render(
+      <MemoryRouter>
+        <CommitBrowser projectId="p1" isWideScreen={false} t={t} />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("first commit");
+    fireEvent.change(screen.getByPlaceholderText("sourceSearchCommits"), {
+      target: { value: "needle" },
+    });
+
+    await screen.findByText("touched needle");
   });
 
   it("jumps to the older commit via the commit-jump selector", async () => {
@@ -366,7 +426,13 @@ describe("CommitBrowser", () => {
         `<span class="line line-inserted" data-diff-line="1">+second</span>` +
         `</code></pre>`,
       structuredPatch: [
-        { oldStart: 1, oldLines: 0, newStart: 1, newLines: 1, lines: ["+first"] },
+        {
+          oldStart: 1,
+          oldLines: 0,
+          newStart: 1,
+          newLines: 1,
+          lines: ["+first"],
+        },
         {
           oldStart: 10,
           oldLines: 0,
@@ -413,7 +479,13 @@ describe("CommitBrowser", () => {
         `<span class="line line-inserted" data-diff-line="1">+second</span>` +
         `</code></pre>`,
       structuredPatch: [
-        { oldStart: 1, oldLines: 0, newStart: 1, newLines: 1, lines: ["+first"] },
+        {
+          oldStart: 1,
+          oldLines: 0,
+          newStart: 1,
+          newLines: 1,
+          lines: ["+first"],
+        },
         {
           oldStart: 10,
           oldLines: 0,

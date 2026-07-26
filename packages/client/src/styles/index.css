@@ -1778,6 +1778,19 @@ textarea {
   flex-shrink: 0;
 }
 
+/* Source control composes repo state, navigation, and the review entry point
+   into this row at tablet/desktop widths. Let the project identity yield
+   space without forcing the controls into a second persistent row. */
+.source-control-main-content .session-header-left {
+  flex: 0 1 auto;
+}
+
+.source-control-main-content .session-header-actions {
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: flex-end;
+}
+
 .session-header::after {
   content: "";
   position: absolute;

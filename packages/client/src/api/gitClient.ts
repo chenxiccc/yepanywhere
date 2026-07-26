@@ -2,6 +2,8 @@ import type {
   GitBlameResult,
   GitCommitDetail,
   GitCommitListResult,
+  GitCommitSearchManifest,
+  GitCommitSearchRecordsResult,
   GitDiffResult,
   GitFileListResult,
   GitIntegrationOptionsResult,
@@ -74,6 +76,20 @@ export const gitApi = {
   getGitCommit: (projectId: string, sha: string) =>
     fetchJSON<GitCommitDetail>(
       `/projects/${projectId}/git/commit/${encodeURIComponent(sha)}`,
+    ),
+
+  getGitCommitSearchManifest: (projectId: string) =>
+    fetchJSON<GitCommitSearchManifest>(
+      `/projects/${projectId}/git/commit-search-manifest`,
+    ),
+
+  getGitCommitSearchRecords: (projectId: string, shas: string[]) =>
+    fetchJSON<GitCommitSearchRecordsResult>(
+      `/projects/${projectId}/git/commit-search-records`,
+      {
+        method: "POST",
+        body: JSON.stringify({ shas }),
+      },
     ),
 
   getGitCommitDiff: (

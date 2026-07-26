@@ -8,6 +8,7 @@ import { api } from "../api/client";
 import { CopyButton } from "../components/CopyButton";
 import { Modal } from "../components/ui/Modal";
 import { useCommitReadWatermark } from "../hooks/useCommitReadWatermark";
+import { useCommitSearchIndex } from "../hooks/useCommitSearchIndex";
 import { useProjectReviewComments } from "../hooks/useProjectReviewComments";
 import {
   GitDiffModal,
@@ -55,13 +56,15 @@ export function CommitBrowser({
   // (verbatim, with its exact time) instead of a file diff.
   const [messageView, setMessageView] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<GitRecentCommit[] | null>(
-    null,
-  );
-  const [searching, setSearching] = useState(false);
-  const [searchError, setSearchError] = useState<string | null>(null);
+  const [searchIndexRequested, setSearchIndexRequested] = useState(false);
   const diffPreviewRef = useRef<GitDiffPreviewHandle>(null);
-  const displayedCommits = searchResults ?? commits;
+  const searchActive = searchQuery.trim().length > 0;
+  const searchIndex = useCommitSearchIndex(
+    projectId,
+    searchQuery,
+    searchIndexRequested,
+  );
+  const displayedCommits = searchActive ? searchIndex.results : commits;
 
   const { pending } = useProjectReviewComments(projectId);
   const readState = useCommitReadWatermark(projectId);
@@ -123,12 +126,16 @@ export function CommitBrowser({
   }, [projectId, t]);
 
   // Auto-select the newest shown commit on wide screens (mobile starts on
-  // the list). Follows search results when a search is active.
+  // the list). Replace a selection filtered out by a new search query.
   useEffect(() => {
-    if (isWideScreen && selectedSha === null && displayedCommits[0]) {
-      setSelectedSha(displayedCommits[0].hash);
-    }
-  }, [isWideScreen, selectedSha, displayedCommits]);
+    const first = displayedCommits[0];
+    if (!isWideScreen || !first) return;
+    setSelectedSha((current) =>
+      current && displayedCommits.some((commit) => commit.hash === current)
+        ? current
+        : first.hash,
+    );
+  }, [isWideScreen, displayedCommits]);
 
   const loadMore = useCallback(async () => {
     try {
@@ -142,41 +149,6 @@ export function CommitBrowser({
       setListError(err instanceof Error ? err.message : t("gitStatusLoading"));
     }
   }, [projectId, commits.length, t]);
-
-  // Debounced commit-delta search (git log -G): commits whose diff touched the
-  // query. An empty query restores the paged list.
-  useEffect(() => {
-    const q = searchQuery.trim();
-    if (!q) {
-      setSearchResults(null);
-      setSearching(false);
-      setSearchError(null);
-      return;
-    }
-    let cancelled = false;
-    setSearching(true);
-    setSearchError(null);
-    const timer = setTimeout(() => {
-      api
-        .searchGit(projectId, { q, kind: "delta" })
-        .then((res) => {
-          if (cancelled) return;
-          setSearchResults(res.commits ?? []);
-          setSearching(false);
-        })
-        .catch((err) => {
-          if (cancelled) return;
-          setSearchError(
-            err instanceof Error ? err.message : t("gitStatusLoading"),
-          );
-          setSearching(false);
-        });
-    }, 300);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [projectId, searchQuery, t]);
 
   // Load the selected commit's changed-file list.
   useEffect(() => {
@@ -275,21 +247,35 @@ export function CommitBrowser({
             className="source-search-input"
             value={searchQuery}
             placeholder={t("sourceSearchCommits")}
-            onChange={(event) => setSearchQuery(event.target.value)}
+            onFocus={() => setSearchIndexRequested(true)}
+            onChange={(event) => {
+              setSearchIndexRequested(true);
+              setSearchQuery(event.target.value);
+            }}
           />
-          {loadingList && searchResults === null ? (
+          {searchIndexRequested && searchIndex.indexing && (
+            <div className="source-search-index-status">
+              {searchIndex.totalCount > 0
+                ? t("sourceIndexingCommits", {
+                    indexed: searchIndex.indexedCount,
+                    total: searchIndex.totalCount,
+                  })
+                : t("sourcePreparingCommitIndex")}
+            </div>
+          )}
+          {loadingList && !searchActive ? (
             <div className="git-diff-loading">{t("gitStatusLoading")}</div>
-          ) : listError && searchResults === null ? (
+          ) : listError && !searchActive ? (
             <div className="git-diff-error">{listError}</div>
-          ) : searching ? (
+          ) : searchActive &&
+            searchIndex.indexing &&
+            displayedCommits.length === 0 ? (
             <div className="git-diff-loading">{t("sourceSearching")}</div>
-          ) : searchError ? (
-            <div className="git-diff-error">{searchError}</div>
+          ) : searchActive && searchIndex.error ? (
+            <div className="git-diff-error">{searchIndex.error}</div>
           ) : displayedCommits.length === 0 ? (
             <div className="git-status-empty">
-              {searchResults !== null
-                ? t("sourceNoMatches")
-                : t("sourceNoCommits")}
+              {searchActive ? t("sourceNoMatches") : t("sourceNoCommits")}
             </div>
           ) : (
             <>
@@ -340,7 +326,7 @@ export function CommitBrowser({
                   );
                 })}
               </ol>
-              {hasMore && searchResults === null && (
+              {hasMore && !searchActive && (
                 <button
                   type="button"
                   className="commit-load-more"

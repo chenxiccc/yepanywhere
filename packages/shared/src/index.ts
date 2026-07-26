@@ -44,6 +44,7 @@ export {
   type ReviewCommentSide,
   type ReviewCommentStatus,
   type ReviewCommentsFile,
+  type ReviewNewSessionOptions,
 } from "./review-comments.js";
 
 export type { HostIdentity } from "./host-identity.js";
@@ -165,6 +166,9 @@ export type {
   GitBlameResult,
   GitCommitDetail,
   GitCommitListResult,
+  GitCommitSearchManifest,
+  GitCommitSearchRecord,
+  GitCommitSearchRecordsResult,
   GitFileListResult,
   GitSearchResult,
   GitDiffPreviewSkipped,

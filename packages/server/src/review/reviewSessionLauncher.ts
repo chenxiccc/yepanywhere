@@ -5,6 +5,7 @@
  * `supervisor.startSession` / `getProcessForSession().queueMessage`.
  */
 
+import type { ReviewNewSessionOptions } from "@yep-anywhere/shared";
 import type { Supervisor } from "../supervisor/Supervisor.js";
 
 export type ReviewLaunchResult =
@@ -23,6 +24,7 @@ export interface ReviewSessionLauncher {
   startReviewSession(
     projectPath: string,
     text: string,
+    options?: ReviewNewSessionOptions,
   ): Promise<ReviewLaunchResult>;
   /**
    * Deliver `text` as a follow-up turn to `sessionId`. When the session has a
@@ -41,9 +43,17 @@ export function createSupervisorReviewLauncher(
   supervisor: Supervisor,
 ): ReviewSessionLauncher {
   return {
-    async startReviewSession(projectPath, text) {
+    async startReviewSession(projectPath, text, options) {
       // projectId derives from projectPath inside startSession.
-      const result = await supervisor.startSession(projectPath, { text });
+      const modelSettings = options
+        ? { providerName: options.provider, model: options.model }
+        : undefined;
+      const result = await supervisor.startSession(
+        projectPath,
+        { text },
+        undefined,
+        modelSettings,
+      );
       if ("error" in result) {
         return { status: "queue-full", maxQueueSize: result.maxQueueSize };
       }

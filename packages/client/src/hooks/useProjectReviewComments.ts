@@ -17,12 +17,17 @@ export interface ProjectReviewComments {
 }
 
 export function useProjectReviewComments(
-  projectId: string,
+  projectId: string | undefined,
 ): ProjectReviewComments {
   const [comments, setComments] = useState<ReviewComment[]>([]);
   const [batches, setBatches] = useState<ReviewBatch[]>([]);
 
   const refresh = useCallback(async () => {
+    if (!projectId) {
+      setComments([]);
+      setBatches([]);
+      return;
+    }
     try {
       const result = await api.listReviewComments(projectId);
       setComments(result.comments);
@@ -33,6 +38,7 @@ export function useProjectReviewComments(
   }, [projectId]);
 
   useEffect(() => {
+    if (!projectId) return;
     void refresh();
     return subscribeReviewComments(projectId, () => {
       void refresh();

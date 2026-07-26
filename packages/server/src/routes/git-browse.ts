@@ -2,6 +2,9 @@ import { extname } from "node:path";
 import {
   type GitCommitDetail,
   type GitCommitListResult,
+  type GitCommitSearchManifest,
+  type GitCommitSearchRecord,
+  type GitCommitSearchRecordsResult,
   type GitDiffResult,
   type GitFileChange,
   type GitFileListResult,
@@ -46,12 +49,16 @@ const MAX_COMMIT_LIMIT = 200;
 const MAX_COMMIT_SKIP = 1_000_000;
 /** `git log`/`git show` output can exceed the 1 MB default. */
 const BROWSE_MAX_BUFFER = 16 * 1024 * 1024;
+const SEARCH_INDEX_MAX_BUFFER = 64 * 1024 * 1024;
 /** A commit-ish the browser addresses — a hex sha (short or full). */
 const SHA_RE = /^[0-9a-f]{4,64}$/i;
-const DEFAULT_FILE_LIST_LIMIT = 2000;
+const MAX_TRACKED_FILE_COUNT = 10_000;
+const DEFAULT_FILE_LIST_LIMIT = MAX_TRACKED_FILE_COUNT;
 const DEFAULT_SEARCH_COMMIT_LIMIT = 50;
 const MAX_SEARCH_COMMIT_LIMIT = 200;
 const SEARCH_TIMEOUT_MS = 15_000;
+const MAX_SEARCH_INDEX_BATCH = 20;
+const COMMIT_SEARCH_RECORD_FORMAT = "%x1e%H";
 
 export function createGitBrowseRoutes(deps: GitBrowseDeps): Hono {
   const routes = new Hono();
@@ -89,6 +96,66 @@ export function createGitBrowseRoutes(deps: GitBrowseDeps): Hono {
         hasMore,
       };
       return c.json(result);
+    } catch (err) {
+      return gitError(c, err);
+    }
+  });
+
+  // Complete lightweight history for the client-owned commit search index.
+  routes.get("/:projectId/git/commit-search-manifest", async (c) => {
+    const projectPath = await resolveProjectPath(c, deps);
+    if (typeof projectPath !== "string") return projectPath;
+
+    try {
+      const { stdout } = await runGit(
+        projectPath,
+        ["log", `--format=${COMMIT_LOG_FORMAT}`],
+        { maxBuffer: BROWSE_MAX_BUFFER },
+      );
+      const commits = parseCommitLog(stdout);
+      return c.json({
+        head: commits[0]?.hash ?? null,
+        commits,
+      } satisfies GitCommitSearchManifest);
+    } catch (err) {
+      return gitError(c, err);
+    }
+  });
+
+  // Bounded changed-line/path records. The browser requests manifest-order
+  // batches once, then every typed query stays inside its client-owned index.
+  routes.post("/:projectId/git/commit-search-records", async (c) => {
+    const projectPath = await resolveProjectPath(c, deps);
+    if (typeof projectPath !== "string") return projectPath;
+
+    let body: { shas?: unknown };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    if (
+      !Array.isArray(body.shas) ||
+      body.shas.length === 0 ||
+      body.shas.length > MAX_SEARCH_INDEX_BATCH ||
+      body.shas.some((sha) => typeof sha !== "string" || !SHA_RE.test(sha))
+    ) {
+      return c.json(
+        {
+          error: `shas must contain 1-${MAX_SEARCH_INDEX_BATCH} commit ids`,
+        },
+        400,
+      );
+    }
+
+    try {
+      const records = await getCommitSearchRecords(
+        projectPath,
+        body.shas as string[],
+      );
+      return c.json({
+        records,
+      } satisfies GitCommitSearchRecordsResult);
     } catch (err) {
       return gitError(c, err);
     }
@@ -204,7 +271,7 @@ export function createGitBrowseRoutes(deps: GitBrowseDeps): Hono {
       c.req.query("limit"),
       DEFAULT_FILE_LIST_LIMIT,
       1,
-      DEFAULT_FILE_LIST_LIMIT,
+      MAX_TRACKED_FILE_COUNT,
     );
     try {
       const result = await listRepoFiles(projectPath, query, limit);
@@ -519,4 +586,61 @@ async function searchCommitDelta(
     commits: truncated ? all.slice(0, limit) : all,
     truncated,
   };
+}
+
+async function getCommitSearchRecords(
+  cwd: string,
+  shas: string[],
+): Promise<GitCommitSearchRecord[]> {
+  const { stdout } = await runGit(
+    cwd,
+    [
+      ...GIT_DECODE_PATHS_ARGS,
+      "show",
+      "--no-ext-diff",
+      "--no-color",
+      "--no-renames",
+      "--unified=0",
+      `--format=${COMMIT_SEARCH_RECORD_FORMAT}`,
+      ...shas,
+    ],
+    { maxBuffer: SEARCH_INDEX_MAX_BUFFER, timeout: SEARCH_TIMEOUT_MS },
+  );
+  return parseCommitSearchRecords(stdout);
+}
+
+function parseCommitSearchRecords(stdout: string): GitCommitSearchRecord[] {
+  const records: GitCommitSearchRecord[] = [];
+  for (const raw of stdout.split("\x1e")) {
+    const firstNewline = raw.indexOf("\n");
+    if (firstNewline < 0) continue;
+    const hash = raw.slice(0, firstNewline).trim();
+    if (!SHA_RE.test(hash)) continue;
+    records.push({
+      hash,
+      deltaText: extractDeltaSearchText(raw.slice(firstNewline + 1)),
+    });
+  }
+  return records;
+}
+
+/**
+ * Keep only paths and changed lines. Diff metadata and context do not affect
+ * `git log -G` semantics and would inflate the browser's in-memory corpus.
+ */
+function extractDeltaSearchText(patch: string): string {
+  const searchable: string[] = [];
+  for (const line of patch.split("\n")) {
+    if (line.startsWith("diff --git ")) {
+      searchable.push(line.slice("diff --git ".length));
+    } else if (line.startsWith("+++ ") || line.startsWith("--- ")) {
+      searchable.push(line.slice(4));
+    } else if (
+      (line.startsWith("+") && !line.startsWith("+++")) ||
+      (line.startsWith("-") && !line.startsWith("---"))
+    ) {
+      searchable.push(line.slice(1));
+    }
+  }
+  return searchable.join("\n");
 }

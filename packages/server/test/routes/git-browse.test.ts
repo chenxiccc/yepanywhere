@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -7,6 +7,8 @@ import {
   type GitBlameResult,
   type GitCommitDetail,
   type GitCommitListResult,
+  type GitCommitSearchManifest,
+  type GitCommitSearchRecordsResult,
   type GitDiffResult,
   type GitFileListResult,
   type GitSearchResult,
@@ -106,6 +108,48 @@ describe("git-browse routes", () => {
     expect(restBody.hasMore).toBe(false);
     expect(restBody.commits).toHaveLength(1);
     expect(restBody.commits[0]?.subject).toBe("add a");
+  });
+
+  it("supplies complete history and bounded records for the client index", async () => {
+    const { projectId, routes } = createRoutesForProject(dir);
+
+    const manifestResponse = await routes.request(
+      `/${projectId}/git/commit-search-manifest`,
+    );
+    const manifest = (await manifestResponse.json()) as GitCommitSearchManifest;
+    expect(manifestResponse.status).toBe(200);
+    expect(manifest.head).toBe(shas.c3);
+    expect(manifest.commits.map((commit) => commit.hash)).toEqual([
+      shas.c3,
+      shas.c2,
+      shas.c1,
+    ]);
+
+    const recordsResponse = await routes.request(
+      `/${projectId}/git/commit-search-records`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ shas: [shas.c3, shas.c2] }),
+      },
+    );
+    const records =
+      (await recordsResponse.json()) as GitCommitSearchRecordsResult;
+    expect(recordsResponse.status).toBe(200);
+    expect(records.records).toHaveLength(2);
+    expect(records.records[0]).toMatchObject({ hash: shas.c3 });
+    expect(records.records[0]?.deltaText).toContain("line5");
+    expect(records.records[0]?.deltaText).toContain("d.ts");
+
+    const oversized = await routes.request(
+      `/${projectId}/git/commit-search-records`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ shas: Array(21).fill(shas.c3) }),
+      },
+    );
+    expect(oversized.status).toBe(400);
   });
 
   it("returns a commit's metadata and changed-file list", async () => {
@@ -238,6 +282,28 @@ describe("git-browse routes", () => {
     const filtered = await routes.request(`/${projectId}/git/files?q=d`);
     const filteredBody = (await filtered.json()) as GitFileListResult;
     expect(filteredBody.files).toEqual(["d.ts"]);
+  });
+
+  it("returns tracked paths beyond the former 2,000-file ceiling", async () => {
+    const bulkDir = join(dir, "bulk");
+    await mkdir(bulkDir);
+    await Promise.all(
+      Array.from({ length: 2_010 }, (_, index) =>
+        writeFile(
+          join(bulkDir, `tracked-${index.toString().padStart(4, "0")}.txt`),
+          "",
+        ),
+      ),
+    );
+    await git("add", "bulk");
+    const { projectId, routes } = createRoutesForProject(dir);
+
+    const response = await routes.request(`/${projectId}/git/files`);
+    const body = (await response.json()) as GitFileListResult;
+    expect(response.status).toBe(200);
+    expect(body.truncated).toBe(false);
+    expect(body.files).toContain("bulk/tracked-2009.txt");
+    expect(body.files.length).toBeGreaterThan(2_000);
   });
 
   it("searches filenames and commit deltas", async () => {
