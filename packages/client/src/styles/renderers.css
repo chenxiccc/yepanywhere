@@ -6182,6 +6182,40 @@ pre.code-highlighter-plain,
   background: var(--bg-hover, rgba(255, 255, 255, 0.05));
 }
 
+.commit-jump {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  margin-bottom: var(--space-2, 8px);
+}
+
+.commit-jump-btn {
+  padding: 3px 10px;
+  font-size: 0.78rem;
+  color: var(--text-secondary, #8b949e);
+  background: var(--bg-subtle, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--border-subtle, #21262d);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.commit-jump-btn:hover:not(:disabled) {
+  color: var(--text-primary, #e6edf3);
+  background: var(--bg-hover, rgba(255, 255, 255, 0.06));
+}
+
+.commit-jump-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.commit-jump-current {
+  margin: 0 auto;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.78rem;
+  color: var(--text-secondary, #8b949e);
+}
+
 .commit-body {
   margin: 0 0 var(--space-2, 8px);
   padding: 8px;

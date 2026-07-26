@@ -180,6 +180,19 @@ export function CommitBrowser({
   const diffFileKey =
     selectedSha && selectedFile ? `${selectedSha}:${selectedFile.path}` : null;
 
+  // Commit-jump selector: step to the adjacent shown commit (list is
+  // newest-first, so previous index = newer). Usable at any width — the mobile
+  // path to move between commits without returning to the list.
+  const selectedIndex = displayedCommits.findIndex(
+    (commit) => commit.hash === selectedSha,
+  );
+  const newerCommit =
+    selectedIndex > 0 ? displayedCommits[selectedIndex - 1] : undefined;
+  const olderCommit =
+    selectedIndex >= 0 && selectedIndex < displayedCommits.length - 1
+      ? displayedCommits[selectedIndex + 1]
+      : undefined;
+
   return (
     <div className="commit-browser">
       <div className="commit-browser-columns">
@@ -251,6 +264,27 @@ export function CommitBrowser({
 
         {selectedSha && (
           <div className="commit-files-column">
+            <div className="commit-jump">
+              <button
+                type="button"
+                className="commit-jump-btn"
+                disabled={!newerCommit}
+                onClick={() => newerCommit && setSelectedSha(newerCommit.hash)}
+              >
+                {t("sourceNewerCommit")}
+              </button>
+              <span className="commit-jump-current">
+                {detail?.shortHash ?? "…"}
+              </span>
+              <button
+                type="button"
+                className="commit-jump-btn"
+                disabled={!olderCommit}
+                onClick={() => olderCommit && setSelectedSha(olderCommit.hash)}
+              >
+                {t("sourceOlderCommit")}
+              </button>
+            </div>
             {loadingDetail ? (
               <div className="git-diff-loading">{t("gitStatusLoading")}</div>
             ) : detailError ? (

@@ -116,7 +116,11 @@ export function BlameBrowser({
       </div>
 
       {!isWideScreen && selectedPath && (
-        <Modal title={selectedPath} onClose={() => setSelectedPath(null)}>
+        <Modal
+          title={selectedPath}
+          onClose={() => setSelectedPath(null)}
+          closeOnBackGesture
+        >
           <BlameView projectId={projectId} path={selectedPath} t={t} />
         </Modal>
       )}

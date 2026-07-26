@@ -1138,6 +1138,8 @@
   "sourceSearchCommits": "Search commit changes…",
   "sourceSearching": "Searching…",
   "sourceNoMatches": "No matches.",
+  "sourceNewerCommit": "↑ Newer",
+  "sourceOlderCommit": "Older ↓",
   "gitStatusRecentCommits": "Recent commits",
   "gitStatusNoRecentCommits": "No commits yet",
   "gitStatusUntitledCommit": "(no subject)",

@@ -176,4 +176,49 @@ describe("CommitBrowser", () => {
     await screen.findByText("touched needle");
     expect(screen.queryByText("first commit")).toBeNull();
   });
+
+  it("jumps to the older commit via the commit-jump selector", async () => {
+    const OLDER = "d".repeat(40);
+    getGitCommits.mockResolvedValue({
+      commits: [
+        {
+          hash: SHA,
+          shortHash: "aaaaaaa",
+          subject: "newest",
+          authorName: "Dev",
+          authorDate: "2026-07-26T00:00:00Z",
+        },
+        {
+          hash: OLDER,
+          shortHash: "ddddddd",
+          subject: "older one",
+          authorName: "Dev",
+          authorDate: "2026-07-20T00:00:00Z",
+        },
+      ],
+      hasMore: false,
+    });
+    getGitCommit.mockResolvedValue({
+      hash: SHA,
+      shortHash: "aaaaaaa",
+      subject: "newest",
+      authorName: "Dev",
+      authorDate: "2026-07-26T00:00:00Z",
+      body: "",
+      files: [],
+    });
+    listReviewComments.mockResolvedValue({ comments: [], pendingCount: 0 });
+    render(
+      <MemoryRouter>
+        <CommitBrowser projectId="p1" isWideScreen={true} t={t} />
+      </MemoryRouter>,
+    );
+
+    // Wide screen auto-selects the newest → detail loads for it.
+    await waitFor(() => expect(getGitCommit).toHaveBeenCalledWith("p1", SHA));
+    getGitCommit.mockClear();
+
+    fireEvent.click(await screen.findByText("sourceOlderCommit"));
+    await waitFor(() => expect(getGitCommit).toHaveBeenCalledWith("p1", OLDER));
+  });
 });

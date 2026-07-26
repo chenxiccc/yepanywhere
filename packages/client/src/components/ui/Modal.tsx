@@ -26,6 +26,13 @@ interface ModalProps {
   children: ReactNode;
   onClose: () => void;
   anchorRect?: ModalAnchorRect | null;
+  /**
+   * When true, opening pushes a history entry so a browser "back" — the mobile
+   * OS back-swipe — dismisses the modal, keeping history balanced. Used by the
+   * mobile-only diff/blame viewers so a back-swipe closes them
+   * (topic: source-review-to-session).
+   */
+  closeOnBackGesture?: boolean;
 }
 
 /**
@@ -33,11 +40,43 @@ interface ModalProps {
  * Renders via portal to avoid event bubbling issues.
  * Closes on Escape key or clicking the overlay.
  */
-export function Modal({ title, children, onClose, anchorRect }: ModalProps) {
+export function Modal({
+  title,
+  children,
+  onClose,
+  anchorRect,
+  closeOnBackGesture,
+}: ModalProps) {
   const { t } = useI18n();
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
   const overlayPointerStartedOnOverlayRef = useRef(false);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  // Optional back-gesture dismissal. Mount-only (empty deps) so exactly one
+  // history entry is pushed; a ref carries the latest onClose. A popstate (back
+  // button / mobile back-swipe) closes the modal; closing another way pops the
+  // pushed entry on cleanup so history stays balanced.
+  useEffect(() => {
+    if (!closeOnBackGesture || typeof window === "undefined") return;
+    window.history.pushState({ yaModal: true }, "");
+    let dismissedByBack = false;
+    const onPopState = () => {
+      dismissedByBack = true;
+      onCloseRef.current();
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => {
+      window.removeEventListener("popstate", onPopState);
+      if (
+        !dismissedByBack &&
+        (window.history.state as { yaModal?: boolean } | null)?.yaModal
+      ) {
+        window.history.back();
+      }
+    };
+  }, [closeOnBackGesture]);
   const isAnchored =
     !!anchorRect &&
     typeof window !== "undefined" &&

@@ -171,7 +171,7 @@ export function GitDiffModal({
   const fileName = file.path.split("/").pop() || file.path;
 
   return (
-    <Modal title={fileName} onClose={onClose}>
+    <Modal title={fileName} onClose={onClose} closeOnBackGesture>
       <GitDiffBody
         file={file}
         fileKey={fileKey}
