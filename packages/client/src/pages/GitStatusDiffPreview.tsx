@@ -14,7 +14,10 @@ import {
 import { api } from "../api/client";
 import { MarkdownPreview } from "../components/MarkdownPreview";
 import { Modal } from "../components/ui/Modal";
+import { useDiffViewMode } from "../hooks/useDiffViewMode";
+import { type DiffViewMode, resolveDiffViewMode } from "../lib/diffSideBySide";
 import { DiffCommentLayer } from "./DiffCommentLayer";
+import { SideBySideDiff } from "./SideBySideDiff";
 
 const GIT_DIFF_MAX_RENDERED_HTML_CHARS = 1_000_000;
 
@@ -226,6 +229,31 @@ function GitDiffContent({
     () => retainedDiffView?.showMarkdownPreview ?? false,
   );
   const contentRef = useRef<HTMLDivElement>(null);
+  const [viewMode, setViewMode] = useDiffViewMode();
+  const [paneWidth, setPaneWidth] = useState(0);
+
+  // Measure the diff pane (content width, not viewport) so `auto` can pick
+  // side-by-side only when two readable code columns fit.
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width;
+      if (typeof width === "number") setPaneWidth(width);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const cycleViewMode = useCallback(() => {
+    setViewMode(
+      viewMode === "auto"
+        ? "unified"
+        : viewMode === "unified"
+          ? "side-by-side"
+          : "auto",
+    );
+  }, [viewMode, setViewMode]);
 
   const isMarkdown = /\.(md|markdown)$/i.test(file.path);
   const hasMarkdownPreview =
@@ -350,6 +378,16 @@ function GitDiffContent({
                   : t("gitStatusFullContext")}
             </button>
           )}
+          {!showMarkdownPreview && (
+            <button
+              type="button"
+              className="diff-context-toggle"
+              onClick={cycleViewMode}
+              title={t("diffViewModeTitle")}
+            >
+              {t(diffViewModeLabelKey(viewMode))}
+            </button>
+          )}
         </div>
         {contextError && (
           <span className="diff-context-error">{contextError}</span>
@@ -366,7 +404,13 @@ function GitDiffContent({
         />
       ) : (
         <>
-          {displayResult.diffHtml ? (
+          {displayResult.diffHtml &&
+          resolveDiffViewMode(viewMode, paneWidth) === "side-by-side" ? (
+            <SideBySideDiff
+              diffHtml={displayResult.diffHtml}
+              structuredPatch={displayResult.structuredPatch}
+            />
+          ) : displayResult.diffHtml ? (
             <HighlightedDiff diffHtml={displayResult.diffHtml} />
           ) : (
             <DiffLines
@@ -384,6 +428,17 @@ function GitDiffContent({
       )}
     </div>
   );
+}
+
+function diffViewModeLabelKey(mode: DiffViewMode): string {
+  switch (mode) {
+    case "unified":
+      return "diffViewModeUnified";
+    case "side-by-side":
+      return "diffViewModeSideBySide";
+    default:
+      return "diffViewModeAuto";
+  }
 }
 
 function GitDiffPreviewSkippedState({

@@ -154,6 +154,56 @@ describe("DiffCommentLayer", () => {
     expect(navigateSpy).toHaveBeenCalledWith("/projects/proj1/sessions/sess-9");
   });
 
+  it("anchors a context click to the clicked column's side (side-by-side)", async () => {
+    listReviewComments.mockResolvedValue({ comments: [], pendingCount: 0 });
+    addReviewComment.mockResolvedValue({
+      comment: { id: "c1", status: "pending", anchor: {}, text: "x" },
+    });
+    // Context line (flat index 0) inside an OLD (left) column.
+    function ColHarness() {
+      const ref = useRef<HTMLDivElement>(null);
+      return (
+        <div ref={ref}>
+          <div data-diff-col="old">
+            <span className="line line-context" data-diff-line="0">
+              {" a"}
+            </span>
+          </div>
+          <DiffCommentLayer
+            projectId="proj1"
+            filePath="src/a.ts"
+            structuredPatch={PATCH}
+            containerRef={ref as RefObject<HTMLElement | null>}
+            t={t}
+          />
+        </div>
+      );
+    }
+    render(
+      <MemoryRouter>
+        <ColHarness />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(document.querySelector('[data-diff-line="0"]')!);
+    await screen.findByRole("textbox");
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "left side" },
+    });
+    fireEvent.click(screen.getByText("sourceReviewAddToReview"));
+
+    await waitFor(() => expect(addReviewComment).toHaveBeenCalledTimes(1));
+    const anchor = addReviewComment.mock.calls[0]?.[1] as {
+      side: string;
+      oldLine: number | null;
+      newLine: number | null;
+    };
+    // A context line clicked in the left column anchors the old side.
+    expect(anchor.side).toBe("old");
+    expect(anchor.oldLine).toBe(1);
+    expect(anchor.newLine).toBe(1);
+  });
+
   it("tints a line that already has a pending comment", async () => {
     listReviewComments.mockResolvedValue({
       comments: [

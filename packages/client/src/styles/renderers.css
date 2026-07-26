@@ -5896,3 +5896,38 @@ pre.code-highlighter-plain,
 .review-submit-error {
   color: var(--color-error, #f85149);
 }
+
+/* Side-by-side diff (topic: source-review-to-session, P8). */
+.side-by-side-diff {
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-mono, monospace);
+}
+
+.side-by-side-diff .sbs-header {
+  grid-column: 1 / -1;
+}
+
+.side-by-side-diff .sbs-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  align-items: stretch;
+}
+
+.side-by-side-diff .sbs-cell {
+  min-width: 0;
+  overflow-x: auto;
+  border-right: 1px solid var(--border-subtle, #21262d);
+}
+
+.side-by-side-diff .sbs-cell.sbs-empty {
+  background: var(--bg-subtle, rgba(255, 255, 255, 0.02));
+}
+
+/* Each cell is its own .highlighted-diff; trim the block margins so rows line up. */
+.side-by-side-diff .sbs-cell.highlighted-diff pre.shiki,
+.side-by-side-diff .sbs-header.highlighted-diff pre.shiki {
+  margin: 0;
+  padding: 0;
+}

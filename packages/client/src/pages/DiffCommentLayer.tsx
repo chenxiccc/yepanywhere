@@ -78,12 +78,23 @@ export function DiffCommentLayer({
     if (!el) return;
     const onClick = (event: MouseEvent) => {
       if (!(window.getSelection()?.isCollapsed ?? true)) return;
-      const node = (event.target as HTMLElement | null)?.closest(
-        "[data-diff-line]",
-      );
+      const target = event.target as HTMLElement | null;
+      const node = target?.closest("[data-diff-line]");
       if (!node) return;
       const flatIndex = Number(node.getAttribute("data-diff-line"));
-      const location = anchorFromPatch(structuredPatch, flatIndex);
+      // In side-by-side, the clicked column decides a context line's side:
+      // left = old, right = new. Unified diffs have no column → new.
+      const contextSide =
+        target?.closest("[data-diff-col]")?.getAttribute("data-diff-col") ===
+        "old"
+          ? "old"
+          : "new";
+      const location = anchorFromPatch(
+        structuredPatch,
+        flatIndex,
+        undefined,
+        contextSide,
+      );
       if (!location) return;
       const nodeRect = node.getBoundingClientRect();
       const containerRect = el.getBoundingClientRect();
