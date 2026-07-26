@@ -14,6 +14,7 @@ import {
 import { api } from "../api/client";
 import { MarkdownPreview } from "../components/MarkdownPreview";
 import { Modal } from "../components/ui/Modal";
+import { DiffCommentLayer } from "./DiffCommentLayer";
 
 const GIT_DIFF_MAX_RENDERED_HTML_CHARS = 1_000_000;
 
@@ -363,12 +364,23 @@ function GitDiffContent({
           previewSkipped={previewSkipped}
           t={t}
         />
-      ) : displayResult.diffHtml ? (
-        <HighlightedDiff diffHtml={displayResult.diffHtml} />
       ) : (
-        <DiffLines
-          lines={displayResult.structuredPatch.flatMap((h) => h.lines)}
-        />
+        <>
+          {displayResult.diffHtml ? (
+            <HighlightedDiff diffHtml={displayResult.diffHtml} />
+          ) : (
+            <DiffLines
+              lines={displayResult.structuredPatch.flatMap((h) => h.lines)}
+            />
+          )}
+          <DiffCommentLayer
+            projectId={projectId}
+            filePath={file.path}
+            structuredPatch={displayResult.structuredPatch}
+            containerRef={contentRef}
+            t={t}
+          />
+        </>
       )}
     </div>
   );
@@ -491,7 +503,11 @@ const DiffLines = memo(function DiffLines({ lines }: { lines: string[] }) {
                 ? "diff-added"
                 : "diff-context";
           return (
-            <div key={`${i}-${line.slice(0, 50)}`} className={className}>
+            <div
+              key={`${i}-${line.slice(0, 50)}`}
+              className={className}
+              data-diff-line={i}
+            >
               {line}
             </div>
           );

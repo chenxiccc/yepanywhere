@@ -65,6 +65,7 @@ import { authApi } from "./authClient";
 import { browserProfilesApi } from "./browserProfilesClient";
 import { fileApi } from "./fileClient";
 import { gitApi } from "./gitClient";
+import { reviewApi } from "./reviewClient";
 import { onboardingApi } from "./onboardingClient";
 import { getDesktopAuthToken } from "./plainFetch";
 import { pushApi, pushSettingsApi } from "./pushClient";
@@ -902,9 +903,12 @@ export const api = {
     fetchJSON<{
       removed: boolean;
       transcriptDisplayObjects: TranscriptDisplayObject[];
-    }>(`/projects/${projectId}/sessions/${sessionId}/bang-commands/${objectId}`, {
-      method: "DELETE",
-    }),
+    }>(
+      `/projects/${projectId}/sessions/${sessionId}/bang-commands/${objectId}`,
+      {
+        method: "DELETE",
+      },
+    ),
 
   fetchBangCompletions: (
     projectId: string,
@@ -1263,6 +1267,9 @@ export const api = {
 
   // Git status API
   ...gitApi,
+
+  // Source-review draft comments (topic: source-review-to-session)
+  ...reviewApi,
 
   // Inbox API
   getInbox: (projectId?: string) =>
