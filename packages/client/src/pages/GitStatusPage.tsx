@@ -85,6 +85,67 @@ const SOURCE_TABS: readonly SourceTab[] = [
   "comments",
 ];
 
+/**
+ * Source-mode tab state, derived from the `?tab=` URL param. Shared by the
+ * title-row header actions (wide screens) and the status bar (mobile), so both
+ * drive the same URL state.
+ */
+function useSourceTab(): {
+  tab: SourceTab;
+  setTab: (next: SourceTab) => void;
+} {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const tab: SourceTab =
+    tabParam === "commits"
+      ? "commits"
+      : tabParam === "files"
+        ? "files"
+        : tabParam === "comments"
+          ? "comments"
+          : "changes";
+  const setTab = useCallback(
+    (next: SourceTab) => {
+      setSearchParams(
+        (prev) => {
+          const params = new URLSearchParams(prev);
+          if (next === "changes") params.delete("tab");
+          else params.set("tab", next);
+          return params;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+  return { tab, setTab };
+}
+
+/**
+ * The mode tabs rendered in the page-header row on wide screens, so the
+ * selector shares the title/project row instead of stacking a second toolbar
+ * beneath it (the mobile stack keeps them in the status bar).
+ */
+function SourceTabsHeaderActions({
+  projectId,
+  t,
+}: {
+  projectId: string;
+  t: (key: string, vars?: Record<string, string | number>) => string;
+}) {
+  const { tab, setTab } = useSourceTab();
+  const { pending } = useProjectReviewComments(projectId);
+  return (
+    <SourceModeTabs
+      tab={tab}
+      tabs={SOURCE_TABS}
+      counts={{ comments: pending.length }}
+      onSelect={setTab}
+      t={t}
+    />
+  );
+}
+
 function getSourceControlRouteRetentionKey(
   sourceKey: ClientSummarySourceKey,
   projectId: string,
@@ -229,6 +290,14 @@ export function GitStatusPage() {
         onToggleSidebar={toggleSidebar}
         isWideScreen={isWideScreen}
         isSidebarCollapsed={isSidebarCollapsed}
+        actions={
+          isWideScreen && effectiveProjectId ? (
+            <SourceTabsHeaderActions
+              projectId={effectiveProjectId}
+              t={t as never}
+            />
+          ) : undefined
+        }
       />
 
       <main className="page-scroll-container" ref={pageScrollRef}>
@@ -315,29 +384,7 @@ function GitStatusContent({
   const navigate = useNavigate();
   const basePath = useRemoteBasePath();
   const [searchParams, setSearchParams] = useSearchParams();
-  const tabParam = searchParams.get("tab");
-  const tab: SourceTab =
-    tabParam === "commits"
-      ? "commits"
-      : tabParam === "files"
-        ? "files"
-        : tabParam === "comments"
-          ? "comments"
-          : "changes";
-  const setTab = useCallback(
-    (next: SourceTab) => {
-      setSearchParams(
-        (prev) => {
-          const params = new URLSearchParams(prev);
-          if (next === "changes") params.delete("tab");
-          else params.set("tab", next);
-          return params;
-        },
-        { replace: true },
-      );
-    },
-    [setSearchParams],
-  );
+  const { tab, setTab } = useSourceTab();
   const blameFile = searchParams.get("bf") ?? undefined;
   // Bridge a commit file to its blame-at-HEAD view: switch to the files tab
   // with that file seeded open (a real history step, so back returns).
@@ -733,13 +780,17 @@ function GitStatusContent({
         repoName={projectName}
         status={status}
         tabs={
-          <SourceModeTabs
-            tab={tab}
-            tabs={SOURCE_TABS}
-            counts={{ comments: reviewComments.pending.length }}
-            onSelect={setTab}
-            t={t}
-          />
+          // Wide screens show the tabs in the page-header title row instead
+          // (see SourceTabsHeaderActions); mobile keeps them here in the stack.
+          isWideScreen ? undefined : (
+            <SourceModeTabs
+              tab={tab}
+              tabs={SOURCE_TABS}
+              counts={{ comments: reviewComments.pending.length }}
+              onSelect={setTab}
+              t={t}
+            />
+          )
         }
         actions={
           reviewComments.pending.length > 0 && (
