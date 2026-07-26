@@ -37,6 +37,9 @@ import { useProject, useProjects } from "../hooks/useProjects";
 import { useProjectReviewComments } from "../hooks/useProjectReviewComments";
 import { useRelativeNow } from "../hooks/useRelativeNow";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
+import { CommitBrowser } from "./CommitBrowser";
+import { RepoStatusBar } from "./RepoStatusBar";
+import { type SourceTab, SourceModeTabs } from "./SourceModeTabs";
 import { ReviewSubmitModal } from "./ReviewSubmitModal";
 import {
   resolvePreferredProjectId,
@@ -71,6 +74,9 @@ interface SourceControlRouteState {
 }
 
 const SOURCE_CONTROL_ROUTE_TTL_MS = 5 * 60 * 1000;
+
+/** Source-control modes with a built body (topic: source-review-to-session). */
+const SOURCE_TABS: readonly SourceTab[] = ["changes", "commits"];
 
 function getSourceControlRouteRetentionKey(
   sourceKey: ClientSummarySourceKey,
@@ -241,6 +247,7 @@ export function GitStatusPage() {
               key={`${sourceKey}:${effectiveProjectId}`}
               status={gitStatus}
               projectId={effectiveProjectId}
+              projectName={project?.name}
               isWideScreen={isWideScreen}
               routeRetentionKey={routeRetentionKey}
               retainedRouteState={retainedRouteState}
@@ -274,6 +281,7 @@ function GitStatusUpgradeRequired({
 function GitStatusContent({
   status,
   projectId,
+  projectName,
   isWideScreen,
   routeRetentionKey,
   retainedRouteState,
@@ -286,6 +294,7 @@ function GitStatusContent({
 }: {
   status: GitStatusInfo;
   projectId: string;
+  projectName?: string;
   isWideScreen: boolean;
   routeRetentionKey: RouteRetentionKeyInput | null;
   retainedRouteState: SourceControlRouteState | null;
@@ -298,6 +307,28 @@ function GitStatusContent({
 }) {
   const navigate = useNavigate();
   const basePath = useRemoteBasePath();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const tab: SourceTab =
+    tabParam === "commits"
+      ? "commits"
+      : tabParam === "files"
+        ? "files"
+        : "changes";
+  const setTab = useCallback(
+    (next: SourceTab) => {
+      setSearchParams(
+        (prev) => {
+          const params = new URLSearchParams(prev);
+          if (next === "changes") params.delete("tab");
+          else params.set("tab", next);
+          return params;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
   const reviewComments = useProjectReviewComments(projectId);
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [selectedFileKey, setSelectedFileKey] = useState<string | null>(
@@ -675,179 +706,194 @@ function GitStatusContent({
 
   return (
     <div className="git-status">
-      <div className="git-status-workspace">
-        <div className="git-status-left-pane">
-          <div className="git-status-branch">
-            <span className="git-branch-icon">
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <line x1="6" y1="3" x2="6" y2="15" />
-                <circle cx="18" cy="6" r="3" />
-                <circle cx="6" cy="18" r="3" />
-                <path d="M18 9a9 9 0 0 1-9 9" />
-              </svg>
-            </span>
-            <span className="git-branch-name">
-              {status.branch ?? t("gitStatusDetachedHead")}
-            </span>
-            {status.upstream && (
-              <span className="git-upstream"> → {status.upstream}</span>
-            )}
-            {(status.ahead > 0 || status.behind > 0) && (
-              <span className="git-ahead-behind">
-                {status.ahead > 0 && ` ↑${status.ahead}`}
-                {status.behind > 0 && ` ↓${status.behind}`}
-              </span>
-            )}
-            <span className="git-remote-check-time">
-              {t("gitStatusLastCheckedRemote", {
-                time: formatRemoteCheckTime(checkedRemoteAt, nowMs, t),
-              })}
-            </span>
-            <span
-              className={`git-clean-badge ${status.isClean ? "git-clean" : "git-dirty"}`}
-            >
-              {status.isClean ? t("gitStatusClean") : t("gitStatusDirty")}
-            </span>
-            {(supportsPull || supportsPush || supportsRemoteCheck) && (
-              <div className="git-status-actions">
-                {supportsPull && (
-                  <button
-                    type="button"
-                    className="git-status-action-button"
-                    onClick={handlePull}
-                    disabled={isGitActionRunning}
-                  >
-                    {isPulling ? t("gitStatusPulling") : t("gitStatusPull")}
-                  </button>
-                )}
-                {supportsPush && (
-                  <button
-                    type="button"
-                    className="git-status-action-button"
-                    onClick={handlePush}
-                    disabled={isGitActionRunning}
-                  >
-                    {isPushing ? t("gitStatusPushing") : t("gitStatusPush")}
-                  </button>
-                )}
-                {supportsRemoteCheck && (
-                  <button
-                    type="button"
-                    className="git-status-action-button"
-                    onClick={handleCheckRemote}
-                    disabled={isGitActionRunning}
-                  >
-                    {isCheckingRemote
-                      ? t("gitStatusCheckingRemote")
-                      : t("gitStatusCheckRemote")}
-                  </button>
-                )}
-              </div>
-            )}
-            {reviewComments.pending.length > 0 && (
-              <button
-                type="button"
-                className="git-status-action-button review-tray-button"
-                onClick={() => setShowReviewModal(true)}
-              >
-                {t("sourceReviewReview", {
-                  count: reviewComments.pending.length,
-                })}
-              </button>
-            )}
-          </div>
-
-          {gitActionMessage && (
-            <div
-              className={`git-status-action-message ${gitActionMessageClass}`}
-            >
-              {gitActionMessage}
-            </div>
-          )}
-          {divergedActionStatus && supportsIntegrationOptions && (
-            <GitIntegrationOptionsPanel
-              options={integrationOptions}
-              loading={isLoadingIntegrationOptions}
-              error={integrationOptionsError}
-              t={t}
-            />
-          )}
-
-          <div className="git-status-file-pane">
-            {status.isClean ? (
-              <div className="git-status-empty">
-                {t("gitStatusWorkingTreeClean")}
-              </div>
-            ) : (
-              <>
-                {stagedFiles.length > 0 && (
-                  <GitFileSection
-                    title={t("gitStatusStaged")}
-                    files={stagedFiles}
-                    selectedFile={selectedFile}
-                    onFileClick={handleFileClick}
-                  />
-                )}
-                {unstagedFiles.length > 0 && (
-                  <GitFileSection
-                    title={t("gitStatusChanges")}
-                    files={unstagedFiles}
-                    selectedFile={selectedFile}
-                    onFileClick={handleFileClick}
-                  />
-                )}
-                {untrackedFiles.length > 0 && (
-                  <GitFileSection
-                    title={t("gitStatusUntracked")}
-                    files={untrackedFiles}
-                    selectedFile={selectedFile}
-                    onFileClick={handleFileClick}
-                  />
-                )}
-              </>
-            )}
-          </div>
-
-          <GitRecentCommits commits={status.recentCommits ?? []} t={t} />
-        </div>
-
-        {isWideScreen && !status.isClean && (
-          <GitDiffPreview
-            file={selectedFile}
-            fileKey={selectedPreviewFileKey}
-            projectId={projectId}
-            retainedScrollTop={retainedSelectedDiffScrollTop}
-            retainedDiffView={retainedSelectedDiffView}
-            onRetainScrollTop={retainDiffScrollTop}
-            onRetainDiffView={retainDiffView}
-            t={t}
-          />
+      <RepoStatusBar repoName={projectName} status={status} t={t} />
+      <div className="source-mode-toolbar">
+        <SourceModeTabs tab={tab} tabs={SOURCE_TABS} onSelect={setTab} t={t} />
+        {reviewComments.pending.length > 0 && (
+          <button
+            type="button"
+            className="git-status-action-button review-tray-button"
+            onClick={() => setShowReviewModal(true)}
+          >
+            {t("sourceReviewReview", {
+              count: reviewComments.pending.length,
+            })}
+          </button>
         )}
       </div>
 
-      {!isWideScreen && selectedFile && (
-        <GitDiffModal
-          file={selectedFile}
-          fileKey={selectedPreviewFileKey ?? gitFileKey(selectedFile)}
+      {tab === "commits" ? (
+        <CommitBrowser
           projectId={projectId}
-          retainedDiffView={retainedSelectedDiffView}
-          onRetainDiffView={retainDiffView}
+          isWideScreen={isWideScreen}
           t={t}
-          onClose={() => {
-            setSelectedFileKey(null);
-            retainSelectedFileKey(null);
-          }}
         />
+      ) : (
+        <>
+          <div className="git-status-workspace">
+            <div className="git-status-left-pane">
+              <div className="git-status-branch">
+                <span className="git-branch-icon">
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <line x1="6" y1="3" x2="6" y2="15" />
+                    <circle cx="18" cy="6" r="3" />
+                    <circle cx="6" cy="18" r="3" />
+                    <path d="M18 9a9 9 0 0 1-9 9" />
+                  </svg>
+                </span>
+                <span className="git-branch-name">
+                  {status.branch ?? t("gitStatusDetachedHead")}
+                </span>
+                {status.upstream && (
+                  <span className="git-upstream"> → {status.upstream}</span>
+                )}
+                {(status.ahead > 0 || status.behind > 0) && (
+                  <span className="git-ahead-behind">
+                    {status.ahead > 0 && ` ↑${status.ahead}`}
+                    {status.behind > 0 && ` ↓${status.behind}`}
+                  </span>
+                )}
+                <span className="git-remote-check-time">
+                  {t("gitStatusLastCheckedRemote", {
+                    time: formatRemoteCheckTime(checkedRemoteAt, nowMs, t),
+                  })}
+                </span>
+                <span
+                  className={`git-clean-badge ${status.isClean ? "git-clean" : "git-dirty"}`}
+                >
+                  {status.isClean ? t("gitStatusClean") : t("gitStatusDirty")}
+                </span>
+                {(supportsPull || supportsPush || supportsRemoteCheck) && (
+                  <div className="git-status-actions">
+                    {supportsPull && (
+                      <button
+                        type="button"
+                        className="git-status-action-button"
+                        onClick={handlePull}
+                        disabled={isGitActionRunning}
+                      >
+                        {isPulling ? t("gitStatusPulling") : t("gitStatusPull")}
+                      </button>
+                    )}
+                    {supportsPush && (
+                      <button
+                        type="button"
+                        className="git-status-action-button"
+                        onClick={handlePush}
+                        disabled={isGitActionRunning}
+                      >
+                        {isPushing ? t("gitStatusPushing") : t("gitStatusPush")}
+                      </button>
+                    )}
+                    {supportsRemoteCheck && (
+                      <button
+                        type="button"
+                        className="git-status-action-button"
+                        onClick={handleCheckRemote}
+                        disabled={isGitActionRunning}
+                      >
+                        {isCheckingRemote
+                          ? t("gitStatusCheckingRemote")
+                          : t("gitStatusCheckRemote")}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {gitActionMessage && (
+                <div
+                  className={`git-status-action-message ${gitActionMessageClass}`}
+                >
+                  {gitActionMessage}
+                </div>
+              )}
+              {divergedActionStatus && supportsIntegrationOptions && (
+                <GitIntegrationOptionsPanel
+                  options={integrationOptions}
+                  loading={isLoadingIntegrationOptions}
+                  error={integrationOptionsError}
+                  t={t}
+                />
+              )}
+
+              <div className="git-status-file-pane">
+                {status.isClean ? (
+                  <div className="git-status-empty">
+                    {t("gitStatusWorkingTreeClean")}
+                  </div>
+                ) : (
+                  <>
+                    {stagedFiles.length > 0 && (
+                      <GitFileSection
+                        title={t("gitStatusStaged")}
+                        files={stagedFiles}
+                        selectedFile={selectedFile}
+                        onFileClick={handleFileClick}
+                      />
+                    )}
+                    {unstagedFiles.length > 0 && (
+                      <GitFileSection
+                        title={t("gitStatusChanges")}
+                        files={unstagedFiles}
+                        selectedFile={selectedFile}
+                        onFileClick={handleFileClick}
+                      />
+                    )}
+                    {untrackedFiles.length > 0 && (
+                      <GitFileSection
+                        title={t("gitStatusUntracked")}
+                        files={untrackedFiles}
+                        selectedFile={selectedFile}
+                        onFileClick={handleFileClick}
+                      />
+                    )}
+                  </>
+                )}
+              </div>
+
+              <GitRecentCommits commits={status.recentCommits ?? []} t={t} />
+            </div>
+
+            {isWideScreen && !status.isClean && (
+              <GitDiffPreview
+                file={selectedFile}
+                fileKey={selectedPreviewFileKey}
+                projectId={projectId}
+                retainedScrollTop={retainedSelectedDiffScrollTop}
+                retainedDiffView={retainedSelectedDiffView}
+                onRetainScrollTop={retainDiffScrollTop}
+                onRetainDiffView={retainDiffView}
+                t={t}
+              />
+            )}
+          </div>
+
+          {!isWideScreen && selectedFile && (
+            <GitDiffModal
+              file={selectedFile}
+              fileKey={selectedPreviewFileKey ?? gitFileKey(selectedFile)}
+              projectId={projectId}
+              retainedDiffView={retainedSelectedDiffView}
+              onRetainDiffView={retainDiffView}
+              t={t}
+              onClose={() => {
+                setSelectedFileKey(null);
+                retainSelectedFileKey(null);
+              }}
+            />
+          )}
+        </>
       )}
 
       {showReviewModal && (

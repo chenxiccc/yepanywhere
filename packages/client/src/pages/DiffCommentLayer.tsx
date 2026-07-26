@@ -3,6 +3,7 @@ import {
   type PatchLineLocation,
   type ReviewComment,
   type ReviewCommentAnchor,
+  type ReviewCommentRevision,
   anchorFromPatch,
   patchLineCount,
 } from "@yep-anywhere/shared";
@@ -38,12 +39,19 @@ export function DiffCommentLayer({
   projectId,
   filePath,
   structuredPatch,
+  revision,
   containerRef,
   t,
 }: {
   projectId: string;
   filePath: string;
   structuredPatch: PatchHunk[];
+  /**
+   * Revision to stamp on new comments. Omitted for the working-tree diff (an
+   * `uncommitted` anchor is minted at click time); a commit diff passes
+   * `{ kind: "sha", sha }` so the comment cites that commit.
+   */
+  revision?: ReviewCommentRevision;
   containerRef: RefObject<HTMLElement | null>;
   t: TranslationFn;
 }) {
@@ -132,15 +140,19 @@ export function DiffCommentLayer({
   const buildAnchor = useCallback(
     (location: PatchLineLocation): ReviewCommentAnchor => ({
       path: filePath,
-      // The git-status diff is the working tree — an uncommitted anchor.
-      revision: { kind: "uncommitted", savedAt: new Date().toISOString() },
+      // A commit diff cites its sha; the working-tree diff mints a fresh
+      // `uncommitted` anchor timestamped at comment time.
+      revision: revision ?? {
+        kind: "uncommitted",
+        savedAt: new Date().toISOString(),
+      },
       side: location.side,
       oldLine: location.oldLine,
       newLine: location.newLine,
       snippet: location.snippet,
       snippetAnchorOffset: location.snippetAnchorOffset,
     }),
-    [filePath],
+    [filePath, revision],
   );
 
   const addToReview = useCallback(

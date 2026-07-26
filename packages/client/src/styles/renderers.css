@@ -5931,3 +5931,277 @@ pre.code-highlighter-plain,
   margin: 0;
   padding: 0;
 }
+
+/* ── Stage-3 source-control shell (topic: source-review-to-session) ── */
+
+/* Persistent repo/branch status header. */
+.repo-status-bar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  margin-bottom: var(--space-3, 12px);
+  font-size: 0.85rem;
+  background: var(--bg-elevated, #161b22);
+  border: 1px solid var(--border-subtle, #21262d);
+  border-radius: var(--radius-md, 8px);
+}
+
+.repo-status-bar.repo-status-bar-warn {
+  border-color: var(--warning, #d29922);
+  box-shadow: inset 3px 0 0 var(--warning, #d29922);
+}
+
+.repo-status-name {
+  font-weight: 600;
+  color: var(--text-primary, #e6edf3);
+}
+
+.repo-status-branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-secondary, #8b949e);
+}
+
+.repo-status-branch-name {
+  color: var(--text-primary, #e6edf3);
+  font-family: var(--font-mono, monospace);
+}
+
+.repo-status-upstream,
+.repo-status-sync {
+  color: var(--text-secondary, #8b949e);
+  font-family: var(--font-mono, monospace);
+}
+
+.repo-status-badge {
+  margin-left: auto;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+}
+
+.repo-status-badge.clean {
+  color: var(--success, #3fb950);
+  background: color-mix(in srgb, var(--success, #3fb950) 14%, transparent);
+}
+
+.repo-status-badge.dirty {
+  color: var(--warning, #d29922);
+  background: color-mix(in srgb, var(--warning, #d29922) 16%, transparent);
+}
+
+/* Copy affordance shared by status bar, commit rows, file rows. */
+.copy-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  color: var(--text-tertiary, #6e7681);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.copy-button:hover {
+  color: var(--text-primary, #e6edf3);
+  background: var(--bg-hover, rgba(255, 255, 255, 0.06));
+}
+
+.copy-button.copied {
+  color: var(--success, #3fb950);
+}
+
+/* Mode tabs + review tray toolbar. */
+.source-mode-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  margin-bottom: var(--space-3, 12px);
+}
+
+.source-mode-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--bg-subtle, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--border-subtle, #21262d);
+  border-radius: var(--radius-md, 8px);
+}
+
+.source-mode-tab {
+  padding: 4px 12px;
+  font-size: 0.85rem;
+  color: var(--text-secondary, #8b949e);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.source-mode-tab:hover {
+  color: var(--text-primary, #e6edf3);
+}
+
+.source-mode-tab.active {
+  color: var(--text-primary, #e6edf3);
+  background: var(--bg-elevated, #161b22);
+}
+
+.source-mode-toolbar .review-tray-button {
+  margin-left: auto;
+}
+
+/* Commit browser: commits · files · diff. */
+.commit-browser-columns {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-3, 12px);
+}
+
+@media (min-width: 1100px) {
+  .commit-browser-columns {
+    grid-template-columns: minmax(240px, 300px) minmax(220px, 340px) minmax(
+        0,
+        1fr
+      );
+    align-items: start;
+  }
+
+  .commit-list-column,
+  .commit-files-column {
+    max-height: calc(100vh - 220px);
+    overflow-y: auto;
+  }
+}
+
+.commit-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.commit-list-row,
+.commit-file-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.commit-list-row .source-row-copy,
+.commit-file-row .source-row-copy {
+  opacity: 0;
+  flex-shrink: 0;
+}
+
+.commit-list-row:hover .source-row-copy,
+.commit-file-row:hover .source-row-copy {
+  opacity: 1;
+}
+
+.commit-list-item,
+.commit-file-item {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  text-align: left;
+  color: var(--text-primary, #e6edf3);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.commit-file-item {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
+.commit-list-item:hover,
+.commit-file-item:hover {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.05));
+}
+
+.commit-list-item.selected,
+.commit-file-item.selected {
+  background: var(--bg-selected, rgba(56, 139, 253, 0.15));
+}
+
+.commit-subject {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.commit-meta {
+  display: flex;
+  gap: 8px;
+  font-size: 0.75rem;
+  color: var(--text-secondary, #8b949e);
+}
+
+.commit-hash {
+  font-family: var(--font-mono, monospace);
+}
+
+.commit-author {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.commit-date {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.commit-load-more {
+  width: 100%;
+  padding: 6px;
+  margin-top: 4px;
+  font-size: 0.8rem;
+  color: var(--text-secondary, #8b949e);
+  background: transparent;
+  border: 1px solid var(--border-subtle, #21262d);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.commit-load-more:hover {
+  color: var(--text-primary, #e6edf3);
+  background: var(--bg-hover, rgba(255, 255, 255, 0.05));
+}
+
+.commit-body {
+  margin: 0 0 var(--space-2, 8px);
+  padding: 8px;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  color: var(--text-secondary, #8b949e);
+  background: var(--bg-subtle, rgba(255, 255, 255, 0.03));
+  border-radius: 6px;
+}
+
+.commit-file-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.commit-file-item .git-lines-added {
+  color: var(--success, #3fb950);
+}
+
+.commit-file-item .git-lines-deleted {
+  color: var(--danger, #f85149);
+}

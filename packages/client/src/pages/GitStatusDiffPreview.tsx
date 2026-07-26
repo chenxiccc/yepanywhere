@@ -2,6 +2,7 @@ import type {
   GitDiffPreviewSkipped,
   GitDiffResult,
   GitFileChange,
+  ReviewCommentRevision,
 } from "@yep-anywhere/shared";
 import {
   memo,
@@ -36,10 +37,55 @@ interface GitDiffPreviewRetentionProps {
   onRetainDiffView?: (fileKey: string, view: GitDiffViewState) => void;
 }
 
+/**
+ * Which revision a diff pane shows: the working tree (an `uncommitted`
+ * comment anchor) or a specific commit (a `sha` anchor). The commit browser
+ * reuses this whole diff+comment stack by passing `{ kind: "commit", sha }`,
+ * so a comment left on a commit diff flows through the exact same
+ * relocation/compose pipeline as a working-tree comment.
+ */
+export type GitDiffSource =
+  | { kind: "worktree" }
+  | { kind: "commit"; sha: string };
+
+const WORKTREE_SOURCE: GitDiffSource = { kind: "worktree" };
+
+function fetchDiffForSource(
+  projectId: string,
+  file: GitFileChange,
+  source: GitDiffSource,
+  fullContext?: boolean,
+): Promise<GitDiffResult> {
+  if (source.kind === "commit") {
+    return api.getGitCommitDiff(projectId, {
+      sha: source.sha,
+      path: file.path,
+      status: file.status,
+      ...(file.origPath ? { origPath: file.origPath } : {}),
+      fullContext,
+    });
+  }
+  return api.getGitDiff(projectId, {
+    path: file.path,
+    staged: file.staged,
+    status: file.status,
+    fullContext,
+  });
+}
+
+function commentRevisionForSource(
+  source: GitDiffSource,
+): ReviewCommentRevision | undefined {
+  return source.kind === "commit"
+    ? { kind: "sha", sha: source.sha }
+    : undefined;
+}
+
 export function GitDiffPreview({
   file,
   fileKey,
   projectId,
+  source = WORKTREE_SOURCE,
   retainedScrollTop,
   retainedDiffView,
   onRetainScrollTop,
@@ -49,6 +95,7 @@ export function GitDiffPreview({
   file: GitFileChange | null;
   fileKey: string | null;
   projectId: string;
+  source?: GitDiffSource;
   retainedScrollTop?: number;
   retainedDiffView?: GitDiffViewState;
   onRetainScrollTop?: (fileKey: string, scrollTop: number) => void;
@@ -87,6 +134,7 @@ export function GitDiffPreview({
             file={file}
             fileKey={fileKey}
             projectId={projectId}
+            source={source}
             retainedDiffView={retainedDiffView}
             onRetainDiffView={onRetainDiffView}
             t={t}
@@ -105,6 +153,7 @@ export function GitDiffModal({
   file,
   fileKey,
   projectId,
+  source = WORKTREE_SOURCE,
   retainedDiffView,
   onRetainDiffView,
   t,
@@ -113,6 +162,7 @@ export function GitDiffModal({
   file: GitFileChange;
   fileKey: string;
   projectId: string;
+  source?: GitDiffSource;
   retainedDiffView?: GitDiffViewState;
   onRetainDiffView?: (fileKey: string, view: GitDiffViewState) => void;
   t: TranslationFn;
@@ -126,6 +176,7 @@ export function GitDiffModal({
         file={file}
         fileKey={fileKey}
         projectId={projectId}
+        source={source}
         retainedDiffView={retainedDiffView}
         onRetainDiffView={onRetainDiffView}
         t={t}
@@ -134,10 +185,11 @@ export function GitDiffModal({
   );
 }
 
-function GitDiffBody({
+export function GitDiffBody({
   file,
   fileKey,
   projectId,
+  source = WORKTREE_SOURCE,
   retainedDiffView,
   onRetainDiffView,
   t,
@@ -145,11 +197,16 @@ function GitDiffBody({
   file: GitFileChange;
   fileKey: string;
   projectId: string;
+  source?: GitDiffSource;
   t: TranslationFn;
 } & GitDiffPreviewRetentionProps) {
   const [diffResult, setDiffResult] = useState<GitDiffResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Depend on the source's primitives (a fresh `{kind,sha}` object each render
+  // would refetch on every render); reconstruct it inside the effect.
+  const sourceKind = source.kind;
+  const sourceSha = source.kind === "commit" ? source.sha : "";
 
   useEffect(() => {
     let cancelled = false;
@@ -157,12 +214,11 @@ function GitDiffBody({
     setDiffResult(null);
     setError(null);
 
-    api
-      .getGitDiff(projectId, {
-        path: file.path,
-        staged: file.staged,
-        status: file.status,
-      })
+    const effectiveSource: GitDiffSource =
+      sourceKind === "commit"
+        ? { kind: "commit", sha: sourceSha }
+        : WORKTREE_SOURCE;
+    fetchDiffForSource(projectId, file, effectiveSource)
       .then((result) => {
         if (!cancelled) {
           setDiffResult(result);
@@ -179,7 +235,7 @@ function GitDiffBody({
     return () => {
       cancelled = true;
     };
-  }, [projectId, file.path, file.staged, file.status, t]);
+  }, [projectId, file, sourceKind, sourceSha, t]);
 
   return (
     <>
@@ -193,6 +249,7 @@ function GitDiffBody({
           file={file}
           fileKey={fileKey}
           projectId={projectId}
+          source={source}
           diffResult={diffResult}
           retainedDiffView={retainedDiffView}
           onRetainDiffView={onRetainDiffView}
@@ -207,6 +264,7 @@ function GitDiffContent({
   file,
   fileKey,
   projectId,
+  source = WORKTREE_SOURCE,
   diffResult,
   retainedDiffView,
   onRetainDiffView,
@@ -215,6 +273,7 @@ function GitDiffContent({
   file: GitFileChange;
   fileKey: string;
   projectId: string;
+  source?: GitDiffSource;
   diffResult: GitDiffResult;
   t: TranslationFn;
 } & GitDiffPreviewRetentionProps) {
@@ -231,6 +290,8 @@ function GitDiffContent({
   const contentRef = useRef<HTMLDivElement>(null);
   const [viewMode, setViewMode] = useDiffViewMode();
   const [paneWidth, setPaneWidth] = useState(0);
+  const sourceKind = source.kind;
+  const sourceSha = source.kind === "commit" ? source.sha : "";
 
   // Measure the diff pane (content width, not viewport) so `auto` can pick
   // side-by-side only when two readable code columns fit.
@@ -274,12 +335,16 @@ function GitDiffContent({
     setContextLoading(true);
     setContextError(null);
     try {
-      const result = await api.getGitDiff(projectId, {
-        path: file.path,
-        staged: file.staged,
-        status: file.status,
-        fullContext: true,
-      });
+      const effectiveSource: GitDiffSource =
+        sourceKind === "commit"
+          ? { kind: "commit", sha: sourceSha }
+          : WORKTREE_SOURCE;
+      const result = await fetchDiffForSource(
+        projectId,
+        file,
+        effectiveSource,
+        true,
+      );
       setFullContextResult(result);
       return true;
     } catch (err) {
@@ -294,9 +359,9 @@ function GitDiffContent({
     fullContextResult,
     contextLoading,
     projectId,
-    file.path,
-    file.staged,
-    file.status,
+    file,
+    sourceKind,
+    sourceSha,
     t,
   ]);
 
@@ -421,6 +486,7 @@ function GitDiffContent({
             projectId={projectId}
             filePath={file.path}
             structuredPatch={displayResult.structuredPatch}
+            revision={commentRevisionForSource(source)}
             containerRef={contentRef}
             t={t}
           />
