@@ -336,6 +336,19 @@ The polished viewer graehl wanted, kept strictly read-only:
 - **Relationship to forged-transcript-handoff.** A submitted review is a
   narrower, reviewer-authored cousin of that experiment — worth deciding whether
   they share the seeding path.
+- **Disposition round-trip (aspirational, no mechanism decided).** Submitting
+  a batch archives its comments — "handled" from the reviewer's side — but
+  the agent's actual outcomes never flow back. The seeded prompt already
+  instructs the agent to report a per-comment disposition
+  (done / won't-fix / question) in its reply; nothing captures that onto the
+  archived comments. The aspiration: each archived comment shows a one-line
+  disposition in the comments view, beside its batch/session link, so
+  "submitted" and "actually resolved" stop being conflated. Feasible shape:
+  the bundled review message additionally instructs the agent to emit an
+  explicitly parseable per-comment-id disposition line (or call a small
+  server endpoint/tool), and the server attaches what it sees to the archived
+  comment. Nothing is committed — the prompt-side instruction, the capture
+  channel, and the rendering are all open.
 
 ## Staged plan
 
