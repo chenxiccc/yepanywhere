@@ -1,6 +1,6 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
   type ReviewComment,
   type ReviewCommentAnchor,
@@ -9,6 +9,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ProjectScanner } from "../../src/projects/scanner.js";
 import { ReviewCommentService } from "../../src/review/ReviewCommentService.js";
+import type { ReviewSessionLauncher } from "../../src/review/reviewSessionLauncher.js";
 import { createReviewCommentsRoutes } from "../../src/routes/review-comments.js";
 import type { Project } from "../../src/supervisor/types.js";
 
@@ -52,21 +53,39 @@ function anchor(
 describe("review-comments routes", () => {
   let dir: string;
   let projectId: string;
+  let project: Project;
+  let service: ReviewCommentService;
   let routes: ReturnType<typeof createReviewCommentsRoutes>;
 
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), "yep-review-route-"));
-    const project = projectFor(dir);
+    project = projectFor(dir);
     projectId = project.id;
+    service = new ReviewCommentService();
     routes = createReviewCommentsRoutes({
       scanner: scannerFor(project),
-      service: new ReviewCommentService(),
+      service,
     });
   });
 
   afterEach(async () => {
     await rm(dir, { recursive: true, force: true });
   });
+
+  /** Routes sharing this test's service, plus a submit launcher stub. */
+  function routesWithLauncher(launcher: ReviewSessionLauncher) {
+    return createReviewCommentsRoutes({
+      scanner: scannerFor(project),
+      service,
+      launcher,
+    });
+  }
+
+  async function writeProjectFile(rel: string, text: string): Promise<void> {
+    const abs = join(dir, rel);
+    await mkdir(dirname(abs), { recursive: true });
+    await writeFile(abs, text, "utf-8");
+  }
 
   async function post(body: unknown) {
     return routes.request(`/${projectId}/review/comments`, {
@@ -168,5 +187,177 @@ describe("review-comments routes", () => {
     } finally {
       await rm(otherDir, { recursive: true, force: true });
     }
+  });
+
+  const startsLauncher: ReviewSessionLauncher = {
+    async startReviewSession() {
+      return { status: "started", sessionId: "new-sess" };
+    },
+    async deliverFollowUp() {
+      return true;
+    },
+  };
+
+  interface PreviewBody {
+    items: Array<{
+      comment: ReviewComment;
+      relocation: { status: "relocated" | "gone" };
+      defaultDiscard: boolean;
+    }>;
+    pendingCount: number;
+  }
+
+  it("preview relocates present lines and lists gone comments first", async () => {
+    await writeProjectFile("src/present.ts", "a\nb\nconst kept = 1;\nc\n");
+    // A comment on a line that still exists → relocated.
+    await service.addComment(dir, {
+      anchor: anchor({
+        path: "src/present.ts",
+        newLine: 3,
+        snippet: "const kept = 1;",
+        snippetAnchorOffset: 0,
+      }),
+      text: "present",
+    });
+    // A comment on a missing file → gone.
+    await service.addComment(dir, {
+      anchor: anchor({ path: "src/missing.ts", snippet: "nope" }),
+      text: "gone",
+    });
+
+    const res = await routes.request(`/${projectId}/review/preview`, {
+      method: "POST",
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as PreviewBody;
+    expect(body.pendingCount).toBe(2);
+    // Gone first, pre-selected discard.
+    expect(body.items[0]?.relocation.status).toBe("gone");
+    expect(body.items[0]?.defaultDiscard).toBe(true);
+    expect(body.items[1]?.relocation.status).toBe("relocated");
+    expect(body.items[1]?.defaultDiscard).toBe(false);
+  });
+
+  it("submit to a new session archives the batch against it", async () => {
+    const c = await service.addComment(dir, {
+      anchor: anchor({ path: "src/missing.ts" }),
+      text: "look here",
+    });
+    const res = await routesWithLauncher(startsLauncher).request(
+      `/${projectId}/review/submit`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ include: [c.id], target: "new" }),
+      },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      sessionId: string;
+      consumed: string[];
+    };
+    expect(body.sessionId).toBe("new-sess");
+    expect(body.consumed).toEqual([c.id]);
+
+    const archived = await service.getComment(dir, c.id);
+    expect(archived?.status).toBe("archived");
+    expect(archived?.targetSessionId).toBe("new-sess");
+    expect(await service.listPending(dir)).toHaveLength(0);
+  });
+
+  it("submit as a follow-up delivers to an existing session id", async () => {
+    const c = await service.addComment(dir, {
+      anchor: anchor({ path: "src/missing.ts" }),
+      text: "round 2",
+    });
+    const res = await routesWithLauncher(startsLauncher).request(
+      `/${projectId}/review/submit`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ include: [c.id], target: "existing-sess" }),
+      },
+    );
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { sessionId: string }).sessionId).toBe(
+      "existing-sess",
+    );
+  });
+
+  it("submit 409s when a follow-up target session is not live", async () => {
+    const notLive: ReviewSessionLauncher = {
+      startReviewSession: startsLauncher.startReviewSession,
+      async deliverFollowUp() {
+        return false;
+      },
+    };
+    const c = await service.addComment(dir, {
+      anchor: anchor({ path: "src/missing.ts" }),
+      text: "x",
+    });
+    const res = await routesWithLauncher(notLive).request(
+      `/${projectId}/review/submit`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ include: [c.id], target: "dead-sess" }),
+      },
+    );
+    expect(res.status).toBe(409);
+    // Not consumed — still pending for a retry.
+    expect(await service.listPending(dir)).toHaveLength(1);
+  });
+
+  it("submit leaves comments pending when the session is queued", async () => {
+    const queuedLauncher: ReviewSessionLauncher = {
+      async startReviewSession() {
+        return { status: "queued" };
+      },
+      async deliverFollowUp() {
+        return true;
+      },
+    };
+    const c = await service.addComment(dir, {
+      anchor: anchor({ path: "src/missing.ts" }),
+      text: "x",
+    });
+    const res = await routesWithLauncher(queuedLauncher).request(
+      `/${projectId}/review/submit`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ include: [c.id], target: "new" }),
+      },
+    );
+    expect(res.status).toBe(202);
+    expect(await service.listPending(dir)).toHaveLength(1);
+  });
+
+  it("submit validates include and target, and 501s without a launcher", async () => {
+    const c = await service.addComment(dir, {
+      anchor: anchor({ path: "src/missing.ts" }),
+      text: "x",
+    });
+    const withLauncher = routesWithLauncher(startsLauncher);
+    const submit = (payload: unknown) =>
+      withLauncher.request(`/${projectId}/review/submit`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+    expect((await submit({ include: [], target: "new" })).status).toBe(400);
+    expect((await submit({ include: [c.id] })).status).toBe(400);
+    expect((await submit({ include: ["ghost"], target: "new" })).status).toBe(
+      400,
+    );
+
+    // No launcher configured → 501.
+    const res = await routes.request(`/${projectId}/review/submit`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ include: [c.id], target: "new" }),
+    });
+    expect(res.status).toBe(501);
   });
 });

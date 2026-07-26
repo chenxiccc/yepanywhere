@@ -74,6 +74,7 @@ import { BangCommandService } from "./services/BangCommandService.js";
 import { createGitStatusRoutes } from "./routes/git-status.js";
 import { createGlobalSessionsRoutes } from "./routes/global-sessions.js";
 import { createReviewCommentsRoutes } from "./routes/review-comments.js";
+import { createSupervisorReviewLauncher } from "./review/reviewSessionLauncher.js";
 import { health } from "./routes/health.js";
 import { createInboxRoutes } from "./routes/inbox.js";
 import { createNetworkBindingRoutes } from "./routes/network-binding.js";
@@ -1394,7 +1395,13 @@ export function createApp(options: AppOptions): AppResult {
   app.route("/api/projects", createGitStatusRoutes({ scanner }));
 
   // Source-review draft comments (topic: source-review-to-session)
-  app.route("/api/projects", createReviewCommentsRoutes({ scanner }));
+  app.route(
+    "/api/projects",
+    createReviewCommentsRoutes({
+      scanner,
+      launcher: createSupervisorReviewLauncher(supervisor),
+    }),
+  );
 
   if (options.serverSettingsService && options.workstreamService) {
     app.route(
