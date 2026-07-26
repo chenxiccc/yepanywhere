@@ -23,6 +23,28 @@ export {
   type ClaudeAdditionalModelSelection,
 } from "./claude-additional-models.js";
 
+export {
+  DEFAULT_SNIPPET_CONTEXT_RADIUS,
+  MAX_REVIEW_BATCHES,
+  MAX_REVIEW_COMMENT_TEXT_LENGTH,
+  MAX_REVIEW_COMMENTS,
+  MAX_REVIEW_PATH_LENGTH,
+  MAX_REVIEW_SNIPPET_LENGTH,
+  REVIEW_COMMENTS_FILE_VERSION,
+  anchorFromPatch,
+  emptyReviewCommentsFile,
+  parseReviewCommentsFile,
+  patchLineCount,
+  type PatchLineLocation,
+  type ReviewBatch,
+  type ReviewComment,
+  type ReviewCommentAnchor,
+  type ReviewCommentRevision,
+  type ReviewCommentSide,
+  type ReviewCommentStatus,
+  type ReviewCommentsFile,
+} from "./review-comments.js";
+
 export type { HostIdentity } from "./host-identity.js";
 export {
   MAX_HOST_IDENTITY_ICON_CODE_UNITS,

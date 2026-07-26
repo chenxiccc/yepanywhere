@@ -330,6 +330,10 @@ async function highlightDiffWithSyntax(
 
   // Build diff HTML by mapping hunk lines to highlighted source lines
   const resultLines: string[] = [];
+  // Flat line index across all hunks' `lines` (hunk headers excluded), so the
+  // client can invert a click back to an anchor via `anchorFromPatch`
+  // (topic: source-review-to-session). Presentation-only; not read here.
+  let flatLineIndex = 0;
 
   for (const hunk of hunks) {
     // Add hunk header (hidden by CSS but needed for tests)
@@ -341,6 +345,9 @@ async function highlightDiffWithSyntax(
     let newIdx = hunk.newStart - 1;
 
     for (const line of hunk.lines) {
+      // Consume one flat index per hunk line up front, so a skipped
+      // unexpected prefix below still leaves later lines aligned.
+      const lineFlatIndex = flatLineIndex++;
       const prefix = line[0];
       let lineClass: string;
       let content: string;
@@ -375,7 +382,7 @@ async function highlightDiffWithSyntax(
       }
 
       resultLines.push(
-        `<span class="${lineClass}"><span class="diff-prefix">${escapeHtml(prefix)}</span>${content}</span>`,
+        `<span class="${lineClass}" data-diff-line="${lineFlatIndex}"><span class="diff-prefix">${escapeHtml(prefix)}</span>${content}</span>`,
       );
     }
   }
@@ -487,8 +494,15 @@ export async function computeEditAugment(
  * Add diff line type classes to shiki HTML output.
  * Detects line content and adds classes like "line-deleted", "line-inserted", "line-context", "line-hunk".
  * This enables CSS background colors for traditional diff styling.
+ *
+ * Also emits `data-diff-line="<flat index>"` on each real diff line (context /
+ * deleted / inserted), counting the position in the concatenated hunk lines so
+ * it matches `structuredPatch` and the primary highlighter above (topic:
+ * source-review-to-session). Hunk-header lines carry no attribute and do not
+ * advance the counter, since they are absent from `structuredPatch`.
  */
 function addDiffLineClasses(html: string): string {
+  let flatLineIndex = 0;
   // Match each <span class="line">...</span> and inspect content
   return html.replace(
     /<span class="line">([\s\S]*?)<\/span>/g,
@@ -504,17 +518,22 @@ function addDiffLineClasses(html: string): string {
       const firstChar = textContent[0];
 
       let lineClass = "line";
+      let isDiffLine = false;
       if (firstChar === "-") {
         lineClass = "line line-deleted";
+        isDiffLine = true;
       } else if (firstChar === "+") {
         lineClass = "line line-inserted";
+        isDiffLine = true;
       } else if (firstChar === "@") {
         lineClass = "line line-hunk";
       } else if (firstChar === " ") {
         lineClass = "line line-context";
+        isDiffLine = true;
       }
 
-      return `<span class="${lineClass}">${content}</span>`;
+      const attr = isDiffLine ? ` data-diff-line="${flatLineIndex++}"` : "";
+      return `<span class="${lineClass}"${attr}>${content}</span>`;
     },
   );
 }

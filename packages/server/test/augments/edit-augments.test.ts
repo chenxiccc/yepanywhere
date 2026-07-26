@@ -1,3 +1,4 @@
+import { anchorFromPatch, patchLineCount } from "@yep-anywhere/shared";
 import { describe, expect, it } from "vitest";
 import {
   type WordDiffSegment,
@@ -458,6 +459,84 @@ describe("addDiffLineClasses", () => {
     const result = addDiffLineClasses(html);
     // Empty line should just have "line" class
     expect(result).toContain('class="line"');
+  });
+
+  it("emits sequential data-diff-line on real lines, skipping hunk headers", () => {
+    const html =
+      '<pre class="shiki"><code><span class="line">@@ -1,2 +1,2 @@</span>\n<span class="line">-old</span>\n<span class="line">+new</span>\n<span class="line"> same</span>\n<span class="line">@@ -9,1 +9,1 @@</span>\n<span class="line">-x</span></code></pre>';
+    const result = addDiffLineClasses(html);
+    // Hunk headers carry no addressing.
+    expect(result).not.toMatch(/line-hunk" data-diff-line/);
+    // Real diff lines are numbered 0,1,2,3 in document order across hunks.
+    expect(result).toContain('class="line line-deleted" data-diff-line="0"');
+    expect(result).toContain('class="line line-inserted" data-diff-line="1"');
+    expect(result).toContain('class="line line-context" data-diff-line="2"');
+    expect(result).toContain('class="line line-deleted" data-diff-line="3"');
+  });
+
+  it("does not address unrecognized-prefix lines", () => {
+    const html =
+      '<pre class="shiki"><code><span class="line">regular text</span></code></pre>';
+    const result = addDiffLineClasses(html);
+    expect(result).not.toContain("data-diff-line");
+  });
+});
+
+// The flat `data-diff-line` index the server emits must invert, via the shared
+// `anchorFromPatch`, back to a location consistent with the rendered line —
+// this is the P1↔P2 contract of source-review-to-session.
+describe("data-diff-line addressing agrees with anchorFromPatch", () => {
+  function extractAddressing(
+    html: string,
+  ): Array<{ cls: string; index: number }> {
+    const re = /<span class="line (line-[\w-]+)" data-diff-line="(\d+)">/g;
+    const out: Array<{ cls: string; index: number }> = [];
+    let m: RegExpExecArray | null = re.exec(html);
+    while (m !== null) {
+      out.push({ cls: m[1], index: Number(m[2]) });
+      m = re.exec(html);
+    }
+    return out;
+  }
+
+  it("addresses every real diff line with a contiguous 0..N-1 index", async () => {
+    const augment = await computeEditAugment("tool-addr", {
+      file_path: "/test/file.ts",
+      old_string: "a\nb\nOLD\nc\nd",
+      new_string: "a\nb\nNEW1\nNEW2\nc\nd",
+    });
+    const addr = extractAddressing(augment.diffHtml);
+    expect(addr.length).toBe(patchLineCount(augment.structuredPatch));
+    expect(addr.map((a) => a.index)).toEqual(
+      Array.from({ length: addr.length }, (_, i) => i),
+    );
+  });
+
+  it("each rendered line's side matches the inverted anchor", async () => {
+    const augment = await computeEditAugment("tool-addr2", {
+      file_path: "/test/file.ts",
+      old_string: "keep1\nkeep2\nremoveme\nkeep3",
+      new_string: "keep1\nkeep2\naddme\nkeep3\nkeep4",
+    });
+    const addr = extractAddressing(augment.diffHtml);
+    expect(addr.length).toBeGreaterThan(0);
+    for (const { cls, index } of addr) {
+      const loc = anchorFromPatch(augment.structuredPatch, index);
+      expect(loc).not.toBeNull();
+      if (!loc) continue;
+      if (cls === "line-deleted") {
+        expect(loc.side).toBe("old");
+        expect(loc.newLine).toBeNull();
+        expect(loc.oldLine).not.toBeNull();
+      } else if (cls === "line-inserted") {
+        expect(loc.side).toBe("new");
+        expect(loc.oldLine).toBeNull();
+        expect(loc.newLine).not.toBeNull();
+      } else if (cls === "line-context") {
+        expect(loc.oldLine).not.toBeNull();
+        expect(loc.newLine).not.toBeNull();
+      }
+    }
   });
 });
 
