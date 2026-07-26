@@ -64,6 +64,7 @@ import {
 import {
   GitDiffModal,
   GitDiffPreview,
+  type GitDiffPreviewHandle,
   type GitDiffViewState,
 } from "./GitStatusDiffPreview";
 
@@ -404,6 +405,7 @@ function GitStatusContent({
   const [selectedFileKey, setSelectedFileKey] = useState<string | null>(
     () => retainedRouteState?.selectedFileKey ?? null,
   );
+  const diffPreviewRef = useRef<GitDiffPreviewHandle>(null);
   const [expandedUntrackedFolder, setExpandedUntrackedFolder] =
     useState<GitFileChange | null>(null);
   const [untrackedFolderCache, setUntrackedFolderCache] = useState<
@@ -542,10 +544,17 @@ function GitStatusContent({
       }
 
       const nextSelectedFileKey = gitFileKey(file);
+      if (
+        isWideScreen &&
+        nextSelectedFileKey === selectedFileKey &&
+        diffPreviewRef.current?.jumpToNextHunk()
+      ) {
+        return;
+      }
       setSelectedFileKey(nextSelectedFileKey);
       retainSelectedFileKey(nextSelectedFileKey);
     },
-    [retainSelectedFileKey],
+    [isWideScreen, retainSelectedFileKey, selectedFileKey],
   );
 
   useEffect(() => {
@@ -969,6 +978,7 @@ function GitStatusContent({
 
             {isWideScreen && !status.isClean && (
               <GitDiffPreview
+                ref={diffPreviewRef}
                 file={selectedFile}
                 fileKey={selectedPreviewFileKey}
                 projectId={projectId}

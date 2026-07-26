@@ -1154,6 +1154,8 @@
   "sourceOlderCommit": "Older ↓",
   "sourceBlameAtHead": "Blame this file as of HEAD",
   "sourceBlameAtHeadShort": "blame",
+  "sourceHunkPosition": "{current} of {total}",
+  "sourceNextHunkShortcut": "Next hunk (N)",
   "gitStatusRecentCommits": "Recent commits",
   "gitStatusNoRecentCommits": "No commits yet",
   "gitStatusUntitledCommit": "(no subject)",

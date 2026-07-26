@@ -40,6 +40,29 @@ import { CommitBrowser } from "./CommitBrowser";
 const SHA = "a".repeat(40);
 const t = (key: string) => key;
 
+function installScrollIntoViewMock() {
+  const original = Element.prototype.scrollIntoView;
+  const mock = vi.fn();
+  Object.defineProperty(Element.prototype, "scrollIntoView", {
+    configurable: true,
+    value: mock,
+  });
+  return {
+    fn: mock,
+    restore() {
+      if (original) {
+        Object.defineProperty(Element.prototype, "scrollIntoView", {
+          configurable: true,
+          value: original,
+        });
+      } else {
+        delete (Element.prototype as { scrollIntoView?: unknown })
+          .scrollIntoView;
+      }
+    },
+  };
+}
+
 function primeApis() {
   getGitCommits.mockResolvedValue({
     commits: [
@@ -325,7 +348,101 @@ describe("CommitBrowser", () => {
     await screen.findByText("src/x.ts");
     // The blame action now lives in the selected-file banner (diff header),
     // which renders once the file auto-selects.
+    await waitFor(() =>
+      expect(document.querySelector('[data-diff-line="0"]')).not.toBeNull(),
+    );
     fireEvent.click(await screen.findByText("sourceBlameAtHeadShort"));
     expect(onBlameFile).toHaveBeenCalledWith("src/x.ts");
+  });
+
+  it("re-clicks the selected file to advance to the next diff hunk", async () => {
+    primeApis();
+    getGitCommitDiff.mockResolvedValue({
+      diffHtml:
+        `<pre class="shiki"><code>` +
+        `<span class="line line-hunk">@@ -1 +1 @@</span>` +
+        `<span class="line line-inserted" data-diff-line="0">+first</span>` +
+        `<span class="line line-hunk">@@ -10 +10 @@</span>` +
+        `<span class="line line-inserted" data-diff-line="1">+second</span>` +
+        `</code></pre>`,
+      structuredPatch: [
+        { oldStart: 1, oldLines: 0, newStart: 1, newLines: 1, lines: ["+first"] },
+        {
+          oldStart: 10,
+          oldLines: 0,
+          newStart: 10,
+          newLines: 1,
+          lines: ["+second"],
+        },
+      ],
+    });
+    const scrollIntoView = installScrollIntoViewMock();
+
+    try {
+      render(
+        <MemoryRouter>
+          <CommitBrowser projectId="p1" isWideScreen={true} t={t} />
+        </MemoryRouter>,
+      );
+
+      await waitFor(() =>
+        expect(document.querySelectorAll(".line-hunk")).toHaveLength(2),
+      );
+      fireEvent.click(document.querySelector(".commit-file-item")!);
+
+      expect(scrollIntoView.fn).toHaveBeenCalledWith({
+        block: "start",
+        behavior: "smooth",
+      });
+      expect(scrollIntoView.fn.mock.instances[0]).toBe(
+        document.querySelectorAll(".line-hunk")[1],
+      );
+    } finally {
+      scrollIntoView.restore();
+    }
+  });
+
+  it("uses n for next hunk except while typing", async () => {
+    primeApis();
+    getGitCommitDiff.mockResolvedValue({
+      diffHtml:
+        `<pre class="shiki"><code>` +
+        `<span class="line line-hunk">@@ -1 +1 @@</span>` +
+        `<span class="line line-inserted" data-diff-line="0">+first</span>` +
+        `<span class="line line-hunk">@@ -10 +10 @@</span>` +
+        `<span class="line line-inserted" data-diff-line="1">+second</span>` +
+        `</code></pre>`,
+      structuredPatch: [
+        { oldStart: 1, oldLines: 0, newStart: 1, newLines: 1, lines: ["+first"] },
+        {
+          oldStart: 10,
+          oldLines: 0,
+          newStart: 10,
+          newLines: 1,
+          lines: ["+second"],
+        },
+      ],
+    });
+    const scrollIntoView = installScrollIntoViewMock();
+
+    try {
+      render(
+        <MemoryRouter>
+          <CommitBrowser projectId="p1" isWideScreen={true} t={t} />
+        </MemoryRouter>,
+      );
+
+      await waitFor(() =>
+        expect(document.querySelectorAll(".line-hunk")).toHaveLength(2),
+      );
+      const search = screen.getByPlaceholderText("sourceSearchCommits");
+      fireEvent.keyDown(search, { key: "n" });
+      expect(scrollIntoView.fn).not.toHaveBeenCalled();
+
+      fireEvent.keyDown(window, { key: "n" });
+      expect(scrollIntoView.fn).toHaveBeenCalledTimes(1);
+    } finally {
+      scrollIntoView.restore();
+    }
   });
 });

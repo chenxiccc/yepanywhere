@@ -2,13 +2,16 @@ import type {
   GitDiffPreviewSkipped,
   GitDiffResult,
   GitFileChange,
+  PatchHunk,
   ReviewCommentRevision,
 } from "@yep-anywhere/shared";
 import {
+  forwardRef,
   memo,
   type ReactNode,
   useCallback,
   useEffect,
+  useImperativeHandle,
   useLayoutEffect,
   useRef,
   useState,
@@ -36,6 +39,29 @@ export interface GitDiffViewState {
 interface GitDiffPreviewRetentionProps {
   retainedDiffView?: GitDiffViewState;
   onRetainDiffView?: (fileKey: string, view: GitDiffViewState) => void;
+}
+
+interface DiffPaneHeader {
+  title: string;
+  path: string;
+  actions?: ReactNode;
+}
+
+export interface GitDiffPreviewHandle {
+  /** Advance to the next rendered diff hunk, wrapping at the end. */
+  jumpToNextHunk: () => boolean;
+}
+
+interface GitDiffPreviewProps extends GitDiffPreviewRetentionProps {
+  file: GitFileChange | null;
+  fileKey: string | null;
+  projectId: string;
+  source?: GitDiffSource;
+  /** Actions for the selected file, shown in the pane header (the file banner). */
+  headerActions?: ReactNode;
+  retainedScrollTop?: number;
+  onRetainScrollTop?: (fileKey: string, scrollTop: number) => void;
+  t: TranslationFn;
 }
 
 /**
@@ -82,32 +108,41 @@ function commentRevisionForSource(
     : undefined;
 }
 
-export function GitDiffPreview({
-  file,
-  fileKey,
-  projectId,
-  source = WORKTREE_SOURCE,
-  headerActions,
-  retainedScrollTop,
-  retainedDiffView,
-  onRetainScrollTop,
-  onRetainDiffView,
-  t,
-}: {
-  file: GitFileChange | null;
-  fileKey: string | null;
-  projectId: string;
-  source?: GitDiffSource;
-  /** Actions for the selected file, shown in the pane header (the file banner). */
-  headerActions?: ReactNode;
-  retainedScrollTop?: number;
-  retainedDiffView?: GitDiffViewState;
-  onRetainScrollTop?: (fileKey: string, scrollTop: number) => void;
-  onRetainDiffView?: (fileKey: string, view: GitDiffViewState) => void;
-  t: TranslationFn;
-}) {
+export const GitDiffPreview = forwardRef<
+  GitDiffPreviewHandle,
+  GitDiffPreviewProps
+>(function GitDiffPreview(
+  {
+    file,
+    fileKey,
+    projectId,
+    source = WORKTREE_SOURCE,
+    headerActions,
+    retainedScrollTop,
+    retainedDiffView,
+    onRetainScrollTop,
+    onRetainDiffView,
+    t,
+  },
+  ref,
+) {
   const fileName = file ? file.path.split("/").pop() || file.path : null;
   const bodyRef = useRef<HTMLDivElement | null>(null);
+  const jumpToNextHunkRef = useRef<(() => boolean) | null>(null);
+  const handleJumpHandlerChange = useCallback(
+    (handler: (() => boolean) | null) => {
+      jumpToNextHunkRef.current = handler;
+    },
+    [],
+  );
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      jumpToNextHunk: () => jumpToNextHunkRef.current?.() ?? false,
+    }),
+    [],
+  );
 
   useLayoutEffect(() => {
     if (!fileKey || !bodyRef.current || typeof retainedScrollTop !== "number") {
@@ -127,14 +162,6 @@ export function GitDiffPreview({
 
   return (
     <section className="git-diff-preview-pane">
-      <div className="git-diff-preview-header">
-        <h3 className="git-diff-preview-title" title={file?.path ?? undefined}>
-          {fileName ?? t("gitStatusDiffPreview")}
-        </h3>
-        {headerActions && (
-          <div className="git-diff-preview-header-actions">{headerActions}</div>
-        )}
-      </div>
       <div className="git-diff-preview-body" ref={bodyRef}>
         {file && fileKey ? (
           <GitDiffBody
@@ -144,17 +171,30 @@ export function GitDiffPreview({
             source={source}
             retainedDiffView={retainedDiffView}
             onRetainDiffView={onRetainDiffView}
+            paneHeader={{
+              title: fileName ?? file.path,
+              path: file.path,
+              actions: headerActions,
+            }}
+            onJumpHandlerChange={handleJumpHandlerChange}
             t={t}
           />
         ) : (
-          <div className="git-diff-placeholder">
-            {t("gitStatusSelectFileForDiff")}
-          </div>
+          <>
+            <DiffPaneToolbar
+              title={t("gitStatusDiffPreview")}
+              path=""
+              actions={headerActions}
+            />
+            <div className="git-diff-placeholder">
+              {t("gitStatusSelectFileForDiff")}
+            </div>
+          </>
         )}
       </div>
     </section>
   );
-}
+});
 
 export function GitDiffModal({
   file,
@@ -178,10 +218,8 @@ export function GitDiffModal({
   t: TranslationFn;
   onClose: () => void;
 }) {
-  const fileName = file.path.split("/").pop() || file.path;
-
   return (
-    <Modal title={fileName} onClose={onClose} closeOnBackGesture>
+    <Modal title={file.path} onClose={onClose} closeOnBackGesture>
       {headerActions && (
         <div className="git-diff-preview-header-actions">{headerActions}</div>
       )}
@@ -205,12 +243,16 @@ export function GitDiffBody({
   source = WORKTREE_SOURCE,
   retainedDiffView,
   onRetainDiffView,
+  paneHeader,
+  onJumpHandlerChange,
   t,
 }: {
   file: GitFileChange;
   fileKey: string;
   projectId: string;
   source?: GitDiffSource;
+  paneHeader?: DiffPaneHeader;
+  onJumpHandlerChange?: (handler: (() => boolean) | null) => void;
   t: TranslationFn;
 } & GitDiffPreviewRetentionProps) {
   const [diffResult, setDiffResult] = useState<GitDiffResult | null>(null);
@@ -252,6 +294,13 @@ export function GitDiffBody({
 
   return (
     <>
+      {paneHeader && (loading || error) && (
+        <DiffPaneToolbar
+          title={paneHeader.title}
+          path={paneHeader.path}
+          actions={paneHeader.actions}
+        />
+      )}
       {loading && (
         <div className="git-diff-loading">{t("gitStatusLoadingDiff")}</div>
       )}
@@ -266,6 +315,8 @@ export function GitDiffBody({
           diffResult={diffResult}
           retainedDiffView={retainedDiffView}
           onRetainDiffView={onRetainDiffView}
+          paneHeader={paneHeader}
+          onJumpHandlerChange={onJumpHandlerChange}
           t={t}
         />
       )}
@@ -281,6 +332,8 @@ function GitDiffContent({
   diffResult,
   retainedDiffView,
   onRetainDiffView,
+  paneHeader,
+  onJumpHandlerChange,
   t,
 }: {
   file: GitFileChange;
@@ -288,6 +341,8 @@ function GitDiffContent({
   projectId: string;
   source?: GitDiffSource;
   diffResult: GitDiffResult;
+  paneHeader?: DiffPaneHeader;
+  onJumpHandlerChange?: (handler: (() => boolean) | null) => void;
   t: TranslationFn;
 } & GitDiffPreviewRetentionProps) {
   const [showFullContext, setShowFullContext] = useState(
@@ -427,85 +482,238 @@ function GitDiffContent({
     fullContextResult?.markdownHtml || diffResult.markdownHtml;
   const oversizedHtmlSkip = getOversizedDiffHtmlSkip(displayResult.diffHtml);
   const previewSkipped = displayResult.previewSkipped ?? oversizedHtmlSkip;
+  const [hunkPosition, setHunkPosition] = useState({ index: 0, count: 0 });
+  const hunkPositionRef = useRef(hunkPosition);
+
+  useEffect(() => {
+    hunkPositionRef.current = hunkPosition;
+  }, [hunkPosition]);
+
+  const renderedHunks = useCallback((): HTMLElement[] => {
+    if (showMarkdownPreview || previewSkipped || !contentRef.current) return [];
+    return Array.from(
+      contentRef.current.querySelectorAll<HTMLElement>(".line-hunk"),
+    );
+  }, [previewSkipped, showMarkdownPreview]);
+
+  const updateHunkPosition = useCallback(() => {
+    const content = contentRef.current;
+    const hunks = renderedHunks();
+    if (!content || hunks.length === 0) {
+      setHunkPosition((current) =>
+        current.count === 0 ? current : { index: 0, count: 0 },
+      );
+      return;
+    }
+    const scrollRoot =
+      content.closest<HTMLElement>(".git-diff-preview-body") ?? content;
+    const threshold = scrollRoot.getBoundingClientRect().top + 52;
+    let index = 0;
+    for (let i = 0; i < hunks.length; i++) {
+      const hunk = hunks[i];
+      if (hunk && hunk.getBoundingClientRect().top <= threshold) index = i;
+      else break;
+    }
+    setHunkPosition((current) =>
+      current.index === index && current.count === hunks.length
+        ? current
+        : { index, count: hunks.length },
+    );
+  }, [renderedHunks]);
+
+  const jumpToNextHunk = useCallback((): boolean => {
+    const hunks = renderedHunks();
+    if (hunks.length === 0) return false;
+    const current =
+      hunkPositionRef.current.count === hunks.length
+        ? hunkPositionRef.current.index
+        : 0;
+    const next = (current + 1) % hunks.length;
+    const nextHunk = hunks[next];
+    if (!nextHunk || typeof nextHunk.scrollIntoView !== "function") {
+      return false;
+    }
+    nextHunk.scrollIntoView({ block: "start", behavior: "smooth" });
+    setHunkPosition({ index: next, count: hunks.length });
+    return true;
+  }, [renderedHunks]);
+
+  useEffect(() => {
+    const content = contentRef.current;
+    if (!content) return;
+    const scrollRoot =
+      content.closest<HTMLElement>(".git-diff-preview-body") ?? content;
+    const frame = requestAnimationFrame(updateHunkPosition);
+    scrollRoot.addEventListener("scroll", updateHunkPosition, {
+      passive: true,
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      scrollRoot.removeEventListener("scroll", updateHunkPosition);
+    };
+  }, [updateHunkPosition]);
+
+  useEffect(() => {
+    onJumpHandlerChange?.(jumpToNextHunk);
+    return () => onJumpHandlerChange?.(null);
+  }, [jumpToNextHunk, onJumpHandlerChange]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.key.toLowerCase() !== "n" ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        isTypingTarget(event.target)
+      ) {
+        return;
+      }
+      if (jumpToNextHunk()) event.preventDefault();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [jumpToNextHunk]);
+
+  const hunkButton =
+    hunkPosition.count > 0 ? (
+      <button
+        type="button"
+        className="diff-hunk-indicator"
+        onClick={jumpToNextHunk}
+        title={t("sourceNextHunkShortcut")}
+      >
+        {t("sourceHunkPosition", {
+          current: hunkPosition.index + 1,
+          total: hunkPosition.count,
+        })}
+      </button>
+    ) : null;
+
+  const toolbarButtons = (
+    <>
+      {hunkButton}
+      {hasMarkdownPreview && (
+        <button
+          type="button"
+          className={`diff-context-toggle ${showMarkdownPreview ? "active" : ""}`}
+          onClick={handleToggleMarkdownPreview}
+        >
+          {showMarkdownPreview ? t("gitStatusDiff") : t("gitStatusPreview")}
+        </button>
+      )}
+      {!showMarkdownPreview && (
+        <button
+          type="button"
+          className="diff-context-toggle"
+          onClick={handleToggleContext}
+          disabled={contextLoading}
+        >
+          {contextLoading
+            ? t("gitStatusLoading")
+            : showFullContext
+              ? t("gitStatusDiffOnly")
+              : t("gitStatusFullContext")}
+        </button>
+      )}
+      {!showMarkdownPreview && (
+        <button
+          type="button"
+          className="diff-context-toggle"
+          onClick={cycleViewMode}
+          title={t("diffViewModeTitle")}
+        >
+          {t(diffViewModeLabelKey(viewMode))}
+        </button>
+      )}
+    </>
+  );
 
   return (
-    <div className="diff-modal-content source-diff-pane" ref={contentRef}>
-      <div className="diff-context-controls">
-        <span className="diff-context-path">{file.path}</span>
-        <div className="diff-context-buttons">
-          {hasMarkdownPreview && (
-            <button
-              type="button"
-              className={`diff-context-toggle ${showMarkdownPreview ? "active" : ""}`}
-              onClick={handleToggleMarkdownPreview}
-            >
-              {showMarkdownPreview ? t("gitStatusDiff") : t("gitStatusPreview")}
-            </button>
-          )}
-          {!showMarkdownPreview && (
-            <button
-              type="button"
-              className="diff-context-toggle"
-              onClick={handleToggleContext}
-              disabled={contextLoading}
-            >
-              {contextLoading
-                ? t("gitStatusLoading")
-                : showFullContext
-                  ? t("gitStatusDiffOnly")
-                  : t("gitStatusFullContext")}
-            </button>
-          )}
-          {!showMarkdownPreview && (
-            <button
-              type="button"
-              className="diff-context-toggle"
-              onClick={cycleViewMode}
-              title={t("diffViewModeTitle")}
-            >
-              {t(diffViewModeLabelKey(viewMode))}
-            </button>
-          )}
-        </div>
-        {contextError && (
-          <span className="diff-context-error">{contextError}</span>
-        )}
-      </div>
-
-      {showMarkdownPreview && markdownHtml ? (
-        <MarkdownPreview html={markdownHtml} />
-      ) : previewSkipped ? (
-        <GitDiffPreviewSkippedState
-          file={file}
-          previewSkipped={previewSkipped}
-          t={t}
-        />
+    <>
+      {paneHeader ? (
+        <DiffPaneToolbar
+          title={paneHeader.title}
+          path={paneHeader.path}
+          actions={paneHeader.actions}
+        >
+          {toolbarButtons}
+        </DiffPaneToolbar>
       ) : (
-        <>
-          {displayResult.diffHtml &&
-          resolveDiffViewMode(viewMode, paneWidth) === "side-by-side" ? (
-            <SideBySideDiff
-              diffHtml={displayResult.diffHtml}
-              structuredPatch={displayResult.structuredPatch}
-            />
-          ) : displayResult.diffHtml ? (
-            <HighlightedDiff diffHtml={displayResult.diffHtml} />
-          ) : (
-            <DiffLines
-              lines={displayResult.structuredPatch.flatMap((h) => h.lines)}
-            />
-          )}
-          <DiffCommentLayer
-            projectId={projectId}
-            filePath={file.path}
-            structuredPatch={displayResult.structuredPatch}
-            revision={commentRevisionForSource(source)}
-            containerRef={contentRef}
+        <div className="diff-context-controls source-diff-context-controls">
+          <span className="diff-context-path">{file.path}</span>
+          <div className="diff-context-buttons">{toolbarButtons}</div>
+        </div>
+      )}
+      {contextError && <div className="diff-context-error">{contextError}</div>}
+      <div className="diff-modal-content source-diff-pane" ref={contentRef}>
+        {showMarkdownPreview && markdownHtml ? (
+          <MarkdownPreview html={markdownHtml} />
+        ) : previewSkipped ? (
+          <GitDiffPreviewSkippedState
+            file={file}
+            previewSkipped={previewSkipped}
             t={t}
           />
-        </>
+        ) : (
+          <>
+            {displayResult.diffHtml &&
+            resolveDiffViewMode(viewMode, paneWidth) === "side-by-side" ? (
+              <SideBySideDiff
+                diffHtml={displayResult.diffHtml}
+                structuredPatch={displayResult.structuredPatch}
+              />
+            ) : displayResult.diffHtml ? (
+              <HighlightedDiff diffHtml={displayResult.diffHtml} />
+            ) : (
+              <DiffLines hunks={displayResult.structuredPatch} />
+            )}
+            <DiffCommentLayer
+              projectId={projectId}
+              filePath={file.path}
+              structuredPatch={displayResult.structuredPatch}
+              revision={commentRevisionForSource(source)}
+              containerRef={contentRef}
+              t={t}
+            />
+          </>
+        )}
+      </div>
+    </>
+  );
+}
+
+function DiffPaneToolbar({
+  title,
+  path,
+  actions,
+  children,
+}: DiffPaneHeader & { children?: ReactNode }) {
+  return (
+    <div className="git-diff-pane-toolbar">
+      <h3 className="git-diff-preview-title" title={path || title}>
+        {title}
+      </h3>
+      {path && path !== title && (
+        <span className="git-diff-toolbar-path" title={path}>
+          {path}
+        </span>
+      )}
+      {children && <div className="diff-context-buttons">{children}</div>}
+      {actions && (
+        <div className="git-diff-preview-header-actions">{actions}</div>
       )}
     </div>
+  );
+}
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return (
+    target.isContentEditable ||
+    target.tagName === "INPUT" ||
+    target.tagName === "TEXTAREA" ||
+    target.tagName === "SELECT"
   );
 }
 
@@ -624,29 +832,39 @@ const HighlightedDiff = memo(function HighlightedDiff({
 });
 
 /** Fallback plain-text diff renderer */
-const DiffLines = memo(function DiffLines({ lines }: { lines: string[] }) {
+const DiffLines = memo(function DiffLines({ hunks }: { hunks: PatchHunk[] }) {
+  const rows: ReactNode[] = [];
+  let flatIndex = 0;
+  for (const [hunkIndex, hunk] of hunks.entries()) {
+    rows.push(
+      <div
+        key={`hunk-${hunkIndex}`}
+        className="line line-hunk"
+      >{`@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`}</div>,
+    );
+    for (const line of hunk.lines) {
+      const prefix = line[0];
+      const className =
+        prefix === "-"
+          ? "diff-removed"
+          : prefix === "+"
+            ? "diff-added"
+            : "diff-context";
+      const rowIndex = flatIndex++;
+      rows.push(
+        <div
+          key={`${rowIndex}-${line.slice(0, 50)}`}
+          className={className}
+          data-diff-line={rowIndex}
+        >
+          {line}
+        </div>,
+      );
+    }
+  }
   return (
     <div className="diff-hunk">
-      <pre className="diff-content">
-        {lines.map((line, i) => {
-          const prefix = line[0];
-          const className =
-            prefix === "-"
-              ? "diff-removed"
-              : prefix === "+"
-                ? "diff-added"
-                : "diff-context";
-          return (
-            <div
-              key={`${i}-${line.slice(0, 50)}`}
-              className={className}
-              data-diff-line={i}
-            >
-              {line}
-            </div>
-          );
-        })}
-      </pre>
+      <pre className="diff-content">{rows}</pre>
     </div>
   );
 });

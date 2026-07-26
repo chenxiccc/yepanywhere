@@ -5953,6 +5953,83 @@ pre.code-highlighter-plain,
   font-size: var(--fixed-font-size-sm);
 }
 
+/* The source browser's pane toolbar owns file identity, hunk navigation,
+   view controls, and file actions in one row. It stays inside the scroll
+   frame so it can remain sticky without spending a second content row. */
+.git-diff-pane-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  padding: 0 var(--space-3, 12px);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.git-diff-pane-toolbar .git-diff-preview-title {
+  flex: 0 1 auto;
+  max-width: min(34%, 22rem);
+}
+
+.git-diff-toolbar-path {
+  flex: 1;
+  min-width: 5rem;
+  overflow: hidden;
+  color: var(--text-secondary, #8b949e);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.76rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-diff-pane-toolbar .diff-context-buttons {
+  flex-shrink: 0;
+}
+
+.git-diff-pane-toolbar .diff-context-toggle {
+  padding: 3px 8px;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.git-diff-pane-toolbar .git-diff-preview-header-actions {
+  margin-left: 0;
+}
+
+.git-diff-preview-body > .source-diff-pane {
+  overflow: visible;
+}
+
+.source-diff-pane .line-hunk {
+  scroll-margin-top: 52px;
+}
+
+.diff-hunk-indicator {
+  padding: 3px 8px;
+  color: var(--text-secondary, #8b949e);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.75rem;
+  white-space: nowrap;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.diff-hunk-indicator:hover {
+  color: var(--text-primary, #e6edf3);
+  background: var(--bg-hover);
+}
+
+.git-diff-preview-body > .diff-context-error {
+  padding: 5px var(--space-3, 12px);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
 /* Persistent repo/branch status header. */
 .repo-status-bar {
   position: sticky;
@@ -6630,4 +6707,44 @@ pre.code-highlighter-plain,
   padding: 8px 10px;
   font-size: 0.75rem;
   color: var(--text-muted);
+}
+
+@media (max-width: 600px) {
+  .source-diff-context-controls {
+    justify-content: flex-end;
+    margin-bottom: 0;
+  }
+
+  .source-diff-context-controls .diff-context-path {
+    display: none;
+  }
+
+  /* Touch has no hover title recovery. Let long source identities use a
+     second line instead of clipping them at an arbitrary character. */
+  .commit-subject,
+  .commit-file-item .git-file-path,
+  .blame-file-item .git-file-path {
+    display: -webkit-box;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    white-space: normal;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .commit-list-item,
+  .commit-file-item,
+  .blame-file-item {
+    min-height: 44px;
+    padding-block: 7px;
+  }
+
+  .commit-list-row:not(:last-child),
+  .commit-file-row:not(:last-child) {
+    border-bottom: 1px solid var(--border-subtle, #21262d);
+  }
+
+  .source-search-input {
+    min-height: 40px;
+  }
 }

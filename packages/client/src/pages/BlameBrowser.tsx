@@ -79,6 +79,16 @@ export function BlameBrowser({
     return list;
   }, [files, query]);
 
+  // A wide file browser is a master-detail view: keep the detail pane useful
+  // by selecting the first visible file when there is no still-visible
+  // selection. Mobile deliberately stays on the list until the user taps.
+  useEffect(() => {
+    if (!isWideScreen || loading || error || filtered.length === 0) return;
+    setSelectedPath((current) =>
+      current && filtered.includes(current) ? current : (filtered[0] ?? null),
+    );
+  }, [error, filtered, isWideScreen, loading]);
+
   return (
     <div className="blame-browser">
       <div className="blame-browser-columns">

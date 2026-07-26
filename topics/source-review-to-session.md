@@ -408,7 +408,7 @@ Reuse a shared menu primitive; extract one if none fits. `SessionMenu.tsx` is
 session-specific — mirror its portal/positioning/dismiss mechanics, do not
 couple to it. — Pending.
 
-### Hunk navigation + single diff toolbar row — pending
+### Hunk navigation + single diff toolbar row
 
 - **Re-click advances hunks.** Clicking the already-selected file entry jumps
   the diff to the next hunk (wrapping at the end), in both "diff only" and
@@ -422,7 +422,23 @@ couple to it. — Pending.
   fallback when it does not), so the diff content keeps that row.
 - **`n` key** jumps to the next hunk when focus is not in a text input.
 
-— Pending.
+— Done (2026-07-26). The wide diff pane uses the single-row form; a narrow
+mobile modal keeps the compact controls-row fallback beneath its path title.
+
+### Master-detail use and touch-readable row identities
+
+- **Wide Files opens useful detail.** Once the tracked-file list loads, Files
+  selects the first visible file whenever there is no still-visible selection.
+  Changing the filter therefore replaces a filtered-out selection instead of
+  leaving a narrow list beside an unused detail canvas. Mobile stays
+  deliberately list-first.
+- **Touch rows preserve identity in layout.** At phone width, commit subjects
+  and file paths may use a second line before clipping, with practical
+  touch-target height and row separation. Desktop still carries title
+  tooltips for incidental truncation, but touch does not depend on hover as
+  its only recovery path.
+
+— Done (2026-07-26).
 
 ### Commit message display
 

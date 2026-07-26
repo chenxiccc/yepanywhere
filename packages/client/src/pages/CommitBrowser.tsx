@@ -3,13 +3,17 @@ import type {
   GitFileChange,
   GitRecentCommit,
 } from "@yep-anywhere/shared";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 import { CopyButton } from "../components/CopyButton";
 import { Modal } from "../components/ui/Modal";
 import { useCommitReadWatermark } from "../hooks/useCommitReadWatermark";
 import { useProjectReviewComments } from "../hooks/useProjectReviewComments";
-import { GitDiffModal, GitDiffPreview } from "./GitStatusDiffPreview";
+import {
+  GitDiffModal,
+  GitDiffPreview,
+  type GitDiffPreviewHandle,
+} from "./GitStatusDiffPreview";
 
 type TranslationFn = (
   key: string,
@@ -56,6 +60,7 @@ export function CommitBrowser({
   );
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const diffPreviewRef = useRef<GitDiffPreviewHandle>(null);
   const displayedCommits = searchResults ?? commits;
 
   const { pending } = useProjectReviewComments(projectId);
@@ -444,6 +449,13 @@ export function CommitBrowser({
                             selectedPath === file.path ? "selected" : ""
                           }`}
                           onClick={() => {
+                            if (
+                              selectedPath === file.path &&
+                              !messageView &&
+                              diffPreviewRef.current?.jumpToNextHunk()
+                            ) {
+                              return;
+                            }
                             setSelectedPath(file.path);
                             setMessageView(false);
                           }}
@@ -503,6 +515,7 @@ export function CommitBrowser({
             <CommitMessageView detail={detail} t={t} />
           ) : selectedFile && source && diffFileKey ? (
             <GitDiffPreview
+              ref={diffPreviewRef}
               file={selectedFile}
               fileKey={diffFileKey}
               projectId={projectId}
