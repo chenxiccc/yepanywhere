@@ -6178,11 +6178,14 @@ pre.code-highlighter-plain,
 }
 
 @media (min-width: 1100px) {
+  /* Each column caps at the Appearance > Max Content Width preference so no
+     single column (notably the diff) sprawls past a readable measure on an
+     ultra-wide viewport; leftover width stays as gutter, not stretched tracks. */
   .commit-browser-columns {
-    grid-template-columns: minmax(240px, 300px) minmax(220px, 340px) minmax(
-        0,
-        1fr
-      );
+    grid-template-columns:
+      minmax(240px, 300px) minmax(220px, 340px)
+      minmax(0, var(--content-max-width));
+    justify-content: start;
     align-items: start;
   }
 
@@ -6381,8 +6384,11 @@ pre.code-highlighter-plain,
 }
 
 @media (min-width: 1100px) {
+  /* Blame view column caps at the content-width preference (see commit browser
+     note); the file column is already narrower than any sane cap. */
   .blame-browser-columns {
-    grid-template-columns: minmax(240px, 340px) minmax(0, 1fr);
+    grid-template-columns: minmax(240px, 340px) minmax(0, var(--content-max-width));
+    justify-content: start;
     align-items: start;
   }
 

@@ -233,7 +233,9 @@ export function CommitBrowser({
                       }`}
                       onClick={() => setSelectedSha(commit.hash)}
                     >
-                      <span className="commit-subject">{commit.subject}</span>
+                      <span className="commit-subject" title={commit.subject}>
+                        {commit.subject}
+                      </span>
                       <span className="commit-meta">
                         <span className="commit-hash">{commit.shortHash}</span>
                         <span className="commit-author">
@@ -310,7 +312,14 @@ export function CommitBrowser({
                         >
                           {file.status}
                         </span>
-                        <span className="git-file-path">
+                        <span
+                          className="git-file-path"
+                          title={
+                            file.origPath
+                              ? `${file.origPath} → ${file.path}`
+                              : file.path
+                          }
+                        >
                           {file.origPath
                             ? `${file.origPath} → ${file.path}`
                             : file.path}

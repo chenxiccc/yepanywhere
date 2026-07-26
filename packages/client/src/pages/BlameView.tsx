@@ -159,7 +159,7 @@ export function BlameView({
               title={
                 line.uncommitted
                   ? t("sourceBlameNotCommitted")
-                  : `${line.shortSha} · ${line.author} · ${line.summary}`
+                  : blameGutterTitle(line)
               }
             >
               {line.uncommitted ? "·······" : line.shortSha}
@@ -208,6 +208,27 @@ export function BlameView({
       )}
     </section>
   );
+}
+
+/** Blame gutter hover text: sha · author · date · summary (date when known). */
+function blameGutterTitle(line: GitBlameLine): string {
+  const date = formatBlameDate(line.authorTime);
+  const parts = [line.shortSha, line.author, date, line.summary].filter(
+    Boolean,
+  );
+  return parts.join(" · ");
+}
+
+/** Author time as a short local date, or "" when unknown/unparseable. */
+function formatBlameDate(iso: string): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 /** Clicked line ± radius of blame content, newline-joined, with the offset. */

@@ -96,7 +96,9 @@ export function BlameBrowser({
                     }`}
                     onClick={() => setSelectedPath(file)}
                   >
-                    <span className="git-file-path">{file}</span>
+                    <span className="git-file-path" title={file}>
+                      {file}
+                    </span>
                   </button>
                   <CopyButton
                     value={file}
