@@ -459,10 +459,83 @@ couple to it. — Pending.
 
 — Pending.
 
+### Fast client-side search index — proposal
+
+Typing in either source-browser search must update at interactive speed. The
+current two paths fail in different ways:
+
+- **Files loses coverage.** `/git/files` runs `git ls-files` and returns at
+  most 2,000 paths; `BlameBrowser` then filters that client-side corpus and
+  renders at most 500 matches. A path outside the first server slice cannot be
+  found at all. Repositories in scope will have at most 10,000 committed files,
+  so the client can own the complete filename-search corpus.
+- **Commit delta search repeats expensive work.** After a 300 ms debounce,
+  every changed query starts a new server-side `git log -G` history scan. Live
+  use has shown these scans taking more than a second, so typing feels like a
+  sequence of cold searches rather than incremental search.
+
+Proposed contract:
+
+1. **One complete client corpus, no per-keystroke git process.** Files mode
+   fetches all tracked paths once and builds normalized search entries in the
+   browser. Commit-delta search builds its client corpus/index on demand. Once
+   a corpus is available, changing the query performs no network request and
+   starts no git command.
+2. **Incremental query evaluation.** Extending a query narrows the previous
+   candidate set; edits and backspaces query an in-memory substring index
+   (for example, a small trigram-to-entry map). Lowercasing/tokenization and
+   match-context extraction happen when records enter the index, not again for
+   every query.
+3. **Persistent on the same device, incremental across repo updates.** Store
+   the on-demand index in IndexedDB, versioned by project/source identity,
+   index format, and the indexed git horizon. New commits append until the
+   previous indexed ancestor; a rewritten history that no longer reaches that
+   ancestor invalidates the affected commit segment. A changed tracked-file
+   corpus replaces the small file index.
+4. **Coverage and rendering are separate.** Windowing or paging may keep the
+   DOM small, but every match in the indexed corpus remains addressable.
+   A 500-row render window must never become a 500-file search ceiling. While
+   a commit index is still building, the UI states the indexed horizon and
+   progress rather than silently presenting partial results as complete.
+5. **Client ownership is the requested boundary.** A future server-side cache
+   could accelerate first use or share an index across devices, but that is
+   explicitly not part of this proposal. The server may stream source records
+   needed to build the index; it does not become the typing-time search engine
+   or the persistent index owner.
+
+— Proposed, not implemented.
+
 ## Open questions
 
 - **Provenance rendering.** Reuse the compose-time-context-anchors framing so
   each quote's SHA/age is legible to both the reader and the agent.
+- **Dirty (uncommitted) comments may not be sufficiently contextualized.**
+  A committed `sha:path:line` can be reopened exactly; a dirty-file anchor
+  cannot. The saved timestamp, line number, and small snippet describe what the
+  reviewer saw, but the file can drift between comment, submit, and the agent's
+  eventual read. Submit-time relocation does not by itself preserve that
+  original state.
+
+  The implementation is currently weaker than this topic's earlier "fuzzy
+  context-snippet match" wording: it exact-matches only the clicked line
+  (ignoring trailing whitespace), chooses the occurrence nearest the recorded
+  line, and refreshes the snippet from there. It neither scores the surrounding
+  context nor reports an ambiguous repeated-line match. The composed turn then
+  shows only the refreshed current snippet and a generic read-current-state
+  instruction; it does not say that an uncommitted anchor moved, carry an
+  identity for the dirty file version, or preserve original-versus-current
+  context.
+
+  Treat this as a stale-read discipline, analogous to the exact-preimage,
+  context-anchor, and reject-on-staleness choices in
+  [provider-read-edit-disciplines](provider-read-edit-disciplines.md). Before
+  calling the concern closed, decide which stronger contract applies:
+  preserve a content fingerprint plus the original context snapshot at comment
+  time; relocate by scoring the full context and surface ambiguous/no-match
+  outcomes instead of silently choosing nearest; and tell the submitted
+  session when the anchor moved, with original and current context when they
+  differ. A project-local snapshot/blob keyed by content hash is the strongest
+  recoverable option, but is not yet chosen.
 - **Review-file/draft-file split.** Whether the seeded prompt references
   `.yep/review-comments.json` directly or a per-submit snapshot beside it,
   and how a follow-up turn's update composes with the archive. How archived
