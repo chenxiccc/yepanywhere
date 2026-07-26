@@ -6,6 +6,7 @@ import type {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import { CopyButton } from "../components/CopyButton";
+import { Modal } from "../components/ui/Modal";
 import { useCommitReadWatermark } from "../hooks/useCommitReadWatermark";
 import { useProjectReviewComments } from "../hooks/useProjectReviewComments";
 import { GitDiffModal, GitDiffPreview } from "./GitStatusDiffPreview";
@@ -46,6 +47,9 @@ export function CommitBrowser({
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  // When true, the detail pane shows the commit's original-format message
+  // (verbatim, with its exact time) instead of a file diff.
+  const [messageView, setMessageView] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<GitRecentCommit[] | null>(
     null,
@@ -181,6 +185,7 @@ export function CommitBrowser({
     setDetailError(null);
     setDetail(null);
     setSelectedPath(null);
+    setMessageView(false);
     api
       .getGitCommit(projectId, selectedSha)
       .then((d) => {
@@ -346,9 +351,41 @@ export function CommitBrowser({
         {selectedSha && (
           <div className="commit-files-column">
             <div className="source-detail-banner">
+              <span className="source-detail-jump">
+                <button
+                  type="button"
+                  className="commit-jump-btn"
+                  title={t("sourceNewerCommit")}
+                  aria-label={t("sourceNewerCommit")}
+                  disabled={!newerCommit}
+                  onClick={() =>
+                    newerCommit && setSelectedSha(newerCommit.hash)
+                  }
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  className="commit-jump-btn"
+                  title={t("sourceOlderCommit")}
+                  aria-label={t("sourceOlderCommit")}
+                  disabled={!olderCommit}
+                  onClick={() =>
+                    olderCommit && setSelectedSha(olderCommit.hash)
+                  }
+                >
+                  ↓
+                </button>
+              </span>
               <span
                 className="source-detail-title"
-                title={selectedSha ?? undefined}
+                title={
+                  selectedCommit
+                    ? `${selectedCommit.hash}\n${formatCommitDateTime(
+                        selectedCommit.authorDate,
+                      )}`
+                    : (selectedSha ?? undefined)
+                }
               >
                 {detail?.shortHash ?? selectedCommit?.shortHash ?? "…"}
               </span>
@@ -379,28 +416,6 @@ export function CommitBrowser({
               >
                 {t("sourceMarkUnreadSinceHere")}
               </button>
-              <span className="source-detail-jump">
-                <button
-                  type="button"
-                  className="commit-jump-btn"
-                  disabled={!newerCommit}
-                  onClick={() =>
-                    newerCommit && setSelectedSha(newerCommit.hash)
-                  }
-                >
-                  {t("sourceNewerCommit")}
-                </button>
-                <button
-                  type="button"
-                  className="commit-jump-btn"
-                  disabled={!olderCommit}
-                  onClick={() =>
-                    olderCommit && setSelectedSha(olderCommit.hash)
-                  }
-                >
-                  {t("sourceOlderCommit")}
-                </button>
-              </span>
             </div>
             {loadingDetail ? (
               <div className="git-diff-loading">{t("gitStatusLoading")}</div>
@@ -408,7 +423,16 @@ export function CommitBrowser({
               <div className="git-diff-error">{detailError}</div>
             ) : detail ? (
               <>
-                {detail.body && <p className="commit-body">{detail.body}</p>}
+                {detail.body && (
+                  <button
+                    type="button"
+                    className={`commit-body ${messageView ? "selected" : ""}`}
+                    title={t("sourceShowFullMessage")}
+                    onClick={() => setMessageView(true)}
+                  >
+                    {detail.body}
+                  </button>
+                )}
                 <ul className="commit-file-list">
                   {detail.files.map((file) => {
                     const count = fileCommentCount.get(file.path) ?? 0;
@@ -419,7 +443,10 @@ export function CommitBrowser({
                           className={`commit-file-item ${
                             selectedPath === file.path ? "selected" : ""
                           }`}
-                          onClick={() => setSelectedPath(file.path)}
+                          onClick={() => {
+                            setSelectedPath(file.path);
+                            setMessageView(false);
+                          }}
                         >
                           <span
                             className={`git-status-badge git-status-${file.status.toLowerCase()}`}
@@ -471,29 +498,46 @@ export function CommitBrowser({
           </div>
         )}
 
-        {isWideScreen && selectedFile && source && diffFileKey && (
-          <GitDiffPreview
+        {isWideScreen &&
+          (messageView && detail ? (
+            <CommitMessageView detail={detail} t={t} />
+          ) : selectedFile && source && diffFileKey ? (
+            <GitDiffPreview
+              file={selectedFile}
+              fileKey={diffFileKey}
+              projectId={projectId}
+              source={source}
+              headerActions={fileActions}
+              t={t}
+            />
+          ) : null)}
+      </div>
+
+      {!isWideScreen && messageView && detail && (
+        <Modal
+          title={detail.shortHash}
+          onClose={() => setMessageView(false)}
+          closeOnBackGesture
+        >
+          <CommitMessageView detail={detail} t={t} />
+        </Modal>
+      )}
+
+      {!isWideScreen &&
+        !messageView &&
+        selectedFile &&
+        source &&
+        diffFileKey && (
+          <GitDiffModal
             file={selectedFile}
             fileKey={diffFileKey}
             projectId={projectId}
             source={source}
             headerActions={fileActions}
             t={t}
+            onClose={() => setSelectedPath(null)}
           />
         )}
-      </div>
-
-      {!isWideScreen && selectedFile && source && diffFileKey && (
-        <GitDiffModal
-          file={selectedFile}
-          fileKey={diffFileKey}
-          projectId={projectId}
-          source={source}
-          headerActions={fileActions}
-          t={t}
-          onClose={() => setSelectedPath(null)}
-        />
-      )}
     </div>
   );
 }
@@ -506,4 +550,55 @@ function formatCommitDate(iso: string): string {
     day: "numeric",
     year: "numeric",
   });
+}
+
+/** Full date + time for the message view and the hash tooltip. */
+function formatCommitDateTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+/**
+ * The selected commit's original-format message shown in the detail pane
+ * (opened by clicking the commit body): the verbatim subject + body with its
+ * hard line breaks preserved, plus the exact author date/time. Reuses the diff
+ * pane's chrome so it slots into the same column.
+ */
+function CommitMessageView({
+  detail,
+  t,
+}: {
+  detail: GitCommitDetail;
+  t: TranslationFn;
+}) {
+  const full = detail.body
+    ? `${detail.subject}\n\n${detail.body}`
+    : detail.subject;
+  return (
+    <section className="git-diff-preview-pane">
+      <div className="git-diff-preview-header">
+        <h3 className="git-diff-preview-title" title={detail.hash}>
+          {detail.shortHash}
+        </h3>
+        <span className="commit-message-time">
+          {formatCommitDateTime(detail.authorDate)}
+        </span>
+      </div>
+      <div className="git-diff-preview-body">
+        <div className="commit-message-view">
+          <div className="commit-message-view-meta">
+            {detail.authorName} · {t("sourceCommitMessage")}
+          </div>
+          <pre className="commit-message-full">{full}</pre>
+        </div>
+      </div>
+    </section>
+  );
 }

@@ -1148,6 +1148,8 @@
   "sourceMarkReadToHere": "Mark read to here",
   "sourceMarkUnreadSinceHere": "Mark unread since here",
   "sourceCommentCount": "{count} pending review comment(s)",
+  "sourceShowFullMessage": "Show the full original commit message",
+  "sourceCommitMessage": "commit message",
   "sourceNewerCommit": "↑ Newer",
   "sourceOlderCommit": "Older ↓",
   "sourceBlameAtHead": "Blame this file as of HEAD",

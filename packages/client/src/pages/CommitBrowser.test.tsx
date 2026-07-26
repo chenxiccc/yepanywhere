@@ -226,7 +226,8 @@ describe("CommitBrowser", () => {
     await waitFor(() => expect(getGitCommit).toHaveBeenCalledWith("p1", SHA));
     getGitCommit.mockClear();
 
-    fireEvent.click(await screen.findByText("sourceOlderCommit"));
+    // Newer/older jump is now a glyph button; the phrase is its title.
+    fireEvent.click(await screen.findByTitle("sourceOlderCommit"));
     await waitFor(() => expect(getGitCommit).toHaveBeenCalledWith("p1", OLDER));
   });
 
@@ -271,6 +272,40 @@ describe("CommitBrowser", () => {
     await screen.findByText("first commit");
     const badges = await screen.findAllByTitle("sourceCommentCount");
     expect(badges.some((badge) => badge.textContent === "1")).toBe(true);
+  });
+
+  it("shows the verbatim commit message when the body is clicked", async () => {
+    primeApis();
+    getGitCommit.mockResolvedValue({
+      hash: SHA,
+      shortHash: "aaaaaaa",
+      subject: "first commit",
+      authorName: "Dev",
+      authorDate: "2026-07-26T00:00:00Z",
+      body: "line one\nline two",
+      files: [
+        {
+          path: "src/x.ts",
+          status: "M",
+          staged: false,
+          linesAdded: 1,
+          linesDeleted: 0,
+        },
+      ],
+    });
+    render(
+      <MemoryRouter>
+        <CommitBrowser projectId="p1" isWideScreen={true} t={t} />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByTitle("sourceShowFullMessage"));
+    await waitFor(() =>
+      expect(document.querySelector(".commit-message-full")).not.toBeNull(),
+    );
+    expect(
+      document.querySelector(".commit-message-full")?.textContent,
+    ).toContain("line two");
   });
 
   it("bridges a commit file to its blame view via onBlameFile", async () => {

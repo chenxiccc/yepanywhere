@@ -6249,10 +6249,11 @@ pre.code-highlighter-plain,
   cursor: default;
 }
 
+/* Newer/older jump: glyph-only, adjacent, at the banner's left edge (closest
+   to the commit list). Full phrasing is the button title. */
 .source-detail-jump {
   display: flex;
-  gap: 6px;
-  margin-left: auto;
+  gap: 4px;
 }
 
 /* Count of pending review comments anchored to a commit / file row. */
@@ -6400,14 +6401,58 @@ pre.code-highlighter-plain,
   color: var(--text-secondary, #8b949e);
 }
 
+/* Compact commit body — click to open the verbatim message view (with exact
+   time) in the detail pane. NOTE: still shows the raw hard-wrapped body; the
+   soft-reflow contract (topic § pending) is not yet implemented. */
 .commit-body {
+  display: block;
+  width: 100%;
   margin: 0 0 var(--space-2, 8px);
   padding: 8px;
+  font-family: inherit;
   font-size: 0.8rem;
+  text-align: left;
   white-space: pre-wrap;
   color: var(--text-secondary, #8b949e);
   background: var(--bg-secondary);
+  border: 1px solid transparent;
   border-radius: 6px;
+  cursor: pointer;
+}
+
+.commit-body:hover {
+  color: var(--text-primary, #e6edf3);
+}
+
+.commit-body.selected {
+  border-color: var(--border-subtle, #21262d);
+  background: var(--bg-selected, rgba(56, 139, 253, 0.15));
+}
+
+.commit-message-time {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  color: var(--text-secondary, #8b949e);
+}
+
+.commit-message-view {
+  padding: var(--space-3, 12px);
+}
+
+.commit-message-view-meta {
+  margin-bottom: var(--space-2, 8px);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.commit-message-full {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.82rem;
+  color: var(--text-primary, #e6edf3);
 }
 
 .commit-file-list {
@@ -6435,7 +6480,10 @@ pre.code-highlighter-plain,
   /* Blame view column caps at the content-width preference (see commit browser
      note); the file column is already narrower than any sane cap. */
   .blame-browser-columns {
-    grid-template-columns: minmax(240px, 340px) minmax(0, var(--content-max-width));
+    grid-template-columns: minmax(240px, 340px) minmax(
+        0,
+        var(--content-max-width)
+      );
     justify-content: start;
     align-items: start;
   }
