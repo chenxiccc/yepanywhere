@@ -6,6 +6,7 @@ import type {
 } from "@yep-anywhere/shared";
 import {
   memo,
+  type ReactNode,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -86,6 +87,7 @@ export function GitDiffPreview({
   fileKey,
   projectId,
   source = WORKTREE_SOURCE,
+  headerActions,
   retainedScrollTop,
   retainedDiffView,
   onRetainScrollTop,
@@ -96,6 +98,8 @@ export function GitDiffPreview({
   fileKey: string | null;
   projectId: string;
   source?: GitDiffSource;
+  /** Actions for the selected file, shown in the pane header (the file banner). */
+  headerActions?: ReactNode;
   retainedScrollTop?: number;
   retainedDiffView?: GitDiffViewState;
   onRetainScrollTop?: (fileKey: string, scrollTop: number) => void;
@@ -124,9 +128,12 @@ export function GitDiffPreview({
   return (
     <section className="git-diff-preview-pane">
       <div className="git-diff-preview-header">
-        <h3 className="git-diff-preview-title">
+        <h3 className="git-diff-preview-title" title={file?.path ?? undefined}>
           {fileName ?? t("gitStatusDiffPreview")}
         </h3>
+        {headerActions && (
+          <div className="git-diff-preview-header-actions">{headerActions}</div>
+        )}
       </div>
       <div className="git-diff-preview-body" ref={bodyRef}>
         {file && fileKey ? (
@@ -154,6 +161,7 @@ export function GitDiffModal({
   fileKey,
   projectId,
   source = WORKTREE_SOURCE,
+  headerActions,
   retainedDiffView,
   onRetainDiffView,
   t,
@@ -163,6 +171,8 @@ export function GitDiffModal({
   fileKey: string;
   projectId: string;
   source?: GitDiffSource;
+  /** Actions for the selected file, shown above the diff (the file banner). */
+  headerActions?: ReactNode;
   retainedDiffView?: GitDiffViewState;
   onRetainDiffView?: (fileKey: string, view: GitDiffViewState) => void;
   t: TranslationFn;
@@ -172,6 +182,9 @@ export function GitDiffModal({
 
   return (
     <Modal title={fileName} onClose={onClose} closeOnBackGesture>
+      {headerActions && (
+        <div className="git-diff-preview-header-actions">{headerActions}</div>
+      )}
       <GitDiffBody
         file={file}
         fileKey={fileKey}

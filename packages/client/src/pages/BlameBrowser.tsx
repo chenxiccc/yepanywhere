@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
-import { CopyButton } from "../components/CopyButton";
 import { Modal } from "../components/ui/Modal";
+import { useProjectReviewComments } from "../hooks/useProjectReviewComments";
 import { BlameView } from "./BlameView";
 
 type TranslationFn = (
@@ -36,6 +36,17 @@ export function BlameBrowser({
   const [selectedPath, setSelectedPath] = useState<string | null>(
     initialPath ?? null,
   );
+  const { pending } = useProjectReviewComments(projectId);
+  const pathCommentCount = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const comment of pending) {
+      counts.set(
+        comment.anchor.path,
+        (counts.get(comment.anchor.path) ?? 0) + 1,
+      );
+    }
+    return counts;
+  }, [pending]);
 
   // Load the file list; seed/reseed the open file from the bridge's initialPath
   // (a new initialPath means "open this file's blame", e.g. from a commit diff).
@@ -87,26 +98,32 @@ export function BlameBrowser({
             <div className="git-status-empty">{t("sourceNoFiles")}</div>
           ) : (
             <ul className="blame-file-list">
-              {filtered.slice(0, FILE_LIST_RENDER_CAP).map((file) => (
-                <li key={file} className="commit-file-row">
-                  <button
-                    type="button"
-                    className={`blame-file-item ${
-                      selectedPath === file ? "selected" : ""
-                    }`}
-                    onClick={() => setSelectedPath(file)}
-                  >
-                    <span className="git-file-path" title={file}>
-                      {file}
-                    </span>
-                  </button>
-                  <CopyButton
-                    value={file}
-                    title={t("sourceCopyPath")}
-                    className="source-row-copy"
-                  />
-                </li>
-              ))}
+              {filtered.slice(0, FILE_LIST_RENDER_CAP).map((file) => {
+                const count = pathCommentCount.get(file) ?? 0;
+                return (
+                  <li key={file} className="commit-file-row">
+                    <button
+                      type="button"
+                      className={`blame-file-item ${
+                        selectedPath === file ? "selected" : ""
+                      }`}
+                      onClick={() => setSelectedPath(file)}
+                    >
+                      <span className="git-file-path" title={file}>
+                        {file}
+                      </span>
+                      {count > 0 && (
+                        <span
+                          className="source-comment-badge"
+                          title={t("sourceCommentCount", { count })}
+                        >
+                          {count}
+                        </span>
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
               {filtered.length > FILE_LIST_RENDER_CAP && (
                 <li className="blame-file-more">
                   {t("sourceFilesTruncated", {

@@ -6209,36 +6209,64 @@ pre.code-highlighter-plain,
   gap: 2px;
 }
 
-.commit-list-row .source-row-copy,
-.commit-file-row .source-row-copy {
-  opacity: 0;
-  flex-shrink: 0;
+/* Per-item actions live in a detail-pane banner (for the selected commit or
+   file), not hover-revealed buttons in an otherwise-empty row gutter. */
+.source-detail-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: var(--space-2, 8px);
+  padding: 4px 6px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle, #21262d);
+  border-radius: 6px;
 }
 
-.commit-list-row:hover .source-row-copy,
-.commit-file-row:hover .source-row-copy {
-  opacity: 1;
+.source-detail-title {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.78rem;
+  color: var(--text-secondary, #8b949e);
 }
 
-.source-row-blame {
-  flex-shrink: 0;
-  padding: 2px 6px;
-  font-size: 0.72rem;
-  color: var(--text-muted);
+.source-detail-action {
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  color: var(--text-secondary, #8b949e);
   background: transparent;
   border: 1px solid var(--border-subtle, #21262d);
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
-  opacity: 0;
 }
 
-.commit-file-row:hover .source-row-blame {
-  opacity: 1;
-}
-
-.source-row-blame:hover {
+.source-detail-action:hover:not(:disabled) {
   color: var(--text-primary, #e6edf3);
   background: var(--bg-hover, rgba(255, 255, 255, 0.06));
+}
+
+.source-detail-action:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.source-detail-jump {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+/* Count of pending review comments anchored to a commit / file row. */
+.source-comment-badge {
+  flex-shrink: 0;
+  min-width: 16px;
+  padding: 0 5px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+  color: var(--bg-primary, #0d1117);
+  background: var(--success-color);
+  border-radius: 8px;
 }
 
 .commit-list-item,
@@ -6273,7 +6301,27 @@ pre.code-highlighter-plain,
   background: var(--bg-selected, rgba(56, 139, 253, 0.15));
 }
 
+/* Read watermark: unread (newer than the mark) reads bold, read (at/older)
+   dims — the usual mail convention. */
+.commit-list-item.unread .commit-subject {
+  font-weight: 600;
+}
+
+.commit-list-item.read .commit-subject {
+  font-weight: 400;
+  color: var(--text-secondary, #8b949e);
+}
+
+.commit-subject-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .commit-subject {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -6418,6 +6466,9 @@ pre.code-highlighter-plain,
 .blame-file-item {
   flex: 1;
   min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   padding: 4px 8px;
   text-align: left;
   color: var(--text-primary, #e6edf3);
@@ -6425,9 +6476,6 @@ pre.code-highlighter-plain,
   border: none;
   border-radius: 6px;
   cursor: pointer;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .blame-file-item:hover {
@@ -6458,12 +6506,21 @@ pre.code-highlighter-plain,
 .blame-view-header {
   position: sticky;
   top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   padding: 6px 10px;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-subtle, #21262d);
 }
 
 .blame-view-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--text-secondary, #8b949e);
 }
 

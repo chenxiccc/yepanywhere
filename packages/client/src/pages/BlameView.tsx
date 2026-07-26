@@ -6,6 +6,7 @@ import {
 } from "@yep-anywhere/shared";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
+import { CopyButton } from "../components/CopyButton";
 import { useReviewCommentDraft } from "../hooks/useReviewCommentDraft";
 import { ReviewCommentWindow } from "./ReviewCommentWindow";
 
@@ -142,7 +143,14 @@ export function BlameView({
   return (
     <section className="blame-view" ref={containerRef}>
       <div className="blame-view-header">
-        <span className="blame-view-path">{path}</span>
+        <span className="blame-view-path" title={path}>
+          {path}
+        </span>
+        <CopyButton
+          value={path}
+          title={t("sourceCopyPath")}
+          className="source-detail-action"
+        />
       </div>
       <div className="blame-lines">
         {blame.lines.map((line, index) => (

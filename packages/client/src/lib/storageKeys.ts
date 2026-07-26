@@ -35,6 +35,7 @@ export const UI_KEYS = {
   outputToolPreviewLineCount: "yep-anywhere-output-tool-preview-line-count",
   tabSize: "yep-anywhere-tab-size",
   contentMaxWidth: "yep-anywhere-content-max-width",
+  commitReadWatermarks: "yep-anywhere-commit-read-watermarks",
   sidebarWidth: "yep-anywhere-sidebar-width",
   sidebarExpanded: "yep-anywhere-sidebar-expanded",
   sidebarMinimized: "yep-anywhere-sidebar-minimized",

@@ -19538,6 +19538,7 @@ body:has(.session-page)
 }
 
 .git-diff-preview-title {
+  flex: 1;
   min-width: 0;
   margin: 0;
   overflow: hidden;
@@ -19547,6 +19548,16 @@ body:has(.session-page)
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Selected-file actions (copy path, blame) in the diff pane header / above the
+   diff on mobile (topic: source-review-to-session, the file banner). */
+.git-diff-preview-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .git-diff-preview-body {

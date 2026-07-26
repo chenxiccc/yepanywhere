@@ -79,7 +79,11 @@ function primeApis() {
       { oldStart: 1, oldLines: 0, newStart: 1, newLines: 1, lines: ["+hi"] },
     ],
   });
-  listReviewComments.mockResolvedValue({ comments: [], pendingCount: 0 });
+  listReviewComments.mockResolvedValue({
+    comments: [],
+    batches: [],
+    pendingCount: 0,
+  });
 }
 
 describe("CommitBrowser", () => {
@@ -207,7 +211,11 @@ describe("CommitBrowser", () => {
       body: "",
       files: [],
     });
-    listReviewComments.mockResolvedValue({ comments: [], pendingCount: 0 });
+    listReviewComments.mockResolvedValue({
+      comments: [],
+      batches: [],
+      pendingCount: 0,
+    });
     render(
       <MemoryRouter>
         <CommitBrowser projectId="p1" isWideScreen={true} t={t} />
@@ -220,6 +228,49 @@ describe("CommitBrowser", () => {
 
     fireEvent.click(await screen.findByText("sourceOlderCommit"));
     await waitFor(() => expect(getGitCommit).toHaveBeenCalledWith("p1", OLDER));
+  });
+
+  it("badges a commit with its pending review-comment count", async () => {
+    getGitCommits.mockResolvedValue({
+      commits: [
+        {
+          hash: SHA,
+          shortHash: "aaaaaaa",
+          subject: "first commit",
+          authorName: "Dev",
+          authorDate: "2026-07-26T00:00:00Z",
+        },
+      ],
+      hasMore: false,
+    });
+    listReviewComments.mockResolvedValue({
+      comments: [
+        {
+          id: "c1",
+          status: "pending",
+          text: "why?",
+          createdAt: "2026-07-26T00:00:00Z",
+          anchor: {
+            path: "src/x.ts",
+            revision: { kind: "sha", sha: SHA },
+            side: "new",
+            oldLine: null,
+            newLine: 1,
+            snippet: "",
+          },
+        },
+      ],
+      batches: [],
+    });
+    render(
+      <MemoryRouter>
+        <CommitBrowser projectId="p1" isWideScreen={false} t={t} />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("first commit");
+    const badges = await screen.findAllByTitle("sourceCommentCount");
+    expect(badges.some((badge) => badge.textContent === "1")).toBe(true);
   });
 
   it("bridges a commit file to its blame view via onBlameFile", async () => {
@@ -237,7 +288,9 @@ describe("CommitBrowser", () => {
     );
 
     await screen.findByText("src/x.ts");
-    fireEvent.click(screen.getByText("sourceBlameAtHeadShort"));
+    // The blame action now lives in the selected-file banner (diff header),
+    // which renders once the file auto-selects.
+    fireEvent.click(await screen.findByText("sourceBlameAtHeadShort"));
     expect(onBlameFile).toHaveBeenCalledWith("src/x.ts");
   });
 });

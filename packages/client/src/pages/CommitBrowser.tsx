@@ -3,9 +3,11 @@ import type {
   GitFileChange,
   GitRecentCommit,
 } from "@yep-anywhere/shared";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import { CopyButton } from "../components/CopyButton";
+import { useCommitReadWatermark } from "../hooks/useCommitReadWatermark";
+import { useProjectReviewComments } from "../hooks/useProjectReviewComments";
 import { GitDiffModal, GitDiffPreview } from "./GitStatusDiffPreview";
 
 type TranslationFn = (
@@ -51,6 +53,38 @@ export function CommitBrowser({
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const displayedCommits = searchResults ?? commits;
+
+  const { pending } = useProjectReviewComments(projectId);
+  const readState = useCommitReadWatermark(projectId);
+
+  // Pending review-comment counts for the row badges: per commit sha (commit
+  // list) and, within the selected commit, per file path (file list).
+  const commentCountBySha = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const comment of pending) {
+      if (comment.anchor.revision.kind === "sha") {
+        const { sha } = comment.anchor.revision;
+        counts.set(sha, (counts.get(sha) ?? 0) + 1);
+      }
+    }
+    return counts;
+  }, [pending]);
+  const fileCommentCount = useMemo(() => {
+    const counts = new Map<string, number>();
+    if (!selectedSha) return counts;
+    for (const comment of pending) {
+      if (
+        comment.anchor.revision.kind === "sha" &&
+        comment.anchor.revision.sha === selectedSha
+      ) {
+        counts.set(
+          comment.anchor.path,
+          (counts.get(comment.anchor.path) ?? 0) + 1,
+        );
+      }
+    }
+    return counts;
+  }, [pending, selectedSha]);
 
   // Load the first page of commits when the project changes.
   useEffect(() => {
@@ -195,6 +229,32 @@ export function CommitBrowser({
     selectedIndex >= 0 && selectedIndex < displayedCommits.length - 1
       ? displayedCommits[selectedIndex + 1]
       : undefined;
+  // The selected commit from the loaded slice, for its author time (read
+  // actions) without waiting on the detail fetch.
+  const selectedCommit =
+    selectedIndex >= 0 ? displayedCommits[selectedIndex] : undefined;
+
+  // Selected-file actions, shown in the diff pane header (the file banner)
+  // instead of on every hovered row.
+  const fileActions = selectedFile ? (
+    <>
+      <CopyButton
+        value={selectedFile.path}
+        title={t("sourceCopyPath")}
+        className="source-detail-action"
+      />
+      {onBlameFile && (
+        <button
+          type="button"
+          className="source-detail-action"
+          title={t("sourceBlameAtHead")}
+          onClick={() => onBlameFile(selectedFile.path)}
+        >
+          {t("sourceBlameAtHeadShort")}
+        </button>
+      )}
+    </>
+  ) : null;
 
   return (
     <div className="commit-browser">
@@ -224,35 +284,51 @@ export function CommitBrowser({
           ) : (
             <>
               <ol className="commit-list">
-                {displayedCommits.map((commit) => (
-                  <li key={commit.hash} className="commit-list-row">
-                    <button
-                      type="button"
-                      className={`commit-list-item ${
-                        selectedSha === commit.hash ? "selected" : ""
-                      }`}
-                      onClick={() => setSelectedSha(commit.hash)}
-                    >
-                      <span className="commit-subject" title={commit.subject}>
-                        {commit.subject}
-                      </span>
-                      <span className="commit-meta">
-                        <span className="commit-hash">{commit.shortHash}</span>
-                        <span className="commit-author">
-                          {commit.authorName}
+                {displayedCommits.map((commit) => {
+                  const commentCount = commentCountBySha.get(commit.hash) ?? 0;
+                  const read = readState.isRead(commit.authorDate);
+                  return (
+                    <li key={commit.hash} className="commit-list-row">
+                      <button
+                        type="button"
+                        className={`commit-list-item ${
+                          selectedSha === commit.hash ? "selected" : ""
+                        } ${read ? "read" : "unread"}`}
+                        onClick={() => setSelectedSha(commit.hash)}
+                      >
+                        <span className="commit-subject-row">
+                          <span
+                            className="commit-subject"
+                            title={commit.subject}
+                          >
+                            {commit.subject}
+                          </span>
+                          {commentCount > 0 && (
+                            <span
+                              className="source-comment-badge"
+                              title={t("sourceCommentCount", {
+                                count: commentCount,
+                              })}
+                            >
+                              {commentCount}
+                            </span>
+                          )}
                         </span>
-                        <span className="commit-date">
-                          {formatCommitDate(commit.authorDate)}
+                        <span className="commit-meta">
+                          <span className="commit-hash">
+                            {commit.shortHash}
+                          </span>
+                          <span className="commit-author">
+                            {commit.authorName}
+                          </span>
+                          <span className="commit-date">
+                            {formatCommitDate(commit.authorDate)}
+                          </span>
                         </span>
-                      </span>
-                    </button>
-                    <CopyButton
-                      value={commit.hash}
-                      title={t("sourceCopyCommitHash")}
-                      className="source-row-copy"
-                    />
-                  </li>
-                ))}
+                      </button>
+                    </li>
+                  );
+                })}
               </ol>
               {hasMore && searchResults === null && (
                 <button
@@ -269,26 +345,62 @@ export function CommitBrowser({
 
         {selectedSha && (
           <div className="commit-files-column">
-            <div className="commit-jump">
-              <button
-                type="button"
-                className="commit-jump-btn"
-                disabled={!newerCommit}
-                onClick={() => newerCommit && setSelectedSha(newerCommit.hash)}
+            <div className="source-detail-banner">
+              <span
+                className="source-detail-title"
+                title={selectedSha ?? undefined}
               >
-                {t("sourceNewerCommit")}
-              </button>
-              <span className="commit-jump-current">
-                {detail?.shortHash ?? "…"}
+                {detail?.shortHash ?? selectedCommit?.shortHash ?? "…"}
               </span>
+              <CopyButton
+                value={selectedSha ?? ""}
+                title={t("sourceCopyCommitHash")}
+                className="source-detail-action"
+              />
               <button
                 type="button"
-                className="commit-jump-btn"
-                disabled={!olderCommit}
-                onClick={() => olderCommit && setSelectedSha(olderCommit.hash)}
+                className="source-detail-action"
+                disabled={!selectedCommit}
+                onClick={() =>
+                  selectedCommit &&
+                  readState.markReadTo(selectedCommit.authorDate)
+                }
               >
-                {t("sourceOlderCommit")}
+                {t("sourceMarkReadToHere")}
               </button>
+              <button
+                type="button"
+                className="source-detail-action"
+                disabled={!selectedCommit}
+                onClick={() =>
+                  selectedCommit &&
+                  readState.markUnreadSince(selectedCommit.authorDate)
+                }
+              >
+                {t("sourceMarkUnreadSinceHere")}
+              </button>
+              <span className="source-detail-jump">
+                <button
+                  type="button"
+                  className="commit-jump-btn"
+                  disabled={!newerCommit}
+                  onClick={() =>
+                    newerCommit && setSelectedSha(newerCommit.hash)
+                  }
+                >
+                  {t("sourceNewerCommit")}
+                </button>
+                <button
+                  type="button"
+                  className="commit-jump-btn"
+                  disabled={!olderCommit}
+                  onClick={() =>
+                    olderCommit && setSelectedSha(olderCommit.hash)
+                  }
+                >
+                  {t("sourceOlderCommit")}
+                </button>
+              </span>
             </div>
             {loadingDetail ? (
               <div className="git-diff-loading">{t("gitStatusLoading")}</div>
@@ -298,65 +410,61 @@ export function CommitBrowser({
               <>
                 {detail.body && <p className="commit-body">{detail.body}</p>}
                 <ul className="commit-file-list">
-                  {detail.files.map((file) => (
-                    <li key={file.path} className="commit-file-row">
-                      <button
-                        type="button"
-                        className={`commit-file-item ${
-                          selectedPath === file.path ? "selected" : ""
-                        }`}
-                        onClick={() => setSelectedPath(file.path)}
-                      >
-                        <span
-                          className={`git-status-badge git-status-${file.status.toLowerCase()}`}
-                        >
-                          {file.status}
-                        </span>
-                        <span
-                          className="git-file-path"
-                          title={
-                            file.origPath
-                              ? `${file.origPath} → ${file.path}`
-                              : file.path
-                          }
-                        >
-                          {file.origPath
-                            ? `${file.origPath} → ${file.path}`
-                            : file.path}
-                        </span>
-                        {(file.linesAdded !== null ||
-                          file.linesDeleted !== null) && (
-                          <span className="git-line-counts">
-                            {file.linesAdded ? (
-                              <span className="git-lines-added">
-                                +{file.linesAdded}
-                              </span>
-                            ) : null}
-                            {file.linesDeleted ? (
-                              <span className="git-lines-deleted">
-                                −{file.linesDeleted}
-                              </span>
-                            ) : null}
-                          </span>
-                        )}
-                      </button>
-                      {onBlameFile && (
+                  {detail.files.map((file) => {
+                    const count = fileCommentCount.get(file.path) ?? 0;
+                    return (
+                      <li key={file.path} className="commit-file-row">
                         <button
                           type="button"
-                          className="source-row-blame"
-                          title={t("sourceBlameAtHead")}
-                          onClick={() => onBlameFile(file.path)}
+                          className={`commit-file-item ${
+                            selectedPath === file.path ? "selected" : ""
+                          }`}
+                          onClick={() => setSelectedPath(file.path)}
                         >
-                          {t("sourceBlameAtHeadShort")}
+                          <span
+                            className={`git-status-badge git-status-${file.status.toLowerCase()}`}
+                          >
+                            {file.status}
+                          </span>
+                          <span
+                            className="git-file-path"
+                            title={
+                              file.origPath
+                                ? `${file.origPath} → ${file.path}`
+                                : file.path
+                            }
+                          >
+                            {file.origPath
+                              ? `${file.origPath} → ${file.path}`
+                              : file.path}
+                          </span>
+                          {(file.linesAdded !== null ||
+                            file.linesDeleted !== null) && (
+                            <span className="git-line-counts">
+                              {file.linesAdded ? (
+                                <span className="git-lines-added">
+                                  +{file.linesAdded}
+                                </span>
+                              ) : null}
+                              {file.linesDeleted ? (
+                                <span className="git-lines-deleted">
+                                  −{file.linesDeleted}
+                                </span>
+                              ) : null}
+                            </span>
+                          )}
+                          {count > 0 && (
+                            <span
+                              className="source-comment-badge"
+                              title={t("sourceCommentCount", { count })}
+                            >
+                              {count}
+                            </span>
+                          )}
                         </button>
-                      )}
-                      <CopyButton
-                        value={file.path}
-                        title={t("sourceCopyPath")}
-                        className="source-row-copy"
-                      />
-                    </li>
-                  ))}
+                      </li>
+                    );
+                  })}
                 </ul>
               </>
             ) : null}
@@ -369,6 +477,7 @@ export function CommitBrowser({
             fileKey={diffFileKey}
             projectId={projectId}
             source={source}
+            headerActions={fileActions}
             t={t}
           />
         )}
@@ -380,6 +489,7 @@ export function CommitBrowser({
           fileKey={diffFileKey}
           projectId={projectId}
           source={source}
+          headerActions={fileActions}
           t={t}
           onClose={() => setSelectedPath(null)}
         />
