@@ -1,33 +1,54 @@
 # UI Testing
 
-This topic codifies visual QA for client layout regressions in settings and session controls.
+> Browser-first visual QA for client UI changes: a UI tweak request
+> ends with rendered captures of the result at 1920×1080 and a phone
+> width (375×812), inspected against the request before the change is
+> called done.
+
+Topic: ui-testing
 
 ## Principle
 
-When a UI control change affects spacing, grouping, or interaction semantics, the bug report is considered **done** only after a real browser screenshot is captured and reviewed by a human.
+Any request that changes what the client renders — a UI tweak, layout
+or spacing fix, control/toolbar placement, grouping, or interaction
+semantics — is **done** only after real browser screenshots of the
+final result are captured at desktop and phone widths, inspected by
+the agent against the request, and archived where a human can review
+them. In-progress captures are optional while implementing (worthwhile
+at milestones); the final-result captures are not optional.
+
+Inspection is the point: open each capture and check spacing, flow,
+and control placement against the request — "route loaded, nav
+visible" is not enough. Captures exist to catch the agent's own wrong
+spatial/aesthetic guess; models routinely one-shot UI that is
+functional but mis-spaced with misplaced controls (instituted
+2026-07-26 after a commit-browser build landed exactly that way).
 
 ## Browser-first check protocol
 
 1. Start the app UI and reproduce the target path in a real browser.
-2. Open the settings page and navigate to the edited panel.
+2. Navigate to the affected view (page, panel, or control).
 3. Take screenshots at:
-   - a desktop/large viewport width,
+   - desktop width `1920x1080`,
    - narrow mobile width (`375x812` or equivalent).
 4. Visually inspect each screenshot and confirm:
-   - control row and descriptive text are grouped together,
+   - the requested change is present and correctly placed,
+   - control rows and their descriptive text are grouped together,
    - active control state is visually clear,
-   - no element overflows or crowds the row.
+   - no element overflows, crowds its row, or wastes obvious space.
 5. Archive reviewed screenshots under a readable path (for example,
-   `.artifacts/ui-testing/<yyyy-mm-dd>-<topic>/...`), and reference the
-   file names in the task note.
-6. Leave a short reviewer note in the task about what changed and what was
+   `.artifacts/ui-testing/<yyyy-mm-dd>-<topic>/...`), and cite the
+   file names in the final response (and the task note when one
+   exists).
+6. Leave a short reviewer note about what changed and what was
    visually confirmed.
 
 ## Recommended automation
 
-Use the browser control tool listed in `CLAUDE.md` when it has an available
-backend. If setup or discovery reports no browser, or the browser inventory is
-empty, immediately fall back to the repository's installed Playwright command:
+Use the browser control tool listed in `CLAUDE.md` when it has an
+available backend. If setup or discovery reports no browser, or the
+browser inventory is empty, immediately fall back to the repository's
+installed Playwright command:
 
 ```bash
 ARTIFACT_DIR=".artifacts/ui-testing/$(date +%F)-topic"
@@ -36,7 +57,7 @@ pnpm --filter @yep-anywhere/client exec playwright screenshot \
   --ignore-https-errors \
   --block-service-workers \
   --wait-for-timeout 500 \
-  --viewport-size "1440,900" \
+  --viewport-size "1920,1080" \
   https://localhost:3400/ \
   "$ARTIFACT_DIR/desktop.png"
 pnpm --filter @yep-anywhere/client exec playwright screenshot \
@@ -59,8 +80,14 @@ browser automation path or a manual browser session:
 
 ## Verification acceptance checklist
 
-- [ ] A single logical setting row does not span a control row and its status/explanation.
-- [ ] A setting change has a matching explanatory text line directly below the control row.
-- [ ] Preset buttons remain clickable and clearly indicate the current selection.
-- [ ] Layout works on at least one mobile width without horizontal overflow.
-- [ ] A screenshot from a browser session was captured and reviewed.
+- [ ] The requested change is visible and correctly placed in both
+      captures.
+- [ ] A single logical setting row does not span a control row and its
+      status/explanation.
+- [ ] A setting change has a matching explanatory text line directly
+      below the control row.
+- [ ] Preset buttons remain clickable and clearly indicate the current
+      selection.
+- [ ] Layout works at the mobile width without horizontal overflow.
+- [ ] Screenshots at 1920×1080 and a phone width were captured,
+      inspected by the agent, and cited for human review.

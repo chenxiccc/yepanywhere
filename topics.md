@@ -186,3 +186,5 @@
   a new agent session; issue #95's broader source manager is inspiration only.
 - acli-ui - ACLI capability detection (`acli:` help line) and richer
   bang-composer completion/help UI proposal.
+- ui-testing - Capture-confirmed browser QA: UI tweak requests end with
+  inspected 1920x1080 + phone captures of the result.

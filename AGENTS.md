@@ -63,6 +63,14 @@ Novel features remain welcome; do not assume first-party harnesses already
 cover all useful behavior. Read the topic before adding or enabling any
 user-visible feature that is not configurable default-off.
 
+## UI Tweak Result Captures
+
+Any UI tweak or layout/control-placement request ends with rendered
+browser captures of the final result at 1920×1080 and a phone width
+(375×812), inspected by the agent against the request before claiming
+completion; in-progress captures are optional. Protocol, commands, and
+archive paths: `topics/ui-testing.md`.
+
 ## Observable Behavior Contracts
 
 Before an implementation is complete, verify that every intentional observable
