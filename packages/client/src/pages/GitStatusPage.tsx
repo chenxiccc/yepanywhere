@@ -330,6 +330,20 @@ function GitStatusContent({
     },
     [setSearchParams],
   );
+  const blameFile = searchParams.get("bf") ?? undefined;
+  // Bridge a commit file to its blame-at-HEAD view: switch to the files tab
+  // with that file seeded open (a real history step, so back returns).
+  const handleBlameFile = useCallback(
+    (path: string) => {
+      setSearchParams((prev) => {
+        const params = new URLSearchParams(prev);
+        params.set("tab", "files");
+        params.set("bf", path);
+        return params;
+      });
+    },
+    [setSearchParams],
+  );
   const reviewComments = useProjectReviewComments(projectId);
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [selectedFileKey, setSelectedFileKey] = useState<string | null>(
@@ -727,10 +741,16 @@ function GitStatusContent({
         <CommitBrowser
           projectId={projectId}
           isWideScreen={isWideScreen}
+          onBlameFile={handleBlameFile}
           t={t}
         />
       ) : tab === "files" ? (
-        <BlameBrowser projectId={projectId} isWideScreen={isWideScreen} t={t} />
+        <BlameBrowser
+          projectId={projectId}
+          isWideScreen={isWideScreen}
+          initialPath={blameFile}
+          t={t}
+        />
       ) : (
         <>
           <div className="git-status-workspace">

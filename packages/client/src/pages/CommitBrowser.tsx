@@ -25,10 +25,13 @@ const COMMIT_PAGE_SIZE = 50;
 export function CommitBrowser({
   projectId,
   isWideScreen,
+  onBlameFile,
   t,
 }: {
   projectId: string;
   isWideScreen: boolean;
+  /** Bridge a commit file to its blame-at-HEAD view (the files tab). */
+  onBlameFile?: (path: string) => void;
   t: TranslationFn;
 }) {
   const [commits, setCommits] = useState<GitRecentCommit[]>([]);
@@ -328,6 +331,16 @@ export function CommitBrowser({
                           </span>
                         )}
                       </button>
+                      {onBlameFile && (
+                        <button
+                          type="button"
+                          className="source-row-blame"
+                          title={t("sourceBlameAtHead")}
+                          onClick={() => onBlameFile(file.path)}
+                        >
+                          {t("sourceBlameAtHeadShort")}
+                        </button>
+                      )}
                       <CopyButton
                         value={file.path}
                         title={t("sourceCopyPath")}

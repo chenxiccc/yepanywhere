@@ -6116,6 +6116,27 @@ pre.code-highlighter-plain,
   opacity: 1;
 }
 
+.source-row-blame {
+  flex-shrink: 0;
+  padding: 2px 6px;
+  font-size: 0.72rem;
+  color: var(--text-tertiary, #6e7681);
+  background: transparent;
+  border: 1px solid var(--border-subtle, #21262d);
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.commit-file-row:hover .source-row-blame {
+  opacity: 1;
+}
+
+.source-row-blame:hover {
+  color: var(--text-primary, #e6edf3);
+  background: var(--bg-hover, rgba(255, 255, 255, 0.06));
+}
+
 .commit-list-item,
 .commit-file-item {
   flex: 1;

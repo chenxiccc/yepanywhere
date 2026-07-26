@@ -221,4 +221,23 @@ describe("CommitBrowser", () => {
     fireEvent.click(await screen.findByText("sourceOlderCommit"));
     await waitFor(() => expect(getGitCommit).toHaveBeenCalledWith("p1", OLDER));
   });
+
+  it("bridges a commit file to its blame view via onBlameFile", async () => {
+    primeApis();
+    const onBlameFile = vi.fn();
+    render(
+      <MemoryRouter>
+        <CommitBrowser
+          projectId="p1"
+          isWideScreen={true}
+          onBlameFile={onBlameFile}
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("src/x.ts");
+    fireEvent.click(screen.getByText("sourceBlameAtHeadShort"));
+    expect(onBlameFile).toHaveBeenCalledWith("src/x.ts");
+  });
 });

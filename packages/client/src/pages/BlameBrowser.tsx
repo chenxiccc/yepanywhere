@@ -20,24 +20,31 @@ const FILE_LIST_RENDER_CAP = 500;
 export function BlameBrowser({
   projectId,
   isWideScreen,
+  initialPath,
   t,
 }: {
   projectId: string;
   isWideScreen: boolean;
+  /** Seed the open file (the commit-diff → blame-at-HEAD bridge). */
+  initialPath?: string;
   t: TranslationFn;
 }) {
   const [files, setFiles] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [selectedPath, setSelectedPath] = useState<string | null>(
+    initialPath ?? null,
+  );
 
+  // Load the file list; seed/reseed the open file from the bridge's initialPath
+  // (a new initialPath means "open this file's blame", e.g. from a commit diff).
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
     setFiles([]);
-    setSelectedPath(null);
+    setSelectedPath(initialPath ?? null);
     api
       .listGitFiles(projectId)
       .then((result) => {
@@ -53,7 +60,7 @@ export function BlameBrowser({
     return () => {
       cancelled = true;
     };
-  }, [projectId, t]);
+  }, [projectId, initialPath, t]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
