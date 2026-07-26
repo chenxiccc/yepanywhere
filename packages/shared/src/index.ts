@@ -33,6 +33,7 @@ export {
   REVIEW_COMMENTS_FILE_VERSION,
   anchorFromPatch,
   emptyReviewCommentsFile,
+  parseReviewCommentAnchor,
   parseReviewCommentsFile,
   patchLineCount,
   type PatchLineLocation,

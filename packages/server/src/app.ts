@@ -73,6 +73,7 @@ import { createBangCommandsRoutes } from "./routes/bang-commands.js";
 import { BangCommandService } from "./services/BangCommandService.js";
 import { createGitStatusRoutes } from "./routes/git-status.js";
 import { createGlobalSessionsRoutes } from "./routes/global-sessions.js";
+import { createReviewCommentsRoutes } from "./routes/review-comments.js";
 import { health } from "./routes/health.js";
 import { createInboxRoutes } from "./routes/inbox.js";
 import { createNetworkBindingRoutes } from "./routes/network-binding.js";
@@ -1391,6 +1392,9 @@ export function createApp(options: AppOptions): AppResult {
 
   // Git status routes
   app.route("/api/projects", createGitStatusRoutes({ scanner }));
+
+  // Source-review draft comments (topic: source-review-to-session)
+  app.route("/api/projects", createReviewCommentsRoutes({ scanner }));
 
   if (options.serverSettingsService && options.workstreamService) {
     app.route(

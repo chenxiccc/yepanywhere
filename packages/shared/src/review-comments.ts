@@ -138,7 +138,14 @@ function parseOptionalLine(value: unknown): number | null | undefined {
   return undefined; // signals invalid
 }
 
-function parseAnchor(value: unknown): ReviewCommentAnchor | null {
+/**
+ * Validate an anchor from the wire (the client sends one when creating a
+ * comment) or from disk. Returns a normalized anchor or null — the single
+ * validation entry point shared by the parser and the create-comment route.
+ */
+export function parseReviewCommentAnchor(
+  value: unknown,
+): ReviewCommentAnchor | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
 
@@ -181,7 +188,7 @@ function parseComment(value: unknown): ReviewComment | null {
   const record = value as Record<string, unknown>;
 
   if (typeof record.id !== "string" || record.id.length === 0) return null;
-  const anchor = parseAnchor(record.anchor);
+  const anchor = parseReviewCommentAnchor(record.anchor);
   if (!anchor) return null;
   if (
     typeof record.text !== "string" ||
