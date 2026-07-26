@@ -473,3 +473,41 @@ nothing below is built. This is the concrete shape for stages 1–2.
   below two readable columns and side-by-side above; a manual pick wins over
   `auto` and survives reload; in side-by-side, a left-column click anchors
   `-`-side and a right-column click `+`-side.
+
+### Subtask phases (each lands green)
+
+Stages 1–2 decompose into subtask-sized phases, each verifiable by its own
+tests before the next begins. Every phase before P6 is user-invisible, so no
+half-built UI ever ships; P6 is the first visible milestone (= stage 1).
+
+- **P1 — anchor model (shared).** Types + defensive parser +
+  anchor-from-patch helper. Verified by unit tests alone (hunk-boundary line
+  numbers, round-trip, garbage rejection). Land paired with P2 or P3 so the
+  contract module does not sit consumerless.
+- **P2 — line addressing (server).** `addDiffLineClasses` emits
+  `data-diff-line` matching the flat `structuredPatch` index. Verified by
+  augment unit tests asserting index↔line agreement; invisible in the UI,
+  safe alone.
+- **P3 — drafts service + CRUD routes (server).** `ReviewCommentService`
+  over `.yep/review-comments.json` plus `routes/review-comments.ts` CRUD.
+  Verified by route tests (per-project isolation, lifecycle, restart
+  survival) and by curl against a dev-profile instance.
+- **P4 — compose + relocation (server, pure).** `composeReviewTurn` and
+  `relocateAnchors` as pure modules with fixture-repo tests
+  (SHA-only-when-gone, moved/gone/committed-uncommitted cases). No routes
+  yet.
+- **P5 — preview + submit endpoints.** Thin glue over P3 + P4 plus the
+  supervisor launch. Route tests with a stubbed supervisor; one real
+  single-comment submit against a dev-profile instance closes the stage-1
+  backend.
+- **P6 — click → comment window → submit-now (client).** Delegated
+  listener, `CommentWindow`, tint, submit-now button. RTL tests; the
+  stage-1 user-visible milestone.
+- **P7 — pending tray + submit preview + target picker (client).** RTL
+  tests for discard-default ordering and the recent-review-session default;
+  the stage-2 milestone.
+- **P8 — diff view mode.** Independent of all of the above (decision 7);
+  orderable any time.
+
+Dependencies: P1 → {P2, P3, P4}; P5 needs P3 + P4; P6 needs P2 + P5; P7
+needs P5 (and P6's window for editing). P2/P3/P4 parallelize after P1.
