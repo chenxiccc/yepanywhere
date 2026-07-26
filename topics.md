@@ -184,3 +184,5 @@
   highlighted matches and jump links, default-off "Match values" toggle.
 - source-review-to-session - Read-only source review comments accumulated into
   a new agent session; issue #95's broader source manager is inspiration only.
+- acli-ui - ACLI capability detection (`acli:` help line) and richer
+  bang-composer completion/help UI proposal.

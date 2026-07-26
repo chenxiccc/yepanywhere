@@ -36,7 +36,9 @@ YA-spawned processes),
 [public-share-content-censorship](public-share-content-censorship.md) and
 [security](security.md) (exec surface gating and share exposure),
 [architecture-mandates](architecture-mandates.md) (bounded storage/render
-obligations the history view inherits).
+obligations the history view inherits),
+[acli-ui](acli-ui.md) (proposal: acli capability detection and the richer
+completion/help UI for allowlisted tools in this composer).
 
 ## Motivation
 
