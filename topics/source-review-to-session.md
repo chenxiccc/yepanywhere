@@ -237,10 +237,11 @@ The polished viewer graehl wanted, kept strictly read-only:
   branches** (extends GitStatusDiffPreview, which is already the working-tree
   diff viewer).
   The reference layout above is a **3-column** browser (commits · files ·
-  unified diff); an optional **side-by-side diff** makes it **4 columns**. From
-  a commit's diff you can switch to an **"as of HEAD" content view centered on
-  the diff region, with a blame gutter** — bridging the commit-review mode into
-  the all-files/blame provenance.
+  diff); the diff pane renders **unified or side-by-side** per the
+  diff-view-mode decision below, side-by-side reading as a 4-column layout.
+  From a commit's diff you can switch to an **"as of HEAD" content view
+  centered on the diff region, with a blame gutter** — bridging the
+  commit-review mode into the all-files/blame provenance.
 - Rudimentary search across recent commit **delta (diff) text and/or filenames**
   — enough to find the commit or file you want to comment on. This is a generic
   browser facility, captured here as part of this surface by design intent.
@@ -292,6 +293,19 @@ The polished viewer graehl wanted, kept strictly read-only:
   convention, gets per-project keying from the path itself, keeps drafts
   with the worktree they annotate, and co-locates them with the review file
   the seeded prompt references.
+- **Diff view mode: one three-valued preference, `auto | unified |
+  side-by-side`, defaulting to `auto`** (vs. a bare side-by-side boolean, or
+  side-by-side always): graehl mildly prefers side-by-side, but the default
+  is whatever the width allows — `auto` picks side-by-side exactly when the
+  diff pane measures wide enough for two readable code columns, else
+  unified. "Wide enough" is a content measurement of the pane against a
+  minimum readable code column, not a viewport breakpoint
+  ([responsive-layout-gaps](responsive-layout-gaps.md)). The manual toggle
+  lives **in the diff pane itself** (beside the existing full-context
+  toggle) so the mode is switchable on the spot, and it persists as a
+  **device-local browser preference** — screen sizes vary per device, so
+  this is typically set once per device and does not travel between them.
+  One mode value, not coupled booleans.
 - **Default submit target = recent review session** (vs. always a new
   session): round-2 comments continue the round-1 conversation; the submit
   flow still lets the user pick any existing session or a fresh one.
@@ -338,7 +352,9 @@ The polished viewer graehl wanted, kept strictly read-only:
 3. **Fuller multipane viewer + all-files blame + search + mobile.** Wrap the flow
    in the large-screen multipane commit/diff/file viewer with the copy
    affordances, the all-files git-blame browsing mode, rudimentary
-   commit-delta/filename search, and the mobile back-swipe + commit-jump path.
+   commit-delta/filename search, the unified/side-by-side diff view mode
+   (orderable independently — it touches only the existing diff viewer),
+   and the mobile back-swipe + commit-jump path.
 
 ## Implementation sketch (implementer guide)
 
@@ -419,6 +435,20 @@ nothing below is built. This is the concrete shape for stages 1–2.
    the same service, file, and submit endpoint with a single pending comment
    and no preview UI — relocation is trivially exact because the anchor is
    seconds old. No client-side storage variant exists at any stage.
+7. **Side-by-side is a client arrangement of once-highlighted lines.** Today
+   `diffHtml` is one Shiki block; side-by-side must not become a second
+   server render that can drift from the first. When the diff pane grows the
+   view mode, the render unit becomes per-line highlighted fragments (the
+   line elements `addDiffLineClasses` already produces), and the client
+   arranges them — unified as a stack, side-by-side as a two-column pairing
+   whose `-`/`+` run alignment is computed from `structuredPatch` (pure
+   data, same source as anchors). The `data-diff-line` click/tint contract
+   addresses lines, not the container, so it survives both layouts
+   unchanged; a left-column click is a `-`-side anchor, a right-column click
+   `+`-side. The `auto` default measures the pane per the diff-view-mode
+   decision; the in-pane toggle persists device-locally. This piece touches
+   only the existing diff viewer, so it can land independently of stages
+   1–2.
 
 ### Tests that pin the contract
 
@@ -439,3 +469,7 @@ nothing below is built. This is the concrete shape for stages 1–2.
   opens the comment window with the correct anchor; a commented line shows
   the tint; the preview lists gone-context comments first, pre-selected
   discard (mocked preview API).
+- View mode (with stage 3): `auto` resolves unified when the pane measures
+  below two readable columns and side-by-side above; a manual pick wins over
+  `auto` and survives reload; in side-by-side, a left-column click anchors
+  `-`-side and a right-column click `+`-side.
