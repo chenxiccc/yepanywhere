@@ -114,10 +114,11 @@ export function useCommitSearchIndex(
     };
   }, [enabled, projectId]);
 
-  const results = useMemo(
-    () => indexRef.current.search(query),
-    [query, version],
-  );
+  const results = useMemo(() => {
+    // The index mutates behind its stable ref; version is its React signal.
+    void version;
+    return indexRef.current.search(query);
+  }, [query, version]);
 
   return { results, indexing, indexedCount, totalCount, error };
 }

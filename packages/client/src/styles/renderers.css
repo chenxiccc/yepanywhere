@@ -211,6 +211,20 @@
   background: var(--bg-diff-removed, rgba(207, 34, 46, 0.15));
 }
 
+.fixed-font-rendered-line.fixed-font-diff-added
+  > .fixed-font-diff-gutter {
+  background: var(--bg-diff-gutter-added, rgba(26, 127, 55, 0.26));
+  color: var(--success-color);
+  font-weight: 700;
+}
+
+.fixed-font-rendered-line.fixed-font-diff-removed
+  > .fixed-font-diff-gutter {
+  background: var(--bg-diff-gutter-removed, rgba(207, 34, 46, 0.26));
+  color: var(--error-color);
+  font-weight: 700;
+}
+
 .fixed-font-markdown-block {
   overflow-x: auto;
   white-space: normal;
@@ -244,6 +258,34 @@
   padding-right: 0;
   text-align: center;
   background: color-mix(in srgb, var(--bg-tertiary) 70%, transparent);
+}
+
+.fixed-font-markdown-table
+  .fixed-font-diff-added
+  > .fixed-font-diff-gutter-cell {
+  background: var(--bg-diff-gutter-added, rgba(26, 127, 55, 0.26));
+}
+
+.fixed-font-markdown-table
+  .fixed-font-diff-removed
+  > .fixed-font-diff-gutter-cell {
+  background: var(--bg-diff-gutter-removed, rgba(207, 34, 46, 0.26));
+}
+
+.fixed-font-markdown-table
+  .fixed-font-diff-added
+  > .fixed-font-diff-gutter-cell
+  .fixed-font-diff-gutter {
+  color: var(--success-color);
+  font-weight: 700;
+}
+
+.fixed-font-markdown-table
+  .fixed-font-diff-removed
+  > .fixed-font-diff-gutter-cell
+  .fixed-font-diff-gutter {
+  color: var(--error-color);
+  font-weight: 700;
 }
 
 .fixed-font-rendered__content .katex-display {
@@ -2042,12 +2084,24 @@ details[open] .collapsible__icon {
 }
 
 .diff-removed {
-  background: var(--bg-diff-removed, rgba(207, 34, 46, 0.15));
+  background:
+    linear-gradient(
+      to right,
+      var(--bg-diff-gutter-removed, rgba(207, 34, 46, 0.26)) 0 1.25rem,
+      transparent 1.25rem
+    ),
+    var(--bg-diff-removed, rgba(207, 34, 46, 0.15));
   color: var(--text-diff-removed, var(--error-color));
 }
 
 .diff-added {
-  background: var(--bg-diff-added, rgba(26, 127, 55, 0.15));
+  background:
+    linear-gradient(
+      to right,
+      var(--bg-diff-gutter-added, rgba(26, 127, 55, 0.26)) 0 1.25rem,
+      transparent 1.25rem
+    ),
+    var(--bg-diff-added, rgba(26, 127, 55, 0.15));
   color: var(--text-diff-added, var(--success-color));
 }
 
@@ -2096,11 +2150,33 @@ details[open] .collapsible__icon {
 
 /* Diff line background colors */
 .highlighted-diff .line-deleted {
-  background: var(--bg-diff-deleted, rgba(248, 81, 73, 0.15)) !important;
+  background:
+    linear-gradient(
+      to right,
+      var(--bg-diff-gutter-removed, rgba(207, 34, 46, 0.26)) 0 1.25rem,
+      transparent 1.25rem
+    ),
+    var(--bg-diff-removed, rgba(207, 34, 46, 0.15)) !important;
 }
 
 .highlighted-diff .line-inserted {
-  background: var(--bg-diff-inserted, rgba(63, 185, 80, 0.15)) !important;
+  background:
+    linear-gradient(
+      to right,
+      var(--bg-diff-gutter-added, rgba(26, 127, 55, 0.26)) 0 1.25rem,
+      transparent 1.25rem
+    ),
+    var(--bg-diff-added, rgba(26, 127, 55, 0.15)) !important;
+}
+
+.highlighted-diff .line-deleted > .diff-prefix {
+  color: var(--error-color);
+  font-weight: 700;
+}
+
+.highlighted-diff .line-inserted > .diff-prefix {
+  color: var(--success-color);
+  font-weight: 700;
 }
 
 /* Word-level diff highlighting - subtle emphasis within lines */

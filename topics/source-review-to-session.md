@@ -436,6 +436,16 @@ couple to it. — Pending.
 — Done (2026-07-26). The wide diff pane uses the single-row form; a narrow
 mobile modal keeps the compact controls-row fallback beneath its path title.
 
+### Dark-theme diff emphasis
+
+Dark and Very Dark keep added/deleted whole-line backgrounds as subdued
+semantic washes rather than saturated panels. The narrow `+` / `−` gutter
+carries the stronger green/red emphasis, so change type stays scannable
+without competing with syntax text. Auto follows the Dark treatment when the
+system is dark; Light keeps its established whole-line intensity. The shared
+diff palette applies this consistently to source-browser and session-tool
+diffs. — Done (2026-07-26).
+
 ### Master-detail use and touch-readable row identities
 
 - **Wide Files opens useful detail.** Once the tracked-file list loads, Files

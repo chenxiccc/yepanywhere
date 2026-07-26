@@ -384,6 +384,26 @@
   --attention-color: #4daafc;
   --focus-border: #007acc;
   --primary-color: #60a5fa;
+  --bg-diff-added: color-mix(
+    in srgb,
+    var(--success-color) 7%,
+    transparent
+  );
+  --bg-diff-removed: color-mix(
+    in srgb,
+    var(--error-color) 7%,
+    transparent
+  );
+  --bg-diff-gutter-added: color-mix(
+    in srgb,
+    var(--success-color) 24%,
+    transparent
+  );
+  --bg-diff-gutter-removed: color-mix(
+    in srgb,
+    var(--error-color) 26%,
+    transparent
+  );
 
   /* Timeline */
   --timeline-dot-default: #9d9d9d;
@@ -458,6 +478,26 @@
   --attention-color: #5db5ff;
   --focus-border: #007acc;
   --primary-color: #60a5fa;
+  --bg-diff-added: color-mix(
+    in srgb,
+    var(--success-color) 7%,
+    transparent
+  );
+  --bg-diff-removed: color-mix(
+    in srgb,
+    var(--error-color) 7%,
+    transparent
+  );
+  --bg-diff-gutter-added: color-mix(
+    in srgb,
+    var(--success-color) 22%,
+    transparent
+  );
+  --bg-diff-gutter-removed: color-mix(
+    in srgb,
+    var(--error-color) 24%,
+    transparent
+  );
 
   /* Timeline */
   --timeline-dot-default: #a0a0a0;
@@ -535,6 +575,10 @@
   --tooltip-background: #000000;
   --tooltip-foreground: #ffffff;
   --tooltip-border: #ffffff;
+  --bg-diff-added: rgba(26, 127, 55, 0.15);
+  --bg-diff-removed: rgba(207, 34, 46, 0.15);
+  --bg-diff-gutter-added: rgba(26, 127, 55, 0.26);
+  --bg-diff-gutter-removed: rgba(207, 34, 46, 0.26);
 
   /* Timeline */
   --timeline-dot-default: #98948c;
@@ -606,6 +650,26 @@
   --attention-color: #5db5ff;
   --focus-border: #007acc;
   --primary-color: #60a5fa;
+  --bg-diff-added: color-mix(
+    in srgb,
+    var(--success-color) 7%,
+    transparent
+  );
+  --bg-diff-removed: color-mix(
+    in srgb,
+    var(--error-color) 7%,
+    transparent
+  );
+  --bg-diff-gutter-added: color-mix(
+    in srgb,
+    var(--success-color) 22%,
+    transparent
+  );
+  --bg-diff-gutter-removed: color-mix(
+    in srgb,
+    var(--error-color) 24%,
+    transparent
+  );
 
   --timeline-dot-default: #a0a0a0;
   --timeline-dot-tool: #7dd39a;
@@ -676,6 +740,10 @@
     --tooltip-background: #000000;
     --tooltip-foreground: #ffffff;
     --tooltip-border: #ffffff;
+    --bg-diff-added: rgba(26, 127, 55, 0.15);
+    --bg-diff-removed: rgba(207, 34, 46, 0.15);
+    --bg-diff-gutter-added: rgba(26, 127, 55, 0.26);
+    --bg-diff-gutter-removed: rgba(207, 34, 46, 0.26);
 
     --timeline-dot-default: #98948c;
     --timeline-dot-tool: #1a7f37;
