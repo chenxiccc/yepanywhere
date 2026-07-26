@@ -161,6 +161,8 @@ export {
 } from "./types.js";
 
 export type {
+  GitCommitDetail,
+  GitCommitListResult,
   GitDiffPreviewSkipped,
   GitDiffPreviewSkippedReason,
   GitDiffResult,

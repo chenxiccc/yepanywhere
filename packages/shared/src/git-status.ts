@@ -37,6 +37,25 @@ export interface GitRecentCommit {
   authorDate: string;
 }
 
+/**
+ * A commit's metadata plus the files it changed (topic:
+ * source-review-to-session, stage 3 commit browser). Diffs are fetched per
+ * file via `POST /git/commit-diff`, mirroring the working-tree diff flow.
+ */
+export interface GitCommitDetail extends GitRecentCommit {
+  /** Full commit message body (may be empty or multi-line). */
+  body: string;
+  /** Files changed by the commit. Reuses {@link GitFileChange} with `staged` always false. */
+  files: GitFileChange[];
+}
+
+/** One page of commits for the commit browser. */
+export interface GitCommitListResult {
+  commits: GitRecentCommit[];
+  /** True when more commits exist past this page (for "load more"). */
+  hasMore: boolean;
+}
+
 export interface GitUntrackedFolderInfo {
   /** Compact untracked directory path, with trailing slash */
   path: string;

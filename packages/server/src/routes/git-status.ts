@@ -1,7 +1,6 @@
-import { execFile, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { readFile, stat } from "node:fs/promises";
 import { extname, resolve } from "node:path";
-import { promisify } from "node:util";
 import {
   type GitDiffPreviewSkipped,
   type GitDiffResult,
@@ -20,8 +19,13 @@ import { Hono } from "hono";
 import { computeEditAugment } from "../augments/edit-augments.js";
 import { renderMarkdownToHtml } from "../augments/markdown-augments.js";
 import type { ProjectScanner } from "../projects/scanner.js";
-
-const execFileAsync = promisify(execFile);
+import {
+  GIT_DIFF_PREVIEW_MAX_LINE_CHARS,
+  GIT_DIFF_PREVIEW_MAX_TOTAL_BYTES,
+  getDiffPreviewSkip,
+  skippedGitDiffResult,
+} from "../git/diffPreviewGuards.js";
+import { GIT_DECODE_PATHS_ARGS, runGit } from "../git/gitExec.js";
 
 export interface GitStatusDeps {
   scanner: ProjectScanner;
@@ -42,9 +46,6 @@ const NOT_A_GIT_REPO: GitStatusInfo = {
 const remoteCheckedAtByProjectPath = new Map<string, string>();
 const gitOperationsByProjectPath = new Set<string>();
 const UNTRACKED_FOLDER_FILE_LIMIT = 500;
-const GIT_DIFF_PREVIEW_MAX_TOTAL_BYTES = 256 * 1024;
-const GIT_DIFF_PREVIEW_MAX_LINE_CHARS = 20_000;
-const GIT_DECODE_PATHS_ARGS = ["-c", "core.quotePath=false"];
 
 export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
   const routes = new Hono();
@@ -503,67 +504,6 @@ async function getUntrackedDiffPreviewSizeSkip(
   };
 }
 
-function getDiffPreviewSkip(
-  oldContent: string,
-  newContent: string,
-): GitDiffPreviewSkipped | null {
-  const oldBytes = Buffer.byteLength(oldContent, "utf8");
-  const newBytes = Buffer.byteLength(newContent, "utf8");
-  const totalBytes = oldBytes + newBytes;
-  const maxLineChars = Math.max(
-    longestLineChars(oldContent),
-    longestLineChars(newContent),
-  );
-
-  if (totalBytes > GIT_DIFF_PREVIEW_MAX_TOTAL_BYTES) {
-    return {
-      reason: "content-too-large",
-      totalBytes,
-      maxLineChars,
-      maxTotalBytes: GIT_DIFF_PREVIEW_MAX_TOTAL_BYTES,
-      maxLineCharsLimit: GIT_DIFF_PREVIEW_MAX_LINE_CHARS,
-    };
-  }
-
-  if (maxLineChars > GIT_DIFF_PREVIEW_MAX_LINE_CHARS) {
-    return {
-      reason: "line-too-long",
-      totalBytes,
-      maxLineChars,
-      maxTotalBytes: GIT_DIFF_PREVIEW_MAX_TOTAL_BYTES,
-      maxLineCharsLimit: GIT_DIFF_PREVIEW_MAX_LINE_CHARS,
-    };
-  }
-
-  return null;
-}
-
-function skippedGitDiffResult(
-  previewSkipped: GitDiffPreviewSkipped,
-): GitDiffResult {
-  return {
-    diffHtml: "",
-    structuredPatch: [],
-    previewSkipped,
-  };
-}
-
-function longestLineChars(content: string): number {
-  let longest = 0;
-  let current = 0;
-
-  for (let index = 0; index < content.length; index++) {
-    if (content.charCodeAt(index) === 10) {
-      longest = Math.max(longest, current);
-      current = 0;
-    } else {
-      current++;
-    }
-  }
-
-  return Math.max(longest, current);
-}
-
 /**
  * Get old and new file content for computing a diff.
  * Handles all git status codes (M, A, D, ?, R, etc.).
@@ -620,20 +560,6 @@ async function getFileVersions(
     readFile(resolve(cwd, path), "utf-8").catch(() => ""),
   ]);
   return { oldContent: oldResult.stdout, newContent };
-}
-
-async function runGit(
-  cwd: string,
-  args: string[],
-  options?: { timeout?: number; disableTerminalPrompt?: boolean },
-): Promise<{ stdout: string; stderr: string }> {
-  return execFileAsync("git", ["-C", cwd, ...args], {
-    maxBuffer: 1024 * 1024,
-    timeout: options?.timeout ?? 10_000,
-    ...(options?.disableTerminalPrompt
-      ? { env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } }
-      : {}),
-  });
 }
 
 async function getCheckedRemoteAt(projectPath: string): Promise<string | null> {

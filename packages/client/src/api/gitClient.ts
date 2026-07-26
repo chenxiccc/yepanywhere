@@ -1,4 +1,6 @@
 import type {
+  GitCommitDetail,
+  GitCommitListResult,
   GitDiffResult,
   GitIntegrationOptionsResult,
   GitPullResult,
@@ -48,6 +50,40 @@ export const gitApi = {
     },
   ) =>
     fetchJSON<GitDiffResult>(`/projects/${projectId}/git/diff`, {
+      method: "POST",
+      body: JSON.stringify(params),
+    }),
+
+  // Stage-3 commit browser (topic: source-review-to-session).
+  getGitCommits: (
+    projectId: string,
+    params?: { limit?: number; skip?: number },
+  ) => {
+    const query = new URLSearchParams();
+    if (params?.limit !== undefined) query.set("limit", String(params.limit));
+    if (params?.skip !== undefined) query.set("skip", String(params.skip));
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return fetchJSON<GitCommitListResult>(
+      `/projects/${projectId}/git/commits${suffix}`,
+    );
+  },
+
+  getGitCommit: (projectId: string, sha: string) =>
+    fetchJSON<GitCommitDetail>(
+      `/projects/${projectId}/git/commit/${encodeURIComponent(sha)}`,
+    ),
+
+  getGitCommitDiff: (
+    projectId: string,
+    params: {
+      sha: string;
+      path: string;
+      status: string;
+      origPath?: string;
+      fullContext?: boolean;
+    },
+  ) =>
+    fetchJSON<GitDiffResult>(`/projects/${projectId}/git/commit-diff`, {
       method: "POST",
       body: JSON.stringify(params),
     }),
