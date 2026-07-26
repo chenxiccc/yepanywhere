@@ -37,6 +37,7 @@ import { useProject, useProjects } from "../hooks/useProjects";
 import { useProjectReviewComments } from "../hooks/useProjectReviewComments";
 import { useRelativeNow } from "../hooks/useRelativeNow";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
+import { BlameBrowser } from "./BlameBrowser";
 import { CommitBrowser } from "./CommitBrowser";
 import { RepoStatusBar } from "./RepoStatusBar";
 import { type SourceTab, SourceModeTabs } from "./SourceModeTabs";
@@ -76,7 +77,7 @@ interface SourceControlRouteState {
 const SOURCE_CONTROL_ROUTE_TTL_MS = 5 * 60 * 1000;
 
 /** Source-control modes with a built body (topic: source-review-to-session). */
-const SOURCE_TABS: readonly SourceTab[] = ["changes", "commits"];
+const SOURCE_TABS: readonly SourceTab[] = ["changes", "commits", "files"];
 
 function getSourceControlRouteRetentionKey(
   sourceKey: ClientSummarySourceKey,
@@ -728,6 +729,8 @@ function GitStatusContent({
           isWideScreen={isWideScreen}
           t={t}
         />
+      ) : tab === "files" ? (
+        <BlameBrowser projectId={projectId} isWideScreen={isWideScreen} t={t} />
       ) : (
         <>
           <div className="git-status-workspace">
