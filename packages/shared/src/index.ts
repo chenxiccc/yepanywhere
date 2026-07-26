@@ -161,8 +161,12 @@ export {
 } from "./types.js";
 
 export type {
+  GitBlameLine,
+  GitBlameResult,
   GitCommitDetail,
   GitCommitListResult,
+  GitFileListResult,
+  GitSearchResult,
   GitDiffPreviewSkipped,
   GitDiffPreviewSkippedReason,
   GitDiffResult,

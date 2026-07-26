@@ -4,9 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import {
+  type GitBlameResult,
   type GitCommitDetail,
   type GitCommitListResult,
   type GitDiffResult,
+  type GitFileListResult,
+  type GitSearchResult,
   anchorFromPatch,
   toUrlProjectId,
 } from "@yep-anywhere/shared";
@@ -185,5 +188,74 @@ describe("git-browse routes", () => {
     const { projectId, routes } = createRoutesForProject(dir);
     const res = await routes.request(`/${projectId}/git/commit/not-a-sha`);
     expect(res.status).toBe(400);
+  });
+
+  it("blames a file with per-line commits and highlighted body", async () => {
+    const { projectId, routes } = createRoutesForProject(dir);
+
+    const res = await routes.request(
+      `/${projectId}/git/blame?path=${encodeURIComponent("d.ts")}`,
+    );
+    const body = (await res.json()) as GitBlameResult;
+
+    expect(res.status).toBe(200);
+    expect(body.lines).toHaveLength(5);
+    expect(body.lines.map((l) => l.line)).toEqual([1, 2, 3, 4, 5]);
+    expect(body.lines[4]?.content).toBe("line5");
+    // The line added by the last commit blames to it.
+    expect(body.lines[4]?.sha).toBe(shas.c3);
+    expect(body.lines[4]?.uncommitted).toBe(false);
+    expect(body.lines[0]?.author).toBe("YA Test");
+    expect(body.highlightedLanguage).toBe("typescript");
+    expect(body.highlightedHtml).toContain('class="line"');
+  });
+
+  it("marks a working-tree change as uncommitted in blame", async () => {
+    await writeFile(
+      join(dir, "d.ts"),
+      "line1\nline2 changed\nline3\nline4\nline5\nline6 wip\n",
+    );
+    const { projectId, routes } = createRoutesForProject(dir);
+
+    const res = await routes.request(
+      `/${projectId}/git/blame?path=${encodeURIComponent("d.ts")}`,
+    );
+    const body = (await res.json()) as GitBlameResult;
+
+    const wip = body.lines.find((l) => l.content === "line6 wip");
+    expect(wip?.uncommitted).toBe(true);
+  });
+
+  it("lists tracked files and filters by query", async () => {
+    const { projectId, routes } = createRoutesForProject(dir);
+
+    const all = await routes.request(`/${projectId}/git/files`);
+    const allBody = (await all.json()) as GitFileListResult;
+    expect(allBody.files).toContain("b.ts");
+    expect(allBody.files).toContain("d.ts");
+    expect(allBody.truncated).toBe(false);
+
+    const filtered = await routes.request(`/${projectId}/git/files?q=d`);
+    const filteredBody = (await filtered.json()) as GitFileListResult;
+    expect(filteredBody.files).toEqual(["d.ts"]);
+  });
+
+  it("searches filenames and commit deltas", async () => {
+    const { projectId, routes } = createRoutesForProject(dir);
+
+    const byName = await routes.request(
+      `/${projectId}/git/search?kind=filename&q=b.ts`,
+    );
+    const byNameBody = (await byName.json()) as GitSearchResult;
+    expect(byNameBody.files).toContain("b.ts");
+
+    // "line5" was introduced only by the rename commit.
+    const byDelta = await routes.request(
+      `/${projectId}/git/search?kind=delta&q=line5`,
+    );
+    const byDeltaBody = (await byDelta.json()) as GitSearchResult;
+    expect(byDeltaBody.commits?.map((commit) => commit.hash)).toContain(
+      shas.c3,
+    );
   });
 });

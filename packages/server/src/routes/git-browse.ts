@@ -4,13 +4,16 @@ import {
   type GitCommitListResult,
   type GitDiffResult,
   type GitFileChange,
+  type GitFileListResult,
   type GitRecentCommit,
+  type GitSearchResult,
   isUrlProjectId,
 } from "@yep-anywhere/shared";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { computeEditAugment } from "../augments/edit-augments.js";
 import { renderMarkdownToHtml } from "../augments/markdown-augments.js";
+import { getBlame } from "../git/blame.js";
 import {
   getDiffPreviewSkip,
   skippedGitDiffResult,
@@ -45,6 +48,10 @@ const MAX_COMMIT_SKIP = 1_000_000;
 const BROWSE_MAX_BUFFER = 16 * 1024 * 1024;
 /** A commit-ish the browser addresses — a hex sha (short or full). */
 const SHA_RE = /^[0-9a-f]{4,64}$/i;
+const DEFAULT_FILE_LIST_LIMIT = 2000;
+const DEFAULT_SEARCH_COMMIT_LIMIT = 50;
+const MAX_SEARCH_COMMIT_LIMIT = 200;
+const SEARCH_TIMEOUT_MS = 15_000;
 
 export function createGitBrowseRoutes(deps: GitBrowseDeps): Hono {
   const routes = new Hono();
@@ -162,6 +169,85 @@ export function createGitBrowseRoutes(deps: GitBrowseDeps): Hono {
       }
 
       return c.json(result);
+    } catch (err) {
+      return gitError(c, err);
+    }
+  });
+
+  // Whole-file blame for the all-files provenance browser.
+  routes.get("/:projectId/git/blame", async (c) => {
+    const projectPath = await resolveProjectPath(c, deps);
+    if (typeof projectPath !== "string") return projectPath;
+
+    const path = c.req.query("path");
+    if (!path) return c.json({ error: "Missing path parameter" }, 400);
+    const rev = c.req.query("rev");
+    if (rev && rev !== "HEAD" && !SHA_RE.test(rev)) {
+      return c.json({ error: "Invalid rev" }, 400);
+    }
+
+    try {
+      const result = await getBlame(projectPath, path, rev || undefined);
+      return c.json(result);
+    } catch (err) {
+      return gitError(c, err);
+    }
+  });
+
+  // Tracked-file list for the all-files tree + filename search.
+  routes.get("/:projectId/git/files", async (c) => {
+    const projectPath = await resolveProjectPath(c, deps);
+    if (typeof projectPath !== "string") return projectPath;
+
+    const query = (c.req.query("q") ?? "").toLowerCase();
+    const limit = clampInt(
+      c.req.query("limit"),
+      DEFAULT_FILE_LIST_LIMIT,
+      1,
+      DEFAULT_FILE_LIST_LIMIT,
+    );
+    try {
+      const result = await listRepoFiles(projectPath, query, limit);
+      return c.json(result);
+    } catch (err) {
+      return gitError(c, err);
+    }
+  });
+
+  // Rudimentary filename / commit-delta search.
+  routes.get("/:projectId/git/search", async (c) => {
+    const projectPath = await resolveProjectPath(c, deps);
+    if (typeof projectPath !== "string") return projectPath;
+
+    const query = c.req.query("q") ?? "";
+    const kind = c.req.query("kind") === "delta" ? "delta" : "filename";
+    if (query.trim().length === 0) {
+      return c.json({ truncated: false } satisfies GitSearchResult);
+    }
+    const limit = clampInt(
+      c.req.query("limit"),
+      DEFAULT_SEARCH_COMMIT_LIMIT,
+      1,
+      MAX_SEARCH_COMMIT_LIMIT,
+    );
+
+    try {
+      if (kind === "filename") {
+        const list = await listRepoFiles(
+          projectPath,
+          query.toLowerCase(),
+          DEFAULT_FILE_LIST_LIMIT,
+        );
+        return c.json({
+          files: list.files,
+          truncated: list.truncated,
+        } satisfies GitSearchResult);
+      }
+      const delta = await searchCommitDelta(projectPath, query, limit);
+      return c.json({
+        commits: delta.commits,
+        truncated: delta.truncated,
+      } satisfies GitSearchResult);
     } catch (err) {
       return gitError(c, err);
     }
@@ -383,4 +469,54 @@ function parseCommitLog(stdout: string): GitRecentCommit[] {
     commits.push({ hash, shortHash, authorName, authorDate, subject });
   }
   return commits;
+}
+
+/** Tracked files (`git ls-files -z`), optionally substring-filtered. */
+async function listRepoFiles(
+  cwd: string,
+  queryLower: string,
+  limit: number,
+): Promise<GitFileListResult> {
+  const { stdout } = await runGit(cwd, ["ls-files", "-z"], {
+    maxBuffer: BROWSE_MAX_BUFFER,
+  });
+  const all = stdout.split("\0").filter((p) => p.length > 0);
+  const matched = queryLower
+    ? all.filter((p) => p.toLowerCase().includes(queryLower))
+    : all;
+  const truncated = matched.length > limit;
+  return {
+    files: truncated ? matched.slice(0, limit) : matched,
+    truncated,
+  };
+}
+
+/**
+ * Commits whose diff added or removed a line matching `query` (git's `-G`
+ * pickaxe; `query` is a POSIX regex, case-insensitive). Rudimentary by intent
+ * — enough to find the commit to comment on.
+ */
+async function searchCommitDelta(
+  cwd: string,
+  query: string,
+  limit: number,
+): Promise<{ commits: GitRecentCommit[]; truncated: boolean }> {
+  const { stdout } = await runGit(
+    cwd,
+    [
+      "log",
+      `-G${query}`,
+      "--regexp-ignore-case",
+      "-n",
+      String(limit + 1),
+      `--format=${COMMIT_LOG_FORMAT}`,
+    ],
+    { maxBuffer: BROWSE_MAX_BUFFER, timeout: SEARCH_TIMEOUT_MS },
+  );
+  const all = parseCommitLog(stdout);
+  const truncated = all.length > limit;
+  return {
+    commits: truncated ? all.slice(0, limit) : all,
+    truncated,
+  };
 }

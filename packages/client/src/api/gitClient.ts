@@ -1,11 +1,14 @@
 import type {
+  GitBlameResult,
   GitCommitDetail,
   GitCommitListResult,
   GitDiffResult,
+  GitFileListResult,
   GitIntegrationOptionsResult,
   GitPullResult,
   GitPushResult,
   GitRemoteCheckResult,
+  GitSearchResult,
   GitStatusInfo,
   GitUntrackedFolderInfo,
 } from "@yep-anywhere/shared";
@@ -87,4 +90,36 @@ export const gitApi = {
       method: "POST",
       body: JSON.stringify(params),
     }),
+
+  getGitBlame: (projectId: string, path: string, rev?: string) => {
+    const query = new URLSearchParams({ path });
+    if (rev) query.set("rev", rev);
+    return fetchJSON<GitBlameResult>(
+      `/projects/${projectId}/git/blame?${query.toString()}`,
+    );
+  },
+
+  listGitFiles: (
+    projectId: string,
+    params?: { q?: string; limit?: number },
+  ) => {
+    const query = new URLSearchParams();
+    if (params?.q) query.set("q", params.q);
+    if (params?.limit !== undefined) query.set("limit", String(params.limit));
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return fetchJSON<GitFileListResult>(
+      `/projects/${projectId}/git/files${suffix}`,
+    );
+  },
+
+  searchGit: (
+    projectId: string,
+    params: { q: string; kind: "filename" | "delta"; limit?: number },
+  ) => {
+    const query = new URLSearchParams({ q: params.q, kind: params.kind });
+    if (params.limit !== undefined) query.set("limit", String(params.limit));
+    return fetchJSON<GitSearchResult>(
+      `/projects/${projectId}/git/search?${query.toString()}`,
+    );
+  },
 };

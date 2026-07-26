@@ -56,6 +56,55 @@ export interface GitCommitListResult {
   hasMore: boolean;
 }
 
+/** One source line's blame in the all-files provenance browser. */
+export interface GitBlameLine {
+  /** 1-based line number in the blamed revision. */
+  line: number;
+  /** Originating commit sha (40-hex; all-zero when not yet committed). */
+  sha: string;
+  shortSha: string;
+  author: string;
+  /** ISO 8601 author time, or "" when unknown. */
+  authorTime: string;
+  /** First line of the originating commit's message. */
+  summary: string;
+  /** The line's text (diff prefix stripped; it is plain file content). */
+  content: string;
+  /** True when the line is a working-tree change with no commit yet. */
+  uncommitted: boolean;
+}
+
+/** Whole-file blame plus the highlighted file body for the viewer. */
+export interface GitBlameResult {
+  path: string;
+  /** The revision blamed (a sha, or "HEAD" for the working tree). */
+  rev: string;
+  lines: GitBlameLine[];
+  /** Shiki HTML of the file (per-line spans), aligned to `lines` by order. */
+  highlightedHtml?: string;
+  highlightedLanguage?: string;
+  /** True when the file was too large to blame/highlight in full. */
+  truncated?: boolean;
+}
+
+/** Tracked-file list for the all-files tree / filename search. */
+export interface GitFileListResult {
+  /** Repo-relative paths (`git ls-files`), optionally filtered by a query. */
+  files: string[];
+  /** True when the list was capped by the server limit. */
+  truncated: boolean;
+}
+
+/** Rudimentary commit-delta / filename search results. */
+export interface GitSearchResult {
+  /** Matching file paths (filename search). */
+  files?: string[];
+  /** Commits whose diff touched the query (delta search). */
+  commits?: GitRecentCommit[];
+  /** True when results were capped by the server limit. */
+  truncated: boolean;
+}
+
 export interface GitUntrackedFolderInfo {
   /** Compact untracked directory path, with trailing slash */
   path: string;
