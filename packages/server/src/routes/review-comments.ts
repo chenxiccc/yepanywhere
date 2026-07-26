@@ -231,9 +231,20 @@ export function createReviewCommentsRoutes(deps: ReviewCommentsDeps): Hono {
       }
       sessionId = result.sessionId;
     } else {
-      const delivered = await deps.launcher.deliverFollowUp(target, turn);
-      if (!delivered) {
-        return c.json({ error: "Target session is not live" }, 409);
+      const result = await deps.launcher.deliverFollowUp(
+        resolved.path,
+        target,
+        turn,
+      );
+      if (result.status === "queue-full") {
+        return c.json(
+          { error: "Queue is full", maxQueueSize: result.maxQueueSize },
+          503,
+        );
+      }
+      if (result.status === "queued") {
+        // Enqueued but not yet delivered; leave the comments pending to retry.
+        return c.json({ status: "queued" }, 202);
       }
       sessionId = target;
     }

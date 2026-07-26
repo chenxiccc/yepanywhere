@@ -194,7 +194,7 @@ describe("review-comments routes", () => {
       return { status: "started", sessionId: "new-sess" };
     },
     async deliverFollowUp() {
-      return true;
+      return { status: "delivered" };
     },
   };
 
@@ -284,18 +284,18 @@ describe("review-comments routes", () => {
     );
   });
 
-  it("submit 409s when a follow-up target session is not live", async () => {
-    const notLive: ReviewSessionLauncher = {
+  it("leaves comments pending when a follow-up is queued at capacity", async () => {
+    const queuedFollowUp: ReviewSessionLauncher = {
       startReviewSession: startsLauncher.startReviewSession,
       async deliverFollowUp() {
-        return false;
+        return { status: "queued" };
       },
     };
     const c = await service.addComment(dir, {
       anchor: anchor({ path: "src/missing.ts" }),
       text: "x",
     });
-    const res = await routesWithLauncher(notLive).request(
+    const res = await routesWithLauncher(queuedFollowUp).request(
       `/${projectId}/review/submit`,
       {
         method: "POST",
@@ -303,8 +303,8 @@ describe("review-comments routes", () => {
         body: JSON.stringify({ include: [c.id], target: "dead-sess" }),
       },
     );
-    expect(res.status).toBe(409);
-    // Not consumed — still pending for a retry.
+    // Enqueued, not delivered → 202, comments still pending for a retry.
+    expect(res.status).toBe(202);
     expect(await service.listPending(dir)).toHaveLength(1);
   });
 
@@ -314,7 +314,7 @@ describe("review-comments routes", () => {
         return { status: "queued" };
       },
       async deliverFollowUp() {
-        return true;
+        return { status: "delivered" };
       },
     };
     const c = await service.addComment(dir, {

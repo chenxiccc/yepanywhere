@@ -12,6 +12,12 @@ export type ReviewLaunchResult =
   | { status: "queued" }
   | { status: "queue-full"; maxQueueSize?: number };
 
+/** Outcome of delivering a follow-up turn (possibly resuming a reaped session). */
+export type ReviewFollowUpResult =
+  | { status: "delivered" }
+  | { status: "queued" }
+  | { status: "queue-full"; maxQueueSize?: number };
+
 export interface ReviewSessionLauncher {
   /** Start a fresh review session whose first turn is `text`. */
   startReviewSession(
@@ -19,10 +25,16 @@ export interface ReviewSessionLauncher {
     text: string,
   ): Promise<ReviewLaunchResult>;
   /**
-   * Deliver `text` as a follow-up turn to a live session. Returns false when
-   * the session has no live process (nothing to deliver to).
+   * Deliver `text` as a follow-up turn to `sessionId`. When the session has a
+   * live process the turn is queued to it; when it has been reaped (no live
+   * process — the common case for a review session idle for a while), it is
+   * resumed from its jsonl and the turn delivered, rather than failing.
    */
-  deliverFollowUp(sessionId: string, text: string): Promise<boolean>;
+  deliverFollowUp(
+    projectPath: string,
+    sessionId: string,
+    text: string,
+  ): Promise<ReviewFollowUpResult>;
 }
 
 export function createSupervisorReviewLauncher(
@@ -41,11 +53,23 @@ export function createSupervisorReviewLauncher(
       return { status: "started", sessionId: result.sessionId };
     },
 
-    async deliverFollowUp(sessionId, text) {
+    async deliverFollowUp(projectPath, sessionId, text) {
       const process = supervisor.getProcessForSession(sessionId);
-      if (!process) return false;
-      process.queueMessage({ text });
-      return true;
+      if (process) {
+        process.queueMessage({ text });
+        return { status: "delivered" };
+      }
+      // Reaped: resume the session from its jsonl and deliver the turn.
+      const result = await supervisor.resumeSession(sessionId, projectPath, {
+        text,
+      });
+      if ("error" in result) {
+        return { status: "queue-full", maxQueueSize: result.maxQueueSize };
+      }
+      if ("queued" in result) {
+        return { status: "queued" };
+      }
+      return { status: "delivered" };
     },
   };
 }
