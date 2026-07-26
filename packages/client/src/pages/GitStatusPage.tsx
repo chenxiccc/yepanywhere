@@ -40,6 +40,7 @@ import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { BlameBrowser } from "./BlameBrowser";
 import { CommitBrowser } from "./CommitBrowser";
 import { RepoStatusBar } from "./RepoStatusBar";
+import { ReviewCommentsPanel } from "./ReviewCommentsPanel";
 import { type SourceTab, SourceModeTabs } from "./SourceModeTabs";
 import { ReviewSubmitModal } from "./ReviewSubmitModal";
 import {
@@ -77,7 +78,12 @@ interface SourceControlRouteState {
 const SOURCE_CONTROL_ROUTE_TTL_MS = 5 * 60 * 1000;
 
 /** Source-control modes with a built body (topic: source-review-to-session). */
-const SOURCE_TABS: readonly SourceTab[] = ["changes", "commits", "files"];
+const SOURCE_TABS: readonly SourceTab[] = [
+  "changes",
+  "commits",
+  "files",
+  "comments",
+];
 
 function getSourceControlRouteRetentionKey(
   sourceKey: ClientSummarySourceKey,
@@ -315,7 +321,9 @@ function GitStatusContent({
       ? "commits"
       : tabParam === "files"
         ? "files"
-        : "changes";
+        : tabParam === "comments"
+          ? "comments"
+          : "changes";
   const setTab = useCallback(
     (next: SourceTab) => {
       setSearchParams(
@@ -728,6 +736,7 @@ function GitStatusContent({
           <SourceModeTabs
             tab={tab}
             tabs={SOURCE_TABS}
+            counts={{ comments: reviewComments.pending.length }}
             onSelect={setTab}
             t={t}
           />
@@ -753,6 +762,14 @@ function GitStatusContent({
           projectId={projectId}
           isWideScreen={isWideScreen}
           onBlameFile={handleBlameFile}
+          t={t}
+        />
+      ) : tab === "comments" ? (
+        <ReviewCommentsPanel
+          projectId={projectId}
+          pending={reviewComments.pending}
+          onOpenFile={handleBlameFile}
+          onSubmit={() => setShowReviewModal(true)}
           t={t}
         />
       ) : tab === "files" ? (

@@ -5945,6 +5945,14 @@ pre.code-highlighter-plain,
 
 /* ── Stage-3 source-control shell (topic: source-review-to-session) ── */
 
+/* Source-control diff panes read one step smaller than session tool diffs
+   (which sit at --fixed-font-size-base): match the session file viewer's
+   sm size, still tracking the appearance "code size" offset. */
+.source-diff-pane .highlighted-diff,
+.source-diff-pane .diff-content {
+  font-size: var(--fixed-font-size-sm);
+}
+
 /* Persistent repo/branch status header. */
 .repo-status-bar {
   position: sticky;
@@ -6057,6 +6065,109 @@ pre.code-highlighter-plain,
 .source-mode-tab.active {
   color: var(--text-primary, #e6edf3);
   background: var(--bg-hover, rgba(255, 255, 255, 0.08));
+}
+
+.source-mode-tab-count {
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  color: var(--text-secondary, #8b949e);
+  background: var(--bg-hover, rgba(255, 255, 255, 0.08));
+}
+
+/* Pending-review list (the comments mode). */
+.review-comments-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+  max-width: 900px;
+}
+
+.review-comments-empty {
+  padding: var(--space-3, 12px);
+  color: var(--text-secondary, #8b949e);
+}
+
+.review-comments-hint {
+  margin-top: 4px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.review-comments-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.review-comments-row {
+  padding: var(--space-2, 8px);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle, #21262d);
+  border-radius: var(--radius-md, 8px);
+}
+
+.review-comments-row-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2, 8px);
+  min-width: 0;
+}
+
+.review-comments-loc {
+  padding: 0;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8rem;
+  color: var(--link-color);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.review-comments-loc:hover {
+  text-decoration: underline;
+}
+
+.review-comments-rev {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.review-comments-delete {
+  margin-left: auto;
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  color: var(--text-secondary, #8b949e);
+  background: transparent;
+  border: 1px solid var(--border-subtle, #21262d);
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.review-comments-delete:hover {
+  color: var(--error-color);
+  border-color: var(--error-color);
+}
+
+.review-comments-text {
+  margin-top: 4px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text-primary, #e6edf3);
+}
+
+.review-comments-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 /* Commit browser: commits · files · diff. */
@@ -6335,7 +6446,7 @@ pre.code-highlighter-plain,
   border: 1px solid var(--border-subtle, #21262d);
   border-radius: var(--radius-md, 8px);
   font-family: var(--font-mono, monospace);
-  font-size: 0.8rem;
+  font-size: var(--fixed-font-size-xs);
 }
 
 .blame-view-header {

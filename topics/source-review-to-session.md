@@ -16,8 +16,9 @@
 
 Topic: source-review-to-session
 
-Status: **proposed, not implemented** (2026-07-25; design refined 2026-07-26).
-Design owner: graehl.
+Status: **stages 1–3 implemented** (2026-07-26), including the P8 diff view
+mode. The pending set is browsable as a **Comments mode tab** (list, delete,
+jump-to-blame, submit) beside changes/commits/files. Design owner: graehl.
 
 Related topics: [selection-comment-ui](selection-comment-ui.md) (the
 quote-comment ancestor — but see the gesture difference below),

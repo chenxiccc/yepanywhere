@@ -14,9 +14,11 @@ export type ResolvedDiffViewMode = "unified" | "side-by-side";
 /**
  * Minimum pane width (px) at which two readable code columns fit. `auto`
  * measures the diff pane against this — a content measurement, not a viewport
- * breakpoint ([responsive-layout-gaps]).
+ * breakpoint ([responsive-layout-gaps]). Sized for two ~65-character columns
+ * at the source diff font (~7px/char) plus gutters; 720 proved too eager,
+ * picking side-by-side on tablets where each column fit only ~45 characters.
  */
-export const MIN_SIDE_BY_SIDE_WIDTH = 720;
+export const MIN_SIDE_BY_SIDE_WIDTH = 1000;
 
 /** Resolve `auto` against the measured pane width; explicit modes pass through. */
 export function resolveDiffViewMode(

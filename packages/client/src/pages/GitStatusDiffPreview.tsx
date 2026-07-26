@@ -416,7 +416,7 @@ function GitDiffContent({
   const previewSkipped = displayResult.previewSkipped ?? oversizedHtmlSkip;
 
   return (
-    <div className="diff-modal-content" ref={contentRef}>
+    <div className="diff-modal-content source-diff-pane" ref={contentRef}>
       <div className="diff-context-controls">
         <span className="diff-context-path">{file.path}</span>
         <div className="diff-context-buttons">
