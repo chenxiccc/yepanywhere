@@ -10,6 +10,7 @@ import { type RefObject, useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
+import { notifyReviewCommentsChanged } from "../lib/reviewCommentsBus";
 
 /**
  * Source-review commenting over a rendered diff (topic:
@@ -143,6 +144,7 @@ export function DiffCommentLayer({
           text,
         );
         setPending((prev) => [...prev, comment]);
+        notifyReviewCommentsChanged(projectId);
         setOpen(null);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to add comment");
@@ -165,6 +167,7 @@ export function DiffCommentLayer({
           text,
         );
         const result = await api.submitReview(projectId, [comment.id], "new");
+        notifyReviewCommentsChanged(projectId);
         if (result.sessionId) {
           setOpen(null);
           navigate(

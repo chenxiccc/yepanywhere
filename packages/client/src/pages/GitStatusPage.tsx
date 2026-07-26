@@ -26,7 +26,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { PageHeader } from "../components/PageHeader";
 import { ProjectSelector } from "../components/ProjectSelector";
@@ -34,7 +34,10 @@ import { Modal } from "../components/ui/Modal";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useGitStatus } from "../hooks/useGitStatus";
 import { useProject, useProjects } from "../hooks/useProjects";
+import { useProjectReviewComments } from "../hooks/useProjectReviewComments";
 import { useRelativeNow } from "../hooks/useRelativeNow";
+import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
+import { ReviewSubmitModal } from "./ReviewSubmitModal";
 import {
   resolvePreferredProjectId,
   setRecentProjectId,
@@ -293,6 +296,10 @@ function GitStatusContent({
   onRefreshStatus: () => Promise<void>;
   t: (key: string, vars?: Record<string, string | number>) => string;
 }) {
+  const navigate = useNavigate();
+  const basePath = useRemoteBasePath();
+  const reviewComments = useProjectReviewComments(projectId);
+  const [showReviewModal, setShowReviewModal] = useState(false);
   const [selectedFileKey, setSelectedFileKey] = useState<string | null>(
     () => retainedRouteState?.selectedFileKey ?? null,
   );
@@ -445,7 +452,9 @@ function GitStatusContent({
       allFiles.length === 0
         ? null
         : selectedFileKey &&
-            previewableFiles.some((file) => gitFileKey(file) === selectedFileKey)
+            previewableFiles.some(
+              (file) => gitFileKey(file) === selectedFileKey,
+            )
           ? selectedFileKey
           : isWideScreen && previewableFiles[0]
             ? gitFileKey(previewableFiles[0])
@@ -745,6 +754,17 @@ function GitStatusContent({
                 )}
               </div>
             )}
+            {reviewComments.pending.length > 0 && (
+              <button
+                type="button"
+                className="git-status-action-button review-tray-button"
+                onClick={() => setShowReviewModal(true)}
+              >
+                {t("sourceReviewReview", {
+                  count: reviewComments.pending.length,
+                })}
+              </button>
+            )}
           </div>
 
           {gitActionMessage && (
@@ -827,6 +847,18 @@ function GitStatusContent({
             setSelectedFileKey(null);
             retainSelectedFileKey(null);
           }}
+        />
+      )}
+
+      {showReviewModal && (
+        <ReviewSubmitModal
+          projectId={projectId}
+          recentReviewSessionId={reviewComments.recentReviewSessionId}
+          onClose={() => setShowReviewModal(false)}
+          onNavigateSession={(sessionId) =>
+            navigate(`${basePath}/projects/${projectId}/sessions/${sessionId}`)
+          }
+          t={t}
         />
       )}
 
@@ -1236,10 +1268,16 @@ function getDivergedActionStatus(
   pullResult: GitPullResult | null,
   pushResult: GitPushResult | null,
 ): GitStatusInfo | null {
-  if (pullResult?.status === "failed" && isDivergedStatus(pullResult.gitStatus)) {
+  if (
+    pullResult?.status === "failed" &&
+    isDivergedStatus(pullResult.gitStatus)
+  ) {
     return pullResult.gitStatus;
   }
-  if (pushResult?.status === "rejected" && isDivergedStatus(pushResult.gitStatus)) {
+  if (
+    pushResult?.status === "rejected" &&
+    isDivergedStatus(pushResult.gitStatus)
+  ) {
     return pushResult.gitStatus;
   }
   return null;

@@ -1,4 +1,8 @@
-import type { ReviewComment, ReviewCommentAnchor } from "@yep-anywhere/shared";
+import type {
+  ReviewBatch,
+  ReviewComment,
+  ReviewCommentAnchor,
+} from "@yep-anywhere/shared";
 import { fetchJSON } from "./sourceApiFetch";
 
 /**
@@ -8,6 +12,34 @@ import { fetchJSON } from "./sourceApiFetch";
 
 export interface ReviewCommentsList {
   comments: ReviewComment[];
+  batches: ReviewBatch[];
+  pendingCount: number;
+}
+
+/**
+ * Structural mirror of the server's per-comment relocation (from
+ * `relocateAnchors.ts`) — flattened so the client needs no server import.
+ */
+export interface ReviewPreviewRelocation {
+  status: "relocated" | "gone";
+  path: string;
+  line?: number;
+  snippet: string;
+  currentSha?: string | null;
+  citeSha?: string | null;
+  moved?: boolean;
+}
+
+export interface ReviewPreviewItem {
+  comment: ReviewComment;
+  relocation: ReviewPreviewRelocation;
+  /** Server's suggestion — true for gone (stale) comments. */
+  defaultDiscard: boolean;
+}
+
+export interface ReviewPreviewResult {
+  /** Gone (stale) comments first, per the discard-default ordering. */
+  items: ReviewPreviewItem[];
   pendingCount: number;
 }
 
@@ -49,6 +81,11 @@ export const reviewApi = {
       `/projects/${projectId}/review/comments/${commentId}`,
       { method: "DELETE" },
     ),
+
+  previewReview: (projectId: string) =>
+    fetchJSON<ReviewPreviewResult>(`/projects/${projectId}/review/preview`, {
+      method: "POST",
+    }),
 
   submitReview: (
     projectId: string,

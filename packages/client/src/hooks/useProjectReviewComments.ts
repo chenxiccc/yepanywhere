@@ -1,0 +1,51 @@
+import type { ReviewBatch, ReviewComment } from "@yep-anywhere/shared";
+import { useCallback, useEffect, useState } from "react";
+import { api } from "../api/client";
+import { subscribeReviewComments } from "../lib/reviewCommentsBus";
+
+/**
+ * The project's server-owned review comments, kept fresh across the diff
+ * viewer and the review tray/modal (topic: source-review-to-session). Refetches
+ * on mount and whenever any component signals a change through the bus.
+ */
+export interface ProjectReviewComments {
+  pending: ReviewComment[];
+  batches: ReviewBatch[];
+  /** Target of the most recent submitted batch — the default follow-up. */
+  recentReviewSessionId: string | null;
+  refresh: () => Promise<void>;
+}
+
+export function useProjectReviewComments(
+  projectId: string,
+): ProjectReviewComments {
+  const [comments, setComments] = useState<ReviewComment[]>([]);
+  const [batches, setBatches] = useState<ReviewBatch[]>([]);
+
+  const refresh = useCallback(async () => {
+    try {
+      const result = await api.listReviewComments(projectId);
+      setComments(result.comments);
+      setBatches(result.batches);
+    } catch {
+      // Non-fatal: the tray just shows a stale/empty count.
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    void refresh();
+    return subscribeReviewComments(projectId, () => {
+      void refresh();
+    });
+  }, [projectId, refresh]);
+
+  return {
+    pending: comments.filter((comment) => comment.status === "pending"),
+    batches,
+    recentReviewSessionId:
+      batches.length > 0
+        ? (batches[batches.length - 1]?.targetSessionId ?? null)
+        : null,
+    refresh,
+  };
+}
