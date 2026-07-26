@@ -10,6 +10,8 @@
   "actionToggleSidebar": "Alternar barra lateral",
   "actionCloseSidebar": "Cerrar barra lateral",
   "actionExpandSidebar": "Expandir barra lateral",
+  "actionMinimizeSidebar": "Minimizar barra lateral",
+  "actionRestoreSidebar": "Restaurar barra lateral",
   "actionResizeSidebar": "Cambiar tamaño de la barra lateral",
   "sidebarNewSession": "Nueva sesión",
   "sidebarInbox": "Bandeja de entrada",

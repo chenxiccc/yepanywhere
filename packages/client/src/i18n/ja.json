@@ -10,6 +10,8 @@
   "actionToggleSidebar": "サイドバーを切り替える",
   "actionCloseSidebar": "サイドバーを閉じる",
   "actionExpandSidebar": "サイドバーを展開",
+  "actionMinimizeSidebar": "サイドバーを最小化",
+  "actionRestoreSidebar": "サイドバーを復元",
   "actionResizeSidebar": "サイドバーのサイズを変更",
   "sidebarNewSession": "新しいセッション",
   "sidebarInbox": "受信箱",

@@ -10,6 +10,8 @@
   "actionToggleSidebar": "Seitenleiste umschalten",
   "actionCloseSidebar": "Seitenleiste schließen",
   "actionExpandSidebar": "Seitenleiste erweitern",
+  "actionMinimizeSidebar": "Seitenleiste minimieren",
+  "actionRestoreSidebar": "Seitenleiste wiederherstellen",
   "actionResizeSidebar": "Größe der Seitenleiste ändern",
   "sidebarNewSession": "Neue Sitzung",
   "sidebarInbox": "Posteingang",

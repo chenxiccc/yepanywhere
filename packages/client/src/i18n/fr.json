@@ -10,6 +10,8 @@
   "actionToggleSidebar": "Basculer la barre latérale",
   "actionCloseSidebar": "Fermer la barre latérale",
   "actionExpandSidebar": "Développer la barre latérale",
+  "actionMinimizeSidebar": "Réduire la barre latérale",
+  "actionRestoreSidebar": "Restaurer la barre latérale",
   "actionResizeSidebar": "Redimensionner la barre latérale",
   "sidebarNewSession": "Nouvelle session",
   "sidebarInbox": "Boîte de réception",

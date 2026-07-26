@@ -197,7 +197,6 @@ export function NavigationLayout({ sessionElement }: NavigationLayoutProps) {
   const { isWideScreen, canShowExpandedSidebar } = responsiveLayout;
   // Auto-collapse if viewport too narrow for expanded sidebar, or if user prefers collapsed
   const effectivelyCollapsed = !isExpanded || !canShowExpandedSidebar;
-  const sidebarMinimized = isWideScreen && effectivelyCollapsed && isMinimized;
 
   // Close mobile sidebar overlay when viewport becomes wide enough for expanded desktop sidebar
   // This prevents having both sidebars visible after window resize/device rotation
@@ -357,40 +356,41 @@ export function NavigationLayout({ sessionElement }: NavigationLayoutProps) {
       } ${isResizing ? "resizing" : ""}`}
       style={containerStyle}
     >
-      {sidebarMinimized && !isContentFrameRoute && (
-        <button
-          type="button"
-          className="sidebar-toggle sidebar-floating-restore"
-          onClick={restoreCollapsedSidebar}
-          title={t("actionRestoreSidebar")}
-          aria-label={t("actionRestoreSidebar")}
-        >
-          <SidebarToggleIcon />
-        </button>
-      )}
-
-      {/* Desktop sidebar - always visible on wide screens */}
-      {isWideScreen && !isContentFrameRoute && !sidebarMinimized && (
-        <aside
-          className={`sidebar-desktop ${effectivelyCollapsed ? "sidebar-collapsed" : ""} ${isResizing ? "resizing" : ""}`}
-          style={desktopSidebarStyle}
-        >
-          <Sidebar
-            isOpen={true}
-            onClose={NOOP}
-            onNavigate={NOOP}
-            currentSessionId={currentSessionMatch?.sessionId}
-            isDesktop={true}
-            isCollapsed={effectivelyCollapsed}
-            onToggleExpanded={handleToggleExpanded}
-            onMinimize={minimizeToFloatingToggle}
-            sidebarWidth={sidebarWidth}
-            onResizeStart={handleResizeStart}
-            onResize={setSidebarWidth}
-            onResizeEnd={handleResizeEnd}
-          />
-        </aside>
-      )}
+      {/* Desktop sidebar - always visible on wide screens; the minimized mode
+          renders the floating restore toggle in its place */}
+      {isWideScreen &&
+        !isContentFrameRoute &&
+        (isMinimized ? (
+          <button
+            type="button"
+            className="sidebar-toggle sidebar-floating-restore"
+            onClick={restoreCollapsedSidebar}
+            title={t("actionRestoreSidebar")}
+            aria-label={t("actionRestoreSidebar")}
+          >
+            <SidebarToggleIcon />
+          </button>
+        ) : (
+          <aside
+            className={`sidebar-desktop ${effectivelyCollapsed ? "sidebar-collapsed" : ""} ${isResizing ? "resizing" : ""}`}
+            style={desktopSidebarStyle}
+          >
+            <Sidebar
+              isOpen={true}
+              onClose={NOOP}
+              onNavigate={NOOP}
+              currentSessionId={currentSessionMatch?.sessionId}
+              isDesktop={true}
+              isCollapsed={effectivelyCollapsed}
+              onToggleExpanded={handleToggleExpanded}
+              onMinimize={minimizeToFloatingToggle}
+              sidebarWidth={sidebarWidth}
+              onResizeStart={handleResizeStart}
+              onResize={setSidebarWidth}
+              onResizeEnd={handleResizeEnd}
+            />
+          </aside>
+        ))}
 
       {/* Mobile sidebar - modal overlay (also used for constrained desktop overlay) */}
       {!isContentFrameRoute && (!isWideScreen || sidebarOpen) && (

@@ -10,6 +10,8 @@
   "actionToggleSidebar": "切换侧边栏",
   "actionCloseSidebar": "关闭侧边栏",
   "actionExpandSidebar": "展开侧边栏",
+  "actionMinimizeSidebar": "最小化侧边栏",
+  "actionRestoreSidebar": "恢复侧边栏",
   "actionResizeSidebar": "调整侧边栏宽度",
   "sidebarNewSession": "新建会话",
   "sidebarInbox": "收件箱",
