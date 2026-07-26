@@ -325,6 +325,105 @@ The polished viewer graehl wanted, kept strictly read-only:
   content, so they key on a content hash — or mtime as the cheap freshness
   check — or skip caching.
 
+## Source-browser UI contracts (stage 3)
+
+The multipane source browser's presentation contracts, refined from live
+review. Each is a spec a reviewer can verify; the status marker cites the
+landing commit, or "pending" for a spec built out here but not yet
+implemented.
+
+### Rows inform; the detail pane acts
+
+Per-item actions do **not** hide in a hover-revealed row gutter (the rejected
+first cut — it wasted the row's space and hid controls until mouseover). List
+rows carry only always-visible *information* (comment-count badge, read/unread
+weight); *actions* route through the selected item's detail-pane banner.
+Selecting a row is the click already made to see its diff/detail, so actions
+cost no extra affordance. — Done (6ecdd938).
+
+- **Commit banner** (files-column header): selected commit's short sha
+  (copyable), "mark read to here", "mark unread since here", newer/older jump.
+- **File banner** (diff-pane header, via `GitDiffPreview`/`GitDiffModal`
+  `headerActions`): copy path, blame-at-HEAD.
+- **Blame view header**: copy path.
+
+### Comment-count badges
+
+Every commit row and file row with pending review comments shows a small
+always-visible count badge — keyed per commit sha (commit list) and per file
+path (file lists). Comments are the priority badge; other counts may join
+later "if there is room". — Done (6ecdd938).
+
+### Commit read watermark
+
+A per-project **read watermark** (device-local, `useCommitReadWatermark`)
+splits the commit list into unread (bold, newer than the mark) and read
+(dimmed, at/older) — the mail convention. "Mark read to here" sets the
+boundary to the selected commit's author time; "mark unread since here" drops
+it just below, so that commit and everything newer read as unread. Date-based,
+not list-position, so it survives paging and search. Nothing is read until a
+boundary is set. — Done (6ecdd938).
+
+### Tooltips on truncated text; date in blame
+
+- Truncated commit subjects and file paths carry a `title` tooltip until any
+  fuller in-layout treatment lands. — Done (8c9be031).
+- The blame gutter tooltip is `sha · author · date · summary` (author date
+  included, not just author). — Done (8c9be031).
+
+### Per-column content width
+
+Each source-browser column caps at `var(--content-max-width)` (the Appearance
+> Max Content Width preference), applied **per column** — not one global cap
+that would crush a multi-column layout. The diff/blame column is the one that
+otherwise grows unbounded; leftover width stays as gutter
+(`justify-content: start`), never stretched tracks. — Done (8c9be031).
+
+### Mode tabs share the title row (wide screens)
+
+On wide screens the mode selector (Changes/Commits/Files/Comments) renders in
+the page-header row beside the project title, not a second toolbar row beneath
+a title row whose right half sat empty (a staggered "diagonal" waste). Mobile
+is a vertical stack with no such empty space, so its tabs stay in the status
+bar. Both drive the same `?tab=` URL state (`useSourceTab`). — Done (1cf08c20).
+
+### Context menus — pending
+
+Right-click (desktop) and long-press (touch) on a commit, file, or
+diff/context line opens a menu of *all* logical actions for that target; the
+same menu is reachable from a small hamburger/ellipsis affordance (revealed on
+mouseover on desktop, always shown on mobile) in the style of the
+recent-sessions sidebar item menu. The detail-pane banner stays the
+quick-action surface; the context menu is the fuller superset — the
+"right-click action" the select-shows-detail design left open. Logical actions
+by target:
+
+- **Commit**: copy sha, copy subject, mark read to here, mark unread since
+  here, jump newer/older.
+- **File** (within a commit): copy path, blame-at-HEAD.
+- **Diff / context line**: comment on line (the existing click), copy line
+  text, copy `path:line`.
+
+Reuse a shared menu primitive; extract one if none fits. `SessionMenu.tsx` is
+session-specific — mirror its portal/positioning/dismiss mechanics, do not
+couple to it. — Pending.
+
+### Hunk navigation + single diff toolbar row — pending
+
+- **Re-click advances hunks.** Clicking the already-selected file entry jumps
+  the diff to the next hunk (wrapping at the end), in both "diff only" and
+  "full context" modes.
+- **"k of N" hunk indicator** in the diff toolbar beside the filename,
+  tappable to advance to the next hunk.
+- **One toolbar row.** The diff currently spends a second row inside the
+  content on the full path + view-mode toggles; fold that content — filename,
+  path, view toggles, hunk indicator, file actions — into the single
+  pane-header toolbar row **when it fits** (responsive; the body sub-row is the
+  fallback when it does not), so the diff content keeps that row.
+- **`n` key** jumps to the next hunk when focus is not in a text input.
+
+— Pending.
+
 ## Open questions
 
 - **Provenance rendering.** Reuse the compose-time-context-anchors framing so
