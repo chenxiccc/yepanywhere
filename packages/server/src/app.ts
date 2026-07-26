@@ -26,6 +26,7 @@ import type {
 } from "./metadata/index.js";
 import { updateAllowedHosts } from "./middleware/allowed-hosts.js";
 import { createAuthMiddleware } from "./middleware/auth.js";
+import { structuredErrorHandler } from "./middleware/error-handler.js";
 import {
   getAllowedFilePaths,
   shouldIncludeProjects,
@@ -367,6 +368,10 @@ export function createApp(options: AppOptions): AppResult {
   const codexSessionsDir = options.codexSessionsDir ?? CODEX_SESSIONS_DIR;
 
   const app = new Hono<{ Bindings: HttpBindings }>();
+  // Unhandled route throws — including from every mounted sub-app, whose
+  // errors Hono routes here rather than to the sub-app — return structured
+  // JSON instead of an opaque empty 500.
+  app.onError(structuredErrorHandler);
   const attachmentStagingService =
     options.attachmentStagingService ??
     new AttachmentStagingService({

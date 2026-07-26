@@ -10,6 +10,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import webPush, { type RequestOptions } from "web-push";
+import { HttpError } from "../middleware/error-handler.js";
 import {
   DEFAULT_NOTIFICATION_SETTINGS,
   type NotificationSettings,
@@ -356,7 +357,12 @@ export class PushService {
    */
   private ensureInitialized(): void {
     if (!this.initialized) {
-      throw new Error("PushService not initialized. Call initialize() first.");
+      // 503: a not-yet-initialized service is a server-config problem, not a
+      // client error — same status as the missing-VAPID case in routes.ts.
+      throw new HttpError(
+        503,
+        "PushService not initialized. Call initialize() first.",
+      );
     }
   }
 

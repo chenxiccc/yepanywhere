@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { HttpError } from "../../src/middleware/error-handler.js";
 import { createPushRoutes } from "../../src/push/routes.js";
 import type { PushService } from "../../src/push/PushService.js";
 
@@ -133,10 +134,13 @@ describe("Push Routes", () => {
     });
 
     it("maps an uninitialized service to 503 with the reason", async () => {
+      // The 503 rides on the typed HttpError PushService throws, not on the
+      // message text — matching ensureInitialized in PushService.ts.
       const routes = createPushRoutes({
         pushService: {
           subscribe: vi.fn(async () => {
-            throw new Error(
+            throw new HttpError(
+              503,
               "PushService not initialized. Call initialize() first.",
             );
           }),
