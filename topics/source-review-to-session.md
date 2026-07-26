@@ -8,10 +8,11 @@
 > diff lines while the tree keeps changing under them; "submit review" drains
 > **every not-yet-consumed comment at once** into one review session — a new
 > one, or a recent review session as a follow-up turn — and archives them as
-> consumed. Comments accumulate **client-side initially** (simplest to build);
-> server-side draft persistence is a later enhancement. A mobile back-swipe
-> version (with a small commit-jump selector) is usable too. No git write
-> actions from this surface; agents keep doing the commits/merges.
+> consumed. Drafts are **server-owned**: every git-state operation here passes
+> through the server anyway, and a long review spans devices, so a review
+> continues seamlessly across browsers. A mobile back-swipe version (with a
+> small commit-jump selector) is usable too. No git write actions from this
+> surface; agents keep doing the commits/merges.
 
 Topic: source-review-to-session
 
@@ -112,8 +113,9 @@ read-only, agent-directing scope.
   - Path/link affordances graehl noted: any path mentioned in a session is
     already viewable and any file link is already copyable — the viewer makes
     those first-class rather than incidental.
-  - [floating-new-session-composer](floating-new-session-composer.md) — the
-    launch path a submitted review reuses.
+  - [floating-new-session-composer](floating-new-session-composer.md) — prior
+    art for composing a first turn from a non-session page; the submit
+    endpoint owns the actual launch (see the implementation sketch).
 
 ## Core feature: the accumulating review (the vision)
 
@@ -179,9 +181,8 @@ submit-time relocation below.
   was recently started from this surface, submit defaults to delivering the
   new batch to it as a **follow-up turn** — that agent already holds the
   earlier review context. The submit flow lets the user override: pick any
-  existing session manually, or opt for a fresh one (launched via the floating
-  new-session composer). "Recent" is a default, not a gate; each consumed
-  batch records which session it went to.
+  existing session manually, or opt for a fresh one. "Recent" is a default,
+  not a gate; each consumed batch records which session it went to.
 - **The seeded turn: short prompt + review file, small snippets inline.** The
   delivered turn is a short prompt — naming what this is (a source review),
   instructing the agent to address each comment and report per-comment
@@ -196,14 +197,18 @@ submit-time relocation below.
   larger context, which the read-current-state instruction counters. Larger
   context stays by reference; for a non-current revision the agent views it
   with git commands.
-- **Where drafts live.** Initially a **client-only accumulator**
-  (`localStorage`, like message drafts), **keyed per project from v1** so two
-  repos' drafts can never drain into one session — the preferred v1 because it
-  is the simplest to build; drafts are then per-browser and lost on clear.
-  Server-side draft persistence (surviving across devices and reloads, with
-  authoritative consumed/archived state) is a later enhancement, not v1.
-  Consume-on-submit semantics are identical either way; only durability and
-  the cross-device story differ.
+- **Where drafts live: server-owned, in the project's `.yep/` dir.**
+  Relocation, blame, and submit composition all need server git access, so
+  the server owns the drafts and is the single authority for
+  pending/archived state — a review started on the desktop continues on the
+  phone with the same pending set and archive. Storage is a git-ignored
+  project-local `.yep/review-comments.json` per the agreed `.yep/`
+  YA-managed-state home ([interactives](interactives.md)): the project path
+  is the keying (two repos' drafts can never mix), the drafts follow the
+  checkout they annotate, and the file sits exactly where the seeded
+  prompt's review file must live, so submit composes largely by reference.
+  The client holds only UI state (the open comment window's in-progress text
+  may keep a localStorage backup, like message drafts).
 
 ## One-off diff-line comment → new session (a fast path, not the vision)
 
@@ -276,6 +281,17 @@ The polished viewer graehl wanted, kept strictly read-only:
   including or dropping them): usually too late to act on, so pre-selected
   discard and listed first — but overridable, since discussion of history can
   inform present state.
+- **Server-owned drafts from v1** (vs. a client-only `localStorage`
+  accumulator graduating to the server later): every git-state operation the
+  feature needs already passes through the server, so putting drafts there is
+  the simpler build, not the harder one — and device-switching during a long
+  review makes server authority the right semantics anyway. One owner for
+  consumed/archived state; no schema graduation step.
+- **Drafts stored in project-local `.yep/`** (vs. a data-dir store keyed by a
+  project mapping): follows the established `.yep/` YA-managed-state
+  convention, gets per-project keying from the path itself, keeps drafts
+  with the worktree they annotate, and co-locates them with the review file
+  the seeded prompt references.
 - **Default submit target = recent review session** (vs. always a new
   session): round-2 comments continue the round-1 conversation; the submit
   flow still lets the user pick any existing session or a fresh one.
@@ -298,12 +314,10 @@ The polished viewer graehl wanted, kept strictly read-only:
 
 - **Provenance rendering.** Reuse the compose-time-context-anchors framing so
   each quote's SHA/age is legible to both the reader and the agent.
-- **The `.yep` review-file details.** Exact path/name, format, and whether it
-  is committed or gitignored; how a follow-up turn's update composes with the
-  archive.
-- **Server draft schema.** When drafts graduate from client storage to the
-  server: keying (project + comment anchors), and how archived comments are
-  pruned.
+- **Review-file/draft-file split.** Whether the seeded prompt references
+  `.yep/review-comments.json` directly or a per-submit snapshot beside it,
+  and how a follow-up turn's update composes with the archive. How archived
+  comments are pruned.
 - **Relationship to forged-transcript-handoff.** A submitted review is a
   narrower, reviewer-authored cousin of that experiment — worth deciding whether
   they share the seeding path.
@@ -315,16 +329,113 @@ The polished viewer graehl wanted, kept strictly read-only:
    already exercises the `uncommitted` anchor class. Built as the single-entry
    accumulator drained immediately (per the fast-path definition above), it
    proves the line-anchor + provenance payload with no parallel code path.
-2. **Accumulating review — the vision (client-only accumulator).** Persist
-   pending comments in project-keyed `localStorage` across files and commits
-   with a visible count; "submit review" runs the preview (stale comments
+2. **Accumulating review — the vision.** Persist pending comments in the
+   server-owned `.yep/review-comments.json` across files and commits with a
+   visible count; "submit review" runs the preview (stale comments
    pre-selected discard), drains the survivors into the target session
    (recent review session by default, override to any or new), and archives
-   them consumed. Client-only is the deliberate v1 for build simplicity.
+   them consumed.
 3. **Fuller multipane viewer + all-files blame + search + mobile.** Wrap the flow
    in the large-screen multipane commit/diff/file viewer with the copy
    affordances, the all-files git-blame browsing mode, rudimentary
    commit-delta/filename search, and the mobile back-swipe + commit-jump path.
-4. **Server-side drafts (later enhancement).** Move drafts server-side for
-   cross-device durability and authoritative consumed state, once the
-   client-only accumulator has proven the flow.
+
+## Implementation sketch (implementer guide)
+
+Verified against the tree at a682f7c3 (2026-07-26); file references are real,
+nothing below is built. This is the concrete shape for stages 1–2.
+
+### What exists to build on
+
+- Route `/git-status` → `packages/client/src/pages/GitStatusPage.tsx`
+  (~1450 lines — already large; every new pane below is a new file composed
+  into it, never inline growth).
+- `pages/GitStatusDiffPreview.tsx` fetches
+  `api.getGitDiff(projectId, { path, staged, status, fullContext? })` →
+  `GitDiffResult` and renders `diffResult.diffHtml` — server-generated Shiki
+  HTML — via `dangerouslySetInnerHTML` (`HighlightedDiff`), with a per-line
+  `DiffLines` fallback when highlighting was skipped.
+- The diff HTML's lines already carry classes
+  `line line-deleted|line-inserted|line-context|line-hunk`, added at
+  generation time by `addDiffLineClasses`
+  (`packages/server/src/augments/edit-augments.ts`).
+- `GitDiffResult.structuredPatch: PatchHunk[]`
+  (`packages/shared/src/types.ts:736`): `oldStart`/`newStart` plus
+  `' '|'-'|'+'`-prefixed `lines` — per-side line numbers are computable by
+  walking hunks; no DOM needed.
+- Server JSON-persistence idiom: `PushService`
+  (`packages/server/src/push/PushService.ts`) — typed state, load once,
+  debounced save — is the template for the drafts service.
+- Session plumbing: two-phase `api.createSession(projectId, opts)` +
+  `POST /sessions/{id}/messages`; server-side, the supervisor and
+  project-queue already create sessions and deliver first turns.
+
+### Consequential decisions
+
+1. **Anchors derive from `structuredPatch`, never from the DOM.** A click
+   identifies (hunk index, line index); a pure shared helper computes side,
+   old/new line numbers, and the context snippet from `PatchHunk` data. The
+   Shiki HTML stays presentation-only, so anchor logic is testable without a
+   browser and cannot drift from what is displayed.
+2. **Line clicks: server-emitted indices + one delegated listener; no DOM
+   patching.** Extend `addDiffLineClasses` to also emit
+   `data-diff-line="<flat line index>"` at generation time; the diff pane
+   attaches a single click handler on the `.highlighted-diff` container that
+   walks to the nearest `[data-diff-line]`. Per-line React components would
+   abandon server highlighting; attaching handlers by post-processing the
+   injected HTML would patch generated DOM (the
+   [ui-architecture](ui-architecture.md) rule). Give the `DiffLines` fallback
+   the same attribute so one handler serves both renderers. The
+   comment-anchor tint ([selection-comment-ui](selection-comment-ui.md)) is a
+   class toggled on nodes addressed by that same server-emitted attribute —
+   idempotent decoration of stably-addressed nodes, not restructuring.
+3. **Wire types in `packages/shared` with a defensive parser.**
+   `shared/src/review-comments.ts`: `ReviewCommentAnchor` (path; anchoring
+   revision `sha | { uncommitted: true, savedAt }`; side; old/new line;
+   snippet), `ReviewComment` (id, anchor, text, `pending | archived`, batch +
+   target-session link). Parse persisted data defensively (the
+   `parseClaudeAdditionalModelSelections` idiom): `.yep/review-comments.json`
+   outlives bundle versions and is user-visible on disk, so the shape is a
+   contract from day 1.
+4. **One review service owns the file.**
+   `packages/server/src/review/ReviewCommentService.ts` (PushService shape)
+   reads/writes `{projectPath}/.yep/review-comments.json`: comment CRUD,
+   pending→archived transitions, batch records. Routes in a new
+   `packages/server/src/routes/review-comments.ts` — `routes/git-status.ts`
+   is 1200 lines and must not absorb this feature.
+5. **Submit is one server endpoint; preview is its dry run.**
+   `POST /api/projects/:projectId/review/preview` relocates every pending
+   anchor (exact line match against HEAD/worktree, then fuzzy snippet match,
+   git plumbing) and returns per-comment `{ relocated | gone }` for the
+   discard-default preview.
+   `POST …/review/submit { include, target: "new" | sessionId }` re-runs
+   relocation, composes the short prompt referencing the review file, creates
+   the session (supervisor) or posts the follow-up turn, archives the batch
+   with its target, and returns the session id for the client to navigate to.
+   The client stays dumb: render preview, confirm, navigate. Relocation and
+   turn composition are pure modules (`review/relocateAnchors.ts`,
+   `review/composeReviewTurn.ts`) with the endpoint as thin glue.
+6. **Stage 1 cuts scope by count, not by shape.** The one-off fast path is
+   the same service, file, and submit endpoint with a single pending comment
+   and no preview UI — relocation is trivially exact because the anchor is
+   seconds old. No client-side storage variant exists at any stage.
+
+### Tests that pin the contract
+
+- Anchor-from-patch helper: hunk walking yields correct old/new line numbers
+  at boundaries (first/last line of a hunk, context vs `-`/`+` lines).
+- Parser: round-trip of persisted comments; garbage and truncated files
+  reject to empty rather than throwing.
+- Relocation, against a fixture repo: unchanged line → relocated; moved line
+  → fuzzy-relocated; deleted line → gone (SHA cited); an `uncommitted`
+  anchor whose change has since been committed acquires that commit's SHA.
+- Service: per-project isolation (two projects never mix), pending→archived
+  lifecycle, a batch records its target session, archive survives service
+  restart.
+- Compose: SHA appears only for gone/minus-side comments; from-X-to-Y
+  framing carries both sides; comments group by file; the
+  read-current-state instruction is present in every prompt.
+- Client (RTL): clicking a `.line-inserted` node in rendered `diffHtml`
+  opens the comment window with the correct anchor; a commented line shows
+  the tint; the preview lists gone-context comments first, pre-selected
+  discard (mocked preview API).
