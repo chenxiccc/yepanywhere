@@ -73,8 +73,9 @@ and the route it pulls from.
   augment; it's wired from `blocks/TextBlock.tsx` and
   `renderers/blocks/TextRenderer.tsx`. Route: `/api/local-image`. Relay-safe.
 - **ViewImage tool result** — a "View Image" tool row (Codex `imageView` /
-  `view_image`). Clicking the filename opens a modal with the picture.
-  `renderers/tools/ViewImageRenderer.tsx` via `useFetchedImage` →
+  `view_image`). Clicking the filename opens the shared local-media modal;
+  tapping the picture there opens its object URL in a native browser tab.
+  `renderers/tools/ViewImageRenderer.tsx` → `LocalMediaModal` →
   `/api/local-image`. Relay-safe.
 
 ### Modals opened by clicking a link
@@ -196,6 +197,7 @@ historical "safe-dir image opened through the project files route" 404 is gone.
   secure-by-default, so absolute paths outside projects/uploads/temp are denied
   until the user adds the folder (Settings → File access) or sets
   `ALLOWED_FILE_PATHS`.
-- **No single media component** — surfaces share the *fetch primitive*
-  (`fetchMediaBlob` / `useFetchedImage`), not one `<RemoteImage>` element, so a
-  fix has to be applied per surface or pushed into a shared source adapter.
+- **No single media element** — modal-based local images share
+  `LocalMediaModal`, but inline/base64 images, attachments, and the project
+  `FileViewer` retain context-specific presentation. Cross-surface fixes still
+  belong in a shared source adapter or the narrowest common rendering boundary.

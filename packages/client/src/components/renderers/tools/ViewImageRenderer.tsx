@@ -1,7 +1,6 @@
 import { useState } from "react";
-import { useFetchedImage } from "../../../hooks/useRemoteImage";
 import { getPathBasename, makeDisplayPath } from "../../../lib/text";
-import { Modal } from "../../ui/Modal";
+import { LocalMediaModal } from "../../LocalMediaModal";
 import type { ToolRenderer } from "./types";
 
 interface ViewImageInput {
@@ -10,35 +9,6 @@ interface ViewImageInput {
 
 function getFileName(path: string): string {
   return getPathBasename(path);
-}
-
-/**
- * Modal content that fetches the image only when mounted (i.e. when modal opens).
- */
-function ViewImageModalContent({ path, alt }: { path: string; alt: string }) {
-  const apiPath = `/api/local-image?path=${encodeURIComponent(path)}`;
-  const { url, loading, error } = useFetchedImage(apiPath);
-
-  if (loading) {
-    return <div className="viewimage-loading">Loading image...</div>;
-  }
-
-  if (error || !url) {
-    return (
-      <div className="viewimage-error">{error ?? "Failed to load image"}</div>
-    );
-  }
-
-  return (
-    <div className="read-image-result">
-      <img
-        className="read-image"
-        src={url}
-        alt={alt}
-        style={{ maxWidth: "100%" }}
-      />
-    </div>
-  );
 }
 
 /**
@@ -80,7 +50,6 @@ function ViewImageClickable({
   projectPath?: string | null;
 }) {
   const [showModal, setShowModal] = useState(false);
-  const fileName = getFileName(makeDisplayPath(path, projectPath));
 
   return (
     <>
@@ -94,9 +63,11 @@ function ViewImageClickable({
         }}
       />
       {showModal && (
-        <Modal title={fileName} onClose={() => setShowModal(false)}>
-          <ViewImageModalContent path={path} alt={fileName} />
-        </Modal>
+        <LocalMediaModal
+          path={path}
+          mediaType="image"
+          onClose={() => setShowModal(false)}
+        />
       )}
     </>
   );
