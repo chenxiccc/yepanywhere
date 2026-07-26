@@ -8,15 +8,17 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../i18n";
 
 const previewReview = vi.fn();
 const submitReview = vi.fn();
+const getGlobalSessions = vi.fn();
 vi.mock("../api/client", () => ({
   api: {
     previewReview: (...a: unknown[]) => previewReview(...a),
     submitReview: (...a: unknown[]) => submitReview(...a),
+    getGlobalSessions: (...a: unknown[]) => getGlobalSessions(...a),
   },
 }));
 vi.mock("../lib/reviewCommentsBus", () => ({
@@ -91,6 +93,10 @@ function renderModal(recentReviewSessionId: string | null) {
 }
 
 describe("ReviewSubmitModal", () => {
+  beforeEach(() => {
+    // Default: no other sessions, so the arbitrary-session picker stays hidden.
+    getGlobalSessions.mockResolvedValue({ sessions: [] });
+  });
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
@@ -169,5 +175,30 @@ describe("ReviewSubmitModal", () => {
       ),
     );
     expect(onNavigateSession).toHaveBeenCalledWith("sess-9");
+  });
+
+  it("submits to an arbitrarily picked session", async () => {
+    previewReview.mockResolvedValue(PREVIEW);
+    getGlobalSessions.mockResolvedValue({
+      sessions: [
+        { id: "sess-A", title: "Session A", customTitle: null },
+        { id: "sess-B", title: "Session B", customTitle: null },
+      ],
+    });
+    submitReview.mockResolvedValue({
+      sessionId: "sess-B",
+      consumed: ["live1"],
+    });
+    const { onNavigateSession } = renderModal(null);
+
+    await screen.findByText("live one");
+    const select = (await screen.findByRole("combobox")) as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: "sess-B" } });
+    fireEvent.click(screen.getByText("sourceReviewSubmitReview"));
+
+    await waitFor(() =>
+      expect(submitReview).toHaveBeenCalledWith("proj1", ["live1"], "sess-B"),
+    );
+    expect(onNavigateSession).toHaveBeenCalledWith("sess-B");
   });
 });

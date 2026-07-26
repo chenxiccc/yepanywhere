@@ -5869,10 +5869,21 @@ pre.code-highlighter-plain,
 
 .review-submit-target {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-3, 12px);
   align-items: center;
   border: none;
   padding: 0;
+}
+
+.review-submit-target-other {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.review-submit-session-select {
+  max-width: 180px;
 }
 
 .review-submit-actions {

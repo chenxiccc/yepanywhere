@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
+import type { GlobalSessionItem } from "../api/client";
 import type { ReviewPreviewItem } from "../api/reviewClient";
 import { Modal } from "../components/ui/Modal";
 import { notifyReviewCommentsChanged } from "../lib/reviewCommentsBus";
@@ -18,7 +19,7 @@ type TranslationFn = (
   vars?: Record<string, string | number>,
 ) => string;
 
-type Target = "new" | "recent";
+type Target = "new" | "recent" | "other";
 
 export function ReviewSubmitModal({
   projectId,
@@ -41,6 +42,29 @@ export function ReviewSubmitModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [queued, setQueued] = useState(false);
+  const [sessions, setSessions] = useState<GlobalSessionItem[] | null>(null);
+  const [otherSessionId, setOtherSessionId] = useState("");
+
+  // Load the project's sessions so a review can target any of them, not just a
+  // fresh one or the recent review session.
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getGlobalSessions({ project: projectId, limit: 50 })
+      .then((result) => {
+        if (cancelled) return;
+        setSessions(result.sessions);
+        const first = result.sessions[0];
+        if (first) setOtherSessionId((prev) => prev || first.id);
+      })
+      .catch(() => {
+        // The arbitrary-session picker is optional; on failure it stays hidden.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -86,7 +110,9 @@ export function ReviewSubmitModal({
       const targetValue =
         target === "recent" && recentReviewSessionId
           ? recentReviewSessionId
-          : "new";
+          : target === "other" && otherSessionId
+            ? otherSessionId
+            : "new";
       const result = await api.submitReview(projectId, include, targetValue);
       notifyReviewCommentsChanged(projectId);
       if (result.sessionId) {
@@ -94,7 +120,11 @@ export function ReviewSubmitModal({
         onClose();
         return;
       }
+      // Queued (202): the comments are still pending. Lock this modal's submit
+      // so an accidental re-click can't fire a second launch of the same batch
+      // (the reviewer closes and retries deliberately when the queue frees).
       setNotice(t("sourceReviewSubmitQueued"));
+      setQueued(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to submit");
     } finally {
@@ -104,6 +134,7 @@ export function ReviewSubmitModal({
     included,
     target,
     recentReviewSessionId,
+    otherSessionId,
     projectId,
     onNavigateSession,
     onClose,
@@ -158,6 +189,32 @@ export function ReviewSubmitModal({
               />
               {t("sourceReviewTargetNew")}
             </label>
+            {sessions && sessions.length > 0 && (
+              <label className="review-submit-target-other">
+                <input
+                  type="radio"
+                  name="review-target"
+                  checked={target === "other"}
+                  onChange={() => setTarget("other")}
+                />
+                {t("sourceReviewTargetOther")}
+                <select
+                  className="review-submit-session-select"
+                  value={otherSessionId}
+                  disabled={target !== "other"}
+                  onChange={(event) => {
+                    setOtherSessionId(event.target.value);
+                    setTarget("other");
+                  }}
+                >
+                  {sessions.map((session) => (
+                    <option key={session.id} value={session.id}>
+                      {sessionLabel(session)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
           </fieldset>
         )}
 
@@ -169,7 +226,7 @@ export function ReviewSubmitModal({
             type="button"
             className="review-submit-go"
             onClick={submit}
-            disabled={busy || included.size === 0}
+            disabled={busy || queued || included.size === 0}
           >
             {t("sourceReviewSubmitReview", { count: included.size })}
           </button>
@@ -177,6 +234,10 @@ export function ReviewSubmitModal({
       </div>
     </Modal>
   );
+}
+
+function sessionLabel(session: GlobalSessionItem): string {
+  return session.customTitle || session.title || session.id.slice(0, 8);
 }
 
 function ReviewPreviewRow({

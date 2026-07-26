@@ -1121,6 +1121,7 @@
   "sourceReviewTargetLegend": "Deliver to",
   "sourceReviewTargetRecent": "Recent review session",
   "sourceReviewTargetNew": "New session",
+  "sourceReviewTargetOther": "Another session",
   "sourceReviewSubmitReview": "Submit {count}",
   "sourceTabChanges": "Changes",
   "sourceTabCommits": "Commits",
