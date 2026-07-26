@@ -123,7 +123,7 @@ export class ReviewCommentService {
   ): Promise<ReviewComment | null> {
     const store = await this.getStore(projectPath);
     const comment = store.state.comments.find((c) => c.id === id);
-    if (!comment || comment.status !== "pending") return null;
+    if (comment?.status !== "pending") return null;
     if (patch.text !== undefined) comment.text = patch.text;
     if (patch.anchor !== undefined) comment.anchor = patch.anchor;
     await this.save(projectPath, store);
