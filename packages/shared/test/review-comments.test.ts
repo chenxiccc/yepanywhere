@@ -35,6 +35,7 @@ describe("anchorFromPatch", () => {
       oldLine: 10,
       newLine: 10,
       snippet: expect.stringContaining("context1"),
+      snippetAnchorOffset: 0,
     });
   });
 
@@ -83,6 +84,16 @@ describe("anchorFromPatch", () => {
   it("builds a snippet of the clicked line plus neighbours", () => {
     const loc = anchorFromPatch([HUNK], 3, 1);
     expect(loc?.snippet).toBe("removed1\nadded1\nadded2");
+    // clicked line ("added1") sits at offset 1 within the snippet
+    expect(loc?.snippetAnchorOffset).toBe(1);
+    expect(loc?.snippet.split("\n")[loc.snippetAnchorOffset]).toBe("added1");
+  });
+
+  it("offset is clamped at a hunk-start click (no leading context)", () => {
+    // flat index 0 is the first line of the hunk: no lines precede it.
+    const loc = anchorFromPatch([HUNK], 0, 3);
+    expect(loc?.snippetAnchorOffset).toBe(0);
+    expect(loc?.snippet.split("\n")[0]).toBe("context1");
   });
 
   it("walks across hunks by flat index", () => {
@@ -130,6 +141,7 @@ describe("parseReviewCommentsFile", () => {
           oldLine: null,
           newLine: 12,
           snippet: "added1",
+          snippetAnchorOffset: 0,
         },
         text: "why this?",
         status: "pending",

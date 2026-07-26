@@ -64,6 +64,12 @@ export interface ReviewCommentAnchor {
    * the seeded turn.
    */
   snippet: string;
+  /**
+   * 0-based index, within `snippet`'s lines, of the clicked line itself.
+   * Relocation extracts that line to search the current tree. Optional for
+   * backward compatibility; consumers treat a missing value as 0.
+   */
+  snippetAnchorOffset?: number;
 }
 
 export type ReviewCommentStatus = "pending" | "archived";
@@ -173,7 +179,7 @@ export function parseReviewCommentAnchor(
     return null;
   }
 
-  return {
+  const anchor: ReviewCommentAnchor = {
     path: record.path,
     revision,
     side: record.side,
@@ -181,6 +187,17 @@ export function parseReviewCommentAnchor(
     newLine,
     snippet: record.snippet,
   };
+  if (record.snippetAnchorOffset !== undefined) {
+    if (
+      typeof record.snippetAnchorOffset !== "number" ||
+      !Number.isInteger(record.snippetAnchorOffset) ||
+      record.snippetAnchorOffset < 0
+    ) {
+      return null;
+    }
+    anchor.snippetAnchorOffset = record.snippetAnchorOffset;
+  }
+  return anchor;
 }
 
 function parseComment(value: unknown): ReviewComment | null {
@@ -295,6 +312,8 @@ export interface PatchLineLocation {
   oldLine: number | null;
   newLine: number | null;
   snippet: string;
+  /** 0-based index of the clicked line within `snippet`'s lines. */
+  snippetAnchorOffset: number;
 }
 
 /**
@@ -372,11 +391,14 @@ function locateInHunk(
     resolvedNew = newLine;
   }
 
+  const start = Math.max(0, within - contextRadius);
   return {
     side,
     oldLine: resolvedOld,
     newLine: resolvedNew,
     snippet: buildSnippet(hunk.lines, within, contextRadius),
+    // Offset of the clicked line within the snippet window.
+    snippetAnchorOffset: within - start,
   };
 }
 
