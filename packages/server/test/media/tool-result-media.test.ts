@@ -93,6 +93,56 @@ describe("tool-result media storage", () => {
     ).resolves.toContain(".yep/");
   });
 
+  it("rejects a same-size blob whose bytes no longer match its content hash", async () => {
+    const store = new ToolResultMediaStore({ dataDir });
+    const projectId = encodeProjectId(projectDir);
+    const media = await captureDataUrl(store, projectDir, "session-corrupt");
+    if (media.state !== "stored") throw new Error("Expected stored media");
+    const file = await store.getMediaFile(
+      projectDir,
+      projectId,
+      "session-corrupt",
+      media.id,
+    );
+    if (!file) throw new Error("Expected stored media file");
+
+    const corruptBytes = Buffer.alloc(file.byteLength, 0x5a);
+    await writeFile(file.path, corruptBytes);
+
+    await expect(
+      store.getMediaFile(
+        projectDir,
+        projectId,
+        "session-corrupt",
+        media.id,
+      ),
+    ).resolves.toBeNull();
+  });
+
+  it("repairs a same-size corrupted blob when the content is captured again", async () => {
+    const store = new ToolResultMediaStore({ dataDir });
+    const projectId = encodeProjectId(projectDir);
+    const first = await captureDataUrl(store, projectDir, "session-repair");
+    if (first.state !== "stored") throw new Error("Expected stored media");
+    const file = await store.getMediaFile(
+      projectDir,
+      projectId,
+      "session-repair",
+      first.id,
+    );
+    if (!file) throw new Error("Expected stored media file");
+    await writeFile(file.path, Buffer.alloc(file.byteLength, 0x5a));
+
+    const repaired = await captureDataUrl(
+      store,
+      projectDir,
+      "session-repair",
+    );
+
+    expect(repaired).toMatchObject({ state: "stored", id: first.id });
+    await expect(readFile(file.path)).resolves.toEqual(PNG_BYTES);
+  });
+
   it("does not rewrite git excludes when .yep already exists", async () => {
     await mkdir(join(projectDir, ".yep"), { recursive: true });
     const excludePath = join(projectDir, ".git", "info", "exclude");

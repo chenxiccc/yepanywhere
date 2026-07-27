@@ -5,6 +5,7 @@ import type {
   UrlProjectId,
 } from "@yep-anywhere/shared";
 import { createHash, randomUUID } from "node:crypto";
+import { createReadStream } from "node:fs";
 import {
   lstat,
   mkdir,
@@ -182,6 +183,7 @@ export class ToolResultMediaStore {
       await atomicWriteIfAbsent(
         join(root, "blobs", `${validated.contentHash}.${validated.extension}`),
         validated.bytes,
+        validated.contentHash,
       );
       await atomicWrite(
         join(root, "records", `${id}.json`),
@@ -227,7 +229,11 @@ export class ToolResultMediaStore {
       if (!extension) continue;
       const blobPath = join(root, "blobs", `${entry.contentHash}.${extension}`);
       const blobStats = await lstat(blobPath).catch(() => null);
-      if (!blobStats?.isFile() || blobStats.size !== entry.byteLength) {
+      if (
+        !blobStats?.isFile() ||
+        blobStats.size !== entry.byteLength ||
+        !(await fileMatchesContentHash(blobPath, entry.contentHash))
+      ) {
         continue;
       }
       return {
@@ -516,10 +522,35 @@ function mediaIdFor(input: {
     .digest("base64url");
 }
 
-async function atomicWriteIfAbsent(path: string, bytes: Buffer): Promise<void> {
+async function atomicWriteIfAbsent(
+  path: string,
+  bytes: Buffer,
+  contentHash: string,
+): Promise<void> {
   const existing = await stat(path).catch(() => null);
-  if (existing?.isFile() && existing.size === bytes.length) return;
+  if (
+    existing?.isFile() &&
+    existing.size === bytes.length &&
+    (await fileMatchesContentHash(path, contentHash))
+  ) {
+    return;
+  }
   await atomicWrite(path, bytes);
+}
+
+async function fileMatchesContentHash(
+  path: string,
+  expectedHash: string,
+): Promise<boolean> {
+  const hash = createHash("sha256");
+  try {
+    for await (const chunk of createReadStream(path)) {
+      hash.update(chunk);
+    }
+    return hash.digest("hex") === expectedHash;
+  } catch {
+    return false;
+  }
 }
 
 async function atomicWrite(path: string, bytes: Buffer): Promise<void> {

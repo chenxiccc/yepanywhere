@@ -165,7 +165,10 @@ interface SessionMediaCatalogEntry {
 The handle may be deterministic but clients must not parse it. Blob and catalog
 writes are atomic: a partial image must never become a valid handle. Identical
 bytes in one project/session share the same content-addressed blob even when
-separate tool calls have separate stable handles.
+separate tool calls have separate stable handles. File length is not proof of
+content identity: blob reuse and lookup verify the recorded SHA-256. A corrupted
+blob is not fetchable, and capturing the authoritative bytes again atomically
+repairs it.
 
 ## Media ID And Lookup Model
 
