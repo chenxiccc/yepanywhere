@@ -16,8 +16,8 @@ import type { TranslationFn } from "../i18n";
 /**
  * Remote git actions for the source-control surface (check-remote / pull /
  * push) plus the integration-options probe that follows a diverged result.
- * Owns the per-action feedback the action buttons render inline with detail
- * in their tooltip (topic: source-review-to-session). Extracted from
+ * Owns per-action feedback for the initiating buttons and the persistent
+ * visible result panel (topic: source-review-to-session). Extracted from
  * GitStatusPage so the page keeps composition only.
  */
 export function useGitActions({
@@ -211,6 +211,39 @@ export function useGitActions({
     t,
   ]);
 
+  const checkFeedback =
+    remoteCheckError ?? getRemoteCheckMessage(remoteCheckResult, t);
+  const checkFeedbackTone =
+    remoteCheckError || (remoteCheckResult?.status ?? "checked") !== "checked"
+      ? ("warning" as const)
+      : remoteCheckResult || status?.checkedRemoteAt
+        ? ("success" as const)
+        : null;
+  const pullFeedback = pullError ?? getPullMessage(pullResult, t);
+  const pullFeedbackTone =
+    pullError || (pullResult && pullResult.status !== "pulled")
+      ? ("warning" as const)
+      : pullResult
+        ? ("success" as const)
+        : null;
+  const pushFeedback = pushError ?? getPushMessage(pushResult, t);
+  const pushFeedbackTone =
+    pushError ||
+    (pushResult &&
+      !["pushed", "published", "up-to-date"].includes(pushResult.status))
+      ? ("warning" as const)
+      : pushResult
+        ? ("success" as const)
+        : null;
+  const actionFeedback = checkFeedback || pullFeedback || pushFeedback;
+  const actionFeedbackTone = checkFeedback
+    ? checkFeedbackTone
+    : pullFeedback
+      ? pullFeedbackTone
+      : pushFeedback
+        ? pushFeedbackTone
+        : null;
+
   return {
     supportsRemoteCheck,
     supportsPull,
@@ -229,30 +262,14 @@ export function useGitActions({
       remoteCheckResult?.checkedRemoteAt ??
       status?.checkedRemoteAt ??
       null,
-    checkFeedback:
-      remoteCheckError ?? getRemoteCheckMessage(remoteCheckResult, t),
-    checkFeedbackTone:
-      remoteCheckError || (remoteCheckResult?.status ?? "checked") !== "checked"
-        ? ("warning" as const)
-        : remoteCheckResult || status?.checkedRemoteAt
-          ? ("success" as const)
-          : null,
-    pullFeedback: pullError ?? getPullMessage(pullResult, t),
-    pullFeedbackTone:
-      pullError || (pullResult && pullResult.status !== "pulled")
-        ? ("warning" as const)
-        : pullResult
-          ? ("success" as const)
-          : null,
-    pushFeedback: pushError ?? getPushMessage(pushResult, t),
-    pushFeedbackTone:
-      pushError ||
-      (pushResult &&
-        !["pushed", "published", "up-to-date"].includes(pushResult.status))
-        ? ("warning" as const)
-        : pushResult
-          ? ("success" as const)
-          : null,
+    checkFeedback,
+    checkFeedbackTone,
+    pullFeedback,
+    pullFeedbackTone,
+    pushFeedback,
+    pushFeedbackTone,
+    actionFeedback,
+    actionFeedbackTone,
     divergedActionStatus,
     integrationOptions,
     isLoadingIntegrationOptions,

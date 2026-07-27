@@ -23,6 +23,31 @@ For UI rendering-boundary and shared-view decisions, see
 
 For detailed overview, see `docs/project/`. Historical vision docs in `docs/archive/`.
 
+## Client/Server Backwards Compatibility
+
+Before making the client depend on a server route, response field, event, or
+changed semantic that a supported stable release lacks, read
+[`topics/server-capabilities.md`](topics/server-capabilities.md) and
+[`topics/remote-hosted-compatibility.md`](topics/remote-hosted-compatibility.md).
+Inspect at least the latest two stable releases plus every stable release from
+the preceding 14 days for an optional feature or 60 days for core
+functionality.
+
+Before implementation, present the maintainer with the release corpus, new
+contract, capability/protocol gate, exact missing-gate fallback, and any change
+to an existing capability meaning or older capable behavior. Wait for approval
+unless the originating request already approved all of those decisions. Never
+retroactively broaden an advertised capability, and never call a new endpoint
+before its gate is known present. A support horizon expiring permits review; it
+does not automatically remove compatibility.
+
+Use this prompt shape:
+
+> Compatibility review for `<feature>`: releases `<corpus>` lack
+> `<routes/fields/events>`. I propose `<capability/protocol>`; without it the
+> client `<fallback>` and makes no unsupported requests. Existing capability
+> meanings and older capable behavior remain unchanged. Approve?
+
 ## Port Configuration
 
 All ports are derived from a single `PORT` environment variable (default: 3400):

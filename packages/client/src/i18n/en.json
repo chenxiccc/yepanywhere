@@ -1189,6 +1189,8 @@
   "gitStatusDiffPreviewSkippedHtmlSize": "HTML size",
   "gitStatusUpgradeRequiredTitle": "Source Control needs a server update",
   "gitStatusUpgradeRequiredDescription": "This browser has a newer Source Control page, but this yepanywhere server does not advertise support for it. Upgrade the yepanywhere server, then reload this page.",
+  "gitStatusCompatibilityTitle": "Basic Source Control",
+  "gitStatusCompatibilityDescription": "This server supports repository status and the available actions above. Update the yepanywhere server to add commit history, file browsing, and source review.",
   "gitStatusLastCheckedRemote": "Last checked remote: {time}",
   "gitStatusRemoteUnknown": "unknown",
   "gitStatusRemoteJustNow": "just now",

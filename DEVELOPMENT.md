@@ -121,6 +121,27 @@ provider events flow through the server to the client, the transport modes,
 and the large-scope refactor proposals. Read it before changing message-flow
 or render-path code.
 
+## Client/Server Compatibility Review
+
+Hosted clients can update before installed servers. When a client change
+depends on a new server route, response field, event, or semantic, record and
+obtain maintainer approval for the compatibility decision before
+implementation:
+
+- identify whether the feature is core or optional;
+- inspect the latest two stable releases and every stable release from the
+  preceding 14 days (optional) or 60 days (core);
+- name the capability/protocol gate and the exact behavior when it is absent;
+- prove the fallback makes no unsupported request; and
+- call out any proposed change to an already-advertised capability or older
+  capable behavior.
+
+Existing capability meanings cannot be expanded retroactively: released
+servers already advertised the old contract. Passing the minimum support
+horizon allows a human review but does not automatically remove the fallback.
+See [`topics/server-capabilities.md`](topics/server-capabilities.md) and
+[`topics/remote-hosted-compatibility.md`](topics/remote-hosted-compatibility.md).
+
 ## Port Configuration
 
 Ports are derived from a single `PORT` variable (default: 3400):

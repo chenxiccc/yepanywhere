@@ -4,6 +4,7 @@ import type {
   GitStatusInfo,
 } from "@yep-anywhere/shared";
 import {
+  GIT_SOURCE_REVIEW_CAPABILITY,
   GIT_STATUS_ENHANCED_CAPABILITY,
   GIT_STATUS_INTEGRATION_OPTIONS_CAPABILITY,
   GIT_STATUS_PULL_CAPABILITY,
@@ -159,9 +160,9 @@ function SourceHeaderControls({
   t,
 }: {
   gitActions: GitActionState;
-  pendingCount: number;
+  pendingCount?: number;
   compact?: boolean;
-  onReview: () => void;
+  onReview?: () => void;
   t: TranslationFn;
 }) {
   const nowMs = useRelativeNow();
@@ -212,15 +213,17 @@ function SourceHeaderControls({
           disabled={gitActions.isRunning}
         />
       )}
-      <button
-        type="button"
-        className="git-status-action-button review-tray-button"
-        onClick={onReview}
-      >
-        {pendingCount > 0
-          ? t("sourceReviewReview", { count: pendingCount })
-          : t("sourceReviewStart")}
-      </button>
+      {onReview && pendingCount !== undefined && (
+        <button
+          type="button"
+          className="git-status-action-button review-tray-button"
+          onClick={onReview}
+        >
+          {pendingCount > 0
+            ? t("sourceReviewReview", { count: pendingCount })
+            : t("sourceReviewStart")}
+        </button>
+      )}
     </div>
   );
 }
@@ -347,6 +350,10 @@ export function GitStatusPage() {
     version,
     GIT_STATUS_ENHANCED_CAPABILITY,
   );
+  const supportsSourceReview = serverHasCapability(
+    version,
+    GIT_SOURCE_REVIEW_CAPABILITY,
+  );
   const supportsRemoteCheck = serverHasCapability(
     version,
     GIT_STATUS_REMOTE_CHECK_CAPABILITY,
@@ -360,7 +367,9 @@ export function GitStatusPage() {
   const { gitStatus, loading, error, refetch } = useGitStatus(
     supportsEnhancedGitStatus ? effectiveProjectId : undefined,
   );
-  const reviewComments = useProjectReviewComments(effectiveProjectId);
+  const reviewComments = useProjectReviewComments(
+    supportsSourceReview ? effectiveProjectId : undefined,
+  );
   const [showReviewModal, setShowReviewModal] = useState(false);
   const routeRetentionKey = useMemo(
     () =>
@@ -442,6 +451,7 @@ export function GitStatusPage() {
         isSidebarCollapsed={isSidebarCollapsed}
         actions={
           sourceControlsFitHeader &&
+          supportsSourceReview &&
           effectiveProjectId &&
           gitStatus?.isGitRepo ? (
             <SourceHeaderActions
@@ -473,7 +483,7 @@ export function GitStatusPage() {
             </div>
           ) : gitStatus && !gitStatus.isGitRepo ? (
             <div className="git-status-empty">{t("gitStatusNotRepo")}</div>
-          ) : gitStatus && effectiveProjectId ? (
+          ) : gitStatus && effectiveProjectId && supportsSourceReview ? (
             <GitStatusContent
               key={`${sourceKey}:${effectiveProjectId}`}
               status={gitStatus}
@@ -488,6 +498,14 @@ export function GitStatusPage() {
               onCloseReview={() => setShowReviewModal(false)}
               t={t}
             />
+          ) : gitStatus && effectiveProjectId ? (
+            <GitStatusCompatibilityContent
+              key={`${sourceKey}:${effectiveProjectId}:compatibility`}
+              status={gitStatus}
+              projectName={project?.name}
+              gitActions={gitActions}
+              t={t}
+            />
           ) : null}
         </div>
       </main>
@@ -500,6 +518,34 @@ function GitStatusUpgradeRequired({ t }: { t: TranslationFn }) {
     <div className="git-status-upgrade">
       <h2>{t("gitStatusUpgradeRequiredTitle")}</h2>
       <p>{t("gitStatusUpgradeRequiredDescription")}</p>
+    </div>
+  );
+}
+
+function GitStatusCompatibilityContent({
+  status,
+  projectName,
+  gitActions,
+  t,
+}: {
+  status: GitStatusInfo;
+  projectName?: string;
+  gitActions: GitActionState;
+  t: TranslationFn;
+}) {
+  return (
+    <div className="git-status git-status-compatibility">
+      <RepoStatusBar
+        repoName={projectName}
+        status={status}
+        actions={<SourceHeaderControls gitActions={gitActions} t={t} />}
+        t={t}
+      />
+      <GitActionNotices gitActions={gitActions} t={t} />
+      <section className="git-status-compatibility-notice">
+        <h2>{t("gitStatusCompatibilityTitle")}</h2>
+        <p>{t("gitStatusCompatibilityDescription")}</p>
+      </section>
     </div>
   );
 }
@@ -577,6 +623,8 @@ function GitStatusContent({
         />
       )}
 
+      <GitActionNotices gitActions={gitActions} t={t} />
+
       {tab === "commits" ? (
         <CommitBrowser
           projectId={projectId}
@@ -602,16 +650,6 @@ function GitStatusContent({
         />
       ) : null}
 
-      {gitActions.divergedActionStatus &&
-        gitActions.supportsIntegrationOptions && (
-          <GitIntegrationOptionsPanel
-            options={gitActions.integrationOptions}
-            loading={gitActions.isLoadingIntegrationOptions}
-            error={gitActions.integrationOptionsError}
-            t={t}
-          />
-        )}
-
       {showReviewModal && (
         <ReviewSubmitModal
           projectId={projectId}
@@ -620,6 +658,43 @@ function GitStatusContent({
           onNavigateSession={(sessionId) =>
             navigate(`${basePath}/projects/${projectId}/sessions/${sessionId}`)
           }
+          t={t}
+        />
+      )}
+    </div>
+  );
+}
+
+function GitActionNotices({
+  gitActions,
+  t,
+}: {
+  gitActions: GitActionState;
+  t: TranslationFn;
+}) {
+  const showIntegrationOptions =
+    gitActions.divergedActionStatus && gitActions.supportsIntegrationOptions;
+  if (!gitActions.actionFeedback && !showIntegrationOptions) {
+    return null;
+  }
+
+  return (
+    <div className="git-status-action-notices">
+      {gitActions.actionFeedback && gitActions.actionFeedbackTone && (
+        <div
+          className={`git-status-action-message git-status-action-message-${gitActions.actionFeedbackTone}`}
+          role={
+            gitActions.actionFeedbackTone === "warning" ? "alert" : "status"
+          }
+        >
+          {gitActions.actionFeedback}
+        </div>
+      )}
+      {showIntegrationOptions && (
+        <GitIntegrationOptionsPanel
+          options={gitActions.integrationOptions}
+          loading={gitActions.isLoadingIntegrationOptions}
+          error={gitActions.integrationOptionsError}
           t={t}
         />
       )}

@@ -413,6 +413,34 @@ Review may use additional rows in the page body, but those rows are ordinary
 scrolling content and disappear while reading. Both placements drive the same
 `?tab=` URL state (`useSourceTab`). — Done (2026-07-26).
 
+### Released-server fallback and action feedback
+
+The complete Commits/Files/Comments browser and source-review workflow requires
+the permanent `git-source-review` capability. That capability owns the commit
+browse, search, blame, commit-diff, review-comment, preview, and submit routes;
+`git-status-enhanced` retains only its previously released status,
+untracked-folder, and working-tree-diff meaning.
+
+When `git-status-enhanced` exists without `git-source-review`, Source Control
+renders a basic compatibility shell instead of an upgrade-only dead end:
+repository/branch/upstream/ahead-behind/clean state plus Check, Pull, Push, and
+integration analysis according to their existing independent capability
+advertisements. It explains that commit history, file browsing, and source
+review require a server update. It does not mount a new browse/review component
+or call one of its routes.
+
+Git action outcomes render twice by design: a brief mark on the initiating
+button for immediate attribution and a persistent full-text panel beside the
+page content. The panel survives until the next action or project change;
+warnings are alerts and successes are status messages. Touch users never need
+hover to learn why Pull or Push left the branch unchanged.
+
+The core compatibility corpus initially covers released `v0.6.0`, `v0.6.1`,
+`v0.6.2`, and `v0.7.0`. See
+[`docs/tactical/063-source-control-hosted-compatibility.md`](../docs/tactical/063-source-control-hosted-compatibility.md).
+
+— Done (2026-07-27).
+
 ### Stash triage in history — proposal only
 
 If stashes become common enough to justify a management exception, show an

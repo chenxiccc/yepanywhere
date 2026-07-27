@@ -3,6 +3,7 @@ import {
   APPROVAL_AUDIT_LOG_CAPABILITY,
   BANG_COMMANDS_CAPABILITY,
   BROWSER_SETTINGS_BACKUP_CAPABILITY,
+  GIT_SOURCE_REVIEW_CAPABILITY,
   HOST_AWAKE_CONTROL_CAPABILITY,
   HOST_IDENTITY_CAPABILITY,
 } from "@yep-anywhere/shared";
@@ -32,5 +33,9 @@ describe("Version Routes", () => {
 
   it("advertises host-awake settings and status", () => {
     expect(getServerCapabilities()).toContain(HOST_AWAKE_CONTROL_CAPABILITY);
+  });
+
+  it("advertises the complete source browser and review contract", () => {
+    expect(getServerCapabilities()).toContain(GIT_SOURCE_REVIEW_CAPABILITY);
   });
 });
