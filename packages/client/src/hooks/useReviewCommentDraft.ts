@@ -2,7 +2,10 @@ import type { ReviewComment, ReviewCommentAnchor } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
-import { notifyReviewCommentsChanged } from "../lib/reviewCommentsBus";
+import {
+  notifyReviewCommentsChanged,
+  subscribeReviewComments,
+} from "../lib/reviewCommentsBus";
 import { useRemoteBasePath } from "./useRemoteBasePath";
 
 export type SubmitNowOutcome = "navigated" | "queued" | "error";
@@ -36,9 +39,14 @@ export function useReviewCommentDraft(projectId: string, filePath: string) {
     }
   }, [projectId, filePath]);
 
+  // Refresh on mount and whenever any surface mutates the accumulator (a
+  // tray submit, a Comments-tab delete), so this file's tint never goes stale.
   useEffect(() => {
     void refreshPending();
-  }, [refreshPending]);
+    return subscribeReviewComments(projectId, () => {
+      void refreshPending();
+    });
+  }, [projectId, refreshPending]);
 
   const addToReview = useCallback(
     async (anchor: ReviewCommentAnchor, text: string): Promise<boolean> => {

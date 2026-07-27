@@ -63,8 +63,10 @@ export interface GitCommitListResult {
 export interface GitCommitSearchManifest {
   /** Current repository HEAD, or null for an empty repository. */
   head: string | null;
-  /** Every reachable commit, newest first. */
+  /** Reachable commits, newest first, up to the server's manifest bound. */
   commits: GitRecentCommit[];
+  /** Set when history exceeded the bound: the index covers a recent prefix. */
+  truncated?: boolean;
 }
 
 /** Searchable changed-line/path text for one commit. */

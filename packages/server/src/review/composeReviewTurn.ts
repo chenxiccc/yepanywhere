@@ -109,5 +109,12 @@ function renderComment(
 }
 
 function fence(snippet: string): string {
-  return `\`\`\`\n${snippet}\n\`\`\``;
+  // A fence one backtick longer than any run inside keeps embedded ``` (e.g.
+  // reviewed markdown with its own fenced code) from ending the block early.
+  const longestRun =
+    snippet
+      .match(/`+/g)
+      ?.reduce((max, run) => Math.max(max, run.length), 0) ?? 0;
+  const marker = "`".repeat(Math.max(3, longestRun + 1));
+  return `${marker}\n${snippet}\n${marker}`;
 }

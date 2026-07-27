@@ -11,6 +11,7 @@
  * here too, rather than a third hand-rolled copy of this pattern.
  */
 
+import { ALL_PERMISSION_MODES } from "@yep-anywhere/shared";
 import type { PermissionMode } from "../types";
 
 export interface SessionPickStore<T extends string> {
@@ -100,11 +101,8 @@ export const sessionPermissionModePick = createSessionPickStore<PermissionMode>(
   {
     prefix: "permission-mode-",
     decode: (raw) =>
-      raw === "default" ||
-      raw === "acceptEdits" ||
-      raw === "plan" ||
-      raw === "bypassPermissions"
-        ? raw
+      (ALL_PERMISSION_MODES as readonly string[]).includes(raw)
+        ? (raw as PermissionMode)
         : undefined,
   },
 );

@@ -4,7 +4,6 @@ import {
   type ReviewCommentAnchor,
   type ReviewCommentRevision,
   anchorFromPatch,
-  patchLineCount,
 } from "@yep-anywhere/shared";
 import { type RefObject, useCallback, useEffect, useState } from "react";
 import { useReviewCommentDraft } from "../hooks/useReviewCommentDraft";
@@ -94,16 +93,33 @@ export function DiffCommentLayer({
   }, [containerRef, structuredPatch, setError]);
 
   // Tint every line that carries a pending comment. Idempotent decoration of
-  // the same server-emitted nodes the click handler addresses.
+  // the same server-emitted nodes the click handler addresses. One linear walk
+  // plus a key set; the (oldLine, newLine) pair identifies a line exactly (pure
+  // lines carry null on the absent side), so a context-line anchor matches
+  // whichever column it was clicked in.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
+    const pendingKeys = new Set(
+      pending.map((c) => `${c.anchor.oldLine}:${c.anchor.newLine}`),
+    );
     const commented = new Set<number>();
-    const count = patchLineCount(structuredPatch);
-    for (let i = 0; i < count; i++) {
-      const location = anchorFromPatch(structuredPatch, i);
-      if (location && pending.some((c) => anchorMatches(location, c.anchor))) {
-        commented.add(i);
+    if (pendingKeys.size > 0) {
+      let flat = 0;
+      for (const hunk of structuredPatch) {
+        let oldLine = hunk.oldStart;
+        let newLine = hunk.newStart;
+        for (const line of hunk.lines) {
+          const prefix = line[0];
+          const key =
+            prefix === "-"
+              ? `${oldLine++}:null`
+              : prefix === "+"
+                ? `null:${newLine++}`
+                : `${oldLine++}:${newLine++}`;
+          if (pendingKeys.has(key)) commented.add(flat);
+          flat++;
+        }
       }
     }
     const nodes = el.querySelectorAll<HTMLElement>("[data-diff-line]");
@@ -170,13 +186,3 @@ export function DiffCommentLayer({
   );
 }
 
-function anchorMatches(
-  location: PatchLineLocation,
-  anchor: ReviewCommentAnchor,
-): boolean {
-  return (
-    location.side === anchor.side &&
-    location.oldLine === anchor.oldLine &&
-    location.newLine === anchor.newLine
-  );
-}

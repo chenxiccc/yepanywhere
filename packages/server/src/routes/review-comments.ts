@@ -13,7 +13,6 @@ import {
   ALL_PROVIDERS,
   MAX_REVIEW_COMMENT_TEXT_LENGTH,
   type ReviewNewSessionOptions,
-  isUrlProjectId,
   parseReviewCommentAnchor,
 } from "@yep-anywhere/shared";
 import { Hono } from "hono";
@@ -25,6 +24,7 @@ import {
   relocateAnchors,
 } from "../review/relocateAnchors.js";
 import type { ReviewSessionLauncher } from "../review/reviewSessionLauncher.js";
+import { resolveProjectPath } from "./projectParam.js";
 
 /** Repo-relative path of the drafts file the seeded turn references. */
 const REVIEW_COMMENTS_REL_PATH = ".yep/review-comments.json";
@@ -41,25 +41,11 @@ export function createReviewCommentsRoutes(deps: ReviewCommentsDeps): Hono {
   const routes = new Hono();
   const service = deps.service ?? new ReviewCommentService();
 
-  /** Resolve `:projectId` → project path, or respond with the error status. */
-  async function resolveProjectPath(
-    projectId: string,
-  ): Promise<{ path: string } | { error: string; status: 400 | 404 }> {
-    if (!isUrlProjectId(projectId)) {
-      return { error: "Invalid project ID format", status: 400 };
-    }
-    const project = await deps.scanner.getProject(projectId);
-    if (!project) return { error: "Project not found", status: 404 };
-    return { path: project.path };
-  }
-
   // GET /:projectId/review/comments — full draft store (comments + batches).
   routes.get("/:projectId/review/comments", async (c) => {
-    const resolved = await resolveProjectPath(c.req.param("projectId"));
-    if ("error" in resolved) {
-      return c.json({ error: resolved.error }, resolved.status);
-    }
-    const file = await service.getFile(resolved.path);
+    const projectPath = await resolveProjectPath(c, deps.scanner);
+    if (typeof projectPath !== "string") return projectPath;
+    const file = await service.getFile(projectPath);
     const pendingCount = file.comments.filter(
       (comment) => comment.status === "pending",
     ).length;
@@ -68,10 +54,8 @@ export function createReviewCommentsRoutes(deps: ReviewCommentsDeps): Hono {
 
   // POST /:projectId/review/comments { anchor, text } — create a pending draft.
   routes.post("/:projectId/review/comments", async (c) => {
-    const resolved = await resolveProjectPath(c.req.param("projectId"));
-    if ("error" in resolved) {
-      return c.json({ error: resolved.error }, resolved.status);
-    }
+    const projectPath = await resolveProjectPath(c, deps.scanner);
+    if (typeof projectPath !== "string") return projectPath;
 
     const body = await readJsonBody(c);
     if (!body) return c.json({ error: "Invalid JSON body" }, 400);
@@ -82,7 +66,7 @@ export function createReviewCommentsRoutes(deps: ReviewCommentsDeps): Hono {
     const textError = validateText(body.text, { required: true });
     if (textError) return c.json({ error: textError }, 400);
 
-    const comment = await service.addComment(resolved.path, {
+    const comment = await service.addComment(projectPath, {
       anchor,
       text: body.text as string,
     });
@@ -91,10 +75,8 @@ export function createReviewCommentsRoutes(deps: ReviewCommentsDeps): Hono {
 
   // PATCH /:projectId/review/comments/:commentId { text?, anchor? }
   routes.patch("/:projectId/review/comments/:commentId", async (c) => {
-    const resolved = await resolveProjectPath(c.req.param("projectId"));
-    if ("error" in resolved) {
-      return c.json({ error: resolved.error }, resolved.status);
-    }
+    const projectPath = await resolveProjectPath(c, deps.scanner);
+    if (typeof projectPath !== "string") return projectPath;
 
     const body = await readJsonBody(c);
     if (!body) return c.json({ error: "Invalid JSON body" }, 400);
@@ -115,7 +97,7 @@ export function createReviewCommentsRoutes(deps: ReviewCommentsDeps): Hono {
     }
 
     const comment = await service.updateComment(
-      resolved.path,
+      projectPath,
       c.req.param("commentId"),
       { text: patch.text, anchor: patch.anchor ?? undefined },
     );
@@ -127,12 +109,10 @@ export function createReviewCommentsRoutes(deps: ReviewCommentsDeps): Hono {
 
   // DELETE /:projectId/review/comments/:commentId — discard a pending draft.
   routes.delete("/:projectId/review/comments/:commentId", async (c) => {
-    const resolved = await resolveProjectPath(c.req.param("projectId"));
-    if ("error" in resolved) {
-      return c.json({ error: resolved.error }, resolved.status);
-    }
+    const projectPath = await resolveProjectPath(c, deps.scanner);
+    if (typeof projectPath !== "string") return projectPath;
     const deleted = await service.deleteComment(
-      resolved.path,
+      projectPath,
       c.req.param("commentId"),
     );
     if (!deleted) {
@@ -145,13 +125,11 @@ export function createReviewCommentsRoutes(deps: ReviewCommentsDeps): Hono {
   // per-comment relocated|gone, gone-first and pre-selected discard. A dry run
   // of submit; mutates nothing.
   routes.post("/:projectId/review/preview", async (c) => {
-    const resolved = await resolveProjectPath(c.req.param("projectId"));
-    if ("error" in resolved) {
-      return c.json({ error: resolved.error }, resolved.status);
-    }
-    const pending = await service.listPending(resolved.path);
+    const projectPath = await resolveProjectPath(c, deps.scanner);
+    if (typeof projectPath !== "string") return projectPath;
+    const pending = await service.listPending(projectPath);
     const relocations = await relocateAnchors(
-      resolved.path,
+      projectPath,
       pending.map((comment) => comment.anchor),
     );
     const items = pending.map((comment, index) => {
@@ -172,10 +150,8 @@ export function createReviewCommentsRoutes(deps: ReviewCommentsDeps): Hono {
   // Re-relocate the included comments, compose the turn, launch/continue the
   // session, then archive the consumed batch against that session.
   routes.post("/:projectId/review/submit", async (c) => {
-    const resolved = await resolveProjectPath(c.req.param("projectId"));
-    if ("error" in resolved) {
-      return c.json({ error: resolved.error }, resolved.status);
-    }
+    const projectPath = await resolveProjectPath(c, deps.scanner);
+    if (typeof projectPath !== "string") return projectPath;
     if (!deps.launcher) {
       return c.json({ error: "Review submit is not available" }, 501);
     }
@@ -202,7 +178,7 @@ export function createReviewCommentsRoutes(deps: ReviewCommentsDeps): Hono {
       );
     }
 
-    const pending = await service.listPending(resolved.path);
+    const pending = await service.listPending(projectPath);
     const includeSet = new Set(include);
     const included = pending.filter((comment) => includeSet.has(comment.id));
     if (included.length === 0) {
@@ -210,7 +186,7 @@ export function createReviewCommentsRoutes(deps: ReviewCommentsDeps): Hono {
     }
 
     const relocations = await relocateAnchors(
-      resolved.path,
+      projectPath,
       included.map((comment) => comment.anchor),
     );
     const relocationMap = new Map<string, AnchorRelocation>();
@@ -228,7 +204,7 @@ export function createReviewCommentsRoutes(deps: ReviewCommentsDeps): Hono {
     let sessionId: string;
     if (target === "new") {
       const result = await deps.launcher.startReviewSession(
-        resolved.path,
+        projectPath,
         turn,
         newSession,
       );
@@ -245,7 +221,7 @@ export function createReviewCommentsRoutes(deps: ReviewCommentsDeps): Hono {
       sessionId = result.sessionId;
     } else {
       const result = await deps.launcher.deliverFollowUp(
-        resolved.path,
+        projectPath,
         target,
         turn,
       );
@@ -262,7 +238,7 @@ export function createReviewCommentsRoutes(deps: ReviewCommentsDeps): Hono {
       sessionId = target;
     }
 
-    const batch = await service.archiveComments(resolved.path, {
+    const batch = await service.archiveComments(projectPath, {
       commentIds: included.map((comment) => comment.id),
       targetSessionId: sessionId,
     });

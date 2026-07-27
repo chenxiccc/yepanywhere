@@ -10,7 +10,6 @@ import {
   type GitFileListResult,
   type GitRecentCommit,
   type GitSearchResult,
-  isUrlProjectId,
 } from "@yep-anywhere/shared";
 import type { Context } from "hono";
 import { Hono } from "hono";
@@ -23,6 +22,7 @@ import {
 } from "../git/diffPreviewGuards.js";
 import { GIT_DECODE_PATHS_ARGS, runGit } from "../git/gitExec.js";
 import type { ProjectScanner } from "../projects/scanner.js";
+import { resolveProjectPath } from "./projectParam.js";
 
 /**
  * Read-only git browse surface (topic: source-review-to-session, stage 3):
@@ -59,13 +59,15 @@ const MAX_SEARCH_COMMIT_LIMIT = 200;
 const SEARCH_TIMEOUT_MS = 15_000;
 const MAX_SEARCH_INDEX_BATCH = 20;
 const COMMIT_SEARCH_RECORD_FORMAT = "%x1e%H";
+/** Manifest bound: the delta index covers at most this many recent commits. */
+const MAX_SEARCH_MANIFEST_COMMITS = 50_000;
 
 export function createGitBrowseRoutes(deps: GitBrowseDeps): Hono {
   const routes = new Hono();
 
   // Paged commit list for the browser's commit column.
   routes.get("/:projectId/git/commits", async (c) => {
-    const projectPath = await resolveProjectPath(c, deps);
+    const projectPath = await resolveProjectPath(c, deps.scanner);
     if (typeof projectPath !== "string") return projectPath;
 
     const limit = clampInt(
@@ -103,19 +105,27 @@ export function createGitBrowseRoutes(deps: GitBrowseDeps): Hono {
 
   // Complete lightweight history for the client-owned commit search index.
   routes.get("/:projectId/git/commit-search-manifest", async (c) => {
-    const projectPath = await resolveProjectPath(c, deps);
+    const projectPath = await resolveProjectPath(c, deps.scanner);
     if (typeof projectPath !== "string") return projectPath;
 
     try {
+      // One over the cap distinguishes "everything" from "capped".
       const { stdout } = await runGit(
         projectPath,
-        ["log", `--format=${COMMIT_LOG_FORMAT}`],
+        [
+          "log",
+          "-n",
+          String(MAX_SEARCH_MANIFEST_COMMITS + 1),
+          `--format=${COMMIT_LOG_FORMAT}`,
+        ],
         { maxBuffer: BROWSE_MAX_BUFFER },
       );
-      const commits = parseCommitLog(stdout);
+      const all = parseCommitLog(stdout);
+      const truncated = all.length > MAX_SEARCH_MANIFEST_COMMITS;
       return c.json({
-        head: commits[0]?.hash ?? null,
-        commits,
+        head: all[0]?.hash ?? null,
+        commits: truncated ? all.slice(0, MAX_SEARCH_MANIFEST_COMMITS) : all,
+        ...(truncated ? { truncated } : {}),
       } satisfies GitCommitSearchManifest);
     } catch (err) {
       return gitError(c, err);
@@ -125,7 +135,7 @@ export function createGitBrowseRoutes(deps: GitBrowseDeps): Hono {
   // Bounded changed-line/path records. The browser requests manifest-order
   // batches once, then every typed query stays inside its client-owned index.
   routes.post("/:projectId/git/commit-search-records", async (c) => {
-    const projectPath = await resolveProjectPath(c, deps);
+    const projectPath = await resolveProjectPath(c, deps.scanner);
     if (typeof projectPath !== "string") return projectPath;
 
     let body: { shas?: unknown };
@@ -163,7 +173,7 @@ export function createGitBrowseRoutes(deps: GitBrowseDeps): Hono {
 
   // A commit's metadata plus the files it changed (no diffs — fetched per file).
   routes.get("/:projectId/git/commit/:sha", async (c) => {
-    const projectPath = await resolveProjectPath(c, deps);
+    const projectPath = await resolveProjectPath(c, deps.scanner);
     if (typeof projectPath !== "string") return projectPath;
 
     const sha = c.req.param("sha");
@@ -179,7 +189,7 @@ export function createGitBrowseRoutes(deps: GitBrowseDeps): Hono {
 
   // One changed file's diff within a commit — mirrors POST /git/diff.
   routes.post("/:projectId/git/commit-diff", async (c) => {
-    const projectPath = await resolveProjectPath(c, deps);
+    const projectPath = await resolveProjectPath(c, deps.scanner);
     if (typeof projectPath !== "string") return projectPath;
 
     let body: {
@@ -243,7 +253,7 @@ export function createGitBrowseRoutes(deps: GitBrowseDeps): Hono {
 
   // Whole-file blame for the all-files provenance browser.
   routes.get("/:projectId/git/blame", async (c) => {
-    const projectPath = await resolveProjectPath(c, deps);
+    const projectPath = await resolveProjectPath(c, deps.scanner);
     if (typeof projectPath !== "string") return projectPath;
 
     const path = c.req.query("path");
@@ -263,7 +273,7 @@ export function createGitBrowseRoutes(deps: GitBrowseDeps): Hono {
 
   // Tracked-file list for the all-files tree + filename search.
   routes.get("/:projectId/git/files", async (c) => {
-    const projectPath = await resolveProjectPath(c, deps);
+    const projectPath = await resolveProjectPath(c, deps.scanner);
     if (typeof projectPath !== "string") return projectPath;
 
     const query = (c.req.query("q") ?? "").toLowerCase();
@@ -283,7 +293,7 @@ export function createGitBrowseRoutes(deps: GitBrowseDeps): Hono {
 
   // Rudimentary filename / commit-delta search.
   routes.get("/:projectId/git/search", async (c) => {
-    const projectPath = await resolveProjectPath(c, deps);
+    const projectPath = await resolveProjectPath(c, deps.scanner);
     if (typeof projectPath !== "string") return projectPath;
 
     const query = c.req.query("q") ?? "";
@@ -321,20 +331,6 @@ export function createGitBrowseRoutes(deps: GitBrowseDeps): Hono {
   });
 
   return routes;
-}
-
-/** Resolve `:projectId` to its filesystem path, or an error Response. */
-async function resolveProjectPath(
-  c: Context,
-  deps: GitBrowseDeps,
-): Promise<string | Response> {
-  const projectId = c.req.param("projectId");
-  if (!projectId || !isUrlProjectId(projectId)) {
-    return c.json({ error: "Invalid project ID format" }, 400);
-  }
-  const project = await deps.scanner.getProject(projectId);
-  if (!project) return c.json({ error: "Project not found" }, 404);
-  return project.path;
 }
 
 function gitError(c: Context, err: unknown): Response {
@@ -588,7 +584,37 @@ async function searchCommitDelta(
   };
 }
 
+/**
+ * One record per requested sha, in request order. The batch normally comes
+ * from one `git show`; when that fails (an oversized commit blowing the
+ * buffer, a broken object), each missing sha degrades individually — worst
+ * case an empty deltaText, leaving the commit metadata-searchable — so one
+ * pathological commit can never poison its whole batch or stall indexing.
+ */
 async function getCommitSearchRecords(
+  cwd: string,
+  shas: string[],
+): Promise<GitCommitSearchRecord[]> {
+  const byHash = new Map<string, string>();
+  try {
+    for (const record of await showCommitSearchRecords(cwd, shas)) {
+      byHash.set(record.hash, record.deltaText);
+    }
+  } catch {
+    // Batch failed wholesale; fall through to per-sha recovery below.
+  }
+  const records: GitCommitSearchRecord[] = [];
+  for (const sha of shas) {
+    let deltaText = byHash.get(sha);
+    if (deltaText === undefined) {
+      deltaText = await singleCommitDeltaText(cwd, sha);
+    }
+    records.push({ hash: sha, deltaText });
+  }
+  return records;
+}
+
+async function showCommitSearchRecords(
   cwd: string,
   shas: string[],
 ): Promise<GitCommitSearchRecord[]> {
@@ -607,6 +633,15 @@ async function getCommitSearchRecords(
     { maxBuffer: SEARCH_INDEX_MAX_BUFFER, timeout: SEARCH_TIMEOUT_MS },
   );
   return parseCommitSearchRecords(stdout);
+}
+
+async function singleCommitDeltaText(cwd: string, sha: string): Promise<string> {
+  try {
+    const records = await showCommitSearchRecords(cwd, [sha]);
+    return records[0]?.deltaText ?? "";
+  } catch {
+    return "";
+  }
 }
 
 function parseCommitSearchRecords(stdout: string): GitCommitSearchRecord[] {
