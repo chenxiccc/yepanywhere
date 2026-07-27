@@ -217,7 +217,15 @@ export function CommitBrowser({
         limit: COMMIT_PAGE_SIZE,
         skip: commits.length,
       });
-      setCommits((prev) => [...prev, ...res.commits]);
+      // Commits landing between pages shift skip-based windows; dropping
+      // already-listed hashes keeps rows (and React keys) unique.
+      setCommits((prev) => {
+        const seen = new Set(prev.map((commit) => commit.hash));
+        return [
+          ...prev,
+          ...res.commits.filter((commit) => !seen.has(commit.hash)),
+        ];
+      });
       setHasMore(res.hasMore);
     } catch (err) {
       setListError(err instanceof Error ? err.message : t("gitStatusLoading"));

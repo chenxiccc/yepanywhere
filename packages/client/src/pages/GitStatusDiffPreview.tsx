@@ -557,13 +557,22 @@ function GitDiffContent({
     if (!content) return;
     const scrollRoot =
       content.closest<HTMLElement>(".git-diff-preview-body") ?? content;
-    const frame = requestAnimationFrame(updateHunkPosition);
-    scrollRoot.addEventListener("scroll", updateHunkPosition, {
-      passive: true,
-    });
+    // Coalesce to one measurement per frame: the update queries every rendered
+    // hunk's rect, which is too much work to repeat per scroll event.
+    let frame = requestAnimationFrame(updateHunkPosition);
+    let scheduled = false;
+    const onScroll = () => {
+      if (scheduled) return;
+      scheduled = true;
+      frame = requestAnimationFrame(() => {
+        scheduled = false;
+        updateHunkPosition();
+      });
+    };
+    scrollRoot.addEventListener("scroll", onScroll, { passive: true });
     return () => {
       cancelAnimationFrame(frame);
-      scrollRoot.removeEventListener("scroll", updateHunkPosition);
+      scrollRoot.removeEventListener("scroll", onScroll);
     };
   }, [updateHunkPosition]);
 
