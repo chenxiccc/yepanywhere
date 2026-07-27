@@ -159,6 +159,23 @@ export function normalizeOpenAiCompatibleBaseUrl(raw: unknown): string | null {
   }
 }
 
+export function normalizeClaudeGatewayUrl(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed.length > 2000) return null;
+
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    if (url.username || url.password || url.search || url.hash) return null;
+
+    const normalized = url.toString();
+    return normalized.endsWith("/") ? normalized.slice(0, -1) : normalized;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Returns:
  * - `null` when the payload is invalid

@@ -115,6 +115,7 @@ export function normalizeSession(loaded: LoadedSession): Session {
 
   switch (data.provider) {
     case "claude":
+    case "claude-gateway":
     case "claude-ollama": {
       const rawMessages = data.session.messages;
       const { entries, orphanedToolUses } =

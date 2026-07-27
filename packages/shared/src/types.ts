@@ -3,6 +3,8 @@ import type { UrlProjectId } from "./projectId.js";
 /**
  * Provider name - which AI agent provider to use.
  * - "claude": Claude via Anthropic SDK
+ * - "claude-gateway": Claude SDK routed through a configured LLM gateway
+ * - "claude-ollama": Legacy Claude SDK transport for Ollama
  * - "codex": OpenAI Codex via SDK (cloud models)
  * - "codex-oss": Codex via CLI with --oss (local models via Ollama)
  * - "gemini": Google Gemini via CLI
@@ -17,6 +19,7 @@ import type { UrlProjectId } from "./projectId.js";
  */
 export type ProviderName =
   | "claude"
+  | "claude-gateway"
   | "claude-ollama"
   | "codex"
   | "codex-oss"
@@ -35,6 +38,7 @@ export type ProviderName =
  */
 export const ALL_PROVIDERS: readonly ProviderName[] = [
   "claude",
+  "claude-gateway",
   "claude-ollama",
   "codex",
   "codex-oss",
@@ -44,6 +48,18 @@ export const ALL_PROVIDERS: readonly ProviderName[] = [
   "opencode",
   "pi",
 ] as const;
+
+export type ClaudeProviderName = "claude" | "claude-gateway" | "claude-ollama";
+
+export function isClaudeProviderName(
+  provider: string | undefined,
+): provider is ClaudeProviderName {
+  return (
+    provider === "claude" ||
+    provider === "claude-gateway" ||
+    provider === "claude-ollama"
+  );
+}
 
 /**
  * The default provider when none is specified.

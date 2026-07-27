@@ -19,8 +19,9 @@ export class ClaudeOllamaProvider implements Provider {
 
   readonly metadata: ProviderMetadata = {
     description:
-      "Claude SDK agent loop with local Ollama models. Full tool calling, permissions, and session persistence.",
+      "Legacy Claude SDK transport for local Ollama models. New setups should use Claude Gateway.",
     limitations: [
+      "Deprecated compatibility provider",
       "Model quality varies by model",
       "No token counting",
       "Requires Ollama 0.14+",

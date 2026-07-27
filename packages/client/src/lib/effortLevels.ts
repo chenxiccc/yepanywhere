@@ -112,6 +112,8 @@ function getFallbackEffortLevels(providerName?: ProviderName): EffortLevel[] {
     case "claude":
     case "claude-ollama":
       return EFFORT_LEVEL_ORDER;
+    case "claude-gateway":
+      return [];
     case "codex":
       return CODEX_EFFORT_LEVELS;
     default:
@@ -133,7 +135,9 @@ export function getEffortLevelLabel(
     case "high":
       return translate("effortLevelHighLabel");
     case "xhigh":
-      return providerName === "claude" || providerName === "claude-ollama"
+      return providerName === "claude" ||
+        providerName === "claude-gateway" ||
+        providerName === "claude-ollama"
         ? translate("effortLevelExtraLabel")
         : translate("effortLevelExtraHighLabel");
     case "max":
@@ -155,7 +159,9 @@ function getFallbackDescription(
     case "high":
       return translate("effortLevelHighDescription");
     case "xhigh":
-      return providerName === "claude" || providerName === "claude-ollama"
+      return providerName === "claude" ||
+        providerName === "claude-gateway" ||
+        providerName === "claude-ollama"
         ? translate("effortLevelExtraDescription")
         : translate("effortLevelExtraHighDescription");
     case "max":
@@ -214,6 +220,12 @@ export function getThinkingModeOptions(params: {
   effortOptions?: readonly EffortLevelOption[];
 }): ThinkingMode[] {
   const model = getModelInfo(params.provider, params.model);
+  if (
+    getProviderName(params.provider) === "claude-gateway" &&
+    model === undefined
+  ) {
+    return ["off"];
+  }
   if (model?.supportsAdaptiveThinking === false) {
     return ["off"];
   }

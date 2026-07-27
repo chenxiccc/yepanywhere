@@ -22,6 +22,7 @@ import {
   HELPER_SIDE_MODEL_CHEAPEST,
   HELPER_SIDE_MODEL_SAME_AS_MAIN,
   clampPatientPatienceSeconds,
+  isClaudeProviderName,
   normalizeRecapAfterSeconds,
   stripPatientQueuePrefix,
 } from "@yep-anywhere/shared";
@@ -298,7 +299,7 @@ export function isHiddenInjectedMessage(message: UserMessage): boolean {
 }
 
 function isClaudeSdkProvider(provider: ProviderName): boolean {
-  return provider === "claude" || provider === "claude-ollama";
+  return isClaudeProviderName(provider);
 }
 
 function isClaudeSdkApiErrorMessage(
@@ -2675,7 +2676,7 @@ export class Process {
   }
 
   private withProviderDeliveryPriority(message: UserMessage): UserMessage {
-    if (this.provider !== "claude" && this.provider !== "claude-ollama") {
+    if (!isClaudeProviderName(this.provider)) {
       return message;
     }
 

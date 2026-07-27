@@ -179,6 +179,7 @@ describe("getModelIndicatorModelLabel", () => {
   describe("provider abbreviations", () => {
     it.each([
       ["claude", "Cl"],
+      ["claude-gateway", "Cl↗"],
       ["claude-ollama", "Cl↓"],
       ["codex", "Cd"],
       ["codex-oss", "Cd↓"],
@@ -192,6 +193,12 @@ describe("getModelIndicatorModelLabel", () => {
   });
 
   describe("variant provider model rules fall back to base provider", () => {
+    it("claude-gateway uses claude model rules", () => {
+      expect(
+        getModelIndicatorModelLabel("claude-gateway", "claude-sonnet-4.6"),
+      ).toBe("Cl↗ ♪ 4.6");
+    });
+
     it("claude-ollama uses claude model rules", () => {
       expect(
         getModelIndicatorModelLabel("claude-ollama", "claude-sonnet-4-6"),

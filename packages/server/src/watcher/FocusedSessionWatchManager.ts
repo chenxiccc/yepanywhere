@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import { stat } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
-import type { UrlProjectId } from "@yep-anywhere/shared";
+import { isClaudeProviderName, type UrlProjectId } from "@yep-anywhere/shared";
 import type { Project } from "../supervisor/types.js";
 
 type WatchProvider = "claude" | "codex" | "gemini";
@@ -416,7 +416,9 @@ export class FocusedSessionWatchManager {
     if (!provider) return null;
     if (provider === "codex" || provider === "codex-oss") return "codex";
     if (provider === "gemini" || provider === "gemini-acp") return "gemini";
-    if (provider === "claude" || provider === "opencode") return "claude";
+    if (isClaudeProviderName(provider) || provider === "opencode") {
+      return "claude";
+    }
     return null;
   }
 

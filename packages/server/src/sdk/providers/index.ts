@@ -19,6 +19,16 @@ export type {
 import { claudeProvider } from "./claude.js";
 export { ClaudeProvider, claudeProvider } from "./claude.js";
 
+// Claude Gateway provider (Claude SDK with a per-launch gateway overlay)
+import {
+  ClaudeGatewayProvider,
+  claudeGatewayProvider,
+} from "./claude-gateway.js";
+export {
+  ClaudeGatewayProvider,
+  claudeGatewayProvider,
+} from "./claude-gateway.js";
+
 // Codex provider (uses codex CLI)
 import { codexProvider } from "./codex.js";
 export {
@@ -86,7 +96,11 @@ export interface ProviderRuntimeConfig {
   getClaudeAdditionalModels?: () =>
     | readonly ClaudeAdditionalModelSelection[]
     | undefined;
+  /** Whether legacy ClaudeOllama has configured or persisted usage. */
+  isClaudeOllamaVisible?: () => boolean;
 }
+
+let isClaudeOllamaVisible = () => false;
 
 export function configureProviderRuntime(config: ProviderRuntimeConfig): void {
   claudeProvider.setAdditionalModelsGetter(
@@ -94,6 +108,7 @@ export function configureProviderRuntime(config: ProviderRuntimeConfig): void {
   );
   codexProvider.setCodexPath(config.codexCliPath);
   codexOSSProvider.setCodexPath(config.codexCliPath);
+  isClaudeOllamaVisible = config.isClaudeOllamaVisible ?? (() => false);
 }
 
 /**
@@ -103,7 +118,8 @@ export function configureProviderRuntime(config: ProviderRuntimeConfig): void {
 export function getAllProviders(): AgentProvider[] {
   return [
     claudeProvider,
-    claudeOllamaProvider,
+    ...(ClaudeGatewayProvider.isConfigured() ? [claudeGatewayProvider] : []),
+    ...(isClaudeOllamaVisible() ? [claudeOllamaProvider] : []),
     codexProvider,
     codexOSSProvider,
     geminiProvider,
@@ -128,6 +144,8 @@ export function getProvider(name: ProviderName): AgentProvider | null {
   switch (name) {
     case "claude":
       return claudeProvider;
+    case "claude-gateway":
+      return claudeGatewayProvider;
     case "claude-ollama":
       return claudeOllamaProvider;
     case "codex":

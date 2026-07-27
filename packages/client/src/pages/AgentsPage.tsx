@@ -80,6 +80,10 @@ function getProviderLabel(
   switch (provider) {
     case "claude":
       return "Claude";
+    case "claude-gateway":
+      return "Claude Gateway";
+    case "claude-ollama":
+      return "Claude + Ollama";
     case "codex":
       return "Codex";
     case "gemini":

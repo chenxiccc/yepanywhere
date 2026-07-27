@@ -100,6 +100,8 @@ export interface ServerSettings {
   heartbeatTurnsAfterMinutes?: number;
   /** Default text queued as the synthetic heartbeat user turn */
   heartbeatTurnText?: string;
+  /** Anthropic-compatible endpoint for the isolated claude-gateway provider */
+  claudeGatewayUrl?: string;
   /** Ollama server URL for claude-ollama provider (default: http://localhost:11434) */
   ollamaUrl?: string;
   /** Custom system prompt for Ollama provider (overrides the default minimal prompt) */

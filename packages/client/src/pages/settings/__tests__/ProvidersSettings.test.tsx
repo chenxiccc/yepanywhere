@@ -9,6 +9,7 @@ import {
 } from "@testing-library/react";
 import {
   CLAUDE_ADDITIONAL_MODELS_CAPABILITY,
+  CLAUDE_GATEWAY_CAPABILITY,
   type ProviderInfo,
 } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -93,11 +94,30 @@ vi.mock("../../../i18n", () => ({
 
 describe("ProvidersSettings additional models", () => {
   beforeEach(() => {
+    window.localStorage.clear();
     hookState.settings = {
       serviceWorkerEnabled: true,
       persistRemoteSessionsToDisk: false,
       claudeAdditionalModels: [],
     };
+    hookState.providers = [
+      {
+        name: "claude",
+        displayName: "Claude",
+        installed: true,
+        authenticated: true,
+        enabled: true,
+        models: [{ id: "opus", name: "Opus" }],
+        additionalModelOptions: [
+          {
+            id: "claude-opus-4-8",
+            name: "Opus 4.8",
+            description: "Previous Opus generation",
+            catalogGroup: "additional",
+          },
+        ],
+      },
+    ];
     versionState.capabilities = [CLAUDE_ADDITIONAL_MODELS_CAPABILITY];
     mockUpdateSetting.mockResolvedValue(undefined);
     mockReloadProviders.mockResolvedValue(undefined);
@@ -206,5 +226,89 @@ describe("ProvidersSettings additional models", () => {
     expect(
       screen.getByText("providersAdditionalModelsUnlistedDescription"),
     ).toBeTruthy();
+  });
+
+  it("hides Claude Gateway configuration from older servers", () => {
+    render(<ProvidersSettings />);
+
+    expect(screen.queryByText("providersClaudeGatewayTitle")).toBeNull();
+  });
+
+  it("saves isolated Claude Gateway configuration and reloads providers", async () => {
+    versionState.capabilities = [CLAUDE_GATEWAY_CAPABILITY];
+    render(<ProvidersSettings />);
+
+    fireEvent.change(
+      screen.getByRole("textbox", {
+        name: "providersClaudeGatewayUrlAria",
+      }),
+      { target: { value: "http://localhost:4141" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "providersSave" }));
+
+    await waitFor(() => {
+      expect(mockUpdateSetting).toHaveBeenCalledWith(
+        "claudeGatewayUrl",
+        "http://localhost:4141",
+      );
+      expect(mockReloadProviders).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("hides legacy ClaudeOllama when the server has no configuration or use", () => {
+    render(<ProvidersSettings />);
+
+    expect(screen.queryByText("Claude + Ollama")).toBeNull();
+  });
+
+  it("keeps legacy ClaudeOllama visible when the server advertises it", () => {
+    hookState.providers = [
+      ...hookState.providers,
+      {
+        name: "claude-ollama",
+        displayName: "Claude + Ollama",
+        installed: true,
+        authenticated: true,
+        enabled: true,
+        models: [],
+      },
+    ];
+
+    render(<ProvidersSettings />);
+
+    expect(screen.getByText("Claude + Ollama")).toBeTruthy();
+    expect(
+      screen.getByText("providersClaudeOllamaDeprecationNotice"),
+    ).toBeTruthy();
+  });
+
+  it("permanently dismisses the ClaudeOllama deprecation notice", () => {
+    hookState.providers = [
+      ...hookState.providers,
+      {
+        name: "claude-ollama",
+        displayName: "Claude + Ollama",
+        installed: true,
+        authenticated: true,
+        enabled: true,
+        models: [],
+      },
+    ];
+
+    const { unmount } = render(<ProvidersSettings />);
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "providersClaudeOllamaDeprecationDismissAria",
+      }),
+    );
+    expect(
+      screen.queryByText("providersClaudeOllamaDeprecationNotice"),
+    ).toBeNull();
+
+    unmount();
+    render(<ProvidersSettings />);
+    expect(
+      screen.queryByText("providersClaudeOllamaDeprecationNotice"),
+    ).toBeNull();
   });
 });

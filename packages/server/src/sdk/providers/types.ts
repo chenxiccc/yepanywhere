@@ -25,6 +25,7 @@ import type {
  */
 export type ProviderName =
   | "claude"
+  | "claude-gateway"
   | "claude-ollama"
   | "codex"
   | "codex-oss"

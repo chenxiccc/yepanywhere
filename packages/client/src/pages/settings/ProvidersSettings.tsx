@@ -9,6 +9,7 @@ import {
 } from "react";
 import {
   CLAUDE_ADDITIONAL_MODELS_CAPABILITY,
+  CLAUDE_GATEWAY_CAPABILITY,
   MAX_CLAUDE_ADDITIONAL_MODEL_ID_LENGTH,
   isValidClaudeAdditionalModelId,
   isValidClaudeAdditionalModelLabel,
@@ -38,8 +39,33 @@ import { getAllProviders } from "../../providers/registry";
 const DEFAULT_OLLAMA_SYSTEM_PROMPT =
   "You are a helpful coding assistant. You help users with software engineering tasks. You have access to tools for reading files, editing files, running shell commands, and searching code. Use tools when needed to answer questions or make changes. Be concise and direct.";
 const DEFAULT_CLAUDE_LOGIN_COMMAND = "claude auth login --claudeai";
+const CLAUDE_OLLAMA_DEPRECATION_DISMISSAL_KEY =
+  "yep-anywhere:claude-ollama-deprecation-v1";
 // Re-enable with topics/openai-compatible-helper-sessions.md.
 const SHOW_HELPER_TARGETS_SETTINGS = false;
+
+function shouldShowClaudeOllamaDeprecation(): boolean {
+  try {
+    return (
+      window.localStorage.getItem(
+        CLAUDE_OLLAMA_DEPRECATION_DISMISSAL_KEY,
+      ) !== "dismissed"
+    );
+  } catch {
+    return true;
+  }
+}
+
+function rememberClaudeOllamaDeprecationDismissal(): void {
+  try {
+    window.localStorage.setItem(
+      CLAUDE_OLLAMA_DEPRECATION_DISMISSAL_KEY,
+      "dismissed",
+    );
+  } catch {
+    // The notice still stays dismissed for this mounted settings pane.
+  }
+}
 
 interface HelperTargetDraft {
   id?: string;
@@ -792,6 +818,78 @@ function OllamaSettings() {
   );
 }
 
+function ClaudeGatewaySettings({
+  reloadProviders,
+}: {
+  reloadProviders: () => Promise<void>;
+}) {
+  const { t } = useI18n();
+  const { settings, updateSetting } = useServerSettings();
+  const [url, setUrl] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const serverValue = settings?.claudeGatewayUrl ?? "";
+  const hasChanges = url.trim() !== serverValue;
+
+  useEffect(() => {
+    setUrl(settings?.claudeGatewayUrl ?? "");
+  }, [settings?.claudeGatewayUrl]);
+
+  const handleSave = useCallback(async () => {
+    setIsSaving(true);
+    try {
+      await updateSetting("claudeGatewayUrl", url.trim() || undefined);
+      await reloadProviders();
+    } catch {
+      // Error handled by useServerSettings.
+    } finally {
+      setIsSaving(false);
+    }
+  }, [reloadProviders, updateSetting, url]);
+
+  return (
+    <SettingsItem
+      id="provider-claude-gateway-configuration"
+      label={t("providersClaudeGatewayTitle")}
+      description={t("providersClaudeGatewayDescription")}
+      className="settings-item-inline-field"
+      valueText={
+        serverValue ? t("providersClaudeGatewayConfigured") : t("commonOff")
+      }
+    >
+      <div className="claude-gateway-settings-control">
+        <div
+          style={{
+            display: "flex",
+            gap: "var(--space-2)",
+            alignItems: "center",
+          }}
+        >
+          <input
+            type="url"
+            className="settings-input"
+            value={url}
+            onChange={(event) => setUrl(event.target.value)}
+            placeholder="http://localhost:4141"
+            aria-label={t("providersClaudeGatewayUrlAria")}
+            style={{ flex: 1 }}
+          />
+          <button
+            type="button"
+            className="settings-button"
+            disabled={!hasChanges || isSaving}
+            onClick={() => void handleSave()}
+          >
+            {isSaving ? t("providersSaving") : t("providersSave")}
+          </button>
+        </div>
+        <p className="settings-hint">
+          {t("providersClaudeGatewayIsolationHint")}
+        </p>
+      </div>
+    </SettingsItem>
+  );
+}
+
 function ClaudeLoginCommandPanel({
   command,
   onCopy,
@@ -1060,6 +1158,8 @@ function ClaudeAdditionalModelsSettings({
 export function ProvidersSettings() {
   const { t } = useI18n();
   useSettingsPaneTitle(t("providersSectionTitle"));
+  const [showClaudeOllamaDeprecation, setShowClaudeOllamaDeprecation] =
+    useState(shouldShowClaudeOllamaDeprecation);
   const { showToast } = useToastContext();
   const { providers: serverProviders, reload: reloadProviders } =
     useProviders();
@@ -1068,6 +1168,10 @@ export function ProvidersSettings() {
   const supportsAdditionalModels = serverHasCapability(
     version,
     CLAUDE_ADDITIONAL_MODELS_CAPABILITY,
+  );
+  const supportsClaudeGateway = serverHasCapability(
+    version,
+    CLAUDE_GATEWAY_CAPABILITY,
   );
 
   const handleCopyClaudeLoginCommand = useCallback(
@@ -1082,19 +1186,33 @@ export function ProvidersSettings() {
     [showToast, t],
   );
 
+  const dismissClaudeOllamaDeprecation = useCallback(() => {
+    setShowClaudeOllamaDeprecation(false);
+    rememberClaudeOllamaDeprecationDismissal();
+  }, []);
+
   // Merge server detection status with client-side metadata
   const registeredProviders = getAllProviders();
-  const providerDisplayList = registeredProviders.map((clientProvider) => {
+  const providerDisplayList = registeredProviders.flatMap((clientProvider) => {
     const serverInfo = serverProviders.find(
       (p) => p.name === clientProvider.id,
     );
-    return {
-      ...clientProvider,
-      installed: serverInfo?.installed ?? false,
-      authenticated: serverInfo?.authenticated ?? false,
-      loginCommand: serverInfo?.loginCommand,
-      additionalModelOptions: serverInfo?.additionalModelOptions,
-    };
+    if (
+      (clientProvider.id === "claude-gateway" ||
+        clientProvider.id === "claude-ollama") &&
+      !serverInfo
+    ) {
+      return [];
+    }
+    return [
+      {
+        ...clientProvider,
+        installed: serverInfo?.installed ?? false,
+        authenticated: serverInfo?.authenticated ?? false,
+        loginCommand: serverInfo?.loginCommand,
+        additionalModelOptions: serverInfo?.additionalModelOptions,
+      },
+    ];
   });
 
   return (
@@ -1114,6 +1232,27 @@ export function ProvidersSettings() {
               id={`provider-${provider.id}`}
               label={provider.displayName}
               description={provider.metadata.description}
+              after={
+                provider.id === "claude-ollama" &&
+                showClaudeOllamaDeprecation ? (
+                  <div
+                    className="provider-deprecation-notice"
+                    role="status"
+                  >
+                    <span>{t("providersClaudeOllamaDeprecationNotice")}</span>
+                    <button
+                      type="button"
+                      className="provider-deprecation-notice__dismiss"
+                      aria-label={t(
+                        "providersClaudeOllamaDeprecationDismissAria",
+                      )}
+                      onClick={dismissClaudeOllamaDeprecation}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ) : undefined
+              }
               info={
                 <>
                   <div className="settings-item-header">
@@ -1173,6 +1312,9 @@ export function ProvidersSettings() {
                 </a>
               )}
             </SettingsItem>
+            {provider.id === "claude" && supportsClaudeGateway && (
+              <ClaudeGatewaySettings reloadProviders={reloadProviders} />
+            )}
             {provider.id === "claude" && supportsAdditionalModels && (
               <ClaudeAdditionalModelsSettings
                 modelOptions={provider.additionalModelOptions ?? []}

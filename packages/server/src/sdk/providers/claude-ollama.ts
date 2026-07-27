@@ -107,8 +107,7 @@ export class ClaudeOllamaProvider extends ClaudeProvider {
    */
   static setOllamaUrl(url: string | undefined): void {
     ClaudeOllamaProvider.ollamaUrl = url || DEFAULT_OLLAMA_URL;
-    ClaudeOllamaProvider.urlExplicitlyConfigured =
-      !!url && url !== DEFAULT_OLLAMA_URL;
+    ClaudeOllamaProvider.urlExplicitlyConfigured = Boolean(url);
   }
 
   /**
@@ -116,6 +115,10 @@ export class ClaudeOllamaProvider extends ClaudeProvider {
    */
   static getOllamaUrl(): string {
     return ClaudeOllamaProvider.ollamaUrl;
+  }
+
+  static isExplicitlyConfigured(): boolean {
+    return ClaudeOllamaProvider.urlExplicitlyConfigured;
   }
 
   /**
@@ -226,9 +229,11 @@ export class ClaudeOllamaProvider extends ClaudeProvider {
   /**
    * Inject ANTHROPIC_BASE_URL pointing at Ollama into the child process env.
    */
-  protected override getEnv(): Record<string, string | undefined> {
+  protected override getEnv(
+    model?: string,
+  ): Record<string, string | undefined> {
     return {
-      ...super.getEnv(),
+      ...super.getEnv(model),
       ANTHROPIC_BASE_URL: ClaudeOllamaProvider.ollamaUrl,
       ANTHROPIC_AUTH_TOKEN: "ollama",
     };

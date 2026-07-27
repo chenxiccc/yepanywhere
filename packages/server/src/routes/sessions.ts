@@ -2201,9 +2201,9 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         updatedAt: sessionSummary?.updatedAt ?? new Date().toISOString(),
         messageCount: sessionSummary?.messageCount ?? 0,
         provider:
-          sessionSummary?.provider ??
           metadataProvider ??
           process?.provider ??
+          sessionSummary?.provider ??
           project.provider,
         model: sessionSummary?.model,
         originator: sessionSummary?.originator,
@@ -2542,6 +2542,10 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const readEndMs = performance.now();
 
     let session = loadedSession ? normalizeSession(loadedSession) : null;
+    const explicitProvider = metadataProvider ?? process?.provider;
+    if (session && explicitProvider) {
+      session = { ...session, provider: explicitProvider };
+    }
     const normalizedMessageCount = session?.messages.length ?? 0;
     const normalizeEndMs = performance.now();
     if (session && isClaudeSdkProviderName(session.provider)) {

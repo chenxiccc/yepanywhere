@@ -37,6 +37,7 @@ import {
 import {
   discoverOpenAiCompatibleModels,
   mergeClientDefaults,
+  normalizeClaudeGatewayUrl,
   normalizeOpenAiCompatibleBaseUrl,
   parseAgentContextHints,
   parseCacheMissBilling,
@@ -62,6 +63,8 @@ export interface SettingsRoutesDeps {
   onRemoteSessionPersistenceChanged?: (
     enabled: boolean,
   ) => Promise<void> | void;
+  /** Callback to apply Claude gateway URL changes at runtime */
+  onClaudeGatewayUrlChanged?: (url: string | undefined) => void;
   /** Callback to apply Ollama URL changes at runtime */
   onOllamaUrlChanged?: (url: string | undefined) => void;
   /** Callback to apply Ollama system prompt changes at runtime */
@@ -84,6 +87,7 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
     onAllowedHostsChanged,
     onFileAccessChanged,
     onRemoteSessionPersistenceChanged,
+    onClaudeGatewayUrlChanged,
     onOllamaUrlChanged,
     onOllamaSystemPromptChanged,
     onOllamaUseFullSystemPromptChanged,
@@ -414,6 +418,28 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
       }
     }
 
+    if ("claudeGatewayUrl" in body) {
+      if (
+        body.claudeGatewayUrl === undefined ||
+        body.claudeGatewayUrl === null ||
+        body.claudeGatewayUrl === ""
+      ) {
+        updates.claudeGatewayUrl = undefined;
+      } else {
+        const url = normalizeClaudeGatewayUrl(body.claudeGatewayUrl);
+        if (!url) {
+          return c.json(
+            {
+              error:
+                "claudeGatewayUrl must be an http(s) URL without credentials, query parameters, or a fragment",
+            },
+            400,
+          );
+        }
+        updates.claudeGatewayUrl = url;
+      }
+    }
+
     // Handle ollamaUrl string (URL, or undefined/null/"" to clear)
     if ("ollamaUrl" in body) {
       if (
@@ -649,6 +675,9 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
     }
     if ("ollamaUrl" in updates && onOllamaUrlChanged) {
       onOllamaUrlChanged(settings.ollamaUrl);
+    }
+    if ("claudeGatewayUrl" in updates && onClaudeGatewayUrlChanged) {
+      onClaudeGatewayUrlChanged(settings.claudeGatewayUrl);
     }
     if ("ollamaSystemPrompt" in updates && onOllamaSystemPromptChanged) {
       onOllamaSystemPromptChanged(settings.ollamaSystemPrompt);

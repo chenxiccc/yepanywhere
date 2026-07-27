@@ -22,6 +22,16 @@ export class MockClaudeProvider extends BaseMockProvider {
   }
 }
 
+/** Mock Claude Gateway provider. */
+export class MockClaudeGatewayProvider extends BaseMockProvider {
+  readonly name: ProviderName = "claude-gateway";
+  readonly displayName = "Claude Gateway";
+
+  constructor(config: MockProviderConfig = {}) {
+    super(config);
+  }
+}
+
 /**
  * Mock Claude + Ollama provider.
  * Same behavior as MockClaudeProvider with different name.

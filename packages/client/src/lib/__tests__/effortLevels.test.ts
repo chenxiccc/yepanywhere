@@ -25,6 +25,14 @@ const codexProvider: ProviderInfo = {
   enabled: true,
 };
 
+const claudeGatewayProvider: ProviderInfo = {
+  name: "claude-gateway",
+  displayName: "Claude Gateway",
+  installed: true,
+  authenticated: true,
+  enabled: true,
+};
+
 describe("effort level options", () => {
   it("defaults Claude to all five SDK effort levels", () => {
     expect(getEffortLevelOptions({ provider: claudeProvider })).toEqual([
@@ -47,6 +55,21 @@ describe("effort level options", () => {
         },
       }).map((option) => option.value),
     ).toEqual(["low", "medium", "high", "xhigh"]);
+  });
+
+  it("does not invent gateway effort levels without model metadata", () => {
+    expect(
+      getEffortLevelOptions({
+        provider: claudeGatewayProvider,
+        model: "unlisted-model",
+      }),
+    ).toEqual([]);
+    expect(
+      getThinkingModeOptions({
+        provider: claudeGatewayProvider,
+        model: "unlisted-model",
+      }),
+    ).toEqual(["off"]);
   });
 
   it("uses Codex reasoning metadata and does not invent max", () => {

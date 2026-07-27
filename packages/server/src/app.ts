@@ -106,6 +106,7 @@ import { createSettingsRoutes } from "./routes/settings.js";
 import { createSharingRoutes } from "./routes/sharing.js";
 import { createSupervisorQueueRoutes } from "./routes/supervisor-queue.js";
 import { createToolResultMediaRoutes } from "./routes/tool-result-media.js";
+import { ClaudeGatewayProvider } from "./sdk/providers/claude-gateway.js";
 import { ClaudeOllamaProvider } from "./sdk/providers/claude-ollama.js";
 import { grokACPProvider } from "./sdk/providers/grok-acp.js";
 
@@ -370,6 +371,17 @@ export function createApp(options: AppOptions): AppResult {
     codexCliPath: options.codexCliPath,
     getClaudeAdditionalModels: () =>
       options.serverSettingsService?.getSetting("claudeAdditionalModels"),
+    isClaudeOllamaVisible: () =>
+      ClaudeOllamaProvider.isExplicitlyConfigured() ||
+      Boolean(
+        options.serverSettingsService?.getSetting("ollamaSystemPrompt") ||
+          options.serverSettingsService?.getSetting(
+            "ollamaUseFullSystemPrompt",
+          ),
+      ) ||
+      Object.values(
+        options.sessionMetadataService?.getAllMetadata() ?? {},
+      ).some((metadata) => metadata.provider === "claude-ollama"),
   });
   const codexSessionsDir = options.codexSessionsDir ?? CODEX_SESSIONS_DIR;
 
@@ -586,6 +598,7 @@ export function createApp(options: AppOptions): AppResult {
             }),
         );
       case "claude":
+      case "claude-gateway":
       case "claude-ollama": {
         const mis = options.modelInfoService;
         return getOrCreateReader(
@@ -1489,6 +1502,9 @@ export function createApp(options: AppOptions): AppResult {
           ? (enabled) =>
               options.remoteSessionService?.setDiskPersistenceEnabled(enabled)
           : undefined,
+        onClaudeGatewayUrlChanged: (url) => {
+          ClaudeGatewayProvider.setGatewayUrl(url);
+        },
         onOllamaUrlChanged: (url) => {
           ClaudeOllamaProvider.setOllamaUrl(url);
         },

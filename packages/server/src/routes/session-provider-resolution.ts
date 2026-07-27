@@ -1,4 +1,8 @@
-import type { ProviderName } from "@yep-anywhere/shared";
+import {
+  isClaudeProviderName,
+  type ClaudeProviderName,
+  type ProviderName,
+} from "@yep-anywhere/shared";
 import type { ISessionIndexService } from "../indexes/types.js";
 import type { CodexSessionReader } from "../sessions/codex-reader.js";
 import type { GeminiSessionReader } from "../sessions/gemini-reader.js";
@@ -26,8 +30,8 @@ export interface SessionProviderResolutionDeps {
 
 export function isClaudeSdkProviderName(
   provider: ProviderName | undefined,
-): provider is "claude" | "claude-ollama" {
-  return provider === "claude" || provider === "claude-ollama";
+): provider is ClaudeProviderName {
+  return isClaudeProviderName(provider);
 }
 
 export function isCodexProviderName(

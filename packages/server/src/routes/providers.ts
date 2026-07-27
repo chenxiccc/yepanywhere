@@ -30,6 +30,7 @@ function getProviderImageSizing(
 ): ProviderInfo["imageSizing"] {
   switch (providerName) {
     case "claude":
+    case "claude-gateway":
     case "claude-ollama":
       return {
         defaultLongEdgePx: 1568,

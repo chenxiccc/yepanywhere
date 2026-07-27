@@ -15,6 +15,7 @@ import {
   type SDKMessage as AgentSDKMessage,
   type Query,
   type CanUseTool as SDKCanUseTool,
+  type Settings,
   type SpawnedProcess,
   forkSession as sdkForkSession,
   query,
@@ -629,12 +630,6 @@ export function mergeClaudeModels(models: ModelInfo[]): ModelInfo[] {
     });
 }
 
-/** Cached models from SDK probe */
-let cachedModels: ModelInfo[] | null = null;
-
-/** Promise for in-flight probe (to avoid duplicate probes) */
-let probePromise: Promise<ModelInfo[]> | null = null;
-
 async function withTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
@@ -712,7 +707,7 @@ export class ClaudeProvider implements AgentProvider {
   readonly name: ProviderName = "claude";
   readonly displayName: string = "Claude";
   readonly supportsPermissionMode = true;
-  readonly supportsThinkingToggle = true;
+  readonly supportsThinkingToggle: boolean = true;
   readonly supportsSlashCommands = true;
   readonly supportsSteering = true;
   readonly supportsSteerNow = true;
@@ -725,12 +720,14 @@ export class ClaudeProvider implements AgentProvider {
   // is a no-op (and would make fork/tailed wait a pointless native grace
   // window). Do not re-enable on the basis of seeing CLI recaps in the JSONL.
   readonly supportsNativeRecaps = false;
-  readonly supportsNativePromptSuggestions = true;
+  readonly supportsNativePromptSuggestions: boolean = true;
   readonly promptCacheKeepalive?: PromptCacheKeepaliveProviderInfo = {
     supportsNoContextPollutionNudge: true,
     defaultMode: "auto" as const,
     defaultInactivityMinutes: DEFAULT_PROMPT_CACHE_KEEPALIVE_INACTIVITY_MINUTES,
   };
+  private cachedModels: ModelInfo[] | null = null;
+  private probePromise: Promise<ModelInfo[]> | null = null;
   private getAdditionalModelSelections: () =>
     | readonly ClaudeAdditionalModelSelection[]
     | undefined = () => [];
@@ -747,6 +744,11 @@ export class ClaudeProvider implements AgentProvider {
 
   getModelCatalogCacheKey(): string {
     return getClaudeModelCatalogCacheKey(this.getAdditionalModelSelections());
+  }
+
+  protected invalidateModelCache(): void {
+    this.cachedModels = null;
+    this.probePromise = null;
   }
 
   private projectAdditionalModels(models: readonly ModelInfo[]): ModelInfo[] {
@@ -928,8 +930,8 @@ export class ClaudeProvider implements AgentProvider {
    */
   async getAvailableModels(): Promise<ModelInfo[]> {
     // Return cached models if available
-    if (cachedModels) {
-      return this.projectAdditionalModels(cachedModels);
+    if (this.cachedModels) {
+      return this.projectAdditionalModels(this.cachedModels);
     }
 
     // Check if user is authenticated before trying to probe
@@ -939,21 +941,21 @@ export class ClaudeProvider implements AgentProvider {
     }
 
     // If probe is already in progress, wait for it
-    if (probePromise) {
-      return this.projectAdditionalModels(await probePromise);
+    if (this.probePromise) {
+      return this.projectAdditionalModels(await this.probePromise);
     }
 
     // Start a new probe
-    probePromise = this.probeModels();
+    this.probePromise = this.probeModels();
     try {
-      const models = await probePromise;
-      cachedModels = mergeClaudeModels(models);
-      return this.projectAdditionalModels(cachedModels);
+      const models = await this.probePromise;
+      this.cachedModels = mergeClaudeModels(models);
+      return this.projectAdditionalModels(this.cachedModels);
     } catch (error) {
       console.warn("[Claude] Failed to probe models, using fallback:", error);
       return this.projectAdditionalModels(CLAUDE_MODELS_FALLBACK);
     } finally {
-      probePromise = null;
+      this.probePromise = null;
     }
   }
 
@@ -961,8 +963,31 @@ export class ClaudeProvider implements AgentProvider {
    * Get filtered environment variables for child processes.
    * Subclasses can override to inject custom env vars (e.g., ANTHROPIC_BASE_URL).
    */
-  protected getEnv(): Record<string, string | undefined> {
+  protected getEnv(_model?: string): Record<string, string | undefined> {
     return filterEnvForChildProcess();
+  }
+
+  /**
+   * Supplementary flag-layer settings for this Claude launch. These merge over
+   * user/project/local settings without replacing the lower layers.
+   */
+  protected getSettings(_model?: string): Settings | undefined {
+    return undefined;
+  }
+
+  /**
+   * Normalize a live SDK model catalog and update this provider instance only.
+   * Gateway subclasses may replace the SDK's built-in-plus-gateway catalog
+   * with an authoritative gateway-only catalog.
+   */
+  protected async normalizeSupportedModels(
+    models: ClaudeSdkModelInfo[],
+  ): Promise<ModelInfo[]> {
+    const mappedModels = mergeClaudeModels(
+      models.map((model) => mapClaudeSdkModel(model)),
+    );
+    this.cachedModels = mappedModels;
+    return this.projectAdditionalModels(mappedModels);
   }
 
   /**
@@ -1013,6 +1038,7 @@ export class ClaudeProvider implements AgentProvider {
           persistSession: false,
           pathToClaudeCodeExecutable: resolveLocalClaudeCodeExecutable(),
           env: this.getEnv(),
+          settings: this.getSettings(),
         },
       });
 
@@ -1149,7 +1175,8 @@ export class ClaudeProvider implements AgentProvider {
           permissionMode: "default",
           persistSession: false,
           pathToClaudeCodeExecutable: resolveLocalClaudeCodeExecutable(),
-          env: this.getEnv(),
+          env: this.getEnv(helperModel),
+          settings: this.getSettings(helperModel),
           model: helperModel,
           maxTurns: 1,
           systemPrompt:
@@ -1228,6 +1255,7 @@ export class ClaudeProvider implements AgentProvider {
           permissionMode: "default",
           pathToClaudeCodeExecutable: resolveLocalClaudeCodeExecutable(),
           env: this.getEnv(),
+          settings: this.getSettings(),
           resume: request.generatorSessionId,
           maxTurns: 1,
           systemPrompt:
@@ -1386,6 +1414,7 @@ export class ClaudeProvider implements AgentProvider {
           effort: options.effort,
           pathToClaudeCodeExecutable: options.pathToClaudeCodeExecutable,
           env: options.env,
+          settings: this.getSettings(options.model),
           spawnClaudeCodeProcess,
         },
       });
@@ -1439,8 +1468,8 @@ export class ClaudeProvider implements AgentProvider {
       ? null
       : createAgentctlSessionEnvBridge(options.resumeSessionId);
     const claudeEnv = agentctlSessionEnvBridge
-      ? agentctlSessionEnvBridge.extendEnv(this.getEnv())
-      : this.getEnv();
+      ? agentctlSessionEnvBridge.extendEnv(this.getEnv(options.model))
+      : this.getEnv(options.model);
     const remoteEnv =
       options.executor && options.resumeSessionId
         ? {
@@ -1705,6 +1734,7 @@ export class ClaudeProvider implements AgentProvider {
           pathToClaudeCodeExecutable,
           // Filter env to exclude npm_*, yep-anywhere specific, and other irrelevant vars
           env: claudeEnv,
+          settings: this.getSettings(options.model),
           hooks: {
             Stop: [
               {
@@ -1808,13 +1838,7 @@ export class ClaudeProvider implements AgentProvider {
       },
       supportedModels: async (): Promise<ModelInfo[]> => {
         const models = await sdkQuery.supportedModels();
-        // Map SDK ModelInfo (value, displayName, description) to our ModelInfo (id, name, description)
-        const mappedModels = mergeClaudeModels(
-          models.map((model) => mapClaudeSdkModel(model)),
-        );
-        // Update cache for future getAvailableModels() calls
-        cachedModels = mappedModels;
-        return this.projectAdditionalModels(mappedModels);
+        return this.normalizeSupportedModels(models);
       },
       supportedCommands: async (): Promise<SlashCommand[]> => {
         const commands = await sdkQuery.supportedCommands();

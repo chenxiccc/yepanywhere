@@ -498,6 +498,75 @@ describe("Settings Routes", () => {
       expect(onGrokBuildUseXaiApiKeyChanged).toHaveBeenCalledWith(true);
     });
 
+    it("normalizes and applies a Claude gateway URL live", async () => {
+      const onClaudeGatewayUrlChanged = vi.fn();
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+        onClaudeGatewayUrlChanged,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          claudeGatewayUrl: "  http://localhost:4141/  ",
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
+        claudeGatewayUrl: "http://localhost:4141",
+      });
+      expect(onClaudeGatewayUrlChanged).toHaveBeenCalledWith(
+        "http://localhost:4141",
+      );
+    });
+
+    it.each([
+      "ftp://localhost:4141",
+      "http://user:secret@localhost:4141",
+      "http://localhost:4141?token=secret",
+      "http://localhost:4141#gateway",
+      "localhost:4141",
+    ])("rejects unsafe Claude gateway URL %s", async (claudeGatewayUrl) => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ claudeGatewayUrl }),
+      });
+
+      expect(response.status).toBe(400);
+      expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
+    });
+
+    it("clears and applies the Claude gateway URL", async () => {
+      settings = {
+        ...settings,
+        claudeGatewayUrl: "http://localhost:4141",
+      };
+      const onClaudeGatewayUrlChanged = vi.fn();
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+        onClaudeGatewayUrlChanged,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ claudeGatewayUrl: null }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
+        claudeGatewayUrl: undefined,
+      });
+      expect(onClaudeGatewayUrlChanged).toHaveBeenCalledWith(undefined);
+    });
+
     it("accepts speech audio retention settings", async () => {
       const routes = createSettingsRoutes({
         serverSettingsService: mockServerSettingsService,

@@ -13,6 +13,7 @@ import {
   type ThinkingConfig,
   type UrlProjectId,
   type WorkstreamId,
+  isClaudeProviderName,
   truncateSessionTitle,
 } from "@yep-anywhere/shared";
 import type { AgentActivity, PendingInputType } from "@yep-anywhere/shared";
@@ -1175,7 +1176,7 @@ export class Supervisor {
     process: Process,
     options?: { allowNonIdleStart?: boolean },
   ): Promise<ResumeCompactionAttempt> {
-    if (process.provider !== "claude" && process.provider !== "claude-ollama") {
+    if (!isClaudeProviderName(process.provider)) {
       return {
         status: "unavailable",
         reason: `${process.provider} does not support compact-first resume`,
@@ -1241,7 +1242,7 @@ export class Supervisor {
     // Only an idle claude process can be safely compacted before delivery;
     // tryResumeCompaction also self-guards, but skip the usage read otherwise.
     if (process.state.type !== "idle") return;
-    if (process.provider !== "claude" && process.provider !== "claude-ollama") {
+    if (!isClaudeProviderName(process.provider)) {
       return;
     }
     // Prefer the route-resolved window; process.contextWindow is often
@@ -3617,6 +3618,19 @@ export class Supervisor {
           this.sessionToProcess.get(event.oldSessionId) === process.id;
         this.sessionToProcess.set(event.newSessionId, process.id);
         this.everOwnedSessions.add(event.newSessionId);
+        void this.sessionMetadataService
+          ?.remapSessionId(event.oldSessionId, event.newSessionId)
+          .catch((error) => {
+            log.warn(
+              {
+                event: "session_metadata_remap_failed",
+                oldSessionId: event.oldSessionId,
+                newSessionId: event.newSessionId,
+                error: error instanceof Error ? error.message : String(error),
+              },
+              "Failed to remap provisional session metadata",
+            );
+          });
         if (this.eventBus && oldIdWasPublished) {
           const remapped: SessionIdRemappedEvent = {
             type: "session-id-remapped",

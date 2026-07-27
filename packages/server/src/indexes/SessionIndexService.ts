@@ -85,6 +85,7 @@ type PersistedSessionIndexState = Omit<SessionIndexState, "version"> & {
 function needsClaudeTitleRefresh(summary: CachedSessionSummary): boolean {
   if (
     summary.provider !== DEFAULT_PROVIDER &&
+    summary.provider !== "claude-gateway" &&
     summary.provider !== "claude-ollama"
   ) {
     return false;

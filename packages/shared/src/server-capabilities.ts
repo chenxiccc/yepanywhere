@@ -260,6 +260,29 @@ export const SERVER_CAPABILITIES = {
         "No maintained client still branches on claude-additional-models.",
     },
   },
+  claudeGateway: {
+    name: "claude-gateway",
+    kind: "transitional",
+    area: "providers",
+    introducedIn: "0.7.1",
+    description:
+      "Server can persist a Claude LLM-gateway URL and expose its models as an isolated Claude Gateway provider.",
+    clientFallback:
+      "Hide Claude Gateway configuration and make no unsupported settings write.",
+    serverContract: {
+      routes: ["GET /api/settings", "PUT /api/settings", "GET /api/providers"],
+      requestFields: ["settings.claudeGatewayUrl"],
+      responseFields: ["settings.claudeGatewayUrl", "providers[].name"],
+    },
+    lifecycle: {
+      kind: "transitional",
+      reviewAfter: "2026-10-27",
+      removeClientGateWhen:
+        "The hosted-client compatibility floor excludes servers older than the Claude Gateway settings/provider contract.",
+      removeServerAdvertisementWhen:
+        "No maintained client still branches on claude-gateway.",
+    },
+  },
   bangCommands: {
     name: "bang-commands",
     kind: "permanent",
@@ -521,6 +544,8 @@ export const BROWSER_SETTINGS_BACKUP_CAPABILITY =
 
 export const CLAUDE_ADDITIONAL_MODELS_CAPABILITY =
   SERVER_CAPABILITIES.claudeAdditionalModels.name;
+
+export const CLAUDE_GATEWAY_CAPABILITY = SERVER_CAPABILITIES.claudeGateway.name;
 
 export const BANG_COMMANDS_CAPABILITY = SERVER_CAPABILITIES.bangCommands.name;
 

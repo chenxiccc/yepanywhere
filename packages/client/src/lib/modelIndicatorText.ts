@@ -2,6 +2,7 @@ const DEFAULT_PROVIDER_GLYPH = "◌";
 
 const providerGlyphMap: Record<string, string> = {
   claude: "Cl",
+  "claude-gateway": "Cl↗",
   "claude-ollama": "Cl↓",
   codex: "Cd",
   "codex-oss": "Cd↓",
@@ -144,7 +145,10 @@ function deriveModelGlyphMatch(
   providerKey: string,
   normalizedModel: string,
 ): ModelGlyphMatch | null {
-  const baseProviderKey = providerKey.replace(/-(?:ollama|oss|acp)$/u, "");
+  const baseProviderKey = providerKey.replace(
+    /-(?:gateway|ollama|oss|acp)$/u,
+    "",
+  );
   const providerRules =
     modelGlyphRulesByProvider[providerKey] ??
     modelGlyphRulesByProvider[baseProviderKey] ??

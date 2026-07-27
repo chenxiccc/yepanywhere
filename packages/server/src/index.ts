@@ -8,7 +8,10 @@ import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import { RESPONSE_ALREADY_SENT } from "@hono/node-server/utils/response";
 import { createNodeWebSocket } from "@hono/node-ws";
-import { SPEECH_RELAY_CHANNEL } from "@yep-anywhere/shared";
+import {
+  SPEECH_RELAY_CHANNEL,
+  isClaudeProviderName,
+} from "@yep-anywhere/shared";
 import { createApp } from "./app.js";
 import { AuthService } from "./auth/AuthService.js";
 import {
@@ -57,6 +60,7 @@ import { createWsRelayRoutes } from "./routes/ws-relay.js";
 import { createAcceptRelayConnection } from "./routes/ws-relay.js";
 import { detectClaudeCli, detectCodexCli } from "./sdk/cli-detection.js";
 import { initMessageLogger } from "./sdk/messageLogger.js";
+import { ClaudeGatewayProvider } from "./sdk/providers/claude-gateway.js";
 import { ClaudeOllamaProvider } from "./sdk/providers/claude-ollama.js";
 import { grokACPProvider } from "./sdk/providers/grok-acp.js";
 import { RealClaudeSDK } from "./sdk/real.js";
@@ -598,24 +602,39 @@ async function startServer() {
   });
   updateFileAccess(serverSettingsService.getSetting("fileAccess"));
 
-  // Seed Ollama settings from persisted settings
+  // Seed Claude transport settings from persisted settings
+  ClaudeGatewayProvider.setGatewayUrl(
+    serverSettingsService.getSetting("claudeGatewayUrl"),
+  );
   const savedOllamaUrl = serverSettingsService.getSetting("ollamaUrl");
+  const savedOllamaSystemPrompt =
+    serverSettingsService.getSetting("ollamaSystemPrompt");
+  const savedOllamaUseFullSystemPrompt =
+    serverSettingsService.getSetting("ollamaUseFullSystemPrompt") ?? false;
   if (savedOllamaUrl) {
     ClaudeOllamaProvider.setOllamaUrl(savedOllamaUrl);
   }
-  ClaudeOllamaProvider.setSystemPrompt(
-    serverSettingsService.getSetting("ollamaSystemPrompt"),
-  );
-  ClaudeOllamaProvider.setUseFullSystemPrompt(
-    serverSettingsService.getSetting("ollamaUseFullSystemPrompt") ?? false,
-  );
+  ClaudeOllamaProvider.setSystemPrompt(savedOllamaSystemPrompt);
+  ClaudeOllamaProvider.setUseFullSystemPrompt(savedOllamaUseFullSystemPrompt);
   grokACPProvider.setAmbientXaiApiKey(config.ambientXaiApiKey);
   grokACPProvider.setUseAmbientXaiApiKey(
     serverSettingsService.getSetting("grokBuildUseXaiApiKey") ?? false,
   );
 
-  // Warm model info cache (non-blocking, best-effort)
-  modelInfoService.warmProvider("claude-ollama").catch(() => {});
+  // Warm configured model catalogs (non-blocking, best-effort).
+  if (ClaudeGatewayProvider.isConfigured()) {
+    modelInfoService.warmProvider("claude-gateway").catch(() => {});
+  }
+  if (
+    ClaudeOllamaProvider.isExplicitlyConfigured() ||
+    savedOllamaSystemPrompt ||
+    savedOllamaUseFullSystemPrompt ||
+    Object.values(sessionMetadataService.getAllMetadata()).some(
+      (metadata) => metadata.provider === "claude-ollama",
+    )
+  ) {
+    modelInfoService.warmProvider("claude-ollama").catch(() => {});
+  }
 
   // Log auth status
   if (config.authDisabled) {
@@ -794,7 +813,7 @@ async function startServer() {
       // Find the project by scanning - projectPath is the absolute path
       const projects = await scanner.listProjects();
       const project = projects.find((p) => p.path === projectPath);
-      if (project?.provider !== "claude") return null;
+      if (!isClaudeProviderName(project?.provider)) return null;
       return new ClaudeSessionReader({
         sessionDir: project.sessionDir,
         summaryParserWorkerMode: config.claudeSummaryParserWorkerMode,

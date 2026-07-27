@@ -281,6 +281,10 @@ export function ProcessInfoBody({
     switch (p) {
       case "claude":
         return "Claude (Anthropic)";
+      case "claude-gateway":
+        return "Claude Gateway";
+      case "claude-ollama":
+        return "Claude + Ollama (Local)";
       case "codex":
         return "Codex (OpenAI)";
       case "codex-oss":

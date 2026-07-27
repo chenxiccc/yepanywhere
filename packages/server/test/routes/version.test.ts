@@ -3,6 +3,7 @@ import {
   APPROVAL_AUDIT_LOG_CAPABILITY,
   BANG_COMMANDS_CAPABILITY,
   BROWSER_SETTINGS_BACKUP_CAPABILITY,
+  CLAUDE_GATEWAY_CAPABILITY,
   GIT_SOURCE_REVIEW_CAPABILITY,
   HOST_AWAKE_CONTROL_CAPABILITY,
   HOST_IDENTITY_CAPABILITY,
@@ -33,6 +34,10 @@ describe("Version Routes", () => {
 
   it("advertises host-awake settings and status", () => {
     expect(getServerCapabilities()).toContain(HOST_AWAKE_CONTROL_CAPABILITY);
+  });
+
+  it("advertises isolated Claude gateway configuration", () => {
+    expect(getServerCapabilities()).toContain(CLAUDE_GATEWAY_CAPABILITY);
   });
 
   it("advertises the complete source browser and review contract", () => {

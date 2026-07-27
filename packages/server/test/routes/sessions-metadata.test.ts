@@ -425,6 +425,60 @@ describe("Sessions metadata route", () => {
     );
   });
 
+  it("keeps explicit gateway identity over Claude model heuristics", async () => {
+    const project = createProject();
+    const summary: SessionSummary = {
+      ...createSummary(),
+      provider: "claude-ollama",
+      model: "gpt-5.6-terra",
+    };
+    const reader = {
+      getSessionSummary: vi.fn(async () => summary),
+      getSession: vi.fn(async () => ({
+        summary,
+        data: {
+          provider: "claude-ollama",
+          session: { messages: [] },
+        },
+      })),
+    } as unknown as ISessionReader;
+    const sessionMetadataService = {
+      getMetadata: vi.fn(() => ({ provider: "claude-gateway" })),
+      getProvider: vi.fn(() => "claude-gateway"),
+      getRequestedModel: vi.fn(() => "gpt-5.6-terra"),
+      getRecapMessages: vi.fn(() => []),
+    } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>;
+
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => null),
+        wasEverOwned: vi.fn(() => false),
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getProject: vi.fn(async () => project),
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(() => reader),
+      sessionMetadataService,
+    });
+
+    const metadataResponse = await routes.request(
+      `/projects/${project.id}/sessions/sess-1/metadata`,
+    );
+    expect(metadataResponse.status).toBe(200);
+    await expect(metadataResponse.json()).resolves.toMatchObject({
+      session: { provider: "claude-gateway", model: "gpt-5.6-terra" },
+    });
+
+    const detailResponse = await routes.request(
+      `/projects/${project.id}/sessions/sess-1`,
+    );
+    expect(detailResponse.status).toBe(200);
+    await expect(detailResponse.json()).resolves.toMatchObject({
+      session: { provider: "claude-gateway", model: "gpt-5.6-terra" },
+    });
+  });
+
   it("returns paused recovered patient queue entries in metadata", async () => {
     await withSessionQueuePersistence(async (sessionQueuePersistenceService) => {
       const project = createProject();

@@ -10430,6 +10430,11 @@ div.bang-command-error-message {
   margin-top: 0;
 }
 
+.claude-gateway-settings-control {
+  flex: 1 1 24rem;
+  min-width: min(100%, 18rem);
+}
+
 .host-identity-controls {
   display: flex;
   flex: 0 1 25rem;
@@ -11965,6 +11970,35 @@ div.bang-command-error-message {
 .settings-warning-box a {
   color: var(--link-color);
   text-decoration: underline;
+}
+
+.provider-deprecation-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: calc(-1 * var(--space-2)) 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--warning-color) 55%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--warning-color) 12%, transparent);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.provider-deprecation-notice__dismiss {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-size-lg);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.provider-deprecation-notice__dismiss:hover,
+.provider-deprecation-notice__dismiss:focus-visible {
+  color: var(--text-primary);
 }
 
 .settings-version-item {
@@ -14526,6 +14560,10 @@ div.bang-command-error-message {
 }
 
 .provider-option-dot.provider-claude {
+  background: var(--provider-claude);
+}
+
+.provider-option-dot.provider-claude-gateway {
   background: var(--provider-claude);
 }
 

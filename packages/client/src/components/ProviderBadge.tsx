@@ -9,6 +9,7 @@ import { useI18n } from "../i18n";
 
 const PROVIDER_COLORS: Record<ProviderName, string> = {
   claude: "var(--provider-claude)", // Claude orange
+  "claude-gateway": "var(--provider-claude)",
   "claude-ollama": "var(--provider-claude)", // Same as Claude (uses Claude SDK)
   codex: "var(--provider-codex)", // OpenAI green
   "codex-oss": "var(--provider-codex)", // OpenAI green (same as codex)
@@ -21,6 +22,7 @@ const PROVIDER_COLORS: Record<ProviderName, string> = {
 
 const PROVIDER_LABELS: Record<ProviderName, string> = {
   claude: "Claude",
+  "claude-gateway": "Gateway",
   "claude-ollama": "Ollama",
   codex: "Codex",
   "codex-oss": "CodexOSS",

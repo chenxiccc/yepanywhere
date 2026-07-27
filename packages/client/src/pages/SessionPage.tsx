@@ -12,7 +12,10 @@ import type {
   UploadedFile,
   UserQuestionAnswers,
 } from "@yep-anywhere/shared";
-import { thinkingOptionToConfig } from "@yep-anywhere/shared";
+import {
+  isClaudeProviderName,
+  thinkingOptionToConfig,
+} from "@yep-anywhere/shared";
 import {
   type MouseEvent as ReactMouseEvent,
   useCallback,
@@ -230,7 +233,7 @@ function requiresHandoffAfterClaudeResumeError(
   if ((error as { status?: number } | null)?.status !== 409) {
     return false;
   }
-  if (provider !== "claude" && provider !== "claude-ollama") {
+  if (!isClaudeProviderName(provider)) {
     return false;
   }
   const message = error instanceof Error ? error.message : String(error);

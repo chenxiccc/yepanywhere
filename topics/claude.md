@@ -114,6 +114,42 @@ shell-startup and test-hermeticity rules for the local `BASH_ENV` bridge.
   an existing saved selection. Preserve its exact provider id and saved label
   as an unlisted/custom entry until the user removes it. Never silently replace
   a rejected, retired, or provider-remapped model with a newer one.
+- `claude-gateway` is a separate, default-off provider for an
+  Anthropic-compatible LLM gateway. Configuring it must not reroute the regular
+  `claude` provider or mutate `~/.claude/settings.json`: every Gateway launch
+  supplies `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, and
+  `CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY` in the Claude SDK's per-launch
+  flag-settings layer and in that child process's environment only.
+- A Claude Gateway's `/v1/models` response is the authoritative selection
+  catalog. YA must not merge Claude Code's first-party `supportedModels()`
+  result or static Claude fallbacks into it, because those can advertise
+  regular-subscription models the gateway cannot serve. Invalid, duplicate,
+  disabled, non-chat, embedding, and trajectory-compaction rows are omitted;
+  an unavailable catalog produces no model choices rather than silently
+  escaping to regular Claude. Catalog endpoint metadata is a routing
+  precondition: the gateway may use native Anthropic Messages, Responses
+  translation, or chat-completions translation only when the model advertises
+  that endpoint. Model-specific failures remain visible API errors rather than
+  triggering a different transport.
+- Claude Gateway retains the Claude harness, transcript, tools, permissions,
+  compaction, and resume contracts. Per-model gateway catalog metadata controls
+  whether YA advertises adaptive thinking and which effort levels it offers;
+  absent metadata means absent controls, never an invented Medium default.
+  Anthropic prompt-cache keepalive remains unavailable. Provider selection is
+  the routing boundary: a Gateway model stays on the configured gateway, while
+  regular Claude models stay on Anthropic's normal transport.
+- The provisional YA session id used before Claude SDK initialization must
+  remap its persisted metadata to the canonical Claude session id when the
+  provider reports it. Explicit persisted provider identity takes precedence
+  over transcript model-name heuristics, so a non-Claude model routed through
+  the Claude harness remains `claude-gateway` rather than being mislabeled as
+  `claude-ollama`.
+- `claude-ollama` remains a readable/resumable legacy provider during its
+  deprecation grace period, with no automatic migration. Hide it from provider
+  and model menus when neither Ollama settings nor persisted
+  `claude-ollama` session metadata exist; an explicitly configured or
+  previously used installation remains visible with a dismissible notice that
+  directs the user to Claude Gateway and says ClaudeOllama will be removed.
 - Claude provider-native interviews are `AskUserQuestion` tool calls surfaced
   through the SDK `canUseTool` path, not ordinary approval prompts and not a
   distinct session-state mode. YA must classify them as pending user questions,

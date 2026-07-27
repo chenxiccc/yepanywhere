@@ -3,6 +3,7 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
   type AgentStatus,
+  type ClaudeProviderName,
   type ProviderChildSessionSummary,
   type ProviderName,
   type UrlProjectId,
@@ -357,7 +358,7 @@ export class ClaudeSessionReader implements ISessionReader {
     return {
       summary,
       data: {
-        provider: summary.provider as "claude" | "claude-ollama",
+        provider: summary.provider as ClaudeProviderName,
         session: {
           messages: finalMessages,
         },

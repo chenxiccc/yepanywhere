@@ -7,6 +7,14 @@ Topic: backward-compat
 
 ## Decisions
 
+2026-07-27 `claude-ollama` provider/settings/session identity — retain the
+legacy provider during a deprecation grace period and do not auto-migrate
+persisted sessions or settings to `claude-gateway`. Hide it from provider
+menus only when neither explicit Ollama configuration nor persisted
+`claude-ollama` session metadata exists; direct provider lookup remains
+available so old sessions can still resume. Existing users receive a
+dismissible removal notice directing them to `claude-gateway`.
+
 2026-07-25 previous/custom Claude model settings — persist selections on the
 server and advertise one exact transitional capability. A new client hides the
 control when an older compatible server lacks that capability, avoiding a

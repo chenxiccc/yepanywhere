@@ -1,4 +1,8 @@
-import type { ProviderName, UrlProjectId } from "@yep-anywhere/shared";
+import {
+  isClaudeProviderName,
+  type ProviderName,
+  type UrlProjectId,
+} from "@yep-anywhere/shared";
 import type {
   ISessionIndexService,
   SessionIndexListOptions,
@@ -72,7 +76,7 @@ function normalizeProviderGroup(
   if (provider === "codex" || provider === "codex-oss") return "codex";
   if (provider === "gemini" || provider === "gemini-acp") return "gemini";
   if (provider === "opencode") return "opencode";
-  if (provider === "claude" || provider === "claude-ollama") return "claude";
+  if (isClaudeProviderName(provider)) return "claude";
   if (provider === "grok" || provider === "grok-acp") return "grok";
   if (provider === "pi") return "pi";
   return null;

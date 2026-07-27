@@ -50,62 +50,66 @@ describe("FocusedSessionWatchManager", () => {
     tempDirs.length = 0;
   });
 
-  it("emits change events for a watched claude session file", async () => {
-    const root = await mkdtemp(join(tmpdir(), "focused-watch-claude-"));
-    tempDirs.push(root);
-    const sessionDir = join(root, "projects", "demo");
-    await mkdir(sessionDir, { recursive: true });
+  it.each(["claude", "claude-gateway"] as const)(
+    "emits change events for a watched %s session file",
+    async (provider) => {
+      const root = await mkdtemp(join(tmpdir(), "focused-watch-claude-"));
+      tempDirs.push(root);
+      const sessionDir = join(root, "projects", "demo");
+      await mkdir(sessionDir, { recursive: true });
 
-    const sessionId = "session-claude-1";
-    const filePath = join(sessionDir, `${sessionId}.jsonl`);
-    await writeFile(filePath, '{"type":"user","message":"hello"}\n');
+      const sessionId = "session-claude-1";
+      const filePath = join(sessionDir, `${sessionId}.jsonl`);
+      await writeFile(filePath, '{"type":"user","message":"hello"}\n');
 
-    const projectId = "L3RtcC9kZW1v" as UrlProjectId;
-    const project: Project = {
-      id: projectId,
-      path: "/tmp/demo",
-      name: "demo",
-      sessionCount: 1,
-      sessionDir,
-      activeOwnedCount: 0,
-      activeExternalCount: 0,
-      lastActivity: null,
-      provider: "claude",
-    };
+      const projectId = "L3RtcC9kZW1v" as UrlProjectId;
+      const project: Project = {
+        id: projectId,
+        path: "/tmp/demo",
+        name: "demo",
+        sessionCount: 1,
+        sessionDir,
+        activeOwnedCount: 0,
+        activeExternalCount: 0,
+        lastActivity: null,
+        provider,
+      };
 
-    const manager = new FocusedSessionWatchManager({
-      scanner: {
-        getProject: async () => project,
-        getOrCreateProject: async () => project,
-      },
-      codexScanner: {
-        getSessionsForProject: async () => [],
-      },
-      geminiScanner: {
-        getSessionsForProject: async () => [],
-      },
-      pollMs: 100,
-      debounceMs: 30,
-    });
+      const manager = new FocusedSessionWatchManager({
+        scanner: {
+          getProject: async () => project,
+          getOrCreateProject: async () => project,
+        },
+        codexScanner: {
+          getSessionsForProject: async () => [],
+        },
+        geminiScanner: {
+          getSessionsForProject: async () => [],
+        },
+        pollMs: 100,
+        debounceMs: 30,
+      });
 
-    const events: FocusedSessionWatchEvent[] = [];
-    const unsubscribe = manager.subscribe({ sessionId, projectId }, (event) =>
-      events.push(event),
-    );
+      const events: FocusedSessionWatchEvent[] = [];
+      const unsubscribe = manager.subscribe(
+        { sessionId, projectId },
+        (event) => events.push(event),
+      );
 
-    await delay(250);
-    await appendFile(filePath, '{"type":"assistant","message":"world"}\n');
+      await delay(250);
+      await appendFile(filePath, '{"type":"assistant","message":"world"}\n');
 
-    const event = await waitForChange(events);
-    expect(event.type).toBe("session-watch-change");
-    expect(event.sessionId).toBe(sessionId);
-    expect(event.projectId).toBe(projectId);
-    expect(event.provider).toBe("claude");
-    expect(event.path).toBe(filePath);
+      const event = await waitForChange(events);
+      expect(event.type).toBe("session-watch-change");
+      expect(event.sessionId).toBe(sessionId);
+      expect(event.projectId).toBe(projectId);
+      expect(event.provider).toBe("claude");
+      expect(event.path).toBe(filePath);
 
-    unsubscribe();
-    manager.dispose();
-  });
+      unsubscribe();
+      manager.dispose();
+    },
+  );
 
   it("uses providerHint=codex to resolve codex session files", async () => {
     const root = await mkdtemp(join(tmpdir(), "focused-watch-codex-"));

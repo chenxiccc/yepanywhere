@@ -98,6 +98,7 @@ export class SessionMetadataService {
   private state: SessionMetadataState;
   private dataDir: string;
   private filePath: string;
+  private sessionIdAliases = new Map<string, string>();
   private save = createCoalescingSaver(() => this.doSave()).save;
 
   constructor(options: SessionMetadataServiceOptions = {}) {
@@ -184,7 +185,7 @@ export class SessionMetadataService {
    * Get metadata for a session.
    */
   getMetadata(sessionId: string): SessionMetadata | undefined {
-    return this.state.sessions[sessionId];
+    return this.state.sessions[this.resolveSessionId(sessionId)];
   }
 
   /**
@@ -196,12 +197,16 @@ export class SessionMetadataService {
 
   getTranscriptDisplayObjects(sessionId: string): TranscriptDisplayObject[] {
     return [
-      ...(this.state.sessions[sessionId]?.transcriptDisplayObjects ?? []),
+      ...(this.state.sessions[this.resolveSessionId(sessionId)]
+        ?.transcriptDisplayObjects ?? []),
     ];
   }
 
   getRecapMessages(sessionId: string): DurableRecapMessage[] {
-    return [...(this.state.sessions[sessionId]?.recapMessages ?? [])];
+    return [
+      ...(this.state.sessions[this.resolveSessionId(sessionId)]?.recapMessages ??
+        []),
+    ];
   }
 
   getCacheMissBillingEvents(limit = 200): CacheMissBillingRecord[] {
@@ -460,7 +465,7 @@ export class SessionMetadataService {
    * Returns undefined if the provider was never explicitly saved.
    */
   getProvider(sessionId: string): string | undefined {
-    return this.state.sessions[sessionId]?.provider;
+    return this.getMetadata(sessionId)?.provider;
   }
 
   /**
@@ -468,7 +473,7 @@ export class SessionMetadataService {
    * Returns undefined for sessions YA didn't start (no requested id was stored).
    */
   getRequestedModel(sessionId: string): string | undefined {
-    return this.state.sessions[sessionId]?.requestedModel;
+    return this.getMetadata(sessionId)?.requestedModel;
   }
 
   /**
@@ -476,7 +481,7 @@ export class SessionMetadataService {
    * Returns undefined if the session ran locally or executor is unknown.
    */
   getExecutor(sessionId: string): string | undefined {
-    return this.state.sessions[sessionId]?.executor;
+    return this.getMetadata(sessionId)?.executor;
   }
 
   /**
@@ -484,7 +489,7 @@ export class SessionMetadataService {
    * Returns undefined if it was never explicitly saved (use provider default).
    */
   getPromptSuggestionMode(sessionId: string): PromptSuggestionMode | undefined {
-    return this.state.sessions[sessionId]?.promptSuggestionMode;
+    return this.getMetadata(sessionId)?.promptSuggestionMode;
   }
 
   /**
@@ -492,7 +497,7 @@ export class SessionMetadataService {
    * Returns undefined if it was never explicitly saved (use default).
    */
   getRecapAfterSeconds(sessionId: string): number | undefined {
-    return this.state.sessions[sessionId]?.recapAfterSeconds;
+    return this.getMetadata(sessionId)?.recapAfterSeconds;
   }
 
   /**
@@ -501,7 +506,37 @@ export class SessionMetadataService {
    * (process-dead) session should be revived for a forked recap.
    */
   getRecapMode(sessionId: string): RecapMode | undefined {
-    return this.state.sessions[sessionId]?.recapMode;
+    return this.getMetadata(sessionId)?.recapMode;
+  }
+
+  /**
+   * Move metadata from a provisional process ID to the provider's canonical
+   * session ID. The in-memory alias also redirects writes that began before
+   * the provider announced the canonical ID but finish after this remap.
+   */
+  async remapSessionId(
+    provisionalSessionId: string,
+    canonicalSessionId: string,
+  ): Promise<void> {
+    if (provisionalSessionId === canonicalSessionId) return;
+
+    const sourceId = this.resolveSessionId(provisionalSessionId);
+    const targetId = this.resolveSessionId(canonicalSessionId);
+    this.sessionIdAliases.set(provisionalSessionId, targetId);
+    if (sourceId !== targetId) {
+      this.sessionIdAliases.set(sourceId, targetId);
+    }
+
+    const source = this.state.sessions[sourceId];
+    if (!source || sourceId === targetId) return;
+
+    this.state.sessions[targetId] = {
+      ...source,
+      ...(this.state.sessions[targetId] ?? {}),
+    };
+    const { [sourceId]: _, ...remaining } = this.state.sessions;
+    this.state.sessions = remaining;
+    await this.save();
   }
 
   /**
@@ -622,7 +657,8 @@ export class SessionMetadataService {
     sessionId: string,
     updater: (current: SessionMetadata) => SessionMetadata,
   ): void {
-    const existing = this.state.sessions[sessionId] ?? {};
+    const resolvedSessionId = this.resolveSessionId(sessionId);
+    const existing = this.state.sessions[resolvedSessionId] ?? {};
     const updated = updater(existing);
 
     // Remove undefined values and check if entry should be deleted
@@ -681,10 +717,10 @@ export class SessionMetadataService {
 
     if (Object.keys(cleaned).length === 0) {
       // Remove the entry entirely if empty
-      const { [sessionId]: _, ...rest } = this.state.sessions;
+      const { [resolvedSessionId]: _, ...rest } = this.state.sessions;
       this.state.sessions = rest;
     } else {
-      this.state.sessions[sessionId] = cleaned;
+      this.state.sessions[resolvedSessionId] = cleaned;
     }
   }
 
@@ -693,11 +729,24 @@ export class SessionMetadataService {
    * Useful when a session is deleted.
    */
   async clearSession(sessionId: string): Promise<void> {
-    if (this.state.sessions[sessionId]) {
-      const { [sessionId]: _, ...rest } = this.state.sessions;
+    const resolvedSessionId = this.resolveSessionId(sessionId);
+    if (this.state.sessions[resolvedSessionId]) {
+      const { [resolvedSessionId]: _, ...rest } = this.state.sessions;
       this.state.sessions = rest;
       await this.save();
     }
+  }
+
+  private resolveSessionId(sessionId: string): string {
+    let resolved = sessionId;
+    const visited = new Set<string>();
+    while (!visited.has(resolved)) {
+      visited.add(resolved);
+      const next = this.sessionIdAliases.get(resolved);
+      if (!next) break;
+      resolved = next;
+    }
+    return resolved;
   }
 
   private async doSave(): Promise<void> {

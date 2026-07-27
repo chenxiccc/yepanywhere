@@ -1,4 +1,7 @@
-import type { ClaudeSessionEntry, UrlProjectId } from "@yep-anywhere/shared";
+import type {
+  ClaudeSessionEntry,
+  UrlProjectId,
+} from "@yep-anywhere/shared";
 import { buildDag } from "../sessions/dag.js";
 import type { ISessionReader } from "../sessions/types.js";
 
@@ -72,11 +75,12 @@ export async function getClaudeResumeBlockerFromReader(
   if (!session) {
     return null;
   }
-  if (
-    session.data.provider !== "claude" &&
-    session.data.provider !== "claude-ollama"
-  ) {
-    return null;
+  switch (session.data.provider) {
+    case "claude":
+    case "claude-gateway":
+    case "claude-ollama":
+      return getClaudeResumeApiErrorBlocker(session.data.session.messages);
+    default:
+      return null;
   }
-  return getClaudeResumeApiErrorBlocker(session.data.session.messages);
 }

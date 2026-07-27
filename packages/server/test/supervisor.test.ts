@@ -2774,6 +2774,12 @@ describe("Supervisor", () => {
         const eventBus = new EventBus();
         const events: BusEvent[] = [];
         eventBus.subscribe((event) => events.push(event));
+        const remapSessionId = vi.fn(async () => {});
+        const sessionMetadataService = {
+          remapSessionId,
+        } as unknown as ConstructorParameters<
+          typeof Supervisor
+        >[0]["sessionMetadataService"];
 
         const realSdk: RealClaudeSDKInterface = {
           startSession: async () => ({
@@ -2786,6 +2792,7 @@ describe("Supervisor", () => {
           realSdk,
           idleTimeoutMs: 100,
           eventBus,
+          sessionMetadataService,
         });
 
         const starting = supervisorWithBus.startSession("/tmp/test", {
@@ -2827,6 +2834,10 @@ describe("Supervisor", () => {
         expect(
           supervisorWithBus.getProcessForSession("canonical-session"),
         ).toBe(process);
+        expect(remapSessionId).toHaveBeenCalledWith(
+          provisionalSessionId,
+          "canonical-session",
+        );
 
         controller.finish();
         await vi.advanceTimersByTimeAsync(0);
