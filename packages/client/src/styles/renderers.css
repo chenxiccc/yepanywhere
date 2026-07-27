@@ -6771,9 +6771,9 @@ pre.code-highlighter-plain,
   color: var(--text-secondary, #8b949e);
 }
 
-/* Compact commit body — click to open the verbatim message view (with exact
-   time) in the detail pane. NOTE: still shows the raw hard-wrapped body; the
-   soft-reflow contract (topic § pending) is not yet implemented. */
+/* Compact commit body — likely manual prose wraps are folded in the display
+   projection, then this pane wraps them to its own width. Click opens the
+   verbatim message view (with exact time) in the detail pane. */
 .commit-body {
   display: block;
   width: 100%;

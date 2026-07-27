@@ -17,6 +17,7 @@ import { Modal } from "../components/ui/Modal";
 import { useCommitReadWatermark } from "../hooks/useCommitReadWatermark";
 import { useCommitSearchIndex } from "../hooks/useCommitSearchIndex";
 import { useProjectReviewComments } from "../hooks/useProjectReviewComments";
+import { reflowCommitMessage } from "../lib/reflowCommitMessage";
 import {
   GitDiffModal,
   GitDiffPreview,
@@ -500,7 +501,9 @@ export function CommitBrowser({
                     title={t("sourceShowFullMessage")}
                     onClick={() => setMessageView(true)}
                   >
-                    {isWideScreen ? detail.body : t("sourceShowFullMessage")}
+                    {isWideScreen
+                      ? reflowCommitMessage(detail.body)
+                      : t("sourceShowFullMessage")}
                   </button>
                 )}
                 <ul className="commit-file-list">

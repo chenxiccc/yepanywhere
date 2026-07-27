@@ -447,7 +447,11 @@ describe("CommitBrowser", () => {
     expect(badges.some((badge) => badge.textContent === "1")).toBe(true);
   });
 
-  it("shows the verbatim commit message when the body is clicked", async () => {
+  it("soft-reflows the compact body but opens the verbatim message", async () => {
+    const first =
+      "Rendered commit prose is commonly hard-wrapped for a readable terminal";
+    const second =
+      "but those stored breaks become jagged in the narrow source review pane.";
     primeApis();
     getGitCommit.mockResolvedValue({
       hash: SHA,
@@ -455,7 +459,7 @@ describe("CommitBrowser", () => {
       subject: "first commit",
       authorName: "Dev",
       authorDate: "2026-07-26T00:00:00Z",
-      body: "line one\nline two",
+      body: `${first}\n${second}`,
       files: [
         {
           path: "src/x.ts",
@@ -472,13 +476,15 @@ describe("CommitBrowser", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(await screen.findByTitle("sourceShowFullMessage"));
+    const compactBody = await screen.findByTitle("sourceShowFullMessage");
+    expect(compactBody.textContent).toBe(`${first} ${second}`);
+    fireEvent.click(compactBody);
     await waitFor(() =>
       expect(document.querySelector(".commit-message-full")).not.toBeNull(),
     );
-    expect(
-      document.querySelector(".commit-message-full")?.textContent,
-    ).toContain("line two");
+    expect(document.querySelector(".commit-message-full")?.textContent).toBe(
+      `first commit\n\n${first}\n${second}`,
+    );
   });
 
   it("bridges a commit file to its blame view via onBlameFile", async () => {

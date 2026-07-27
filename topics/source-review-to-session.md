@@ -585,21 +585,20 @@ diffs. — Done (2026-07-26).
   The banner hash tooltips `sha + date/time`; newer/older jump is glyph-only
   (↑/↓), adjacent, at the banner's left edge nearest the list. — Done
   (a977f1f9).
-- **Soft-reflow of the compact body — pending; do not implement without
-  review.** The compact commit body currently shows the raw hard-wrapped git
-  body (jagged in a narrow column). It should reflow width-wrapped prose to the
-  column while preserving *intentional* breaks, mirroring the AGENTS.md
+- **Soft-reflow of the compact body.** The compact commit body reflows
+  width-wrapped prose to its column while preserving *intentional* breaks,
+  mirroring the AGENTS.md
   commit-wrap rule: "Wrap body prose manually at 71 columns — a visual rule,
   not greedy fill: preserve bullets, hanging indents, aligned continuations,
   short tables, and ASCII diagrams even when that leaves a short line." A break
   before a line is intentional (kept) when the line is blank, a
   `[spaces]* `/`-`/`•`/`N.` bullet, indented (hanging/ASCII), or short while its
-  predecessor is also short (two consecutive short lines). Otherwise the line
-  is a wrapped continuation and folds into the previous with a space; render
-  with `white-space: pre-wrap`. No reusable reflow util exists in the tree
-  (searched 2026-07-26 — the "wrap" hits are DOM-layout and shell-unwrap); build
-  a tested pure function. The verbatim view above is the escape hatch and is
-  already shipped.
+  predecessor is also short (two consecutive lines of at most 50 characters,
+  for compact tables and ASCII). Otherwise the line is a wrapped continuation
+  and folds into the previous with a space. Render the result with
+  `white-space: pre-wrap`. `reflowCommitMessage` owns that tested display
+  projection; the verbatim view above remains the escape hatch. — Done
+  (2026-07-27).
 
 ### Search completions + match tooltips — pending
 
