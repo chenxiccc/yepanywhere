@@ -334,8 +334,9 @@ export function patchLineCount(hunks: PatchHunk[]): number {
 }
 
 /**
- * Invert the flat line index (see the P1↔P2 contract in task 046 / the topic
- * doc) into a diff-line anchor, using only `structuredPatch` data — the Shiki
+ * Invert the flat line index (the P1↔P2 addressing contract in
+ * topics/source-review-to-session.md) into a diff-line anchor, using only
+ * `structuredPatch` data — the Shiki
  * HTML stays presentation-only, so anchoring is testable without a browser and
  * cannot drift from what is displayed.
  *

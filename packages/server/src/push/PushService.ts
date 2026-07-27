@@ -10,6 +10,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import webPush, { type RequestOptions } from "web-push";
+import { createCoalescingSaver } from "../lib/coalescingSaver.js";
 import { HttpError } from "../middleware/error-handler.js";
 import {
   DEFAULT_NOTIFICATION_SETTINGS,
@@ -39,8 +40,8 @@ export class PushService {
   private filePath: string;
   private vapidKeys?: VapidKeys;
   private initialized = false;
-  private savePromise: Promise<void> | null = null;
-  private pendingSave = false;
+  /** Writes coalesce; a rejected write surfaces to its caller without wedging. */
+  private save = createCoalescingSaver(() => this.doSave());
 
   constructor(options: PushServiceOptions = {}) {
     this.dataDir =
@@ -363,25 +364,6 @@ export class PushService {
         503,
         "PushService not initialized. Call initialize() first.",
       );
-    }
-  }
-
-  /**
-   * Save state to disk with debouncing.
-   */
-  private async save(): Promise<void> {
-    if (this.savePromise) {
-      this.pendingSave = true;
-      return;
-    }
-
-    this.savePromise = this.doSave();
-    await this.savePromise;
-    this.savePromise = null;
-
-    if (this.pendingSave) {
-      this.pendingSave = false;
-      await this.save();
     }
   }
 

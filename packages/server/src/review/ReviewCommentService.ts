@@ -7,8 +7,8 @@
  * continues on another with the same pending set and archive. Keyed by the
  * project path itself, two repos' drafts can never mix.
  *
- * Persistence follows the PushService idiom: typed state, load once per
- * project, debounced atomic saves. The file is user-visible on disk and
+ * Persistence: typed state, load once per project, atomic writes coalesced
+ * per project through the shared saver. The file is user-visible on disk and
  * outlives bundle versions, so every load runs through the shared defensive
  * parser and a corrupt/truncated file degrades to an empty store.
  */
@@ -17,6 +17,7 @@ import { randomUUID } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
+  MAX_REVIEW_COMMENTS,
   type ReviewBatch,
   type ReviewComment,
   type ReviewCommentAnchor,
@@ -24,6 +25,8 @@ import {
   emptyReviewCommentsFile,
   parseReviewCommentsFile,
 } from "@yep-anywhere/shared";
+import { createCoalescingSaver } from "../lib/coalescingSaver.js";
+import { HttpError } from "../middleware/error-handler.js";
 import { ensureManagedProjectDir } from "../projects/managedProjectDir.js";
 
 const YEP_DIR = ".yep";
@@ -34,8 +37,7 @@ interface ProjectStore {
   loadPromise: Promise<void> | null;
   loaded: boolean;
   dirEnsured: boolean;
-  savePromise: Promise<void> | null;
-  pendingSave: boolean;
+  save: () => Promise<void>;
 }
 
 export interface AddReviewCommentInput {
@@ -103,6 +105,14 @@ export class ReviewCommentService {
     input: AddReviewCommentInput,
   ): Promise<ReviewComment> {
     const store = await this.getStore(projectPath);
+    // The load parser silently drops entries past this bound, so exceeding it
+    // here would persist comments that vanish on the next restart.
+    if (store.state.comments.length >= MAX_REVIEW_COMMENTS) {
+      throw new HttpError(
+        413,
+        `Review comment limit reached (${MAX_REVIEW_COMMENTS}); submit or delete drafts first.`,
+      );
+    }
     const comment: ReviewComment = {
       id: this.newId(),
       anchor: input.anchor,
@@ -111,7 +121,7 @@ export class ReviewCommentService {
       createdAt: this.now(),
     };
     store.state.comments.push(comment);
-    await this.save(projectPath, store);
+    await store.save();
     return cloneComment(comment);
   }
 
@@ -126,7 +136,7 @@ export class ReviewCommentService {
     if (comment?.status !== "pending") return null;
     if (patch.text !== undefined) comment.text = patch.text;
     if (patch.anchor !== undefined) comment.anchor = patch.anchor;
-    await this.save(projectPath, store);
+    await store.save();
     return cloneComment(comment);
   }
 
@@ -138,7 +148,7 @@ export class ReviewCommentService {
     );
     if (idx === -1) return false;
     store.state.comments.splice(idx, 1);
-    await this.save(projectPath, store);
+    await store.save();
     return true;
   }
 
@@ -175,7 +185,7 @@ export class ReviewCommentService {
       commentIds: consumed,
     };
     store.state.batches.push(batch);
-    await this.save(projectPath, store);
+    await store.save();
     return { ...batch, commentIds: [...batch.commentIds] };
   }
 
@@ -192,15 +202,18 @@ export class ReviewCommentService {
   private async getStore(projectPath: string): Promise<ProjectStore> {
     let store = this.stores.get(projectPath);
     if (!store) {
-      store = {
+      const created: ProjectStore = {
         state: emptyReviewCommentsFile(),
         loadPromise: null,
         loaded: false,
         dirEnsured: false,
-        savePromise: null,
-        pendingSave: false,
+        save: () => Promise.resolve(),
       };
-      this.stores.set(projectPath, store);
+      created.save = createCoalescingSaver(() =>
+        this.doSave(projectPath, created),
+      );
+      this.stores.set(projectPath, created);
+      store = created;
     }
     if (!store.loaded) {
       if (!store.loadPromise) {
@@ -227,20 +240,6 @@ export class ReviewCommentService {
       store.state = emptyReviewCommentsFile();
     }
     store.loaded = true;
-  }
-
-  private async save(projectPath: string, store: ProjectStore): Promise<void> {
-    if (store.savePromise) {
-      store.pendingSave = true;
-      return;
-    }
-    store.savePromise = this.doSave(projectPath, store);
-    await store.savePromise;
-    store.savePromise = null;
-    if (store.pendingSave) {
-      store.pendingSave = false;
-      await this.save(projectPath, store);
-    }
   }
 
   private async doSave(
