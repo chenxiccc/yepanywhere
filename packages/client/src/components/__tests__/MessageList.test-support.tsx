@@ -49,6 +49,7 @@ vi.mock("../../i18n", () => ({
         projectQueueInlineEdit: "Edit Project Queue item",
         projectQueueInlineSteer: "Steer Project Queue item now",
         projectQueueInlineCancel: "Cancel Project Queue item",
+        projectQueueResume: "Resume",
         projectQueueEdit: "Edit",
         projectQueueCancel: "Cancel",
         userPromptCopyAction: "Copy message text",

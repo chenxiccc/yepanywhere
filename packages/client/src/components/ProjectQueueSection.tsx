@@ -527,10 +527,12 @@ export function ProjectQueueSection({
                     : "";
                   const forceStart =
                     item.status === "queued" &&
-                    projectStatus?.state === "blocked";
+                    (projectStatus?.state === "blocked" ||
+                      (pausedState !== undefined &&
+                        projectStatus !== undefined &&
+                        projectStatus.blockers.length > 0));
                   const canPromote =
                     item.status === "queued" &&
-                    projectStatus?.state !== "paused" &&
                     projectStatus?.state !== "dispatching";
                   const canMoveToTop =
                     canEdit && !isFirstMovableProjectQueueItem(item, items);
@@ -635,6 +637,15 @@ export function ProjectQueueSection({
                           {statusLabel(item.status, t)}
                         </span>
                         <div className="project-queue-item__actions">
+                          {pausedState && !isEditing && (
+                            <button
+                              type="button"
+                              onClick={onResumeDispatch}
+                              disabled={mutatingDispatchState}
+                            >
+                              {t("projectQueueResume")}
+                            </button>
+                          )}
                           {canPromote && !isEditing && (
                             <button
                               type="button"

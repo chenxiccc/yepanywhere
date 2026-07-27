@@ -471,6 +471,10 @@ interface Props {
   deferredMessages?: DeferredMessage[];
   /** Project Queue items targeting this session (shown below local queue). */
   projectQueueMessages?: InlineProjectQueueMessage[];
+  /** Whether global Project Queue dispatch is paused. */
+  projectQueueDispatchPaused?: boolean;
+  /** Whether global Project Queue pause state is changing. */
+  projectQueueDispatchMutating?: boolean;
   /** YA-owned /btw cards that have entered the scrollback timeline. */
   btwAsides?: BtwAsideTimelineItem[];
   /** Focus this /btw aside for follow-up turns. */
@@ -513,6 +517,8 @@ interface Props {
   onEditProjectQueueMessage?: (itemId: string) => void;
   /** Force a Project Queue item into the active session now. */
   onSteerProjectQueueMessage?: (itemId: string) => void;
+  /** Resume global Project Queue dispatch from an inline item. */
+  onResumeProjectQueueDispatch?: () => void;
   /** Callback to correct the latest actually-sent user message */
   onCorrectLatestUserMessage?: (messageId: string, content: string) => void;
   /** Callback to aggressively reload the client transcript from a user turn */
@@ -724,6 +730,7 @@ interface QueuedMessageActionsProps {
   text: string;
   canEdit: boolean;
   disabled?: boolean;
+  onResume?: () => void;
   onEdit?: () => void;
   onSteer?: () => void;
   steerLabel?: string;
@@ -735,6 +742,7 @@ function QueuedMessageActions({
   text,
   canEdit,
   disabled = false,
+  onResume,
   onEdit,
   onSteer,
   steerLabel,
@@ -758,6 +766,19 @@ function QueuedMessageActions({
         showTextLabel
         onClick={(event) => event.stopPropagation()}
       />
+      {onResume ? (
+        <button
+          type="button"
+          className="deferred-message-action deferred-message-action-resume"
+          disabled={disabled}
+          onClick={onResume}
+          aria-label={t("projectQueueResume")}
+          title={t("projectQueueResume")}
+        >
+          <PlayIcon />
+          <span>{t("projectQueueResume")}</span>
+        </button>
+      ) : null}
       {canEdit && onEdit ? (
         <button
           type="button"
@@ -815,6 +836,8 @@ export const MessageList = memo(function MessageList({
   pendingMessages = [],
   deferredMessages = [],
   projectQueueMessages = [],
+  projectQueueDispatchPaused = false,
+  projectQueueDispatchMutating = false,
   btwAsides = [],
   onFocusBtwAside,
   onDoneBtwAside,
@@ -837,6 +860,7 @@ export const MessageList = memo(function MessageList({
   onCancelProjectQueueMessage,
   onEditProjectQueueMessage,
   onSteerProjectQueueMessage,
+  onResumeProjectQueueDispatch,
   onCorrectLatestUserMessage,
   onTrimBeforeUserMessage,
   onForkBeforeUserMessage,
@@ -2773,7 +2797,14 @@ export const MessageList = memo(function MessageList({
                       canEdit={
                         queuedEditAvailable && projectQueue.canEdit !== false
                       }
-                      disabled={projectQueue.isMutating}
+                      disabled={
+                        projectQueue.isMutating || projectQueueDispatchMutating
+                      }
+                      onResume={
+                        projectQueueDispatchPaused
+                          ? onResumeProjectQueueDispatch
+                          : undefined
+                      }
                       onEdit={
                         tailRow.allowsCancel && onEditProjectQueueMessage
                           ? () => onEditProjectQueueMessage(projectQueue.id)

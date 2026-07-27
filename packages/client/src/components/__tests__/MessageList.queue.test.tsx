@@ -391,6 +391,30 @@ describe("MessageList queue rows", () => {
     expect(onSteerProjectQueueMessage).toHaveBeenCalledWith("project-queue-1");
   });
 
+  it("offers global resume on a paused inline Project Queue message", () => {
+    const onResumeProjectQueueDispatch = vi.fn();
+    render(
+      <MessageList
+        messages={[]}
+        projectQueueMessages={[
+          {
+            id: "project-queue-1",
+            content: "project queued",
+            timestamp: "2026-04-25T00:00:05.000Z",
+            status: "queued",
+            projectPosition: 1,
+          },
+        ]}
+        projectQueueDispatchPaused
+        onResumeProjectQueueDispatch={onResumeProjectQueueDispatch}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Resume" }));
+
+    expect(onResumeProjectQueueDispatch).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps the latest stale message age visible in the right rail", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-04-26T12:10:00.000Z"));

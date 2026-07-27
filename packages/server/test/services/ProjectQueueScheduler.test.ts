@@ -529,6 +529,48 @@ describe("ProjectQueueScheduler", () => {
     });
   });
 
+  it("resumes paused dispatch before force-promoting a queued item", async () => {
+    await scheduler.dispose();
+    scheduler = new ProjectQueueScheduler({
+      projectQueueService: service,
+      supervisor,
+      eventBus,
+      idleGraceMs: 10_000,
+    });
+    const item = await service.createItem({
+      projectId,
+      projectPath: PROJECT_PATH,
+      request: {
+        target: { type: "existing-session", sessionId: "session-1" },
+        message: { text: "steer after restart" },
+      },
+    });
+    await service.pauseDispatch("restart");
+
+    const promoted = await scheduler.promoteNow(projectId, {
+      itemId: item.id,
+      force: true,
+      deliveryIntent: "steer",
+    });
+
+    expect(promoted).toMatchObject({
+      promoted: true,
+      reason: "promoted",
+      itemId: item.id,
+      sessionId: "session-1",
+    });
+    expect(service.getDispatchState()).toEqual({ status: "running" });
+    expect(supervisor.resumeCalls).toMatchObject([
+      {
+        sessionId: "session-1",
+        message: {
+          text: "steer after restart",
+          metadata: { deliveryIntent: "steer", steerNow: true },
+        },
+      },
+    ]);
+  });
+
   it("waits for recovered patient queues before promoting project work", async () => {
     await scheduler.dispose();
     const sessionQueuePersistenceService = new SessionQueuePersistenceService({

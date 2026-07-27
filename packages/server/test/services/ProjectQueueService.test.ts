@@ -133,6 +133,44 @@ describe("ProjectQueueService", () => {
     expect(service.getDispatchState()).toEqual({ status: "running" });
   });
 
+  it("resumes dispatch after successful queued-item mutations", async () => {
+    const service = await createService();
+    const first = await service.createItem({
+      projectId,
+      projectPath: "/tmp/project-queue",
+      request: {
+        target: { type: "existing-session", sessionId: "session-1" },
+        message: { text: "first item" },
+      },
+    });
+    const second = await service.createItem({
+      projectId,
+      projectPath: "/tmp/project-queue",
+      request: {
+        target: { type: "existing-session", sessionId: "session-2" },
+        message: { text: "second item" },
+      },
+    });
+
+    await service.pauseDispatch("restart");
+    await service.updateItem(projectId, first.id, {
+      message: { text: "updated first item" },
+    });
+    expect(service.getDispatchState()).toEqual({ status: "running" });
+
+    await service.pauseDispatch("restart");
+    await service.retryItem(projectId, first.id);
+    expect(service.getDispatchState()).toEqual({ status: "running" });
+
+    await service.pauseDispatch("restart");
+    await service.moveItemToTop(projectId, second.id);
+    expect(service.getDispatchState()).toEqual({ status: "running" });
+
+    await service.pauseDispatch("restart");
+    await service.deleteItem(projectId, second.id);
+    expect(service.getDispatchState()).toEqual({ status: "running" });
+  });
+
   it("updates, retries, and deletes items with project-scoped events", async () => {
     const eventBus = new EventBus();
     const events: string[] = [];

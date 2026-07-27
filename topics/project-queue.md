@@ -30,12 +30,15 @@ instead of waiting for the whole project.
   claiming the item.
 - Promotion handles one Project Queue item per project-idle boundary. Do not
   drain the project backlog in one burst.
-- A global Project Queue dispatch pause gates promotion above all project
-  items. Paused items remain editable/retryable/deletable; the scheduler simply
-  must not claim queued items until dispatch resumes.
+- A global Project Queue dispatch pause gates automatic promotion above all
+  project items. A valid action that mutates or dispatches an existing item
+  (edit/save, delete/cancel, retry, reorder, Start/Force start, or Steer now)
+  resumes dispatch globally before completing that action. Read-only actions
+  such as Copy do not resume dispatch.
 - A server restart with persisted Project Queue backlog starts
-  paused-after-restart by default. The user must explicitly resume dispatch
-  after inspecting any work that may have been interrupted by the restart.
+  paused-after-restart by default. After inspecting any work that may have been
+  interrupted by the restart, the user can use Resume or act on an item; either
+  path resumes dispatch.
 - Dev-mode scheduled safe restart also pauses Project Queue dispatch before
   waiting for active sessions and in-memory session queued messages, including
   per-process direct/short-term deferred queues, to drain. Live patient
@@ -204,9 +207,11 @@ that target that session:
   text, uploaded attachments, and permission mode into the composer. It is a
   take-to-composer action, not a second in-place queue editor.
 - Steer now force-dispatches that item to the existing session with explicit
-  steering intent, bypassing quiet/idle blockers but not global dispatch pause
-  or the per-project in-flight guard.
+  steering intent, bypassing quiet/idle blockers and implicitly resuming global
+  dispatch first, but not bypassing the per-project in-flight guard.
 - Cancel removes the item from the inline queue.
+- Resume is shown inline while global dispatch is paused. It resumes dispatch
+  without otherwise changing the item.
 
 There is no promote-to-patient action. Patient queue remains a per-session
 delivery intent rather than another Project Queue state. The projects page
@@ -235,21 +240,25 @@ The projects page is also the authoritative global dispatch pause surface. Show
 Pause/Resume only while Project Queue has visible backlog. When dispatch is
 paused after server restart, copy must distinguish that state from a manual
 pause so users understand why durable backlog is not promoting automatically.
+While paused, show Resume both in the section header and on each item so the
+recovery action is available at the point of work. Any valid item mutation or
+dispatch action is also an implicit global Resume.
 The projects-page queue manager uses Delete/Remove wording for permanent item
 removal. The session-inline queued-message surface uses Cancel, matching the
 neighboring per-session queue action even though both remove the persisted
 Project Queue item.
 
-Move-to-top is project-local. Pausing global dispatch does not change the
-queue's project-scoped semantics; it only stops promotion until Resume.
+Move-to-top is project-local, but invoking it while dispatch is paused resumes
+the global dispatcher before applying the project-local reorder.
 
 Each item on the projects page may offer a Start now control. Start now skips
-only the remaining quiet-window countdown; it still refuses when dispatch is
-paused, another item is already in flight for that project, or the project idle
-predicate reports blockers. When blockers remain visible, the same item may
-offer an explicit Force start control. Force start is an override of the idle
-predicate, not of dispatch pause or per-project in-flight protection, and the UI
-must surface the blockers before making that override available.
+only the remaining quiet-window countdown and implicitly resumes global
+dispatch; it still refuses when another item is already in flight for that
+project or the project idle predicate reports blockers. When blockers remain
+visible, the same item may offer an explicit Force start control. Force start
+also resumes global dispatch and overrides the idle predicate, but not
+per-project in-flight protection; the UI must surface the blockers before
+making that override available.
 
 When recovered `paused-after-restart` patient session-queue entries exist, the
 projects page should show them above Project Queue items because they run first

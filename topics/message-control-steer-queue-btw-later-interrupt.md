@@ -57,7 +57,7 @@ Rationale:
 | `Ctrl+Enter` with visible Project Queue action and enabled Project Queue shortcut | Project Queue | `deferred` metadata on a Project Queue item | Project Queue is a higher-level backlog. When the user has exposed that action and enabled its shortcut, `Ctrl+Enter` chooses the project-level queue instead of per-session queue/steer. |
 | Patient queue setting enabled for a new queued item | Queue action | `patient` | Per-item patient intent waits for the quiet/verified-idle patience threshold before delivery. This is a super-delay queue option, independent of provider steering support. |
 | Queued chip on steering-capable active turn | `Steer now` | `steer` | User explicitly overrides queued/patient waiting and injects the queued item into the active turn. |
-| Current-session Project Queue row | `Steer now` | Project Queue force promotion with `steer` metadata | User explicitly bypasses quiet/idle blockers and injects the selected project item into its active target session. |
+| Current-session Project Queue row | `Steer now` | Project Queue force promotion with `steer` metadata | User explicitly resumes global Project Queue dispatch, bypasses quiet/idle blockers, and injects the selected project item into its active target session. |
 | `/btw` explicit route | Aside control | separate aside session | Not a queue path and not `steer`. |
 
 ### Queue text rule

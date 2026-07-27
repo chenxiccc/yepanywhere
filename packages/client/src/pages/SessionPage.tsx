@@ -2711,6 +2711,15 @@ function SessionPageContent({
     metadata?: MessageSubmissionMetadata,
   ) => queueComposerForProject(text, "new-session", metadata);
 
+  const handleResumeProjectQueueDispatch = useCallback(async () => {
+    try {
+      await projectQueues.resumeDispatch();
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      showToast(t("projectQueueResumeFailed", { message: errorMsg }), "error");
+    }
+  }, [projectQueues.resumeDispatch, showToast, t]);
+
   const handleCancelProjectQueueItem = useCallback(
     async (itemId: string) => {
       try {
@@ -4989,6 +4998,12 @@ function SessionPageContent({
                   pendingMessages={pendingMessages}
                   deferredMessages={deferredMessages}
                   projectQueueMessages={inlineProjectQueueMessages}
+                  projectQueueDispatchPaused={
+                    projectQueues.dispatchState.status === "paused"
+                  }
+                  projectQueueDispatchMutating={
+                    projectQueues.mutatingDispatchState
+                  }
                   btwAsides={historyBtwAsides}
                   onFocusBtwAside={setFocusedBtwAsideId}
                   onDoneBtwAside={handleDoneBtwAside}
@@ -5017,6 +5032,9 @@ function SessionPageContent({
                   onCancelProjectQueueMessage={handleCancelProjectQueueItem}
                   onEditProjectQueueMessage={handleEditProjectQueueItem}
                   onSteerProjectQueueMessage={handleSteerProjectQueueItem}
+                  onResumeProjectQueueDispatch={
+                    handleResumeProjectQueueDispatch
+                  }
                   onCorrectLatestUserMessage={handleCorrectLatestUserMessage}
                   onTrimBeforeUserMessage={trimClientFromUserMessage}
                   onForkBeforeUserMessage={
