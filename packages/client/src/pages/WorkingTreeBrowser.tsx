@@ -3,10 +3,18 @@ import type {
   GitStatusInfo,
   GitUntrackedFolderInfo,
 } from "@yep-anywhere/shared";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { api } from "../api/client";
 import { CopyButton } from "../components/CopyButton";
 import { useProjectReviewComments } from "../hooks/useProjectReviewComments";
+import { handleSourceListKeyDown } from "../hooks/useSourceKeyboard";
 import type { MessageKey, TranslationFn } from "../i18n";
 import {
   GitDiffModal,
@@ -23,14 +31,18 @@ const WORKING_TREE_SOURCE: GitDiffSource = {
 };
 
 /**
- * The current HEAD-to-filesystem view. Changes owns this surface on every
- * viewport; commit history never needs a synthetic working-tree revision.
+ * The current HEAD-to-filesystem view shared by Changes and the optional
+ * Working tree revision in Commits. Both entry points therefore keep one file
+ * merge, diff, comment-anchor, and refresh-survival implementation.
  */
 export function WorkingTreeBrowser({
   projectId,
   status,
   isWideScreen,
   initialWorkingTreePath,
+  embeddedInHistory = false,
+  onBackToRevisions,
+  revisionNavigation,
   onBlameFile,
   t,
 }: {
@@ -39,6 +51,12 @@ export function WorkingTreeBrowser({
   isWideScreen: boolean;
   /** One-shot deep link to a dirty file from a session Edit block. */
   initialWorkingTreePath?: string;
+  /** Let Commits place these same files/diff in its revision-detail columns. */
+  embeddedInHistory?: boolean;
+  /** Narrow-history drill-in returns to the revision list through this path. */
+  onBackToRevisions?: () => void;
+  /** Adjacent-revision controls supplied by the history owner. */
+  revisionNavigation?: ReactNode;
   onBlameFile?: (path: string) => void;
   t: TranslationFn;
 }) {
@@ -209,33 +227,77 @@ export function WorkingTreeBrowser({
   ) : null;
 
   const hasRetainedEditorTarget = commentEditorOpen && selectedFile !== null;
+  const rootClassName = `working-tree-browser ${
+    embeddedInHistory ? "working-tree-browser-history" : ""
+  }`.trim();
+  const backToRevisions = onBackToRevisions ? (
+    <button
+      type="button"
+      className="source-mobile-back"
+      onClick={onBackToRevisions}
+    >
+      ← {t("sourceBackToCommits")}
+    </button>
+  ) : null;
   if (
     (status.isClean || currentFiles.length === 0) &&
     !hasRetainedEditorTarget
   ) {
     return (
-      <div className="working-tree-browser" data-testid="working-tree-browser">
+      <div className={rootClassName} data-testid="working-tree-browser">
+        {backToRevisions}
         <div className="git-status-empty">{t("gitStatusWorkingTreeClean")}</div>
       </div>
     );
   }
 
   return (
-    <div className="working-tree-browser" data-testid="working-tree-browser">
+    <div className={rootClassName} data-testid="working-tree-browser">
+      {backToRevisions}
       <div className="working-tree-browser-columns">
         <div className="commit-files-column working-tree-files-column">
           <div className="source-detail-banner">
-            <span
-              className="source-detail-title"
-              title={t("sourceWorkingTreeDescription")}
-            >
-              {t("sourceWorkingTree")}
-            </span>
-            <span className="source-detail-count">
-              {t("sourceChangedFileCount", { count: files.length })}
-            </span>
+            {revisionNavigation}
+            {embeddedInHistory ? (
+              <span className="source-detail-identity working-tree-detail-identity">
+                <span className="working-tree-detail-title-row">
+                  <span className="source-detail-subject">
+                    {t("sourceWorkingTree")}
+                  </span>
+                  <span
+                    className="working-tree-detail-count"
+                    title={t("sourceChangedFileCount", {
+                      count: files.length,
+                    })}
+                  >
+                    {files.length}
+                  </span>
+                </span>
+                <span
+                  className="source-detail-title"
+                  title={t("sourceWorkingTreeDescription")}
+                >
+                  {t("sourceUncommitted")}
+                </span>
+              </span>
+            ) : (
+              <>
+                <span
+                  className="source-detail-title"
+                  title={t("sourceWorkingTreeDescription")}
+                >
+                  {t("sourceWorkingTree")}
+                </span>
+                <span className="source-detail-count">
+                  {t("sourceChangedFileCount", { count: files.length })}
+                </span>
+              </>
+            )}
           </div>
-          <ul className="commit-file-list">
+          <ul
+            className="commit-file-list"
+            onKeyDown={handleSourceListKeyDown}
+          >
             {files.map((file) => {
               const count = fileCommentCount.get(file.path) ?? 0;
               const isFolder = file.path.endsWith("/");
@@ -247,6 +309,12 @@ export function WorkingTreeBrowser({
                       selectedPath === file.path ? "selected" : ""
                     }`}
                     disabled={isFolder}
+                    data-source-list-item
+                    onFocus={() => {
+                      if (isWideScreen && !isFolder) {
+                        setSelectedPath(file.path);
+                      }
+                    }}
                     onClick={() => handleFileClick(file)}
                   >
                     <span

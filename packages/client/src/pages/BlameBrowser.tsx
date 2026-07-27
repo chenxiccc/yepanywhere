@@ -1,7 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 import { Modal } from "../components/ui/Modal";
 import { useProjectReviewComments } from "../hooks/useProjectReviewComments";
+import {
+  handleSourceListKeyDown,
+  useSourceSearchShortcut,
+} from "../hooks/useSourceKeyboard";
 import { FileSearchIndex } from "../lib/fileSearchIndex";
 import { BlameView } from "./BlameView";
 import type { TranslationFn } from "../i18n";
@@ -31,6 +35,8 @@ export function BlameBrowser({
   const [selectedPath, setSelectedPath] = useState<string | null>(
     initialPath ?? null,
   );
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  useSourceSearchShortcut(searchInputRef);
   const { pending } = useProjectReviewComments(projectId);
   const pathCommentCount = useMemo(() => {
     const counts = new Map<string, number>();
@@ -85,13 +91,26 @@ export function BlameBrowser({
     <div className="blame-browser">
       <div className="blame-browser-columns">
         <div className="blame-file-column">
-          <input
-            type="search"
-            className="source-search-input"
-            value={query}
-            placeholder={t("sourceFilterFiles")}
-            onChange={(event) => setQuery(event.target.value)}
-          />
+          <div className="source-search-field">
+            <input
+              ref={searchInputRef}
+              type="search"
+              className="source-search-input"
+              value={query}
+              placeholder={t("sourceFilterFiles")}
+              aria-keyshortcuts="/"
+              onKeyDown={(event) => {
+                if (event.key === "Escape" && query) {
+                  event.preventDefault();
+                  setQuery("");
+                }
+              }}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+            <kbd className="source-search-shortcut">
+              /
+            </kbd>
+          </div>
           {loading ? (
             <div className="git-diff-loading">{t("gitStatusLoading")}</div>
           ) : error ? (
@@ -99,7 +118,10 @@ export function BlameBrowser({
           ) : filtered.length === 0 ? (
             <div className="git-status-empty">{t("sourceNoFiles")}</div>
           ) : (
-            <ul className="blame-file-list">
+            <ul
+              className="blame-file-list"
+              onKeyDown={handleSourceListKeyDown}
+            >
               {filtered.map((file) => {
                 const count = pathCommentCount.get(file) ?? 0;
                 return (
@@ -109,6 +131,10 @@ export function BlameBrowser({
                       className={`blame-file-item ${
                         selectedPath === file ? "selected" : ""
                       }`}
+                      data-source-list-item
+                      onFocus={() => {
+                        if (isWideScreen) setSelectedPath(file);
+                      }}
                       onClick={() => setSelectedPath(file)}
                     >
                       <span className="git-file-path" title={file}>

@@ -1191,6 +1191,7 @@
   "sourceBlameAtHead": "Blame this file as of HEAD",
   "sourceBlameAtHeadShort": "blame",
   "sourceHunkPosition": "{current} of {total}",
+  "sourcePreviousHunkShortcut": "Previous hunk (P)",
   "sourceNextHunkShortcut": "Next hunk (N)",
   "gitStatusRecentCommits": "Recent commits",
   "gitStatusNoRecentCommits": "No commits yet",

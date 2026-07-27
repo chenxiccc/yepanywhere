@@ -674,6 +674,7 @@ function GitStatusContent({
       ) : tab === "commits" ? (
         <CommitBrowser
           projectId={projectId}
+          status={status}
           isWideScreen={isWideScreen}
           onBlameFile={handleBlameFile}
           t={t}

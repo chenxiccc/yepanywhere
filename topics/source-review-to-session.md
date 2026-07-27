@@ -19,7 +19,10 @@ Topic: source-review-to-session
 
 Status: **stages 1–3 implemented** (2026-07-26), including the P8 diff view
 mode. The pending set is browsable as a **Comments mode tab** (list, delete,
-jump-to-blame, submit) beside changes/commits/files. Design owner: graehl.
+jump-to-blame, submit) beside changes/commits/files. The first GitHub
+Desktop-inspired review-navigation slice is implemented (2026-07-27): Commits
+includes a shared dirty Working tree revision, source lists support keyboard
+traversal/search, and diff hunk navigation is symmetric. Design owner: graehl.
 
 Related topics: [selection-comment-ui](selection-comment-ui.md) (the
 quote-comment ancestor — but see the gesture difference below),
@@ -479,7 +482,7 @@ only simultaneous desktop panes become focused mobile navigation. — Revised
 2026-07-27; see
 [`docs/tactical/064-source-control-responsive-navigation.md`](../docs/tactical/064-source-control-responsive-navigation.md).
 
-### GitHub Desktop review grammar; operations stay options — proposal
+### GitHub Desktop review grammar; operations stay options
 
 GitHub Desktop is useful here as learned **review-navigation grammar**, not as
 the scope of a native git client. Its Changes and History views consistently
@@ -516,50 +519,56 @@ materially worse; then specify that operation's preconditions, failure
 feedback, and recovery before approval. Do not import a completeness bundle
 merely because users of a full git client may expect it.
 
-The convergence target is one **revision-detail model** with two entry points:
+The first convergence slice establishes one **revision-detail model** with two
+entry points:
 
 - **Changes remains the quick check.** It opens the Working tree's file/diff
-  detail immediately and stays the default while the candidate below is
-  evaluated. It must not become slower merely to make the two tabs look alike.
-- **Commits may gain a pinned Working tree revision above actual commits when
-  the tree is dirty.** Selecting it uses the same file rows, staged/unstaged
-  state, diff, comments, and `uncommitted` anchors as Changes. This is shared
-  behavior, not a second implementation styled to resemble it. A clean tree
-  starts with actual commits.
+  detail immediately and stays the default while the combined route is
+  evaluated. It did not become slower merely to make the two tabs look alike.
+- **Commits has a pinned Working tree revision above actual commits when the
+  tree is dirty.** Selecting it mounts the same `WorkingTreeBrowser` used by
+  Changes, so file merging, staged/unstaged state, diff, comments, and
+  `uncommitted` anchors have one implementation. A clean tree starts with
+  actual commits.
 - **Desktop keeps the existing master-detail progression:** revisions · files
   · diff. The compact Changes path may keep its direct files · diff form.
-- **Phone must drill in rather than append detail below history:** revisions →
+- **Phone drills in rather than appending detail below history:** revisions →
   selected revision's files → selected file's diff, with an explicit Back at
   each transition. The earlier unified experiment failed because Working tree
   detail appeared after the full commit stream; the repaired commit drill-in
-  is now the pattern the candidate must reuse.
+  is the pattern the shared Working tree revision now reuses.
 - **The default flip remains separately gated.** An evaluation build or
-  default-off option may expose the candidate while Changes remains the
-  landing. Commits becomes the default only after the dirty-tree route is
-  approved as useful on both mobile and desktop and Kyle gives the go-ahead.
-  Changes remains available after a flip.
+  default-off option is no longer needed merely to expose the combined route:
+  it lives in the existing Commits tab while Changes remains the landing.
+  Commits becomes the default only after the dirty-tree route is approved as
+  useful on both mobile and desktop and Kyle gives the go-ahead. Changes
+  remains available after a flip.
 
-The first review accelerators should be small, read-only, and shared by both
-entry points:
+The first review accelerators are small and read-only. Implemented items remain
+shared where their owning surface is shared; the rest stay proposals:
 
 1. **List and drill-in keys:** Up/Down moves the active revision or file
    selection, Enter opens its detail on a focused layout, and Escape returns
    one level or clears the active filter. `/` focuses search when focus is not
-   in an editor or input.
+   in an editor or input. — Implemented 2026-07-27. Enter remains native button
+   activation, and the visible `/` keycap teaches the browser-safe shortcut.
 2. **Symmetric hunk keys:** keep `n` for next hunk and add `p` for previous.
-   The visible toolbar remains the touch path; keyboard use is never required.
+   The visible previous/current/next toolbar remains the touch path; keyboard
+   use is never required. — Implemented 2026-07-27.
 3. **One accessible context menu:** right-click, long-press, the visible
    ellipsis, and Shift+F10/Menu all open the same read-only menu specified
-   below.
+   below. — Pending; a partial row-only menu would split one action model
+   across revisions, files, and diff lines.
 4. **Diff review controls:** retain Unified/Split and full context; consider
    “ignore whitespace” and incremental context expansion before adding more
-   permanent toolbar chrome. GitHub Desktop exposes these same review
+   permanent toolbar chrome. — Existing controls retained; new projections
+   pending. GitHub Desktop exposes these same review
    projections in its
    [change-review guide](https://docs.github.com/en/desktop/making-changes-in-a-branch/committing-and-reviewing-changes-to-your-project-in-github-desktop).
 5. **Focused-pane expansion before freeform layout controls:** a temporary
    expand/collapse action can use the otherwise idle desktop gutter while
    preserving the deliberate per-column content-width cap. Draggable splitters
-   are a later evidence-led choice, not part of the modest pass.
+   are a later evidence-led choice, not part of the modest pass. — Pending.
 
 Do **not** copy GitHub Desktop's accelerators literally. Its native application
 uses Command/Control+1 and +2 for Changes/History, Command/Control+L for the
@@ -579,7 +588,8 @@ YA could offer Shift-range selection on desktop and explicit “compare from/to�
 actions on touch, but must first define ancestor/merge behavior rather than
 pretending every chronological range is a simple linear diff.
 
-— Proposal, researched against GitHub Desktop
+— First slice implemented 2026-07-27; remaining options researched against
+GitHub Desktop
 [`57d0f812`](https://github.com/desktop/desktop/tree/57d0f8129656978e2b064f4c8d3d9fec7e2e21ee)
 and live YA desktop/phone captures (2026-07-27).
 

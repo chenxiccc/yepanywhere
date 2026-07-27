@@ -2,6 +2,7 @@ import type {
   GitCommitDetail,
   GitFileChange,
   GitRecentCommit,
+  GitStatusInfo,
 } from "@yep-anywhere/shared";
 import {
   useCallback,
@@ -17,15 +18,22 @@ import { Modal } from "../components/ui/Modal";
 import { useCommitReadWatermark } from "../hooks/useCommitReadWatermark";
 import { useCommitSearchIndex } from "../hooks/useCommitSearchIndex";
 import { useProjectReviewComments } from "../hooks/useProjectReviewComments";
+import {
+  handleSourceListKeyDown,
+  isEditableKeyboardTarget,
+  useSourceSearchShortcut,
+} from "../hooks/useSourceKeyboard";
 import { reflowCommitMessage } from "../lib/reflowCommitMessage";
 import {
   GitDiffModal,
   GitDiffPreview,
   type GitDiffPreviewHandle,
 } from "./GitStatusDiffPreview";
+import { WorkingTreeBrowser } from "./WorkingTreeBrowser";
 import type { TranslationFn } from "../i18n";
 
 const COMMIT_PAGE_SIZE = 50;
+const WORKING_TREE_KEY = "working-tree";
 
 /**
  * The responsive commit history: commits · changed files · diff. Wide screens
@@ -34,11 +42,14 @@ const COMMIT_PAGE_SIZE = 50;
  */
 export function CommitBrowser({
   projectId,
+  status,
   isWideScreen,
   onBlameFile,
   t,
 }: {
   projectId: string;
+  /** Supplies the pinned Working tree revision without a second git model. */
+  status?: GitStatusInfo;
   isWideScreen: boolean;
   /** Bridge a commit file to its blame-at-HEAD view (the files tab). */
   onBlameFile?: (path: string) => void;
@@ -49,7 +60,7 @@ export function CommitBrowser({
   const [loadingList, setLoadingList] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
 
-  const [selectedSha, setSelectedSha] = useState<string | null>(null);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [detail, setDetail] = useState<GitCommitDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
@@ -67,14 +78,27 @@ export function CommitBrowser({
     searchIndexRequested,
   );
   const displayedCommits = searchActive ? searchIndex.results : commits;
+  const selectedIsWorkingTree = selectedKey === WORKING_TREE_KEY;
+  const selectedSha =
+    selectedKey && !selectedIsWorkingTree ? selectedKey : null;
+  const hasWorkingTree = status?.isClean === false;
+  // If a live refresh cleans the tree while its comment editor is open, keep
+  // the selected revision mounted. Navigating away removes the now-clean row.
+  const showWorkingTreeRevision =
+    hasWorkingTree || selectedIsWorkingTree;
   const displayedKeys = useMemo(
-    () => displayedCommits.map((commit) => commit.hash),
-    [displayedCommits],
+    () => [
+      ...(showWorkingTreeRevision ? [WORKING_TREE_KEY] : []),
+      ...displayedCommits.map((commit) => commit.hash),
+    ],
+    [displayedCommits, showWorkingTreeRevision],
   );
   const browserRef = useRef<HTMLDivElement>(null);
   const detailColumnRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const mobileListScrollTopRef = useRef(0);
   const restoreMobileListScrollRef = useRef(false);
+  useSourceSearchShortcut(searchInputRef);
 
   const { pending } = useProjectReviewComments(projectId);
   const readState = useCommitReadWatermark(projectId);
@@ -91,6 +115,13 @@ export function CommitBrowser({
     }
     return counts;
   }, [pending]);
+  const workingTreeCommentCount = useMemo(
+    () =>
+      pending.filter(
+        (comment) => comment.anchor.revision.kind === "uncommitted",
+      ).length,
+    [pending],
+  );
   const fileCommentCount = useMemo(() => {
     const counts = new Map<string, number>();
     for (const comment of pending) {
@@ -113,7 +144,7 @@ export function CommitBrowser({
     setLoadingList(true);
     setListError(null);
     setCommits([]);
-    setSelectedSha(null);
+    setSelectedKey(null);
     api
       .getGitCommits(projectId, { limit: COMMIT_PAGE_SIZE })
       .then((res) => {
@@ -134,11 +165,12 @@ export function CommitBrowser({
     };
   }, [projectId, t]);
 
-  // Desktop opens the newest commit. Mobile starts on the revision list.
+  // Desktop opens the dirty Working tree first, else the newest commit.
+  // Mobile starts on the revision list and drills in only after activation.
   useEffect(() => {
     const first = displayedKeys[0];
     if (!isWideScreen || !first) return;
-    setSelectedSha((current) =>
+    setSelectedKey((current) =>
       current && displayedKeys.includes(current) ? current : first,
     );
   }, [displayedKeys, isWideScreen]);
@@ -168,7 +200,10 @@ export function CommitBrowser({
   useEffect(() => {
     if (!selectedSha) {
       setDetail(null);
+      setLoadingDetail(false);
+      setDetailError(null);
       setSelectedPath(null);
+      setMessageView(false);
       return;
     }
     let cancelled = false;
@@ -218,7 +253,7 @@ export function CommitBrowser({
   // Commit-jump selector: step to the adjacent shown commit (list is
   // newest-first, so previous index = newer). Usable at any width — the mobile
   // path to move between commits without returning to the list.
-  const selectedIndex = selectedSha ? displayedKeys.indexOf(selectedSha) : -1;
+  const selectedIndex = selectedKey ? displayedKeys.indexOf(selectedKey) : -1;
   const newerKey =
     selectedIndex > 0 ? displayedKeys[selectedIndex - 1] : undefined;
   const olderKey =
@@ -255,24 +290,24 @@ export function CommitBrowser({
 
   const closeMobileDetail = useCallback(() => {
     restoreMobileListScrollRef.current = true;
-    setSelectedSha(null);
+    setSelectedKey(null);
     setSelectedPath(null);
     setMessageView(false);
   }, []);
   useMobileCommitDetailHistory(
-    !isWideScreen && selectedSha !== null,
+    !isWideScreen && selectedKey !== null,
     closeMobileDetail,
   );
 
-  const openCommit = useCallback(
-    (sha: string) => {
+  const openRevision = useCallback(
+    (key: string) => {
       if (!isWideScreen) {
         const scroller = browserRef.current?.closest<HTMLElement>(
           ".page-scroll-container",
         );
         mobileListScrollTopRef.current = scroller?.scrollTop ?? 0;
       }
-      setSelectedSha(sha);
+      setSelectedKey(key);
     },
     [isWideScreen],
   );
@@ -289,37 +324,83 @@ export function CommitBrowser({
     closeMobileDetail();
   }, [closeMobileDetail]);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.key !== "Escape" ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        isEditableKeyboardTarget(event.target) ||
+        document.querySelector('[role="dialog"]')
+      ) {
+        return;
+      }
+      if (!isWideScreen && selectedKey) {
+        event.preventDefault();
+        handleMobileBack();
+        return;
+      }
+      if (searchQuery) {
+        event.preventDefault();
+        setSearchQuery("");
+        searchInputRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleMobileBack, isWideScreen, searchQuery, selectedKey]);
+
   useLayoutEffect(() => {
     if (isWideScreen) return;
     const scroller = browserRef.current?.closest<HTMLElement>(
       ".page-scroll-container",
     );
-    if (selectedSha) {
-      detailColumnRef.current?.scrollIntoView?.({ block: "start" });
+    if (selectedKey) {
+      const detailTarget =
+        detailColumnRef.current ??
+        browserRef.current?.querySelector<HTMLElement>(
+          ".working-tree-browser-history",
+        );
+      detailTarget?.scrollIntoView?.({ block: "start" });
       return;
     }
     if (restoreMobileListScrollRef.current && scroller) {
       restoreMobileListScrollRef.current = false;
       scroller.scrollTop = mobileListScrollTopRef.current;
     }
-  }, [isWideScreen, selectedSha]);
+  }, [isWideScreen, selectedKey]);
 
   return (
     <div className="commit-browser" ref={browserRef}>
       <div className="commit-browser-columns">
-        {(isWideScreen || !selectedSha) && (
+        {(isWideScreen || !selectedKey) && (
           <div className="commit-list-column">
-            <input
-              type="search"
-              className="source-search-input"
-              value={searchQuery}
-              placeholder={t("sourceSearchCommits")}
-              onFocus={() => setSearchIndexRequested(true)}
-              onChange={(event) => {
-                setSearchIndexRequested(true);
-                setSearchQuery(event.target.value);
-              }}
-            />
+            <div className="source-search-field">
+              <input
+                ref={searchInputRef}
+                type="search"
+                className="source-search-input"
+                value={searchQuery}
+                placeholder={t("sourceSearchCommits")}
+                aria-keyshortcuts="/"
+                onFocus={() => setSearchIndexRequested(true)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape" && searchQuery) {
+                    event.preventDefault();
+                    setSearchQuery("");
+                  }
+                }}
+                onChange={(event) => {
+                  setSearchIndexRequested(true);
+                  setSearchQuery(event.target.value);
+                }}
+              />
+              <kbd className="source-search-shortcut">
+                /
+              </kbd>
+            </div>
             {searchIndexRequested && searchIndex.indexing && (
               <div className="source-search-index-status">
                 {searchIndex.totalCount > 0
@@ -330,23 +411,75 @@ export function CommitBrowser({
                   : t("sourcePreparingCommitIndex")}
               </div>
             )}
-            {loadingList && !searchActive ? (
+            {loadingList && !searchActive && !showWorkingTreeRevision ? (
               <div className="git-diff-loading">{t("gitStatusLoading")}</div>
-            ) : listError && !searchActive ? (
+            ) : listError && !searchActive && !showWorkingTreeRevision ? (
               <div className="git-diff-error">{listError}</div>
             ) : searchActive &&
               searchIndex.indexing &&
-              displayedCommits.length === 0 ? (
+              displayedCommits.length === 0 &&
+              !showWorkingTreeRevision ? (
               <div className="git-diff-loading">{t("sourceSearching")}</div>
-            ) : searchActive && searchIndex.error ? (
+            ) : searchActive &&
+              searchIndex.error &&
+              !showWorkingTreeRevision ? (
               <div className="git-diff-error">{searchIndex.error}</div>
-            ) : displayedCommits.length === 0 ? (
+            ) : displayedCommits.length === 0 &&
+              !showWorkingTreeRevision ? (
               <div className="git-status-empty">
                 {searchActive ? t("sourceNoMatches") : t("sourceNoCommits")}
               </div>
             ) : (
               <>
-                <ol className="commit-list">
+                <ol
+                  className="commit-list"
+                  onKeyDown={handleSourceListKeyDown}
+                >
+                  {showWorkingTreeRevision && (
+                    <li className="commit-list-row commit-list-working-tree">
+                      <button
+                        type="button"
+                        className={`commit-list-item working-tree unread ${
+                          selectedIsWorkingTree ? "selected" : ""
+                        }`}
+                        data-source-list-item
+                        onFocus={() => {
+                          if (isWideScreen) setSelectedKey(WORKING_TREE_KEY);
+                        }}
+                        onClick={() => openRevision(WORKING_TREE_KEY)}
+                      >
+                        <span className="commit-subject-row">
+                          <span className="commit-subject">
+                            {t("sourceWorkingTree")}
+                          </span>
+                          {workingTreeCommentCount > 0 && (
+                            <span
+                              className="source-comment-badge"
+                              title={t("sourceCommentCount", {
+                                count: workingTreeCommentCount,
+                              })}
+                            >
+                              {workingTreeCommentCount}
+                            </span>
+                          )}
+                        </span>
+                        <span className="commit-meta">
+                          <span className="working-tree-label">
+                            {t("sourceUncommitted")}
+                          </span>
+                          <span>
+                            {t("sourceChangedFileCount", {
+                              count: status
+                                ? new Set(
+                                    status.files.map((file) => file.path),
+                                  ).size
+                                : 0,
+                            })}
+                          </span>
+                        </span>
+                      </button>
+                    </li>
+                  )}
                   {displayedCommits.map((commit) => {
                     const commentCount =
                       commentCountBySha.get(commit.hash) ?? 0;
@@ -356,9 +489,13 @@ export function CommitBrowser({
                         <button
                           type="button"
                           className={`commit-list-item ${
-                            selectedSha === commit.hash ? "selected" : ""
+                            selectedKey === commit.hash ? "selected" : ""
                           } ${read ? "read" : "unread"}`}
-                          onClick={() => openCommit(commit.hash)}
+                          data-source-list-item
+                          onFocus={() => {
+                            if (isWideScreen) setSelectedKey(commit.hash);
+                          }}
+                          onClick={() => openRevision(commit.hash)}
                         >
                           <span className="commit-subject-row">
                             <span
@@ -394,6 +531,9 @@ export function CommitBrowser({
                     );
                   })}
                 </ol>
+                {listError && (
+                  <div className="git-diff-error">{listError}</div>
+                )}
                 {hasMore && !searchActive && (
                   <button
                     type="button"
@@ -408,6 +548,26 @@ export function CommitBrowser({
           </div>
         )}
 
+        {selectedIsWorkingTree && status && (
+          <WorkingTreeBrowser
+            projectId={projectId}
+            status={status}
+            isWideScreen={isWideScreen}
+            embeddedInHistory
+            onBackToRevisions={!isWideScreen ? handleMobileBack : undefined}
+            revisionNavigation={
+              <RevisionJump
+                newerKey={newerKey}
+                olderKey={olderKey}
+                onSelect={setSelectedKey}
+                t={t}
+              />
+            }
+            onBlameFile={onBlameFile}
+            t={t}
+          />
+        )}
+
         {selectedSha && (
           <div className="commit-files-column" ref={detailColumnRef}>
             {!isWideScreen && (
@@ -420,39 +580,31 @@ export function CommitBrowser({
               </button>
             )}
             <div className="source-detail-banner">
-              <span className="source-detail-jump">
-                <button
-                  type="button"
-                  className="commit-jump-btn"
-                  title={t("sourceNewerCommit")}
-                  aria-label={t("sourceNewerCommit")}
-                  disabled={!newerKey}
-                  onClick={() => newerKey && setSelectedSha(newerKey)}
+              <RevisionJump
+                newerKey={newerKey}
+                olderKey={olderKey}
+                onSelect={setSelectedKey}
+                t={t}
+              />
+              <span className="source-detail-identity">
+                <span
+                  className="source-detail-subject"
+                  title={detail?.subject ?? selectedCommit?.subject}
                 >
-                  ↑
-                </button>
-                <button
-                  type="button"
-                  className="commit-jump-btn"
-                  title={t("sourceOlderCommit")}
-                  aria-label={t("sourceOlderCommit")}
-                  disabled={!olderKey}
-                  onClick={() => olderKey && setSelectedSha(olderKey)}
+                  {detail?.subject ?? selectedCommit?.subject ?? "…"}
+                </span>
+                <span
+                  className="source-detail-title"
+                  title={
+                    selectedCommit
+                      ? `${selectedCommit.hash}\n${formatCommitDateTime(
+                          selectedCommit.authorDate,
+                        )}`
+                      : (selectedSha ?? undefined)
+                  }
                 >
-                  ↓
-                </button>
-              </span>
-              <span
-                className="source-detail-title"
-                title={
-                  selectedCommit
-                    ? `${selectedCommit.hash}\n${formatCommitDateTime(
-                        selectedCommit.authorDate,
-                      )}`
-                    : (selectedSha ?? undefined)
-                }
-              >
-                {detail?.shortHash ?? selectedCommit?.shortHash ?? "…"}
+                  {detail?.shortHash ?? selectedCommit?.shortHash ?? "…"}
+                </span>
               </span>
               <CopyButton
                 value={selectedSha}
@@ -471,6 +623,9 @@ export function CommitBrowser({
                 }
               >
                 <EyeIcon />
+                <span className="source-detail-action-text">
+                  {t("sourceMarkReadToHere")}
+                </span>
               </button>
               <button
                 type="button"
@@ -484,6 +639,9 @@ export function CommitBrowser({
                 }
               >
                 <EyeIcon crossed />
+                <span className="source-detail-action-text">
+                  {t("sourceMarkUnreadSinceHere")}
+                </span>
               </button>
             </div>
             {loadingDetail ? (
@@ -506,7 +664,10 @@ export function CommitBrowser({
                       : t("sourceShowFullMessage")}
                   </button>
                 )}
-                <ul className="commit-file-list">
+                <ul
+                  className="commit-file-list"
+                  onKeyDown={handleSourceListKeyDown}
+                >
                   {selectedFiles.map((file) => {
                     const count = fileCommentCount.get(file.path) ?? 0;
                     const isFolder = file.path.endsWith("/");
@@ -518,6 +679,13 @@ export function CommitBrowser({
                             selectedPath === file.path ? "selected" : ""
                           }`}
                           disabled={isFolder}
+                          data-source-list-item
+                          onFocus={() => {
+                            if (isWideScreen && !isFolder) {
+                              setSelectedPath(file.path);
+                              setMessageView(false);
+                            }
+                          }}
                           onClick={() => {
                             if (isFolder) return;
                             if (
@@ -623,6 +791,49 @@ export function CommitBrowser({
           />
         )}
     </div>
+  );
+}
+
+function RevisionJump({
+  newerKey,
+  olderKey,
+  onSelect,
+  t,
+}: {
+  newerKey?: string;
+  olderKey?: string;
+  onSelect: (key: string) => void;
+  t: TranslationFn;
+}) {
+  return (
+    <span className="source-detail-jump">
+      <button
+        type="button"
+        className="commit-jump-btn"
+        title={t("sourceNewerCommit")}
+        aria-label={t("sourceNewerCommit")}
+        disabled={!newerKey}
+        onClick={() => newerKey && onSelect(newerKey)}
+      >
+        <span className="commit-jump-glyph" aria-hidden="true">
+          ↑
+        </span>
+        <span className="commit-jump-touch-label">{t("sourceNewerCommit")}</span>
+      </button>
+      <button
+        type="button"
+        className="commit-jump-btn"
+        title={t("sourceOlderCommit")}
+        aria-label={t("sourceOlderCommit")}
+        disabled={!olderKey}
+        onClick={() => olderKey && onSelect(olderKey)}
+      >
+        <span className="commit-jump-glyph" aria-hidden="true">
+          ↓
+        </span>
+        <span className="commit-jump-touch-label">{t("sourceOlderCommit")}</span>
+      </button>
+    </span>
   );
 }
 

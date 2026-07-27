@@ -20,6 +20,7 @@ import { api } from "../api/client";
 import { MarkdownPreview } from "../components/MarkdownPreview";
 import { Modal } from "../components/ui/Modal";
 import { useDiffViewMode } from "../hooks/useDiffViewMode";
+import { isEditableKeyboardTarget } from "../hooks/useSourceKeyboard";
 import { type DiffViewMode, resolveDiffViewMode } from "../lib/diffSideBySide";
 import { DiffCommentLayer } from "./DiffCommentLayer";
 import { SideBySideDiff } from "./SideBySideDiff";
@@ -46,6 +47,13 @@ interface DiffPaneHeader {
 export interface GitDiffPreviewHandle {
   /** Advance to the next rendered diff hunk, wrapping at the end. */
   jumpToNextHunk: () => boolean;
+  /** Move to the previous rendered diff hunk, wrapping at the start. */
+  jumpToPreviousHunk: () => boolean;
+}
+
+interface HunkNavigationHandlers {
+  next: () => boolean;
+  previous: () => boolean;
 }
 
 interface GitDiffPreviewProps extends GitDiffPreviewRetentionProps {
@@ -151,10 +159,10 @@ export const GitDiffPreview = forwardRef<
 ) {
   const fileName = file ? file.path.split("/").pop() || file.path : null;
   const bodyRef = useRef<HTMLDivElement | null>(null);
-  const jumpToNextHunkRef = useRef<(() => boolean) | null>(null);
-  const handleJumpHandlerChange = useCallback(
-    (handler: (() => boolean) | null) => {
-      jumpToNextHunkRef.current = handler;
+  const hunkNavigationRef = useRef<HunkNavigationHandlers | null>(null);
+  const handleHunkNavigationChange = useCallback(
+    (handlers: HunkNavigationHandlers | null) => {
+      hunkNavigationRef.current = handlers;
     },
     [],
   );
@@ -162,7 +170,9 @@ export const GitDiffPreview = forwardRef<
   useImperativeHandle(
     ref,
     () => ({
-      jumpToNextHunk: () => jumpToNextHunkRef.current?.() ?? false,
+      jumpToNextHunk: () => hunkNavigationRef.current?.next() ?? false,
+      jumpToPreviousHunk: () =>
+        hunkNavigationRef.current?.previous() ?? false,
     }),
     [],
   );
@@ -199,7 +209,7 @@ export const GitDiffPreview = forwardRef<
               path: file.path,
               actions: headerActions,
             }}
-            onJumpHandlerChange={handleJumpHandlerChange}
+            onHunkNavigationChange={handleHunkNavigationChange}
             onCommentEditorOpenChange={onCommentEditorOpenChange}
             t={t}
           />
@@ -271,7 +281,7 @@ export function GitDiffBody({
   retainedDiffView,
   onRetainDiffView,
   paneHeader,
-  onJumpHandlerChange,
+  onHunkNavigationChange,
   onCommentEditorOpenChange,
   t,
 }: {
@@ -280,7 +290,9 @@ export function GitDiffBody({
   projectId: string;
   source?: GitDiffSource;
   paneHeader?: DiffPaneHeader;
-  onJumpHandlerChange?: (handler: (() => boolean) | null) => void;
+  onHunkNavigationChange?: (
+    handlers: HunkNavigationHandlers | null,
+  ) => void;
   onCommentEditorOpenChange?: (open: boolean) => void;
   t: TranslationFn;
 } & GitDiffPreviewRetentionProps) {
@@ -392,7 +404,7 @@ export function GitDiffBody({
             retainedDiffView={retainedDiffView}
             onRetainDiffView={onRetainDiffView}
             paneHeader={paneHeader}
-            onJumpHandlerChange={onJumpHandlerChange}
+            onHunkNavigationChange={onHunkNavigationChange}
             onCommentEditorOpenChange={onCommentEditorOpenChange}
             t={t}
           />
@@ -411,7 +423,7 @@ function GitDiffContent({
   retainedDiffView,
   onRetainDiffView,
   paneHeader,
-  onJumpHandlerChange,
+  onHunkNavigationChange,
   onCommentEditorOpenChange,
   t,
 }: {
@@ -421,7 +433,9 @@ function GitDiffContent({
   source?: GitDiffSource;
   diffResult: GitDiffResult;
   paneHeader?: DiffPaneHeader;
-  onJumpHandlerChange?: (handler: (() => boolean) | null) => void;
+  onHunkNavigationChange?: (
+    handlers: HunkNavigationHandlers | null,
+  ) => void;
   onCommentEditorOpenChange?: (open: boolean) => void;
   t: TranslationFn;
 } & GitDiffPreviewRetentionProps) {
@@ -597,22 +611,33 @@ function GitDiffContent({
     );
   }, [renderedHunks]);
 
-  const jumpToNextHunk = useCallback((): boolean => {
-    const hunks = renderedHunks();
-    if (hunks.length === 0) return false;
-    const current =
-      hunkPositionRef.current.count === hunks.length
-        ? hunkPositionRef.current.index
-        : 0;
-    const next = (current + 1) % hunks.length;
-    const nextHunk = hunks[next];
-    if (!nextHunk || typeof nextHunk.scrollIntoView !== "function") {
-      return false;
-    }
-    nextHunk.scrollIntoView({ block: "start", behavior: "smooth" });
-    setHunkPosition({ index: next, count: hunks.length });
-    return true;
-  }, [renderedHunks]);
+  const jumpToHunk = useCallback(
+    (direction: -1 | 1): boolean => {
+      const hunks = renderedHunks();
+      if (hunks.length === 0) return false;
+      const current =
+        hunkPositionRef.current.count === hunks.length
+          ? hunkPositionRef.current.index
+          : 0;
+      const next = (current + direction + hunks.length) % hunks.length;
+      const nextHunk = hunks[next];
+      if (!nextHunk || typeof nextHunk.scrollIntoView !== "function") {
+        return false;
+      }
+      nextHunk.scrollIntoView({ block: "start", behavior: "smooth" });
+      setHunkPosition({ index: next, count: hunks.length });
+      return true;
+    },
+    [renderedHunks],
+  );
+  const jumpToNextHunk = useCallback(
+    () => jumpToHunk(1),
+    [jumpToHunk],
+  );
+  const jumpToPreviousHunk = useCallback(
+    () => jumpToHunk(-1),
+    [jumpToHunk],
+  );
 
   useEffect(() => {
     const content = contentRef.current;
@@ -639,45 +664,70 @@ function GitDiffContent({
   }, [updateHunkPosition]);
 
   useEffect(() => {
-    onJumpHandlerChange?.(jumpToNextHunk);
-    return () => onJumpHandlerChange?.(null);
-  }, [jumpToNextHunk, onJumpHandlerChange]);
+    onHunkNavigationChange?.({
+      next: jumpToNextHunk,
+      previous: jumpToPreviousHunk,
+    });
+    return () => onHunkNavigationChange?.(null);
+  }, [
+    jumpToNextHunk,
+    jumpToPreviousHunk,
+    onHunkNavigationChange,
+  ]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      const key = event.key.toLowerCase();
       if (
-        event.key.toLowerCase() !== "n" ||
+        (key !== "n" && key !== "p") ||
         event.altKey ||
         event.ctrlKey ||
         event.metaKey ||
-        isTypingTarget(event.target)
+        isEditableKeyboardTarget(event.target)
       ) {
         return;
       }
-      if (jumpToNextHunk()) event.preventDefault();
+      const moved =
+        key === "n" ? jumpToNextHunk() : jumpToPreviousHunk();
+      if (moved) event.preventDefault();
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [jumpToNextHunk]);
+  }, [jumpToNextHunk, jumpToPreviousHunk]);
 
-  const hunkButton =
+  const hunkNavigation =
     hunkPosition.count > 0 ? (
-      <button
-        type="button"
-        className="diff-hunk-indicator"
-        onClick={jumpToNextHunk}
-        title={t("sourceNextHunkShortcut")}
-      >
-        {t("sourceHunkPosition", {
-          current: hunkPosition.index + 1,
-          total: hunkPosition.count,
-        })}
-      </button>
+      <span className="diff-hunk-navigation">
+        <button
+          type="button"
+          className="diff-hunk-step"
+          onClick={jumpToPreviousHunk}
+          title={t("sourcePreviousHunkShortcut")}
+          aria-label={t("sourcePreviousHunkShortcut")}
+        >
+          ‹
+        </button>
+        <span className="diff-hunk-indicator">
+          {t("sourceHunkPosition", {
+            current: hunkPosition.index + 1,
+            total: hunkPosition.count,
+          })}
+        </span>
+        <button
+          type="button"
+          className="diff-hunk-step"
+          onClick={jumpToNextHunk}
+          title={t("sourceNextHunkShortcut")}
+          aria-label={t("sourceNextHunkShortcut")}
+        >
+          ›
+        </button>
+      </span>
     ) : null;
 
   const toolbarButtons = (
     <>
-      {hunkButton}
+      {hunkNavigation}
       {hasMarkdownPreview && (
         <button
           type="button"
@@ -790,16 +840,6 @@ function DiffPaneToolbar({
         <div className="git-diff-preview-header-actions">{actions}</div>
       )}
     </div>
-  );
-}
-
-function isTypingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return (
-    target.isContentEditable ||
-    target.tagName === "INPUT" ||
-    target.tagName === "TEXTAREA" ||
-    target.tagName === "SELECT"
   );
 }
 

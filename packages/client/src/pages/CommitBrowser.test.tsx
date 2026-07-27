@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import type { GitStatusInfo } from "@yep-anywhere/shared";
 import {
   act,
   cleanup,
@@ -22,6 +23,8 @@ vi.mock("../hooks/useRemoteBasePath", () => ({
 const getGitCommits = vi.fn();
 const getGitCommit = vi.fn();
 const getGitCommitDiff = vi.fn();
+const getGitDiff = vi.fn();
+const getGitUntrackedFolder = vi.fn();
 const getGitCommitSearchManifest = vi.fn();
 const getGitCommitSearchRecords = vi.fn();
 const listReviewComments = vi.fn();
@@ -31,6 +34,9 @@ vi.mock("../api/client", () => ({
     getGitCommits: (...args: unknown[]) => getGitCommits(...args),
     getGitCommit: (...args: unknown[]) => getGitCommit(...args),
     getGitCommitDiff: (...args: unknown[]) => getGitCommitDiff(...args),
+    getGitDiff: (...args: unknown[]) => getGitDiff(...args),
+    getGitUntrackedFolder: (...args: unknown[]) =>
+      getGitUntrackedFolder(...args),
     getGitCommitSearchManifest: (...args: unknown[]) =>
       getGitCommitSearchManifest(...args),
     getGitCommitSearchRecords: (...args: unknown[]) =>
@@ -44,6 +50,27 @@ import { CommitBrowser } from "./CommitBrowser";
 
 const SHA = "a".repeat(40);
 const t = (key: string) => key;
+
+function dirtyStatus(): GitStatusInfo {
+  return {
+    isGitRepo: true,
+    branch: "main",
+    upstream: "origin/main",
+    ahead: 0,
+    behind: 0,
+    isClean: false,
+    files: [
+      {
+        path: "src/dirty.ts",
+        status: "M",
+        staged: false,
+        linesAdded: 1,
+        linesDeleted: 0,
+      },
+    ],
+    recentCommits: [],
+  };
+}
 
 function installScrollIntoViewMock() {
   const original = Element.prototype.scrollIntoView;
@@ -69,16 +96,15 @@ function installScrollIntoViewMock() {
 }
 
 function primeApis() {
+  const firstCommit = {
+    hash: SHA,
+    shortHash: "aaaaaaa",
+    subject: "first commit",
+    authorName: "Dev",
+    authorDate: "2026-07-26T00:00:00Z",
+  };
   getGitCommits.mockResolvedValue({
-    commits: [
-      {
-        hash: SHA,
-        shortHash: "aaaaaaa",
-        subject: "first commit",
-        authorName: "Dev",
-        authorDate: "2026-07-26T00:00:00Z",
-      },
-    ],
+    commits: [firstCommit],
     hasMore: false,
   });
   getGitCommit.mockResolvedValue({
@@ -137,6 +163,138 @@ describe("CommitBrowser", () => {
         "p1",
         expect.objectContaining({ sha: SHA, path: "src/x.ts", status: "M" }),
       ),
+    );
+  });
+
+  it("pins the shared Working tree browser above commit history", async () => {
+    primeApis();
+    getGitDiff.mockResolvedValue({
+      diffHtml:
+        `<pre class="shiki"><code>` +
+        `<span class="line line-inserted" data-diff-line="0">+dirty</span>` +
+        `</code></pre>`,
+      structuredPatch: [
+        {
+          oldStart: 1,
+          oldLines: 0,
+          newStart: 1,
+          newLines: 1,
+          lines: ["+dirty"],
+        },
+      ],
+    });
+
+    render(
+      <MemoryRouter>
+        <CommitBrowser
+          projectId="p1"
+          status={dirtyStatus()}
+          isWideScreen={true}
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByTestId("working-tree-browser")).toBeDefined();
+    await waitFor(() =>
+      expect(getGitDiff).toHaveBeenCalledWith(
+        "p1",
+        expect.objectContaining({
+          path: "src/dirty.ts",
+          againstHead: true,
+        }),
+      ),
+    );
+    expect(getGitCommit).not.toHaveBeenCalled();
+
+    fireEvent.click(await screen.findByText("first commit"));
+    await waitFor(() => expect(getGitCommit).toHaveBeenCalledWith("p1", SHA));
+  });
+
+  it("uses arrow keys to move the focused revision selection", async () => {
+    const older = "b".repeat(40);
+    primeApis();
+    getGitCommits.mockResolvedValue({
+      commits: [
+        {
+          hash: SHA,
+          shortHash: "aaaaaaa",
+          subject: "first commit",
+          authorName: "Dev",
+          authorDate: "2026-07-26T00:00:00Z",
+        },
+        {
+          hash: older,
+          shortHash: "bbbbbbb",
+          subject: "older commit",
+          authorName: "Dev",
+          authorDate: "2026-07-25T00:00:00Z",
+        },
+      ],
+      hasMore: false,
+    });
+    getGitCommit.mockImplementation((_projectId: string, sha: string) =>
+      Promise.resolve({
+        hash: sha,
+        shortHash: sha.slice(0, 7),
+        subject: sha === SHA ? "first commit" : "older commit",
+        authorName: "Dev",
+        authorDate: "2026-07-26T00:00:00Z",
+        body: "",
+        files: [],
+      }),
+    );
+
+    render(
+      <MemoryRouter>
+        <CommitBrowser projectId="p1" isWideScreen={true} t={t} />
+      </MemoryRouter>,
+    );
+
+    const first = (await screen.findByText("first commit")).closest("button");
+    const second = screen.getByText("older commit").closest("button");
+    expect(first).not.toBeNull();
+    expect(second).not.toBeNull();
+    act(() => {
+      first?.focus();
+    });
+    getGitCommit.mockClear();
+    act(() => {
+      fireEvent.keyDown(first!, { key: "ArrowDown" });
+    });
+
+    expect(document.activeElement).toBe(second);
+    await waitFor(() =>
+      expect(getGitCommit).toHaveBeenCalledWith("p1", older),
+    );
+  });
+
+  it("focuses commit search with slash", async () => {
+    primeApis();
+    const focusHead = "f".repeat(40);
+    getGitCommitSearchManifest.mockResolvedValue({
+      head: focusHead,
+      commits: [],
+    });
+    getGitCommitSearchRecords.mockResolvedValue({ records: [] });
+    render(
+      <MemoryRouter>
+        <CommitBrowser projectId="p1" isWideScreen={false} t={t} />
+      </MemoryRouter>,
+    );
+
+    const search = await screen.findByPlaceholderText("sourceSearchCommits");
+    act(() => {
+      fireEvent.keyDown(window, { key: "/" });
+    });
+    expect(document.activeElement).toBe(search);
+    await waitFor(() =>
+      expect(getGitCommitSearchManifest).toHaveBeenCalledWith("p1"),
+    );
+    await waitFor(() =>
+      expect(
+        document.querySelector(".source-search-index-status"),
+      ).toBeNull(),
     );
   });
 
@@ -564,7 +722,7 @@ describe("CommitBrowser", () => {
     }
   });
 
-  it("uses n for next hunk except while typing", async () => {
+  it("uses n/p for symmetric hunk navigation except while typing", async () => {
     primeApis();
     getGitCommitDiff.mockResolvedValue({
       diffHtml:
@@ -609,6 +767,15 @@ describe("CommitBrowser", () => {
 
       fireEvent.keyDown(window, { key: "n" });
       expect(scrollIntoView.fn).toHaveBeenCalledTimes(1);
+      expect(scrollIntoView.fn.mock.instances[0]).toBe(
+        document.querySelectorAll(".line-hunk")[1],
+      );
+
+      fireEvent.keyDown(window, { key: "p" });
+      expect(scrollIntoView.fn).toHaveBeenCalledTimes(2);
+      expect(scrollIntoView.fn.mock.instances[1]).toBe(
+        document.querySelectorAll(".line-hunk")[0],
+      );
     } finally {
       scrollIntoView.restore();
     }
