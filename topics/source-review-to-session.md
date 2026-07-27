@@ -649,7 +649,10 @@ ownership boundary.
   comment. Nothing is committed — the prompt-side instruction, the capture
   channel, and the rendering are all open.
 
-## Staged plan
+## Staged plan (historical)
+
+Written before implementation; retained as the record of how the work
+was cut. Stages 1-3 and P8 are landed — see Status at top.
 
 1. **One-off line comment → new session.** Add click-a-diff-line → comment on
    the git-status/diff viewer — which is the working-tree diff, so this slice
@@ -669,7 +672,10 @@ ownership boundary.
    (orderable independently — it touches only the existing diff viewer),
    and the mobile back-swipe + commit-jump path.
 
-## Implementation sketch (implementer guide)
+## Implementation sketch (historical implementer guide)
+
+Verified against the tree at a682f7c3, before the implementation
+landed; it describes the pre-implementation tree, not current code.
 
 Verified against the tree at a682f7c3 (2026-07-26); file references are real,
 nothing below is built. This is the concrete shape for stages 1–2.

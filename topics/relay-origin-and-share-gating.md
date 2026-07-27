@@ -79,3 +79,16 @@ decryption key, encrypted request/response envelopes for the public share API,
 opaque manifest asset ids instead of raw paths, and snapshot assets encrypted at
 capture time. The browser fragment can keep secrets out of HTTP requests, but
 the design still has to account for hosted JavaScript integrity and revocation.
+
+## Source Control Is Not Shareable
+
+The source-control surface (git browse, blame, diffs, review comments,
+review submit) is security-sensitive to the same degree as issuing
+commands in a session: it reads arbitrary repository content and its
+submit path launches or steers agent sessions. It is never available
+through read-only share links, live or not. Structurally, public
+shares live in the secret-token `/public-api/shares` namespace while
+every source-control route mounts under authenticated `/api/projects/*`
+— keep that separation; a future share mode that wants any source view
+must be modeled as a new explicit capability, not reached by widening
+share rendering.
