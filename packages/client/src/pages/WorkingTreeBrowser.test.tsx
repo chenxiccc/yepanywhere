@@ -157,6 +157,12 @@ describe("WorkingTreeBrowser", () => {
       ),
     );
 
+    // The diff HTML and its delegated comment listener mount asynchronously.
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-diff-line="0"]'),
+      ).not.toBeNull(),
+    );
     fireEvent.click(document.querySelector('[data-diff-line="0"]')!);
     fireEvent.change(await screen.findByRole("textbox"), {
       target: { value: "please revisit" },
