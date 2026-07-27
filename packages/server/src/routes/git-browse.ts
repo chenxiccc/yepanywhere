@@ -1,15 +1,15 @@
 import { extname } from "node:path";
-import {
-  type GitCommitDetail,
-  type GitCommitListResult,
-  type GitCommitSearchManifest,
-  type GitCommitSearchRecord,
-  type GitCommitSearchRecordsResult,
-  type GitDiffResult,
-  type GitFileChange,
-  type GitFileListResult,
-  type GitRecentCommit,
-  type GitSearchResult,
+import type {
+  GitCommitDetail,
+  GitCommitListResult,
+  GitCommitSearchManifest,
+  GitCommitSearchRecord,
+  GitCommitSearchRecordsResult,
+  GitDiffResult,
+  GitFileChange,
+  GitFileListResult,
+  GitRecentCommit,
+  GitSearchResult,
 } from "@yep-anywhere/shared";
 import type { Context } from "hono";
 import { Hono } from "hono";
@@ -635,7 +635,10 @@ async function showCommitSearchRecords(
   return parseCommitSearchRecords(stdout);
 }
 
-async function singleCommitDeltaText(cwd: string, sha: string): Promise<string> {
+async function singleCommitDeltaText(
+  cwd: string,
+  sha: string,
+): Promise<string> {
   try {
     const records = await showCommitSearchRecords(cwd, [sha]);
     return records[0]?.deltaText ?? "";
