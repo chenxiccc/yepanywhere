@@ -1,13 +1,10 @@
 import type {
-  GitFileChange,
   GitIntegrationOptionReason,
   GitIntegrationOptionsResult,
   GitPullResult,
   GitPushResult,
   GitRemoteCheckResult,
-  GitRecentCommit,
   GitStatusInfo,
-  GitUntrackedFolderInfo,
 } from "@yep-anywhere/shared";
 import {
   GIT_STATUS_ENHANCED_CAPABILITY,
@@ -30,7 +27,6 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { PageHeader } from "../components/PageHeader";
 import { ProjectSelector } from "../components/ProjectSelector";
-import { Modal } from "../components/ui/Modal";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useGitStatus } from "../hooks/useGitStatus";
 import { useMediaQuery } from "../hooks/useMediaQuery";
@@ -62,30 +58,15 @@ import {
   subscribeRouteRetention,
   type RouteRetentionKeyInput,
 } from "../lib/routeRetention";
-import {
-  GitDiffModal,
-  GitDiffPreview,
-  type GitDiffPreviewHandle,
-  type GitDiffViewState,
-} from "./GitStatusDiffPreview";
 
 interface SourceControlRouteState {
-  selectedFileKey?: string | null;
-  statusRevision?: string | null;
   pageScrollTop?: number;
-  diffScrollTopByFileKey?: Record<string, number>;
-  diffViewByFileKey?: Record<string, GitDiffViewState>;
 }
 
 const SOURCE_CONTROL_ROUTE_TTL_MS = 5 * 60 * 1000;
 
 /** Source-control modes with a built body (topic: source-review-to-session). */
-const SOURCE_TABS: readonly SourceTab[] = [
-  "changes",
-  "commits",
-  "files",
-  "comments",
-];
+const SOURCE_TABS: readonly SourceTab[] = ["commits", "files", "comments"];
 
 /**
  * Source-mode tab state, derived from the `?tab=` URL param. Shared by the
@@ -99,19 +80,17 @@ function useSourceTab(): {
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get("tab");
   const tab: SourceTab =
-    tabParam === "commits"
-      ? "commits"
-      : tabParam === "files"
-        ? "files"
-        : tabParam === "comments"
-          ? "comments"
-          : "changes";
+    tabParam === "files"
+      ? "files"
+      : tabParam === "comments"
+        ? "comments"
+        : "commits";
   const setTab = useCallback(
     (next: SourceTab) => {
       setSearchParams(
         (prev) => {
           const params = new URLSearchParams(prev);
-          if (next === "changes") params.delete("tab");
+          if (next === "commits") params.delete("tab");
           else params.set("tab", next);
           return params;
         },
@@ -332,23 +311,30 @@ function useGitActions({
       remoteCheckResult?.checkedRemoteAt ??
       status?.checkedRemoteAt ??
       null,
-    message: getGitActionMessage({
-      remoteCheckResult,
-      remoteCheckError,
-      pullResult,
-      pullError,
-      pushResult,
-      pushError,
-      t,
-    }),
-    messageClass: getGitActionMessageClass({
-      remoteCheckResult,
-      remoteCheckError,
-      pullResult,
-      pullError,
-      pushResult,
-      pushError,
-    }),
+    checkFeedback:
+      remoteCheckError ?? getRemoteCheckMessage(remoteCheckResult, t),
+    checkFeedbackTone:
+      remoteCheckError || (remoteCheckResult?.status ?? "checked") !== "checked"
+        ? ("warning" as const)
+        : remoteCheckResult || status?.checkedRemoteAt
+          ? ("success" as const)
+          : null,
+    pullFeedback: pullError ?? getPullMessage(pullResult, t),
+    pullFeedbackTone:
+      pullError || (pullResult && pullResult.status !== "pulled")
+        ? ("warning" as const)
+        : pullResult
+          ? ("success" as const)
+          : null,
+    pushFeedback: pushError ?? getPushMessage(pushResult, t),
+    pushFeedbackTone:
+      pushError ||
+      (pushResult &&
+        !["pushed", "published", "up-to-date"].includes(pushResult.status))
+        ? ("warning" as const)
+        : pushResult
+          ? ("success" as const)
+          : null,
     divergedActionStatus,
     integrationOptions,
     isLoadingIntegrationOptions,
@@ -424,40 +410,49 @@ function SourceHeaderControls({
   const remoteTitle = t("gitStatusLastCheckedRemote", {
     time: formatRemoteCheckTime(gitActions.checkedRemoteAt, nowMs, t),
   });
+  const pullLabel = gitActions.isPulling
+    ? t("gitStatusPulling")
+    : t("gitStatusPull");
+  const pushLabel = gitActions.isPushing
+    ? t("gitStatusPushing")
+    : t("gitStatusPush");
+  const checkLabel = gitActions.isCheckingRemote
+    ? t("gitStatusCheckingRemote")
+    : t(compact ? "gitStatusCheckRemoteShort" : "gitStatusCheckRemote");
   return (
     <div className="repo-status-action-group">
       {gitActions.supportsPull && (
-        <button
-          type="button"
-          className="git-status-action-button"
+        <SourceActionButton
+          label={pullLabel}
+          feedback={gitActions.pullFeedback}
+          tone={gitActions.pullFeedbackTone}
           onClick={gitActions.handlePull}
           disabled={gitActions.isRunning}
-        >
-          {gitActions.isPulling ? t("gitStatusPulling") : t("gitStatusPull")}
-        </button>
+        />
       )}
       {gitActions.supportsPush && (
-        <button
-          type="button"
-          className="git-status-action-button"
+        <SourceActionButton
+          label={pushLabel}
+          feedback={gitActions.pushFeedback}
+          tone={gitActions.pushFeedbackTone}
           onClick={gitActions.handlePush}
           disabled={gitActions.isRunning}
-        >
-          {gitActions.isPushing ? t("gitStatusPushing") : t("gitStatusPush")}
-        </button>
+        />
       )}
       {gitActions.supportsRemoteCheck && (
-        <button
-          type="button"
-          className="git-status-action-button git-status-check-remote"
-          title={remoteTitle}
+        <SourceActionButton
+          label={checkLabel}
+          feedback={gitActions.checkFeedback}
+          tone={gitActions.checkFeedbackTone}
+          title={
+            gitActions.checkFeedback
+              ? `${gitActions.checkFeedback} · ${remoteTitle}`
+              : remoteTitle
+          }
+          className="git-status-check-remote"
           onClick={gitActions.handleCheckRemote}
           disabled={gitActions.isRunning}
-        >
-          {gitActions.isCheckingRemote
-            ? t("gitStatusCheckingRemote")
-            : t(compact ? "gitStatusCheckRemoteShort" : "gitStatusCheckRemote")}
-        </button>
+        />
       )}
       <button
         type="button"
@@ -469,6 +464,45 @@ function SourceHeaderControls({
           : t("sourceReviewStart")}
       </button>
     </div>
+  );
+}
+
+function SourceActionButton({
+  label,
+  feedback,
+  tone,
+  title,
+  className = "",
+  onClick,
+  disabled,
+}: {
+  label: string;
+  feedback: string;
+  tone: "success" | "warning" | null;
+  title?: string;
+  className?: string;
+  onClick: () => void;
+  disabled: boolean;
+}) {
+  const feedbackTitle = title ?? feedback;
+  return (
+    <button
+      type="button"
+      className={`git-status-action-button ${className} ${
+        tone ? `git-status-action-${tone}` : ""
+      }`}
+      title={feedbackTitle}
+      aria-label={feedback ? `${label}: ${feedback}` : label}
+      onClick={onClick}
+      disabled={disabled}
+    >
+      <span>{label}</span>
+      {tone && (
+        <span className="git-status-action-indicator" aria-hidden="true">
+          {tone === "success" ? "✓" : "!"}
+        </span>
+      )}
+    </button>
   );
 }
 
@@ -674,8 +708,6 @@ export function GitStatusPage() {
               projectName={project?.name}
               isWideScreen={isWideScreen}
               sourceControlsFitHeader={sourceControlsFitHeader}
-              routeRetentionKey={routeRetentionKey}
-              retainedRouteState={retainedRouteState}
               gitActions={gitActions}
               reviewComments={reviewComments}
               showReviewModal={showReviewModal}
@@ -709,8 +741,6 @@ function GitStatusContent({
   projectName,
   isWideScreen,
   sourceControlsFitHeader,
-  routeRetentionKey,
-  retainedRouteState,
   gitActions,
   reviewComments,
   showReviewModal,
@@ -723,8 +753,6 @@ function GitStatusContent({
   projectName?: string;
   isWideScreen: boolean;
   sourceControlsFitHeader: boolean;
-  routeRetentionKey: RouteRetentionKeyInput | null;
-  retainedRouteState: SourceControlRouteState | null;
   gitActions: GitActionState;
   reviewComments: ReturnType<typeof useProjectReviewComments>;
   showReviewModal: boolean;
@@ -750,178 +778,6 @@ function GitStatusContent({
     },
     [setSearchParams],
   );
-  const [selectedFileKey, setSelectedFileKey] = useState<string | null>(
-    () => retainedRouteState?.selectedFileKey ?? null,
-  );
-  const diffPreviewRef = useRef<GitDiffPreviewHandle>(null);
-  const [expandedUntrackedFolder, setExpandedUntrackedFolder] =
-    useState<GitFileChange | null>(null);
-  const [untrackedFolderCache, setUntrackedFolderCache] = useState<
-    Record<string, GitUntrackedFolderInfo>
-  >({});
-
-  const {
-    stagedFiles,
-    unstagedFiles,
-    untrackedFiles,
-    allFiles,
-    previewableFiles,
-  } = useMemo(() => {
-    const staged = status.files.filter((f) => f.staged);
-    const unstaged = status.files.filter((f) => !f.staged && f.status !== "?");
-    const untracked = status.files.filter((f) => f.status === "?");
-    const all = [...staged, ...unstaged, ...untracked];
-    return {
-      stagedFiles: staged,
-      unstagedFiles: unstaged,
-      untrackedFiles: untracked,
-      allFiles: all,
-      previewableFiles: all.filter((file) => !isUntrackedFolder(file)),
-    };
-  }, [status.files]);
-  const selectedFile = useMemo(
-    () =>
-      selectedFileKey
-        ? (previewableFiles.find(
-            (file) => gitFileKey(file) === selectedFileKey,
-          ) ?? null)
-        : null,
-    [previewableFiles, selectedFileKey],
-  );
-  const selectedPreviewFileKey = selectedFile ? gitFileKey(selectedFile) : null;
-  const retainedSelectedDiffScrollTop = selectedPreviewFileKey
-    ? retainedRouteState?.diffScrollTopByFileKey?.[selectedPreviewFileKey]
-    : undefined;
-  const retainedSelectedDiffView = selectedPreviewFileKey
-    ? retainedRouteState?.diffViewByFileKey?.[selectedPreviewFileKey]
-    : undefined;
-  const statusRevision = useMemo(() => getGitStatusRevision(status), [status]);
-  const previousStatusRevisionRef = useRef(statusRevision);
-
-  useEffect(() => {
-    if (previousStatusRevisionRef.current === statusRevision) {
-      return;
-    }
-    previousStatusRevisionRef.current = statusRevision;
-    setUntrackedFolderCache({});
-    setExpandedUntrackedFolder(null);
-  }, [statusRevision]);
-
-  const handleUntrackedFolderLoaded = useCallback(
-    (info: GitUntrackedFolderInfo) => {
-      setUntrackedFolderCache((current) => ({
-        ...current,
-        [info.path]: info,
-      }));
-    },
-    [],
-  );
-
-  const retainSelectedFileKey = useCallback(
-    (nextSelectedFileKey: string | null) => {
-      if (!routeRetentionKey) {
-        return;
-      }
-      updateSourceControlRouteState(routeRetentionKey, (current) => ({
-        ...current,
-        selectedFileKey: nextSelectedFileKey,
-        statusRevision,
-      }));
-    },
-    [routeRetentionKey, statusRevision],
-  );
-
-  const retainDiffScrollTop = useCallback(
-    (fileKey: string, scrollTop: number) => {
-      if (!routeRetentionKey) {
-        return;
-      }
-      updateSourceControlRouteState(routeRetentionKey, (current) => ({
-        ...current,
-        diffScrollTopByFileKey: {
-          ...current.diffScrollTopByFileKey,
-          [fileKey]: scrollTop,
-        },
-      }));
-    },
-    [routeRetentionKey],
-  );
-
-  const retainDiffView = useCallback(
-    (fileKey: string, view: GitDiffViewState) => {
-      if (!routeRetentionKey) {
-        return;
-      }
-      updateSourceControlRouteState(routeRetentionKey, (current) => ({
-        ...current,
-        diffViewByFileKey: {
-          ...current.diffViewByFileKey,
-          [fileKey]: {
-            ...current.diffViewByFileKey?.[fileKey],
-            ...view,
-          },
-        },
-      }));
-    },
-    [routeRetentionKey],
-  );
-
-  const handleFileClick = useCallback(
-    (file: GitFileChange) => {
-      if (isUntrackedFolder(file)) {
-        setExpandedUntrackedFolder(file);
-        return;
-      }
-
-      const nextSelectedFileKey = gitFileKey(file);
-      if (
-        isWideScreen &&
-        nextSelectedFileKey === selectedFileKey &&
-        diffPreviewRef.current?.jumpToNextHunk()
-      ) {
-        return;
-      }
-      setSelectedFileKey(nextSelectedFileKey);
-      retainSelectedFileKey(nextSelectedFileKey);
-    },
-    [isWideScreen, retainSelectedFileKey, selectedFileKey],
-  );
-
-  useEffect(() => {
-    const nextSelectedFileKey =
-      allFiles.length === 0
-        ? null
-        : selectedFileKey &&
-            previewableFiles.some(
-              (file) => gitFileKey(file) === selectedFileKey,
-            )
-          ? selectedFileKey
-          : isWideScreen && previewableFiles[0]
-            ? gitFileKey(previewableFiles[0])
-            : null;
-
-    if (nextSelectedFileKey !== selectedFileKey) {
-      setSelectedFileKey(nextSelectedFileKey);
-      retainSelectedFileKey(nextSelectedFileKey);
-    }
-  }, [
-    allFiles.length,
-    previewableFiles,
-    isWideScreen,
-    retainSelectedFileKey,
-    selectedFileKey,
-  ]);
-
-  useEffect(() => {
-    if (!routeRetentionKey) {
-      return;
-    }
-    updateSourceControlRouteState(routeRetentionKey, (current) => ({
-      ...current,
-      statusRevision,
-    }));
-  }, [routeRetentionKey, statusRevision]);
-
   return (
     <div className="git-status">
       {!sourceControlsFitHeader && (
@@ -955,6 +811,7 @@ function GitStatusContent({
       {tab === "commits" ? (
         <CommitBrowser
           projectId={projectId}
+          status={status}
           isWideScreen={isWideScreen}
           onBlameFile={handleBlameFile}
           t={t}
@@ -974,96 +831,17 @@ function GitStatusContent({
           initialPath={blameFile}
           t={t}
         />
-      ) : (
-        <>
-          <div className="git-status-workspace">
-            <div className="git-status-left-pane">
-              {gitActions.message && (
-                <div
-                  className={`git-status-action-message ${gitActions.messageClass}`}
-                >
-                  {gitActions.message}
-                </div>
-              )}
-              {gitActions.divergedActionStatus &&
-                gitActions.supportsIntegrationOptions && (
-                  <GitIntegrationOptionsPanel
-                    options={gitActions.integrationOptions}
-                    loading={gitActions.isLoadingIntegrationOptions}
-                    error={gitActions.integrationOptionsError}
-                    t={t}
-                  />
-                )}
+      ) : null}
 
-              <div className="git-status-file-pane">
-                {status.isClean ? (
-                  <div className="git-status-empty">
-                    {t("gitStatusWorkingTreeClean")}
-                  </div>
-                ) : (
-                  <>
-                    {stagedFiles.length > 0 && (
-                      <GitFileSection
-                        title={t("gitStatusStaged")}
-                        files={stagedFiles}
-                        selectedFile={selectedFile}
-                        onFileClick={handleFileClick}
-                      />
-                    )}
-                    {unstagedFiles.length > 0 && (
-                      <GitFileSection
-                        title={t("gitStatusChanges")}
-                        files={unstagedFiles}
-                        selectedFile={selectedFile}
-                        onFileClick={handleFileClick}
-                      />
-                    )}
-                    {untrackedFiles.length > 0 && (
-                      <GitFileSection
-                        title={t("gitStatusUntracked")}
-                        files={untrackedFiles}
-                        selectedFile={selectedFile}
-                        onFileClick={handleFileClick}
-                      />
-                    )}
-                  </>
-                )}
-              </div>
-
-              <GitRecentCommits commits={status.recentCommits ?? []} t={t} />
-            </div>
-
-            {isWideScreen && !status.isClean && (
-              <GitDiffPreview
-                ref={diffPreviewRef}
-                file={selectedFile}
-                fileKey={selectedPreviewFileKey}
-                projectId={projectId}
-                retainedScrollTop={retainedSelectedDiffScrollTop}
-                retainedDiffView={retainedSelectedDiffView}
-                onRetainScrollTop={retainDiffScrollTop}
-                onRetainDiffView={retainDiffView}
-                t={t}
-              />
-            )}
-          </div>
-
-          {!isWideScreen && selectedFile && (
-            <GitDiffModal
-              file={selectedFile}
-              fileKey={selectedPreviewFileKey ?? gitFileKey(selectedFile)}
-              projectId={projectId}
-              retainedDiffView={retainedSelectedDiffView}
-              onRetainDiffView={retainDiffView}
-              t={t}
-              onClose={() => {
-                setSelectedFileKey(null);
-                retainSelectedFileKey(null);
-              }}
-            />
-          )}
-        </>
-      )}
+      {gitActions.divergedActionStatus &&
+        gitActions.supportsIntegrationOptions && (
+          <GitIntegrationOptionsPanel
+            options={gitActions.integrationOptions}
+            loading={gitActions.isLoadingIntegrationOptions}
+            error={gitActions.integrationOptionsError}
+            t={t}
+          />
+        )}
 
       {showReviewModal && (
         <ReviewSubmitModal
@@ -1077,286 +855,8 @@ function GitStatusContent({
         />
       )}
 
-      {expandedUntrackedFolder && (
-        <UntrackedFolderModal
-          folder={expandedUntrackedFolder}
-          projectId={projectId}
-          cachedInfo={
-            untrackedFolderCache[expandedUntrackedFolder.path] ?? null
-          }
-          onLoaded={handleUntrackedFolderLoaded}
-          onClose={() => setExpandedUntrackedFolder(null)}
-          t={t}
-        />
-      )}
     </div>
   );
-}
-
-function GitFileSection({
-  title,
-  files,
-  selectedFile,
-  onFileClick,
-}: {
-  title: string;
-  files: GitFileChange[];
-  selectedFile: GitFileChange | null;
-  onFileClick: (file: GitFileChange) => void;
-}) {
-  return (
-    <div className="git-file-section">
-      <h3 className="git-file-section-title">
-        {title} <span className="git-file-count">({files.length})</span>
-      </h3>
-      <ul className="git-file-list">
-        {files.map((file) => (
-          <GitFileItem
-            key={`${file.path}-${file.staged}`}
-            file={file}
-            isSelected={
-              selectedFile
-                ? gitFileKey(file) === gitFileKey(selectedFile)
-                : false
-            }
-            onClick={onFileClick}
-          />
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function GitFileItem({
-  file,
-  isSelected,
-  onClick,
-}: {
-  file: GitFileChange;
-  isSelected: boolean;
-  onClick: (file: GitFileChange) => void;
-}) {
-  return (
-    <li className="git-file-list-row">
-      <button
-        type="button"
-        className={`git-file-item git-file-item-clickable ${isSelected ? "git-file-item-selected" : ""}`}
-        onClick={() => onClick(file)}
-        aria-current={isSelected ? "true" : undefined}
-      >
-        <span
-          className={`git-status-badge git-status-${file.status.toLowerCase()}`}
-        >
-          {file.status}
-        </span>
-        <span className="git-file-path">
-          {file.origPath ? (
-            <>
-              {file.origPath} → {file.path}
-            </>
-          ) : (
-            file.path
-          )}
-        </span>
-        {(file.linesAdded !== null || file.linesDeleted !== null) && (
-          <span className="git-line-counts">
-            {file.linesAdded !== null && (
-              <span className="git-lines-added">+{file.linesAdded}</span>
-            )}
-            {file.linesDeleted !== null && (
-              <span className="git-lines-deleted">-{file.linesDeleted}</span>
-            )}
-          </span>
-        )}
-      </button>
-    </li>
-  );
-}
-
-function GitRecentCommits({
-  commits,
-  t,
-}: {
-  commits: GitRecentCommit[];
-  t: (key: string, vars?: Record<string, string | number>) => string;
-}) {
-  return (
-    <section className="git-recent-commits" aria-labelledby="git-recent-title">
-      <h3 id="git-recent-title" className="git-recent-title">
-        {t("gitStatusRecentCommits")}
-      </h3>
-      {commits.length === 0 ? (
-        <div className="git-recent-empty">{t("gitStatusNoRecentCommits")}</div>
-      ) : (
-        <ol className="git-recent-list">
-          {commits.map((commit) => (
-            <li key={commit.hash} className="git-recent-item">
-              <span className="git-recent-subject">
-                {commit.subject || t("gitStatusUntitledCommit")}
-              </span>
-              <span className="git-recent-meta">
-                <span className="git-recent-hash">{commit.shortHash}</span>
-                <span className="git-recent-author">{commit.authorName}</span>
-                <time
-                  dateTime={commit.authorDate}
-                  title={formatCommitDateTime(commit.authorDate)}
-                >
-                  {formatCommitDate(commit.authorDate)}
-                </time>
-              </span>
-            </li>
-          ))}
-        </ol>
-      )}
-    </section>
-  );
-}
-
-function UntrackedFolderModal({
-  folder,
-  projectId,
-  cachedInfo,
-  onLoaded,
-  t,
-  onClose,
-}: {
-  folder: GitFileChange;
-  projectId: string;
-  cachedInfo: GitUntrackedFolderInfo | null;
-  onLoaded: (info: GitUntrackedFolderInfo) => void;
-  t: (key: string, vars?: Record<string, string | number>) => string;
-  onClose: () => void;
-}) {
-  const [info, setInfo] = useState<GitUntrackedFolderInfo | null>(cachedInfo);
-  const [loading, setLoading] = useState(!cachedInfo);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (cachedInfo) {
-      setInfo(cachedInfo);
-      setLoading(false);
-      setError(null);
-      return;
-    }
-
-    let cancelled = false;
-    setInfo(null);
-    setLoading(true);
-    setError(null);
-
-    api
-      .getGitUntrackedFolder(projectId, folder.path)
-      .then((result) => {
-        if (cancelled) return;
-        setInfo(result);
-        onLoaded(result);
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setError(
-            err instanceof Error
-              ? err.message
-              : t("gitStatusLoadUntrackedFolderFailed"),
-          );
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [cachedInfo, folder.path, onLoaded, projectId, t]);
-
-  return (
-    <Modal title={folder.path} onClose={onClose}>
-      <div className="git-untracked-folder-modal">
-        {loading && (
-          <div className="git-untracked-folder-status">
-            {t("gitStatusLoading")}
-          </div>
-        )}
-        {!loading && error && (
-          <div className="git-untracked-folder-status git-untracked-folder-error">
-            {error}
-          </div>
-        )}
-        {!loading && !error && info && (
-          <>
-            <div className="git-untracked-folder-summary">
-              {info.truncated
-                ? t("gitStatusUntrackedFolderCountTruncated", {
-                    count: info.files.length,
-                  })
-                : t("gitStatusUntrackedFolderCount", {
-                    count: info.files.length,
-                  })}
-            </div>
-            {info.files.length === 0 ? (
-              <div className="git-untracked-folder-status">
-                {t("gitStatusUntrackedFolderEmpty")}
-              </div>
-            ) : (
-              <ul className="git-untracked-folder-list">
-                {info.files.map((path) => (
-                  <li key={path} className="git-untracked-folder-item">
-                    <span className="git-status-badge git-status-?">?</span>
-                    <span className="git-file-path">{path}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </>
-        )}
-      </div>
-    </Modal>
-  );
-}
-
-function gitFileKey(file: GitFileChange): string {
-  return `${file.path}\0${file.staged ? "1" : "0"}\0${file.status}`;
-}
-
-function isUntrackedFolder(file: GitFileChange): boolean {
-  return file.status === "?" && !file.staged && file.path.endsWith("/");
-}
-
-function getGitStatusRevision(status: GitStatusInfo): string {
-  return JSON.stringify({
-    branch: status.branch,
-    upstream: status.upstream,
-    ahead: status.ahead,
-    behind: status.behind,
-    clean: status.isClean,
-    files: status.files.map(gitFileKey),
-    recent: (status.recentCommits ?? []).map((commit) => commit.hash),
-    checkedRemoteAt: status.checkedRemoteAt ?? null,
-  });
-}
-
-function formatCommitDate(value: string): string {
-  const timestamp = Date.parse(value);
-  if (!Number.isFinite(timestamp)) {
-    return value;
-  }
-  return new Date(timestamp).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-  });
-}
-
-function formatCommitDateTime(value: string): string {
-  const timestamp = Date.parse(value);
-  if (!Number.isFinite(timestamp)) {
-    return value;
-  }
-  return new Date(timestamp).toLocaleString(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
 }
 
 function formatRemoteCheckTime(
@@ -1626,79 +1126,4 @@ function getIntegrationUnavailableReason(
     default:
       return t("gitStatusAutoReasonStatusUnavailable");
   }
-}
-
-function getGitActionMessage({
-  remoteCheckResult,
-  remoteCheckError,
-  pullResult,
-  pullError,
-  pushResult,
-  pushError,
-  t,
-}: {
-  remoteCheckResult: GitRemoteCheckResult | null;
-  remoteCheckError: string | null;
-  pullResult: GitPullResult | null;
-  pullError: string | null;
-  pushResult: GitPushResult | null;
-  pushError: string | null;
-  t: (key: string, vars?: Record<string, string | number>) => string;
-}): string {
-  if (remoteCheckError) {
-    return remoteCheckError;
-  }
-  if (pullError) {
-    return pullError;
-  }
-  if (pushError) {
-    return pushError;
-  }
-  if (remoteCheckResult) {
-    return getRemoteCheckMessage(remoteCheckResult, t);
-  }
-  if (pullResult) {
-    return getPullMessage(pullResult, t);
-  }
-  if (pushResult) {
-    return getPushMessage(pushResult, t);
-  }
-  return "";
-}
-
-function getGitActionMessageClass({
-  remoteCheckResult,
-  remoteCheckError,
-  pullResult,
-  pullError,
-  pushResult,
-  pushError,
-}: {
-  remoteCheckResult: GitRemoteCheckResult | null;
-  remoteCheckError: string | null;
-  pullResult: GitPullResult | null;
-  pullError: string | null;
-  pushResult: GitPushResult | null;
-  pushError: string | null;
-}): string {
-  if (
-    remoteCheckResult?.status === "checked" ||
-    pullResult?.status === "pulled" ||
-    pushResult?.status === "pushed" ||
-    pushResult?.status === "published" ||
-    pushResult?.status === "up-to-date"
-  ) {
-    return "git-status-action-message-success";
-  }
-  if (
-    remoteCheckResult ||
-    remoteCheckError ||
-    pullResult ||
-    pullError ||
-    pushResult ||
-    pushError
-  ) {
-    return "git-status-action-message-warning";
-  }
-  return "";
 }

@@ -6507,6 +6507,16 @@ pre.code-highlighter-plain,
   cursor: default;
 }
 
+.source-detail-icon-action {
+  width: 28px;
+  min-width: 28px;
+  padding-inline: 0;
+}
+
+.source-detail-icon-action svg {
+  display: block;
+}
+
 /* Newer/older jump: glyph-only, adjacent, at the banner's left edge (closest
    to the commit list). Full phrasing is the button title. */
 .source-detail-jump {
@@ -6555,9 +6565,40 @@ pre.code-highlighter-plain,
   background: var(--bg-hover, rgba(255, 255, 255, 0.05));
 }
 
+.commit-file-item:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
 .commit-list-item.selected,
 .commit-file-item.selected {
   background: var(--bg-selected, rgba(56, 139, 253, 0.15));
+}
+
+.commit-list-item.working-tree {
+  border-left: 2px solid var(--warning-color);
+  background: color-mix(in srgb, var(--warning-color) 6%, transparent);
+}
+
+.commit-list-item.working-tree.selected {
+  background: color-mix(in srgb, var(--warning-color) 13%, transparent);
+}
+
+.working-tree-label {
+  color: var(--warning-color);
+  font-weight: 600;
+}
+
+.worktree-file-state {
+  flex-shrink: 0;
+  padding: 1px 5px;
+  color: var(--text-secondary, #8b949e);
+  background: var(--bg-tertiary, rgba(255, 255, 255, 0.05));
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+  border-radius: 999px;
+  font-size: 0.66rem;
+  line-height: 1.25;
+  white-space: nowrap;
 }
 
 /* Read watermark: unread (newer than the mark) reads bold, read (at/older)

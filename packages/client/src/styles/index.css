@@ -19279,6 +19279,9 @@ body:has(.session-page)
 }
 
 .git-status-action-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
   padding: 0.25rem 0.55rem;
   color: var(--text-primary);
   background: var(--bg-primary);
@@ -19286,6 +19289,7 @@ body:has(.session-page)
   border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 0.78rem;
+  white-space: nowrap;
 }
 
 .git-status-action-button:hover:not(:disabled) {
@@ -19295,6 +19299,20 @@ body:has(.session-page)
 .git-status-action-button:disabled {
   cursor: default;
   opacity: 0.65;
+}
+
+.git-status-action-indicator {
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.git-status-action-success .git-status-action-indicator {
+  color: var(--success-color);
+}
+
+.git-status-action-warning .git-status-action-indicator {
+  color: var(--warning-color);
 }
 
 .git-status-action-message {

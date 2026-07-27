@@ -2,6 +2,8 @@ import type {
   GitCommitDetail,
   GitFileChange,
   GitRecentCommit,
+  GitStatusInfo,
+  GitUntrackedFolderInfo,
 } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
@@ -22,21 +24,27 @@ type TranslationFn = (
 ) => string;
 
 const COMMIT_PAGE_SIZE = 50;
+const WORKING_TREE_KEY = "working-tree";
+
+type WorktreeState = "staged" | "unstaged" | "both" | "untracked";
+type WorktreeFileChange = GitFileChange & { worktreeState: WorktreeState };
 
 /**
- * The multipane commit browser (topic: source-review-to-session, stage 3):
- * commits · changed files · diff. The diff column reuses the working-tree
- * diff+comment stack ({@link GitDiffPreview}) with a `commit` source, so a
- * comment left on a commit line flows through the same review accumulator with
- * a `sha` anchor. Read-only: no checkout, just browse and comment.
+ * The multipane source history: revisions · changed files · diff. A dirty
+ * worktree is the first synthetic revision and uses the same file, diff, and
+ * comment stack as real commits. Its comments remain `uncommitted`; real
+ * commit comments carry the selected SHA.
  */
 export function CommitBrowser({
   projectId,
+  status,
   isWideScreen,
   onBlameFile,
   t,
 }: {
   projectId: string;
+  /** Current status supplies the synthetic working-tree revision. */
+  status?: GitStatusInfo;
   isWideScreen: boolean;
   /** Bridge a commit file to its blame-at-HEAD view (the files tab). */
   onBlameFile?: (path: string) => void;
@@ -47,7 +55,7 @@ export function CommitBrowser({
   const [loadingList, setLoadingList] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
 
-  const [selectedSha, setSelectedSha] = useState<string | null>(null);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [detail, setDetail] = useState<GitCommitDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
@@ -65,6 +73,67 @@ export function CommitBrowser({
     searchIndexRequested,
   );
   const displayedCommits = searchActive ? searchIndex.results : commits;
+  const [expandedUntrackedFolders, setExpandedUntrackedFolders] = useState<
+    Record<string, GitUntrackedFolderInfo>
+  >({});
+  const untrackedFolderKey = useMemo(
+    () =>
+      (status?.files ?? [])
+        .filter((file) => file.status === "?" && file.path.endsWith("/"))
+        .map((file) => file.path)
+        .join("\0"),
+    [status?.files],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    setExpandedUntrackedFolders({});
+    for (const path of untrackedFolderKey
+      ? untrackedFolderKey.split("\0")
+      : []) {
+      api
+        .getGitUntrackedFolder(projectId, path)
+        .then((info) => {
+          if (cancelled) return;
+          setExpandedUntrackedFolders((current) => ({
+            ...current,
+            [path]: info,
+          }));
+        })
+        .catch(() => {
+          // Keep the compact folder row visible; it stays non-previewable.
+        });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, untrackedFolderKey]);
+
+  const workingTreeFiles = useMemo(
+    () =>
+      mergeWorkingTreeFiles(
+        expandUntrackedFolders(
+          status?.files ?? [],
+          expandedUntrackedFolders,
+        ),
+      ),
+    [expandedUntrackedFolders, status?.files],
+  );
+  const previewableWorkingTreeFiles = useMemo(
+    () => workingTreeFiles.filter((file) => !file.path.endsWith("/")),
+    [workingTreeFiles],
+  );
+  const hasWorkingTree = status?.isClean === false;
+  const displayedKeys = useMemo(
+    () => [
+      ...(hasWorkingTree ? [WORKING_TREE_KEY] : []),
+      ...displayedCommits.map((commit) => commit.hash),
+    ],
+    [displayedCommits, hasWorkingTree],
+  );
+  const selectedSha =
+    selectedKey && selectedKey !== WORKING_TREE_KEY ? selectedKey : null;
+  const selectedIsWorkingTree = selectedKey === WORKING_TREE_KEY;
 
   const { pending } = useProjectReviewComments(projectId);
   const readState = useCommitReadWatermark(projectId);
@@ -81,14 +150,21 @@ export function CommitBrowser({
     }
     return counts;
   }, [pending]);
+  const workingTreeCommentCount = useMemo(
+    () =>
+      pending.filter(
+        (comment) => comment.anchor.revision.kind === "uncommitted",
+      ).length,
+    [pending],
+  );
   const fileCommentCount = useMemo(() => {
     const counts = new Map<string, number>();
-    if (!selectedSha) return counts;
     for (const comment of pending) {
-      if (
-        comment.anchor.revision.kind === "sha" &&
-        comment.anchor.revision.sha === selectedSha
-      ) {
+      const matchesRevision = selectedIsWorkingTree
+        ? comment.anchor.revision.kind === "uncommitted"
+        : comment.anchor.revision.kind === "sha" &&
+          comment.anchor.revision.sha === selectedSha;
+      if (matchesRevision) {
         counts.set(
           comment.anchor.path,
           (counts.get(comment.anchor.path) ?? 0) + 1,
@@ -96,7 +172,7 @@ export function CommitBrowser({
       }
     }
     return counts;
-  }, [pending, selectedSha]);
+  }, [pending, selectedIsWorkingTree, selectedSha]);
 
   // Load the first page of commits when the project changes.
   useEffect(() => {
@@ -104,7 +180,7 @@ export function CommitBrowser({
     setLoadingList(true);
     setListError(null);
     setCommits([]);
-    setSelectedSha(null);
+    setSelectedKey(null);
     api
       .getGitCommits(projectId, { limit: COMMIT_PAGE_SIZE })
       .then((res) => {
@@ -125,17 +201,15 @@ export function CommitBrowser({
     };
   }, [projectId, t]);
 
-  // Auto-select the newest shown commit on wide screens (mobile starts on
-  // the list). Replace a selection filtered out by a new search query.
+  // Desktop opens the dirty working tree first, else the newest commit.
+  // Mobile starts on the revision list.
   useEffect(() => {
-    const first = displayedCommits[0];
+    const first = displayedKeys[0];
     if (!isWideScreen || !first) return;
-    setSelectedSha((current) =>
-      current && displayedCommits.some((commit) => commit.hash === current)
-        ? current
-        : first.hash,
+    setSelectedKey((current) =>
+      current && displayedKeys.includes(current) ? current : first,
     );
-  }, [isWideScreen, displayedCommits]);
+  }, [displayedKeys, isWideScreen]);
 
   const loadMore = useCallback(async () => {
     try {
@@ -152,6 +226,14 @@ export function CommitBrowser({
 
   // Load the selected commit's changed-file list.
   useEffect(() => {
+    if (selectedIsWorkingTree) {
+      setDetail(null);
+      setLoadingDetail(false);
+      setDetailError(null);
+      setSelectedPath(null);
+      setMessageView(false);
+      return;
+    }
     if (!selectedSha) {
       setDetail(null);
       setSelectedPath(null);
@@ -180,41 +262,57 @@ export function CommitBrowser({
     return () => {
       cancelled = true;
     };
-  }, [projectId, selectedSha, t]);
+  }, [projectId, selectedIsWorkingTree, selectedSha, t]);
+
+  const selectedFiles = selectedIsWorkingTree
+    ? workingTreeFiles
+    : (detail?.files ?? []);
 
   // Auto-select the first changed file on wide screens.
   useEffect(() => {
-    if (isWideScreen && selectedPath === null && detail?.files[0]) {
-      setSelectedPath(detail.files[0].path);
+    const firstPreviewable = selectedIsWorkingTree
+      ? previewableWorkingTreeFiles[0]
+      : selectedFiles[0];
+    if (isWideScreen && selectedPath === null && firstPreviewable) {
+      setSelectedPath(firstPreviewable.path);
     }
-  }, [isWideScreen, selectedPath, detail]);
+  }, [
+    isWideScreen,
+    previewableWorkingTreeFiles,
+    selectedFiles,
+    selectedIsWorkingTree,
+    selectedPath,
+  ]);
 
   const selectedFile: GitFileChange | null =
-    detail && selectedPath
-      ? (detail.files.find((f) => f.path === selectedPath) ?? null)
+    selectedPath
+      ? (selectedFiles.find((f) => f.path === selectedPath) ?? null)
       : null;
-  const source = selectedSha
-    ? ({ kind: "commit", sha: selectedSha } as const)
-    : undefined;
+  const source = selectedIsWorkingTree
+    ? ({ kind: "working-tree-history" } as const)
+    : selectedSha
+      ? ({ kind: "commit", sha: selectedSha } as const)
+      : undefined;
   const diffFileKey =
-    selectedSha && selectedFile ? `${selectedSha}:${selectedFile.path}` : null;
+    selectedKey && selectedFile
+      ? `${selectedKey}:${selectedFile.path}`
+      : null;
 
   // Commit-jump selector: step to the adjacent shown commit (list is
   // newest-first, so previous index = newer). Usable at any width — the mobile
   // path to move between commits without returning to the list.
-  const selectedIndex = displayedCommits.findIndex(
-    (commit) => commit.hash === selectedSha,
-  );
-  const newerCommit =
-    selectedIndex > 0 ? displayedCommits[selectedIndex - 1] : undefined;
-  const olderCommit =
-    selectedIndex >= 0 && selectedIndex < displayedCommits.length - 1
-      ? displayedCommits[selectedIndex + 1]
+  const selectedIndex = selectedKey ? displayedKeys.indexOf(selectedKey) : -1;
+  const newerKey =
+    selectedIndex > 0 ? displayedKeys[selectedIndex - 1] : undefined;
+  const olderKey =
+    selectedIndex >= 0 && selectedIndex < displayedKeys.length - 1
+      ? displayedKeys[selectedIndex + 1]
       : undefined;
   // The selected commit from the loaded slice, for its author time (read
   // actions) without waiting on the detail fetch.
-  const selectedCommit =
-    selectedIndex >= 0 ? displayedCommits[selectedIndex] : undefined;
+  const selectedCommit = selectedSha
+    ? displayedCommits.find((commit) => commit.hash === selectedSha)
+    : undefined;
 
   // Selected-file actions, shown in the diff pane header (the file banner)
   // instead of on every hovered row.
@@ -263,7 +361,7 @@ export function CommitBrowser({
                 : t("sourcePreparingCommitIndex")}
             </div>
           )}
-          {loadingList && !searchActive ? (
+          {loadingList && !searchActive && !hasWorkingTree ? (
             <div className="git-diff-loading">{t("gitStatusLoading")}</div>
           ) : listError && !searchActive ? (
             <div className="git-diff-error">{listError}</div>
@@ -273,13 +371,50 @@ export function CommitBrowser({
             <div className="git-diff-loading">{t("sourceSearching")}</div>
           ) : searchActive && searchIndex.error ? (
             <div className="git-diff-error">{searchIndex.error}</div>
-          ) : displayedCommits.length === 0 ? (
+          ) : displayedCommits.length === 0 && !hasWorkingTree ? (
             <div className="git-status-empty">
               {searchActive ? t("sourceNoMatches") : t("sourceNoCommits")}
             </div>
           ) : (
             <>
               <ol className="commit-list">
+                {hasWorkingTree && (
+                  <li className="commit-list-row commit-list-working-tree">
+                    <button
+                      type="button"
+                      className={`commit-list-item working-tree unread ${
+                        selectedIsWorkingTree ? "selected" : ""
+                      }`}
+                      onClick={() => setSelectedKey(WORKING_TREE_KEY)}
+                    >
+                      <span className="commit-subject-row">
+                        <span className="commit-subject">
+                          {t("sourceWorkingTree")}
+                        </span>
+                        {workingTreeCommentCount > 0 && (
+                          <span
+                            className="source-comment-badge"
+                            title={t("sourceCommentCount", {
+                              count: workingTreeCommentCount,
+                            })}
+                          >
+                            {workingTreeCommentCount}
+                          </span>
+                        )}
+                      </span>
+                      <span className="commit-meta">
+                        <span className="working-tree-label">
+                          {t("sourceUncommitted")}
+                        </span>
+                        <span>
+                          {t("sourceChangedFileCount", {
+                            count: workingTreeFiles.length,
+                          })}
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                )}
                 {displayedCommits.map((commit) => {
                   const commentCount = commentCountBySha.get(commit.hash) ?? 0;
                   const read = readState.isRead(commit.authorDate);
@@ -288,9 +423,9 @@ export function CommitBrowser({
                       <button
                         type="button"
                         className={`commit-list-item ${
-                          selectedSha === commit.hash ? "selected" : ""
+                          selectedKey === commit.hash ? "selected" : ""
                         } ${read ? "read" : "unread"}`}
-                        onClick={() => setSelectedSha(commit.hash)}
+                        onClick={() => setSelectedKey(commit.hash)}
                       >
                         <span className="commit-subject-row">
                           <span
@@ -339,7 +474,7 @@ export function CommitBrowser({
           )}
         </div>
 
-        {selectedSha && (
+        {selectedKey && (
           <div className="commit-files-column">
             <div className="source-detail-banner">
               <span className="source-detail-jump">
@@ -348,10 +483,8 @@ export function CommitBrowser({
                   className="commit-jump-btn"
                   title={t("sourceNewerCommit")}
                   aria-label={t("sourceNewerCommit")}
-                  disabled={!newerCommit}
-                  onClick={() =>
-                    newerCommit && setSelectedSha(newerCommit.hash)
-                  }
+                  disabled={!newerKey}
+                  onClick={() => newerKey && setSelectedKey(newerKey)}
                 >
                   ↑
                 </button>
@@ -360,10 +493,8 @@ export function CommitBrowser({
                   className="commit-jump-btn"
                   title={t("sourceOlderCommit")}
                   aria-label={t("sourceOlderCommit")}
-                  disabled={!olderCommit}
-                  onClick={() =>
-                    olderCommit && setSelectedSha(olderCommit.hash)
-                  }
+                  disabled={!olderKey}
+                  onClick={() => olderKey && setSelectedKey(olderKey)}
                 >
                   ↓
                 </button>
@@ -375,46 +506,58 @@ export function CommitBrowser({
                     ? `${selectedCommit.hash}\n${formatCommitDateTime(
                         selectedCommit.authorDate,
                       )}`
-                    : (selectedSha ?? undefined)
+                    : selectedIsWorkingTree
+                      ? t("sourceWorkingTreeDescription")
+                      : (selectedSha ?? undefined)
                 }
               >
-                {detail?.shortHash ?? selectedCommit?.shortHash ?? "…"}
+                {selectedIsWorkingTree
+                  ? t("sourceWorkingTree")
+                  : (detail?.shortHash ?? selectedCommit?.shortHash ?? "…")}
               </span>
-              <CopyButton
-                value={selectedSha ?? ""}
-                title={t("sourceCopyCommitHash")}
-                className="source-detail-action"
-              />
-              <button
-                type="button"
-                className="source-detail-action"
-                disabled={!selectedCommit}
-                onClick={() =>
-                  selectedCommit &&
-                  readState.markReadTo(selectedCommit.authorDate)
-                }
-              >
-                {t("sourceMarkReadToHere")}
-              </button>
-              <button
-                type="button"
-                className="source-detail-action"
-                disabled={!selectedCommit}
-                onClick={() =>
-                  selectedCommit &&
-                  readState.markUnreadSince(selectedCommit.authorDate)
-                }
-              >
-                {t("sourceMarkUnreadSinceHere")}
-              </button>
+              {!selectedIsWorkingTree && (
+                <>
+                  <CopyButton
+                    value={selectedSha ?? ""}
+                    title={t("sourceCopyCommitHash")}
+                    className="source-detail-action"
+                  />
+                  <button
+                    type="button"
+                    className="source-detail-action source-detail-icon-action"
+                    title={t("sourceMarkReadToHere")}
+                    aria-label={t("sourceMarkReadToHere")}
+                    disabled={!selectedCommit}
+                    onClick={() =>
+                      selectedCommit &&
+                      readState.markReadTo(selectedCommit.authorDate)
+                    }
+                  >
+                    <EyeIcon />
+                  </button>
+                  <button
+                    type="button"
+                    className="source-detail-action source-detail-icon-action"
+                    title={t("sourceMarkUnreadSinceHere")}
+                    aria-label={t("sourceMarkUnreadSinceHere")}
+                    disabled={!selectedCommit}
+                    onClick={() =>
+                      selectedCommit &&
+                      readState.markUnreadSince(selectedCommit.authorDate)
+                    }
+                  >
+                    <EyeIcon crossed />
+                  </button>
+                </>
+              )}
             </div>
             {loadingDetail ? (
               <div className="git-diff-loading">{t("gitStatusLoading")}</div>
             ) : detailError ? (
               <div className="git-diff-error">{detailError}</div>
-            ) : detail ? (
+            ) : detail || selectedIsWorkingTree ? (
               <>
-                {detail.body && (
+                {detail?.body && (
                   <button
                     type="button"
                     className={`commit-body ${messageView ? "selected" : ""}`}
@@ -425,8 +568,13 @@ export function CommitBrowser({
                   </button>
                 )}
                 <ul className="commit-file-list">
-                  {detail.files.map((file) => {
+                  {selectedFiles.map((file) => {
                     const count = fileCommentCount.get(file.path) ?? 0;
+                    const isFolder = file.path.endsWith("/");
+                    const worktreeState =
+                      "worktreeState" in file
+                        ? (file as WorktreeFileChange).worktreeState
+                        : null;
                     return (
                       <li key={file.path} className="commit-file-row">
                         <button
@@ -434,7 +582,9 @@ export function CommitBrowser({
                           className={`commit-file-item ${
                             selectedPath === file.path ? "selected" : ""
                           }`}
+                          disabled={isFolder}
                           onClick={() => {
+                            if (isFolder) return;
                             if (
                               selectedPath === file.path &&
                               !messageView &&
@@ -451,6 +601,11 @@ export function CommitBrowser({
                           >
                             {file.status}
                           </span>
+                          {worktreeState && (
+                            <span className="worktree-file-state">
+                              {t(worktreeStateLabelKey(worktreeState))}
+                            </span>
+                          )}
                           <span
                             className="git-file-path"
                             title={
@@ -538,6 +693,99 @@ export function CommitBrowser({
           />
         )}
     </div>
+  );
+}
+
+function expandUntrackedFolders(
+  files: GitFileChange[],
+  expanded: Record<string, GitUntrackedFolderInfo>,
+): GitFileChange[] {
+  return files.flatMap((file) => {
+    const folder = expanded[file.path];
+    if (file.status !== "?" || !file.path.endsWith("/") || !folder) {
+      return [file];
+    }
+    return folder.files.map((path) => ({
+      path,
+      status: "?",
+      staged: false,
+      linesAdded: null,
+      linesDeleted: null,
+    }));
+  });
+}
+
+/** Collapse index/worktree layers into one HEAD-to-filesystem row per path. */
+function mergeWorkingTreeFiles(files: GitFileChange[]): WorktreeFileChange[] {
+  const byPath = new Map<string, GitFileChange[]>();
+  for (const file of files) {
+    const entries = byPath.get(file.path);
+    if (entries) entries.push(file);
+    else byPath.set(file.path, [file]);
+  }
+
+  return Array.from(byPath.values(), (entries) => {
+    const untracked = entries.find((file) => file.status === "?");
+    const staged = entries.find((file) => file.staged);
+    const unstaged = entries.find(
+      (file) => !file.staged && file.status !== "?",
+    );
+    const rename = entries.find(
+      (file) => file.status === "R" || file.status === "C",
+    );
+    const representative =
+      untracked ?? rename ?? unstaged ?? staged ?? entries[0]!;
+    const worktreeState: WorktreeState = untracked
+      ? "untracked"
+      : staged && unstaged
+        ? "both"
+        : staged
+          ? "staged"
+          : "unstaged";
+    const singleLayer = entries.length === 1;
+    const origPath = entries.find((file) => file.origPath)?.origPath;
+    return {
+      path: representative.path,
+      status: representative.status,
+      staged: worktreeState === "staged",
+      linesAdded: singleLayer ? representative.linesAdded : null,
+      linesDeleted: singleLayer ? representative.linesDeleted : null,
+      ...(origPath ? { origPath } : {}),
+      worktreeState,
+    };
+  });
+}
+
+function worktreeStateLabelKey(state: WorktreeState): string {
+  switch (state) {
+    case "staged":
+      return "sourceWorktreeStaged";
+    case "both":
+      return "sourceWorktreeBoth";
+    case "untracked":
+      return "sourceWorktreeUntracked";
+    default:
+      return "sourceWorktreeUnstaged";
+  }
+}
+
+function EyeIcon({ crossed = false }: { crossed?: boolean }) {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z" />
+      <circle cx="12" cy="12" r="2.5" />
+      {crossed && <path d="m4 4 16 16" />}
+    </svg>
   );
 }
 

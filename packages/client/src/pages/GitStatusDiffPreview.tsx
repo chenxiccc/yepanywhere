@@ -73,9 +73,13 @@ interface GitDiffPreviewProps extends GitDiffPreviewRetentionProps {
  */
 export type GitDiffSource =
   | { kind: "worktree" }
+  | { kind: "working-tree-history" }
   | { kind: "commit"; sha: string };
 
 const WORKTREE_SOURCE: GitDiffSource = { kind: "worktree" };
+const WORKING_TREE_HISTORY_SOURCE: GitDiffSource = {
+  kind: "working-tree-history",
+};
 
 function fetchDiffForSource(
   projectId: string,
@@ -96,6 +100,12 @@ function fetchDiffForSource(
     path: file.path,
     staged: file.staged,
     status: file.status,
+    ...(source.kind === "working-tree-history"
+      ? {
+          againstHead: true,
+          ...(file.origPath ? { origPath: file.origPath } : {}),
+        }
+      : {}),
     fullContext,
   });
 }
@@ -272,7 +282,9 @@ export function GitDiffBody({
     const effectiveSource: GitDiffSource =
       sourceKind === "commit"
         ? { kind: "commit", sha: sourceSha }
-        : WORKTREE_SOURCE;
+        : sourceKind === "working-tree-history"
+          ? WORKING_TREE_HISTORY_SOURCE
+          : WORKTREE_SOURCE;
     fetchDiffForSource(projectId, file, effectiveSource)
       .then((result) => {
         if (!cancelled) {
@@ -406,7 +418,9 @@ function GitDiffContent({
       const effectiveSource: GitDiffSource =
         sourceKind === "commit"
           ? { kind: "commit", sha: sourceSha }
-          : WORKTREE_SOURCE;
+          : sourceKind === "working-tree-history"
+            ? WORKING_TREE_HISTORY_SOURCE
+            : WORKTREE_SOURCE;
       const result = await fetchDiffForSource(
         projectId,
         file,

@@ -238,7 +238,18 @@ The polished viewer graehl wanted, kept strictly read-only:
   wrap into scrolling rows and must scroll away with content. The surface
   exposes status and existing upstream actions, not the write actions in
   Non-goals.
-- Multipane commit/diff navigation: browse the working-tree (uncommitted) diff,
+- **One history, including the working tree.** Source Control lands on the
+  commit browser; there is no separate Changes landing or Changes mode. When
+  the repository is dirty, a visually distinct synthetic **Working tree**
+  entry is pinned first in the same history. It is a real review target, not a
+  status shortcut: selecting it opens its changed-file list and the same
+  diff/comment stack as a commit, with comments anchored as `uncommitted`.
+  Staged, unstaged, and untracked state remains legible in its file list. The
+  synthetic entry has no fake SHA, author, date, read watermark, or commit
+  message, and disappears when the repository becomes clean; the ordinary
+  Clean status marker may remain as quiet confirmation. On a dirty repository
+  it is the initial desktop selection; otherwise the newest real commit is.
+- Multipane commit/diff navigation: browse the synthetic working-tree entry,
   recent commit(s) and history/log, and a commit's diff **without switching
   branches** (extends GitStatusDiffPreview, which is already the working-tree
   diff viewer).
@@ -387,8 +398,12 @@ otherwise grows unbounded; leftover width stays as gutter
 ### One discoverable source header; phone rows scroll
 
 When the row fits (including tablet widths), project identity, repo/branch
-state, Changes/Commits/Files/Comments, and an always-visible Review action
-compose into one page-header row. There is no second persistent repo toolbar.
+state, Commits/Files/Comments, and an always-visible Review action compose into
+one page-header row. There is no second persistent repo toolbar. Source Control
+lands on Commits; a legacy or absent `?tab=` value resolves there rather than
+to a removed Changes body. Pull, Push, and Check report their result on the
+control that initiated them; in particular, a successful remote check is
+visible on the Check button instead of creating a separate status row.
 Review with no pending comments opens Comments and its "click a line" guidance;
 with drafts it opens submit preview directly, so a first-time explorer can
 discover the complete comment → review-session path from the header.
@@ -397,6 +412,35 @@ Phone widths keep only the small project header fixed. Repo status, tabs, and
 Review may use additional rows in the page body, but those rows are ordinary
 scrolling content and disappear while reading. Both placements drive the same
 `?tab=` URL state (`useSourceTab`). — Done (2026-07-26).
+
+### Stash triage in history — proposal only
+
+If stashes become common enough to justify a management exception, show an
+alert-colored alias for **every existing stash** in a triage group pinned above
+the commit history, regardless of stash age or ordinary commit paging/search
+horizons. Clicking the alias reveals, scrolls to, and selects that stash at its
+actual chronological position in history rather than creating a second
+logical entry. A preference may disable the pinned triage aliases and leave
+stashes only in chronology, accepting that old stashes will usually go
+unnoticed.
+
+The selected chronological entry opens its files and original diff through
+the same review browser. Its primary review delta is the stash's saved
+working-tree snapshot against its first parent (the `HEAD` commit at stash
+creation), and the UI shows and copies that base SHA. The stash's index parent
+and optional untracked-files parent remain visible as provenance/facets rather
+than silently disappearing or replacing that primary ancestor-to-stash diff.
+
+Dropping a stash would be the first deliberate git-mutating exception to this
+surface's read-only contract and is **not approved or implemented by this
+proposal**. If adopted, "drop" must be recoverable: retain the stash tip under
+a YA-owned Git ref before removing it from `refs/stash`, and append one record
+to a single `.yep/dropped-stashes.jsonl` audit/recovery log. The log records
+the original stash identity, retained ref, tip SHA, message, and drop time; it
+cannot itself hold the stash object graph or keep unreferenced objects alive.
+The UI must expose recovery and eventual permanent cleanup, and the exception
+must be reconciled explicitly with the Non-goals rather than quietly weakening
+them.
 
 ### Context menus — pending
 

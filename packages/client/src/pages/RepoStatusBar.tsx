@@ -11,11 +11,11 @@ type TranslationFn = (
  * Persistent repo/branch status header (topic: source-review-to-session, stage
  * 3). Names the repo and branch and turns a warning color when the worktree is
  * dirty or the branch is ahead/behind upstream. Read-only — it surfaces status
- * and offers copy affordances (branch name), never mutating actions (pull/push
- * stay in the changes view). Shown across all source-control modes, so the
- * status stays visible while browsing commits or files. The mode tabs and the
- * review-tray button live in this same row (via the slots) so the surface has
- * a single toolbar row instead of stacking a second one.
+ * and offers copy affordances (branch name). Shown across all source-control
+ * modes, so the status stays visible while browsing commits or files. The
+ * mode tabs, upstream actions, and review-tray button live in this same row
+ * (via the slots) so the surface has a single toolbar row instead of stacking
+ * a second one.
  */
 export function RepoStatusBar({
   repoName,

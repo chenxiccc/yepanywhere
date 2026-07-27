@@ -51,6 +51,9 @@ export const gitApi = {
       path: string;
       staged: boolean;
       status: string;
+      /** Compare HEAD directly to the filesystem for the synthetic history entry. */
+      againstHead?: boolean;
+      origPath?: string;
       fullContext?: boolean;
     },
   ) =>

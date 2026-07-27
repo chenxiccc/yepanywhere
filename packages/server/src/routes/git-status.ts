@@ -393,7 +393,7 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
   /**
    * POST /:projectId/git/diff
    * Get syntax-highlighted diff for a specific file.
-   * Body: { path, staged, status, fullContext? }
+   * Body: { path, staged, status, againstHead?, origPath?, fullContext? }
    */
   routes.post("/:projectId/git/diff", async (c) => {
     const projectId = c.req.param("projectId");
@@ -411,6 +411,8 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
       path: string;
       staged: boolean;
       status: string;
+      againstHead?: boolean;
+      origPath?: string;
       fullContext?: boolean;
     };
     try {
@@ -419,7 +421,7 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
       return c.json({ error: "Invalid JSON body" }, 400);
     }
 
-    const { path, staged, status, fullContext } = body;
+    const { path, staged, status, againstHead, origPath, fullContext } = body;
     if (!path || typeof staged !== "boolean" || !status) {
       return c.json(
         { error: "Missing required fields: path, staged, status" },
@@ -447,6 +449,8 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
         path,
         staged,
         status,
+        againstHead,
+        origPath,
       );
 
       const previewSkip = getDiffPreviewSkip(oldContent, newContent);
@@ -513,7 +517,24 @@ async function getFileVersions(
   path: string,
   staged: boolean,
   status: string,
+  againstHead = false,
+  origPath?: string,
 ): Promise<{ oldContent: string; newContent: string }> {
+  if (againstHead) {
+    const oldPath =
+      (status === "R" || status === "C") && origPath ? origPath : path;
+    const [oldResult, newContent] = await Promise.all([
+      status === "?" || status === "A"
+        ? Promise.resolve({ stdout: "" })
+        : runGit(cwd, ["show", `HEAD:${oldPath}`]).catch(() => ({
+            stdout: "",
+            stderr: "",
+          })),
+      readFile(resolve(cwd, path), "utf-8").catch(() => ""),
+    ]);
+    return { oldContent: oldResult.stdout, newContent };
+  }
+
   // Untracked: entire file is new
   if (status === "?") {
     const content = await readFile(resolve(cwd, path), "utf-8");

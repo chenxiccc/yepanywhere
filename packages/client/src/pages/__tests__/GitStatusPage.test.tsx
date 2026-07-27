@@ -3,14 +3,16 @@ import type { ReactNode } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { GIT_STATUS_ENHANCED_CAPABILITY } from "@yep-anywhere/shared";
+import {
+  GIT_STATUS_ENHANCED_CAPABILITY,
+  GIT_STATUS_REMOTE_CHECK_CAPABILITY,
+} from "@yep-anywhere/shared";
 import { resetRouteRetentionForTests } from "../../lib/routeRetention";
 import type { Project } from "../../types";
 import { GitStatusPage } from "../GitStatusPage";
 
 const mocks = vi.hoisted(() => ({
-  getGitDiff: vi.fn(),
-  getGitUntrackedFolder: vi.fn(),
+  checkGitRemote: vi.fn(),
   listReviewComments: vi.fn(),
   useProjects: vi.fn(),
   useProject: vi.fn(),
@@ -22,13 +24,19 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("../../api/client", () => ({
   api: {
-    getGitDiff: mocks.getGitDiff,
-    getGitUntrackedFolder: mocks.getGitUntrackedFolder,
     listReviewComments: mocks.listReviewComments,
-    checkGitRemote: vi.fn(),
+    checkGitRemote: mocks.checkGitRemote,
     pullGit: vi.fn(),
     pushGit: vi.fn(),
   },
+}));
+
+vi.mock("../CommitBrowser", () => ({
+  CommitBrowser: ({ status }: { status: GitStatusInfo }) => (
+    <div data-testid="commit-browser">
+      {status.isClean ? "clean-history" : "dirty-history"}
+    </div>
+  ),
 }));
 
 vi.mock("../../hooks/useDocumentTitle", () => ({
@@ -116,9 +124,11 @@ function status(): GitStatusInfo {
   };
 }
 
-function renderPage() {
+function renderPage(
+  initialEntry = "/git-status?projectId=project-a",
+) {
   return render(
-    <MemoryRouter initialEntries={["/git-status?projectId=project-a"]}>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <Routes>
         <Route path="/git-status" element={<GitStatusPage />} />
       </Routes>
@@ -128,34 +138,16 @@ function renderPage() {
 
 beforeEach(() => {
   resetRouteRetentionForTests();
-  mocks.getGitDiff.mockReset();
-  mocks.getGitUntrackedFolder.mockReset();
+  mocks.checkGitRemote.mockReset();
   mocks.listReviewComments.mockReset();
   mocks.listReviewComments.mockResolvedValue({
     comments: [],
     batches: [],
     pendingCount: 0,
   });
-  mocks.getGitDiff.mockResolvedValue({
-    diffHtml: "",
-    structuredPatch: [
-      {
-        oldStart: 1,
-        oldLines: 1,
-        newStart: 1,
-        newLines: 1,
-        lines: ["-a", "+b"],
-      },
-    ],
-  });
-  mocks.getGitUntrackedFolder.mockResolvedValue({
-    path: "packages/client/src/lib/transport/",
-    files: [
-      "packages/client/src/lib/transport/FakeSourceTransport.ts",
-      "packages/client/src/lib/transport/types.ts",
-    ],
-    truncated: false,
-    limit: 500,
+  mocks.checkGitRemote.mockResolvedValue({
+    status: "checked",
+    checkedRemoteAt: "2026-07-26T12:00:00.000Z",
   });
   mocks.useProjects.mockReturnValue({
     projects: [project()],
@@ -163,7 +155,12 @@ beforeEach(() => {
   });
   mocks.useProject.mockReturnValue({ project: project() });
   mocks.useVersion.mockReturnValue({
-    version: { capabilities: [GIT_STATUS_ENHANCED_CAPABILITY] },
+    version: {
+      capabilities: [
+        GIT_STATUS_ENHANCED_CAPABILITY,
+        GIT_STATUS_REMOTE_CHECK_CAPABILITY,
+      ],
+    },
     loading: false,
     error: null,
   });
@@ -185,7 +182,7 @@ beforeEach(() => {
 describe("GitStatusPage source header", () => {
   it("composes status, tabs, and the Review entry into one tablet/desktop row", async () => {
     renderPage();
-    await screen.findByRole("button", { name: "gitStatusFullContext" });
+    await screen.findByTestId("commit-browser");
     await waitFor(() =>
       expect(mocks.listReviewComments).toHaveBeenCalledWith("project-a"),
     );
@@ -197,6 +194,32 @@ describe("GitStatusPage source header", () => {
       "sourceReviewStart",
     );
     expect(document.querySelector(".git-status > .repo-status-bar")).toBeNull();
+  });
+
+  it("lands on Commits and treats a legacy Changes URL as Commits", async () => {
+    renderPage("/git-status?projectId=project-a&tab=changes");
+
+    expect(await screen.findByTestId("commit-browser")).toBeDefined();
+    expect(
+      screen.getByRole("tab", { name: "sourceTabCommits" }).getAttribute(
+        "aria-selected",
+      ),
+    ).toBe("true");
+    expect(screen.queryByRole("tab", { name: "sourceTabChanges" })).toBeNull();
+  });
+
+  it("shows successful remote-check feedback on the Check button", async () => {
+    renderPage();
+    const check = await screen.findByRole("button", {
+      name: "gitStatusCheckRemoteShort",
+    });
+    fireEvent.click(check);
+
+    expect(
+      await screen.findByRole("button", {
+        name: /gitStatusCheckRemoteShort: gitStatusRemoteCheckSuccess/,
+      }),
+    ).toBeDefined();
   });
 
   it("keeps mobile source controls in scrolling content", async () => {
@@ -217,117 +240,5 @@ describe("GitStatusPage source header", () => {
     expect(
       document.querySelector(".git-status > .repo-status-bar"),
     ).not.toBeNull();
-  });
-});
-
-describe("GitStatusPage route retention", () => {
-  it("restores the selected file after the route remounts", async () => {
-    const first = renderPage();
-    await screen.findByRole("button", { name: "gitStatusFullContext" });
-    fireEvent.click(screen.getByRole("button", { name: /b\.ts/ }));
-    expect(
-      screen
-        .getByRole("button", { name: /b\.ts/ })
-        .getAttribute("aria-current"),
-    ).toBe("true");
-    first.unmount();
-
-    renderPage();
-    await screen.findByRole("button", { name: "gitStatusFullContext" });
-
-    expect(
-      screen
-        .getByRole("button", { name: /b\.ts/ })
-        .getAttribute("aria-current"),
-    ).toBe("true");
-  });
-});
-
-describe("GitStatusPage diff preview guards", () => {
-  it("shows server skipped-preview metadata instead of diff content", async () => {
-    mocks.getGitDiff.mockResolvedValue({
-      diffHtml: "",
-      structuredPatch: [],
-      previewSkipped: {
-        reason: "line-too-long",
-        totalBytes: 30_012,
-        maxLineChars: 30_012,
-        maxLineCharsLimit: 20_000,
-      },
-    });
-
-    renderPage();
-
-    expect(
-      await screen.findByText("gitStatusDiffPreviewSkipped"),
-    ).toBeDefined();
-    expect(
-      screen.getByText("gitStatusDiffPreviewSkippedLineTooLong"),
-    ).toBeDefined();
-    expect(
-      screen.getByText("gitStatusDiffPreviewSkippedLineLength"),
-    ).toBeDefined();
-  });
-
-  it("does not inject oversized highlighted diff html", async () => {
-    mocks.getGitDiff.mockResolvedValue({
-      diffHtml: "x".repeat(1_000_001),
-      structuredPatch: [
-        {
-          oldStart: 1,
-          oldLines: 1,
-          newStart: 1,
-          newLines: 1,
-          lines: ["-a", "+b"],
-        },
-      ],
-    });
-
-    renderPage();
-
-    expect(
-      await screen.findByText("gitStatusDiffPreviewSkippedHtmlTooLarge"),
-    ).toBeDefined();
-  });
-});
-
-describe("GitStatusPage untracked folders", () => {
-  it("opens an untracked folder listing without loading a diff", async () => {
-    mocks.useGitStatus.mockReturnValue({
-      gitStatus: {
-        ...status(),
-        files: [
-          {
-            path: "packages/client/src/lib/transport/",
-            status: "?",
-            staged: false,
-            linesAdded: null,
-            linesDeleted: null,
-          },
-        ],
-      },
-      loading: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-
-    renderPage();
-
-    fireEvent.click(
-      await screen.findByRole("button", {
-        name: /packages\/client\/src\/lib\/transport\//,
-      }),
-    );
-
-    expect(mocks.getGitDiff).not.toHaveBeenCalled();
-    expect(mocks.getGitUntrackedFolder).toHaveBeenCalledWith(
-      "project-a",
-      "packages/client/src/lib/transport/",
-    );
-    expect(
-      await screen.findByText(
-        "packages/client/src/lib/transport/FakeSourceTransport.ts",
-      ),
-    ).toBeDefined();
   });
 });

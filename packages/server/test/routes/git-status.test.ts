@@ -339,6 +339,32 @@ describe("git-status routes", () => {
     expect(body.structuredPatch[0]?.lines).toContain("+export const value = 1;");
   });
 
+  it("can diff the current filesystem directly against HEAD", async () => {
+    const repoDir = await createRepoWithUpstream();
+    await writeFile(join(repoDir, "README.md"), "staged\n");
+    await runGit(repoDir, ["add", "README.md"]);
+    await writeFile(join(repoDir, "README.md"), "working\n");
+    const { projectId, routes } = createRoutesForProject(repoDir);
+
+    const response = await routes.request(`/${projectId}/git/diff`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: "README.md",
+        staged: false,
+        status: "M",
+        againstHead: true,
+      }),
+    });
+    const body = (await response.json()) as GitDiffResult;
+    const lines = body.structuredPatch.flatMap((hunk) => hunk.lines);
+
+    expect(response.status).toBe(200);
+    expect(lines).toContain("-hello");
+    expect(lines).toContain("+working");
+    expect(lines).not.toContain("+staged");
+  });
+
   it("reports automatic integration options for a clean diverged branch", async () => {
     const repoDir = await createDivergedRepo();
     const { projectId, routes } = createRoutesForProject(repoDir);

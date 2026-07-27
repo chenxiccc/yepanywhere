@@ -6,12 +6,11 @@ type TranslationFn = (
 /**
  * The source-control mode selector (topic: source-review-to-session, stage 3):
  * one surface, several navigation modes that all feed the same review
- * accumulator. `changes` is the working-tree diff (the default, preserved),
- * `commits` the commit browser, `files` the all-files blame browser,
- * `comments` the pending-review list. Only the modes with a built body are
- * passed in `tabs`, so no dead tab ever ships.
+ * accumulator. `commits` is the commit browser (including the synthetic
+ * working-tree entry), `files` the all-files blame browser, and `comments`
+ * the pending-review list.
  */
-export type SourceTab = "changes" | "commits" | "files" | "comments";
+export type SourceTab = "commits" | "files" | "comments";
 
 export function SourceModeTabs({
   tab,
@@ -53,13 +52,11 @@ export function SourceModeTabs({
 
 function sourceTabLabelKey(tab: SourceTab): string {
   switch (tab) {
-    case "commits":
-      return "sourceTabCommits";
     case "files":
       return "sourceTabFiles";
     case "comments":
       return "sourceTabComments";
     default:
-      return "sourceTabChanges";
+      return "sourceTabCommits";
   }
 }
