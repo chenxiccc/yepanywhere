@@ -1,3 +1,5 @@
+import { stat } from "node:fs/promises";
+import { join } from "node:path";
 import type { GitBlameLine, GitBlameResult } from "@yep-anywhere/shared";
 import { highlightFile } from "../highlighting/index.js";
 import { GIT_DECODE_PATHS_ARGS, runGit } from "./gitExec.js";
@@ -11,10 +13,14 @@ import { GIT_DECODE_PATHS_ARGS, runGit } from "./gitExec.js";
  * run through the shared `highlightFile`, so the code column and the blame
  * gutter come from the exact same revision and align line-for-line.
  *
- * Blame is a pure function of (commit, path), so results for an explicit commit
- * sha are cached by `(sha, path)` per the topic decision. A working-tree blame
- * (no rev) can include not-yet-committed lines and drifts as the file changes,
- * so it is never cached.
+ * Results are cached in one byte-capped LRU so revisiting a recently viewed
+ * file is instant (first view pays git blame + highlight, 50-500ms measured).
+ * A blame of an explicit commit is a pure function of (commit, path) and needs
+ * no validation; a working-tree blame drifts, so its entry is validated by
+ * (file mtime, size, HEAD sha) — one stat + one rev-parse per hit — and any
+ * commit or file edit invalidates it naturally. Entries hold the *final*
+ * result (truncated lines + highlight), so the cache, not the raw parse,
+ * bounds memory.
  */
 
 const BLAME_MAX_BUFFER = 32 * 1024 * 1024;
@@ -24,51 +30,65 @@ const MAX_BLAME_LINES = 20_000;
 /** A hex commit-ish (short or full). */
 const SHA_RE = /^[0-9a-f]{4,64}$/i;
 
-const blameCache = new Map<string, GitBlameLine[]>();
-const MAX_CACHE_ENTRIES = 200;
+/** Total byte budget across all cached results (content + highlight HTML). */
+const MAX_BLAME_CACHE_BYTES = 32 * 1024 * 1024;
+
+interface BlameCacheEntry {
+  result: GitBlameResult;
+  bytes: number;
+  /**
+   * `${mtimeMs}:${size}:${headSha}` for a working-tree entry; null for an
+   * immutable explicit-commit entry.
+   */
+  validator: string | null;
+}
+
+/** Insertion order is LRU order: hits reinsert their key. */
+const blameCache = new Map<string, BlameCacheEntry>();
+let blameCacheBytes = 0;
+let blameCacheHits = 0;
 
 export async function getBlame(
   cwd: string,
   path: string,
   rev: string | undefined,
 ): Promise<GitBlameResult> {
-  const explicitSha = rev && SHA_RE.test(rev) ? rev : null;
+  // Resolving covers "HEAD" and short shas, so equivalent revs share a key.
+  const resolved = rev ? await resolveCommit(cwd, rev) : null;
+  const key = resolved
+    ? `sha\0${cwd}\0${resolved}\0${path}`
+    : `wt\0${cwd}\0${path}`;
+  // A null validator on a working-tree request means the file is unstattable
+  // or HEAD unresolvable — treated as uncacheable, never as a match.
+  const validator = resolved ? null : await worktreeValidator(cwd, path);
 
-  let lines: GitBlameLine[] | undefined;
-  let cacheKey: string | null = null;
-
-  if (explicitSha) {
-    // Resolve to a full commit sha so HEAD~2 etc. and short shas share a key.
-    const resolved = await resolveCommit(cwd, explicitSha);
-    if (resolved) {
-      cacheKey = `${resolved}:${path}`;
-      lines = blameCache.get(cacheKey);
-    }
+  const cached = blameCache.get(key);
+  if (cached && (resolved ? true : validator !== null) &&
+      cached.validator === validator) {
+    blameCache.delete(key);
+    blameCache.set(key, cached);
+    blameCacheHits++;
+    // Callers only serialize the result; the cached object is shared, not cloned.
+    return cached.result;
+  }
+  if (cached) {
+    blameCache.delete(key);
+    blameCacheBytes -= cached.bytes;
   }
 
-  if (!lines) {
-    const args = [
-      ...GIT_DECODE_PATHS_ARGS,
-      "blame",
-      "--porcelain",
-      ...(rev ? [rev] : []),
-      "--",
-      path,
-    ];
-    const { stdout } = await runGit(cwd, args, {
-      maxBuffer: BLAME_MAX_BUFFER,
-      timeout: BLAME_TIMEOUT_MS,
-    });
-    lines = parseBlamePorcelain(stdout);
-    // Cache only a clean committed snapshot (no uncommitted lines).
-    if (cacheKey && !lines.some((l) => l.uncommitted)) {
-      if (blameCache.size >= MAX_CACHE_ENTRIES) {
-        const oldest = blameCache.keys().next().value;
-        if (oldest) blameCache.delete(oldest);
-      }
-      blameCache.set(cacheKey, lines);
-    }
-  }
+  const args = [
+    ...GIT_DECODE_PATHS_ARGS,
+    "blame",
+    "--porcelain",
+    ...(rev ? [rev] : []),
+    "--",
+    path,
+  ];
+  const { stdout } = await runGit(cwd, args, {
+    maxBuffer: BLAME_MAX_BUFFER,
+    timeout: BLAME_TIMEOUT_MS,
+  });
+  let lines = parseBlamePorcelain(stdout);
 
   let truncated = false;
   if (lines.length > MAX_BLAME_LINES) {
@@ -93,10 +113,86 @@ export async function getBlame(
     }
   }
 
+  if (resolved || validator !== null) {
+    insertBlameCacheEntry(key, {
+      result,
+      bytes: entryBytes(result),
+      validator,
+    });
+  }
+
   return result;
 }
 
+/**
+ * Working-tree cache validator: the blame output is a function of the file's
+ * content and the committed history, so (mtime, size, HEAD) drift covers both.
+ */
+async function worktreeValidator(
+  cwd: string,
+  path: string,
+): Promise<string | null> {
+  try {
+    const [fileStat, head] = await Promise.all([
+      stat(join(cwd, path)),
+      runGit(cwd, ["rev-parse", "HEAD"]),
+    ]);
+    const headSha = head.stdout.trim();
+    if (!/^[0-9a-f]{40,64}$/i.test(headSha)) return null;
+    return `${fileStat.mtimeMs}:${fileStat.size}:${headSha}`;
+  } catch {
+    return null;
+  }
+}
+
+/** Approximate retained bytes: UTF-16 strings plus per-line object overhead. */
+function entryBytes(result: GitBlameResult): number {
+  let bytes = 256 + result.path.length * 2;
+  for (const line of result.lines) {
+    bytes += line.content.length * 2 + 120;
+  }
+  bytes += (result.highlightedHtml?.length ?? 0) * 2;
+  return bytes;
+}
+
+function insertBlameCacheEntry(key: string, entry: BlameCacheEntry): void {
+  // An entry too large for the whole budget is served once, never cached.
+  if (entry.bytes > MAX_BLAME_CACHE_BYTES) return;
+  while (
+    blameCacheBytes + entry.bytes > MAX_BLAME_CACHE_BYTES &&
+    blameCache.size > 0
+  ) {
+    const oldest = blameCache.keys().next().value;
+    if (oldest === undefined) break;
+    blameCacheBytes -= blameCache.get(oldest)?.bytes ?? 0;
+    blameCache.delete(oldest);
+  }
+  blameCache.set(key, entry);
+  blameCacheBytes += entry.bytes;
+}
+
+/** Test hook: cache observability without exporting the cache itself. */
+export function blameCacheStatsForTest(): {
+  entries: number;
+  bytes: number;
+  hits: number;
+} {
+  return {
+    entries: blameCache.size,
+    bytes: blameCacheBytes,
+    hits: blameCacheHits,
+  };
+}
+
+/** Test hook: drop all cached blame state. */
+export function resetBlameCacheForTest(): void {
+  blameCache.clear();
+  blameCacheBytes = 0;
+  blameCacheHits = 0;
+}
+
 async function resolveCommit(cwd: string, rev: string): Promise<string | null> {
+  if (rev !== "HEAD" && !SHA_RE.test(rev)) return null;
   try {
     const { stdout } = await runGit(cwd, [
       "rev-parse",
@@ -104,7 +200,7 @@ async function resolveCommit(cwd: string, rev: string): Promise<string | null> {
       `${rev}^{commit}`,
     ]);
     const sha = stdout.trim();
-    return /^[0-9a-f]{40}$/i.test(sha) ? sha : null;
+    return /^[0-9a-f]{40,64}$/i.test(sha) ? sha : null;
   } catch {
     return null;
   }
