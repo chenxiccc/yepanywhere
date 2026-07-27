@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -21,8 +22,6 @@ vi.mock("../hooks/useRemoteBasePath", () => ({
 const getGitCommits = vi.fn();
 const getGitCommit = vi.fn();
 const getGitCommitDiff = vi.fn();
-const getGitDiff = vi.fn();
-const getGitUntrackedFolder = vi.fn();
 const getGitCommitSearchManifest = vi.fn();
 const getGitCommitSearchRecords = vi.fn();
 const listReviewComments = vi.fn();
@@ -32,9 +31,6 @@ vi.mock("../api/client", () => ({
     getGitCommits: (...args: unknown[]) => getGitCommits(...args),
     getGitCommit: (...args: unknown[]) => getGitCommit(...args),
     getGitCommitDiff: (...args: unknown[]) => getGitCommitDiff(...args),
-    getGitDiff: (...args: unknown[]) => getGitDiff(...args),
-    getGitUntrackedFolder: (...args: unknown[]) =>
-      getGitUntrackedFolder(...args),
     getGitCommitSearchManifest: (...args: unknown[]) =>
       getGitCommitSearchManifest(...args),
     getGitCommitSearchRecords: (...args: unknown[]) =>
@@ -177,91 +173,93 @@ describe("CommitBrowser", () => {
     expect(anchor.newLine).toBe(1);
   });
 
-  it("shows a dirty worktree as the first reviewable revision", async () => {
-    primeApis();
-    getGitDiff.mockResolvedValue({
-      diffHtml:
-        `<pre class="shiki"><code>` +
-        `<span class="line line-inserted" data-diff-line="0">+dirty</span>` +
-        `</code></pre>`,
-      structuredPatch: [
+  it("drills from any mobile commit into files and back to the list", async () => {
+    const middleSha = "b".repeat(40);
+    const oldestSha = "c".repeat(40);
+    getGitCommits.mockResolvedValue({
+      commits: [
         {
-          oldStart: 1,
-          oldLines: 0,
-          newStart: 1,
-          newLines: 1,
-          lines: ["+dirty"],
+          hash: SHA,
+          shortHash: "aaaaaaa",
+          subject: "newest commit",
+          authorName: "Dev",
+          authorDate: "2026-07-26T00:00:00Z",
+        },
+        {
+          hash: middleSha,
+          shortHash: "bbbbbbb",
+          subject: "middle commit",
+          authorName: "Dev",
+          authorDate: "2026-07-25T00:00:00Z",
+        },
+        {
+          hash: oldestSha,
+          shortHash: "ccccccc",
+          subject: "oldest commit",
+          authorName: "Dev",
+          authorDate: "2026-07-24T00:00:00Z",
         },
       ],
+      hasMore: false,
     });
-    addReviewComment.mockResolvedValue({
-      comment: { id: "c1", status: "pending", anchor: {}, text: "x" },
-    });
-    render(
-      <MemoryRouter>
-        <CommitBrowser
-          projectId="p1"
-          status={{
-            isGitRepo: true,
-            branch: "main",
-            upstream: "origin/main",
-            ahead: 0,
-            behind: 0,
-            isClean: false,
-            files: [
-              {
-                path: "src/dirty.ts",
-                status: "M",
-                staged: true,
-                linesAdded: 1,
-                linesDeleted: 0,
-              },
-              {
-                path: "src/dirty.ts",
-                status: "M",
-                staged: false,
-                linesAdded: 1,
-                linesDeleted: 1,
-              },
-            ],
-            recentCommits: [],
-          }}
-          isWideScreen={true}
-          t={t}
-        />
-      </MemoryRouter>,
+    getGitCommit.mockImplementation((_projectId: string, sha: string) =>
+      Promise.resolve({
+        hash: sha,
+        shortHash: sha.slice(0, 7),
+        subject: "selected commit",
+        authorName: "Dev",
+        authorDate: "2026-07-25T00:00:00Z",
+        body: "",
+        files: [
+          {
+            path: "src/middle.ts",
+            status: "M",
+            staged: false,
+            linesAdded: 2,
+            linesDeleted: 1,
+          },
+        ],
+      }),
     );
+    listReviewComments.mockResolvedValue({
+      comments: [],
+      batches: [],
+      pendingCount: 0,
+    });
+    const historyBack = vi
+      .spyOn(window.history, "back")
+      .mockImplementation(() => {});
 
-    await waitFor(() =>
+    try {
+      render(
+        <MemoryRouter>
+          <CommitBrowser projectId="p1" isWideScreen={false} t={t} />
+        </MemoryRouter>,
+      );
+
+      fireEvent.click(await screen.findByText("middle commit"));
+
+      expect(await screen.findByText("src/middle.ts")).toBeDefined();
+      expect(screen.queryByText("newest commit")).toBeNull();
+      expect(screen.queryByText("oldest commit")).toBeNull();
       expect(
-        document.querySelectorAll(".commit-list-item.working-tree"),
-      ).toHaveLength(1),
-    );
-    expect(await screen.findByText("sourceWorktreeBoth")).toBeDefined();
-    expect(
-      document.querySelectorAll(".commit-file-item .git-file-path"),
-    ).toHaveLength(1);
-    await waitFor(() =>
-      expect(getGitDiff).toHaveBeenCalledWith(
-        "p1",
-        expect.objectContaining({
-          path: "src/dirty.ts",
-          againstHead: true,
-        }),
-      ),
-    );
+        screen.getByRole("button", { name: /sourceBackToCommits/ }),
+      ).toBeDefined();
 
-    fireEvent.click(document.querySelector('[data-diff-line="0"]')!);
-    fireEvent.change(await screen.findByRole("textbox"), {
-      target: { value: "please revisit" },
-    });
-    fireEvent.click(screen.getByText("sourceReviewAddToReview"));
+      fireEvent.click(
+        screen.getByRole("button", { name: /sourceBackToCommits/ }),
+      );
+      expect(historyBack).toHaveBeenCalled();
+      act(() => {
+        window.dispatchEvent(new PopStateEvent("popstate", { state: null }));
+      });
 
-    await waitFor(() => expect(addReviewComment).toHaveBeenCalledTimes(1));
-    const anchor = addReviewComment.mock.calls[0]?.[1] as {
-      revision: { kind: string };
-    };
-    expect(anchor.revision).toMatchObject({ kind: "uncommitted" });
+      expect(await screen.findByText("middle commit")).toBeDefined();
+      expect(screen.queryByText("src/middle.ts")).toBeNull();
+    } finally {
+      historyBack.mockRestore();
+      window.history.replaceState(null, "");
+    }
   });
 
   it("searches the complete client index beyond the loaded commit page", async () => {

@@ -40,9 +40,13 @@ vi.mock("../../api/client", () => ({
 }));
 
 vi.mock("../CommitBrowser", () => ({
-  CommitBrowser: ({ status }: { status: GitStatusInfo }) => (
-    <div data-testid="commit-browser">
-      {status.isClean ? "clean-history" : "dirty-history"}
+  CommitBrowser: () => <div data-testid="commit-browser">commit-history</div>,
+}));
+
+vi.mock("../WorkingTreeBrowser", () => ({
+  WorkingTreeBrowser: ({ status }: { status: GitStatusInfo }) => (
+    <div data-testid="working-tree-browser">
+      {status.isClean ? "clean-changes" : "dirty-changes"}
     </div>
   ),
 }));
@@ -132,9 +136,7 @@ function status(): GitStatusInfo {
   };
 }
 
-function renderPage(
-  initialEntry = "/git-status?projectId=project-a",
-) {
+function renderPage(initialEntry = "/git-status?projectId=project-a") {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
       <Routes>
@@ -232,7 +234,7 @@ beforeEach(() => {
 describe("GitStatusPage source header", () => {
   it("composes status, tabs, and the Review entry into one tablet/desktop row", async () => {
     renderPage();
-    await screen.findByTestId("commit-browser");
+    await screen.findByTestId("working-tree-browser");
     await waitFor(() =>
       expect(mocks.listReviewComments).toHaveBeenCalledWith("project-a"),
     );
@@ -246,16 +248,38 @@ describe("GitStatusPage source header", () => {
     expect(document.querySelector(".git-status > .repo-status-bar")).toBeNull();
   });
 
-  it("lands on Commits and treats a legacy Changes URL as Commits", async () => {
-    renderPage("/git-status?projectId=project-a&tab=changes");
+  it("lands on Changes and keeps its URL as the default", async () => {
+    renderPage();
+
+    expect(await screen.findByTestId("working-tree-browser")).toBeDefined();
+    expect(
+      screen
+        .getByRole("tab", { name: /sourceTabChanges/ })
+        .getAttribute("aria-selected"),
+    ).toBe("true");
+    expect(screen.queryByTestId("commit-browser")).toBeNull();
+  });
+
+  it("opens commit history deliberately without carrying the working tree", async () => {
+    renderPage("/git-status?projectId=project-a&tab=commits");
 
     expect(await screen.findByTestId("commit-browser")).toBeDefined();
     expect(
-      screen.getByRole("tab", { name: "sourceTabCommits" }).getAttribute(
-        "aria-selected",
-      ),
+      screen
+        .getByRole("tab", { name: "sourceTabCommits" })
+        .getAttribute("aria-selected"),
     ).toBe("true");
-    expect(screen.queryByRole("tab", { name: "sourceTabChanges" })).toBeNull();
+    expect(screen.queryByTestId("working-tree-browser")).toBeNull();
+  });
+
+  it("makes the Dirty badge return to Changes", async () => {
+    renderPage("/git-status?projectId=project-a&tab=commits");
+    await screen.findByTestId("commit-browser");
+
+    fireEvent.click(screen.getByTitle("sourceOpenChanges"));
+
+    expect(await screen.findByTestId("working-tree-browser")).toBeDefined();
+    expect(screen.queryByTestId("commit-browser")).toBeNull();
   });
 
   it("shows successful remote-check feedback on the Check button", async () => {
@@ -270,9 +294,9 @@ describe("GitStatusPage source header", () => {
         name: /gitStatusCheckRemoteShort: gitStatusRemoteCheckSuccess/,
       }),
     ).toBeDefined();
-    expect(
-      screen.getByRole("status").textContent,
-    ).toBe("gitStatusRemoteCheckSuccess");
+    expect(screen.getByRole("status").textContent).toBe(
+      "gitStatusRemoteCheckSuccess",
+    );
   });
 
   it("keeps mobile source controls in scrolling content", async () => {
@@ -297,38 +321,31 @@ describe("GitStatusPage source header", () => {
 });
 
 describe("GitStatusPage released-server compatibility", () => {
-  it.each(CORE_GIT_COMPATIBILITY_RELEASES)(
-    "keeps basic Source Control for $version ($releasedAt)",
-    async () => {
-      mocks.useVersion.mockReturnValue({
-        version: { capabilities: [...RELEASED_BASIC_GIT_CAPABILITIES] },
-        loading: false,
-        error: null,
-      });
+  it.each(
+    CORE_GIT_COMPATIBILITY_RELEASES,
+  )("keeps basic Source Control for $version ($releasedAt)", async () => {
+    mocks.useVersion.mockReturnValue({
+      version: { capabilities: [...RELEASED_BASIC_GIT_CAPABILITIES] },
+      loading: false,
+      error: null,
+    });
 
-      renderPage();
+    renderPage();
 
-      expect(
-        await screen.findByText("gitStatusCompatibilityTitle"),
-      ).toBeDefined();
-      expect(
-        screen.getByText("gitStatusCompatibilityDescription"),
-      ).toBeDefined();
-      expect(
-        screen.getByRole("button", { name: "gitStatusPull" }),
-      ).toBeDefined();
-      expect(
-        screen.getByRole("button", { name: "gitStatusPush" }),
-      ).toBeDefined();
-      expect(
-        screen.getByRole("button", { name: "gitStatusCheckRemote" }),
-      ).toBeDefined();
-      expect(screen.queryByTestId("commit-browser")).toBeNull();
-      expect(document.querySelector(".source-mode-tabs")).toBeNull();
-      expect(document.querySelector(".review-tray-button")).toBeNull();
-      expect(mocks.listReviewComments).not.toHaveBeenCalled();
-    },
-  );
+    expect(
+      await screen.findByText("gitStatusCompatibilityTitle"),
+    ).toBeDefined();
+    expect(screen.getByText("gitStatusCompatibilityDescription")).toBeDefined();
+    expect(screen.getByRole("button", { name: "gitStatusPull" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "gitStatusPush" })).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "gitStatusCheckRemote" }),
+    ).toBeDefined();
+    expect(screen.queryByTestId("commit-browser")).toBeNull();
+    expect(document.querySelector(".source-mode-tabs")).toBeNull();
+    expect(document.querySelector(".review-tray-button")).toBeNull();
+    expect(mocks.listReviewComments).not.toHaveBeenCalled();
+  });
 
   it("shows a persistent full-text divergence warning", async () => {
     const divergedStatus = {
@@ -376,8 +393,6 @@ describe("GitStatusPage released-server compatibility", () => {
     expect(warning.textContent).toContain("gitStatusPullDiverged");
     expect(warning.textContent).toContain('"ahead":2');
     expect(warning.textContent).toContain('"behind":1');
-    expect(
-      await screen.findByText("gitStatusAutoOptionsLabel"),
-    ).toBeDefined();
+    expect(await screen.findByText("gitStatusAutoOptionsLabel")).toBeDefined();
   });
 });

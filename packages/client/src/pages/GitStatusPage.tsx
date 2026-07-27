@@ -41,6 +41,7 @@ import { CommitBrowser } from "./CommitBrowser";
 import { RepoStatusBar } from "./RepoStatusBar";
 import { ReviewCommentsPanel } from "./ReviewCommentsPanel";
 import { type SourceTab, SourceModeTabs } from "./SourceModeTabs";
+import { WorkingTreeBrowser } from "./WorkingTreeBrowser";
 import { ReviewSubmitModal } from "./ReviewSubmitModal";
 import {
   resolvePreferredProjectId,
@@ -67,7 +68,12 @@ interface SourceControlRouteState {
 const SOURCE_CONTROL_ROUTE_TTL_MS = 5 * 60 * 1000;
 
 /** Source-control modes with a built body (topic: source-review-to-session). */
-const SOURCE_TABS: readonly SourceTab[] = ["commits", "files", "comments"];
+const SOURCE_TABS: readonly SourceTab[] = [
+  "changes",
+  "commits",
+  "files",
+  "comments",
+];
 
 /**
  * Source-mode tab state, derived from the `?tab=` URL param. Shared by the
@@ -81,17 +87,19 @@ function useSourceTab(): {
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get("tab");
   const tab: SourceTab =
-    tabParam === "files"
-      ? "files"
-      : tabParam === "comments"
-        ? "comments"
-        : "commits";
+    tabParam === "commits"
+      ? "commits"
+      : tabParam === "files"
+        ? "files"
+        : tabParam === "comments"
+          ? "comments"
+          : "changes";
   const setTab = useCallback(
     (next: SourceTab) => {
       setSearchParams(
         (prev) => {
           const params = new URLSearchParams(prev);
-          if (next === "commits") params.delete("tab");
+          if (next === "changes") params.delete("tab");
           else params.set("tab", next);
           return params;
         },
@@ -122,15 +130,17 @@ function SourceHeaderActions({
   t: TranslationFn;
 }) {
   const { tab, setTab } = useSourceTab();
+  const changedFileCount = countChangedPaths(status);
   return (
     <RepoStatusBar
       status={status}
       inline
+      onSelectChanges={() => setTab("changes")}
       tabs={
         <SourceModeTabs
           tab={tab}
           tabs={SOURCE_TABS}
-          counts={{ comments: pendingCount }}
+          counts={{ changes: changedFileCount, comments: pendingCount }}
           onSelect={setTab}
           t={t}
         />
@@ -579,6 +589,7 @@ function GitStatusContent({
   const basePath = useRemoteBasePath();
   const [searchParams, setSearchParams] = useSearchParams();
   const { tab, setTab } = useSourceTab();
+  const changedFileCount = countChangedPaths(status);
   const blameFile = searchParams.get("bf") ?? undefined;
   // Bridge a commit file to its blame-at-HEAD view: switch to the files tab
   // with that file seeded open (a real history step, so back returns).
@@ -599,11 +610,15 @@ function GitStatusContent({
         <RepoStatusBar
           repoName={projectName}
           status={status}
+          onSelectChanges={() => setTab("changes")}
           tabs={
             <SourceModeTabs
               tab={tab}
               tabs={SOURCE_TABS}
-              counts={{ comments: reviewComments.pending.length }}
+              counts={{
+                changes: changedFileCount,
+                comments: reviewComments.pending.length,
+              }}
               onSelect={setTab}
               t={t}
             />
@@ -625,10 +640,17 @@ function GitStatusContent({
 
       <GitActionNotices gitActions={gitActions} t={t} />
 
-      {tab === "commits" ? (
-        <CommitBrowser
+      {tab === "changes" ? (
+        <WorkingTreeBrowser
           projectId={projectId}
           status={status}
+          isWideScreen={isWideScreen}
+          onBlameFile={handleBlameFile}
+          t={t}
+        />
+      ) : tab === "commits" ? (
+        <CommitBrowser
+          projectId={projectId}
           isWideScreen={isWideScreen}
           onBlameFile={handleBlameFile}
           t={t}
@@ -663,6 +685,10 @@ function GitStatusContent({
       )}
     </div>
   );
+}
+
+function countChangedPaths(status: GitStatusInfo): number {
+  return new Set(status.files.map((file) => file.path)).size;
 }
 
 function GitActionNotices({

@@ -211,15 +211,13 @@
   background: var(--bg-diff-removed, rgba(207, 34, 46, 0.15));
 }
 
-.fixed-font-rendered-line.fixed-font-diff-added
-  > .fixed-font-diff-gutter {
+.fixed-font-rendered-line.fixed-font-diff-added > .fixed-font-diff-gutter {
   background: var(--bg-diff-gutter-added, rgba(26, 127, 55, 0.26));
   color: var(--success-color);
   font-weight: 700;
 }
 
-.fixed-font-rendered-line.fixed-font-diff-removed
-  > .fixed-font-diff-gutter {
+.fixed-font-rendered-line.fixed-font-diff-removed > .fixed-font-diff-gutter {
   background: var(--bg-diff-gutter-removed, rgba(207, 34, 46, 0.26));
   color: var(--error-color);
   font-weight: 700;
@@ -6273,6 +6271,16 @@ pre.code-highlighter-plain,
   background: color-mix(in srgb, var(--warning-color) 16%, transparent);
 }
 
+.repo-status-badge-action {
+  font-family: inherit;
+  border: none;
+  cursor: pointer;
+}
+
+.repo-status-badge-action:hover {
+  background: color-mix(in srgb, var(--warning-color) 24%, transparent);
+}
+
 /* Copy affordance shared by status bar, commit rows, file rows. */
 .copy-button {
   display: inline-flex;
@@ -6435,6 +6443,12 @@ pre.code-highlighter-plain,
   gap: var(--space-3, 12px);
 }
 
+.working-tree-browser-columns {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-3, 12px);
+}
+
 @media (min-width: 1100px) {
   /* Each column caps at the Appearance > Max Content Width preference so no
      single column (notably the diff) sprawls past a readable measure on an
@@ -6448,9 +6462,18 @@ pre.code-highlighter-plain,
   }
 
   .commit-list-column,
-  .commit-files-column {
+  .commit-files-column,
+  .working-tree-files-column {
     max-height: calc(100vh - 220px);
     overflow-y: auto;
+  }
+
+  .working-tree-browser-columns {
+    grid-template-columns:
+      minmax(260px, 380px)
+      minmax(0, var(--content-max-width));
+    justify-content: start;
+    align-items: start;
   }
 }
 
@@ -6485,6 +6508,31 @@ pre.code-highlighter-plain,
   font-family: var(--font-mono, monospace);
   font-size: 0.78rem;
   color: var(--text-secondary, #8b949e);
+}
+
+.source-detail-count {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.source-mobile-back {
+  display: block;
+  width: 100%;
+  margin-bottom: var(--space-2, 8px);
+  padding: 7px 10px;
+  color: var(--text-secondary, #8b949e);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle, #21262d);
+  border-radius: 6px;
+  font-size: 0.82rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.source-mobile-back:hover {
+  color: var(--text-primary, #e6edf3);
+  background: var(--bg-hover, rgba(255, 255, 255, 0.06));
 }
 
 .source-detail-action {
@@ -6573,20 +6621,6 @@ pre.code-highlighter-plain,
 .commit-list-item.selected,
 .commit-file-item.selected {
   background: var(--bg-selected, rgba(56, 139, 253, 0.15));
-}
-
-.commit-list-item.working-tree {
-  border-left: 2px solid var(--warning-color);
-  background: color-mix(in srgb, var(--warning-color) 6%, transparent);
-}
-
-.commit-list-item.working-tree.selected {
-  background: color-mix(in srgb, var(--warning-color) 13%, transparent);
-}
-
-.working-tree-label {
-  color: var(--warning-color);
-  font-weight: 600;
 }
 
 .worktree-file-state {
@@ -6726,6 +6760,12 @@ pre.code-highlighter-plain,
 .commit-body.selected {
   border-color: var(--border-subtle, #21262d);
   background: var(--bg-selected, rgba(56, 139, 253, 0.15));
+}
+
+.commit-body-mobile {
+  padding-block: 6px;
+  color: var(--text-secondary, #8b949e);
+  white-space: normal;
 }
 
 .commit-message-time {
