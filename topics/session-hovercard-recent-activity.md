@@ -273,6 +273,12 @@ when the user expresses interest:
   compatibility mouse events neither show the card nor refresh its data.
   Owned/external sessions are skipped — they already update live, and
   refreshing them could clobber a fresh recap with the JSONL's last turn.
+- **One hover controller:** list rows and non-list destinations share one hook
+  for refresh deduplication, delay/warmth, global visibility ownership,
+  anchoring, suppression, pointer intent, and departure into the card. A caller
+  owns only policy specific to its surface: list menu suppression and
+  scroll-ancestor dismissal remain in `SessionListItem`; a non-list target may
+  dismiss on any scroll.
 
 This deliberately does not persist (no index write), so it does not survive
 reyep; the cold-cache excerpt repopulates on the next focus/hover or when the
