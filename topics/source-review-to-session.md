@@ -235,10 +235,13 @@ device, or session cannot retarget it.
 
 **Two distinct immediate-submit actions.** The comment window always offers
 **Submit to new session**. When the page has an Edit-link default session, it
-also offers **Submit to default session**, whose tooltip is that session's
-display name.
+also offers **Submit to current session**. Hovering that action shows the
+standard session hovercard for the exact destination (opening request, recent
+reply when available, provider/model, project, age, and status), with the
+Edit-link-captured session identity as its fallback when live summary data is
+not yet available.
 
-- **Submit to default session** sends the composed review turn directly to
+- **Submit to current session** sends the composed review turn directly to
   that exact existing session. It does not consult recent sessions or prior
   review batches.
 - **Submit to new session** starts a separate session using the default

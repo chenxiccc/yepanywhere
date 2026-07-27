@@ -12,6 +12,7 @@ import {
   it,
   vi,
 } from "vitest";
+import { useQuoteableTextSource } from "../../hooks/useQuoteableTextSource";
 import {
   installMessageListTestEnvironment,
   SessionTranscriptHarness,
@@ -22,8 +23,20 @@ import {
   userMessage,
 } from "./MessageList.test-support";
 import { MessageList } from "../MessageList";
+import { Modal } from "../ui/Modal";
 
 installMessageListTestEnvironment();
+
+function QuoteableModal() {
+  const textRef = useQuoteableTextSource<HTMLParagraphElement>(
+    "Modal selected text",
+  );
+  return (
+    <Modal title="Expanded edit" onClose={() => {}}>
+      <p ref={textRef}>Modal selected text</p>
+    </Modal>
+  );
+}
 
 describe("MessageList selection and copy", () => {
   it("copies rendered assistant selections as source markdown", () => {
@@ -284,6 +297,45 @@ describe("MessageList selection and copy", () => {
     fireEvent.click(quoteButton);
 
     expect(onQuoteSelection).toHaveBeenCalledWith("> Desktop selected text\n");
+  });
+
+  it("quotes registered text from a portaled modal into the active session", async () => {
+    mockPointerCoarse(false);
+    const onQuoteSelection = vi.fn(() => "> Modal selected text\n");
+
+    render(
+      <>
+        <MessageList
+          messages={[assistantMessage("assistant-1", "Transcript text")]}
+          onQuoteSelection={onQuoteSelection}
+        />
+        <QuoteableModal />
+      </>,
+    );
+
+    const selectedElement = screen.getByText("Modal selected text");
+    const selectedText = selectedElement.firstChild;
+    expect(selectedText).toBeTruthy();
+
+    const range = document.createRange();
+    range.setStart(selectedText as Node, 0);
+    range.setEnd(selectedText as Node, "Modal selected text".length);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    fireEvent.pointerDown(selectedElement, { clientY: 120 });
+    fireEvent.pointerUp(selectedElement, { clientX: 180, clientY: 120 });
+
+    const quoteButton = await screen.findByRole("button", {
+      name: "Quote selection",
+    });
+    expect(quoteButton.closest(".modal")).toBeTruthy();
+    expect(quoteButton.closest(".message-list")).toBeNull();
+
+    fireEvent.click(quoteButton);
+
+    expect(onQuoteSelection).toHaveBeenCalledWith("> Modal selected text\n");
   });
 
   it("moves the selected-text quote button to the composer edge on mobile", async () => {

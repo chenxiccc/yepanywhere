@@ -4784,6 +4784,13 @@ a.linkified-url:hover {
   top: -64px;
 }
 
+.selection-quote-button--mobile-modal {
+  top: auto;
+  right: 10px;
+  bottom: 10px;
+  z-index: 31;
+}
+
 /* Message input */
 .message-input {
   display: flex;

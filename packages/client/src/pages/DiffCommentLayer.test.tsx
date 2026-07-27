@@ -15,6 +15,8 @@ import {
   type SourceReviewDefaultSession,
   SourceReviewDefaultSessionContext,
 } from "../contexts/SourceReviewDefaultSessionContext";
+import { I18nProvider } from "../i18n";
+import { UI_KEYS } from "../lib/storageKeys";
 
 const navigateSpy = vi.fn();
 vi.mock("react-router-dom", async (orig) => ({
@@ -82,11 +84,13 @@ function renderHarness(
   defaultSession: SourceReviewDefaultSession | null = null,
 ) {
   return render(
-    <MemoryRouter>
-      <SourceReviewDefaultSessionContext.Provider value={defaultSession}>
-        <Harness />
-      </SourceReviewDefaultSessionContext.Provider>
-    </MemoryRouter>,
+    <I18nProvider>
+      <MemoryRouter>
+        <SourceReviewDefaultSessionContext.Provider value={defaultSession}>
+          <Harness />
+        </SourceReviewDefaultSessionContext.Provider>
+      </MemoryRouter>
+    </I18nProvider>,
   );
 }
 
@@ -94,6 +98,7 @@ describe("DiffCommentLayer", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    localStorage.removeItem(UI_KEYS.sessionHoverCardShowDelayMs);
   });
 
   it("opens a comment window anchored to the clicked line", async () => {
@@ -190,6 +195,7 @@ describe("DiffCommentLayer", () => {
   });
 
   it("submits one comment to the tab's default session", async () => {
+    localStorage.setItem(UI_KEYS.sessionHoverCardShowDelayMs, "0");
     listReviewComments.mockResolvedValue({
       comments: [],
       batches: [],
@@ -217,8 +223,19 @@ describe("DiffCommentLayer", () => {
     const submitToDefault = await screen.findByText(
       "sourceReviewSubmitToDefault",
     );
-    expect(submitToDefault.getAttribute("title")).toBe(
-      "Fix source review flow",
+    expect(submitToDefault.getAttribute("title")).toBeNull();
+    const hoverTarget = submitToDefault.closest(
+      ".review-comment-window-default-session-target",
+    );
+    expect(hoverTarget).toBeTruthy();
+    fireEvent.pointerEnter(hoverTarget!, {
+      pointerType: "mouse",
+      clientX: 20,
+    });
+    await waitFor(() =>
+      expect(screen.getByRole("tooltip").textContent).toContain(
+        "Fix source review flow",
+      ),
     );
     fireEvent.click(submitToDefault);
 

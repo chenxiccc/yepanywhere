@@ -23,13 +23,15 @@ Topic: selection-comment-ui
 
 Status: **Phase 1 shipped 2026-06-23; the two early contract gaps fixed
 2026-06-23; the dedicated assistant quote lane fixed 2026-06-25; initial
-Phase 2 scope widening shipped 2026-07-01.**
+Phase 2 scope widening shipped 2026-07-01; portaled modal/file scope shipped
+2026-07-27.**
 Assistant text blocks can be quoted via selection typing, a floating selection
 `>` button, or per-paragraph `>` circles; the resulting `>` block is inserted
 into the composer and the selected source span is tinted until the quote is
 removed or sent. Thinking summaries, user turns, Ran/Bash command and output
-text, Grep preview/content text, and recap rows now use the same selection
-pipeline. Right-mouse line-select and per-section quote lanes for
+text, Grep preview/content text, recap rows, expanded Edit/Read file content,
+general file viewers, and session hovercard prompt/reply text now use the same
+selection pipeline. Right-mouse line-select and per-section quote lanes for
 non-assistant-prose surfaces remain design/follow-up work.
 
 ## Resolved gaps (Phase 1)
@@ -131,6 +133,13 @@ The quote block itself:
   renderer. For tool rows, the Bash/Ran command text and rendered command/output
   bodies are eligible; locally generated row labels and controls are not unless
   a renderer deliberately registers them as content.
+- A registered selection may live in the transcript or in a portaled modal or
+  session hovercard opened from that session. Reusable modals establish a
+  quote-selection root, while their file/text renderers register the actual
+  source. The floating `>` renders inside the owning surface and sends the
+  quote to the session composer behind it; on touch it stays visibly pinned
+  inside that surface. Modal headers, buttons, labels, and other unregistered
+  chrome remain ineligible.
 - If the composer already holds text, two blank-line-separated newlines come
   first — this is exactly the existing `appendComposerTransferDraft` rule, not
   a new one.
@@ -326,6 +335,12 @@ already covers whole-paragraph quoting on those platforms.
   eligible source snippet a selection intersects, so a drag crossing
   user/assistant/tool/system regions produces separate blank-line-separated
   quote blocks while skipping unregistered UI chrome.
+
+  Portaled scope widening shipped 2026-07-27. Expanded Edit and Read file
+  content, full file viewers, and session hovercard prompt/reply text register
+  their source with the same extractor. Reusable modal roots let the active
+  session's copy, selection-typing, and floating-`>` controller follow that
+  registered text across the portal without creating a second quote path.
 
   **Thinking summaries — quote while streaming *or* finished.** We want to
   select and comment on a thinking-summary item even mid-stream, not only once

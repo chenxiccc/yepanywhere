@@ -3,6 +3,7 @@ import type { ZodError } from "zod";
 import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
 import { useOptionalSessionMetadata } from "../../../contexts/SessionMetadataContext";
 import { useInlineMedia } from "../../../hooks/useInlineMedia";
+import { useQuoteableTextSource } from "../../../hooks/useQuoteableTextSource";
 import { isMarkdownLikeFile } from "../../../lib/markdownFiles";
 import { useScrollPreservingToggle } from "../../../lib/scrollAnchor";
 import { compactShikiLineBreaks } from "../../../lib/shikiHtml";
@@ -242,6 +243,9 @@ function FileModalContent({
     : null;
   const hasMarkdownPreview = !!markdownHtml;
   const [showPreview, setShowPreview] = useState(false);
+  const quoteSourceRef = useQuoteableTextSource<HTMLDivElement>(
+    highlightedHtml || (showPreview && markdownHtml) ? file.content : null,
+  );
 
   // For Shiki-highlighted code files: offer KaTeX-only math rendering (default off).
   // Uses renderFixedFontMath (not renderFixedFontRichContent) so markdown structural
@@ -334,7 +338,7 @@ function FileModalContent({
   const showSigma = !hasMarkdownPreview && hasMathToggle;
 
   return (
-    <div className="file-content-modal">
+    <div className="file-content-modal" ref={quoteSourceRef}>
       {toggleButton}
       {showSigma ? (
         <div className="fixed-font-render-toggle">

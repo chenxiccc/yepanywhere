@@ -35,3 +35,16 @@ export function formatBriefAge(timestamp?: string | null): string | null {
   const days = Math.floor(hours / 24);
   return `${days}d`;
 }
+
+export function formatSessionHoverAge(
+  updatedAt?: string | null,
+  createdAt?: string | null,
+): string | null {
+  const activityAge = formatBriefAge(updatedAt);
+  const establishedAge = formatBriefAge(createdAt);
+  return activityAge
+    ? `${activityAge} ago${establishedAge ? ` (est. ${establishedAge})` : ""}`
+    : establishedAge
+      ? `est. ${establishedAge}`
+      : null;
+}

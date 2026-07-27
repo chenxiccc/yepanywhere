@@ -18,14 +18,15 @@ import {
 import {
   copyMarkdownSelectionToClipboard,
   extractMarkdownSnippetsFromSelection,
+  getQuoteSelectionRoot,
+  getQuoteSelectionRootForTarget,
 } from "../lib/markdownSelectionCopy";
 import { useI18n } from "../i18n";
 import { useQuoteReplyButtonMode } from "./useQuoteReplyButtonMode";
 
 const SELECTION_QUOTE_BUTTON_SIZE_PX = 30;
 const SELECTION_QUOTE_BUTTON_GAP_PX = 8;
-const TRANSCRIPT_SELECTION_ACTIVE_CLASS =
-  "session-transcript-selection-active";
+const TRANSCRIPT_SELECTION_ACTIVE_CLASS = "session-transcript-selection-active";
 
 type SelectionQuoteButtonState =
   | {
@@ -33,10 +34,12 @@ type SelectionQuoteButtonState =
       top: number;
       left: number;
       anchors: readonly CommentAnchor[];
+      root: HTMLElement;
     }
   | {
       placement: "mobile";
       anchors: readonly CommentAnchor[];
+      root: HTMLElement;
     };
 
 interface UseMessageListSelectionQuoteOptions {
@@ -63,30 +66,6 @@ function clampNumber(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function rangeIntersectsNode(range: Range, node: Node): boolean {
-  try {
-    return range.intersectsNode(node);
-  } catch {
-    return false;
-  }
-}
-
-function selectionIntersectsElement(
-  selection: Selection | null,
-  element: HTMLElement,
-): boolean {
-  if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
-    return false;
-  }
-
-  for (let index = 0; index < selection.rangeCount; index += 1) {
-    if (rangeIntersectsNode(selection.getRangeAt(index), element)) {
-      return true;
-    }
-  }
-  return false;
-}
-
 function shouldShieldTranscriptSelection(win: Window): boolean {
   return win.matchMedia?.("(pointer: coarse)").matches === true;
 }
@@ -111,8 +90,7 @@ export function useMessageListSelectionQuote({
   const [selectionQuoteButton, setSelectionQuoteButton] =
     useState<SelectionQuoteButtonState | null>(null);
   const { quoteReplyButtonMode } = useQuoteReplyButtonMode();
-  const alwaysShowQuoteCircles =
-    quoteReplyButtonMode === "paragraph-always";
+  const alwaysShowQuoteCircles = quoteReplyButtonMode === "paragraph-always";
   const paragraphQuoteCirclesEnabled = quoteReplyButtonMode !== "block";
   const { t } = useI18n();
 
@@ -145,8 +123,14 @@ export function useMessageListSelectionQuote({
       if (!root) {
         return false;
       }
+      const selectionRoot = getQuoteSelectionRoot(root);
+      if (!selectionRoot) {
+        return false;
+      }
       const anchors =
-        extractMarkdownSnippetsFromSelection(root).map(createCommentAnchor);
+        extractMarkdownSnippetsFromSelection(selectionRoot).map(
+          createCommentAnchor,
+        );
       return applyQuoteAnchors(anchors, typedPrefix);
     },
     [applyQuoteAnchors, containerRef],
@@ -231,7 +215,10 @@ export function useMessageListSelectionQuote({
         return;
       }
 
-      copyMarkdownSelectionToClipboard(event, root);
+      const selectionRoot = getQuoteSelectionRoot(root);
+      if (selectionRoot) {
+        copyMarkdownSelectionToClipboard(event, selectionRoot);
+      }
     };
 
     document.addEventListener("copy", handleCopy);
@@ -280,7 +267,7 @@ export function useMessageListSelectionQuote({
         return;
       }
       setTranscriptSelectionActive(
-        selectionIntersectsElement(root.ownerDocument.getSelection(), root),
+        getQuoteSelectionRoot(root, root.ownerDocument.getSelection()) !== null,
       );
     };
 
@@ -294,7 +281,11 @@ export function useMessageListSelectionQuote({
         "selectionchange",
         updateTranscriptSelectionActive,
       );
-      doc.removeEventListener("pointerup", updateTranscriptSelectionActive, true);
+      doc.removeEventListener(
+        "pointerup",
+        updateTranscriptSelectionActive,
+        true,
+      );
       doc.removeEventListener("keyup", updateTranscriptSelectionActive, true);
       win.removeEventListener("blur", updateTranscriptSelectionActive);
       activeSessionPage?.classList.remove(TRANSCRIPT_SELECTION_ACTIVE_CLASS);
@@ -325,8 +316,15 @@ export function useMessageListSelectionQuote({
         return;
       }
 
+      const selectionRoot = getQuoteSelectionRoot(root, selection);
+      if (!selectionRoot) {
+        setSelectionQuoteButton(null);
+        return;
+      }
       const anchors =
-        extractMarkdownSnippetsFromSelection(root).map(createCommentAnchor);
+        extractMarkdownSnippetsFromSelection(selectionRoot).map(
+          createCommentAnchor,
+        );
       if (anchors.length === 0) {
         setSelectionQuoteButton(null);
         return;
@@ -334,7 +332,11 @@ export function useMessageListSelectionQuote({
 
       const win = root.ownerDocument.defaultView ?? window;
       if (shouldShieldTranscriptSelection(win)) {
-        setSelectionQuoteButton({ placement: "mobile", anchors });
+        setSelectionQuoteButton({
+          placement: "mobile",
+          anchors,
+          root: selectionRoot,
+        });
         return;
       }
 
@@ -347,20 +349,21 @@ export function useMessageListSelectionQuote({
         setSelectionQuoteButton(null);
         return;
       }
-      const rootRect = root.getBoundingClientRect();
+      const rootRect = selectionRoot.getBoundingClientRect();
       const clientX = pointerEnd?.clientX ?? rect?.right ?? rootRect.left;
       const clientY = pointerEnd?.clientY ?? rect?.top ?? rootRect.top;
       const maxTop = Math.max(
         0,
-        root.scrollHeight - SELECTION_QUOTE_BUTTON_SIZE_PX,
+        selectionRoot.clientHeight - SELECTION_QUOTE_BUTTON_SIZE_PX,
       );
       const maxLeft = Math.max(
         0,
-        root.clientWidth - SELECTION_QUOTE_BUTTON_SIZE_PX,
+        selectionRoot.clientWidth - SELECTION_QUOTE_BUTTON_SIZE_PX,
       );
       setSelectionQuoteButton({
         placement: "floating",
         anchors,
+        root: selectionRoot,
         top: clampNumber(
           pointerEnd?.placeBelow
             ? clientY - rootRect.top + SELECTION_QUOTE_BUTTON_GAP_PX
@@ -380,7 +383,7 @@ export function useMessageListSelectionQuote({
     };
     const handlePointerDown = (event: PointerEvent) => {
       const root = containerRef.current;
-      if (!root?.contains(event.target as Node | null)) {
+      if (!root || !getQuoteSelectionRootForTarget(root, event.target)) {
         selectionPointerStartRef.current = null;
         return;
       }
@@ -443,9 +446,15 @@ export function useMessageListSelectionQuote({
 
   const mobileSelectionQuoteButtonTarget =
     selectionQuoteButton?.placement === "mobile" &&
+    selectionQuoteButton.root.isConnected &&
     typeof document !== "undefined"
-      ? document.querySelector<HTMLElement>(".session-input-inner")
+      ? selectionQuoteButton.root === containerRef.current
+        ? document.querySelector<HTMLElement>(".session-input-inner")
+        : selectionQuoteButton.root
       : null;
+  const selectionQuoteButtonIsInPortal =
+    selectionQuoteButton !== null &&
+    selectionQuoteButton.root !== containerRef.current;
   const selectionQuoteButtonElement = selectionQuoteButton ? (
     <button
       type="button"
@@ -456,6 +465,10 @@ export function useMessageListSelectionQuote({
           : "",
         selectionQuoteButton.placement === "mobile" && followButtonVisible
           ? "selection-quote-button--mobile-with-follow"
+          : "",
+        selectionQuoteButton.placement === "mobile" &&
+        selectionQuoteButtonIsInPortal
+          ? "selection-quote-button--mobile-modal"
           : "",
       ]
         .filter(Boolean)
@@ -510,11 +523,17 @@ export function useMessageListSelectionQuote({
             selectionQuoteButtonElement,
             mobileSelectionQuoteButtonTarget,
           )
-        : selectionQuoteButtonElement
+        : selectionQuoteButtonIsInPortal
+          ? null
+          : selectionQuoteButtonElement
       : null;
   const floatingSelectionQuoteButton =
     selectionQuoteButton?.placement === "floating"
-      ? selectionQuoteButtonElement
+      ? selectionQuoteButtonIsInPortal
+        ? selectionQuoteButton.root.isConnected
+          ? createPortal(selectionQuoteButtonElement, selectionQuoteButton.root)
+          : null
+        : selectionQuoteButtonElement
       : null;
 
   return {

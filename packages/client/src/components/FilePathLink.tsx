@@ -10,6 +10,7 @@ import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useTextTooltipAttributes } from "../hooks/useTooltipAppearance";
 import { toBrowserAppHref } from "../lib/appHref";
 import { writeClipboardText, writeClipboardTextLater } from "../lib/clipboard";
+import { QUOTE_SELECTION_ROOT_ATTRIBUTES } from "../lib/markdownSelectionCopy";
 import {
   getPathBasename,
   getProjectRelativePath,
@@ -364,6 +365,7 @@ export function FileViewerModal({
         className={`modal file-viewer-modal ${
           viewMode === "range" ? "file-viewer-modal-compact" : ""
         }`}
+        {...QUOTE_SELECTION_ROOT_ATTRIBUTES}
         open
         onClick={(e) => e.stopPropagation()}
       >

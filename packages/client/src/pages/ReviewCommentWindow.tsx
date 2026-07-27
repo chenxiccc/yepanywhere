@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { SessionHoverCardTarget } from "../components/SessionHoverCardTarget";
 import type { SourceReviewDefaultSession } from "../contexts/SourceReviewDefaultSessionContext";
 import type { TranslationFn } from "../i18n";
 
@@ -71,15 +72,25 @@ export function ReviewCommentWindow({
         </button>
         <div className="review-comment-window-submit-actions">
           {defaultSession && onSubmitToDefault && (
-            <button
-              type="button"
-              className="review-comment-window-submit"
-              onClick={() => onSubmitToDefault(text)}
-              disabled={!canSubmit}
-              title={defaultSession.title}
+            <SessionHoverCardTarget
+              sessionId={defaultSession.id}
+              fallback={{
+                projectId: defaultSession.projectId,
+                title: defaultSession.title,
+                provider: defaultSession.newSession.provider,
+                model: defaultSession.newSession.model,
+              }}
+              className="review-comment-window-default-session-target"
             >
-              {t("sourceReviewSubmitToDefault")}
-            </button>
+              <button
+                type="button"
+                className="review-comment-window-submit"
+                onClick={() => onSubmitToDefault(text)}
+                disabled={!canSubmit}
+              >
+                {t("sourceReviewSubmitToDefault")}
+              </button>
+            </SessionHoverCardTarget>
           )}
           <button
             type="button"

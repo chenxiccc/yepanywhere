@@ -10,7 +10,7 @@ import {
 import { useI18n } from "../i18n";
 import { activityBus } from "../lib/activityBus";
 import { toBrowserAppHref } from "../lib/appHref";
-import { formatBriefAge } from "../lib/sessionAge";
+import { formatBriefAge, formatSessionHoverAge } from "../lib/sessionAge";
 import {
   buildBtwAsideParentHref,
   getBtwAsideSessionDisplayTitle,
@@ -453,12 +453,7 @@ export function SessionListItem({
   // Hover tooltip age shows both: time since last activity (primary) with the
   // creation time as an "established" aside — "5m ago (est. 2d)". Either half
   // drops out when its timestamp is unknown/default.
-  const hoverActivityAge = formatBriefAge(updatedAt);
-  const hoverAgeLabel = hoverActivityAge
-    ? `${hoverActivityAge} ago${briefAge ? ` (est. ${briefAge})` : ""}`
-    : briefAge
-      ? `est. ${briefAge}`
-      : null;
+  const hoverAgeLabel = formatSessionHoverAge(updatedAt, createdAt);
 
   // Hover card fires on every list surface (sidebar compact + all-sessions /
   // search cards); it only needs a provider to badge.

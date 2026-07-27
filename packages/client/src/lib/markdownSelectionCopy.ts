@@ -1,4 +1,9 @@
 const MARKDOWN_COPY_SOURCE_ATTR = "data-markdown-copy-source";
+const QUOTE_SELECTION_ROOT_ATTR = "data-quote-selection-root";
+
+export const QUOTE_SELECTION_ROOT_ATTRIBUTES = {
+  [QUOTE_SELECTION_ROOT_ATTR]: "true",
+} as const;
 
 interface SourceLine {
   text: string;
@@ -45,6 +50,56 @@ export interface MarkdownSelectionSnippet {
 }
 
 const markdownCopySources = new WeakMap<HTMLElement, string>();
+
+function closestQuoteSelectionRoot(node: Node | null): HTMLElement | null {
+  const element =
+    node instanceof HTMLElement ? node : (node?.parentElement ?? null);
+  return (
+    element?.closest<HTMLElement>(`[${QUOTE_SELECTION_ROOT_ATTR}]`) ?? null
+  );
+}
+
+/**
+ * Resolve the UI surface that owns the current quoteable selection. The
+ * transcript is the default root; portaled surfaces opt in explicitly so the
+ * same selection/copy/reply controller can follow their registered text.
+ */
+export function getQuoteSelectionRoot(
+  transcriptRoot: HTMLElement,
+  selection: Selection | null = transcriptRoot.ownerDocument.getSelection(),
+): HTMLElement | null {
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+    return null;
+  }
+
+  for (let index = 0; index < selection.rangeCount; index += 1) {
+    const range = selection.getRangeAt(index);
+    const portaledRoot =
+      closestQuoteSelectionRoot(range.startContainer) ??
+      closestQuoteSelectionRoot(range.endContainer);
+    if (portaledRoot && rangeIntersectsNode(range, portaledRoot)) {
+      return portaledRoot;
+    }
+    if (rangeIntersectsNode(range, transcriptRoot)) {
+      return transcriptRoot;
+    }
+  }
+  return null;
+}
+
+export function getQuoteSelectionRootForTarget(
+  transcriptRoot: HTMLElement,
+  target: EventTarget | null,
+): HTMLElement | null {
+  if (!(target instanceof Node)) {
+    return null;
+  }
+  const portaledRoot = closestQuoteSelectionRoot(target);
+  if (portaledRoot) {
+    return portaledRoot;
+  }
+  return transcriptRoot.contains(target) ? transcriptRoot : null;
+}
 
 export function registerMarkdownCopySource(
   element: HTMLElement,

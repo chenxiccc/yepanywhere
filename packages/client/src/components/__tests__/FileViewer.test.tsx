@@ -9,6 +9,7 @@ import { toUrlProjectId, type FileContentResponse } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import { LOCAL_CLIENT_SUMMARY_SOURCE_KEY } from "../../lib/clientSummaryStore";
+import { extractMarkdownSnippetsFromSelection } from "../../lib/markdownSelectionCopy";
 import { getNewSessionPrefill } from "../../lib/newSessionPrefill";
 import { FileViewer, type FileViewerSource } from "../FileViewer";
 
@@ -375,6 +376,25 @@ describe("FileViewer", () => {
         .querySelector(".highlighted-line-end")
         ?.getAttribute("data-line"),
     ).toBe("42");
+
+    const viewerBody =
+      container.querySelector<HTMLElement>(".file-viewer-body");
+    expect(viewerBody?.getAttribute("data-markdown-copy-source")).toBe("true");
+    const betaText = viewerBody?.querySelector('[data-line="41"]')?.firstChild;
+    expect(betaText).toBeTruthy();
+    const range = document.createRange();
+    range.setStart(betaText as Node, 0);
+    range.setEnd(betaText as Node, "beta".length);
+    const selection = document.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    expect(extractMarkdownSnippetsFromSelection(viewerBody!)).toMatchObject([
+      {
+        markdown: "beta",
+        selectedText: "beta",
+      },
+    ]);
   });
 
   it("keeps Markdown preview toggleable in range views", async () => {

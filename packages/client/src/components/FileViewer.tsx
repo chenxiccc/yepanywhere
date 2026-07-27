@@ -16,6 +16,7 @@ import {
 import { api } from "../api/client";
 import { usePublicShareContext } from "../contexts/PublicShareContext";
 import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
+import { useRegisterQuoteableTextSource } from "../hooks/useQuoteableTextSource";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useI18n } from "../i18n";
 import { toBrowserAppHref } from "../lib/appHref";
@@ -348,6 +349,7 @@ export const FileViewer = memo(function FileViewer({
   );
   const sourceStyle = getSourceViewStyle(sourceDensity);
   const fileViewerBodyRef = useRef<HTMLDivElement>(null);
+  useRegisterQuoteableTextSource(fileViewerBodyRef, fileData?.content);
   const markdownPreviewRef = useRef<HTMLDivElement>(null);
   const {
     modal: localMediaModal,

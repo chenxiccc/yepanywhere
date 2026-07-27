@@ -1127,7 +1127,7 @@
   "toolResultMediaUnsupportedMedia": "The returned image format is unsupported.",
   "sourceReviewAddToReview": "Add to review",
   "sourceReviewOpenDirtyFile": "Review dirty file",
-  "sourceReviewSubmitToDefault": "Submit to default session",
+  "sourceReviewSubmitToDefault": "Submit to current session",
   "sourceReviewSubmitToNew": "Submit to new session",
   "sourceReviewCommentPlaceholder": "Comment on this line…",
   "sourceReviewSubmitQueued": "Queued — the server is busy; the comment is still pending.",

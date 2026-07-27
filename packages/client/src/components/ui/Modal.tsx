@@ -8,6 +8,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useI18n } from "../../i18n";
+import { QUOTE_SELECTION_ROOT_ATTRIBUTES } from "../../lib/markdownSelectionCopy";
 
 const ANCHORED_MODAL_MARGIN_PX = 8;
 const ANCHORED_MODAL_MIN_VIEWPORT_WIDTH_PX = 600;
@@ -201,6 +202,7 @@ export function Modal({
       <div
         ref={modalRef}
         className={`modal${isAnchored ? " modal--anchored" : ""}`}
+        {...QUOTE_SELECTION_ROOT_ATTRIBUTES}
         role="dialog"
         aria-modal="true"
         onClick={handleModalClick}
