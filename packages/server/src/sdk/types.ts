@@ -7,6 +7,7 @@ import type {
   SlashCommand,
   SessionLivenessProbeStatus,
   ToolDisplayAction,
+  ToolResultMedia,
   UploadedFile,
   UserMessageMetadata,
 } from "@yep-anywhere/shared";
@@ -63,6 +64,7 @@ export interface SDKMessage {
   tool_name?: string;
   tool_input?: unknown;
   toolUseResult?: unknown;
+  toolResultMedia?: ToolResultMedia[];
   // Input requests (tool approval, questions, etc.)
   input_request?: {
     id: string;

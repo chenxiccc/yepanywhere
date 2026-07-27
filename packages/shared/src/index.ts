@@ -77,6 +77,14 @@ export {
   parseLocalResourceLink,
 } from "./local-resource.js";
 
+export {
+  TOOL_RESULT_MEDIA_REJECTION_REASONS,
+  type RejectedToolResultMedia,
+  type StoredToolResultMedia,
+  type ToolResultMedia,
+  type ToolResultMediaRejectionReason,
+} from "./tool-result-media.js";
+
 // ANSI escape rendering (shared between server and client)
 export { hasAnsiEscapes, renderAnsiToHtml } from "./ansi-renderer.js";
 export {

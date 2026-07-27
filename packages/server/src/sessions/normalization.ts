@@ -40,6 +40,7 @@ import {
   normalizeCodexToolOutputWithContext,
   parseCodexToolArguments,
 } from "../codex/normalization.js";
+import { attachToolResultMediaCandidates } from "../media/inlineImageData.js";
 import { normalizeGeminiTool } from "../sdk/providers/gemini-tools.js";
 import { normalizeOpenCodeTool } from "../sdk/providers/opencode-tools.js";
 import type { ContentBlock, Message, Session } from "../supervisor/types.js";
@@ -716,10 +717,7 @@ function convertCodexMessagePayload(
   payload: CodexMessagePayload,
   uuid: string,
   timestamp: string,
-  userTurnProvenance?: Exclude<
-    CodexUserTurnMessageProvenance,
-    "event-only"
-  >,
+  userTurnProvenance?: Exclude<CodexUserTurnMessageProvenance, "event-only">,
 ): Message {
   const content: ContentBlock[] = [];
 
@@ -1032,7 +1030,7 @@ function convertCodexToolCallOutputPayload(
     ...(isError && { is_error: true }),
   };
 
-  return {
+  const message: Message = {
     uuid,
     type: "user",
     message: {
@@ -1044,6 +1042,8 @@ function convertCodexToolCallOutputPayload(
     }),
     timestamp,
   };
+  attachToolResultMediaCandidates(message, normalized.mediaCandidates);
+  return message;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

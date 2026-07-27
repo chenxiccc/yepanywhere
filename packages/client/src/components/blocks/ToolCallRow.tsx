@@ -34,6 +34,7 @@ import {
   isElementFullyScrollVisible,
 } from "../../lib/tooltipVisibility";
 import type { ToolCallItem, ToolResultData } from "../../types/renderItems";
+import { ToolResultMediaRows } from "./ToolResultMediaRows";
 import { toolRegistry } from "../renderers/tools";
 import { getOutputTailTooltip } from "../renderers/tools/outputPreview";
 import type { RenderContext } from "../renderers/types";
@@ -913,8 +914,9 @@ export const ToolCallRow = memo(function ToolCallRow({
         outputToolPreviewLineCount,
         elapsedPrefix,
       );
-      const outputSurface =
-        event.currentTarget.querySelector<HTMLElement>(".bash-preview-output");
+      const outputSurface = event.currentTarget.querySelector<HTMLElement>(
+        ".bash-preview-output",
+      );
       const visibilityTarget =
         outputSurface?.querySelector<HTMLElement>(
           "pre, .fixed-font-rendered__content",
@@ -989,6 +991,16 @@ export const ToolCallRow = memo(function ToolCallRow({
     shouldFocusExpandedTopRef.current = false;
     queueExpandedToolTopFocus(rowRef);
   }, [previewExpanded, expanded, dotExpanded, rowRef]);
+
+  if (toolResult?.media?.length) {
+    return (
+      <ToolResultMediaRows
+        displayName={toolRegistry.getDisplayName(toolName, status, toolInput)}
+        media={toolResult.media}
+        status={status}
+      />
+    );
+  }
 
   // Inline renderers bypass the entire tool-row structure
   if (hasInlineRenderer) {
@@ -1121,10 +1133,7 @@ export const ToolCallRow = memo(function ToolCallRow({
           </span>
         )}
 
-        <span
-          className="tool-name"
-          onPointerEnter={handleToolNamePointerEnter}
-        >
+        <span className="tool-name" onPointerEnter={handleToolNamePointerEnter}>
           {toolRegistry.getDisplayName(toolName, status, toolInput)}
         </span>
 

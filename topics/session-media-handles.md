@@ -7,10 +7,10 @@
 
 Topic: session-media-handles
 
-Status: Problem statement / latent proposal. This is not scheduled work. Use
-this document before changing provider message normalization, session detail
-REST payloads, transcript media renderers, `Read` image result rendering, public
-share transcript capture, or the session-detail data-layer ingest boundary.
+Status: implementation contract. Use this document before changing provider
+message normalization, session detail REST payloads, transcript media
+renderers, `Read` image result rendering, public share transcript capture, or
+the session-detail data-layer ingest boundary.
 
 ## Problem
 
@@ -70,16 +70,29 @@ large Claude image sessions still returned inline base64 in the live API body
 Session detail responses should contain metadata and handles, not bytes:
 
 ```ts
-interface TranscriptMediaRef {
-  id: string;
-  url: string;
-  mimeType: string;
-  byteLength: number;
-  width?: number;
-  height?: number;
-  filename?: string;
-  source: "transcript";
-}
+type TranscriptMediaRef =
+  | {
+      state: "stored";
+      toolCallId: string;
+      id: string;
+      mimeType: string;
+      byteLength: number;
+      width?: number;
+      height?: number;
+      filename?: string;
+    }
+  | {
+      state: "rejected";
+      toolCallId: string;
+      reason:
+        | "invalid-image-data"
+        | "source-unavailable"
+        | "storage-unavailable"
+        | "too-large"
+        | "unsupported-media";
+      filename?: string;
+      claimedMimeType?: string;
+    };
 
 interface InputImageBlock {
   type: "input_image";
@@ -88,18 +101,26 @@ interface InputImageBlock {
 }
 ```
 
-The exact block names can follow existing provider-specific shapes, but the
-principle should hold: the transcript row has enough metadata to render the
-same collapsed chip, reserve expanded layout, and fetch bytes lazily. It does
-not keep base64 payload text.
+A stored ref contains presentation metadata and an opaque handle, never a
+filesystem path or bytes. A rejected ref is an explicit terminal result: the
+renderer can explain why no preview is available without retrying a bad
+payload or silently falling back to its claimed extension.
 
-The fetch route should be an authenticated API path, for example:
+The exact block names may follow existing provider-specific shapes, but the
+normalized message also carries a provider-neutral tool-result media list so
+the transcript compiler can give every image-bearing tool result the same
+presentation. Every ref retains its tool-call ID so a provider message
+containing several parallel results cannot project one tool's images onto a
+sibling row. The session-detail response must not retain the replaced base64
+payload.
+
+The fetch route is:
 
 ```text
 GET /api/projects/:projectId/sessions/:sessionId/media/:mediaId
 ```
 
-The client should fetch through the existing connection abstraction:
+The client fetches through the active source transport:
 
 - direct mode: credentialed HTTP fetch;
 - relay mode: `connection.fetchBlob(path)`, then `URL.createObjectURL(blob)`.
@@ -107,102 +128,105 @@ The client should fetch through the existing connection abstraction:
 Do not render a bare `/api/...` URL directly in an `<img>`; relay-origin pages
 do not have the local server's API.
 
-## Media ID And Lookup Model
+## Materialized Tool-Result Storage
 
-The public `mediaId` should be opaque. It may be deterministic, but clients
-must not parse it. A reasonable internal seed is:
+Tool-result output is materialized under:
 
 ```text
-sha256(provider + sessionId + messageId + blockPath + contentHash)
+<project>/.yep/tool-results/<session-id>/
 ```
 
-The server maintains a media catalog entry:
+The directory must be obtained through `ensureManagedProjectDir`, preserving
+its creation-time `.git/info/exclude` behavior for `.yep/`. A symlinked or
+unwritable managed path is unsafe; use a project/session-scoped fallback below
+the configured YA data directory. The public ref and serving route stay
+identical across both physical locations.
+
+Bytes are content-addressed within the session. A separate catalog record maps
+each stable handle to the content hash and safe metadata:
 
 ```ts
 interface SessionMediaCatalogEntry {
-  mediaId: string;
+  id: string;
   provider: string;
+  projectId: string;
   sessionId: string;
-  messageId: string;
-  blockPath: string;
+  toolCallId: string;
   mimeType: string;
   byteLength: number;
   width?: number;
   height?: number;
+  filename?: string;
+  originalPath?: string;
   contentHash: string;
-  locator: TranscriptMediaLocator;
 }
-
-type TranscriptMediaLocator =
-  | {
-      kind: "jsonl-line";
-      path: string;
-      mtimeMs: number;
-      size: number;
-      byteOffset: number;
-      lineNumber: number;
-      jsonPointer: string;
-    }
-  | {
-      kind: "active-process";
-      processId: string;
-      expiresAt: number;
-    };
 ```
 
-Line number, byte offset, and JSON pointer are an optimization. They should not
-be part of the public API because they are brittle across pagination,
-compaction overlays, forks, provider normalization changes, and line rewriting.
+The handle may be deterministic but clients must not parse it. Blob and catalog
+writes are atomic: a partial image must never become a valid handle. Identical
+bytes in one project/session share the same content-addressed blob even when
+separate tool calls have separate stable handles.
 
-### Building The Catalog
+## Media ID And Lookup Model
 
-The best first implementation is opportunistic:
+The public `mediaId` is opaque. A reasonable deterministic seed is:
 
-1. During normal session load/normalization, when YA already scans the JSONL,
-   detect inline media and populate a catalog for that session file.
-2. Cache that catalog in memory keyed by provider/session plus source file
-   `path + size + mtimeMs`.
-3. Return media refs in the same pass that returns normalized messages.
-4. On media fetch, look up the cached catalog entry, seek to the JSONL line,
-   parse the line, follow the JSON pointer, verify the content hash, decode,
-   and stream bytes.
+```text
+sha256(provider + projectId + sessionId + toolCallId + mediaIndex + contentHash)
+```
 
-If the media route is hit cold, rebuild the catalog by scanning the transcript
-once. That should be acceptable for rare direct media URLs. If profiles later
-show repeated cold scans are expensive, add a persistent index under the YA
-data directory. Do not build a persistent index as the first step unless the
-scan cost is already observed in practice.
+Row numbers, line numbers, byte offsets, JSON pointers, `.yep`, and host paths
+must not be part of the public handle. The catalog is the only durable
+handle-to-blob mapping.
 
 ### Active Process Media
 
-Live messages can arrive before provider JSONL persistence catches up. For
-those, the provider seam or `Process` layer should store decoded media in a
-bounded temporary media store and return the same `mediaId` shape. Once the
-durable transcript exists, the catalog can resolve the same logical media from
-JSONL. The temporary store needs ordinary session/process cleanup so an idle
-provider session or closed tab cannot keep media bytes forever.
+`Process` is the live provider-neutral capture boundary. It materializes image
+bytes before retaining or emitting a normalized tool result. The durable
+session-detail boundary performs the same conversion after authorized history
+slicing and before returning messages. Both use the same store and reference
+shape, preserving live/persisted render parity.
+
+When immediate durable materialization is impossible, any temporary live-byte
+store must be size- and lifetime-bounded and cleaned with the process/session.
+The implemented path should prefer immediate materialization so an idle
+provider or closed tab retains no unbounded image buffer.
+
+Provider transcript or input media is a separate migration. It may still use a
+transcript locator/catalog until it is moved to materialized storage; that
+locator must remain server-internal and must not weaken the handle or
+authorization contract above.
 
 ## Metadata Extraction
 
 The server should extract cheap metadata while replacing the payload:
 
-- MIME type from the provider field or data URL header;
-- decoded byte length from base64 length;
-- content hash from decoded bytes or normalized base64 payload;
+- MIME type from validated file signatures, retaining a provider claim only as
+  diagnostic metadata;
+- decoded byte length and content hash from the validated bytes;
 - dimensions for PNG, JPEG, GIF, and WebP using header parsing when practical;
 - filename from provider path or a stable synthetic name such as
   `pasted-image-1.png`.
 
+The returned bytes are authoritative when a result also names a path. YA must
+not reread the mutable path instead. A path-only image event is snapshotted at
+event completion only when the existing local-file policy permits it.
+Unsupported or script-capable content, including SVG, is rejected based on
+bytes rather than accepted from its claimed MIME type or extension.
+
 Dimensions matter because historical transcript rows must not change height
-unexpectedly. If width and height are known, the client can reserve the expanded
-preview box before fetching bytes. If dimensions are unknown, default-expanded
-settings should not auto-expand historical rows, or the renderer should use a
-fixed bounded placeholder that will not jump.
+unexpectedly. Known dimensions reserve bounded layout space; unknown dimensions
+use a bounded loading placeholder.
 
 ## Client Rendering Contract
 
-Collapsed media chips should render from metadata only. Expanded media should
-fetch the blob lazily and render an object URL.
+Every normalized image-bearing tool result uses the shared outline media row:
+filename/type metadata, an individual `+ / -` toggle, and a lazy inline
+preview. The browser-local `inlineMediaExpandedByDefault` setting chooses the
+initial state until that row is toggled. Collapsed rows fetch no bytes; expanded
+rows fetch through the active source transport and render an object URL.
+Filename and image clicks may still open `LocalMediaModal` and its native-tab
+affordance.
 
 Stable transcript media handles would also unlock durable client UI state for
 inline preview expansion. The 2026-07-04 inline-media regression showed that
@@ -216,11 +240,9 @@ could be keyed by stable media identity, so route restores, transcript cache
 eviction, changed HTML, or other legitimate remounts can recreate an expanded
 preview intentionally without refetch flicker.
 
-The existing "inline media expanded by default" setting defaults off. If this
-setting is applied to transcript media handles later, it must respect the
-layout-stability rule from `packages/client/RENDERING_PERFORMANCE.md`: old
-rows should not automatically change height unless the dimensions were known
-and space was reserved, or the change was directly user-initiated.
+The setting remains default-off. Applying it to historical rows must respect
+the layout-stability rule from `packages/client/RENDERING_PERFORMANCE.md`;
+known dimensions or the bounded placeholder reserve the expanding row.
 
 ## Security Contract
 
@@ -250,17 +272,10 @@ media was part of the shared transcript snapshot or live-share visibility set.
 - Do not solve huge non-media payloads such as giant stdout in this proposal.
   Those need separate output truncation/windowing rules.
 
-## Triggers
+## Retention
 
-This becomes worth implementing when one of these is true:
-
-- Claude or another provider produces repeated session API responses above a
-  few MB due mostly to inline base64;
-- mobile/relay session opens are measurably slow because of image-bearing
-  transcript payloads;
-- the session-detail data-layer ingest boundary is being touched anyway;
-- public share snapshotting needs a manifest for transcript-visible media;
-- a provider adds more generated-image output to durable transcripts.
-
-Until then, keep the proposal recorded and avoid ad hoc per-renderer fixes that
-leave the base64 in the API payload.
+Tool-result media is viewer state, not provider input: it is never appended to
+later user turns or attachment lists. Automatic pruning is deferred until
+observed project/data-dir growth justifies a policy. A future cleanup must
+remove catalog records and only then unreferenced content-addressed blobs; it
+must cover both project-local and fallback locations.

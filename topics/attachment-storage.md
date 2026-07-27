@@ -37,6 +37,13 @@ Path traversal / symlink escape are at parity between the schemes (UUID-prefixed
 filenames, `realpath` + prefix containment, media-extension allowlist) and are
 not the concern here; the write-into-the-repo leak is.
 
+Tool-result media is deliberately outside this contract. YA-managed output is
+materialized under `<project>/.yep/tool-results/<session>/` (with a data-dir
+fallback) and served by opaque session media handles. It must never be written
+under `.attachments/`, listed as `User uploaded files in .attachments:`, or
+automatically supplied to a later provider turn. See
+[[session-media-handles]].
+
 ## Default resolution (setting unset)
 
 Per project, at upload time:

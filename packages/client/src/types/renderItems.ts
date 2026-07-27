@@ -1,5 +1,6 @@
 import type {
   ToolDisplayAction,
+  ToolResultMedia,
   TranscriptDisplayObject,
 } from "@yep-anywhere/shared";
 import type { ContentBlock, Message } from "../types";
@@ -64,6 +65,8 @@ export interface ToolResultData {
   isError: boolean;
   /** Structured result from JSONL toolUseResult field */
   structured?: unknown;
+  /** Session-scoped media captured from the tool result. */
+  media?: ToolResultMedia[];
 }
 
 export interface UserPromptItem extends RenderItemBase {

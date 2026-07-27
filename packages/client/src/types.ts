@@ -3,6 +3,7 @@ import type {
   AgentStatus as AgentStatusType,
   AppContentBlock,
   ProviderName,
+  ToolResultMedia,
 } from "@yep-anywhere/shared";
 
 // Re-export shared types
@@ -117,6 +118,8 @@ export interface Message {
   };
   /** Tool use result data */
   toolUseResult?: unknown;
+  /** Session-scoped stored media captured from a tool result */
+  toolResultMedia?: ToolResultMedia[];
   /** Tool use IDs without corresponding results (orphaned) */
   orphanedToolUseIds?: string[];
   /** Source tracking: "sdk" for streaming, "jsonl" for persisted */

@@ -16,9 +16,9 @@ See also:
   *displayed* (compacted to project-relative) across these surfaces.
 - [`attachment-storage.md`](attachment-storage.md) — where uploaded attachments
   live and the allow-list behind `/api/local-image` and `/api/local-file`.
-- [`session-media-handles.md`](session-media-handles.md) — proposed transcript
-  media handles for inline base64 provider payloads that should be fetched
-  lazily instead of retained in session JSON.
+- [`session-media-handles.md`](session-media-handles.md) — materialized
+  tool-result media and transcript media handles that are fetched lazily
+  instead of retained as inline base64.
 - [`relay-origin-and-share-gating.md`](relay-origin-and-share-gating.md) — why
   the relay origin has no API, and the public-share serving path.
 - `docs/tactical/009-local-resource-link-routing.md` — the working log of the
@@ -62,21 +62,22 @@ and the route it pulls from.
 
 ### Inline in the transcript
 
-- **Read tool result, inline image preview** — under a `Read` tool-call row in
-  the message timeline, the expandable image with the `+ / -` toggle.
-  `ImageFileResult` in `renderers/tools/ReadRenderer.tsx`. Bytes come as a
-  base64 `data:` URL inside the tool result itself — no network, always works.
+- **Image-bearing tool result** — `Read`, `ViewImage`, and provider-neutral
+  image-bearing results converge on the shared outline media row. Its `+ / -`
+  toggle controls a lazy object-URL preview. Route:
+  `/api/projects/:id/sessions/:sid/media/:mediaId`. Relay-safe. Legacy
+  unmaterialized `Read` results retain their base64 renderer as a compatibility
+  fallback.
 - **Embedded media inside rendered Markdown/HTML** — an `![](...)` image or
   video that appears inline within an assistant/user message body.
   `useLocalMediaInlinePreviews` (`components/LocalMediaModal.tsx`) hydrates the
   `local-media-inline-preview` placeholders emitted by the server Markdown
   augment; it's wired from `blocks/TextBlock.tsx` and
   `renderers/blocks/TextRenderer.tsx`. Route: `/api/local-image`. Relay-safe.
-- **ViewImage tool result** — a "View Image" tool row (Codex `imageView` /
-  `view_image`). Clicking the filename opens the shared local-media modal;
-  tapping the picture there opens its object URL in a native browser tab.
-  `renderers/tools/ViewImageRenderer.tsx` → `LocalMediaModal` →
-  `/api/local-image`. Relay-safe.
+- **Legacy path-backed ViewImage result** — a historical result without a
+  media handle still opens its path through `LocalMediaModal` and
+  `/api/local-image`. New live and durable results snapshot permitted paths
+  into the session media store before rendering.
 
 ### Modals opened by clicking a link
 
@@ -152,6 +153,7 @@ Serving routes:
 | `/api/local-file` | Same allow-set (text/PDF/HTML/Markdown) | `routes/local-file.ts` |
 | `/api/projects/:id/files` + `/files/raw` | Relative paths project-scoped; **absolute/`~` paths gated by the same file-access allow-set** | `routes/files.ts` |
 | `/api/projects/:id/sessions/:sid/upload/:filename` | Files uploaded to that session | `routes/upload.ts` |
+| `/api/projects/:id/sessions/:sid/media/:mediaId` | Authenticated session-scoped opaque tool-result handle | `routes/tool-result-media.ts` |
 | `/public-api/shares/:secret/files/raw` | Share-scoped, capability-gated by secret | `routes/public-shares.ts` |
 
 **The file-access allow-set** is one effective list enforced by **both** doors
@@ -197,7 +199,8 @@ historical "safe-dir image opened through the project files route" 404 is gone.
   secure-by-default, so absolute paths outside projects/uploads/temp are denied
   until the user adds the folder (Settings → File access) or sets
   `ALLOWED_FILE_PATHS`.
-- **No single media element** — modal-based local images share
-  `LocalMediaModal`, but inline/base64 images, attachments, and the project
-  `FileViewer` retain context-specific presentation. Cross-surface fixes still
-  belong in a shared source adapter or the narrowest common rendering boundary.
+- **Context-specific media remains** — normalized tool-result images share one
+  media row, and modal-based local images share `LocalMediaModal`; attachments,
+  rendered Markdown placeholders, and the project `FileViewer` retain
+  context-specific presentation. Cross-surface fixes still belong in a shared
+  source adapter or the narrowest common rendering boundary.

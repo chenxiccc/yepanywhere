@@ -18,6 +18,7 @@ import {
 import type { AgentActivity, PendingInputType } from "@yep-anywhere/shared";
 import { getLogger } from "../logging/logger.js";
 import type { SessionMetadataService } from "../metadata/index.js";
+import type { ToolResultMediaStore } from "../media/ToolResultMediaStore.js";
 import { getProjectName } from "../projects/paths.js";
 import { getProvider } from "../sdk/providers/index.js";
 import { CacheMissBillingMonitor } from "../services/CacheMissBillingMonitor.js";
@@ -71,7 +72,6 @@ import {
   type ProcessAbortResult,
   type ProcessInfo,
   type ProcessEvent,
-  type ProcessOptions,
   type SessionOwnership,
   type SessionSummary,
   encodeProjectId,
@@ -495,6 +495,8 @@ export interface SupervisorOptions {
   sessionMetadataService?: SessionMetadataService;
   /** Durable store for long-lived patient queued messages. */
   sessionQueuePersistenceService?: SessionQueuePersistenceService;
+  /** Durable store for image-bearing tool results. */
+  toolResultMediaStore?: ToolResultMediaStore;
 }
 
 export class Supervisor {
@@ -546,6 +548,7 @@ export class Supervisor {
   private interruptTimeoutMs: number;
   private sessionMetadataService?: SessionMetadataService;
   private sessionQueuePersistenceService?: SessionQueuePersistenceService;
+  private toolResultMediaStore?: ToolResultMediaStore;
   // In-flight forked recaps, keyed by process id. The AbortController cancels
   // the generator-fork helper turn when the parent becomes active again, so a
   // returning user's new turn is never shadowed by a stale recap. See
@@ -584,6 +587,7 @@ export class Supervisor {
     this.sessionMetadataService = options.sessionMetadataService;
     this.sessionQueuePersistenceService =
       options.sessionQueuePersistenceService;
+    this.toolResultMediaStore = options.toolResultMediaStore;
     this.staleCheckTimer = setInterval(
       () => this.terminateStaleProcesses(),
       STALE_CHECK_INTERVAL_MS,
@@ -983,6 +987,7 @@ export class Supervisor {
       idleTimeoutMs: this.idleTimeoutMs,
       queue,
       sessionQueuePersistenceService: this.sessionQueuePersistenceService,
+      toolResultMediaStore: this.toolResultMediaStore,
       abortFn: abort,
       isProcessAlive,
       shouldRetainIdleProcess: (sessionId) =>
@@ -1456,6 +1461,7 @@ export class Supervisor {
       idleTimeoutMs: this.idleTimeoutMs,
       queue,
       sessionQueuePersistenceService: this.sessionQueuePersistenceService,
+      toolResultMediaStore: this.toolResultMediaStore,
       abortFn: abort,
       isProcessAlive,
       shouldRetainIdleProcess: (sessionId) =>
@@ -1592,6 +1598,7 @@ export class Supervisor {
       idleTimeoutMs: this.idleTimeoutMs,
       queue,
       sessionQueuePersistenceService: this.sessionQueuePersistenceService,
+      toolResultMediaStore: this.toolResultMediaStore,
       abortFn: abort,
       isProcessAlive,
       shouldRetainIdleProcess: (sessionId) =>
@@ -1726,6 +1733,7 @@ export class Supervisor {
       idleTimeoutMs: this.idleTimeoutMs,
       queue,
       sessionQueuePersistenceService: this.sessionQueuePersistenceService,
+      toolResultMediaStore: this.toolResultMediaStore,
       abortFn: abort,
       isProcessAlive,
       shouldRetainIdleProcess: (sessionId) =>
@@ -1810,13 +1818,14 @@ export class Supervisor {
     // Use provided mode or fall back to default
     const effectiveMode = permissionMode ?? this.defaultPermissionMode;
 
-    const options: ProcessOptions = {
+    const options: ProcessConstructorOptions = {
       projectPath,
       projectId,
       sessionId,
       idleTimeoutMs: this.idleTimeoutMs,
       permissionMode: effectiveMode,
       provider: "claude", // Legacy mock SDK simulates Claude
+      toolResultMediaStore: this.toolResultMediaStore,
     };
 
     const process = new Process(iterator, options);
@@ -2229,7 +2238,10 @@ export class Supervisor {
    * the last recap has nothing new to say — regenerating the same summary
    * from the same context is wasted work and stacks duplicate recap rows.
    */
-  private recapFloorMs(sessionId: string, sinceMs: number | null): number | null {
+  private recapFloorMs(
+    sessionId: string,
+    sinceMs: number | null,
+  ): number | null {
     const recaps = this.sessionMetadataService?.getRecapMessages(sessionId);
     const latest = recaps ? latestRecapMessage(recaps) : undefined;
     const lastRecapMs = latest ? messageTimestampMs(latest) : null;
@@ -2545,9 +2557,7 @@ export class Supervisor {
     return this.processes.get(processId);
   }
 
-  getProviderRuntimeStatusForSession(
-    sessionId: string,
-  ): ProviderRuntimeStatus {
+  getProviderRuntimeStatusForSession(sessionId: string): ProviderRuntimeStatus {
     return (
       this.getProcessForSession(sessionId)?.getProviderRuntimeStatus() ??
       this.terminalProviderStatuses.get(sessionId) ??
@@ -2557,10 +2567,7 @@ export class Supervisor {
 
   private retainTerminalProviderStatus(
     sessionId: string,
-    status: Extract<
-      Exclude<ProviderRuntimeStatus, null>,
-      { kind: "terminal" }
-    >,
+    status: Extract<Exclude<ProviderRuntimeStatus, null>, { kind: "terminal" }>,
   ): void {
     this.terminalProviderStatuses.delete(sessionId);
     this.terminalProviderStatuses.set(sessionId, status);

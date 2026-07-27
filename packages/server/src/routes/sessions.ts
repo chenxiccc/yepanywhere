@@ -30,6 +30,7 @@ import { Hono } from "hono";
 import { augmentTextBlocks } from "../augments/markdown-augments.js";
 import type { ISessionIndexService } from "../indexes/types.js";
 import { getLogger } from "../logging/logger.js";
+import type { ToolResultMediaStore } from "../media/ToolResultMediaStore.js";
 import type { SessionMetadataService } from "../metadata/index.js";
 import type { NotificationService } from "../notifications/index.js";
 import type { CodexSessionScanner } from "../projects/codex-scanner.js";
@@ -213,6 +214,8 @@ export interface SessionsDeps {
   modelInfoService?: ModelInfoService;
   /** Durable store for recovered patient queued messages */
   sessionQueuePersistenceService?: SessionQueuePersistenceService;
+  /** Materializes image-bearing tool results for authenticated session reads. */
+  toolResultMediaStore?: ToolResultMediaStore;
   /** Data directory for local security/audit logs */
   dataDir?: string;
 }
@@ -1739,9 +1742,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     if (!isWorkstreamId(rawWorkstreamId)) {
       return { error: "Invalid workstream ID format", status: 400 };
     }
-    if (
-      deps.serverSettingsService?.getSetting("workstreamsEnabled") !== true
-    ) {
+    if (deps.serverSettingsService?.getSetting("workstreamsEnabled") !== true) {
       return { error: "Workstreams are disabled", status: 404 };
     }
     if (!deps.workstreamService) {
@@ -2463,13 +2464,9 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         ? tailTurns
         : undefined;
     const defaultedToCompactTail =
-      !fullHistory &&
-      !afterMessageId &&
-      requestedTailCompactions === undefined;
+      !fullHistory && !afterMessageId && requestedTailCompactions === undefined;
     const unboundedRequestDefaultedToCompactTail =
-      defaultedToCompactTail &&
-      !tailFrom &&
-      requestedTailTurns === undefined;
+      defaultedToCompactTail && !tailFrom && requestedTailTurns === undefined;
     const effectiveTailCompactions =
       requestedTailCompactions ??
       (defaultedToCompactTail
@@ -2731,10 +2728,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       );
       session = { ...session, messages: sliced.messages };
       paginationInfo = sliced.pagination;
-    } else if (
-      effectiveTailCompactions !== undefined &&
-      !afterMessageId
-    ) {
+    } else if (effectiveTailCompactions !== undefined && !afterMessageId) {
       const sliced = sliceAtCompactBoundaries(
         session.messages,
         effectiveTailCompactions,
@@ -2756,6 +2750,20 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       const sliced = sliceAtCompactBoundaries(session.messages, 2);
       session = { ...session, messages: sliced.messages };
       paginationInfo = sliced.pagination;
+    }
+
+    if (!publicShare && deps.toolResultMediaStore) {
+      session = {
+        ...session,
+        messages: await deps.toolResultMediaStore
+          .createMaterializer({
+            provider: session.provider,
+            projectId: effectiveProjectId,
+            projectPath: project.path,
+            getSessionId: () => sessionId,
+          })
+          .materializeMessages(session.messages),
+      };
     }
 
     // Keep persisted rendering in lockstep with stream augmentation behavior.
@@ -3449,14 +3457,13 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
 
     let providerName = metadataProvider ?? body.provider;
     if (!providerName) {
-      const sessionSummaryResult =
-        await findSessionListSummaryAcrossProviders(
-          project,
-          sessionId,
-          projectId as UrlProjectId,
-          providerResolutionDeps(deps),
-          metadataProvider ?? body.provider,
-        );
+      const sessionSummaryResult = await findSessionListSummaryAcrossProviders(
+        project,
+        sessionId,
+        projectId as UrlProjectId,
+        providerResolutionDeps(deps),
+        metadataProvider ?? body.provider,
+      );
       providerName =
         sessionSummaryResult?.source.provider ??
         metadataProvider ??
@@ -5768,14 +5775,13 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
 
       // Resolve bounded source/title metadata without treating it as a
       // complete transcript summary.
-      const originalResolution =
-        await findSessionListSummaryAcrossProviders(
-          project,
-          sessionId,
-          projectId,
-          providerResolutionDeps(deps),
-          body.provider,
-        );
+      const originalResolution = await findSessionListSummaryAcrossProviders(
+        project,
+        sessionId,
+        projectId,
+        providerResolutionDeps(deps),
+        body.provider,
+      );
       const originalSession = originalResolution?.summary ?? null;
       let cloneProvider: ProviderName =
         originalResolution?.source.provider ?? project.provider;

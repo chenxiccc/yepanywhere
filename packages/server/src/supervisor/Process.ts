@@ -27,6 +27,8 @@ import {
 } from "@yep-anywhere/shared";
 import { DEFAULT_IDLE_TIMEOUT_MS } from "../defaults.js";
 import { getLogger } from "../logging/logger.js";
+import type { ToolResultMediaMessageMaterializer } from "../media/ToolResultMediaMessageMaterializer.js";
+import type { ToolResultMediaStore } from "../media/ToolResultMediaStore.js";
 import { getProjectName } from "../projects/paths.js";
 import { concatUserMessages, INTERRUPT_PREAMBLE } from "../sdk/messageQueue.js";
 import type { MessageQueue } from "../sdk/messageQueue.js";
@@ -745,6 +747,8 @@ export interface ProcessConstructorOptions extends ProcessOptions {
   deferredDelivery?: DeferredDeliveryOptions;
   /** Durable store for long-lived patient queued messages. */
   sessionQueuePersistenceService?: SessionQueuePersistenceService;
+  /** Materializes image-bearing tool results before replay or emission. */
+  toolResultMediaStore?: ToolResultMediaStore;
 }
 
 export class Process {
@@ -764,6 +768,9 @@ export class Process {
   private deferredDeliveryOverrides: DeferredDeliveryOptions | undefined;
   private sessionQueuePersistenceService:
     | SessionQueuePersistenceService
+    | undefined;
+  private toolResultMediaMaterializer:
+    | ToolResultMediaMessageMaterializer
     | undefined;
   private patientQueuePersistenceTail: Promise<void> = Promise.resolve();
   private abortFn: (() => void | Promise<void>) | null;
@@ -960,6 +967,13 @@ export class Process {
     this._permissionMode = options.permissionMode ?? "default";
     this._permissions = options.permissions;
     this.provider = options.provider;
+    this.toolResultMediaMaterializer =
+      options.toolResultMediaStore?.createMaterializer({
+        provider: this.provider,
+        projectId: this.projectId,
+        projectPath: this.projectPath,
+        getSessionId: () => this._sessionId,
+      });
     this.model = options.model;
     this._requestedModel = options.model;
     this.serviceTier = options.serviceTier;
@@ -3799,7 +3813,11 @@ export class Process {
           break;
         }
 
-        const message = this.withTimestamp(result.value);
+        let message = this.withTimestamp(result.value);
+        if (this.toolResultMediaMaterializer) {
+          message =
+            await this.toolResultMediaMaterializer.materializeMessage(message);
+        }
         const receivedAt = new Date();
         this._lastMessageTime = receivedAt;
         this._lastProviderMessageTime = receivedAt;

@@ -29,6 +29,7 @@ import {
   parseCodexToolArguments,
 } from "../../codex/normalization.js";
 import { getLogger } from "../../logging/logger.js";
+import { attachToolResultMediaCandidates } from "../../media/inlineImageData.js";
 import { findCodexCliPath, getCodexCliVersion } from "../cli-detection.js";
 import { logSDKMessage } from "../messageLogger.js";
 import { MessageQueue } from "../messageQueue.js";
@@ -119,8 +120,7 @@ import type {
 } from "./types.js";
 
 const log = getLogger().child({ component: "codex-provider" });
-const CODEX_DESKTOP_BROWSER_SKILL_NAME =
-  "browser:control-in-app-browser";
+const CODEX_DESKTOP_BROWSER_SKILL_NAME = "browser:control-in-app-browser";
 
 function logSdkCorrelationDebug(
   sessionId: string,
@@ -4287,6 +4287,7 @@ export class CodexProvider implements AgentProvider {
           } as SDKMessage,
           observedAt,
         );
+        attachToolResultMediaCandidates(message, normalized.mediaCandidates);
         logSdkCorrelationDebug(sessionId, message, {
           eventKind: "tool_result",
           turnId: params.turnId,
@@ -4411,6 +4412,7 @@ export class CodexProvider implements AgentProvider {
           } as SDKMessage,
           observedAt,
         );
+        attachToolResultMediaCandidates(message, normalized.mediaCandidates);
         logSdkCorrelationDebug(sessionId, message, {
           eventKind: "tool_result",
           turnId: params.turnId,
@@ -5023,6 +5025,9 @@ export class CodexProvider implements AgentProvider {
             } as SDKMessage,
             observedAt,
           );
+          attachToolResultMediaCandidates(toolResultMessage, [
+            { originalPath: item.path },
+          ]);
           logSdkCorrelationDebug(sessionId, toolResultMessage, {
             eventKind: "tool_result",
             turnId,

@@ -24,6 +24,7 @@ import type {
   ProjectMetadataService,
   SessionMetadataService,
 } from "./metadata/index.js";
+import { ToolResultMediaStore } from "./media/ToolResultMediaStore.js";
 import { updateAllowedHosts } from "./middleware/allowed-hosts.js";
 import { createAuthMiddleware } from "./middleware/auth.js";
 import { structuredErrorHandler } from "./middleware/error-handler.js";
@@ -104,11 +105,13 @@ import { createSessionsRoutes } from "./routes/sessions.js";
 import { createSettingsRoutes } from "./routes/settings.js";
 import { createSharingRoutes } from "./routes/sharing.js";
 import { createSupervisorQueueRoutes } from "./routes/supervisor-queue.js";
+import { createToolResultMediaRoutes } from "./routes/tool-result-media.js";
 import { ClaudeOllamaProvider } from "./sdk/providers/claude-ollama.js";
 import { grokACPProvider } from "./sdk/providers/grok-acp.js";
 
 import { createLocalFileRoutes } from "./routes/local-file.js";
 import { createLocalImageRoutes } from "./routes/local-image.js";
+import { createLocalResourcePathPolicy } from "./routes/local-resource-policy.js";
 import { type UploadDeps, createUploadRoutes } from "./routes/upload.js";
 import { createSpeechRoutes } from "./routes/speech.js";
 import { createVersionRoutes } from "./routes/version.js";
@@ -484,6 +487,19 @@ export function createApp(options: AppOptions): AppResult {
     eventBus: options.eventBus,
     cacheTtlMs: options.projectScanCacheTtlMs,
   });
+  const localResourcePathPolicy = createLocalResourcePathPolicy({
+    allowedPaths: getAllowedFilePaths,
+    scanner,
+    includeProjects: shouldIncludeProjects,
+  });
+  const toolResultMediaStore = new ToolResultMediaStore({
+    dataDir: options.dataDir,
+    resolveSourcePath: async (absolutePath) => {
+      const resolved =
+        await localResourcePathPolicy.resolveAllowedFilePath(absolutePath);
+      return resolved.ok ? resolved.file.resolvedPath : null;
+    },
+  });
   const bangCommandService =
     options.sessionMetadataService && options.dataDir
       ? new BangCommandService({
@@ -807,6 +823,7 @@ export function createApp(options: AppOptions): AppResult {
     idlePreemptThresholdMs: options.idlePreemptThresholdMs,
     maxQueueSize: options.maxQueueSize,
     sessionQueuePersistenceService: options.sessionQueuePersistenceService,
+    toolResultMediaStore,
     // Save executor for remote sessions to support resume
     onSessionExecutor: options.sessionMetadataService
       ? (sessionId, executor) =>
@@ -1261,7 +1278,15 @@ export function createApp(options: AppOptions): AppResult {
       workstreamService: options.workstreamService,
       modelInfoService: options.modelInfoService,
       sessionQueuePersistenceService: options.sessionQueuePersistenceService,
+      toolResultMediaStore,
       dataDir: options.dataDir,
+    }),
+  );
+  app.route(
+    "/api",
+    createToolResultMediaRoutes({
+      scanner,
+      store: toolResultMediaStore,
     }),
   );
   app.route(

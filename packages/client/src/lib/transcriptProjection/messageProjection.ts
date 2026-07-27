@@ -648,6 +648,15 @@ function attachToolResult(
     content: typeof block.content === "string" ? block.content : "",
     isError: block.is_error || false,
     structured,
+    ...(resultMessage.toolResultMedia?.some(
+      (media) => media.toolCallId === block.tool_use_id,
+    )
+      ? {
+          media: resultMessage.toolResultMedia.filter(
+            (media) => media.toolCallId === block.tool_use_id,
+          ),
+        }
+      : {}),
   };
   const isBackgroundProcessResult = isBackgroundProcessToolResult(
     block,

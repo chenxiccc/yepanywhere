@@ -14,6 +14,7 @@ import type {
   ThinkingConfig,
   UrlProjectId,
   SessionLivenessSnapshot,
+  ToolResultMedia,
   WorkstreamId,
 } from "@yep-anywhere/shared";
 import type { PermissionMode, SDKMessage } from "../sdk/types.js";
@@ -187,6 +188,7 @@ export interface Message {
     input: unknown;
   };
   toolUseResult?: unknown;
+  toolResultMedia?: ToolResultMedia[];
   // Computed fields (added by SessionReader)
   orphanedToolUseIds?: string[];
   /**

@@ -45,6 +45,66 @@ describe("compileTranscriptProjection", () => {
     });
   });
 
+  it("projects stored tool-result media onto the paired tool call", () => {
+    const messages: Message[] = [
+      {
+        id: "msg-media-use",
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: "tool-media",
+            name: "ViewImage",
+            input: { path: "plot.png" },
+          },
+        ],
+      },
+      {
+        id: "msg-media-result",
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "tool-media",
+            content: "Viewed image",
+          },
+        ],
+        toolResultMedia: [
+          {
+            state: "stored",
+            toolCallId: "tool-media",
+            id: "media-handle",
+            mimeType: "image/png",
+            byteLength: 42,
+            width: 10,
+            height: 20,
+            filename: "plot.png",
+          },
+          {
+            state: "stored",
+            toolCallId: "another-tool",
+            id: "another-media-handle",
+            mimeType: "image/png",
+            byteLength: 12,
+          },
+        ],
+      },
+    ];
+
+    expect(compileTranscriptProjection(messages)[0]).toMatchObject({
+      type: "tool_call",
+      toolResult: {
+        media: [
+          {
+            state: "stored",
+            toolCallId: "tool-media",
+            id: "media-handle",
+          },
+        ],
+      },
+    });
+  });
+
   it("preserves Agent tool summaries for rendering completed tasks", () => {
     const messages: Message[] = [
       {
@@ -2372,7 +2432,9 @@ describe("compileTranscriptProjection", () => {
       ];
     }
 
-    function findBashCall(items: ReturnType<typeof compileTranscriptProjection>) {
+    function findBashCall(
+      items: ReturnType<typeof compileTranscriptProjection>,
+    ) {
       return items.find(
         (item) => item.type === "tool_call" && item.id === "bash-bg-1",
       );
@@ -2491,7 +2553,9 @@ describe("compileTranscriptProjection", () => {
         },
       ];
 
-      const runningCall = findBashCall(compileTranscriptProjection(detachMessages));
+      const runningCall = findBashCall(
+        compileTranscriptProjection(detachMessages),
+      );
       expect(runningCall?.type).toBe("tool_call");
       if (runningCall?.type === "tool_call") {
         expect(runningCall.toolInput).toMatchObject({

@@ -1,5 +1,10 @@
 import type { ToolDisplayAction } from "@yep-anywhere/shared";
 import {
+  type ToolResultMediaCandidate,
+  sanitizeInlineImageData,
+  sanitizeInlineImageText,
+} from "../media/inlineImageData.js";
+import {
   createCodexCodeModeGroupInput,
   extractCodexCodeModeCalls,
   extractCodexCodeModeTextOutput,
@@ -59,17 +64,13 @@ export interface NormalizedCodexToolOutput {
   content: string;
   structured?: unknown;
   isError: boolean;
+  mediaCandidates?: ToolResultMediaCandidate[];
 }
 
 interface NormalizedCodexToolOutputWithExitCode
   extends NormalizedCodexToolOutput {
   exitCode?: number;
 }
-
-const INLINE_IMAGE_DATA_URL_PREFIX_RE =
-  /^data:(image\/[a-z0-9.+-]+)(?:;[^,]*)?,/i;
-const INLINE_IMAGE_DATA_URL_GLOBAL_RE =
-  /data:image\/[a-z0-9.+-]+(?:;[a-z0-9=.+-]+)*,[A-Za-z0-9+/=_-]+/gi;
 
 export function parseCodexToolArguments(argumentsText?: string): unknown {
   if (!argumentsText) {
@@ -320,7 +321,14 @@ export function normalizeCodexToolOutputWithContext(
     isError = !context.patchApplyResult.success;
   }
 
-  return { content, structured, isError };
+  return {
+    content,
+    structured,
+    isError,
+    ...(normalized.mediaCandidates
+      ? { mediaCandidates: normalized.mediaCandidates }
+      : {}),
+  };
 }
 
 export function normalizeCodexCommandExecutionOutput(
@@ -617,11 +625,13 @@ function normalizeCodexToolOutput(
     let isError = false;
     let content = output;
     let exitCode: number | undefined;
+    let mediaCandidates: ToolResultMediaCandidate[] = [];
 
     try {
       structured = JSON.parse(output);
       if (typeof structured === "string") {
         const sanitized = sanitizeInlineImageData(structured);
+        mediaCandidates = sanitized.candidates;
         content =
           typeof sanitized.value === "string" ? sanitized.value : structured;
         structured = sanitized.value;
@@ -631,6 +641,7 @@ function normalizeCodexToolOutput(
         }
       } else if (isRecord(structured)) {
         const sanitized = sanitizeInlineImageData(structured);
+        mediaCandidates = sanitized.candidates;
         const record = isRecord(sanitized.value) ? sanitized.value : structured;
         if (sanitized.changed) {
           structured = record;
@@ -643,6 +654,7 @@ function normalizeCodexToolOutput(
           hasFailedStatus(record);
       } else if (Array.isArray(structured)) {
         const sanitized = sanitizeInlineImageData(structured);
+        mediaCandidates = sanitized.candidates;
         if (sanitized.changed) {
           structured = sanitized.value;
           content = JSON.stringify(structured, null, 2);
@@ -651,6 +663,7 @@ function normalizeCodexToolOutput(
     } catch {
       structured = undefined;
       const sanitized = sanitizeInlineImageText(output);
+      mediaCandidates = sanitized.candidates;
       content = sanitized.value;
       exitCode = extractExitCodeFromText(content);
       if (exitCode !== undefined) {
@@ -660,7 +673,13 @@ function normalizeCodexToolOutput(
       }
     }
 
-    return { content, structured, isError, exitCode };
+    return {
+      content,
+      structured,
+      isError,
+      exitCode,
+      ...(mediaCandidates.length > 0 ? { mediaCandidates } : {}),
+    };
   }
 
   if (output === null || output === undefined) {
@@ -691,102 +710,13 @@ function normalizeCodexToolOutput(
       structured,
       isError,
       exitCode,
+      ...(sanitized.candidates.length > 0
+        ? { mediaCandidates: sanitized.candidates }
+        : {}),
     };
   }
 
   return { content: String(output), isError: false };
-}
-
-function sanitizeInlineImageData(value: unknown): {
-  value: unknown;
-  changed: boolean;
-} {
-  if (typeof value === "string") {
-    return sanitizeInlineImageText(value);
-  }
-
-  if (Array.isArray(value)) {
-    let changed = false;
-    const sanitized = value.map((item) => {
-      const result = sanitizeInlineImageData(item);
-      changed ||= result.changed;
-      return result.value;
-    });
-    return changed ? { value: sanitized, changed } : { value, changed };
-  }
-
-  if (!isRecord(value)) {
-    return { value, changed: false };
-  }
-
-  let changed = false;
-  const sanitized: Record<string, unknown> = {};
-  for (const [key, item] of Object.entries(value)) {
-    const result = sanitizeInlineImageData(item);
-    changed ||= result.changed;
-    sanitized[key] = result.value;
-  }
-
-  return changed ? { value: sanitized, changed } : { value, changed };
-}
-
-function sanitizeInlineImageText(value: string): {
-  value: string;
-  changed: boolean;
-} {
-  if (!value.includes("data:image/")) {
-    return { value, changed: false };
-  }
-
-  if (value.startsWith("data:image/")) {
-    return { value: summarizeInlineImageDataUrl(value), changed: true };
-  }
-
-  const replaced = value.replace(INLINE_IMAGE_DATA_URL_GLOBAL_RE, (match) =>
-    summarizeInlineImageDataUrl(match),
-  );
-  return { value: replaced, changed: replaced !== value };
-}
-
-function summarizeInlineImageDataUrl(value: string): string {
-  const match = INLINE_IMAGE_DATA_URL_PREFIX_RE.exec(value);
-  const mimeType = match?.[1]?.toLowerCase() ?? "image/*";
-  const commaIndex = value.indexOf(",");
-  const payload = commaIndex >= 0 ? value.slice(commaIndex + 1) : "";
-  const bytes = estimateDataUrlPayloadBytes(value, payload);
-  return `[inline ${mimeType} data omitted${
-    bytes !== undefined ? `, ${formatByteSize(bytes)}` : ""
-  }]`;
-}
-
-function estimateDataUrlPayloadBytes(
-  dataUrl: string,
-  payload: string,
-): number | undefined {
-  if (!payload) return undefined;
-
-  const header = dataUrl.slice(0, Math.max(0, dataUrl.indexOf(",")));
-  if (!/;base64(?:;|$)/i.test(header)) {
-    try {
-      return decodeURIComponent(payload).length;
-    } catch {
-      return payload.length;
-    }
-  }
-
-  const sanitized = payload.replace(/\s+/g, "");
-  const padding = sanitized.endsWith("==")
-    ? 2
-    : sanitized.endsWith("=")
-      ? 1
-      : 0;
-  return Math.max(0, Math.floor((sanitized.length * 3) / 4) - padding);
-}
-
-function formatByteSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes}\u202fb`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}\u202fkb`;
-  return `${Math.round((bytes / (1024 * 1024)) * 10) / 10}\u202fmb`;
 }
 
 interface CodexUnifiedExecChunk {
