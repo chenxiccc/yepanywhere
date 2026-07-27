@@ -1,7 +1,12 @@
-import type { ReviewComment, ReviewCommentAnchor } from "@yep-anywhere/shared";
+import type {
+  ReviewComment,
+  ReviewCommentAnchor,
+  ReviewNewSessionOptions,
+} from "@yep-anywhere/shared";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
+import { useSourceReviewDefaultSession } from "../contexts/SourceReviewDefaultSessionContext";
 import {
   notifyReviewCommentsChanged,
   subscribeReviewComments,
@@ -14,13 +19,15 @@ export type SubmitNowOutcome = "navigated" | "queued" | "error";
  * Shared review-draft actions for the diff and blame comment surfaces (topic:
  * source-review-to-session). Tracks this file's pending comments (for the
  * tint), "add to review" (persist a pending draft), and "submit now" (drain one
- * comment into a fresh session and navigate). Extracted so the two comment
- * layers never duplicate the add/submit/navigate logic — the anchor is the only
- * thing each surface builds differently.
+ * comment into the tab's default session or a fresh session and navigate).
+ * Extracted so the two comment layers never duplicate the
+ * add/submit/navigate logic — the anchor is the only thing each surface builds
+ * differently.
  */
 export function useReviewCommentDraft(projectId: string, filePath: string) {
   const navigate = useNavigate();
   const basePath = useRemoteBasePath();
+  const defaultSession = useSourceReviewDefaultSession();
   const [pending, setPending] = useState<ReviewComment[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,13 +78,23 @@ export function useReviewCommentDraft(projectId: string, filePath: string) {
     async (
       anchor: ReviewCommentAnchor,
       text: string,
+      target: "new" | string,
       queuedMessage: string,
+      newSession?: ReviewNewSessionOptions,
     ): Promise<SubmitNowOutcome> => {
       setBusy(true);
       setError(null);
       try {
         const { comment } = await api.addReviewComment(projectId, anchor, text);
-        const result = await api.submitReview(projectId, [comment.id], "new");
+        const result =
+          target === "new" && newSession
+            ? await api.submitReview(
+                projectId,
+                [comment.id],
+                target,
+                newSession,
+              )
+            : await api.submitReview(projectId, [comment.id], target);
         notifyReviewCommentsChanged(projectId);
         if (result.sessionId) {
           navigate(
@@ -101,6 +118,7 @@ export function useReviewCommentDraft(projectId: string, filePath: string) {
 
   return {
     pending,
+    defaultSession,
     busy,
     error,
     setError,

@@ -57,6 +57,7 @@ interface GitDiffPreviewProps extends GitDiffPreviewRetentionProps {
   headerActions?: ReactNode;
   retainedScrollTop?: number;
   onRetainScrollTop?: (fileKey: string, scrollTop: number) => void;
+  onCommentEditorOpenChange?: (open: boolean) => void;
   t: TranslationFn;
 }
 
@@ -143,6 +144,7 @@ export const GitDiffPreview = forwardRef<
     retainedDiffView,
     onRetainScrollTop,
     onRetainDiffView,
+    onCommentEditorOpenChange,
     t,
   },
   ref,
@@ -198,6 +200,7 @@ export const GitDiffPreview = forwardRef<
               actions: headerActions,
             }}
             onJumpHandlerChange={handleJumpHandlerChange}
+            onCommentEditorOpenChange={onCommentEditorOpenChange}
             t={t}
           />
         ) : (
@@ -225,6 +228,7 @@ export function GitDiffModal({
   headerActions,
   retainedDiffView,
   onRetainDiffView,
+  onCommentEditorOpenChange,
   t,
   onClose,
 }: {
@@ -236,6 +240,7 @@ export function GitDiffModal({
   headerActions?: ReactNode;
   retainedDiffView?: GitDiffViewState;
   onRetainDiffView?: (fileKey: string, view: GitDiffViewState) => void;
+  onCommentEditorOpenChange?: (open: boolean) => void;
   t: TranslationFn;
   onClose: () => void;
 }) {
@@ -251,6 +256,7 @@ export function GitDiffModal({
         source={source}
         retainedDiffView={retainedDiffView}
         onRetainDiffView={onRetainDiffView}
+        onCommentEditorOpenChange={onCommentEditorOpenChange}
         t={t}
       />
     </Modal>
@@ -266,6 +272,7 @@ export function GitDiffBody({
   onRetainDiffView,
   paneHeader,
   onJumpHandlerChange,
+  onCommentEditorOpenChange,
   t,
 }: {
   file: GitFileChange;
@@ -274,21 +281,52 @@ export function GitDiffBody({
   source?: GitDiffSource;
   paneHeader?: DiffPaneHeader;
   onJumpHandlerChange?: (handler: (() => boolean) | null) => void;
+  onCommentEditorOpenChange?: (open: boolean) => void;
   t: TranslationFn;
 } & GitDiffPreviewRetentionProps) {
-  const [diffResult, setDiffResult] = useState<GitDiffResult | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   // Depend on the source's primitives (a fresh `{kind,sha}` object each render
   // would refetch on every render); reconstruct it inside the effect.
   const sourceKind = source.kind;
   const sourceSha = source.kind === "commit" ? source.sha : "";
+  const requestKey = JSON.stringify([fileKey, sourceKind, sourceSha]);
+  const [loadState, setLoadState] = useState<{
+    requestKey: string;
+    result: GitDiffResult | null;
+    loading: boolean;
+    error: string | null;
+  }>(() => ({
+    requestKey,
+    result: null,
+    loading: true,
+    error: null,
+  }));
+  const currentLoad =
+    loadState.requestKey === requestKey
+      ? loadState
+      : {
+          requestKey,
+          result: null,
+          loading: true,
+          error: null,
+        };
+  const { result: diffResult, loading, error } = currentLoad;
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setDiffResult(null);
-    setError(null);
+    // A working-tree status poll intentionally refetches the live diff, even
+    // when its summary fields are unchanged. Retain the current result while
+    // that request runs so user-owned state inside GitDiffContent (notably an
+    // open comment editor) remains mounted.
+    setLoadState((current) =>
+      current.requestKey === requestKey
+        ? { ...current, loading: true, error: null }
+        : {
+            requestKey,
+            result: null,
+            loading: true,
+            error: null,
+          },
+    );
 
     fetchDiffForSource(
       projectId,
@@ -297,49 +335,68 @@ export function GitDiffBody({
     )
       .then((result) => {
         if (!cancelled) {
-          setDiffResult(result);
-          setLoading(false);
+          setLoadState({
+            requestKey,
+            result,
+            loading: false,
+            error: null,
+          });
         }
       })
       .catch((err) => {
         if (!cancelled) {
-          setError(err.message || t("gitStatusLoadDiffFailed"));
-          setLoading(false);
+          const message = err.message || t("gitStatusLoadDiffFailed");
+          setLoadState((current) =>
+            current.requestKey === requestKey
+              ? { ...current, loading: false, error: message }
+              : {
+                  requestKey,
+                  result: null,
+                  loading: false,
+                  error: message,
+                },
+          );
         }
       });
 
     return () => {
       cancelled = true;
     };
-  }, [projectId, file, sourceKind, sourceSha, t]);
+  }, [projectId, file, requestKey, sourceKind, sourceSha, t]);
+
+  const initialLoading = loading && !diffResult;
 
   return (
     <>
-      {paneHeader && (loading || error) && (
+      {paneHeader && (initialLoading || (!diffResult && error)) && (
         <DiffPaneToolbar
           title={paneHeader.title}
           path={paneHeader.path}
           actions={paneHeader.actions}
         />
       )}
-      {loading && (
+      {initialLoading && (
         <div className="git-diff-loading">{t("gitStatusLoadingDiff")}</div>
       )}
-      {!loading && error && <div className="git-diff-error">{error}</div>}
-      {!loading && !error && diffResult && (
-        <GitDiffContent
-          key={fileKey}
-          file={file}
-          fileKey={fileKey}
-          projectId={projectId}
-          source={source}
-          diffResult={diffResult}
-          retainedDiffView={retainedDiffView}
-          onRetainDiffView={onRetainDiffView}
-          paneHeader={paneHeader}
-          onJumpHandlerChange={onJumpHandlerChange}
-          t={t}
-        />
+      {!diffResult && error && <div className="git-diff-error">{error}</div>}
+      {diffResult && (
+        <>
+          {error && <div className="git-diff-error">{error}</div>}
+          <GitDiffContent
+            key={fileKey}
+            file={file}
+            fileKey={fileKey}
+            projectId={projectId}
+            source={source}
+            diffResult={diffResult}
+            retainedDiffView={retainedDiffView}
+            onRetainDiffView={onRetainDiffView}
+            paneHeader={paneHeader}
+            onJumpHandlerChange={onJumpHandlerChange}
+            onCommentEditorOpenChange={onCommentEditorOpenChange}
+            t={t}
+          />
+        </>
       )}
     </>
   );
@@ -355,6 +412,7 @@ function GitDiffContent({
   onRetainDiffView,
   paneHeader,
   onJumpHandlerChange,
+  onCommentEditorOpenChange,
   t,
 }: {
   file: GitFileChange;
@@ -364,6 +422,7 @@ function GitDiffContent({
   diffResult: GitDiffResult;
   paneHeader?: DiffPaneHeader;
   onJumpHandlerChange?: (handler: (() => boolean) | null) => void;
+  onCommentEditorOpenChange?: (open: boolean) => void;
   t: TranslationFn;
 } & GitDiffPreviewRetentionProps) {
   const [showFullContext, setShowFullContext] = useState(
@@ -700,6 +759,7 @@ function GitDiffContent({
               structuredPatch={displayResult.structuredPatch}
               revision={commentRevisionForSource(source)}
               containerRef={contentRef}
+              onOpenChange={onCommentEditorOpenChange}
               t={t}
             />
           </>

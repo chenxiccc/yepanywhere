@@ -6,6 +6,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { SessionMetadataProvider } from "../../../../contexts/SessionMetadataContext";
 import { I18nProvider } from "../../../../i18n";
 import { UI_KEYS } from "../../../../lib/storageKeys";
@@ -30,6 +31,15 @@ if (!editRenderer.renderCollapsedPreview) {
   throw new Error("Edit renderer must provide collapsed preview");
 }
 const renderCollapsedPreview = editRenderer.renderCollapsedPreview;
+
+function LocationStateProbe() {
+  const location = useLocation();
+  return (
+    <pre data-testid="location-state">
+      {JSON.stringify({ pathname: location.pathname, state: location.state })}
+    </pre>
+  );
+}
 
 describe("EditRenderer collapsed preview fallback", () => {
   beforeEach(() => {
@@ -613,6 +623,83 @@ describe("EditRenderer collapsed preview fallback", () => {
     );
 
     expect(screen.getByRole("button", { name: /Foo\.tsx/i })).toBeDefined();
+  });
+
+  it("links an Edit block to its dirty file with this session as the default", async () => {
+    if (!editRenderer.renderInteractiveSummary) {
+      throw new Error("Edit renderer must provide interactive summary");
+    }
+    const structuredPatch = [
+      {
+        oldStart: 1,
+        oldLines: 1,
+        newStart: 1,
+        newLines: 1,
+        lines: ["-const x = 1;", "+const x = 2;"],
+      },
+    ];
+
+    render(
+      <MemoryRouter initialEntries={["/projects/project-1/sessions/session-1"]}>
+        <SessionMetadataProvider
+          projectId="project-1"
+          projectPath="/repo"
+          sessionId="session-1"
+          sessionTitle="Fix polling"
+          provider="codex"
+          model="gpt-5.4"
+          thinking={{ type: "adaptive", display: "summarized" }}
+          effort="high"
+        >
+          <I18nProvider>
+            <Routes>
+              <Route
+                path="/projects/:projectId/sessions/:sessionId"
+                element={editRenderer.renderInteractiveSummary(
+                  {
+                    file_path: "/repo/src/example.ts",
+                    _structuredPatch: structuredPatch,
+                  } as never,
+                  undefined,
+                  false,
+                  renderContext,
+                )}
+              />
+              <Route path="/git-status" element={<LocationStateProbe />} />
+            </Routes>
+          </I18nProvider>
+        </SessionMetadataProvider>
+      </MemoryRouter>,
+    );
+
+    const link = screen.getByRole("link", { name: "Review dirty file" });
+    expect(link.getAttribute("href")).toBe(
+      "/git-status?projectId=project-1&worktreeFile=src%2Fexample.ts",
+    );
+    fireEvent.click(link);
+
+    const route = JSON.parse(
+      (await screen.findByTestId("location-state")).textContent ?? "{}",
+    ) as {
+      pathname: string;
+      state: unknown;
+    };
+    expect(route).toEqual({
+      pathname: "/git-status",
+      state: {
+        defaultSession: {
+          projectId: "project-1",
+          id: "session-1",
+          title: "Fix polling",
+          newSession: {
+            provider: "codex",
+            model: "gpt-5.4",
+            thinking: { type: "adaptive", display: "summarized" },
+            effort: "high",
+          },
+        },
+      },
+    });
   });
 
   it("puts all multi-file patch targets in the interactive summary title", () => {

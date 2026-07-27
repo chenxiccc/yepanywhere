@@ -61,11 +61,20 @@ describe("composeReviewTurn", () => {
     const prompt = composeReviewTurn({
       comments: [
         comment("c1", "still here", {}),
-        comment("c2", "vanished", { newLine: 20 }),
+        comment("c2", "vanished", {
+          newLine: 20,
+          snippet: "captured before the file changed",
+        }),
       ],
       relocations: new Map<string, AnchorRelocation>([
         ["c1", relocated(10)],
-        ["c2", gone("deadbeef1")],
+        [
+          "c2",
+          {
+            ...gone("deadbeef1"),
+            snippet: "captured before the file changed",
+          },
+        ],
       ]),
       reviewFileRelPath: REVIEW_FILE,
     });
@@ -74,6 +83,9 @@ describe("composeReviewTurn", () => {
     expect(prompt).not.toContain("abc1234def"); // currentSha never cited
     // gone comment cites its sha
     expect(prompt).toContain("deadbeef1");
+    expect(prompt).toContain(
+      "```\ncaptured before the file changed\n```",
+    );
   });
 
   it("always cites the sha for a removed (minus-side) comment", () => {

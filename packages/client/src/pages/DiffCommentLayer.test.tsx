@@ -11,6 +11,10 @@ import {
 import { type RefObject, useRef } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  type SourceReviewDefaultSession,
+  SourceReviewDefaultSessionContext,
+} from "../contexts/SourceReviewDefaultSessionContext";
 
 const navigateSpy = vi.fn();
 vi.mock("react-router-dom", async (orig) => ({
@@ -74,10 +78,14 @@ function Harness({ patch = PATCH }: { patch?: PatchHunk[] }) {
   );
 }
 
-function renderHarness() {
+function renderHarness(
+  defaultSession: SourceReviewDefaultSession | null = null,
+) {
   return render(
     <MemoryRouter>
-      <Harness />
+      <SourceReviewDefaultSessionContext.Provider value={defaultSession}>
+        <Harness />
+      </SourceReviewDefaultSessionContext.Provider>
     </MemoryRouter>,
   );
 }
@@ -89,7 +97,11 @@ describe("DiffCommentLayer", () => {
   });
 
   it("opens a comment window anchored to the clicked line", async () => {
-    listReviewComments.mockResolvedValue({ comments: [], pendingCount: 0 });
+    listReviewComments.mockResolvedValue({
+      comments: [],
+      batches: [],
+      pendingCount: 0,
+    });
     renderHarness();
 
     // Click the added line (flat index 2 → new line 2).
@@ -101,7 +113,11 @@ describe("DiffCommentLayer", () => {
   });
 
   it("Add to review posts a comment with the derived anchor", async () => {
-    listReviewComments.mockResolvedValue({ comments: [], pendingCount: 0 });
+    listReviewComments.mockResolvedValue({
+      comments: [],
+      batches: [],
+      pendingCount: 0,
+    });
     addReviewComment.mockResolvedValue({
       comment: { id: "c1", status: "pending", anchor: {}, text: "x" },
     });
@@ -132,13 +148,27 @@ describe("DiffCommentLayer", () => {
     });
   });
 
-  it("Submit now creates a session and navigates to it", async () => {
-    listReviewComments.mockResolvedValue({ comments: [], pendingCount: 0 });
+  it("submits one comment to a new session and navigates to it", async () => {
+    listReviewComments.mockResolvedValue({
+      comments: [],
+      batches: [],
+      pendingCount: 0,
+    });
     addReviewComment.mockResolvedValue({
       comment: { id: "c1", status: "pending", anchor: {}, text: "x" },
     });
     submitReview.mockResolvedValue({ sessionId: "sess-9", consumed: ["c1"] });
-    renderHarness();
+    renderHarness({
+      projectId: "proj1",
+      id: "sess-default",
+      title: "Fix source review flow",
+      newSession: {
+        provider: "codex",
+        model: "gpt-5.4",
+        thinking: { type: "adaptive", display: "summarized" },
+        effort: "high",
+      },
+    });
 
     fireEvent.click(document.querySelector('[data-diff-line="1"]')!);
     await screen.findByText("src/a.ts:2"); // removed line: falls back to old line 2
@@ -146,16 +176,70 @@ describe("DiffCommentLayer", () => {
     fireEvent.change(screen.getByRole("textbox"), {
       target: { value: "removed why?" },
     });
-    fireEvent.click(screen.getByText("sourceReviewSubmitNow"));
+    fireEvent.click(screen.getByText("sourceReviewSubmitToNew"));
 
     await waitFor(() =>
-      expect(submitReview).toHaveBeenCalledWith("proj1", ["c1"], "new"),
+      expect(submitReview).toHaveBeenCalledWith("proj1", ["c1"], "new", {
+        provider: "codex",
+        model: "gpt-5.4",
+        thinking: { type: "adaptive", display: "summarized" },
+        effort: "high",
+      }),
     );
     expect(navigateSpy).toHaveBeenCalledWith("/projects/proj1/sessions/sess-9");
   });
 
+  it("submits one comment to the tab's default session", async () => {
+    listReviewComments.mockResolvedValue({
+      comments: [],
+      batches: [],
+      pendingCount: 0,
+    });
+    addReviewComment.mockResolvedValue({
+      comment: { id: "c2", status: "pending", anchor: {}, text: "x" },
+    });
+    submitReview.mockResolvedValue({
+      sessionId: "sess-default",
+      consumed: ["c2"],
+    });
+    renderHarness({
+      projectId: "proj1",
+      id: "sess-default",
+      title: "Fix source review flow",
+      newSession: { provider: "codex", model: "gpt-5.4", effort: "high" },
+    });
+
+    fireEvent.click(document.querySelector('[data-diff-line="2"]')!);
+    await screen.findByText("src/a.ts:2");
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "follow up here" },
+    });
+    const submitToDefault = await screen.findByText(
+      "sourceReviewSubmitToDefault",
+    );
+    expect(submitToDefault.getAttribute("title")).toBe(
+      "Fix source review flow",
+    );
+    fireEvent.click(submitToDefault);
+
+    await waitFor(() =>
+      expect(submitReview).toHaveBeenCalledWith(
+        "proj1",
+        ["c2"],
+        "sess-default",
+      ),
+    );
+    expect(navigateSpy).toHaveBeenCalledWith(
+      "/projects/proj1/sessions/sess-default",
+    );
+  });
+
   it("anchors a context click to the clicked column's side (side-by-side)", async () => {
-    listReviewComments.mockResolvedValue({ comments: [], pendingCount: 0 });
+    listReviewComments.mockResolvedValue({
+      comments: [],
+      batches: [],
+      pendingCount: 0,
+    });
     addReviewComment.mockResolvedValue({
       comment: { id: "c1", status: "pending", anchor: {}, text: "x" },
     });
@@ -222,6 +306,7 @@ describe("DiffCommentLayer", () => {
           },
         },
       ],
+      batches: [],
       pendingCount: 1,
     });
     renderHarness();

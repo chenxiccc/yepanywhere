@@ -265,7 +265,49 @@ describe("review-comments routes", () => {
     expect(await service.listPending(dir)).toHaveLength(0);
   });
 
-  it("passes an explicit provider and model to a new review session", async () => {
+  it("quotes relocated context in the turn for a dirty-line comment", async () => {
+    await writeProjectFile(
+      "src/dirty.ts",
+      "current before\nconst clicked = 1;\ncurrent after",
+    );
+    let deliveredTurn = "";
+    const launcher: ReviewSessionLauncher = {
+      async startReviewSession(_projectPath, turn) {
+        deliveredTurn = turn;
+        return { status: "started", sessionId: "new-sess" };
+      },
+      async deliverFollowUp() {
+        return { status: "delivered" };
+      },
+    };
+    const c = await service.addComment(dir, {
+      anchor: anchor({
+        path: "src/dirty.ts",
+        newLine: 20,
+        snippet: "draft before\nconst clicked = 1;\ndraft after",
+        snippetAnchorOffset: 1,
+      }),
+      text: "check this dirty line",
+    });
+
+    const res = await routesWithLauncher(launcher).request(
+      `/${projectId}/review/submit`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ include: [c.id], target: "new" }),
+      },
+    );
+
+    expect(res.status).toBe(200);
+    expect(deliveredTurn).toContain("src/dirty.ts:2");
+    expect(deliveredTurn).toContain(
+      "```\ncurrent before\nconst clicked = 1;\ncurrent after\n```",
+    );
+    expect(deliveredTurn).toContain("Read the current file state");
+  });
+
+  it("passes the origin session's model settings to a new review session", async () => {
     let launchOptions: unknown;
     const launcher: ReviewSessionLauncher = {
       async startReviewSession(_projectPath, _text, options) {
@@ -289,13 +331,23 @@ describe("review-comments routes", () => {
         body: JSON.stringify({
           include: [c.id],
           target: "new",
-          newSession: { provider: "codex", model: "gpt-5.4" },
+          newSession: {
+            provider: "codex",
+            model: "gpt-5.4",
+            thinking: { type: "adaptive", display: "summarized" },
+            effort: "high",
+          },
         }),
       },
     );
 
     expect(res.status).toBe(200);
-    expect(launchOptions).toEqual({ provider: "codex", model: "gpt-5.4" });
+    expect(launchOptions).toEqual({
+      provider: "codex",
+      model: "gpt-5.4",
+      thinking: { type: "adaptive", display: "summarized" },
+      effort: "high",
+    });
   });
 
   it("submit as a follow-up delivers to an existing session id", async () => {

@@ -1,3 +1,8 @@
+import type {
+  EffortLevel,
+  ProviderName,
+  ThinkingConfig,
+} from "@yep-anywhere/shared";
 import { type ReactNode, createContext, useContext, useMemo } from "react";
 
 /**
@@ -8,6 +13,11 @@ interface SessionMetadata {
   projectId: string;
   projectPath: string | null;
   sessionId: string;
+  sessionTitle?: string;
+  provider?: ProviderName;
+  model?: string;
+  thinking?: ThinkingConfig;
+  effort?: EffortLevel;
 }
 
 const SessionMetadataContext = createContext<SessionMetadata | null>(null);
@@ -16,11 +26,34 @@ export function SessionMetadataProvider({
   projectId,
   projectPath,
   sessionId,
+  sessionTitle,
+  provider,
+  model,
+  thinking,
+  effort,
   children,
 }: SessionMetadata & { children: ReactNode }) {
   const value = useMemo<SessionMetadata>(
-    () => ({ projectId, projectPath, sessionId }),
-    [projectId, projectPath, sessionId],
+    () => ({
+      projectId,
+      projectPath,
+      sessionId,
+      sessionTitle,
+      provider,
+      model,
+      thinking,
+      effort,
+    }),
+    [
+      projectId,
+      projectPath,
+      sessionId,
+      sessionTitle,
+      provider,
+      model,
+      thinking,
+      effort,
+    ],
   );
 
   return (

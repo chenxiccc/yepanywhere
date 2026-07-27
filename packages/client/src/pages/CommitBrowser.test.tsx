@@ -9,6 +9,7 @@ import {
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { I18nProvider } from "../i18n";
 
 vi.mock("react-router-dom", async (orig) => ({
   ...(await orig<typeof import("react-router-dom")>()),
@@ -262,6 +263,199 @@ describe("CommitBrowser", () => {
       revision: { kind: string };
     };
     expect(anchor.revision).toMatchObject({ kind: "uncommitted" });
+  });
+
+  it("preserves an open comment draft while a status refresh updates the diff", async () => {
+    primeApis();
+    addReviewComment.mockResolvedValue({
+      comment: { id: "c1", status: "pending", anchor: {}, text: "test" },
+    });
+    getGitDiff.mockResolvedValue({
+      diffHtml:
+        `<pre class="shiki"><code>` +
+        `<span class="line line-inserted" data-diff-line="0">+dirty</span>` +
+        `</code></pre>`,
+      structuredPatch: [
+        {
+          oldStart: 1,
+          oldLines: 0,
+          newStart: 1,
+          newLines: 1,
+          lines: ["+dirty"],
+        },
+      ],
+    });
+    const status = (linesAdded: number) => ({
+      isGitRepo: true,
+      branch: "main",
+      upstream: "origin/main",
+      ahead: 0,
+      behind: 0,
+      isClean: false,
+      files: [
+        {
+          path: "src/dirty.ts",
+          status: "M",
+          staged: false,
+          linesAdded,
+          linesDeleted: 0,
+        },
+      ],
+      recentCommits: [],
+    });
+    const view = (nextStatus: ReturnType<typeof status>) => (
+      <MemoryRouter>
+        <CommitBrowser
+          projectId="p1"
+          status={nextStatus}
+          isWideScreen={true}
+          t={t}
+        />
+      </MemoryRouter>
+    );
+    const { rerender } = render(view(status(1)));
+
+    await waitFor(() =>
+      expect(document.querySelector('[data-diff-line="0"]')).not.toBeNull(),
+    );
+    fireEvent.click(document.querySelector('[data-diff-line="0"]')!);
+    fireEvent.change(await screen.findByRole("textbox"), {
+      target: { value: "test" },
+    });
+    getGitDiff.mockClear();
+    getGitDiff.mockResolvedValueOnce({
+      diffHtml:
+        `<pre class="shiki"><code>` +
+        `<span class="line line-inserted" data-diff-line="0">+dirty changed</span>` +
+        `</code></pre>`,
+      structuredPatch: [
+        {
+          oldStart: 1,
+          oldLines: 0,
+          newStart: 1,
+          newLines: 1,
+          lines: ["+dirty changed"],
+        },
+      ],
+    });
+
+    rerender(view(status(2)));
+
+    expect(getGitDiff).toHaveBeenCalledTimes(1);
+    expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(
+      "test",
+    );
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-diff-line="0"]')?.textContent,
+      ).toContain("dirty changed"),
+    );
+    expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(
+      "test",
+    );
+
+    getGitDiff.mockClear();
+    getGitDiff.mockResolvedValueOnce({
+      diffHtml: "",
+      structuredPatch: [],
+    });
+    rerender(
+      view({
+        ...status(0),
+        isClean: true,
+        files: [],
+      }),
+    );
+
+    expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(
+      "test",
+    );
+    expect(getGitDiff).not.toHaveBeenCalled();
+    expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(
+      "test",
+    );
+    fireEvent.click(screen.getByText("sourceReviewAddToReview"));
+    await waitFor(() => expect(addReviewComment).toHaveBeenCalledTimes(1));
+    const capturedAnchor = addReviewComment.mock.calls[0]?.[1] as {
+      snippet: string;
+      revision: { kind: string; savedAt?: string };
+    };
+    expect(capturedAnchor.snippet).toBe("dirty");
+    expect(capturedAnchor.revision).toMatchObject({
+      kind: "uncommitted",
+      savedAt: expect.any(String),
+    });
+  });
+
+  it.each([
+    false,
+    true,
+  ])("opens the exact dirty file from an Edit-block deep link (wide=%s)", async (isWideScreen) => {
+    primeApis();
+    getGitDiff.mockResolvedValue({
+      diffHtml:
+        `<pre class="shiki"><code>` +
+        `<span class="line line-inserted" data-diff-line="0">+target</span>` +
+        `</code></pre>`,
+      structuredPatch: [
+        {
+          oldStart: 1,
+          oldLines: 0,
+          newStart: 1,
+          newLines: 1,
+          lines: ["+target"],
+        },
+      ],
+    });
+
+    render(
+      <I18nProvider>
+        <MemoryRouter>
+          <CommitBrowser
+            projectId="p1"
+            status={{
+              isGitRepo: true,
+              branch: "main",
+              upstream: "origin/main",
+              ahead: 0,
+              behind: 0,
+              isClean: false,
+              files: [
+                {
+                  path: "src/other.ts",
+                  status: "M",
+                  staged: false,
+                  linesAdded: 1,
+                  linesDeleted: 0,
+                },
+                {
+                  path: "src/target.ts",
+                  status: "M",
+                  staged: false,
+                  linesAdded: 1,
+                  linesDeleted: 0,
+                },
+              ],
+              recentCommits: [],
+            }}
+            isWideScreen={isWideScreen}
+            initialWorkingTreePath="src/target.ts"
+            t={t}
+          />
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    await waitFor(() =>
+      expect(getGitDiff).toHaveBeenCalledWith(
+        "p1",
+        expect.objectContaining({
+          path: "src/target.ts",
+          againstHead: true,
+        }),
+      ),
+    );
+    expect(document.querySelector(".modal") !== null).toBe(!isWideScreen);
   });
 
   it("searches the complete client index beyond the loaded commit page", async () => {

@@ -1,4 +1,9 @@
-import type { PatchHunk, ProviderName } from "./types.js";
+import type {
+  EffortLevel,
+  PatchHunk,
+  ProviderName,
+  ThinkingConfig,
+} from "./types.js";
 
 /**
  * Source-review draft comments (topic: source-review-to-session).
@@ -108,6 +113,10 @@ export interface ReviewNewSessionOptions {
   provider?: ProviderName;
   /** Provider model id. Omitted means the provider's normal default. */
   model?: string;
+  /** Thinking mode copied from the session that opened Source Control. */
+  thinking?: ThinkingConfig;
+  /** Reasoning effort copied from the session that opened Source Control. */
+  effort?: EffortLevel;
 }
 
 export interface ReviewCommentsFile {

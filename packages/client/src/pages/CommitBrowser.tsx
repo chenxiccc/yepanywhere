@@ -35,6 +35,7 @@ export function CommitBrowser({
   projectId,
   status,
   isWideScreen,
+  initialWorkingTreePath,
   onBlameFile,
   t,
 }: {
@@ -42,6 +43,8 @@ export function CommitBrowser({
   /** Current status supplies the synthetic working-tree revision. */
   status?: GitStatusInfo;
   isWideScreen: boolean;
+  /** One-shot deep link to a dirty Working tree file from an Edit block. */
+  initialWorkingTreePath?: string;
   /** Bridge a commit file to its blame-at-HEAD view (the files tab). */
   onBlameFile?: (path: string) => void;
   t: TranslationFn;
@@ -56,6 +59,11 @@ export function CommitBrowser({
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [commentEditorOpen, setCommentEditorOpen] = useState(false);
+  const [appliedWorkingTreeLink, setAppliedWorkingTreeLink] = useState<
+    string | null
+  >(null);
+  const retainedWorkingTreeFileRef = useRef<WorktreeFileChange | null>(null);
   // When true, the detail pane shows the commit's original-format message
   // (verbatim, with its exact time) instead of a file diff.
   const [messageView, setMessageView] = useState(false);
@@ -105,18 +113,40 @@ export function CommitBrowser({
     };
   }, [projectId, untrackedFolderKey]);
 
-  const workingTreeFiles = useMemo(
+  const currentWorkingTreeFiles = useMemo(
     () =>
       mergeWorkingTreeFiles(
         expandUntrackedFolders(status?.files ?? [], expandedUntrackedFolders),
       ),
     [expandedUntrackedFolders, status?.files],
   );
+  useEffect(() => {
+    if (selectedKey !== WORKING_TREE_KEY || !selectedPath) return;
+    const selected = currentWorkingTreeFiles.find(
+      (file) => file.path === selectedPath,
+    );
+    if (selected) retainedWorkingTreeFileRef.current = selected;
+  }, [currentWorkingTreeFiles, selectedKey, selectedPath]);
+  const workingTreeFiles = useMemo(() => {
+    const retained = retainedWorkingTreeFileRef.current;
+    if (
+      commentEditorOpen &&
+      selectedKey === WORKING_TREE_KEY &&
+      selectedPath &&
+      retained?.path === selectedPath &&
+      !currentWorkingTreeFiles.some((file) => file.path === selectedPath)
+    ) {
+      return [...currentWorkingTreeFiles, retained];
+    }
+    return currentWorkingTreeFiles;
+  }, [commentEditorOpen, currentWorkingTreeFiles, selectedKey, selectedPath]);
   const previewableWorkingTreeFiles = useMemo(
     () => workingTreeFiles.filter((file) => !file.path.endsWith("/")),
     [workingTreeFiles],
   );
-  const hasWorkingTree = status?.isClean === false;
+  const hasWorkingTree =
+    status?.isClean === false ||
+    (commentEditorOpen && selectedKey === WORKING_TREE_KEY);
   const displayedKeys = useMemo(
     () => [
       ...(hasWorkingTree ? [WORKING_TREE_KEY] : []),
@@ -268,12 +298,54 @@ export function CommitBrowser({
   const selectedFiles = selectedIsWorkingTree
     ? workingTreeFiles
     : (detail?.files ?? []);
+  const linkedWorkingTreeFile = initialWorkingTreePath
+    ? previewableWorkingTreeFiles.find(
+        (file) => file.path === initialWorkingTreePath,
+      )
+    : undefined;
+  const workingTreeLinkToken = initialWorkingTreePath
+    ? `${projectId}\0${initialWorkingTreePath}`
+    : null;
+  const shouldApplyWorkingTreeLink =
+    !!workingTreeLinkToken &&
+    hasWorkingTree &&
+    !!linkedWorkingTreeFile &&
+    appliedWorkingTreeLink !== workingTreeLinkToken;
+
+  // An Edit block can open the exact dirty file. Apply the link only once:
+  // status polls may update the selected diff, but closing/backing out on
+  // mobile must not force the file modal open again.
+  useEffect(() => {
+    if (
+      !shouldApplyWorkingTreeLink ||
+      !workingTreeLinkToken ||
+      !linkedWorkingTreeFile
+    ) {
+      return;
+    }
+    if (!selectedIsWorkingTree) {
+      setSelectedKey(WORKING_TREE_KEY);
+      setMessageView(false);
+      return;
+    }
+    setAppliedWorkingTreeLink(workingTreeLinkToken);
+    setSelectedPath(linkedWorkingTreeFile.path);
+    setMessageView(false);
+  }, [
+    linkedWorkingTreeFile,
+    selectedIsWorkingTree,
+    shouldApplyWorkingTreeLink,
+    workingTreeLinkToken,
+  ]);
 
   // Auto-select the first changed file on wide screens.
   useEffect(() => {
     const firstPreviewable = selectedIsWorkingTree
       ? previewableWorkingTreeFiles[0]
       : selectedFiles[0];
+    if (shouldApplyWorkingTreeLink) {
+      return;
+    }
     if (isWideScreen && selectedPath === null && firstPreviewable) {
       setSelectedPath(firstPreviewable.path);
     }
@@ -283,6 +355,7 @@ export function CommitBrowser({
     selectedFiles,
     selectedIsWorkingTree,
     selectedPath,
+    shouldApplyWorkingTreeLink,
   ]);
 
   const selectedFile: GitFileChange | null = selectedPath
@@ -660,6 +733,7 @@ export function CommitBrowser({
               projectId={projectId}
               source={source}
               headerActions={fileActions}
+              onCommentEditorOpenChange={setCommentEditorOpen}
               t={t}
             />
           ) : null)}
@@ -686,6 +760,7 @@ export function CommitBrowser({
             projectId={projectId}
             source={source}
             headerActions={fileActions}
+            onCommentEditorOpenChange={setCommentEditorOpen}
             t={t}
             onClose={() => setSelectedPath(null)}
           />

@@ -60,7 +60,13 @@ export function Modal({
   // pushed entry on cleanup so history stays balanced.
   useEffect(() => {
     if (!closeOnBackGesture || typeof window === "undefined") return;
-    window.history.pushState({ yaModal: true }, "");
+    const priorState =
+      window.history.state &&
+      typeof window.history.state === "object" &&
+      !Array.isArray(window.history.state)
+        ? window.history.state
+        : {};
+    window.history.pushState({ ...priorState, yaModal: true }, "");
     let dismissedByBack = false;
     const onPopState = () => {
       dismissedByBack = true;

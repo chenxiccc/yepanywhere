@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   useGitStatus: vi.fn(),
   useNavigationLayout: vi.fn(),
   useMediaQuery: vi.fn(),
+  renderCommitBrowser: vi.fn(),
 }));
 
 vi.mock("../../api/client", () => ({
@@ -31,13 +32,27 @@ vi.mock("../../api/client", () => ({
   },
 }));
 
-vi.mock("../CommitBrowser", () => ({
-  CommitBrowser: ({ status }: { status: GitStatusInfo }) => (
-    <div data-testid="commit-browser">
-      {status.isClean ? "clean-history" : "dirty-history"}
-    </div>
-  ),
-}));
+vi.mock("../CommitBrowser", async () => {
+  const { useSourceReviewDefaultSession } = await import(
+    "../../contexts/SourceReviewDefaultSessionContext"
+  );
+  return {
+    CommitBrowser: (props: {
+      status: GitStatusInfo;
+      initialWorkingTreePath?: string;
+    }) => {
+      mocks.renderCommitBrowser({
+        ...props,
+        defaultSession: useSourceReviewDefaultSession(),
+      });
+      return (
+        <div data-testid="commit-browser">
+          {props.status.isClean ? "clean-history" : "dirty-history"}
+        </div>
+      );
+    },
+  };
+});
 
 vi.mock("../../hooks/useDocumentTitle", () => ({
   useDocumentTitle: vi.fn(),
@@ -125,7 +140,13 @@ function status(): GitStatusInfo {
 }
 
 function renderPage(
-  initialEntry = "/git-status?projectId=project-a",
+  initialEntry:
+    | string
+    | {
+        pathname: string;
+        search: string;
+        state: unknown;
+      } = "/git-status?projectId=project-a",
 ) {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
@@ -177,6 +198,7 @@ beforeEach(() => {
     toggleSidebar: vi.fn(),
   });
   mocks.useMediaQuery.mockReturnValue(true);
+  mocks.renderCommitBrowser.mockReset();
 });
 
 describe("GitStatusPage source header", () => {
@@ -201,11 +223,45 @@ describe("GitStatusPage source header", () => {
 
     expect(await screen.findByTestId("commit-browser")).toBeDefined();
     expect(
-      screen.getByRole("tab", { name: "sourceTabCommits" }).getAttribute(
-        "aria-selected",
-      ),
+      screen
+        .getByRole("tab", { name: "sourceTabCommits" })
+        .getAttribute("aria-selected"),
     ).toBe("true");
     expect(screen.queryByRole("tab", { name: "sourceTabChanges" })).toBeNull();
+  });
+
+  it("uses the Edit-link history entry as the tab-local default session", async () => {
+    const defaultSession = {
+      projectId: "project-a",
+      id: "session-origin",
+      title: "Fix polling",
+      newSession: {
+        provider: "codex" as const,
+        model: "gpt-5.4",
+        thinking: { type: "adaptive" as const, display: "summarized" as const },
+        effort: "high" as const,
+      },
+    };
+    renderPage({
+      pathname: "/git-status",
+      search: "?projectId=project-a&worktreeFile=a.ts",
+      state: { defaultSession },
+    });
+
+    await screen.findByTestId("commit-browser");
+    expect(mocks.renderCommitBrowser).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        initialWorkingTreePath: "a.ts",
+        defaultSession,
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: "sourceTabComments" }));
+    fireEvent.click(screen.getByRole("tab", { name: "sourceTabCommits" }));
+    await screen.findByTestId("commit-browser");
+    expect(mocks.renderCommitBrowser).toHaveBeenLastCalledWith(
+      expect.objectContaining({ defaultSession }),
+    );
   });
 
   it("shows successful remote-check feedback on the Check button", async () => {

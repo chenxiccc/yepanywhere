@@ -12,6 +12,7 @@ import type {
   UploadedFile,
   UserQuestionAnswers,
 } from "@yep-anywhere/shared";
+import { thinkingOptionToConfig } from "@yep-anywhere/shared";
 import {
   type MouseEvent as ReactMouseEvent,
   useCallback,
@@ -120,6 +121,7 @@ import {
 } from "../lib/composerRecall";
 import { buildCorrectionText } from "../lib/correctionText";
 import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
+import { isEffortLevel } from "../lib/effortLevels";
 import {
   liveThinkingSelectionFromProcess,
   thinkingOptionFromProcess,
@@ -128,6 +130,7 @@ import {
 import { getCachedWebTranscriptProjection } from "../lib/webTranscriptProjection";
 import { createPendingElsewhereDismissKey } from "../lib/sessionUiStorageKeys";
 import { parseCodexConfigAck } from "../lib/sessionCodexConfigAck";
+import { parseThinkingConfig } from "../lib/sourceControlNavigationState";
 import {
   type ComposerAttachment,
   isComposerStagedAttachment,
@@ -4315,6 +4318,18 @@ function SessionPageContent({
     </svg>
   );
 
+  const liveSourceReviewThinking = parseThinkingConfig(
+    liveModelConfig?.thinking,
+  );
+  const sourceReviewModelSettings = liveSourceReviewThinking
+    ? {
+        thinking: liveSourceReviewThinking,
+        effort: isEffortLevel(liveModelConfig?.effort)
+          ? liveModelConfig.effort
+          : undefined,
+      }
+    : thinkingOptionToConfig(getThinkingSetting());
+
   return (
     <MainContent isWideScreen={isWideScreen}>
       <header className="session-header">
@@ -4979,6 +4994,11 @@ function SessionPageContent({
               projectId={projectId}
               projectPath={project?.path ?? null}
               sessionId={sessionId}
+              sessionTitle={displayTitle}
+              provider={effectiveProvider}
+              model={liveModelConfig?.requestedModel ?? liveBadgeModel}
+              thinking={sourceReviewModelSettings.thinking}
+              effort={sourceReviewModelSettings.effort}
             >
               <AgentContentProvider
                 agentContent={agentContent}

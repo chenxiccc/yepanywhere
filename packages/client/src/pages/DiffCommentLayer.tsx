@@ -2,6 +2,7 @@ import {
   type PatchHunk,
   type PatchLineLocation,
   type ReviewCommentAnchor,
+  type ReviewNewSessionOptions,
   type ReviewCommentRevision,
   anchorFromPatch,
 } from "@yep-anywhere/shared";
@@ -21,8 +22,8 @@ import type { TranslationFn } from "../i18n";
  */
 
 interface OpenComment {
-  flatIndex: number;
-  location: PatchLineLocation;
+  /** Immutable click-time anchor; live diff refreshes never rewrite it. */
+  anchor: ReviewCommentAnchor;
   /** Offset from the container's top, to place the window below the line. */
   top: number;
 }
@@ -33,6 +34,7 @@ export function DiffCommentLayer({
   structuredPatch,
   revision,
   containerRef,
+  onOpenChange,
   t,
 }: {
   projectId: string;
@@ -45,11 +47,45 @@ export function DiffCommentLayer({
    */
   revision?: ReviewCommentRevision;
   containerRef: RefObject<HTMLElement | null>;
+  /** Keeps the owning source view alive while the user owns this editor. */
+  onOpenChange?: (open: boolean) => void;
   t: TranslationFn;
 }) {
   const [open, setOpen] = useState<OpenComment | null>(null);
-  const { pending, busy, error, setError, addToReview, submitNow } =
-    useReviewCommentDraft(projectId, filePath);
+  const {
+    pending,
+    defaultSession,
+    busy,
+    error,
+    setError,
+    addToReview,
+    submitNow,
+  } = useReviewCommentDraft(projectId, filePath);
+
+  const buildAnchor = useCallback(
+    (location: PatchLineLocation): ReviewCommentAnchor => ({
+      path: filePath,
+      // A commit diff cites its sha; the working-tree diff mints a fresh
+      // `uncommitted` anchor timestamped at click time.
+      revision: revision ?? {
+        kind: "uncommitted",
+        savedAt: new Date().toISOString(),
+      },
+      side: location.side,
+      oldLine: location.oldLine,
+      newLine: location.newLine,
+      snippet: location.snippet,
+      snippetAnchorOffset: location.snippetAnchorOffset,
+    }),
+    [filePath, revision],
+  );
+
+  useEffect(() => {
+    onOpenChange?.(open !== null);
+    return () => {
+      if (open) onOpenChange?.(false);
+    };
+  }, [onOpenChange, open]);
 
   // Delegated click → anchor. A drag-selection is left alone.
   useEffect(() => {
@@ -79,14 +115,13 @@ export function DiffCommentLayer({
       const containerRect = el.getBoundingClientRect();
       setError(null);
       setOpen({
-        flatIndex,
-        location,
+        anchor: buildAnchor(location),
         top: nodeRect.bottom - containerRect.top + el.scrollTop,
       });
     };
     el.addEventListener("click", onClick);
     return () => el.removeEventListener("click", onClick);
-  }, [containerRef, structuredPatch, setError]);
+  }, [buildAnchor, containerRef, structuredPatch, setError]);
 
   // Tint every line that carries a pending comment. Idempotent decoration of
   // the same server-emitted nodes the click handler addresses. One linear walk
@@ -125,58 +160,52 @@ export function DiffCommentLayer({
     }
   }, [containerRef, structuredPatch, pending]);
 
-  const buildAnchor = useCallback(
-    (location: PatchLineLocation): ReviewCommentAnchor => ({
-      path: filePath,
-      // A commit diff cites its sha; the working-tree diff mints a fresh
-      // `uncommitted` anchor timestamped at comment time.
-      revision: revision ?? {
-        kind: "uncommitted",
-        savedAt: new Date().toISOString(),
-      },
-      side: location.side,
-      oldLine: location.oldLine,
-      newLine: location.newLine,
-      snippet: location.snippet,
-      snippetAnchorOffset: location.snippetAnchorOffset,
-    }),
-    [filePath, revision],
-  );
-
   const onAddToReview = useCallback(
     async (text: string) => {
       if (!open) return;
-      if (await addToReview(buildAnchor(open.location), text)) setOpen(null);
+      if (await addToReview(open.anchor, text)) setOpen(null);
     },
-    [open, addToReview, buildAnchor],
+    [open, addToReview],
   );
 
-  const onSubmitNow = useCallback(
-    async (text: string) => {
+  const onSubmit = useCallback(
+    async (
+      text: string,
+      target: "new" | string,
+      newSession?: ReviewNewSessionOptions,
+    ) => {
       if (!open) return;
       const outcome = await submitNow(
-        buildAnchor(open.location),
+        open.anchor,
         text,
+        target,
         t("sourceReviewSubmitQueued"),
+        newSession,
       );
       if (outcome === "navigated") setOpen(null);
     },
-    [open, submitNow, buildAnchor, t],
+    [open, submitNow, t],
   );
 
   if (!open) return null;
 
-  const lineNumber = open.location.newLine ?? open.location.oldLine;
+  const lineNumber = open.anchor.newLine ?? open.anchor.oldLine;
   return (
     <ReviewCommentWindow
       anchorLabel={`${filePath}:${lineNumber ?? "?"}`}
-      snippet={open.location.snippet}
+      snippet={open.anchor.snippet}
       top={open.top}
       busy={busy}
       error={error}
       onCancel={() => setOpen(null)}
       onAddToReview={onAddToReview}
-      onSubmitNow={onSubmitNow}
+      defaultSession={defaultSession}
+      onSubmitToDefault={
+        defaultSession ? (text) => onSubmit(text, defaultSession.id) : null
+      }
+      onSubmitToNew={(text) =>
+        onSubmit(text, "new", defaultSession?.newSession)
+      }
       t={t}
     />
   );

@@ -12,7 +12,9 @@
 import {
   ALL_PROVIDERS,
   MAX_REVIEW_COMMENT_TEXT_LENGTH,
+  type EffortLevel,
   type ReviewNewSessionOptions,
+  type ThinkingConfig,
   parseReviewCommentAnchor,
 } from "@yep-anywhere/shared";
 import { Hono } from "hono";
@@ -174,7 +176,7 @@ export function createReviewCommentsRoutes(deps: ReviewCommentsDeps): Hono {
     }
     const newSession = parseNewSessionOptions(body.newSession);
     if (newSession === null) {
-      return c.json({ error: "Invalid new-session provider or model" }, 400);
+      return c.json({ error: "Invalid new-session settings" }, 400);
     }
     if (target !== "new" && body.newSession !== undefined) {
       return c.json(
@@ -283,7 +285,69 @@ function parseNewSessionOptions(
     }
     options.model = record.model;
   }
+  if (record.thinking !== undefined) {
+    const thinking = parseThinkingConfig(record.thinking);
+    if (!thinking) return null;
+    options.thinking = thinking;
+  }
+  if (record.effort !== undefined) {
+    if (
+      typeof record.effort !== "string" ||
+      !EFFORT_LEVELS.includes(record.effort as EffortLevel)
+    ) {
+      return null;
+    }
+    options.effort = record.effort as EffortLevel;
+  }
   return options;
+}
+
+const EFFORT_LEVELS: readonly EffortLevel[] = [
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+];
+
+function parseThinkingConfig(value: unknown): ThinkingConfig | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const display =
+    record.display === undefined
+      ? undefined
+      : record.display === "summarized" || record.display === "omitted"
+        ? record.display
+        : null;
+  if (display === null) return null;
+
+  if (record.type === "disabled") {
+    return record.display === undefined ? { type: "disabled" } : null;
+  }
+  if (record.type === "adaptive") {
+    return {
+      type: "adaptive",
+      ...(display ? { display } : {}),
+    };
+  }
+  if (record.type === "enabled") {
+    if (
+      record.budgetTokens !== undefined &&
+      (typeof record.budgetTokens !== "number" ||
+        !Number.isInteger(record.budgetTokens) ||
+        record.budgetTokens <= 0)
+    ) {
+      return null;
+    }
+    return {
+      type: "enabled",
+      ...(typeof record.budgetTokens === "number"
+        ? { budgetTokens: record.budgetTokens }
+        : {}),
+      ...(display ? { display } : {}),
+    };
+  }
+  return null;
 }
 
 function parseStringArray(value: unknown): string[] | null {

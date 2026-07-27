@@ -2,6 +2,35 @@ import { describe, expect, it, vi } from "vitest";
 import { createSupervisorReviewLauncher } from "../../src/review/reviewSessionLauncher.js";
 import type { Supervisor } from "../../src/supervisor/Supervisor.js";
 
+describe("createSupervisorReviewLauncher.startReviewSession", () => {
+  it("starts with the origin session's provider, model, thinking, and effort", async () => {
+    const startSession = vi.fn(async () => ({ sessionId: "new-session" }));
+    const supervisor = { startSession } as unknown as Supervisor;
+
+    const result = await createSupervisorReviewLauncher(
+      supervisor,
+    ).startReviewSession("/repo", "turn", {
+      provider: "codex",
+      model: "gpt-5.4",
+      thinking: { type: "adaptive", display: "summarized" },
+      effort: "high",
+    });
+
+    expect(result).toEqual({ status: "started", sessionId: "new-session" });
+    expect(startSession).toHaveBeenCalledWith(
+      "/repo",
+      { text: "turn" },
+      undefined,
+      {
+        providerName: "codex",
+        model: "gpt-5.4",
+        thinking: { type: "adaptive", display: "summarized" },
+        effort: "high",
+      },
+    );
+  });
+});
+
 describe("createSupervisorReviewLauncher.deliverFollowUp", () => {
   it("queues the turn to a live process without resuming", async () => {
     const queueMessage = vi.fn();

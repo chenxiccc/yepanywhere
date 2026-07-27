@@ -46,7 +46,12 @@ export function createSupervisorReviewLauncher(
     async startReviewSession(projectPath, text, options) {
       // projectId derives from projectPath inside startSession.
       const modelSettings = options
-        ? { providerName: options.provider, model: options.model }
+        ? {
+            providerName: options.provider,
+            model: options.model,
+            thinking: options.thinking,
+            effort: options.effort,
+          }
         : undefined;
       const result = await supervisor.startSession(
         projectPath,

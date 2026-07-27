@@ -1,3 +1,8 @@
+import type {
+  EffortLevel,
+  ProviderName,
+  ThinkingConfig,
+} from "@yep-anywhere/shared";
 import {
   memo,
   type ReactNode,
@@ -7,18 +12,27 @@ import {
   useRef,
   useState,
 } from "react";
+import { Link } from "react-router-dom";
 import type { ZodError } from "zod";
 import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
 import { useOptionalSessionMetadata } from "../../../contexts/SessionMetadataContext";
 import { useExpandedDiff } from "../../../hooks/useExpandedDiff";
+import { useRemoteBasePath } from "../../../hooks/useRemoteBasePath";
 import { useVisibilityAwareTextTooltip } from "../../../hooks/useTooltipAppearance";
+import { useI18n } from "../../../i18n";
 import {
   classifyToolError,
   getErrorClassSuffix,
   isUserRejection,
 } from "../../../lib/classifyToolError";
 import { isMarkdownLikeFile } from "../../../lib/markdownFiles";
-import { getPathBasename, makeDisplayPath } from "../../../lib/text";
+import { createSourceControlNavigationState } from "../../../lib/sourceControlNavigationState";
+import {
+  getPathBasename,
+  getProjectRelativePath,
+  makeDisplayPath,
+  normalizePathSeparators,
+} from "../../../lib/text";
 import { validateToolResult } from "../../../lib/validateToolResult";
 import { FilePathLink } from "../../FilePathLink";
 import { SchemaWarning } from "../../SchemaWarning";
@@ -150,6 +164,97 @@ function getEditRenderMode(filePaths: string[]): FixedFontRenderMode {
   return filePaths.length > 0 && filePaths.every(isMarkdownLikeFile)
     ? "rich"
     : "math";
+}
+
+function getDirtyProjectRelativePath(
+  filePath: string,
+  projectPath: string | null,
+): string | null {
+  const projectRelative = getProjectRelativePath(filePath, projectPath);
+  if (projectRelative && projectRelative !== ".") return projectRelative;
+
+  const normalized = normalizePathSeparators(filePath).replace(/^\.\/+/, "");
+  const isAbsolute =
+    normalized.startsWith("/") ||
+    normalized.startsWith("//") ||
+    /^[a-zA-Z]:\//.test(normalized);
+  const leavesProject = normalized === ".." || normalized.startsWith("../");
+  return normalized && !isAbsolute && !leavesProject ? normalized : null;
+}
+
+function SourceControlEditLink({ filePath }: { filePath: string }) {
+  const session = useOptionalSessionMetadata();
+  if (!session?.sessionTitle || !session.provider || !filePath) {
+    return null;
+  }
+  const relativePath = getDirtyProjectRelativePath(
+    filePath,
+    session.projectPath,
+  );
+  if (!relativePath) return null;
+
+  return (
+    <SourceControlEditLinkReady
+      projectId={session.projectId}
+      sessionId={session.sessionId}
+      sessionTitle={session.sessionTitle}
+      provider={session.provider}
+      model={session.model}
+      thinking={session.thinking}
+      effort={session.effort}
+      relativePath={relativePath}
+    />
+  );
+}
+
+function SourceControlEditLinkReady({
+  projectId,
+  sessionId,
+  sessionTitle,
+  provider,
+  model,
+  thinking,
+  effort,
+  relativePath,
+}: {
+  projectId: string;
+  sessionId: string;
+  sessionTitle: string;
+  provider: ProviderName;
+  model?: string;
+  thinking?: ThinkingConfig;
+  effort?: EffortLevel;
+  relativePath: string;
+}) {
+  const { t } = useI18n();
+  const basePath = useRemoteBasePath();
+  const params = new URLSearchParams({
+    projectId,
+    worktreeFile: relativePath,
+  });
+  const state = createSourceControlNavigationState({
+    projectId,
+    id: sessionId,
+    title: sessionTitle,
+    newSession: {
+      provider,
+      ...(model ? { model } : {}),
+      ...(thinking ? { thinking } : {}),
+      ...(effort ? { effort } : {}),
+    },
+  });
+
+  return (
+    <Link
+      className="source-review-edit-link"
+      to={`${basePath}/git-status?${params.toString()}`}
+      state={state}
+      title={t("sourceReviewOpenDirtyFile")}
+      onClick={(event) => event.stopPropagation()}
+    >
+      {t("sourceReviewOpenDirtyFile")}
+    </Link>
+  );
 }
 
 /**
@@ -1300,20 +1405,23 @@ function EditInteractiveSummary({
   if (structuredPatch.length === 0) {
     return (
       <>
-        <button
-          type="button"
-          className="file-link-inline"
-          title={fileTitle}
-          onClick={(e) => {
-            e.stopPropagation();
-            setShowModal(true);
-          }}
-        >
-          {fileName}
-          {showValidationWarning && validationErrors && (
-            <SchemaWarning toolName="Edit" errors={validationErrors} />
-          )}
-        </button>
+        <span className="source-review-edit-summary">
+          <button
+            type="button"
+            className="file-link-inline"
+            title={fileTitle}
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowModal(true);
+            }}
+          >
+            {fileName}
+            {showValidationWarning && validationErrors && (
+              <SchemaWarning toolName="Edit" errors={validationErrors} />
+            )}
+          </button>
+          <SourceControlEditLink filePath={filePath} />
+        </span>
         {showModal && (
           <Modal
             title={
@@ -1349,23 +1457,26 @@ function EditInteractiveSummary({
 
   return (
     <>
-      <button
-        type="button"
-        className="file-link-inline"
-        title={fileTitle}
-        onClick={(e) => {
-          e.stopPropagation();
-          setShowModal(true);
-        }}
-      >
-        {fileName}
-        {changeSummary && (
-          <span className="file-line-count-inline">{changeSummary}</span>
-        )}
-        {showValidationWarning && validationErrors && (
-          <SchemaWarning toolName="Edit" errors={validationErrors} />
-        )}
-      </button>
+      <span className="source-review-edit-summary">
+        <button
+          type="button"
+          className="file-link-inline"
+          title={fileTitle}
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowModal(true);
+          }}
+        >
+          {fileName}
+          {changeSummary && (
+            <span className="file-line-count-inline">{changeSummary}</span>
+          )}
+          {showValidationWarning && validationErrors && (
+            <SchemaWarning toolName="Edit" errors={validationErrors} />
+          )}
+        </button>
+        <SourceControlEditLink filePath={filePath} />
+      </span>
       {showModal && (
         <Modal
           title={

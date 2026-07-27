@@ -41,6 +41,7 @@ export function BlameView({
   const containerRef = useRef<HTMLDivElement>(null);
   const {
     pending,
+    defaultSession,
     busy,
     error: draftError,
     addToReview,
@@ -197,13 +198,31 @@ export function BlameView({
             const anchor = submitAnchor(open.index);
             if (anchor && (await addToReview(anchor, text))) setOpen(null);
           }}
-          onSubmitNow={async (text) => {
+          defaultSession={defaultSession}
+          onSubmitToDefault={
+            defaultSession
+              ? async (text) => {
+                  const anchor = submitAnchor(open.index);
+                  if (!anchor) return;
+                  const outcome = await submitNow(
+                    anchor,
+                    text,
+                    defaultSession.id,
+                    t("sourceReviewSubmitQueued"),
+                  );
+                  if (outcome === "navigated") setOpen(null);
+                }
+              : null
+          }
+          onSubmitToNew={async (text) => {
             const anchor = submitAnchor(open.index);
             if (!anchor) return;
             const outcome = await submitNow(
               anchor,
               text,
+              "new",
               t("sourceReviewSubmitQueued"),
+              defaultSession?.newSession,
             );
             if (outcome === "navigated") setOpen(null);
           }}

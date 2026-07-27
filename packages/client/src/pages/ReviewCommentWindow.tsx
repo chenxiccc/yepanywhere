@@ -1,13 +1,14 @@
 import { useState } from "react";
+import type { SourceReviewDefaultSession } from "../contexts/SourceReviewDefaultSessionContext";
 import type { TranslationFn } from "../i18n";
 
 /**
  * The in-place comment popover shared by the diff and blame comment surfaces
  * (topic: source-review-to-session). It renders the clicked line's anchor
  * label + snippet and offers "Add to review" (persist a pending draft) and
- * "Submit now" (drain that one comment into a fresh session). It is presentation
- * only — the caller supplies the anchor and owns the review-draft actions (see
- * `useReviewCommentDraft`).
+ * explicit default-session and new-session submit actions (drain that one
+ * comment immediately). It is presentation only — the caller supplies the
+ * anchor and owns the review-draft actions (see `useReviewCommentDraft`).
  */
 export function ReviewCommentWindow({
   anchorLabel,
@@ -17,7 +18,9 @@ export function ReviewCommentWindow({
   error,
   onCancel,
   onAddToReview,
-  onSubmitNow,
+  defaultSession,
+  onSubmitToDefault,
+  onSubmitToNew,
   t,
 }: {
   anchorLabel: string;
@@ -27,7 +30,9 @@ export function ReviewCommentWindow({
   error: string | null;
   onCancel: () => void;
   onAddToReview: (text: string) => void;
-  onSubmitNow: (text: string) => void;
+  defaultSession: SourceReviewDefaultSession | null;
+  onSubmitToDefault: ((text: string) => void) | null;
+  onSubmitToNew: (text: string) => void;
   t: TranslationFn;
 }) {
   const [text, setText] = useState("");
@@ -64,14 +69,27 @@ export function ReviewCommentWindow({
         >
           {t("sourceReviewAddToReview")}
         </button>
-        <button
-          type="button"
-          className="review-comment-window-submit"
-          onClick={() => onSubmitNow(text)}
-          disabled={!canSubmit}
-        >
-          {t("sourceReviewSubmitNow")}
-        </button>
+        <div className="review-comment-window-submit-actions">
+          {defaultSession && onSubmitToDefault && (
+            <button
+              type="button"
+              className="review-comment-window-submit"
+              onClick={() => onSubmitToDefault(text)}
+              disabled={!canSubmit}
+              title={defaultSession.title}
+            >
+              {t("sourceReviewSubmitToDefault")}
+            </button>
+          )}
+          <button
+            type="button"
+            className="review-comment-window-submit"
+            onClick={() => onSubmitToNew(text)}
+            disabled={!canSubmit}
+          >
+            {t("sourceReviewSubmitToNew")}
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -214,16 +214,56 @@ submit-time relocation below.
   The client holds only UI state (the open comment window's in-progress text
   may keep a localStorage backup, like message drafts).
 
-## One-off diff-line comment → new session (a fast path, not the vision)
+## One-off diff-line comment → session (a fast path, not the vision)
 
 A direct "click a line, comment, start a session with just that now" shortcut
 is worth having for a quick single question. It is **defined as the accumulator
 containing one comment, drained immediately** — same store, same submit
-machinery, just a "submit now" button beside "add to review" in the comment
-window — never a parallel code path. Submitting it consumes only that one
-comment, leaving the rest of the pending review untouched. Do not mistake
-shipping this shortcut for delivering the accumulating review — the vision is
-the multi-comment, drain-all-unconsumed flow.
+machinery and never a parallel code path. Submitting either way consumes only
+that one comment, leaving the rest of the pending review untouched. Do not
+mistake shipping this shortcut for delivering the accumulating review — the
+vision is the multi-comment, drain-all-unconsumed flow.
+
+**Edit block → dirty file.** Each session Edit tool block with a usable project
+file offers **Review dirty file**. The link opens that project's Source Control
+at the Working tree revision and the exact edited file. The session containing
+the link becomes the **default session** for that Source Control browser-history
+entry. Back/forward and navigation among Source Control modes preserve it; a
+deliberate project switch clears it. This default is tab-local navigation
+history, not server or project recency: activity in another tab, browser,
+device, or session cannot retarget it.
+
+**Two distinct immediate-submit actions.** The comment window always offers
+**Submit to new session**. When the page has an Edit-link default session, it
+also offers **Submit to default session**, whose tooltip is that session's
+display name.
+
+- **Submit to default session** sends the composed review turn directly to
+  that exact existing session. It does not consult recent sessions or prior
+  review batches.
+- **Submit to new session** starts a separate session using the default
+  session's provider, model, thinking mode, and effort. When Source Control was
+  not opened from a session Edit link, the default-session action is absent and
+  the new session uses the normal launch defaults.
+
+**A background refresh never owns the editor.** Once the reviewer opens a
+line-comment editor, status polling and diff refreshes must not dismiss it,
+clear its text, replace its captured anchor, or move focus away. This includes
+an actually changed diff and a refresh in which the selected file or the whole
+dirty Working tree disappears. While the target remains addressable, the live
+diff continues refreshing behind the mounted editor; this contract is not
+implemented by suppressing equivalent polls. If the target disappears, the
+last selected file/diff stays pinned until the reviewer cancels or successfully
+submits. Queueing or submit failure leaves the editor and text intact.
+
+**The delivered turn quotes captured context.** A dirty-line draft captures
+the clicked line plus nearby context when the editor opens because the file can
+shift before submit. Submit relocates that anchor against current state and the
+user turn always includes a fenced context quote: current relocated context
+when found, or the original captured snippet when gone, plus the path/current
+line or historical citation as applicable. The turn also explicitly tells the
+agent to read current file state rather than treating the quote as
+authoritative.
 
 ## Read-only repo viewer scope
 

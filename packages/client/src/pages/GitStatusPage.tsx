@@ -20,9 +20,10 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { ProjectSelector } from "../components/ProjectSelector";
+import { SourceReviewDefaultSessionContext } from "../contexts/SourceReviewDefaultSessionContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import {
   type GitActionState,
@@ -58,6 +59,7 @@ import {
   subscribeRouteRetention,
   type RouteRetentionKeyInput,
 } from "../lib/routeRetention";
+import { parseSourceControlNavigationState } from "../lib/sourceControlNavigationState";
 
 interface SourceControlRouteState {
   pageScrollTop?: number;
@@ -78,6 +80,7 @@ function useSourceTab(): {
   setTab: (next: SourceTab) => void;
 } {
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
   const tabParam = searchParams.get("tab");
   const tab: SourceTab =
     tabParam === "files"
@@ -94,10 +97,10 @@ function useSourceTab(): {
           else params.set("tab", next);
           return params;
         },
-        { replace: true },
+        { replace: true, state: location.state },
       );
     },
-    [setSearchParams],
+    [location.state, setSearchParams],
   );
   return { tab, setTab };
 }
@@ -323,6 +326,7 @@ function useSourceControlRouteState(
 
 export function GitStatusPage() {
   const { t } = useI18n();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const projectId = searchParams.get("projectId");
   const sourceKey = useClientSummarySourceKey();
@@ -361,6 +365,14 @@ export function GitStatusPage() {
     supportsEnhancedGitStatus ? effectiveProjectId : undefined,
   );
   const reviewComments = useProjectReviewComments(effectiveProjectId);
+  const { defaultSession: routeDefaultSession } = useMemo(
+    () => parseSourceControlNavigationState(location.state),
+    [location.state],
+  );
+  const defaultSession =
+    routeDefaultSession?.projectId === effectiveProjectId
+      ? (routeDefaultSession ?? null)
+      : null;
   const [showReviewModal, setShowReviewModal] = useState(false);
   const routeRetentionKey = useMemo(
     () =>
@@ -413,7 +425,10 @@ export function GitStatusPage() {
 
   const handleProjectChange = (newProjectId: string) => {
     setRecentProjectId(newProjectId);
-    setSearchParams({ projectId: newProjectId }, { replace: true });
+    setSearchParams(
+      { projectId: newProjectId },
+      { replace: true, state: null },
+    );
   };
 
   if (!effectiveProjectId && !projectsLoading && projects.length === 0) {
@@ -474,20 +489,22 @@ export function GitStatusPage() {
           ) : gitStatus && !gitStatus.isGitRepo ? (
             <div className="git-status-empty">{t("gitStatusNotRepo")}</div>
           ) : gitStatus && effectiveProjectId ? (
-            <GitStatusContent
-              key={`${sourceKey}:${effectiveProjectId}`}
-              status={gitStatus}
-              projectId={effectiveProjectId}
-              projectName={project?.name}
-              isWideScreen={isWideScreen}
-              sourceControlsFitHeader={sourceControlsFitHeader}
-              gitActions={gitActions}
-              reviewComments={reviewComments}
-              showReviewModal={showReviewModal}
-              onOpenReview={() => setShowReviewModal(true)}
-              onCloseReview={() => setShowReviewModal(false)}
-              t={t}
-            />
+            <SourceReviewDefaultSessionContext.Provider value={defaultSession}>
+              <GitStatusContent
+                key={`${sourceKey}:${effectiveProjectId}`}
+                status={gitStatus}
+                projectId={effectiveProjectId}
+                projectName={project?.name}
+                isWideScreen={isWideScreen}
+                sourceControlsFitHeader={sourceControlsFitHeader}
+                gitActions={gitActions}
+                reviewComments={reviewComments}
+                showReviewModal={showReviewModal}
+                onOpenReview={() => setShowReviewModal(true)}
+                onCloseReview={() => setShowReviewModal(false)}
+                t={t}
+              />
+            </SourceReviewDefaultSessionContext.Provider>
           ) : null}
         </div>
       </main>
@@ -530,22 +547,27 @@ function GitStatusContent({
   t: TranslationFn;
 }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const basePath = useRemoteBasePath();
   const [searchParams, setSearchParams] = useSearchParams();
   const { tab, setTab } = useSourceTab();
   const blameFile = searchParams.get("bf") ?? undefined;
+  const worktreeFile = searchParams.get("worktreeFile") ?? undefined;
   // Bridge a commit file to its blame-at-HEAD view: switch to the files tab
   // with that file seeded open (a real history step, so back returns).
   const handleBlameFile = useCallback(
     (path: string) => {
-      setSearchParams((prev) => {
-        const params = new URLSearchParams(prev);
-        params.set("tab", "files");
-        params.set("bf", path);
-        return params;
-      });
+      setSearchParams(
+        (prev) => {
+          const params = new URLSearchParams(prev);
+          params.set("tab", "files");
+          params.set("bf", path);
+          return params;
+        },
+        { state: location.state },
+      );
     },
-    [setSearchParams],
+    [location.state, setSearchParams],
   );
   return (
     <div className="git-status">
@@ -582,6 +604,7 @@ function GitStatusContent({
           projectId={projectId}
           status={status}
           isWideScreen={isWideScreen}
+          initialWorkingTreePath={worktreeFile}
           onBlameFile={handleBlameFile}
           t={t}
         />

@@ -67,7 +67,11 @@ function primeBlame() {
       },
     ],
   });
-  listReviewComments.mockResolvedValue({ comments: [], pendingCount: 0 });
+  listReviewComments.mockResolvedValue({
+    comments: [],
+    batches: [],
+    pendingCount: 0,
+  });
   addReviewComment.mockResolvedValue({
     comment: { id: "c1", status: "pending", anchor: {}, text: "x" },
   });
