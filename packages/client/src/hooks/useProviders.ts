@@ -40,17 +40,20 @@ async function loadProviders(
     return providerFetchPromise;
   }
 
-  const request = api.getProviders({ refresh: forceRefresh }).then((data) => {
-    providerCaches.set(sourceKey, {
-      providers: data.providers,
-      expiresAt: Date.now() + PROVIDER_CACHE_TTL_MS,
-    });
-    return data.providers;
-  });
+  const request = api
+    .getProviders({ refresh: forceRefresh })
+    .then((data) => data.providers);
   providerFetchPromises.set(sourceKey, request);
 
   try {
-    return await request;
+    const providers = await request;
+    if (providerFetchPromises.get(sourceKey) === request) {
+      providerCaches.set(sourceKey, {
+        providers,
+        expiresAt: Date.now() + PROVIDER_CACHE_TTL_MS,
+      });
+    }
+    return providers;
   } finally {
     if (providerFetchPromises.get(sourceKey) === request) {
       providerFetchPromises.delete(sourceKey);
@@ -105,9 +108,11 @@ export function useProviders() {
     getInitialProviderState(sourceKey),
   );
   const lastFetchedSourceRef = useRef<ClientSummarySourceKey | null>(null);
+  const fetchSequenceRef = useRef(0);
 
   const fetch = useCallback(
     async (forceRefresh = false, bypassClientCache = false) => {
+      const fetchSequence = ++fetchSequenceRef.current;
       const providerCache = providerCaches.get(sourceKey);
       if (forceRefresh || bypassClientCache || !providerCache) {
         setState((current) => ({
@@ -129,6 +134,7 @@ export function useProviders() {
           forceRefresh,
           bypassClientCache,
         );
+        if (fetchSequence !== fetchSequenceRef.current) return;
         setState({
           sourceKey,
           providers: nextProviders,
@@ -136,6 +142,7 @@ export function useProviders() {
           error: null,
         });
       } catch (err) {
+        if (fetchSequence !== fetchSequenceRef.current) return;
         setState((current) => ({
           ...(current.sourceKey === sourceKey
             ? current
@@ -143,11 +150,13 @@ export function useProviders() {
           error: err instanceof Error ? err : new Error(String(err)),
         }));
       } finally {
-        setState((current) =>
-          current.sourceKey === sourceKey
-            ? { ...current, loading: false }
-            : current,
-        );
+        if (fetchSequence === fetchSequenceRef.current) {
+          setState((current) =>
+            current.sourceKey === sourceKey
+              ? { ...current, loading: false }
+              : current,
+          );
+        }
       }
     },
     [sourceKey],

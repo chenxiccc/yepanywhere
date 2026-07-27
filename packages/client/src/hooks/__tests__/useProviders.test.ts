@@ -72,6 +72,77 @@ describe("useProviders", () => {
     });
   });
 
+  it("keeps an explicit refresh newer than a slower primer", async () => {
+    type ProvidersResponse = {
+      providers: Array<{
+        name: "claude";
+        displayName: string;
+        installed: boolean;
+        authenticated: boolean;
+        enabled: boolean;
+        models: Array<{ id: string; name: string }>;
+      }>;
+    };
+    let resolvePrimer: ((value: ProvidersResponse) => void) | undefined;
+    let resolveRefresh: ((value: ProvidersResponse) => void) | undefined;
+    mockGetProviders
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolvePrimer = resolve;
+        }),
+      )
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveRefresh = resolve;
+        }),
+      );
+
+    const priming = providersModule.primeProviderCache();
+    const { result } = renderHook(() => providersModule.useProviders());
+    expect(mockGetProviders).toHaveBeenCalledTimes(1);
+
+    let refreshing: Promise<void> | undefined;
+    act(() => {
+      refreshing = result.current.refetch();
+    });
+    expect(mockGetProviders).toHaveBeenCalledTimes(2);
+
+    resolveRefresh?.({
+      providers: [
+        {
+          name: "claude",
+          displayName: "Claude",
+          installed: true,
+          authenticated: true,
+          enabled: true,
+          models: [{ id: "fresh", name: "Fresh" }],
+        },
+      ],
+    });
+    await act(async () => {
+      await refreshing;
+    });
+    expect(result.current.providers[0]?.models?.[0]?.id).toBe("fresh");
+
+    resolvePrimer?.({
+      providers: [
+        {
+          name: "claude",
+          displayName: "Claude",
+          installed: true,
+          authenticated: true,
+          enabled: true,
+          models: [{ id: "stale", name: "Stale" }],
+        },
+      ],
+    });
+    await act(async () => {
+      await priming;
+    });
+
+    expect(result.current.providers[0]?.models?.[0]?.id).toBe("fresh");
+  });
+
   it("keeps cached provider catalogs isolated by source", async () => {
     mockGetProviders
       .mockResolvedValueOnce({ providers: [] })

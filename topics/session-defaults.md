@@ -77,7 +77,9 @@ consumer retries through its normal loading/error path.
 Readiness is client-presence-driven. YA does not periodically probe provider
 catalogs while no browser is visiting it; the existing bounded client and server
 cache lifetimes govern freshness during active use, and explicit refresh actions
-retain their stronger semantics.
+retain their stronger semantics. When a primer overlaps a later explicit
+refresh or reload for the same source, only the later request may update the
+shared cache or mounted consumer state, regardless of response order.
 
 ## Recap fallback semantics
 
