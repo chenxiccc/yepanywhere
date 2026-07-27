@@ -24,7 +24,17 @@ const DEFAULT_LOCALE: Locale = "en";
 const defaultMessages = enMessages;
 type Messages = typeof defaultMessages;
 type LocaleMessages = Partial<Messages>;
-type MessageKey = keyof Messages;
+/** A key of the en catalog — the compile-checked namespace of `t`. */
+export type MessageKey = keyof Messages;
+/**
+ * The `t` function's type, for components that receive it as a prop. Using it
+ * (rather than a loose `(key: string) => string`) keeps every literal key a
+ * component passes compile-checked against the en catalog.
+ */
+export type TranslationFn = (
+  key: MessageKey,
+  vars?: Record<string, string | number>,
+) => string;
 
 const localeLoaders: Record<Locale, () => Promise<LocaleMessages>> = {
   en: async () => defaultMessages,

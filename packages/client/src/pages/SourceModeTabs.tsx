@@ -1,7 +1,4 @@
-type TranslationFn = (
-  key: string,
-  vars?: Record<string, string | number>,
-) => string;
+import type { MessageKey, TranslationFn } from "../i18n";
 
 /**
  * The source-control mode selector (topic: source-review-to-session, stage 3):
@@ -50,7 +47,7 @@ export function SourceModeTabs({
   );
 }
 
-function sourceTabLabelKey(tab: SourceTab): string {
+function sourceTabLabelKey(tab: SourceTab): MessageKey {
   switch (tab) {
     case "files":
       return "sourceTabFiles";

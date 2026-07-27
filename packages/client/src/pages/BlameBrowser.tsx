@@ -4,11 +4,7 @@ import { Modal } from "../components/ui/Modal";
 import { useProjectReviewComments } from "../hooks/useProjectReviewComments";
 import { FileSearchIndex } from "../lib/fileSearchIndex";
 import { BlameView } from "./BlameView";
-
-type TranslationFn = (
-  key: string,
-  vars?: Record<string, string | number>,
-) => string;
+import type { TranslationFn } from "../i18n";
 
 /**
  * The all-files blame browser (topic: source-review-to-session, stage 3): the

@@ -11,6 +11,7 @@ import {
   invalidateRouteRetention,
   type RouteRetentionKeyInput,
 } from "../lib/routeRetention";
+import type { TranslationFn } from "../i18n";
 
 /**
  * Remote git actions for the source-control surface (check-remote / pull /
@@ -38,7 +39,7 @@ export function useGitActions({
   supportsPush: boolean;
   supportsIntegrationOptions: boolean;
   onRefreshStatus: () => Promise<void>;
-  t: (key: string, vars?: Record<string, string | number>) => string;
+  t: TranslationFn;
 }) {
   const [remoteCheckResult, setRemoteCheckResult] =
     useState<GitRemoteCheckResult | null>(null);
@@ -264,7 +265,7 @@ export type GitActionState = ReturnType<typeof useGitActions>;
 export function formatRemoteCheckTime(
   value: string | null,
   nowMs: number,
-  t: (key: string, vars?: Record<string, string | number>) => string,
+  t: TranslationFn,
 ): string {
   if (!value) {
     return t("gitStatusRemoteUnknown");
@@ -303,7 +304,7 @@ export function formatRemoteCheckTime(
 
 function getRemoteCheckMessage(
   result: GitRemoteCheckResult | null,
-  t: (key: string, vars?: Record<string, string | number>) => string,
+  t: TranslationFn,
 ): string {
   switch (result?.status) {
     case "checked":
@@ -321,7 +322,7 @@ function getRemoteCheckMessage(
 
 function getPullMessage(
   result: GitPullResult | null,
-  t: (key: string, vars?: Record<string, string | number>) => string,
+  t: TranslationFn,
 ): string {
   switch (result?.status) {
     case "pulled":
@@ -345,7 +346,7 @@ function getPullMessage(
 
 function getPushMessage(
   result: GitPushResult | null,
-  t: (key: string, vars?: Record<string, string | number>) => string,
+  t: TranslationFn,
 ): string {
   switch (result?.status) {
     case "pushed":

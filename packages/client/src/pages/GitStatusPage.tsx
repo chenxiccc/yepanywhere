@@ -46,7 +46,7 @@ import {
   setRecentProjectId,
 } from "../hooks/useRecentProject";
 import { useVersion } from "../hooks/useVersion";
-import { useI18n } from "../i18n";
+import { type TranslationFn, useI18n } from "../i18n";
 import { MainContent, useNavigationLayout } from "../layouts";
 import {
   type ClientSummarySourceKey,
@@ -102,7 +102,6 @@ function useSourceTab(): {
   return { tab, setTab };
 }
 
-
 /**
  * The mode tabs rendered in the page-header row on wide screens, so the
  * selector shares the title/project row instead of stacking a second toolbar
@@ -119,7 +118,7 @@ function SourceHeaderActions({
   pendingCount: number;
   onOpenReview: () => void;
   gitActions: GitActionState;
-  t: (key: string, vars?: Record<string, string | number>) => string;
+  t: TranslationFn;
 }) {
   const { tab, setTab } = useSourceTab();
   return (
@@ -163,7 +162,7 @@ function SourceHeaderControls({
   pendingCount: number;
   compact?: boolean;
   onReview: () => void;
-  t: (key: string, vars?: Record<string, string | number>) => string;
+  t: TranslationFn;
 }) {
   const nowMs = useRelativeNow();
   const remoteTitle = t("gitStatusLastCheckedRemote", {
@@ -380,7 +379,7 @@ export function GitStatusPage() {
     supportsPush,
     supportsIntegrationOptions,
     onRefreshStatus: refetch,
-    t: t as never,
+    t,
   });
 
   useDocumentTitle(project?.name, t("gitStatusTitle"));
@@ -450,7 +449,7 @@ export function GitStatusPage() {
               pendingCount={reviewComments.pending.length}
               onOpenReview={() => setShowReviewModal(true)}
               gitActions={gitActions}
-              t={t as never}
+              t={t}
             />
           ) : undefined
         }
@@ -465,7 +464,7 @@ export function GitStatusPage() {
               {t("gitStatusErrorPrefix")} {versionError.message}
             </div>
           ) : !supportsEnhancedGitStatus ? (
-            <GitStatusUpgradeRequired t={t as never} />
+            <GitStatusUpgradeRequired t={t} />
           ) : loading ? (
             <div className="loading">{t("gitStatusLoading")}</div>
           ) : error ? (
@@ -487,7 +486,7 @@ export function GitStatusPage() {
               showReviewModal={showReviewModal}
               onOpenReview={() => setShowReviewModal(true)}
               onCloseReview={() => setShowReviewModal(false)}
-              t={t as never}
+              t={t}
             />
           ) : null}
         </div>
@@ -496,11 +495,7 @@ export function GitStatusPage() {
   );
 }
 
-function GitStatusUpgradeRequired({
-  t,
-}: {
-  t: (key: string, vars?: Record<string, string | number>) => string;
-}) {
+function GitStatusUpgradeRequired({ t }: { t: TranslationFn }) {
   return (
     <div className="git-status-upgrade">
       <h2>{t("gitStatusUpgradeRequiredTitle")}</h2>
@@ -532,7 +527,7 @@ function GitStatusContent({
   showReviewModal: boolean;
   onOpenReview: () => void;
   onCloseReview: () => void;
-  t: (key: string, vars?: Record<string, string | number>) => string;
+  t: TranslationFn;
 }) {
   const navigate = useNavigate();
   const basePath = useRemoteBasePath();
@@ -628,11 +623,9 @@ function GitStatusContent({
           t={t}
         />
       )}
-
     </div>
   );
 }
-
 
 function GitIntegrationOptionsPanel({
   options,
@@ -643,7 +636,7 @@ function GitIntegrationOptionsPanel({
   options: GitIntegrationOptionsResult | null;
   loading: boolean;
   error: string | null;
-  t: (key: string, vars?: Record<string, string | number>) => string;
+  t: TranslationFn;
 }) {
   if (loading) {
     return (
@@ -702,11 +695,7 @@ function GitIntegrationOptionsPanel({
   );
 }
 
-function GitIntegrationOptionsHelp({
-  t,
-}: {
-  t: (key: string, vars?: Record<string, string | number>) => string;
-}) {
+function GitIntegrationOptionsHelp({ t }: { t: TranslationFn }) {
   return (
     <details className="git-integration-help">
       <summary
@@ -735,7 +724,7 @@ const INTEGRATION_REASON_PRIORITY: GitIntegrationOptionReason[] = [
 
 function getIntegrationUnavailableReason(
   reasons: GitIntegrationOptionReason[],
-  t: (key: string, vars?: Record<string, string | number>) => string,
+  t: TranslationFn,
 ): string {
   const reason =
     INTEGRATION_REASON_PRIORITY.find((candidate) =>

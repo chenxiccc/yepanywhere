@@ -23,13 +23,9 @@ import { useDiffViewMode } from "../hooks/useDiffViewMode";
 import { type DiffViewMode, resolveDiffViewMode } from "../lib/diffSideBySide";
 import { DiffCommentLayer } from "./DiffCommentLayer";
 import { SideBySideDiff } from "./SideBySideDiff";
+import type { MessageKey, TranslationFn } from "../i18n";
 
 const GIT_DIFF_MAX_RENDERED_HTML_CHARS = 1_000_000;
-
-type TranslationFn = (
-  key: string,
-  vars?: Record<string, string | number>,
-) => string;
 
 export interface GitDiffViewState {
   showFullContext?: boolean;
@@ -294,7 +290,11 @@ export function GitDiffBody({
     setDiffResult(null);
     setError(null);
 
-    fetchDiffForSource(projectId, file, sourceFromPrimitives(sourceKind, sourceSha))
+    fetchDiffForSource(
+      projectId,
+      file,
+      sourceFromPrimitives(sourceKind, sourceSha),
+    )
       .then((result) => {
         if (!cancelled) {
           setDiffResult(result);
@@ -743,7 +743,7 @@ function isTypingTarget(target: EventTarget | null): boolean {
   );
 }
 
-function diffViewModeLabelKey(mode: DiffViewMode): string {
+function diffViewModeLabelKey(mode: DiffViewMode): MessageKey {
   switch (mode) {
     case "unified":
       return "diffViewModeUnified";

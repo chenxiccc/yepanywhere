@@ -13,6 +13,7 @@ import {
   useProviders,
 } from "../hooks/useProviders";
 import { notifyReviewCommentsChanged } from "../lib/reviewCommentsBus";
+import type { TranslationFn } from "../i18n";
 
 /**
  * The accumulating-review submit flow (topic: source-review-to-session, phase
@@ -22,11 +23,6 @@ import { notifyReviewCommentsChanged } from "../lib/reviewCommentsBus";
  * (the recent review session by default, else a fresh one), and drains the
  * chosen comments into one review turn.
  */
-
-type TranslationFn = (
-  key: string,
-  vars?: Record<string, string | number>,
-) => string;
 
 export function ReviewSubmitModal({
   projectId,

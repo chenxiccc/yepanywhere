@@ -1,9 +1,5 @@
 import { useState } from "react";
-
-type TranslationFn = (
-  key: string,
-  vars?: Record<string, string | number>,
-) => string;
+import type { TranslationFn } from "../i18n";
 
 /**
  * The in-place comment popover shared by the diff and blame comment surfaces

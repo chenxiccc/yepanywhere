@@ -2,11 +2,7 @@ import type { ReviewComment } from "@yep-anywhere/shared";
 import { useState } from "react";
 import { api } from "../api/client";
 import { notifyReviewCommentsChanged } from "../lib/reviewCommentsBus";
-
-type TranslationFn = (
-  key: string,
-  vars?: Record<string, string | number>,
-) => string;
+import type { TranslationFn } from "../i18n";
 
 /**
  * The pending-review list (topic: source-review-to-session, stage 2): every

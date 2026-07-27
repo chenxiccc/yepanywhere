@@ -8,6 +8,7 @@ import {
 import { type RefObject, useCallback, useEffect, useState } from "react";
 import { useReviewCommentDraft } from "../hooks/useReviewCommentDraft";
 import { ReviewCommentWindow } from "./ReviewCommentWindow";
+import type { TranslationFn } from "../i18n";
 
 /**
  * Source-review commenting over a rendered diff (topic:
@@ -18,11 +19,6 @@ import { ReviewCommentWindow } from "./ReviewCommentWindow";
  * {@link useReviewCommentDraft}; this layer only builds the diff-line anchor.
  * Lines that already carry a draft comment get a tint.
  */
-
-type TranslationFn = (
-  key: string,
-  vars?: Record<string, string | number>,
-) => string;
 
 interface OpenComment {
   flatIndex: number;
@@ -185,4 +181,3 @@ export function DiffCommentLayer({
     />
   );
 }
-

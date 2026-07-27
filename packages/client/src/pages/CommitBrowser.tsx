@@ -17,11 +17,7 @@ import {
   GitDiffPreview,
   type GitDiffPreviewHandle,
 } from "./GitStatusDiffPreview";
-
-type TranslationFn = (
-  key: string,
-  vars?: Record<string, string | number>,
-) => string;
+import type { MessageKey, TranslationFn } from "../i18n";
 
 const COMMIT_PAGE_SIZE = 50;
 const WORKING_TREE_KEY = "working-tree";
@@ -112,10 +108,7 @@ export function CommitBrowser({
   const workingTreeFiles = useMemo(
     () =>
       mergeWorkingTreeFiles(
-        expandUntrackedFolders(
-          status?.files ?? [],
-          expandedUntrackedFolders,
-        ),
+        expandUntrackedFolders(status?.files ?? [], expandedUntrackedFolders),
       ),
     [expandedUntrackedFolders, status?.files],
   );
@@ -292,19 +285,16 @@ export function CommitBrowser({
     selectedPath,
   ]);
 
-  const selectedFile: GitFileChange | null =
-    selectedPath
-      ? (selectedFiles.find((f) => f.path === selectedPath) ?? null)
-      : null;
+  const selectedFile: GitFileChange | null = selectedPath
+    ? (selectedFiles.find((f) => f.path === selectedPath) ?? null)
+    : null;
   const source = selectedIsWorkingTree
     ? ({ kind: "working-tree-history" } as const)
     : selectedSha
       ? ({ kind: "commit", sha: selectedSha } as const)
       : undefined;
   const diffFileKey =
-    selectedKey && selectedFile
-      ? `${selectedKey}:${selectedFile.path}`
-      : null;
+    selectedKey && selectedFile ? `${selectedKey}:${selectedFile.path}` : null;
 
   // Commit-jump selector: step to the adjacent shown commit (list is
   // newest-first, so previous index = newer). Usable at any width — the mobile
@@ -764,7 +754,7 @@ function mergeWorkingTreeFiles(files: GitFileChange[]): WorktreeFileChange[] {
   });
 }
 
-function worktreeStateLabelKey(state: WorktreeState): string {
+function worktreeStateLabelKey(state: WorktreeState): MessageKey {
   switch (state) {
     case "staged":
       return "sourceWorktreeStaged";

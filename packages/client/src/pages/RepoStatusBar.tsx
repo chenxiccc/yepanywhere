@@ -1,11 +1,7 @@
 import type { GitStatusInfo } from "@yep-anywhere/shared";
 import type { ReactNode } from "react";
 import { CopyButton } from "../components/CopyButton";
-
-type TranslationFn = (
-  key: string,
-  vars?: Record<string, string | number>,
-) => string;
+import type { TranslationFn } from "../i18n";
 
 /**
  * Persistent repo/branch status header (topic: source-review-to-session, stage

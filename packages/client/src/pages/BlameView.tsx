@@ -9,11 +9,7 @@ import { api } from "../api/client";
 import { CopyButton } from "../components/CopyButton";
 import { useReviewCommentDraft } from "../hooks/useReviewCommentDraft";
 import { ReviewCommentWindow } from "./ReviewCommentWindow";
-
-type TranslationFn = (
-  key: string,
-  vars?: Record<string, string | number>,
-) => string;
+import type { TranslationFn } from "../i18n";
 
 interface OpenBlameComment {
   /** Index into `blame.lines` of the clicked line. */
