@@ -25,6 +25,7 @@ import {
   OWNER_READ_WRITE_FILE_MODE,
   enforceOwnerReadWriteFilePermissions,
 } from "../utils/filePermissions.js";
+import { createCoalescingSaver } from "../lib/coalescingSaver.js";
 
 /** How long a session can be idle before expiring (7 days) */
 const IDLE_TIMEOUT_MS = 7 * 24 * 60 * 60 * 1000;
@@ -90,8 +91,7 @@ export class RemoteSessionService {
   private dataDir: string;
   private filePath: string;
   private persistSessionsToDisk: boolean;
-  private savePromise: Promise<void> | null = null;
-  private pendingSave = false;
+  private saver = createCoalescingSaver(() => this.doSave());
   private cleanupTimer: ReturnType<typeof setInterval> | null = null;
   private initialized = false;
 
@@ -151,21 +151,13 @@ export class RemoteSessionService {
     }
 
     if (enabled) {
-      await this.save();
+      await this.saver.save();
       return;
     }
 
-    // Stop queued writes and remove on-disk session keys.
-    this.pendingSave = false;
-    if (this.savePromise) {
-      try {
-        await this.savePromise;
-      } catch {
-        // Ignore prior write errors while switching to in-memory mode.
-      } finally {
-        this.savePromise = null;
-      }
-    }
+    // Let in-flight/queued writes settle, then remove on-disk session keys;
+    // a write landing just before deletion leaves the same end state.
+    await this.saver.idle();
 
     await this.deleteStateFile();
   }
@@ -192,7 +184,7 @@ export class RemoteSessionService {
           version: CURRENT_VERSION,
           sessions: parsed.sessions ?? {},
         };
-        await this.save();
+        await this.saver.save();
       }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
@@ -260,7 +252,7 @@ export class RemoteSessionService {
     // Enforce max sessions per user
     await this.enforceMaxSessions(username);
 
-    await this.save();
+    await this.saver.save();
     return sessionId;
   }
 
@@ -340,7 +332,7 @@ export class RemoteSessionService {
 
       // Update last used time
       session.lastUsed = new Date().toISOString();
-      await this.save();
+      await this.saver.save();
 
       return session;
     } catch {
@@ -364,7 +356,7 @@ export class RemoteSessionService {
   async deleteSession(sessionId: string): Promise<void> {
     if (this.state.sessions[sessionId]) {
       delete this.state.sessions[sessionId];
-      await this.save();
+      await this.saver.save();
     }
   }
 
@@ -376,7 +368,7 @@ export class RemoteSessionService {
     const session = this.state.sessions[sessionId];
     if (session) {
       session.lastConnectedAt = new Date().toISOString();
-      await this.save();
+      await this.saver.save();
     }
   }
 
@@ -392,7 +384,7 @@ export class RemoteSessionService {
       }
     }
     if (count > 0) {
-      await this.save();
+      await this.saver.save();
     }
     return count;
   }
@@ -474,30 +466,7 @@ export class RemoteSessionService {
       console.log(
         `[RemoteSessionService] Cleaned up ${cleaned} expired sessions`,
       );
-      await this.save();
-    }
-  }
-
-  /**
-   * Save state to disk with debouncing to avoid excessive writes.
-   */
-  private async save(): Promise<void> {
-    if (!this.persistSessionsToDisk) {
-      return;
-    }
-
-    if (this.savePromise) {
-      this.pendingSave = true;
-      return;
-    }
-
-    this.savePromise = this.doSave();
-    await this.savePromise;
-    this.savePromise = null;
-
-    if (this.pendingSave) {
-      this.pendingSave = false;
-      await this.save();
+      await this.saver.save();
     }
   }
 

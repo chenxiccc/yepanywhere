@@ -17,6 +17,7 @@ import {
   OWNER_READ_WRITE_FILE_MODE,
   enforceOwnerReadWriteFilePermissions,
 } from "../utils/filePermissions.js";
+import { createCoalescingSaver } from "../lib/coalescingSaver.js";
 
 const BCRYPT_ROUNDS = 12;
 const SESSION_ID_BYTES = 32;
@@ -63,8 +64,7 @@ export class AuthService {
   private filePath: string;
   private sessionTtlMs: number;
   private cookieSecret: string;
-  private savePromise: Promise<void> | null = null;
-  private pendingSave = false;
+  private save = createCoalescingSaver(() => this.doSave()).save;
 
   constructor(options: AuthServiceOptions) {
     this.dataDir = options.dataDir;
@@ -323,25 +323,6 @@ export class AuthService {
     }
 
     if (changed) {
-      await this.save();
-    }
-  }
-
-  /**
-   * Save state to disk with debouncing.
-   */
-  private async save(): Promise<void> {
-    if (this.savePromise) {
-      this.pendingSave = true;
-      return;
-    }
-
-    this.savePromise = this.doSave();
-    await this.savePromise;
-    this.savePromise = null;
-
-    if (this.pendingSave) {
-      this.pendingSave = false;
       await this.save();
     }
   }

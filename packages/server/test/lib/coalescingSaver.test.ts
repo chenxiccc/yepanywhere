@@ -15,7 +15,7 @@ describe("createCoalescingSaver", () => {
   it("coalesces saves issued during a write into one follow-up", async () => {
     const gates = [deferred(), deferred()];
     let writes = 0;
-    const save = createCoalescingSaver(() => {
+    const { save } = createCoalescingSaver(() => {
       const gate = gates[writes++];
       if (!gate) throw new Error("unexpected extra write");
       return gate.promise;
@@ -38,7 +38,7 @@ describe("createCoalescingSaver", () => {
   it("recovers after a rejected write instead of wedging", async () => {
     let writes = 0;
     let fail = true;
-    const save = createCoalescingSaver(async () => {
+    const { save } = createCoalescingSaver(async () => {
       writes++;
       if (fail) throw new Error("disk full");
     });
@@ -54,7 +54,7 @@ describe("createCoalescingSaver", () => {
   it("still runs the pending follow-up when the write rejects", async () => {
     const gate = deferred();
     let writes = 0;
-    const save = createCoalescingSaver(async () => {
+    const { save } = createCoalescingSaver(async () => {
       writes++;
       if (writes === 1) {
         await gate.promise;
@@ -67,5 +67,32 @@ describe("createCoalescingSaver", () => {
     gate.resolve();
     await expect(first).rejects.toThrow("first write failed");
     expect(writes).toBe(2);
+  });
+
+  it("idle resolves after the drain (follow-ups included), swallowing failures", async () => {
+    const gate = deferred();
+    let writes = 0;
+    const saver = createCoalescingSaver(async () => {
+      writes++;
+      if (writes === 1) {
+        await gate.promise;
+        throw new Error("first write failed");
+      }
+    });
+
+    const first = saver.save();
+    await saver.save(); // marks a follow-up
+    const idle = saver.idle();
+    gate.resolve();
+    await idle; // must not reject even though the first write did
+    expect(writes).toBe(2);
+    await expect(first).rejects.toThrow("first write failed");
+  });
+
+  it("idle returns immediately when nothing is running", async () => {
+    const saver = createCoalescingSaver(async () => {});
+    await saver.idle();
+    await saver.save();
+    await saver.idle();
   });
 });

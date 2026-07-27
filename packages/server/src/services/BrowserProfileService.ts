@@ -13,6 +13,7 @@ import type {
   BrowserProfileInfo,
   BrowserProfileOrigin,
 } from "@yep-anywhere/shared";
+import { createCoalescingSaver } from "../lib/coalescingSaver.js";
 
 const CURRENT_VERSION = 1;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -61,8 +62,7 @@ export class BrowserProfileService {
   private dataDir: string;
   private filePath: string;
   private initialized = false;
-  private savePromise: Promise<void> | null = null;
-  private pendingSave = false;
+  private save = createCoalescingSaver(() => this.doSave()).save;
   private readonly retentionMs: number | null;
   private readonly maxNonSubscribedProfiles: number | null;
   private readonly getProtectedBrowserProfileIds: () => Iterable<string>;
@@ -311,25 +311,6 @@ export class BrowserProfileService {
 
     const createdMs = Date.parse(profile.createdAt);
     return Number.isNaN(createdMs) ? 0 : createdMs;
-  }
-
-  /**
-   * Save state to disk with debouncing.
-   */
-  private async save(): Promise<void> {
-    if (this.savePromise) {
-      this.pendingSave = true;
-      return;
-    }
-
-    this.savePromise = this.doSave();
-    await this.savePromise;
-    this.savePromise = null;
-
-    if (this.pendingSave) {
-      this.pendingSave = false;
-      await this.save();
-    }
   }
 
   private async doSave(): Promise<void> {

@@ -14,6 +14,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { createCoalescingSaver } from "../lib/coalescingSaver.js";
 
 const CURRENT_VERSION = 1;
 const DEFAULT_PORT = 3400;
@@ -62,8 +63,7 @@ export class NetworkBindingService {
   private state: NetworkBindingState;
   private dataDir: string;
   private filePath: string;
-  private savePromise: Promise<void> | null = null;
-  private pendingSave = false;
+  private save = createCoalescingSaver(() => this.doSave()).save;
 
   /** CLI override for port (takes precedence over saved settings) */
   readonly cliPortOverride: number | null;
@@ -301,25 +301,6 @@ export class NetworkBindingService {
 
     await this.save();
     return true;
-  }
-
-  /**
-   * Save state to disk with debouncing to avoid excessive writes.
-   */
-  private async save(): Promise<void> {
-    if (this.savePromise) {
-      this.pendingSave = true;
-      return;
-    }
-
-    this.savePromise = this.doSave();
-    await this.savePromise;
-    this.savePromise = null;
-
-    if (this.pendingSave) {
-      this.pendingSave = false;
-      await this.save();
-    }
   }
 
   private async doSave(): Promise<void> {

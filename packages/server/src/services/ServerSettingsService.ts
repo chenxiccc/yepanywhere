@@ -32,6 +32,7 @@ import {
 } from "@yep-anywhere/shared";
 import type { FileAccessSettings } from "../middleware/file-access.js";
 import { publishDeferredDeliverySettings } from "../supervisor/deferredDeliverySettings.js";
+import { createCoalescingSaver } from "../lib/coalescingSaver.js";
 
 export type { FileAccessSettings };
 
@@ -170,8 +171,7 @@ export const DEFAULT_SERVER_SETTINGS: ServerSettings = {
   publicSharesEnabled: false,
   workstreamsEnabled: false,
   hostAwakeMode: "off",
-  hostAwakeBatteryFloorPercent:
-    DEFAULT_HOST_AWAKE_BATTERY_FLOOR_PERCENT,
+  hostAwakeBatteryFloorPercent: DEFAULT_HOST_AWAKE_BATTERY_FLOOR_PERCENT,
   heartbeatTurnsAfterMinutes: 15,
   heartbeatTurnText: DEFAULT_HEARTBEAT_TURN_TEXT,
   speechAudioRetention: {
@@ -286,10 +286,11 @@ function normalizeLoadedSettings(settings: ServerSettings): ServerSettings {
   normalized.hostAwakeMode = isHostAwakeMode(settings.hostAwakeMode)
     ? settings.hostAwakeMode
     : DEFAULT_SERVER_SETTINGS.hostAwakeMode;
-  normalized.hostAwakeBatteryFloorPercent =
-    isHostAwakeBatteryFloorPercent(settings.hostAwakeBatteryFloorPercent)
-      ? settings.hostAwakeBatteryFloorPercent
-      : DEFAULT_SERVER_SETTINGS.hostAwakeBatteryFloorPercent;
+  normalized.hostAwakeBatteryFloorPercent = isHostAwakeBatteryFloorPercent(
+    settings.hostAwakeBatteryFloorPercent,
+  )
+    ? settings.hostAwakeBatteryFloorPercent
+    : DEFAULT_SERVER_SETTINGS.hostAwakeBatteryFloorPercent;
   normalized.clientDefaults = mergeLoadedClientDefaults(
     settings.clientDefaults,
   );
@@ -342,8 +343,7 @@ export class ServerSettingsService {
   private dataDir: string;
   private filePath: string;
   private initialized = false;
-  private savePromise: Promise<void> | null = null;
-  private pendingSave = false;
+  private save = createCoalescingSaver(() => this.doSave()).save;
 
   constructor(options: ServerSettingsServiceOptions) {
     this.dataDir = options.dataDir;
@@ -447,25 +447,6 @@ export class ServerSettingsService {
       throw new Error(
         "ServerSettingsService not initialized. Call initialize() first.",
       );
-    }
-  }
-
-  /**
-   * Save state to disk with debouncing.
-   */
-  private async save(): Promise<void> {
-    if (this.savePromise) {
-      this.pendingSave = true;
-      return;
-    }
-
-    this.savePromise = this.doSave();
-    await this.savePromise;
-    this.savePromise = null;
-
-    if (this.pendingSave) {
-      this.pendingSave = false;
-      await this.save();
     }
   }
 

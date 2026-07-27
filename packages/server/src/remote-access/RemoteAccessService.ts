@@ -17,6 +17,7 @@ import {
   OWNER_READ_WRITE_FILE_MODE,
   enforceOwnerReadWriteFilePermissions,
 } from "../utils/filePermissions.js";
+import { createCoalescingSaver } from "../lib/coalescingSaver.js";
 
 const CURRENT_VERSION = 1;
 
@@ -54,8 +55,7 @@ export class RemoteAccessService {
   private state: RemoteAccessState;
   private dataDir: string;
   private filePath: string;
-  private savePromise: Promise<void> | null = null;
-  private pendingSave = false;
+  private save = createCoalescingSaver(() => this.doSave()).save;
 
   constructor(options: RemoteAccessServiceOptions) {
     this.dataDir = options.dataDir;
@@ -244,25 +244,6 @@ export class RemoteAccessService {
   async clearRelayConfig(): Promise<void> {
     this.state.relay = undefined;
     await this.save();
-  }
-
-  /**
-   * Save state to disk with debouncing to avoid excessive writes.
-   */
-  private async save(): Promise<void> {
-    if (this.savePromise) {
-      this.pendingSave = true;
-      return;
-    }
-
-    this.savePromise = this.doSave();
-    await this.savePromise;
-    this.savePromise = null;
-
-    if (this.pendingSave) {
-      this.pendingSave = false;
-      await this.save();
-    }
   }
 
   private async doSave(): Promise<void> {

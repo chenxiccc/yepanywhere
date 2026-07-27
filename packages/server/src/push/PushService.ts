@@ -41,7 +41,7 @@ export class PushService {
   private vapidKeys?: VapidKeys;
   private initialized = false;
   /** Writes coalesce; a rejected write surfaces to its caller without wedging. */
-  private save = createCoalescingSaver(() => this.doSave());
+  private save = createCoalescingSaver(() => this.doSave()).save;
 
   constructor(options: PushServiceOptions = {}) {
     this.dataDir =
@@ -207,9 +207,7 @@ export class PushService {
   /**
    * Check if a specific notification type is enabled.
    */
-  isNotificationTypeEnabled(
-    type: keyof NotificationSettings,
-  ): boolean {
+  isNotificationTypeEnabled(type: keyof NotificationSettings): boolean {
     const settings = this.getNotificationSettings();
     return settings[type];
   }

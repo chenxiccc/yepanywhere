@@ -211,7 +211,7 @@ export class ReviewCommentService {
       };
       created.save = createCoalescingSaver(() =>
         this.doSave(projectPath, created),
-      );
+      ).save;
       this.stores.set(projectPath, created);
       store = created;
     }

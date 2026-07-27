@@ -7,6 +7,7 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { createCoalescingSaver } from "../lib/coalescingSaver.js";
 
 export interface RecentEntry {
   /** Session ID */
@@ -39,8 +40,7 @@ export class RecentsService {
   private dataDir: string;
   private filePath: string;
   private maxEntries: number;
-  private savePromise: Promise<void> | null = null;
-  private pendingSave = false;
+  private save = createCoalescingSaver(() => this.doSave()).save;
 
   constructor(options: RecentsServiceOptions = {}) {
     this.dataDir =
@@ -165,27 +165,6 @@ export class RecentsService {
   async clear(): Promise<void> {
     if (this.state.visits.length > 0) {
       this.state.visits = [];
-      await this.save();
-    }
-  }
-
-  /**
-   * Save state to disk with debouncing to prevent excessive writes.
-   */
-  private async save(): Promise<void> {
-    // If a save is in progress, mark that we need another save
-    if (this.savePromise) {
-      this.pendingSave = true;
-      return;
-    }
-
-    this.savePromise = this.doSave();
-    await this.savePromise;
-    this.savePromise = null;
-
-    // If another save was requested while we were saving, do it now
-    if (this.pendingSave) {
-      this.pendingSave = false;
       await this.save();
     }
   }

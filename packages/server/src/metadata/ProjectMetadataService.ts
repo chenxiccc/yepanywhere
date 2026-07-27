@@ -13,6 +13,7 @@ import {
   encodeProjectId,
   getProjectIdentityKey,
 } from "../projects/paths.js";
+import { createCoalescingSaver } from "../lib/coalescingSaver.js";
 
 export interface ProjectMetadata {
   /** The absolute path to the project directory */
@@ -48,8 +49,7 @@ export class ProjectMetadataService {
   private state: ProjectMetadataState;
   private dataDir: string;
   private filePath: string;
-  private savePromise: Promise<void> | null = null;
-  private pendingSave = false;
+  private save = createCoalescingSaver(() => this.doSave()).save;
 
   constructor(options: ProjectMetadataServiceOptions = {}) {
     this.dataDir =
@@ -205,27 +205,6 @@ export class ProjectMetadataService {
     return Object.values(this.state.hiddenProjects ?? {}).some(
       (metadata) => getProjectIdentityKey(metadata.path) === targetIdentity,
     );
-  }
-
-  /**
-   * Save state to disk with debouncing to prevent excessive writes.
-   */
-  private async save(): Promise<void> {
-    // If a save is in progress, mark that we need another save
-    if (this.savePromise) {
-      this.pendingSave = true;
-      return;
-    }
-
-    this.savePromise = this.doSave();
-    await this.savePromise;
-    this.savePromise = null;
-
-    // If another save was requested while we were saving, do it now
-    if (this.pendingSave) {
-      this.pendingSave = false;
-      await this.save();
-    }
   }
 
   private async doSave(): Promise<void> {

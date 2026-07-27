@@ -28,6 +28,7 @@ import {
   getModelContextWindow,
 } from "@yep-anywhere/shared";
 import { getProvider } from "../sdk/providers/index.js";
+import { createCoalescingSaver } from "../lib/coalescingSaver.js";
 
 /** A real window observation captured from an SDK result message. */
 export interface ObservedModelInfo {
@@ -58,8 +59,7 @@ export class ModelInfoService {
   private ingested = new Map<string, number>();
 
   private filePath: string | undefined;
-  private savePromise: Promise<void> | null = null;
-  private pendingSave = false;
+  private saver = createCoalescingSaver(() => this.doSave());
 
   constructor(options: ModelInfoServiceOptions = {}) {
     this.filePath = options.dataDir
@@ -174,28 +174,16 @@ export class ModelInfoService {
    * shutdown; normal callers fire-and-forget via recordContextWindow.
    */
   async flush(): Promise<void> {
-    while (this.savePromise) {
-      await this.savePromise.catch(() => {});
-    }
+    await this.saver.idle();
   }
 
   /**
-   * Save observed state to disk with debouncing to prevent excessive writes.
+   * Save observed state to disk, coalescing concurrent requests.
    * No-op when constructed without a dataDir.
    */
-  private async save(): Promise<void> {
-    if (!this.filePath) return;
-    if (this.savePromise) {
-      this.pendingSave = true;
-      return;
-    }
-    this.savePromise = this.doSave();
-    await this.savePromise;
-    this.savePromise = null;
-    if (this.pendingSave) {
-      this.pendingSave = false;
-      await this.save();
-    }
+  private save(): Promise<void> {
+    if (!this.filePath) return Promise.resolve();
+    return this.saver.save();
   }
 
   private async doSave(): Promise<void> {

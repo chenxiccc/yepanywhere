@@ -19,6 +19,7 @@ import {
   normalizeRecapAfterSeconds,
   sanitizeSessionTitle,
 } from "@yep-anywhere/shared";
+import { createCoalescingSaver } from "../lib/coalescingSaver.js";
 
 export interface SessionMetadata {
   /** Custom title that overrides auto-generated title */
@@ -97,8 +98,7 @@ export class SessionMetadataService {
   private state: SessionMetadataState;
   private dataDir: string;
   private filePath: string;
-  private savePromise: Promise<void> | null = null;
-  private pendingSave = false;
+  private save = createCoalescingSaver(() => this.doSave()).save;
 
   constructor(options: SessionMetadataServiceOptions = {}) {
     this.dataDir =
@@ -696,27 +696,6 @@ export class SessionMetadataService {
     if (this.state.sessions[sessionId]) {
       const { [sessionId]: _, ...rest } = this.state.sessions;
       this.state.sessions = rest;
-      await this.save();
-    }
-  }
-
-  /**
-   * Save state to disk with debouncing to prevent excessive writes.
-   */
-  private async save(): Promise<void> {
-    // If a save is in progress, mark that we need another save
-    if (this.savePromise) {
-      this.pendingSave = true;
-      return;
-    }
-
-    this.savePromise = this.doSave();
-    await this.savePromise;
-    this.savePromise = null;
-
-    // If another save was requested while we were saving, do it now
-    if (this.pendingSave) {
-      this.pendingSave = false;
       await this.save();
     }
   }
