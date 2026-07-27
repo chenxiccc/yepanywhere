@@ -342,6 +342,17 @@ already covers whole-paragraph quoting on those platforms.
   session's copy, selection-typing, and floating-`>` controller follow that
   registered text across the portal without creating a second quote path.
 
+  **Exact rendered-Markdown alignment remains follow-up work.** File viewers
+  and expanded Read/Edit Markdown currently register the original source, so
+  the shared extractor best-effort matches a visible selection back to that
+  source and preserves simple whole-block markers such as `#` and list
+  bullets. Ambiguous repeated text, renderer normalization, and selections
+  crossing structurally transformed blocks can still be inexact. A general
+  aligned Markdown renderer should carry token/source offset spans into the
+  rendered DOM, then make that one mapping serve quote reply, semantic copy,
+  comment tints, and line/range targets. Until then, falling back to the
+  selected visible text is the v1 contract; never invent Markdown structure.
+
   **Thinking summaries — quote while streaming *or* finished.** We want to
   select and comment on a thinking-summary item even mid-stream, not only once
   it settles. This is the one Phase-2 surface whose source is *live*: a

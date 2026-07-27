@@ -438,10 +438,28 @@ describe("FileViewer", () => {
     expect(container.querySelector(".shiki-container")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Preview" }));
 
-    expect(await screen.findByRole("heading", { name: "Title" })).toBeTruthy();
+    const heading = await screen.findByRole("heading", { name: "Title" });
+    expect(heading).toBeTruthy();
     expect(
       container.querySelector(".markdown-preview-span-start"),
     ).toBeTruthy();
+
+    const headingText = heading.firstChild;
+    expect(headingText).toBeTruthy();
+    const range = document.createRange();
+    range.selectNodeContents(headingText as Node);
+    const selection = document.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    const viewerBody =
+      container.querySelector<HTMLElement>(".file-viewer-body");
+    expect(extractMarkdownSnippetsFromSelection(viewerBody!)).toMatchObject([
+      {
+        markdown: "# Title",
+        selectedText: "Title",
+      },
+    ]);
   });
 
   it("opens image previews as raw image tabs", async () => {
