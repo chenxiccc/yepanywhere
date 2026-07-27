@@ -100,7 +100,7 @@ describe("ClaudeGatewayProvider", () => {
     );
   });
 
-  it("filters utility models and duplicate or malformed catalog rows", () => {
+  it("retains metadata-less rows but filters known unsupported rows", () => {
     expect(
       parseClaudeGatewayModels({
         data: [

@@ -126,11 +126,14 @@ shell-startup and test-hermeticity rules for the local `BASH_ENV` bridge.
   regular-subscription models the gateway cannot serve. Invalid, duplicate,
   disabled, non-chat, embedding, and trajectory-compaction rows are omitted;
   an unavailable catalog produces no model choices rather than silently
-  escaping to regular Claude. Catalog endpoint metadata is a routing
-  precondition: the gateway may use native Anthropic Messages, Responses
-  translation, or chat-completions translation only when the model advertises
-  that endpoint. Model-specific failures remain visible API errors rather than
-  triggering a different transport.
+  escaping to regular Claude. When a row supplies catalog endpoint metadata,
+  it is authoritative: YA omits rows with no supported text endpoint, and the
+  gateway may use native Anthropic Messages, Responses translation, or
+  chat-completions translation only when the model advertises that endpoint.
+  Rows that omit endpoint metadata remain visible for generic and legacy
+  gateways whose model catalogs predate that extension; the gateway's
+  compatibility route owns the resulting success or visible API failure.
+  Model-specific failures never trigger a different provider transport.
 - Claude Gateway retains the Claude harness, transcript, tools, permissions,
   compaction, and resume contracts. Per-model gateway catalog metadata controls
   whether YA advertises adaptive thinking and which effort levels it offers;

@@ -7,6 +7,14 @@ Topic: backward-compat
 
 ## Decisions
 
+2026-07-27 Claude Gateway `supported_endpoints` omission — treat an explicit
+endpoint list as authoritative and omit models with no supported text
+endpoint, but retain metadata-less rows for generic gateways and older
+`copilot-api` catalogs that predate the extension. The gateway owns its legacy
+route and any visible model-specific error; YA never falls through to regular
+Claude. Current focused `copilot-api` catalogs preserve endpoint metadata, so
+known Responses-only and Messages-capable models do not use this exception.
+
 2026-07-27 `claude-ollama` provider/settings/session identity — retain the
 legacy provider during a deprecation grace period and do not auto-migrate
 persisted sessions or settings to `claude-gateway`. Hide it from provider

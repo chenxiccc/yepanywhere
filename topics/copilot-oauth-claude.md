@@ -76,11 +76,14 @@ Claude is never rerouted:
   that the gateway may not expose. YA omits disabled, non-chat, and utility
   rows, and does not add regular Claude fallbacks.
 - The focused `copilot-api` gateway routes each advertised model through an
-  endpoint it actually supports: native Anthropic Messages when available,
-  an Anthropic-to-Responses adapter for Responses-only models, and the existing
-  chat-completions adapter otherwise. It does not advertise a model through an
-  endpoint the upstream catalog lacks. Model-specific gateway failures remain
-  on the Gateway transport rather than falling through to regular Claude.
+  endpoint it advertises: native Anthropic Messages when available, an
+  Anthropic-to-Responses adapter for Responses-only models, and the existing
+  chat-completions adapter otherwise. Explicit endpoint metadata is preserved
+  through `/v1/models`; a known unsupported endpoint set is rejected.
+  Metadata-less legacy catalogs retain the pre-existing Chat Completions
+  fallback as an explicit compatibility exception. Model-specific gateway
+  failures remain on the Gateway transport rather than falling through to
+  regular Claude.
 - YA projects per-model context windows and reasoning levels from the gateway
   catalog. When a model advertises reasoning levels, Claude Gateway exposes
   adaptive thinking and the corresponding effort selector; a model with no
