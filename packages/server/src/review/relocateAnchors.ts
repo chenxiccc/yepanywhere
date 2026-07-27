@@ -127,11 +127,30 @@ export async function relocateAnchor(
   };
 }
 
+/** Each relocation can spawn a `git blame`; keep the process fan-out sane. */
+const RELOCATE_CONCURRENCY = 8;
+
 export async function relocateAnchors(
   projectPath: string,
   anchors: ReviewCommentAnchor[],
 ): Promise<AnchorRelocation[]> {
-  return Promise.all(anchors.map((a) => relocateAnchor(projectPath, a)));
+  const results: AnchorRelocation[] = new Array(anchors.length);
+  let next = 0;
+  const worker = async () => {
+    for (;;) {
+      const index = next++;
+      const anchor = anchors[index];
+      if (anchor === undefined) return;
+      results[index] = await relocateAnchor(projectPath, anchor);
+    }
+  };
+  await Promise.all(
+    Array.from(
+      { length: Math.min(RELOCATE_CONCURRENCY, anchors.length) },
+      worker,
+    ),
+  );
+  return results;
 }
 
 /** ±radius lines of current-file context around `line1` (1-based). */
