@@ -155,6 +155,70 @@ describe("Local file routes", () => {
     expect(html).not.toContain("Print");
   });
 
+  it("marks and navigates to requested Markdown source lines", async () => {
+    const allowedDir = path.join(tempDir, "allowed");
+    await mkdir(allowedDir, { recursive: true });
+
+    const filePath = path.join(allowedDir, "notes.md");
+    await writeFile(
+      filePath,
+      "# Notes\n\nFirst paragraph.\n\nTarget paragraph.\n\nTail.",
+    );
+
+    const routes = createLocalFileRoutes({
+      allowedPaths: [allowedDir],
+    });
+
+    const response = await routes.request(
+      `/?path=${encodeURIComponent(filePath)}&render=1&line=5`,
+    );
+
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain(
+      'class="markdown-preview-span markdown-preview-span-start" data-line-start="5" data-line-end="5"',
+    );
+    expect(html).toContain(
+      `class="document-actions__raw" href="/api/local-file?path=${encodeURIComponent(filePath)}&amp;render=0&amp;line=5"`,
+    );
+    expect(html).toContain('class="has-line-target-arrival"');
+    expect(html).toContain('querySelector(".markdown-preview-span-start")');
+    expect(html).toContain('scrollIntoView({ block: "start" })');
+    expect(html).toContain('classList.remove("has-line-target-arrival")');
+    expect(html).toContain('window.open(rawLink.href, "_blank")');
+    expect(html).toContain(
+      "rawWindow.scrollY + rect.top - rawWindow.innerHeight * 0.1",
+    );
+
+    const rawResponse = await routes.request(
+      `/?path=${encodeURIComponent(filePath)}&render=0&line=5`,
+    );
+    expect(rawResponse.status).toBe(200);
+    expect(rawResponse.headers.get("content-type")).toBe(
+      "text/plain; charset=utf-8",
+    );
+    expect(await rawResponse.text()).toBe(
+      "# Notes\n\nFirst paragraph.\n\nTarget paragraph.\n\nTail.",
+    );
+
+    const outOfRangeResponse = await routes.request(
+      `/?path=${encodeURIComponent(filePath)}&render=1&line=99`,
+    );
+    const outOfRangeHtml = await outOfRangeResponse.text();
+    expect(outOfRangeHtml).not.toContain(
+      'class="markdown-preview-span markdown-preview-span-start"',
+    );
+    expect(outOfRangeHtml).not.toContain(
+      '<body class="has-line-target-arrival">',
+    );
+    expect(outOfRangeHtml).not.toContain(
+      'querySelector(".markdown-preview-span-start")',
+    );
+    expect(outOfRangeHtml).toContain(
+      `class="document-actions__raw" href="/api/local-file?path=${encodeURIComponent(filePath)}&amp;render=0"`,
+    );
+  });
+
   it.skipIf(process.platform !== "win32")(
     "serves Windows drive paths encoded like browser URL pathnames",
     async () => {

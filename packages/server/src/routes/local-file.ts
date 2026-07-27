@@ -5,7 +5,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseLineColumn } from "@yep-anywhere/shared";
 import { Hono } from "hono";
 import { stream } from "hono/streaming";
-import { renderMarkdownToHtml } from "../augments/markdown-augments.js";
+import { renderMarkdownFilePreview } from "../augments/markdown-file-preview.js";
 import type { ProjectScanner } from "../projects/scanner.js";
 import {
   createLocalResourcePathPolicy,
@@ -79,6 +79,7 @@ function localFileHref(
   filePath: string,
   options: {
     renderMarkdown?: boolean;
+    rawMarkdown?: boolean;
     lineNumber?: number;
     columnNumber?: number;
   } = {},
@@ -91,6 +92,8 @@ function localFileHref(
   const params = new URLSearchParams({ path: parsed.filePath });
   if (options.renderMarkdown && isMarkdownPath(parsed.filePath)) {
     params.set("render", "1");
+  } else if (options.rawMarkdown && isMarkdownPath(parsed.filePath)) {
+    params.set("render", "0");
   }
   if (parsed.lineNumber !== undefined) {
     params.set("line", String(parsed.lineNumber));
@@ -98,7 +101,7 @@ function localFileHref(
   if (parsed.columnNumber !== undefined) {
     params.set("column", String(parsed.columnNumber));
   }
-  return `/api/local-file?${params.toString().replaceAll("&", "&amp;")}`;
+  return `/api/local-file?${params.toString()}`;
 }
 
 function localMediaHref(filePath: string): string {
@@ -146,9 +149,11 @@ function rewriteHtmlLocalReference(
   }
 
   if (getLocalFileContentType(resolvedReference.filePath)) {
-    const rewrittenHref = localFileHref(resolvedReference.filePath, {
-      renderMarkdown: isMarkdownPath(resolvedReference.filePath),
-    });
+    const rewrittenHref = escapeHtml(
+      localFileHref(resolvedReference.filePath, {
+        renderMarkdown: isMarkdownPath(resolvedReference.filePath),
+      }),
+    );
     return attr.toLowerCase() === "href"
       ? `${rewrittenHref}${resolvedReference.hash}`
       : rewrittenHref;
@@ -184,9 +189,161 @@ function resolveHtmlLocalReference(
   }
 }
 
-function renderMarkdownDocument(filePath: string, bodyHtml: string): string {
+function renderMarkdownDocument(
+  filePath: string,
+  bodyHtml: string,
+  lineTarget: number | undefined,
+): string {
   const title = basename(filePath);
-  const rawUrl = localFileHref(filePath);
+  const rawUrl = localFileHref(filePath, {
+    rawMarkdown: true,
+    lineNumber: lineTarget,
+  });
+  const bodyClass =
+    lineTarget === undefined ? "" : ' class="has-line-target-arrival"';
+  const lineTargetScript =
+    lineTarget === undefined
+      ? ""
+      : `
+  <script>
+    (() => {
+      const target = document.querySelector(".markdown-preview-span-start");
+      const rawLink = document.querySelector(".document-actions__raw");
+      if (!target) return;
+
+      const dismissArrivalHighlight = () => {
+        document.body.classList.remove("has-line-target-arrival");
+      };
+      const jumpToTarget = () => {
+        target.scrollIntoView({ block: "start" });
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            window.addEventListener("scroll", dismissArrivalHighlight, {
+              once: true,
+              passive: true,
+            });
+          });
+        });
+      };
+
+      rawLink?.addEventListener("click", (event) => {
+        if (
+          event.button !== 0 ||
+          event.metaKey ||
+          event.ctrlKey ||
+          event.shiftKey ||
+          event.altKey
+        ) {
+          return;
+        }
+
+        const rawWindow = window.open(rawLink.href, "_blank");
+        if (!rawWindow) {
+          return;
+        }
+        event.preventDefault();
+        rawWindow.focus();
+
+        const startedAt = Date.now();
+        let timer;
+        const stopTrying = () => {
+          if (timer !== undefined) {
+            window.clearInterval(timer);
+          }
+        };
+        const jumpRawWindow = () => {
+          if (rawWindow.closed || Date.now() - startedAt > 10_000) {
+            stopTrying();
+            return;
+          }
+
+          let pre;
+          try {
+            if (rawWindow.document.readyState === "loading") {
+              return;
+            }
+            pre = rawWindow.document.querySelector("pre");
+          } catch {
+            return;
+          }
+          if (!pre) {
+            return;
+          }
+
+          const text = pre.textContent || "";
+          let startOffset = 0;
+          for (let currentLine = 1; currentLine < ${lineTarget}; currentLine += 1) {
+            const newlineOffset = text.indexOf("\\n", startOffset);
+            if (newlineOffset < 0) {
+              stopTrying();
+              return;
+            }
+            startOffset = newlineOffset + 1;
+          }
+
+          if (startOffset === text.length) {
+            rawWindow.scrollTo(0, pre.scrollHeight);
+            stopTrying();
+            return;
+          }
+
+          const newlineOffset = text.indexOf("\\n", startOffset);
+          let endOffset =
+            newlineOffset < 0 ? text.length : newlineOffset;
+          if (endOffset === startOffset && endOffset < text.length) {
+            endOffset += 1;
+          }
+
+          const locateTextOffset = (absoluteOffset) => {
+            let remaining = absoluteOffset;
+            for (const node of pre.childNodes) {
+              if (node.nodeType !== 3) continue;
+              const length = node.textContent?.length || 0;
+              if (remaining <= length) {
+                return { node, offset: remaining };
+              }
+              remaining -= length;
+            }
+            const lastNode = pre.lastChild;
+            return lastNode
+              ? { node: lastNode, offset: lastNode.textContent?.length || 0 }
+              : null;
+          };
+
+          const start = locateTextOffset(startOffset);
+          const end = locateTextOffset(endOffset);
+          if (!start || !end) {
+            stopTrying();
+            return;
+          }
+
+          const range = rawWindow.document.createRange();
+          range.setStart(start.node, start.offset);
+          range.setEnd(end.node, end.offset);
+          const rect = range.getBoundingClientRect();
+          if (rect.height > 0) {
+            rawWindow.scrollTo(
+              0,
+              Math.max(
+                0,
+                rawWindow.scrollY + rect.top - rawWindow.innerHeight * 0.1,
+              ),
+            );
+          }
+          stopTrying();
+        };
+
+        timer = window.setInterval(jumpRawWindow, 50);
+        jumpRawWindow();
+      });
+
+      if (document.readyState === "complete") {
+        jumpToTarget();
+      } else {
+        window.addEventListener("load", jumpToTarget, { once: true });
+      }
+    })();
+  </script>`;
 
   return `<!doctype html>
 <html>
@@ -251,6 +408,27 @@ function renderMarkdownDocument(filePath: string, bodyHtml: string): string {
       margin: 0 auto;
       padding: 1.25rem;
     }
+    .markdown-preview-span-start {
+      position: relative;
+      scroll-margin-block-start: 10vh;
+      transition:
+        background-color 700ms ease,
+        box-shadow 700ms ease;
+    }
+    .markdown-preview-span-start::before {
+      position: absolute;
+      top: 0.8em;
+      right: calc(100% + 0.35rem);
+      width: 0.8rem;
+      height: 2px;
+      border-radius: 999px;
+      background: color-mix(in srgb, LinkText 68%, transparent);
+      content: "";
+    }
+    .has-line-target-arrival .markdown-preview-span-start {
+      background: color-mix(in srgb, Highlight 14%, transparent);
+      box-shadow: 0 0 0 0.4rem color-mix(in srgb, Highlight 14%, transparent);
+    }
     h1, h2, h3, h4, h5, h6 {
       line-height: 1.25;
       margin: 1.4em 0 0.5em;
@@ -300,14 +478,15 @@ function renderMarkdownDocument(filePath: string, bodyHtml: string): string {
     }
   </style>
 </head>
-<body>
+<body${bodyClass}>
   <nav class="document-actions" aria-label="Document actions">
-    <a href="${escapeHtml(rawUrl)}">Raw</a>
+    <a class="document-actions__raw" href="${escapeHtml(rawUrl)}">Raw</a>
     <button class="document-actions__dock" type="button" aria-label="Keep raw link at document top" title="Keep at document top" onclick="this.closest('.document-actions').classList.add('is-docked')">&times;</button>
   </nav>
   <main class="markdown-rendered">
 ${bodyHtml}
   </main>
+${lineTargetScript}
 </body>
 </html>`;
 }
@@ -360,16 +539,40 @@ export function createLocalFileRoutes(deps: LocalFileDeps) {
         isMarkdownPath(resolvedPath)
       ) {
         const markdown = await readFile(resolvedPath, "utf-8");
-        const html = await renderMarkdownToHtml(markdown, {
-          localFileBasePath: dirname(resolvedPath),
-          inlineLocalImages: true,
-        });
+        const requestedRange =
+          requested.lineNumber === undefined
+            ? null
+            : {
+                start: requested.lineNumber,
+                end: requested.lineNumber,
+              };
+        const html = await renderMarkdownFilePreview(
+          markdown,
+          {
+            localFileBasePath: dirname(resolvedPath),
+            inlineLocalImages: true,
+          },
+          1,
+          requestedRange,
+          "full",
+        );
+        const hasLineTarget =
+          requestedRange !== null &&
+          html.includes(
+            'class="markdown-preview-span markdown-preview-span-start"',
+          );
 
         c.header("Content-Type", "text/html; charset=utf-8");
         c.header("Content-Disposition", "inline");
         c.header("Cache-Control", "private, max-age=60");
         c.header("X-Content-Type-Options", "nosniff");
-        return c.html(renderMarkdownDocument(resolvedPath, html));
+        return c.html(
+          renderMarkdownDocument(
+            resolvedPath,
+            html,
+            hasLineTarget ? requested.lineNumber : undefined,
+          ),
+        );
       }
 
       if (isHtmlPath(resolvedPath)) {

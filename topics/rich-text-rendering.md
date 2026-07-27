@@ -62,6 +62,18 @@ These run unconditionally and are not user-configurable:
   previews hydrate those local image references through embedded bounded media
   blobs when present, falling back to the share-scoped relay route rather than
   navigating to authenticated local file APIs.
+  A rendered local-file URL with `line=N` uses the same source-aligned Markdown
+  block boundaries as the shared `FileViewer`, then places the containing block
+  about 10% below the viewport top. On arrival, that block has a temporary
+  highlight and a short dash extending into the left margin. The first
+  subsequent scroll dismisses the highlight with a one-way fade; the dash
+  remains as the durable target marker. An out-of-range line leaves the normal
+  unmarked document rather than jumping to an unrelated block.
+  Its ordinary **Raw** action opens the genuine `text/plain` resource in a
+  same-origin tab and uses the still-live rendered document to place that tab's
+  requested source line about 10% below the viewport top. The raw response is
+  not reconstructed as HTML, so browser Save As and native copy/paste retain
+  the exact source text. Modified-link gestures keep normal browser behavior.
 - **Assistant inline-code project file links** — when authenticated session
   Markdown renders with project context, inline-code filename references such
   as `` `topics/security.md` `` link to the project file viewer only if the
