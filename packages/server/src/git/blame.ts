@@ -156,6 +156,13 @@ function entryBytes(result: GitBlameResult): number {
 }
 
 function insertBlameCacheEntry(key: string, entry: BlameCacheEntry): void {
+  // Concurrent misses on one key both insert; reclaim the loser's bytes so
+  // the budget tracks the map instead of drifting up and over-evicting.
+  const existing = blameCache.get(key);
+  if (existing) {
+    blameCache.delete(key);
+    blameCacheBytes -= existing.bytes;
+  }
   // An entry too large for the whole budget is served once, never cached.
   if (entry.bytes > MAX_BLAME_CACHE_BYTES) return;
   while (
