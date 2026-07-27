@@ -9,9 +9,11 @@ import {
 import { api } from "../api/client";
 import { useHoverCardSettings } from "../hooks/useHoverCardAppearance";
 import {
+  areTooltipsSuppressed,
   beginTooltipVisibility,
   endTooltipVisibility,
   isTooltipWarm,
+  subscribeTooltipSuppression,
 } from "../hooks/useTooltipAppearance";
 import { useSessionCollectionRecord } from "../lib/clientSummaryStore";
 import { formatSessionHoverAge } from "../lib/sessionAge";
@@ -98,6 +100,10 @@ export function SessionHoverCardTarget({
   }, [fallback.projectId, record, sessionId]);
 
   const schedule = useCallback(() => {
+    if (areTooltipsSuppressed()) {
+      clear();
+      return;
+    }
     if (showTimerRef.current) {
       clearTimeout(showTimerRef.current);
     }
@@ -129,6 +135,8 @@ export function SessionHoverCardTarget({
       }),
     [clear],
   );
+
+  useEffect(() => subscribeTooltipSuppression(clear), [clear]);
 
   useEffect(() => {
     if (!anchor) return;

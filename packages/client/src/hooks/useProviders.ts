@@ -1,6 +1,11 @@
 import { DEFAULT_PROVIDER, type ProviderInfo } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
+import {
+  getCurrentClientSummarySourceKey,
+  type ClientSummarySourceKey,
+  useClientSummarySourceKey,
+} from "../lib/clientSummaryStore";
 
 const PROVIDER_CACHE_TTL_MS = 5 * 60_000;
 
@@ -9,14 +14,19 @@ interface ProviderCacheEntry {
   expiresAt: number;
 }
 
-let providerCache: ProviderCacheEntry | null = null;
-let providerFetchPromise: Promise<ProviderInfo[]> | null = null;
+const providerCaches = new Map<ClientSummarySourceKey, ProviderCacheEntry>();
+const providerFetchPromises = new Map<
+  ClientSummarySourceKey,
+  Promise<ProviderInfo[]>
+>();
 
 async function loadProviders(
+  sourceKey: ClientSummarySourceKey,
   forceRefresh: boolean,
   bypassClientCache = false,
 ): Promise<ProviderInfo[]> {
   const now = Date.now();
+  const providerCache = providerCaches.get(sourceKey);
   if (
     !forceRefresh &&
     !bypassClientCache &&
@@ -25,26 +35,59 @@ async function loadProviders(
   ) {
     return providerCache.providers;
   }
+  const providerFetchPromise = providerFetchPromises.get(sourceKey);
   if (!forceRefresh && !bypassClientCache && providerFetchPromise) {
     return providerFetchPromise;
   }
 
   const request = api.getProviders({ refresh: forceRefresh }).then((data) => {
-    providerCache = {
+    providerCaches.set(sourceKey, {
       providers: data.providers,
       expiresAt: Date.now() + PROVIDER_CACHE_TTL_MS,
-    };
+    });
     return data.providers;
   });
-  providerFetchPromise = request;
+  providerFetchPromises.set(sourceKey, request);
 
   try {
     return await request;
   } finally {
-    if (providerFetchPromise === request) {
-      providerFetchPromise = null;
+    if (providerFetchPromises.get(sourceKey) === request) {
+      providerFetchPromises.delete(sourceKey);
     }
   }
+}
+
+/**
+ * Populate the shared provider/model cache before a consumer needs it.
+ *
+ * This uses the same request and in-flight deduplication as `useProviders`, so
+ * a new-session form mounted during the primer joins the request rather than
+ * starting another provider probe.
+ */
+export function primeProviderCache(
+  sourceKey = getCurrentClientSummarySourceKey(),
+): Promise<ProviderInfo[]> {
+  return loadProviders(sourceKey, false);
+}
+
+interface ProviderHookState {
+  sourceKey: ClientSummarySourceKey;
+  providers: ProviderInfo[];
+  loading: boolean;
+  error: Error | null;
+}
+
+function getInitialProviderState(
+  sourceKey: ClientSummarySourceKey,
+): ProviderHookState {
+  const providerCache = providerCaches.get(sourceKey);
+  return {
+    sourceKey,
+    providers: providerCache?.providers ?? [],
+    loading: !providerCache,
+    error: null,
+  };
 }
 
 /**
@@ -57,45 +100,72 @@ async function loadProviders(
  * - refetch: Function to manually refresh provider status
  */
 export function useProviders() {
-  const [providers, setProviders] = useState<ProviderInfo[]>(
-    () => providerCache?.providers ?? [],
+  const sourceKey = useClientSummarySourceKey();
+  const [state, setState] = useState<ProviderHookState>(() =>
+    getInitialProviderState(sourceKey),
   );
-  const [loading, setLoading] = useState(() => !providerCache);
-  const [error, setError] = useState<Error | null>(null);
-  const hasFetchedRef = useRef(false);
+  const lastFetchedSourceRef = useRef<ClientSummarySourceKey | null>(null);
 
   const fetch = useCallback(
     async (forceRefresh = false, bypassClientCache = false) => {
+      const providerCache = providerCaches.get(sourceKey);
       if (forceRefresh || bypassClientCache || !providerCache) {
-        setLoading(true);
+        setState((current) => ({
+          ...(current.sourceKey === sourceKey
+            ? current
+            : getInitialProviderState(sourceKey)),
+          loading: true,
+        }));
       }
-      setError(null);
+      setState((current) => ({
+        ...(current.sourceKey === sourceKey
+          ? current
+          : getInitialProviderState(sourceKey)),
+        error: null,
+      }));
       try {
         const nextProviders = await loadProviders(
+          sourceKey,
           forceRefresh,
           bypassClientCache,
         );
-        setProviders(nextProviders);
+        setState({
+          sourceKey,
+          providers: nextProviders,
+          loading: false,
+          error: null,
+        });
       } catch (err) {
-        setError(err instanceof Error ? err : new Error(String(err)));
+        setState((current) => ({
+          ...(current.sourceKey === sourceKey
+            ? current
+            : getInitialProviderState(sourceKey)),
+          error: err instanceof Error ? err : new Error(String(err)),
+        }));
       } finally {
-        setLoading(false);
+        setState((current) =>
+          current.sourceKey === sourceKey
+            ? { ...current, loading: false }
+            : current,
+        );
       }
     },
-    [],
+    [sourceKey],
   );
 
-  // Initial fetch - only once (avoid StrictMode double-fetch)
+  // Fetch once per source transition (the cache handles remounts and expiry).
   useEffect(() => {
-    if (hasFetchedRef.current) return;
-    hasFetchedRef.current = true;
+    if (lastFetchedSourceRef.current === sourceKey) return;
+    lastFetchedSourceRef.current = sourceKey;
     fetch();
-  }, [fetch]);
+  }, [fetch, sourceKey]);
 
   const refetch = useCallback(() => fetch(true), [fetch]);
   const reload = useCallback(() => fetch(false, true), [fetch]);
+  const visibleState =
+    state.sourceKey === sourceKey ? state : getInitialProviderState(sourceKey);
 
-  return { providers, loading, error, refetch, reload };
+  return { ...visibleState, refetch, reload };
 }
 
 /**

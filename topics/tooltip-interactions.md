@@ -80,12 +80,17 @@ Keyboard-visible focus uses the same configured delay. Pointer-generated focus,
 including touch focus, does not open a tooltip after activation. Escape,
 primary click, blur, and a deliberate pointer departure dismiss the tooltip.
 Other keystrokes, including modifier combinations used to capture a screenshot,
-leave a visible tooltip alone. Scroll—including transcript
-follow-scroll—also does not dismiss a tooltip the user may be reading. Browser
-re-hit-testing can emit pointer boundary events when scrolling moves content
-under a stationary pointer; unchanged pointer coordinates are not treated as
-departure. A visible tooltip keeps its fixed reading position during scroll and
-is re-clamped to the viewport after resize.
+leave a visible tooltip alone unless they edit a composer. Every composer edit
+dismisses visible YA-rendered text, rich, and session-preview tooltips, cancels
+their pending reveals, clears tooltip warmth, and suppresses new pointer/focus
+activation for 100 ms after the latest edit. Suppression never schedules an
+automatic reopen; fresh pointer or focus intent after the window is required.
+Browser-native `title` presentation remains browser-owned. Scroll—including
+transcript follow-scroll—otherwise does not dismiss a tooltip the user may be
+reading. Browser re-hit-testing can emit pointer boundary events when scrolling
+moves content under a stationary pointer; unchanged pointer coordinates are not
+treated as departure. A visible tooltip keeps its fixed reading position during
+scroll and is re-clamped to the viewport after resize.
 
 Only a tooltip that actually became visible warms the tooltip system. After it
 closes, entering another target within six times the configured delay opens the
@@ -203,7 +208,9 @@ not the surface into a card.
   pointer-generated focus while retaining their activation-to-dialog path.
 - Once visible, a tooltip survives same-target pointer motion, transcript
   follow-scroll, scroll-generated pointer boundary events, and non-Escape
-  keystrokes. Escape and a completed pointer departure still dismiss it.
+  keystrokes that do not edit a composer. Composer edits dismiss every
+  YA-rendered tooltip owner and suppress pending/new reveals for 100 ms after
+  the latest edit; nothing reopens without a later pointer/focus event.
 - Exact visible-content hints are absent only when fully scroll-visible and
   remain when clipped by self, ancestor, or viewport; no-`+N` Ran commands
   follow the same measured rule.

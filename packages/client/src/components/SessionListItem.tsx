@@ -3,9 +3,11 @@ import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import type { AgentActivity } from "../hooks/useFileActivity";
 import {
+  areTooltipsSuppressed,
   beginTooltipVisibility,
   endTooltipVisibility,
   isTooltipWarm,
+  subscribeTooltipSuppression,
 } from "../hooks/useTooltipAppearance";
 import { useI18n } from "../i18n";
 import { activityBus } from "../lib/activityBus";
@@ -509,6 +511,10 @@ export function SessionListItem({
 
   const schedulePreviewShow = useCallback(() => {
     if (!showHoverCard || menuOpenRef.current) return;
+    if (areTooltipsSuppressed()) {
+      clearPreview();
+      return;
+    }
     clearPreviewTimers();
     // Fetch the updated last-output immediately on hover; only the card's
     // appearance waits for the show delay.
@@ -558,6 +564,11 @@ export function SessionListItem({
       }
     });
   }, [showHoverCard, clearPreview]);
+
+  useEffect(
+    () => subscribeTooltipSuppression(clearPreview),
+    [clearPreview],
+  );
 
   // Clear pending timers if the row unmounts mid-hover.
   useEffect(() => {

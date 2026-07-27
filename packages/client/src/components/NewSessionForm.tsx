@@ -2494,6 +2494,7 @@ export function NewSessionForm({
           )}
           <textarea
             ref={textareaRef}
+            data-composer-input
             value={message}
             onChange={(e) => {
               const nextMessage = e.target.value;

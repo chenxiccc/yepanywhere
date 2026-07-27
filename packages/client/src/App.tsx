@@ -8,7 +8,7 @@ import { ConnectionBar } from "./components/ConnectionBar";
 import { FloatingActionButton } from "./components/FloatingActionButton";
 import { ReloadBanner } from "./components/ReloadBanner";
 import { OnboardingWizard } from "./components/onboarding";
-import { AuthProvider } from "./contexts/AuthContext";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ClientSummarySourceBinding } from "./contexts/ClientSummarySourceBinding";
 import {
   HostIdentityProvider,
@@ -22,12 +22,14 @@ import { useActivityBusConnection } from "./hooks/useActivityBusConnection";
 import { useNeedsAttentionBadge } from "./hooks/useNeedsAttentionBadge";
 import { useSyncNotifyInAppSetting } from "./hooks/useNotifyInApp";
 import { useOnboarding } from "./hooks/useOnboarding";
+import { primeProviderCache } from "./hooks/useProviders";
 import {
   getVisibleReloadBanners,
   useReloadNotifications,
 } from "./hooks/useReloadNotifications";
 import { useSeedCompactThreshold } from "./hooks/useSeedCompactThreshold";
 import { I18nProvider } from "./i18n";
+import { useClientSummarySourceKey } from "./lib/clientSummaryStore";
 import { initClientLogCollection } from "./lib/diagnostics";
 
 interface Props {
@@ -41,9 +43,26 @@ function AppContent({ children }: Props) {
   const location = useLocation();
   const isSessionDetailRoute = /\/sessions\/[^/]+/.test(location.pathname);
   const { icon: hostIdentityIcon } = useHostIdentity();
+  const {
+    authEnabled,
+    isAuthenticated,
+    isLoading: authLoading,
+  } = useAuth();
+  const sourceKey = useClientSummarySourceKey();
 
   // Manage SSE connection based on auth state (prevents 401s on login page)
   useActivityBusConnection();
+
+  // Prime provider status and model catalogs during the first authenticated
+  // tab visit, before a New Session surface needs them. The shared provider
+  // cache deduplicates any consumer that mounts while this is still running.
+  useEffect(() => {
+    if (authLoading || (authEnabled && !isAuthenticated)) return;
+    void primeProviderCache(sourceKey).catch(() => {
+      // This background hint must not replace the consumer's normal retry and
+      // error UI when provider discovery is temporarily unavailable.
+    });
+  }, [authEnabled, authLoading, isAuthenticated, sourceKey]);
 
   // Client-side log collection for connection diagnostics
   useEffect(() => initClientLogCollection(), []);

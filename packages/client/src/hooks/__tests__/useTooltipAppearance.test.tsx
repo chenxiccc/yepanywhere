@@ -3,14 +3,17 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  areTooltipsSuppressed,
   beginTooltipVisibility,
   clearTooltipWarmth,
+  COMPOSER_TYPING_TOOLTIP_SUPPRESSION_MS,
   DEFAULT_TOOLTIP_DELAY_MS,
   endTooltipVisibility,
   getEffectiveTooltipDelayMs,
   getTextTooltipAttributes,
   getTooltipDelayMs,
   setElementTextTooltip,
+  suppressTooltipsFor,
   TOOLTIP_WARM_GRACE_MULTIPLIER,
   useTooltipAppearance,
 } from "../useTooltipAppearance";
@@ -106,5 +109,19 @@ describe("useTooltipAppearance", () => {
     endTooltipVisibility(first);
     expect(getEffectiveTooltipDelayMs()).toBe(0);
     endTooltipVisibility(second);
+  });
+
+  it("dismisses visible ownership for the composer suppression window", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const dismiss = vi.fn();
+    const token = beginTooltipVisibility(dismiss);
+
+    suppressTooltipsFor(COMPOSER_TYPING_TOOLTIP_SUPPRESSION_MS);
+
+    expect(dismiss).toHaveBeenCalledOnce();
+    expect(areTooltipsSuppressed(1_099)).toBe(true);
+    expect(areTooltipsSuppressed(1_100)).toBe(false);
+    endTooltipVisibility(token);
   });
 });

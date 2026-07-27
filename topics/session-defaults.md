@@ -64,6 +64,21 @@ Switching AI Provider should restore that provider's provider-specific defaults
 without disturbing all-provider defaults. Changing an all-provider default should
 not overwrite per-provider model/thinking/effort choices.
 
+### Provider catalog readiness
+
+The first authenticated or remotely connected YA visit in a browser tab primes
+provider status and model catalogs through the same source-scoped request/cache
+used by New Session, settings, and restart surfaces. A consumer mounted during
+that primer joins its in-flight request rather than repeating provider probes.
+Catalogs and in-flight work from one local or remote host must never satisfy a
+consumer viewing another host. Primer failure remains advisory: the first
+consumer retries through its normal loading/error path.
+
+Readiness is client-presence-driven. YA does not periodically probe provider
+catalogs while no browser is visiting it; the existing bounded client and server
+cache lifetimes govern freshness during active use, and explicit refresh actions
+retain their stronger semantics.
+
 ## Recap fallback semantics
 
 `Forked` is a preference for the higher-fidelity recap path. **Tailed Recap

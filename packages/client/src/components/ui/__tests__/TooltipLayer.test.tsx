@@ -119,6 +119,55 @@ describe("TooltipLayer", () => {
     expect(target.getAttribute("data-tooltip")).toBe("Command tail");
   });
 
+  it("dismisses and briefly suppresses tooltips while the composer changes", () => {
+    render(
+      <>
+        <TooltipLayer />
+        <button type="button" title="Accidental hint">
+          Hover target
+        </button>
+        <textarea data-composer-input aria-label="Composer" />
+      </>,
+    );
+    const target = screen.getByRole("button", { name: "Hover target" });
+    const composer = screen.getByRole("textbox", { name: "Composer" });
+
+    fireEvent.pointerOver(target, {
+      pointerType: "mouse",
+      clientX: 10,
+      clientY: 10,
+    });
+    act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
+    expect(screen.getByRole("tooltip").textContent).toBe("Accidental hint");
+
+    fireEvent.input(composer, { target: { value: "a" } });
+    expect(screen.queryByRole("tooltip")).toBeNull();
+
+    fireEvent.pointerOver(target, {
+      pointerType: "mouse",
+      clientX: 10,
+      clientY: 10,
+    });
+    act(() => vi.advanceTimersByTime(99));
+    fireEvent.pointerMove(target, {
+      pointerType: "mouse",
+      clientX: 11,
+      clientY: 10,
+    });
+    expect(screen.queryByRole("tooltip")).toBeNull();
+
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.queryByRole("tooltip")).toBeNull();
+
+    fireEvent.pointerMove(target, {
+      pointerType: "mouse",
+      clientX: 16,
+      clientY: 10,
+    });
+    act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
+    expect(screen.getByRole("tooltip").textContent).toBe("Accidental hint");
+  });
+
   it("keeps the tooltip open while hovering and selecting its text", () => {
     render(
       <>

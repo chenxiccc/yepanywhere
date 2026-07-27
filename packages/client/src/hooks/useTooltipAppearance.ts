@@ -31,6 +31,9 @@ export const TOOLTIP_CLOSE_DELAY_MULTIPLIER = 2;
 /** Ignore residual hand/sensor motion near a tooltip hover boundary. */
 export const TOOLTIP_POINTER_JITTER_PX = 4;
 
+/** Keep pointer re-hit events quiet across at least one typing cadence. */
+export const COMPOSER_TYPING_TOOLTIP_SUPPRESSION_MS = 100;
+
 /**
  * Once a tooltip has opened, a short time-only adjacency window makes scanning
  * neighboring targets immediate. Targets merely crossed before opening do not
@@ -41,7 +44,9 @@ export const TOOLTIP_WARM_GRACE_MULTIPLIER = 6;
 const listeners = new Set<() => void>();
 const visibleTooltipTokens = new Set<symbol>();
 const visibleTooltipDismissers = new Map<symbol, () => void>();
+const tooltipSuppressionListeners = new Set<() => void>();
 let warmUntilMs = 0;
+let tooltipSuppressedUntilMs = 0;
 let storageListener: ((event: StorageEvent) => void) | null = null;
 
 function clamp(value: number, min: number, max: number): number {
@@ -286,6 +291,35 @@ export function isTooltipWarm(nowMs = Date.now()): boolean {
   return visibleTooltipTokens.size > 0 || nowMs <= warmUntilMs;
 }
 
+export function areTooltipsSuppressed(nowMs = Date.now()): boolean {
+  return nowMs < tooltipSuppressedUntilMs;
+}
+
+export function subscribeTooltipSuppression(
+  listener: () => void,
+): () => void {
+  tooltipSuppressionListeners.add(listener);
+  return () => tooltipSuppressionListeners.delete(listener);
+}
+
+export function suppressTooltipsFor(
+  durationMs: number,
+  nowMs = Date.now(),
+): void {
+  tooltipSuppressedUntilMs = Math.max(
+    tooltipSuppressedUntilMs,
+    nowMs + Math.max(0, durationMs),
+  );
+  const dismissers = new Set([
+    ...tooltipSuppressionListeners,
+    ...visibleTooltipDismissers.values(),
+  ]);
+  visibleTooltipDismissers.clear();
+  visibleTooltipTokens.clear();
+  for (const dismiss of dismissers) dismiss();
+  warmUntilMs = 0;
+}
+
 export function getEffectiveTooltipDelayMs(
   multiplier = 1,
   nowMs = Date.now(),
@@ -335,4 +369,5 @@ export function clearTooltipWarmth(): void {
   visibleTooltipDismissers.clear();
   visibleTooltipTokens.clear();
   warmUntilMs = 0;
+  tooltipSuppressedUntilMs = 0;
 }

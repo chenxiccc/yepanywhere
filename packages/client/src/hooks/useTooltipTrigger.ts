@@ -6,11 +6,13 @@ import {
   useRef,
 } from "react";
 import {
+  areTooltipsSuppressed,
   beginTooltipVisibility,
   endTooltipVisibility,
   exceedsTooltipPointerJitter,
   getEffectiveTooltipDelayMs,
   getTooltipDelayMs,
+  subscribeTooltipSuppression,
   TOOLTIP_CLOSE_DELAY_MULTIPLIER,
   useTooltipMode,
 } from "./useTooltipAppearance";
@@ -72,6 +74,10 @@ export function useTooltipTrigger({
 
   const show = useCallback(() => {
     timerRef.current = null;
+    if (areTooltipsSuppressed()) {
+      close();
+      return;
+    }
     if (!visibilityTokenRef.current && tooltipMode === "themed") {
       visibilityTokenRef.current = beginTooltipVisibility(close);
     }
@@ -80,6 +86,7 @@ export function useTooltipTrigger({
 
   const schedule = useCallback(() => {
     clearTimer();
+    if (areTooltipsSuppressed()) return;
     if (openRef.current) return;
     const delayMs =
       tooltipMode === "native"
@@ -184,6 +191,8 @@ export function useTooltipTrigger({
   useEffect(() => {
     if (!open) releaseVisibility();
   }, [open, releaseVisibility]);
+
+  useEffect(() => subscribeTooltipSuppression(close), [close]);
 
   useEffect(() => {
     if (!open || tooltipMode !== "themed") return;

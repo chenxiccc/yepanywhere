@@ -7,11 +7,15 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import {
+  areTooltipsSuppressed,
   beginTooltipVisibility,
+  COMPOSER_TYPING_TOOLTIP_SUPPRESSION_MS,
   endTooltipVisibility,
   exceedsTooltipPointerJitter,
   getEffectiveTooltipDelayMs,
   getTooltipDelayMs,
+  subscribeTooltipSuppression,
+  suppressTooltipsFor,
   TOOLTIP_CLOSE_DELAY_MULTIPLIER,
   useTooltipMode,
 } from "../../hooks/useTooltipAppearance";
@@ -319,6 +323,10 @@ export function TooltipLayer() {
 
   const activate = useCallback(
     (target: Element, anchorX: number, anchorY: number) => {
+      if (areTooltipsSuppressed()) {
+        hide();
+        return;
+      }
       clearHideTimer();
       const changesTarget = target !== activeTargetRef.current;
       const switchesVisibleTooltip = changesTarget && visibleRef.current;
@@ -358,6 +366,27 @@ export function TooltipLayer() {
       show,
     ],
   );
+
+  useEffect(() => subscribeTooltipSuppression(hide), [hide]);
+
+  useEffect(() => {
+    const onComposerInput = (event: Event) => {
+      if (
+        !(event.target instanceof Element) ||
+        !event.target.matches("[data-composer-input]")
+      ) {
+        return;
+      }
+      suppressTooltipsFor(COMPOSER_TYPING_TOOLTIP_SUPPRESSION_MS);
+    };
+
+    document.addEventListener("beforeinput", onComposerInput, true);
+    document.addEventListener("input", onComposerInput, true);
+    return () => {
+      document.removeEventListener("beforeinput", onComposerInput, true);
+      document.removeEventListener("input", onComposerInput, true);
+    };
+  }, []);
 
   useEffect(() => {
     if (tooltipMode !== "themed") {

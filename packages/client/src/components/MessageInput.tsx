@@ -2440,6 +2440,7 @@ export function MessageInput({
             )}
             <textarea
               ref={textareaRef}
+              data-composer-input
               value={text}
               onBeforeInput={(event) => {
                 const nativeEvent = event.nativeEvent as InputEvent;

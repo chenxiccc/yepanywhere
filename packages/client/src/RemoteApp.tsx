@@ -40,6 +40,7 @@ import { CurrentSourceRuntimeProvider } from "./contexts/SourceRuntimeContext";
 import { ToastProvider } from "./contexts/ToastContext";
 import { useNeedsAttentionBadge } from "./hooks/useNeedsAttentionBadge";
 import { useSyncNotifyInAppSetting } from "./hooks/useNotifyInApp";
+import { primeProviderCache } from "./hooks/useProviders";
 import {
   getVisibleReloadBanners,
   useReloadNotifications,
@@ -47,6 +48,7 @@ import {
 import { useRemoteActivityBusConnection } from "./hooks/useRemoteActivityBusConnection";
 import { useRemoteBasePath } from "./hooks/useRemoteBasePath";
 import { useVersion } from "./hooks/useVersion";
+import { useClientSummarySourceKey } from "./lib/clientSummaryStore";
 import { initClientLogCollection } from "./lib/diagnostics";
 import {
   getRelayCanonicalRedirectTarget,
@@ -68,6 +70,14 @@ function ConnectedAppContentInner({ children }: { children: ReactNode }) {
   const { currentRelayUsername } = useRemoteConnection();
   const { version: versionInfo } = useVersion();
   const { icon: hostIdentityIcon } = useHostIdentity();
+  const sourceKey = useClientSummarySourceKey();
+
+  useEffect(() => {
+    void primeProviderCache(sourceKey).catch(() => {
+      // Connected consumers retain their normal loading/error path when this
+      // advisory background request cannot populate the catalog.
+    });
+  }, [sourceKey]);
 
   useNeedsAttentionBadge(hostIdentityIcon ?? undefined);
 
