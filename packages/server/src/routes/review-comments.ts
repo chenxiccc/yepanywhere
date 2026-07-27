@@ -23,6 +23,7 @@ import {
   type AnchorRelocation,
   relocateAnchors,
 } from "../review/relocateAnchors.js";
+import { structuredErrorHandler } from "../middleware/error-handler.js";
 import type { ReviewSessionLauncher } from "../review/reviewSessionLauncher.js";
 import { resolveProjectPath } from "./projectParam.js";
 
@@ -39,6 +40,10 @@ export interface ReviewCommentsDeps {
 
 export function createReviewCommentsRoutes(deps: ReviewCommentsDeps): Hono {
   const routes = new Hono();
+  // When mounted, thrown errors (e.g. the service's HttpError 413 at the
+  // draft cap) reach the root app's identical handler; this local install
+  // covers direct requests against the unmounted sub-app, as in tests.
+  routes.onError(structuredErrorHandler);
   const service = deps.service ?? new ReviewCommentService();
 
   // GET /:projectId/review/comments — full draft store (comments + batches).

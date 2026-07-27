@@ -81,6 +81,21 @@ const WORKING_TREE_HISTORY_SOURCE: GitDiffSource = {
   kind: "working-tree-history",
 };
 
+/**
+ * Rebuild a source from its primitives. Effects depend on (kind, sha) rather
+ * than the source object, whose identity changes every render.
+ */
+function sourceFromPrimitives(
+  kind: GitDiffSource["kind"],
+  sha: string,
+): GitDiffSource {
+  return kind === "commit"
+    ? { kind: "commit", sha }
+    : kind === "working-tree-history"
+      ? WORKING_TREE_HISTORY_SOURCE
+      : WORKTREE_SOURCE;
+}
+
 function fetchDiffForSource(
   projectId: string,
   file: GitFileChange,
@@ -279,13 +294,7 @@ export function GitDiffBody({
     setDiffResult(null);
     setError(null);
 
-    const effectiveSource: GitDiffSource =
-      sourceKind === "commit"
-        ? { kind: "commit", sha: sourceSha }
-        : sourceKind === "working-tree-history"
-          ? WORKING_TREE_HISTORY_SOURCE
-          : WORKTREE_SOURCE;
-    fetchDiffForSource(projectId, file, effectiveSource)
+    fetchDiffForSource(projectId, file, sourceFromPrimitives(sourceKind, sourceSha))
       .then((result) => {
         if (!cancelled) {
           setDiffResult(result);
@@ -415,16 +424,10 @@ function GitDiffContent({
     setContextLoading(true);
     setContextError(null);
     try {
-      const effectiveSource: GitDiffSource =
-        sourceKind === "commit"
-          ? { kind: "commit", sha: sourceSha }
-          : sourceKind === "working-tree-history"
-            ? WORKING_TREE_HISTORY_SOURCE
-            : WORKTREE_SOURCE;
       const result = await fetchDiffForSource(
         projectId,
         file,
-        effectiveSource,
+        sourceFromPrimitives(sourceKind, sourceSha),
         true,
       );
       setFullContextResult(result);

@@ -3,7 +3,10 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import type { ReviewCommentAnchor } from "@yep-anywhere/shared";
+import {
+  MAX_REVIEW_COMMENTS,
+  type ReviewCommentAnchor,
+} from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   ReviewCommentService,
@@ -227,5 +230,40 @@ describe("ReviewCommentService", () => {
         svc.addComment(dir, { anchor: anchor(), text: "x" }),
       ).resolves.toBeTruthy();
     });
+  });
+});
+
+describe("ReviewCommentService draft cap", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "yep-review-cap-"));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("refuses a comment past MAX_REVIEW_COMMENTS with a 413 HttpError", async () => {
+    const service = makeService();
+    // Seed the store at the cap via the persisted file — the load parser
+    // accepts exactly MAX_REVIEW_COMMENTS entries, so one more must refuse
+    // rather than persist a draft the next load would silently drop.
+    const comments = Array.from({ length: MAX_REVIEW_COMMENTS }, (_, i) => ({
+      id: `seed-${i}`,
+      anchor: anchor(),
+      text: `c${i}`,
+      status: "pending",
+      createdAt: "2026-07-26T00:00:00Z",
+    }));
+    await mkdir(join(dir, ".yep"), { recursive: true });
+    await writeFile(
+      join(dir, ".yep", "review-comments.json"),
+      JSON.stringify({ version: 1, comments, batches: [] }),
+    );
+
+    await expect(
+      service.addComment(dir, { anchor: anchor(), text: "one too many" }),
+    ).rejects.toMatchObject({ name: "HttpError", status: 413 });
   });
 });

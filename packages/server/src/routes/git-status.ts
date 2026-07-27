@@ -512,6 +512,9 @@ async function getUntrackedDiffPreviewSizeSkip(
  * Get old and new file content for computing a diff.
  * Handles all git status codes (M, A, D, ?, R, etc.).
  */
+/** `git show HEAD:path` can exceed runGit's 1 MB default for large files. */
+const AGAINST_HEAD_SHOW_MAX_BUFFER = 16 * 1024 * 1024;
+
 async function getFileVersions(
   cwd: string,
   path: string,
@@ -523,16 +526,30 @@ async function getFileVersions(
   if (againstHead) {
     const oldPath =
       (status === "R" || status === "C") && origPath ? origPath : path;
-    const [oldResult, newContent] = await Promise.all([
+    const [oldContent, newContent] = await Promise.all([
       status === "?" || status === "A"
-        ? Promise.resolve({ stdout: "" })
-        : runGit(cwd, ["show", `HEAD:${oldPath}`]).catch(() => ({
-            stdout: "",
-            stderr: "",
-          })),
+        ? Promise.resolve("")
+        : runGit(cwd, ["show", `HEAD:${oldPath}`], {
+            maxBuffer: AGAINST_HEAD_SHOW_MAX_BUFFER,
+          }).then(
+            (result) => result.stdout,
+            (error) => {
+              // Only "absent at HEAD" (file added since) may read as empty.
+              // A too-big HEAD version must fail loudly — an empty fallback
+              // would render the file as fully added instead of hitting the
+              // preview-size skip.
+              if (
+                (error as NodeJS.ErrnoException).code ===
+                "ERR_CHILD_PROCESS_STDIO_MAXBUFFER"
+              ) {
+                throw error;
+              }
+              return "";
+            },
+          ),
       readFile(resolve(cwd, path), "utf-8").catch(() => ""),
     ]);
-    return { oldContent: oldResult.stdout, newContent };
+    return { oldContent, newContent };
   }
 
   // Untracked: entire file is new

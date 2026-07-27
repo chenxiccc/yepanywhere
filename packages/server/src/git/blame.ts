@@ -98,7 +98,10 @@ export async function getBlame(
 
   const result: GitBlameResult = {
     path,
-    rev: rev ?? "HEAD",
+    // The blamed revision as fact, not as request echo: the resolved full sha
+    // for an explicit rev, "working-tree" otherwise — never "HEAD", which
+    // would misstate a working-tree blame that includes uncommitted lines.
+    rev: resolved ?? "working-tree",
     lines,
     truncated,
   };

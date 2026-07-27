@@ -100,7 +100,7 @@ export interface GitBlameLine {
 /** Whole-file blame plus the highlighted file body for the viewer. */
 export interface GitBlameResult {
   path: string;
-  /** The revision blamed (a sha, or "HEAD" for the working tree). */
+  /** The blamed revision: a resolved full sha, or "working-tree". */
   rev: string;
   lines: GitBlameLine[];
   /** Shiki HTML of the file (per-line spans), aligned to `lines` by order. */
