@@ -1,8 +1,8 @@
 # Source Review → New Session
 
-> A read-only source-control/repo viewer whose primary job is directing
-> agents, not managing git. In a large-screen multipane layout you navigate
-> the working-tree diff and recent commit(s) and — Gerrit/GitHub style —
+> A review-first source-control/repo viewer whose primary job is directing
+> agents, not manually managing git. In a large-screen multipane layout you
+> navigate the working-tree diff and recent commit(s) and — Gerrit/GitHub style —
 > **click a diff line to open a comment window**. You do not select an exact
 > span; nearby context is implied. Comments accrue as drafts across files and
 > diff lines while the tree keeps changing under them; "submit review" drains
@@ -11,8 +11,9 @@
 > consumed. Drafts are **server-owned**: every git-state operation here passes
 > through the server anyway, and a long review spans devices, so a review
 > continues seamlessly across browsers. A mobile back-swipe version (with a
-> small commit-jump selector) is usable too. No git write actions from this
-> surface; agents keep doing the commits/merges.
+> small commit-jump selector) is usable too. Pull and Push are the only manual
+> repo-state changes exposed; agents keep doing commits, staging, branch
+> surgery, integration, conflict resolution, and other meaningful git work.
 
 Topic: source-review-to-session
 
@@ -62,16 +63,21 @@ archived
 is useful for interaction and layout inspiration only. Do not copy it wholesale:
 it is deliberately more feature-rich than YA's goals here, especially around
 file and git management. Any borrowed idea must first pass this topic's
-read-only, agent-directing scope.
+review-first, agent-directing scope.
 
 ## Design stance
 
-- **Read-only by contract.** This surface never mutates the repo: no branch
-  switch, commit, push, stash, or merge. Those stay with agents (kzahel's and
-  graehl's shared stance — dumb ff-only pull at most, agents do the rest). The
-  viewer only *reads* and *copies*, and its one write is composing a new session
-  prompt. Read-only is what makes it safe to be featureful and polished without
-  becoming a second, fallible git client.
+- **Review-first; Pull/Push are narrow exceptions.** Inspection, copying, and
+  composing an agent turn are the surface's center. The established remote
+  controls are Check, Pull, and Push: Check refreshes remote-tracking
+  observation; fast-forward-only Pull and explicit Push are the only manual
+  operations presented as repository state changes. Commit, stage, branch,
+  stash, integration, conflict, and destructive/recovery work stays with
+  agents. This is a deliberate safety and workflow decision, not an
+  implementation limitation: even when a button would be trivial to wire, an
+  attentive agent can inspect preconditions, preserve unrelated work, explain
+  the exact operation, and adapt or recover when the repository is not in the
+  expected state.
 - **Compose, don't act.** The output of a review is never a git operation; it is
   a **review session turn** — a new session, or a follow-up to a recent review
   session — carrying the reviewer's comments and the code they were about. The
@@ -268,9 +274,10 @@ line or historical citation as applicable. The turn also explicitly tells the
 agent to read current file state rather than treating the quote as
 authoritative.
 
-## Read-only repo viewer scope
+## Review-first repo viewer scope
 
-The polished viewer graehl wanted, kept strictly read-only:
+The polished viewer graehl wanted, kept read-only except for the established
+Pull/Push actions:
 
 - **Repo/branch status bar.** At tablet/desktop widths, one small persistent
   top row carries project identity, current branch, sync/dirty state, source
@@ -279,15 +286,21 @@ The polished viewer graehl wanted, kept strictly read-only:
   visible without spending a second toolbar row. On phone widths only the
   small project header persists; repo state, modes, and review controls may
   wrap into scrolling rows and must scroll away with content. The surface
-  exposes status and existing upstream actions, not the write actions in
-  Non-goals.
-- **Current work first; history remains deliberate.** Source Control lands on
-  **Changes** at every viewport. Changes owns the current HEAD-to-filesystem
-  view: one row per changed path, staged/unstaged/both/untracked state, and the
-  same diff/comment stack with `uncommitted` anchors. A clean tree shows a
-  quiet clean state. Commits contains actual commits only; the working tree is
-  not a synthetic commit or duplicated history row. The Dirty status badge
-  returns to Changes.
+  exposes status and the established Check/Pull/Push actions, not the deferred
+  manual operations in Non-goals.
+- **Changes-first today; converge without removing the quick check.** Source
+  Control currently lands on **Changes** at every viewport, preserving Kyle's
+  accustomed-to quick-check experience. Changes owns the current
+  HEAD-to-filesystem view: one row per changed path,
+  staged/unstaged/both/untracked state, and the same diff/comment stack with
+  `uncommitted` anchors. A clean tree shows a quiet clean state. The intended
+  direction is to make Changes gradually redundant by making a dirty
+  **Working tree** revision in Commits equally immediate and useful, while
+  preserving Changes as the dedicated fast path during that convergence.
+  Changing the default landing to Commits happens only after that dirty-tree
+  path is approved as useful on both mobile and desktop and Kyle gives the
+  go-ahead. Until then, Commits contains actual commits only, and the Dirty
+  status badge returns to Changes.
 - Multipane commit/diff navigation: browse recent commit(s), history/log, and a
   commit's diff **without switching branches**.
   The reference layout above is a **3-column** browser (commits · files ·
@@ -314,14 +327,17 @@ The polished viewer graehl wanted, kept strictly read-only:
 
 ## Non-goals
 
-- No git write actions from the UI (branch switch, commit, push, stash, merge,
-  rename/delete files). If a repo change is wanted, it is phrased as a comment to
-  an agent, not performed here.
+- No manual git-state-changing actions beyond Pull/Push. In particular, no
+  staging, commit/amend, restore/discard/reset, branch switch or creation,
+  stash mutation, merge/rebase/cherry-pick/revert, conflict workflow, tag, or
+  rename/delete operation is currently planned. When one of those changes is
+  wanted, the user asks an agent to perform it with repository-specific
+  attention.
 - No precise span selection to limit context — anchoring is per-line with implied
   nearby context, by design.
-- Not a replacement for agent-driven git; not a full IDE or a second VS Code; not
-  a general file manager (the #95 rename/delete items are out by the read-only
-  contract).
+- Not a replacement for agent-driven git; not a full IDE or a second VS Code;
+  not a general file manager (the #95 rename/delete items are intentionally
+  unimplemented).
 
 ## Design decisions
 
@@ -329,6 +345,12 @@ The polished viewer graehl wanted, kept strictly read-only:
   supervision moment is reviewing an agent's dirty worktree before it commits,
   and the existing GitStatusDiffPreview foundation is exactly that view; an
   anchor class with no SHA (labeled `uncommitted`, timestamped) covers it.
+- **Changes-to-Commits convergence is approval-gated** (vs. either permanent
+  duplicate investment or an immediate default flip): keep Changes as Kyle's
+  accustomed-to quick-check surface while Commits grows a dirty Working tree
+  landing that can make it redundant. Do not change the default until the
+  candidate is approved as useful on mobile and desktop and Kyle gives the
+  go-ahead.
 - **Submit-time relocation, SHA cited only on failure** (vs. citing every
   comment's commit): lean seeded turns; the agent needs a SHA only when the
   line is gone from the current tree.
@@ -441,9 +463,10 @@ When the row fits (including tablet widths), project identity, repo/branch
 state, Changes/Commits/Files/Comments, and an always-visible Review action
 compose into one page-header row. There is no second persistent repo toolbar.
 Source Control lands on Changes; an absent or unknown `?tab=` value resolves
-there. Pull, Push, and Check report their result on the control that initiated
-them; in particular, a successful remote check is visible on the Check button
-instead of creating a separate status row.
+there until the approval-gated Commits default above is accepted. Pull, Push,
+and Check report their result on the control that initiated them; in
+particular, a successful remote check is visible on the Check button instead
+of creating a separate status row.
 Review with no pending comments opens Comments and its "click a line" guidance;
 with drafts it opens submit preview directly, so a first-time explorer can
 discover the complete comment → review-session path from the header.
@@ -455,6 +478,110 @@ scrolling content and disappear while reading. Both placements drive the same
 only simultaneous desktop panes become focused mobile navigation. — Revised
 2026-07-27; see
 [`docs/tactical/064-source-control-responsive-navigation.md`](../docs/tactical/064-source-control-responsive-navigation.md).
+
+### GitHub Desktop review grammar; operations stay options — proposal
+
+GitHub Desktop is useful here as learned **review-navigation grammar**, not as
+the scope of a native git client. Its Changes and History views consistently
+make one selection drive the adjacent file list and diff, keep state and
+identity in dense rows, and provide keyboard navigation and contextual
+actions. Its manual operations are useful expectation research, but are
+intentionally unimplemented options rather than part of the planned redesign.
+This is the modest boundary requested in the two closing comments on
+[`kzahel/yepanywhere#76`](https://github.com/kzahel/yepanywhere/pull/76#issuecomment-5096340400):
+use the familiar interface as inspiration while leaving git operations to
+agents
+([follow-up](https://github.com/kzahel/yepanywhere/pull/76#issuecomment-5096351210)).
+
+**Expected operations, intentionally absent.** A GitHub Desktop user may
+reasonably look for:
+
+- stage/unstage, commit, amend, and undo-last-commit;
+- restore/discard changes and reset;
+- create/apply/pop/drop stash;
+- create/switch/rename/delete branch;
+- merge, rebase, cherry-pick, revert, commit checkout, and conflict
+  resolution; and
+- compound Fetch/Sync/Publish workflows beyond YA's explicit Check, Pull, and
+  Push controls.
+
+These are options YA is in theory open to adding one at a time, not a backlog.
+Their implementation is often trivial; that is intentionally not sufficient
+reason to expose them. The preferred workflow is to ask an agent to perform a
+meaningful state change with full attention to repository state, unrelated
+work, remote movement, the intended scope, and recovery. A single-screen
+visual summary—however good—does not replace that judgment. Reopen an option
+only after real, repeated workflow demand shows that agent delegation is
+materially worse; then specify that operation's preconditions, failure
+feedback, and recovery before approval. Do not import a completeness bundle
+merely because users of a full git client may expect it.
+
+The convergence target is one **revision-detail model** with two entry points:
+
+- **Changes remains the quick check.** It opens the Working tree's file/diff
+  detail immediately and stays the default while the candidate below is
+  evaluated. It must not become slower merely to make the two tabs look alike.
+- **Commits may gain a pinned Working tree revision above actual commits when
+  the tree is dirty.** Selecting it uses the same file rows, staged/unstaged
+  state, diff, comments, and `uncommitted` anchors as Changes. This is shared
+  behavior, not a second implementation styled to resemble it. A clean tree
+  starts with actual commits.
+- **Desktop keeps the existing master-detail progression:** revisions · files
+  · diff. The compact Changes path may keep its direct files · diff form.
+- **Phone must drill in rather than append detail below history:** revisions →
+  selected revision's files → selected file's diff, with an explicit Back at
+  each transition. The earlier unified experiment failed because Working tree
+  detail appeared after the full commit stream; the repaired commit drill-in
+  is now the pattern the candidate must reuse.
+- **The default flip remains separately gated.** An evaluation build or
+  default-off option may expose the candidate while Changes remains the
+  landing. Commits becomes the default only after the dirty-tree route is
+  approved as useful on both mobile and desktop and Kyle gives the go-ahead.
+  Changes remains available after a flip.
+
+The first review accelerators should be small, read-only, and shared by both
+entry points:
+
+1. **List and drill-in keys:** Up/Down moves the active revision or file
+   selection, Enter opens its detail on a focused layout, and Escape returns
+   one level or clears the active filter. `/` focuses search when focus is not
+   in an editor or input.
+2. **Symmetric hunk keys:** keep `n` for next hunk and add `p` for previous.
+   The visible toolbar remains the touch path; keyboard use is never required.
+3. **One accessible context menu:** right-click, long-press, the visible
+   ellipsis, and Shift+F10/Menu all open the same read-only menu specified
+   below.
+4. **Diff review controls:** retain Unified/Split and full context; consider
+   “ignore whitespace” and incremental context expansion before adding more
+   permanent toolbar chrome. GitHub Desktop exposes these same review
+   projections in its
+   [change-review guide](https://docs.github.com/en/desktop/making-changes-in-a-branch/committing-and-reviewing-changes-to-your-project-in-github-desktop).
+5. **Focused-pane expansion before freeform layout controls:** a temporary
+   expand/collapse action can use the otherwise idle desktop gutter while
+   preserving the deliberate per-column content-width cap. Draggable splitters
+   are a later evidence-led choice, not part of the modest pass.
+
+Do **not** copy GitHub Desktop's accelerators literally. Its native application
+uses Command/Control+1 and +2 for Changes/History, Command/Control+L for the
+Changes filter, Command/Control+F for Find, and Command/Control+8/+9 for pane
+sizing
+([shortcut reference](https://docs.github.com/en/desktop/overview/github-desktop-keyboard-shortcuts);
+[pinned source](https://github.com/desktop/desktop/blob/57d0f8129656978e2b064f4c8d3d9fec7e2e21ee/app/src/main-process/menu/build-default-menu.ts)).
+Those combinations collide with ordinary browser tab selection, the address
+bar, and browser Find. YA should use the scope-aware keys above and add a `?`
+shortcut overlay if the set grows beyond what the visible controls teach.
+
+A contiguous multi-commit comparison is the strongest later accelerator, not
+part of the modest pass. GitHub Desktop lets a reviewer select a consecutive
+range and inspect the aggregate file diff
+([history guide](https://docs.github.com/en/desktop/making-changes-in-a-branch/viewing-the-branch-history-in-github-desktop)).
+YA could offer Shift-range selection on desktop and explicit “compare from/to”
+actions on touch, but must first define ancestor/merge behavior rather than
+pretending every chronological range is a simple linear diff.
+
+— Proposal, researched against GitHub Desktop
+[`57d0f812`](https://github.com/desktop/desktop/tree/57d0f8129656978e2b064f4c8d3d9fec7e2e21ee)
+and live YA desktop/phone captures (2026-07-27).
 
 ### Released-server fallback and action feedback
 
@@ -503,16 +630,16 @@ creation), and the UI shows and copies that base SHA. The stash's index parent
 and optional untracked-files parent remain visible as provenance/facets rather
 than silently disappearing or replacing that primary ancestor-to-stash diff.
 
-Dropping a stash would be the first deliberate git-mutating exception to this
-surface's read-only contract and is **not approved or implemented by this
-proposal**. If adopted, "drop" must be recoverable: retain the stash tip under
-a YA-owned Git ref before removing it from `refs/stash`, and append one record
-to a single `.yep/dropped-stashes.jsonl` audit/recovery log. The log records
-the original stash identity, retained ref, tip SHA, message, and drop time; it
-cannot itself hold the stash object graph or keep unreferenced objects alive.
-The UI must expose recovery and eventual permanent cleanup, and the exception
-must be reconciled explicitly with the Non-goals rather than quietly weakening
-them.
+Dropping a stash would be a new manual-mutation exception beyond Pull/Push and
+is an **intentionally unimplemented option**, not approved by this proposal.
+If real demand eventually justifies it, "drop" must be recoverable: retain the
+stash tip under a YA-owned Git ref before removing it from `refs/stash`, and
+append one record to a single `.yep/dropped-stashes.jsonl` audit/recovery log.
+The log records the original stash identity, retained ref, tip SHA, message,
+and drop time; it cannot itself hold the stash object graph or keep
+unreferenced objects alive. The UI must expose recovery and eventual permanent
+cleanup, and the exception must be reconciled explicitly with the Non-goals
+rather than quietly weakening them.
 
 ### Context menus — pending
 
