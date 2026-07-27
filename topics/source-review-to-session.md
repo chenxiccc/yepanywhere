@@ -226,8 +226,8 @@ vision is the multi-comment, drain-all-unconsumed flow.
 
 **Edit block → dirty file.** Each session Edit tool block with a usable project
 file offers **Review dirty file**. The link opens that project's Source Control
-at the Working tree revision and the exact edited file. The session containing
-the link becomes the **default session** for that Source Control browser-history
+in Changes at the exact edited Working tree file. The session containing the
+link becomes the **default session** for that Source Control browser-history
 entry. Back/forward and navigation among Source Control modes preserve it; a
 deliberate project switch clears it. This default is tab-local navigation
 history, not server or project recency: activity in another tab, browser,
@@ -281,21 +281,15 @@ The polished viewer graehl wanted, kept strictly read-only:
   wrap into scrolling rows and must scroll away with content. The surface
   exposes status and existing upstream actions, not the write actions in
   Non-goals.
-- **One history, including the working tree.** Source Control lands on the
-  commit browser; there is no separate Changes landing or Changes mode. When
-  the repository is dirty, a visually distinct synthetic **Working tree**
-  entry is pinned first in the same history. It is a real review target, not a
-  status shortcut: selecting it opens its changed-file list and the same
-  diff/comment stack as a commit, with comments anchored as `uncommitted`.
-  Staged, unstaged, and untracked state remains legible in its file list. The
-  synthetic entry has no fake SHA, author, date, read watermark, or commit
-  message, and disappears when the repository becomes clean; the ordinary
-  Clean status marker may remain as quiet confirmation. On a dirty repository
-  it is the initial desktop selection; otherwise the newest real commit is.
-- Multipane commit/diff navigation: browse the synthetic working-tree entry,
-  recent commit(s) and history/log, and a commit's diff **without switching
-  branches** (extends GitStatusDiffPreview, which is already the working-tree
-  diff viewer).
+- **Current work first; history remains deliberate.** Source Control lands on
+  **Changes** at every viewport. Changes owns the current HEAD-to-filesystem
+  view: one row per changed path, staged/unstaged/both/untracked state, and the
+  same diff/comment stack with `uncommitted` anchors. A clean tree shows a
+  quiet clean state. Commits contains actual commits only; the working tree is
+  not a synthetic commit or duplicated history row. The Dirty status badge
+  returns to Changes.
+- Multipane commit/diff navigation: browse recent commit(s), history/log, and a
+  commit's diff **without switching branches**.
   The reference layout above is a **3-column** browser (commits · files ·
   diff); the diff pane renders **unified or side-by-side** per the
   diff-view-mode decision below, side-by-side reading as a 4-column layout.
@@ -311,9 +305,12 @@ The polished viewer graehl wanted, kept strictly read-only:
   browser.
 - Copy affordances: file name, absolute path, relative path, branch name, commit
   hash — the non-mutating subset of the #95 context menu.
-- Mobile: a back-swipe-navigable version with a small commit-jump selector,
-  usable for reading diffs and leaving comments on the go (the #95 branch showed
-  mobile matters).
+- Mobile: Changes shows its file list and opens a selected diff full-screen.
+  Commits is master/detail navigation: commit list → selected commit files →
+  full-screen diff, with explicit and back-swipe navigation restoring the
+  previous level and list position. Selected files never render after the
+  complete history list. The small commit-jump selector remains available in
+  commit detail (the #95 branch showed mobile matters).
 
 ## Non-goals
 
@@ -441,12 +438,12 @@ otherwise grows unbounded; leftover width stays as gutter
 ### One discoverable source header; phone rows scroll
 
 When the row fits (including tablet widths), project identity, repo/branch
-state, Commits/Files/Comments, and an always-visible Review action compose into
-one page-header row. There is no second persistent repo toolbar. Source Control
-lands on Commits; a legacy or absent `?tab=` value resolves there rather than
-to a removed Changes body. Pull, Push, and Check report their result on the
-control that initiated them; in particular, a successful remote check is
-visible on the Check button instead of creating a separate status row.
+state, Changes/Commits/Files/Comments, and an always-visible Review action
+compose into one page-header row. There is no second persistent repo toolbar.
+Source Control lands on Changes; an absent or unknown `?tab=` value resolves
+there. Pull, Push, and Check report their result on the control that initiated
+them; in particular, a successful remote check is visible on the Check button
+instead of creating a separate status row.
 Review with no pending comments opens Comments and its "click a line" guidance;
 with drafts it opens submit preview directly, so a first-time explorer can
 discover the complete comment → review-session path from the header.
@@ -454,7 +451,39 @@ discover the complete comment → review-session path from the header.
 Phone widths keep only the small project header fixed. Repo status, tabs, and
 Review may use additional rows in the page body, but those rows are ordinary
 scrolling content and disappear while reading. Both placements drive the same
-`?tab=` URL state (`useSourceTab`). — Done (2026-07-26).
+`?tab=` URL state (`useSourceTab`). The tab meanings do not change by viewport;
+only simultaneous desktop panes become focused mobile navigation. — Revised
+2026-07-27; see
+[`docs/tactical/064-source-control-responsive-navigation.md`](../docs/tactical/064-source-control-responsive-navigation.md).
+
+### Released-server fallback and action feedback
+
+The complete Changes/Commits/Files/Comments browser and source-review workflow
+requires the permanent `git-source-review` capability. That capability owns
+the commit browse, search, blame, commit-diff, review-comment, preview, and
+submit routes plus the extended HEAD-to-filesystem diff fields;
+`git-status-enhanced` retains only its previously released status,
+untracked-folder, and basic working-tree-diff meaning.
+
+When `git-status-enhanced` exists without `git-source-review`, Source Control
+renders a basic compatibility shell instead of an upgrade-only dead end:
+repository/branch/upstream/ahead-behind/clean state plus Check, Pull, Push, and
+integration analysis according to their existing independent capability
+advertisements. It explains that commit history, file browsing, and source
+review require a server update. It does not mount a new browse/review component
+or call one of its routes.
+
+Git action outcomes render twice by design: a brief mark on the initiating
+button for immediate attribution and a persistent full-text panel beside the
+page content. The panel survives until the next action or project change;
+warnings are alerts and successes are status messages. Touch users never need
+hover to learn why Pull or Push left the branch unchanged.
+
+The core compatibility corpus initially covers released `v0.6.0`, `v0.6.1`,
+`v0.6.2`, and `v0.7.0`. See
+[`docs/tactical/063-source-control-hosted-compatibility.md`](../docs/tactical/063-source-control-hosted-compatibility.md).
+
+— Done (2026-07-27).
 
 ### Stash triage in history — proposal only
 

@@ -18,6 +18,7 @@ export function RepoStatusBar({
   status,
   tabs,
   actions,
+  onSelectChanges,
   inline = false,
   t,
 }: {
@@ -27,6 +28,8 @@ export function RepoStatusBar({
   tabs?: ReactNode;
   /** Trailing controls (e.g. the review-tray button), after the badge. */
   actions?: ReactNode;
+  /** Make a dirty badge open the working-tree Changes mode. */
+  onSelectChanges?: () => void;
   /** Compose status into PageHeader chrome instead of rendering a separate bar. */
   inline?: boolean;
   t: TranslationFn;
@@ -77,11 +80,22 @@ export function RepoStatusBar({
           {status.behind > 0 && ` ↓${status.behind}`}
         </span>
       )}
-      <span
-        className={`repo-status-badge ${status.isClean ? "clean" : "dirty"}`}
-      >
-        {status.isClean ? t("gitStatusClean") : t("gitStatusDirty")}
-      </span>
+      {!status.isClean && onSelectChanges ? (
+        <button
+          type="button"
+          className="repo-status-badge dirty repo-status-badge-action"
+          title={t("sourceOpenChanges")}
+          onClick={onSelectChanges}
+        >
+          {t("gitStatusDirty")}
+        </button>
+      ) : (
+        <span
+          className={`repo-status-badge ${status.isClean ? "clean" : "dirty"}`}
+        >
+          {status.isClean ? t("gitStatusClean") : t("gitStatusDirty")}
+        </span>
+      )}
       {inline && tabs}
       {actions}
     </div>

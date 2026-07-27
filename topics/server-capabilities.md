@@ -63,6 +63,29 @@ Capability flags are feature hints. They are not a substitute for protocol
 compatibility levels when a hosted client must stop supporting an older server
 class entirely.
 
+## Minimum Compatibility Horizons
+
+Capability fallbacks are user-facing support contracts, not rollout
+conveniences. Before a current client depends on a server contract absent from
+a stable release, classify the feature and inspect:
+
+- for an ordinary optional feature, the latest two stable releases and every
+  stable release from the preceding 14 days;
+- for core functionality, the latest two stable releases and every stable
+  release from the preceding 60 days.
+
+These are minimum horizons. Reaching the end of one only makes a fallback
+eligible for maintainer review; it does not remove the fallback, expand an
+existing capability, or raise a compatibility floor automatically. Preserve a
+cheap fallback longer when practical.
+
+Before implementation, record the release corpus, new routes/fields/events,
+capability or protocol decision, exact absent-capability behavior, and proof
+that the fallback makes no unsupported request. A maintainer must approve that
+plan. Any proposal to reuse or broaden an already-advertised capability needs
+particular scrutiny: an older server has already claimed the old meaning and
+cannot acquire new routes retroactively.
+
 ## Server Use
 
 `packages/server/src/routes/version.ts` advertises capability names from the
@@ -95,6 +118,13 @@ Periodically audit transitional capabilities:
 5. Retire or remove the registry entry once no maintained client or server
    code depends on it.
 
-Future automation should expose this as a `pnpm capabilities:audit` command
-that lists due transitional capabilities and scans for raw capability string
-checks outside the registry/domain helpers.
+`pnpm capabilities:audit` lists due transitional capabilities, rejects raw
+capability checks outside registry constants/helpers, and verifies that every
+route declared by a capability-owned route module is present in that
+capability's route contract (and vice versa). CI runs the audit. New
+capability-owned feature families should list their route modules in registry
+metadata so later route additions cannot silently escape the advertisement.
+
+The audit complements, rather than replaces, released-server behavior
+fixtures. A capability may be registered perfectly while the client still
+mounts its consumers before checking it.

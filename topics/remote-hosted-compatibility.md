@@ -118,6 +118,22 @@ the existing compatibility metadata.
   should not be the primary client/server compatibility contract because site
   and server releases use different version systems.
 
+## Support Horizon
+
+The coarse compatibility level does not shorten feature-level support. Apply
+the minimum horizons from
+[server-capabilities](server-capabilities.md#minimum-compatibility-horizons):
+latest two stable releases plus 14 days for optional functionality, and latest
+two plus 60 days for core functionality. A current hosted client should retain
+usable core behavior throughout that corpus whenever the older server
+advertises the established capability.
+
+Crossing a horizon authorizes a maintainer decision, not an automatic cutoff.
+Any cutoff still records the affected release corpus, user-visible warning,
+fallback that is being removed, and reason continued compatibility is no
+longer safe or practical. Cheap exact-capability fallbacks may remain
+indefinitely.
+
 ## Notice Behavior
 
 Use the existing remote compatibility notice model.

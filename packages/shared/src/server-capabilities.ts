@@ -33,6 +33,13 @@ export interface ServerCapabilityDefinition {
   clientFallback: string;
   serverContract?: {
     routes?: readonly string[];
+    /**
+     * Repository-relative server route modules wholly owned by this
+     * capability. `pnpm capabilities:audit` requires every route declared in
+     * these modules to appear in `routes`, and rejects stale route entries.
+     */
+    routeModules?: readonly string[];
+    requestFields?: readonly string[];
     responseFields?: readonly string[];
     events?: readonly string[];
   };
@@ -144,6 +151,44 @@ export const SERVER_CAPABILITIES = {
       kind: "permanent",
       reason:
         "Integration-option analysis depends on server-side route behavior older servers may not expose.",
+    },
+  },
+  gitSourceReview: {
+    name: "git-source-review",
+    kind: "permanent",
+    area: "gitStatus",
+    introducedIn: "0.7.1",
+    description:
+      "Server supports the commit/file browser and server-owned source-review workflow.",
+    clientFallback:
+      "Keep basic Source Control status and individually capability-gated remote actions; explain that browsing and review require a server update.",
+    serverContract: {
+      routes: [
+        "GET /api/projects/:projectId/git/commits",
+        "GET /api/projects/:projectId/git/commit-search-manifest",
+        "POST /api/projects/:projectId/git/commit-search-records",
+        "GET /api/projects/:projectId/git/commit/:sha",
+        "POST /api/projects/:projectId/git/commit-diff",
+        "GET /api/projects/:projectId/git/blame",
+        "GET /api/projects/:projectId/git/files",
+        "GET /api/projects/:projectId/git/search",
+        "GET /api/projects/:projectId/review/comments",
+        "POST /api/projects/:projectId/review/comments",
+        "PATCH /api/projects/:projectId/review/comments/:commentId",
+        "DELETE /api/projects/:projectId/review/comments/:commentId",
+        "POST /api/projects/:projectId/review/preview",
+        "POST /api/projects/:projectId/review/submit",
+      ],
+      routeModules: [
+        "packages/server/src/routes/git-browse.ts",
+        "packages/server/src/routes/review-comments.ts",
+      ],
+      requestFields: ["gitDiff.againstHead", "gitDiff.origPath"],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Hosted clients can outpace installed servers, while Source Control must retain its released basic status and synchronization path.",
     },
   },
   approvalAuditLog: {
@@ -465,6 +510,8 @@ export const GIT_STATUS_PUSH_CAPABILITY =
   SERVER_CAPABILITIES.gitStatusPush.name;
 export const GIT_STATUS_INTEGRATION_OPTIONS_CAPABILITY =
   SERVER_CAPABILITIES.gitStatusIntegrationOptions.name;
+export const GIT_SOURCE_REVIEW_CAPABILITY =
+  SERVER_CAPABILITIES.gitSourceReview.name;
 
 export const APPROVAL_AUDIT_LOG_CAPABILITY =
   SERVER_CAPABILITIES.approvalAuditLog.name;

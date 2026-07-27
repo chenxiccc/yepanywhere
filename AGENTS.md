@@ -80,6 +80,39 @@ testable outcomes and constraints, including deliberate failure or fallback
 behavior, rather than implementation narration. Tests and commit messages are
 evidence and history, not substitutes for the product contract.
 
+## Client/Server Backwards Compatibility
+
+Before making the client depend on a server route, response field, event, or
+changed semantic that is absent from a supported stable release, read
+`topics/server-capabilities.md` and `topics/remote-hosted-compatibility.md`.
+Identify whether the feature is core or optional and inspect every stable
+server release in the applicable minimum horizon:
+
+- optional features: the latest two stable releases and every stable release
+  from the preceding 14 days;
+- core functionality: the latest two stable releases and every stable release
+  from the preceding 60 days.
+
+Then present a compatibility plan before editing the client/server contract:
+name the releases, new routes/fields/events, proposed capability or protocol
+gate, exact behavior when it is absent, and whether any existing capability
+meaning or older capable fallback changes. Pause for maintainer approval. An
+originating request that already states and approves those decisions satisfies
+the pause; do not ask twice.
+
+Never expand an already-advertised capability to cover a contract older servers
+do not provide. A new client must not call a new endpoint until its gate is
+known present. Passing a support horizon permits human review only; it never
+automatically removes a fallback or raises a compatibility floor. Security
+exceptions follow `topics/hard-development-rules.md`.
+
+Suggested approval prompt:
+
+> Compatibility review for `<feature>`: releases `<corpus>` lack
+> `<routes/fields/events>`. I propose `<capability/protocol>`; without it the
+> client `<fallback>` and makes no unsupported requests. Existing capability
+> meanings and older capable behavior remain unchanged. Approve?
+
 ## Hard Development Rules
 
 Follow `topics/hard-development-rules.md` for binding upstream-facing

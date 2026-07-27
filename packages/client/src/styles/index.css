@@ -19322,6 +19322,12 @@ body:has(.session-page)
   color: var(--warning-color);
 }
 
+.git-status-action-notices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
 .git-status-action-message {
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border-color);
@@ -19529,6 +19535,36 @@ body:has(.session-page)
 
 .git-status-upgrade p {
   margin: 0;
+  line-height: 1.45;
+}
+
+.git-status-compatibility-notice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  color: var(--text-secondary);
+  background: color-mix(
+    in srgb,
+    var(--warning-color) 7%,
+    var(--bg-secondary)
+  );
+  border: 1px solid
+    color-mix(in srgb, var(--warning-color) 24%, var(--border-color));
+  border-radius: var(--radius-md);
+}
+
+.git-status-compatibility-notice h2,
+.git-status-compatibility-notice p {
+  margin: 0;
+}
+
+.git-status-compatibility-notice h2 {
+  color: var(--text-primary);
+  font-size: 1rem;
+}
+
+.git-status-compatibility-notice p {
   line-height: 1.45;
 }
 

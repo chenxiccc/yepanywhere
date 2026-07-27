@@ -4,7 +4,11 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  GIT_SOURCE_REVIEW_CAPABILITY,
   GIT_STATUS_ENHANCED_CAPABILITY,
+  GIT_STATUS_INTEGRATION_OPTIONS_CAPABILITY,
+  GIT_STATUS_PULL_CAPABILITY,
+  GIT_STATUS_PUSH_CAPABILITY,
   GIT_STATUS_REMOTE_CHECK_CAPABILITY,
 } from "@yep-anywhere/shared";
 import { resetRouteRetentionForTests } from "../../lib/routeRetention";
@@ -13,41 +17,49 @@ import { GitStatusPage } from "../GitStatusPage";
 
 const mocks = vi.hoisted(() => ({
   checkGitRemote: vi.fn(),
+  getGitIntegrationOptions: vi.fn(),
   listReviewComments: vi.fn(),
+  pullGit: vi.fn(),
+  pushGit: vi.fn(),
   useProjects: vi.fn(),
   useProject: vi.fn(),
   useVersion: vi.fn(),
   useGitStatus: vi.fn(),
   useNavigationLayout: vi.fn(),
   useMediaQuery: vi.fn(),
-  renderCommitBrowser: vi.fn(),
+  renderWorkingTreeBrowser: vi.fn(),
 }));
 
 vi.mock("../../api/client", () => ({
   api: {
     listReviewComments: mocks.listReviewComments,
     checkGitRemote: mocks.checkGitRemote,
-    pullGit: vi.fn(),
-    pushGit: vi.fn(),
+    getGitIntegrationOptions: mocks.getGitIntegrationOptions,
+    pullGit: mocks.pullGit,
+    pushGit: mocks.pushGit,
   },
 }));
 
-vi.mock("../CommitBrowser", async () => {
+vi.mock("../CommitBrowser", () => ({
+  CommitBrowser: () => <div data-testid="commit-browser">commit-history</div>,
+}));
+
+vi.mock("../WorkingTreeBrowser", async () => {
   const { useSourceReviewDefaultSession } = await import(
     "../../contexts/SourceReviewDefaultSessionContext"
   );
   return {
-    CommitBrowser: (props: {
+    WorkingTreeBrowser: (props: {
       status: GitStatusInfo;
       initialWorkingTreePath?: string;
     }) => {
-      mocks.renderCommitBrowser({
+      mocks.renderWorkingTreeBrowser({
         ...props,
         defaultSession: useSourceReviewDefaultSession(),
       });
       return (
-        <div data-testid="commit-browser">
-          {props.status.isClean ? "clean-history" : "dirty-history"}
+        <div data-testid="working-tree-browser">
+          {props.status.isClean ? "clean-changes" : "dirty-changes"}
         </div>
       );
     },
@@ -157,10 +169,28 @@ function renderPage(
   );
 }
 
+const RELEASED_BASIC_GIT_CAPABILITIES = [
+  GIT_STATUS_ENHANCED_CAPABILITY,
+  GIT_STATUS_REMOTE_CHECK_CAPABILITY,
+  GIT_STATUS_PULL_CAPABILITY,
+  GIT_STATUS_PUSH_CAPABILITY,
+  GIT_STATUS_INTEGRATION_OPTIONS_CAPABILITY,
+] as const;
+
+const CORE_GIT_COMPATIBILITY_RELEASES = [
+  { version: "v0.6.0", releasedAt: "2026-07-06" },
+  { version: "v0.6.1", releasedAt: "2026-07-10" },
+  { version: "v0.6.2", releasedAt: "2026-07-11" },
+  { version: "v0.7.0", releasedAt: "2026-07-25" },
+] as const;
+
 beforeEach(() => {
   resetRouteRetentionForTests();
   mocks.checkGitRemote.mockReset();
+  mocks.getGitIntegrationOptions.mockReset();
   mocks.listReviewComments.mockReset();
+  mocks.pullGit.mockReset();
+  mocks.pushGit.mockReset();
   mocks.listReviewComments.mockResolvedValue({
     comments: [],
     batches: [],
@@ -170,6 +200,29 @@ beforeEach(() => {
     status: "checked",
     checkedRemoteAt: "2026-07-26T12:00:00.000Z",
   });
+  mocks.getGitIntegrationOptions.mockResolvedValue({
+    status: "available",
+    checkedRemoteAt: "2026-07-26T12:00:00.000Z",
+    gitStatus: status(),
+    canAutoRebase: true,
+    canAutoMerge: true,
+    reasons: [],
+    ahead: 1,
+    behind: 1,
+    upstream: "origin/main",
+    isClean: true,
+    hasSequencerState: false,
+  });
+  mocks.pullGit.mockResolvedValue({
+    status: "pulled",
+    checkedRemoteAt: "2026-07-26T12:00:00.000Z",
+    gitStatus: status(),
+  });
+  mocks.pushGit.mockResolvedValue({
+    status: "pushed",
+    checkedRemoteAt: "2026-07-26T12:00:00.000Z",
+    gitStatus: status(),
+  });
   mocks.useProjects.mockReturnValue({
     projects: [project()],
     loading: false,
@@ -178,6 +231,7 @@ beforeEach(() => {
   mocks.useVersion.mockReturnValue({
     version: {
       capabilities: [
+        GIT_SOURCE_REVIEW_CAPABILITY,
         GIT_STATUS_ENHANCED_CAPABILITY,
         GIT_STATUS_REMOTE_CHECK_CAPABILITY,
       ],
@@ -198,13 +252,13 @@ beforeEach(() => {
     toggleSidebar: vi.fn(),
   });
   mocks.useMediaQuery.mockReturnValue(true);
-  mocks.renderCommitBrowser.mockReset();
+  mocks.renderWorkingTreeBrowser.mockReset();
 });
 
 describe("GitStatusPage source header", () => {
   it("composes status, tabs, and the Review entry into one tablet/desktop row", async () => {
     renderPage();
-    await screen.findByTestId("commit-browser");
+    await screen.findByTestId("working-tree-browser");
     await waitFor(() =>
       expect(mocks.listReviewComments).toHaveBeenCalledWith("project-a"),
     );
@@ -218,8 +272,20 @@ describe("GitStatusPage source header", () => {
     expect(document.querySelector(".git-status > .repo-status-bar")).toBeNull();
   });
 
-  it("lands on Commits and treats a legacy Changes URL as Commits", async () => {
-    renderPage("/git-status?projectId=project-a&tab=changes");
+  it("lands on Changes and keeps its URL as the default", async () => {
+    renderPage();
+
+    expect(await screen.findByTestId("working-tree-browser")).toBeDefined();
+    expect(
+      screen
+        .getByRole("tab", { name: /sourceTabChanges/ })
+        .getAttribute("aria-selected"),
+    ).toBe("true");
+    expect(screen.queryByTestId("commit-browser")).toBeNull();
+  });
+
+  it("opens commit history deliberately without carrying the working tree", async () => {
+    renderPage("/git-status?projectId=project-a&tab=commits");
 
     expect(await screen.findByTestId("commit-browser")).toBeDefined();
     expect(
@@ -227,7 +293,17 @@ describe("GitStatusPage source header", () => {
         .getByRole("tab", { name: "sourceTabCommits" })
         .getAttribute("aria-selected"),
     ).toBe("true");
-    expect(screen.queryByRole("tab", { name: "sourceTabChanges" })).toBeNull();
+    expect(screen.queryByTestId("working-tree-browser")).toBeNull();
+  });
+
+  it("makes the Dirty badge return to Changes", async () => {
+    renderPage("/git-status?projectId=project-a&tab=commits");
+    await screen.findByTestId("commit-browser");
+
+    fireEvent.click(screen.getByTitle("sourceOpenChanges"));
+
+    expect(await screen.findByTestId("working-tree-browser")).toBeDefined();
+    expect(screen.queryByTestId("commit-browser")).toBeNull();
   });
 
   it("uses the Edit-link history entry as the tab-local default session", async () => {
@@ -248,8 +324,8 @@ describe("GitStatusPage source header", () => {
       state: { defaultSession },
     });
 
-    await screen.findByTestId("commit-browser");
-    expect(mocks.renderCommitBrowser).toHaveBeenLastCalledWith(
+    await screen.findByTestId("working-tree-browser");
+    expect(mocks.renderWorkingTreeBrowser).toHaveBeenLastCalledWith(
       expect.objectContaining({
         initialWorkingTreePath: "a.ts",
         defaultSession,
@@ -257,9 +333,9 @@ describe("GitStatusPage source header", () => {
     );
 
     fireEvent.click(screen.getByRole("tab", { name: "sourceTabComments" }));
-    fireEvent.click(screen.getByRole("tab", { name: "sourceTabCommits" }));
-    await screen.findByTestId("commit-browser");
-    expect(mocks.renderCommitBrowser).toHaveBeenLastCalledWith(
+    fireEvent.click(screen.getByRole("tab", { name: /sourceTabChanges/ }));
+    await screen.findByTestId("working-tree-browser");
+    expect(mocks.renderWorkingTreeBrowser).toHaveBeenLastCalledWith(
       expect.objectContaining({ defaultSession }),
     );
   });
@@ -276,6 +352,9 @@ describe("GitStatusPage source header", () => {
         name: /gitStatusCheckRemoteShort: gitStatusRemoteCheckSuccess/,
       }),
     ).toBeDefined();
+    expect(screen.getByRole("status").textContent).toBe(
+      "gitStatusRemoteCheckSuccess",
+    );
   });
 
   it("keeps mobile source controls in scrolling content", async () => {
@@ -296,5 +375,82 @@ describe("GitStatusPage source header", () => {
     expect(
       document.querySelector(".git-status > .repo-status-bar"),
     ).not.toBeNull();
+  });
+});
+
+describe("GitStatusPage released-server compatibility", () => {
+  it.each(
+    CORE_GIT_COMPATIBILITY_RELEASES,
+  )("keeps basic Source Control for $version ($releasedAt)", async () => {
+    mocks.useVersion.mockReturnValue({
+      version: { capabilities: [...RELEASED_BASIC_GIT_CAPABILITIES] },
+      loading: false,
+      error: null,
+    });
+
+    renderPage();
+
+    expect(
+      await screen.findByText("gitStatusCompatibilityTitle"),
+    ).toBeDefined();
+    expect(screen.getByText("gitStatusCompatibilityDescription")).toBeDefined();
+    expect(screen.getByRole("button", { name: "gitStatusPull" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "gitStatusPush" })).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "gitStatusCheckRemote" }),
+    ).toBeDefined();
+    expect(screen.queryByTestId("commit-browser")).toBeNull();
+    expect(document.querySelector(".source-mode-tabs")).toBeNull();
+    expect(document.querySelector(".review-tray-button")).toBeNull();
+    expect(mocks.listReviewComments).not.toHaveBeenCalled();
+  });
+
+  it("shows a persistent full-text divergence warning", async () => {
+    const divergedStatus = {
+      ...status(),
+      ahead: 2,
+      behind: 1,
+      isClean: true,
+    };
+    mocks.useVersion.mockReturnValue({
+      version: { capabilities: [...RELEASED_BASIC_GIT_CAPABILITIES] },
+      loading: false,
+      error: null,
+    });
+    mocks.useGitStatus.mockReturnValue({
+      gitStatus: divergedStatus,
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    mocks.pullGit.mockResolvedValue({
+      status: "failed",
+      checkedRemoteAt: "2026-07-26T12:00:00.000Z",
+      gitStatus: divergedStatus,
+    });
+    mocks.getGitIntegrationOptions.mockResolvedValue({
+      status: "available",
+      checkedRemoteAt: "2026-07-26T12:00:00.000Z",
+      gitStatus: divergedStatus,
+      canAutoRebase: true,
+      canAutoMerge: true,
+      reasons: [],
+      ahead: 2,
+      behind: 1,
+      upstream: "origin/main",
+      isClean: true,
+      hasSequencerState: false,
+    });
+
+    renderPage();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "gitStatusPull" }),
+    );
+
+    const warning = await screen.findByRole("alert");
+    expect(warning.textContent).toContain("gitStatusPullDiverged");
+    expect(warning.textContent).toContain('"ahead":2');
+    expect(warning.textContent).toContain('"behind":1');
+    expect(await screen.findByText("gitStatusAutoOptionsLabel")).toBeDefined();
   });
 });

@@ -4,6 +4,7 @@ import type {
   GitStatusInfo,
 } from "@yep-anywhere/shared";
 import {
+  GIT_SOURCE_REVIEW_CAPABILITY,
   GIT_STATUS_ENHANCED_CAPABILITY,
   GIT_STATUS_INTEGRATION_OPTIONS_CAPABILITY,
   GIT_STATUS_PULL_CAPABILITY,
@@ -41,6 +42,7 @@ import { CommitBrowser } from "./CommitBrowser";
 import { RepoStatusBar } from "./RepoStatusBar";
 import { ReviewCommentsPanel } from "./ReviewCommentsPanel";
 import { type SourceTab, SourceModeTabs } from "./SourceModeTabs";
+import { WorkingTreeBrowser } from "./WorkingTreeBrowser";
 import { ReviewSubmitModal } from "./ReviewSubmitModal";
 import {
   resolvePreferredProjectId,
@@ -68,7 +70,12 @@ interface SourceControlRouteState {
 const SOURCE_CONTROL_ROUTE_TTL_MS = 5 * 60 * 1000;
 
 /** Source-control modes with a built body (topic: source-review-to-session). */
-const SOURCE_TABS: readonly SourceTab[] = ["commits", "files", "comments"];
+const SOURCE_TABS: readonly SourceTab[] = [
+  "changes",
+  "commits",
+  "files",
+  "comments",
+];
 
 /**
  * Source-mode tab state, derived from the `?tab=` URL param. Shared by the
@@ -83,17 +90,19 @@ function useSourceTab(): {
   const location = useLocation();
   const tabParam = searchParams.get("tab");
   const tab: SourceTab =
-    tabParam === "files"
-      ? "files"
-      : tabParam === "comments"
-        ? "comments"
-        : "commits";
+    tabParam === "commits"
+      ? "commits"
+      : tabParam === "files"
+        ? "files"
+        : tabParam === "comments"
+          ? "comments"
+          : "changes";
   const setTab = useCallback(
     (next: SourceTab) => {
       setSearchParams(
         (prev) => {
           const params = new URLSearchParams(prev);
-          if (next === "commits") params.delete("tab");
+          if (next === "changes") params.delete("tab");
           else params.set("tab", next);
           return params;
         },
@@ -124,15 +133,17 @@ function SourceHeaderActions({
   t: TranslationFn;
 }) {
   const { tab, setTab } = useSourceTab();
+  const changedFileCount = countChangedPaths(status);
   return (
     <RepoStatusBar
       status={status}
       inline
+      onSelectChanges={() => setTab("changes")}
       tabs={
         <SourceModeTabs
           tab={tab}
           tabs={SOURCE_TABS}
-          counts={{ comments: pendingCount }}
+          counts={{ changes: changedFileCount, comments: pendingCount }}
           onSelect={setTab}
           t={t}
         />
@@ -162,9 +173,9 @@ function SourceHeaderControls({
   t,
 }: {
   gitActions: GitActionState;
-  pendingCount: number;
+  pendingCount?: number;
   compact?: boolean;
-  onReview: () => void;
+  onReview?: () => void;
   t: TranslationFn;
 }) {
   const nowMs = useRelativeNow();
@@ -215,15 +226,17 @@ function SourceHeaderControls({
           disabled={gitActions.isRunning}
         />
       )}
-      <button
-        type="button"
-        className="git-status-action-button review-tray-button"
-        onClick={onReview}
-      >
-        {pendingCount > 0
-          ? t("sourceReviewReview", { count: pendingCount })
-          : t("sourceReviewStart")}
-      </button>
+      {onReview && pendingCount !== undefined && (
+        <button
+          type="button"
+          className="git-status-action-button review-tray-button"
+          onClick={onReview}
+        >
+          {pendingCount > 0
+            ? t("sourceReviewReview", { count: pendingCount })
+            : t("sourceReviewStart")}
+        </button>
+      )}
     </div>
   );
 }
@@ -351,6 +364,10 @@ export function GitStatusPage() {
     version,
     GIT_STATUS_ENHANCED_CAPABILITY,
   );
+  const supportsSourceReview = serverHasCapability(
+    version,
+    GIT_SOURCE_REVIEW_CAPABILITY,
+  );
   const supportsRemoteCheck = serverHasCapability(
     version,
     GIT_STATUS_REMOTE_CHECK_CAPABILITY,
@@ -364,7 +381,9 @@ export function GitStatusPage() {
   const { gitStatus, loading, error, refetch } = useGitStatus(
     supportsEnhancedGitStatus ? effectiveProjectId : undefined,
   );
-  const reviewComments = useProjectReviewComments(effectiveProjectId);
+  const reviewComments = useProjectReviewComments(
+    supportsSourceReview ? effectiveProjectId : undefined,
+  );
   const { defaultSession: routeDefaultSession } = useMemo(
     () => parseSourceControlNavigationState(location.state),
     [location.state],
@@ -457,6 +476,7 @@ export function GitStatusPage() {
         isSidebarCollapsed={isSidebarCollapsed}
         actions={
           sourceControlsFitHeader &&
+          supportsSourceReview &&
           effectiveProjectId &&
           gitStatus?.isGitRepo ? (
             <SourceHeaderActions
@@ -488,7 +508,7 @@ export function GitStatusPage() {
             </div>
           ) : gitStatus && !gitStatus.isGitRepo ? (
             <div className="git-status-empty">{t("gitStatusNotRepo")}</div>
-          ) : gitStatus && effectiveProjectId ? (
+          ) : gitStatus && effectiveProjectId && supportsSourceReview ? (
             <SourceReviewDefaultSessionContext.Provider value={defaultSession}>
               <GitStatusContent
                 key={`${sourceKey}:${effectiveProjectId}`}
@@ -505,6 +525,14 @@ export function GitStatusPage() {
                 t={t}
               />
             </SourceReviewDefaultSessionContext.Provider>
+          ) : gitStatus && effectiveProjectId ? (
+            <GitStatusCompatibilityContent
+              key={`${sourceKey}:${effectiveProjectId}:compatibility`}
+              status={gitStatus}
+              projectName={project?.name}
+              gitActions={gitActions}
+              t={t}
+            />
           ) : null}
         </div>
       </main>
@@ -517,6 +545,34 @@ function GitStatusUpgradeRequired({ t }: { t: TranslationFn }) {
     <div className="git-status-upgrade">
       <h2>{t("gitStatusUpgradeRequiredTitle")}</h2>
       <p>{t("gitStatusUpgradeRequiredDescription")}</p>
+    </div>
+  );
+}
+
+function GitStatusCompatibilityContent({
+  status,
+  projectName,
+  gitActions,
+  t,
+}: {
+  status: GitStatusInfo;
+  projectName?: string;
+  gitActions: GitActionState;
+  t: TranslationFn;
+}) {
+  return (
+    <div className="git-status git-status-compatibility">
+      <RepoStatusBar
+        repoName={projectName}
+        status={status}
+        actions={<SourceHeaderControls gitActions={gitActions} t={t} />}
+        t={t}
+      />
+      <GitActionNotices gitActions={gitActions} t={t} />
+      <section className="git-status-compatibility-notice">
+        <h2>{t("gitStatusCompatibilityTitle")}</h2>
+        <p>{t("gitStatusCompatibilityDescription")}</p>
+      </section>
     </div>
   );
 }
@@ -551,6 +607,7 @@ function GitStatusContent({
   const basePath = useRemoteBasePath();
   const [searchParams, setSearchParams] = useSearchParams();
   const { tab, setTab } = useSourceTab();
+  const changedFileCount = countChangedPaths(status);
   const blameFile = searchParams.get("bf") ?? undefined;
   const worktreeFile = searchParams.get("worktreeFile") ?? undefined;
   // Bridge a commit file to its blame-at-HEAD view: switch to the files tab
@@ -575,11 +632,15 @@ function GitStatusContent({
         <RepoStatusBar
           repoName={projectName}
           status={status}
+          onSelectChanges={() => setTab("changes")}
           tabs={
             <SourceModeTabs
               tab={tab}
               tabs={SOURCE_TABS}
-              counts={{ comments: reviewComments.pending.length }}
+              counts={{
+                changes: changedFileCount,
+                comments: reviewComments.pending.length,
+              }}
               onSelect={setTab}
               t={t}
             />
@@ -599,12 +660,21 @@ function GitStatusContent({
         />
       )}
 
-      {tab === "commits" ? (
-        <CommitBrowser
+      <GitActionNotices gitActions={gitActions} t={t} />
+
+      {tab === "changes" ? (
+        <WorkingTreeBrowser
           projectId={projectId}
           status={status}
           isWideScreen={isWideScreen}
           initialWorkingTreePath={worktreeFile}
+          onBlameFile={handleBlameFile}
+          t={t}
+        />
+      ) : tab === "commits" ? (
+        <CommitBrowser
+          projectId={projectId}
+          isWideScreen={isWideScreen}
           onBlameFile={handleBlameFile}
           t={t}
         />
@@ -625,16 +695,6 @@ function GitStatusContent({
         />
       ) : null}
 
-      {gitActions.divergedActionStatus &&
-        gitActions.supportsIntegrationOptions && (
-          <GitIntegrationOptionsPanel
-            options={gitActions.integrationOptions}
-            loading={gitActions.isLoadingIntegrationOptions}
-            error={gitActions.integrationOptionsError}
-            t={t}
-          />
-        )}
-
       {showReviewModal && (
         <ReviewSubmitModal
           projectId={projectId}
@@ -643,6 +703,47 @@ function GitStatusContent({
           onNavigateSession={(sessionId) =>
             navigate(`${basePath}/projects/${projectId}/sessions/${sessionId}`)
           }
+          t={t}
+        />
+      )}
+    </div>
+  );
+}
+
+function countChangedPaths(status: GitStatusInfo): number {
+  return new Set(status.files.map((file) => file.path)).size;
+}
+
+function GitActionNotices({
+  gitActions,
+  t,
+}: {
+  gitActions: GitActionState;
+  t: TranslationFn;
+}) {
+  const showIntegrationOptions =
+    gitActions.divergedActionStatus && gitActions.supportsIntegrationOptions;
+  if (!gitActions.actionFeedback && !showIntegrationOptions) {
+    return null;
+  }
+
+  return (
+    <div className="git-status-action-notices">
+      {gitActions.actionFeedback && gitActions.actionFeedbackTone && (
+        <div
+          className={`git-status-action-message git-status-action-message-${gitActions.actionFeedbackTone}`}
+          role={
+            gitActions.actionFeedbackTone === "warning" ? "alert" : "status"
+          }
+        >
+          {gitActions.actionFeedback}
+        </div>
+      )}
+      {showIntegrationOptions && (
+        <GitIntegrationOptionsPanel
+          options={gitActions.integrationOptions}
+          loading={gitActions.isLoadingIntegrationOptions}
+          error={gitActions.integrationOptionsError}
           t={t}
         />
       )}
