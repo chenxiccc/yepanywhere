@@ -8,6 +8,8 @@ Topic: inbox
 
 See also:
 
+- [`agents-process-observability.md`](agents-process-observability.md) — the
+  separate host process inventory and metrics surface.
 - [`session-summary-fidelity.md`](session-summary-fidelity.md)
 
 ## Route Contract

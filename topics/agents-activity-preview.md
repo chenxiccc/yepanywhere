@@ -10,6 +10,9 @@ Topic: agents-activity-preview
 
 See also:
 
+- [`agents-process-observability.md`](agents-process-observability.md) — the
+  separate host process inventory, external discovery, and resource-metrics
+  proposal.
 - [`inbox.md`](inbox.md) — the attention-oriented session tiers that remain
   distinct from process monitoring.
 - [`session-hovercard-recent-activity.md`](session-hovercard-recent-activity.md)
@@ -34,8 +37,8 @@ When several sessions are active concurrently, the existing surfaces answer
 different questions:
 
 - **Inbox:** what needs attention, has recent activity, or is unread?
-- **Agents:** which YA-owned provider processes are alive, and what are their
-  state, uptime, context usage, queue depth, and provider?
+- **Agents today:** which YA-owned provider processes are alive, and what are
+  their state, uptime, context usage, queue depth, and provider?
 - **Session detail:** what is the complete conversation and tool history?
 
 The missing supervisor view is: **what is every running session doing right
@@ -48,10 +51,12 @@ moves to the next phase. YA can apply that interaction to several session cards
 at once without rendering several miniature full transcripts.
 
 The Agents page is the initial home because its rows already correspond to
-owned provider processes. Inbox should remain sparse and attention-oriented.
-Inbox's `active` tier also includes queued or inferred work that is not the same
-as an actively streaming provider process; the two classifications must not be
-silently unified.
+owned provider processes. The process-observability proposal may add read-only
+external rows, but this activity-preview proposal supplies content only where
+YA has the necessary normalized provider stream. Inbox should remain sparse
+and attention-oriented. Inbox's `active` tier also includes queued or inferred
+work that is not the same as an actively streaming provider process; the two
+classifications must not be silently unified.
 
 ## Proposed Product Shape
 
@@ -257,7 +262,9 @@ for this proposal.
 ## Non-Goals
 
 - Replacing Inbox or changing Inbox tier semantics.
-- Showing every recent or external session on Agents.
+- Showing every recent or external session on Agents. Live external process
+  inventory, without invented session correlation, belongs to
+  [`agents-process-observability.md`](agents-process-observability.md).
 - Rendering complete transcripts, markdown, tool output, diffs, or files in
   process cards.
 - Persisting a YA-owned activity transcript.

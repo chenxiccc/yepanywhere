@@ -164,6 +164,8 @@
   isolation, and partial-observation nondowngrade rules.
 - agents-activity-preview - Optional bounded multi-session activity previews
   for active and recently idle process cards on Agents.
+- agents-process-observability - Default-off host process metrics and
+  read-only external provider process discovery for Agents.
 - interactives - Zero-setup container for agent-built project web apps:
   opinionated template, committed project files, registry, icon links,
   YA-server-only reach (relay core, with optional globally configured

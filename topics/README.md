@@ -69,6 +69,8 @@
   facts, and shared semantic projection for web/Android/iOS native renderers)
 - Agents multi-session activity preview (default-off condensed live activity
   for active processes and last-output previews for recently idle ones)
+- Agents process observability (default-off host metrics plus read-only
+  discovery of externally launched local provider processes)
 - Bang commands (`!!` composer messages run local shell commands as
   persistent inline display objects, never entering provider context; tab
   completion, rendered output, cross-session history)
