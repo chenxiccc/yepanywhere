@@ -73,6 +73,14 @@ publish draft edits to narrow page-local consumers such as quote
 reconciliation, and queued action leaves may subscribe to a primitive
 composer-availability snapshot; neither belongs in the summary store.
 
+Reactive primitive browser preferences also stay outside the summary store.
+Their shared `localStorage` external-store interface lazily initializes an
+in-memory snapshot, updates it through application setters, and reconciles
+cross-tab storage events. A migration, settings import, or test that writes
+storage directly must explicitly invalidate the affected key or all preference
+snapshots. Unrelated React renders and direct same-tab DevTools writes do not
+implicitly reread storage.
+
 ## Source Model
 
 The store is per backend source. A source is the YA server that produced the

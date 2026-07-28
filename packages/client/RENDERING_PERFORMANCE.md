@@ -76,6 +76,10 @@ stable component identity, and lower update cadence.
 - Draft-dependent transcript affordances subscribe below the transcript
   boundary. Quote reconciliation consumes a stable draft-change signal and
   queued Edit actions consume only a primitive availability snapshot.
+- Reactive browser-local preferences use initialized in-memory snapshots.
+  Repeated hook snapshot checks must not reread `localStorage`; same-tab
+  application writes use the owning setter or explicit invalidation, while
+  cross-tab `storage` events reconcile the cached value.
 - Composer text is user data. Streaming/render work must not steal focus,
   defeat normal browser key buffering, or delay page-lifecycle draft flushes.
 

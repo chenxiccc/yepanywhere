@@ -1,25 +1,69 @@
 /**
- * Shared store for one primitive UI preference persisted in localStorage,
- * shaped for useSyncExternalStore: pass `subscribe` and `read` straight
- * through (`read` also serves as the server snapshot — it returns the
- * default wherever storage is unavailable).
+ * Shared external store for one primitive browser-local preference.
  *
- * `read` goes to storage on every call so writes that bypass `set` (tests,
- * other tabs' handlers) are picked up on the next render; values are
- * constrained to primitives so read-through snapshots stay `===`-stable
- * for useSyncExternalStore. `set` persists and notifies same-tab
- * subscribers; storage failures (privacy mode, quota, SSR) fall back to
- * the default and never block the in-memory update — these are local
- * display preferences. One "storage" listener per store, attached while
- * subscribers exist, relays cross-tab changes.
- *
- * An absent key reads as `defaultValue`; a present value is interpreted
- * by `parse`, whose `undefined` also falls back to `defaultValue`.
+ * The first successful client read initializes an in-memory snapshot.
+ * Subsequent React snapshot checks are memory-only. Same-tab application code
+ * must use `set` or explicitly invalidate after a raw storage migration;
+ * arbitrary same-tab DevTools writes are intentionally not discovered by an
+ * unrelated render. Cross-tab storage events reconcile the cache while
+ * subscribers exist.
  */
 export interface LocalStorageValueStore<T> {
   read(): T;
   set(value: T): void;
+  reset(): void;
+  invalidate(): void;
   subscribe(listener: () => void): () => void;
+}
+
+export interface LocalStorageValueOptions<T> {
+  /** Other keys whose changes can alter the effective fallback value. */
+  relatedKeys?: readonly string[];
+  /** Read a legacy/fallback value when the primary key is absent. */
+  readFallback?: (storage: Storage) => T | undefined;
+}
+
+const invalidatorsByKey = new Map<string, Set<() => void>>();
+
+function getStorage(): Storage | null {
+  try {
+    const storage = globalThis.localStorage;
+    return storage && typeof storage.getItem === "function" ? storage : null;
+  } catch {
+    return null;
+  }
+}
+
+function registerInvalidator(key: string, invalidator: () => void): void {
+  let invalidators = invalidatorsByKey.get(key);
+  if (!invalidators) {
+    invalidators = new Set();
+    invalidatorsByKey.set(key, invalidators);
+  }
+  invalidators.add(invalidator);
+}
+
+/**
+ * Invalidate one preference key, or every registered preference when omitted.
+ * This is the supported seam for migrations, imports, and tests that must write
+ * browser storage directly.
+ */
+export function invalidateLocalStorageValues(key?: string): void {
+  if (key !== undefined) {
+    for (const invalidate of invalidatorsByKey.get(key) ?? []) {
+      invalidate();
+    }
+    return;
+  }
+  const invalidators = new Set<() => void>();
+  for (const registered of invalidatorsByKey.values()) {
+    for (const invalidate of registered) {
+      invalidators.add(invalidate);
+    }
+  }
+  for (const invalidate of invalidators) {
+    invalidate();
+  }
 }
 
 export function createLocalStorageValue<T extends string | number | boolean>(
@@ -27,19 +71,13 @@ export function createLocalStorageValue<T extends string | number | boolean>(
   defaultValue: T,
   parse: (raw: string) => T | undefined,
   serialize: (value: T) => string = String,
+  options: LocalStorageValueOptions<T> = {},
 ): LocalStorageValueStore<T> {
   const listeners = new Set<() => void>();
+  const observedKeys = new Set([key, ...(options.relatedKeys ?? [])]);
+  let snapshot = defaultValue;
+  let initialized = false;
   let onStorage: ((event: StorageEvent) => void) | null = null;
-
-  const read = (): T => {
-    try {
-      const stored = localStorage.getItem(key);
-      if (stored === null) return defaultValue;
-      return parse(stored) ?? defaultValue;
-    } catch {
-      return defaultValue;
-    }
-  };
 
   const emit = (): void => {
     for (const listener of listeners) {
@@ -47,13 +85,67 @@ export function createLocalStorageValue<T extends string | number | boolean>(
     }
   };
 
+  const readFromStorage = (storage: Storage): T => {
+    const stored = storage.getItem(key);
+    if (stored !== null) {
+      return parse(stored) ?? defaultValue;
+    }
+    return options.readFallback?.(storage) ?? defaultValue;
+  };
+
+  const read = (): T => {
+    if (initialized) {
+      return snapshot;
+    }
+    const storage = getStorage();
+    if (!storage) {
+      return snapshot;
+    }
+    try {
+      snapshot = readFromStorage(storage);
+      initialized = true;
+    } catch {
+      // Storage is unavailable. Keep the current in-memory value and allow a
+      // later read to retry rather than poisoning client initialization.
+    }
+    return snapshot;
+  };
+
+  const updateSnapshot = (next: T): void => {
+    const changed = next !== snapshot;
+    snapshot = next;
+    initialized = true;
+    if (changed) {
+      emit();
+    }
+  };
+
+  const invalidate = (): void => {
+    initialized = false;
+    emit();
+  };
+
   const subscribe = (listener: () => void): (() => void) => {
+    if (listeners.size === 0) {
+      // No listener existed to observe cross-tab events while detached.
+      // Revalidate once when a consumer returns.
+      initialized = false;
+    }
     listeners.add(listener);
     if (!onStorage && typeof window !== "undefined") {
       onStorage = (event: StorageEvent) => {
-        if (event.key === key || event.key === null) {
-          emit();
+        if (event.key === null) {
+          invalidate();
+          return;
         }
+        if (!observedKeys.has(event.key)) {
+          return;
+        }
+        if (event.key === key && event.newValue !== null) {
+          updateSnapshot(parse(event.newValue) ?? defaultValue);
+          return;
+        }
+        invalidate();
       };
       window.addEventListener("storage", onStorage);
     }
@@ -68,14 +160,33 @@ export function createLocalStorageValue<T extends string | number | boolean>(
 
   const set = (value: T): void => {
     try {
-      localStorage.setItem(key, serialize(value));
+      getStorage()?.setItem(key, serialize(value));
     } catch {
-      // Persistence failed; in-memory subscribers still update.
+      // Persistence failed; the coherent in-memory preference still applies.
     }
-    emit();
+    updateSnapshot(value);
   };
 
-  return { read, set, subscribe };
+  const reset = (): void => {
+    let next = defaultValue;
+    const storage = getStorage();
+    if (storage) {
+      try {
+        storage.removeItem(key);
+        next = options.readFallback?.(storage) ?? defaultValue;
+      } catch {
+        // Removal failed; the coherent in-memory default still applies.
+      }
+    }
+    updateSnapshot(next);
+  };
+
+  registerInvalidator(key, invalidate);
+  for (const relatedKey of options.relatedKeys ?? []) {
+    registerInvalidator(relatedKey, invalidate);
+  }
+
+  return { read, set, reset, invalidate, subscribe };
 }
 
 /**

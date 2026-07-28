@@ -33,10 +33,65 @@ describe("createLocalStorageValue", () => {
   });
 
   it("reads the default when storage access throws", () => {
-    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+    const getItem = vi
+      .spyOn(localStorage, "getItem")
+      .mockImplementation(() => {
+        throw new Error("denied");
+      });
+    const store = createModeStore();
+
+    expect(store.read()).toBe("paragraph-hover");
+    getItem.mockRestore();
+    localStorage.setItem("test-mode-key", "block");
+
+    expect(store.read()).toBe("block");
+  });
+
+  it("reads backing storage only while initializing its snapshot", () => {
+    localStorage.setItem("test-mode-key", "block");
+    const getItem = vi.spyOn(localStorage, "getItem");
+    const store = createModeStore();
+
+    expect(store.read()).toBe("block");
+    expect(store.read()).toBe("block");
+    expect(store.read()).toBe("block");
+
+    expect(getItem).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not mark an unavailable server snapshot initialized", () => {
+    const descriptor = Object.getOwnPropertyDescriptor(
+      globalThis,
+      "localStorage",
+    );
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      value: undefined,
+    });
+    const store = createModeStore();
+    expect(store.read()).toBe("paragraph-hover");
+
+    if (descriptor) {
+      Object.defineProperty(globalThis, "localStorage", descriptor);
+    } else {
+      throw new Error("Expected jsdom localStorage descriptor");
+    }
+    localStorage.setItem("test-mode-key", "block");
+    expect(store.read()).toBe("block");
+  });
+
+  it("keeps the in-memory value when persistence fails", () => {
+    vi.spyOn(localStorage, "setItem").mockImplementation(() => {
       throw new Error("denied");
     });
-    expect(createModeStore().read()).toBe("paragraph-hover");
+    const store = createModeStore();
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    store.set("block");
+
+    expect(store.read()).toBe("block");
+    expect(listener).toHaveBeenCalledTimes(1);
   });
 
   it("persists on set and notifies subscribers", () => {
@@ -51,29 +106,42 @@ describe("createLocalStorageValue", () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
-  it("still notifies subscribers when persistence fails", () => {
-    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
-      throw new Error("quota");
-    });
+  it("does not notify subscribers for an unchanged effective value", () => {
     const store = createModeStore();
     const listener = vi.fn();
     store.subscribe(listener);
 
-    store.set("block");
+    store.set("paragraph-hover");
 
-    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).not.toHaveBeenCalled();
   });
 
-  it("is read-through: writes that bypass set are visible on next read", () => {
+  it("requires explicit invalidation after a raw same-tab write", () => {
     const store = createModeStore();
+    expect(store.read()).toBe("paragraph-hover");
+
     localStorage.setItem("test-mode-key", "paragraph-always");
+    expect(store.read()).toBe("paragraph-hover");
+
+    store.invalidate();
     expect(store.read()).toBe("paragraph-always");
   });
 
-  it("relays cross-tab storage events for its key", () => {
+  it("resets storage and the in-memory snapshot", () => {
+    const store = createModeStore();
+    store.set("block");
+
+    store.reset();
+
+    expect(localStorage.getItem("test-mode-key")).toBeNull();
+    expect(store.read()).toBe("paragraph-hover");
+  });
+
+  it("reconciles cross-tab storage events for its key", () => {
     const store = createModeStore();
     const listener = vi.fn();
     store.subscribe(listener);
+    expect(store.read()).toBe("paragraph-hover");
 
     window.dispatchEvent(
       new StorageEvent("storage", { key: "test-mode-key", newValue: "block" }),
@@ -83,6 +151,32 @@ describe("createLocalStorageValue", () => {
     );
 
     expect(listener).toHaveBeenCalledTimes(1);
+    expect(store.read()).toBe("block");
+  });
+
+  it("invalidates on cross-tab storage clear events", () => {
+    const store = createModeStore();
+    store.subscribe(() => {});
+    expect(store.read()).toBe("paragraph-hover");
+    store.set("block");
+    localStorage.clear();
+
+    window.dispatchEvent(new StorageEvent("storage", { key: null }));
+
+    expect(store.read()).toBe("paragraph-hover");
+  });
+
+  it("revalidates after all cross-tab listeners were detached", () => {
+    localStorage.setItem("test-mode-key", "block");
+    const store = createModeStore();
+    expect(store.read()).toBe("block");
+    const unsubscribe = store.subscribe(() => {});
+    unsubscribe();
+
+    localStorage.setItem("test-mode-key", "paragraph-always");
+    store.subscribe(() => {});
+
+    expect(store.read()).toBe("paragraph-always");
   });
 
   it("shares one window storage listener and detaches at zero subscribers", () => {
