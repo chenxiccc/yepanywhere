@@ -707,6 +707,60 @@ are keyboard-focusable: Enter opens the existing comment path and Up/Down
 moves between rendered lines. Their one ellipsis follows the hovered/focused
 line rather than reserving a button on every code row. — Done (2026-07-28).
 
+### Dirty-file editor sessions — proposal
+
+Kyle suggested a button to **"navigate to session(s) that made edits to this
+dirty file"**; graehl agrees (2026-07-28). This reverses the useful bridge that
+already exists from a session Edit block into the exact dirty file in Source
+Control. In Changes, the selected-file banner and shared file context menu
+would expose a compact `Sessions (N)` action. It opens a newest-evidence-first
+chooser using the normal session identity, hovercard, and canonical YA-session
+navigation; it does not invent a second session-row treatment.
+
+Git itself records no dirty-file session authorship. Do not infer it from
+currently active sessions, project membership, or file mtime. Defensible
+evidence is a successful structured file mutation observed in a canonical YA
+session — Edit, Write, `apply_patch`, or a provider-equivalent operation —
+whose normalized project-relative target is this path. Shell commands,
+generators, human edits, external processes, and provider activity YA did not
+observe may remain unattributed. An unobserved writer can also replace or
+revert an observed session's contribution while leaving the path dirty, so a
+recorded session can remain as a stale candidate until the path next becomes
+clean. This limitation is accepted to bound implementation effort. UI wording
+must therefore say **sessions with recorded edits**, not claim to identify
+everyone who contributed to the file's current contents or present the set as
+exhaustive.
+
+Implementation plan:
+
+1. Characterize each supported provider's structured file-mutation events and
+   success boundary. Ignore failed or merely proposed mutations.
+2. Maintain a set whose logical rows are
+   `(source, project, normalized file, canonical YA session, latest edit time)`.
+   A later successful structured mutation by the same session to the same file
+   only replaces that row's time; do not retain an event history, tool/message
+   ids, content hashes, or before/after lineage.
+3. Whenever YA observes that a tracked path has become not dirty, clear every
+   row for that file. A successful commit normally causes this transition, but
+   a commit that leaves additional staged or unstaged changes does not: the
+   clearing condition is the observed clean file state, not merely a commit
+   command. The feature depends on YA reliably noticing that transition.
+4. Add a capability-gated query for the remaining candidate session summaries,
+   ordered by each session's latest recorded edit, then reuse the existing
+   session hovercard/navigation and source file banner/menu surfaces. More than
+   one candidate opens the chooser; one candidate may navigate directly.
+5. Test one and several sessions, repeated edits deduplicating to the latest
+   time, failed edits being ignored, clean-state clearing, a commit that leaves
+   the file dirty, and accepted missing/stale attribution after unobserved
+   shell or human changes.
+
+**Difficulty:** the button and chooser are low difficulty. Provider mutation
+hooks, clean-state observation, the small tuple set, and its query are
+low-to-medium difficulty. Content hashes, transcript backfill, exact lineage,
+and exhaustive attribution are deliberately out of scope; writers that bypass
+observable structured mutations are an accepted accuracy limit, not a reason
+to enlarge the first implementation.
+
 ### Desktop pane splitters
 
 At the desktop three-pane threshold, Commits exposes revision/files and
@@ -717,6 +771,19 @@ and shows one vertical guide for the duration; keyboard Left/Right adjusts in
 small steps and Home/End reaches the allowed extrema. No splitter markup
 participates in phone layout. Width changes last for the mounted browser;
 they are not a new persisted preference. — Done (2026-07-28).
+
+The current file-pane implementation's fixed 500 px maximum is an arbitrary
+implementation bound, not a product contract. A future full-width correction
+should let the user widen the complete changed-files column until the
+inter-pane gap and splitter handles remain fully visible and operable; do not
+reserve an arbitrary minimum detail-pane width. The user will naturally stop
+after exposing as much of the paths as they need, and the still-visible
+splitter is the recovery path from an extreme choice. A smaller
+content-derived maximum is optional, not required: if added, compute it from
+the widest untruncated row in the **complete file corpus**, including its
+status/count/menu affordances, rather than only the currently mounted
+vertical-scroll window. Recompute when the corpus or font, size, or spacing
+metrics change.
 
 ### Hunk navigation + single diff toolbar row
 
