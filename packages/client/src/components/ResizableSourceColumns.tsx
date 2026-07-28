@@ -4,18 +4,21 @@ import {
   type PointerEvent,
   type ReactNode,
   useEffect,
+  useLayoutEffect,
+  useRef,
   useState,
 } from "react";
 import type { TranslationFn } from "../i18n";
 
-type SourceColumnLayout = "history" | "files";
+export type SourceColumnLayout = "history" | "files";
 type Boundary = "revisions" | "files";
 
 const REVISION_MIN = 240;
 const REVISION_MAX = 420;
 const FILES_MIN = 220;
-const FILES_MAX = 500;
 const KEYBOARD_STEP = 16;
+const FALLBACK_COLUMN_GAP = 12;
+const FALLBACK_HANDLE_WIDTH = 26;
 
 interface Widths {
   revisions: number;
@@ -26,6 +29,42 @@ interface DragState {
   boundary: Boundary;
   startX: number;
   startWidths: Widths;
+}
+
+interface LayoutMetrics {
+  containerWidth: number;
+  gapWidth: number;
+  handleWidth: number;
+}
+
+/**
+ * Let the file pane consume all requested width while keeping the right edge
+ * of its splitter handle inside the grid.
+ */
+export function calculateSourceFilesMaxWidth({
+  layout,
+  containerWidth,
+  revisionWidth,
+  gapWidth,
+  handleWidth,
+}: {
+  layout: SourceColumnLayout;
+  containerWidth: number;
+  revisionWidth: number;
+  gapWidth: number;
+  handleWidth: number;
+}): number {
+  const precedingWidth =
+    layout === "history" ? revisionWidth + gapWidth : 0;
+  return Math.max(
+    FILES_MIN,
+    Math.floor(
+      containerWidth -
+        precedingWidth -
+        gapWidth / 2 -
+        handleWidth / 2,
+    ),
+  );
 }
 
 /**
@@ -48,11 +87,69 @@ export function ResizableSourceColumns({
   children: ReactNode;
   t: TranslationFn;
 }) {
+  const rootRef = useRef<HTMLDivElement>(null);
   const [widths, setWidths] = useState<Widths>(() => ({
     revisions: 300,
     files: initialFilesWidth ?? (layout === "history" ? 340 : 380),
   }));
   const [dragging, setDragging] = useState<DragState | null>(null);
+  const [layoutMetrics, setLayoutMetrics] = useState<LayoutMetrics | null>(
+    null,
+  );
+  const filesMax = layoutMetrics
+    ? calculateSourceFilesMaxWidth({
+        layout,
+        containerWidth: layoutMetrics.containerWidth,
+        revisionWidth: widths.revisions,
+        gapWidth: layoutMetrics.gapWidth,
+        handleWidth: layoutMetrics.handleWidth,
+      })
+    : undefined;
+
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+
+    const measure = () => {
+      const styles = getComputedStyle(root);
+      const parsedGap = Number.parseFloat(styles.columnGap);
+      const handle = root.querySelector<HTMLElement>(
+        ".source-pane-splitter-handle",
+      );
+      const next = {
+        containerWidth: root.clientWidth,
+        gapWidth: Number.isFinite(parsedGap)
+          ? parsedGap
+          : FALLBACK_COLUMN_GAP,
+        handleWidth: handle?.offsetWidth || FALLBACK_HANDLE_WIDTH,
+      };
+      if (next.containerWidth <= 0) return;
+      setLayoutMetrics((current) =>
+        current &&
+        current.containerWidth === next.containerWidth &&
+        current.gapWidth === next.gapWidth &&
+        current.handleWidth === next.handleWidth
+          ? current
+          : next,
+      );
+    };
+
+    measure();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", measure);
+      return () => window.removeEventListener("resize", measure);
+    }
+    const observer = new ResizeObserver(measure);
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, []);
+
+  useLayoutEffect(() => {
+    if (filesMax === undefined) return;
+    setWidths((current) =>
+      current.files <= filesMax ? current : { ...current, files: filesMax },
+    );
+  }, [filesMax]);
 
   useEffect(() => {
     if (!dragging) return;
@@ -73,7 +170,7 @@ export function ResizableSourceColumns({
               files: clamp(
                 dragging.startWidths.files + delta,
                 FILES_MIN,
-                FILES_MAX,
+                filesMax ?? dragging.startWidths.files,
               ),
             },
       );
@@ -89,7 +186,7 @@ export function ResizableSourceColumns({
       window.removeEventListener("pointercancel", handlePointerUp);
       document.body.classList.remove("source-pane-resizing");
     };
-  }, [dragging]);
+  }, [dragging, filesMax]);
 
   const setBoundaryWidth = (boundary: Boundary, next: number) => {
     setWidths((current) => ({
@@ -97,7 +194,9 @@ export function ResizableSourceColumns({
       [boundary]: clamp(
         next,
         boundary === "revisions" ? REVISION_MIN : FILES_MIN,
-        boundary === "revisions" ? REVISION_MAX : FILES_MAX,
+        boundary === "revisions"
+          ? REVISION_MAX
+          : (filesMax ?? current.files),
       ),
     }));
   };
@@ -118,7 +217,8 @@ export function ResizableSourceColumns({
   ) => {
     const current = widths[boundary];
     const min = boundary === "revisions" ? REVISION_MIN : FILES_MIN;
-    const max = boundary === "revisions" ? REVISION_MAX : FILES_MAX;
+    const max =
+      boundary === "revisions" ? REVISION_MAX : (filesMax ?? current);
     const next =
       event.key === "ArrowLeft"
         ? current - KEYBOARD_STEP
@@ -142,7 +242,7 @@ export function ResizableSourceColumns({
     layout === "history" ? ["revisions", "files"] : ["files"];
 
   return (
-    <div className={className} style={style}>
+    <div ref={rootRef} className={className} style={style}>
       {children}
       {enabled &&
         boundaries.map((boundary) => (
@@ -168,7 +268,7 @@ export function ResizableSourceColumns({
                   boundary === "revisions" ? REVISION_MIN : FILES_MIN
                 }
                 aria-valuemax={
-                  boundary === "revisions" ? REVISION_MAX : FILES_MAX
+                  boundary === "revisions" ? REVISION_MAX : filesMax
                 }
                 aria-valuenow={widths[boundary]}
                 tabIndex={0}

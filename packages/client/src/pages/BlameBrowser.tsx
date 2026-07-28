@@ -2,6 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 import { ResizableSourceColumns } from "../components/ResizableSourceColumns";
 import {
+  SourceFilePath,
+  SourceFileRowButton,
+} from "../components/SourceFileRow";
+import {
   SourceRowMenuTrigger,
   type SourceContextMenuAction,
   useSourceContextMenu,
@@ -151,7 +155,8 @@ export function BlameBrowser({
                 const menuActions = fileMenuActions(file);
                 return (
                   <li key={file} className="commit-file-row">
-                    <button
+                    <SourceFileRowButton
+                      path={file}
                       type="button"
                       className={`blame-file-item ${
                         selectedPath === file ? "selected" : ""
@@ -164,9 +169,7 @@ export function BlameBrowser({
                         setSelectedPath(file);
                       })}
                     >
-                      <span className="git-file-path" title={file}>
-                        {file}
-                      </span>
+                      <SourceFilePath>{file}</SourceFilePath>
                       {count > 0 && (
                         <span
                           className="source-comment-badge"
@@ -175,7 +178,7 @@ export function BlameBrowser({
                           {count}
                         </span>
                       )}
-                    </button>
+                    </SourceFileRowButton>
                     <SourceRowMenuTrigger
                       actions={menuActions}
                       label={t("sourceMoreActions")}

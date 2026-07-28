@@ -154,10 +154,22 @@ describe("WorkingTreeBrowser", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("sourceWorktreeBoth")).toBeDefined();
+    expect(await screen.findByText("sourceWorktreePartial")).toBeDefined();
+    expect(
+      screen
+        .getByText("sourceWorktreePartial")
+        .getAttribute("title"),
+    ).toBe("sourceWorktreePartialDescription");
+    expect(screen.queryByText("sourceWorktreeUnstaged")).toBeNull();
+    expect(screen.queryByText("sourceWorktreeUntracked")).toBeNull();
     expect(
       document.querySelectorAll(".commit-file-item .git-file-path"),
     ).toHaveLength(1);
+    const row = document.querySelector(".commit-file-item");
+    expect(row?.getAttribute("title")).toBe("src/dirty.ts");
+    expect(
+      row?.querySelector(".git-status-badge")?.getAttribute("title"),
+    ).toBe("M — sourceFileStatusModified");
     await waitFor(() =>
       expect(getGitDiff).toHaveBeenCalledWith(
         "p1",
@@ -185,6 +197,78 @@ describe("WorkingTreeBrowser", () => {
       revision: { kind: string };
     };
     expect(anchor.revision).toMatchObject({ kind: "uncommitted" });
+  });
+
+  it("uses only compact staged and untracked state markers", async () => {
+    listReviewComments.mockResolvedValue({
+      comments: [],
+      batches: [],
+      pendingCount: 0,
+    });
+
+    render(
+      <MemoryRouter>
+        <WorkingTreeBrowser
+          projectId="p1"
+          status={{
+            isGitRepo: true,
+            branch: "main",
+            upstream: "origin/main",
+            ahead: 0,
+            behind: 0,
+            isClean: false,
+            files: [
+              {
+                path: "src/staged.ts",
+                status: "M",
+                staged: true,
+                linesAdded: 1,
+                linesDeleted: 0,
+              },
+              {
+                path: "src/unstaged.ts",
+                status: "M",
+                staged: false,
+                linesAdded: 1,
+                linesDeleted: 0,
+              },
+              {
+                path: "src/untracked.ts",
+                status: "?",
+                staged: false,
+                linesAdded: null,
+                linesDeleted: null,
+              },
+            ],
+            recentCommits: [],
+          }}
+          isWideScreen={false}
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    const stagedRow = await screen.findByTitle("src/staged.ts");
+    expect(
+      stagedRow.querySelector(".worktree-file-state")?.textContent,
+    ).toBe("✓");
+    expect(
+      stagedRow
+        .querySelector(".worktree-file-state")
+        ?.getAttribute("title"),
+    ).toBe("sourceWorktreeStaged");
+    expect(
+      screen
+        .getByTitle("src/unstaged.ts")
+        .querySelector(".worktree-file-state"),
+    ).toBeNull();
+    const untrackedRow = screen.getByTitle("src/untracked.ts");
+    expect(untrackedRow.querySelector(".worktree-file-state")).toBeNull();
+    expect(
+      untrackedRow
+        .querySelector(".git-status-badge")
+        ?.getAttribute("title"),
+    ).toBe("? — sourceFileStatusUntracked");
   });
 
   it("explains an empty ignore-whitespace projection", async () => {
@@ -274,7 +358,7 @@ describe("WorkingTreeBrowser", () => {
     fireEvent.click(await screen.findByText("src/mobile.ts"));
 
     expect(await screen.findByRole("dialog")).toBeDefined();
-    expect(screen.getByText("sourceWorktreeUnstaged")).toBeDefined();
+    expect(screen.queryByText("sourceWorktreeUnstaged")).toBeNull();
   });
 
   it("preserves an open comment draft while status refreshes the diff", async () => {

@@ -383,6 +383,45 @@ describe("TooltipLayer", () => {
     expect(screen.getByRole("tooltip").textContent).toBe("Clipped command");
   });
 
+  it("keeps a row tooltip when its exact-text child is clipped", () => {
+    render(
+      <>
+        <TooltipLayer />
+        <button type="button" data-tooltip="src/a/long-file-name.ts">
+          <span>src/a/long-file-name.ts</span>
+        </button>
+      </>,
+    );
+    const target = screen.getByRole("button", {
+      name: "src/a/long-file-name.ts",
+    });
+    const path = target.querySelector("span");
+    expect(path).not.toBeNull();
+    Object.defineProperties(target, {
+      clientWidth: { configurable: true, value: 160 },
+      clientHeight: { configurable: true, value: 24 },
+      scrollWidth: { configurable: true, value: 160 },
+      scrollHeight: { configurable: true, value: 24 },
+    });
+    Object.defineProperties(path, {
+      clientWidth: { configurable: true, value: 80 },
+      clientHeight: { configurable: true, value: 24 },
+      scrollWidth: { configurable: true, value: 160 },
+      scrollHeight: { configurable: true, value: 24 },
+    });
+
+    fireEvent.pointerOver(path!, {
+      pointerType: "mouse",
+      clientX: 10,
+      clientY: 10,
+    });
+    act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
+
+    expect(screen.getByRole("tooltip").textContent).toBe(
+      "src/a/long-file-name.ts",
+    );
+  });
+
   it("keeps an exact-content tooltip when a scroll ancestor clips it", () => {
     render(
       <>

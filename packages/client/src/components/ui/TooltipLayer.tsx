@@ -86,14 +86,26 @@ function normalizeVisibleText(value: string): string {
 }
 
 function repeatsFullyVisibleContent(target: Element, text: string): boolean {
+  const normalizedText = normalizeVisibleText(text);
   if (
-    normalizeVisibleText(target.textContent ?? "") !==
-    normalizeVisibleText(text)
+    normalizeVisibleText(target.textContent ?? "") !== normalizedText
   ) {
     return false;
   }
   if (!(target instanceof HTMLElement)) return false;
-  return isElementFullyScrollVisible(target);
+  if (!isElementFullyScrollVisible(target)) return false;
+
+  // A row can fit while the one descendant carrying that same text is
+  // ellipsized. Suppress only when every exact-text presentation is visible.
+  for (const descendant of target.querySelectorAll<HTMLElement>("*")) {
+    if (
+      normalizeVisibleText(descendant.textContent ?? "") === normalizedText &&
+      !isElementFullyScrollVisible(descendant)
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function appendDescriptionId(target: Element): SavedDescription {

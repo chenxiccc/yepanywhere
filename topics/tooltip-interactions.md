@@ -144,14 +144,16 @@ tooltip presentation.
 A hint that exactly repeats its target's visible text is omitted only when the
 target is measurably visible in its own scrollport, every clipping ancestor,
 and the viewport. If any of those clips the content—or the target cannot be
-measured—the hint remains. Explanatory hints and extra metadata are not
-inferred to be redundant. Ran commands use their producer's hidden-content
-count first, then the same actual scroll-visibility check on hover. Thus a
-command without a `+N` badge still reveals its full text when partly scrolled
-out of view, while any fully scroll-visible command has neither a themed nor
-native command tooltip. Expansion alone does not suppress the hint when the
-command remains clipped by its own scrollport, an ancestor, or the viewport.
-The Ran-label hint separately owns elapsed time.
+measured—the hint remains. When an outer target fits but an exact-text
+descendant is ellipsized, that descendant's visibility governs too; measuring
+only the row or button would incorrectly suppress the hint. Explanatory hints
+and extra metadata are not inferred to be redundant. Ran commands use their
+producer's hidden-content count first, then the same actual scroll-visibility
+check on hover. Thus a command without a `+N` badge still reveals its full text
+when partly scrolled out of view, while any fully scroll-visible command has
+neither a themed nor native command tooltip. Expansion alone does not suppress
+the hint when the command remains clipped by its own scrollport, an ancestor,
+or the viewport. The Ran-label hint separately owns elapsed time.
 
 Faded output/diff previews reveal a plain-text tail through shared preview
 machinery: an ellipsis plus the final configured number of lines. The same
@@ -211,9 +213,10 @@ not the surface into a card.
   keystrokes that do not edit a composer. Composer edits dismiss every
   YA-rendered tooltip owner and suppress pending/new reveals for 100 ms after
   the latest edit; nothing reopens without a later pointer/focus event.
-- Exact visible-content hints are absent only when fully scroll-visible and
-  remain when clipped by self, ancestor, or viewport; no-`+N` Ran commands
-  follow the same measured rule.
+- Exact visible-content hints are absent only when the target and any
+  exact-text descendant are fully scroll-visible, and remain when clipped by
+  self, descendant, ancestor, or viewport; no-`+N` Ran commands follow the
+  same measured rule.
 - Every faded hidden-content preview exposes its actual tail from the fade and
   `+N` badge where present; an unfaded preview exposes its full content when
   any of its rendered surface is not scroll-visible.

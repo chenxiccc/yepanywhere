@@ -16,14 +16,20 @@ import { api } from "../api/client";
 import { CopyButton } from "../components/CopyButton";
 import { ResizableSourceColumns } from "../components/ResizableSourceColumns";
 import {
+  SourceFilePath,
+  SourceFileRowButton,
+  SourceFileStatusBadge,
+} from "../components/SourceFileRow";
+import {
   SourceRowMenuTrigger,
   type SourceContextMenuAction,
   useSourceContextMenu,
 } from "../components/SourceContextMenu";
 import { useProjectReviewComments } from "../hooks/useProjectReviewComments";
 import { handleSourceListKeyDown } from "../hooks/useSourceKeyboard";
+import { useTextTooltipAttributes } from "../hooks/useTooltipAppearance";
+import type { TranslationFn } from "../i18n";
 import { writeClipboardText } from "../lib/clipboard";
-import type { MessageKey, TranslationFn } from "../i18n";
 import {
   GitDiffModal,
   GitDiffPreview,
@@ -346,9 +352,13 @@ export function WorkingTreeBrowser({
               const count = fileCommentCount.get(file.path) ?? 0;
               const isFolder = file.path.endsWith("/");
               const menuActions = fileMenuActions(file);
+              const displayPath = file.origPath
+                ? `${file.origPath} → ${file.path}`
+                : file.path;
               return (
                 <li key={file.path} className="commit-file-row">
-                  <button
+                  <SourceFileRowButton
+                    path={displayPath}
                     type="button"
                     className={`commit-file-item ${
                       selectedPath === file.path ? "selected" : ""
@@ -364,19 +374,9 @@ export function WorkingTreeBrowser({
                       handleFileClick(file);
                     })}
                   >
-                    <span
-                      className={`git-status-badge git-status-${file.status.toLowerCase()}`}
-                    >
-                      {file.status}
-                    </span>
-                    <span className="worktree-file-state">
-                      {t(worktreeStateLabelKey(file.worktreeState))}
-                    </span>
-                    <span className="git-file-path" title={file.path}>
-                      {file.origPath
-                        ? `${file.origPath} → ${file.path}`
-                        : file.path}
-                    </span>
+                    <SourceFileStatusBadge status={file.status} t={t} />
+                    <WorktreeStateMarker state={file.worktreeState} t={t} />
+                    <SourceFilePath>{displayPath}</SourceFilePath>
                     {(file.linesAdded !== null ||
                       file.linesDeleted !== null) && (
                       <span className="git-line-counts">
@@ -400,7 +400,7 @@ export function WorkingTreeBrowser({
                         {count}
                       </span>
                     )}
-                  </button>
+                  </SourceFileRowButton>
                   {!isFolder && (
                     <SourceRowMenuTrigger
                       actions={menuActions}
@@ -554,17 +554,32 @@ function mergeWorkingTreeFiles(files: GitFileChange[]): WorktreeFileChange[] {
   });
 }
 
-function worktreeStateLabelKey(state: WorktreeState): MessageKey {
-  switch (state) {
-    case "staged":
-      return "sourceWorktreeStaged";
-    case "both":
-      return "sourceWorktreeBoth";
-    case "untracked":
-      return "sourceWorktreeUntracked";
-    default:
-      return "sourceWorktreeUnstaged";
-  }
+function WorktreeStateMarker({
+  state,
+  t,
+}: {
+  state: WorktreeState;
+  t: TranslationFn;
+}) {
+  const label =
+    state === "both"
+      ? t("sourceWorktreePartialDescription")
+      : state === "staged"
+        ? t("sourceWorktreeStaged")
+        : null;
+  const tooltipAttributes = useTextTooltipAttributes(label);
+  if (!label) return null;
+
+  return (
+    <span
+      className={`worktree-file-state worktree-file-state-${state}`}
+      role="img"
+      aria-label={label}
+      {...tooltipAttributes}
+    >
+      {state === "both" ? t("sourceWorktreePartial") : "✓"}
+    </span>
+  );
 }
 
 function formatCommitDate(value: string): string {

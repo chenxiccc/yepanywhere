@@ -17,6 +17,11 @@ import { api } from "../api/client";
 import { CopyButton } from "../components/CopyButton";
 import { ResizableSourceColumns } from "../components/ResizableSourceColumns";
 import {
+  SourceFilePath,
+  SourceFileRowButton,
+  SourceFileStatusBadge,
+} from "../components/SourceFileRow";
+import {
   SourceRowMenuTrigger,
   type SourceContextMenuAction,
   useSourceContextMenu,
@@ -884,9 +889,13 @@ export function CommitBrowser({
                     const count = fileCommentCount.get(file.path) ?? 0;
                     const isFolder = file.path.endsWith("/");
                     const menuActions = fileMenuActions(file);
+                    const displayPath = file.origPath
+                      ? `${file.origPath} → ${file.path}`
+                      : file.path;
                     return (
                       <li key={file.path} className="commit-file-row">
-                        <button
+                        <SourceFileRowButton
+                          path={displayPath}
                           type="button"
                           className={`commit-file-item ${
                             selectedPath === file.path ? "selected" : ""
@@ -912,23 +921,8 @@ export function CommitBrowser({
                             setMessageView(false);
                           })}
                         >
-                          <span
-                            className={`git-status-badge git-status-${file.status.toLowerCase()}`}
-                          >
-                            {file.status}
-                          </span>
-                          <span
-                            className="git-file-path"
-                            title={
-                              file.origPath
-                                ? `${file.origPath} → ${file.path}`
-                                : file.path
-                            }
-                          >
-                            {file.origPath
-                              ? `${file.origPath} → ${file.path}`
-                              : file.path}
-                          </span>
+                          <SourceFileStatusBadge status={file.status} t={t} />
+                          <SourceFilePath>{displayPath}</SourceFilePath>
                           {(file.linesAdded !== null ||
                             file.linesDeleted !== null) && (
                             <span className="git-line-counts">
@@ -952,7 +946,7 @@ export function CommitBrowser({
                               {count}
                             </span>
                           )}
-                        </button>
+                        </SourceFileRowButton>
                         {!isFolder && (
                           <SourceRowMenuTrigger
                             actions={menuActions}

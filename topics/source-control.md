@@ -75,11 +75,13 @@ status, count, and menu affordances—not only rows currently mounted in the
 vertical-scroll window. Recompute it when the corpus or relevant font, size,
 or spacing metrics change.
 
-### Changed-file state and path recovery — proposal
+### Changed-file state and path recovery
 
 Changed-file rows use the compact git status code as the primary kind:
 `M` = Modified, `A` = Added, `D` = Deleted, `R` = Renamed, and `?` =
-Untracked. Tooltips and accessible labels expand every code.
+Untracked. Less common codes retain the same treatment: `C` = Copied, `T` =
+Type changed, and `U` = Unmerged. Tooltips and accessible labels expand every
+code.
 
 Do not repeat the long, visually similar **unstaged** or **untracked** words on
 ordinary rows: the status code already carries the useful distinction, with

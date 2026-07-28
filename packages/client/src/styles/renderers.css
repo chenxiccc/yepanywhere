@@ -6098,8 +6098,8 @@ pre.code-highlighter-plain,
    intense-color band stable, center the glyph optically inside that band, and
    reserve separate breathing room between the color divide and source text. */
 .source-diff-pane {
-  --source-diff-gutter-width: 1.25rem;
-  --source-diff-line-inline-inset: 0.5rem;
+  --source-diff-gutter-width: 1rem;
+  --source-diff-line-inline-inset: 0.375rem;
   --source-diff-gutter-content-gap: 0.375rem;
   --source-diff-glyph-optical-shift: -0.1rem;
 }
@@ -6600,31 +6600,41 @@ pre.code-highlighter-plain,
 }
 
 @media (min-width: 1100px) {
-  /* Each column caps at the Appearance > Max Content Width preference so no
-     single column (notably the diff) sprawls past a readable measure on an
-     ultra-wide viewport; leftover width stays as gutter, not stretched tracks. */
+  .commit-browser,
+  .working-tree-browser,
+  .blame-browser {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+  }
+
   .commit-browser-columns {
     grid-template-columns:
       var(--source-revision-column-width, 300px)
       var(--source-files-column-width, 340px)
-      minmax(0, var(--content-max-width));
-    justify-content: start;
-    align-items: start;
+      minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    min-height: 0;
+    flex: 1;
+    align-items: stretch;
   }
 
   .commit-list-column,
   .commit-files-column,
   .working-tree-files-column {
-    max-height: calc(100vh - 220px);
+    min-height: 0;
     overflow-y: auto;
   }
 
   .working-tree-browser-columns {
     grid-template-columns:
       var(--source-files-column-width, 380px)
-      minmax(0, var(--content-max-width));
-    justify-content: start;
-    align-items: start;
+      minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    min-height: 0;
+    flex: 1;
+    align-items: stretch;
   }
 
   /* Commits supplies the revision column; the shared WorkingTreeBrowser
@@ -7032,7 +7042,7 @@ pre.code-highlighter-plain,
 
 .worktree-file-state {
   flex-shrink: 0;
-  padding: 1px 5px;
+  padding: 1px 4px;
   color: var(--text-secondary, #8b949e);
   background: var(--bg-tertiary, rgba(255, 255, 255, 0.05));
   border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
@@ -7231,20 +7241,25 @@ pre.code-highlighter-plain,
 }
 
 @media (min-width: 1100px) {
-  /* Blame view column caps at the content-width preference (see commit browser
-     note); the file column is already narrower than any sane cap. */
   .blame-browser-columns {
-    grid-template-columns: var(--source-files-column-width, 340px) minmax(
-        0,
-        var(--content-max-width)
-      );
-    justify-content: start;
-    align-items: start;
+    grid-template-columns:
+      var(--source-files-column-width, 340px)
+      minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    min-height: 0;
+    flex: 1;
+    align-items: stretch;
   }
 
   .blame-file-column {
-    max-height: calc(100vh - 220px);
+    min-height: 0;
     overflow-y: auto;
+  }
+
+  .blame-browser-columns > .blame-view {
+    height: 100%;
+    min-height: 0;
+    max-height: none;
   }
 }
 
