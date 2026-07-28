@@ -12,7 +12,17 @@ import { useI18n } from "../i18n";
 
 const RELOAD_BANNER_CONTROL_GAP = 4;
 const RELOAD_BANNER_COMPOSER_GAP = 8;
+const RELOAD_BANNER_FIXED_OCCUPANT_GAP = 8;
 const RELOAD_BANNER_DEFAULT_BOTTOM = 12;
+
+function rectsOverlap(first: DOMRect, second: DOMRect, gap: number): boolean {
+  return (
+    first.left < second.right + gap &&
+    first.right > second.left - gap &&
+    first.top < second.bottom + gap &&
+    first.bottom > second.top - gap
+  );
+}
 
 interface Props {
   target: "backend" | "frontend";
@@ -43,39 +53,66 @@ export function ReloadBannerStack({
     let animationFrame: number | null = null;
     const updatePlacement = () => {
       stack.style.setProperty("--reload-banner-stack-lift", "0px");
-      if (!avoidSessionComposer || window.innerWidth <= 600) return;
-
-      const composer = document.querySelector<HTMLElement>(".session-input");
-      if (!composer) return;
 
       const stackRect = stack.getBoundingClientRect();
       if (stackRect.width === 0 || stackRect.height === 0) return;
 
-      const controls = composer.querySelectorAll<HTMLElement>(
-        "button, a[href], [role='button'], input:not([type='hidden']), select",
-      );
-      const overlapsAControl = Array.from(controls).some((control) => {
-        const controlRect = control.getBoundingClientRect();
-        if (controlRect.width === 0 || controlRect.height === 0) return false;
-        return (
-          stackRect.left <
-            controlRect.right + RELOAD_BANNER_CONTROL_GAP &&
-          stackRect.right >
-            controlRect.left - RELOAD_BANNER_CONTROL_GAP &&
-          stackRect.top <
-            controlRect.bottom + RELOAD_BANNER_CONTROL_GAP &&
-          stackRect.bottom >
-            controlRect.top - RELOAD_BANNER_CONTROL_GAP
+      let lift = 0;
+      const composer =
+        avoidSessionComposer && window.innerWidth > 600
+          ? document.querySelector<HTMLElement>(".session-input")
+          : null;
+      if (composer) {
+        const controls = composer.querySelectorAll<HTMLElement>(
+          "button, a[href], [role='button'], input:not([type='hidden']), select",
         );
-      });
-      if (!overlapsAControl) return;
+        const overlapsAControl = Array.from(controls).some((control) => {
+          const controlRect = control.getBoundingClientRect();
+          return (
+            controlRect.width > 0 &&
+            controlRect.height > 0 &&
+            rectsOverlap(
+              stackRect,
+              controlRect,
+              RELOAD_BANNER_CONTROL_GAP,
+            )
+          );
+        });
+        if (overlapsAControl) {
+          const composerRect = composer.getBoundingClientRect();
+          lift = Math.max(
+            lift,
+            window.innerHeight -
+              composerRect.top +
+              RELOAD_BANNER_COMPOSER_GAP -
+              RELOAD_BANNER_DEFAULT_BOTTOM,
+          );
+        }
+      }
 
-      const composerRect = composer.getBoundingClientRect();
-      const lift =
-        window.innerHeight -
-        composerRect.top +
-        RELOAD_BANNER_COMPOSER_GAP -
-        RELOAD_BANNER_DEFAULT_BOTTOM;
+      const fixedOccupant =
+        document.querySelector<HTMLElement>(".fab-container");
+      if (fixedOccupant) {
+        const occupantRect = fixedOccupant.getBoundingClientRect();
+        if (
+          occupantRect.width > 0 &&
+          occupantRect.height > 0 &&
+          rectsOverlap(
+            stackRect,
+            occupantRect,
+            RELOAD_BANNER_FIXED_OCCUPANT_GAP,
+          )
+        ) {
+          lift = Math.max(
+            lift,
+            window.innerHeight -
+              occupantRect.top +
+              RELOAD_BANNER_FIXED_OCCUPANT_GAP -
+              RELOAD_BANNER_DEFAULT_BOTTOM,
+          );
+        }
+      }
+
       stack.style.setProperty(
         "--reload-banner-stack-lift",
         `${Math.max(0, Math.ceil(lift))}px`,
@@ -97,18 +134,28 @@ export function ReloadBannerStack({
     const composer = avoidSessionComposer
       ? document.querySelector<HTMLElement>(".session-input")
       : null;
+    const fixedOccupant =
+      document.querySelector<HTMLElement>(".fab-container");
     const resizeObserver =
       typeof ResizeObserver === "undefined"
         ? null
         : new ResizeObserver(schedulePlacement);
     resizeObserver?.observe(stack);
     if (composer) resizeObserver?.observe(composer);
+    if (fixedOccupant) resizeObserver?.observe(fixedOccupant);
 
-    const mutationObserver = composer
+    const mutationObserver = composer || fixedOccupant
       ? new MutationObserver(schedulePlacement)
       : null;
     if (composer && mutationObserver) {
       mutationObserver.observe(composer, {
+        attributes: true,
+        childList: true,
+        subtree: true,
+      });
+    }
+    if (fixedOccupant && mutationObserver) {
+      mutationObserver.observe(fixedOccupant, {
         attributes: true,
         childList: true,
         subtree: true,
