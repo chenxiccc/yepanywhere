@@ -16,6 +16,7 @@ type Boundary = "revisions" | "files";
 const REVISION_MIN = 240;
 const REVISION_MAX = 420;
 const FILES_MIN = 220;
+const DEFAULT_FILES_WIDTH = 380;
 const KEYBOARD_STEP = 16;
 const FALLBACK_COLUMN_GAP = 12;
 const FALLBACK_HANDLE_WIDTH = 26;
@@ -54,16 +55,40 @@ export function calculateSourceFilesMaxWidth({
   gapWidth: number;
   handleWidth: number;
 }): number {
-  const precedingWidth =
-    layout === "history" ? revisionWidth + gapWidth : 0;
+  const precedingWidth = layout === "history" ? revisionWidth + gapWidth : 0;
   return Math.max(
     FILES_MIN,
     Math.floor(
-      containerWidth -
-        precedingWidth -
-        gapWidth / 2 -
-        handleWidth / 2,
+      containerWidth - precedingWidth - gapWidth / 2 - handleWidth / 2,
     ),
+  );
+}
+
+/**
+ * Leave a measured detail pane just enough room, while allowing an oversized
+ * file list to return toward its ordinary default. A deliberately narrower
+ * user resize remains the automatic floor.
+ */
+export function calculateSourceAutoFilesWidth({
+  containerWidth,
+  gapWidth,
+  naturalDetailWidth,
+  currentFilesWidth,
+  defaultFilesWidth,
+  filesMax,
+}: {
+  containerWidth: number;
+  gapWidth: number;
+  naturalDetailWidth: number;
+  currentFilesWidth: number;
+  defaultFilesWidth: number;
+  filesMax: number;
+}): number {
+  const automaticFloor = Math.min(currentFilesWidth, defaultFilesWidth);
+  return clamp(
+    Math.floor(containerWidth - gapWidth - naturalDetailWidth),
+    automaticFloor,
+    filesMax,
   );
 }
 
@@ -76,6 +101,7 @@ export function ResizableSourceColumns({
   layout,
   enabled = true,
   initialFilesWidth,
+  naturalDetailWidth,
   className,
   children,
   t,
@@ -83,14 +109,17 @@ export function ResizableSourceColumns({
   layout: SourceColumnLayout;
   enabled?: boolean;
   initialFilesWidth?: number;
+  naturalDetailWidth?: number;
   className: string;
   children: ReactNode;
   t: TranslationFn;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const defaultFilesWidth =
+    initialFilesWidth ?? (layout === "history" ? 340 : DEFAULT_FILES_WIDTH);
   const [widths, setWidths] = useState<Widths>(() => ({
     revisions: 300,
-    files: initialFilesWidth ?? (layout === "history" ? 340 : 380),
+    files: defaultFilesWidth,
   }));
   const [dragging, setDragging] = useState<DragState | null>(null);
   const [layoutMetrics, setLayoutMetrics] = useState<LayoutMetrics | null>(
@@ -118,9 +147,7 @@ export function ResizableSourceColumns({
       );
       const next = {
         containerWidth: root.clientWidth,
-        gapWidth: Number.isFinite(parsedGap)
-          ? parsedGap
-          : FALLBACK_COLUMN_GAP,
+        gapWidth: Number.isFinite(parsedGap) ? parsedGap : FALLBACK_COLUMN_GAP,
         handleWidth: handle?.offsetWidth || FALLBACK_HANDLE_WIDTH,
       };
       if (next.containerWidth <= 0) return;
@@ -150,6 +177,28 @@ export function ResizableSourceColumns({
       current.files <= filesMax ? current : { ...current, files: filesMax },
     );
   }, [filesMax]);
+
+  useLayoutEffect(() => {
+    if (
+      layout !== "files" ||
+      naturalDetailWidth === undefined ||
+      layoutMetrics === null ||
+      filesMax === undefined
+    ) {
+      return;
+    }
+    setWidths((current) => {
+      const files = calculateSourceAutoFilesWidth({
+        containerWidth: layoutMetrics.containerWidth,
+        gapWidth: layoutMetrics.gapWidth,
+        naturalDetailWidth,
+        currentFilesWidth: current.files,
+        defaultFilesWidth,
+        filesMax,
+      });
+      return files === current.files ? current : { ...current, files };
+    });
+  }, [defaultFilesWidth, filesMax, layout, layoutMetrics, naturalDetailWidth]);
 
   useEffect(() => {
     if (!dragging) return;
@@ -194,9 +243,7 @@ export function ResizableSourceColumns({
       [boundary]: clamp(
         next,
         boundary === "revisions" ? REVISION_MIN : FILES_MIN,
-        boundary === "revisions"
-          ? REVISION_MAX
-          : (filesMax ?? current.files),
+        boundary === "revisions" ? REVISION_MAX : (filesMax ?? current.files),
       ),
     }));
   };
@@ -217,8 +264,7 @@ export function ResizableSourceColumns({
   ) => {
     const current = widths[boundary];
     const min = boundary === "revisions" ? REVISION_MIN : FILES_MIN;
-    const max =
-      boundary === "revisions" ? REVISION_MAX : (filesMax ?? current);
+    const max = boundary === "revisions" ? REVISION_MAX : (filesMax ?? current);
     const next =
       event.key === "ArrowLeft"
         ? current - KEYBOARD_STEP

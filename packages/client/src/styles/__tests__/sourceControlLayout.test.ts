@@ -115,12 +115,28 @@ describe("Source Control workbench layout CSS contract", () => {
     const css = await readFile(rendererStylesheetUrl, "utf8");
     const diff = getRuleDeclarationsContaining(
       css,
-      ".source-diff-pane",
-      "--source-diff-gutter-width",
+      ".diff-gutter-aligned",
+      "--diff-gutter-width",
     );
 
-    expect(diff).toMatch(/--source-diff-gutter-width:\s*1rem\s*;/);
-    expect(diff).toMatch(/--source-diff-line-inline-inset:\s*0\.375rem\s*;/);
-    expect(diff).toMatch(/--source-diff-gutter-content-gap:\s*0\.375rem\s*;/);
+    expect(diff).toMatch(/--diff-gutter-width:\s*1rem\s*;/);
+    expect(diff).toMatch(/--diff-line-inline-inset:\s*0\.375rem\s*;/);
+    expect(diff).toMatch(/--diff-gutter-content-gap:\s*0\.375rem\s*;/);
+  });
+
+  it("uses compact blame columns and one scrollbar per provenance run", async () => {
+    const css = await readFile(rendererStylesheetUrl, "utf8");
+    const row = getLastRuleDeclarations(css, ".blame-row");
+    const lineNumber = getLastRuleDeclarations(css, ".blame-lineno");
+    const code = getLastRuleDeclarations(css, ".blame-code");
+    const scrollRun = getLastRuleDeclarations(css, ".blame-run.is-scrollable");
+
+    expect(row).toContain("var(--blame-hash-column-width)");
+    expect(row).toContain("var(--blame-line-number-column-width)");
+    expect(row).toMatch(/minmax\(max-content,\s*1fr\)/);
+    expect(row).not.toContain("44px");
+    expect(lineNumber).toMatch(/text-align:\s*right\s*;/);
+    expect(scrollRun).toMatch(/overflow-x:\s*auto\s*;/);
+    expect(code).not.toMatch(/overflow-x:\s*auto\s*;/);
   });
 });

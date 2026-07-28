@@ -1,6 +1,6 @@
 # Conversation View
 
-> Conversation view is an opt-in transcript projection that keeps user prompts,
+> Conversation view is the default transcript projection that keeps user prompts,
 > agent-authored text, images, and important failures visible while replacing
 > routine tool activity with one compact, expandable elapsed/activity summary
 > per agent turn.
@@ -28,14 +28,35 @@ provider-history rewrite and not deletion.
 
 ## Observable contract
 
-- The feature is **off by default**. Its two-bubble button is itself a
-  default-hidden Session Toolbar control. Once shown, the button switches
-  between the full activity transcript and Conversation view.
+- The feature and its two-bubble Session Toolbar control are **on by default**.
+  The control uses the `last` narrowing tier and switches between the condensed
+  conversation and full activity transcript. This is a deliberate
+  [Vanilla Defaults](vanilla-defaults.md) exception approved as matching the
+  normal condensed presentation of the Codex and Claude harnesses.
 - The mode is browser/device-local, persists across sessions and tabs, and is
   included in browser-settings backup. The toolbar-presence choice for this
   control is also client-only: it is not sent as a
   `clientDefaults.sessionToolbarPresence` key to servers that may not recognize
-  it.
+  it. The last owner toggle on this browser profile is the default for newly
+  opened sessions and tabs on that device; there is no duplicate default-state
+  setting or cross-device last-writer synchronization. Existing stored mode and
+  presence choices remain authoritative. Explicitly changing the toolbar
+  control from hidden to shown activates Conversation view; merely changing a
+  shown control's narrowing tier does not overwrite the current mode.
+- A session or share that opens with Conversation view already active condenses
+  the entire currently loaded transcript; default-on does not itself truncate
+  history. Explicitly switching Conversation view from off to on in a mounted
+  view starts at the latest 100 user turns. **Toolbar → Conversation View
+  history** configures this browser-local activation limit from 10 to 500 turns
+  in steps of 10 and includes it in browser-settings backup. The boundary is a
+  user prompt: its corresponding assistant response and all following
+  standalone display objects remain in order.
+- When older loaded turns exist above that boundary, the ordinary top history
+  affordance reports the visible turn count and reveals up to another configured
+  window. If the canonical session also has unloaded history, the same action
+  may request the next older page as the local boundary approaches it. Revealed
+  history is ephemeral to the mounted view: it does not change the configured
+  default, delete transcript data, or persist a provider/session mutation.
 - Conversation view retains user prompts, session setup, transcript display
   objects, agent-authored text, ordinary system notices, warnings, and errors.
   Tool calls with media remain visible, using their existing media renderer, so
@@ -62,6 +83,49 @@ provider-history rewrite and not deletion.
 - Search follows the currently projected transcript. Condensed tool/thinking
   text does not produce hidden matches; expanding its turn makes those rows
   searchable again.
+- The thinking-transcript visibility control composes with Conversation View
+  instead of being shadowed by it. When thinking is visible, a compact preview
+  follows the final activity summary on the same wrapping row: the latest block
+  (current while streaming) and at most one preceding completed block. A block
+  restored by expanding its ordinary activity summary is not duplicated in the
+  preview. Preview text participates in the projected search scope. The row
+  packs the activity summary and both previews together whenever their measured
+  target widths fit, then wraps whole cards when they do not.
+- Each thinking-preview slot can be collapsed or dismissed independently.
+  Streaming updates to the block occupying a slot do not reopen a collapsed
+  card. Dismissing the final visible card switches the thinking-transcript
+  control off; switching that control on again restores both available cards
+  expanded. A lone remaining card may use the width released by its dismissed
+  peer.
+- While at least one thinking preview is expanded, the activity column may show
+  the three newest concrete activity kinds below its count. File operations may
+  add a basename and commands may add a bounded description or verb-first
+  command fragment. These previews remain whole single lines, may truncate, and
+  cannot widen the activity column; the complete ordinary tool summary remains
+  available as a tooltip. Collapsing every thinking card removes the activity
+  names without reserving vertical space.
+- A thinking card begins at a compact target width. Its target may grow as the
+  same thinking block streams but never shrinks until that slot receives a new
+  block; the card may then reset to a narrower measured target. Targets remain
+  clamped by the card and row bounds. This per-block hysteresis avoids
+  paragraph-by-paragraph layout oscillation without retaining a cross-turn
+  moving average.
+- Standalone bold lines that the thinking renderer recognizes as Codex outline
+  headings use a smaller, lighter subhead treatment than ordinary Markdown
+  headings. The treatment belongs to the shared thinking renderer, so it is
+  identical in transcript expansion and Conversation previews without
+  rewriting the source Markdown.
+- Public session shares are the explicit default-state exception. Their
+  independent read-only shell starts in Conversation view and exposes a compact
+  floating icon toggle regardless of the owner's toolbar customization or last
+  local mode. Owner and public views call the same window and conversation
+  projection, so later visibility rules—such as meaningful documentation
+  edits—take effect in both places.
+- Live public shares use the normal session viewport's follow machinery.
+  Incoming output follows while the viewer remains at the live edge (including
+  its near-bottom continuation band); scrolling away preserves the reading
+  position and adds **Follow** to the floating control cluster. Frozen shares
+  show the Conversation toggle but no Follow action.
 
 ## Time and count semantics
 
@@ -106,8 +170,16 @@ extension must not absorb them into edit summaries.
 
 ## Implementation boundary
 
-`projectConversationView` runs after the stable provider transcript projection
-and before turn grouping, timeline rows, search, and React rendering. It adds a
-synthetic `conversation_activity` render item rather than hiding DOM nodes.
-This keeps ordering, media retention, search scope, progressive rendering, and
-scroll anchoring attached to the same render-item model as the full transcript.
+The history-window projection and `projectConversationView` run after the
+stable provider transcript projection and before turn grouping, timeline rows,
+search, and React rendering. The window selects a user-turn-aligned suffix;
+`projectConversationView` then adds a synthetic `conversation_activity` render
+item rather than hiding DOM nodes. This keeps owner/public behavior, ordering,
+media retention, search scope, progressive rendering, and scroll anchoring
+attached to the same render-item model as the full transcript.
+
+**Grow within a block, reset between blocks** (vs. an exponential moving
+average over recent blocks): a complete thinking turn is normally only a few
+seconds, so an occasional reset/reflow is acceptable. Slot-local monotonic
+growth gives stable streaming layout while letting two later compact blocks
+return to one row promptly.

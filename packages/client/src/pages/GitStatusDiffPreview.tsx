@@ -104,9 +104,9 @@ function sourceFromPrimitives(
     ? { kind: "commit", sha: baseSha }
     : kind === "comparison"
       ? { kind: "comparison", baseSha, headSha }
-    : kind === "working-tree-history"
-      ? WORKING_TREE_HISTORY_SOURCE
-      : WORKTREE_SOURCE;
+      : kind === "working-tree-history"
+        ? WORKING_TREE_HISTORY_SOURCE
+        : WORKTREE_SOURCE;
 }
 
 function fetchDiffForSource(
@@ -152,9 +152,7 @@ function fetchDiffForSource(
   });
 }
 
-function commentRevisionsForSource(
-  source: GitDiffSource,
-):
+function commentRevisionsForSource(source: GitDiffSource):
   | {
       old: ReviewCommentRevision;
       new: ReviewCommentRevision;
@@ -212,8 +210,7 @@ export const GitDiffPreview = forwardRef<
     ref,
     () => ({
       jumpToNextHunk: () => hunkNavigationRef.current?.next() ?? false,
-      jumpToPreviousHunk: () =>
-        hunkNavigationRef.current?.previous() ?? false,
+      jumpToPreviousHunk: () => hunkNavigationRef.current?.previous() ?? false,
     }),
     [],
   );
@@ -346,9 +343,7 @@ export function GitDiffBody({
   projectId: string;
   source?: GitDiffSource;
   paneHeader?: DiffPaneHeader;
-  onHunkNavigationChange?: (
-    handlers: HunkNavigationHandlers | null,
-  ) => void;
+  onHunkNavigationChange?: (handlers: HunkNavigationHandlers | null) => void;
   onCommentEditorOpenChange?: (open: boolean) => void;
   ignoreWhitespace?: boolean;
   onToggleIgnoreWhitespace?: () => void;
@@ -525,9 +520,7 @@ function GitDiffContent({
   source?: GitDiffSource;
   diffResult: GitDiffResult;
   paneHeader?: DiffPaneHeader;
-  onHunkNavigationChange?: (
-    handlers: HunkNavigationHandlers | null,
-  ) => void;
+  onHunkNavigationChange?: (handlers: HunkNavigationHandlers | null) => void;
   onCommentEditorOpenChange?: (open: boolean) => void;
   ignoreWhitespace?: boolean;
   onToggleIgnoreWhitespace?: () => void;
@@ -802,14 +795,8 @@ function GitDiffContent({
     },
     [renderedHunks],
   );
-  const jumpToNextHunk = useCallback(
-    () => jumpToHunk(1),
-    [jumpToHunk],
-  );
-  const jumpToPreviousHunk = useCallback(
-    () => jumpToHunk(-1),
-    [jumpToHunk],
-  );
+  const jumpToNextHunk = useCallback(() => jumpToHunk(1), [jumpToHunk]);
+  const jumpToPreviousHunk = useCallback(() => jumpToHunk(-1), [jumpToHunk]);
 
   useEffect(() => {
     const content = contentRef.current;
@@ -841,11 +828,7 @@ function GitDiffContent({
       previous: jumpToPreviousHunk,
     });
     return () => onHunkNavigationChange?.(null);
-  }, [
-    jumpToNextHunk,
-    jumpToPreviousHunk,
-    onHunkNavigationChange,
-  ]);
+  }, [jumpToNextHunk, jumpToPreviousHunk, onHunkNavigationChange]);
 
   useLayoutEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -859,8 +842,7 @@ function GitDiffContent({
       ) {
         return;
       }
-      const moved =
-        key === "n" ? jumpToNextHunk() : jumpToPreviousHunk();
+      const moved = key === "n" ? jumpToNextHunk() : jumpToPreviousHunk();
       if (moved) event.preventDefault();
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -966,7 +948,10 @@ function GitDiffContent({
         </div>
       )}
       {contextError && <div className="diff-context-error">{contextError}</div>}
-      <div className="diff-modal-content source-diff-pane" ref={mountContent}>
+      <div
+        className="diff-modal-content source-diff-pane diff-gutter-aligned"
+        ref={mountContent}
+      >
         {showMarkdownPreview && markdownHtml ? (
           <MarkdownPreview html={markdownHtml} />
         ) : previewSkipped ? (
@@ -984,7 +969,7 @@ function GitDiffContent({
                   : t("gitStatusNoContentChanges")}
               </div>
             ) : displayResult.diffHtml &&
-            resolveDiffViewMode(viewMode, paneWidth) === "side-by-side" ? (
+              resolveDiffViewMode(viewMode, paneWidth) === "side-by-side" ? (
               <SideBySideDiff
                 diffHtml={displayResult.diffHtml}
                 structuredPatch={displayResult.structuredPatch}

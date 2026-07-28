@@ -82,6 +82,15 @@ session rows, future-visible provider context, or autonomous server upkeep for
 sessions with no current client viewer; stronger hidden-message keepalive modes
 remain explicit per-provider choices.
 
+[conversation-view](conversation-view.md) and its Session Toolbar control ship
+default-on. The condensed projection keeps user/agent conversation, media, and
+important failures visible while preserving one-click access to every routine
+activity in original order. This was approved by graehl on 2026-07-28,
+relaying Kyle's chat approval, because the resulting default matches the
+condensed conversation presentation users already encounter in the Codex and
+Claude harnesses. Existing browser-local mode and toolbar-presence choices
+remain authoritative.
+
 ## Worked instances: queued-turn delivery
 
 [compose-time-context-anchors](compose-time-context-anchors.md)

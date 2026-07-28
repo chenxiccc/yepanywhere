@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   blameCacheStatsForTest,
   getBlame,
+  insertBlameCacheEntryForTest,
   resetBlameCacheForTest,
 } from "../../src/git/blame.js";
 
@@ -74,5 +75,15 @@ describe("blame LRU cache", () => {
     expect(blameCacheStatsForTest().hits).toBe(hitsBefore + 1);
     expect(second).toEqual(first);
     expect(blameCacheStatsForTest().bytes).toBeGreaterThan(0);
+  });
+
+  it("accounts for only the winning entry when concurrent misses replace a key", () => {
+    insertBlameCacheEntryForTest("same-key", 80);
+    insertBlameCacheEntryForTest("same-key", 120);
+
+    expect(blameCacheStatsForTest()).toMatchObject({
+      entries: 1,
+      bytes: 120,
+    });
   });
 });

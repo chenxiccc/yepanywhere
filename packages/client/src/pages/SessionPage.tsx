@@ -727,13 +727,10 @@ function SessionPageContent({
     void sessionId;
     return createComposerDraftSignal();
   }, [sessionId]);
-  const composerEditAvailabilityStore = useMemo(
-    () => {
-      void sessionId;
-      return createComposerEditAvailabilityStore();
-    },
-    [sessionId],
-  );
+  const composerEditAvailabilityStore = useMemo(() => {
+    void sessionId;
+    return createComposerEditAvailabilityStore();
+  }, [sessionId]);
   const [attachmentQuality] = useAttachmentUploadQuality();
   useEffect(() => {
     composerEditAvailabilityStore.setExternalBlockers(
@@ -5051,9 +5048,7 @@ function SessionPageContent({
                   onTransferBtwAsideTurn={transferBtwTurnToMotherComposer}
                   onQuoteSelection={insertQuotedSelection}
                   composerDraftSignal={composerDraftSignal}
-                  composerEditAvailabilityStore={
-                    composerEditAvailabilityStore
-                  }
+                  composerEditAvailabilityStore={composerEditAvailabilityStore}
                   quoteClearSignal={quoteClearSignal}
                   onCancelDeferred={handleCancelDeferred}
                   onEditDeferred={handleEditDeferred}
@@ -5091,6 +5086,7 @@ function SessionPageContent({
                     sessionLoadingProgressDetailsVisible
                   }
                   progressiveRenderKey={`${clientSummarySourceKey}:${projectId}:${sessionId}:${location.search}`}
+                  conversationViewStateKey={`${clientSummarySourceKey}:${projectId}:${sessionId}:${location.search}`}
                   initialScrollSnapshot={initialScrollSnapshot}
                   onScrollSnapshotChange={updateRouteScrollSnapshot}
                   onFollowingBottomChange={updateActiveWindowFollowingBottom}

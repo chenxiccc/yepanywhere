@@ -132,8 +132,35 @@ export interface ConversationActivityItem extends RenderItemBase {
   activityCount: number;
   active: boolean;
   expanded: boolean;
+  /**
+   * Compact intersection of Conversation View and the thinking-visibility
+   * control. These previews remain attached to the final activity summary;
+   * expanding an activity restores the original thinking item instead.
+   */
+  thinkingPreviews?: ConversationThinkingPreview[];
+  /**
+   * Newest concrete activity kinds, kept intentionally short. The visible row
+   * is only a name; its ordinary tool summary remains available as a tooltip.
+   */
+  recentActivities?: ConversationRecentActivity[];
   /** Earliest observed source-message timestamp in the assistant turn. */
   startedAtMs: number | null;
   /** Latest observed timestamp, or the current clock while the turn is active. */
   endedAtMs: number | null;
+}
+
+export interface ConversationThinkingPreview {
+  id: string;
+  kind: "current" | "latest" | "previous";
+  slot: ConversationThinkingPreviewSlot;
+  thinking: string;
+  status: ThinkingItem["status"];
+}
+
+export type ConversationThinkingPreviewSlot = "latest" | "previous";
+
+export interface ConversationRecentActivity {
+  label: string;
+  detail: string;
+  preview?: string;
 }

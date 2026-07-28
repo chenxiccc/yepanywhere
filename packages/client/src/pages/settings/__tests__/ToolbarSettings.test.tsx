@@ -12,6 +12,10 @@ import {
   PROJECT_QUEUE_CAPABILITY,
   PROJECT_QUEUE_NEW_SESSION_SHORTCUT_SETTING_CAPABILITY,
 } from "../../../lib/projectQueueVisibility";
+import {
+  DEFAULT_CONVERSATION_VIEW_TURN_LIMIT,
+  setConversationViewTurnLimit,
+} from "../../../hooks/useConversationView";
 import { ToolbarSettings } from "../ToolbarSettings";
 
 const state = vi.hoisted(() => {
@@ -22,7 +26,7 @@ const state = vi.hoisted(() => {
     slashMenu: "mid",
     thinkingToggle: "mid",
     renderMode: "hidden",
-    conversationView: "hidden",
+    conversationView: "last",
     microphone: "pin",
     waveform: "pin",
     shortcutsHelp: "last",
@@ -125,6 +129,11 @@ vi.mock("../../../i18n", () => ({
           appearanceToolbarConversationViewTitle: "Conversation View",
           appearanceToolbarConversationViewDescription:
             "Show condensed conversation",
+          appearanceToolbarConversationViewTurnLimitTitle:
+            "Conversation View history",
+          appearanceToolbarConversationViewTurnLimitDescription:
+            "Latest user turns",
+          appearanceToolbarConversationViewTurnLimitUnit: "turns",
           appearanceToolbarMicrophoneTitle: "Microphone",
           appearanceToolbarMicrophoneDescription: "Show microphone",
           appearanceToolbarWaveformTitle: "Live Microphone Waveform",
@@ -189,6 +198,7 @@ describe("ToolbarSettings", () => {
   beforeEach(() => {
     state.version = { capabilities: [] };
     state.presence = { ...state.defaultPresence };
+    setConversationViewTurnLimit(DEFAULT_CONVERSATION_VIEW_TURN_LIMIT);
   });
 
   afterEach(() => {
@@ -251,8 +261,8 @@ describe("ToolbarSettings", () => {
   it("shows a presence slider for every control row", () => {
     render(<ToolbarSettings />);
 
-    // 15 controls without the Project Queue capability, one slider each.
-    expect(screen.getAllByRole("slider")).toHaveLength(15);
+    // 15 control-presence sliders plus the Conversation View history slider.
+    expect(screen.getAllByRole("slider")).toHaveLength(16);
     // Overflow-supported controls get the full notch scale...
     expect(
       screen
@@ -270,6 +280,20 @@ describe("ToolbarSettings", () => {
         .getByRole("slider", { name: "Microphone visibility" })
         .getAttribute("max"),
     ).toBe("1");
+  });
+
+  it("configures the browser-local Conversation View history window", () => {
+    render(<ToolbarSettings />);
+
+    const slider = screen.getByRole<HTMLInputElement>("slider", {
+      name: "Conversation View history",
+    });
+    expect(slider.value).toBe("100");
+
+    fireEvent.change(slider, { target: { value: "150" } });
+    fireEvent.pointerUp(slider);
+
+    expect(slider.value).toBe("150");
   });
 
   it("keeps hidden overflow controls priority-editable", () => {

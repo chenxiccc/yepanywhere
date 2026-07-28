@@ -508,7 +508,9 @@ function DiffMathView({
       initialMode={initialMode}
       sourceView={
         <div
-          className={`diff-view-container ${truncated ? "truncated" : ""}`}
+          className={`diff-view-container diff-gutter-aligned ${
+            truncated ? "truncated" : ""
+          }`}
           {...tooltipAttributes}
         >
           <div className="diff-view">{sourceView}</div>
@@ -525,7 +527,9 @@ function DiffMathView({
       }
       renderRenderedView={(html) => (
         <div
-          className={`diff-view-container ${truncated ? "truncated" : ""}`}
+          className={`diff-view-container diff-gutter-aligned ${
+            truncated ? "truncated" : ""
+          }`}
           {...tooltipAttributes}
         >
           <div className="diff-view">
@@ -652,7 +656,8 @@ const DiffLines = memo(function DiffLines({ lines }: { lines: string[] }) {
           const key = `${i}-${line.slice(0, 50)}`;
           return (
             <div key={key} className={className}>
-              {line}
+              <span className="diff-prefix">{prefix}</span>
+              {line.slice(1)}
             </div>
           );
         })}
@@ -725,7 +730,8 @@ const DiffHunk = memo(function DiffHunk({ hunk }: { hunk: PatchHunk }) {
                 : "diff-context";
           return (
             <div key={`${hunk.oldStart}-${i}`} className={className}>
-              {line}
+              <span className="diff-prefix">{prefix}</span>
+              {line.slice(1)}
             </div>
           );
         })}

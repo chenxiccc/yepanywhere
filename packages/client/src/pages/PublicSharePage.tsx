@@ -5,16 +5,10 @@ import {
   type PublicSessionShareResponse,
   normalizeRelayUrl,
 } from "@yep-anywhere/shared";
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { BrandWordmark } from "../components/BrandWordmark";
+import { ConversationViewIcon } from "../components/ConversationViewIcon";
 import { MessageList } from "../components/MessageList";
 import { ViewerCountIndicator } from "../components/ViewerCountIndicator";
 import {
@@ -33,7 +27,6 @@ import type { Message } from "../types";
 
 const LIVE_POLL_MS = 2000;
 const RETRY_POLL_MS = 2000;
-const PUBLIC_SHARE_BOTTOM_STICKY_PX = 96;
 const PUBLIC_SHARE_VIEWER_ID_KEY = "yep-anywhere-public-share-viewer-id";
 const PUBLIC_SHARE_VIEWER_ID_REGEX = /^[A-Za-z0-9_-]{8,128}$/;
 
@@ -110,13 +103,6 @@ function shouldRetryPublicShareError(error: unknown): boolean {
     error.message === "Relay connection closed" ||
     error.message === "Relay connection failed" ||
     error.message === "Share request timed out"
-  );
-}
-
-function isNearScrollBottom(element: HTMLElement): boolean {
-  return (
-    element.scrollHeight - element.scrollTop - element.clientHeight <=
-    PUBLIC_SHARE_BOTTOM_STICKY_PX
   );
 }
 
@@ -227,10 +213,7 @@ function mergePublicShareResponse(
 
 export function getPublicShareCautionKey(
   mode: PublicSessionShareMode | null,
-):
-  | "publicShareLiveSecretWarning"
-  | "publicShareReadOnlySecretCaution"
-  | null {
+): "publicShareLiveSecretWarning" | "publicShareReadOnlySecretCaution" | null {
   if (mode === "live") {
     return "publicShareLiveSecretWarning";
   }
@@ -250,11 +233,11 @@ export function PublicSharePage() {
   const [retrying, setRetrying] = useState(false);
   const [linkNotice, setLinkNotice] = useState<string | null>(null);
   const [viewerId] = useState(getPublicShareViewerId);
-  const scrollRef = useRef<HTMLElement | null>(null);
-  const hasRenderedShareRef = useRef(false);
+  const [conversationViewEnabled, setConversationViewEnabled] = useState(true);
+  const [floatingControlsElement, setFloatingControlsElement] =
+    useState<HTMLDivElement | null>(null);
   const lastMessageIdRef = useRef<string | null>(null);
   const shareRef = useRef<PublicSessionShareResponse | null>(null);
-  const wasNearBottomRef = useRef(true);
 
   const relayUsername = searchParams.get("h") ?? "";
   const relayConfig = useMemo((): { error: string | null; url: string } => {
@@ -392,12 +375,6 @@ export function PublicSharePage() {
     document.title = safeTitle ? `${safeTitle} - Public Share` : "Public Share";
   }, [title]);
 
-  const handleScroll = useCallback(() => {
-    const scrollElement = scrollRef.current;
-    if (!scrollElement) return;
-    wasNearBottomRef.current = isNearScrollBottom(scrollElement);
-  }, []);
-
   useEffect(() => {
     if (!publicShareContext) {
       return;
@@ -451,21 +428,6 @@ export function PublicSharePage() {
     };
   }, [publicShareContext, t]);
 
-  useLayoutEffect(() => {
-    const scrollElement = scrollRef.current;
-    if (!scrollElement || !share) return;
-
-    if (!hasRenderedShareRef.current) {
-      hasRenderedShareRef.current = true;
-      wasNearBottomRef.current = isNearScrollBottom(scrollElement);
-      return;
-    }
-
-    if (wasNearBottomRef.current) {
-      scrollElement.scrollTop = scrollElement.scrollHeight;
-    }
-  }, [share]);
-
   const messageContent =
     share && publicShareContext ? (
       <PublicShareProvider value={publicShareContext}>
@@ -477,6 +439,10 @@ export function PublicSharePage() {
           <MessageList
             messages={share.session.messages as Message[]}
             provider={share.session.provider}
+            conversationViewEnabledOverride={conversationViewEnabled}
+            conversationViewStateKey={`${relayUsername}:${secret ?? ""}`}
+            showFollowButton={mode === "live"}
+            followButtonPortalTarget={floatingControlsElement}
           />
         </SessionMetadataProvider>
       </PublicShareProvider>
@@ -518,11 +484,7 @@ export function PublicSharePage() {
           </div>
         </div>
       </header>
-      <section
-        className="public-share-scroll"
-        ref={scrollRef}
-        onScroll={handleScroll}
-      >
+      <section className="public-share-scroll">
         {cautionLabel && (
           <div
             className={`public-share-caution public-share-caution--${mode}`}
@@ -567,6 +529,33 @@ export function PublicSharePage() {
           </SchemaValidationProvider>
         </ToastProvider>
       </section>
+      {messageContent && (
+        <div
+          className="public-share-floating-controls"
+          ref={setFloatingControlsElement}
+        >
+          <button
+            type="button"
+            className={`conversation-view-toolbar-button public-share-conversation-toggle${
+              conversationViewEnabled ? " active" : ""
+            }`}
+            onClick={() => setConversationViewEnabled((enabled) => !enabled)}
+            title={
+              conversationViewEnabled
+                ? t("toolbarConversationViewDisable")
+                : t("toolbarConversationViewEnable")
+            }
+            aria-label={
+              conversationViewEnabled
+                ? t("toolbarConversationViewDisable")
+                : t("toolbarConversationViewEnable")
+            }
+            aria-pressed={conversationViewEnabled}
+          >
+            <ConversationViewIcon />
+          </button>
+        </div>
+      )}
     </main>
   );
 }

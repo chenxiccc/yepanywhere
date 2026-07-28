@@ -7,6 +7,12 @@ Topic: backward-compat
 
 ## Decisions
 
+2026-07-28 blame `authorColorSeed` — add the hue preference as an optional
+line field under the existing `git-source-review` capability rather than
+expanding that capability or adding a request. Older servers omit it; the
+client hashes the author name and runs the same visible-set spacing, so file
+content, blame links, and review remain available without protocol probing.
+
 2026-07-27 Claude Gateway `supported_endpoints` omission — treat an explicit
 endpoint list as authoritative and omit models with no supported text
 endpoint, but retain metadata-less rows for generic gateways and older

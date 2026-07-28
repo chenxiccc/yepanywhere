@@ -1,22 +1,14 @@
 // @vitest-environment jsdom
 
 import { Profiler } from "react";
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-} from "@testing-library/react";
-import {
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { buildCorrectionText } from "../../lib/correctionText";
 import { UI_KEYS } from "../../lib/storageKeys";
+import { setConversationViewPreference } from "../../hooks/useConversationView";
 import {
   assistantMessage,
+  assistantToolUseMessage,
   codexThinkingMessage,
   installMessageListTestEnvironment,
   userMessage,
@@ -28,6 +20,7 @@ installMessageListTestEnvironment();
 
 describe("MessageList rendering", () => {
   it("does not commit a 1,000-row transcript for draft changes", () => {
+    window.localStorage.setItem(UI_KEYS.conversationView, "false");
     const composerDraftSignal = createComposerDraftSignal();
     const onRender = vi.fn();
     const messages = Array.from({ length: 1_000 }, (_, index) =>
@@ -92,7 +85,29 @@ describe("MessageList rendering", () => {
     );
 
     expect(screen.getByText("Visible answer")).toBeTruthy();
+    expect(screen.getByText("private planning")).toBeTruthy();
+    expect(
+      container.querySelector(".conversation-thinking-preview"),
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /Hide thinking transcript rows/,
+      }),
+    );
     expect(screen.queryByText("private planning")).toBeNull();
+    expect(
+      container.querySelector(".conversation-thinking-preview"),
+    ).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /Show hidden thinking transcript rows/,
+      }),
+    );
+    expect(screen.getByText("private planning")).toBeTruthy();
+    expect(
+      container.querySelector(".conversation-thinking-preview"),
+    ).toBeTruthy();
     const summary = container.querySelector(
       ".conversation-activity-summary",
     ) as HTMLButtonElement | null;
@@ -103,10 +118,171 @@ describe("MessageList rendering", () => {
 
     expect(screen.getByText("private planning")).toBeTruthy();
     expect(
+      container.querySelector(".conversation-thinking-preview"),
+    ).toBeNull();
+    expect(
       container
         .querySelector(".conversation-activity-summary")
         ?.getAttribute("aria-expanded"),
     ).toBe("true");
+  });
+
+  it("keeps preview collapse and dismiss state by slot until thinking is retoggled", () => {
+    window.localStorage.setItem(UI_KEYS.conversationView, "true");
+    const messages = (currentThinking: string) => [
+      userMessage("user-1", "inspect this"),
+      codexThinkingMessage("thinking-previous", "Previous plan"),
+      assistantToolUseMessage("assistant-edit", [
+        {
+          type: "tool_use",
+          id: "edit-1",
+          name: "Edit",
+          input: {
+            file_path: "/repo/src/app.ts",
+            old_string: "before",
+            new_string: "after",
+          },
+        },
+      ]),
+      codexThinkingMessage(
+        "thinking-current",
+        currentThinking,
+        undefined,
+        true,
+      ),
+      assistantToolUseMessage("assistant-run", [
+        {
+          type: "tool_use",
+          id: "run-1",
+          name: "Bash",
+          input: { command: "pnpm test" },
+        },
+      ]),
+    ];
+    const { container, rerender } = render(
+      <MessageList messages={messages("Current plan")} />,
+    );
+
+    expect(screen.getByText("Run")).toBeTruthy();
+    expect(screen.getByText("Edit")).toBeTruthy();
+    expect(screen.getByText("pnpm test")).toBeTruthy();
+    expect(screen.getByText("app.ts")).toBeTruthy();
+    expect(screen.getByText("Run").closest("li")?.getAttribute("title")).toBe(
+      "Run: pnpm test",
+    );
+
+    for (const collapse of screen.getAllByRole("button", {
+      name: "Collapse thinking preview",
+    })) {
+      fireEvent.click(collapse);
+    }
+    expect(screen.queryByText("Run")).toBeNull();
+    expect(screen.queryByText("Edit")).toBeNull();
+
+    rerender(<MessageList messages={messages("Updated current plan")} />);
+
+    expect(screen.queryByText("Updated current plan")).toBeNull();
+    expect(
+      container.querySelectorAll(
+        ".conversation-thinking-preview-toggle[aria-expanded='false']",
+      ),
+    ).toHaveLength(2);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Dismiss Current thinking" }),
+    );
+    expect(screen.getByText("Previous thinking")).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Dismiss Previous thinking" }),
+    );
+    expect(
+      container.querySelector(".conversation-thinking-preview"),
+    ).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /Show hidden thinking transcript rows/,
+      }),
+    );
+    expect(
+      container.querySelectorAll(
+        ".conversation-thinking-preview-toggle[aria-expanded='true']",
+      ),
+    ).toHaveLength(2);
+    expect(screen.getByText("Updated current plan")).toBeTruthy();
+  });
+
+  it("bounds history to 100 turns on explicit Conversation activation", () => {
+    window.localStorage.setItem(UI_KEYS.conversationView, "false");
+    const messages = Array.from({ length: 105 }, (_, index) => [
+      userMessage(`user-${index + 1}`, `request ${index + 1}`),
+      assistantMessage(`assistant-${index + 1}`, `response ${index + 1}`),
+    ]).flat();
+
+    render(
+      <MessageList
+        messages={messages}
+        conversationViewStateKey="session-window"
+      />,
+    );
+
+    expect(screen.getByText("request 1")).toBeTruthy();
+
+    act(() => {
+      setConversationViewPreference(true);
+    });
+
+    expect(screen.queryByText("request 1")).toBeNull();
+    expect(screen.getByText("request 6")).toBeTruthy();
+    expect(screen.getByText("Latest 100 user turns shown")).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Load 5 earlier user turns" }),
+    );
+
+    expect(screen.getByText("request 1")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: /earlier user turns/ }),
+    ).toBeNull();
+  });
+
+  it("does not bound history when Conversation view is already active on load", () => {
+    window.localStorage.setItem(UI_KEYS.conversationView, "true");
+    const messages = Array.from({ length: 105 }, (_, index) => [
+      userMessage(`user-${index + 1}`, `request ${index + 1}`),
+      assistantMessage(`assistant-${index + 1}`, `response ${index + 1}`),
+    ]).flat();
+
+    render(
+      <MessageList
+        messages={messages}
+        conversationViewStateKey="session-default-window"
+      />,
+    );
+
+    expect(screen.getByText("request 1")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: /earlier user turns/ }),
+    ).toBeNull();
+  });
+
+  it("uses the shared Conversation projection when an independent shell overrides the device default", () => {
+    render(
+      <MessageList
+        conversationViewEnabledOverride
+        messages={[
+          userMessage("user-1", "inspect this"),
+          codexThinkingMessage("thinking-1", "private planning"),
+          assistantMessage("assistant-1", "Visible answer"),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("Visible answer")).toBeTruthy();
+    expect(screen.getByText("private planning")).toBeTruthy();
+    expect(
+      document.querySelector(".conversation-activity-summary"),
+    ).toBeTruthy();
   });
 
   it("offers correction only for the latest real user message", () => {

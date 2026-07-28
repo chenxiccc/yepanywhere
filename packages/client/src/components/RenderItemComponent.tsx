@@ -1,4 +1,12 @@
-import { memo, useCallback, useRef } from "react";
+import {
+  type CSSProperties,
+  memo,
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import { useTextTooltipAttributes } from "../hooks/useTooltipAppearance";
 import { useI18n } from "../i18n";
 import {
   MESSAGE_STALE_THRESHOLD_MS,
@@ -12,8 +20,19 @@ import {
 import { useQuoteableTextSource } from "../hooks/useQuoteableTextSource";
 import type { CommentAnchor } from "../lib/commentAnchors";
 import type { ContentBlock } from "../types";
-import type { RenderItem } from "../types/renderItems";
+import type {
+  ConversationRecentActivity,
+  ConversationThinkingPreview as ConversationThinkingPreviewData,
+  ConversationThinkingPreviewSlot,
+  RenderItem,
+} from "../types/renderItems";
 import { formatCommandDuration } from "../lib/shellToolOutput";
+import {
+  THINKING_PREVIEW_DEFAULT_WIDTH_PX,
+  type ThinkingPreviewWidthState,
+  updateThinkingPreviewWidth,
+} from "../lib/sessionDetail/thinkingPreviewWidth";
+import { ThinkingText } from "./ThinkingText";
 import { MessageAge } from "./MessageAge";
 import {
   BangCommandDisplayObject,
@@ -50,6 +69,13 @@ interface Props {
   onFollowForkSummary?: (objectId: string) => void;
   bangCommandHandlers?: BangCommandHandlers;
   onToggleConversationActivity?: (itemId: string) => void;
+  collapsedConversationThinkingPreviewSlots?: ReadonlySet<ConversationThinkingPreviewSlot>;
+  onToggleConversationThinkingPreview?: (
+    slot: ConversationThinkingPreviewSlot,
+  ) => void;
+  onDismissConversationThinkingPreview?: (
+    slot: ConversationThinkingPreviewSlot,
+  ) => void;
 }
 
 function getMessageIdLike(message: Record<string, unknown>): string {
@@ -238,9 +264,15 @@ function CollapsibleSystemMessage({
 function ConversationActivitySummary({
   item,
   onToggle,
+  collapsedThinkingPreviewSlots,
+  onToggleThinkingPreview,
+  onDismissThinkingPreview,
 }: {
   item: Extract<RenderItem, { type: "conversation_activity" }>;
   onToggle?: (itemId: string) => void;
+  collapsedThinkingPreviewSlots: ReadonlySet<ConversationThinkingPreviewSlot>;
+  onToggleThinkingPreview?: (slot: ConversationThinkingPreviewSlot) => void;
+  onDismissThinkingPreview?: (slot: ConversationThinkingPreviewSlot) => void;
 }) {
   const { t } = useI18n();
   const elapsedSeconds =
@@ -281,25 +313,194 @@ function ConversationActivitySummary({
       ? "conversationActivityCollapseTitle"
       : "conversationActivityExpandTitle",
   );
+  const hasExpandedThinkingPreview = item.thinkingPreviews?.some(
+    (preview) => !collapsedThinkingPreviewSlots.has(preview.slot),
+  );
 
   return (
-    <button
-      type="button"
-      className={`conversation-activity-summary${
-        item.active ? " is-active" : ""
-      }${item.expanded ? " is-expanded" : ""}`}
-      onClick={() => onToggle?.(item.id)}
-      aria-expanded={item.expanded}
-      title={title}
-    >
-      <span className="conversation-activity-chevron" aria-hidden="true">
-        {item.expanded ? "▾" : "▸"}
+    <div className="conversation-activity-row">
+      <div className="conversation-activity-column">
+        <button
+          type="button"
+          className={`conversation-activity-summary${
+            item.active ? " is-active" : ""
+          }${item.expanded ? " is-expanded" : ""}`}
+          onClick={() => onToggle?.(item.id)}
+          aria-expanded={item.expanded}
+          title={title}
+        >
+          <span className="conversation-activity-chevron" aria-hidden="true">
+            {item.expanded ? "▾" : "▸"}
+          </span>
+          {item.active ? (
+            <span className="conversation-activity-pulse" aria-hidden="true" />
+          ) : null}
+          <span>{label}</span>
+        </button>
+        {hasExpandedThinkingPreview && item.recentActivities ? (
+          <ul
+            className="conversation-recent-activities"
+            aria-label={t("conversationRecentActivities")}
+          >
+            {item.recentActivities.map((activity, index) => (
+              <ConversationRecentActivityName
+                activity={activity}
+                key={`${activity.label}-${index}`}
+              />
+            ))}
+          </ul>
+        ) : null}
+      </div>
+      {item.thinkingPreviews?.map((preview) => (
+        <ConversationThinkingPreview
+          collapsed={collapsedThinkingPreviewSlots.has(preview.slot)}
+          key={preview.slot}
+          onDismiss={onDismissThinkingPreview}
+          onToggle={onToggleThinkingPreview}
+          preview={preview}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ConversationRecentActivityName({
+  activity,
+}: {
+  activity: ConversationRecentActivity;
+}) {
+  const tooltipAttributes = useTextTooltipAttributes(activity.detail);
+  return (
+    <li {...tooltipAttributes}>
+      <span className="conversation-recent-activity-name">
+        {activity.label}
       </span>
-      {item.active ? (
-        <span className="conversation-activity-pulse" aria-hidden="true" />
+      {activity.preview ? (
+        <span className="conversation-recent-activity-preview">
+          {activity.preview}
+        </span>
       ) : null}
-      <span>{label}</span>
-    </button>
+    </li>
+  );
+}
+
+function estimateThinkingPreviewWidth(text: string): number {
+  let longestLineLength = 0;
+  for (const line of text.replace(/\r\n?/g, "\n").split("\n")) {
+    longestLineLength = Math.max(longestLineLength, line.length);
+  }
+  return longestLineLength * 8;
+}
+
+function ConversationThinkingPreview({
+  preview,
+  collapsed,
+  onToggle,
+  onDismiss,
+}: {
+  preview: ConversationThinkingPreviewData;
+  collapsed: boolean;
+  onToggle?: (slot: ConversationThinkingPreviewSlot) => void;
+  onDismiss?: (slot: ConversationThinkingPreviewSlot) => void;
+}) {
+  const { t } = useI18n();
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [widthState, setWidthState] =
+    useState<ThinkingPreviewWidthState | null>(null);
+  const label = t(
+    preview.kind === "current"
+      ? "conversationThinkingPreviewCurrent"
+      : preview.kind === "latest"
+        ? "conversationThinkingPreviewLatest"
+        : "conversationThinkingPreviewPrevious",
+  );
+  const toggleLabel = t(
+    !collapsed
+      ? "conversationThinkingPreviewCollapse"
+      : "conversationThinkingPreviewExpand",
+  );
+  const dismissLabel = t("conversationThinkingPreviewDismiss", { label });
+  const targetWidthPx =
+    widthState?.id === preview.id
+      ? widthState.targetWidthPx
+      : THINKING_PREVIEW_DEFAULT_WIDTH_PX;
+
+  useLayoutEffect(() => {
+    if (collapsed) return;
+    const thinkingText =
+      contentRef.current?.querySelector<HTMLElement>(".thinking-text");
+    if (!thinkingText) return;
+
+    const previousDisplay = thinkingText.style.display;
+    const previousWidth = thinkingText.style.width;
+    const previousMaxWidth = thinkingText.style.maxWidth;
+    thinkingText.style.display = thinkingText.classList.contains(
+      "thinking-outline",
+    )
+      ? "inline-grid"
+      : "inline-block";
+    thinkingText.style.width = "max-content";
+    thinkingText.style.maxWidth = "none";
+    const measuredWidth = thinkingText.getBoundingClientRect().width;
+    thinkingText.style.display = previousDisplay;
+    thinkingText.style.width = previousWidth;
+    thinkingText.style.maxWidth = previousMaxWidth;
+
+    const requiredWidth =
+      measuredWidth > 0
+        ? measuredWidth
+        : estimateThinkingPreviewWidth(preview.thinking);
+    setWidthState((previous) =>
+      updateThinkingPreviewWidth(previous, preview.id, requiredWidth),
+    );
+  }, [collapsed, preview.id, preview.thinking]);
+
+  return (
+    <div
+      className={`conversation-thinking-preview${
+        preview.status === "streaming" ? " is-streaming" : ""
+      }${collapsed ? " is-collapsed" : ""}`}
+      data-preview-slot={preview.slot}
+      style={
+        {
+          "--conversation-thinking-preview-target-width": `${targetWidthPx}px`,
+        } as CSSProperties
+      }
+    >
+      <div className="conversation-thinking-preview-header">
+        <button
+          type="button"
+          className="conversation-thinking-preview-toggle"
+          aria-expanded={!collapsed}
+          aria-label={toggleLabel}
+          title={toggleLabel}
+          onClick={() => onToggle?.(preview.slot)}
+        >
+          <span className="conversation-thinking-preview-dot" aria-hidden />
+          <span>{label}</span>
+          <span className="conversation-thinking-preview-chevron" aria-hidden>
+            {collapsed ? "▸" : "▾"}
+          </span>
+        </button>
+        <button
+          type="button"
+          className="conversation-thinking-preview-dismiss"
+          aria-label={dismissLabel}
+          title={dismissLabel}
+          onClick={() => onDismiss?.(preview.slot)}
+        >
+          ×
+        </button>
+      </div>
+      {!collapsed ? (
+        <div ref={contentRef} className="conversation-thinking-preview-content">
+          <ThinkingText
+            text={preview.thinking}
+            isStreaming={preview.status === "streaming"}
+          />
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -325,6 +526,9 @@ export const RenderItemComponent = memo(function RenderItemComponent({
   onFollowForkSummary,
   bangCommandHandlers,
   onToggleConversationActivity,
+  collapsedConversationThinkingPreviewSlots = new Set<ConversationThinkingPreviewSlot>(),
+  onToggleConversationThinkingPreview,
+  onDismissConversationThinkingPreview,
 }: Props) {
   const staticAgeNowMsRef = useRef(Date.now());
   const timestampMs = getLatestMessageTimestampMs(item.sourceMessages);
@@ -472,6 +676,11 @@ export const RenderItemComponent = memo(function RenderItemComponent({
           <ConversationActivitySummary
             item={item}
             onToggle={onToggleConversationActivity}
+            collapsedThinkingPreviewSlots={
+              collapsedConversationThinkingPreviewSlots
+            }
+            onToggleThinkingPreview={onToggleConversationThinkingPreview}
+            onDismissThinkingPreview={onDismissConversationThinkingPreview}
           />
         );
 
@@ -497,15 +706,16 @@ export const RenderItemComponent = memo(function RenderItemComponent({
         const isSubagentActivity = item.subtype === "subagent_activity";
         const isHighlightedConfigAck =
           isConfigAck && item.configChanged !== false;
-        const icon = isError || isWarning
-          ? "!"
-          : isConfigAck
-            ? "✓"
-            : isLocalCommand
-              ? "/"
-              : isSubagentActivity
-                ? "↳"
-                : "⟳";
+        const icon =
+          isError || isWarning
+            ? "!"
+            : isConfigAck
+              ? "✓"
+              : isLocalCommand
+                ? "/"
+                : isSubagentActivity
+                  ? "↳"
+                  : "⟳";
         if (item.subtype === "compact_boundary" || isLocalCommand) {
           return <CollapsibleSystemMessage item={item} icon={icon} />;
         }

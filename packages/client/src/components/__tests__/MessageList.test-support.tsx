@@ -4,6 +4,8 @@ import { AgentContentProvider } from "../../contexts/AgentContentContext";
 import { RenderModeProvider } from "../../contexts/RenderModeContext";
 import { SessionMetadataProvider } from "../../contexts/SessionMetadataContext";
 import { StreamingMarkdownProvider } from "../../contexts/StreamingMarkdownContext";
+import { invalidateLocalStorageValues } from "../../lib/localStorageValue";
+import { UI_KEYS } from "../../lib/storageKeys";
 import type { Message } from "../../types";
 import { MessageList } from "../MessageList";
 
@@ -35,6 +37,11 @@ vi.mock("../../i18n", () => ({
         sessionFollowLatestOutput: "Follow latest session output",
         sessionNewOutputBelow: "New output below",
         sessionNewOutputBelowTitle: "Jump to latest session output",
+        sessionConversationLatestTurns: "Latest {count} user turns shown",
+        sessionConversationLoadEarlierTurns: "Load {count} earlier user turns",
+        sessionRecentTranscriptLoaded: "Recent transcript loaded",
+        sessionLoadOlderMessages: "Load older messages",
+        sessionLoadingOlderMessages: "Loading...",
         sessionSearchHelpNavigate:
           "{shortcutKeys} prev · ↑↓ matches · click jumps",
         sessionSearchHelpClose: "Enter jump+close · Esc cancel · Aa case",
@@ -67,18 +74,22 @@ vi.mock("../../i18n", () => ({
         explorationLineRange: "lines {start}-{end}",
         conversationActivitySingular: "activity",
         conversationActivityPlural: "activities",
-        conversationActivityActive:
-          "Working {duration} · {count} {activity}",
-        conversationActivityActiveWithoutTime:
-          "Working · {count} {activity}",
+        conversationActivityActive: "Working {duration} · {count} {activity}",
+        conversationActivityActiveWithoutTime: "Working · {count} {activity}",
         conversationActivityComplete:
           "{duration} elapsed · {count} {activity} hidden",
-        conversationActivityCompleteWithoutTime:
-          "{count} {activity} hidden",
+        conversationActivityCompleteWithoutTime: "{count} {activity} hidden",
         conversationActivityExpandTitle:
           "Show hidden activity in its original positions",
         conversationActivityCollapseTitle:
           "Collapse this turn's routine activity",
+        conversationThinkingPreviewCurrent: "Current thinking",
+        conversationThinkingPreviewLatest: "Latest thinking",
+        conversationThinkingPreviewPrevious: "Previous thinking",
+        conversationThinkingPreviewCollapse: "Collapse thinking preview",
+        conversationThinkingPreviewExpand: "Expand thinking preview",
+        conversationThinkingPreviewDismiss: "Dismiss {label}",
+        conversationRecentActivities: "Most recent activities",
       };
       const value = translations[key] ?? key;
       return value.replace(/\{(\w+)\}/g, (_, param: string) =>
@@ -264,6 +275,10 @@ export function installMessageListTestEnvironment() {
       value: ResizeObserverMock,
     });
     window.localStorage.clear();
+    // Most MessageList suites exercise the full transcript. Product-default
+    // Conversation View behavior has dedicated rendering tests.
+    window.localStorage.setItem(UI_KEYS.conversationView, "false");
+    invalidateLocalStorageValues();
   });
 
   afterEach(() => {

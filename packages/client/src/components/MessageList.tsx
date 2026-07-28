@@ -19,7 +19,9 @@ import { createPortal } from "react-dom";
 import { getShowThinkingSetting } from "../hooks/useModelSettings";
 import {
   getConversationViewPreference,
+  getConversationViewTurnLimit,
   subscribeConversationViewPreference,
+  subscribeConversationViewTurnLimit,
 } from "../hooks/useConversationView";
 import { useMessageListIsearch } from "../hooks/useMessageListIsearch";
 import { useMessageListSelectionQuote } from "../hooks/useMessageListSelectionQuote";
@@ -71,12 +73,16 @@ import {
   projectConversationView,
   reconcileAutoExpandedThinkingItemIds,
   selectLatestCorrectablePrompt,
+  windowConversationViewItems,
   type ComposerTailLanePosition,
   type RenderTurnGroup,
 } from "../lib/sessionDetail/renderSelectors";
 import { UI_KEYS } from "../lib/storageKeys";
 import type { Message } from "../types";
-import type { RenderItem } from "../types/renderItems";
+import type {
+  ConversationThinkingPreviewSlot,
+  RenderItem,
+} from "../types/renderItems";
 import { AttachmentChip } from "./AttachmentChip";
 import {
   BtwAsideTranscript,
@@ -99,6 +105,7 @@ const PROGRESSIVE_INITIAL_RENDER_ITEM_TARGET = 120;
 const PROGRESSIVE_RENDER_ITEM_BATCH_TARGET = 90;
 const PROGRESSIVE_RENDER_BATCH_DELAY_MS = 32;
 const PROGRESSIVE_RENDER_REVEAL_DELAY_MS = 180;
+const EMPTY_THINKING_PREVIEW_SLOTS = new Set<ConversationThinkingPreviewSlot>();
 
 function isCtrlKeyShortcut(
   event: KeyboardEvent,
@@ -556,6 +563,14 @@ interface Props {
   progressiveRenderStatusVisible?: boolean;
   /** Stable identity for one progressive initial-render cycle. */
   progressiveRenderKey?: string;
+  /** Stable identity for ephemeral Conversation View history expansion. */
+  conversationViewStateKey?: string;
+  /** Force the shared Conversation View projection for an independent shell. */
+  conversationViewEnabledOverride?: boolean;
+  /** Whether a scrolled-away viewport offers the shared Follow affordance. */
+  showFollowButton?: boolean;
+  /** Optional floating container for the shared Follow affordance. */
+  followButtonPortalTarget?: HTMLElement | null;
   initialScrollSnapshot?: SessionRouteScrollSnapshot | null;
   onScrollSnapshotChange?: (snapshot: SessionRouteScrollSnapshot) => void;
   /** Immediate live-tail intent; unlike route snapshots, this is not debounced. */
@@ -762,8 +777,7 @@ function QueuedMessageActions({
 }: QueuedMessageActionsProps) {
   const { t } = useI18n();
   const composerCanEdit = useSyncExternalStore(
-    composerEditAvailabilityStore?.subscribe ??
-      subscribeComposerEditAvailable,
+    composerEditAvailabilityStore?.subscribe ?? subscribeComposerEditAvailable,
     composerEditAvailabilityStore?.getSnapshot ?? getComposerEditAvailable,
     getComposerEditAvailable,
   );
@@ -893,6 +907,10 @@ export const MessageList = memo(function MessageList({
   progressiveRenderEnabled = false,
   progressiveRenderStatusVisible = true,
   progressiveRenderKey,
+  conversationViewStateKey,
+  conversationViewEnabledOverride,
+  showFollowButton = true,
+  followButtonPortalTarget,
   initialScrollSnapshot = null,
   onScrollSnapshotChange,
   onFollowingBottomChange,
@@ -936,9 +954,7 @@ export const MessageList = memo(function MessageList({
   const previousProgressiveRevealActiveRef = useRef(false);
   const scrollSnapshotWritesSuppressedRef = useRef(false);
   const previousScrollSnapshotWritesSuppressedRef = useRef(false);
-  const previousActiveWindowTrimRevisionRef = useRef(
-    activeWindowTrimRevision,
-  );
+  const previousActiveWindowTrimRevisionRef = useRef(activeWindowTrimRevision);
   const onFollowingBottomChangeRef = useRef(onFollowingBottomChange);
   onFollowingBottomChangeRef.current = onFollowingBottomChange;
   const [thinkingItemsVisible, setThinkingItemsVisible] = useState(() => {
@@ -953,8 +969,34 @@ export const MessageList = memo(function MessageList({
   const [conversationViewEnabled, setConversationViewEnabled] = useState(
     getConversationViewPreference,
   );
+  const effectiveConversationViewEnabled =
+    conversationViewEnabledOverride ?? conversationViewEnabled;
+  const previousConversationViewEnabledRef = useRef(
+    effectiveConversationViewEnabled,
+  );
+  const [conversationViewTurnLimit, setConversationViewTurnLimit] = useState(
+    getConversationViewTurnLimit,
+  );
+  const [conversationWindowExpansion, setConversationWindowExpansion] =
+    useState({
+      stateKey: conversationViewStateKey,
+      bounded: false,
+      additionalTurns: 0,
+    });
   const [expandedConversationActivityIds, setExpandedConversationActivityIds] =
     useState<ReadonlySet<string>>(() => new Set());
+  const [
+    conversationThinkingPreviewState,
+    setConversationThinkingPreviewState,
+  ] = useState<{
+    stateKey: string | undefined;
+    collapsedSlots: ReadonlySet<ConversationThinkingPreviewSlot>;
+    dismissedSlots: ReadonlySet<ConversationThinkingPreviewSlot>;
+  }>(() => ({
+    stateKey: conversationViewStateKey,
+    collapsedSlots: new Set(),
+    dismissedSlots: new Set(),
+  }));
   const [thinkingExpansionOverrides, setThinkingExpansionOverrides] = useState<
     Record<string, boolean>
   >({});
@@ -979,9 +1021,49 @@ export const MessageList = memo(function MessageList({
   const [newOutputBelowVisible, setNewOutputBelowVisible] = useState(false);
   const { t } = useI18n();
   const nowMs = useRelativeNow();
+  const conversationViewActivated =
+    !previousConversationViewEnabledRef.current &&
+    effectiveConversationViewEnabled;
+  const conversationWindowIsBounded =
+    conversationWindowExpansion.stateKey === conversationViewStateKey
+      ? conversationWindowExpansion.bounded || conversationViewActivated
+      : conversationViewActivated;
+  const additionalConversationTurns =
+    conversationWindowExpansion.stateKey === conversationViewStateKey
+      ? conversationWindowExpansion.additionalTurns
+      : 0;
+  const collapsedConversationThinkingPreviewSlots =
+    conversationThinkingPreviewState.stateKey === conversationViewStateKey
+      ? conversationThinkingPreviewState.collapsedSlots
+      : EMPTY_THINKING_PREVIEW_SLOTS;
+  const dismissedConversationThinkingPreviewSlots =
+    conversationThinkingPreviewState.stateKey === conversationViewStateKey
+      ? conversationThinkingPreviewState.dismissedSlots
+      : EMPTY_THINKING_PREVIEW_SLOTS;
   const reportFollowingBottom = useCallback((followingBottom: boolean) => {
     onFollowingBottomChangeRef.current?.(followingBottom);
   }, []);
+
+  useLayoutEffect(() => {
+    const previousEnabled = previousConversationViewEnabledRef.current;
+    previousConversationViewEnabledRef.current =
+      effectiveConversationViewEnabled;
+    if (
+      conversationWindowExpansion.stateKey === conversationViewStateKey &&
+      previousEnabled === effectiveConversationViewEnabled
+    ) {
+      return;
+    }
+    setConversationWindowExpansion({
+      stateKey: conversationViewStateKey,
+      bounded: !previousEnabled && effectiveConversationViewEnabled,
+      additionalTurns: 0,
+    });
+  }, [
+    conversationViewStateKey,
+    conversationWindowExpansion.stateKey,
+    effectiveConversationViewEnabled,
+  ]);
 
   // Scroll to bottom, marking it as programmatic so scroll handler ignores it
   const scrollToBottom = useCallback(
@@ -1189,17 +1271,41 @@ export const MessageList = memo(function MessageList({
     () => getDisplayRenderItems(renderItems, { thinkingItemsVisible }),
     [renderItems, thinkingItemsVisible],
   );
+  const conversationWindow = useMemo(
+    () =>
+      effectiveConversationViewEnabled && conversationWindowIsBounded
+        ? windowConversationViewItems(
+            fullDisplayRenderItems,
+            conversationViewTurnLimit + additionalConversationTurns,
+          )
+        : {
+            hiddenTurnCount: 0,
+            items: fullDisplayRenderItems,
+            visibleTurnCount: 0,
+          },
+    [
+      additionalConversationTurns,
+      conversationViewTurnLimit,
+      effectiveConversationViewEnabled,
+      conversationWindowIsBounded,
+      fullDisplayRenderItems,
+    ],
+  );
   const displayRenderItems = useMemo(
     () =>
-      conversationViewEnabled
-        ? projectConversationView(fullDisplayRenderItems, {
+      effectiveConversationViewEnabled
+        ? projectConversationView(conversationWindow.items, {
             active: isProcessing || isStreaming,
+            dismissedThinkingPreviewSlots:
+              dismissedConversationThinkingPreviewSlots,
             expandedActivityIds: expandedConversationActivityIds,
             nowMs,
           })
         : fullDisplayRenderItems,
     [
-      conversationViewEnabled,
+      conversationWindow.items,
+      dismissedConversationThinkingPreviewSlots,
+      effectiveConversationViewEnabled,
       expandedConversationActivityIds,
       fullDisplayRenderItems,
       isProcessing,
@@ -1207,6 +1313,16 @@ export const MessageList = memo(function MessageList({
       nowMs,
     ],
   );
+  const visibleConversationThinkingPreviewSlots = useMemo(() => {
+    const slots = new Set<ConversationThinkingPreviewSlot>();
+    for (const item of displayRenderItems) {
+      if (item.type !== "conversation_activity") continue;
+      for (const preview of item.thinkingPreviews ?? []) {
+        slots.add(preview.slot);
+      }
+    }
+    return slots;
+  }, [displayRenderItems]);
   useLayoutEffect(() => {
     const previousThinkingTextLengths = previousThinkingTextLengthsRef.current;
     const nextThinkingTextLengths = getThinkingTextLengths(renderItems);
@@ -1365,8 +1481,7 @@ export const MessageList = memo(function MessageList({
       // Projected child rows (explored-group entries, asides) carry render
       // ids absent from the items map; walk out to the owning item row.
       let row =
-        (event.target as Element | null)?.closest?.("[data-render-id]") ??
-        null;
+        (event.target as Element | null)?.closest?.("[data-render-id]") ?? null;
       let timestampMs: number | null = null;
       while (row) {
         const id = (row as HTMLElement).dataset.renderId;
@@ -1703,11 +1818,7 @@ export const MessageList = memo(function MessageList({
     // Replace any route-memory anchor that referenced a removed prefix row,
     // including when a user-scroll race correctly prevents a forced jump.
     publishScrollSnapshot();
-  }, [
-    activeWindowTrimRevision,
-    publishScrollSnapshot,
-    scrollToBottom,
-  ]);
+  }, [activeWindowTrimRevision, publishScrollSnapshot, scrollToBottom]);
 
   const getThinkingItemExpanded = useCallback(
     (item: RenderItem) =>
@@ -1808,6 +1919,24 @@ export const MessageList = memo(function MessageList({
     [preserveScrollAfterTranscriptHeightChange],
   );
 
+  useEffect(
+    () =>
+      subscribeConversationViewTurnLimit(() => {
+        preserveScrollAfterTranscriptHeightChange(() => {
+          setConversationViewTurnLimit(getConversationViewTurnLimit());
+          setConversationWindowExpansion((previous) => ({
+            stateKey: conversationViewStateKey,
+            bounded:
+              previous.stateKey === conversationViewStateKey
+                ? previous.bounded
+                : false,
+            additionalTurns: 0,
+          }));
+        });
+      }),
+    [conversationViewStateKey, preserveScrollAfterTranscriptHeightChange],
+  );
+
   const toggleConversationActivity = useCallback(
     (itemId: string) => {
       preserveScrollAfterTranscriptHeightChange(() => {
@@ -1827,13 +1956,85 @@ export const MessageList = memo(function MessageList({
 
   const toggleThinkingItemsVisible = useCallback(() => {
     preserveScrollAfterTranscriptHeightChange(() => {
-      setThinkingItemsVisible((previous) => {
-        const next = !previous;
-        saveSessionThinkingVisible(next);
-        return next;
-      });
+      const next = !thinkingItemsVisible;
+      if (next) {
+        setConversationThinkingPreviewState({
+          stateKey: conversationViewStateKey,
+          collapsedSlots: new Set(),
+          dismissedSlots: new Set(),
+        });
+      }
+      setThinkingItemsVisible(next);
+      saveSessionThinkingVisible(next);
     });
-  }, [preserveScrollAfterTranscriptHeightChange]);
+  }, [
+    conversationViewStateKey,
+    preserveScrollAfterTranscriptHeightChange,
+    thinkingItemsVisible,
+  ]);
+
+  const toggleConversationThinkingPreview = useCallback(
+    (slot: ConversationThinkingPreviewSlot) => {
+      preserveScrollAfterTranscriptHeightChange(() => {
+        setConversationThinkingPreviewState((previous) => {
+          const collapsedSlots = new Set(
+            previous.stateKey === conversationViewStateKey
+              ? previous.collapsedSlots
+              : [],
+          );
+          if (collapsedSlots.has(slot)) {
+            collapsedSlots.delete(slot);
+          } else {
+            collapsedSlots.add(slot);
+          }
+          return {
+            stateKey: conversationViewStateKey,
+            collapsedSlots,
+            dismissedSlots:
+              previous.stateKey === conversationViewStateKey
+                ? previous.dismissedSlots
+                : new Set(),
+          };
+        });
+      });
+    },
+    [conversationViewStateKey, preserveScrollAfterTranscriptHeightChange],
+  );
+
+  const dismissConversationThinkingPreview = useCallback(
+    (slot: ConversationThinkingPreviewSlot) => {
+      preserveScrollAfterTranscriptHeightChange(() => {
+        setConversationThinkingPreviewState((previous) => {
+          const dismissedSlots = new Set(
+            previous.stateKey === conversationViewStateKey
+              ? previous.dismissedSlots
+              : [],
+          );
+          dismissedSlots.add(slot);
+          return {
+            stateKey: conversationViewStateKey,
+            collapsedSlots:
+              previous.stateKey === conversationViewStateKey
+                ? previous.collapsedSlots
+                : new Set(),
+            dismissedSlots,
+          };
+        });
+        const hasRemainingPreview = Array.from(
+          visibleConversationThinkingPreviewSlots,
+        ).some((visibleSlot) => visibleSlot !== slot);
+        if (!hasRemainingPreview) {
+          setThinkingItemsVisible(false);
+          saveSessionThinkingVisible(false);
+        }
+      });
+    },
+    [
+      conversationViewStateKey,
+      preserveScrollAfterTranscriptHeightChange,
+      visibleConversationThinkingPreviewSlots,
+    ],
+  );
 
   // The explicit "show me everything" gesture: auto-expand every thinking
   // block currently in the transcript (historical blocks included, unlike the
@@ -1859,6 +2060,11 @@ export const MessageList = memo(function MessageList({
         if (!thinkingItemsVisible) {
           setThinkingItemsVisible(true);
           saveSessionThinkingVisible(true);
+          setConversationThinkingPreviewState({
+            stateKey: conversationViewStateKey,
+            collapsedSlots: new Set(),
+            dismissedSlots: new Set(),
+          });
         }
         if (thinkingLatestOnly) {
           setThinkingLatestOnly(false);
@@ -1872,6 +2078,7 @@ export const MessageList = memo(function MessageList({
     });
   }, [
     expandAllThinkingItems,
+    conversationViewStateKey,
     preserveScrollAfterTranscriptHeightChange,
     thinkingItemsVisible,
     thinkingLatestOnly,
@@ -2034,30 +2241,44 @@ export const MessageList = memo(function MessageList({
 
   // Load older messages with scroll position preservation
   const handleLoadOlder = useCallback(() => {
-    if (!onLoadOlderMessages) return;
-    const container = containerRef.current?.parentElement;
-    if (!container) {
-      onLoadOlderMessages();
+    const revealsLoadedTurns =
+      effectiveConversationViewEnabled &&
+      conversationWindow.hiddenTurnCount > 0;
+    const fetchesOlderMessages =
+      !!onLoadOlderMessages &&
+      hasOlderMessages &&
+      !loadingOlder &&
+      (!revealsLoadedTurns ||
+        conversationWindow.hiddenTurnCount < conversationViewTurnLimit);
+    if (!revealsLoadedTurns && !fetchesOlderMessages) {
       return;
     }
-    // Capture scroll state before prepending older messages
-    const scrollHeightBefore = container.scrollHeight;
-    const scrollTopBefore = container.scrollTop;
-    onLoadOlderMessages();
-    // Restore scroll position after React re-renders with prepended messages
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        const scrollHeightAfter = container.scrollHeight;
-        const heightDelta = scrollHeightAfter - scrollHeightBefore;
-        isProgrammaticScrollRef.current = true;
-        container.scrollTop = scrollTopBefore + heightDelta;
-        lastHeightRef.current = container.scrollHeight;
-        requestAnimationFrame(() => {
-          isProgrammaticScrollRef.current = false;
-        });
-      });
+
+    preserveScrollAfterTranscriptHeightChange(() => {
+      if (revealsLoadedTurns) {
+        setConversationWindowExpansion((previous) => ({
+          stateKey: conversationViewStateKey,
+          bounded: true,
+          additionalTurns:
+            (previous.stateKey === conversationViewStateKey
+              ? previous.additionalTurns
+              : 0) + conversationViewTurnLimit,
+        }));
+      }
+      if (fetchesOlderMessages) {
+        onLoadOlderMessages();
+      }
     });
-  }, [onLoadOlderMessages]);
+  }, [
+    conversationViewTurnLimit,
+    conversationViewStateKey,
+    conversationWindow.hiddenTurnCount,
+    effectiveConversationViewEnabled,
+    hasOlderMessages,
+    loadingOlder,
+    onLoadOlderMessages,
+    preserveScrollAfterTranscriptHeightChange,
+  ]);
 
   // Track scroll position to determine if user is near bottom.
   // Ignore programmatic scrolls - only user-initiated scrolls should affect auto-scroll state.
@@ -2464,7 +2685,9 @@ export const MessageList = memo(function MessageList({
 
   const followButtonTarget =
     !isScrolledToBottom && typeof document !== "undefined"
-      ? document.querySelector<HTMLElement>(".session-input-inner")
+      ? followButtonPortalTarget === undefined
+        ? document.querySelector<HTMLElement>(".session-input-inner")
+        : followButtonPortalTarget
       : null;
   const followButtonLabel = newOutputBelowVisible
     ? t("sessionNewOutputBelow")
@@ -2472,33 +2695,34 @@ export const MessageList = memo(function MessageList({
   const followButtonTitle = newOutputBelowVisible
     ? t("sessionNewOutputBelowTitle")
     : t("sessionFollowLatestOutput");
-  const followButton = !isScrolledToBottom ? (
-    <button
-      type="button"
-      className={`message-follow-toggle${
-        newOutputBelowVisible ? " is-new-output" : ""
-      }`}
-      onClick={scrollToCurrent}
-      aria-label={followButtonTitle}
-      title={followButtonTitle}
-    >
-      <svg
-        width="14"
-        height="14"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
+  const followButton =
+    showFollowButton && !isScrolledToBottom ? (
+      <button
+        type="button"
+        className={`message-follow-toggle${
+          newOutputBelowVisible ? " is-new-output" : ""
+        }`}
+        onClick={scrollToCurrent}
+        aria-label={followButtonTitle}
+        title={followButtonTitle}
       >
-        <path d="M12 5v14" />
-        <path d="m19 12-7 7-7-7" />
-      </svg>
-      <span>{followButtonLabel}</span>
-    </button>
-  ) : null;
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M12 5v14" />
+          <path d="m19 12-7 7-7-7" />
+        </svg>
+        <span>{followButtonLabel}</span>
+      </button>
+    ) : null;
   return (
     <>
       <UserTurnNavigator
@@ -2567,26 +2791,45 @@ export const MessageList = memo(function MessageList({
             )}
           </div>
         )}
-        {(hasOlderMessages || clientTailActive) && (
+        {(hasOlderMessages ||
+          clientTailActive ||
+          conversationWindow.hiddenTurnCount > 0) && (
           <div className="load-older-messages">
-            {clientTailActive && (
+            {effectiveConversationViewEnabled &&
+            conversationWindow.hiddenTurnCount > 0 ? (
               <span className="load-older-status">
-                Recent transcript loaded
+                {t("sessionConversationLatestTurns", {
+                  count: conversationWindow.visibleTurnCount,
+                })}
               </span>
-            )}
-            {hasOlderMessages && (
+            ) : clientTailActive ? (
+              <span className="load-older-status">
+                {t("sessionRecentTranscriptLoaded")}
+              </span>
+            ) : null}
+            {(hasOlderMessages || conversationWindow.hiddenTurnCount > 0) && (
               <button
                 type="button"
                 className="load-older-button"
                 onClick={handleLoadOlder}
-                disabled={loadingOlder}
+                disabled={
+                  loadingOlder && conversationWindow.hiddenTurnCount === 0
+                }
               >
-                {loadingOlder ? (
+                {loadingOlder && conversationWindow.hiddenTurnCount === 0 ? (
                   <>
-                    <span className="spinning">&#x21BB;</span> Loading...
+                    <span className="spinning">&#x21BB;</span>{" "}
+                    {t("sessionLoadingOlderMessages")}
                   </>
+                ) : conversationWindow.hiddenTurnCount > 0 ? (
+                  t("sessionConversationLoadEarlierTurns", {
+                    count: Math.min(
+                      conversationViewTurnLimit,
+                      conversationWindow.hiddenTurnCount,
+                    ),
+                  })
                 ) : (
-                  "Load older messages"
+                  t("sessionLoadOlderMessages")
                 )}
               </button>
             )}
@@ -2713,14 +2956,19 @@ export const MessageList = memo(function MessageList({
                         : undefined
                     }
                     alwaysShowQuoteCircle={alwaysShowQuoteCircles}
-                    paragraphQuoteCirclesEnabled={
-                      paragraphQuoteCirclesEnabled
-                    }
+                    paragraphQuoteCirclesEnabled={paragraphQuoteCirclesEnabled}
                     staleNowMs={assistantRow.staleNowMs}
                     latestVisibleTimestampMs={latestVisibleTimestampMs}
                     thinkingDurationMs={assistantRow.thinkingDurationMs}
-                    onToggleConversationActivity={
-                      toggleConversationActivity
+                    onToggleConversationActivity={toggleConversationActivity}
+                    collapsedConversationThinkingPreviewSlots={
+                      collapsedConversationThinkingPreviewSlots
+                    }
+                    onToggleConversationThinkingPreview={
+                      toggleConversationThinkingPreview
+                    }
+                    onDismissConversationThinkingPreview={
+                      dismissConversationThinkingPreview
                     }
                   />
                 );

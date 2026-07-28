@@ -12,6 +12,7 @@ import type {
   SessionMetadataService,
 } from "../metadata/index.js";
 import type { NotificationService } from "../notifications/index.js";
+import { warmGitAuthorPalette } from "../git/authorPalette.js";
 import type { CodexSessionScanner } from "../projects/codex-scanner.js";
 import type { GeminiSessionScanner } from "../projects/gemini-scanner.js";
 import {
@@ -184,7 +185,10 @@ async function getProjectActivityCounts(
   // Count owned sessions from Supervisor (uses base64url projectId)
   if (supervisor) {
     for (const process of supervisor.getAllProcesses()) {
-      const existing = getMutableProjectActivityCounts(counts, process.projectId);
+      const existing = getMutableProjectActivityCounts(
+        counts,
+        process.projectId,
+      );
       existing.activeOwnedCount++;
       if (processBlocksProjectQueue(process)) {
         existing.projectQueueBlockingCount++;
@@ -206,7 +210,10 @@ async function getProjectActivityCounts(
       const info =
         await externalTracker.getExternalSessionInfoWithUrlId(sessionId);
       if (info) {
-        const existing = getMutableProjectActivityCounts(counts, info.projectId);
+        const existing = getMutableProjectActivityCounts(
+          counts,
+          info.projectId,
+        );
         existing.activeExternalCount++;
         existing.projectQueueBlockingCount++;
       }
@@ -412,6 +419,7 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
     if (!project) {
       return c.json({ error: "Project not found" }, 404);
     }
+    void warmGitAuthorPalette(project.path);
 
     const activityCounts = await getProjectActivityCounts(
       deps.supervisor,
@@ -473,6 +481,7 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
         404,
       );
     }
+    void warmGitAuthorPalette(project.path);
 
     // Persist the project so it appears in future listings
     if (deps.projectMetadataService) {
@@ -558,8 +567,8 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
     const resolvedProjectId = project.id;
     sessions = addMissingOwnedSessions(sessions, resolvedProjectId);
 
-    const enriched = enrichSessions(sessions).filter(
-      (session) => projectIdsShareIdentity(session.projectId, resolvedProjectId),
+    const enriched = enrichSessions(sessions).filter((session) =>
+      projectIdsShareIdentity(session.projectId, resolvedProjectId),
     );
 
     return c.json({ sessions: enriched });

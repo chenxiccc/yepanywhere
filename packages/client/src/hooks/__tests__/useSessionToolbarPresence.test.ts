@@ -50,25 +50,36 @@ describe("useSessionToolbarPresence", () => {
     vi.unstubAllGlobals();
   });
 
-  it("keeps novel view controls hidden by default", async () => {
+  it("shows Conversation view in its approved default-on state", async () => {
     stubToolbarLayout(false);
     const { DEFAULT_SESSION_TOOLBAR_PRESENCE, useSessionToolbarPresence } =
       await import("../useSessionToolbarPresence");
+    const { useConversationView } = await import("../useConversationView");
 
     const { result } = renderHook(() => useSessionToolbarPresence());
+    const conversation = renderHook(() => useConversationView());
 
     expect(DEFAULT_SESSION_TOOLBAR_PRESENCE.renderMode).toBe("hidden");
     expect(result.current.presence.renderMode).toBe("hidden");
     expect(result.current.visibility.renderMode).toBe(false);
-    expect(DEFAULT_SESSION_TOOLBAR_PRESENCE.conversationView).toBe("hidden");
-    expect(result.current.presence.conversationView).toBe("hidden");
-    expect(result.current.visibility.conversationView).toBe(false);
+    expect(DEFAULT_SESSION_TOOLBAR_PRESENCE.conversationView).toBe("last");
+    expect(result.current.presence.conversationView).toBe("last");
+    expect(result.current.visibility.conversationView).toBe(true);
+    expect(conversation.result.current.conversationViewEnabled).toBe(true);
   });
 
-  it("keeps Conversation view toolbar presence client-only", async () => {
+  it("activates Conversation view when its client-only control is enabled", async () => {
     stubToolbarLayout(false);
+    window.localStorage.setItem(UI_KEYS.conversationView, "false");
+    window.localStorage.setItem(
+      UI_KEYS.sessionToolbarPresence,
+      JSON.stringify({ conversationView: "hidden" }),
+    );
     const { useSessionToolbarPresence } = await import(
       "../useSessionToolbarPresence"
+    );
+    const { getConversationViewPreference } = await import(
+      "../useConversationView"
     );
     const { result } = renderHook(() => useSessionToolbarPresence());
 
@@ -80,7 +91,26 @@ describe("useSessionToolbarPresence", () => {
         window.localStorage.getItem(UI_KEYS.sessionToolbarPresence) ?? "{}",
       ),
     ).toMatchObject({ conversationView: "last" });
+    expect(getConversationViewPreference()).toBe(true);
+    expect(window.localStorage.getItem(UI_KEYS.conversationView)).toBe("true");
     expect(mocks.updateServerSettings).not.toHaveBeenCalled();
+  });
+
+  it("does not reactivate Conversation view when only its visible tier changes", async () => {
+    stubToolbarLayout(false);
+    window.localStorage.setItem(UI_KEYS.conversationView, "false");
+    const { useSessionToolbarPresence } = await import(
+      "../useSessionToolbarPresence"
+    );
+    const { getConversationViewPreference } = await import(
+      "../useConversationView"
+    );
+    const { result } = renderHook(() => useSessionToolbarPresence());
+
+    act(() => result.current.setControlPresence("conversationView", "pin"));
+
+    expect(result.current.presence.conversationView).toBe("pin");
+    expect(getConversationViewPreference()).toBe(false);
   });
 
   it("ignores unknown controls in stored presence", async () => {
@@ -129,6 +159,7 @@ describe("useSessionToolbarPresence", () => {
     mocks.version = {
       clientDefaults: {
         sessionToolbarPresence: {
+          conversationView: "hidden",
           renderMode: "last",
           slashMenu: "hidden",
         },
@@ -147,6 +178,7 @@ describe("useSessionToolbarPresence", () => {
     await waitFor(() => {
       expect(result.current.presence.renderMode).toBe("last");
       expect(result.current.presence.slashMenu).toBe("hidden");
+      expect(result.current.presence.conversationView).toBe("last");
     });
   });
 

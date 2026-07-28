@@ -114,7 +114,7 @@ describe("EditRenderer collapsed preview fallback", () => {
       ],
     };
 
-    render(
+    const { container } = render(
       <div>
         {renderCollapsedPreview(
           input as never,
@@ -126,8 +126,12 @@ describe("EditRenderer collapsed preview fallback", () => {
     );
 
     expect(screen.queryByText("Computing diff...")).toBeNull();
-    expect(screen.getByText("-const x = 1;")).toBeDefined();
-    expect(screen.getByText("+const x = 2;")).toBeDefined();
+    expect(container.querySelector(".diff-removed")?.textContent).toBe(
+      "-const x = 1;",
+    );
+    expect(container.querySelector(".diff-added")?.textContent).toBe(
+      "+const x = 2;",
+    );
   });
 
   it("reveals the omitted Edit tail from the fade and +N badge", () => {
@@ -375,7 +379,9 @@ describe("EditRenderer collapsed preview fallback", () => {
       </div>,
     );
 
-    expect(screen.getByText("+const label = `dev`;")).toBeDefined();
+    expect(container.querySelector(".diff-added")?.textContent).toBe(
+      "+const label = `dev`;",
+    );
     expect(
       container.querySelector(".fixed-font-rendered__content code"),
     ).toBeNull();
@@ -497,6 +503,7 @@ describe("EditRenderer collapsed preview fallback", () => {
     expect(
       container.querySelector(".highlighted-diff .line-inserted"),
     ).toBeTruthy();
+    expect(container.querySelector(".diff-gutter-aligned")).toBeTruthy();
     expect(screen.getAllByText(/const/)).toHaveLength(2);
   });
 
@@ -997,14 +1004,14 @@ describe("EditRenderer collapsed preview fallback", () => {
       </SessionMetadataProvider>,
     );
 
-    const selectedText = screen.getByText("+selected replacement text");
-    const textNode = selectedText.firstChild;
-    if (!textNode) {
+    const selectedText = document.querySelector<HTMLElement>(".diff-added");
+    const textNode = selectedText?.lastChild;
+    if (!selectedText || !textNode) {
       throw new Error("Expected selectable diff text");
     }
     const range = document.createRange();
-    range.setStart(textNode, 1);
-    range.setEnd(textNode, "selected replacement".length + 1);
+    range.setStart(textNode, 0);
+    range.setEnd(textNode, "selected replacement".length);
     document.getSelection()?.addRange(range);
 
     fireEvent.click(selectedText);
@@ -1051,14 +1058,15 @@ describe("EditRenderer collapsed preview fallback", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Show source" }));
-    const selectedText = screen.getByText("+# Selected heading");
-    const textNode = selectedText.firstChild;
-    if (!textNode) {
+    const selectedText = document.querySelector<HTMLElement>(".diff-added");
+    const prefixText = selectedText?.querySelector(".diff-prefix")?.firstChild;
+    const contentText = selectedText?.lastChild;
+    if (!selectedText || !prefixText || !contentText) {
       throw new Error("Expected selectable source diff text");
     }
     const range = document.createRange();
-    range.setStart(textNode, 0);
-    range.setEnd(textNode, 2);
+    range.setStart(prefixText, 0);
+    range.setEnd(contentText, 1);
     document.getSelection()?.removeAllRanges();
     document.getSelection()?.addRange(range);
 

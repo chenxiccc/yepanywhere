@@ -5,7 +5,12 @@ import type {
   RenderItem,
   ToolCallItem,
 } from "../../../types/renderItems";
-import { projectConversationView } from "../conversationView";
+import {
+  compactCommandActivityPreview,
+  projectConversationView,
+  selectConversationThinkingPreviews,
+  windowConversationViewItems,
+} from "../conversationView";
 
 function source(id: string, timestampMs: number): Message {
   return {
@@ -185,5 +190,276 @@ describe("projectConversationView", () => {
       startedAtMs: 3_000,
       endedAtMs: 8_000,
     });
+  });
+});
+
+describe("compactCommandActivityPreview", () => {
+  it("skips setup-only segments and reduces path-heavy commands to filenames", () => {
+    expect(
+      compactCommandActivityPreview(
+        "cd /repo && FOO=1 /repo/node_modules/.bin/vitest run /repo/src/app.test.ts",
+      ),
+    ).toBe("vitest run app.test.ts");
+  });
+});
+
+describe("windowConversationViewItems", () => {
+  it("starts the visible suffix at the configured latest user turn", () => {
+    const items: RenderItem[] = Array.from({ length: 120 }, (_, index) => [
+      {
+        type: "user_prompt" as const,
+        id: `user-${index + 1}`,
+        content: `Request ${index + 1}`,
+        sourceMessages: [],
+      },
+      {
+        type: "text" as const,
+        id: `answer-${index + 1}`,
+        text: `Answer ${index + 1}`,
+        sourceMessages: [],
+      },
+    ]).flat();
+
+    const windowed = windowConversationViewItems(items, 100);
+
+    expect(windowed.hiddenTurnCount).toBe(20);
+    expect(windowed.visibleTurnCount).toBe(100);
+    expect(windowed.items[0]?.id).toBe("user-21");
+    expect(windowed.items.at(-1)?.id).toBe("answer-120");
+  });
+
+  it("keeps standalone rows following the retained user-turn boundary", () => {
+    const items: RenderItem[] = [
+      {
+        type: "system",
+        id: "setup",
+        subtype: "session_setup",
+        content: "Setup",
+        sourceMessages: [],
+      },
+      {
+        type: "user_prompt",
+        id: "user-1",
+        content: "First",
+        sourceMessages: [],
+      },
+      {
+        type: "system",
+        id: "between",
+        subtype: "status",
+        content: "Between",
+        sourceMessages: [],
+      },
+      {
+        type: "user_prompt",
+        id: "user-2",
+        content: "Second",
+        sourceMessages: [],
+      },
+      {
+        type: "system",
+        id: "after",
+        subtype: "status",
+        content: "After",
+        sourceMessages: [],
+      },
+    ];
+
+    expect(
+      windowConversationViewItems(items, 1).items.map((item) => item.id),
+    ).toEqual(["user-2", "after"]);
+  });
+
+  it("does not discard a transcript without user-turn boundaries", () => {
+    const items: RenderItem[] = [tool("standalone-tool", 1_000)];
+
+    const windowed = windowConversationViewItems(items, 100);
+
+    expect(windowed.items).toBe(items);
+    expect(windowed.hiddenTurnCount).toBe(0);
+    expect(windowed.visibleTurnCount).toBe(0);
+  });
+});
+
+describe("selectConversationThinkingPreviews", () => {
+  it("selects the current block and one preceding completed block", () => {
+    const items: RenderItem[] = [
+      {
+        type: "thinking",
+        id: "older",
+        thinking: "Older",
+        status: "complete",
+        sourceMessages: [],
+      },
+      {
+        type: "thinking",
+        id: "previous",
+        thinking: "Previous",
+        status: "complete",
+        sourceMessages: [],
+      },
+      {
+        type: "thinking",
+        id: "current",
+        thinking: "Current",
+        status: "streaming",
+        sourceMessages: [],
+      },
+    ];
+
+    expect(selectConversationThinkingPreviews(items)).toEqual([
+      {
+        id: "current",
+        kind: "current",
+        slot: "latest",
+        thinking: "Current",
+        status: "streaming",
+      },
+      {
+        id: "previous",
+        kind: "previous",
+        slot: "previous",
+        thinking: "Previous",
+        status: "complete",
+      },
+    ]);
+  });
+
+  it("labels the latest completed block and omits restored originals", () => {
+    const items: RenderItem[] = [
+      {
+        type: "thinking",
+        id: "previous",
+        thinking: "Previous",
+        status: "complete",
+        sourceMessages: [],
+      },
+      {
+        type: "thinking",
+        id: "latest",
+        thinking: "Latest",
+        status: "complete",
+        sourceMessages: [],
+      },
+    ];
+
+    expect(selectConversationThinkingPreviews(items)[0]?.kind).toBe("latest");
+
+    const projected = projectConversationView(items, {
+      active: false,
+      expandedActivityIds: new Set(["conversation-activity-previous"]),
+      nowMs: 1_000,
+    });
+    expect(summary(projected).thinkingPreviews).toBeUndefined();
+  });
+
+  it("attaches both previews only after the final activity summary", () => {
+    const items: RenderItem[] = [
+      {
+        type: "thinking",
+        id: "previous",
+        thinking: "Previous",
+        status: "complete",
+        sourceMessages: [],
+      },
+      {
+        type: "user_prompt",
+        id: "user",
+        content: "Continue",
+        sourceMessages: [],
+      },
+      {
+        type: "thinking",
+        id: "current",
+        thinking: "Current",
+        status: "streaming",
+        sourceMessages: [],
+      },
+    ];
+
+    const summaries = projectConversationView(items, {
+      active: true,
+      nowMs: 1_000,
+    }).filter(
+      (item): item is ConversationActivityItem =>
+        item.type === "conversation_activity",
+    );
+
+    expect(summaries).toHaveLength(2);
+    expect(summaries[0]?.thinkingPreviews).toBeUndefined();
+    expect(
+      summaries[1]?.thinkingPreviews?.map((preview) => preview.id),
+    ).toEqual(["current", "previous"]);
+  });
+
+  it("omits dismissed preview slots without changing the source transcript", () => {
+    const items: RenderItem[] = [
+      {
+        type: "thinking",
+        id: "previous",
+        thinking: "Previous",
+        status: "complete",
+        sourceMessages: [],
+      },
+      {
+        type: "thinking",
+        id: "latest",
+        thinking: "Latest",
+        status: "complete",
+        sourceMessages: [],
+      },
+    ];
+
+    const projected = projectConversationView(items, {
+      active: false,
+      dismissedThinkingPreviewSlots: new Set(["previous"]),
+      nowMs: 1_000,
+    });
+
+    expect(
+      summary(projected).thinkingPreviews?.map((preview) => preview.slot),
+    ).toEqual(["latest"]);
+    expect(items.map((item) => item.id)).toEqual(["previous", "latest"]);
+  });
+
+  it("provides the three newest concrete activity kinds with detail tooltips", () => {
+    const projected = projectConversationView(
+      [
+        tool("read", 1_000, {
+          toolName: "Read",
+          toolInput: { file_path: "/repo/README.md" },
+        }),
+        tool("edit", 2_000, {
+          toolName: "Edit",
+          toolInput: {
+            file_path: "/repo/src/app.ts",
+            old_string: "before",
+            new_string: "after",
+          },
+        }),
+        {
+          type: "thinking",
+          id: "thinking",
+          thinking: "Plan",
+          status: "complete",
+          sourceMessages: [],
+        },
+        tool("run", 3_000, {
+          toolName: "Bash",
+          toolInput: { command: "pnpm test" },
+        }),
+        tool("write", 4_000, {
+          toolName: "Write",
+          toolInput: { file_path: "/repo/report.md", content: "done" },
+        }),
+      ],
+      { active: false, nowMs: 5_000 },
+    );
+
+    expect(summary(projected).recentActivities).toEqual([
+      { label: "Write", detail: "Write: report.md", preview: "report.md" },
+      { label: "Run", detail: "Run: pnpm test", preview: "pnpm test" },
+      { label: "Edit", detail: "Edit: app.ts", preview: "app.ts" },
+    ]);
   });
 });

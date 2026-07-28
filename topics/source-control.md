@@ -101,10 +101,27 @@ row itself rather than depending on hover.
 ### Diff gutter
 
 Added/deleted line backgrounds remain subdued while the `+` / `−` strip carries
-the stronger semantic color. Narrow the current roughly 20 px gutter to about
-16 px and reduce its internal inline inset from roughly 8 px to 6 px, retaining
-the breathing room between the color divide and source text. Verify highlighted
-and fallback diff renderers in unified and side-by-side modes.
+the stronger semantic color. The authored gutter is about 16 px wide with a
+roughly 6 px inline inset and separate breathing room between the color divide
+and source text.
+
+Source Control and session Edit-tool diffs use the same gutter-alignment class;
+neither surface may keep a separately tuned approximation. The same shared
+boundary owns the diff-specific Shiki palette. Each shipped theme uses fixed,
+uniform added and removed line fills, and every syntax token has at least 3.5:1
+contrast against both fills. This deliberately softer threshold keeps syntax
+roles distinct from ordinary body text while preventing illegible combinations
+such as a dim comment on a tinted line. Contrast is audited from the theme
+palette offline, never inferred from the current file's content. Highlighted
+and fallback renderers retain the contract in unified and side-by-side modes.
+The stronger `+` / `−` gutter tints have separately audited foregrounds at the
+same minimum, including the session fixed-font rendered form.
+
+Source text is source text regardless of entry point. Source Control diffs,
+session Edit-tool diffs, Files content, and blame use the same fixed-font
+family, size, and line-spacing tokens derived from Appearance settings.
+Individual source surfaces may add local density offsets, but may not substitute
+a separately sized or spaced monospace style.
 
 ## Navigation and diff controls
 
@@ -170,16 +187,53 @@ offer **Open commit** and **Copy commit hash**; copying uses the full SHA.
 Uncommitted lines remain visibly non-link provenance. Pending blame-comment
 tint matches both the line and its committed/uncommitted revision identity.
 
-**Proposed — content-sized Files pane.** Alongside cached Files/blame metadata,
-cache the selected file's maximum intrinsic rendered code-line width, keyed by
-the same content/revision identity and the client typography scale that affects
-measurement. When a wide layout has surplus space, target the content pane at
-the blame gutter, line-number gutter, horizontal padding, and that maximum line
-width—just enough to show the file without gratuitous empty space—and leave the
-remainder to the file list. Clamp through the existing pane minima and available
-width; narrow layouts and user-resized boundaries keep their current behavior.
-Tests must cover cache reuse and invalidation, tabs/wide characters and empty
-files, wide-space allocation, and the narrow/minimum-width fallback.
+The blame grid has three real columns: a five-character displayed commit hash,
+a content-sized line number, and selectable code. Clicking the line number or
+clicking code without selecting it starts a review comment; completing a text
+selection does not turn the release click into a review action. Consecutive
+lines with the same populated blame provenance share one horizontal overflow
+region. Different commits never share that scrollbar, and code cells do not
+grow independent per-line scrollbars.
+
+The path-copy icon sits beside the pathname. The detail banner's trailing
+document-copy icon instead copies the exact raw text returned by the file
+endpoint and remains disabled until readable text is available. Their icons,
+tooltips, and accessible names distinguish path from content.
+
+One-author files retain the ordinary gray hash. With multiple authors, hashes
+receive distinct hues chosen by maximum minimum distance over the visible
+author set. The server gives each author a durable project-wide hue preference
+and refreshes the palette in the background when a project is opened or added;
+new HEAD commits only scan the newly reachable range. A palette read, update,
+or write error discards persisted detail and permits exactly one full-history
+regeneration attempt, then omits server palette detail rather than retrying in
+a loop. The client re-spaces the visible file's author set from those
+preferences. When palette generation fails or an older server omits the
+optional preference, a stable author-name hash supplies the preference without
+an unsupported request.
+
+Files caches the selected file's maximum intrinsic rendered code-line width by
+project, path, content fingerprint, and the typography metrics that affect
+measurement. On a wide layout, selection or a relevant viewport/typography
+change targets the content pane at the blame gutter, line-number gutter,
+scrollbar/border allowance, and that maximum line width—just enough to show the
+file without gratuitous empty space—and leaves the remainder to the file list.
+
+The allocator clamps to available space and existing pane minima. It may shrink
+an oversized file list toward its ordinary default when that lets the content
+fit, but uses a list the user manually narrowed below that default as its
+automatic lower bound. A manual split remains in effect until file selection or
+the measured viewport/typography changes. Phone layouts keep their full-screen
+drill-in and do not run this two-pane allocation. Tests cover cache reuse and
+invalidation, tabs/wide characters and empty files, wide-space allocation, and
+constrained minimum-width fallback.
+
+**Persist project-wide author preferences, then re-space the visible file**
+(vs storing a final color per author): the durable preference keeps identity
+stable while file-local maximum-distance assignment preserves useful
+distinction for the usually small visible author set. Regenerating only after
+an error keeps corrupt state recoverable without turning palette maintenance
+into a background retry loop.
 
 The permanent `git-source-review` capability currently gates the complete
 Changes/Commits/Files/Comments browser as well as the review endpoints. An

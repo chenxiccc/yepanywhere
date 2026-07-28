@@ -22,6 +22,7 @@ import {
   useState,
 } from "react";
 import { useOptionalRenderModeContext } from "../contexts/RenderModeContext";
+import { ConversationViewIcon } from "./ConversationViewIcon";
 import {
   type EffortLevel,
   type ThinkingMode,
@@ -680,26 +681,6 @@ function ToolbarMicrophoneIcon() {
   );
 }
 
-function ConversationViewIcon() {
-  return (
-    <svg
-      width="17"
-      height="17"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.9"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M4 5.5h10a3 3 0 0 1 3 3v3a3 3 0 0 1-3 3H9l-4 3v-3.2a3 3 0 0 1-1-2.3V8.5a3 3 0 0 1 3-3" />
-      <path d="M17 9.5h.5a2.5 2.5 0 0 1 2.5 2.5v3a2.5 2.5 0 0 1-1 2l.2 2.5-3.2-2h-3.5a2.5 2.5 0 0 1-2.4-1.8" />
-      <path d="M8 9.5h5M8 12h3.5" />
-    </svg>
-  );
-}
-
 function getToolbarThinkingLabel(
   t: ToolbarTranslate,
   control: ToolbarThinkingControl,
@@ -1272,7 +1253,9 @@ export function MessageInputToolbarView({
         ? controlPriority.projectQueueNewSessionShortcut
         : "off",
     microphone:
-      visibility.microphone && selectedSpeechMethod && speechControl?.voiceButton
+      visibility.microphone &&
+      selectedSpeechMethod &&
+      speechControl?.voiceButton
         ? speechControl.voiceButton.kind
         : "off",
     waveform: speechWaveformActive,
@@ -1568,47 +1551,47 @@ export function MessageInputToolbarView({
                 {visibility.modeSelector &&
                   modeControl &&
                   isPriorityCollapsible("modeSelector") && (
-                  <span className={menuTierClass("modeSelector")}>
-                    <ModeSelector
-                      mode={modeControl.mode}
-                      onModeChange={modeControl.onModeChange}
-                      modes={modeControl.modes}
-                      changesApplyNextTurn={modeControl.changesApplyNextTurn}
-                    />
-                  </span>
-                )}
+                    <span className={menuTierClass("modeSelector")}>
+                      <ModeSelector
+                        mode={modeControl.mode}
+                        onModeChange={modeControl.onModeChange}
+                        modes={modeControl.modes}
+                        changesApplyNextTurn={modeControl.changesApplyNextTurn}
+                      />
+                    </span>
+                  )}
                 {visibility.attachments &&
                   isPriorityCollapsible("attachments") && (
-                  <button
-                    type="button"
-                    className={menuTierClass("attachments", "attach-button")}
-                    onClick={attachmentControl.onAttachClick}
-                    disabled={!attachmentControl.canAttach}
-                    title={
-                      attachmentControl.canAttach
-                        ? t("toolbarAttachFiles")
-                        : t("toolbarAttachDisabled")
-                    }
-                    role="menuitem"
-                  >
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      aria-hidden="true"
+                    <button
+                      type="button"
+                      className={menuTierClass("attachments", "attach-button")}
+                      onClick={attachmentControl.onAttachClick}
+                      disabled={!attachmentControl.canAttach}
+                      title={
+                        attachmentControl.canAttach
+                          ? t("toolbarAttachFiles")
+                          : t("toolbarAttachDisabled")
+                      }
+                      role="menuitem"
                     >
-                      <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-                    </svg>
-                    {attachmentControl.attachmentCount > 0 && (
-                      <span className="attach-count">
-                        {attachmentControl.attachmentCount}
-                      </span>
-                    )}
-                  </button>
-                )}
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        aria-hidden="true"
+                      >
+                        <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                      </svg>
+                      {attachmentControl.attachmentCount > 0 && (
+                        <span className="attach-count">
+                          {attachmentControl.attachmentCount}
+                        </span>
+                      )}
+                    </button>
+                  )}
                 {visibility.sessionStatus &&
                   isPriorityCollapsible("sessionStatus") &&
                   renderStatusAges(
@@ -1623,132 +1606,132 @@ export function MessageInputToolbarView({
                 {visibility.slashMenu &&
                   slashControl &&
                   isPriorityCollapsible("slashMenu") && (
-                  <span className={menuTierClass("slashMenu")}>
-                    <SlashCommandButton
-                      commands={slashControl.commands}
-                      onSelectCommand={slashControl.onSelectCommand}
-                      disabled={slashControl.disabled}
-                    />
-                  </span>
-                )}
+                    <span className={menuTierClass("slashMenu")}>
+                      <SlashCommandButton
+                        commands={slashControl.commands}
+                        onSelectCommand={slashControl.onSelectCommand}
+                        disabled={slashControl.disabled}
+                      />
+                    </span>
+                  )}
                 {visibility.thinkingToggle &&
                   thinkingControl &&
                   isPriorityCollapsible("thinkingToggle") && (
-                  <span className={menuTierClass("thinkingToggle")}>
-                    <ThinkingToolbarControl control={thinkingControl} t={t} />
-                  </span>
-                )}
+                    <span className={menuTierClass("thinkingToggle")}>
+                      <ThinkingToolbarControl control={thinkingControl} t={t} />
+                    </span>
+                  )}
                 {visibility.renderMode &&
                   renderModeControl &&
                   isPriorityCollapsible("renderMode") && (
-                  <button
-                    type="button"
-                    className={menuTierClass(
-                      "renderMode",
-                      "render-mode-toolbar-button",
-                      renderModeControl.state === "rendered"
-                        ? "is-rendered"
-                        : renderModeControl.state === "mixed"
-                          ? "is-mixed"
-                          : "",
-                    )}
-                    onClick={renderModeControl.onToggle}
-                    title={renderModeControl.title}
-                    aria-label={renderModeControl.title}
-                    role="menuitemcheckbox"
-                    aria-checked={
-                      renderModeControl.state === "mixed"
-                        ? "mixed"
-                        : renderModeControl.state === "rendered"
-                    }
-                  >
-                    <RenderModeGlyph />
-                  </button>
-                )}
+                    <button
+                      type="button"
+                      className={menuTierClass(
+                        "renderMode",
+                        "render-mode-toolbar-button",
+                        renderModeControl.state === "rendered"
+                          ? "is-rendered"
+                          : renderModeControl.state === "mixed"
+                            ? "is-mixed"
+                            : "",
+                      )}
+                      onClick={renderModeControl.onToggle}
+                      title={renderModeControl.title}
+                      aria-label={renderModeControl.title}
+                      role="menuitemcheckbox"
+                      aria-checked={
+                        renderModeControl.state === "mixed"
+                          ? "mixed"
+                          : renderModeControl.state === "rendered"
+                      }
+                    >
+                      <RenderModeGlyph />
+                    </button>
+                  )}
                 {visibility.conversationView &&
                   conversationViewControl &&
                   isPriorityCollapsible("conversationView") && (
-                  <button
-                    type="button"
-                    className={menuTierClass(
-                      "conversationView",
-                      "conversation-view-toolbar-button",
-                      conversationViewControl.enabled ? "active" : "",
-                    )}
-                    onClick={conversationViewControl.onToggle}
-                    title={conversationViewControl.title}
-                    aria-label={conversationViewControl.title}
-                    role="menuitemcheckbox"
-                    aria-checked={conversationViewControl.enabled}
-                  >
-                    <ConversationViewIcon />
-                  </button>
-                )}
+                    <button
+                      type="button"
+                      className={menuTierClass(
+                        "conversationView",
+                        "conversation-view-toolbar-button",
+                        conversationViewControl.enabled ? "active" : "",
+                      )}
+                      onClick={conversationViewControl.onToggle}
+                      title={conversationViewControl.title}
+                      aria-label={conversationViewControl.title}
+                      role="menuitemcheckbox"
+                      aria-checked={conversationViewControl.enabled}
+                    >
+                      <ConversationViewIcon />
+                    </button>
+                  )}
                 {visibility.nudge &&
                   nudgeControl &&
                   isPriorityCollapsible("nudge") && (
-                  <button
-                    type="button"
-                    className={menuTierClass(
-                      "nudge",
-                      "heartbeat-toolbar-button",
-                      nudgeControl.enabled ? "active" : "",
-                    )}
-                    onClick={nudgeControl.onClick}
-                    onContextMenu={nudgeControl.onContextMenu}
-                    onTouchStart={nudgeControl.onTouchStart}
-                    onTouchEnd={nudgeControl.onTouchEnd}
-                    onTouchCancel={nudgeControl.onClearTouch}
-                    onTouchMove={nudgeControl.onClearTouch}
-                    title={nudgeControl.title}
-                    aria-label={nudgeControl.title}
-                    role="menuitemcheckbox"
-                    aria-checked={nudgeControl.enabled}
-                  >
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="miter"
-                      aria-hidden="true"
+                    <button
+                      type="button"
+                      className={menuTierClass(
+                        "nudge",
+                        "heartbeat-toolbar-button",
+                        nudgeControl.enabled ? "active" : "",
+                      )}
+                      onClick={nudgeControl.onClick}
+                      onContextMenu={nudgeControl.onContextMenu}
+                      onTouchStart={nudgeControl.onTouchStart}
+                      onTouchEnd={nudgeControl.onTouchEnd}
+                      onTouchCancel={nudgeControl.onClearTouch}
+                      onTouchMove={nudgeControl.onClearTouch}
+                      title={nudgeControl.title}
+                      aria-label={nudgeControl.title}
+                      role="menuitemcheckbox"
+                      aria-checked={nudgeControl.enabled}
                     >
-                      <path className="heartbeat-baseline" d="M0.75 15H7" />
-                      <path
-                        className="heartbeat-excursion"
-                        d="M7 15l2-5 2 9 4-16 3 12"
-                      />
-                      <path className="heartbeat-baseline" d="M18 15h5.25" />
-                    </svg>
-                  </button>
-                )}
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="miter"
+                        aria-hidden="true"
+                      >
+                        <path className="heartbeat-baseline" d="M0.75 15H7" />
+                        <path
+                          className="heartbeat-excursion"
+                          d="M7 15l2-5 2 9 4-16 3 12"
+                        />
+                        <path className="heartbeat-baseline" d="M18 15h5.25" />
+                      </svg>
+                    </button>
+                  )}
                 {visibility.shortcutsHelp &&
                   isPriorityCollapsible("shortcutsHelp") && (
-                  <button
-                    type="button"
-                    className={menuTierClass(
-                      "shortcutsHelp",
-                      "session-shortcuts-help-button",
-                    )}
-                    aria-label={t("toolbarKeyboardShortcutsAria")}
-                    aria-expanded={shortcutsPopoverOpen}
-                    onClick={() => shortcutsControl.setOpen((open) => !open)}
-                    onContextMenu={(event) => {
-                      event.preventDefault();
-                      openShortcutSettings();
-                    }}
-                    onTouchStart={startShortcutsLongPress}
-                    onTouchEnd={clearShortcutsLongPress}
-                    onTouchCancel={clearShortcutsLongPress}
-                    onTouchMove={clearShortcutsLongPress}
-                    role="menuitem"
-                  >
-                    ?
-                  </button>
-                )}
+                    <button
+                      type="button"
+                      className={menuTierClass(
+                        "shortcutsHelp",
+                        "session-shortcuts-help-button",
+                      )}
+                      aria-label={t("toolbarKeyboardShortcutsAria")}
+                      aria-expanded={shortcutsPopoverOpen}
+                      onClick={() => shortcutsControl.setOpen((open) => !open)}
+                      onContextMenu={(event) => {
+                        event.preventDefault();
+                        openShortcutSettings();
+                      }}
+                      onTouchStart={startShortcutsLongPress}
+                      onTouchEnd={clearShortcutsLongPress}
+                      onTouchCancel={clearShortcutsLongPress}
+                      onTouchMove={clearShortcutsLongPress}
+                      role="menuitem"
+                    >
+                      ?
+                    </button>
+                  )}
                 {isPriorityCollapsible("contextUsage") &&
                   renderContextUsage(
                     menuTierClass("contextUsage", "context-toolbar-control"),

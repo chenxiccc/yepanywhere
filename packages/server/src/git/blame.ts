@@ -2,6 +2,7 @@ import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { GitBlameLine, GitBlameResult } from "@yep-anywhere/shared";
 import { highlightFile } from "../highlighting/index.js";
+import { getGitAuthorIdentity, getGitAuthorPalette } from "./authorPalette.js";
 import { GIT_DECODE_PATHS_ARGS, runGit } from "./gitExec.js";
 
 /**
@@ -63,8 +64,11 @@ export async function getBlame(
   const validator = resolved ? null : await worktreeValidator(cwd, path);
 
   const cached = blameCache.get(key);
-  if (cached && (resolved ? true : validator !== null) &&
-      cached.validator === validator) {
+  if (
+    cached &&
+    (resolved ? true : validator !== null) &&
+    cached.validator === validator
+  ) {
     blameCache.delete(key);
     blameCache.set(key, cached);
     blameCacheHits++;
@@ -84,17 +88,31 @@ export async function getBlame(
     "--",
     path,
   ];
-  const { stdout } = await runGit(cwd, args, {
-    maxBuffer: BLAME_MAX_BUFFER,
-    timeout: BLAME_TIMEOUT_MS,
-  });
-  let lines = parseBlamePorcelain(stdout);
+  const [{ stdout }, authorPalette] = await Promise.all([
+    runGit(cwd, args, {
+      maxBuffer: BLAME_MAX_BUFFER,
+      timeout: BLAME_TIMEOUT_MS,
+    }),
+    getGitAuthorPalette(cwd),
+  ]);
+  let parsedLines = parseBlamePorcelain(stdout);
 
   let truncated = false;
-  if (lines.length > MAX_BLAME_LINES) {
-    lines = lines.slice(0, MAX_BLAME_LINES);
+  if (parsedLines.length > MAX_BLAME_LINES) {
+    parsedLines = parsedLines.slice(0, MAX_BLAME_LINES);
     truncated = true;
   }
+  const lines: GitBlameLine[] = parsedLines.map(
+    ({ authorIdentity, ...line }) => {
+      const authorColorSeed =
+        !line.uncommitted && authorPalette
+          ? authorPalette.seeds.get(authorIdentity)
+          : undefined;
+      return authorColorSeed === undefined
+        ? line
+        : { ...line, authorColorSeed };
+    },
+  );
 
   const result: GitBlameResult = {
     path,
@@ -194,6 +212,20 @@ export function blameCacheStatsForTest(): {
   };
 }
 
+/** Test hook: exercise same-key replacement without timing real git children. */
+export function insertBlameCacheEntryForTest(key: string, bytes: number): void {
+  insertBlameCacheEntry(key, {
+    result: {
+      path: key,
+      rev: "test",
+      lines: [],
+      truncated: false,
+    },
+    bytes,
+    validator: null,
+  });
+}
+
 /** Test hook: drop all cached blame state. */
 export function resetBlameCacheForTest(): void {
   blameCache.clear();
@@ -222,13 +254,22 @@ async function resolveCommit(cwd: string, rev: string): Promise<string | null> {
  * author-time, summary) appears only the first time a commit is seen, so it is
  * accumulated into a per-sha map and read back when emitting each line.
  */
-function parseBlamePorcelain(stdout: string): GitBlameLine[] {
+interface ParsedGitBlameLine extends GitBlameLine {
+  authorIdentity: string;
+}
+
+function parseBlamePorcelain(stdout: string): ParsedGitBlameLine[] {
   const rows = stdout.split("\n");
   const meta = new Map<
     string,
-    { author: string; authorTime: string; summary: string }
+    {
+      author: string;
+      authorEmail: string;
+      authorTime: string;
+      summary: string;
+    }
   >();
-  const out: GitBlameLine[] = [];
+  const out: ParsedGitBlameLine[] = [];
 
   let curSha: string | null = null;
   let curFinalLine = 0;
@@ -239,7 +280,12 @@ function parseBlamePorcelain(stdout: string): GitBlameLine[] {
       curSha = header[1];
       curFinalLine = Number.parseInt(header[2], 10);
       if (!meta.has(curSha)) {
-        meta.set(curSha, { author: "", authorTime: "", summary: "" });
+        meta.set(curSha, {
+          author: "",
+          authorEmail: "",
+          authorTime: "",
+          summary: "",
+        });
       }
       continue;
     }
@@ -249,6 +295,8 @@ function parseBlamePorcelain(stdout: string): GitBlameLine[] {
     if (entry) {
       if (row.startsWith("author ")) {
         entry.author = row.slice("author ".length);
+      } else if (row.startsWith("author-mail ")) {
+        entry.authorEmail = row.slice("author-mail ".length);
       } else if (row.startsWith("author-time ")) {
         entry.authorTime = epochToIso(row.slice("author-time ".length));
       } else if (row.startsWith("summary ")) {
@@ -257,12 +305,18 @@ function parseBlamePorcelain(stdout: string): GitBlameLine[] {
     }
 
     if (row.startsWith("\t")) {
-      const m = entry ?? { author: "", authorTime: "", summary: "" };
+      const m = entry ?? {
+        author: "",
+        authorEmail: "",
+        authorTime: "",
+        summary: "",
+      };
       out.push({
         line: curFinalLine,
         sha: curSha,
         shortSha: curSha.slice(0, 7),
         author: m.author,
+        authorIdentity: getGitAuthorIdentity(m.author, m.authorEmail),
         authorTime: m.authorTime,
         summary: m.summary,
         content: row.slice(1),

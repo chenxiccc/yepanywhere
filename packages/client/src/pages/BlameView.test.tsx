@@ -23,6 +23,7 @@ const getGitBlame = vi.fn();
 const getFile = vi.fn();
 const listReviewComments = vi.fn();
 const addReviewComment = vi.fn();
+const writeClipboardText = vi.fn();
 vi.mock("../api/client", () => ({
   api: {
     getFile: (...args: unknown[]) => getFile(...args),
@@ -30,6 +31,9 @@ vi.mock("../api/client", () => ({
     listReviewComments: (...args: unknown[]) => listReviewComments(...args),
     addReviewComment: (...args: unknown[]) => addReviewComment(...args),
   },
+}));
+vi.mock("../lib/clipboard", () => ({
+  writeClipboardText: (...args: unknown[]) => writeClipboardText(...args),
 }));
 
 import { BlameView } from "./BlameView";
@@ -205,6 +209,7 @@ describe("BlameView", () => {
       pendingCount: 0,
     });
     const onOpenCommit = vi.fn();
+    const onContentWidthChange = vi.fn();
 
     render(
       <MemoryRouter>
@@ -212,6 +217,7 @@ describe("BlameView", () => {
           projectId="p1"
           path="src/x.ts"
           onOpenCommit={onOpenCommit}
+          onContentWidthChange={onContentWidthChange}
           t={t}
         />
       </MemoryRouter>,
@@ -219,6 +225,7 @@ describe("BlameView", () => {
 
     expect(await screen.findByText("const fast = 1;")).toBeTruthy();
     expect(getFile).toHaveBeenCalledWith("p1", "src/x.ts", false);
+    expect(onContentWidthChange).toHaveBeenCalledWith("src/x.ts", 320);
     expect(document.querySelector(".blame-gutter-loading")).toBeTruthy();
     expect(document.querySelector(".blame-commit-link")).toBeNull();
 
@@ -226,8 +233,9 @@ describe("BlameView", () => {
       resolveBlame(blameResult("const fast = 1;"));
       await pendingBlame;
     });
+    await waitFor(() => expect(onContentWidthChange).toHaveBeenCalledTimes(2));
 
-    const hash = await screen.findByRole("button", { name: "bbbbbbb" });
+    const hash = await screen.findByRole("button", { name: "bbbbb" });
     expect(hash.getAttribute("title")).toContain("init");
     fireEvent.click(hash);
     expect(onOpenCommit).toHaveBeenCalledWith(COMMITTED_SHA);
@@ -239,6 +247,69 @@ describe("BlameView", () => {
     expect(
       screen.getByRole("menuitem", { name: "sourceOpenCommit" }),
     ).toBeTruthy();
+  });
+
+  it("uses distinct path and raw-content actions beside their targets", async () => {
+    primeBlame();
+    writeClipboardText.mockResolvedValue(true);
+    render(
+      <MemoryRouter>
+        <BlameView projectId="p1" path="src/x.ts" t={t} />
+      </MemoryRouter>,
+    );
+
+    const pathCopy = await screen.findByRole("button", {
+      name: "sourceCopyPath",
+    });
+    const contentCopy = screen.getByRole("button", {
+      name: "sourceCopyRawContent",
+    });
+    expect(pathCopy.closest(".blame-view-path-group")).toBeTruthy();
+    expect(contentCopy.classList.contains("blame-content-copy")).toBe(true);
+
+    fireEvent.click(pathCopy);
+    fireEvent.click(contentCopy);
+    await waitFor(() =>
+      expect(writeClipboardText.mock.calls).toEqual([
+        ["src/x.ts"],
+        ["const a = 1;\nconst b = 2;\n"],
+      ]),
+    );
+  });
+
+  it("keeps commit, line number, and selectable content as separate columns", async () => {
+    primeBlame();
+    render(
+      <MemoryRouter>
+        <BlameView projectId="p1" path="src/x.ts" t={t} />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() =>
+      expect(document.querySelectorAll(".blame-row").length).toBe(2),
+    );
+    const row = document.querySelector(".blame-row")!;
+    expect(row.children[0]?.classList.contains("blame-gutter")).toBe(true);
+    expect(row.children[1]?.classList.contains("blame-lineno")).toBe(true);
+    expect(row.children[2]?.classList.contains("blame-code")).toBe(true);
+
+    const selection = vi.spyOn(window, "getSelection").mockReturnValue({
+      isCollapsed: false,
+      toString: () => "const a",
+      containsNode: () => true,
+    } as unknown as Selection);
+    fireEvent.click(row.children[2]!);
+    expect(screen.queryByRole("textbox")).toBeNull();
+
+    selection.mockReturnValue({
+      isCollapsed: false,
+      toString: () => "selected elsewhere",
+      containsNode: () => false,
+    } as unknown as Selection);
+    fireEvent.click(row.children[2]!);
+    expect(await screen.findByRole("textbox")).toBeTruthy();
+
+    selection.mockRestore();
   });
 });
 

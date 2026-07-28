@@ -16,6 +16,7 @@ import {
   serverSupportsProjectQueueNewSessionShortcutSetting,
 } from "../lib/projectQueueVisibility";
 import { UI_KEYS } from "../lib/storageKeys";
+import { setConversationViewPreference } from "./useConversationView";
 import { useVersion } from "./useVersion";
 
 export type { ToolbarControlPresence, ToolbarNarrowingPriority };
@@ -70,7 +71,7 @@ export const DEFAULT_SESSION_TOOLBAR_PRESENCE: SessionToolbarPresence = {
   slashMenu: "mid",
   thinkingToggle: "mid",
   renderMode: "hidden",
-  conversationView: "hidden",
+  conversationView: "last",
   microphone: "pin",
   waveform: "pin",
   shortcutsHelp: "last",
@@ -158,6 +159,7 @@ function normalizeClientDefaultPresence(
   const normalized: SessionToolbarPresenceDefaults = {};
   const presenceRecord = value as Record<string, unknown>;
   for (const key of SESSION_TOOLBAR_CONTROL_KEYS) {
+    if (key === "conversationView") continue;
     const candidate = presenceRecord[key];
     if (isToolbarControlPresence(candidate)) {
       normalized[key] = candidate;
@@ -365,16 +367,29 @@ export function useSessionToolbarPresence() {
 
   const setControlPresence = useCallback(
     (key: SessionToolbarVisibilityKey, value: ToolbarControlPresence) => {
+      const enablesConversationView =
+        key === "conversationView" &&
+        currentPresence.conversationView === "hidden" &&
+        value !== "hidden";
       updateStoredPresence(
         setDefaultedEnumRecordValue(currentStoredPresence, key, value),
       );
+      if (enablesConversationView) {
+        setConversationViewPreference(true);
+      }
       saveClientDefaultPresence(key, value);
     },
     [],
   );
 
   const resetPresence = useCallback(() => {
+    const enablesConversationView =
+      currentPresence.conversationView === "hidden" &&
+      getDefaultSessionToolbarPresence().conversationView !== "hidden";
     updateStoredPresence({});
+    if (enablesConversationView) {
+      setConversationViewPreference(true);
+    }
   }, []);
 
   const visibility = useMemo<SessionToolbarVisibility>(() => {
@@ -403,6 +418,12 @@ export function useSessionToolbarPresence() {
       setControlPresence,
       resetPresence,
     }),
-    [effectivePresence, visibility, priority, setControlPresence, resetPresence],
+    [
+      effectivePresence,
+      visibility,
+      priority,
+      setControlPresence,
+      resetPresence,
+    ],
   );
 }

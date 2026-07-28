@@ -313,6 +313,15 @@
     1.5em +
     var(--output-prose-line-height-offset)
   );
+  --source-code-font-size: max(
+    10px,
+    calc(var(--fixed-font-size-base-raw) + var(--source-font-size-offset, 0px))
+  );
+  --source-code-line-height: calc(
+    1.5em +
+    var(--output-prose-line-height-offset) +
+    var(--source-vspace-offset, 0px)
+  );
   --output-prose-paragraph-gap: max(
     0px,
     calc(var(--space-2) + var(--output-prose-vspace-offset))
@@ -331,6 +340,8 @@
   );
   --tab-size: 2;
   --content-max-width: 830px;
+  --blame-author-color-lightness: 0.78;
+  --blame-author-color-chroma: 0.13;
 
   /* Spacing */
   --space-1: 4px;
@@ -384,16 +395,8 @@
   --attention-color: #4daafc;
   --focus-border: #007acc;
   --primary-color: #60a5fa;
-  --bg-diff-added: color-mix(
-    in srgb,
-    var(--success-color) 7%,
-    transparent
-  );
-  --bg-diff-removed: color-mix(
-    in srgb,
-    var(--error-color) 7%,
-    transparent
-  );
+  --bg-diff-added: color-mix(in srgb, var(--success-color) 7%, transparent);
+  --bg-diff-removed: color-mix(in srgb, var(--error-color) 7%, transparent);
   --bg-diff-gutter-added: color-mix(
     in srgb,
     var(--success-color) 24%,
@@ -478,16 +481,8 @@
   --attention-color: #5db5ff;
   --focus-border: #007acc;
   --primary-color: #60a5fa;
-  --bg-diff-added: color-mix(
-    in srgb,
-    var(--success-color) 7%,
-    transparent
-  );
-  --bg-diff-removed: color-mix(
-    in srgb,
-    var(--error-color) 7%,
-    transparent
-  );
+  --bg-diff-added: color-mix(in srgb, var(--success-color) 7%, transparent);
+  --bg-diff-removed: color-mix(in srgb, var(--error-color) 7%, transparent);
   --bg-diff-gutter-added: color-mix(
     in srgb,
     var(--success-color) 22%,
@@ -556,6 +551,8 @@
   --text-secondary: #4a4741;
   --text-muted: #716e68;
   --text-dimmed: #98948c;
+  --blame-author-color-lightness: 0.43;
+  --blame-author-color-chroma: 0.12;
 
   /* Border Colors */
   --border-color: #d6d4cc;
@@ -650,16 +647,8 @@
   --attention-color: #5db5ff;
   --focus-border: #007acc;
   --primary-color: #60a5fa;
-  --bg-diff-added: color-mix(
-    in srgb,
-    var(--success-color) 7%,
-    transparent
-  );
-  --bg-diff-removed: color-mix(
-    in srgb,
-    var(--error-color) 7%,
-    transparent
-  );
+  --bg-diff-added: color-mix(in srgb, var(--success-color) 7%, transparent);
+  --bg-diff-removed: color-mix(in srgb, var(--error-color) 7%, transparent);
   --bg-diff-gutter-added: color-mix(
     in srgb,
     var(--success-color) 22%,
@@ -723,6 +712,8 @@
     --text-secondary: #4a4741;
     --text-muted: #716e68;
     --text-dimmed: #98948c;
+    --blame-author-color-lightness: 0.43;
+    --blame-author-color-chroma: 0.12;
 
     --border-color: #d6d4cc;
     --border-subtle: #e3e1da;
@@ -777,6 +768,96 @@
     --shiki-token-link: #005cc5;
     --shiki-token-deleted: #d73a49;
     --shiki-token-inserted: #22863a;
+  }
+}
+
+/* Diff palettes are audited against the uniform added/removed line fills at
+   3.5:1. Keep these opaque: every diff block for a theme must present syntax
+   colors against the same two known backgrounds. */
+[data-theme="verydark"] {
+  --bg-diff-added: #252b27;
+  --bg-diff-removed: #2b2221;
+  --bg-diff-gutter-added: #33483a;
+  --bg-diff-gutter-removed: #4b2b26;
+  --diff-gutter-added-foreground: #85e89d;
+  --diff-gutter-removed-foreground: #f97583;
+  --diff-shiki-foreground: #e1e4e8;
+  --diff-shiki-token-constant: #79b8ff;
+  --diff-shiki-token-string: #9ecbff;
+  --diff-shiki-token-comment: #767e87;
+  --diff-shiki-token-keyword: #f97583;
+  --diff-shiki-token-parameter: #ffab70;
+  --diff-shiki-token-function: #b392f0;
+  --diff-shiki-token-string-expression: #85e89d;
+  --diff-shiki-token-punctuation: #e1e4e8;
+  --diff-shiki-token-link: #79b8ff;
+  --diff-shiki-token-deleted: #f97583;
+  --diff-shiki-token-inserted: #85e89d;
+}
+
+[data-theme="dark"],
+[data-theme="auto"] {
+  --bg-diff-added: #2f3531;
+  --bg-diff-removed: #362c2b;
+  --bg-diff-gutter-added: #3b4e42;
+  --bg-diff-gutter-removed: #553430;
+  --diff-gutter-added-foreground: #85e89d;
+  --diff-gutter-removed-foreground: #f97583;
+  --diff-shiki-foreground: #e1e4e8;
+  --diff-shiki-token-constant: #79b8ff;
+  --diff-shiki-token-string: #9ecbff;
+  --diff-shiki-token-comment: #828992;
+  --diff-shiki-token-keyword: #f97583;
+  --diff-shiki-token-parameter: #ffab70;
+  --diff-shiki-token-function: #b392f0;
+  --diff-shiki-token-string-expression: #85e89d;
+  --diff-shiki-token-punctuation: #e1e4e8;
+  --diff-shiki-token-link: #79b8ff;
+  --diff-shiki-token-deleted: #f97583;
+  --diff-shiki-token-inserted: #85e89d;
+}
+
+[data-theme="light"] {
+  --bg-diff-added: #ceddce;
+  --bg-diff-removed: #e9cfcd;
+  --bg-diff-gutter-added: #b7d1bb;
+  --bg-diff-gutter-removed: #e6b9b8;
+  --diff-gutter-added-foreground: #155f2b;
+  --diff-gutter-removed-foreground: #9f2531;
+  --diff-shiki-foreground: #24292e;
+  --diff-shiki-token-constant: #005cc5;
+  --diff-shiki-token-string: #032f62;
+  --diff-shiki-token-comment: #666e78;
+  --diff-shiki-token-keyword: #c83644;
+  --diff-shiki-token-parameter: #b34d07;
+  --diff-shiki-token-function: #6f42c1;
+  --diff-shiki-token-string-expression: #207d36;
+  --diff-shiki-token-punctuation: #24292e;
+  --diff-shiki-token-link: #005cc5;
+  --diff-shiki-token-deleted: #c83644;
+  --diff-shiki-token-inserted: #207d36;
+}
+
+@media (prefers-color-scheme: light) {
+  [data-theme="auto"] {
+    --bg-diff-added: #ceddce;
+    --bg-diff-removed: #e9cfcd;
+    --bg-diff-gutter-added: #b7d1bb;
+    --bg-diff-gutter-removed: #e6b9b8;
+    --diff-gutter-added-foreground: #155f2b;
+    --diff-gutter-removed-foreground: #9f2531;
+    --diff-shiki-foreground: #24292e;
+    --diff-shiki-token-constant: #005cc5;
+    --diff-shiki-token-string: #032f62;
+    --diff-shiki-token-comment: #666e78;
+    --diff-shiki-token-keyword: #c83644;
+    --diff-shiki-token-parameter: #b34d07;
+    --diff-shiki-token-function: #6f42c1;
+    --diff-shiki-token-string-expression: #207d36;
+    --diff-shiki-token-punctuation: #24292e;
+    --diff-shiki-token-link: #005cc5;
+    --diff-shiki-token-deleted: #c83644;
+    --diff-shiki-token-inserted: #207d36;
   }
 }
 
@@ -8873,6 +8954,20 @@ div.bang-command-error-message {
   user-select: none;
 }
 
+.conversation-activity-row {
+  display: flex;
+  max-width: 100%;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 0 0.45rem;
+}
+
+.conversation-activity-column {
+  min-width: 0;
+  max-width: min(22rem, 100%);
+  flex: 0 1 auto;
+}
+
 .conversation-activity-summary {
   display: inline-flex;
   min-height: 28px;
@@ -8895,6 +8990,137 @@ div.bang-command-error-message {
     background 0.15s ease,
     border-color 0.15s ease,
     color 0.15s ease;
+}
+
+.conversation-recent-activities {
+  display: grid;
+  gap: 0;
+  margin: -5px 0 8px;
+  padding: 0 8px;
+  width: 0;
+  min-width: 100%;
+  overflow: hidden;
+  color: var(--text-dimmed);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  line-height: 1.45;
+  list-style: none;
+}
+
+.conversation-recent-activities li {
+  display: flex;
+  min-width: 0;
+  gap: 0.38rem;
+  white-space: nowrap;
+}
+
+.conversation-recent-activity-name {
+  flex: 0 0 auto;
+}
+
+.conversation-recent-activity-preview {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+}
+
+.conversation-thinking-preview {
+  width: min(var(--conversation-thinking-preview-target-width, 18rem), 100%);
+  min-width: min(16rem, 100%);
+  max-width: 100%;
+  flex: 0 1 var(--conversation-thinking-preview-target-width, 18rem);
+  margin: 4px 0 8px;
+  overflow: hidden;
+  border: 1px solid
+    color-mix(in srgb, var(--thinking-color) 26%, var(--border-color));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--bg-secondary) 72%, transparent);
+  color: var(--text-muted);
+}
+
+.conversation-thinking-preview.is-collapsed {
+  width: auto;
+  flex: 0 1 16rem;
+}
+
+.conversation-thinking-preview-header {
+  display: flex;
+  min-height: 28px;
+  align-items: center;
+}
+
+.conversation-thinking-preview-toggle,
+.conversation-thinking-preview-dismiss {
+  min-width: 0;
+  align-self: stretch;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+}
+
+.conversation-thinking-preview-toggle {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 0.38rem;
+  padding: 3px 4px 3px 8px;
+  text-align: left;
+}
+
+.conversation-thinking-preview-dismiss {
+  width: 28px;
+  flex: 0 0 28px;
+  padding: 0 7px;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.conversation-thinking-preview-toggle:hover,
+.conversation-thinking-preview-toggle:focus-visible,
+.conversation-thinking-preview-dismiss:hover,
+.conversation-thinking-preview-dismiss:focus-visible {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.conversation-thinking-preview-dot {
+  width: 5px;
+  height: 5px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--thinking-color);
+}
+
+.conversation-thinking-preview.is-streaming .conversation-thinking-preview-dot {
+  box-shadow: 0 0 0 3px
+    color-mix(in srgb, var(--thinking-color) 16%, transparent);
+}
+
+.conversation-thinking-preview-chevron {
+  margin-left: auto;
+  opacity: 0.72;
+}
+
+.conversation-thinking-preview-content {
+  max-height: min(42vh, 24rem);
+  padding: 0 10px 8px 18px;
+  overflow: auto;
+  border-top: 1px solid color-mix(in srgb, var(--border-color) 58%, transparent);
+}
+
+.conversation-thinking-preview-content .thinking-text {
+  margin-top: 0.42rem;
+  color: var(--text-muted);
+  font-family: var(--output-prose-font-family);
+  font-optical-sizing: var(--output-prose-font-optical-sizing);
+  font-variation-settings: var(--thinking-prose-font-variation-settings);
+  font-size: var(--output-prose-font-size);
+  line-height: var(--output-prose-line-height);
 }
 
 .conversation-activity-summary:hover,
@@ -10934,8 +11160,8 @@ div.bang-command-error-message {
   border-radius: var(--radius-sm);
   background: var(--bg-code);
   font-family: var(--font-mono);
-  font-size: var(--fixed-font-size-sm);
-  line-height: 1.45;
+  font-size: var(--source-code-font-size);
+  line-height: var(--source-code-line-height);
   white-space: pre-wrap;
 }
 
@@ -14921,11 +15147,7 @@ div.bang-command-error-message {
   border: 1px solid
     color-mix(in srgb, var(--warning-color) 38%, var(--border-color));
   border-radius: var(--radius-md);
-  background: color-mix(
-    in srgb,
-    var(--warning-color) 8%,
-    var(--bg-code)
-  );
+  background: color-mix(in srgb, var(--warning-color) 8%, var(--bg-code));
   color: var(--text-muted);
   font-size: var(--font-size-sm);
   line-height: 1.35;
@@ -19816,11 +20038,7 @@ body:has(.session-page)
   gap: var(--space-2);
   padding: var(--space-4);
   color: var(--text-secondary);
-  background: color-mix(
-    in srgb,
-    var(--warning-color) 7%,
-    var(--bg-secondary)
-  );
+  background: color-mix(in srgb, var(--warning-color) 7%, var(--bg-secondary));
   border: 1px solid
     color-mix(in srgb, var(--warning-color) 24%, var(--border-color));
   border-radius: var(--radius-md);
@@ -20117,7 +20335,11 @@ body:has(.session-page)
 .diff-context-toggle.diff-ignore-whitespace-toggle.active {
   color: var(--accent-color);
   background: color-mix(in srgb, var(--accent-color) 11%, transparent);
-  border-color: color-mix(in srgb, var(--accent-color) 42%, var(--border-color));
+  border-color: color-mix(
+    in srgb,
+    var(--accent-color) 42%,
+    var(--border-color)
+  );
 }
 
 .git-diff-empty-projection {
@@ -20642,6 +20864,31 @@ body:has(.session-page)
   padding: var(--space-4);
 }
 
+.public-share-floating-controls {
+  position: fixed;
+  right: max(var(--space-4), env(safe-area-inset-right, 0px));
+  bottom: max(var(--space-4), env(safe-area-inset-bottom, 0px));
+  z-index: 19;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.public-share-floating-controls .public-share-conversation-toggle,
+.public-share-floating-controls .message-follow-toggle {
+  position: static;
+  top: auto;
+  right: auto;
+  height: 34px;
+  background: color-mix(in srgb, var(--bg-code) 94%, transparent);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(8px);
+}
+
+.public-share-floating-controls .public-share-conversation-toggle {
+  width: 34px;
+}
+
 .public-share-preview {
   padding: var(--space-4);
 }
@@ -20730,5 +20977,10 @@ body:has(.session-page)
 
   .public-share-header-actions {
     gap: var(--space-1);
+  }
+
+  .public-share-floating-controls {
+    right: max(var(--space-3), env(safe-area-inset-right, 0px));
+    bottom: max(var(--space-3), env(safe-area-inset-bottom, 0px));
   }
 }

@@ -713,8 +713,19 @@ export function getFullSessionSearchAnchorForItem(
           }
         : null;
     }
-    case "conversation_activity":
-      return null;
+    case "conversation_activity": {
+      const searchText = joinSearchParts(
+        item.thinkingPreviews?.map((preview) => preview.thinking) ?? [],
+      );
+      return searchText
+        ? {
+            id: item.id,
+            preview: `Thinking: ${getSearchPreviewFallback(searchText)}`,
+            searchText: joinSearchParts(["Thinking", searchText]),
+            timestampMs: getLatestMessageTimestampMs(item.sourceMessages),
+          }
+        : null;
+    }
   }
 }
 

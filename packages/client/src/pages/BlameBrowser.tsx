@@ -49,6 +49,10 @@ export function BlameBrowser({
   const [selectedPath, setSelectedPath] = useState<string | null>(
     initialPath ?? null,
   );
+  const [naturalDetailMeasurement, setNaturalDetailMeasurement] = useState<{
+    path: string;
+    width: number;
+  } | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const fileMenu = useSourceContextMenu(t);
   useSourceSearchShortcut(searchInputRef);
@@ -117,12 +121,23 @@ export function BlameBrowser({
     ],
     [t],
   );
+  const handleContentWidthChange = useCallback(
+    (path: string, width: number) => {
+      setNaturalDetailMeasurement({ path, width });
+    },
+    [],
+  );
+  const naturalDetailWidth =
+    naturalDetailMeasurement?.path === selectedPath
+      ? naturalDetailMeasurement.width
+      : undefined;
 
   return (
     <div className="blame-browser">
       <ResizableSourceColumns
         layout="files"
         initialFilesWidth={340}
+        naturalDetailWidth={isWideScreen ? naturalDetailWidth : undefined}
         className="blame-browser-columns"
         t={t}
       >
@@ -199,6 +214,7 @@ export function BlameBrowser({
             projectId={projectId}
             path={selectedPath}
             onOpenCommit={onOpenCommit}
+            onContentWidthChange={handleContentWidthChange}
             t={t}
           />
         )}

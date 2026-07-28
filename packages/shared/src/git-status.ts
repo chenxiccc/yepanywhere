@@ -99,6 +99,11 @@ export interface GitBlameLine {
   sha: string;
   shortSha: string;
   author: string;
+  /**
+   * Stable project-owned hue preference. Older servers omit it; clients then
+   * derive a deterministic preference from the author display name.
+   */
+  authorColorSeed?: number;
   /** ISO 8601 author time, or "" when unknown. */
   authorTime: string;
   /** First line of the originating commit's message. */

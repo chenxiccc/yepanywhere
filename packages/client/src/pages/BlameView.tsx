@@ -5,7 +5,17 @@ import {
   type GitBlameResult,
   type ReviewCommentAnchor,
 } from "@yep-anywhere/shared";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  type KeyboardEvent,
+  type MouseEvent,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { api } from "../api/client";
 import { CopyButton } from "../components/CopyButton";
 import {
@@ -13,9 +23,20 @@ import {
   useSourceContextMenu,
 } from "../components/SourceContextMenu";
 import { useReviewCommentDraft } from "../hooks/useReviewCommentDraft";
+import type { TranslationFn } from "../i18n";
 import { writeClipboardText } from "../lib/clipboard";
 import { ReviewCommentWindow } from "./ReviewCommentWindow";
-import type { TranslationFn } from "../i18n";
+import {
+  createBlameLineWidthCacheKey,
+  getBlameTypographySignature,
+  measureBlameDetailWidth,
+} from "./blameContentWidth";
+import {
+  assignBlameAuthorColorSlots,
+  blameAuthorHue,
+  getBlameAuthorKey,
+  groupConsecutiveBlameRows,
+} from "./blamePresentation";
 
 interface OpenBlameComment {
   /** Index into `blame.lines` of the clicked line. */
@@ -35,11 +56,13 @@ export function BlameView({
   projectId,
   path,
   onOpenCommit,
+  onContentWidthChange,
   t,
 }: {
   projectId: string;
   path: string;
   onOpenCommit?: (sha: string) => void;
+  onContentWidthChange?: (path: string, width: number) => void;
   t: TranslationFn;
 }) {
   const [file, setFile] = useState<FileContentResponse | null>(null);
@@ -49,6 +72,7 @@ export function BlameView({
   const [contentError, setContentError] = useState<string | null>(null);
   const [blameError, setBlameError] = useState<string | null>(null);
   const [open, setOpen] = useState<OpenBlameComment | null>(null);
+  const [typographyVersion, setTypographyVersion] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const hashMenu = useSourceContextMenu(t);
   const {
@@ -116,6 +140,57 @@ export function BlameView({
     if (file?.content !== undefined) return splitFileLines(file.content);
     return blame?.lines.map((line) => line.content) ?? [];
   }, [blame?.lines, file?.content]);
+  const renderRuns = useMemo(
+    () => groupConsecutiveBlameRows(contentLines, blame?.lines),
+    [blame?.lines, contentLines],
+  );
+  const authorColorSlots = useMemo(
+    () => assignBlameAuthorColorSlots(blame?.lines ?? []),
+    [blame?.lines],
+  );
+  const lineNumberColumnWidth = `calc(${Math.max(
+    1,
+    String(contentLines.length).length,
+  )}ch + 0.65rem)`;
+
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      setTypographyVersion((current) => current + 1);
+    });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["style"],
+    });
+    return () => observer.disconnect();
+  }, []);
+
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container || contentLoading || !onContentWidthChange) return;
+    const typography = getBlameTypographySignature(
+      container.querySelector<HTMLElement>(".blame-code") ?? container,
+      typographyVersion,
+    );
+    const presentation = codeLines
+      ? `highlight:${blame?.highlightedLanguage ?? "unknown"}`
+      : "plain";
+    const cacheKey = createBlameLineWidthCacheKey({
+      projectId,
+      path,
+      lines: contentLines,
+      typography: `${typography}|${presentation}`,
+    });
+    onContentWidthChange(path, measureBlameDetailWidth(container, cacheKey));
+  }, [
+    blame?.highlightedLanguage,
+    codeLines,
+    contentLines,
+    contentLoading,
+    onContentWidthChange,
+    path,
+    projectId,
+    typographyVersion,
+  ]);
 
   // Pending tint is exact provenance identity, not merely a line number: the
   // same path/line after a commit must not inherit an older revision's tint.
@@ -206,8 +281,16 @@ export function BlameView({
   return (
     <section className="blame-view" ref={containerRef}>
       <div className="blame-view-header">
-        <span className="blame-view-path" title={path}>
-          {path}
+        <span className="blame-view-path-group">
+          <span className="blame-view-path" title={path}>
+            {path}
+          </span>
+          <CopyButton
+            value={path}
+            title={t("sourceCopyPath")}
+            className="source-detail-action source-detail-icon-action blame-path-copy"
+            icon="path"
+          />
         </span>
         {blameLoading && (
           <span className="blame-provenance-status" role="status">
@@ -215,9 +298,11 @@ export function BlameView({
           </span>
         )}
         <CopyButton
-          value={path}
-          title={t("sourceCopyPath")}
-          className="source-detail-action"
+          value={file?.content ?? ""}
+          title={t("sourceCopyRawContent")}
+          className="source-detail-action source-detail-icon-action blame-content-copy"
+          disabled={file?.content === undefined || !file.metadata.isText}
+          icon="content"
         />
       </div>
       {contentError && (
@@ -231,69 +316,88 @@ export function BlameView({
       {file && !file.metadata.isText && !blame && (
         <div className="git-status-empty">{t("fileViewerBinary")}</div>
       )}
-      <div className="blame-lines">
-        {contentLines.map((content, index) => {
-          const lineNumber = index + 1;
-          const line =
-            blame?.lines[index]?.line === lineNumber
-              ? blame.lines[index]
-              : undefined;
-          const menuActions = line ? hashMenuActions(line) : [];
-          return (
-            <div
-              key={lineNumber}
-              className={`blame-row ${
-                commentedLines.has(lineNumber) ? "has-review-comment" : ""
-              }`}
-            >
-              {line?.uncommitted ? (
-                <span
-                  className="blame-gutter uncommitted"
-                  title={t("sourceBlameNotCommitted")}
+      <div
+        className="blame-lines"
+        style={
+          {
+            "--blame-line-number-column-width": lineNumberColumnWidth,
+          } as CSSProperties
+        }
+      >
+        {renderRuns.map((run) => (
+          <div
+            className={`blame-run ${run.rows[0]?.line ? "is-scrollable" : ""}`}
+            key={run.key}
+          >
+            {run.rows.map(({ content, index, line }) => {
+              const lineNumber = index + 1;
+              const menuActions = line ? hashMenuActions(line) : [];
+              const authorSlot = line
+                ? authorColorSlots.get(getBlameAuthorKey(line))
+                : undefined;
+              const authorStyle =
+                authorSlot === undefined
+                  ? undefined
+                  : ({
+                      "--blame-author-hue": `${blameAuthorHue(authorSlot)}deg`,
+                    } as CSSProperties);
+              return (
+                <div
+                  key={lineNumber}
+                  className={`blame-row ${
+                    commentedLines.has(lineNumber) ? "has-review-comment" : ""
+                  }`}
                 >
-                  ·······
-                </span>
-              ) : line ? (
-                <button
-                  type="button"
-                  className="blame-gutter blame-commit-link"
-                  title={blameGutterTitle(line)}
-                  {...hashMenu.targetProps(menuActions, () =>
-                    onOpenCommit
-                      ? onOpenCommit(line.sha)
-                      : void writeClipboardText(line.sha),
+                  {line?.uncommitted ? (
+                    <span
+                      className="blame-gutter uncommitted"
+                      title={t("sourceBlameNotCommitted")}
+                    >
+                      ·····
+                    </span>
+                  ) : line ? (
+                    <button
+                      type="button"
+                      className={`blame-gutter blame-commit-link ${
+                        authorSlot === undefined ? "" : "has-author-color"
+                      }`}
+                      style={authorStyle}
+                      title={blameGutterTitle(line)}
+                      {...hashMenu.targetProps(menuActions, () =>
+                        onOpenCommit
+                          ? onOpenCommit(line.sha)
+                          : void writeClipboardText(line.sha),
+                      )}
+                    >
+                      {line.shortSha.slice(0, 5)}
+                    </button>
+                  ) : (
+                    <span
+                      className="blame-gutter blame-gutter-loading"
+                      title={t("sourceBlameLoading")}
+                    >
+                      ·····
+                    </span>
                   )}
-                >
-                  {line.shortSha}
-                </button>
-              ) : (
-                <span
-                  className="blame-gutter blame-gutter-loading"
-                  title={t("sourceBlameLoading")}
-                >
-                  ·······
-                </span>
-              )}
-              <button
-                type="button"
-                className="blame-line-target"
-                disabled={!line}
-                onClick={(event) => openAt(index, event.currentTarget)}
-              >
-                <span className="blame-lineno">{lineNumber}</span>
-                {codeLines?.[index] ? (
-                  <span
-                    className="blame-code"
-                    // biome-ignore lint/security/noDangerouslySetInnerHtml: server-highlighted line
-                    dangerouslySetInnerHTML={{ __html: codeLines[index] }}
+                  <button
+                    type="button"
+                    className="blame-lineno"
+                    disabled={!line}
+                    onClick={(event) => openAt(index, event.currentTarget)}
+                  >
+                    {lineNumber}
+                  </button>
+                  <BlameCodeCell
+                    content={content}
+                    highlightedHtml={codeLines?.[index]}
+                    enabled={Boolean(line)}
+                    onOpen={(element) => openAt(index, element)}
                   />
-                ) : (
-                  <span className="blame-code">{content || " "}</span>
-                )}
-              </button>
-            </div>
-          );
-        })}
+                </div>
+              );
+            })}
+          </div>
+        ))}
       </div>
       {hashMenu.menu}
       {(blame?.truncated || file?.contentTruncated) && (
@@ -347,12 +451,58 @@ export function BlameView({
   );
 }
 
+function BlameCodeCell({
+  content,
+  highlightedHtml,
+  enabled,
+  onOpen,
+}: {
+  content: string;
+  highlightedHtml: string | undefined;
+  enabled: boolean;
+  onOpen: (element: HTMLElement) => void;
+}) {
+  const sharedProps = {
+    className: "blame-code blame-line-target",
+    role: enabled ? ("button" as const) : undefined,
+    tabIndex: enabled ? 0 : undefined,
+    onClick: (event: MouseEvent<HTMLSpanElement>) => {
+      if (enabled && !selectionContainsText(event.currentTarget)) {
+        onOpen(event.currentTarget);
+      }
+    },
+    onKeyDown: (event: KeyboardEvent<HTMLSpanElement>) => {
+      if (!enabled || (event.key !== "Enter" && event.key !== " ")) return;
+      event.preventDefault();
+      onOpen(event.currentTarget);
+    },
+  };
+
+  return highlightedHtml ? (
+    <span
+      {...sharedProps}
+      // biome-ignore lint/security/noDangerouslySetInnerHtml: server-highlighted line
+      dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+    />
+  ) : (
+    <span {...sharedProps}>{content || " "}</span>
+  );
+}
+
+function selectionContainsText(element: HTMLElement): boolean {
+  const selection = window.getSelection();
+  return Boolean(
+    selection &&
+      !selection.isCollapsed &&
+      selection.toString().length > 0 &&
+      selection.containsNode(element, true),
+  );
+}
+
 /** Blame gutter hover text: full sha · author · date · summary. */
 function blameGutterTitle(line: GitBlameLine): string {
   const date = formatBlameDate(line.authorTime);
-  const parts = [line.sha, line.author, date, line.summary].filter(
-    Boolean,
-  );
+  const parts = [line.sha, line.author, date, line.summary].filter(Boolean);
   return parts.join(" · ");
 }
 

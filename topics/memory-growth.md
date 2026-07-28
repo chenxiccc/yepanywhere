@@ -28,6 +28,38 @@
   session-store bytes, route snapshots, highlighted/media resources, and active
   object URLs. Quiescence-gate measurements so load-time highlighting and
   streaming bursts are not mislabeled as retained growth.
+- **2026-07-28 fresh-view probe.** A two-minute instrumented reload of the
+  reported long session did not reproduce retained JS or DOM growth:
+  `usedJSHeapSize` stayed at the browser's reported 123 MB, while the rendered
+  view stayed at 235 message rows, 90 tool rows, and 6,330 DOM nodes. The
+  bounded initial request returned 330 messages from a 3,877-message session,
+  so the former missing-tail/full-history fallback did not recur. This probe
+  could not attach to the already-grown browser process and therefore does not
+  disprove the observed 5 GB lifetime high-water or identify its native
+  retained categories.
+
+  The same probe did find continuing avoidable work: while public sharing is
+  enabled, the session page polls its 82-byte viewer-status response every five
+  seconds and replaces page state even when the response is unchanged. Each
+  poll coincided with another broad style/reconciliation cycle on this large
+  page. That is an allocation/layout-churn lead, not evidence that those
+  allocations remain live; it is tracked separately in
+  [`gaps/public-share-status-rerenders-session.md`](../gaps/public-share-status-rerenders-session.md).
+
+  The remaining product gap is also independent of leak classification:
+  active-window auto-trim stops after **Load older** and while the reader is
+  away from the bottom. A history-expanded long-lived tab can therefore retain
+  every loaded row indefinitely. The freeze/revive goal above must eventually
+  bound far-away render state in that reading mode too, while preserving
+  anchors and scroll position; the rejected `content-visibility` experiment is
+  not sufficient.
+- Conversation View condenses routine activity by default and can therefore
+  reduce rendered rows, but it is not a history bound: a session or share that
+  opens already active projects every currently loaded turn. Only an explicit
+  off-to-on toggle starts at the latest configured user-turn window (100 by
+  default) until the reader asks for earlier turns. Even that ephemeral window
+  is not the freeze/revive solution because canonical messages and render-input
+  state remain loaded.
 - Long-session pages must not do whole-transcript React work on idle timers.
   Relative-age labels are useful UI, but historical rows should not receive a
   changing clock prop every tick. The only transcript row that needs a live

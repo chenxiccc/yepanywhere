@@ -10,6 +10,13 @@ import {
   ToolbarControlPreview,
 } from "../../components/SessionToolbarPreview";
 import { CommittedRangeInput } from "../../components/ui/CommittedRangeInput";
+import { CommittedRangeNumberInput } from "../../components/ui/CommittedRangeNumberInput";
+import {
+  CONVERSATION_VIEW_TURN_LIMIT_STEP,
+  MAX_CONVERSATION_VIEW_TURN_LIMIT,
+  MIN_CONVERSATION_VIEW_TURN_LIMIT,
+  useConversationViewTurnLimit,
+} from "../../hooks/useConversationView";
 import {
   type SessionToolbarVisibilityKey,
   useSessionToolbarPresence,
@@ -189,6 +196,8 @@ export function ToolbarSettings() {
   const [placementPresence] = useState(() => ({ ...toolbarPresence }));
   const { settings, error, updateSettings } = useServerSettings();
   const { version } = useVersion();
+  const { conversationViewTurnLimit, setConversationViewTurnLimit } =
+    useConversationViewTurnLimit();
   const supportsProjectQueue = serverSupportsProjectQueue(version);
   const supportsProjectQueueNewSessionShortcutSetting =
     serverSupportsProjectQueueNewSessionShortcutSetting(version);
@@ -205,11 +214,13 @@ export function ToolbarSettings() {
             toolbarPresence,
             busyComposerDefaultAction,
             collapsedComposerButton,
+            conversationViewTurnLimit,
           }
         : null,
     [
       busyComposerDefaultAction,
       collapsedComposerButton,
+      conversationViewTurnLimit,
       settings,
       toolbarPresence,
     ],
@@ -220,6 +231,7 @@ export function ToolbarSettings() {
       for (const [key, value] of Object.entries(snapshot.toolbarPresence)) {
         setControlPresence(key as SessionToolbarVisibilityKey, value);
       }
+      setConversationViewTurnLimit(snapshot.conversationViewTurnLimit);
       void updateSettings({
         clientDefaults: {
           busyComposerDefaultAction: snapshot.busyComposerDefaultAction,
@@ -229,7 +241,7 @@ export function ToolbarSettings() {
         // surfaced via the hook's error state
       });
     },
-    [setControlPresence, updateSettings],
+    [setControlPresence, setConversationViewTurnLimit, updateSettings],
   );
   useSettingsUndoBaseline(undoState, restoreUndoState);
 
@@ -498,6 +510,25 @@ export function ToolbarSettings() {
               {t("appearanceToolbarCollapsedButtonMicrophone")}
             </option>
           </select>
+        </SettingsItem>
+
+        <SettingsItem
+          label={t("appearanceToolbarConversationViewTurnLimitTitle")}
+          description={t(
+            "appearanceToolbarConversationViewTurnLimitDescription",
+          )}
+          className="settings-item--wide-control"
+        >
+          <CommittedRangeNumberInput
+            id="conversation-view-turn-limit"
+            min={MIN_CONVERSATION_VIEW_TURN_LIMIT}
+            max={MAX_CONVERSATION_VIEW_TURN_LIMIT}
+            step={CONVERSATION_VIEW_TURN_LIMIT_STEP}
+            value={conversationViewTurnLimit}
+            unit={t("appearanceToolbarConversationViewTurnLimitUnit")}
+            ariaLabel={t("appearanceToolbarConversationViewTurnLimitTitle")}
+            onCommit={setConversationViewTurnLimit}
+          />
         </SettingsItem>
 
         <HideInSettingsSearch>

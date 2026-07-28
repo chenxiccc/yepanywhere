@@ -46,8 +46,15 @@ toolbar presence clears local overrides and returns that browser to following
 the server client default.
 `conversationView` is the narrow client-only exception: both its mode and its
 toolbar-presence override remain browser-local and are not sent to older servers
-as a new client-default key. The control defaults hidden and, when shown,
-defaults to the `last` narrowing tier. See
+as a new client-default key. The control defaults shown at the `last` narrowing
+tier and Conversation view is active for a browser profile without a stored
+choice. Changing this control from hidden to shown also activates the mode;
+existing explicit mode and presence choices otherwise remain authoritative.
+The same Toolbar category exposes the browser-local **Conversation View
+history** slider (100 user turns by default). That limit applies when the user
+explicitly switches Conversation view on; a view that opens already active
+condenses all loaded turns. Revealing earlier turns changes only the mounted
+transcript view, not this default. See
 [conversation-view.md](conversation-view.md).
 Narrowing priority is derived by `useSessionToolbarPresence` and is editable
 for controls the runtime overflow menu can actually reveal: the left-side
