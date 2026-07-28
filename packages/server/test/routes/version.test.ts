@@ -5,6 +5,7 @@ import {
   BROWSER_SETTINGS_BACKUP_CAPABILITY,
   CLAUDE_GATEWAY_CAPABILITY,
   GIT_SOURCE_REVIEW_CAPABILITY,
+  GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,
   HOST_AWAKE_CONTROL_CAPABILITY,
   HOST_IDENTITY_CAPABILITY,
 } from "@yep-anywhere/shared";
@@ -42,5 +43,11 @@ describe("Version Routes", () => {
 
   it("advertises the complete source browser and review contract", () => {
     expect(getServerCapabilities()).toContain(GIT_SOURCE_REVIEW_CAPABILITY);
+  });
+
+  it("advertises Source Control diff projections", () => {
+    expect(getServerCapabilities()).toContain(
+      GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,
+    );
   });
 });

@@ -10,6 +10,7 @@ import type {
   GitPullResult,
   GitPushResult,
   GitRemoteCheckResult,
+  GitRevisionComparison,
   GitSearchResult,
   GitStatusInfo,
   GitUntrackedFolderInfo,
@@ -55,6 +56,7 @@ export const gitApi = {
       againstHead?: boolean;
       origPath?: string;
       fullContext?: boolean;
+      ignoreWhitespace?: boolean;
     },
   ) =>
     fetchJSON<GitDiffResult>(`/projects/${projectId}/git/diff`, {
@@ -103,9 +105,32 @@ export const gitApi = {
       status: string;
       origPath?: string;
       fullContext?: boolean;
+      ignoreWhitespace?: boolean;
     },
   ) =>
     fetchJSON<GitDiffResult>(`/projects/${projectId}/git/commit-diff`, {
+      method: "POST",
+      body: JSON.stringify(params),
+    }),
+
+  getGitComparison: (projectId: string, sha: string) =>
+    fetchJSON<GitRevisionComparison>(
+      `/projects/${projectId}/git/compare/${encodeURIComponent(sha)}`,
+    ),
+
+  getGitComparisonDiff: (
+    projectId: string,
+    params: {
+      baseSha: string;
+      headSha: string;
+      path: string;
+      status: string;
+      origPath?: string;
+      fullContext?: boolean;
+      ignoreWhitespace?: boolean;
+    },
+  ) =>
+    fetchJSON<GitDiffResult>(`/projects/${projectId}/git/compare-diff`, {
       method: "POST",
       body: JSON.stringify(params),
     }),

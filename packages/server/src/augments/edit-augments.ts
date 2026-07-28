@@ -22,6 +22,11 @@ export interface EditInput {
   new_string: string;
 }
 
+export interface EditDiffOptions {
+  /** Hide changes whose old/new lines differ only in whitespace. */
+  ignoreWhitespace?: boolean;
+}
+
 interface DiffHtmlInput {
   oldString: string;
   newString: string;
@@ -457,22 +462,28 @@ export async function computeEditAugment(
   toolUseId: string,
   input: EditInput,
   contextLines: number = CONTEXT_LINES,
+  options: EditDiffOptions = {},
 ): Promise<EditAugment> {
   const { file_path, old_string, new_string } = input;
 
-  // Compute structured patch using jsdiff
-  const patch = structuredPatch(
-    file_path,
-    file_path,
-    old_string,
-    new_string,
-    "", // oldHeader
-    "", // newHeader
-    { context: contextLines },
-  );
-
-  // Convert hunks to our format
-  const structuredPatchResult = convertHunks(patch.hunks);
+  const structuredPatchResult = options.ignoreWhitespace
+    ? structuredPatchIgnoringWhitespace(
+        file_path,
+        old_string,
+        new_string,
+        contextLines,
+      )
+    : convertHunks(
+        structuredPatch(
+          file_path,
+          file_path,
+          old_string,
+          new_string,
+          "", // oldHeader
+          "", // newHeader
+          { context: contextLines },
+        ).hunks,
+      );
 
   const diffHtml = await buildDiffHtmlWithFallback({
     oldString: old_string,
@@ -488,6 +499,54 @@ export async function computeEditAugment(
     diffHtml,
     filePath: file_path,
   };
+}
+
+/**
+ * Compute a `git diff -w`-style line projection while retaining the original
+ * source text in every displayed line. Diffing whitespace-stripped lines gives
+ * us the alignment; walking the resulting hunk coordinates restores old text
+ * for removals, new text for additions, and new text for equal/context lines.
+ */
+function structuredPatchIgnoringWhitespace(
+  filePath: string,
+  oldString: string,
+  newString: string,
+  contextLines: number,
+): PatchHunk[] {
+  const oldLines = oldString.split("\n");
+  const newLines = newString.split("\n");
+  const stripWhitespace = (line: string) => line.replace(/\s/g, "");
+  const patch = structuredPatch(
+    filePath,
+    filePath,
+    oldLines.map(stripWhitespace).join("\n"),
+    newLines.map(stripWhitespace).join("\n"),
+    "",
+    "",
+    { context: contextLines },
+  );
+
+  return convertHunks(patch.hunks).map((hunk) => {
+    let oldIndex = hunk.oldStart - 1;
+    let newIndex = hunk.newStart - 1;
+    const lines = hunk.lines.map((line) => {
+      const prefix = line[0];
+      if (prefix === "-") {
+        return `-${oldLines[oldIndex++] ?? ""}`;
+      }
+      if (prefix === "+") {
+        return `+${newLines[newIndex++] ?? ""}`;
+      }
+      if (prefix === " ") {
+        const content = newLines[newIndex] ?? oldLines[oldIndex] ?? "";
+        oldIndex++;
+        newIndex++;
+        return ` ${content}`;
+      }
+      return line;
+    });
+    return { ...hunk, lines };
+  });
 }
 
 /**

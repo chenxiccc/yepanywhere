@@ -2,6 +2,7 @@ import type { PatchHunk } from "./types.js";
 
 export {
   GIT_SOURCE_REVIEW_CAPABILITY,
+  GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,
   GIT_STATUS_CAPABILITY,
   GIT_STATUS_ENHANCED_CAPABILITY,
   GIT_STATUS_INTEGRATION_OPTIONS_CAPABILITY,
@@ -47,6 +48,16 @@ export interface GitCommitDetail extends GitRecentCommit {
   /** Full commit message body (may be empty or multi-line). */
   body: string;
   /** Files changed by the commit. Reuses {@link GitFileChange} with `staged` always false. */
+  files: GitFileChange[];
+}
+
+/** A direct two-tree comparison from a selected revision to a pinned HEAD. */
+export interface GitRevisionComparison {
+  /** Resolved full SHA of the selected revision. */
+  baseSha: string;
+  /** Resolved full SHA of HEAD when the comparison was created. */
+  headSha: string;
+  /** Files whose content differs between the two revisions. */
   files: GitFileChange[];
 }
 

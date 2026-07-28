@@ -339,6 +339,27 @@ describe("git-status routes", () => {
     expect(body.structuredPatch[0]?.lines).toContain("+export const value = 1;");
   });
 
+  it("can hide whitespace-only working-tree changes", async () => {
+    const repoDir = await createRepoWithUpstream();
+    await writeFile(join(repoDir, "README.md"), "hello   \n");
+    const { projectId, routes } = createRoutesForProject(repoDir);
+
+    const response = await routes.request(`/${projectId}/git/diff`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: "README.md",
+        staged: false,
+        status: "M",
+        ignoreWhitespace: true,
+      }),
+    });
+    const body = (await response.json()) as GitDiffResult;
+
+    expect(response.status).toBe(200);
+    expect(body.structuredPatch).toEqual([]);
+  });
+
   it("can diff the current filesystem directly against HEAD", async () => {
     const repoDir = await createRepoWithUpstream();
     await writeFile(join(repoDir, "README.md"), "staged\n");

@@ -212,6 +212,30 @@ describe("git-browse routes", () => {
     expect(body.diffHtml).toContain(`data-diff-line="${addedFlat}"`);
   });
 
+  it("can hide whitespace-only changes in a commit diff", async () => {
+    await writeFile(
+      join(dir, "d.ts"),
+      "line1\nline2   changed\nline3\nline4\nline5\n",
+    );
+    const whitespaceCommit = await commitAll("adjust spacing");
+    const { projectId, routes } = createRoutesForProject(dir);
+
+    const res = await routes.request(`/${projectId}/git/commit-diff`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sha: whitespaceCommit,
+        path: "d.ts",
+        status: "M",
+        ignoreWhitespace: true,
+      }),
+    });
+    const body = (await res.json()) as GitDiffResult;
+
+    expect(res.status).toBe(200);
+    expect(body.structuredPatch).toEqual([]);
+  });
+
   it("treats an added file as fully new (empty old side)", async () => {
     const { projectId, routes } = createRoutesForProject(dir);
 

@@ -5,6 +5,7 @@ import type {
 } from "@yep-anywhere/shared";
 import {
   GIT_SOURCE_REVIEW_CAPABILITY,
+  GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,
   GIT_STATUS_ENHANCED_CAPABILITY,
   GIT_STATUS_INTEGRATION_OPTIONS_CAPABILITY,
   GIT_STATUS_PULL_CAPABILITY,
@@ -21,6 +22,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { createPortal } from "react-dom";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { ProjectSelector } from "../components/ProjectSelector";
@@ -368,6 +370,10 @@ export function GitStatusPage() {
     version,
     GIT_SOURCE_REVIEW_CAPABILITY,
   );
+  const supportsSourceReviewProjections = serverHasCapability(
+    version,
+    GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,
+  );
   const supportsRemoteCheck = serverHasCapability(
     version,
     GIT_STATUS_REMOTE_CHECK_CAPABILITY,
@@ -517,6 +523,7 @@ export function GitStatusPage() {
                 projectName={project?.name}
                 isWideScreen={isWideScreen}
                 sourceControlsFitHeader={sourceControlsFitHeader}
+                supportsProjections={supportsSourceReviewProjections}
                 gitActions={gitActions}
                 reviewComments={reviewComments}
                 showReviewModal={showReviewModal}
@@ -583,6 +590,7 @@ function GitStatusContent({
   projectName,
   isWideScreen,
   sourceControlsFitHeader,
+  supportsProjections,
   gitActions,
   reviewComments,
   showReviewModal,
@@ -595,6 +603,7 @@ function GitStatusContent({
   projectName?: string;
   isWideScreen: boolean;
   sourceControlsFitHeader: boolean;
+  supportsProjections: boolean;
   gitActions: GitActionState;
   reviewComments: ReturnType<typeof useProjectReviewComments>;
   showReviewModal: boolean;
@@ -610,6 +619,38 @@ function GitStatusContent({
   const changedFileCount = countChangedPaths(status);
   const blameFile = searchParams.get("bf") ?? undefined;
   const worktreeFile = searchParams.get("worktreeFile") ?? undefined;
+  const [ignoreWhitespace, setIgnoreWhitespace] = useState(false);
+  const [showProjectionNotice, setShowProjectionNotice] = useState(false);
+  const projectionNoticeNeedsPortal = useMediaQuery("(max-width: 600px)");
+  const activeIgnoreWhitespace =
+    supportsProjections && ignoreWhitespace;
+  useEffect(() => {
+    if (!supportsProjections) setIgnoreWhitespace(false);
+  }, [supportsProjections]);
+  const handleProjectionUnavailable = useCallback(() => {
+    setIgnoreWhitespace(false);
+    setShowProjectionNotice(true);
+  }, []);
+  const handleToggleIgnoreWhitespace = useCallback(() => {
+    if (!ignoreWhitespace && !supportsProjections) {
+      setShowProjectionNotice(true);
+      return;
+    }
+    setIgnoreWhitespace(!ignoreWhitespace);
+  }, [ignoreWhitespace, supportsProjections]);
+  const projectionNotice = showProjectionNotice ? (
+    <div className="source-projection-notice" role="status">
+      <span>{t("sourceProjectionUpgradeNotice")}</span>
+      <button
+        type="button"
+        className="source-projection-notice-dismiss"
+        aria-label={t("sourceDismissProjectionNotice")}
+        onClick={() => setShowProjectionNotice(false)}
+      >
+        ×
+      </button>
+    </div>
+  ) : null;
   // Bridge a commit file to its blame-at-HEAD view: switch to the files tab
   // with that file seeded open (a real history step, so back returns).
   const handleBlameFile = useCallback(
@@ -661,6 +702,10 @@ function GitStatusContent({
       )}
 
       <GitActionNotices gitActions={gitActions} t={t} />
+      {projectionNotice &&
+        (projectionNoticeNeedsPortal
+          ? createPortal(projectionNotice, document.body)
+          : projectionNotice)}
 
       {tab === "changes" ? (
         <WorkingTreeBrowser
@@ -669,6 +714,9 @@ function GitStatusContent({
           isWideScreen={isWideScreen}
           initialWorkingTreePath={worktreeFile}
           onBlameFile={handleBlameFile}
+          ignoreWhitespace={activeIgnoreWhitespace}
+          onToggleIgnoreWhitespace={handleToggleIgnoreWhitespace}
+          onProjectionRequestFailure={handleProjectionUnavailable}
           t={t}
         />
       ) : tab === "commits" ? (
@@ -677,6 +725,10 @@ function GitStatusContent({
           status={status}
           isWideScreen={isWideScreen}
           onBlameFile={handleBlameFile}
+          supportsProjections={supportsProjections}
+          ignoreWhitespace={activeIgnoreWhitespace}
+          onToggleIgnoreWhitespace={handleToggleIgnoreWhitespace}
+          onProjectionUnavailable={handleProjectionUnavailable}
           t={t}
         />
       ) : tab === "comments" ? (

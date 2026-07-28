@@ -1,25 +1,18 @@
-import { extname } from "node:path";
 import type {
   GitCommitDetail,
   GitCommitListResult,
   GitCommitSearchManifest,
   GitCommitSearchRecord,
   GitCommitSearchRecordsResult,
-  GitDiffResult,
-  GitFileChange,
   GitFileListResult,
   GitRecentCommit,
   GitSearchResult,
 } from "@yep-anywhere/shared";
 import type { Context } from "hono";
 import { Hono } from "hono";
-import { computeEditAugment } from "../augments/edit-augments.js";
-import { renderMarkdownToHtml } from "../augments/markdown-augments.js";
 import { getBlame } from "../git/blame.js";
-import {
-  getDiffPreviewSkip,
-  skippedGitDiffResult,
-} from "../git/diffPreviewGuards.js";
+import { buildGitDiffResult } from "../git/diffResult.js";
+import { buildGitFileChanges } from "../git/fileChanges.js";
 import { GIT_DECODE_PATHS_ARGS, runGit } from "../git/gitExec.js";
 import type { ProjectScanner } from "../projects/scanner.js";
 import { resolveProjectPath } from "./projectParam.js";
@@ -198,6 +191,7 @@ export function createGitBrowseRoutes(deps: GitBrowseDeps): Hono {
       status: string;
       origPath?: string;
       fullContext?: boolean;
+      ignoreWhitespace?: boolean;
     };
     try {
       body = await c.req.json();
@@ -205,12 +199,18 @@ export function createGitBrowseRoutes(deps: GitBrowseDeps): Hono {
       return c.json({ error: "Invalid JSON body" }, 400);
     }
 
-    const { sha, path, status, origPath, fullContext } = body;
+    const { sha, path, status, origPath, fullContext, ignoreWhitespace } = body;
     if (!sha || !SHA_RE.test(sha)) {
       return c.json({ error: "Invalid commit id" }, 400);
     }
     if (!path || !status) {
       return c.json({ error: "Missing required fields: path, status" }, 400);
+    }
+    if (
+      ignoreWhitespace !== undefined &&
+      typeof ignoreWhitespace !== "boolean"
+    ) {
+      return c.json({ error: "Invalid ignoreWhitespace" }, 400);
     }
 
     try {
@@ -222,30 +222,16 @@ export function createGitBrowseRoutes(deps: GitBrowseDeps): Hono {
         origPath,
       );
 
-      const previewSkip = getDiffPreviewSkip(oldContent, newContent);
-      if (previewSkip) return c.json(skippedGitDiffResult(previewSkip));
-
-      const contextLines = fullContext ? 999999 : 3;
-      const augment = await computeEditAugment(
-        "git-commit-diff",
-        { file_path: path, old_string: oldContent, new_string: newContent },
-        contextLines,
+      return c.json(
+        await buildGitDiffResult({
+          toolUseId: "git-commit-diff",
+          path,
+          oldContent,
+          newContent,
+          fullContext,
+          ignoreWhitespace,
+        }),
       );
-      const result: GitDiffResult = {
-        diffHtml: augment.diffHtml,
-        structuredPatch: augment.structuredPatch,
-      };
-
-      const ext = extname(path).toLowerCase();
-      if ((ext === ".md" || ext === ".markdown") && newContent) {
-        try {
-          result.markdownHtml = await renderMarkdownToHtml(newContent);
-        } catch {
-          // Ignore markdown rendering errors — the diff still renders.
-        }
-      }
-
-      return c.json(result);
     } catch (err) {
       return gitError(c, err);
     }
@@ -398,81 +384,8 @@ async function getCommitDetail(
     authorDate: authorDate ?? "",
     subject: subject ?? "",
     body,
-    files: buildCommitFiles(nameStatus.stdout, numstat.stdout),
+    files: buildGitFileChanges(nameStatus.stdout, numstat.stdout),
   };
-}
-
-interface NameStatusEntry {
-  status: string;
-  path: string;
-  origPath?: string;
-}
-
-/**
- * `--name-status` and `--numstat` list the same files in the same order for a
- * given diff-tree, so counts are zipped by index — sidestepping numstat's
- * awkward `old => new` rename path form entirely.
- */
-function buildCommitFiles(
-  nameStatus: string,
-  numstat: string,
-): GitFileChange[] {
-  const entries = parseNameStatus(nameStatus);
-  const counts = parseNumstatCounts(numstat);
-  return entries.map((entry, index) => {
-    const file: GitFileChange = {
-      path: entry.path,
-      status: entry.status,
-      staged: false,
-      linesAdded: counts[index]?.added ?? null,
-      linesDeleted: counts[index]?.deleted ?? null,
-    };
-    if (entry.origPath) file.origPath = entry.origPath;
-    return file;
-  });
-}
-
-function parseNameStatus(stdout: string): NameStatusEntry[] {
-  const out: NameStatusEntry[] = [];
-  for (const line of stdout.split("\n")) {
-    if (!line) continue;
-    const parts = line.split("\t");
-    const letter = (parts[0] ?? "M")[0] ?? "M";
-    if (letter === "R" || letter === "C") {
-      const origPath = parts[1];
-      const path = parts[2];
-      if (!path) continue;
-      out.push({ status: letter, path, origPath });
-    } else {
-      const path = parts[1];
-      if (!path) continue;
-      out.push({ status: letter, path });
-    }
-  }
-  return out;
-}
-
-function parseNumstatCounts(
-  stdout: string,
-): Array<{ added: number | null; deleted: number | null }> {
-  const out: Array<{ added: number | null; deleted: number | null }> = [];
-  for (const line of stdout.split("\n")) {
-    if (!line) continue;
-    const parts = line.split("\t");
-    const added = parts[0];
-    const deleted = parts[1];
-    out.push({
-      added: added === "-" || added === undefined ? null : toCount(added),
-      deleted:
-        deleted === "-" || deleted === undefined ? null : toCount(deleted),
-    });
-  }
-  return out;
-}
-
-function toCount(value: string): number | null {
-  const n = Number.parseInt(value, 10);
-  return Number.isFinite(n) ? n : null;
 }
 
 /**

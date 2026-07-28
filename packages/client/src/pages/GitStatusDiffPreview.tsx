@@ -66,6 +66,9 @@ interface GitDiffPreviewProps extends GitDiffPreviewRetentionProps {
   retainedScrollTop?: number;
   onRetainScrollTop?: (fileKey: string, scrollTop: number) => void;
   onCommentEditorOpenChange?: (open: boolean) => void;
+  ignoreWhitespace?: boolean;
+  onToggleIgnoreWhitespace?: () => void;
+  onProjectionRequestFailure?: () => void;
   t: TranslationFn;
 }
 
@@ -79,7 +82,8 @@ interface GitDiffPreviewProps extends GitDiffPreviewRetentionProps {
 export type GitDiffSource =
   | { kind: "worktree" }
   | { kind: "working-tree-history" }
-  | { kind: "commit"; sha: string };
+  | { kind: "commit"; sha: string }
+  | { kind: "comparison"; baseSha: string; headSha: string };
 
 const WORKTREE_SOURCE: GitDiffSource = { kind: "worktree" };
 const WORKING_TREE_HISTORY_SOURCE: GitDiffSource = {
@@ -92,10 +96,13 @@ const WORKING_TREE_HISTORY_SOURCE: GitDiffSource = {
  */
 function sourceFromPrimitives(
   kind: GitDiffSource["kind"],
-  sha: string,
+  baseSha: string,
+  headSha: string,
 ): GitDiffSource {
   return kind === "commit"
-    ? { kind: "commit", sha }
+    ? { kind: "commit", sha: baseSha }
+    : kind === "comparison"
+      ? { kind: "comparison", baseSha, headSha }
     : kind === "working-tree-history"
       ? WORKING_TREE_HISTORY_SOURCE
       : WORKTREE_SOURCE;
@@ -106,6 +113,7 @@ function fetchDiffForSource(
   file: GitFileChange,
   source: GitDiffSource,
   fullContext?: boolean,
+  ignoreWhitespace?: boolean,
 ): Promise<GitDiffResult> {
   if (source.kind === "commit") {
     return api.getGitCommitDiff(projectId, {
@@ -114,6 +122,18 @@ function fetchDiffForSource(
       status: file.status,
       ...(file.origPath ? { origPath: file.origPath } : {}),
       fullContext,
+      ...(ignoreWhitespace ? { ignoreWhitespace: true } : {}),
+    });
+  }
+  if (source.kind === "comparison") {
+    return api.getGitComparisonDiff(projectId, {
+      baseSha: source.baseSha,
+      headSha: source.headSha,
+      path: file.path,
+      status: file.status,
+      ...(file.origPath ? { origPath: file.origPath } : {}),
+      fullContext,
+      ...(ignoreWhitespace ? { ignoreWhitespace: true } : {}),
     });
   }
   return api.getGitDiff(projectId, {
@@ -127,15 +147,18 @@ function fetchDiffForSource(
         }
       : {}),
     fullContext,
+    ...(ignoreWhitespace ? { ignoreWhitespace: true } : {}),
   });
 }
 
 function commentRevisionForSource(
   source: GitDiffSource,
 ): ReviewCommentRevision | undefined {
-  return source.kind === "commit"
-    ? { kind: "sha", sha: source.sha }
-    : undefined;
+  if (source.kind === "commit") return { kind: "sha", sha: source.sha };
+  if (source.kind === "comparison") {
+    return { kind: "sha", sha: source.baseSha };
+  }
+  return undefined;
 }
 
 export const GitDiffPreview = forwardRef<
@@ -153,6 +176,9 @@ export const GitDiffPreview = forwardRef<
     onRetainScrollTop,
     onRetainDiffView,
     onCommentEditorOpenChange,
+    ignoreWhitespace = false,
+    onToggleIgnoreWhitespace,
+    onProjectionRequestFailure,
     t,
   },
   ref,
@@ -211,6 +237,9 @@ export const GitDiffPreview = forwardRef<
             }}
             onHunkNavigationChange={handleHunkNavigationChange}
             onCommentEditorOpenChange={onCommentEditorOpenChange}
+            ignoreWhitespace={ignoreWhitespace}
+            onToggleIgnoreWhitespace={onToggleIgnoreWhitespace}
+            onProjectionRequestFailure={onProjectionRequestFailure}
             t={t}
           />
         ) : (
@@ -239,6 +268,9 @@ export function GitDiffModal({
   retainedDiffView,
   onRetainDiffView,
   onCommentEditorOpenChange,
+  ignoreWhitespace = false,
+  onToggleIgnoreWhitespace,
+  onProjectionRequestFailure,
   t,
   onClose,
 }: {
@@ -251,6 +283,9 @@ export function GitDiffModal({
   retainedDiffView?: GitDiffViewState;
   onRetainDiffView?: (fileKey: string, view: GitDiffViewState) => void;
   onCommentEditorOpenChange?: (open: boolean) => void;
+  ignoreWhitespace?: boolean;
+  onToggleIgnoreWhitespace?: () => void;
+  onProjectionRequestFailure?: () => void;
   t: TranslationFn;
   onClose: () => void;
 }) {
@@ -267,6 +302,9 @@ export function GitDiffModal({
         retainedDiffView={retainedDiffView}
         onRetainDiffView={onRetainDiffView}
         onCommentEditorOpenChange={onCommentEditorOpenChange}
+        ignoreWhitespace={ignoreWhitespace}
+        onToggleIgnoreWhitespace={onToggleIgnoreWhitespace}
+        onProjectionRequestFailure={onProjectionRequestFailure}
         t={t}
       />
     </Modal>
@@ -283,6 +321,9 @@ export function GitDiffBody({
   paneHeader,
   onHunkNavigationChange,
   onCommentEditorOpenChange,
+  ignoreWhitespace = false,
+  onToggleIgnoreWhitespace,
+  onProjectionRequestFailure,
   t,
 }: {
   file: GitFileChange;
@@ -294,13 +335,28 @@ export function GitDiffBody({
     handlers: HunkNavigationHandlers | null,
   ) => void;
   onCommentEditorOpenChange?: (open: boolean) => void;
+  ignoreWhitespace?: boolean;
+  onToggleIgnoreWhitespace?: () => void;
+  onProjectionRequestFailure?: () => void;
   t: TranslationFn;
 } & GitDiffPreviewRetentionProps) {
   // Depend on the source's primitives (a fresh `{kind,sha}` object each render
   // would refetch on every render); reconstruct it inside the effect.
   const sourceKind = source.kind;
-  const sourceSha = source.kind === "commit" ? source.sha : "";
-  const requestKey = JSON.stringify([fileKey, sourceKind, sourceSha]);
+  const sourceBaseSha =
+    source.kind === "commit"
+      ? source.sha
+      : source.kind === "comparison"
+        ? source.baseSha
+        : "";
+  const sourceHeadSha = source.kind === "comparison" ? source.headSha : "";
+  const requestKey = JSON.stringify([
+    fileKey,
+    sourceKind,
+    sourceBaseSha,
+    sourceHeadSha,
+    ignoreWhitespace,
+  ]);
   const [loadState, setLoadState] = useState<{
     requestKey: string;
     result: GitDiffResult | null;
@@ -343,7 +399,9 @@ export function GitDiffBody({
     fetchDiffForSource(
       projectId,
       file,
-      sourceFromPrimitives(sourceKind, sourceSha),
+      sourceFromPrimitives(sourceKind, sourceBaseSha, sourceHeadSha),
+      undefined,
+      ignoreWhitespace,
     )
       .then((result) => {
         if (!cancelled) {
@@ -357,6 +415,9 @@ export function GitDiffBody({
       })
       .catch((err) => {
         if (!cancelled) {
+          if (ignoreWhitespace || sourceKind === "comparison") {
+            onProjectionRequestFailure?.();
+          }
           const message = err.message || t("gitStatusLoadDiffFailed");
           setLoadState((current) =>
             current.requestKey === requestKey
@@ -374,7 +435,17 @@ export function GitDiffBody({
     return () => {
       cancelled = true;
     };
-  }, [projectId, file, requestKey, sourceKind, sourceSha, t]);
+  }, [
+    projectId,
+    file,
+    requestKey,
+    sourceKind,
+    sourceBaseSha,
+    sourceHeadSha,
+    ignoreWhitespace,
+    onProjectionRequestFailure,
+    t,
+  ]);
 
   const initialLoading = loading && !diffResult;
 
@@ -395,7 +466,7 @@ export function GitDiffBody({
         <>
           {error && <div className="git-diff-error">{error}</div>}
           <GitDiffContent
-            key={fileKey}
+            key={requestKey}
             file={file}
             fileKey={fileKey}
             projectId={projectId}
@@ -406,6 +477,9 @@ export function GitDiffBody({
             paneHeader={paneHeader}
             onHunkNavigationChange={onHunkNavigationChange}
             onCommentEditorOpenChange={onCommentEditorOpenChange}
+            ignoreWhitespace={ignoreWhitespace}
+            onToggleIgnoreWhitespace={onToggleIgnoreWhitespace}
+            onProjectionRequestFailure={onProjectionRequestFailure}
             t={t}
           />
         </>
@@ -425,6 +499,9 @@ function GitDiffContent({
   paneHeader,
   onHunkNavigationChange,
   onCommentEditorOpenChange,
+  ignoreWhitespace = false,
+  onToggleIgnoreWhitespace,
+  onProjectionRequestFailure,
   t,
 }: {
   file: GitFileChange;
@@ -437,6 +514,9 @@ function GitDiffContent({
     handlers: HunkNavigationHandlers | null,
   ) => void;
   onCommentEditorOpenChange?: (open: boolean) => void;
+  ignoreWhitespace?: boolean;
+  onToggleIgnoreWhitespace?: () => void;
+  onProjectionRequestFailure?: () => void;
   t: TranslationFn;
 } & GitDiffPreviewRetentionProps) {
   const [showFullContext, setShowFullContext] = useState(
@@ -453,7 +533,13 @@ function GitDiffContent({
   const [viewMode, setViewMode] = useDiffViewMode();
   const [paneWidth, setPaneWidth] = useState(0);
   const sourceKind = source.kind;
-  const sourceSha = source.kind === "commit" ? source.sha : "";
+  const sourceBaseSha =
+    source.kind === "commit"
+      ? source.sha
+      : source.kind === "comparison"
+        ? source.baseSha
+        : "";
+  const sourceHeadSha = source.kind === "comparison" ? source.headSha : "";
 
   // Measure the diff pane (content width, not viewport) so `auto` can pick
   // side-by-side only when two readable code columns fit.
@@ -500,12 +586,16 @@ function GitDiffContent({
       const result = await fetchDiffForSource(
         projectId,
         file,
-        sourceFromPrimitives(sourceKind, sourceSha),
+        sourceFromPrimitives(sourceKind, sourceBaseSha, sourceHeadSha),
         true,
+        ignoreWhitespace,
       );
       setFullContextResult(result);
       return true;
     } catch (err) {
+      if (ignoreWhitespace || sourceKind === "comparison") {
+        onProjectionRequestFailure?.();
+      }
       setContextError(
         err instanceof Error ? err.message : t("gitStatusLoadContextFailed"),
       );
@@ -519,7 +609,10 @@ function GitDiffContent({
     projectId,
     file,
     sourceKind,
-    sourceSha,
+    sourceBaseSha,
+    sourceHeadSha,
+    ignoreWhitespace,
+    onProjectionRequestFailure,
     t,
   ]);
 
@@ -728,6 +821,19 @@ function GitDiffContent({
   const toolbarButtons = (
     <>
       {hunkNavigation}
+      {onToggleIgnoreWhitespace && (
+        <button
+          type="button"
+          className={`diff-context-toggle diff-ignore-whitespace-toggle ${
+            ignoreWhitespace ? "active" : ""
+          }`}
+          onClick={onToggleIgnoreWhitespace}
+          title={t("gitStatusIgnoreWhitespace")}
+          aria-pressed={ignoreWhitespace}
+        >
+          {t("gitStatusIgnoreWhitespace")}
+        </button>
+      )}
       {hasMarkdownPreview && (
         <button
           type="button"
@@ -792,7 +898,13 @@ function GitDiffContent({
           />
         ) : (
           <>
-            {displayResult.diffHtml &&
+            {displayResult.structuredPatch.length === 0 ? (
+              <div className="git-diff-empty-projection">
+                {ignoreWhitespace
+                  ? t("gitStatusWhitespaceChangesHidden")
+                  : t("gitStatusNoContentChanges")}
+              </div>
+            ) : displayResult.diffHtml &&
             resolveDiffViewMode(viewMode, paneWidth) === "side-by-side" ? (
               <SideBySideDiff
                 diffHtml={displayResult.diffHtml}

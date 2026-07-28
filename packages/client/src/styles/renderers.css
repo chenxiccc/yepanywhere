@@ -6929,6 +6929,12 @@ pre.code-highlighter-plain,
   cursor: default;
 }
 
+.source-compare-toggle.active {
+  color: var(--accent-color);
+  background: color-mix(in srgb, var(--accent-color) 11%, transparent);
+  border-color: color-mix(in srgb, var(--accent-color) 42%, var(--border-color));
+}
+
 .source-detail-icon-action {
   display: inline-flex;
   align-items: center;
@@ -7500,12 +7506,24 @@ pre.code-highlighter-plain,
   }
 
   .source-diff-context-controls {
-    justify-content: flex-end;
+    justify-content: flex-start;
     margin-bottom: 0;
+    padding: 6px 8px;
   }
 
   .source-diff-context-controls .diff-context-path {
     display: none;
+  }
+
+  .source-diff-context-controls .diff-context-buttons {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .source-diff-context-controls .diff-context-toggle {
+    min-height: 36px;
+    padding-inline: 8px;
   }
 
   /* Touch has no hover title recovery. Let long source identities use a

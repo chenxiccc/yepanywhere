@@ -2,6 +2,7 @@ import type {
   GitCommitDetail,
   GitFileChange,
   GitRecentCommit,
+  GitRevisionComparison,
   GitStatusInfo,
 } from "@yep-anywhere/shared";
 import {
@@ -42,6 +43,7 @@ import type { TranslationFn } from "../i18n";
 
 const COMMIT_PAGE_SIZE = 50;
 const WORKING_TREE_KEY = "working-tree";
+const NOOP = () => {};
 
 /**
  * The responsive commit history: commits · changed files · diff. Wide screens
@@ -53,6 +55,10 @@ export function CommitBrowser({
   status,
   isWideScreen,
   onBlameFile,
+  supportsProjections = false,
+  ignoreWhitespace = false,
+  onToggleIgnoreWhitespace = NOOP,
+  onProjectionUnavailable = NOOP,
   t,
 }: {
   projectId: string;
@@ -61,6 +67,10 @@ export function CommitBrowser({
   isWideScreen: boolean;
   /** Bridge a commit file to its blame-at-HEAD view (the files tab). */
   onBlameFile?: (path: string) => void;
+  supportsProjections?: boolean;
+  ignoreWhitespace?: boolean;
+  onToggleIgnoreWhitespace?: () => void;
+  onProjectionUnavailable?: () => void;
   t: TranslationFn;
 }) {
   const [commits, setCommits] = useState<GitRecentCommit[]>([]);
@@ -73,6 +83,10 @@ export function CommitBrowser({
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [compareToHead, setCompareToHead] = useState(false);
+  const [comparison, setComparison] =
+    useState<GitRevisionComparison | null>(null);
+  const [loadingComparison, setLoadingComparison] = useState(false);
   // When true, the detail pane shows the commit's original-format message
   // (verbatim, with its exact time) instead of a file diff.
   const [messageView, setMessageView] = useState(false);
@@ -205,6 +219,31 @@ export function CommitBrowser({
     }
   }, [projectId, commits.length, t]);
 
+  const handleProjectionRequestFailure = useCallback(() => {
+    setCompareToHead(false);
+    setComparison(null);
+    setLoadingComparison(false);
+    if (compareToHead) setSelectedPath(null);
+    onProjectionUnavailable();
+  }, [compareToHead, onProjectionUnavailable]);
+
+  const handleToggleComparison = useCallback(() => {
+    if (compareToHead) {
+      setCompareToHead(false);
+      setComparison(null);
+      setLoadingComparison(false);
+      setSelectedPath(null);
+      return;
+    }
+    if (!supportsProjections) {
+      onProjectionUnavailable();
+      return;
+    }
+    setCompareToHead(true);
+    setSelectedPath(null);
+    setMessageView(false);
+  }, [compareToHead, onProjectionUnavailable, supportsProjections]);
+
   // Load the selected commit's changed-file list.
   useEffect(() => {
     if (!selectedSha) {
@@ -240,24 +279,73 @@ export function CommitBrowser({
     };
   }, [projectId, selectedSha, t]);
 
-  const selectedFiles = detail?.files ?? [];
-
-  // Auto-select the first changed file on wide screens.
   useEffect(() => {
-    const firstPreviewable = selectedFiles[0];
-    if (isWideScreen && selectedPath === null && firstPreviewable) {
-      setSelectedPath(firstPreviewable.path);
+    if (!compareToHead || !selectedSha || !supportsProjections) {
+      setComparison(null);
+      setLoadingComparison(false);
+      if (compareToHead && !supportsProjections) {
+        handleProjectionRequestFailure();
+      }
+      return;
     }
-  }, [isWideScreen, selectedFiles, selectedPath]);
+    let cancelled = false;
+    setComparison(null);
+    setLoadingComparison(true);
+    api
+      .getGitComparison(projectId, selectedSha)
+      .then((result) => {
+        if (cancelled) return;
+        setComparison(result);
+        setLoadingComparison(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        handleProjectionRequestFailure();
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    compareToHead,
+    handleProjectionRequestFailure,
+    projectId,
+    selectedSha,
+    supportsProjections,
+  ]);
+
+  const selectedFiles = compareToHead
+    ? (comparison?.files ?? [])
+    : (detail?.files ?? []);
+
+  // Keep selection inside the active projection and open its first file.
+  useEffect(() => {
+    if (!isWideScreen) return;
+    setSelectedPath((current) =>
+      current && selectedFiles.some((file) => file.path === current)
+        ? current
+        : (selectedFiles[0]?.path ?? null),
+    );
+  }, [isWideScreen, selectedFiles]);
 
   const selectedFile: GitFileChange | null = selectedPath
     ? (selectedFiles.find((f) => f.path === selectedPath) ?? null)
     : null;
-  const source = selectedSha
-    ? ({ kind: "commit", sha: selectedSha } as const)
-    : undefined;
+  const source =
+    selectedSha && compareToHead && comparison
+      ? ({
+          kind: "comparison",
+          baseSha: comparison.baseSha,
+          headSha: comparison.headSha,
+        } as const)
+      : selectedSha
+        ? ({ kind: "commit", sha: selectedSha } as const)
+        : undefined;
   const diffFileKey =
-    selectedSha && selectedFile ? `${selectedSha}:${selectedFile.path}` : null;
+    selectedSha && selectedFile
+      ? compareToHead && comparison
+        ? `${comparison.baseSha}:${comparison.headSha}:${selectedFile.path}`
+        : `${selectedSha}:${selectedFile.path}`
+      : null;
 
   // Commit-jump selector: step to the adjacent shown commit (list is
   // newest-first, so previous index = newer). Usable at any width — the mobile
@@ -674,6 +762,9 @@ export function CommitBrowser({
               />
             }
             onBlameFile={onBlameFile}
+            ignoreWhitespace={ignoreWhitespace}
+            onToggleIgnoreWhitespace={onToggleIgnoreWhitespace}
+            onProjectionRequestFailure={handleProjectionRequestFailure}
             t={t}
           />
         )}
@@ -716,6 +807,17 @@ export function CommitBrowser({
                   {detail?.shortHash ?? selectedCommit?.shortHash ?? "…"}
                 </span>
               </span>
+              <button
+                type="button"
+                className={`source-detail-action source-compare-toggle ${
+                  compareToHead ? "active" : ""
+                }`}
+                title={t("sourceCompareToHeadDescription")}
+                aria-pressed={compareToHead}
+                onClick={handleToggleComparison}
+              >
+                {t("sourceCompareToHead")}
+              </button>
               <CopyButton
                 value={selectedSha}
                 title={t("sourceCopyCommitHash")}
@@ -754,7 +856,7 @@ export function CommitBrowser({
                 </span>
               </button>
             </div>
-            {loadingDetail ? (
+            {loadingDetail || (compareToHead && loadingComparison) ? (
               <div className="git-diff-loading">{t("gitStatusLoading")}</div>
             ) : detailError ? (
               <div className="git-diff-error">{detailError}</div>
@@ -862,6 +964,13 @@ export function CommitBrowser({
                     );
                   })}
                 </ul>
+                {selectedFiles.length === 0 && (
+                  <div className="git-status-empty">
+                    {compareToHead
+                      ? t("sourceNoChangesToHead")
+                      : t("sourceNoFiles")}
+                  </div>
+                )}
               </>
             ) : null}
           </div>
@@ -878,6 +987,9 @@ export function CommitBrowser({
               projectId={projectId}
               source={source}
               headerActions={fileActions}
+              ignoreWhitespace={ignoreWhitespace}
+              onToggleIgnoreWhitespace={onToggleIgnoreWhitespace}
+              onProjectionRequestFailure={handleProjectionRequestFailure}
               t={t}
             />
           ) : null)}
@@ -906,6 +1018,9 @@ export function CommitBrowser({
             projectId={projectId}
             source={source}
             headerActions={fileActions}
+            ignoreWhitespace={ignoreWhitespace}
+            onToggleIgnoreWhitespace={onToggleIgnoreWhitespace}
+            onProjectionRequestFailure={handleProjectionRequestFailure}
             t={t}
             onClose={() => setSelectedPath(null)}
           />

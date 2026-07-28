@@ -25,7 +25,9 @@ includes a shared dirty Working tree revision, source lists support keyboard
 traversal/search, and diff hunk navigation is symmetric. The follow-up
 refinement (2026-07-28) adds one accessible action-menu contract across
 revisions, files, and diff lines; a compact shortcut card; and edge-only,
-keyboard-accessible desktop pane splitters. Design owner: graehl.
+keyboard-accessible desktop pane splitters. The same refinement now includes
+independent Ignore whitespace and selected-revision-to-HEAD diff projections.
+Design owner: graehl.
 
 Related topics: [selection-comment-ui](selection-comment-ui.md) (the
 quote-comment ancestor — but see the gesture difference below),
@@ -565,10 +567,12 @@ shared where their owning surface is shared; the rest stay proposals:
    below. — Implemented 2026-07-28 across revisions, working-tree/commit/blame
    file rows, and diff lines. Menu focus starts on the first action; arrow,
    Home/End, and Escape navigation work uniformly.
-4. **Diff review controls:** retain Unified/Split and full context; consider
-   “ignore whitespace” and incremental context expansion before adding more
-   permanent toolbar chrome. — Existing controls retained; new projections
-   pending. GitHub Desktop exposes these same review
+4. **Diff review controls:** retain Unified/Split and full context. **Ignore
+   whitespace** is an independent projection of whichever diff is active:
+   ordinary commit, selected revision to HEAD, or working tree. It removes
+   whitespace-only changes while preserving the original source text on lines
+   that still carry a semantic change. — Implemented 2026-07-28. Incremental
+   context expansion remains unbuilt. GitHub Desktop exposes these same review
    projections in its
    [change-review guide](https://docs.github.com/en/desktop/making-changes-in-a-branch/committing-and-reviewing-changes-to-your-project-in-github-desktop).
 5. **Edge-only pane splitters:** desktop revision/file boundaries expose small
@@ -591,13 +595,16 @@ inside commit search reveals the shortcut card on hover, focus, or click/tap
 without adding a toolbar row; both the trigger and card are absent at phone
 width, where every action has a touch path. — Implemented 2026-07-28.
 
-A cumulative **selected revision → HEAD** comparison is the next useful
-accelerator. It is not arbitrary range selection: the selected commit is the
-fixed base and the current HEAD is the fixed tip, so one control works on
-desktop and touch without introducing selection-range state. Selecting HEAD
-therefore produces an empty comparison. Merge commits use their resulting
-tree as the base, not an invented first-parent commit range. — Pending the
-new-server capability and route compatibility review.
+A cumulative **selected revision → HEAD** comparison is a toggleable mode, not
+arbitrary range selection: the selected commit is the fixed base and the
+current HEAD tree is the fixed tip, so one control works on desktop and touch
+without introducing selection-range state. The server resolves and returns
+both endpoint SHAs with the file list; every file diff then uses those pinned
+SHAs, so a later HEAD move cannot mix two comparisons. Selecting HEAD produces
+an empty comparison. Merge commits use their resulting tree as the base, not
+an invented first-parent commit range or merge-base projection. Comments made
+in this view retain the selected revision as their review identity. —
+Implemented 2026-07-28.
 
 — First slice implemented 2026-07-27; remaining options researched against
 GitHub Desktop
@@ -620,6 +627,16 @@ integration analysis according to their existing independent capability
 advertisements. It explains that commit history, file browsing, and source
 review require a server update. It does not mount a new browse/review component
 or call one of its routes.
+
+Ignore whitespace and selected-revision-to-HEAD comparison require the
+transitional `git-source-review-projections` capability. Without it, their
+controls make no projection request, remain off, and show a dismissible
+update-or-restart-server notice; ordinary Source Control continues to work.
+If a server advertises the capability but a projection request fails, the
+client returns to the ordinary diff and shows the same notice. It never leaves
+a projection control active over ordinary or stale content. On phone layouts,
+the notice is portaled above the full-screen diff as a dismissible bottom
+banner rather than being hidden behind it.
 
 Git action outcomes render twice by design: a brief mark on the initiating
 button for immediate attribution and a persistent full-text panel beside the

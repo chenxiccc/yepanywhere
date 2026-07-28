@@ -146,6 +146,60 @@ describe("computeEditAugment", () => {
       // No changes, so no hunks
       expect(augment.structuredPatch).toHaveLength(0);
     });
+
+    it("hides whitespace-only changes when requested", async () => {
+      const augment = await computeEditAugment(
+        "tool-whitespace-only",
+        {
+          file_path: "/test/file.ts",
+          old_string: "const x = 1;\n\treturn x;\n",
+          new_string: "const   x=1;\n  return   x;\n",
+        },
+        undefined,
+        { ignoreWhitespace: true },
+      );
+
+      expect(augment.structuredPatch).toHaveLength(0);
+    });
+
+    it("keeps semantic changes and original context spacing", async () => {
+      const augment = await computeEditAugment(
+        "tool-ignore-whitespace",
+        {
+          file_path: "/test/file.ts",
+          old_string: "const x = 1;\nkeep\n",
+          new_string: "const   x=1;\nkeep changed\n",
+        },
+        undefined,
+        { ignoreWhitespace: true },
+      );
+
+      expect(augment.structuredPatch).toHaveLength(1);
+      const hunk = augment.structuredPatch[0];
+      expect(hunk.lines).toContain(" const   x=1;");
+      expect(hunk.lines).toContain("-keep");
+      expect(hunk.lines).toContain("+keep changed");
+      expect(hunk.lines).not.toContain("-const x = 1;");
+      expect(hunk.lines).not.toContain("+const   x=1;");
+    });
+
+    it("preserves line addressing in the whitespace projection", async () => {
+      const augment = await computeEditAugment(
+        "tool-ignore-whitespace-addresses",
+        {
+          file_path: "/test/file.ts",
+          old_string: "one\n two\nthree\n",
+          new_string: "one\n  two\nTHREE\n",
+        },
+        undefined,
+        { ignoreWhitespace: true },
+      );
+
+      expect(augment.diffHtml.match(/data-diff-line=/g)?.length).toBe(
+        patchLineCount(augment.structuredPatch),
+      );
+      expect(augment.structuredPatch[0]?.lines).toContain("   two");
+    });
   });
 
   describe("diff HTML highlighting", () => {

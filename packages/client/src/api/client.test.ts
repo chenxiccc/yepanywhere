@@ -187,6 +187,15 @@ describe("api git facade", () => {
       staged: false,
       status: "modified",
       fullContext: true,
+      ignoreWhitespace: true,
+    });
+    await api.getGitComparison("project-a", "abc123");
+    await api.getGitComparisonDiff("project-a", {
+      baseSha: "abc123",
+      headSha: "def456",
+      path: "src/a.ts",
+      status: "modified",
+      ignoreWhitespace: true,
     });
 
     expect(
@@ -230,6 +239,23 @@ describe("api git facade", () => {
           staged: false,
           status: "modified",
           fullContext: true,
+          ignoreWhitespace: true,
+        }),
+      },
+      {
+        url: "/api/projects/project-a/git/compare/abc123",
+        method: "GET",
+        body: undefined,
+      },
+      {
+        url: "/api/projects/project-a/git/compare-diff",
+        method: "POST",
+        body: JSON.stringify({
+          baseSha: "abc123",
+          headSha: "def456",
+          path: "src/a.ts",
+          status: "modified",
+          ignoreWhitespace: true,
         }),
       },
     ]);

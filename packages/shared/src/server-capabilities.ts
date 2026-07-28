@@ -191,6 +191,43 @@ export const SERVER_CAPABILITIES = {
         "Hosted clients can outpace installed servers, while Source Control must retain its released basic status and synchronization path.",
     },
   },
+  gitSourceReviewProjections: {
+    name: "git-source-review-projections",
+    kind: "transitional",
+    area: "gitStatus",
+    introducedIn: "0.7.1",
+    description:
+      "Server supports ignore-whitespace rendering and direct selected-revision-to-HEAD comparisons in Source Control.",
+    clientFallback:
+      "Keep ordinary working-tree and commit review available; make no projection request and explain that the server must be updated or restarted.",
+    serverContract: {
+      routes: [
+        "GET /api/projects/:projectId/git/compare/:sha",
+        "POST /api/projects/:projectId/git/compare-diff",
+      ],
+      routeModules: ["packages/server/src/routes/git-projections.ts"],
+      requestFields: [
+        "gitDiff.ignoreWhitespace",
+        "gitCommitDiff.ignoreWhitespace",
+        "gitCompareDiff.baseSha",
+        "gitCompareDiff.headSha",
+        "gitCompareDiff.ignoreWhitespace",
+      ],
+      responseFields: [
+        "gitRevisionComparison.baseSha",
+        "gitRevisionComparison.headSha",
+        "gitRevisionComparison.files",
+      ],
+    },
+    lifecycle: {
+      kind: "transitional",
+      reviewAfter: "2026-10-28",
+      removeClientGateWhen:
+        "The hosted-client compatibility floor excludes servers older than the Source Control projection contract.",
+      removeServerAdvertisementWhen:
+        "No maintained client still branches on git-source-review-projections.",
+    },
+  },
   approvalAuditLog: {
     name: "approvalAuditLog",
     kind: "permanent",
@@ -535,6 +572,8 @@ export const GIT_STATUS_INTEGRATION_OPTIONS_CAPABILITY =
   SERVER_CAPABILITIES.gitStatusIntegrationOptions.name;
 export const GIT_SOURCE_REVIEW_CAPABILITY =
   SERVER_CAPABILITIES.gitSourceReview.name;
+export const GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY =
+  SERVER_CAPABILITIES.gitSourceReviewProjections.name;
 
 export const APPROVAL_AUDIT_LOG_CAPABILITY =
   SERVER_CAPABILITIES.approvalAuditLog.name;

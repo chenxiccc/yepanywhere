@@ -23,6 +23,8 @@ vi.mock("../hooks/useRemoteBasePath", () => ({
 const getGitCommits = vi.fn();
 const getGitCommit = vi.fn();
 const getGitCommitDiff = vi.fn();
+const getGitComparison = vi.fn();
+const getGitComparisonDiff = vi.fn();
 const getGitDiff = vi.fn();
 const getGitUntrackedFolder = vi.fn();
 const getGitCommitSearchManifest = vi.fn();
@@ -34,6 +36,9 @@ vi.mock("../api/client", () => ({
     getGitCommits: (...args: unknown[]) => getGitCommits(...args),
     getGitCommit: (...args: unknown[]) => getGitCommit(...args),
     getGitCommitDiff: (...args: unknown[]) => getGitCommitDiff(...args),
+    getGitComparison: (...args: unknown[]) => getGitComparison(...args),
+    getGitComparisonDiff: (...args: unknown[]) =>
+      getGitComparisonDiff(...args),
     getGitDiff: (...args: unknown[]) => getGitDiff(...args),
     getGitUntrackedFolder: (...args: unknown[]) =>
       getGitUntrackedFolder(...args),
@@ -49,6 +54,7 @@ vi.mock("../api/client", () => ({
 import { CommitBrowser } from "./CommitBrowser";
 
 const SHA = "a".repeat(40);
+const HEAD_SHA = "b".repeat(40);
 const t = (key: string) => key;
 
 function dirtyStatus(): GitStatusInfo {
@@ -133,6 +139,34 @@ function primeApis() {
       { oldStart: 1, oldLines: 0, newStart: 1, newLines: 1, lines: ["+hi"] },
     ],
   });
+  getGitComparison.mockResolvedValue({
+    baseSha: SHA,
+    headSha: HEAD_SHA,
+    files: [
+      {
+        path: "src/cumulative.ts",
+        status: "M",
+        staged: false,
+        linesAdded: 2,
+        linesDeleted: 1,
+      },
+    ],
+  });
+  getGitComparisonDiff.mockResolvedValue({
+    diffHtml:
+      `<pre class="shiki"><code>` +
+      `<span class="line line-inserted" data-diff-line="0">+cumulative</span>` +
+      `</code></pre>`,
+    structuredPatch: [
+      {
+        oldStart: 1,
+        oldLines: 0,
+        newStart: 1,
+        newLines: 1,
+        lines: ["+cumulative"],
+      },
+    ],
+  });
   listReviewComments.mockResolvedValue({
     comments: [],
     batches: [],
@@ -162,6 +196,118 @@ describe("CommitBrowser", () => {
       expect(getGitCommitDiff).toHaveBeenCalledWith(
         "p1",
         expect.objectContaining({ sha: SHA, path: "src/x.ts", status: "M" }),
+      ),
+    );
+  });
+
+  it("toggles a direct selected-revision-to-HEAD comparison", async () => {
+    primeApis();
+    render(
+      <MemoryRouter>
+        <CommitBrowser
+          projectId="p1"
+          isWideScreen={true}
+          supportsProjections
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("src/x.ts");
+    fireEvent.click(screen.getByRole("button", { name: "sourceCompareToHead" }));
+
+    expect(await screen.findByText("src/cumulative.ts")).toBeDefined();
+    expect(getGitComparison).toHaveBeenCalledWith("p1", SHA);
+    await waitFor(() =>
+      expect(getGitComparisonDiff).toHaveBeenCalledWith(
+        "p1",
+        expect.objectContaining({
+          baseSha: SHA,
+          headSha: HEAD_SHA,
+          path: "src/cumulative.ts",
+          status: "M",
+        }),
+      ),
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "sourceCompareToHead" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+  });
+
+  it("makes no comparison request when the server lacks the projection", async () => {
+    primeApis();
+    const onProjectionUnavailable = vi.fn();
+    render(
+      <MemoryRouter>
+        <CommitBrowser
+          projectId="p1"
+          isWideScreen={true}
+          onProjectionUnavailable={onProjectionUnavailable}
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("src/x.ts");
+    fireEvent.click(screen.getByRole("button", { name: "sourceCompareToHead" }));
+
+    expect(onProjectionUnavailable).toHaveBeenCalled();
+    expect(getGitComparison).not.toHaveBeenCalled();
+    expect(getGitComparisonDiff).not.toHaveBeenCalled();
+  });
+
+  it("returns to the ordinary commit diff when a projection request fails", async () => {
+    primeApis();
+    getGitComparison.mockRejectedValueOnce(new Error("server is stale"));
+    const onProjectionUnavailable = vi.fn();
+    render(
+      <MemoryRouter>
+        <CommitBrowser
+          projectId="p1"
+          isWideScreen={true}
+          supportsProjections
+          onProjectionUnavailable={onProjectionUnavailable}
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("src/x.ts");
+    fireEvent.click(screen.getByRole("button", { name: "sourceCompareToHead" }));
+
+    await waitFor(() => expect(onProjectionUnavailable).toHaveBeenCalled());
+    expect(screen.getAllByText("src/x.ts").length).toBeGreaterThan(0);
+    expect(
+      screen
+        .getByRole("button", { name: "sourceCompareToHead" })
+        .getAttribute("aria-pressed"),
+    ).toBe("false");
+  });
+
+  it("requests the whitespace projection for the active commit diff", async () => {
+    primeApis();
+    render(
+      <MemoryRouter>
+        <CommitBrowser
+          projectId="p1"
+          isWideScreen={true}
+          ignoreWhitespace
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("src/x.ts");
+    await waitFor(() =>
+      expect(getGitCommitDiff).toHaveBeenCalledWith(
+        "p1",
+        expect.objectContaining({
+          sha: SHA,
+          path: "src/x.ts",
+          ignoreWhitespace: true,
+        }),
       ),
     );
   });

@@ -51,6 +51,9 @@ export function WorkingTreeBrowser({
   onBackToRevisions,
   revisionNavigation,
   onBlameFile,
+  ignoreWhitespace = false,
+  onToggleIgnoreWhitespace,
+  onProjectionRequestFailure,
   t,
 }: {
   projectId: string;
@@ -65,6 +68,9 @@ export function WorkingTreeBrowser({
   /** Adjacent-revision controls supplied by the history owner. */
   revisionNavigation?: ReactNode;
   onBlameFile?: (path: string) => void;
+  ignoreWhitespace?: boolean;
+  onToggleIgnoreWhitespace?: () => void;
+  onProjectionRequestFailure?: () => void;
   t: TranslationFn;
 }) {
   const [expandedUntrackedFolders, setExpandedUntrackedFolders] = useState<
@@ -405,6 +411,9 @@ export function WorkingTreeBrowser({
             source={WORKING_TREE_SOURCE}
             headerActions={fileActions}
             onCommentEditorOpenChange={setCommentEditorOpen}
+            ignoreWhitespace={ignoreWhitespace}
+            onToggleIgnoreWhitespace={onToggleIgnoreWhitespace}
+            onProjectionRequestFailure={onProjectionRequestFailure}
             t={t}
           />
         )}
@@ -419,6 +428,9 @@ export function WorkingTreeBrowser({
           source={WORKING_TREE_SOURCE}
           headerActions={fileActions}
           onCommentEditorOpenChange={setCommentEditorOpen}
+          ignoreWhitespace={ignoreWhitespace}
+          onToggleIgnoreWhitespace={onToggleIgnoreWhitespace}
+          onProjectionRequestFailure={onProjectionRequestFailure}
           t={t}
           onClose={() => setSelectedPath(null)}
         />

@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   GIT_SOURCE_REVIEW_CAPABILITY,
+  GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,
   GIT_STATUS_ENHANCED_CAPABILITY,
   GIT_STATUS_INTEGRATION_OPTIONS_CAPABILITY,
   GIT_STATUS_PULL_CAPABILITY,
@@ -52,6 +53,8 @@ vi.mock("../WorkingTreeBrowser", async () => {
     WorkingTreeBrowser: (props: {
       status: GitStatusInfo;
       initialWorkingTreePath?: string;
+      ignoreWhitespace?: boolean;
+      onToggleIgnoreWhitespace?: () => void;
     }) => {
       mocks.renderWorkingTreeBrowser({
         ...props,
@@ -60,6 +63,9 @@ vi.mock("../WorkingTreeBrowser", async () => {
       return (
         <div data-testid="working-tree-browser">
           {props.status.isClean ? "clean-changes" : "dirty-changes"}
+          <button type="button" onClick={props.onToggleIgnoreWhitespace}>
+            gitStatusIgnoreWhitespace
+          </button>
         </div>
       );
     },
@@ -232,6 +238,7 @@ beforeEach(() => {
     version: {
       capabilities: [
         GIT_SOURCE_REVIEW_CAPABILITY,
+        GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,
         GIT_STATUS_ENHANCED_CAPABILITY,
         GIT_STATUS_REMOTE_CHECK_CAPABILITY,
       ],
@@ -282,6 +289,47 @@ describe("GitStatusPage source header", () => {
         .getAttribute("aria-selected"),
     ).toBe("true");
     expect(screen.queryByTestId("commit-browser")).toBeNull();
+  });
+
+  it("gates diff projections without blocking ordinary Source Control", async () => {
+    mocks.useVersion.mockReturnValue({
+      version: {
+        capabilities: [
+          GIT_SOURCE_REVIEW_CAPABILITY,
+          GIT_STATUS_ENHANCED_CAPABILITY,
+        ],
+      },
+      loading: false,
+      error: null,
+    });
+    renderPage();
+
+    await screen.findByTestId("working-tree-browser");
+    fireEvent.click(
+      screen.getByRole("button", { name: "gitStatusIgnoreWhitespace" }),
+    );
+
+    expect(await screen.findByText("sourceProjectionUpgradeNotice")).toBeDefined();
+    expect(mocks.renderWorkingTreeBrowser).toHaveBeenLastCalledWith(
+      expect.objectContaining({ ignoreWhitespace: false }),
+    );
+    expect(screen.getByTestId("working-tree-browser")).toBeDefined();
+  });
+
+  it("enables the whitespace projection when the server advertises it", async () => {
+    renderPage();
+    await screen.findByTestId("working-tree-browser");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "gitStatusIgnoreWhitespace" }),
+    );
+
+    await waitFor(() =>
+      expect(mocks.renderWorkingTreeBrowser).toHaveBeenLastCalledWith(
+        expect.objectContaining({ ignoreWhitespace: true }),
+      ),
+    );
+    expect(screen.queryByText("sourceProjectionUpgradeNotice")).toBeNull();
   });
 
   it("opens commit history deliberately without carrying the working tree", async () => {

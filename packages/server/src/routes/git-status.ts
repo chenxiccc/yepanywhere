@@ -1,9 +1,8 @@
 import { spawn } from "node:child_process";
 import { readFile, stat } from "node:fs/promises";
-import { extname, resolve } from "node:path";
+import { resolve } from "node:path";
 import {
   type GitDiffPreviewSkipped,
-  type GitDiffResult,
   type GitFileChange,
   type GitIntegrationOptionReason,
   type GitIntegrationOptionsResult,
@@ -16,15 +15,13 @@ import {
   isUrlProjectId,
 } from "@yep-anywhere/shared";
 import { Hono } from "hono";
-import { computeEditAugment } from "../augments/edit-augments.js";
-import { renderMarkdownToHtml } from "../augments/markdown-augments.js";
 import type { ProjectScanner } from "../projects/scanner.js";
 import {
   GIT_DIFF_PREVIEW_MAX_LINE_CHARS,
   GIT_DIFF_PREVIEW_MAX_TOTAL_BYTES,
-  getDiffPreviewSkip,
   skippedGitDiffResult,
 } from "../git/diffPreviewGuards.js";
+import { buildGitDiffResult } from "../git/diffResult.js";
 import { GIT_DECODE_PATHS_ARGS, runGit } from "../git/gitExec.js";
 
 export interface GitStatusDeps {
@@ -414,6 +411,7 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
       againstHead?: boolean;
       origPath?: string;
       fullContext?: boolean;
+      ignoreWhitespace?: boolean;
     };
     try {
       body = await c.req.json();
@@ -421,12 +419,26 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
       return c.json({ error: "Invalid JSON body" }, 400);
     }
 
-    const { path, staged, status, againstHead, origPath, fullContext } = body;
+    const {
+      path,
+      staged,
+      status,
+      againstHead,
+      origPath,
+      fullContext,
+      ignoreWhitespace,
+    } = body;
     if (!path || typeof staged !== "boolean" || !status) {
       return c.json(
         { error: "Missing required fields: path, staged, status" },
         400,
       );
+    }
+    if (
+      ignoreWhitespace !== undefined &&
+      typeof ignoreWhitespace !== "boolean"
+    ) {
+      return c.json({ error: "Invalid ignoreWhitespace" }, 400);
     }
     if (status === "?" && path.endsWith("/")) {
       return c.json(
@@ -453,34 +465,16 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
         origPath,
       );
 
-      const previewSkip = getDiffPreviewSkip(oldContent, newContent);
-      if (previewSkip) {
-        return c.json(skippedGitDiffResult(previewSkip));
-      }
-
-      const contextLines = fullContext ? 999999 : 3;
-      const augment = await computeEditAugment(
-        "git-diff",
-        { file_path: path, old_string: oldContent, new_string: newContent },
-        contextLines,
+      return c.json(
+        await buildGitDiffResult({
+          toolUseId: "git-diff",
+          path,
+          oldContent,
+          newContent,
+          fullContext,
+          ignoreWhitespace,
+        }),
       );
-
-      const result: GitDiffResult = {
-        diffHtml: augment.diffHtml,
-        structuredPatch: augment.structuredPatch,
-      };
-
-      // Render markdown preview for .md files
-      const ext = extname(path).toLowerCase();
-      if ((ext === ".md" || ext === ".markdown") && newContent) {
-        try {
-          result.markdownHtml = await renderMarkdownToHtml(newContent);
-        } catch {
-          // Ignore markdown rendering errors
-        }
-      }
-
-      return c.json(result);
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Failed to compute diff";

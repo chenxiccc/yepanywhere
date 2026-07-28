@@ -73,6 +73,7 @@ import { createFilesRoutes } from "./routes/files.js";
 import { createBangCommandsRoutes } from "./routes/bang-commands.js";
 import { BangCommandService } from "./services/BangCommandService.js";
 import { createGitBrowseRoutes } from "./routes/git-browse.js";
+import { createGitProjectionRoutes } from "./routes/git-projections.js";
 import { createGitStatusRoutes } from "./routes/git-status.js";
 import { createGlobalSessionsRoutes } from "./routes/global-sessions.js";
 import { createReviewCommentsRoutes } from "./routes/review-comments.js";
@@ -1435,6 +1436,9 @@ export function createApp(options: AppOptions): AppResult {
 
   // Read-only git browse routes (commit list/diff, blame, search — stage 3)
   app.route("/api/projects", createGitBrowseRoutes({ scanner }));
+
+  // Optional Source Control diff projections.
+  app.route("/api/projects", createGitProjectionRoutes({ scanner }));
 
   // Source-review draft comments (topic: source-review-to-session)
   app.route(

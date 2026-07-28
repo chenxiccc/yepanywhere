@@ -176,6 +176,51 @@ describe("WorkingTreeBrowser", () => {
     expect(anchor.revision).toMatchObject({ kind: "uncommitted" });
   });
 
+  it("explains an empty ignore-whitespace projection", async () => {
+    getGitDiff.mockResolvedValue({
+      diffHtml: '<pre class="shiki"><code class="language-ts"></code></pre>',
+      structuredPatch: [],
+    });
+    listReviewComments.mockResolvedValue({
+      comments: [],
+      batches: [],
+      pendingCount: 0,
+    });
+
+    render(
+      <MemoryRouter>
+        <WorkingTreeBrowser
+          projectId="p1"
+          status={{
+            isGitRepo: true,
+            branch: "main",
+            upstream: "origin/main",
+            ahead: 0,
+            behind: 0,
+            isClean: false,
+            files: [
+              {
+                path: "src/spaces.ts",
+                status: "M",
+                staged: false,
+                linesAdded: 1,
+                linesDeleted: 1,
+              },
+            ],
+            recentCommits: [],
+          }}
+          isWideScreen={true}
+          ignoreWhitespace
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByText("gitStatusWhitespaceChangesHidden"),
+    ).toBeDefined();
+  });
+
   it("opens a selected phone change in the full-screen diff viewer", async () => {
     getGitDiff.mockResolvedValue({
       diffHtml: "<pre><code>+dirty</code></pre>",
