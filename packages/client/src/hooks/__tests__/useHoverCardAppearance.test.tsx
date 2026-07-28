@@ -4,6 +4,7 @@ import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { UI_KEYS } from "../../lib/storageKeys";
 import { useHoverCardSettings } from "../useHoverCardAppearance";
+import { useTooltipAppearance } from "../useTooltipAppearance";
 
 describe("useHoverCardSettings", () => {
   beforeEach(() => {
@@ -50,5 +51,20 @@ describe("useHoverCardSettings", () => {
     });
 
     expect(result.current.showDelayMs).toBe(510);
+  });
+
+  it("drops the cached native delay when the shared delay retires it", () => {
+    localStorage.setItem(UI_KEYS.sessionHoverCardShowDelayMs, "420");
+    const { result } = renderHook(() => ({
+      hoverCard: useHoverCardSettings(),
+      tooltip: useTooltipAppearance(),
+    }));
+    expect(result.current.hoverCard.showDelayMs).toBe(420);
+
+    act(() => result.current.tooltip.setTooltipDelayMs(80));
+    expect(result.current.hoverCard.showDelayMs).toBe(240);
+
+    act(() => result.current.tooltip.setTooltipMode("native"));
+    expect(result.current.hoverCard.showDelayMs).toBe(150);
   });
 });

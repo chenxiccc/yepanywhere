@@ -3,7 +3,10 @@ import {
   useCallback,
   useSyncExternalStore,
 } from "react";
-import { createLocalStorageValue } from "../lib/localStorageValue";
+import {
+  createLocalStorageValue,
+  invalidateLocalStorageValues,
+} from "../lib/localStorageValue";
 import { UI_KEYS } from "../lib/storageKeys";
 import { getVisibilityAwareTooltipText } from "../lib/tooltipVisibility";
 
@@ -184,6 +187,7 @@ export function useTooltipAppearance() {
     const normalized = normalizeTooltipDelay(value);
     try {
       localStorage.removeItem(UI_KEYS.sessionHoverCardShowDelayMs);
+      invalidateLocalStorageValues(UI_KEYS.sessionHoverCardShowDelayMs);
     } catch {
       // This browser-local presentation preference may remain at its default
       // when persistence is unavailable.
@@ -197,6 +201,7 @@ export function useTooltipAppearance() {
   const resetTooltipDelayMs = useCallback(() => {
     try {
       localStorage.removeItem(UI_KEYS.sessionHoverCardShowDelayMs);
+      invalidateLocalStorageValues(UI_KEYS.sessionHoverCardShowDelayMs);
     } catch {
       // See setTooltipDelayMs.
     }

@@ -24,7 +24,10 @@ in the same row:
   deleting the number while editing neither changes mode nor commits a delay.
 - The mode and delay are portable browser preferences. The retired session
   hover-card delay seeds the shared delay at one third of its stored value when
-  the new delay is absent, preserving that card's prior timing.
+  the new delay is absent, preserving that card's prior timing. Committing or
+  resetting the shared delay removes that retired value and invalidates its
+  same-tab cache immediately; returning to Native mode cannot resurrect the
+  retired card delay until reload.
 
 ## Scope of the mode
 
