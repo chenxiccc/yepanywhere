@@ -169,14 +169,32 @@ without a UI landing page) are open; start minimal.
   affiliated: visible on sessions belonging to the declaring project — just
   left of the title in recent-session rows and in the main session view
   header.
-- Icon click opens the interactive through YA's transport (new tab or
-  embedded view — open decision; embedding interacts with the sandbox
-  question under *Security*).
+- Icon click opens the interactive through YA's transport. The primary vision
+  is an embedded app-and-session workspace; an independent new-tab view may
+  remain a secondary or fallback action. Embedding interacts with the sandbox
+  question under *Security*.
 - Liveness: a proxied app whose port is dead renders dimmed (probe =
   `healthPath` or TCP connect), with an affordance to start it when a managed
   `start` command exists. Served pages are always live.
 - Hideable via session-UI customization; default-on rendering is acceptable
   only because the project itself opted in by carrying the registry.
+
+### Session/app responsive presentation
+
+The interactive and the session directing its development form one workspace.
+When the measured available width can keep both surfaces usable, the intended
+presentation is **side by side**: the app remains live while the session stays
+visible for reading progress, commenting, and requesting changes. "Wide
+enough" is a content-fit decision, not a desktop/tablet device label; a
+landscape tablet may qualify while the same tablet in portrait may not.
+
+When both panes cannot remain useful, YA shows one primary surface at a time.
+An explicit toggle or collapse control is required; a horizontal switch
+gesture is an optional complementary path. Switching between app and session
+must preserve the live app state, transcript position, and composer draft
+rather than reload either side. The exact narrow-screen control and gesture
+remain open, but hiding the session must not remove the template-provided
+comment-to-agent affordance from the app view.
 
 ## Lifecycle (YA's management role)
 
@@ -409,8 +427,10 @@ the operator's authenticated relay rather than vendor hosting.
 - Meta-UI channel mechanics (message schema, context payload, composer
   delivery vs queued turn; a fallback channel for new-tab opens where no
   embedding parent exists).
-- Embed vs new-tab open; sandbox mechanism verification (opaque-origin cookie
-  behavior across target browsers).
+- Minimum useful pane widths, the narrow-screen toggle/collapse and optional
+  switch gesture, and whether new-tab remains a secondary action; sandbox
+  mechanism verification (opaque-origin cookie behavior across target
+  browsers).
 - Hosted-client (relay) asset serving for embedded interactives.
 - Managed-lifecycle idle-stop bound and its status surface.
 - Tunnel exposure scope and UI (global setting vs per-interactive; quick vs
