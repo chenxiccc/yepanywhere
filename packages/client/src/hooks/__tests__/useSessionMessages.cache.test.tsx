@@ -35,6 +35,7 @@ import {
   defaultSessionDetailMemoryCache,
   getSessionDetailRetentionDefaults,
 } from "../../lib/sessionDetail/sessionDetailStore";
+import { invalidateLocalStorageValues } from "../../lib/localStorageValue";
 import type {
   GetSessionResult,
   SourceSummaryRuntime,
@@ -65,6 +66,7 @@ import { getStreamingEnabled } from "../useStreamingEnabled";
 
 function enableSessionTranscriptCache() {
   window.localStorage.setItem(UI_KEYS.sessionTranscriptCache, "true");
+  invalidateLocalStorageValues(UI_KEYS.sessionTranscriptCache);
 }
 
 function scrollSnapshot(): SessionRouteScrollSnapshot {
@@ -324,6 +326,7 @@ describe("useSessionMessages cache", () => {
 
     await waitFor(() => expect(rendered.result.current.loading).toBe(false));
     window.localStorage.setItem(UI_KEYS.sessionActiveWindowTrim, "false");
+    invalidateLocalStorageValues(UI_KEYS.sessionActiveWindowTrim);
     act(() => {
       rendered.result.current.updateActiveWindowFollowingBottom(true);
     });
@@ -332,6 +335,7 @@ describe("useSessionMessages cache", () => {
     expect(rendered.result.current.activeWindowTrimRevision).toBe(0);
 
     window.localStorage.setItem(UI_KEYS.sessionActiveWindowTrim, "true");
+    invalidateLocalStorageValues(UI_KEYS.sessionActiveWindowTrim);
     act(() => {
       rendered.result.current.handleStreamMessageEvent({
         uuid: "user-31",
@@ -2149,6 +2153,7 @@ describe("useSessionMessages cache", () => {
     await waitFor(() => expect(first.result.current.loading).toBe(false));
     first.unmount();
     window.localStorage.setItem(UI_KEYS.sessionTranscriptCache, "false");
+    invalidateLocalStorageValues(UI_KEYS.sessionTranscriptCache);
 
     const second = renderHook(() =>
       useSessionMessages({

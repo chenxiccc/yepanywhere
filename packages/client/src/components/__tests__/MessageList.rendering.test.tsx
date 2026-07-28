@@ -27,21 +27,24 @@ import { MessageList } from "../MessageList";
 installMessageListTestEnvironment();
 
 describe("MessageList rendering", () => {
-  it("does not commit the transcript subtree for ordinary draft changes", () => {
+  it("does not commit a 1,000-row transcript for draft changes", () => {
     const composerDraftSignal = createComposerDraftSignal();
     const onRender = vi.fn();
+    const messages = Array.from({ length: 1_000 }, (_, index) =>
+      index % 2 === 0
+        ? userMessage(`user-${index}`, `request ${index}`)
+        : assistantMessage(`assistant-${index}`, `response ${index}`),
+    );
 
-    render(
+    const { container } = render(
       <Profiler id="transcript" onRender={onRender}>
         <MessageList
-          messages={[
-            userMessage("user-1", "inspect this"),
-            assistantMessage("assistant-1", "done"),
-          ]}
+          messages={messages}
           composerDraftSignal={composerDraftSignal}
         />
       </Profiler>,
     );
+    expect(container.querySelectorAll("[data-render-id]")).toHaveLength(1_000);
     const initialCommitCount = onRender.mock.calls.length;
 
     act(() => {
@@ -50,6 +53,15 @@ describe("MessageList rendering", () => {
       });
       composerDraftSignal.publishDraftChange("ab", {
         mayAffectQuoteAnchors: false,
+      });
+      composerDraftSignal.publishDraftChange("ab ", {
+        mayAffectQuoteAnchors: false,
+      });
+      composerDraftSignal.publishDraftChange("ab \n", {
+        mayAffectQuoteAnchors: true,
+      });
+      composerDraftSignal.publishDraftChange("ab", {
+        mayAffectQuoteAnchors: true,
       });
       composerDraftSignal.publishDraftChange("", {
         mayAffectQuoteAnchors: true,

@@ -1,6 +1,7 @@
 # Session Composer Input Latency
 
-Status: proposed; diagnosis complete, implementation not started.
+Status: implemented and validated in automated/browser probes; validation on
+the originally affected Chromebook remains pending.
 
 Topic: composer-input-latency
 Topic: selection-comment-ui
@@ -642,3 +643,112 @@ When implemented, append:
 - affected-Chromebook validation notes;
 - any secondary autosize/tooltip work accepted or rejected by measurement; and
 - remaining independent transcript-size risks.
+
+## Implementation Evidence (2026-07-28)
+
+### Landed slices
+
+The work landed as a reviewable commit series:
+
+- `780bfe12` adds the session-scoped composer draft signal and primitive edit
+  availability store, removes draft text from `SessionPage` state and
+  `MessageList` props, moves quote reconciliation into its narrow layer, and
+  moves queue availability subscriptions into queued-action leaves. It also
+  updates the rendering, quote-selection, and client-store contracts.
+- `3a99f6e6` makes `createLocalStorageValue` a lazy cached external store,
+  migrates tooltip mode/delay, and adds explicit invalidation plus the
+  preference-store contract tests.
+- `983e7a53` makes session and New Session draft presence event driven. Draft
+  envelopes remain immediate; the index changes only on presence transitions,
+  and the one-second draft-decoration polling loops are gone.
+- `ab25e923` keeps preference snapshots hot across consumer remounts, routes
+  cross-tab events through one shared listener, caches the legacy native
+  hover-card delay, and moves the session performance settings snapshot onto
+  the same storage interface.
+
+The deterministic render probe in
+`MessageList.rendering.test.tsx` mounts 1,000 historical rows. First-character,
+ordinary, whitespace, newline, deletion, and final-clear draft publications
+produce zero additional transcript commits.
+
+### Storage shape
+
+After a non-empty draft was primed, every measured session character performed:
+
+- one read of only the session draft envelope;
+- one write of only the session draft envelope;
+- zero draft-index reads or writes; and
+- zero rendering-preference reads.
+
+New Session performed two reads and one write of only its draft envelope per
+character. No measured character accessed tooltip, tool-preview, inline-media,
+conversation-view, quote-mode, hover-delay, or session-performance preference
+keys.
+
+Before the final cache cleanup, delayed sidebar rendering exposed 432 reads of
+the legacy hover-card delay in one update. The cached hover-card store reduced
+that count to zero. Preference caches now remain cross-tab correct while no
+React subscriber is mounted, so temporary consumer churn cannot make the next
+render hit backing storage.
+
+### Browser matrix
+
+These are CDP development-build measurements against the already-running
+server on port 3400. CPU throttling was applied before navigation. Each surface
+was allowed four stable 500 ms DOM/render-row polls before measuring ordinary
+non-empty-to-non-empty edits. Times are milliseconds per character.
+
+| Surface | Viewport | CPU | Rows / elements | task median / p95 | script median | layout median | gets / sets |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| New Session | 1280×900 | 1× | 0 / 1,579 | 8.20 / 12.07 | 6.36 | 0.094 | 2 / 1 |
+| short session | 1280×900 | 1× | 21 / 2,094 | 3.83 / 14.43 | 2.31 | 0.112 | 1 / 1 |
+| long/tool-heavy session | 1280×900 | 1× | 316 / 8,460 | 5.05 / 7.19 | 2.21 | 0.154 | 1 / 1 |
+| long/tool-heavy session | 375×812 | 1× | 316 / 7,505 | 4.70 / 5.89 | 2.20 | 0.160 | 1 / 1 |
+| long/tool-heavy session | 1280×900 | 4× | 316 / 8,843 | 25.66 / 30.57 | 11.48 | 0.888 | 1 / 1 |
+| long/tool-heavy session | 375×812 | 4× | 316 / 7,505 | 15.34 / 20.59 | 8.40 | 0.466 | 1 / 1 |
+
+The desktop 4× row uses a 30-character follow-up run; its maximum task was
+52.89 ms. The other rows use ten characters. Compared with the baseline, the
+session result no longer scales by performing transcript commits or thousands
+of preference reads per character.
+
+### Secondary work decision
+
+Textarea autosize was not changed. Its median layout cost was 0.094–0.160 ms
+at normal speed and 0.466–0.888 ms at 4× throttling; it is not the remaining
+material cost.
+
+Tooltip suppression was also left unchanged. Causal isolation before
+implementation found no material improvement when it was disabled. After the
+render-boundary and preference fixes, no storage fan-out remains in that path.
+
+### Checks
+
+- focused composer, quote/queue, preference, draft-persistence, draft-index,
+  summary-store, and session-cache tests pass without runtime warnings;
+- full client suite: 311 files and 2,544 tests passed;
+- `pnpm typecheck` passed;
+- `pnpm lint` passed with zero warnings;
+- `pnpm console:scan` remained at its existing 110/110 warning budget with no
+  increase; and
+- `git diff --check` passed.
+
+The full suite still prints pre-existing diagnostic output from unrelated
+speech, connection, sidebar, and floating-action-button tests. None originates
+from the touched composer, storage, or draft paths, whose focused runs are
+quiet.
+
+### Remaining validation and independent risk
+
+The reported lag occurred on a different Chromebook from the configured
+ChromeOS device-streaming target. That target is not evidence for the affected
+device, so the original Chromebook still needs a real-browser subjective
+typing check.
+
+Initial session catch-up can independently occupy the main thread while a large
+transcript and sidebar are first settling. A deliberately unsettled 4× probe
+observed a one-off task over one second; after settling, the 30-character 4×
+run had a 30.57 ms p95. This is not draft-triggered work, but it can collide
+with typing immediately after navigation. The retained transcript DOM also
+remains large. Both belong to the existing transcript loading/windowing work
+and are not reasons to reconnect composer text to the transcript.
