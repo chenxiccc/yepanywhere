@@ -320,6 +320,29 @@ export const SERVER_CAPABILITIES = {
         "No maintained client still branches on claude-gateway.",
     },
   },
+  claudeGatewayAutostart: {
+    name: "claude-gateway-autostart",
+    kind: "transitional",
+    area: "providers",
+    introducedIn: "0.7.1",
+    description:
+      "Server can persist and run an explicit shell command when a configured loopback Claude Gateway has no TCP listener.",
+    clientFallback:
+      "Hide the Gateway start-command field and make no unsupported settings write.",
+    serverContract: {
+      routes: ["GET /api/settings", "PUT /api/settings", "GET /api/providers"],
+      requestFields: ["settings.claudeGatewayStartCommand"],
+      responseFields: ["settings.claudeGatewayStartCommand"],
+    },
+    lifecycle: {
+      kind: "transitional",
+      reviewAfter: "2026-10-28",
+      removeClientGateWhen:
+        "The hosted-client compatibility floor excludes servers older than the Gateway autostart setting and provider-refresh behavior.",
+      removeServerAdvertisementWhen:
+        "No maintained client still branches on claude-gateway-autostart.",
+    },
+  },
   bangCommands: {
     name: "bang-commands",
     kind: "permanent",
@@ -585,6 +608,9 @@ export const CLAUDE_ADDITIONAL_MODELS_CAPABILITY =
   SERVER_CAPABILITIES.claudeAdditionalModels.name;
 
 export const CLAUDE_GATEWAY_CAPABILITY = SERVER_CAPABILITIES.claudeGateway.name;
+
+export const CLAUDE_GATEWAY_AUTOSTART_CAPABILITY =
+  SERVER_CAPABILITIES.claudeGatewayAutostart.name;
 
 export const BANG_COMMANDS_CAPABILITY = SERVER_CAPABILITIES.bangCommands.name;
 

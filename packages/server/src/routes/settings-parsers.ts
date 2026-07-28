@@ -41,6 +41,7 @@ import {
   DEFAULT_SERVER_SETTINGS,
   DEFAULT_SPEECH_AUDIO_RETENTION_MAX_AGE_DAYS,
   DEFAULT_SPEECH_AUDIO_RETENTION_MAX_BYTES,
+  MAX_CLAUDE_GATEWAY_START_COMMAND_LENGTH,
 } from "../services/ServerSettingsService.js";
 import {
   isValidSshHostAlias,
@@ -174,6 +175,22 @@ export function normalizeClaudeGatewayUrl(raw: unknown): string | null {
   } catch {
     return null;
   }
+}
+
+export function parseClaudeGatewayStartCommand(
+  raw: unknown,
+): string | undefined | null {
+  if (raw === undefined || raw === null || raw === "") return undefined;
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+  if (
+    trimmed.length > MAX_CLAUDE_GATEWAY_START_COMMAND_LENGTH ||
+    trimmed.includes("\0")
+  ) {
+    return null;
+  }
+  return trimmed;
 }
 
 /**

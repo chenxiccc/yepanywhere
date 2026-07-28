@@ -41,6 +41,7 @@ import {
   normalizeOpenAiCompatibleBaseUrl,
   parseAgentContextHints,
   parseCacheMissBilling,
+  parseClaudeGatewayStartCommand,
   parseClientDefaults,
   parseFileAccess,
   parseHelperTargets,
@@ -63,8 +64,11 @@ export interface SettingsRoutesDeps {
   onRemoteSessionPersistenceChanged?: (
     enabled: boolean,
   ) => Promise<void> | void;
-  /** Callback to apply Claude gateway URL changes at runtime */
-  onClaudeGatewayUrlChanged?: (url: string | undefined) => void;
+  /** Callback to apply Claude Gateway transport settings at runtime. */
+  onClaudeGatewaySettingsChanged?: (settings: {
+    url?: string;
+    startCommand?: string;
+  }) => Promise<void> | void;
   /** Callback to apply Ollama URL changes at runtime */
   onOllamaUrlChanged?: (url: string | undefined) => void;
   /** Callback to apply Ollama system prompt changes at runtime */
@@ -87,7 +91,7 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
     onAllowedHostsChanged,
     onFileAccessChanged,
     onRemoteSessionPersistenceChanged,
-    onClaudeGatewayUrlChanged,
+    onClaudeGatewaySettingsChanged,
     onOllamaUrlChanged,
     onOllamaSystemPromptChanged,
     onOllamaUseFullSystemPromptChanged,
@@ -439,6 +443,21 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
         updates.claudeGatewayUrl = url;
       }
     }
+    if ("claudeGatewayStartCommand" in body) {
+      const startCommand = parseClaudeGatewayStartCommand(
+        body.claudeGatewayStartCommand,
+      );
+      if (startCommand === null) {
+        return c.json(
+          {
+            error:
+              "claudeGatewayStartCommand must be a shell command of at most 10000 characters without NUL bytes",
+          },
+          400,
+        );
+      }
+      updates.claudeGatewayStartCommand = startCommand;
+    }
 
     // Handle ollamaUrl string (URL, or undefined/null/"" to clear)
     if ("ollamaUrl" in body) {
@@ -676,8 +695,15 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
     if ("ollamaUrl" in updates && onOllamaUrlChanged) {
       onOllamaUrlChanged(settings.ollamaUrl);
     }
-    if ("claudeGatewayUrl" in updates && onClaudeGatewayUrlChanged) {
-      onClaudeGatewayUrlChanged(settings.claudeGatewayUrl);
+    if (
+      ("claudeGatewayUrl" in updates ||
+        "claudeGatewayStartCommand" in updates) &&
+      onClaudeGatewaySettingsChanged
+    ) {
+      await onClaudeGatewaySettingsChanged({
+        url: settings.claudeGatewayUrl,
+        startCommand: settings.claudeGatewayStartCommand,
+      });
     }
     if ("ollamaSystemPrompt" in updates && onOllamaSystemPromptChanged) {
       onOllamaSystemPromptChanged(settings.ollamaSystemPrompt);

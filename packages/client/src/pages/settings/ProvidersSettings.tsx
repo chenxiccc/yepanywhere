@@ -9,6 +9,7 @@ import {
 } from "react";
 import {
   CLAUDE_ADDITIONAL_MODELS_CAPABILITY,
+  CLAUDE_GATEWAY_AUTOSTART_CAPABILITY,
   CLAUDE_GATEWAY_CAPABILITY,
   MAX_CLAUDE_ADDITIONAL_MODEL_ID_LENGTH,
   isValidClaudeAdditionalModelId,
@@ -820,32 +821,56 @@ function OllamaSettings() {
 
 function ClaudeGatewaySettings({
   reloadProviders,
+  supportsAutostart,
 }: {
   reloadProviders: () => Promise<void>;
+  supportsAutostart: boolean;
 }) {
   const exampleUrl = "http://localhost:4141";
   const { t } = useI18n();
-  const { settings, updateSetting } = useServerSettings();
+  const { settings, updateSetting, updateSettings } = useServerSettings();
   const [url, setUrl] = useState("");
+  const [startCommand, setStartCommand] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const serverValue = settings?.claudeGatewayUrl ?? "";
-  const hasChanges = url.trim() !== serverValue;
+  const serverStartCommand = settings?.claudeGatewayStartCommand ?? "";
+  const hasChanges =
+    url.trim() !== serverValue ||
+    (supportsAutostart && startCommand.trim() !== serverStartCommand);
 
   useEffect(() => {
     setUrl(settings?.claudeGatewayUrl ?? "");
   }, [settings?.claudeGatewayUrl]);
 
+  useEffect(() => {
+    setStartCommand(settings?.claudeGatewayStartCommand ?? "");
+  }, [settings?.claudeGatewayStartCommand]);
+
   const handleSave = useCallback(async () => {
     setIsSaving(true);
     try {
-      await updateSetting("claudeGatewayUrl", url.trim() || undefined);
+      if (supportsAutostart) {
+        await updateSettings({
+          claudeGatewayUrl: url.trim() || undefined,
+          claudeGatewayStartCommand: startCommand.trim() || undefined,
+        });
+      } else {
+        await updateSetting("claudeGatewayUrl", url.trim() || undefined);
+      }
       await reloadProviders();
     } catch {
       // Error handled by useServerSettings.
     } finally {
       setIsSaving(false);
     }
-  }, [reloadProviders, updateSetting, url]);
+  }, [
+    reloadProviders,
+    startCommand,
+    supportsAutostart,
+    updateSetting,
+    updateSettings,
+    url,
+  ]);
 
   return (
     <SettingsItem
@@ -858,13 +883,7 @@ function ClaudeGatewaySettings({
       }
     >
       <div className="claude-gateway-settings-control">
-        <div
-          style={{
-            display: "flex",
-            gap: "var(--space-2)",
-            alignItems: "center",
-          }}
-        >
+        <div className="claude-gateway-settings-row">
           <input
             type="url"
             className="settings-input"
@@ -875,7 +894,6 @@ function ClaudeGatewaySettings({
             }}
             placeholder={exampleUrl}
             aria-label={t("providersClaudeGatewayUrlAria")}
-            style={{ flex: 1 }}
           />
           <button
             type="button"
@@ -886,6 +904,27 @@ function ClaudeGatewaySettings({
             {isSaving ? t("providersSaving") : t("providersSave")}
           </button>
         </div>
+        {supportsAutostart && (
+          <>
+            <label className="claude-gateway-start-command">
+              <span>{t("providersClaudeGatewayStartCommandLabel")}</span>
+              <input
+                type="text"
+                className="settings-input"
+                value={startCommand}
+                maxLength={10_000}
+                onChange={(event) => setStartCommand(event.target.value)}
+                placeholder={t(
+                  "providersClaudeGatewayStartCommandPlaceholder",
+                )}
+                aria-label={t("providersClaudeGatewayStartCommandAria")}
+              />
+            </label>
+            <p className="settings-hint">
+              {t("providersClaudeGatewayStartCommandHint")}
+            </p>
+          </>
+        )}
         <p className="settings-hint">
           {t("providersClaudeGatewayIsolationHint")}
         </p>
@@ -1177,6 +1216,10 @@ export function ProvidersSettings() {
     version,
     CLAUDE_GATEWAY_CAPABILITY,
   );
+  const supportsClaudeGatewayAutostart = serverHasCapability(
+    version,
+    CLAUDE_GATEWAY_AUTOSTART_CAPABILITY,
+  );
 
   const handleCopyClaudeLoginCommand = useCallback(
     async (command: string) => {
@@ -1317,7 +1360,10 @@ export function ProvidersSettings() {
               )}
             </SettingsItem>
             {provider.id === "claude" && supportsClaudeGateway && (
-              <ClaudeGatewaySettings reloadProviders={reloadProviders} />
+              <ClaudeGatewaySettings
+                reloadProviders={reloadProviders}
+                supportsAutostart={supportsClaudeGatewayAutostart}
+              />
             )}
             {provider.id === "claude" && supportsAdditionalModels && (
               <ClaudeAdditionalModelsSettings

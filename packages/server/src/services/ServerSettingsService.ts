@@ -40,6 +40,7 @@ const CURRENT_VERSION = 2;
 export const DEFAULT_SPEECH_AUDIO_RETENTION_MAX_AGE_DAYS = 56;
 export const DEFAULT_SPEECH_AUDIO_RETENTION_MAX_BYTES = 400 * 1024 * 1024;
 const DEFAULT_HEARTBEAT_TURN_TEXT = "continue";
+export const MAX_CLAUDE_GATEWAY_START_COMMAND_LENGTH = 10_000;
 const LEGACY_DEFAULT_HEARTBEAT_TURN_TEXTS = new Set([
   "heartbeat",
   "yepanywhere heartbeat",
@@ -102,6 +103,8 @@ export interface ServerSettings {
   heartbeatTurnText?: string;
   /** Anthropic-compatible endpoint for the isolated claude-gateway provider */
   claudeGatewayUrl?: string;
+  /** Optional shell line that starts a loopback Claude Gateway on demand. */
+  claudeGatewayStartCommand?: string;
   /** Ollama server URL for claude-ollama provider (default: http://localhost:11434) */
   ollamaUrl?: string;
   /** Custom system prompt for Ollama provider (overrides the default minimal prompt) */
@@ -299,6 +302,14 @@ function normalizeLoadedSettings(settings: ServerSettings): ServerSettings {
   normalized.claudeAdditionalModels =
     parseClaudeAdditionalModelSelections(settings.claudeAdditionalModels) ??
     undefined;
+  const gatewayStartCommand = settings.claudeGatewayStartCommand;
+  normalized.claudeGatewayStartCommand =
+    typeof gatewayStartCommand === "string" &&
+    gatewayStartCommand.length <= MAX_CLAUDE_GATEWAY_START_COMMAND_LENGTH &&
+    !gatewayStartCommand.includes("\0") &&
+    gatewayStartCommand.trim()
+      ? gatewayStartCommand.trim()
+      : undefined;
   const loadedHeartbeatText = settings.heartbeatTurnText?.trim();
   if (
     loadedHeartbeatText &&

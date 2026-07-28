@@ -192,6 +192,13 @@ async function gracefulShutdown(signal: string): Promise<void> {
     }
   }
 
+  try {
+    await ClaudeGatewayProvider.shutdownGateway();
+    console.log("[Shutdown] Managed Claude Gateway stopped");
+  } catch (error) {
+    console.error("[Shutdown] Error stopping managed Claude Gateway:", error);
+  }
+
   if (disposeAppForShutdown) {
     try {
       await disposeAppForShutdown();
@@ -603,9 +610,12 @@ async function startServer() {
   updateFileAccess(serverSettingsService.getSetting("fileAccess"));
 
   // Seed Claude transport settings from persisted settings
-  ClaudeGatewayProvider.setGatewayUrl(
-    serverSettingsService.getSetting("claudeGatewayUrl"),
-  );
+  await ClaudeGatewayProvider.configureGateway({
+    url: serverSettingsService.getSetting("claudeGatewayUrl"),
+    startCommand: serverSettingsService.getSetting(
+      "claudeGatewayStartCommand",
+    ),
+  });
   const savedOllamaUrl = serverSettingsService.getSetting("ollamaUrl");
   const savedOllamaSystemPrompt =
     serverSettingsService.getSetting("ollamaSystemPrompt");

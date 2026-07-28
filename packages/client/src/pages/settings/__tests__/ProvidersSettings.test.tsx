@@ -9,6 +9,7 @@ import {
 } from "@testing-library/react";
 import {
   CLAUDE_ADDITIONAL_MODELS_CAPABILITY,
+  CLAUDE_GATEWAY_AUTOSTART_CAPABILITY,
   CLAUDE_GATEWAY_CAPABILITY,
   type ProviderInfo,
 } from "@yep-anywhere/shared";
@@ -20,6 +21,7 @@ const {
   hookState,
   mockReloadProviders,
   mockUpdateSetting,
+  mockUpdateSettings,
   versionState,
 } = vi.hoisted(() => ({
   hookState: {
@@ -49,6 +51,7 @@ const {
   },
   mockReloadProviders: vi.fn(),
   mockUpdateSetting: vi.fn(),
+  mockUpdateSettings: vi.fn(),
   versionState: {
     capabilities: [] as string[],
   },
@@ -74,7 +77,7 @@ vi.mock("../../../hooks/useServerSettings", () => ({
     isLoading: false,
     error: null,
     updateSetting: mockUpdateSetting,
-    updateSettings: vi.fn(),
+    updateSettings: mockUpdateSettings,
     refetch: vi.fn(),
   }),
 }));
@@ -120,6 +123,7 @@ describe("ProvidersSettings additional models", () => {
     ];
     versionState.capabilities = [CLAUDE_ADDITIONAL_MODELS_CAPABILITY];
     mockUpdateSetting.mockResolvedValue(undefined);
+    mockUpdateSettings.mockResolvedValue(undefined);
     mockReloadProviders.mockResolvedValue(undefined);
   });
 
@@ -268,6 +272,53 @@ describe("ProvidersSettings additional models", () => {
 
     expect(input).toHaveProperty("value", "http://localhost:4141");
     expect(mockUpdateSetting).not.toHaveBeenCalled();
+  });
+
+  it("hides Gateway autostart from servers with only the base capability", () => {
+    versionState.capabilities = [CLAUDE_GATEWAY_CAPABILITY];
+    render(<ProvidersSettings />);
+
+    expect(
+      screen.queryByRole("textbox", {
+        name: "providersClaudeGatewayStartCommandAria",
+      }),
+    ).toBeNull();
+  });
+
+  it("saves a capability-gated Gateway start command with the URL", async () => {
+    versionState.capabilities = [
+      CLAUDE_GATEWAY_CAPABILITY,
+      CLAUDE_GATEWAY_AUTOSTART_CAPABILITY,
+    ];
+    render(<ProvidersSettings />);
+
+    fireEvent.change(
+      screen.getByRole("textbox", {
+        name: "providersClaudeGatewayUrlAria",
+      }),
+      { target: { value: "http://localhost:4041" } },
+    );
+    fireEvent.change(
+      screen.getByRole("textbox", {
+        name: "providersClaudeGatewayStartCommandAria",
+      }),
+      {
+        target: {
+          value:
+            "cd /srv/copilot-api && HOST=localhost bun run ./src/main.ts start --port 4041",
+        },
+      },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "providersSave" }));
+
+    await waitFor(() => {
+      expect(mockUpdateSettings).toHaveBeenCalledWith({
+        claudeGatewayUrl: "http://localhost:4041",
+        claudeGatewayStartCommand:
+          "cd /srv/copilot-api && HOST=localhost bun run ./src/main.ts start --port 4041",
+      });
+      expect(mockReloadProviders).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("hides legacy ClaudeOllama when the server has no configuration or use", () => {

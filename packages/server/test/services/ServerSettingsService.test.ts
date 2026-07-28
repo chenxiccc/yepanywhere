@@ -89,6 +89,39 @@ describe("ServerSettingsService", () => {
     expect(reloaded.getSetting("claudeAdditionalModels")).toEqual([selection]);
   });
 
+  it("persists the optional Claude Gateway start command", async () => {
+    const service = new ServerSettingsService({ dataDir: testDir });
+    await service.initialize();
+    await service.updateSettings({
+      claudeGatewayStartCommand: "HOST=localhost gateway start",
+    });
+
+    const reloaded = new ServerSettingsService({ dataDir: testDir });
+    await reloaded.initialize();
+
+    expect(reloaded.getSetting("claudeGatewayStartCommand")).toBe(
+      "HOST=localhost gateway start",
+    );
+  });
+
+  it("drops malformed persisted Claude Gateway start commands", async () => {
+    await fs.writeFile(
+      path.join(testDir, "server-settings.json"),
+      JSON.stringify({
+        version: 2,
+        settings: {
+          claudeGatewayStartCommand: 42,
+        },
+      }),
+      "utf-8",
+    );
+    const service = new ServerSettingsService({ dataDir: testDir });
+
+    await service.initialize();
+
+    expect(service.getSetting("claudeGatewayStartCommand")).toBeUndefined();
+  });
+
   it("drops malformed persisted additional model settings", async () => {
     await fs.writeFile(
       path.join(testDir, "server-settings.json"),

@@ -141,6 +141,18 @@ shell-startup and test-hermeticity rules for the local `BASH_ENV` bridge.
   fallback, so a model id from Codex or regular Claude cannot bleed into a
   Gateway launch. Once the catalog arrives, YA selects the saved advertised
   model or its first row and derives thinking/effort controls from that row.
+- Claude Gateway may carry an explicit, default-off server-side start command.
+  Catalog discovery runs that shell line only when the configured URL is exact
+  `localhost` / `localhost.`, IPv4 `127.0.0.0/8`, or IPv6 `::1` and a bounded
+  TCP probe finds no listener on its port. Any listener suppresses execution,
+  even when `/v1/models` is unhealthy; non-loopback URLs never execute the
+  command. Concurrent catalog reads share one bounded Bash launch/readiness
+  attempt, and no timer retries after it settles. A later catalog refresh may
+  try again. The command runs on the YA server host and owns its working
+  directory, environment, and port choices. YA terminates a foreground child
+  it launched when Gateway configuration changes or the server shuts down;
+  commands that daemonize fall outside that ownership, so the settings UI
+  directs operators to keep the gateway in the foreground.
 - Claude Gateway retains the Claude harness, transcript, tools, permissions,
   compaction, and resume contracts. Per-model gateway catalog metadata controls
   whether YA advertises adaptive thinking and which effort levels it offers;

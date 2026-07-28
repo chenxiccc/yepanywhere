@@ -10435,6 +10435,31 @@ div.bang-command-error-message {
   min-width: min(100%, 18rem);
 }
 
+.claude-gateway-settings-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.claude-gateway-settings-row .settings-input {
+  flex: 1;
+  margin-top: 0;
+}
+
+.claude-gateway-start-command {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-3);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.claude-gateway-start-command .settings-input {
+  margin-top: 0;
+  font-family: var(--font-mono);
+}
+
 .host-identity-controls {
   display: flex;
   flex: 0 1 25rem;

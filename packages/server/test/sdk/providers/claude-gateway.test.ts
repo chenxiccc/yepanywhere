@@ -22,6 +22,7 @@ class ExposedClaudeGatewayProvider extends ClaudeGatewayProvider {
 describe("ClaudeGatewayProvider", () => {
   afterEach(() => {
     ClaudeGatewayProvider.setGatewayUrl(undefined);
+    ClaudeGatewayProvider.setGatewayStartCommand(undefined);
     ClaudeOllamaProvider.setOllamaUrl(undefined);
     configureProviderRuntime({ isClaudeOllamaVisible: () => false });
     vi.unstubAllGlobals();
@@ -98,6 +99,25 @@ describe("ClaudeGatewayProvider", () => {
         signal: expect.any(Object),
       }),
     );
+  });
+
+  it("ensures the configured local gateway before catalog discovery", async () => {
+    const ensureReady = vi.fn(async () => true);
+    const fetchMock = vi.fn(
+      async () => new Response(JSON.stringify({ data: [] }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    ClaudeGatewayProvider.setGatewayUrl("http://localhost:4141");
+    ClaudeGatewayProvider.setGatewayStartCommand("gateway start");
+
+    const provider = new ClaudeGatewayProvider({ ensureReady });
+    await provider.getAvailableModels();
+
+    expect(ensureReady).toHaveBeenCalledWith({
+      url: "http://localhost:4141",
+      startCommand: "gateway start",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("retains metadata-less rows but filters known unsupported rows", () => {

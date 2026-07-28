@@ -1595,6 +1595,8 @@ export interface ServerSettings {
   heartbeatTurnText?: string;
   /** Anthropic-compatible endpoint for the isolated Claude Gateway provider */
   claudeGatewayUrl?: string;
+  /** Optional shell line that starts a loopback Claude Gateway on demand */
+  claudeGatewayStartCommand?: string;
   /** Ollama server URL for claude-ollama provider */
   ollamaUrl?: string;
   /** Custom system prompt for Ollama provider */

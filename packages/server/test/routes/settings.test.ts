@@ -7,7 +7,10 @@ import type {
   ServerSettings,
   ServerSettingsService,
 } from "../../src/services/ServerSettingsService.js";
-import { DEFAULT_SERVER_SETTINGS } from "../../src/services/ServerSettingsService.js";
+import {
+  DEFAULT_SERVER_SETTINGS,
+  MAX_CLAUDE_GATEWAY_START_COMMAND_LENGTH,
+} from "../../src/services/ServerSettingsService.js";
 
 describe("Settings Routes", () => {
   let settings: ServerSettings;
@@ -499,10 +502,10 @@ describe("Settings Routes", () => {
     });
 
     it("normalizes and applies a Claude gateway URL live", async () => {
-      const onClaudeGatewayUrlChanged = vi.fn();
+      const onClaudeGatewaySettingsChanged = vi.fn();
       const routes = createSettingsRoutes({
         serverSettingsService: mockServerSettingsService,
-        onClaudeGatewayUrlChanged,
+        onClaudeGatewaySettingsChanged,
       });
 
       const response = await routes.request("/", {
@@ -517,9 +520,63 @@ describe("Settings Routes", () => {
       expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
         claudeGatewayUrl: "http://localhost:4141",
       });
-      expect(onClaudeGatewayUrlChanged).toHaveBeenCalledWith(
-        "http://localhost:4141",
-      );
+      expect(onClaudeGatewaySettingsChanged).toHaveBeenCalledWith({
+        url: "http://localhost:4141",
+        startCommand: undefined,
+      });
+    });
+
+    it("persists and applies a Claude gateway start command live", async () => {
+      settings = {
+        ...settings,
+        claudeGatewayUrl: "http://localhost:4141",
+      };
+      const onClaudeGatewaySettingsChanged = vi.fn();
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+        onClaudeGatewaySettingsChanged,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          claudeGatewayStartCommand: "  HOST=localhost gateway start  ",
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
+        claudeGatewayStartCommand: "HOST=localhost gateway start",
+      });
+      expect(onClaudeGatewaySettingsChanged).toHaveBeenCalledWith({
+        url: "http://localhost:4141",
+        startCommand: "HOST=localhost gateway start",
+      });
+    });
+
+    it.each([
+      ["non-string", 42],
+      [
+        "too long",
+        `gateway start ${"x".repeat(
+          MAX_CLAUDE_GATEWAY_START_COMMAND_LENGTH,
+        )}`,
+      ],
+      ["NUL byte", "gateway\u0000start"],
+    ])("rejects a %s Claude gateway start command", async (_case, command) => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ claudeGatewayStartCommand: command }),
+      });
+
+      expect(response.status).toBe(400);
+      expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
     });
 
     it.each([
@@ -548,10 +605,10 @@ describe("Settings Routes", () => {
         ...settings,
         claudeGatewayUrl: "http://localhost:4141",
       };
-      const onClaudeGatewayUrlChanged = vi.fn();
+      const onClaudeGatewaySettingsChanged = vi.fn();
       const routes = createSettingsRoutes({
         serverSettingsService: mockServerSettingsService,
-        onClaudeGatewayUrlChanged,
+        onClaudeGatewaySettingsChanged,
       });
 
       const response = await routes.request("/", {
@@ -564,7 +621,10 @@ describe("Settings Routes", () => {
       expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
         claudeGatewayUrl: undefined,
       });
-      expect(onClaudeGatewayUrlChanged).toHaveBeenCalledWith(undefined);
+      expect(onClaudeGatewaySettingsChanged).toHaveBeenCalledWith({
+        url: undefined,
+        startCommand: undefined,
+      });
     });
 
     it("accepts speech audio retention settings", async () => {

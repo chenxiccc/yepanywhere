@@ -3,6 +3,7 @@ import {
   APPROVAL_AUDIT_LOG_CAPABILITY,
   BANG_COMMANDS_CAPABILITY,
   BROWSER_SETTINGS_BACKUP_CAPABILITY,
+  CLAUDE_GATEWAY_AUTOSTART_CAPABILITY,
   CLAUDE_GATEWAY_CAPABILITY,
   GIT_SOURCE_REVIEW_CAPABILITY,
   GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,
@@ -39,6 +40,9 @@ describe("Version Routes", () => {
 
   it("advertises isolated Claude gateway configuration", () => {
     expect(getServerCapabilities()).toContain(CLAUDE_GATEWAY_CAPABILITY);
+    expect(getServerCapabilities()).toContain(
+      CLAUDE_GATEWAY_AUTOSTART_CAPABILITY,
+    );
   });
 
   it("advertises the complete source browser and review contract", () => {

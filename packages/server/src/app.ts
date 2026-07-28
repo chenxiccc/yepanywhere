@@ -1506,9 +1506,8 @@ export function createApp(options: AppOptions): AppResult {
           ? (enabled) =>
               options.remoteSessionService?.setDiskPersistenceEnabled(enabled)
           : undefined,
-        onClaudeGatewayUrlChanged: (url) => {
-          ClaudeGatewayProvider.setGatewayUrl(url);
-        },
+        onClaudeGatewaySettingsChanged: (settings) =>
+          ClaudeGatewayProvider.configureGateway(settings),
         onOllamaUrlChanged: (url) => {
           ClaudeOllamaProvider.setOllamaUrl(url);
         },

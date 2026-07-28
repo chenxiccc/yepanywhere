@@ -13,6 +13,10 @@ import type {
   PromptCacheKeepaliveProviderInfo,
 } from "@yep-anywhere/shared";
 import { getLogger } from "../../logging/logger.js";
+import {
+  type ClaudeGatewayLauncher,
+  claudeGatewayLauncher,
+} from "./claude-gateway-launcher.js";
 import { ClaudeProvider } from "./claude.js";
 import type { AuthStatus } from "./types.js";
 
@@ -155,9 +159,36 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
     | undefined = undefined;
 
   private static gatewayUrl: string | undefined;
+  private static gatewayStartCommand: string | undefined;
+
+  constructor(
+    private readonly gatewayLauncher: Pick<
+      ClaudeGatewayLauncher,
+      "ensureReady"
+    > = claudeGatewayLauncher,
+  ) {
+    super();
+  }
 
   static setGatewayUrl(url: string | undefined): void {
     ClaudeGatewayProvider.gatewayUrl = url;
+  }
+
+  static setGatewayStartCommand(command: string | undefined): void {
+    ClaudeGatewayProvider.gatewayStartCommand = command;
+  }
+
+  static async configureGateway(options: {
+    url?: string;
+    startCommand?: string;
+  }): Promise<void> {
+    ClaudeGatewayProvider.gatewayUrl = options.url;
+    ClaudeGatewayProvider.gatewayStartCommand = options.startCommand;
+    await claudeGatewayLauncher.configure(options);
+  }
+
+  static async shutdownGateway(): Promise<void> {
+    await claudeGatewayLauncher.shutdown();
   }
 
   static getGatewayUrl(): string | undefined {
@@ -169,7 +200,9 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
   }
 
   override getModelCatalogCacheKey(): string {
-    return ClaudeGatewayProvider.gatewayUrl ?? "";
+    return `${ClaudeGatewayProvider.gatewayUrl ?? ""}\n${
+      ClaudeGatewayProvider.gatewayStartCommand ?? ""
+    }`;
   }
 
   override async isInstalled(): Promise<boolean> {
@@ -198,6 +231,10 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
     if (!gatewayUrl) return [];
 
     try {
+      await this.gatewayLauncher.ensureReady({
+        url: gatewayUrl,
+        startCommand: ClaudeGatewayProvider.gatewayStartCommand,
+      });
       const response = await fetch(`${gatewayUrl}/v1/models`, {
         headers: { Authorization: "Bearer dummy" },
         signal: AbortSignal.timeout(5000),
