@@ -11,6 +11,7 @@ export const SESSION_DRAFT_KEY_PREFIX = "draft-message-";
 const LOCAL_CLIENT_SUMMARY_SOURCE_VALUE = "local";
 const SOURCE_DRAFT_KEY_PREFIX = "draft-message:";
 const SOURCE_DRAFT_INDEX_KEY_PREFIX = "draft-index-message:";
+const SOURCE_DRAFT_PRESENCE_KEY_PREFIX = "draft-presence-message:";
 
 export interface SessionDraftReference {
   sourceKey: ClientSummarySourceKey;
@@ -38,6 +39,15 @@ function createSessionDraftIndexKey(sourceKey: ClientSummarySourceKey): string {
   return `${SOURCE_DRAFT_INDEX_KEY_PREFIX}${encodeKeyPart(sourceKey)}`;
 }
 
+function createSessionDraftPresenceKey({
+  sourceKey,
+  sessionId,
+}: SessionDraftReference): string {
+  return `${SOURCE_DRAFT_PRESENCE_KEY_PREFIX}${encodeKeyPart(
+    sourceKey,
+  )}:${encodeKeyPart(sessionId)}`;
+}
+
 export function isSessionDraftStorageKey(
   key: string | null | undefined,
 ): boolean {
@@ -46,12 +56,15 @@ export function isSessionDraftStorageKey(
   }
 
   return !!(
+    key.startsWith(SOURCE_DRAFT_PRESENCE_KEY_PREFIX) ||
     key.startsWith(SESSION_DRAFT_KEY_PREFIX) ||
     key.startsWith(SOURCE_DRAFT_KEY_PREFIX)
   );
 }
 
-function readDraftIndex(sourceKey: ClientSummarySourceKey): Set<string> {
+function readLegacyDraftIndex(
+  sourceKey: ClientSummarySourceKey,
+): Set<string> {
   try {
     const raw = localStorage.getItem(createSessionDraftIndexKey(sourceKey));
     if (!raw) {
@@ -67,19 +80,49 @@ function readDraftIndex(sourceKey: ClientSummarySourceKey): Set<string> {
   }
 }
 
-function writeDraftIndex(
+function readDraftPresenceIndex(
   sourceKey: ClientSummarySourceKey,
-  sessionIds: ReadonlySet<string>,
-): void {
+): Set<string> {
+  const result = new Set<string>();
   try {
-    const key = createSessionDraftIndexKey(sourceKey);
-    if (sessionIds.size === 0) {
-      localStorage.removeItem(key);
-      return;
+    const prefix = `${SOURCE_DRAFT_PRESENCE_KEY_PREFIX}${encodeKeyPart(
+      sourceKey,
+    )}:`;
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key?.startsWith(prefix)) continue;
+      const encodedSessionId = key.slice(prefix.length);
+      if (!encodedSessionId) continue;
+      try {
+        result.add(decodeURIComponent(encodedSessionId));
+      } catch {
+        // A malformed private marker cannot identify a session.
+      }
     }
-    localStorage.setItem(key, JSON.stringify([...sessionIds].sort()));
   } catch {
-    // localStorage might be full or unavailable.
+    // localStorage might be unavailable.
+  }
+  return result;
+}
+
+function syncDraftPresence(
+  reference: SessionDraftReference,
+  shouldContain: boolean,
+): { changed: boolean; synchronized: boolean } {
+  try {
+    const key = createSessionDraftPresenceKey(reference);
+    const contains = localStorage.getItem(key) !== null;
+    if (contains === shouldContain) {
+      return { changed: false, synchronized: true };
+    }
+    if (shouldContain) {
+      localStorage.setItem(key, "1");
+    } else {
+      localStorage.removeItem(key);
+    }
+    return { changed: true, synchronized: true };
+  } catch {
+    return { changed: false, synchronized: false };
   }
 }
 
@@ -87,18 +130,7 @@ export function updateSessionDraftIndex(
   reference: SessionDraftReference,
   value: string | null | undefined,
 ): boolean {
-  const sessionIds = readDraftIndex(reference.sourceKey);
-  const shouldContain = hasDraftContentValue(value);
-  if (sessionIds.has(reference.sessionId) === shouldContain) {
-    return false;
-  }
-  if (shouldContain) {
-    sessionIds.add(reference.sessionId);
-  } else {
-    sessionIds.delete(reference.sessionId);
-  }
-  writeDraftIndex(reference.sourceKey, sessionIds);
-  return true;
+  return syncDraftPresence(reference, hasDraftContentValue(value)).changed;
 }
 
 function persistSessionDraftEnvelope(
@@ -114,10 +146,13 @@ function persistSessionDraftEnvelope(
     } else {
       localStorage.removeItem(key);
     }
+    // Reconcile on every successful envelope write, not only a presence
+    // transition. A quota/transient failure on the first marker write is then
+    // repaired by the next edit.
+    updateSessionDraftIndex(reference, nextValue);
     const previousHasContent = hasDraftContentValue(previousValue);
     const nextHasContent = hasDraftContentValue(nextValue);
     if (previousHasContent !== nextHasContent) {
-      updateSessionDraftIndex(reference, nextValue);
       publishDraftPresenceChange({
         storageKey: key,
         hasContent: nextHasContent,
@@ -152,8 +187,8 @@ export function removeSessionDraft(reference: SessionDraftReference): void {
     const key = createSessionDraftStorageKey(reference);
     const previousValue = localStorage.getItem(key);
     localStorage.removeItem(key);
+    updateSessionDraftIndex(reference, "");
     if (hasDraftContentValue(previousValue)) {
-      updateSessionDraftIndex(reference, "");
       publishDraftPresenceChange({
         storageKey: key,
         hasContent: false,
@@ -171,16 +206,33 @@ export function scanSessionDraftIds(
   const result = new Set<string>();
 
   try {
-    const indexedSessionIds = readDraftIndex(sourceKey);
+    const legacySessionIds = readLegacyDraftIndex(sourceKey);
+    const indexedSessionIds = readDraftPresenceIndex(sourceKey);
+    for (const sessionId of legacySessionIds) {
+      indexedSessionIds.add(sessionId);
+    }
+    let migratedLegacyIndex = true;
     for (const sessionId of indexedSessionIds) {
       const value = localStorage.getItem(
         createSessionDraftStorageKey({ sourceKey, sessionId }),
       );
       if (hasDraftContentValue(value)) {
         result.add(sessionId);
-      } else {
-        updateSessionDraftIndex({ sourceKey, sessionId }, "");
       }
+      const synchronized = syncDraftPresence(
+        { sourceKey, sessionId },
+        hasDraftContentValue(value),
+      ).synchronized;
+      if (
+        legacySessionIds.has(sessionId) &&
+        hasDraftContentValue(value) &&
+        !synchronized
+      ) {
+        migratedLegacyIndex = false;
+      }
+    }
+    if (legacySessionIds.size > 0 && migratedLegacyIndex) {
+      localStorage.removeItem(createSessionDraftIndexKey(sourceKey));
     }
 
     if (sourceKey !== LOCAL_CLIENT_SUMMARY_SOURCE_VALUE) {

@@ -218,9 +218,13 @@ visible session cards. Session draft badges also read from client-summary local
 decorations: the store wrapper owns the mounted `draft-message-*` localStorage
 initial scan, cross-tab storage listener, and owned same-tab presence-event
 subscription. It tears down both listeners when the last draft-decoration
-consumer unmounts; no draft-decoration polling timer remains. The draft index
-changes only when an owned persistence write crosses the empty/non-empty
-presence boundary.
+consumer unmounts; no draft-decoration polling timer remains. Draft discovery
+uses one private presence marker per `(source, session)` rather than a shared
+read/modify/write set, so simultaneous tabs cannot overwrite one another's
+index additions. Every successful envelope write reconciles its marker, even
+when text remains nonempty, so a failed first marker write is repaired by the
+next edit. Scans verify markers against their envelopes, prune stale markers,
+and migrate the retired aggregate index when encountered.
 
 The original session collection fields are now nested under `sessions`, matching
 the documented normalized shape.
