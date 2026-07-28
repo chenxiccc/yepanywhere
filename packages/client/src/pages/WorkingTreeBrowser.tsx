@@ -13,8 +13,9 @@ import {
   useState,
 } from "react";
 import { api } from "../api/client";
-import { CopyButton } from "../components/CopyButton";
+import { ChangesetFileFilter } from "../components/ChangesetFileFilter";
 import { ResizableSourceColumns } from "../components/ResizableSourceColumns";
+import { SourceFileHeaderActions } from "../components/SourceFileHeaderActions";
 import {
   SourceFilePath,
   SourceFileRowButton,
@@ -25,6 +26,10 @@ import {
   type SourceContextMenuAction,
   useSourceContextMenu,
 } from "../components/SourceContextMenu";
+import {
+  sourceFileDisplayPath,
+  useChangesetFileFilter,
+} from "../hooks/useChangesetFileFilter";
 import { useProjectReviewComments } from "../hooks/useProjectReviewComments";
 import { handleSourceListKeyDown } from "../hooks/useSourceKeyboard";
 import { useTextTooltipAttributes } from "../hooks/useTooltipAppearance";
@@ -83,6 +88,7 @@ export function WorkingTreeBrowser({
   const [expandedUntrackedFolders, setExpandedUntrackedFolders] = useState<
     Record<string, GitUntrackedFolderInfo>
   >({});
+  const [fileQuery, setFileQuery] = useState("");
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [commentEditorOpen, setCommentEditorOpen] = useState(false);
   const [appliedWorkingTreeLink, setAppliedWorkingTreeLink] = useState<
@@ -154,6 +160,11 @@ export function WorkingTreeBrowser({
     () => files.filter((file) => !file.path.endsWith("/")),
     [files],
   );
+  const filteredFiles = useChangesetFileFilter(files, fileQuery);
+  const visiblePreviewableFiles = useMemo(
+    () => filteredFiles.filter((file) => !file.path.endsWith("/")),
+    [filteredFiles],
+  );
   const selectedFile =
     previewableFiles.find((file) => file.path === selectedPath) ?? null;
   const linkedFile = initialWorkingTreePath
@@ -179,21 +190,26 @@ export function WorkingTreeBrowser({
 
   useEffect(() => {
     if (shouldApplyWorkingTreeLink) return;
+    const selectionCandidates = fileQuery.trim()
+      ? visiblePreviewableFiles
+      : previewableFiles;
     const nextPath =
       selectedPath &&
-      previewableFiles.some((file) => file.path === selectedPath)
+      selectionCandidates.some((file) => file.path === selectedPath)
         ? selectedPath
         : isWideScreen
-          ? (previewableFiles[0]?.path ?? null)
+          ? (selectionCandidates[0]?.path ?? null)
           : null;
     if (nextPath !== selectedPath) {
       setSelectedPath(nextPath);
     }
   }, [
     isWideScreen,
+    fileQuery,
     previewableFiles,
     selectedPath,
     shouldApplyWorkingTreeLink,
+    visiblePreviewableFiles,
   ]);
 
   const fileCommentCount = useMemo(() => {
@@ -244,23 +260,11 @@ export function WorkingTreeBrowser({
   );
 
   const fileActions = selectedFile ? (
-    <>
-      <CopyButton
-        value={selectedFile.path}
-        title={t("sourceCopyPath")}
-        className="source-detail-action"
-      />
-      {onBlameFile && (
-        <button
-          type="button"
-          className="source-detail-action"
-          title={t("sourceBlameAtHead")}
-          onClick={() => onBlameFile(selectedFile.path)}
-        >
-          {t("sourceBlameAtHeadShort")}
-        </button>
-      )}
-    </>
+    <SourceFileHeaderActions
+      path={selectedFile.path}
+      onBlameFile={onBlameFile}
+      t={t}
+    />
   ) : null;
 
   const hasRetainedEditorTarget = commentEditorOpen && selectedFile !== null;
@@ -346,15 +350,18 @@ export function WorkingTreeBrowser({
                 </span>
               </>
             )}
+            <ChangesetFileFilter
+              query={fileQuery}
+              onQueryChange={setFileQuery}
+              t={t}
+            />
           </div>
           <ul className="commit-file-list" onKeyDown={handleSourceListKeyDown}>
-            {files.map((file) => {
+            {filteredFiles.map((file) => {
               const count = fileCommentCount.get(file.path) ?? 0;
               const isFolder = file.path.endsWith("/");
               const menuActions = fileMenuActions(file);
-              const displayPath = file.origPath
-                ? `${file.origPath} → ${file.path}`
-                : file.path;
+              const displayPath = sourceFileDisplayPath(file);
               return (
                 <li key={file.path} className="commit-file-row">
                   <SourceFileRowButton
@@ -412,6 +419,9 @@ export function WorkingTreeBrowser({
               );
             })}
           </ul>
+          {filteredFiles.length === 0 && (
+            <div className="git-status-empty">{t("sourceNoMatches")}</div>
+          )}
           {!embeddedInHistory && (
             <RecentCommits commits={status.recentCommits ?? []} t={t} />
           )}

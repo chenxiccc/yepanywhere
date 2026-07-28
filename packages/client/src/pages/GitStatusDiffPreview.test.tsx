@@ -92,7 +92,9 @@ describe("GitDiffBody", () => {
     );
     await screen.findByText("diff-a");
 
-    fireEvent.click(screen.getByText("gitStatusFullContext"));
+    fireEvent.click(
+      screen.getByRole("button", { name: "gitStatusFullContext" }),
+    );
     await screen.findByText("full-a");
 
     rendered.rerender(
@@ -112,5 +114,58 @@ describe("GitDiffBody", () => {
       ).toHaveLength(2),
     );
     expect(await screen.findByText("full-b")).toBeTruthy();
+  });
+
+  it("keeps file identity readable beside compact glyph controls", async () => {
+    getGitDiff.mockResolvedValue(result("compact"));
+    listReviewComments.mockResolvedValue({
+      comments: [],
+      batches: [],
+      pendingCount: 0,
+    });
+
+    render(
+      <MemoryRouter>
+        <GitDiffBody
+          file={{
+            ...FILE,
+            path: "packages/client/src/very-long-file-name.ts",
+          }}
+          fileKey="packages/client/src/very-long-file-name.ts:false"
+          projectId="p1"
+          paneHeader={{
+            title: "very-long-file-name.ts",
+            path: "packages/client/src/very-long-file-name.ts",
+          }}
+          onToggleIgnoreWhitespace={() => {}}
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("compact");
+    expect(document.querySelector(".git-diff-toolbar-path")?.textContent).toBe(
+      "packages/client/src",
+    );
+    expect(document.querySelector(".git-diff-preview-title")?.textContent).toBe(
+      "very-long-file-name.ts",
+    );
+    expect(
+      screen.getByRole("button", { name: "gitStatusIgnoreWhitespace" })
+        .textContent,
+    ).toBe("␠");
+    expect(
+      screen.getByRole("button", { name: "gitStatusFullContext" }).textContent,
+    ).toBe("");
+    expect(
+      screen.getByRole("button", {
+        name: "diffViewModeTitle: diffViewModeAuto",
+      }).textContent,
+    ).toBe("");
+    await waitFor(() =>
+      expect(document.querySelector(".diff-hunk-indicator")?.textContent).toBe(
+        "1/1",
+      ),
+    );
   });
 });

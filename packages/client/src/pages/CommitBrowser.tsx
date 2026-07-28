@@ -6,8 +6,8 @@ import {
   useMemo,
   useRef,
 } from "react";
-import { CopyButton } from "../components/CopyButton";
 import { ResizableSourceColumns } from "../components/ResizableSourceColumns";
+import { SourceFileHeaderActions } from "../components/SourceFileHeaderActions";
 import { Modal } from "../components/ui/Modal";
 import { useCommitReadWatermark } from "../hooks/useCommitReadWatermark";
 import { useProjectReviewComments } from "../hooks/useProjectReviewComments";
@@ -166,23 +166,11 @@ export function CommitBrowser({
   // Selected-file actions, shown in the diff pane header (the file banner)
   // instead of on every hovered row.
   const fileActions = selectedFile ? (
-    <>
-      <CopyButton
-        value={selectedFile.path}
-        title={t("sourceCopyPath")}
-        className="source-detail-action"
-      />
-      {onBlameFile && (
-        <button
-          type="button"
-          className="source-detail-action"
-          title={t("sourceBlameAtHead")}
-          onClick={() => onBlameFile(selectedFile.path)}
-        >
-          {t("sourceBlameAtHeadShort")}
-        </button>
-      )}
-    </>
+    <SourceFileHeaderActions
+      path={selectedFile.path}
+      onBlameFile={onBlameFile}
+      t={t}
+    />
   ) : null;
 
   const closeMobileDetail = useCallback(() => {
@@ -357,6 +345,10 @@ export function CommitBrowser({
             onShowMessage={() => setMessageView(true)}
             onFocusFile={(file) => {
               setSelectedPath(file.path);
+              setMessageView(false);
+            }}
+            onFilteredSelectionChange={(file) => {
+              setSelectedPath(file?.path ?? null);
               setMessageView(false);
             }}
             onActivateFile={(file) => {

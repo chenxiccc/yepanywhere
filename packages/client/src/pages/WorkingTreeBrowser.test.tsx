@@ -271,6 +271,65 @@ describe("WorkingTreeBrowser", () => {
     ).toBe("? — sourceFileStatusUntracked");
   });
 
+  it("filters dirty and expanded untracked files by path", async () => {
+    listReviewComments.mockResolvedValue({
+      comments: [],
+      batches: [],
+      pendingCount: 0,
+    });
+
+    render(
+      <MemoryRouter>
+        <WorkingTreeBrowser
+          projectId="p1"
+          status={{
+            isGitRepo: true,
+            branch: "main",
+            upstream: "origin/main",
+            ahead: 0,
+            behind: 0,
+            isClean: false,
+            files: [
+              {
+                path: "src/keep.ts",
+                status: "M",
+                staged: false,
+                linesAdded: 1,
+                linesDeleted: 0,
+              },
+              {
+                path: "scratch/drop.txt",
+                status: "?",
+                staged: false,
+                linesAdded: null,
+                linesDeleted: null,
+              },
+            ],
+            recentCommits: [],
+          }}
+          isWideScreen={false}
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("src/keep.ts");
+    await waitFor(() =>
+      expect(listReviewComments).toHaveBeenCalledWith("p1"),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "sourceFilterFiles" }),
+    );
+    const input = screen.getByPlaceholderText("sourceFilterFiles");
+    expect(document.activeElement).toBe(input);
+    fireEvent.change(input, { target: { value: "keep" } });
+
+    expect(screen.getByText("src/keep.ts")).toBeDefined();
+    expect(screen.queryByText("scratch/drop.txt")).toBeNull();
+    fireEvent.change(input, { target: { value: "missing" } });
+    expect(screen.getByText("sourceNoMatches")).toBeDefined();
+  });
+
   it("explains an empty ignore-whitespace projection", async () => {
     getGitDiff.mockResolvedValue({
       diffHtml: '<pre class="shiki"><code class="language-ts"></code></pre>',

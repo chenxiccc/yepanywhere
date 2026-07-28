@@ -3,7 +3,8 @@ import type {
   GitFileChange,
   GitRecentCommit,
 } from "@yep-anywhere/shared";
-import type { ReactNode, RefObject } from "react";
+import { type ReactNode, type RefObject, useEffect, useState } from "react";
+import { ChangesetFileFilter } from "../components/ChangesetFileFilter";
 import { CopyButton } from "../components/CopyButton";
 import {
   SourceFilePath,
@@ -15,6 +16,10 @@ import {
   type SourceContextMenuAction,
   useSourceContextMenu,
 } from "../components/SourceContextMenu";
+import {
+  sourceFileDisplayPath,
+  useChangesetFileFilter,
+} from "../hooks/useChangesetFileFilter";
 import { handleSourceListKeyDown } from "../hooks/useSourceKeyboard";
 import { writeClipboardText } from "../lib/clipboard";
 import { reflowCommitMessage } from "../lib/reflowCommitMessage";
@@ -42,6 +47,7 @@ export function CommitFilesPane({
   onToggleComparison,
   onShowMessage,
   onFocusFile,
+  onFilteredSelectionChange,
   onActivateFile,
   onBlameFile,
   onMarkReadTo,
@@ -65,13 +71,36 @@ export function CommitFilesPane({
   onToggleComparison: () => void;
   onShowMessage: () => void;
   onFocusFile: (file: GitFileChange) => void;
+  onFilteredSelectionChange: (file: GitFileChange | null) => void;
   onActivateFile: (file: GitFileChange) => void;
   onBlameFile?: (path: string) => void;
   onMarkReadTo: (authorDate: string) => void;
   onMarkUnreadSince: (authorDate: string) => void;
   t: TranslationFn;
 }) {
+  const [fileQuery, setFileQuery] = useState("");
   const fileMenu = useSourceContextMenu(t);
+  const filteredFiles = useChangesetFileFilter(selectedFiles, fileQuery);
+
+  useEffect(() => {
+    if (!isWideScreen) return;
+    const selectableFiles = filteredFiles.filter(
+      (file) => !file.path.endsWith("/"),
+    );
+    const nextFile =
+      selectableFiles.find((file) => file.path === selectedPath) ??
+      selectableFiles[0] ??
+      null;
+    if ((nextFile?.path ?? null) !== selectedPath) {
+      onFilteredSelectionChange(nextFile);
+    }
+  }, [
+    filteredFiles,
+    isWideScreen,
+    onFilteredSelectionChange,
+    selectedPath,
+  ]);
+
   const fileMenuActions = (file: GitFileChange): SourceContextMenuAction[] => [
     {
       label: t("sourceCopyPath"),
@@ -169,6 +198,12 @@ export function CommitFilesPane({
               {t("sourceMarkUnreadSinceHere")}
             </span>
           </button>
+          <ChangesetFileFilter
+            query={fileQuery}
+            disabled={selectedFiles.length === 0}
+            onQueryChange={setFileQuery}
+            t={t}
+          />
         </div>
         {loading ? (
           <div className="git-diff-loading">{t("gitStatusLoading")}</div>
@@ -194,13 +229,11 @@ export function CommitFilesPane({
               className="commit-file-list"
               onKeyDown={handleSourceListKeyDown}
             >
-              {selectedFiles.map((file) => {
+              {filteredFiles.map((file) => {
                 const count = fileCommentCount.get(file.path) ?? 0;
                 const isFolder = file.path.endsWith("/");
                 const menuActions = fileMenuActions(file);
-                const displayPath = file.origPath
-                  ? `${file.origPath} → ${file.path}`
-                  : file.path;
+                const displayPath = sourceFileDisplayPath(file);
                 return (
                   <li key={file.path} className="commit-file-row">
                     <SourceFileRowButton
@@ -261,6 +294,9 @@ export function CommitFilesPane({
                   ? t("sourceNoChangesToHead")
                   : t("sourceNoFiles")}
               </div>
+            )}
+            {selectedFiles.length > 0 && filteredFiles.length === 0 && (
+              <div className="git-status-empty">{t("sourceNoMatches")}</div>
             )}
           </>
         ) : null}

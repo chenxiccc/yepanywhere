@@ -124,6 +124,30 @@ describe("Source Control workbench layout CSS contract", () => {
     expect(diff).toMatch(/--diff-gutter-content-gap:\s*0\.375rem\s*;/);
   });
 
+  it("prioritizes the filename and uses compact diff controls", async () => {
+    const css = await readFile(rendererStylesheetUrl, "utf8");
+    const identity = getRuleDeclarationsContaining(
+      css,
+      ".git-diff-file-identity",
+      "min-width",
+    );
+    const title = getLastRuleDeclarations(
+      css,
+      ".git-diff-pane-toolbar .git-diff-preview-title",
+    );
+    const path = getLastRuleDeclarations(css, ".git-diff-toolbar-path");
+    const icon = getLastRuleDeclarations(css, ".diff-toolbar-icon-button");
+    const hunk = getLastRuleDeclarations(css, ".diff-hunk-indicator");
+
+    expect(identity).toMatch(/min-width:\s*0\s*;/);
+    expect(title).toMatch(/font-size:\s*0\.74rem\s*;/);
+    expect(path).toMatch(/flex:\s*0\s+1000\s+auto\s*;/);
+    expect(path).toMatch(/direction:\s*rtl\s*;/);
+    expect(icon).toMatch(/width:\s*24px\s*;/);
+    expect(icon).toMatch(/padding:\s*0\s*;/);
+    expect(hunk).toMatch(/min-width:\s*1\.9rem\s*;/);
+  });
+
   it("uses compact blame columns and one scrollbar per provenance run", async () => {
     const css = await readFile(rendererStylesheetUrl, "utf8");
     const row = getLastRuleDeclarations(css, ".blame-row");

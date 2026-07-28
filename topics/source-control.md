@@ -159,7 +159,19 @@ cannot overwrite the newer projection.
 
 The wide diff pane keeps filename, path, view controls, hunk navigation, and
 file actions in one toolbar row when they fit. A narrow pane or phone modal may
-use a compact second row.
+use a compact second row. The filename is the primary identity: it uses compact
+source type and retains its full text before the directory path spends
+remaining width. The smaller directory prefix precedes it and, when clipped,
+keeps its rightmost segment next to the filename. Toolbar actions use compact
+glyphs with complete hover and accessible names; hunk position uses the
+language-neutral `current/total` form.
+
+Each commit and working-tree changed-file pane exposes one compact file-filter
+disclosure. Opening its magnifier expands a path search across the pane's
+complete current file corpus, including expanded untracked files and both sides
+of a rename. Filtering is case-insensitive and local after the corpus is
+present. On wide layouts, the first visible file becomes the detail when the
+prior selection no longer matches; no match leaves an explicit empty result.
 
 ## Search and compatibility
 

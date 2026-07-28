@@ -343,6 +343,63 @@ describe("CommitBrowser", () => {
     );
   });
 
+  it("filters the selected commit's files from an expandable search", async () => {
+    primeApis();
+    getGitCommit.mockResolvedValue({
+      hash: SHA,
+      shortHash: "aaaaaaa",
+      subject: "first commit",
+      authorName: "Dev",
+      authorDate: "2026-07-26T00:00:00Z",
+      body: "",
+      files: [
+        {
+          path: "test/drop.test.ts",
+          status: "M",
+          staged: false,
+          linesAdded: 1,
+          linesDeleted: 0,
+        },
+        {
+          origPath: "legacy/original.ts",
+          path: "src/keep.ts",
+          status: "R",
+          staged: false,
+          linesAdded: 1,
+          linesDeleted: 0,
+        },
+      ],
+    });
+
+    render(
+      <MemoryRouter>
+        <CommitBrowser projectId="p1" isWideScreen={true} t={t} />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("test/drop.test.ts");
+    await waitFor(() =>
+      expect(document.querySelector('[data-diff-line="0"]')).not.toBeNull(),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "sourceFilterFiles" }),
+    );
+    fireEvent.change(screen.getByPlaceholderText("sourceFilterFiles"), {
+      target: { value: "legacy" },
+    });
+
+    expect(
+      screen.getByText("legacy/original.ts → src/keep.ts"),
+    ).toBeDefined();
+    expect(screen.queryByText("test/drop.test.ts")).toBeNull();
+    await waitFor(() =>
+      expect(getGitCommitDiff).toHaveBeenCalledWith(
+        "p1",
+        expect.objectContaining({ path: "src/keep.ts" }),
+      ),
+    );
+  });
+
   it("pins the shared Working tree browser above commit history", async () => {
     primeApis();
     getGitDiff.mockResolvedValue({
@@ -900,7 +957,9 @@ describe("CommitBrowser", () => {
     await waitFor(() =>
       expect(document.querySelector('[data-diff-line="0"]')).not.toBeNull(),
     );
-    fireEvent.click(await screen.findByText("sourceBlameAtHeadShort"));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "sourceBlameAtHead" }),
+    );
     expect(onBlameFile).toHaveBeenCalledWith("src/x.ts");
   });
 

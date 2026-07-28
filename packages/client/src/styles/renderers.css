@@ -6202,42 +6202,106 @@ pre.code-highlighter-plain,
   top: 0;
   z-index: 2;
   display: flex;
-  min-height: 44px;
+  min-height: 36px;
   align-items: center;
-  gap: var(--space-2, 8px);
-  padding: 0 var(--space-3, 12px);
+  gap: 5px;
+  padding: 0 var(--space-2, 8px);
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-color);
 }
 
+.git-diff-preview-pane {
+  container-type: inline-size;
+}
+
+.git-diff-file-identity {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: baseline;
+  gap: 3px;
+}
+
 .git-diff-pane-toolbar .git-diff-preview-title {
   flex: 0 1 auto;
-  max-width: min(34%, 22rem);
+  min-width: 2ch;
+  max-width: 100%;
+  font-size: 0.74rem;
 }
 
 .git-diff-toolbar-path {
-  flex: 1;
-  min-width: 5rem;
+  min-width: 0;
+  flex: 0 1000 auto;
   overflow: hidden;
-  color: var(--text-secondary, #8b949e);
+  color: var(--text-muted);
+  direction: rtl;
   font-family: var(--font-mono, monospace);
-  font-size: 0.76rem;
+  font-size: 0.68rem;
+  text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.git-diff-pane-toolbar .diff-context-buttons {
-  flex-shrink: 0;
+.git-diff-toolbar-separator {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.68rem;
 }
 
-.git-diff-pane-toolbar .diff-context-toggle {
-  padding: 3px 8px;
-  font-size: 0.78rem;
+.git-diff-pane-toolbar .diff-context-buttons {
+  flex-shrink: 0;
+  gap: 2px;
+}
+
+.diff-toolbar-icon-button {
+  display: inline-grid;
+  width: 24px;
+  min-width: 24px;
+  height: 22px;
+  place-items: center;
+  padding: 0;
+  color: var(--text-secondary, #8b949e);
+  line-height: 1;
   white-space: nowrap;
+}
+
+.diff-toolbar-icon-button svg {
+  display: block;
+}
+
+.diff-whitespace-glyph {
+  font-family: var(--font-mono, monospace);
+  font-size: 1rem;
+  transform: translateY(-1px);
 }
 
 .git-diff-pane-toolbar .git-diff-preview-header-actions {
   margin-left: 0;
+}
+
+.git-diff-pane-toolbar
+  .git-diff-preview-header-actions
+  .source-detail-icon-action {
+  width: 24px;
+  min-width: 24px;
+  height: 22px;
+}
+
+@container (max-width: 520px) {
+  .git-diff-pane-toolbar {
+    flex-wrap: wrap;
+    row-gap: 3px;
+    padding-block: 3px;
+  }
+
+  .git-diff-file-identity {
+    flex-basis: 100%;
+  }
+
+  .git-diff-pane-toolbar .diff-context-buttons {
+    margin-left: auto;
+  }
 }
 
 .git-diff-preview-body > .source-diff-pane {
@@ -6254,7 +6318,7 @@ pre.code-highlighter-plain,
   overflow: hidden;
   color: var(--text-secondary, #8b949e);
   font-family: var(--font-mono, monospace);
-  font-size: 0.75rem;
+  font-size: 0.68rem;
   white-space: nowrap;
   background: var(--bg-primary);
   border: 1px solid var(--border-color);
@@ -6262,19 +6326,19 @@ pre.code-highlighter-plain,
 }
 
 .diff-hunk-indicator {
-  min-width: 3.4rem;
-  padding-inline: 5px;
+  min-width: 1.9rem;
+  padding-inline: 1px;
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
 
 .diff-hunk-step {
   align-self: stretch;
-  min-width: 25px;
-  padding: 1px 6px 3px;
+  min-width: 18px;
+  padding: 0 2px 2px;
   color: inherit;
   font: inherit;
-  font-size: 1rem;
+  font-size: 0.9rem;
   line-height: 1;
   background: transparent;
   border: 0;
@@ -6980,6 +7044,37 @@ pre.code-highlighter-plain,
   display: block;
 }
 
+.changeset-file-filter {
+  display: inline-flex;
+  min-width: 0;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+}
+
+.changeset-file-filter.open {
+  flex: 1 1 100%;
+  order: 20;
+}
+
+.changeset-file-filter-input {
+  min-width: 0;
+  height: 28px;
+  flex: 1;
+  padding: 3px 8px;
+  color: var(--text-primary, #e6edf3);
+  font-size: 0.78rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
+}
+
+.changeset-file-filter-input:focus {
+  border-color: var(--focus-border);
+  outline: 1px solid var(--focus-ring, var(--accent-color));
+  outline-offset: -1px;
+}
+
 .source-detail-action-text {
   display: none;
 }
@@ -7657,8 +7752,10 @@ pre.code-highlighter-plain,
   }
 
   .source-diff-context-controls .diff-context-toggle {
+    width: 36px;
+    min-width: 36px;
     min-height: 36px;
-    padding-inline: 8px;
+    padding: 0;
   }
 
   /* Touch has no hover title recovery. Let long source identities use a
@@ -7741,5 +7838,11 @@ pre.code-highlighter-plain,
 
   .source-detail-action-text {
     display: inline;
+  }
+
+  .changeset-file-filter-toggle {
+    width: 32px;
+    min-width: 32px;
+    padding-inline: 0;
   }
 }

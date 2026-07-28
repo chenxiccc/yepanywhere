@@ -862,10 +862,7 @@ function GitDiffContent({
           ‹
         </button>
         <span className="diff-hunk-indicator">
-          {t("sourceHunkPosition", {
-            current: hunkPosition.index + 1,
-            total: hunkPosition.count,
-          })}
+          {hunkPosition.index + 1}/{hunkPosition.count}
         </span>
         <button
           type="button"
@@ -885,47 +882,77 @@ function GitDiffContent({
       {onToggleIgnoreWhitespace && (
         <button
           type="button"
-          className={`diff-context-toggle diff-ignore-whitespace-toggle ${
+          className={`diff-context-toggle diff-toolbar-icon-button diff-ignore-whitespace-toggle ${
             ignoreWhitespace ? "active" : ""
           }`}
           onClick={onToggleIgnoreWhitespace}
           title={t("gitStatusIgnoreWhitespace")}
+          aria-label={t("gitStatusIgnoreWhitespace")}
           aria-pressed={ignoreWhitespace}
         >
-          {t("gitStatusIgnoreWhitespace")}
+          <span className="diff-whitespace-glyph" aria-hidden="true">
+            ␠
+          </span>
         </button>
       )}
       {hasMarkdownPreview && (
         <button
           type="button"
-          className={`diff-context-toggle ${showMarkdownPreview ? "active" : ""}`}
+          className={`diff-context-toggle diff-toolbar-icon-button ${
+            showMarkdownPreview ? "active" : ""
+          }`}
           onClick={handleToggleMarkdownPreview}
+          title={
+            showMarkdownPreview ? t("gitStatusDiff") : t("gitStatusPreview")
+          }
+          aria-label={
+            showMarkdownPreview ? t("gitStatusDiff") : t("gitStatusPreview")
+          }
+          aria-pressed={showMarkdownPreview}
         >
-          {showMarkdownPreview ? t("gitStatusDiff") : t("gitStatusPreview")}
+          <MarkdownModeIcon showDiff={showMarkdownPreview} />
         </button>
       )}
       {!showMarkdownPreview && (
         <button
           type="button"
-          className="diff-context-toggle"
+          className={`diff-context-toggle diff-toolbar-icon-button ${
+            showFullContext ? "active" : ""
+          }`}
           onClick={handleToggleContext}
           disabled={contextLoading}
+          title={
+            contextLoading
+              ? t("gitStatusLoading")
+              : showFullContext
+                ? t("gitStatusDiffOnly")
+                : t("gitStatusFullContext")
+          }
+          aria-label={
+            contextLoading
+              ? t("gitStatusLoading")
+              : showFullContext
+                ? t("gitStatusDiffOnly")
+                : t("gitStatusFullContext")
+          }
+          aria-pressed={showFullContext}
         >
-          {contextLoading
-            ? t("gitStatusLoading")
-            : showFullContext
-              ? t("gitStatusDiffOnly")
-              : t("gitStatusFullContext")}
+          <ContextModeIcon expanded={showFullContext} />
         </button>
       )}
       {!showMarkdownPreview && (
         <button
           type="button"
-          className="diff-context-toggle"
+          className="diff-context-toggle diff-toolbar-icon-button"
           onClick={cycleViewMode}
-          title={t("diffViewModeTitle")}
+          title={`${t("diffViewModeTitle")}: ${t(
+            diffViewModeLabelKey(viewMode),
+          )}`}
+          aria-label={`${t("diffViewModeTitle")}: ${t(
+            diffViewModeLabelKey(viewMode),
+          )}`}
         >
-          {t(diffViewModeLabelKey(viewMode))}
+          <DiffViewModeIcon mode={viewMode} />
         </button>
       )}
     </>
@@ -1003,21 +1030,122 @@ function DiffPaneToolbar({
   actions,
   children,
 }: DiffPaneHeader & { children?: ReactNode }) {
+  const directoryPath =
+    path && path !== title
+      ? path.endsWith(title)
+        ? path.slice(0, -title.length).replace(/\/$/, "")
+        : path
+      : "";
   return (
     <div className="git-diff-pane-toolbar">
-      <h3 className="git-diff-preview-title" title={path || title}>
-        {title}
-      </h3>
-      {path && path !== title && (
-        <span className="git-diff-toolbar-path" title={path}>
-          {path}
-        </span>
-      )}
+      <span className="git-diff-file-identity" title={path || title}>
+        {directoryPath && (
+          <>
+            <span className="git-diff-toolbar-path">{directoryPath}</span>
+            <span className="git-diff-toolbar-separator" aria-hidden="true">
+              /
+            </span>
+          </>
+        )}
+        <h3 className="git-diff-preview-title">{title}</h3>
+      </span>
       {children && <div className="diff-context-buttons">{children}</div>}
       {actions && (
         <div className="git-diff-preview-header-actions">{actions}</div>
       )}
     </div>
+  );
+}
+
+function ContextModeIcon({ expanded }: { expanded: boolean }) {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M5 12h14" />
+      {expanded ? (
+        <>
+          <path d="m8 7 4-4 4 4" />
+          <path d="m8 17 4 4 4-4" />
+        </>
+      ) : (
+        <>
+          <path d="m8 3 4 4 4-4" />
+          <path d="m8 21 4-4 4 4" />
+        </>
+      )}
+    </svg>
+  );
+}
+
+function MarkdownModeIcon({ showDiff }: { showDiff: boolean }) {
+  return showDiff ? (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m8 9-4 3 4 3M16 9l4 3-4 3M14 5l-4 14" />
+    </svg>
+  ) : (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z" />
+      <circle cx="12" cy="12" r="2.5" />
+    </svg>
+  );
+}
+
+function DiffViewModeIcon({ mode }: { mode: DiffViewMode }) {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      {mode === "side-by-side" ? (
+        <>
+          <path d="M3 7h7M14 7h7" />
+          <path d="M3 12h7M14 12h7" />
+          <path d="M3 17h7M14 17h7" />
+        </>
+      ) : (
+        <>
+          <path d="M4 7h16M4 12h16M4 17h16" />
+          {mode === "auto" && (
+            <path d="M5 4h4M5 4v3M19 20h-4M19 20v-3" />
+          )}
+        </>
+      )}
+    </svg>
   );
 }
 
