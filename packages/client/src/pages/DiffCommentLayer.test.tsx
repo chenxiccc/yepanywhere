@@ -117,6 +117,35 @@ describe("DiffCommentLayer", () => {
     expect(screen.getByRole("textbox")).toBeTruthy();
   });
 
+  it("exposes one line-action menu through pointer and keyboard paths", async () => {
+    listReviewComments.mockResolvedValue({
+      comments: [],
+      batches: [],
+      pendingCount: 0,
+    });
+    renderHarness();
+
+    const line = document.querySelector<HTMLElement>('[data-diff-line="2"]')!;
+    await waitFor(() => expect(line.tabIndex).toBe(0));
+    fireEvent.pointerMove(line, { pointerType: "mouse", clientX: 30 });
+    expect(
+      screen.getByRole("button", { name: "sourceMoreActions" }),
+    ).toBeDefined();
+
+    fireEvent.contextMenu(line, { clientX: 40, clientY: 50 });
+    expect(await screen.findByRole("menu")).toBeDefined();
+    expect(screen.getByText("sourceCommentOnLine")).toBeDefined();
+    expect(screen.getByText("sourceCopyLine")).toBeDefined();
+    expect(screen.getByText("sourceCopyPathLine")).toBeDefined();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    expect(document.activeElement).toBe(line);
+
+    fireEvent.keyDown(line, { key: "F10", shiftKey: true });
+    expect(await screen.findByRole("menu")).toBeDefined();
+  });
+
   it("Add to review posts a comment with the derived anchor", async () => {
     listReviewComments.mockResolvedValue({
       comments: [],

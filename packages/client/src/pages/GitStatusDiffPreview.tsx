@@ -983,7 +983,8 @@ const DiffLines = memo(function DiffLines({ hunks }: { hunks: PatchHunk[] }) {
           className={className}
           data-diff-line={rowIndex}
         >
-          {line}
+          <span className="diff-prefix">{prefix}</span>
+          {line.slice(1)}
         </div>,
       );
     }

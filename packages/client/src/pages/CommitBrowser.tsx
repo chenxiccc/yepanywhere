@@ -14,6 +14,13 @@ import {
 } from "react";
 import { api } from "../api/client";
 import { CopyButton } from "../components/CopyButton";
+import { ResizableSourceColumns } from "../components/ResizableSourceColumns";
+import {
+  SourceRowMenuTrigger,
+  type SourceContextMenuAction,
+  useSourceContextMenu,
+} from "../components/SourceContextMenu";
+import { SourceShortcutHelp } from "../components/SourceShortcutHelp";
 import { Modal } from "../components/ui/Modal";
 import { useCommitReadWatermark } from "../hooks/useCommitReadWatermark";
 import { useCommitSearchIndex } from "../hooks/useCommitSearchIndex";
@@ -24,6 +31,7 @@ import {
   useSourceSearchShortcut,
 } from "../hooks/useSourceKeyboard";
 import { reflowCommitMessage } from "../lib/reflowCommitMessage";
+import { writeClipboardText } from "../lib/clipboard";
 import {
   GitDiffModal,
   GitDiffPreview,
@@ -71,6 +79,8 @@ export function CommitBrowser({
   const [searchQuery, setSearchQuery] = useState("");
   const [searchIndexRequested, setSearchIndexRequested] = useState(false);
   const diffPreviewRef = useRef<GitDiffPreviewHandle>(null);
+  const revisionMenu = useSourceContextMenu(t);
+  const fileMenu = useSourceContextMenu(t);
   const searchActive = searchQuery.trim().length > 0;
   const searchIndex = useCommitSearchIndex(
     projectId,
@@ -84,8 +94,7 @@ export function CommitBrowser({
   const hasWorkingTree = status?.isClean === false;
   // If a live refresh cleans the tree while its comment editor is open, keep
   // the selected revision mounted. Navigating away removes the now-clean row.
-  const showWorkingTreeRevision =
-    hasWorkingTree || selectedIsWorkingTree;
+  const showWorkingTreeRevision = hasWorkingTree || selectedIsWorkingTree;
   const displayedKeys = useMemo(
     () => [
       ...(showWorkingTreeRevision ? [WORKING_TREE_KEY] : []),
@@ -266,6 +275,105 @@ export function CommitBrowser({
     ? displayedCommits.find((commit) => commit.hash === selectedSha)
     : undefined;
 
+  const openRevision = useCallback(
+    (key: string) => {
+      if (!isWideScreen) {
+        const scroller = browserRef.current?.closest<HTMLElement>(
+          ".page-scroll-container",
+        );
+        mobileListScrollTopRef.current = scroller?.scrollTop ?? 0;
+      }
+      setSelectedKey(key);
+    },
+    [isWideScreen],
+  );
+
+  const revisionMenuActions = useCallback(
+    (key: string, commit?: GitRecentCommit): SourceContextMenuAction[] => {
+      const index = displayedKeys.indexOf(key);
+      const newer = index > 0 ? displayedKeys[index - 1] : undefined;
+      const older =
+        index >= 0 && index < displayedKeys.length - 1
+          ? displayedKeys[index + 1]
+          : undefined;
+      if (!commit) {
+        return [
+          {
+            label: t("sourceCopyRevisionLabel"),
+            onSelect: () => {
+              void writeClipboardText(t("sourceWorkingTree"));
+            },
+          },
+          {
+            label: t("sourceNewerCommit"),
+            disabled: !newer,
+            onSelect: () => newer && openRevision(newer),
+          },
+          {
+            label: t("sourceOlderCommit"),
+            disabled: !older,
+            onSelect: () => older && openRevision(older),
+          },
+        ];
+      }
+      return [
+        {
+          label: t("sourceCopyCommitHash"),
+          onSelect: () => {
+            void writeClipboardText(commit.hash);
+          },
+        },
+        {
+          label: t("sourceCopyCommitSubject"),
+          onSelect: () => {
+            void writeClipboardText(commit.subject);
+          },
+        },
+        {
+          label: t("sourceMarkReadToHere"),
+          separatorBefore: true,
+          onSelect: () => readState.markReadTo(commit.authorDate),
+        },
+        {
+          label: t("sourceMarkUnreadSinceHere"),
+          onSelect: () => readState.markUnreadSince(commit.authorDate),
+        },
+        {
+          label: t("sourceNewerCommit"),
+          separatorBefore: true,
+          disabled: !newer,
+          onSelect: () => newer && openRevision(newer),
+        },
+        {
+          label: t("sourceOlderCommit"),
+          disabled: !older,
+          onSelect: () => older && openRevision(older),
+        },
+      ];
+    },
+    [displayedKeys, openRevision, readState, t],
+  );
+
+  const fileMenuActions = useCallback(
+    (file: GitFileChange): SourceContextMenuAction[] => [
+      {
+        label: t("sourceCopyPath"),
+        onSelect: () => {
+          void writeClipboardText(file.path);
+        },
+      },
+      ...(onBlameFile
+        ? [
+            {
+              label: t("sourceBlameAtHead"),
+              onSelect: () => onBlameFile(file.path),
+            },
+          ]
+        : []),
+    ],
+    [onBlameFile, t],
+  );
+
   // Selected-file actions, shown in the diff pane header (the file banner)
   // instead of on every hovered row.
   const fileActions = selectedFile ? (
@@ -297,19 +405,6 @@ export function CommitBrowser({
   useMobileCommitDetailHistory(
     !isWideScreen && selectedKey !== null,
     closeMobileDetail,
-  );
-
-  const openRevision = useCallback(
-    (key: string) => {
-      if (!isWideScreen) {
-        const scroller = browserRef.current?.closest<HTMLElement>(
-          ".page-scroll-container",
-        );
-        mobileListScrollTopRef.current = scroller?.scrollTop ?? 0;
-      }
-      setSelectedKey(key);
-    },
-    [isWideScreen],
   );
 
   const handleMobileBack = useCallback(() => {
@@ -374,7 +469,11 @@ export function CommitBrowser({
 
   return (
     <div className="commit-browser" ref={browserRef}>
-      <div className="commit-browser-columns">
+      <ResizableSourceColumns
+        layout="history"
+        className="commit-browser-columns"
+        t={t}
+      >
         {(isWideScreen || !selectedKey) && (
           <div className="commit-list-column">
             <div className="source-search-field">
@@ -397,9 +496,8 @@ export function CommitBrowser({
                   setSearchQuery(event.target.value);
                 }}
               />
-              <kbd className="source-search-shortcut">
-                /
-              </kbd>
+              <kbd className="source-search-shortcut">/</kbd>
+              <SourceShortcutHelp t={t} />
             </div>
             {searchIndexRequested && searchIndex.indexing && (
               <div className="source-search-index-status">
@@ -424,17 +522,13 @@ export function CommitBrowser({
               searchIndex.error &&
               !showWorkingTreeRevision ? (
               <div className="git-diff-error">{searchIndex.error}</div>
-            ) : displayedCommits.length === 0 &&
-              !showWorkingTreeRevision ? (
+            ) : displayedCommits.length === 0 && !showWorkingTreeRevision ? (
               <div className="git-status-empty">
                 {searchActive ? t("sourceNoMatches") : t("sourceNoCommits")}
               </div>
             ) : (
               <>
-                <ol
-                  className="commit-list"
-                  onKeyDown={handleSourceListKeyDown}
-                >
+                <ol className="commit-list" onKeyDown={handleSourceListKeyDown}>
                   {showWorkingTreeRevision && (
                     <li className="commit-list-row commit-list-working-tree">
                       <button
@@ -446,7 +540,10 @@ export function CommitBrowser({
                         onFocus={() => {
                           if (isWideScreen) setSelectedKey(WORKING_TREE_KEY);
                         }}
-                        onClick={() => openRevision(WORKING_TREE_KEY)}
+                        {...revisionMenu.targetProps(
+                          revisionMenuActions(WORKING_TREE_KEY),
+                          () => openRevision(WORKING_TREE_KEY),
+                        )}
                       >
                         <span className="commit-subject-row">
                           <span className="commit-subject">
@@ -470,20 +567,28 @@ export function CommitBrowser({
                           <span>
                             {t("sourceChangedFileCount", {
                               count: status
-                                ? new Set(
-                                    status.files.map((file) => file.path),
-                                  ).size
+                                ? new Set(status.files.map((file) => file.path))
+                                    .size
                                 : 0,
                             })}
                           </span>
                         </span>
                       </button>
+                      <SourceRowMenuTrigger
+                        actions={revisionMenuActions(WORKING_TREE_KEY)}
+                        label={t("sourceMoreActions")}
+                        onOpen={revisionMenu.openFromButton}
+                      />
                     </li>
                   )}
                   {displayedCommits.map((commit) => {
                     const commentCount =
                       commentCountBySha.get(commit.hash) ?? 0;
                     const read = readState.isRead(commit.authorDate);
+                    const menuActions = revisionMenuActions(
+                      commit.hash,
+                      commit,
+                    );
                     return (
                       <li key={commit.hash} className="commit-list-row">
                         <button
@@ -495,7 +600,9 @@ export function CommitBrowser({
                           onFocus={() => {
                             if (isWideScreen) setSelectedKey(commit.hash);
                           }}
-                          onClick={() => openRevision(commit.hash)}
+                          {...revisionMenu.targetProps(menuActions, () =>
+                            openRevision(commit.hash),
+                          )}
                         >
                           <span className="commit-subject-row">
                             <span
@@ -527,13 +634,16 @@ export function CommitBrowser({
                             </span>
                           </span>
                         </button>
+                        <SourceRowMenuTrigger
+                          actions={menuActions}
+                          label={t("sourceMoreActions")}
+                          onOpen={revisionMenu.openFromButton}
+                        />
                       </li>
                     );
                   })}
                 </ol>
-                {listError && (
-                  <div className="git-diff-error">{listError}</div>
-                )}
+                {listError && <div className="git-diff-error">{listError}</div>}
                 {hasMore && !searchActive && (
                   <button
                     type="button"
@@ -671,6 +781,7 @@ export function CommitBrowser({
                   {selectedFiles.map((file) => {
                     const count = fileCommentCount.get(file.path) ?? 0;
                     const isFolder = file.path.endsWith("/");
+                    const menuActions = fileMenuActions(file);
                     return (
                       <li key={file.path} className="commit-file-row">
                         <button
@@ -686,7 +797,7 @@ export function CommitBrowser({
                               setMessageView(false);
                             }
                           }}
-                          onClick={() => {
+                          {...fileMenu.targetProps(menuActions, () => {
                             if (isFolder) return;
                             if (
                               selectedPath === file.path &&
@@ -697,7 +808,7 @@ export function CommitBrowser({
                             }
                             setSelectedPath(file.path);
                             setMessageView(false);
-                          }}
+                          })}
                         >
                           <span
                             className={`git-status-badge git-status-${file.status.toLowerCase()}`}
@@ -740,6 +851,13 @@ export function CommitBrowser({
                             </span>
                           )}
                         </button>
+                        {!isFolder && (
+                          <SourceRowMenuTrigger
+                            actions={menuActions}
+                            label={t("sourceMoreActions")}
+                            onOpen={fileMenu.openFromButton}
+                          />
+                        )}
                       </li>
                     );
                   })}
@@ -763,7 +881,9 @@ export function CommitBrowser({
               t={t}
             />
           ) : null)}
-      </div>
+      </ResizableSourceColumns>
+      {revisionMenu.menu}
+      {fileMenu.menu}
 
       {!isWideScreen && messageView && detail && (
         <Modal
@@ -818,7 +938,9 @@ function RevisionJump({
         <span className="commit-jump-glyph" aria-hidden="true">
           ↑
         </span>
-        <span className="commit-jump-touch-label">{t("sourceNewerCommit")}</span>
+        <span className="commit-jump-touch-label">
+          {t("sourceNewerCommit")}
+        </span>
       </button>
       <button
         type="button"
@@ -831,7 +953,9 @@ function RevisionJump({
         <span className="commit-jump-glyph" aria-hidden="true">
           ↓
         </span>
-        <span className="commit-jump-touch-label">{t("sourceOlderCommit")}</span>
+        <span className="commit-jump-touch-label">
+          {t("sourceOlderCommit")}
+        </span>
       </button>
     </span>
   );

@@ -1,5 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
+import { ResizableSourceColumns } from "../components/ResizableSourceColumns";
+import {
+  SourceRowMenuTrigger,
+  type SourceContextMenuAction,
+  useSourceContextMenu,
+} from "../components/SourceContextMenu";
 import { Modal } from "../components/ui/Modal";
 import { useProjectReviewComments } from "../hooks/useProjectReviewComments";
 import {
@@ -7,6 +13,7 @@ import {
   useSourceSearchShortcut,
 } from "../hooks/useSourceKeyboard";
 import { FileSearchIndex } from "../lib/fileSearchIndex";
+import { writeClipboardText } from "../lib/clipboard";
 import { BlameView } from "./BlameView";
 import type { TranslationFn } from "../i18n";
 
@@ -36,6 +43,7 @@ export function BlameBrowser({
     initialPath ?? null,
   );
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const fileMenu = useSourceContextMenu(t);
   useSourceSearchShortcut(searchInputRef);
   const { pending } = useProjectReviewComments(projectId);
   const pathCommentCount = useMemo(() => {
@@ -87,9 +95,30 @@ export function BlameBrowser({
     );
   }, [error, filtered, isWideScreen, loading]);
 
+  const fileMenuActions = useCallback(
+    (file: string): SourceContextMenuAction[] => [
+      {
+        label: t("sourceOpenFile"),
+        onSelect: () => setSelectedPath(file),
+      },
+      {
+        label: t("sourceCopyPath"),
+        onSelect: () => {
+          void writeClipboardText(file);
+        },
+      },
+    ],
+    [t],
+  );
+
   return (
     <div className="blame-browser">
-      <div className="blame-browser-columns">
+      <ResizableSourceColumns
+        layout="files"
+        initialFilesWidth={340}
+        className="blame-browser-columns"
+        t={t}
+      >
         <div className="blame-file-column">
           <div className="source-search-field">
             <input
@@ -107,9 +136,7 @@ export function BlameBrowser({
               }}
               onChange={(event) => setQuery(event.target.value)}
             />
-            <kbd className="source-search-shortcut">
-              /
-            </kbd>
+            <kbd className="source-search-shortcut">/</kbd>
           </div>
           {loading ? (
             <div className="git-diff-loading">{t("gitStatusLoading")}</div>
@@ -118,12 +145,10 @@ export function BlameBrowser({
           ) : filtered.length === 0 ? (
             <div className="git-status-empty">{t("sourceNoFiles")}</div>
           ) : (
-            <ul
-              className="blame-file-list"
-              onKeyDown={handleSourceListKeyDown}
-            >
+            <ul className="blame-file-list" onKeyDown={handleSourceListKeyDown}>
               {filtered.map((file) => {
                 const count = pathCommentCount.get(file) ?? 0;
+                const menuActions = fileMenuActions(file);
                 return (
                   <li key={file} className="commit-file-row">
                     <button
@@ -135,7 +160,9 @@ export function BlameBrowser({
                       onFocus={() => {
                         if (isWideScreen) setSelectedPath(file);
                       }}
-                      onClick={() => setSelectedPath(file)}
+                      {...fileMenu.targetProps(menuActions, () => {
+                        setSelectedPath(file);
+                      })}
                     >
                       <span className="git-file-path" title={file}>
                         {file}
@@ -149,6 +176,11 @@ export function BlameBrowser({
                         </span>
                       )}
                     </button>
+                    <SourceRowMenuTrigger
+                      actions={menuActions}
+                      label={t("sourceMoreActions")}
+                      onOpen={fileMenu.openFromButton}
+                    />
                   </li>
                 );
               })}
@@ -159,7 +191,8 @@ export function BlameBrowser({
         {isWideScreen && selectedPath && (
           <BlameView projectId={projectId} path={selectedPath} t={t} />
         )}
-      </div>
+      </ResizableSourceColumns>
+      {fileMenu.menu}
 
       {!isWideScreen && selectedPath && (
         <Modal

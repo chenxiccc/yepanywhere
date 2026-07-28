@@ -26,7 +26,7 @@ export function handleSourceListKeyDown(
   if (items.length === 0) return;
 
   const focused = document.activeElement;
-  const currentIndex = items.findIndex((item) => item === focused);
+  const currentIndex = items.indexOf(focused as HTMLButtonElement);
   const direction = event.key === "ArrowDown" ? 1 : -1;
   const nextIndex =
     currentIndex < 0

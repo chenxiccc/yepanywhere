@@ -13,8 +13,15 @@ import {
 } from "react";
 import { api } from "../api/client";
 import { CopyButton } from "../components/CopyButton";
+import { ResizableSourceColumns } from "../components/ResizableSourceColumns";
+import {
+  SourceRowMenuTrigger,
+  type SourceContextMenuAction,
+  useSourceContextMenu,
+} from "../components/SourceContextMenu";
 import { useProjectReviewComments } from "../hooks/useProjectReviewComments";
 import { handleSourceListKeyDown } from "../hooks/useSourceKeyboard";
+import { writeClipboardText } from "../lib/clipboard";
 import type { MessageKey, TranslationFn } from "../i18n";
 import {
   GitDiffModal,
@@ -70,6 +77,7 @@ export function WorkingTreeBrowser({
   >(null);
   const retainedFileRef = useRef<WorktreeFileChange | null>(null);
   const diffPreviewRef = useRef<GitDiffPreviewHandle>(null);
+  const fileMenu = useSourceContextMenu(t);
   const { pending } = useProjectReviewComments(projectId);
 
   const untrackedFolderKey = useMemo(
@@ -149,11 +157,7 @@ export function WorkingTreeBrowser({
   // Apply an Edit-block link once. Later status polls may update the diff, but
   // closing the phone modal must not force it open again.
   useEffect(() => {
-    if (
-      !shouldApplyWorkingTreeLink ||
-      !workingTreeLinkToken ||
-      !linkedFile
-    ) {
+    if (!shouldApplyWorkingTreeLink || !workingTreeLinkToken || !linkedFile) {
       return;
     }
     setAppliedWorkingTreeLink(workingTreeLinkToken);
@@ -206,6 +210,26 @@ export function WorkingTreeBrowser({
     [isWideScreen, selectedPath],
   );
 
+  const fileMenuActions = useCallback(
+    (file: WorktreeFileChange): SourceContextMenuAction[] => [
+      {
+        label: t("sourceCopyPath"),
+        onSelect: () => {
+          void writeClipboardText(file.path);
+        },
+      },
+      ...(onBlameFile
+        ? [
+            {
+              label: t("sourceBlameAtHead"),
+              onSelect: () => onBlameFile(file.path),
+            },
+          ]
+        : []),
+    ],
+    [onBlameFile, t],
+  );
+
   const fileActions = selectedFile ? (
     <>
       <CopyButton
@@ -254,7 +278,12 @@ export function WorkingTreeBrowser({
   return (
     <div className={rootClassName} data-testid="working-tree-browser">
       {backToRevisions}
-      <div className="working-tree-browser-columns">
+      <ResizableSourceColumns
+        layout="files"
+        enabled={!embeddedInHistory}
+        className="working-tree-browser-columns"
+        t={t}
+      >
         <div className="commit-files-column working-tree-files-column">
           <div className="source-detail-banner">
             {revisionNavigation}
@@ -294,13 +323,11 @@ export function WorkingTreeBrowser({
               </>
             )}
           </div>
-          <ul
-            className="commit-file-list"
-            onKeyDown={handleSourceListKeyDown}
-          >
+          <ul className="commit-file-list" onKeyDown={handleSourceListKeyDown}>
             {files.map((file) => {
               const count = fileCommentCount.get(file.path) ?? 0;
               const isFolder = file.path.endsWith("/");
+              const menuActions = fileMenuActions(file);
               return (
                 <li key={file.path} className="commit-file-row">
                   <button
@@ -315,7 +342,9 @@ export function WorkingTreeBrowser({
                         setSelectedPath(file.path);
                       }
                     }}
-                    onClick={() => handleFileClick(file)}
+                    {...fileMenu.targetProps(menuActions, () => {
+                      handleFileClick(file);
+                    })}
                   >
                     <span
                       className={`git-status-badge git-status-${file.status.toLowerCase()}`}
@@ -354,6 +383,13 @@ export function WorkingTreeBrowser({
                       </span>
                     )}
                   </button>
+                  {!isFolder && (
+                    <SourceRowMenuTrigger
+                      actions={menuActions}
+                      label={t("sourceMoreActions")}
+                      onOpen={fileMenu.openFromButton}
+                    />
+                  )}
                 </li>
               );
             })}
@@ -372,7 +408,8 @@ export function WorkingTreeBrowser({
             t={t}
           />
         )}
-      </div>
+      </ResizableSourceColumns>
+      {fileMenu.menu}
 
       {!isWideScreen && selectedFile && (
         <GitDiffModal

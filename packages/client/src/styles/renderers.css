@@ -6094,6 +6094,88 @@ pre.code-highlighter-plain,
   font-size: var(--fixed-font-size-sm);
 }
 
+/* The sign is an authored gutter, not the first monospace character. Keep its
+   intense-color band stable, center the glyph optically inside that band, and
+   reserve separate breathing room between the color divide and source text. */
+.source-diff-pane {
+  --source-diff-gutter-width: 1.25rem;
+  --source-diff-line-inline-inset: 0.5rem;
+  --source-diff-gutter-content-gap: 0.375rem;
+  --source-diff-glyph-optical-shift: -0.1rem;
+}
+
+.source-diff-pane .highlighted-diff .line,
+.source-diff-pane .diff-content > div {
+  padding-inline: var(--source-diff-line-inline-inset);
+}
+
+.source-diff-pane .highlighted-diff .line-deleted,
+.source-diff-pane .diff-removed {
+  background:
+    linear-gradient(
+      to right,
+      var(--bg-diff-gutter-removed, rgba(207, 34, 46, 0.26)) 0
+        var(--source-diff-gutter-width),
+      transparent var(--source-diff-gutter-width)
+    ),
+    var(--bg-diff-removed, rgba(207, 34, 46, 0.15)) !important;
+}
+
+.source-diff-pane .highlighted-diff .line-inserted,
+.source-diff-pane .diff-added {
+  background:
+    linear-gradient(
+      to right,
+      var(--bg-diff-gutter-added, rgba(26, 127, 55, 0.26)) 0
+        var(--source-diff-gutter-width),
+      transparent var(--source-diff-gutter-width)
+    ),
+    var(--bg-diff-added, rgba(26, 127, 55, 0.15)) !important;
+}
+
+.source-diff-pane .diff-prefix {
+  position: relative;
+  left: var(--source-diff-glyph-optical-shift);
+  display: inline-block;
+  width: calc(
+    var(--source-diff-gutter-width) -
+    var(--source-diff-line-inline-inset) +
+    var(--source-diff-gutter-content-gap)
+  );
+  user-select: none;
+}
+
+.source-diff-line-menu-trigger {
+  position: absolute;
+  z-index: 3;
+  right: 6px;
+  display: grid;
+  width: 26px;
+  height: 20px;
+  place-items: center;
+  padding: 0;
+  color: var(--text-secondary, #8b949e);
+  line-height: 1;
+  background: color-mix(in srgb, var(--bg-surface) 92%, transparent);
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.22);
+  cursor: pointer;
+}
+
+.source-diff-line-menu-trigger:hover,
+.source-diff-line-menu-trigger:focus-visible {
+  color: var(--text-primary, #e6edf3);
+  background: var(--bg-hover);
+  border-color: var(--accent-color);
+  outline: none;
+}
+
+.source-diff-pane [data-diff-line]:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--accent-color));
+  outline-offset: -2px;
+}
+
 /* The source browser's pane toolbar owns file identity, hunk navigation,
    view controls, and file actions in one row. It stays inside the scroll
    frame so it can remain sticky without spending a second content row. */
@@ -6500,15 +6582,21 @@ pre.code-highlighter-plain,
 
 /* Commit browser: commits · files · diff. */
 .commit-browser-columns {
+  position: relative;
   display: grid;
   grid-template-columns: 1fr;
   gap: var(--space-3, 12px);
 }
 
 .working-tree-browser-columns {
+  position: relative;
   display: grid;
   grid-template-columns: 1fr;
   gap: var(--space-3, 12px);
+}
+
+.source-pane-splitter {
+  display: none;
 }
 
 @media (min-width: 1100px) {
@@ -6517,7 +6605,8 @@ pre.code-highlighter-plain,
      ultra-wide viewport; leftover width stays as gutter, not stretched tracks. */
   .commit-browser-columns {
     grid-template-columns:
-      minmax(240px, 300px) minmax(220px, 340px)
+      var(--source-revision-column-width, 300px)
+      var(--source-files-column-width, 340px)
       minmax(0, var(--content-max-width));
     justify-content: start;
     align-items: start;
@@ -6532,7 +6621,7 @@ pre.code-highlighter-plain,
 
   .working-tree-browser-columns {
     grid-template-columns:
-      minmax(260px, 380px)
+      var(--source-files-column-width, 380px)
       minmax(0, var(--content-max-width));
     justify-content: start;
     align-items: start;
@@ -6547,6 +6636,94 @@ pre.code-highlighter-plain,
     display: contents;
   }
 
+  .source-pane-splitter {
+    position: absolute;
+    z-index: 4;
+    top: 0;
+    bottom: 0;
+    display: block;
+    width: 1px;
+    pointer-events: none;
+  }
+
+  .source-pane-splitter-revisions {
+    left: calc(var(--source-revision-column-width, 300px) + 6px);
+  }
+
+  .source-pane-splitter-files {
+    left: calc(var(--source-files-column-width, 380px) + 6px);
+  }
+
+  .commit-browser-columns > .source-pane-splitter-files {
+    left: calc(
+      var(--source-revision-column-width, 300px) +
+      var(--source-files-column-width, 340px) +
+      18px
+    );
+  }
+
+  .source-pane-splitter-guide {
+    position: absolute;
+    inset: 0;
+    width: 1px;
+    background: var(--accent-color);
+    opacity: 0;
+    transition: opacity 120ms ease;
+  }
+
+  .source-pane-splitter:hover .source-pane-splitter-guide,
+  .source-pane-splitter:focus-within .source-pane-splitter-guide,
+  .source-pane-splitter.dragging .source-pane-splitter-guide {
+    opacity: 0.42;
+  }
+
+  .source-pane-splitter.dragging .source-pane-splitter-guide {
+    opacity: 0.85;
+  }
+
+  .source-pane-splitter-handle {
+    position: absolute;
+    left: 50%;
+    display: grid;
+    width: 26px;
+    height: 18px;
+    place-items: center;
+    padding: 0;
+    color: var(--text-muted);
+    font-family: var(--font-mono, monospace);
+    font-size: 0.72rem;
+    line-height: 1;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-subtle, #21262d);
+    border-radius: 5px;
+    cursor: col-resize;
+    pointer-events: auto;
+    touch-action: none;
+    transform: translateX(-50%);
+  }
+
+  .source-pane-splitter-handle.top {
+    top: 3px;
+  }
+
+  .source-pane-splitter-handle.bottom {
+    bottom: 3px;
+  }
+
+  .source-pane-splitter-handle:hover,
+  .source-pane-splitter-handle:focus-visible,
+  .source-pane-splitter.dragging .source-pane-splitter-handle {
+    color: var(--text-primary, #e6edf3);
+    background: var(--bg-hover, rgba(255, 255, 255, 0.08));
+    border-color: var(--accent-color);
+    outline: none;
+  }
+}
+
+.source-pane-resizing,
+.source-pane-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
 }
 
 .commit-list {
@@ -6562,8 +6739,92 @@ pre.code-highlighter-plain,
   gap: 2px;
 }
 
-/* Per-item actions live in a detail-pane banner (for the selected commit or
-   file), not hover-revealed buttons in an otherwise-empty row gutter. */
+.source-row-menu-trigger {
+  flex: 0 0 28px;
+  align-self: stretch;
+  min-height: 28px;
+  padding: 0;
+  color: var(--text-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.commit-list-row:hover > .source-row-menu-trigger,
+.commit-file-row:hover > .source-row-menu-trigger,
+.commit-list-row:focus-within > .source-row-menu-trigger,
+.commit-file-row:focus-within > .source-row-menu-trigger,
+.source-row-menu-trigger:focus-visible {
+  opacity: 1;
+}
+
+.source-row-menu-trigger:hover,
+.source-row-menu-trigger:focus-visible {
+  color: var(--text-primary, #e6edf3);
+  background: var(--bg-hover, rgba(255, 255, 255, 0.08));
+  outline: 2px solid var(--focus-ring, var(--accent-color));
+  outline-offset: -2px;
+}
+
+.source-context-menu-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  cursor: default;
+}
+
+.source-context-menu {
+  position: fixed;
+  z-index: 9999;
+  display: flex;
+  min-width: 216px;
+  max-width: min(280px, calc(100vw - 16px));
+  flex-direction: column;
+  padding: var(--space-1, 4px);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md, 8px);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.34);
+}
+
+.source-context-menu button {
+  min-height: 32px;
+  padding: 0.4rem 0.6rem;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+}
+
+.source-context-menu button.separator-before {
+  margin-top: 4px;
+  border-top: 1px solid var(--border-subtle, #21262d);
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.source-context-menu button:hover:not(:disabled),
+.source-context-menu button:focus-visible {
+  background: var(--bg-hover);
+  outline: none;
+}
+
+.source-context-menu button:disabled {
+  color: var(--text-muted);
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* Primary quick actions stay in the selected item's detail-pane banner; the
+   row ellipsis is a compact disclosure for the full shared action menu. */
 .source-detail-banner {
   display: flex;
   flex-wrap: wrap;
@@ -6957,6 +7218,7 @@ pre.code-highlighter-plain,
 
 /* All-files blame browser. */
 .blame-browser-columns {
+  position: relative;
   display: grid;
   grid-template-columns: 1fr;
   gap: var(--space-3, 12px);
@@ -6966,7 +7228,7 @@ pre.code-highlighter-plain,
   /* Blame view column caps at the content-width preference (see commit browser
      note); the file column is already narrower than any sane cap. */
   .blame-browser-columns {
-    grid-template-columns: minmax(240px, 340px) minmax(
+    grid-template-columns: var(--source-files-column-width, 340px) minmax(
         0,
         var(--content-max-width)
       );
@@ -6983,7 +7245,7 @@ pre.code-highlighter-plain,
 .source-search-input {
   width: 100%;
   margin-bottom: var(--space-2, 8px);
-  padding: 5px 32px 5px 10px;
+  padding: 5px 58px 5px 10px;
   font-size: 0.85rem;
   color: var(--text-primary, #e6edf3);
   background: var(--bg-secondary);
@@ -6998,7 +7260,7 @@ pre.code-highlighter-plain,
 .source-search-shortcut {
   position: absolute;
   top: 5px;
-  right: 8px;
+  right: 34px;
   min-width: 18px;
   padding: 1px 4px;
   color: var(--text-muted);
@@ -7019,6 +7281,73 @@ pre.code-highlighter-plain,
 
 .source-search-input:not(:placeholder-shown) + .source-search-shortcut {
   display: none;
+}
+
+.source-shortcut-help {
+  position: absolute;
+  z-index: 5;
+  top: 4px;
+  right: 6px;
+}
+
+.source-shortcut-help-trigger {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  padding: 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle, #21262d);
+  border-radius: 50%;
+  cursor: help;
+}
+
+.source-shortcut-help-trigger:hover,
+.source-shortcut-help-trigger:focus-visible,
+.source-shortcut-help-trigger[aria-expanded="true"] {
+  color: var(--text-primary, #e6edf3);
+  border-color: var(--accent-color);
+  outline: none;
+}
+
+.source-shortcut-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  display: grid;
+  width: max-content;
+  min-width: 210px;
+  padding: 8px;
+  color: var(--text-secondary, #8b949e);
+  font-size: 0.75rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md, 8px);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.34);
+}
+
+.source-shortcut-popover-title {
+  margin: 0 4px 5px;
+  color: var(--text-primary, #e6edf3);
+  font-weight: 600;
+}
+
+.source-shortcut-row {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 4px;
+}
+
+.source-shortcut-row kbd {
+  color: var(--text-primary, #e6edf3);
+  font: inherit;
+  font-family: var(--font-mono, monospace);
+  text-align: right;
 }
 
 .source-search-index-status {
@@ -7204,8 +7533,19 @@ pre.code-highlighter-plain,
     border-bottom: 1px solid var(--border-subtle, #21262d);
   }
 
+  .source-row-menu-trigger {
+    flex-basis: 36px;
+    opacity: 1;
+  }
+
   .source-search-input {
     min-height: 40px;
+    padding-right: 10px;
+  }
+
+  .source-search-shortcut,
+  .source-shortcut-help {
+    display: none;
   }
 
   .source-detail-banner .source-detail-identity {

@@ -70,6 +70,23 @@ describe("BlameBrowser", () => {
         .querySelector(".blame-file-item.selected")
         ?.textContent?.includes("src/first.ts"),
     ).toBe(true);
+
+    const row = document.querySelector<HTMLButtonElement>(
+      ".blame-file-item.selected",
+    )!;
+    fireEvent.contextMenu(row, { clientX: 32, clientY: 40 });
+    expect(await screen.findByRole("menu")).toBeDefined();
+    expect(
+      screen.getByRole("menuitem", { name: "sourceOpenFile" }),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("menuitem", { name: "sourceCopyPath" }),
+    ).toBeDefined();
+    expect(
+      screen.getAllByRole("separator", {
+        name: "sourceResizeFilePane",
+      }),
+    ).toHaveLength(2);
   });
 
   it("finds a tracked file beyond the old 500-row rendering limit", async () => {

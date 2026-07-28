@@ -269,6 +269,64 @@ describe("CommitBrowser", () => {
     );
   });
 
+  it("opens revision actions by context key or right-click", async () => {
+    primeApis();
+    render(
+      <MemoryRouter>
+        <CommitBrowser projectId="p1" isWideScreen={true} t={t} />
+      </MemoryRouter>,
+    );
+
+    const row = (await screen.findByText("first commit")).closest("button")!;
+    const shortcutHelp = screen.getByRole("button", {
+      name: "sourceShortcutHelp",
+    });
+    fireEvent.click(shortcutHelp);
+    expect((await screen.findByRole("tooltip")).textContent).toContain(
+      "sourceShortcutSearch",
+    );
+    fireEvent.click(shortcutHelp);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+
+    fireEvent.contextMenu(row, { clientX: 40, clientY: 50 });
+    expect(await screen.findByRole("menu")).toBeDefined();
+    expect(screen.getByText("sourceCopyCommitSubject")).toBeDefined();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    expect(document.activeElement).toBe(row);
+
+    fireEvent.keyDown(row, { key: "F10", shiftKey: true });
+    expect(await screen.findByRole("menu")).toBeDefined();
+    expect(
+      screen.getByRole("menuitem", { name: "sourceMarkReadToHere" }),
+    ).toBeDefined();
+  });
+
+  it("resizes the revision pane from either edge handle by keyboard", async () => {
+    primeApis();
+    render(
+      <MemoryRouter>
+        <CommitBrowser projectId="p1" isWideScreen={true} t={t} />
+      </MemoryRouter>,
+    );
+    await screen.findByText("first commit");
+    await screen.findByText("src/x.ts");
+
+    const handles = screen.getAllByRole("separator", {
+      name: "sourceResizeRevisionPane",
+    });
+    expect(handles).toHaveLength(2);
+    expect(handles[0]?.getAttribute("aria-valuenow")).toBe("300");
+    act(() => {
+      fireEvent.keyDown(handles[0]!, { key: "ArrowRight" });
+    });
+    await waitFor(() => {
+      expect(handles[0]?.getAttribute("aria-valuenow")).toBe("316");
+      expect(handles[1]?.getAttribute("aria-valuenow")).toBe("316");
+    });
+  });
+
   it("focuses commit search with slash", async () => {
     primeApis();
     const focusHead = "f".repeat(40);

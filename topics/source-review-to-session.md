@@ -22,7 +22,10 @@ mode. The pending set is browsable as a **Comments mode tab** (list, delete,
 jump-to-blame, submit) beside changes/commits/files. The first GitHub
 Desktop-inspired review-navigation slice is implemented (2026-07-27): Commits
 includes a shared dirty Working tree revision, source lists support keyboard
-traversal/search, and diff hunk navigation is symmetric. Design owner: graehl.
+traversal/search, and diff hunk navigation is symmetric. The follow-up
+refinement (2026-07-28) adds one accessible action-menu contract across
+revisions, files, and diff lines; a compact shortcut card; and edge-only,
+keyboard-accessible desktop pane splitters. Design owner: graehl.
 
 Related topics: [selection-comment-ui](selection-comment-ui.md) (the
 quote-comment ancestor — but see the gesture difference below),
@@ -413,12 +416,14 @@ review. Each is a spec a reviewer can verify; the status marker cites the
 landing commit, or "pending" for a spec built out here but not yet
 implemented.
 
-### Rows inform; the detail pane acts
+### Rows identify; detail banners act; ellipses disclose
 
-Per-item actions do **not** hide in a hover-revealed row gutter (the rejected
-first cut — it wasted the row's space and hid controls until mouseover). List
-rows carry only always-visible *information* (comment-count badge, read/unread
-weight); *actions* route through the selected item's detail-pane banner.
+List rows reserve their main area for always-visible identity and state
+(subject/path, comment-count badge, read/unread weight). Primary quick actions
+route through the selected item's detail-pane banner. A compact trailing
+ellipsis may reveal the full shared action menu on row hover/focus and remains
+visible on touch layouts; it does not reserve a wide action gutter or duplicate
+the banner's quick-action treatment.
 Selecting a row is the click already made to see its diff/detail, so actions
 cost no extra affordance. — Done (6ecdd938).
 
@@ -557,18 +562,22 @@ shared where their owning surface is shared; the rest stay proposals:
    use is never required. — Implemented 2026-07-27.
 3. **One accessible context menu:** right-click, long-press, the visible
    ellipsis, and Shift+F10/Menu all open the same read-only menu specified
-   below. — Pending; a partial row-only menu would split one action model
-   across revisions, files, and diff lines.
+   below. — Implemented 2026-07-28 across revisions, working-tree/commit/blame
+   file rows, and diff lines. Menu focus starts on the first action; arrow,
+   Home/End, and Escape navigation work uniformly.
 4. **Diff review controls:** retain Unified/Split and full context; consider
    “ignore whitespace” and incremental context expansion before adding more
    permanent toolbar chrome. — Existing controls retained; new projections
    pending. GitHub Desktop exposes these same review
    projections in its
    [change-review guide](https://docs.github.com/en/desktop/making-changes-in-a-branch/committing-and-reviewing-changes-to-your-project-in-github-desktop).
-5. **Focused-pane expansion before freeform layout controls:** a temporary
-   expand/collapse action can use the otherwise idle desktop gutter while
-   preserving the deliberate per-column content-width cap. Draggable splitters
-   are a later evidence-led choice, not part of the modest pass. — Pending.
+5. **Edge-only pane splitters:** desktop revision/file boundaries expose small
+   resize handles only at the top and bottom, keeping pane interiors free of a
+   full-height hit target. Pointer drag reflows the grid live and reveals the
+   full-height guide; Left/Right and Home/End resize the same boundary from
+   either handle. Splitters are absent below the desktop layout threshold. —
+   Implemented 2026-07-28. A separate focused-pane maximize action remains
+   unbuilt.
 
 Do **not** copy GitHub Desktop's accelerators literally. Its native application
 uses Command/Control+1 and +2 for Changes/History, Command/Control+L for the
@@ -577,16 +586,18 @@ sizing
 ([shortcut reference](https://docs.github.com/en/desktop/overview/github-desktop-keyboard-shortcuts);
 [pinned source](https://github.com/desktop/desktop/blob/57d0f8129656978e2b064f4c8d3d9fec7e2e21ee/app/src/main-process/menu/build-default-menu.ts)).
 Those combinations collide with ordinary browser tab selection, the address
-bar, and browser Find. YA should use the scope-aware keys above and add a `?`
-shortcut overlay if the set grows beyond what the visible controls teach.
+bar, and browser Find. YA uses the scope-aware keys above. A compact `?`
+inside commit search reveals the shortcut card on hover, focus, or click/tap
+without adding a toolbar row; both the trigger and card are absent at phone
+width, where every action has a touch path. — Implemented 2026-07-28.
 
-A contiguous multi-commit comparison is the strongest later accelerator, not
-part of the modest pass. GitHub Desktop lets a reviewer select a consecutive
-range and inspect the aggregate file diff
-([history guide](https://docs.github.com/en/desktop/making-changes-in-a-branch/viewing-the-branch-history-in-github-desktop)).
-YA could offer Shift-range selection on desktop and explicit “compare from/to”
-actions on touch, but must first define ancestor/merge behavior rather than
-pretending every chronological range is a simple linear diff.
+A cumulative **selected revision → HEAD** comparison is the next useful
+accelerator. It is not arbitrary range selection: the selected commit is the
+fixed base and the current HEAD is the fixed tip, so one control works on
+desktop and touch without introducing selection-range state. Selecting HEAD
+therefore produces an empty comparison. Merge commits use their resulting
+tree as the base, not an invented first-parent commit range. — Pending the
+new-server capability and route compatibility review.
 
 — First slice implemented 2026-07-27; remaining options researched against
 GitHub Desktop
@@ -651,7 +662,7 @@ unreferenced objects alive. The UI must expose recovery and eventual permanent
 cleanup, and the exception must be reconciled explicitly with the Non-goals
 rather than quietly weakening them.
 
-### Context menus — pending
+### Context menus
 
 Right-click (desktop) and long-press (touch) on a commit, file, or
 diff/context line opens a menu of *all* logical actions for that target; the
@@ -668,9 +679,26 @@ by target:
 - **Diff / context line**: comment on line (the existing click), copy line
   text, copy `path:line`.
 
-Reuse a shared menu primitive; extract one if none fits. `SessionMenu.tsx` is
-session-specific — mirror its portal/positioning/dismiss mechanics, do not
-couple to it. — Pending.
+The tracked-files browser uses the same file-row menu with Open file and Copy
+path because blame-at-HEAD is already its selected detail.
+
+`SourceContextMenu` owns portal positioning, dismissal, focus return, menu
+arrow/Home/End traversal, Shift+F10/Menu, right-click, and the shared 500 ms
+touch/pen long-press. Each target supplies only its action list. Diff lines
+are keyboard-focusable: Enter opens the existing comment path and Up/Down
+moves between rendered lines. Their one ellipsis follows the hovered/focused
+line rather than reserving a button on every code row. — Done (2026-07-28).
+
+### Desktop pane splitters
+
+At the desktop three-pane threshold, Commits exposes revision/files and
+files/diff boundaries; Changes and Files expose their one files/detail
+boundary. Each boundary has matching top and bottom separators with the same
+current value. Dragging either handle dynamically reflows the owning CSS grid
+and shows one vertical guide for the duration; keyboard Left/Right adjusts in
+small steps and Home/End reaches the allowed extrema. No splitter markup
+participates in phone layout. Width changes last for the mounted browser;
+they are not a new persisted preference. — Done (2026-07-28).
 
 ### Hunk navigation + single diff toolbar row
 
@@ -695,9 +723,13 @@ Dark and Very Dark keep added/deleted whole-line backgrounds as subdued
 semantic washes rather than saturated panels. The narrow `+` / `−` gutter
 carries the stronger green/red emphasis, so change type stays scannable
 without competing with syntax text. Auto follows the Dark treatment when the
-system is dark; Light keeps its established whole-line intensity. The shared
-diff palette applies this consistently to source-browser and session-tool
-diffs. — Done (2026-07-26).
+system is dark; Light keeps its established whole-line intensity. In the
+source browser, the sign is an authored gutter rather than the first ordinary
+monospace character: its strong-color strip has a fixed width, separate inset
+before the glyph and breathing room after the color divide, and a small
+optical glyph shift that does not narrow the strip. The shared diff palette
+still applies to source-browser and session-tool diffs. — Done (2026-07-26;
+source-gutter refinement 2026-07-28).
 
 ### Master-detail use and touch-readable row identities
 
