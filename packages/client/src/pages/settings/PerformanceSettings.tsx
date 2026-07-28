@@ -1,6 +1,11 @@
+import {
+  HOST_AGENT_PROCESS_OBSERVABILITY_CAPABILITY,
+  serverHasCapability,
+} from "@yep-anywhere/shared";
 import { useCallback, useMemo, useState } from "react";
 import { CommittedRangeInput } from "../../components/ui/CommittedRangeInput";
 import { useSessionLoadingProgress } from "../../hooks/useSessionLoadingProgress";
+import { useServerSettings } from "../../hooks/useServerSettings";
 import {
   getLastSessionTranscriptBytes,
   getSessionTranscriptMemoryStats,
@@ -11,6 +16,7 @@ import {
 } from "../../hooks/useSessionPerformanceSettings";
 import { useStableToolPreviewRendering } from "../../hooks/useStableToolPreviewRendering";
 import { useStreamingEnabled } from "../../hooks/useStreamingEnabled";
+import { useVersion } from "../../hooks/useVersion";
 import { useI18n } from "../../i18n";
 import { SettingsItem } from "./SettingsItem";
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
@@ -55,6 +61,21 @@ export function PerformanceSettings() {
   } = useSessionPerformanceSettings();
   const { stableToolPreviewRendering, setStableToolPreviewRendering } =
     useStableToolPreviewRendering();
+  const { version } = useVersion();
+  const {
+    settings: serverSettings,
+    isLoading: serverSettingsLoading,
+    error: serverSettingsError,
+    updateSetting: updateServerSetting,
+  } = useServerSettings();
+  const hostProcessObservabilitySupported = serverHasCapability(
+    version,
+    HOST_AGENT_PROCESS_OBSERVABILITY_CAPABILITY,
+  );
+  const hostProcessObservabilityEnabled =
+    serverSettings?.hostProcessObservabilityEnabled ?? true;
+  const [savingHostProcessObservability, setSavingHostProcessObservability] =
+    useState(false);
 
   const [budgetDraftIndex, setBudgetDraftIndex] = useState<number | null>(null);
   const [ttlDraftIndex, setTtlDraftIndex] = useState<number | null>(null);
@@ -132,6 +153,19 @@ export function PerformanceSettings() {
     },
     [setSessionTranscriptCacheTtlHours],
   );
+  const setHostProcessObservability = useCallback(
+    async (enabled: boolean) => {
+      setSavingHostProcessObservability(true);
+      try {
+        await updateServerSetting("hostProcessObservabilityEnabled", enabled);
+      } catch {
+        // useServerSettings retains the actionable error for this pane.
+      } finally {
+        setSavingHostProcessObservability(false);
+      }
+    },
+    [updateServerSetting],
+  );
 
   const undoState = useMemo(
     () => ({
@@ -143,6 +177,7 @@ export function PerformanceSettings() {
       sessionTranscriptCacheBudgetMb,
       sessionTranscriptCacheTtlHours,
       stableToolPreviewRendering,
+      hostProcessObservabilityEnabled,
     }),
     [
       streamingEnabled,
@@ -153,6 +188,7 @@ export function PerformanceSettings() {
       sessionTranscriptCacheBudgetMb,
       sessionTranscriptCacheTtlHours,
       stableToolPreviewRendering,
+      hostProcessObservabilityEnabled,
     ],
   );
   const restoreUndoState = useCallback(
@@ -173,6 +209,15 @@ export function PerformanceSettings() {
         snapshot.sessionTranscriptCacheTtlHours,
       );
       setStableToolPreviewRendering(snapshot.stableToolPreviewRendering);
+      if (
+        hostProcessObservabilitySupported &&
+        snapshot.hostProcessObservabilityEnabled !==
+          hostProcessObservabilityEnabled
+      ) {
+        void setHostProcessObservability(
+          snapshot.hostProcessObservabilityEnabled,
+        );
+      }
     },
     [
       setStreamingEnabled,
@@ -183,6 +228,9 @@ export function PerformanceSettings() {
       setSessionTranscriptCacheBudgetMb,
       setSessionTranscriptCacheTtlHours,
       setStableToolPreviewRendering,
+      hostProcessObservabilityEnabled,
+      hostProcessObservabilitySupported,
+      setHostProcessObservability,
     ],
   );
   useSettingsUndoBaseline(undoState, restoreUndoState);
@@ -333,6 +381,33 @@ export function PerformanceSettings() {
             <span className="toggle-slider" />
           </label>
         </SettingsItem>
+        {hostProcessObservabilitySupported && (
+          <SettingsItem
+            label={t("performanceHostProcessObservabilityTitle")}
+            description={t("performanceHostProcessObservabilityDescription")}
+            keywords={["Agents", "CPU", "memory", "external processes"]}
+            after={
+              serverSettingsError ? (
+                <p className="settings-error">{serverSettingsError}</p>
+              ) : null
+            }
+          >
+            <label className="toggle-switch">
+              <input
+                type="checkbox"
+                checked={hostProcessObservabilityEnabled}
+                disabled={
+                  serverSettingsLoading || savingHostProcessObservability
+                }
+                onChange={(event) =>
+                  void setHostProcessObservability(event.target.checked)
+                }
+                aria-label={t("performanceHostProcessObservabilityTitle")}
+              />
+              <span className="toggle-slider" />
+            </label>
+          </SettingsItem>
+        )}
       </div>
     </SettingsSection>
   );

@@ -52,6 +52,11 @@ export {
   MAX_HOST_IDENTITY_ICON_CODE_UNITS,
   normalizeHostIdentityIcon,
 } from "./host-identity.js";
+export type {
+  HostAgentProcessObservation,
+  HostAgentProcessesResponse,
+  HostAgentProcessSupervision,
+} from "./host-agent-processes.js";
 
 // File path detection (shared between server and client)
 export type { DetectedFilePath, TextSegment } from "./filePathDetection.js";
@@ -324,6 +329,7 @@ export {
   DEVICE_BRIDGE_UPDATE_CAPABILITY,
   HOST_IDENTITY_CAPABILITY,
   HOST_AWAKE_CONTROL_CAPABILITY,
+  HOST_AGENT_PROCESS_OBSERVABILITY_CAPABILITY,
   PROJECT_QUEUE_CAPABILITY,
   PROJECT_QUEUE_NEW_SESSION_SHORTCUT_SETTING_CAPABILITY,
   SERVER_CAPABILITIES,

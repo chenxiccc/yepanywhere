@@ -27,10 +27,31 @@ const undoMocks = vi.hoisted(() => ({
 
 vi.mock("../SettingsUndoContext", () => undoMocks);
 
+const serverMocks = vi.hoisted(() => ({
+  settings: { hostProcessObservabilityEnabled: true },
+  updateSetting: vi.fn(async () => undefined),
+}));
+
+vi.mock("../../../hooks/useVersion", () => ({
+  useVersion: () => ({
+    version: { capabilities: ["host-agent-process-observability"] },
+  }),
+}));
+
+vi.mock("../../../hooks/useServerSettings", () => ({
+  useServerSettings: () => ({
+    settings: serverMocks.settings,
+    isLoading: false,
+    updateSetting: serverMocks.updateSetting,
+  }),
+}));
+
 describe("PerformanceSettings", () => {
   beforeEach(() => {
     window.localStorage.clear();
     undoMocks.useSettingsUndoBaseline.mockClear();
+    serverMocks.settings.hostProcessObservabilityEnabled = true;
+    serverMocks.updateSetting.mockClear();
   });
 
   afterEach(() => {
@@ -101,5 +122,23 @@ describe("PerformanceSettings", () => {
         }) as HTMLInputElement
       ).checked,
     ).toBe(true);
+  });
+
+  it("defaults host process metrics on and persists an opt-out", async () => {
+    render(<PerformanceSettings />);
+
+    const toggle = screen.getByRole("checkbox", {
+      name: "performanceHostProcessObservabilityTitle",
+    }) as HTMLInputElement;
+    expect(toggle.checked).toBe(true);
+
+    await act(async () => {
+      fireEvent.click(toggle);
+    });
+
+    expect(serverMocks.updateSetting).toHaveBeenCalledWith(
+      "hostProcessObservabilityEnabled",
+      false,
+    );
   });
 });

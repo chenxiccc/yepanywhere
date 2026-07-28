@@ -171,6 +171,16 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
     if (typeof body.workstreamsEnabled === "boolean") {
       updates.workstreamsEnabled = body.workstreamsEnabled;
     }
+    if ("hostProcessObservabilityEnabled" in body) {
+      if (typeof body.hostProcessObservabilityEnabled !== "boolean") {
+        return c.json(
+          { error: "hostProcessObservabilityEnabled must be a boolean" },
+          400,
+        );
+      }
+      updates.hostProcessObservabilityEnabled =
+        body.hostProcessObservabilityEnabled;
+    }
     if (typeof body.composeAnchorsEnabled === "boolean") {
       updates.composeAnchorsEnabled = body.composeAnchorsEnabled;
     }

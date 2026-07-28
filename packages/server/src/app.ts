@@ -82,6 +82,7 @@ import { health } from "./routes/health.js";
 import { createInboxRoutes } from "./routes/inbox.js";
 import { createNetworkBindingRoutes } from "./routes/network-binding.js";
 import { createOnboardingRoutes } from "./routes/onboarding.js";
+import { createHostAgentProcessesRoutes } from "./routes/host-agent-processes.js";
 import { createProcessesRoutes } from "./routes/processes.js";
 import {
   createGlobalProjectQueueRoutes,
@@ -1368,6 +1369,15 @@ export function createApp(options: AppOptions): AppResult {
       },
     }),
   );
+  if (options.serverSettingsService) {
+    app.route(
+      "/api/host-agent-processes",
+      createHostAgentProcessesRoutes({
+        supervisor,
+        serverSettingsService: options.serverSettingsService,
+      }),
+    );
+  }
 
   // Inbox routes (cross-project session aggregation)
   app.route(

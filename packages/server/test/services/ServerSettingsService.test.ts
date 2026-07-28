@@ -32,6 +32,36 @@ describe("ServerSettingsService", () => {
     expect(service.getSetting("workstreamsEnabled")).toBe(false);
   });
 
+  it("enables host process observability by default and persists opt-out", async () => {
+    const service = new ServerSettingsService({ dataDir: testDir });
+    await service.initialize();
+
+    expect(service.getSetting("hostProcessObservabilityEnabled")).toBe(true);
+    await service.updateSettings({ hostProcessObservabilityEnabled: false });
+
+    const reloaded = new ServerSettingsService({ dataDir: testDir });
+    await reloaded.initialize();
+    expect(reloaded.getSetting("hostProcessObservabilityEnabled")).toBe(false);
+  });
+
+  it("normalizes malformed host process observability values to enabled", async () => {
+    await fs.writeFile(
+      path.join(testDir, "server-settings.json"),
+      JSON.stringify({
+        version: 2,
+        settings: {
+          hostProcessObservabilityEnabled: "no",
+        },
+      }),
+      "utf-8",
+    );
+    const service = new ServerSettingsService({ dataDir: testDir });
+
+    await service.initialize();
+
+    expect(service.getSetting("hostProcessObservabilityEnabled")).toBe(true);
+  });
+
   it("keeps host-awake default-off with a ten-percent reserve", async () => {
     const service = new ServerSettingsService({ dataDir: testDir });
 

@@ -91,6 +91,17 @@ condensed conversation presentation users already encounter in the Codex and
 Claude harnesses. Existing browser-local mode and toolbar-presence choices
 remain authoritative.
 
+[agents-process-observability](agents-process-observability.md) ships
+default-on in the existing Agents view. Sampling is request-driven and occurs
+only while that view is open and visible; a Performance setting disables it,
+and a user can also avoid the work simply by not opening Agents. The browser
+receives only normalized provider identity, PID, start/sample times, recent
+CPU, and RSS/process-tree counts—never command lines, environment, executable
+paths, or working directories. Authorized by graehl on 2026-07-28 as an
+explicit product decision: Agents is already the process-inventory surface,
+and standard process metrics plus independently launched agent processes make
+that purpose useful without changing session or provider behavior elsewhere.
+
 ## Worked instances: queued-turn delivery
 
 [compose-time-context-anchors](compose-time-context-anchors.md)

@@ -1567,6 +1567,8 @@ export interface ServerSettings {
   publicSharesEnabled?: boolean;
   /** Whether experimental workstream surfaces and APIs are enabled */
   workstreamsEnabled?: boolean;
+  /** Whether Agents may sample same-user provider processes on this host. */
+  hostProcessObservabilityEnabled?: boolean;
   /** Base URL for the hosted YA client */
   yaClientBaseUrl?: string | null;
   /** Optional visual marker identifying the connected YA host. */

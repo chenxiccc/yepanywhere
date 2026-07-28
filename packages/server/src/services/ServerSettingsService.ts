@@ -70,6 +70,8 @@ export interface ServerSettings {
   publicSharesEnabled: boolean;
   /** Whether experimental workstream surfaces and APIs are enabled */
   workstreamsEnabled?: boolean;
+  /** Whether Agents may sample same-user provider processes on this host. */
+  hostProcessObservabilityEnabled: boolean;
   /** Base URL for the hosted YA client; remote login/share routes are appended */
   yaClientBaseUrl?: string;
   /** Optional visual marker identifying this YA host in connected clients. */
@@ -175,6 +177,7 @@ export const DEFAULT_SERVER_SETTINGS: ServerSettings = {
   approvalAuditLogEnabled: false,
   publicSharesEnabled: false,
   workstreamsEnabled: false,
+  hostProcessObservabilityEnabled: true,
   hostAwakeMode: "off",
   hostAwakeBatteryFloorPercent: DEFAULT_HOST_AWAKE_BATTERY_FLOOR_PERCENT,
   heartbeatTurnsAfterMinutes: 15,
@@ -288,6 +291,10 @@ function mergeLoadedClientDefaults(
 
 function normalizeLoadedSettings(settings: ServerSettings): ServerSettings {
   const normalized = { ...DEFAULT_SERVER_SETTINGS, ...settings };
+  normalized.hostProcessObservabilityEnabled =
+    typeof settings.hostProcessObservabilityEnabled === "boolean"
+      ? settings.hostProcessObservabilityEnabled
+      : DEFAULT_SERVER_SETTINGS.hostProcessObservabilityEnabled;
   normalized.hostAwakeMode = isHostAwakeMode(settings.hostAwakeMode)
     ? settings.hostAwakeMode
     : DEFAULT_SERVER_SETTINGS.hostAwakeMode;

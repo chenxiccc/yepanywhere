@@ -416,6 +416,36 @@ export const SERVER_CAPABILITIES = {
         "No maintained client still branches on host-awake-control.",
     },
   },
+  hostAgentProcessObservability: {
+    name: "host-agent-process-observability",
+    kind: "permanent",
+    area: "localAccess",
+    introducedIn: "0.7.1",
+    description:
+      "Server can report minimized host metrics for YA-owned and independently launched provider process trees.",
+    clientFallback:
+      "Keep the existing Agents inventory, hide host metrics and external rows, and make no host-process request.",
+    serverContract: {
+      routes: [
+        "GET /api/host-agent-processes",
+        "GET /api/settings",
+        "PUT /api/settings",
+      ],
+      requestFields: ["settings.hostProcessObservabilityEnabled"],
+      responseFields: [
+        "settings.hostProcessObservabilityEnabled",
+        "hostAgentProcesses.enabled",
+        "hostAgentProcesses.supported",
+        "hostAgentProcesses.sampledAt",
+        "hostAgentProcesses.observations",
+      ],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Hosted clients can outpace installed servers, and older servers do not expose the minimized host process route or setting.",
+    },
+  },
   projectQueue: {
     name: "projectQueue",
     kind: "permanent",
@@ -618,6 +648,9 @@ export const HOST_IDENTITY_CAPABILITY = SERVER_CAPABILITIES.hostIdentity.name;
 
 export const HOST_AWAKE_CONTROL_CAPABILITY =
   SERVER_CAPABILITIES.hostAwakeControl.name;
+
+export const HOST_AGENT_PROCESS_OBSERVABILITY_CAPABILITY =
+  SERVER_CAPABILITIES.hostAgentProcessObservability.name;
 
 export const VOICE_INPUT_CAPABILITY = SERVER_CAPABILITIES.voiceInput.name;
 

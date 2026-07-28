@@ -16213,8 +16213,15 @@ div.bang-command-error-message {
   transition: border-color 0.15s;
 }
 
-.agent-card:hover {
-  border-color: var(--border-hover);
+@media (hover: hover) {
+  .agent-card:hover {
+    border-color: var(--border-hover);
+  }
+}
+
+.agent-card:has(.agent-metrics-wrap-open) {
+  position: relative;
+  z-index: 40;
 }
 
 .agent-card-terminated {
@@ -16273,6 +16280,11 @@ div.bang-command-error-message {
 .agent-state-terminated {
   background: var(--bg-hover);
   color: var(--text-muted);
+}
+
+.agent-state-external {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
 }
 
 /* Provider badges */
@@ -16348,6 +16360,7 @@ div.bang-command-error-message {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  flex-wrap: wrap;
 }
 
 .agent-card-uptime {
@@ -16366,6 +16379,65 @@ div.bang-command-error-message {
 
 .agent-card-meta .context-usage-indicator {
   margin-left: auto;
+}
+
+.agent-metrics-wrap {
+  position: relative;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.agent-metrics-wrap-open {
+  z-index: 40;
+}
+
+.agent-metrics-wrap + .context-usage-indicator {
+  margin-left: 0;
+}
+
+.agent-metrics {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0.125rem 0.45rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.agent-metrics:hover,
+.agent-metrics:focus-visible,
+.agent-metrics[aria-expanded="true"] {
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+}
+
+.agent-metrics-popover {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  width: max-content;
+  max-width: min(22rem, calc(100vw - 2rem));
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-lg);
+  color: var(--text-primary);
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+  white-space: pre-line;
+}
+
+.agent-card-external {
+  cursor: default;
 }
 
 .agent-card-details {

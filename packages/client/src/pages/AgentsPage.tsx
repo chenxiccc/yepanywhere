@@ -1,9 +1,18 @@
-import { useCallback, useState } from "react";
+import type { HostAgentProcessObservation } from "@yep-anywhere/shared";
+import {
+  type RefObject,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import { ContextUsageIndicator } from "../components/ContextUsageIndicator";
 import { PageHeader } from "../components/PageHeader";
 import { ThinkingIndicator } from "../components/ThinkingIndicator";
+import { useHostAgentProcesses } from "../hooks/useHostAgentProcesses";
 import { type ProcessInfo, useProcesses } from "../hooks/useProcesses";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useI18n } from "../i18n";
@@ -32,6 +41,19 @@ function formatUptime(startedAt: string): string {
     return `${minutes}m ${seconds % 60}s`;
   }
   return `${seconds}s`;
+}
+
+function formatMemory(bytes: number): string {
+  const mebibytes = bytes / (1024 * 1024);
+  if (mebibytes < 1024) {
+    return `${Math.round(mebibytes)} MiB`;
+  }
+  const gibibytes = mebibytes / 1024;
+  return `${gibibytes < 10 ? gibibytes.toFixed(1) : Math.round(gibibytes)} GiB`;
+}
+
+function formatCpu(percent: number): string {
+  return `${percent < 10 ? percent.toFixed(1) : Math.round(percent)}%`;
 }
 
 /**
@@ -93,6 +115,8 @@ function getProviderLabel(
       return "Grok";
     case "opencode":
       return "OpenCode";
+    case "pi":
+      return "Pi";
     case "local":
       return t("agentsProviderLocal" as never);
     default:
@@ -114,6 +138,8 @@ function getProviderBadgeClass(provider: string | undefined): string {
       return "agent-provider-grok";
     case "opencode":
       return "agent-provider-opencode";
+    case "pi":
+      return "agent-provider-pi";
     case "local":
       return "agent-provider-local";
     default:
@@ -123,6 +149,7 @@ function getProviderBadgeClass(provider: string | undefined): string {
 
 interface ProcessCardProps {
   process: ProcessInfo;
+  observation?: HostAgentProcessObservation;
   basePath?: string;
   isTerminated?: boolean;
   onKill?: (process: ProcessInfo) => void;
@@ -134,8 +161,138 @@ interface KillFeedback {
   message: string;
 }
 
+interface ProcessMetricsProps {
+  observation: HostAgentProcessObservation;
+  touchSurfaceRef?: RefObject<HTMLElement | null>;
+}
+
+function ProcessMetrics({
+  observation,
+  touchSurfaceRef,
+}: ProcessMetricsProps) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const wrapperRef = useRef<HTMLSpanElement>(null);
+  const provider = getProviderLabel(observation.provider, t);
+  const age = formatUptime(observation.startedAt);
+  const cpu = observation.cpu
+    ? t("agentsMetricsCpuValue" as never, {
+        percent: formatCpu(observation.cpu.treePercent),
+      })
+    : t("agentsMetricsCpuSampling" as never);
+  const detail = [
+    t(
+      (observation.supervision === "ya"
+        ? "agentsMetricsManagedYa"
+        : "agentsMetricsManagedExternal") as never,
+    ),
+    t("agentsMetricsProvider" as never, { provider }),
+    t("agentsPid" as never, { pid: observation.pid }),
+    t("agentsMetricsStarted" as never, {
+      value: new Date(observation.startedAt).toLocaleString(),
+    }),
+    t("agentsMetricsAge" as never, { value: age }),
+    observation.cpu
+      ? t("agentsMetricsRecentCpu" as never, {
+          percent: formatCpu(observation.cpu.rootPercent),
+          treePercent: formatCpu(observation.cpu.treePercent),
+          seconds: (observation.cpu.windowMs / 1000).toFixed(1),
+        })
+      : t("agentsMetricsCpuSampling" as never),
+    t("agentsMetricsRootRss" as never, {
+      value: formatMemory(observation.memory.rootRssBytes),
+    }),
+    t("agentsMetricsTreeRss" as never, {
+      value: formatMemory(observation.memory.treeRssBytes),
+    }),
+    t("agentsMetricsDescendants" as never, {
+      count: observation.memory.descendantCount,
+    }),
+    t("agentsMetricsSampled" as never, {
+      value: new Date(observation.sampledAt).toLocaleTimeString(),
+    }),
+  ].join("\n");
+
+  useEffect(() => {
+    if (!open) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!(event.target instanceof Node)) return;
+      const isTouchOnCard =
+        event.pointerType === "touch" &&
+        touchSurfaceRef?.current?.contains(event.target);
+      if (!wrapperRef.current?.contains(event.target) && !isTouchOnCard) {
+        setOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open, touchSurfaceRef]);
+
+  useEffect(() => {
+    const touchSurface = touchSurfaceRef?.current;
+    if (!touchSurface) return;
+    const handlePointerUp = (event: PointerEvent) => {
+      if (
+        event.pointerType !== "touch" ||
+        !(event.target instanceof Node) ||
+        wrapperRef.current?.contains(event.target)
+      ) {
+        return;
+      }
+      const interactiveTarget =
+        event.target instanceof Element
+          ? event.target.closest(
+              "a, button, input, select, textarea, [role='button'], [role='link']",
+            )
+          : null;
+      if (!interactiveTarget) setOpen((value) => !value);
+    };
+    touchSurface.addEventListener("pointerup", handlePointerUp);
+    return () => {
+      touchSurface.removeEventListener("pointerup", handlePointerUp);
+    };
+  }, [touchSurfaceRef]);
+
+  return (
+    <span
+      className={`agent-metrics-wrap${open ? " agent-metrics-wrap-open" : ""}`}
+      ref={wrapperRef}
+    >
+      <button
+        type="button"
+        className="agent-metrics"
+        title={detail}
+        aria-label={detail}
+        aria-expanded={open}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setOpen((value) => !value);
+        }}
+      >
+        <span>{formatMemory(observation.memory.rootRssBytes)} RSS</span>
+        <span aria-hidden>·</span>
+        <span>{cpu}</span>
+      </button>
+      {open && (
+        <span className="agent-metrics-popover" role="status">
+          {detail}
+        </span>
+      )}
+    </span>
+  );
+}
+
 function ProcessCard({
   process,
+  observation,
   basePath = "",
   isTerminated = false,
   onKill,
@@ -198,6 +355,9 @@ function ProcessCard({
             <span className="agent-card-uptime">
               {formatUptime(process.startedAt)}
             </span>
+          )}
+          {!isTerminated && observation && (
+            <ProcessMetrics observation={observation} />
           )}
           {process.contextUsage && (
             <ContextUsageIndicator usage={process.contextUsage} />
@@ -282,11 +442,56 @@ function ProcessCard({
   );
 }
 
+function ExternalProcessCard({
+  observation,
+}: {
+  observation: HostAgentProcessObservation;
+}) {
+  const { t } = useI18n();
+  const provider = getProviderLabel(observation.provider, t);
+  const touchSurfaceRef = useRef<HTMLElement>(null);
+  return (
+    <article
+      className="agent-card agent-card-external"
+      ref={touchSurfaceRef}
+    >
+      <div className="agent-card-header">
+        <div className="agent-card-title">
+          <span className="agent-card-session-title">
+            {t("agentsExternalProcessTitle" as never, { provider })}
+          </span>
+          <span
+            className={`agent-provider-badge ${getProviderBadgeClass(observation.provider)}`}
+          >
+            {provider}
+          </span>
+          <span className="agent-state-badge agent-state-external">
+            {t("agentsOutsideYa" as never)}
+          </span>
+        </div>
+        <div className="agent-card-meta">
+          <span className="agent-card-pid">
+            {t("agentsPid" as never, { pid: observation.pid })}
+          </span>
+          <span className="agent-card-uptime">
+            {formatUptime(observation.startedAt)}
+          </span>
+          <ProcessMetrics
+            observation={observation}
+            touchSurfaceRef={touchSurfaceRef}
+          />
+        </div>
+      </div>
+    </article>
+  );
+}
+
 export function AgentsPage() {
   const { t } = useI18n();
   const { processes, terminatedProcesses, loading, error, refetch } =
     useProcesses();
   const basePath = useRemoteBasePath();
+  const hostProcesses = useHostAgentProcesses();
 
   const { openSidebar, isWideScreen } = useNavigationLayout();
 
@@ -323,8 +528,7 @@ export function AgentsPage() {
             tone: "error",
             message: `${stopped} ${t("agentsKillResumeBlockFailed" as never, {
               message:
-                exemption.error ??
-                t("agentsKillResumeBlockUnknown" as never),
+                exemption.error ?? t("agentsKillResumeBlockUnknown" as never),
             })}`,
           });
         } else {
@@ -360,6 +564,24 @@ export function AgentsPage() {
     (p) => p.state === "in-turn" || p.state === "waiting-input",
   );
   const idleProcesses = processes.filter((p) => p.state === "idle");
+  const observationsBySupervisorProcessId = useMemo(
+    () =>
+      new Map(
+        hostProcesses.observations
+          .filter(
+            (
+              observation,
+            ): observation is HostAgentProcessObservation & {
+              supervisorProcessId: string;
+            } => observation.supervisorProcessId !== undefined,
+          )
+          .map((observation) => [observation.supervisorProcessId, observation]),
+      ),
+    [hostProcesses.observations],
+  );
+  const externalProcesses = hostProcesses.observations.filter(
+    (observation) => observation.supervision === "external",
+  );
 
   return (
     <MainContent isWideScreen={isWideScreen}>
@@ -401,6 +623,9 @@ export function AgentsPage() {
                       <ProcessCard
                         key={process.id}
                         process={process}
+                        observation={observationsBySupervisorProcessId.get(
+                          process.id,
+                        )}
                         basePath={basePath}
                         onKill={handleKill}
                         killing={killingIds.has(process.id)}
@@ -409,6 +634,38 @@ export function AgentsPage() {
                   </div>
                 )}
               </section>
+
+              {hostProcesses.enabled && (
+                <section className="agents-section">
+                  <h2>{t("agentsSectionExternal" as never)}</h2>
+                  {hostProcesses.loading ? (
+                    <p className="agents-empty">
+                      {t("agentsExternalLoading" as never)}
+                    </p>
+                  ) : hostProcesses.supported === false ? (
+                    <p className="agents-empty">
+                      {t("agentsExternalUnsupported" as never)}
+                    </p>
+                  ) : hostProcesses.error ? (
+                    <p className="agents-empty">
+                      {t("agentsExternalUnavailable" as never)}
+                    </p>
+                  ) : externalProcesses.length === 0 ? (
+                    <p className="agents-empty">
+                      {t("agentsEmptyExternal" as never)}
+                    </p>
+                  ) : (
+                    <div className="agents-list">
+                      {externalProcesses.map((observation) => (
+                        <ExternalProcessCard
+                          key={observation.observationId}
+                          observation={observation}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </section>
+              )}
 
               <section className="agents-section">
                 <h2>{t("agentsSectionIdle" as never)}</h2>
@@ -422,6 +679,9 @@ export function AgentsPage() {
                       <ProcessCard
                         key={process.id}
                         process={process}
+                        observation={observationsBySupervisorProcessId.get(
+                          process.id,
+                        )}
                         basePath={basePath}
                         onKill={handleKill}
                         killing={killingIds.has(process.id)}

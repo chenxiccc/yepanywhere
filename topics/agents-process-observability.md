@@ -1,6 +1,6 @@
 # Agents Process Observability
 
-> Proposal: make Agents YA's host process observability view, inventorying
+> Agents is YA's host process observability view, inventorying
 > YA-supervised and externally launched local provider processes with bounded
 > OS metrics while keeping process health distinct from Inbox attention.
 
@@ -27,10 +27,10 @@ See also:
 - [`security.md`](security.md) — authenticated host diagnostics must stay out
   of public-share surfaces.
 
-## Verified Current Shape
+## Verified Prior Shape
 
-Agents currently shows the YA Supervisor inventory, not the host's agent
-process inventory:
+Before this feature, Agents showed the YA Supervisor inventory, not the host's
+agent process inventory:
 
 - `AgentsPage` reads `useProcesses`, which fetches
   `GET /api/processes?includeTerminated=true`.
@@ -45,17 +45,17 @@ process inventory:
   does not discover a foreign PID, prove that a process remains alive, or feed
   an external row into Agents.
 
-Kyle's “active agent processes” description is therefore the right product
-direction but broader than the implementation. Today the page is more exactly
-“provider processes YA owns, including retained idle and recently stopped
-ones.”
+Kyle's “active agent processes” description was therefore the right product
+direction but broader than that implementation. The host observation route and
+External section close that gap without changing the Supervisor inventory's
+control semantics.
 
 ## Surface Boundaries
 
 | Surface | Primary question | Source of truth |
 | --- | --- | --- |
 | Inbox | Which sessions need attention, are active, recent, or unread? | Session, pending-input, queue, and notification state. |
-| Agents | Which agent processes exist on this YA host, who supervises them, and what resources are they using? | YA Supervisor state plus an opt-in host process snapshot. |
+| Agents | Which agent processes exist on this YA host, who supervises them, and what resources are they using? | YA Supervisor state plus a request-driven host process snapshot. |
 | Agents activity preview | What is each YA-supervised agent doing now? | Bounded normalized provider activity, when explicitly enabled. |
 | Session detail | What happened in this conversation, and what can I do next? | Provider transcript and live session control state. |
 
@@ -64,15 +64,16 @@ their CPU is nonzero. Conversely, an external transcript write may make a
 session relevant to Inbox without YA having enough evidence to identify a
 corresponding OS process.
 
-## Recommended Product Shape
+## Product Shape
 
-Add one server-owned **Host process observability** option. The initial feature
-is default-off under [`vanilla-defaults.md`](vanilla-defaults.md), both because
-it adds YA-specific UI and because external discovery inspects the same-user
-host process table. With it off:
+The server-owned **Agents process metrics** option is default-on and can be
+disabled under Settings > Performance. This is an explicit product exception
+to [`vanilla-defaults.md`](vanilla-defaults.md), authorized by graehl on
+2026-07-28: a user who does not want the feature can disable it, while someone
+who never opens Agents causes no host-process sampling. With it off:
 
 - Agents remains observably unchanged;
-- no new process route is requested by the client; and
+- no host-process route is requested by the client; and
 - YA does not enumerate foreign processes or retain CPU samples.
 
 With it on:
@@ -99,10 +100,12 @@ The minimum useful glance is:
 
 The compact cluster may stay inline where it fits. It must also open an
 accessible tooltip/popover on pointer rest or keyboard focus and on tap for
-touch users. A native `title` alone is insufficient because Agents is
-mobile-first.
+touch users. On touch layouts, tapping a non-interactive part of an External
+card also toggles that card's metric popover; actual buttons and links keep
+their own behavior, and tapping elsewhere dismisses the popover. A native
+`title` alone is insufficient because Agents is mobile-first.
 
-The detail surface should show:
+The activated detail popover shows:
 
 - managed by YA or Outside YA;
 - provider and PID;
@@ -111,11 +114,11 @@ The detail surface should show:
 - resident memory for the agent root and its process tree;
 - descendant process count;
 - sample age; and
-- exact session/project association when one is known.
+- the exact YA Supervisor association when one is known.
 
-Use one shared host-process facts component for Agents cards and the existing
-Process Info process section so the same metric cannot acquire two labels or
-formatters.
+The initial delivery stays in Agents. Reusing its metric formatters in Process
+Info is appropriate if that surface later adopts the same facts, but this
+feature does not add a second polling owner merely to populate that dialog.
 
 ## Metric Semantics
 
@@ -124,7 +127,7 @@ Metrics are nullable observations, not provider state:
 | Metric | Contract |
 | --- | --- |
 | Process age | `sampledAt - OS process startedAt`. It is neither session age nor “time since YA detected it.” Existing Supervisor uptime may remain separately available for diagnostics. |
-| Recent CPU | Delta of the identified root process's cumulative user + system CPU time over the actual sample interval. `100%` means one logical CPU fully occupied; a multithreaded process may exceed `100%`. The first observation has no CPU rate. |
+| Recent CPU | Delta of cumulative user + system CPU time over the actual sample interval. The compact metric covers the identified process tree; details separate tree and root rates. `100%` means one logical CPU fully occupied; a multithreaded tree may exceed `100%`. The first observation has no CPU rate. |
 | Root RSS | Resident set size of the identified agent root process. It is not V8 heap, virtual memory, context usage, or model memory. |
 | Tree RSS | Approximate sum of resident set size for the root and its sampled descendants, available in process details. Shared pages may be counted once per process. |
 | Descendants | Count observed in the same process-tree snapshot used for Tree RSS. |
@@ -141,9 +144,10 @@ cover footprint, recent work, and lifetime.
 
 ## Host Discovery And Identity
 
-Discovery should be a provider registry concern, not an argv regexp embedded in
-the route or `AgentsPage`. Each supported local provider may contribute a
-high-confidence executable/process-tree matcher. The scanner:
+Discovery is isolated in the server sampler, not embedded in the route or
+`AgentsPage`. The initial high-confidence classifier recognizes exact provider
+executables and known entrypoints launched through generic runtimes. The
+scanner:
 
 1. takes one same-user host process snapshot;
 2. identifies canonical provider roots;
@@ -162,7 +166,7 @@ the OS may reuse it after a process exits.
 
 False negatives are preferable to false positives. A basename collision or
 ambiguous wrapper must not expose an unrelated host process as an agent.
-Provider adapters should be tested against the actual launch shapes YA supports
+Matcher additions must be tested against the actual launch shapes YA supports
 on each platform.
 
 ### Session correlation
@@ -179,34 +183,29 @@ Process discovery and session correlation are separate:
   `Codex · Outside YA · PID 1234`; it must not invent a session title or make
   the whole card a broken session link.
 
-The current `ExternalSessionTracker` may decorate an exact join, but its
-30-second write window cannot create one. An observed cwd may be mapped to an
-already-known project for display, but it must not update session metadata or
-reclassify the session.
+The current `ExternalSessionTracker` may decorate a future exact join, but its
+30-second write window cannot create one. The initial host sampler neither
+reads nor returns cwd.
 
-## Proposed Data And Route Boundary
+## Data And Route Boundary
 
-The shape below is illustrative; the distinctions are contractual:
+The wire shape is intentionally unable to carry process command metadata:
 
 ```ts
 interface HostAgentProcessObservation {
   observationId: string; // stable for PID + OS start time
   pid: number;
-  parentPid?: number;
   provider: ProviderName;
   supervision: "ya" | "external";
   supervisorProcessId?: string; // exact YA join only
-  session?: {
-    sessionId: string;
-    projectId: UrlProjectId;
-  }; // exact correlation only
   startedAt: string;
   sampledAt: string;
   cpu?: {
     rootPercent: number;
+    treePercent: number;
     windowMs: number;
   };
-  memory?: {
+  memory: {
     rootRssBytes: number;
     treeRssBytes: number;
     descendantCount: number;
@@ -214,7 +213,7 @@ interface HostAgentProcessObservation {
 }
 ```
 
-Expose this through a new authenticated
+This is exposed through the authenticated
 `GET /api/host-agent-processes` route, guarded by a permanent
 `host-agent-process-observability` server capability. Keep
 `GET /api/processes` authoritative and unchanged for Supervisor state and
@@ -230,16 +229,16 @@ This separation avoids three compatibility failures:
 - metric refresh does not repeatedly invoke the existing process route's
   session-summary enrichment.
 
-Before implementation, perform the required optional-feature release audit and
-present the exact compatibility review. The intended fallback is: without the
-new capability, hide host metrics and External entirely, retain current Agents,
-and make no host-process request. Existing capability meanings and older
-capable behavior remain unchanged.
+The implementation audit covered stable releases `v0.7.0` (2026-07-25) and
+`v0.6.2` (2026-07-11), neither of which exposes this route or capability.
+Without the new capability, the client hides host metrics and External
+entirely, retains current Agents, and makes no host-process request. Existing
+capability meanings and older capable behavior remain unchanged.
 
 ## Sampling And Resource Lifetime
 
 Recent CPU needs two samples, but it does not need a permanent server timer.
-Recommended lifecycle:
+Lifecycle:
 
 - while Agents is visible, the client requests one lightweight host snapshot
   about every five seconds;
@@ -255,31 +254,42 @@ client observes the host running its connected YA server; it does not inspect
 the browser device. SSH executor processes, containers outside the YA host
 namespace, and other YA servers are out of scope for the first version.
 
-Platform adapters may use Linux `/proc` and one whole-table macOS process
-snapshot. Unsupported platforms return an explicit unsupported state rather
-than spawning a fragile per-PID command loop. Windows support can follow behind
-the same route contract.
+Linux and macOS use one whole-table `ps` snapshot per sample, never one command
+per PID. The snapshot is reduced immediately to PID/parent/start time,
+cumulative CPU, RSS, and a high-confidence provider classification. Linux then
+reads high-resolution CPU ticks from `/proc` only for the identified roots and
+their descendants; this avoids presenting whole-second `ps` CPU time as a
+five-second rate. Windows returns an explicit unsupported state and can follow
+behind the same route contract.
 
 ## Security And Privacy
 
 Host process enumeration is an authenticated operator feature:
 
 - never expose the route through public session shares;
-- never send process environment variables to the client;
+- never send a full command line, command fragment, environment variable,
+  executable path, or working directory to the client;
 - inspect argv only long enough to classify a provider, then discard it;
-- never log raw argv because prompts, paths, and credentials may appear there;
-- return a working directory only when it maps to a project YA already knows;
-  and
+- never put raw argv in logs, errors, test fixtures, or result captures because
+  prompts, paths, and credentials may appear there; and
 - omit a row or metric when OS permissions prevent a reliable observation.
 
-The server setting should say that enabling external discovery inspects
-same-user process metadata. Relay encryption protects the transport but does
-not weaken the server-side minimization rule.
+An authenticated client with interactive session write access can already ask
+an agent to inspect same-user processes, subject to the provider's permission
+and sandbox policy. Public-share viewers cannot submit such a request. That
+bounds the incremental sensitivity of normalized agent identity and ordinary
+CPU/RSS/age metrics, but it does not justify sending argv: a command line can
+contain prompts, secrets, and paths unrelated to what the Agents view needs.
+Relay encryption protects the transport but does not weaken this server-side
+minimization rule.
 
-## Observable Contract If Implemented
+## Observable Contract
 
-- With Host process observability off or unsupported, Agents and its resource
-  use are unchanged.
+- With Agents process metrics off, Agents retains its Supervisor inventory and
+  makes no host-process request.
+- Without the server capability, the client makes no unsupported request. An
+  advertised but unsupported host returns one unsupported response and the
+  visible page stops polling.
 - YA-owned rows retain their existing state, controls, ordering, and stopped
   history; host metrics only decorate them.
 - Every external row corresponds to a currently observed, high-confidence
@@ -293,23 +303,20 @@ not weaken the server-side minimization rule.
   memory.
 - Session links and titles appear only after exact process/session
   correlation.
+- On touch layouts, a non-control tap on an External row toggles its metric
+  details; controls are never intercepted and an outside tap dismisses them.
 - Leaving or hiding Agents stops client sampling; no stale page leaves a
   server poller, timer, watcher, or retry loop behind.
-- Raw argv, environment data, and unrelated host processes never cross the API
-  boundary.
+- Full or partial argv, environment data, executable paths, working
+  directories, and unrelated host processes never cross the API boundary.
 
-## Delivery Slices
+## Delivered Scope
 
-1. **Owned metrics.** Add the host snapshot adapter, capability-gated route,
-   CPU delta cache, and accessible metric details for known local YA PIDs.
-   This validates metric semantics and process-tree accounting without
-   process classification.
-2. **External inventory.** Add opt-in provider root matchers and the read-only
-   External section, initially without session links.
-3. **Exact provider correlation.** Add provider-specific joins only where
-   verified native evidence exists. Leave the rest unlinked.
-4. **Evaluate the default.** Measure usefulness, sampler overhead, false
-   positives, and mobile density before considering promotion from default-off.
+The first delivery includes owned metrics, high-confidence external inventory,
+the capability-gated route, CPU delta cache, read-only External cards, and
+pointer/keyboard/touch metric details. External rows intentionally have no
+session links: exact provider correlation remains future provider-specific
+work and must use verified native evidence rather than timing or cwd guesses.
 
 The activity-preview proposal can proceed independently. It consumes provider
 events for YA-owned sessions; host observability consumes OS snapshots and must
@@ -326,7 +333,7 @@ not become a second transcript/activity pipeline.
 - Inspecting remote SSH hosts or arbitrary containers.
 - Exposing command lines, environments, or unknown working directories.
 
-## Open Questions
+## Future Questions
 
 - Which external launch shapes can each provider identify with sufficiently
   low false-positive risk on Linux and macOS?

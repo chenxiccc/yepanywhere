@@ -25,6 +25,7 @@ describe("Settings Routes", () => {
       speechAudioRetention: DEFAULT_SERVER_SETTINGS.speechAudioRetention,
       publicSharesEnabled: false,
       workstreamsEnabled: false,
+      hostProcessObservabilityEnabled: true,
       hostAwakeMode: "off",
       hostAwakeBatteryFloorPercent: 10,
     };
@@ -89,6 +90,41 @@ describe("Settings Routes", () => {
   });
 
   describe("PUT /", () => {
+    it("persists a host process observability opt-out", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hostProcessObservabilityEnabled: false }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
+        hostProcessObservabilityEnabled: false,
+      });
+    });
+
+    it("rejects a non-boolean host process observability setting", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hostProcessObservabilityEnabled: "yes" }),
+      });
+
+      expect(response.status).toBe(400);
+      expect((await response.json()).error).toContain(
+        "hostProcessObservabilityEnabled",
+      );
+      expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
+    });
+
     it.each([
       [{ hostAwakeMode: "always" }, "hostAwakeMode"],
       [{ hostAwakeBatteryFloorPercent: 10.5 }, "hostAwakeBatteryFloorPercent"],
