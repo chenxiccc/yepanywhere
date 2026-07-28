@@ -100,6 +100,34 @@ last-run status.
   and snapshots the exact instructions used. Missing or invalid source blocks
   the run visibly; it never falls back to a stale hidden copy.
 
+### Shared prompt changes require renewed approval
+
+Enabling a shared routine approves the exact executable instruction content,
+not every future version of its repository path. YA stores the approved content
+SHA and the approved instruction snapshot in private clone-local state, such as
+force-excluded `.yep/routine-source-approvals.json`; neither value is committed
+with the shared routine.
+
+Routine discovery watches or polls shared sources through one bounded
+project/server facility. As soon as it observes that a shared routine's current
+content SHA differs from its approved SHA, without waiting for the next run:
+
+- the Routines navigation entry shows an alert badge whose count is the number
+  of changed shared routines awaiting approval;
+- opening Routines leads with an approval review showing the exact approved →
+  current instruction diff, the routine identity, and its source path; and
+- every due occurrence for that routine remains visibly blocked before
+  dispatch until an authenticated user approves the changed prompt.
+
+Content drift does **not** disable, pause, or delete the activation, change its
+cadence, or discard already recorded history. Approval advances the stored SHA
+and snapshot to the reviewed content, clears that routine from the badge, and
+lets blocked/future occurrences use the normal overlap and dispatch rules.
+Rejecting or deferring leaves the activation intact but execution-blocked.
+Manual **Run now** on a drifted shared routine uses the same diff-and-approval
+gate; the explicit run action is not permission to skip reviewing changed
+instructions.
+
 ## Browse And CRUD
 
 The primary project surface is named **Routines**, not **Scheduled**. A
@@ -180,9 +208,11 @@ daylight-saving-time behavior, and minimum granularity must be settled before
 implementation; five-field minute-granularity cron is the likely first
 contract.
 
-Changing or removing a schedule never edits the shared routine file. Likewise,
-editing a shared routine changes future run content but does not alter any YA
-server's activation unless the source becomes missing or invalid.
+Changing or removing a schedule never edits the shared routine file. Editing a
+shared routine does not rewrite or disable any YA server's activation; it moves
+that server into the changed-prompt approval state above until a user reviews
+and approves the new content. Missing or invalid source remains a separate
+visible blocker.
 
 ## Run Targets
 

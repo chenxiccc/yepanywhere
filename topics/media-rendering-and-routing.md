@@ -186,10 +186,15 @@ permutation. The same image dimensions and available space should produce the
 same arrangement, and small resize changes should not cause gratuitous
 reshuffling.
 
-The gallery has one turn-level collapse action, with a keyboard accelerator,
-that returns it to the existing compact filename links. Expanding it restores
-the same arrangement. Selecting a thumbnail opens a full-screen image viewer;
-full-size inspection is separate from persistent full inline expansion.
+The gallery has one turn-level **Dismiss gallery** action, with a keyboard
+accelerator. Dismissing removes the reordered gallery and reinstates each image
+as the existing minimal filename link at that image reference's original
+inline position. The transcript's original text/image-reference order is
+therefore always recoverable even though gallery packing may reorder
+thumbnails. Re-expanding those compact links restores the same deterministic
+gallery arrangement; there is no second “dismiss to expanded inline images”
+state. Selecting a thumbnail opens a full-screen image viewer; full-size
+inspection is separate from persistent full inline expansion.
 
 ### Phone presentation and deferred gesture
 
