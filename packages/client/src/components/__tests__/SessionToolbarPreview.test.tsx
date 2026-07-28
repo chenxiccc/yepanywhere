@@ -47,6 +47,16 @@ describe("ToolbarControlPreview", () => {
     expect(container.querySelector(".send-button-with-help")).toBeNull();
   });
 
+  it("renders the Conversation view specimen as active", () => {
+    const { container } = renderControl("conversationView");
+
+    const button = container.querySelector(
+      ".conversation-view-toolbar-button",
+    );
+    expect(button).toBeTruthy();
+    expect(button?.classList.contains("active")).toBe(true);
+  });
+
   it("activates an editable specimen by pointer and keyboard", () => {
     const onActivate = vi.fn();
     const { getByRole } = render(

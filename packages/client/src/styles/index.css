@@ -5905,6 +5905,7 @@ div.bang-command-error-message {
 .composer-bottom-overflow-menu-group .slash-command-button,
 .composer-bottom-overflow-menu-group .thinking-toggle-button,
 .composer-bottom-overflow-menu-group .render-mode-toolbar-button,
+.composer-bottom-overflow-menu-group .conversation-view-toolbar-button,
 .composer-bottom-overflow-menu-group .heartbeat-toolbar-button,
 .composer-bottom-overflow-menu-group .session-shortcuts-help-button,
 .composer-bottom-overflow-menu-group .context-toolbar-control {
@@ -7754,7 +7755,8 @@ div.bang-command-error-message {
   cursor: not-allowed;
 }
 
-.render-mode-toolbar-button {
+.render-mode-toolbar-button,
+.conversation-view-toolbar-button {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -7776,10 +7778,21 @@ div.bang-command-error-message {
   box-sizing: border-box;
 }
 
-.render-mode-toolbar-button:hover {
+.render-mode-toolbar-button:hover,
+.conversation-view-toolbar-button:hover {
   background: var(--bg-hover);
   border-color: var(--border-input);
   color: var(--text-primary);
+}
+
+.conversation-view-toolbar-button.active {
+  color: var(--app-yep-green);
+  border-color: color-mix(
+    in srgb,
+    var(--app-yep-green) 48%,
+    var(--border-color)
+  );
+  background: color-mix(in srgb, var(--app-yep-green) 13%, transparent);
 }
 
 .render-mode-toolbar-button.is-rendered {
@@ -8858,6 +8871,69 @@ div.bang-command-error-message {
   display: none;
   pointer-events: none;
   user-select: none;
+}
+
+.conversation-activity-summary {
+  display: inline-flex;
+  min-height: 28px;
+  max-width: 100%;
+  align-items: center;
+  gap: 0.38rem;
+  margin: 4px 0 8px;
+  padding: 3px 8px 3px 5px;
+  border: 1px solid color-mix(in srgb, var(--border-color) 74%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-secondary) 66%, transparent);
+  color: var(--text-dimmed);
+  cursor: pointer;
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  line-height: 1.35;
+  text-align: left;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.conversation-activity-summary:hover,
+.conversation-activity-summary:focus-visible {
+  border-color: var(--border-input);
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  outline: none;
+}
+
+.conversation-activity-summary.is-expanded {
+  border-style: solid;
+  color: var(--text-muted);
+}
+
+.conversation-activity-summary.is-active {
+  border-color: color-mix(
+    in srgb,
+    var(--app-yep-green) 38%,
+    var(--border-color)
+  );
+  color: color-mix(in srgb, var(--app-yep-green) 62%, var(--text-muted));
+}
+
+.conversation-activity-chevron {
+  width: 0.8rem;
+  color: currentColor;
+  opacity: 0.8;
+  text-align: center;
+}
+
+.conversation-activity-pulse {
+  width: 5px;
+  height: 5px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 0 0 0 3px
+    color-mix(in srgb, var(--app-yep-green) 14%, transparent);
 }
 
 /* ==========================================================================
@@ -13871,6 +13947,12 @@ div.bang-command-error-message {
   .message-input-left {
     flex: 0 1 auto;
     overflow: visible;
+  }
+
+  .conversation-activity-summary {
+    min-height: 34px;
+    padding-right: 10px;
+    padding-left: 7px;
   }
 
   .composer-bottom-overflow-menu {

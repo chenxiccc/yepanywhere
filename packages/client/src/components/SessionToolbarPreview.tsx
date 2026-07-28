@@ -68,6 +68,7 @@ function usePreviewToolbarControls(previewNowMs: number) {
       | "slashControl"
       | "thinkingControl"
       | "renderModeControl"
+      | "conversationViewControl"
       | "nudgeControl"
       | "speechControl"
       | "statusControl"
@@ -103,6 +104,11 @@ function usePreviewToolbarControls(previewNowMs: number) {
       renderModeControl: {
         state: "mixed",
         title: t("toolbarRenderModeMixed"),
+        onToggle: noop,
+      },
+      conversationViewControl: {
+        enabled: true,
+        title: t("toolbarConversationViewDisable"),
         onToggle: noop,
       },
       nudgeControl: {
@@ -221,6 +227,7 @@ export function SessionToolbarPreview() {
           slashControl={controls.slashControl}
           thinkingControl={controls.thinkingControl}
           renderModeControl={controls.renderModeControl}
+          conversationViewControl={controls.conversationViewControl}
           nudgeControl={controls.nudgeControl}
           speechControl={controls.speechControl}
           statusControl={controls.statusControl}
@@ -306,6 +313,7 @@ export function ToolbarControlPreview({
         slashControl={controls.slashControl}
         thinkingControl={controls.thinkingControl}
         renderModeControl={controls.renderModeControl}
+        conversationViewControl={controls.conversationViewControl}
         nudgeControl={controls.nudgeControl}
         speechControl={controls.speechControl}
         speechWaveformActive={controlKey === "waveform"}

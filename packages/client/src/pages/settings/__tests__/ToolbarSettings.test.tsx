@@ -22,6 +22,7 @@ const state = vi.hoisted(() => {
     slashMenu: "mid",
     thinkingToggle: "mid",
     renderMode: "hidden",
+    conversationView: "hidden",
     microphone: "pin",
     waveform: "pin",
     shortcutsHelp: "last",
@@ -121,6 +122,9 @@ vi.mock("../../../i18n", () => ({
           appearanceToolbarThinkingDescription: "Show thinking controls",
           appearanceToolbarRenderModeTitle: "Render Mode",
           appearanceToolbarRenderModeDescription: "Show rendered/source toggle",
+          appearanceToolbarConversationViewTitle: "Conversation View",
+          appearanceToolbarConversationViewDescription:
+            "Show condensed conversation",
           appearanceToolbarMicrophoneTitle: "Microphone",
           appearanceToolbarMicrophoneDescription: "Show microphone",
           appearanceToolbarWaveformTitle: "Live Microphone Waveform",
@@ -247,12 +251,17 @@ describe("ToolbarSettings", () => {
   it("shows a presence slider for every control row", () => {
     render(<ToolbarSettings />);
 
-    // 14 controls without the projectQueue capability, one slider each.
-    expect(screen.getAllByRole("slider")).toHaveLength(14);
+    // 15 controls without the Project Queue capability, one slider each.
+    expect(screen.getAllByRole("slider")).toHaveLength(15);
     // Overflow-supported controls get the full notch scale...
     expect(
       screen
         .getByRole("slider", { name: "Mode Selector visibility" })
+        .getAttribute("max"),
+    ).toBe("4");
+    expect(
+      screen
+        .getByRole("slider", { name: "Conversation View visibility" })
         .getAttribute("max"),
     ).toBe("4");
     // ...while non-overflow controls only get Hide / Show always.

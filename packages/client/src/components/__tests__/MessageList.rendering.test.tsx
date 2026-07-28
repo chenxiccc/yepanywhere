@@ -13,9 +13,11 @@ import {
   vi,
 } from "vitest";
 import { buildCorrectionText } from "../../lib/correctionText";
+import { UI_KEYS } from "../../lib/storageKeys";
 import {
-  installMessageListTestEnvironment,
   assistantMessage,
+  codexThinkingMessage,
+  installMessageListTestEnvironment,
   userMessage,
 } from "./MessageList.test-support";
 import { MessageList } from "../MessageList";
@@ -23,6 +25,44 @@ import { MessageList } from "../MessageList";
 installMessageListTestEnvironment();
 
 describe("MessageList rendering", () => {
+  it("condenses and restores routine activity in Conversation view", () => {
+    window.localStorage.setItem(UI_KEYS.conversationView, "true");
+    const { container } = render(
+      <MessageList
+        messages={[
+          userMessage("user-1", "inspect this", "2026-07-28T07:00:00.000Z"),
+          codexThinkingMessage(
+            "thinking-1",
+            "private planning",
+            "2026-07-28T07:00:01.000Z",
+          ),
+          assistantMessage(
+            "assistant-1",
+            "Visible answer",
+            "2026-07-28T07:00:02.000Z",
+          ),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("Visible answer")).toBeTruthy();
+    expect(screen.queryByText("private planning")).toBeNull();
+    const summary = container.querySelector(
+      ".conversation-activity-summary",
+    ) as HTMLButtonElement | null;
+    expect(summary).toBeTruthy();
+    expect(summary?.textContent).toContain("1 activity hidden");
+
+    fireEvent.click(summary as HTMLButtonElement);
+
+    expect(screen.getByText("private planning")).toBeTruthy();
+    expect(
+      container
+        .querySelector(".conversation-activity-summary")
+        ?.getAttribute("aria-expanded"),
+    ).toBe("true");
+  });
+
   it("offers correction only for the latest real user message", () => {
     const onCorrect = vi.fn();
 

@@ -57,6 +57,7 @@ export interface ComposerToolbarOverflowLayoutSignatureInput {
   slashMenu: ComposerToolbarOverflowPriorityInput;
   thinkingToggle: ComposerToolbarOverflowPriorityInput;
   renderMode: ComposerToolbarOverflowPriorityInput;
+  conversationView: ComposerToolbarOverflowPriorityInput;
   nudge: ComposerToolbarOverflowPriorityInput;
   sessionStatus: ComposerToolbarOverflowPriorityInput;
   shortcutsHelp: ComposerToolbarOverflowPriorityInput;
@@ -83,6 +84,7 @@ export function getComposerToolbarOverflowLayoutSignature(
     `slashMenu:${input.slashMenu}`,
     `thinkingToggle:${input.thinkingToggle}`,
     `renderMode:${input.renderMode}`,
+    `conversationView:${input.conversationView}`,
     `nudge:${input.nudge}`,
     `sessionStatus:${input.sessionStatus}`,
     `shortcutsHelp:${input.shortcutsHelp}`,

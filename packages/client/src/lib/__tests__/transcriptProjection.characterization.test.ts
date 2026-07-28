@@ -59,6 +59,15 @@ function characterize(item: RenderItem): Record<string, unknown> {
       };
     case "transcript_display_object":
       return { ...base, object: item.object };
+    case "conversation_activity":
+      return {
+        ...base,
+        activityCount: item.activityCount,
+        active: item.active,
+        expanded: item.expanded,
+        startedAtMs: item.startedAtMs,
+        endedAtMs: item.endedAtMs,
+      };
   }
 }
 

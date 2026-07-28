@@ -713,6 +713,8 @@ export function getFullSessionSearchAnchorForItem(
           }
         : null;
     }
+    case "conversation_activity":
+      return null;
   }
 }
 

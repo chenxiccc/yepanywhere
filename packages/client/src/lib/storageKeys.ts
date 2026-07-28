@@ -48,6 +48,7 @@ export const UI_KEYS = {
   speechMicDeviceId: "yep-anywhere-speech-mic-device-id",
   floatingActionButtonEnabled: "yep-anywhere-floating-action-button-enabled",
   developerMode: "yep-anywhere-developer-mode",
+  conversationView: "yep-anywhere-conversation-view-enabled",
   sessionToolbarPresence: "yep-anywhere-session-toolbar-presence",
   // Legacy pre-presence keys, read once for migration then removed.
   sessionToolbarVisibility: "yep-anywhere-session-toolbar-visibility",

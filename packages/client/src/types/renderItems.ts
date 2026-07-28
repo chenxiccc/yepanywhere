@@ -20,7 +20,8 @@ export type RenderItem =
   | SessionSetupItem
   | TranscriptDisplayObjectItem
   | SystemItem
-  | TaskNotificationItem;
+  | TaskNotificationItem
+  | ConversationActivityItem;
 
 /** Base fields shared by all render items */
 interface RenderItemBase {
@@ -117,4 +118,22 @@ export interface SystemItem extends RenderItemBase {
   status?: "compacting" | null;
   /** For config_ack subtype: whether it differs from the previous config ack */
   configChanged?: boolean;
+}
+
+/**
+ * Compact Conversation-view replacement for routine activity in one assistant
+ * turn. Expanding it restores the hidden render items in their original
+ * positions; the summary itself remains at the turn end as the collapse
+ * control.
+ */
+export interface ConversationActivityItem extends RenderItemBase {
+  type: "conversation_activity";
+  id: string;
+  activityCount: number;
+  active: boolean;
+  expanded: boolean;
+  /** Earliest observed source-message timestamp in the assistant turn. */
+  startedAtMs: number | null;
+  /** Latest observed timestamp, or the current clock while the turn is active. */
+  endedAtMs: number | null;
 }

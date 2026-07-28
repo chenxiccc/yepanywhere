@@ -89,6 +89,16 @@ export function canReuseRenderItem(
 
     case "task_notification":
       return next.type === "task_notification" && previous.raw === next.raw;
+
+    case "conversation_activity":
+      return (
+        next.type === "conversation_activity" &&
+        previous.activityCount === next.activityCount &&
+        previous.active === next.active &&
+        previous.expanded === next.expanded &&
+        previous.startedAtMs === next.startedAtMs &&
+        previous.endedAtMs === next.endedAtMs
+      );
   }
 }
 

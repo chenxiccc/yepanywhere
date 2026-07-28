@@ -33,6 +33,7 @@ export interface SessionToolbarPresence {
   slashMenu: ToolbarControlPresence;
   thinkingToggle: ToolbarControlPresence;
   renderMode: ToolbarControlPresence;
+  conversationView: ToolbarControlPresence;
   microphone: ToolbarControlPresence;
   waveform: ToolbarControlPresence;
   shortcutsHelp: ToolbarControlPresence;
@@ -69,6 +70,7 @@ export const DEFAULT_SESSION_TOOLBAR_PRESENCE: SessionToolbarPresence = {
   slashMenu: "mid",
   thinkingToggle: "mid",
   renderMode: "hidden",
+  conversationView: "hidden",
   microphone: "pin",
   waveform: "pin",
   shortcutsHelp: "last",
@@ -94,6 +96,7 @@ export const DEFAULT_SESSION_TOOLBAR_PRIORITY: SessionToolbarPriority = {
   slashMenu: "mid",
   thinkingToggle: "mid",
   renderMode: "last",
+  conversationView: "last",
   microphone: "pin",
   waveform: "pin",
   shortcutsHelp: "last",
@@ -153,8 +156,9 @@ function normalizeClientDefaultPresence(
     return {};
   }
   const normalized: SessionToolbarPresenceDefaults = {};
+  const presenceRecord = value as Record<string, unknown>;
   for (const key of SESSION_TOOLBAR_CONTROL_KEYS) {
-    const candidate = value[key];
+    const candidate = presenceRecord[key];
     if (isToolbarControlPresence(candidate)) {
       normalized[key] = candidate;
     }
@@ -316,6 +320,11 @@ function saveClientDefaultPresence(
   key: SessionToolbarVisibilityKey,
   presence: ToolbarControlPresence,
 ): void {
+  // Conversation view is a client-only preference so stable servers never
+  // need to recognize its new toolbar key.
+  if (key === "conversationView") {
+    return;
+  }
   void api
     .updateServerSettings({
       clientDefaults: {

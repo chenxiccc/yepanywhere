@@ -184,6 +184,8 @@
   highlighted matches and jump links, default-off "Match values" toggle.
 - source-review-to-session - Read-only source review comments accumulated into
   a new agent session; issue #95's broader source manager is inspiration only.
+- conversation-view - Opt-in condensed transcript preserving user/agent text,
+  images, and failures behind per-turn expandable elapsed/activity summaries.
 - acli-ui - ACLI capability detection (`acli:` help line) and richer
   bang-composer completion/help UI proposal.
 - ui-testing - Capture-confirmed browser QA: UI tweak requests end with

@@ -17,6 +17,10 @@ import {
 import { createPortal } from "react-dom";
 import type { DraftTextChangeMetadata } from "../lib/commentAnchors";
 import { getShowThinkingSetting } from "../hooks/useModelSettings";
+import {
+  getConversationViewPreference,
+  subscribeConversationViewPreference,
+} from "../hooks/useConversationView";
 import { useMessageListIsearch } from "../hooks/useMessageListIsearch";
 import { useMessageListSelectionQuote } from "../hooks/useMessageListSelectionQuote";
 import { useRelativeNow } from "../hooks/useRelativeNow";
@@ -60,6 +64,7 @@ import {
   groupEndsVisibleTurn,
   groupRenderItemsIntoTurns,
   hasVisibleThinkingTextDelta,
+  projectConversationView,
   reconcileAutoExpandedThinkingItemIds,
   selectLatestCorrectablePrompt,
   type ComposerTailLanePosition,
@@ -933,6 +938,11 @@ export const MessageList = memo(function MessageList({
     if (showThinking === "off") return false;
     return loadSessionThinkingVisible();
   });
+  const [conversationViewEnabled, setConversationViewEnabled] = useState(
+    getConversationViewPreference,
+  );
+  const [expandedConversationActivityIds, setExpandedConversationActivityIds] =
+    useState<ReadonlySet<string>>(() => new Set());
   const [thinkingExpansionOverrides, setThinkingExpansionOverrides] = useState<
     Record<string, boolean>
   >({});
@@ -1165,9 +1175,27 @@ export const MessageList = memo(function MessageList({
       thinkingLatestOnly,
     ],
   );
-  const displayRenderItems = useMemo(
+  const fullDisplayRenderItems = useMemo(
     () => getDisplayRenderItems(renderItems, { thinkingItemsVisible }),
     [renderItems, thinkingItemsVisible],
+  );
+  const displayRenderItems = useMemo(
+    () =>
+      conversationViewEnabled
+        ? projectConversationView(fullDisplayRenderItems, {
+            active: isProcessing || isStreaming,
+            expandedActivityIds: expandedConversationActivityIds,
+            nowMs,
+          })
+        : fullDisplayRenderItems,
+    [
+      conversationViewEnabled,
+      expandedConversationActivityIds,
+      fullDisplayRenderItems,
+      isProcessing,
+      isStreaming,
+      nowMs,
+    ],
   );
   useLayoutEffect(() => {
     const previousThinkingTextLengths = previousThinkingTextLengthsRef.current;
@@ -1760,6 +1788,33 @@ export const MessageList = memo(function MessageList({
       });
     },
     [scrollToBottom],
+  );
+
+  useEffect(
+    () =>
+      subscribeConversationViewPreference(() => {
+        preserveScrollAfterTranscriptHeightChange(() => {
+          setConversationViewEnabled(getConversationViewPreference());
+        });
+      }),
+    [preserveScrollAfterTranscriptHeightChange],
+  );
+
+  const toggleConversationActivity = useCallback(
+    (itemId: string) => {
+      preserveScrollAfterTranscriptHeightChange(() => {
+        setExpandedConversationActivityIds((previous) => {
+          const next = new Set(previous);
+          if (next.has(itemId)) {
+            next.delete(itemId);
+          } else {
+            next.add(itemId);
+          }
+          return next;
+        });
+      });
+    },
+    [preserveScrollAfterTranscriptHeightChange],
   );
 
   const toggleThinkingItemsVisible = useCallback(() => {
@@ -2656,6 +2711,9 @@ export const MessageList = memo(function MessageList({
                     staleNowMs={assistantRow.staleNowMs}
                     latestVisibleTimestampMs={latestVisibleTimestampMs}
                     thinkingDurationMs={assistantRow.thinkingDurationMs}
+                    onToggleConversationActivity={
+                      toggleConversationActivity
+                    }
                   />
                 );
               })}

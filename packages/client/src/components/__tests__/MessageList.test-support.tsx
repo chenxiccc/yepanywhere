@@ -65,6 +65,20 @@ vi.mock("../../i18n", () => ({
         explorationHideCommandDetails: "Hide command details",
         explorationLine: "line {line}",
         explorationLineRange: "lines {start}-{end}",
+        conversationActivitySingular: "activity",
+        conversationActivityPlural: "activities",
+        conversationActivityActive:
+          "Working {duration} · {count} {activity}",
+        conversationActivityActiveWithoutTime:
+          "Working · {count} {activity}",
+        conversationActivityComplete:
+          "{duration} elapsed · {count} {activity} hidden",
+        conversationActivityCompleteWithoutTime:
+          "{count} {activity} hidden",
+        conversationActivityExpandTitle:
+          "Show hidden activity in its original positions",
+        conversationActivityCollapseTitle:
+          "Collapse this turn's routine activity",
       };
       const value = translations[key] ?? key;
       return value.replace(/\{(\w+)\}/g, (_, param: string) =>

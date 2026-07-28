@@ -65,6 +65,7 @@ const PRIORITY_EDITABLE_CONTROLS = new Set<SessionToolbarVisibilityKey>([
   "slashMenu",
   "thinkingToggle",
   "renderMode",
+  "conversationView",
   "nudge",
   "sessionStatus",
   "shortcutsHelp",
@@ -275,6 +276,12 @@ export function ToolbarSettings() {
       "renderMode",
       t("appearanceToolbarRenderModeTitle"),
       t("appearanceToolbarRenderModeDescription"),
+      "left",
+    ),
+    controlMeta(
+      "conversationView",
+      t("appearanceToolbarConversationViewTitle"),
+      t("appearanceToolbarConversationViewDescription"),
       "left",
     ),
     controlMeta(

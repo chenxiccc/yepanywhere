@@ -1,4 +1,5 @@
 import { memo, useCallback, useRef } from "react";
+import { useI18n } from "../i18n";
 import {
   MESSAGE_STALE_THRESHOLD_MS,
   getEarliestMessageTimestampMs,
@@ -12,6 +13,7 @@ import { useQuoteableTextSource } from "../hooks/useQuoteableTextSource";
 import type { CommentAnchor } from "../lib/commentAnchors";
 import type { ContentBlock } from "../types";
 import type { RenderItem } from "../types/renderItems";
+import { formatCommandDuration } from "../lib/shellToolOutput";
 import { MessageAge } from "./MessageAge";
 import {
   BangCommandDisplayObject,
@@ -47,6 +49,7 @@ interface Props {
   onToggleForkSummaryAutoOpen?: (objectId: string, value: boolean) => void;
   onFollowForkSummary?: (objectId: string) => void;
   bangCommandHandlers?: BangCommandHandlers;
+  onToggleConversationActivity?: (itemId: string) => void;
 }
 
 function getMessageIdLike(message: Record<string, unknown>): string {
@@ -232,6 +235,74 @@ function CollapsibleSystemMessage({
   );
 }
 
+function ConversationActivitySummary({
+  item,
+  onToggle,
+}: {
+  item: Extract<RenderItem, { type: "conversation_activity" }>;
+  onToggle?: (itemId: string) => void;
+}) {
+  const { t } = useI18n();
+  const elapsedSeconds =
+    item.startedAtMs !== null &&
+    item.endedAtMs !== null &&
+    item.endedAtMs >= item.startedAtMs
+      ? (item.endedAtMs - item.startedAtMs) / 1000
+      : null;
+  const duration =
+    elapsedSeconds === null ? "" : formatCommandDuration(elapsedSeconds);
+  const activity = t(
+    item.activityCount === 1
+      ? "conversationActivitySingular"
+      : "conversationActivityPlural",
+  );
+  const label = duration
+    ? t(
+        item.active
+          ? "conversationActivityActive"
+          : "conversationActivityComplete",
+        {
+          duration,
+          count: item.activityCount,
+          activity,
+        },
+      )
+    : t(
+        item.active
+          ? "conversationActivityActiveWithoutTime"
+          : "conversationActivityCompleteWithoutTime",
+        {
+          count: item.activityCount,
+          activity,
+        },
+      );
+  const title = t(
+    item.expanded
+      ? "conversationActivityCollapseTitle"
+      : "conversationActivityExpandTitle",
+  );
+
+  return (
+    <button
+      type="button"
+      className={`conversation-activity-summary${
+        item.active ? " is-active" : ""
+      }${item.expanded ? " is-expanded" : ""}`}
+      onClick={() => onToggle?.(item.id)}
+      aria-expanded={item.expanded}
+      title={title}
+    >
+      <span className="conversation-activity-chevron" aria-hidden="true">
+        {item.expanded ? "▾" : "▸"}
+      </span>
+      {item.active ? (
+        <span className="conversation-activity-pulse" aria-hidden="true" />
+      ) : null}
+      <span>{label}</span>
+    </button>
+  );
+}
+
 export const RenderItemComponent = memo(function RenderItemComponent({
   item,
   isStreaming,
@@ -253,10 +324,12 @@ export const RenderItemComponent = memo(function RenderItemComponent({
   onToggleForkSummaryAutoOpen,
   onFollowForkSummary,
   bangCommandHandlers,
+  onToggleConversationActivity,
 }: Props) {
   const staticAgeNowMsRef = useRef(Date.now());
   const timestampMs = getLatestMessageTimestampMs(item.sourceMessages);
-  const hasTimestamp = timestampMs !== null;
+  const hasTimestamp =
+    item.type !== "conversation_activity" && timestampMs !== null;
   const isLatestVisibleTimestamp =
     hasTimestamp && latestVisibleTimestampMs === timestampMs;
   const ageNowMs = isLatestVisibleTimestamp
@@ -393,6 +466,14 @@ export const RenderItemComponent = memo(function RenderItemComponent({
 
       case "task_notification":
         return <TaskNotificationBlock item={item} />;
+
+      case "conversation_activity":
+        return (
+          <ConversationActivitySummary
+            item={item}
+            onToggle={onToggleConversationActivity}
+          />
+        );
 
       case "system": {
         if (item.subtype === "away_summary") {

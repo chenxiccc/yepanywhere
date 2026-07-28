@@ -36,6 +36,7 @@ export const BROWSER_SETTINGS_BACKUP_KEYS = [
   UI_KEYS.speechKeepMicWarm,
   UI_KEYS.floatingActionButtonEnabled,
   UI_KEYS.developerMode,
+  UI_KEYS.conversationView,
   UI_KEYS.sessionToolbarPresence,
   UI_KEYS.tooltipMode,
   UI_KEYS.tooltipDelayMs,

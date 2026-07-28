@@ -75,10 +75,11 @@ they can reach a control.
   disappear.
 - The eligible set includes controls from both the left and right toolbar
   containers. Permission mode, attachment, slash, thinking, render/formula,
-  heartbeat/pulse, shortcut help, session status, context usage, `/btw`, Steer
-  Now, and Project Queue may all collapse when the user assigns a non-`pin`
-  priority. Send, Stop, pending approvals/questions, microphone, and the active
-  waveform remain inline/pinned by their own contracts.
+  Conversation view, heartbeat/pulse, shortcut help, session status, context
+  usage, `/btw`, Steer Now, and Project Queue may all collapse when the user
+  assigns a non-`pin` priority. Conversation view defaults to the `last` tier
+  once enabled. Send, Stop, pending approvals/questions, microphone, and the
+  active waveform remain inline/pinned by their own contracts.
 - At squeeze widths, permission mode should use a pure icon/dot presentation
   rather than carrying text such as `Bypass` inline.
 - Overflow priority does not require arbitrary reshuffling of the normal

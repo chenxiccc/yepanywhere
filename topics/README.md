@@ -46,6 +46,8 @@
 - pi provider (Zechner's pi-mono as agnostic backend: integration plan + periodic progress tracking)
 - Provider read/edit disciplines (native edit formats vs YA's one canonical Read/Edit/Write presentation)
 - Collapse/expand mode (brainstorm: default-collapse more actions; expand subagent progress as pure outline UI)
+- Conversation view (opt-in condensed transcript preserving agent text,
+  images, and failures with one expandable elapsed/activity summary per turn)
 - Session hover card recent activity (add last regular agent turn excerpt to the row tooltip; fire it on all-sessions + search too)
 - Tooltip interactions (native fallback, themed pointer-rest delay, warm adjacent scanning, and future rendered hidden tails)
 - Turn-notch actions / fork-from-turn (fork already exists; proposal: expose fork/copy/trim from scrollbar notches + seed compose with the forked turn)

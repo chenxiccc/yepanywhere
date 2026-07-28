@@ -28,6 +28,7 @@ import {
   useModelSettings,
 } from "../hooks/useModelSettings";
 import { useBrowserXaiSttApiKey } from "../hooks/useBrowserXaiSttApiKey";
+import { useConversationView } from "../hooks/useConversationView";
 import {
   getComposerToolbarOverflowLayoutSignature,
   type MessageInputToolbarLayoutRefs,
@@ -488,6 +489,12 @@ interface ToolbarRenderModeControl {
   onToggle: () => void;
 }
 
+interface ToolbarConversationViewControl {
+  enabled: boolean;
+  title: string;
+  onToggle: () => void;
+}
+
 interface ToolbarNudgeControl {
   enabled: boolean;
   title: string;
@@ -641,6 +648,7 @@ export interface MessageInputToolbarViewProps {
   slashControl?: ToolbarSlashControl | null;
   thinkingControl?: ToolbarThinkingControl | null;
   renderModeControl?: ToolbarRenderModeControl | null;
+  conversationViewControl?: ToolbarConversationViewControl | null;
   nudgeControl?: ToolbarNudgeControl | null;
   speechControl?: ToolbarSpeechControl | null;
   speechWaveformActive?: boolean;
@@ -668,6 +676,26 @@ function ToolbarMicrophoneIcon() {
       <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
       <line x1="12" y1="19" x2="12" y2="23" />
       <line x1="8" y1="23" x2="16" y2="23" />
+    </svg>
+  );
+}
+
+function ConversationViewIcon() {
+  return (
+    <svg
+      width="17"
+      height="17"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M4 5.5h10a3 3 0 0 1 3 3v3a3 3 0 0 1-3 3H9l-4 3v-3.2a3 3 0 0 1-1-2.3V8.5a3 3 0 0 1 3-3" />
+      <path d="M17 9.5h.5a2.5 2.5 0 0 1 2.5 2.5v3a2.5 2.5 0 0 1-1 2l.2 2.5-3.2-2h-3.5a2.5 2.5 0 0 1-2.4-1.8" />
+      <path d="M8 9.5h5M8 12h3.5" />
     </svg>
   );
 }
@@ -844,6 +872,7 @@ export function MessageInputToolbarView({
   slashControl,
   thinkingControl,
   renderModeControl,
+  conversationViewControl,
   nudgeControl,
   speechControl,
   speechWaveformActive = false,
@@ -1179,6 +1208,9 @@ export function MessageInputToolbarView({
     (visibility.renderMode &&
       renderModeControl &&
       isPriorityCollapsible("renderMode")) ||
+    (visibility.conversationView &&
+      conversationViewControl &&
+      isPriorityCollapsible("conversationView")) ||
     (visibility.nudge && nudgeControl && isPriorityCollapsible("nudge")) ||
     (visibility.sessionStatus &&
       showToolbarStatus &&
@@ -1212,6 +1244,10 @@ export function MessageInputToolbarView({
     renderMode:
       visibility.renderMode && renderModeControl
         ? controlPriority.renderMode
+        : "off",
+    conversationView:
+      visibility.conversationView && conversationViewControl
+        ? controlPriority.conversationView
         : "off",
     nudge: visibility.nudge && nudgeControl ? controlPriority.nudge : "off",
     sessionStatus:
@@ -1364,6 +1400,22 @@ export function MessageInputToolbarView({
             }
           >
             <RenderModeGlyph />
+          </button>
+        )}
+        {visibility.conversationView && conversationViewControl && (
+          <button
+            type="button"
+            className={inlineTierClass(
+              "conversationView",
+              "conversation-view-toolbar-button",
+              conversationViewControl.enabled ? "active" : "",
+            )}
+            onClick={conversationViewControl.onToggle}
+            title={conversationViewControl.title}
+            aria-label={conversationViewControl.title}
+            aria-pressed={conversationViewControl.enabled}
+          >
+            <ConversationViewIcon />
           </button>
         )}
         {visibility.nudge && nudgeControl && (
@@ -1611,6 +1663,25 @@ export function MessageInputToolbarView({
                     }
                   >
                     <RenderModeGlyph />
+                  </button>
+                )}
+                {visibility.conversationView &&
+                  conversationViewControl &&
+                  isPriorityCollapsible("conversationView") && (
+                  <button
+                    type="button"
+                    className={menuTierClass(
+                      "conversationView",
+                      "conversation-view-toolbar-button",
+                      conversationViewControl.enabled ? "active" : "",
+                    )}
+                    onClick={conversationViewControl.onToggle}
+                    title={conversationViewControl.title}
+                    aria-label={conversationViewControl.title}
+                    role="menuitemcheckbox"
+                    aria-checked={conversationViewControl.enabled}
+                  >
+                    <ConversationViewIcon />
                   </button>
                 )}
                 {visibility.nudge &&
@@ -2192,6 +2263,8 @@ export function MessageInputToolbar({
   const { providers } = useProviders();
   const { visibility: toolbarVisibility, priority: toolbarPriority } =
     useSessionToolbarPresence();
+  const { conversationViewEnabled, setConversationViewEnabled } =
+    useConversationView();
   const renderMode = useOptionalRenderModeContext();
   const nowMs = useRelativeNow();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -2359,6 +2432,9 @@ export function MessageInputToolbar({
       : renderMode?.state === "source"
         ? t("toolbarRenderModeSource")
         : t("toolbarRenderModeMixed");
+  const conversationViewTitle = conversationViewEnabled
+    ? t("toolbarConversationViewDisable")
+    : t("toolbarConversationViewEnable");
   const hasPotentialDualActions = !!(onSend && onQueue && onSteer);
   const effectivePrimaryActionKind =
     primaryActionKind ?? (hasPotentialDualActions ? "steer" : "send");
@@ -2768,6 +2844,11 @@ export function MessageInputToolbar({
             }
           : null
       }
+      conversationViewControl={{
+        enabled: conversationViewEnabled,
+        title: conversationViewTitle,
+        onToggle: () => setConversationViewEnabled(!conversationViewEnabled),
+      }}
       nudgeControl={
         onToggleHeartbeat
           ? {

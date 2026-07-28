@@ -30,8 +30,8 @@ fit-driven float whenever the inline row is unavailable; this float is
 and the liveness chip.
 Presence state is held by `useSessionToolbarPresence` and currently covers
 `modeSelector`, `steerNow`, `attachments`, `slashMenu`, `thinkingToggle`,
-`renderMode`, `microphone`, `waveform`, `shortcutsHelp`, `contextUsage`, `btw`,
-`nudge`, `sessionStatus`, `projectQueue`, and
+`renderMode`, `conversationView`, `microphone`, `waveform`, `shortcutsHelp`,
+`contextUsage`, `btw`, `nudge`, `sessionStatus`, `projectQueue`, and
 `projectQueueNewSessionShortcut`. Changing a control updates the preview
 immediately. The two Project Queue controls are independent and default hidden:
 `projectQueue` targets the current session, while
@@ -44,6 +44,11 @@ client default, `hidden` is an explicit local hide, and `first`/`mid`/`last`/
 becomes the default for devices with no explicit local override. Resetting
 toolbar presence clears local overrides and returns that browser to following
 the server client default.
+`conversationView` is the narrow client-only exception: both its mode and its
+toolbar-presence override remain browser-local and are not sent to older servers
+as a new client-default key. The control defaults hidden and, when shown,
+defaults to the `last` narrowing tier. See
+[conversation-view.md](conversation-view.md).
 Narrowing priority is derived by `useSessionToolbarPresence` and is editable
 for controls the runtime overflow menu can actually reveal: the left-side
 controls, shortcut help, `sessionStatus`, `contextUsage`, `btw`, `steerNow`,

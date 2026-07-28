@@ -17,7 +17,9 @@ expand-default policy with the same shape),
 [`provider-agnostic-btw-asides.md`](provider-agnostic-btw-asides.md) (the
 `/btw` aside — proposed to **unify** with agent subagent streams; see § below),
 [`ui-architecture.md`](ui-architecture.md) (render-boundary principle),
-[`task-list-rendering.md`](task-list-rendering.md) (subagent/`Task` rendering).
+[`task-list-rendering.md`](task-list-rendering.md) (subagent/`Task` rendering),
+[`conversation-view.md`](conversation-view.md) (the landed, coarser
+conversation-only projection with one expandable activity summary per turn).
 
 Topic: collapse-expand-mode
 
@@ -61,6 +63,11 @@ the presentation the user saw in recent Claude/Codex. It is real but **partial**
 A YA **collapse/expand mode** (opt-in setting/toggle) that raises outline density
 by default-collapsing more of the action stream, then lets the user expand for
 detail. Open design questions, not decisions:
+
+This remains distinct from the landed **Conversation view**. Conversation view
+condenses all routine activity in a turn behind one elapsed/count marker;
+collapse/expand mode would preserve named action groups such as Explored,
+Edited, and Ran as a legible outline.
 
 - **Scope of collapse.** Beyond read/search/list: fold edit runs, `Bash` runs,
   and tool clusters into labeled outline rows. Likely a small set of named
