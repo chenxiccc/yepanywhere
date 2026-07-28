@@ -11,6 +11,7 @@ import {
   useQuestionOtherDrafts,
   useToolApprovalFeedbackDraft,
 } from "../useDrafts";
+import { useDraftPersistence } from "../useDraftPersistence";
 import {
   createClientSummaryHostSourceKey,
   resetClientSummaryStoreForTests,
@@ -203,6 +204,28 @@ describe("useNewSessionDraft", () => {
     const { result } = renderHook(() => useNewSessionDraft());
 
     expect(result.current).toBe(false);
+  });
+
+  it("updates from owned same-tab persistence events without polling", () => {
+    const macbook = createClientSummaryHostSourceKey("macbook");
+    act(() => {
+      setCurrentClientSummarySourceKey(macbook);
+    });
+    const key = createNewSessionDraftKey(macbook);
+    const observed = renderHook(() => useNewSessionDraft());
+    const persisted = renderHook(() => useDraftPersistence(key));
+
+    expect(observed.result.current).toBe(false);
+
+    act(() => {
+      persisted.result.current[1]("new session draft");
+    });
+    expect(observed.result.current).toBe(true);
+
+    act(() => {
+      persisted.result.current[2].clearDraft();
+    });
+    expect(observed.result.current).toBe(false);
   });
 });
 

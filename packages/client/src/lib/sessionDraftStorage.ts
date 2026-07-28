@@ -1,8 +1,11 @@
 import type { ClientSummarySourceKey } from "./clientSummaryStore";
 import {
+  type DraftAttachmentState,
+  draftStorageValueForAttachments,
   draftStorageValueForText,
   hasDraftContentValue,
 } from "./draftEnvelope";
+import { publishDraftPresenceChange } from "./draftPresenceEvents";
 
 export const SESSION_DRAFT_KEY_PREFIX = "draft-message-";
 const LOCAL_CLIENT_SUMMARY_SOURCE_VALUE = "local";
@@ -83,42 +86,83 @@ function writeDraftIndex(
 export function updateSessionDraftIndex(
   reference: SessionDraftReference,
   value: string | null | undefined,
-): void {
+): boolean {
   const sessionIds = readDraftIndex(reference.sourceKey);
-  if (hasDraftContentValue(value)) {
+  const shouldContain = hasDraftContentValue(value);
+  if (sessionIds.has(reference.sessionId) === shouldContain) {
+    return false;
+  }
+  if (shouldContain) {
     sessionIds.add(reference.sessionId);
   } else {
     sessionIds.delete(reference.sessionId);
   }
   writeDraftIndex(reference.sourceKey, sessionIds);
+  return true;
+}
+
+function persistSessionDraftEnvelope(
+  reference: SessionDraftReference,
+  update: (previousValue: string | null) => string | null,
+): void {
+  try {
+    const key = createSessionDraftStorageKey(reference);
+    const previousValue = localStorage.getItem(key);
+    const nextValue = update(previousValue);
+    if (nextValue) {
+      localStorage.setItem(key, nextValue);
+    } else {
+      localStorage.removeItem(key);
+    }
+    const previousHasContent = hasDraftContentValue(previousValue);
+    const nextHasContent = hasDraftContentValue(nextValue);
+    if (previousHasContent !== nextHasContent) {
+      updateSessionDraftIndex(reference, nextValue);
+      publishDraftPresenceChange({
+        storageKey: key,
+        hasContent: nextHasContent,
+        sessionDraft: reference,
+      });
+    }
+  } catch {
+    // localStorage might be full or unavailable.
+  }
 }
 
 export function saveSessionDraft(
   reference: SessionDraftReference,
   value: string,
 ): void {
-  let storedValue: string | null = null;
-  try {
-    const key = createSessionDraftStorageKey(reference);
-    storedValue = draftStorageValueForText(value, localStorage.getItem(key));
-    if (storedValue) {
-      localStorage.setItem(key, storedValue);
-    } else {
-      localStorage.removeItem(key);
-    }
-  } catch {
-    // localStorage might be full or unavailable.
-  }
-  updateSessionDraftIndex(reference, storedValue ?? value);
+  persistSessionDraftEnvelope(reference, (previousValue) =>
+    draftStorageValueForText(value, previousValue),
+  );
+}
+
+export function saveSessionDraftAttachmentState(
+  reference: SessionDraftReference,
+  value: DraftAttachmentState | null,
+): void {
+  persistSessionDraftEnvelope(reference, (previousValue) =>
+    draftStorageValueForAttachments(value, previousValue),
+  );
 }
 
 export function removeSessionDraft(reference: SessionDraftReference): void {
   try {
-    localStorage.removeItem(createSessionDraftStorageKey(reference));
+    const key = createSessionDraftStorageKey(reference);
+    const previousValue = localStorage.getItem(key);
+    localStorage.removeItem(key);
+    if (hasDraftContentValue(previousValue)) {
+      updateSessionDraftIndex(reference, "");
+      publishDraftPresenceChange({
+        storageKey: key,
+        hasContent: false,
+        sessionDraft: reference,
+      });
+    }
   } catch {
     // localStorage might be unavailable.
   }
-  updateSessionDraftIndex(reference, "");
 }
 
 export function scanSessionDraftIds(

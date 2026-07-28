@@ -8,10 +8,12 @@ import {
   readDraftAttachmentStateValue,
   readDraftTextValue,
 } from "../lib/draftEnvelope";
+import { publishDraftPresenceChange } from "../lib/draftPresenceEvents";
 import {
   createSessionDraftStorageKey,
   removeSessionDraft,
   saveSessionDraft,
+  saveSessionDraftAttachmentState,
   updateSessionDraftIndex,
 } from "../lib/sessionDraftStorage";
 
@@ -66,14 +68,23 @@ function saveToStorage(
   }
 
   try {
+    const previousValue = localStorage.getItem(key);
     const nextValue = draftStorageValueForText(
       value,
-      localStorage.getItem(key),
+      previousValue,
     );
     if (nextValue) {
       localStorage.setItem(key, nextValue);
     } else {
       localStorage.removeItem(key);
+    }
+    const previousHasContent = hasDraftContentValue(previousValue);
+    const nextHasContent = hasDraftContentValue(nextValue);
+    if (previousHasContent !== nextHasContent) {
+      publishDraftPresenceChange({
+        storageKey: key,
+        hasContent: nextHasContent,
+      });
     }
   } catch {
     // localStorage might be full or unavailable
@@ -85,27 +96,32 @@ function saveAttachmentStateToStorage(
   value: DraftAttachmentState | null,
   sessionDraft?: UseDraftPersistenceOptions["sessionDraft"],
 ): void {
-  const storageKey = sessionDraft
-    ? createSessionDraftStorageKey(sessionDraft)
-    : key;
-  let nextValue: string | null = null;
+  if (sessionDraft) {
+    saveSessionDraftAttachmentState(sessionDraft, value);
+    return;
+  }
 
   try {
-    nextValue = draftStorageValueForAttachments(
+    const previousValue = localStorage.getItem(key);
+    const nextValue = draftStorageValueForAttachments(
       value,
-      localStorage.getItem(storageKey),
+      previousValue,
     );
     if (nextValue) {
-      localStorage.setItem(storageKey, nextValue);
+      localStorage.setItem(key, nextValue);
     } else {
-      localStorage.removeItem(storageKey);
+      localStorage.removeItem(key);
+    }
+    const previousHasContent = hasDraftContentValue(previousValue);
+    const nextHasContent = hasDraftContentValue(nextValue);
+    if (previousHasContent !== nextHasContent) {
+      publishDraftPresenceChange({
+        storageKey: key,
+        hasContent: nextHasContent,
+      });
     }
   } catch {
     // localStorage might be full or unavailable.
-  }
-
-  if (sessionDraft) {
-    updateSessionDraftIndex(sessionDraft, nextValue);
   }
 }
 
@@ -119,7 +135,14 @@ function removeFromStorage(
   }
 
   try {
+    const previousValue = localStorage.getItem(key);
     localStorage.removeItem(key);
+    if (hasDraftContentValue(previousValue)) {
+      publishDraftPresenceChange({
+        storageKey: key,
+        hasContent: false,
+      });
+    }
   } catch {
     // localStorage might be unavailable.
   }

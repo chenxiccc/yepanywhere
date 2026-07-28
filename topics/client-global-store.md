@@ -216,8 +216,11 @@ targeted-session selector.
 All Sessions and Inbox now use the same Project Queue decoration path for
 visible session cards. Session draft badges also read from client-summary local
 decorations: the store wrapper owns the mounted `draft-message-*` localStorage
-scan and tears down its storage listener plus polling interval when the last
-draft-decoration consumer unmounts.
+initial scan, cross-tab storage listener, and owned same-tab presence-event
+subscription. It tears down both listeners when the last draft-decoration
+consumer unmounts; no draft-decoration polling timer remains. The draft index
+changes only when an owned persistence write crosses the empty/non-empty
+presence boundary.
 
 The original session collection fields are now nested under `sessions`, matching
 the documented normalized shape.

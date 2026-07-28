@@ -175,6 +175,11 @@ describe("useDraftPersistence", () => {
       result.current[1]("indexed draft");
     });
 
+    const setItem = vi.mocked(window.localStorage.setItem);
+    expect(setItem.mock.calls.map(([key]) => key)).toEqual([
+      "draft-message:host%3Amacbook:session-a",
+      "draft-index-message:host%3Amacbook",
+    ]);
     expect(
       window.localStorage.getItem("draft-message:host%3Amacbook:session-a"),
     ).not.toBe(null);
@@ -184,6 +189,14 @@ describe("useDraftPersistence", () => {
     expect(window.localStorage.getItem("draft-index-message:host%3Amacbook")).toBe(
       '["session-a"]',
     );
+
+    setItem.mockClear();
+    act(() => {
+      result.current[1]("indexed draft keeps changing");
+    });
+    expect(setItem.mock.calls.map(([key]) => key)).toEqual([
+      "draft-message:host%3Amacbook:session-a",
+    ]);
 
     act(() => {
       result.current[2].clearDraft();

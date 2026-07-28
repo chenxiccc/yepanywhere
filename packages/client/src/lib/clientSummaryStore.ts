@@ -81,6 +81,10 @@ import type {
   SessionCollectionRecord,
 } from "./clientSummaryCollections";
 import {
+  type DraftPresenceChange,
+  subscribeDraftPresenceChanges,
+} from "./draftPresenceEvents";
+import {
   isSessionDraftStorageKey,
   scanSessionDraftIds,
 } from "./sessionDraftStorage";
@@ -90,8 +94,6 @@ import type { SourceTransport } from "./transport";
 type StoreListener = () => void;
 type BusUnsubscribe = () => void;
 type ReleaseSubscription = () => void;
-
-const DRAFT_DECORATION_SCAN_INTERVAL_MS = 1000;
 
 export type ClientSummarySourceKey = string & {
   readonly __brand: "ClientSummarySourceKey";
@@ -438,6 +440,28 @@ function scanDraftSessionIdsIntoStore(sourceKey: ClientSummarySourceKey): void {
   reportDraftSessionIdsSnapshot(sourceKey, scanSessionDraftIds(sourceKey));
 }
 
+function applyDraftPresenceChangeIntoStore(
+  change: DraftPresenceChange,
+): void {
+  const sessionDraft = change.sessionDraft;
+  if (!sessionDraft) {
+    return;
+  }
+  updateSourceSnapshot(sessionDraft.sourceKey, (current) => {
+    const previous = current.localDecorations.draftSessionIds;
+    if (previous.has(sessionDraft.sessionId) === change.hasContent) {
+      return current;
+    }
+    const next = new Set(previous);
+    if (change.hasContent) {
+      next.add(sessionDraft.sessionId);
+    } else {
+      next.delete(sessionDraft.sessionId);
+    }
+    return applyDraftSessionIdsSnapshot(current, next, Date.now());
+  });
+}
+
 function startDraftDecorationSubscription(
   sourceKey: ClientSummarySourceKey,
 ): ReleaseSubscription {
@@ -454,14 +478,15 @@ function startDraftDecorationSubscription(
   };
 
   window.addEventListener("storage", handleStorage);
-  const interval = window.setInterval(
-    () => scanDraftSessionIdsIntoStore(sourceKey),
-    DRAFT_DECORATION_SCAN_INTERVAL_MS,
-  );
+  const unsubscribePresence = subscribeDraftPresenceChanges((change) => {
+    if (change.sessionDraft?.sourceKey === sourceKey) {
+      applyDraftPresenceChangeIntoStore(change);
+    }
+  });
 
   return () => {
     window.removeEventListener("storage", handleStorage);
-    window.clearInterval(interval);
+    unsubscribePresence();
   };
 }
 

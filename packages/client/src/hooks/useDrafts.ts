@@ -8,6 +8,7 @@ import {
   hasDraftContentValue,
   readDraftTextValue,
 } from "../lib/draftEnvelope";
+import { subscribeDraftPresenceChanges } from "../lib/draftPresenceEvents";
 
 const NEW_SESSION_DRAFT_KEY_PREFIX = "draft-new-session:";
 const FAB_DRAFT_KEY_PREFIX = "fab-draft:";
@@ -44,7 +45,8 @@ export function setsEqual<T>(prev: Set<T>, next: Set<T>): Set<T> {
  * Hook to track which sessions have draft messages in localStorage.
  * Returns session IDs with non-empty drafts.
  *
- * The client summary store owns the mounted storage listener and polling feed.
+ * The client summary store owns the initial scan, cross-tab storage listener,
+ * and owned same-tab presence-event feed.
  */
 export function useDrafts(): ReadonlySet<string> {
   return useDraftSessionIds();
@@ -52,7 +54,7 @@ export function useDrafts(): ReadonlySet<string> {
 
 /**
  * Hook to track whether the new session form has a draft.
- * Listens for storage events and polls for same-tab changes.
+ * Listens for owned same-tab persistence events and cross-tab storage events.
  */
 export function useNewSessionDraft(projectId?: string): boolean {
   const sourceKey = useClientSummarySourceKey();
@@ -81,11 +83,14 @@ export function useNewSessionDraft(projectId?: string): boolean {
     return () => window.removeEventListener("storage", handleStorage);
   }, [check, projectId, sourceKey]);
 
-  // Poll for same-tab changes (storage event doesn't fire for same-tab)
   useEffect(() => {
-    const interval = setInterval(check, 1000);
-    return () => clearInterval(interval);
-  }, [check]);
+    const keys = new Set(getNewSessionDraftKeys(sourceKey, projectId));
+    return subscribeDraftPresenceChanges((change) => {
+      if (keys.has(change.storageKey)) {
+        check();
+      }
+    });
+  }, [check, projectId, sourceKey]);
 
   return hasDraft;
 }

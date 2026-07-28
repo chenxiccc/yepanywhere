@@ -975,18 +975,28 @@ describe("clientSummaryStore", () => {
     expect([...selected.result.current]).toEqual(["session-a"]);
   });
 
-  it("polls local draft ids only while draft decorations are mounted", () => {
-    vi.useFakeTimers();
+  it("applies owned draft presence events only while decorations are mounted", () => {
     localStorage.clear();
-    localStorage.setItem("draft-message-session-a", "draft text");
+    saveSessionDraft(
+      {
+        sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+        sessionId: "session-a",
+      },
+      "draft text",
+    );
 
     const selected = renderHook(() => useDraftSessionIds());
 
     expect([...selected.result.current]).toEqual(["session-a"]);
 
     act(() => {
-      localStorage.setItem("draft-message-session-b", "more draft text");
-      vi.advanceTimersByTime(1000);
+      saveSessionDraft(
+        {
+          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+          sessionId: "session-b",
+        },
+        "more draft text",
+      );
     });
 
     expect([...selected.result.current]).toEqual(["session-a", "session-b"]);
@@ -994,8 +1004,13 @@ describe("clientSummaryStore", () => {
     selected.unmount();
 
     act(() => {
-      localStorage.setItem("draft-message-session-c", "stale after unmount");
-      vi.advanceTimersByTime(1000);
+      saveSessionDraft(
+        {
+          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+          sessionId: "session-c",
+        },
+        "stale after unmount",
+      );
     });
 
     const snapshot = getClientSummarySnapshotForSource(SOURCE_KEY);
@@ -1030,7 +1045,6 @@ describe("clientSummaryStore", () => {
 
     act(() => {
       localStorage.setItem("draft-message-session-b", "remote should ignore");
-      vi.advanceTimersByTime(1000);
     });
 
     expect([...selected.result.current]).toEqual([]);
@@ -1136,18 +1150,17 @@ describe("clientSummaryStore", () => {
 
     expect([...selectedA.result.current]).toEqual(["draft-session-a"]);
     expect([...selectedB.result.current]).toEqual(["draft-session-b"]);
-    expect(vi.getTimerCount()).toBe(2);
+    expect(vi.getTimerCount()).toBe(0);
 
     selectedA.unmount();
 
-    expect(vi.getTimerCount()).toBe(1);
+    expect(vi.getTimerCount()).toBe(0);
 
     act(() => {
       saveSessionDraft(
         { sourceKey: sourceB, sessionId: "draft-session-b-later" },
         "later draft B",
       );
-      vi.advanceTimersByTime(1000);
     });
 
     expect([...selectedB.result.current]).toEqual([
