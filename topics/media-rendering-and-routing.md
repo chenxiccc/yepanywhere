@@ -140,6 +140,74 @@ turns, and parsed user-prompt blocks):
 - Leave touch behavior on the explicit click modal; hover-only enlargement is a
   desktop affordance.
 
+## Proposed refinement: compact turn image galleries
+
+When **Expand Inline Media by Default** is enabled, several tall images in one
+assistant turn can consume the visible transcript and push the turn's
+informative text above the viewport. A completed final response can then look
+like an interrupted response on return: the visible tail is mostly screenshots,
+while the actual completion text is offscreen.
+
+The compact presentation is owned by the whole assistant turn, not by the
+position of an image link within its text. Images anywhere in that turn are
+eligible. It applies only to previews that YA expanded automatically; an image
+the user explicitly expands remains full-size and outside the compact gallery.
+One image may retain the existing inline presentation. Multiple images use a
+gallery when their ordinary vertical stack would exceed the turn's media
+budget.
+
+The compact-gallery goals, in priority order, are:
+
+- Where the turn is short enough, keep all of its informative text and the
+  gallery visible together. Long turns make that impossible, so this is a
+  target rather than a guarantee.
+- Give the gallery at most roughly one third of the transcript viewport while
+  a useful compact preview is possible. It may use less height when that lets
+  the turn text fit.
+- Keep relative reduction reasonably even: one screenshot should not become
+  illegible merely so another can remain close to its normal inline size.
+- Use the available vertical budget without treating complete content-width
+  fill as a goal. Rows may have different heights.
+- Present ordinary completed rows as justified image rows. The final or
+  pathologically sparse row may remain ragged; dead horizontal space is
+  acceptable rather than enlarging images solely to consume it. Roughly 100
+  pixels of leftover row width is an initial tuning signal, not a persistent
+  format constant.
+- Preserve each image's stable filename/identity and full-size target, but do
+  not preserve image occurrence order as a presentation constraint. The
+  gallery may reorder a turn's automatically presented images to improve
+  legibility and packing. Filename references in the prose remain in their
+  original transcript order.
+
+A deterministic greedy row fill with one-image lookahead is a plausible first
+layout strategy. Small bounded exact searches are also acceptable, but the
+observable contract is balanced, stable packing rather than a globally optimal
+permutation. The same image dimensions and available space should produce the
+same arrangement, and small resize changes should not cause gratuitous
+reshuffling.
+
+The gallery has one turn-level collapse action, with a keyboard accelerator,
+that returns it to the existing compact filename links. Expanding it restores
+the same arrangement. Selecting a thumbnail opens a full-screen image viewer;
+full-size inspection is separate from persistent full inline expansion.
+
+### Phone presentation and deferred gesture
+
+On phone, a single horizontally swipeable thumbnail row is a reasonable compact
+presentation. It spends horizontal overflow instead of shrinking several
+screenshots into nearly unreadable fixed columns. A partially visible next
+thumbnail can disclose the swipe affordance. Selecting an image opens a
+scrollable, pinch-zoomable full-screen view, and returning preserves the
+transcript position.
+
+A post-v1 interaction experiment may combine selection and enlargement in one
+two-axis gesture: horizontal finger movement scrubs through the row, while
+moving the same drag upward toward the top of the screen enlarges the currently
+centered image. This is not required for the first gallery implementation. It
+needs touch testing for accidental activation and conflict with ordinary
+vertical transcript scrolling, plus a complete tap/full-screen path for users
+who do not discover or cannot perform the gesture.
+
 ## Which route serves the file (the "doors")
 
 There are two routing systems and several serving routes. The serving route
