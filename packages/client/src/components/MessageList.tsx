@@ -13,9 +13,9 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { createPortal } from "react-dom";
-import type { DraftTextChangeMetadata } from "../lib/commentAnchors";
 import { getShowThinkingSetting } from "../hooks/useModelSettings";
 import {
   getConversationViewPreference,
@@ -25,6 +25,10 @@ import { useMessageListIsearch } from "../hooks/useMessageListIsearch";
 import { useMessageListSelectionQuote } from "../hooks/useMessageListSelectionQuote";
 import { useRelativeNow } from "../hooks/useRelativeNow";
 import { useI18n } from "../i18n";
+import type {
+  ComposerDraftSignal,
+  ComposerEditAvailabilityStore,
+} from "../lib/composerDraftSignal";
 import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
 import {
   formatCompactRelativeAge,
@@ -494,12 +498,10 @@ interface Props {
   onTransferBtwAsideTurn?: (text: string) => void;
   /** Append quoted assistant output to the composer. */
   onQuoteSelection?: (quotedText: string) => string | null;
-  /** Read current composer draft for quote tint reconciliation. */
-  getComposerDraft?: () => string;
-  composerDraft?: string;
-  composerDraftChange?: DraftTextChangeMetadata;
-  /** Whether the composer is empty enough to take a queued item for editing. */
-  canEditQueuedMessages?: boolean;
+  /** Stable draft-change stream for quote tint reconciliation. */
+  composerDraftSignal?: ComposerDraftSignal;
+  /** Leaf-subscribed availability for moving queued text into the composer. */
+  composerEditAvailabilityStore?: ComposerEditAvailabilityStore;
   /** Clear all comment anchors after the quoted turn is sent. */
   quoteClearSignal?: number;
   /** Callback to cancel a deferred message */
@@ -733,7 +735,8 @@ function BtwAsideTimelineCard({
 interface QueuedMessageActionsProps {
   variant: "session" | "project";
   text: string;
-  canEdit: boolean;
+  composerEditAvailabilityStore?: ComposerEditAvailabilityStore;
+  itemCanEdit?: boolean;
   disabled?: boolean;
   onResume?: () => void;
   onEdit?: () => void;
@@ -742,10 +745,14 @@ interface QueuedMessageActionsProps {
   onCancel?: () => void;
 }
 
+const subscribeComposerEditAvailable = () => () => {};
+const getComposerEditAvailable = () => true;
+
 function QueuedMessageActions({
   variant,
   text,
-  canEdit,
+  composerEditAvailabilityStore,
+  itemCanEdit = true,
   disabled = false,
   onResume,
   onEdit,
@@ -754,6 +761,13 @@ function QueuedMessageActions({
   onCancel,
 }: QueuedMessageActionsProps) {
   const { t } = useI18n();
+  const composerCanEdit = useSyncExternalStore(
+    composerEditAvailabilityStore?.subscribe ??
+      subscribeComposerEditAvailable,
+    composerEditAvailabilityStore?.getSnapshot ?? getComposerEditAvailable,
+    getComposerEditAvailable,
+  );
+  const canEdit = itemCanEdit && composerCanEdit;
   const isProject = variant === "project";
   const editLabel = isProject
     ? t("projectQueueInlineEdit")
@@ -850,10 +864,8 @@ export const MessageList = memo(function MessageList({
   onToggleBtwAsideExpanded,
   onTransferBtwAsideTurn,
   onQuoteSelection,
-  getComposerDraft,
-  composerDraft = "",
-  composerDraftChange,
-  canEditQueuedMessages,
+  composerDraftSignal,
+  composerEditAvailabilityStore,
   quoteClearSignal = 0,
   onCancelDeferred,
   onEditDeferred,
@@ -966,8 +978,6 @@ export const MessageList = memo(function MessageList({
   const [isScrolledToBottom, setIsScrolledToBottom] = useState(true);
   const [newOutputBelowVisible, setNewOutputBelowVisible] = useState(false);
   const { t } = useI18n();
-  const queuedEditAvailable =
-    canEditQueuedMessages ?? composerDraft.trim().length === 0;
   const nowMs = useRelativeNow();
   const reportFollowingBottom = useCallback((followingBottom: boolean) => {
     onFollowingBottomChangeRef.current?.(followingBottom);
@@ -1408,9 +1418,7 @@ export const MessageList = memo(function MessageList({
     containerRef,
     inert,
     onQuoteSelection,
-    getComposerDraft,
-    composerDraft,
-    composerDraftChange,
+    composerDraftSignal,
     quoteClearSignal,
     followButtonVisible: !isScrolledToBottom,
     isInteractiveTarget: isInteractiveScrollTarget,
@@ -2852,9 +2860,10 @@ export const MessageList = memo(function MessageList({
                     <QueuedMessageActions
                       variant="project"
                       text={projectQueue.content}
-                      canEdit={
-                        queuedEditAvailable && projectQueue.canEdit !== false
+                      composerEditAvailabilityStore={
+                        composerEditAvailabilityStore
                       }
+                      itemCanEdit={projectQueue.canEdit !== false}
                       disabled={
                         projectQueue.isMutating || projectQueueDispatchMutating
                       }
@@ -3033,7 +3042,9 @@ export const MessageList = memo(function MessageList({
                     <QueuedMessageActions
                       variant="session"
                       text={deferred.content}
-                      canEdit={queuedEditAvailable}
+                      composerEditAvailabilityStore={
+                        composerEditAvailabilityStore
+                      }
                       onEdit={
                         deferred.tempId && onEditDeferred
                           ? () => onEditDeferred(deferred.tempId as string)

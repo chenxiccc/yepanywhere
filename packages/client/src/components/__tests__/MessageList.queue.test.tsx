@@ -19,6 +19,7 @@ import {
   stubClipboardWriteText,
   userMessage,
 } from "./MessageList.test-support";
+import { createComposerEditAvailabilityStore } from "../../lib/composerDraftSignal";
 import { MessageList } from "../MessageList";
 
 installMessageListTestEnvironment();
@@ -50,6 +51,9 @@ describe("MessageList queue rows", () => {
 
   it("offers take-to-composer editing only while the composer is blank", () => {
     const onEditDeferred = vi.fn();
+    const composerEditAvailabilityStore =
+      createComposerEditAvailabilityStore();
+    composerEditAvailabilityStore.setDraftText("   ");
     const deferredMessages = [
       {
         tempId: "temp-queued",
@@ -57,10 +61,10 @@ describe("MessageList queue rows", () => {
         timestamp: "2026-04-25T00:00:00.000Z",
       },
     ];
-    const { rerender } = render(
+    render(
       <MessageList
         messages={[]}
-        composerDraft="   "
+        composerEditAvailabilityStore={composerEditAvailabilityStore}
         deferredMessages={deferredMessages}
         onEditDeferred={onEditDeferred}
       />,
@@ -71,14 +75,9 @@ describe("MessageList queue rows", () => {
     );
     expect(onEditDeferred).toHaveBeenCalledWith("temp-queued");
 
-    rerender(
-      <MessageList
-        messages={[]}
-        composerDraft="existing draft"
-        deferredMessages={deferredMessages}
-        onEditDeferred={onEditDeferred}
-      />,
-    );
+    act(() => {
+      composerEditAvailabilityStore.setDraftText("existing draft");
+    });
     expect(screen.queryByRole("button", { name: "Edit queued message" })).toBe(
       null,
     );
@@ -365,7 +364,6 @@ describe("MessageList queue rows", () => {
     render(
       <MessageList
         messages={[]}
-        composerDraft=""
         projectQueueMessages={[
           {
             id: "project-queue-1",

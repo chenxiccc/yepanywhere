@@ -205,17 +205,21 @@ list + tint paint + reconciliation, and the right-mouse line-select helper.
 
 ## Where state lives
 
-`SessionPage` already owns `draftControlsRef` and hands callbacks to both
-`MessageList` and `MessageInput`; it is the shared parent and the right home
-for the anchor list. Concretely a `useCommentAnchors` hook (or a small
-session-scoped context) holding `{ id, messageId, blockIndex, sourceRange,
-quotedText }[]`, with:
+`MessageInput` owns the complete composer string. `SessionPage` owns only a
+stable session-scoped draft signal and passes that unchanged object to
+`MessageList`; publishing a character does not set parent React state or change
+a transcript prop.
 
-- `MessageList` / the block renderer reading anchors to paint tint at the
-  render boundary.
-- A draft-watch reconciler dropping anchors whose `>` lines are gone.
-- The submit path clearing all anchors next to the existing
-  `draftControls.clearDraft()` calls — that is the send seam.
+The selection-quote controller owns comment anchors in refs because anchors
+drive the imperative CSS Custom Highlight registry rather than rendered
+transcript markup. It subscribes to the draft signal only while at least one
+anchor is live. Ordinary edits marked unable to affect quote-prefixed lines
+return before signature parsing. A relevant edit computes signatures once,
+drops missing anchors, and updates the highlight registry without rendering
+historical rows.
+
+The submit path still clears all anchors next to the existing
+`draftControls.clearDraft()` calls — that is the send seam.
 
 Persisting anchors alongside the draft (shared lifecycle, shared localStorage
 namespace) would let a reload that restores the draft also restore the tint.

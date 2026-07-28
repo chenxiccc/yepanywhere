@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { Profiler } from "react";
 import {
   act,
   fireEvent,
@@ -20,11 +21,44 @@ import {
   installMessageListTestEnvironment,
   userMessage,
 } from "./MessageList.test-support";
+import { createComposerDraftSignal } from "../../lib/composerDraftSignal";
 import { MessageList } from "../MessageList";
 
 installMessageListTestEnvironment();
 
 describe("MessageList rendering", () => {
+  it("does not commit the transcript subtree for ordinary draft changes", () => {
+    const composerDraftSignal = createComposerDraftSignal();
+    const onRender = vi.fn();
+
+    render(
+      <Profiler id="transcript" onRender={onRender}>
+        <MessageList
+          messages={[
+            userMessage("user-1", "inspect this"),
+            assistantMessage("assistant-1", "done"),
+          ]}
+          composerDraftSignal={composerDraftSignal}
+        />
+      </Profiler>,
+    );
+    const initialCommitCount = onRender.mock.calls.length;
+
+    act(() => {
+      composerDraftSignal.publishDraftChange("a", {
+        mayAffectQuoteAnchors: false,
+      });
+      composerDraftSignal.publishDraftChange("ab", {
+        mayAffectQuoteAnchors: false,
+      });
+      composerDraftSignal.publishDraftChange("", {
+        mayAffectQuoteAnchors: true,
+      });
+    });
+
+    expect(onRender).toHaveBeenCalledTimes(initialCommitCount);
+  });
+
   it("condenses and restores routine activity in Conversation view", () => {
     window.localStorage.setItem(UI_KEYS.conversationView, "true");
     const { container } = render(
@@ -147,9 +181,11 @@ describe("MessageList rendering", () => {
       userMessage("user-1", "first request"),
       assistantMessage("assistant-1", "first response"),
     ];
+    const composerDraftSignal = createComposerDraftSignal();
     const { container, rerender } = render(
       <MessageList
         messages={messages}
+        composerDraftSignal={composerDraftSignal}
         progressiveRenderEnabled
         progressiveRenderKey="session-1"
       />,
@@ -164,14 +200,9 @@ describe("MessageList rendering", () => {
     expect(container.querySelector(".session-render-progress")).toBeNull();
 
     await act(async () => {
-      rerender(
-        <MessageList
-          messages={messages}
-          composerDraft="typing should not restart loading"
-          progressiveRenderEnabled
-          progressiveRenderKey="session-1"
-        />,
-      );
+      composerDraftSignal.publishDraftChange("typing should stay local", {
+        mayAffectQuoteAnchors: false,
+      });
     });
 
     expect(container.querySelector(".session-render-progress")).toBeNull();
@@ -180,7 +211,7 @@ describe("MessageList rendering", () => {
       rerender(
         <MessageList
           messages={[...messages, userMessage("user-2", "second request")]}
-          composerDraft="typing should not restart loading"
+          composerDraftSignal={composerDraftSignal}
           progressiveRenderEnabled
           progressiveRenderKey="session-1"
         />,

@@ -11,10 +11,13 @@ import {
   createCommentAnchor,
   type CommentAnchor,
   draftQuoteSignaturesContainAnchor,
-  type DraftTextChangeMetadata,
   getCommentAnchorRange,
   getDraftQuoteLineSignatures,
 } from "../lib/commentAnchors";
+import type {
+  ComposerDraftChange,
+  ComposerDraftSignal,
+} from "../lib/composerDraftSignal";
 import {
   copyMarkdownSelectionToClipboard,
   extractMarkdownSnippetsFromSelection,
@@ -46,9 +49,7 @@ interface UseMessageListSelectionQuoteOptions {
   containerRef: RefObject<HTMLDivElement | null>;
   inert: boolean;
   onQuoteSelection?: (quotedText: string) => string | null;
-  getComposerDraft?: () => string;
-  composerDraft: string;
-  composerDraftChange?: DraftTextChangeMetadata;
+  composerDraftSignal?: ComposerDraftSignal;
   quoteClearSignal: number;
   followButtonVisible: boolean;
   isInteractiveTarget: (target: EventTarget | null) => boolean;
@@ -74,9 +75,7 @@ export function useMessageListSelectionQuote({
   containerRef,
   inert,
   onQuoteSelection,
-  getComposerDraft,
-  composerDraft,
-  composerDraftChange,
+  composerDraftSignal,
   quoteClearSignal,
   followButtonVisible,
   isInteractiveTarget,
@@ -84,15 +83,124 @@ export function useMessageListSelectionQuote({
   const selectionPointerStartRef = useRef<{ clientY: number } | null>(null);
   const selectionQuotePointerAppliedRef = useRef(false);
   const quoteInsertionDraftRef = useRef<string | null>(null);
-  const [commentAnchors, setCommentAnchors] = useState<
-    readonly CommentAnchor[]
-  >([]);
+  const commentAnchorsRef = useRef<readonly CommentAnchor[]>([]);
+  const draftSubscriptionRef = useRef<(() => void) | null>(null);
+  const composerDraftSignalRef = useRef(composerDraftSignal);
+  const reconcileDraftChangeRef = useRef<
+    (change: ComposerDraftChange) => void
+  >(() => {});
   const [selectionQuoteButton, setSelectionQuoteButton] =
     useState<SelectionQuoteButtonState | null>(null);
   const { quoteReplyButtonMode } = useQuoteReplyButtonMode();
   const alwaysShowQuoteCircles = quoteReplyButtonMode === "paragraph-always";
   const paragraphQuoteCirclesEnabled = quoteReplyButtonMode !== "block";
   const { t } = useI18n();
+
+  const applyCommentHighlight = useCallback(
+    (anchors: readonly CommentAnchor[]) => {
+      if (
+        typeof CSS === "undefined" ||
+        !("highlights" in CSS) ||
+        typeof Highlight === "undefined"
+      ) {
+        return;
+      }
+
+      if (anchors.length === 0) {
+        CSS.highlights.delete("comment-tint");
+        return;
+      }
+
+      const ranges = anchors
+        .map(getCommentAnchorRange)
+        .filter((range): range is Range => range !== null);
+      if (ranges.length === 0) {
+        CSS.highlights.delete("comment-tint");
+        return;
+      }
+      CSS.highlights.set("comment-tint", new Highlight(...ranges));
+    },
+    [],
+  );
+
+  const releaseDraftSubscription = useCallback(() => {
+    draftSubscriptionRef.current?.();
+    draftSubscriptionRef.current = null;
+  }, []);
+
+  const refreshDraftSubscription = useCallback(() => {
+    releaseDraftSubscription();
+    const signal = composerDraftSignalRef.current;
+    if (!signal || commentAnchorsRef.current.length === 0) {
+      return;
+    }
+    draftSubscriptionRef.current = signal.subscribeDraftChanges((change) => {
+      reconcileDraftChangeRef.current(change);
+    });
+  }, [releaseDraftSubscription]);
+
+  const updateCommentAnchors = useCallback(
+    (next: readonly CommentAnchor[]) => {
+      const previous = commentAnchorsRef.current;
+      if (next === previous) {
+        return;
+      }
+      commentAnchorsRef.current = next;
+      applyCommentHighlight(next);
+      if (previous.length === 0 && next.length > 0) {
+        refreshDraftSubscription();
+      } else if (previous.length > 0 && next.length === 0) {
+        releaseDraftSubscription();
+      }
+    },
+    [
+      applyCommentHighlight,
+      refreshDraftSubscription,
+      releaseDraftSubscription,
+    ],
+  );
+
+  reconcileDraftChangeRef.current = (change) => {
+    const previous = commentAnchorsRef.current;
+    if (previous.length === 0) {
+      return;
+    }
+    const insertionDraft = quoteInsertionDraftRef.current;
+    if (
+      insertionDraft === null &&
+      change.metadata.mayAffectQuoteAnchors === false
+    ) {
+      return;
+    }
+    quoteInsertionDraftRef.current = null;
+    const draftSignatures = getDraftQuoteLineSignatures(
+      insertionDraft ?? change.text,
+    );
+    const next = previous.filter((anchor) =>
+      draftQuoteSignaturesContainAnchor(draftSignatures, anchor),
+    );
+    if (next.length !== previous.length) {
+      updateCommentAnchors(next);
+    }
+  };
+
+  useEffect(() => {
+    composerDraftSignalRef.current = composerDraftSignal;
+    refreshDraftSubscription();
+    return releaseDraftSubscription;
+  }, [
+    composerDraftSignal,
+    refreshDraftSubscription,
+    releaseDraftSubscription,
+  ]);
+
+  useEffect(
+    () => () => {
+      releaseDraftSubscription();
+      applyCommentHighlight([]);
+    },
+    [applyCommentHighlight, releaseDraftSubscription],
+  );
 
   const applyQuoteAnchors = useCallback(
     (anchors: readonly CommentAnchor[], typedPrefix = "") => {
@@ -109,12 +217,12 @@ export function useMessageListSelectionQuote({
         return false;
       }
       quoteInsertionDraftRef.current = nextDraft;
-      setCommentAnchors((previous) => [...previous, ...anchors]);
+      updateCommentAnchors([...commentAnchorsRef.current, ...anchors]);
       containerRef.current?.ownerDocument.getSelection()?.removeAllRanges();
       setSelectionQuoteButton(null);
       return true;
     },
-    [containerRef, onQuoteSelection],
+    [containerRef, onQuoteSelection, updateCommentAnchors],
   );
 
   const applyQuoteFromSelection = useCallback(
@@ -144,66 +252,10 @@ export function useMessageListSelectionQuote({
   );
 
   useEffect(() => {
-    if (commentAnchors.length === 0) {
-      return;
-    }
-    const insertionDraft = quoteInsertionDraftRef.current;
-    if (
-      insertionDraft === null &&
-      composerDraftChange?.mayAffectQuoteAnchors === false
-    ) {
-      return;
-    }
-    const draft = insertionDraft ?? getComposerDraft?.() ?? composerDraft;
-    quoteInsertionDraftRef.current = null;
-    const draftSignatures = getDraftQuoteLineSignatures(draft);
-    setCommentAnchors((previous) => {
-      const next = previous.filter((anchor) =>
-        draftQuoteSignaturesContainAnchor(draftSignatures, anchor),
-      );
-      return next.length === previous.length ? previous : next;
-    });
-  }, [
-    commentAnchors.length,
-    composerDraft,
-    composerDraftChange,
-    getComposerDraft,
-  ]);
-
-  useEffect(() => {
     if (quoteClearSignal > 0) {
-      setCommentAnchors([]);
+      updateCommentAnchors([]);
     }
-  }, [quoteClearSignal]);
-
-  useEffect(() => {
-    if (
-      typeof CSS === "undefined" ||
-      !("highlights" in CSS) ||
-      typeof Highlight === "undefined"
-    ) {
-      return;
-    }
-
-    if (commentAnchors.length === 0) {
-      CSS.highlights.delete("comment-tint");
-      return;
-    }
-
-    const ranges = commentAnchors
-      .map(getCommentAnchorRange)
-      .filter((range): range is Range => range !== null);
-    if (ranges.length === 0) {
-      CSS.highlights.delete("comment-tint");
-      return;
-    }
-
-    const highlight = new Highlight(...ranges);
-    CSS.highlights.set("comment-tint", highlight);
-    return () => {
-      CSS.highlights.delete("comment-tint");
-    };
-  }, [commentAnchors]);
+  }, [quoteClearSignal, updateCommentAnchors]);
 
   useEffect(() => {
     if (inert) {

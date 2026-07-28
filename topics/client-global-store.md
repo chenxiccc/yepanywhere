@@ -67,7 +67,11 @@ The store does not own heavy or page-local state:
 - per-page filters, selection, expansion, and scroll state.
 
 The Session Page can keep detailed live transcript state local while reporting
-summary updates into the store.
+summary updates into the store. In particular, the complete composer string
+stays in `MessageInput`/draft persistence. A stable session-scoped signal may
+publish draft edits to narrow page-local consumers such as quote
+reconciliation, and queued action leaves may subscribe to a primitive
+composer-availability snapshot; neither belongs in the summary store.
 
 ## Source Model
 

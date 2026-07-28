@@ -122,6 +122,10 @@ import {
   type LastComposerSubmission,
   type SentComposerSubmission,
 } from "../lib/composerRecall";
+import {
+  createComposerDraftSignal,
+  createComposerEditAvailabilityStore,
+} from "../lib/composerDraftSignal";
 import { buildCorrectionText } from "../lib/correctionText";
 import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
 import { isEffortLevel } from "../lib/effortLevels";
@@ -651,9 +655,6 @@ function SessionPageContent({
 
   const [scrollTrigger, setScrollTrigger] = useState(0);
   const draftControlsRef = useRef<DraftControls | null>(null);
-  const [composerDraftForAnchors, setComposerDraftForAnchors] = useState("");
-  const [composerDraftChangeForAnchors, setComposerDraftChangeForAnchors] =
-    useState<DraftTextChangeMetadata>({ mayAffectQuoteAnchors: true });
   const [quoteClearSignal, setQuoteClearSignal] = useState(0);
   const pendingMotherComposerTransferRef = useRef<string | null>(null);
   const lastComposerSubmissionRef = useRef<LastComposerSubmission | null>(null);
@@ -722,7 +723,28 @@ function SessionPageContent({
   const draftAttachmentBatchIdRef = useRef<string | null>(null);
   const draftAttachmentHydrationRef = useRef(0);
   const [uploadProgress, setUploadProgress] = useState<UploadProgress[]>([]);
+  const composerDraftSignal = useMemo(() => {
+    void sessionId;
+    return createComposerDraftSignal();
+  }, [sessionId]);
+  const composerEditAvailabilityStore = useMemo(
+    () => {
+      void sessionId;
+      return createComposerEditAvailabilityStore();
+    },
+    [sessionId],
+  );
   const [attachmentQuality] = useAttachmentUploadQuality();
+  useEffect(() => {
+    composerEditAvailabilityStore.setExternalBlockers(
+      attachments.length > 0,
+      uploadProgress.length > 0,
+    );
+  }, [
+    attachments.length,
+    composerEditAvailabilityStore,
+    uploadProgress.length,
+  ]);
   // Track in-flight upload promises so handleSend can wait for them
   const pendingUploadsRef = useRef<
     Map<string, Promise<ComposerAttachment | null>>
@@ -1190,10 +1212,6 @@ function SessionPageContent({
     },
     [setForkSummaryAutoOpen],
   );
-  const getComposerDraftForAnchors = useCallback(
-    () => draftControlsRef.current?.getDraft() ?? "",
-    [],
-  );
   useEffect(() => {
     for (const object of session?.transcriptDisplayObjects ?? []) {
       if (
@@ -1257,7 +1275,7 @@ function SessionPageContent({
         return false;
       }
       const instructions = (
-        draftControlsRef.current?.getDraft() ?? composerDraftForAnchors
+        draftControlsRef.current?.getDraft() ?? composerDraftSignal.getDraft()
       ).trim();
       if (instructions) {
         void submitForkAfterSummary(messageId, instructions);
@@ -1271,7 +1289,7 @@ function SessionPageContent({
     },
     [
       attachments.length,
-      composerDraftForAnchors,
+      composerDraftSignal,
       resolveForkAfterAnchor,
       showToast,
       submitForkAfterSummary,
@@ -3233,10 +3251,10 @@ function SessionPageContent({
 
   const handleComposerDraftTextChange = useCallback(
     (draft: string, metadata: DraftTextChangeMetadata) => {
-      setComposerDraftForAnchors(draft);
-      setComposerDraftChangeForAnchors(metadata);
+      composerDraftSignal.publishDraftChange(draft, metadata);
+      composerEditAvailabilityStore.setDraftText(draft);
     },
-    [],
+    [composerDraftSignal, composerEditAvailabilityStore],
   );
 
   const insertQuotedSelection = useCallback(
@@ -3265,8 +3283,6 @@ function SessionPageContent({
       if (undoableDraft === null || !controls.replaceDraftRangeUndoably) {
         controls.setDraft(nextDraft);
       }
-      setComposerDraftForAnchors(finalDraft);
-      setComposerDraftChangeForAnchors({ mayAffectQuoteAnchors: true });
       requestAnimationFrame(() => {
         controls.focus?.();
         controls.setSelectionRange?.(finalDraft.length, finalDraft.length);
@@ -5034,13 +5050,9 @@ function SessionPageContent({
                   onToggleBtwAsideExpanded={toggleBtwAsideExpanded}
                   onTransferBtwAsideTurn={transferBtwTurnToMotherComposer}
                   onQuoteSelection={insertQuotedSelection}
-                  getComposerDraft={getComposerDraftForAnchors}
-                  composerDraft={composerDraftForAnchors}
-                  composerDraftChange={composerDraftChangeForAnchors}
-                  canEditQueuedMessages={
-                    composerDraftForAnchors.trim().length === 0 &&
-                    attachments.length === 0 &&
-                    uploadProgress.length === 0
+                  composerDraftSignal={composerDraftSignal}
+                  composerEditAvailabilityStore={
+                    composerEditAvailabilityStore
                   }
                   quoteClearSignal={quoteClearSignal}
                   onCancelDeferred={handleCancelDeferred}

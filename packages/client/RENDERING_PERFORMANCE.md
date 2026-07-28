@@ -69,6 +69,13 @@ stable component identity, and lower update cadence.
   queued-message UI, or composer-adjacent state are also covered.
 - Long transcript work must preserve row identity for unchanged history and
   should avoid front-to-back scans on hot current-message updates.
+- Ordinary session-composer edits are local to the composer. They must not
+  render `MessageList`, `RenderItemComponent`, `MessageAge`, or historical
+  transcript rows, regardless of transcript size or whether the edit crosses
+  the empty/non-empty boundary.
+- Draft-dependent transcript affordances subscribe below the transcript
+  boundary. Quote reconciliation consumes a stable draft-change signal and
+  queued Edit actions consume only a primitive availability snapshot.
 - Composer text is user data. Streaming/render work must not steal focus,
   defeat normal browser key buffering, or delay page-lifecycle draft flushes.
 
@@ -124,6 +131,10 @@ runs over a long block more than once.
   it?
 - Do unchanged transcript rows keep stable object identity across a streaming
   update?
+- Does an ordinary composer edit commit any part of the historical transcript
+  subtree?
+- Are draft-dependent quote and queue behaviors subscribed at the narrowest
+  leaf instead of publishing the draft string through a transcript parent?
 - Can this change alter the height of transcript rows above the current reading
   position without a user action?
 - Does any timer, reconnect, visibility, or stream-completion effect expand,
