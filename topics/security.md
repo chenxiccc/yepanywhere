@@ -101,6 +101,9 @@ bearer-link read-only views, not as relay-operator-private views. See
 - [`public-share-content-censorship.md`](public-share-content-censorship.md)
   records the proposed content-aware redaction layer for public transcript
   output.
+- [`session-sandboxing.md`](session-sandboxing.md) defines the proposed
+  host-enforced project-write boundary and the additional admission work a
+  future interactive “locked to this session” share would require.
 - [`SECURITY.md`](../SECURITY.md) is the public security-policy entry point for
   reporting vulnerabilities and should stay operator-facing rather than carrying
   implementation-specific design contracts.

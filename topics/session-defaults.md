@@ -30,6 +30,10 @@ currently selected provider lacks the feature.
 - **Permission mode** — the requested approval policy. A model may hide or
   ignore unsupported modes such as provider-decided `Auto`, but the saved
   default is not a provider/model economics choice.
+- **Sandbox new sessions** — the default-off launch-time host-confinement
+  toggle. The saved value is provider-independent and each New Session may
+  override it before process creation; see
+  [session-sandboxing](session-sandboxing.md).
 - **Recaps** — recap mode and away threshold belong together. They are
   presented above AI Provider because they are standing session-helper choices,
   not properties of whichever provider button happens to be selected.
@@ -147,8 +151,9 @@ of dropping to `default`.
 
 In the session-defaults panel and the new-session form:
 
-1. All-provider defaults: recaps; prompt suggestions; permission mode;
-   show-thinking display policy; and forked-session behavior.
+1. All-provider defaults: recaps; prompt suggestions; permission mode; the
+   sandbox-new-sessions toggle; show-thinking display policy; and
+   forked-session behavior.
 2. AI Provider. The selector is the boundary between all-provider defaults above
    and provider-specific defaults below.
 3. Provider-specific defaults for the selected provider: model, service tier,
@@ -173,6 +178,7 @@ provider-default map, for example:
 interface NewSessionDefaults {
   provider?: ProviderName;
   permissionMode?: PermissionMode;
+  sandboxLevel?: SessionSandboxLevel;
   recapMode?: RecapMode;
   recapAfterSeconds?: number;
   promptSuggestionMode?: PromptSuggestionMode;
@@ -194,6 +200,10 @@ provider's first provider-specific entry. Do not discard configured values on
 read; normalize into the scoped shape on the next save.
 
 ## Implementation plan
+
+Session sandboxing follows the separate backend-integration gate in
+[session-sandboxing](session-sandboxing.md); it is not part of the
+UI/storage sequence below.
 
 1. **Pin this contract.** Create this topic, add the glossary/topic index row,
    and use it as the commit topic for the UI/storage changes.

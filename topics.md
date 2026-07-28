@@ -166,6 +166,8 @@
   for active and recently idle process cards on Agents.
 - agents-process-observability - Default-on, request-driven host process
   metrics and read-only external provider process discovery for Agents.
+- session-sandboxing - Default-off, all-provider Project writes only
+  confinement; Linux v1 requires Bubblewrap with provider defense in depth.
 - interactives - Zero-setup container for agent-built project web apps:
   opinionated template, committed project files, registry, icon links,
   YA-server-only reach (relay core, with optional globally configured
