@@ -1,21 +1,12 @@
 # Source Review → New Session
 
-> A review-first source-control/repo viewer whose primary job is directing
-> agents, not manually managing git. In a large-screen multipane layout you
-> navigate the working-tree diff and recent commit(s) and — Gerrit/GitHub style —
-> **click a diff line to open a comment window**. You do not select an exact
-> span; nearby context is implied. Comments accrue as drafts across files and
-> diff lines while the tree keeps changing under them; "submit review" drains
-> **every not-yet-consumed comment at once** into one review session — a new
-> one, or a recent review session as a follow-up turn — and archives them as
-> consumed. Drafts are **server-owned**: every git-state operation here passes
-> through the server anyway, and a long review spans devices, so a review
-> continues seamlessly across browsers. A mobile back-swipe version (with a
-> small commit-jump selector) is usable too. Pull and Push are the only manual
-> repo-state changes exposed; agents keep doing commits, staging, branch
-> surgery, integration, conflict resolution, and other meaningful git work.
+> Source Review → New Session is the Source Control workflow that accumulates
+> line-anchored comments as persistent drafts, relocates them against current
+> source, and submits each chosen batch to a new or existing agent session.
 
 Topic: source-review-to-session
+
+Parent topic: [Source Control](source-control.md).
 
 Status: **stages 1–3 implemented** (2026-07-26), including the P8 diff view
 mode. The pending set is browsable as a **Comments mode tab** (list, delete,
@@ -282,7 +273,12 @@ line or historical citation as applicable. The turn also explicitly tells the
 agent to read current file state rather than treating the quote as
 authoritative.
 
-## Review-first repo viewer scope
+## Historical combined Source Control scope
+
+The current page-wide navigation and layout contract lives in
+[Source Control](source-control.md). This section is retained as the original
+combined implementation record; Source Control governs if its current contract
+differs.
 
 The polished viewer graehl wanted, kept read-only except for the established
 Pull/Push actions:
@@ -412,7 +408,12 @@ Pull/Push actions:
   content, so they key on a content hash — or mtime as the cheap freshness
   check — or skip caching.
 
-## Source-browser UI contracts (stage 3)
+## Historical combined Source Control UI record
+
+The current page-wide UI contract and pending general refinements live in
+[Source Control](source-control.md). The detailed record below explains the
+implemented review-led evolution but is not the landing site for new general
+Source Control behavior.
 
 The multipane source browser's presentation contracts, refined from live
 review. Each is a spec a reviewer can verify; the status marker cites the

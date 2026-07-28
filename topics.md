@@ -194,3 +194,5 @@
   bang-composer completion/help UI proposal.
 - ui-testing - Capture-confirmed browser QA: UI tweak requests end with
   inspected 1920x1080 + phone captures of the result.
+- source-control - Repository-navigation workbench: changes, commits, files,
+  blame, diffs, responsive panes, and links to relevant agent sessions.
