@@ -2,6 +2,32 @@
 
 ## Browser-tab lifetime memory
 
+- **2026-07-28 long-session observation and goal.** One long-lived session tab
+  reached roughly 5 GB of browser-process memory; reloading the same session
+  returned it to roughly 200 MB. This delta is not by itself proof of a JS,
+  DOM, or native leak—the browser may retain useful history, caches, rendered
+  resources, or allocator high-water—but it is direct evidence that the
+  long-lived default scales much worse than a fresh equivalent view and leaves
+  substantial efficiency headroom.
+
+  The out-of-box goal is for a continuously open session to converge toward
+  reload-like memory without requiring the reader to choose a manual “start at
+  this turn” boundary. Very old content should automatically **freeze** into a
+  lightweight semantic placeholder/window boundary once it is outside the
+  active reading neighborhood, then **revive transparently** from canonical
+  session data when the reader scrolls, searches, follows an anchor, or
+  otherwise navigates back to it. Freezing must release unreachable render
+  trees, highlighted HTML, media/object URLs, message-owned augments, and other
+  content-proportional client state while preserving order, stable anchors,
+  pagination, comments, and scroll restoration. Manual tail/start controls
+  remain useful overrides and diagnostics, not the normal memory-management
+  requirement.
+
+  Investigation should compare settled live-tab and post-reload samples using
+  browser-process memory alongside JS heap, DOM/row counts, retained
+  session-store bytes, route snapshots, highlighted/media resources, and active
+  object URLs. Quiescence-gate measurements so load-time highlighting and
+  streaming bursts are not mislabeled as retained growth.
 - Long-session pages must not do whole-transcript React work on idle timers.
   Relative-age labels are useful UI, but historical rows should not receive a
   changing clock prop every tick. The only transcript row that needs a live
