@@ -3,9 +3,9 @@
 > Proposal: a zero-setup container for agent-built web apps — dev servers or
 > static page bundles scaffolded from an opinionated template and registered
 > in project-local config — that YA surfaces as persistent icon links on the
-> project's sessions and reaches through its authenticated transports, or an
-> auto-managed Cloudflare tunnel when enabled and discoverable, so a user on
-> a phone or tablet can open them with no hosting knowledge.
+> project's sessions and reaches through its authenticated relay, while
+> optionally reusing globally configured Tailscale and Cloudflare access, so
+> a user on a phone or tablet can open them with no hosting knowledge.
 
 Topic: interactives
 
@@ -210,18 +210,17 @@ YA manages lifecycle/visibility only; it does not own the app's code.
 
 ## Transport and serving
 
-Reach tiers, preferred in order when available:
+The existing end-to-end-encrypted relay is the defining Interactives
+transport, not a fallback. Arbitrary interactive asset, navigation, and
+WebSocket forwarding is not implemented; making a YA-owned URL space work
+over relay is part of this proposal. Template conventions reduce
+absolute-origin breakage but do not remove the proxy work.
 
-1. **Direct (LAN/Tailscale)** — the YA proxy route below, behind YA auth.
-2. **Cloudflare tunnel** — automatic when tunnel exposure is enabled *and* a
-   Cloudflare tunnel capability is discoverable ("present + authed +
-   effective"); details below.
-3. **Proposed relay fallback** — the existing end-to-end-encrypted relay is a
-   transport substrate, but arbitrary interactive asset, navigation, and
-   WebSocket forwarding is not implemented. Making a YA-owned URL space work
-   over relay is part of this proposal, not an always-available capability.
-   Template conventions reduce absolute-origin breakage but do not remove the
-   proxy work.
+An operator may additionally enable **Tailscale**, **Cloudflare Tunnel**, or
+both. These are YA-installation-level capabilities configured once and reused
+by registered interactives, not setup repeated for each app. They may coexist
+with one another and with relay access; neither replaces the requirement that
+Interactives work through YA's relay.
 
 The YA proxy route:
 
@@ -236,16 +235,23 @@ The YA proxy route:
   ([[relay-origin-and-share-gating]]); interactives join speech/STT on the
   must-not-tunnel list.
 
-**Cloudflare tunnel tier** (direction set 2026-07-24, after kzahel suggested
-Cloudflare tunnels/ngrok as the standard localhost-exposure tools and an
-authenticated Cloudflare CLI as the agent-operable path, like `gh`): prefer
-the Cloudflare tool when it is present + authed + effective, over ad hoc
-"use relay." Without an effective tunnel, remote reach remains unavailable
-until the proposed relay proxy exists. Mechanics:
+**Optional direct Tailscale path.** When the YA server machine and viewing
+device share an enabled Tailscale network, the device can reach the YA proxy
+route directly. Tailscale supplies reachability only; YA still owns the
+registry, app/session UI, lifecycle, proxy route, and authentication. This is
+a one-time global machine/device setup, not an Interactives deployment step.
+
+**Optional global Cloudflare path** (direction set 2026-07-24, after kzahel
+suggested Cloudflare tunnels/ngrok as standard localhost-exposure tools and
+an authenticated Cloudflare CLI as an agent-operable path, like `gh`). When
+Cloudflare reach is globally enabled and an effective tunnel capability is
+discoverable, registered interactives can reuse it alongside relay and
+Tailscale. The reusable shape tunnels YA's proxy surface rather than creating
+and configuring a separate tunnel for every app. Mechanics:
 
 - Both current CLIs can expose an arbitrary localhost URL. `cloudflared
-  tunnel --url http://127.0.0.1:<port>` and `wrangler tunnel quick-start
-  http://127.0.0.1:<port>` create quick `*.trycloudflare.com` tunnels;
+  tunnel --url http://127.0.0.1:<ya-port>` and `wrangler tunnel quick-start
+  http://127.0.0.1:<ya-port>` create quick `*.trycloudflare.com` tunnels;
   Wrangler also exposes general `tunnel create`, `list`, and `run` commands.
   Discovery must probe the exact intended command rather than infer capability
   from a binary name. See the official
@@ -263,14 +269,14 @@ until the proposed relay proxy exists. Mechanics:
   (e.g. for a relay server) proves the account and could add interactive
   hostnames to that tunnel via dashboard/API, but the host's run token alone
   cannot.
-- Tunnel processes are YA-managed children under the [[architecture-mandates]]
-  idle bounds, like managed app starts.
-- Trust posture: a tunnel URL reaches the app **without YA auth** — a quick
-  tunnel is a public bearer URL; a named tunnel can add Cloudflare Access.
-  That is partly the point (a kid or guest opens the game with no YA login)
-  and a deliberate exposure change: enabling tunnels is an explicit setting,
-  default off ([[vanilla-defaults]]), and an icon whose app is
-  tunnel-exposed should show it.
+- A tunnel process launched by YA is a YA-managed child under the
+  [[architecture-mandates]] idle bounds. YA need not own an already-running
+  globally configured tunnel.
+- The preferred reusable tunnel terminates at YA's authenticated proxy route;
+  a tunnel is reachability, not permission. A separately public app URL would
+  bypass YA auth and is a distinct deliberate exposure change: explicit,
+  default off ([[vanilla-defaults]]), and visibly marked. A named tunnel can
+  add Cloudflare Access.
 - Consistency with the hard requirement: a tunnel is *transport to the YA
   machine*, not cloud hosting — the app and its files stay local and
   committed. "Cloud is right out" rejects hosting, not a tunnel.
@@ -311,9 +317,9 @@ channel to YA is a brokered message channel, so it needs no ambient authority
 at all.
 
 Hosted-client wrinkle: on `ya.graehl.org` the client reaches the server
-through the relay tunnel, not direct HTTP, so an iframe `src` has no plain URL
+through the relay, not direct HTTP, so an iframe `src` has no plain URL
 to point at; serving the interactive's assets to the hosted client needs a
-tunnel-backed URL space (service-worker-mediated fetch or blob/`srcdoc`
+relay-carried URL space (service-worker-mediated fetch or blob/`srcdoc`
 injection). The general form of this: a *standard* unmodified web app can in
 theory be carried over relay as long as its view/URL is a YA-server one —
 every fetch, asset URL, and WebSocket the app makes must resolve inside the
@@ -321,9 +327,8 @@ YA-owned URL space so the proxy machinery can carry it over the E2E channel;
 absolute-origin assumptions break it. That is significant machinery for
 arbitrary apps, and another argument for the template: the base prompt md
 mandates relay-compatible conventions (relative URLs, no hardcoded origins,
-WS via the served path). Direct (Tailscale/LAN) mode has no such problem,
-and a Cloudflare tunnel sidesteps it entirely by giving the app a real
-public origin.
+WS via the served path). Optional direct Tailscale or Cloudflare access does
+not remove that core relay requirement.
 
 ## Meta-UI protocol (comment-to-agent from the app view)
 
@@ -433,10 +438,10 @@ the operator's authenticated relay rather than vendor hosting.
   browsers).
 - Hosted-client (relay) asset serving for embedded interactives.
 - Managed-lifecycle idle-stop bound and its status surface.
-- Tunnel exposure scope and UI (global setting vs per-interactive; quick vs
-  named tunnels; Cloudflare Access policy for non-public apps; the
-  "present + authed + effective" discovery test across the auth capability
-  levels above; tunnel-child idle bound).
+- Optional-route selection and UI when global Tailscale and/or Cloudflare
+  access is enabled; quick vs named Cloudflare tunnels; Cloudflare Access
+  policy; the "present + authed + effective" discovery test across the auth
+  capability levels above; tunnel-child idle bound.
 - Optional push-deployed public/prod side for a matured interactive, when a
   project defines a deploy target.
 - Whether REST-kind entries get a YA-rendered landing (request console) or

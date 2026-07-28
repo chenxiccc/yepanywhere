@@ -72,8 +72,8 @@
   completion, rendered output, cross-session history)
 - Interactives (proposal: zero-setup container for agent-built project web
   apps — opinionated template, committed files, registry, icon links,
-  YA-server-only reach via relay or auto Cloudflare tunnel, meta-UI comment
-  channel)
+  YA-server-only reach via relay with optional globally configured Tailscale
+  and Cloudflare paths, meta-UI comment channel)
 - Rich interviews (banked: multi-round structured-input flows rendered inline
   from declared formats; revisit atop interactives machinery)
 - Server plugin arch (banked no: settings-gated loadable server code;
