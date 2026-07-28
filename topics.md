@@ -179,6 +179,10 @@
   enablement change makes !! execution and the recall drawer always-on,
   with only the "!! Commands" sidebar section opt-in. Vanilla Defaults
   amended with an established-convention carve-out to allow it.
+- composer-input-latency - Session composer typing stays local regardless of
+  transcript size; quote and queued-edit consumers subscribe below the
+  transcript boundary, while reactive browser preferences use cached
+  snapshots and draft-presence decoration is event-driven.
 - settings-search - live substring filter over the Settings UI: shared
   SettingsItem/SettingsSection row layer, operable-in-place results with
   highlighted matches and jump links, default-off "Match values" toggle.
