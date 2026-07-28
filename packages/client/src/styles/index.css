@@ -14773,6 +14773,48 @@ div.bang-command-error-message {
   margin: 0 0 var(--space-2);
 }
 
+.new-session-provider-catalog-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 0.55rem 0.65rem;
+  border: 1px solid
+    color-mix(in srgb, var(--warning-color) 38%, var(--border-color));
+  border-radius: var(--radius-md);
+  background: color-mix(
+    in srgb,
+    var(--warning-color) 8%,
+    var(--bg-code)
+  );
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  line-height: 1.35;
+}
+
+.new-session-provider-catalog-retry {
+  flex: none;
+  min-height: 2rem;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.new-session-provider-catalog-retry:hover:not(:disabled) {
+  border-color: var(--text-dimmed);
+  background: var(--bg-hover);
+}
+
+.new-session-provider-catalog-retry:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
 .new-session-model-section .filter-dropdown-container,
 .new-session-model-section .filter-dropdown-button,
 .new-session-helper-model-section .filter-dropdown-container,

@@ -81,6 +81,18 @@ retain their stronger semantics. When a primer overlaps a later explicit
 refresh or reload for the same source, only the later request may update the
 shared cache or mounted consumer state, regardless of response order.
 
+Selecting a configured provider whose model list is authoritative but dynamic
+triggers a background explicit refresh, even when a cached empty catalog made
+the provider eligible to select. The current provider list remains visible
+while that refresh runs. When Claude Gateway still advertises no models, New
+Session shows a retryable unavailable state and blocks fresh launch instead of
+submitting without a model. When models arrive, the selection reconciles to a
+provider-scoped saved model or the first advertised row and capability-driven
+controls appear. An exact saved model that is absent from an authoritative
+Gateway catalog is neither displayed nor submitted; this applies equally to
+the New Session picker and its informational floating-composer badge. Providers
+whose contracts permit exact unlisted ids retain their existing behavior.
+
 ## Recap fallback semantics
 
 `Forked` is a preference for the higher-fidelity recap path. **Tailed Recap

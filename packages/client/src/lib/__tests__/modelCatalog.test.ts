@@ -2,6 +2,7 @@ import type { ModelInfo } from "@yep-anywhere/shared";
 import { describe, expect, it } from "vitest";
 import {
   startsAdditionalModelGroup,
+  withProviderVisibleModelSelection,
   withVisibleModelSelection,
 } from "../modelCatalog";
 
@@ -26,6 +27,17 @@ describe("model catalog helpers", () => {
         catalogGroup: "additional",
       },
     ]);
+  });
+
+  it("does not add an unadvertised Claude Gateway selection", () => {
+    expect(
+      withProviderVisibleModelSelection(
+        "claude-gateway",
+        primary,
+        "gpt-5.5",
+        "Unavailable",
+      ),
+    ).toEqual(primary);
   });
 
   it("identifies only the first additional row as a group boundary", () => {

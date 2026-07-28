@@ -22,6 +22,41 @@ export function getPreferredModelId(
   return models[0]?.id ?? null;
 }
 
+export function providerRequiresAdvertisedModel(
+  providerName: ProviderName | null | undefined,
+): boolean {
+  return providerName === "claude-gateway";
+}
+
+export function getPreferredProviderModelId(
+  providerName: ProviderName,
+  models: ModelInfo[],
+  preferredModelId?: string | null,
+): string | null {
+  if (providerRequiresAdvertisedModel(providerName)) {
+    return (
+      models.find((model) => model.id === preferredModelId)?.id ??
+      models[0]?.id ??
+      null
+    );
+  }
+
+  return getPreferredModelId(models, preferredModelId);
+}
+
+export function hasRequiredProviderModel(
+  providerName: ProviderName | null | undefined,
+  models: readonly ModelInfo[],
+  selectedModelId: string | null | undefined,
+): boolean {
+  if (!providerRequiresAdvertisedModel(providerName)) return true;
+  return (
+    selectedModelId !== null &&
+    selectedModelId !== undefined &&
+    models.some((model) => model.id === selectedModelId)
+  );
+}
+
 export interface ProviderDefaultSeed {
   model?: string | null;
   serviceTier?: string | null;

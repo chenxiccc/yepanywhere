@@ -62,13 +62,14 @@ import {
   resolveSupportedThinkingMode,
 } from "../lib/effortLevels";
 import {
-  getPreferredModelId,
+  getPreferredProviderModelId,
   getProviderSessionDefaults,
+  hasRequiredProviderModel,
   withProviderSessionDefaults,
 } from "../lib/newSessionDefaults";
 import {
   startsAdditionalModelGroup,
-  withVisibleModelSelection,
+  withProviderVisibleModelSelection,
 } from "../lib/modelCatalog";
 import {
   type PendingFile,
@@ -687,7 +688,11 @@ export function NewSessionForm({
   );
 
   // Fetch available providers
-  const { providers, loading: providersLoading } = useProviders();
+  const {
+    providers,
+    loading: providersLoading,
+    refetch: refetchProviders,
+  } = useProviders();
   const {
     settings,
     isLoading: settingsLoading,
@@ -740,12 +745,18 @@ export function NewSessionForm({
   const availableModels: ModelInfo[] = selectedProviderInfo?.models ?? [];
   const visibleModels = useMemo(
     () =>
-      withVisibleModelSelection(
+      withProviderVisibleModelSelection(
+        selectedProvider,
         availableModels,
         selectedModel,
         t("modelSelectionUnavailable"),
       ),
-    [availableModels, selectedModel, t],
+    [availableModels, selectedModel, selectedProvider, t],
+  );
+  const hasSelectedProviderModel = hasRequiredProviderModel(
+    selectedProvider,
+    availableModels,
+    selectedModel,
   );
   const helperSelectableModels = useMemo(
     () => [...visibleModels],
@@ -1140,7 +1151,8 @@ export function NewSessionForm({
       requestedProviderName &&
       initialProvider.name === requestedProviderName &&
       preferredModel &&
-      (initialModels.length === 0 ||
+      ((initialProvider.name !== "claude-gateway" &&
+        initialModels.length === 0) ||
         initialModels.some((model) => model.id === preferredModel))
         ? preferredModel
         : null;
@@ -1154,7 +1166,11 @@ export function NewSessionForm({
     setSelectedProvider(initialProvider.name);
     setSelectedModel(
       requestedModelId ??
-        getPreferredModelId(initialModels, initialProviderDefaults.model),
+        getPreferredProviderModelId(
+          initialProvider.name,
+          initialModels,
+          initialProviderDefaults.model,
+        ),
     );
     setSelectedThinkingMode(initialProviderDefaults.thinkingMode ?? "off");
     setSelectedEffortLevel(initialProviderDefaults.effortLevel ?? "high");
@@ -1228,7 +1244,11 @@ export function NewSessionForm({
     );
     if (provider?.models && provider.models.length > 0) {
       setSelectedModel(
-        getPreferredModelId(providerModels, providerDefaults.model),
+        getPreferredProviderModelId(
+          providerName,
+          providerModels,
+          providerDefaults.model,
+        ),
       );
     } else {
       setSelectedModel(null);
@@ -1239,6 +1259,43 @@ export function NewSessionForm({
       getDefaultHelperSideModel(providerModels, providerDefaults),
     );
   };
+
+  useEffect(() => {
+    if (selectedProvider !== "claude-gateway") return;
+    void refetchProviders();
+  }, [refetchProviders, selectedProvider]);
+
+  useEffect(() => {
+    if (selectedProvider !== "claude-gateway") return;
+    if (
+      selectedModel &&
+      availableModels.some((model) => model.id === selectedModel)
+    ) {
+      return;
+    }
+    const providerDefaults = getProviderSessionDefaults(
+      settings?.newSessionDefaults,
+      selectedProvider,
+      getLegacyProviderDefaultSeed(selectedProvider),
+    );
+    const nextModel = getPreferredProviderModelId(
+      selectedProvider,
+      availableModels,
+      providerDefaults.model,
+    );
+    if (selectedModel !== nextModel) {
+      setSelectedModel(nextModel);
+      setHelperSideModel(
+        getDefaultHelperSideModel(availableModels, providerDefaults),
+      );
+    }
+  }, [
+    availableModels,
+    getLegacyProviderDefaultSeed,
+    selectedModel,
+    selectedProvider,
+    settings?.newSessionDefaults,
+  ]);
 
   // Build model options for FilterDropdown
   const modelOptions = useMemo((): FilterOption<string>[] => {
@@ -1599,7 +1656,7 @@ export function NewSessionForm({
       }
 
       const hasContent = finalMessage.trim() || pendingFiles.length > 0;
-      if (!hasContent || isStarting) return;
+      if (!hasContent || isStarting || !hasSelectedProviderModel) return;
 
       const trimmedMessage = finalMessage.trim();
       const trimmedProjectInput = normalizeProjectInput(projectInput);
@@ -1872,6 +1929,7 @@ export function NewSessionForm({
       effectivePermissionMode,
       effectiveThinkingMode,
       helperSideModel,
+      hasSelectedProviderModel,
       isStarting,
       message,
       navigate,
@@ -1914,7 +1972,14 @@ export function NewSessionForm({
       .filter(isPendingStagedFile)
       .map(toPersistedStagedAttachmentRef);
     const canQueueAttachments = stagedRefs.length === pendingFiles.length;
-    if (!trimmedMessage || !canQueueAttachments || isStarting) return;
+    if (
+      !trimmedMessage ||
+      !canQueueAttachments ||
+      isStarting ||
+      !hasSelectedProviderModel
+    ) {
+      return;
+    }
 
     const actionAtMs = Date.now();
     const clientTimestamp = getServerClockTimestamp(actionAtMs);
@@ -2327,7 +2392,7 @@ export function NewSessionForm({
   );
 
   const hasContent = message.trim() || pendingFiles.length > 0;
-  const canStart = Boolean(hasContent);
+  const canStart = Boolean(hasContent && hasSelectedProviderModel);
   const hasProjectQueueTargetProject = Boolean(projectQueueTargetProjectId);
   const pendingFilesReadyForProjectQueue =
     pendingFiles.every(isPendingStagedFile);
@@ -2346,7 +2411,8 @@ export function NewSessionForm({
     showProjectQueueAction &&
       message.trim() &&
       pendingFilesReadyForProjectQueue &&
-      hasProjectQueueTargetProject,
+      hasProjectQueueTargetProject &&
+      hasSelectedProviderModel,
   );
   const projectQueueNewSessionTitle = !pendingFilesReadyForProjectQueue
     ? t("projectQueueNewSessionAttachmentsPreparing")
@@ -2865,7 +2931,7 @@ export function NewSessionForm({
     ) : null;
 
   const providerSection =
-    !providersLoading && availableProviders.length > 1 ? (
+    availableProviders.length > 1 ? (
       <div className="new-session-provider-section">
         <h3>{t("newSessionProviderTitle")}</h3>
         <div className="provider-options">
@@ -2922,9 +2988,38 @@ export function NewSessionForm({
         />
       </div>
     ) : null;
-  const modelSection = modelField ? (
-    <div className="new-session-model-section">{modelField}</div>
-  ) : null;
+  const gatewayCatalogStatus =
+    selectedProvider === "claude-gateway" && availableModels.length === 0 ? (
+      <div className="new-session-model-field">
+        <h3>{t("newSessionModelTitle")}</h3>
+        <div
+          className="new-session-provider-catalog-status"
+          role="status"
+          aria-live="polite"
+        >
+          <span>
+            {providersLoading
+              ? t("newSessionGatewayCatalogLoading")
+              : t("newSessionGatewayCatalogUnavailable")}
+          </span>
+          <button
+            type="button"
+            className="new-session-provider-catalog-retry"
+            disabled={providersLoading}
+            onClick={() => void refetchProviders()}
+          >
+            {t("newSessionGatewayCatalogRetry")}
+          </button>
+        </div>
+      </div>
+    ) : null;
+  const modelSection =
+    modelField || gatewayCatalogStatus ? (
+      <div className="new-session-model-section">
+        {modelField}
+        {gatewayCatalogStatus}
+      </div>
+    ) : null;
   const showThinkingSection = (
     <div className="new-session-helper-section new-session-show-thinking-section">
       <h3>{t("showThinkingTitle")}</h3>

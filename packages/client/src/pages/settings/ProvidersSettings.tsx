@@ -823,6 +823,7 @@ function ClaudeGatewaySettings({
 }: {
   reloadProviders: () => Promise<void>;
 }) {
+  const exampleUrl = "http://localhost:4141";
   const { t } = useI18n();
   const { settings, updateSetting } = useServerSettings();
   const [url, setUrl] = useState("");
@@ -869,7 +870,10 @@ function ClaudeGatewaySettings({
             className="settings-input"
             value={url}
             onChange={(event) => setUrl(event.target.value)}
-            placeholder="http://localhost:4141"
+            onFocus={() => {
+              if (!url.trim()) setUrl(exampleUrl);
+            }}
+            placeholder={exampleUrl}
             aria-label={t("providersClaudeGatewayUrlAria")}
             style={{ flex: 1 }}
           />

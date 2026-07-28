@@ -1,7 +1,7 @@
 import { type ProviderName, resolveModel } from "@yep-anywhere/shared";
 import { useMemo } from "react";
 import {
-  getPreferredModelId,
+  getPreferredProviderModelId,
   getProviderSessionDefaults,
 } from "../lib/newSessionDefaults";
 import { getModelSetting } from "./useModelSettings";
@@ -56,7 +56,11 @@ export function useDefaultNewSessionModel(): DefaultNewSessionModel | null {
     );
     return {
       provider: provider.name,
-      modelId: getPreferredModelId(provider.models ?? [], providerDefaults.model),
+      modelId: getPreferredProviderModelId(
+        provider.name,
+        provider.models ?? [],
+        providerDefaults.model,
+      ),
     };
   }, [providers, providersLoading, settings, settingsLoading]);
 }

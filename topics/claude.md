@@ -134,6 +134,13 @@ shell-startup and test-hermeticity rules for the local `BASH_ENV` bridge.
   gateways whose model catalogs predate that extension; the gateway's
   compatibility route owns the resulting success or visible API failure.
   Model-specific failures never trigger a different provider transport.
+- Selecting Claude Gateway in New Session forces a background catalog refresh.
+  Until that authoritative catalog contains a selected model, the UI shows a
+  retryable unavailable state and blocks fresh launch through every submit
+  path. A saved model absent from the response is not offered as an unlisted
+  fallback, so a model id from Codex or regular Claude cannot bleed into a
+  Gateway launch. Once the catalog arrives, YA selects the saved advertised
+  model or its first row and derives thinking/effort controls from that row.
 - Claude Gateway retains the Claude harness, transcript, tools, permissions,
   compaction, and resume contracts. Per-model gateway catalog metadata controls
   whether YA advertises adaptive thinking and which effort levels it offers;

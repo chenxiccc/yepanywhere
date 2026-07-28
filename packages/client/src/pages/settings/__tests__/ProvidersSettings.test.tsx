@@ -255,6 +255,21 @@ describe("ProvidersSettings additional models", () => {
     });
   });
 
+  it("materializes the Claude Gateway example URL on focus", () => {
+    versionState.capabilities = [CLAUDE_GATEWAY_CAPABILITY];
+    render(<ProvidersSettings />);
+
+    const input = screen.getByRole("textbox", {
+      name: "providersClaudeGatewayUrlAria",
+    });
+    expect(input).toHaveProperty("value", "");
+
+    fireEvent.focus(input);
+
+    expect(input).toHaveProperty("value", "http://localhost:4141");
+    expect(mockUpdateSetting).not.toHaveBeenCalled();
+  });
+
   it("hides legacy ClaudeOllama when the server has no configuration or use", () => {
     render(<ProvidersSettings />);
 

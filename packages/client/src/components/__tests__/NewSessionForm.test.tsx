@@ -26,6 +26,7 @@ import { NewSessionForm } from "../NewSessionForm";
 
 const {
   mockNavigate,
+  mockRefetchProviders,
   mockUpdateSetting,
   mockStartSession,
   mockStartDetachedSession,
@@ -61,6 +62,7 @@ const {
   draftAttachmentState,
 } = vi.hoisted(() => ({
   mockNavigate: vi.fn(),
+  mockRefetchProviders: vi.fn(),
   mockUpdateSetting: vi.fn(),
   mockStartSession: vi.fn(),
   mockStartDetachedSession: vi.fn(),
@@ -123,6 +125,11 @@ const {
         name: string;
         description?: string;
         catalogGroup?: "additional";
+        supportsAdaptiveThinking?: boolean;
+        supportsEffort?: boolean;
+        supportedEffortLevels?: Array<
+          "low" | "medium" | "high" | "xhigh" | "max"
+        >;
         supportsAutoMode?: boolean;
       }>;
     }>,
@@ -131,7 +138,7 @@ const {
   serverSettingsState: {
     settings: null as {
       newSessionDefaults?: {
-        provider?: "claude" | "codex";
+        provider?: "claude" | "claude-gateway" | "codex";
         model?: string;
         permissionMode?: "default" | "auto";
         recapMode?: "off" | "native" | "side-session" | "fork";
@@ -140,7 +147,7 @@ const {
         helperSideModel?: string;
         providers?: Partial<
           Record<
-            "claude" | "codex",
+            "claude" | "claude-gateway" | "codex",
             {
               model?: string;
               thinkingMode?: "off" | "auto" | "on";
@@ -325,7 +332,12 @@ vi.mock("../../hooks/useModelSettings", () => ({
 }));
 
 vi.mock("../../hooks/useProviders", () => ({
-  useProviders: () => providersState,
+  useProviders: () => ({
+    ...providersState,
+    error: null,
+    refetch: mockRefetchProviders,
+    reload: vi.fn(),
+  }),
   getAvailableProviders: (providers: typeof providersState.providers) =>
     providers.filter(
       (provider) => provider.installed && provider.authenticated,
@@ -594,6 +606,19 @@ function installObjectUrlMock() {
 describe("NewSessionForm", () => {
   beforeEach(() => {
     installObjectUrlMock();
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn((query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    );
     providersState.providers = [
       {
         name: "claude",
@@ -635,6 +660,8 @@ describe("NewSessionForm", () => {
     modelSettingsState.thinkingMode = "off";
     modelSettingsState.effortLevel = "high";
     mockNavigate.mockReset();
+    mockRefetchProviders.mockReset();
+    mockRefetchProviders.mockResolvedValue(undefined);
     mockUpdateSetting.mockReset();
     mockStartSession.mockReset();
     mockStartDetachedSession.mockReset();
@@ -895,6 +922,88 @@ describe("NewSessionForm", () => {
     );
     expect(screen.getAllByRole("button", { name: "removed-default" }).length)
       .toBeGreaterThan(0);
+  });
+
+  it("refreshes and blocks Claude Gateway until its catalog has a model", async () => {
+    providersState.providers.push({
+      name: "claude-gateway",
+      displayName: "Claude Gateway",
+      installed: true,
+      authenticated: true,
+      enabled: true,
+      supportsThinkingToggle: true,
+      models: [],
+    });
+    serverSettingsState.settings = {
+      newSessionDefaults: {
+        provider: "claude-gateway",
+        permissionMode: "default",
+        providers: {
+          "claude-gateway": { model: "gpt-5.5" },
+        },
+      },
+    };
+    serverSettingsState.isLoading = false;
+
+    const { rerender } = render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mockRefetchProviders).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.getByText("newSessionGatewayCatalogUnavailable")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "gpt-5.5" })).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "newSessionGatewayCatalogRetry" }),
+    );
+    expect(mockRefetchProviders).toHaveBeenCalledTimes(2);
+
+    const composer = screen.getByPlaceholderText("newSessionPlaceholder");
+    fireEvent.change(composer, { target: { value: "hello" } });
+    expect(
+      screen.getByRole("button", { name: "newSessionStartAction" }),
+    ).toHaveProperty("disabled", true);
+    fireEvent.keyDown(composer, { key: "Enter" });
+    expect(mockStartSession).not.toHaveBeenCalled();
+
+    const gateway = providersState.providers.find(
+      (provider) => provider.name === "claude-gateway",
+    );
+    if (!gateway) throw new Error("expected Claude Gateway provider fixture");
+    gateway.models = [
+      {
+        id: "claude-opus-4-8",
+        name: "Opus 4.8",
+        supportsAdaptiveThinking: true,
+        supportsEffort: true,
+        supportedEffortLevels: ["low", "high", "xhigh"],
+      },
+    ];
+    rerender(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("filter-selected")[0]!.textContent).toBe(
+        "claude-opus-4-8",
+      );
+    });
+    expect(
+      screen.queryByText("newSessionGatewayCatalogUnavailable"),
+    ).toBeNull();
+    expect(screen.getByRole("radio", { name: "Low" })).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "newSessionStartAction" }),
+    ).toHaveProperty("disabled", false);
   });
 
   it("preserves Auto as the all-provider permission default across unsupported providers", async () => {

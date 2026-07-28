@@ -1,4 +1,5 @@
-import type { ModelInfo } from "@yep-anywhere/shared";
+import type { ModelInfo, ProviderName } from "@yep-anywhere/shared";
+import { providerRequiresAdvertisedModel } from "./newSessionDefaults";
 
 /**
  * Keep a saved or live model choice visible even when it is absent from the
@@ -25,6 +26,22 @@ export function withVisibleModelSelection(
       catalogGroup: "additional",
     },
   ];
+}
+
+export function withProviderVisibleModelSelection(
+  providerName: ProviderName | null | undefined,
+  models: readonly ModelInfo[],
+  selectedModelId: string | null | undefined,
+  unavailableDescription: string,
+): ModelInfo[] {
+  if (providerRequiresAdvertisedModel(providerName)) {
+    return [...models];
+  }
+  return withVisibleModelSelection(
+    models,
+    selectedModelId,
+    unavailableDescription,
+  );
 }
 
 export function startsAdditionalModelGroup(
