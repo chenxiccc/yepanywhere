@@ -24,6 +24,31 @@ export interface LocalStorageValueOptions<T> {
 }
 
 const invalidatorsByKey = new Map<string, Set<() => void>>();
+const storageObserversByKey = new Map<
+  string,
+  Set<(event: StorageEvent) => void>
+>();
+const allStorageObservers = new Set<(event: StorageEvent) => void>();
+let storageEventWindow: Window | null = null;
+
+function handleStorageEvent(event: StorageEvent): void {
+  const observers =
+    event.key === null
+      ? allStorageObservers
+      : (storageObserversByKey.get(event.key) ?? []);
+  for (const observer of new Set(observers)) {
+    observer(event);
+  }
+}
+
+function ensureStorageEventListener(): void {
+  if (typeof window === "undefined" || storageEventWindow === window) {
+    return;
+  }
+  storageEventWindow?.removeEventListener("storage", handleStorageEvent);
+  storageEventWindow = window;
+  storageEventWindow.addEventListener("storage", handleStorageEvent);
+}
 
 function getStorage(): Storage | null {
   try {
@@ -41,6 +66,22 @@ function registerInvalidator(key: string, invalidator: () => void): void {
     invalidatorsByKey.set(key, invalidators);
   }
   invalidators.add(invalidator);
+}
+
+function registerStorageObserver(
+  keys: Iterable<string>,
+  observer: (event: StorageEvent) => void,
+): void {
+  allStorageObservers.add(observer);
+  for (const key of keys) {
+    let observers = storageObserversByKey.get(key);
+    if (!observers) {
+      observers = new Set();
+      storageObserversByKey.set(key, observers);
+    }
+    observers.add(observer);
+  }
+  ensureStorageEventListener();
 }
 
 /**
@@ -77,7 +118,6 @@ export function createLocalStorageValue<T extends string | number | boolean>(
   const observedKeys = new Set([key, ...(options.relatedKeys ?? [])]);
   let snapshot = defaultValue;
   let initialized = false;
-  let onStorage: ((event: StorageEvent) => void) | null = null;
 
   const emit = (): void => {
     for (const listener of listeners) {
@@ -94,6 +134,7 @@ export function createLocalStorageValue<T extends string | number | boolean>(
   };
 
   const read = (): T => {
+    ensureStorageEventListener();
     if (initialized) {
       return snapshot;
     }
@@ -126,35 +167,10 @@ export function createLocalStorageValue<T extends string | number | boolean>(
   };
 
   const subscribe = (listener: () => void): (() => void) => {
-    if (listeners.size === 0) {
-      // No listener existed to observe cross-tab events while detached.
-      // Revalidate once when a consumer returns.
-      initialized = false;
-    }
+    ensureStorageEventListener();
     listeners.add(listener);
-    if (!onStorage && typeof window !== "undefined") {
-      onStorage = (event: StorageEvent) => {
-        if (event.key === null) {
-          invalidate();
-          return;
-        }
-        if (!observedKeys.has(event.key)) {
-          return;
-        }
-        if (event.key === key && event.newValue !== null) {
-          updateSnapshot(parse(event.newValue) ?? defaultValue);
-          return;
-        }
-        invalidate();
-      };
-      window.addEventListener("storage", onStorage);
-    }
     return () => {
       listeners.delete(listener);
-      if (listeners.size === 0 && onStorage) {
-        window.removeEventListener("storage", onStorage);
-        onStorage = null;
-      }
     };
   };
 
@@ -185,6 +201,13 @@ export function createLocalStorageValue<T extends string | number | boolean>(
   for (const relatedKey of options.relatedKeys ?? []) {
     registerInvalidator(relatedKey, invalidate);
   }
+  registerStorageObserver(observedKeys, (event) => {
+    if (event.key === key && event.newValue !== null) {
+      updateSnapshot(parse(event.newValue) ?? defaultValue);
+      return;
+    }
+    invalidate();
+  });
 
   return { read, set, reset, invalidate, subscribe };
 }

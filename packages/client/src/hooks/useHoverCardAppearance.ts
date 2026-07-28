@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { createLocalStorageValue } from "../lib/localStorageValue";
 import { UI_KEYS } from "../lib/storageKeys";
 import {
   DEFAULT_TOOLTIP_DELAY_MS,
@@ -17,6 +18,15 @@ export const DEFAULT_HOVERCARD_MAX_HEIGHT_PX = 150;
 
 export const HOVERCARD_APPEARANCE_CHANGE_EVENT =
   "yep-hovercard-appearance-change";
+
+const nativeHoverCardShowDelayStore = createLocalStorageValue(
+  UI_KEYS.sessionHoverCardShowDelayMs,
+  DEFAULT_HOVERCARD_SHOW_DELAY_MS,
+  (raw) => {
+    const delayMs = Number(raw);
+    return Number.isFinite(delayMs) ? Math.max(0, delayMs) : undefined;
+  },
+);
 
 export interface HoverCardAppearance {
   showDelayMs: number;
@@ -74,17 +84,12 @@ export function useHoverCardSettings(): HoverCardAppearance {
       window.removeEventListener(HOVERCARD_APPEARANCE_CHANGE_EVENT, update);
   }, []);
 
-  const nativeDelayMs = readStoredNumber(
-    UI_KEYS.sessionHoverCardShowDelayMs,
-    DEFAULT_HOVERCARD_SHOW_DELAY_MS,
-  );
+  const nativeDelayMs = nativeHoverCardShowDelayStore.read();
   return {
     ...appearance,
     showDelayMs:
       tooltipMode === "native"
-        ? Number.isFinite(nativeDelayMs)
-          ? Math.max(0, nativeDelayMs)
-          : DEFAULT_HOVERCARD_SHOW_DELAY_MS
+        ? nativeDelayMs
         : tooltipDelayMs * SESSION_HOVERCARD_DELAY_MULTIPLIER,
   };
 }

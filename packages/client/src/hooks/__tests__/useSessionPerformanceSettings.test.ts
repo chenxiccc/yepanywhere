@@ -4,6 +4,7 @@ import { act, cleanup, renderHook } from "@testing-library/react";
 import { toUrlProjectId } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { asClientSummarySourceKey } from "../../lib/clientSummaryStore";
+import { invalidateLocalStorageValues } from "../../lib/localStorageValue";
 import {
   defaultSessionDetailMemoryCache,
   getSessionDetailRetentionDefaults,
@@ -159,16 +160,19 @@ describe("useSessionPerformanceSettings", () => {
 
   it("seeds the budget from the legacy boolean toggle", () => {
     localStorage.setItem(UI_KEYS.sessionTranscriptCache, "true");
+    invalidateLocalStorageValues(UI_KEYS.sessionTranscriptCache);
     expect(getSessionTranscriptCacheBudgetMb()).toBe(24);
     expect(getSessionTranscriptCacheEnabled()).toBe(true);
 
     localStorage.setItem(UI_KEYS.sessionTranscriptCache, "false");
+    invalidateLocalStorageValues(UI_KEYS.sessionTranscriptCache);
     expect(getSessionTranscriptCacheBudgetMb()).toBe(0);
     expect(getSessionTranscriptCacheEnabled()).toBe(false);
 
     // An explicit budget wins over the legacy toggle.
     localStorage.setItem(UI_KEYS.sessionTranscriptCache, "true");
     localStorage.setItem(UI_KEYS.sessionTranscriptCacheBudgetMb, "64");
+    invalidateLocalStorageValues(UI_KEYS.sessionTranscriptCacheBudgetMb);
     expect(getSessionTranscriptCacheBudgetMb()).toBe(64);
   });
 

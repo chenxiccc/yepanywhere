@@ -166,7 +166,7 @@ describe("createLocalStorageValue", () => {
     expect(store.read()).toBe("paragraph-hover");
   });
 
-  it("revalidates after all cross-tab listeners were detached", () => {
+  it("keeps observing cross-tab changes while subscribers are detached", () => {
     localStorage.setItem("test-mode-key", "block");
     const store = createModeStore();
     expect(store.read()).toBe("block");
@@ -174,32 +174,30 @@ describe("createLocalStorageValue", () => {
     unsubscribe();
 
     localStorage.setItem("test-mode-key", "paragraph-always");
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: "test-mode-key",
+        newValue: "paragraph-always",
+      }),
+    );
     store.subscribe(() => {});
 
     expect(store.read()).toBe("paragraph-always");
   });
 
-  it("shares one window storage listener and detaches at zero subscribers", () => {
-    const addSpy = vi.spyOn(window, "addEventListener");
-    const removeSpy = vi.spyOn(window, "removeEventListener");
+  it("keeps its cached snapshot across subscriber churn", () => {
+    localStorage.setItem("test-mode-key", "block");
+    const getItem = vi.spyOn(localStorage, "getItem");
     const store = createModeStore();
 
     const unsubscribeA = store.subscribe(() => {});
-    const unsubscribeB = store.subscribe(() => {});
-    const storageAdds = addSpy.mock.calls.filter(
-      (call) => call[0] === "storage",
-    );
-    expect(storageAdds).toHaveLength(1);
-
+    expect(store.read()).toBe("block");
     unsubscribeA();
-    expect(
-      removeSpy.mock.calls.filter((call) => call[0] === "storage"),
-    ).toHaveLength(0);
-
+    const unsubscribeB = store.subscribe(() => {});
+    expect(store.read()).toBe("block");
     unsubscribeB();
-    expect(
-      removeSpy.mock.calls.filter((call) => call[0] === "storage"),
-    ).toHaveLength(1);
+
+    expect(getItem).toHaveBeenCalledTimes(1);
   });
 });
 

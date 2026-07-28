@@ -11,6 +11,10 @@ import {
   shouldRetainSessionScrollMemory,
   type SessionScrollBehaviorMode,
 } from "../lib/sessionScrollBehavior";
+import {
+  createLocalStorageBoolean,
+  createLocalStorageValue,
+} from "../lib/localStorageValue";
 import { UI_KEYS } from "../lib/storageKeys";
 
 const DEFAULT_SESSION_DOM_LINGER_ENABLED = false;
@@ -36,6 +40,57 @@ export const TRANSCRIPT_CACHE_TTL_HOUR_STOPS = [
  * (see sessionDetail/transcriptCharge.ts). */
 export const TYPICAL_SESSION_TRANSCRIPT_BYTES = 2 * 1024 * 1024;
 
+const sessionDomLingerStore = createLocalStorageBoolean(
+  UI_KEYS.sessionDomLinger,
+  DEFAULT_SESSION_DOM_LINGER_ENABLED,
+);
+const sessionTranscriptCacheBudgetMbStore = createLocalStorageValue(
+  UI_KEYS.sessionTranscriptCacheBudgetMb,
+  DEFAULT_TRANSCRIPT_CACHE_BUDGET_MB,
+  (raw) => {
+    const value = Number(raw);
+    return Number.isFinite(value) && value >= 0 ? value : undefined;
+  },
+  String,
+  {
+    relatedKeys: [UI_KEYS.sessionTranscriptCache],
+    readFallback: (storage) =>
+      storage.getItem(UI_KEYS.sessionTranscriptCache) === "true"
+        ? LEGACY_ENABLED_BUDGET_MB
+        : DEFAULT_TRANSCRIPT_CACHE_BUDGET_MB,
+  },
+);
+const sessionTranscriptCacheTtlHoursStore = createLocalStorageValue(
+  UI_KEYS.sessionTranscriptCacheTtlHours,
+  DEFAULT_TRANSCRIPT_CACHE_TTL_HOURS,
+  (raw) => {
+    const value = Number(raw);
+    return Number.isFinite(value) && value >= 0 ? value : undefined;
+  },
+);
+const sessionScrollBehaviorStore =
+  createLocalStorageValue<SessionScrollBehaviorMode>(
+    UI_KEYS.sessionScrollBehavior,
+    DEFAULT_SESSION_SCROLL_BEHAVIOR_MODE,
+    parseSessionScrollBehaviorMode,
+  );
+const sessionOffscreenTranscriptRenderingStore = createLocalStorageBoolean(
+  UI_KEYS.sessionOffscreenTranscriptRendering,
+  DEFAULT_SESSION_OFFSCREEN_TRANSCRIPT_RENDERING_ENABLED,
+);
+const sessionActiveWindowTrimStore = createLocalStorageBoolean(
+  UI_KEYS.sessionActiveWindowTrim,
+  DEFAULT_SESSION_ACTIVE_WINDOW_TRIM_ENABLED,
+);
+const performancePreferenceStores = [
+  sessionDomLingerStore,
+  sessionTranscriptCacheBudgetMbStore,
+  sessionTranscriptCacheTtlHoursStore,
+  sessionScrollBehaviorStore,
+  sessionOffscreenTranscriptRenderingStore,
+  sessionActiveWindowTrimStore,
+] as const;
+
 // Canonical home is the memory-cache facade so non-hook consumers (client
 // telemetry) can sample the same stats; re-exported here for the settings
 // surface.
@@ -43,8 +98,6 @@ export {
   getSessionTranscriptMemoryStats,
   type SessionTranscriptMemoryStats,
 } from "../lib/sessionDetail/sessionDetailStore";
-
-const listeners = new Set<() => void>();
 
 function getStorage(): Storage | null {
   if (
@@ -54,14 +107,6 @@ function getStorage(): Storage | null {
     return null;
   }
   return globalThis.localStorage;
-}
-
-function loadBooleanPreference(key: string, defaultValue: boolean): boolean {
-  const stored = getStorage()?.getItem(key);
-  if (stored === null || stored === undefined) {
-    return defaultValue;
-  }
-  return stored === "true";
 }
 
 function loadNonNegativeNumberPreference(key: string): number | null {
@@ -79,37 +124,14 @@ function savePreference(key: string, value: string): void {
   storage.setItem(key, value);
 }
 
-function emitChange() {
-  for (const listener of listeners) {
-    listener();
-  }
-}
-
 function subscribe(listener: () => void) {
-  listeners.add(listener);
-  if (typeof window === "undefined") {
-    return () => listeners.delete(listener);
-  }
-
-  const handleStorage = (event: StorageEvent) => {
-    if (
-      event.key === UI_KEYS.sessionDomLinger ||
-      event.key === UI_KEYS.sessionTranscriptCache ||
-      event.key === UI_KEYS.sessionTranscriptCacheBudgetMb ||
-      event.key === UI_KEYS.sessionTranscriptCacheTtlHours ||
-      event.key === UI_KEYS.sessionScrollBehavior ||
-      event.key === UI_KEYS.sessionOffscreenTranscriptRendering ||
-      event.key === UI_KEYS.sessionActiveWindowTrim ||
-      event.key === null
-    ) {
-      applySessionDetailRetentionPreferences();
-      listener();
-    }
-  };
-  window.addEventListener("storage", handleStorage);
+  const unsubscribers = performancePreferenceStores.map((store) =>
+    store.subscribe(listener),
+  );
   return () => {
-    listeners.delete(listener);
-    window.removeEventListener("storage", handleStorage);
+    for (const unsubscribe of unsubscribers) {
+      unsubscribe();
+    }
   };
 }
 
@@ -154,30 +176,15 @@ function parseSnapshot(snapshot: string) {
 }
 
 export function getSessionDomLingerEnabled(): boolean {
-  return loadBooleanPreference(
-    UI_KEYS.sessionDomLinger,
-    DEFAULT_SESSION_DOM_LINGER_ENABLED,
-  );
+  return sessionDomLingerStore.read();
 }
 
 export function getSessionTranscriptCacheBudgetMb(): number {
-  const stored = loadNonNegativeNumberPreference(
-    UI_KEYS.sessionTranscriptCacheBudgetMb,
-  );
-  if (stored !== null) {
-    return stored;
-  }
-  if (loadBooleanPreference(UI_KEYS.sessionTranscriptCache, false)) {
-    return LEGACY_ENABLED_BUDGET_MB;
-  }
-  return DEFAULT_TRANSCRIPT_CACHE_BUDGET_MB;
+  return sessionTranscriptCacheBudgetMbStore.read();
 }
 
 export function getSessionTranscriptCacheTtlHours(): number {
-  return (
-    loadNonNegativeNumberPreference(UI_KEYS.sessionTranscriptCacheTtlHours) ??
-    DEFAULT_TRANSCRIPT_CACHE_TTL_HOURS
-  );
+  return sessionTranscriptCacheTtlHoursStore.read();
 }
 
 export function getSessionTranscriptCacheEnabled(): boolean {
@@ -185,23 +192,15 @@ export function getSessionTranscriptCacheEnabled(): boolean {
 }
 
 export function getSessionScrollBehaviorMode(): SessionScrollBehaviorMode {
-  return parseSessionScrollBehaviorMode(
-    getStorage()?.getItem(UI_KEYS.sessionScrollBehavior),
-  );
+  return sessionScrollBehaviorStore.read();
 }
 
 export function getSessionOffscreenTranscriptRenderingEnabled(): boolean {
-  return loadBooleanPreference(
-    UI_KEYS.sessionOffscreenTranscriptRendering,
-    DEFAULT_SESSION_OFFSCREEN_TRANSCRIPT_RENDERING_ENABLED,
-  );
+  return sessionOffscreenTranscriptRenderingStore.read();
 }
 
 export function getSessionActiveWindowTrimEnabled(): boolean {
-  return loadBooleanPreference(
-    UI_KEYS.sessionActiveWindowTrim,
-    DEFAULT_SESSION_ACTIVE_WINDOW_TRIM_ENABLED,
-  );
+  return sessionActiveWindowTrimStore.read();
 }
 
 function applySessionDetailRetentionPreferences(): void {
@@ -218,37 +217,41 @@ function applySessionDetailRetentionPreferences(): void {
   });
 }
 
+// Retention is a non-React consumer and must follow both same-tab setters and
+// cross-tab changes even when no settings/session component is mounted.
+sessionTranscriptCacheBudgetMbStore.subscribe(
+  applySessionDetailRetentionPreferences,
+);
+sessionTranscriptCacheTtlHoursStore.subscribe(
+  applySessionDetailRetentionPreferences,
+);
+
 export function setSessionDomLingerPreference(enabled: boolean): void {
-  savePreference(UI_KEYS.sessionDomLinger, String(enabled));
-  emitChange();
+  sessionDomLingerStore.set(enabled);
 }
 
 export function setSessionOffscreenTranscriptRenderingPreference(
   enabled: boolean,
 ): void {
-  savePreference(UI_KEYS.sessionOffscreenTranscriptRendering, String(enabled));
-  emitChange();
+  sessionOffscreenTranscriptRenderingStore.set(enabled);
 }
 
 export function setSessionActiveWindowTrimPreference(
   enabled: boolean,
 ): void {
-  savePreference(UI_KEYS.sessionActiveWindowTrim, String(enabled));
-  emitChange();
+  sessionActiveWindowTrimStore.set(enabled);
 }
 
 export function setSessionTranscriptCacheBudgetMbPreference(
   budgetMb: number,
 ): void {
   const normalized = Number.isFinite(budgetMb) ? Math.max(0, budgetMb) : 0;
-  savePreference(UI_KEYS.sessionTranscriptCacheBudgetMb, String(normalized));
+  sessionTranscriptCacheBudgetMbStore.set(normalized);
   // Keep the legacy boolean coherent for older bundles reading it.
   savePreference(UI_KEYS.sessionTranscriptCache, String(normalized > 0));
   if (normalized <= 0) {
     clearDefaultSessionDetailMemoryCache();
   }
-  applySessionDetailRetentionPreferences();
-  emitChange();
 }
 
 export function setSessionTranscriptCacheTtlHoursPreference(
@@ -258,20 +261,17 @@ export function setSessionTranscriptCacheTtlHoursPreference(
     Number.isFinite(ttlHours) && ttlHours > 0
       ? ttlHours
       : DEFAULT_TRANSCRIPT_CACHE_TTL_HOURS;
-  savePreference(UI_KEYS.sessionTranscriptCacheTtlHours, String(normalized));
-  applySessionDetailRetentionPreferences();
-  emitChange();
+  sessionTranscriptCacheTtlHoursStore.set(normalized);
 }
 
 export function setSessionScrollBehaviorModePreference(
   mode: SessionScrollBehaviorMode,
 ): void {
   const normalized = parseSessionScrollBehaviorMode(mode);
-  savePreference(UI_KEYS.sessionScrollBehavior, normalized);
+  sessionScrollBehaviorStore.set(normalized);
   if (!shouldRetainSessionScrollMemory(normalized)) {
     clearDefaultSessionDetailMemoryCacheScrollSnapshots();
   }
-  emitChange();
 }
 
 /**
