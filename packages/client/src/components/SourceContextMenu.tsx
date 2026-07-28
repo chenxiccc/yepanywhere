@@ -84,6 +84,8 @@ export function useSourceContextMenu(
     y: number;
   } | null>(null);
   const suppressNextClickRef = useRef(false);
+  const suppressionClearTimerRef =
+    useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const close = useCallback(() => setOpen(null), []);
 
@@ -165,6 +167,11 @@ export function useSourceContextMenu(
       actions: SourceContextMenuAction[],
     ) => {
       endLongPress();
+      if (suppressionClearTimerRef.current) {
+        clearTimeout(suppressionClearTimerRef.current);
+        suppressionClearTimerRef.current = null;
+      }
+      suppressNextClickRef.current = false;
       if (
         !event.isPrimary ||
         event.button !== 0 ||
@@ -222,6 +229,21 @@ export function useSourceContextMenu(
     return true;
   }, []);
 
+  const finishPointerSequence = useCallback(() => {
+    endLongPress();
+    if (!suppressNextClickRef.current) return;
+    if (suppressionClearTimerRef.current) {
+      clearTimeout(suppressionClearTimerRef.current);
+    }
+    // A compatibility click from this pointer sequence is dispatched after
+    // pointerup in the same browser task. Keep suppression through that click,
+    // then release it before any later, unrelated activation.
+    suppressionClearTimerRef.current = setTimeout(() => {
+      suppressNextClickRef.current = false;
+      suppressionClearTimerRef.current = null;
+    }, 0);
+  }, [endLongPress]);
+
   const targetProps = useCallback(
     (
       actions: SourceContextMenuAction[],
@@ -249,7 +271,19 @@ export function useSourceContextMenu(
     ],
   );
 
-  useEffect(() => endLongPress, [endLongPress]);
+  useEffect(() => {
+    window.addEventListener("pointerup", finishPointerSequence);
+    window.addEventListener("pointercancel", finishPointerSequence);
+    return () => {
+      window.removeEventListener("pointerup", finishPointerSequence);
+      window.removeEventListener("pointercancel", finishPointerSequence);
+      endLongPress();
+      if (suppressionClearTimerRef.current) {
+        clearTimeout(suppressionClearTimerRef.current);
+        suppressionClearTimerRef.current = null;
+      }
+    };
+  }, [endLongPress, finishPointerSequence]);
 
   return {
     menu: open ? <SourceContextMenu {...open} onClose={close} t={t} /> : null,

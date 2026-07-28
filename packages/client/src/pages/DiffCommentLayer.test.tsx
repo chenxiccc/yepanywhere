@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 
-import type { PatchHunk } from "@yep-anywhere/shared";
+import type {
+  PatchHunk,
+  ReviewCommentRevision,
+} from "@yep-anywhere/shared";
 import {
   cleanup,
   fireEvent,
@@ -8,7 +11,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { type RefObject, useRef } from "react";
+import { useState } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -60,22 +63,34 @@ const DIFF_HTML =
 
 const t = (key: string) => key;
 
-function Harness({ patch = PATCH }: { patch?: PatchHunk[] }) {
-  const ref = useRef<HTMLDivElement>(null);
+function Harness({
+  patch = PATCH,
+  revisions,
+}: {
+  patch?: PatchHunk[];
+  revisions?: {
+    old?: ReviewCommentRevision;
+    new?: ReviewCommentRevision;
+  };
+}) {
+  const [container, setContainer] = useState<HTMLDivElement | null>(null);
   return (
-    <div className="diff-modal-content" ref={ref}>
+    <div className="diff-modal-content" ref={setContainer}>
       <div
         className="highlighted-diff"
         // biome-ignore lint/security/noDangerouslySetInnerHtml: test fixture
         dangerouslySetInnerHTML={{ __html: DIFF_HTML }}
       />
-      <DiffCommentLayer
-        projectId="proj1"
-        filePath="src/a.ts"
-        structuredPatch={patch}
-        containerRef={ref as RefObject<HTMLElement | null>}
-        t={t}
-      />
+      {container && (
+        <DiffCommentLayer
+          projectId="proj1"
+          filePath="src/a.ts"
+          structuredPatch={patch}
+          revisions={revisions}
+          container={container}
+          t={t}
+        />
+      )}
     </div>
   );
 }
@@ -291,21 +306,23 @@ describe("DiffCommentLayer", () => {
     });
     // Context line (flat index 0) inside an OLD (left) column.
     function ColHarness() {
-      const ref = useRef<HTMLDivElement>(null);
+      const [container, setContainer] = useState<HTMLDivElement | null>(null);
       return (
-        <div ref={ref}>
+        <div ref={setContainer}>
           <div data-diff-col="old">
             <span className="line line-context" data-diff-line="0">
               {" a"}
             </span>
           </div>
-          <DiffCommentLayer
-            projectId="proj1"
-            filePath="src/a.ts"
-            structuredPatch={PATCH}
-            containerRef={ref as RefObject<HTMLElement | null>}
-            t={t}
-          />
+          {container && (
+            <DiffCommentLayer
+              projectId="proj1"
+              filePath="src/a.ts"
+              structuredPatch={PATCH}
+              container={container}
+              t={t}
+            />
+          )}
         </div>
       );
     }
@@ -332,6 +349,52 @@ describe("DiffCommentLayer", () => {
     expect(anchor.side).toBe("old");
     expect(anchor.oldLine).toBe(1);
     expect(anchor.newLine).toBe(1);
+  });
+
+  it("anchors each comparison side to the revision that contains it", async () => {
+    const baseSha = "a".repeat(40);
+    const headSha = "b".repeat(40);
+    listReviewComments.mockResolvedValue({
+      comments: [],
+      batches: [],
+      pendingCount: 0,
+    });
+    addReviewComment.mockResolvedValue({
+      comment: { id: "c1", status: "pending", anchor: {}, text: "x" },
+    });
+    render(
+      <MemoryRouter>
+        <Harness
+          revisions={{
+            old: { kind: "sha", sha: baseSha },
+            new: { kind: "sha", sha: headSha },
+          }}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(document.querySelector('[data-diff-line="1"]')!);
+    fireEvent.change(await screen.findByRole("textbox"), {
+      target: { value: "old side" },
+    });
+    fireEvent.click(screen.getByText("sourceReviewAddToReview"));
+    await waitFor(() => expect(addReviewComment).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(document.querySelector('[data-diff-line="2"]')!);
+    fireEvent.change(await screen.findByRole("textbox"), {
+      target: { value: "new side" },
+    });
+    fireEvent.click(screen.getByText("sourceReviewAddToReview"));
+    await waitFor(() => expect(addReviewComment).toHaveBeenCalledTimes(2));
+
+    expect(addReviewComment.mock.calls[0]?.[1]).toMatchObject({
+      side: "old",
+      revision: { kind: "sha", sha: baseSha },
+    });
+    expect(addReviewComment.mock.calls[1]?.[1]).toMatchObject({
+      side: "new",
+      revision: { kind: "sha", sha: headSha },
+    });
   });
 
   it("tints a line that already has a pending comment", async () => {
@@ -368,6 +431,68 @@ describe("DiffCommentLayer", () => {
     expect(
       document
         .querySelector('[data-diff-line="0"]')
+        ?.classList.contains("has-review-comment"),
+    ).toBe(false);
+  });
+
+  it("does not tint the same line coordinates from another endpoint", async () => {
+    const baseSha = "a".repeat(40);
+    const headSha = "b".repeat(40);
+    listReviewComments.mockResolvedValue({
+      comments: [
+        {
+          id: "old-side",
+          status: "pending",
+          text: "old",
+          createdAt: "2026-07-26T00:00:00Z",
+          anchor: {
+            path: "src/a.ts",
+            revision: { kind: "sha", sha: baseSha },
+            side: "old",
+            oldLine: 2,
+            newLine: null,
+            snippet: "b",
+          },
+        },
+        {
+          id: "other-projection",
+          status: "pending",
+          text: "other",
+          createdAt: "2026-07-26T00:00:00Z",
+          anchor: {
+            path: "src/a.ts",
+            revision: { kind: "sha", sha: baseSha },
+            side: "new",
+            oldLine: null,
+            newLine: 2,
+            snippet: "c",
+          },
+        },
+      ],
+      batches: [],
+      pendingCount: 2,
+    });
+    render(
+      <MemoryRouter>
+        <Harness
+          revisions={{
+            old: { kind: "sha", sha: baseSha },
+            new: { kind: "sha", sha: headSha },
+          }}
+        />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() =>
+      expect(
+        document
+          .querySelector('[data-diff-line="1"]')
+          ?.classList.contains("has-review-comment"),
+      ).toBe(true),
+    );
+    expect(
+      document
+        .querySelector('[data-diff-line="2"]')
         ?.classList.contains("has-review-comment"),
     ).toBe(false);
   });

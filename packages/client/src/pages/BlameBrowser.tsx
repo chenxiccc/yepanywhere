@@ -31,12 +31,15 @@ export function BlameBrowser({
   projectId,
   isWideScreen,
   initialPath,
+  onOpenCommit,
   t,
 }: {
   projectId: string;
   isWideScreen: boolean;
   /** Seed the open file (the commit-diff → blame-at-HEAD bridge). */
   initialPath?: string;
+  /** Open a populated blame hash in the commit browser. */
+  onOpenCommit?: (sha: string) => void;
   t: TranslationFn;
 }) {
   const [files, setFiles] = useState<string[]>([]);
@@ -192,7 +195,12 @@ export function BlameBrowser({
         </div>
 
         {isWideScreen && selectedPath && (
-          <BlameView projectId={projectId} path={selectedPath} t={t} />
+          <BlameView
+            projectId={projectId}
+            path={selectedPath}
+            onOpenCommit={onOpenCommit}
+            t={t}
+          />
         )}
       </ResizableSourceColumns>
       {fileMenu.menu}
@@ -203,7 +211,12 @@ export function BlameBrowser({
           onClose={() => setSelectedPath(null)}
           closeOnBackGesture
         >
-          <BlameView projectId={projectId} path={selectedPath} t={t} />
+          <BlameView
+            projectId={projectId}
+            path={selectedPath}
+            onOpenCommit={onOpenCommit}
+            t={t}
+          />
         </Modal>
       )}
     </div>

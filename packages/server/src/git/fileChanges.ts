@@ -7,9 +7,9 @@ interface NameStatusEntry {
 }
 
 /**
- * `--name-status` and `--numstat` list the same files in the same order for a
- * given diff, so counts are zipped by index. This also avoids parsing
- * numstat's `old => new` rename path form.
+ * NUL-delimited `--name-status -z` and `--numstat -z` list the same files in
+ * the same order for a given diff, so counts are zipped by index. NUL
+ * delimiters preserve every legal Git path, including tabs and newlines.
  */
 export function buildGitFileChanges(
   nameStatus: string,
@@ -31,19 +31,20 @@ export function buildGitFileChanges(
 }
 
 function parseNameStatus(stdout: string): NameStatusEntry[] {
+  const tokens = splitNullDelimited(stdout);
   const out: NameStatusEntry[] = [];
-  for (const line of stdout.split("\n")) {
-    if (!line) continue;
-    const parts = line.split("\t");
-    const letter = (parts[0] ?? "M")[0] ?? "M";
+  for (let index = 0; index < tokens.length; ) {
+    const status = tokens[index++];
+    if (!status) continue;
+    const letter = status[0] ?? "M";
     if (letter === "R" || letter === "C") {
-      const origPath = parts[1];
-      const path = parts[2];
-      if (!path) continue;
+      const origPath = tokens[index++];
+      const path = tokens[index++];
+      if (origPath === undefined || path === undefined) break;
       out.push({ status: letter, path, origPath });
     } else {
-      const path = parts[1];
-      if (!path) continue;
+      const path = tokens[index++];
+      if (path === undefined) break;
       out.push({ status: letter, path });
     }
   }
@@ -53,19 +54,32 @@ function parseNameStatus(stdout: string): NameStatusEntry[] {
 function parseNumstatCounts(
   stdout: string,
 ): Array<{ added: number | null; deleted: number | null }> {
+  const tokens = splitNullDelimited(stdout);
   const out: Array<{ added: number | null; deleted: number | null }> = [];
-  for (const line of stdout.split("\n")) {
-    if (!line) continue;
-    const parts = line.split("\t");
-    const added = parts[0];
-    const deleted = parts[1];
+  for (let index = 0; index < tokens.length; ) {
+    const record = tokens[index++];
+    if (!record) continue;
+    const firstTab = record.indexOf("\t");
+    const secondTab =
+      firstTab < 0 ? -1 : record.indexOf("\t", firstTab + 1);
+    if (firstTab < 0 || secondTab < 0) continue;
+    const added = record.slice(0, firstTab);
+    const deleted = record.slice(firstTab + 1, secondTab);
     out.push({
-      added: added === "-" || added === undefined ? null : toCount(added),
-      deleted:
-        deleted === "-" || deleted === undefined ? null : toCount(deleted),
+      added: added === "-" ? null : toCount(added),
+      deleted: deleted === "-" ? null : toCount(deleted),
     });
+    // For renames/copies, numstat writes an empty path field followed by the
+    // old and new paths as separate NUL-delimited tokens.
+    if (record.length === secondTab + 1) index += 2;
   }
   return out;
+}
+
+function splitNullDelimited(stdout: string): string[] {
+  const tokens = stdout.split("\0");
+  if (tokens.at(-1) === "") tokens.pop();
+  return tokens;
 }
 
 function toCount(value: string): number | null {

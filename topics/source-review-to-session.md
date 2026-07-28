@@ -458,8 +458,11 @@ boundary is set. — Done (6ecdd938).
 
 - Truncated commit subjects and file paths carry a `title` tooltip until any
   fuller in-layout treatment lands. — Done (8c9be031).
-- The blame gutter tooltip is `sha · author · date · summary` (author date
-  included, not just author). — Done (8c9be031).
+- Files renders readable content immediately and fills blame asynchronously.
+  The populated hash is a commit link; its tooltip is
+  `full sha · author · date · summary`, and its shared action menu opens the
+  commit or copies the full SHA. Blame failure leaves content visible. —
+  Revised 2026-07-28.
 
 ### Per-column content width
 
@@ -604,9 +607,9 @@ without introducing selection-range state. The server resolves and returns
 both endpoint SHAs with the file list; every file diff then uses those pinned
 SHAs, so a later HEAD move cannot mix two comparisons. Selecting HEAD produces
 an empty comparison. Merge commits use their resulting tree as the base, not
-an invented first-parent commit range or merge-base projection. Comments made
-in this view retain the selected revision as their review identity. —
-Implemented 2026-07-28.
+an invented first-parent commit range or merge-base projection. Comments cite
+the endpoint containing the clicked line: old-side anchors use the selected
+base SHA and new-side anchors use the pinned HEAD SHA. — Revised 2026-07-28.
 
 — First slice implemented 2026-07-27; remaining options researched against
 GitHub Desktop
@@ -736,22 +739,24 @@ Implementation plan:
 
 1. Characterize each supported provider's structured file-mutation events and
    success boundary. Ignore failed or merely proposed mutations.
-2. Maintain a set whose logical rows are
+2. Persist a set whose logical rows are
    `(source, project, normalized file, canonical YA session, latest edit time)`.
    A later successful structured mutation by the same session to the same file
    only replaces that row's time; do not retain an event history, tool/message
-   ids, content hashes, or before/after lineage.
-3. Whenever YA observes that a tracked path has become not dirty, clear every
-   row for that file. A successful commit normally causes this transition, but
-   a commit that leaves additional staged or unstaged changes does not: the
-   clearing condition is the observed clean file state, not merely a commit
-   command. The feature depends on YA reliably noticing that transition.
+   ids, content hashes, or before/after lineage. Private server-owned state
+   survives restart and has no time-based or bounded-retention expiry.
+3. Clear rows only when a successful complete Git-status refresh authoritatively
+   observes the path clean. Restart and reconnect reconcile reachable projects;
+   temporary disconnect retains rows, while explicit project/source removal
+   clears the removed scope. A commit that leaves additional staged or unstaged
+   changes does not clear anything.
 4. Add a capability-gated query for the remaining candidate session summaries,
    ordered by each session's latest recorded edit, then reuse the existing
    session hovercard/navigation and source file banner/menu surfaces. More than
    one candidate opens the chooser; one candidate may navigate directly.
 5. Test one and several sessions, repeated edits deduplicating to the latest
-   time, failed edits being ignored, clean-state clearing, a commit that leaves
+   time, failed edits being ignored, clean-state clearing, restart and
+   disconnect/reconnect reconciliation, explicit removal, a commit that leaves
    the file dirty, and accepted missing/stale attribution after unobserved
    shell or human changes.
 

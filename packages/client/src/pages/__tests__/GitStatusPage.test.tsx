@@ -29,6 +29,8 @@ const mocks = vi.hoisted(() => ({
   useNavigationLayout: vi.fn(),
   useMediaQuery: vi.fn(),
   renderWorkingTreeBrowser: vi.fn(),
+  renderCommitBrowser: vi.fn(),
+  renderBlameBrowser: vi.fn(),
 }));
 
 vi.mock("../../api/client", () => ({
@@ -42,7 +44,29 @@ vi.mock("../../api/client", () => ({
 }));
 
 vi.mock("../CommitBrowser", () => ({
-  CommitBrowser: () => <div data-testid="commit-browser">commit-history</div>,
+  CommitBrowser: (props: { initialSha?: string }) => {
+    mocks.renderCommitBrowser(props);
+    return <div data-testid="commit-browser">commit-history</div>;
+  },
+}));
+
+vi.mock("../BlameBrowser", () => ({
+  BlameBrowser: (props: {
+    initialPath?: string;
+    onOpenCommit?: (sha: string) => void;
+  }) => {
+    mocks.renderBlameBrowser(props);
+    return (
+      <div data-testid="blame-browser">
+        <button
+          type="button"
+          onClick={() => props.onOpenCommit?.("b".repeat(40))}
+        >
+          open-blame-commit
+        </button>
+      </div>
+    );
+  },
 }));
 
 vi.mock("../WorkingTreeBrowser", async () => {
@@ -342,6 +366,22 @@ describe("GitStatusPage source header", () => {
         .getAttribute("aria-selected"),
     ).toBe("true");
     expect(screen.queryByTestId("working-tree-browser")).toBeNull();
+  });
+
+  it("opens an asynchronously populated Files hash in commit history", async () => {
+    renderPage("/git-status?projectId=project-a&tab=files&bf=src%2Fx.ts");
+
+    expect(await screen.findByTestId("blame-browser")).toBeDefined();
+    expect(mocks.renderBlameBrowser).toHaveBeenLastCalledWith(
+      expect.objectContaining({ initialPath: "src/x.ts" }),
+    );
+
+    fireEvent.click(screen.getByText("open-blame-commit"));
+
+    expect(await screen.findByTestId("commit-browser")).toBeDefined();
+    expect(mocks.renderCommitBrowser).toHaveBeenLastCalledWith(
+      expect.objectContaining({ initialSha: "b".repeat(40) }),
+    );
   });
 
   it("makes the Dirty badge return to Changes", async () => {

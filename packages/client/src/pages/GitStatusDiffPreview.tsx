@@ -13,6 +13,7 @@ import {
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -151,12 +152,26 @@ function fetchDiffForSource(
   });
 }
 
-function commentRevisionForSource(
+function commentRevisionsForSource(
   source: GitDiffSource,
-): ReviewCommentRevision | undefined {
-  if (source.kind === "commit") return { kind: "sha", sha: source.sha };
+):
+  | {
+      old: ReviewCommentRevision;
+      new: ReviewCommentRevision;
+    }
+  | undefined {
+  if (source.kind === "commit") {
+    const revision: ReviewCommentRevision = {
+      kind: "sha",
+      sha: source.sha,
+    };
+    return { old: revision, new: revision };
+  }
   if (source.kind === "comparison") {
-    return { kind: "sha", sha: source.baseSha };
+    return {
+      old: { kind: "sha", sha: source.baseSha },
+      new: { kind: "sha", sha: source.headSha },
+    };
   }
   return undefined;
 }
@@ -522,14 +537,50 @@ function GitDiffContent({
   const [showFullContext, setShowFullContext] = useState(
     () => retainedDiffView?.showFullContext ?? false,
   );
-  const [fullContextResult, setFullContextResult] =
-    useState<GitDiffResult | null>(null);
-  const [contextLoading, setContextLoading] = useState(false);
-  const [contextError, setContextError] = useState<string | null>(null);
+  const fullContextRevisionKey = useMemo(
+    () =>
+      JSON.stringify([
+        diffResult.structuredPatch,
+        diffResult.previewSkipped ?? null,
+      ]),
+    [diffResult.previewSkipped, diffResult.structuredPatch],
+  );
+  const [fullContextLoad, setFullContextLoad] = useState<{
+    revisionKey: string | null;
+    result: GitDiffResult | null;
+    loading: boolean;
+    error: string | null;
+  }>({
+    revisionKey: null,
+    result: null,
+    loading: false,
+    error: null,
+  });
+  const currentFullContextLoad =
+    fullContextLoad.revisionKey === fullContextRevisionKey
+      ? fullContextLoad
+      : {
+          revisionKey: fullContextRevisionKey,
+          result: null,
+          loading: false,
+          error: null,
+        };
+  const {
+    result: fullContextResult,
+    loading: contextLoading,
+    error: contextError,
+  } = currentFullContextLoad;
   const [showMarkdownPreview, setShowMarkdownPreview] = useState(
     () => retainedDiffView?.showMarkdownPreview ?? false,
   );
   const contentRef = useRef<HTMLDivElement>(null);
+  const [contentElement, setContentElement] = useState<HTMLDivElement | null>(
+    null,
+  );
+  const mountContent = useCallback((node: HTMLDivElement | null) => {
+    contentRef.current = node;
+    setContentElement(node);
+  }, []);
   const [viewMode, setViewMode] = useDiffViewMode();
   const [paneWidth, setPaneWidth] = useState(0);
   const sourceKind = source.kind;
@@ -540,6 +591,13 @@ function GitDiffContent({
         ? source.baseSha
         : "";
   const sourceHeadSha = source.kind === "comparison" ? source.headSha : "";
+  const commentRevisions = useMemo(
+    () =>
+      commentRevisionsForSource(
+        sourceFromPrimitives(sourceKind, sourceBaseSha, sourceHeadSha),
+      ),
+    [sourceBaseSha, sourceHeadSha, sourceKind],
+  );
 
   // Measure the diff pane (content width, not viewport) so `auto` can pick
   // side-by-side only when two readable code columns fit.
@@ -580,8 +638,17 @@ function GitDiffContent({
     if (fullContextResult || contextLoading) {
       return true;
     }
-    setContextLoading(true);
-    setContextError(null);
+    const revisionKey = fullContextRevisionKey;
+    setFullContextLoad((current) =>
+      current.revisionKey === revisionKey
+        ? { ...current, loading: true, error: null }
+        : {
+            revisionKey,
+            result: null,
+            loading: true,
+            error: null,
+          },
+    );
     try {
       const result = await fetchDiffForSource(
         projectId,
@@ -590,22 +657,34 @@ function GitDiffContent({
         true,
         ignoreWhitespace,
       );
-      setFullContextResult(result);
+      setFullContextLoad((current) =>
+        current.revisionKey === revisionKey
+          ? { revisionKey, result, loading: false, error: null }
+          : current,
+      );
       return true;
     } catch (err) {
       if (ignoreWhitespace || sourceKind === "comparison") {
         onProjectionRequestFailure?.();
       }
-      setContextError(
-        err instanceof Error ? err.message : t("gitStatusLoadContextFailed"),
+      const message =
+        err instanceof Error ? err.message : t("gitStatusLoadContextFailed");
+      setFullContextLoad((current) =>
+        current.revisionKey === revisionKey
+          ? {
+              revisionKey,
+              result: null,
+              loading: false,
+              error: message,
+            }
+          : current,
       );
       return false;
-    } finally {
-      setContextLoading(false);
     }
   }, [
     fullContextResult,
     contextLoading,
+    fullContextRevisionKey,
     projectId,
     file,
     sourceKind,
@@ -768,7 +847,7 @@ function GitDiffContent({
     onHunkNavigationChange,
   ]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase();
       if (
@@ -887,7 +966,7 @@ function GitDiffContent({
         </div>
       )}
       {contextError && <div className="diff-context-error">{contextError}</div>}
-      <div className="diff-modal-content source-diff-pane" ref={contentRef}>
+      <div className="diff-modal-content source-diff-pane" ref={mountContent}>
         {showMarkdownPreview && markdownHtml ? (
           <MarkdownPreview html={markdownHtml} />
         ) : previewSkipped ? (
@@ -915,15 +994,17 @@ function GitDiffContent({
             ) : (
               <DiffLines hunks={displayResult.structuredPatch} />
             )}
-            <DiffCommentLayer
-              projectId={projectId}
-              filePath={file.path}
-              structuredPatch={displayResult.structuredPatch}
-              revision={commentRevisionForSource(source)}
-              containerRef={contentRef}
-              onOpenChange={onCommentEditorOpenChange}
-              t={t}
-            />
+            {contentElement && (
+              <DiffCommentLayer
+                projectId={projectId}
+                filePath={file.path}
+                structuredPatch={displayResult.structuredPatch}
+                revisions={commentRevisions}
+                container={contentElement}
+                onOpenChange={onCommentEditorOpenChange}
+                t={t}
+              />
+            )}
           </>
         )}
       </div>

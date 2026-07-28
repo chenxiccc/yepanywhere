@@ -618,6 +618,7 @@ function GitStatusContent({
   const { tab, setTab } = useSourceTab();
   const changedFileCount = countChangedPaths(status);
   const blameFile = searchParams.get("bf") ?? undefined;
+  const commitSha = searchParams.get("rev") ?? undefined;
   const worktreeFile = searchParams.get("worktreeFile") ?? undefined;
   const [ignoreWhitespace, setIgnoreWhitespace] = useState(false);
   const [showProjectionNotice, setShowProjectionNotice] = useState(false);
@@ -660,6 +661,20 @@ function GitStatusContent({
           const params = new URLSearchParams(prev);
           params.set("tab", "files");
           params.set("bf", path);
+          return params;
+        },
+        { state: location.state },
+      );
+    },
+    [location.state, setSearchParams],
+  );
+  const handleOpenCommit = useCallback(
+    (sha: string) => {
+      setSearchParams(
+        (prev) => {
+          const params = new URLSearchParams(prev);
+          params.set("tab", "commits");
+          params.set("rev", sha);
           return params;
         },
         { state: location.state },
@@ -724,6 +739,7 @@ function GitStatusContent({
           projectId={projectId}
           status={status}
           isWideScreen={isWideScreen}
+          initialSha={commitSha}
           onBlameFile={handleBlameFile}
           supportsProjections={supportsProjections}
           ignoreWhitespace={activeIgnoreWhitespace}
@@ -744,6 +760,7 @@ function GitStatusContent({
           projectId={projectId}
           isWideScreen={isWideScreen}
           initialPath={blameFile}
+          onOpenCommit={handleOpenCommit}
           t={t}
         />
       ) : null}

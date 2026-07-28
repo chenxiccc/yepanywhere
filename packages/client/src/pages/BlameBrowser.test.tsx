@@ -20,10 +20,12 @@ vi.mock("../hooks/useRemoteBasePath", () => ({
 
 const listGitFiles = vi.fn();
 const getGitBlame = vi.fn();
+const getFile = vi.fn();
 const listReviewComments = vi.fn();
 vi.mock("../api/client", () => ({
   api: {
     listGitFiles: (...args: unknown[]) => listGitFiles(...args),
+    getFile: (...args: unknown[]) => getFile(...args),
     getGitBlame: (...args: unknown[]) => getGitBlame(...args),
     listReviewComments: (...args: unknown[]) => listReviewComments(...args),
   },
@@ -49,6 +51,16 @@ describe("BlameBrowser", () => {
       rev: "HEAD",
       lines: [],
       truncated: false,
+    });
+    getFile.mockResolvedValue({
+      metadata: {
+        path: "src/first.ts",
+        size: 0,
+        mimeType: "text/plain",
+        isText: true,
+      },
+      content: "",
+      rawUrl: "/raw/src/first.ts",
     });
     listReviewComments.mockResolvedValue({
       comments: [],
@@ -101,6 +113,16 @@ describe("BlameBrowser", () => {
       rev: "HEAD",
       lines: [],
       truncated: false,
+    });
+    getFile.mockResolvedValue({
+      metadata: {
+        path: files[0],
+        size: 0,
+        mimeType: "text/plain",
+        isText: true,
+      },
+      content: "",
+      rawUrl: `/raw/${files[0]}`,
     });
     listReviewComments.mockResolvedValue({
       comments: [],

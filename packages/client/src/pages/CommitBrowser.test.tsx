@@ -55,6 +55,7 @@ import { CommitBrowser } from "./CommitBrowser";
 
 const SHA = "a".repeat(40);
 const HEAD_SHA = "b".repeat(40);
+const DIRECT_SHA = "c".repeat(40);
 const t = (key: string) => key;
 
 function dirtyStatus(): GitStatusInfo {
@@ -198,6 +199,36 @@ describe("CommitBrowser", () => {
         expect.objectContaining({ sha: SHA, path: "src/x.ts", status: "M" }),
       ),
     );
+  });
+
+  it("keeps a direct blame-hash revision selected beyond the recent page", async () => {
+    primeApis();
+    getGitCommit.mockResolvedValue({
+      hash: DIRECT_SHA,
+      shortHash: "ccccccc",
+      subject: "older blamed commit",
+      authorName: "Older Dev",
+      authorDate: "2025-01-01T00:00:00Z",
+      body: "",
+      files: [],
+    });
+
+    render(
+      <MemoryRouter>
+        <CommitBrowser
+          projectId="p1"
+          isWideScreen={true}
+          initialSha={DIRECT_SHA}
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findAllByText("older blamed commit")).toHaveLength(2);
+    expect(getGitCommit).toHaveBeenCalledWith("p1", DIRECT_SHA);
+    expect(
+      document.querySelector(".commit-list-item.selected")?.textContent,
+    ).toContain("ccccccc");
   });
 
   it("toggles a direct selected-revision-to-HEAD comparison", async () => {

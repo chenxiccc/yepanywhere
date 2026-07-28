@@ -7461,7 +7461,7 @@ pre.code-highlighter-plain,
 
 .blame-row {
   display: grid;
-  grid-template-columns: 68px 44px 1fr;
+  grid-template-columns: 68px minmax(0, 1fr);
   gap: 0;
   align-items: baseline;
   padding: 0;
@@ -7469,7 +7469,6 @@ pre.code-highlighter-plain,
   background: transparent;
   border: none;
   border-radius: 0;
-  cursor: pointer;
 }
 
 .blame-row:hover {
@@ -7481,15 +7480,59 @@ pre.code-highlighter-plain,
 }
 
 .blame-gutter {
+  align-self: stretch;
   padding: 0 6px;
   color: var(--text-muted);
+  font: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.blame-commit-link {
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 2px;
+}
+
+.blame-commit-link:hover,
+.blame-commit-link:focus-visible {
+  color: var(--link-color, #58a6ff);
+  text-decoration-color: currentColor;
+}
+
 .blame-gutter.uncommitted {
   color: var(--warning-color);
+}
+
+.blame-gutter-loading {
+  color: var(--text-muted);
+  opacity: 0.55;
+}
+
+.blame-line-target {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  min-width: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  cursor: pointer;
+}
+
+.blame-line-target:disabled {
+  color: inherit;
+  cursor: default;
+  opacity: 1;
 }
 
 .blame-lineno {
@@ -7512,6 +7555,22 @@ pre.code-highlighter-plain,
   padding: 8px 10px;
   font-size: 0.75rem;
   color: var(--text-muted);
+}
+
+.blame-provenance-status {
+  color: var(--text-muted);
+  font-family: var(--font-sans, sans-serif);
+  font-size: 0.72rem;
+}
+
+.blame-provenance-error,
+.blame-content-error {
+  padding: 6px 10px;
+  color: var(--warning-color);
+  font-family: var(--font-sans, sans-serif);
+  font-size: 0.75rem;
+  background: color-mix(in srgb, var(--warning-color) 8%, transparent);
+  border-bottom: 1px solid var(--border-subtle, #21262d);
 }
 
 @media (max-width: 600px) {

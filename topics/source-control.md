@@ -33,7 +33,8 @@ The navigation surface has four modes:
   HEAD-to-filesystem changed-file list and diff.
 - **Commits** is revision-first history. A dirty **Working tree** revision is
   pinned above commits and opens the same working-tree file/diff detail.
-- **Files** searches tracked paths and opens highlighted content with blame.
+- **Files** searches tracked paths and opens file content immediately, then
+  enriches its blame column asynchronously when provenance becomes available.
 - **Comments** is the integration point for the pending review workflow owned
   by [Source Review → New Session](source-review-to-session.md).
 
@@ -125,6 +126,20 @@ selected-revision-to-HEAD diff. Selected revision → HEAD uses a fixed selected
 tree as base and a pinned HEAD SHA as tip; every file request stays on those
 returned endpoints so a later HEAD move cannot mix comparisons.
 
+A comparison comment cites the endpoint that contains the clicked projection:
+an old-side line anchors to the fixed base SHA and a new-side line anchors to
+the pinned tip SHA. An ordinary one-commit diff uses that commit SHA for both
+sides; a working-tree diff remains uncommitted. Rendered diff lines are
+interactive on their first visible frame—first-click commenting and hunk keys
+do not depend on a later passive effect. Pending-comment tint uses revision,
+side, and line identity so similarly numbered lines in another projection do
+not inherit it.
+
+Full context is a view of the current diff, not a file-path cache entry. If a
+live working-tree refresh changes the diff while full context is open, YA
+invalidates and reloads that projection. An older request resolving later
+cannot overwrite the newer projection.
+
 The wide diff pane keeps filename, path, view controls, hunk navigation, and
 file actions in one toolbar row when they fit. A narrow pane or phone modal may
 use a compact second row.
@@ -139,6 +154,32 @@ is present, typing performs no network request and starts no git process.
 Browser-lifetime reuse is implemented; IndexedDB reuse across browser restarts
 remains optional future work. Focused completions and rendered match-context
 tooltips remain pending.
+
+Files starts its ordinary project-file request and blame request independently.
+Readable content renders as soon as the file request returns; the view never
+holds it behind `git blame`. Until blame resolves, the gutter shows inert
+placeholders and line commenting waits for a provenance anchor. Blame then
+fills commit-hash links in place and may add highlighting without resetting the
+file selection or scroll context. Failure to load blame leaves readable content
+visible with a provenance warning.
+
+A committed hash opens that exact revision in Commits, including a revision
+outside the recent page. Its tooltip shows the full SHA, author/date when
+known, and commit summary. Right-click, long-press, and the shared keyboard menu
+offer **Open commit** and **Copy commit hash**; copying uses the full SHA.
+Uncommitted lines remain visibly non-link provenance. Pending blame-comment
+tint matches both the line and its committed/uncommitted revision identity.
+
+**Proposed — content-sized Files pane.** Alongside cached Files/blame metadata,
+cache the selected file's maximum intrinsic rendered code-line width, keyed by
+the same content/revision identity and the client typography scale that affects
+measurement. When a wide layout has surplus space, target the content pane at
+the blame gutter, line-number gutter, horizontal padding, and that maximum line
+width—just enough to show the file without gratuitous empty space—and leave the
+remainder to the file list. Clamp through the existing pane minima and available
+width; narrow layouts and user-resized boundaries keep their current behavior.
+Tests must cover cache reuse and invalidation, tabs/wide characters and empty
+files, wide-space allocation, and the narrow/minimum-width fallback.
 
 The permanent `git-source-review` capability currently gates the complete
 Changes/Commits/Files/Comments browser as well as the review endpoints. An
@@ -181,22 +222,33 @@ Implementation plan:
    success boundary. For `apply_patch`, parse every Add, Update, Delete, and
    Move header; after a successful multi-file patch, upsert one row for each
    touched normalized path. Ignore failed or merely proposed mutations.
-2. Maintain logical rows of
+2. Persist logical rows of
    `(source, project, normalized file, canonical YA session, latest edit time)`.
    A later successful edit by the same session to the same file only replaces
    that row's time. Retain no event history, tool/message ids, content hashes,
-   transcript backfill, or before/after lineage.
-3. Whenever YA observes that a tracked path has become not dirty, clear every
-   row for that file. A successful commit normally causes this transition, but
+   transcript backfill, or before/after lineage. Store the set in private
+   server-owned state and reload it after process restart; it has no TTL or
+   bounded-retention expiry. Its lifecycle ends at authoritative clean-state
+   reconciliation, not elapsed time.
+3. Reconcile only from a successful, complete, authoritative Git-status
+   refresh. Whenever such a refresh observes that a tracked path has become not
+   dirty, clear every row for that file. A successful commit normally causes
+   this transition, but
    a commit that leaves further staged or unstaged changes does not: the
    clearing condition is observed clean file state, not a commit command.
+   Restart performs the same reconciliation for every reachable project.
+   Temporary source/project disconnect retains rows and does not pretend that
+   files became clean; reconnect reconciles before serving them. Explicit
+   project removal clears that project's rows, and explicit source removal
+   clears all rows owned by that source.
 4. Add a capability-gated query for remaining candidate session summaries,
    ordered by latest recorded edit, and reuse the existing session
    hovercard/navigation and file banner/menu.
 5. Test one and several sessions, repeated edits deduplicating to latest time,
-   failed edits being ignored, clean-state clearing, a commit that leaves the
-   file dirty, and accepted missing/stale attribution after unobserved shell or
-   human changes.
+   failed edits being ignored, clean-state clearing, restart persistence and
+   reconciliation, disconnect/reconnect retention, explicit project/source
+   removal, a commit that leaves the file dirty, and accepted missing/stale
+   attribution after unobserved shell or human changes.
 
 **Difficulty:** the UI is low difficulty. Provider mutation hooks, clean-state
 observation, the small tuple set, and its query are low-to-medium difficulty.
