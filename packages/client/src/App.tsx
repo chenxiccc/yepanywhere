@@ -6,7 +6,10 @@ import { ClientLogRecordingBadge } from "./components/ClientLogRecordingBadge";
 import { CodexUpdatePrompt } from "./components/CodexUpdatePrompt";
 import { ConnectionBar } from "./components/ConnectionBar";
 import { FloatingActionButton } from "./components/FloatingActionButton";
-import { ReloadBanner } from "./components/ReloadBanner";
+import {
+  ReloadBanner,
+  ReloadBannerStack,
+} from "./components/ReloadBanner";
 import { OnboardingWizard } from "./components/onboarding";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ClientSummarySourceBinding } from "./contexts/ClientSummarySourceBinding";
@@ -103,27 +106,29 @@ function AppContent({ children }: Props) {
       <ConnectionBar />
       <CacheMissBillingToasts />
       {!isSessionDetailRoute && <ClientLogRecordingBadge />}
-      {visibleReloads.backend && (
-        <ReloadBanner
-          target="backend"
-          onReload={reloadBackend}
-          onDismiss={() => dismiss("backend")}
-          onRestartWhenSafe={scheduleSafeRestart}
-          onCancelSafeRestart={cancelSafeRestart}
-          unsafeToRestart={unsafeToRestart}
-          interruptibleSessionCount={interruptibleSessionCount}
-          queuedSessionMessageCount={queuedSessionMessageCount}
-          safeRestartState={safeRestartState}
-          safeRestartMutating={safeRestartMutating}
-        />
-      )}
-      {visibleReloads.frontend && (
-        <ReloadBanner
-          target="frontend"
-          onReload={reloadFrontend}
-          onDismiss={() => dismiss("frontend")}
-        />
-      )}
+      <ReloadBannerStack avoidSessionComposer={isSessionDetailRoute}>
+        {visibleReloads.backend && (
+          <ReloadBanner
+            target="backend"
+            onReload={reloadBackend}
+            onDismiss={() => dismiss("backend")}
+            onRestartWhenSafe={scheduleSafeRestart}
+            onCancelSafeRestart={cancelSafeRestart}
+            unsafeToRestart={unsafeToRestart}
+            interruptibleSessionCount={interruptibleSessionCount}
+            queuedSessionMessageCount={queuedSessionMessageCount}
+            safeRestartState={safeRestartState}
+            safeRestartMutating={safeRestartMutating}
+          />
+        )}
+        {visibleReloads.frontend && (
+          <ReloadBanner
+            target="frontend"
+            onReload={reloadFrontend}
+            onDismiss={() => dismiss("frontend")}
+          />
+        )}
+      </ReloadBannerStack>
       <BottomOverscrollReload
         disabled={isSessionDetailRoute}
         onReload={reloadFrontend}

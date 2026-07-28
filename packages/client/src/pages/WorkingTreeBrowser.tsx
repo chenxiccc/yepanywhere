@@ -1,5 +1,6 @@
 import type {
   GitFileChange,
+  GitRecentCommit,
   GitStatusInfo,
   GitUntrackedFolderInfo,
 } from "@yep-anywhere/shared";
@@ -276,7 +277,18 @@ export function WorkingTreeBrowser({
     return (
       <div className={rootClassName} data-testid="working-tree-browser">
         {backToRevisions}
-        <div className="git-status-empty">{t("gitStatusWorkingTreeClean")}</div>
+        {embeddedInHistory ? (
+          <div className="git-status-empty">
+            {t("gitStatusWorkingTreeClean")}
+          </div>
+        ) : (
+          <div className="working-tree-clean-landing">
+            <div className="git-status-empty">
+              {t("gitStatusWorkingTreeClean")}
+            </div>
+            <RecentCommits commits={status.recentCommits ?? []} t={t} />
+          </div>
+        )}
       </div>
     );
   }
@@ -400,6 +412,9 @@ export function WorkingTreeBrowser({
               );
             })}
           </ul>
+          {!embeddedInHistory && (
+            <RecentCommits commits={status.recentCommits ?? []} t={t} />
+          )}
         </div>
 
         {isWideScreen && selectedFile && (
@@ -436,6 +451,46 @@ export function WorkingTreeBrowser({
         />
       )}
     </div>
+  );
+}
+
+function RecentCommits({
+  commits,
+  t,
+}: {
+  commits: GitRecentCommit[];
+  t: TranslationFn;
+}) {
+  return (
+    <section
+      className="git-recent-commits"
+      aria-label={t("gitStatusRecentCommits")}
+    >
+      <h3 className="git-recent-title">{t("gitStatusRecentCommits")}</h3>
+      {commits.length === 0 ? (
+        <div className="git-recent-empty">{t("gitStatusNoRecentCommits")}</div>
+      ) : (
+        <ol className="git-recent-list">
+          {commits.map((commit) => (
+            <li key={commit.hash} className="git-recent-item">
+              <span className="git-recent-subject">
+                {commit.subject || t("gitStatusUntitledCommit")}
+              </span>
+              <span className="git-recent-meta">
+                <span className="git-recent-hash">{commit.shortHash}</span>
+                <span className="git-recent-author">{commit.authorName}</span>
+                <time
+                  dateTime={commit.authorDate}
+                  title={formatCommitDateTime(commit.authorDate)}
+                >
+                  {formatCommitDate(commit.authorDate)}
+                </time>
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
   );
 }
 
@@ -510,4 +565,22 @@ function worktreeStateLabelKey(state: WorktreeState): MessageKey {
     default:
       return "sourceWorktreeUnstaged";
   }
+}
+
+function formatCommitDate(value: string): string {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return value;
+  return new Date(timestamp).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function formatCommitDateTime(value: string): string {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return value;
+  return new Date(timestamp).toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
 }

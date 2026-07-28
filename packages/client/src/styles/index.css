@@ -10107,23 +10107,39 @@ div.bang-command-error-message {
   }
 }
 
-.reload-banner {
+.reload-banner-stack {
   position: fixed;
-  top: env(safe-area-inset-top, 0px);
-  left: 0;
-  right: 0;
+  right: max(12px, env(safe-area-inset-right, 0px));
+  bottom: calc(
+    max(12px, env(safe-area-inset-bottom, 0px)) +
+    var(--reload-banner-stack-lift, 0px)
+  );
   z-index: 200;
-  background: var(--warning-color);
-  color: #000;
-  padding: var(--space-2) var(--space-4);
   display: flex;
+  max-width: min(720px, calc(100vw - 24px));
+  align-items: flex-end;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.reload-banner {
+  position: relative;
+  display: flex;
+  width: max-content;
+  max-width: 100%;
+  min-height: 40px;
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+  box-sizing: border-box;
   align-items: center;
   justify-content: center;
   gap: var(--space-3);
+  color: #000;
+  background: var(--warning-color);
+  border: 1px solid rgba(0, 0, 0, 0.24);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
   font-size: var(--font-size-sm);
   font-weight: 500;
-  box-sizing: border-box;
-  min-height: 40px;
 }
 
 .reload-banner-content,
@@ -10134,11 +10150,12 @@ div.bang-command-error-message {
 }
 
 .reload-banner-content {
+  flex: 1 1 auto;
   gap: var(--space-2);
 }
 
 .reload-banner-actions {
-  gap: var(--space-3);
+  gap: var(--space-1);
   flex: 0 0 auto;
 }
 
@@ -10149,12 +10166,21 @@ div.bang-command-error-message {
 
 .reload-banner-warning-text {
   min-width: 0;
+  overflow: hidden;
   font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.reload-banner-label-compact,
-.reload-banner-status-compact {
-  display: none;
+.reload-banner-warning-detail {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  border: 0;
+  clip-path: inset(50%);
 }
 
 .reload-banner-button {
@@ -10162,6 +10188,8 @@ div.bang-command-error-message {
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
+  height: 36px;
+  min-height: 36px;
   padding: var(--space-1) var(--space-2);
   border: 1px solid rgba(0, 0, 0, 0.3);
   border-radius: var(--radius-sm);
@@ -10178,6 +10206,11 @@ div.bang-command-error-message {
   background: rgba(255, 255, 255, 0.4);
 }
 
+.reload-banner-button-label {
+  display: inline-block;
+  transform: translateY(1px);
+}
+
 .reload-banner-button:disabled {
   cursor: wait;
   opacity: 0.65;
@@ -10191,15 +10224,6 @@ div.bang-command-error-message {
 
 .reload-banner-button-primary:hover {
   background: #222;
-}
-
-.reload-banner-shortcut {
-  font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
-  padding: 0.125rem 0.375rem;
-  background: rgba(0, 0, 0, 0.15);
-  border-radius: var(--radius-sm);
-  color: rgba(0, 0, 0, 0.6);
 }
 
 /* Warning state for unsafe restart */
@@ -10224,18 +10248,40 @@ div.bang-command-error-message {
   background: #222;
 }
 
+.reload-banner-dismiss {
+  width: 36px;
+  padding: 0;
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.reload-banner-dismiss > span {
+  display: inline-flex;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+}
+
 /* Mobile adjustments */
 @media (max-width: 600px) {
+  .reload-banner-stack {
+    top: max(8px, env(safe-area-inset-top, 0px));
+    right: 8px;
+    bottom: auto;
+    left: 8px;
+    max-width: none;
+    align-items: stretch;
+  }
+
   .reload-banner {
     align-items: stretch;
     justify-content: center;
     flex-direction: column;
-    flex-wrap: nowrap;
     gap: var(--space-1);
-    height: 68px;
-    max-height: 68px;
+    width: 100%;
+    max-width: none;
+    min-height: 0;
     padding: var(--space-1) var(--space-2);
-    overflow: hidden;
   }
 
   .reload-banner-content,
@@ -10245,7 +10291,6 @@ div.bang-command-error-message {
 
   .reload-banner-content {
     justify-content: flex-start;
-    gap: 0;
     min-height: 26px;
   }
 
@@ -10255,48 +10300,35 @@ div.bang-command-error-message {
     min-height: 30px;
   }
 
-  .reload-banner-message,
-  .reload-banner-warning-text {
+  .reload-banner-content {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   .reload-banner-message {
-    flex: 0 1 auto;
-    max-width: 52%;
+    flex-shrink: 0;
   }
 
   .reload-banner-warning-text {
     flex: 1 1 auto;
   }
 
-  .reload-banner-label-full,
-  .reload-banner-status-full {
-    display: none;
-  }
-
-  .reload-banner-label-compact,
-  .reload-banner-status-compact {
-    display: inline;
-  }
-
   .reload-banner-button {
     min-width: 56px;
-    min-height: 30px;
     padding: var(--space-1) var(--space-2);
   }
 
   .reload-banner-button-primary {
-    min-width: 70px;
+    min-width: 62px;
   }
 
   .reload-banner-button-safe {
-    min-width: 124px;
+    min-width: 78px;
   }
 
-  .reload-banner-shortcut {
-    display: none;
+  .reload-banner-dismiss {
+    min-width: 36px;
   }
 }
 
@@ -19581,6 +19613,16 @@ body:has(.session-page)
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
+}
+
+.working-tree-clean-landing {
+  display: grid;
+  max-width: var(--source-files-column-width, 380px);
+  gap: var(--space-3);
+}
+
+.working-tree-files-column > .git-recent-commits {
+  margin-top: var(--space-3);
 }
 
 .git-recent-title {

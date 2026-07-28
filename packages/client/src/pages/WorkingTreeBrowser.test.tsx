@@ -66,7 +66,15 @@ describe("WorkingTreeBrowser", () => {
             behind: 0,
             isClean: true,
             files: [],
-            recentCommits: [],
+            recentCommits: [
+              {
+                hash: "0123456789abcdef",
+                shortHash: "0123456",
+                subject: "Keep the quick check useful",
+                authorName: "Kyle",
+                authorDate: "2026-07-28T12:00:00.000Z",
+              },
+            ],
           }}
           isWideScreen={false}
           t={t}
@@ -77,6 +85,9 @@ describe("WorkingTreeBrowser", () => {
     expect(
       await screen.findByText("gitStatusWorkingTreeClean"),
     ).toBeDefined();
+    expect(screen.getByText("gitStatusRecentCommits")).toBeDefined();
+    expect(screen.getByText("Keep the quick check useful")).toBeDefined();
+    expect(screen.getByText("0123456")).toBeDefined();
     await waitFor(() =>
       expect(listReviewComments).toHaveBeenCalledWith("p1"),
     );

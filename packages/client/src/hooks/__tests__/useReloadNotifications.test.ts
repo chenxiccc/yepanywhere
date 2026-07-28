@@ -271,4 +271,63 @@ describe("useReloadNotifications dismissal", () => {
       expect(second.result.current.pendingReloads.backend).toBe(true);
     });
   });
+
+  it("keeps a safely scheduled reload hidden after consuming its notice", async () => {
+    const hook = renderHook(() => useReloadNotifications());
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      activityBus.emitLocal("source-change", {
+        type: "source-change",
+        target: "backend",
+        files: ["server.ts"],
+        timestamp: "2026-07-05T00:00:00.000Z",
+      });
+    });
+    expect(hook.result.current.pendingReloads.backend).toBe(true);
+
+    act(() => {
+      hook.result.current.dismiss("backend");
+    });
+    await act(async () => {
+      await hook.result.current.scheduleSafeRestart();
+    });
+
+    expect(hook.result.current.pendingReloads.backend).toBe(false);
+  });
+
+  it("allows a fresh notice for changes after the backend reloads", async () => {
+    const hook = renderHook(() => useReloadNotifications());
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      activityBus.emitLocal("source-change", {
+        type: "source-change",
+        target: "backend",
+        files: ["before-reload.ts"],
+        timestamp: "2026-07-05T00:00:00.000Z",
+      });
+    });
+    act(() => {
+      hook.result.current.dismiss("backend");
+    });
+
+    await act(async () => {
+      activityBus.emitLocal("backend-reloaded", undefined);
+    });
+    await act(async () => {
+      activityBus.emitLocal("source-change", {
+        type: "source-change",
+        target: "backend",
+        files: ["after-reload.ts"],
+        timestamp: "2026-07-05T00:00:01.000Z",
+      });
+    });
+
+    expect(hook.result.current.pendingReloads.backend).toBe(true);
+  });
 });

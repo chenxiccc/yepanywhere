@@ -239,7 +239,7 @@ mistake shipping this shortcut for delivering the accumulating review — the
 vision is the multi-comment, drain-all-unconsumed flow.
 
 **Edit block → dirty file.** Each session Edit tool block with a usable project
-file offers **Review dirty file**. The link opens that project's Source Control
+file offers **Review**. The link opens that project's Source Control
 in Changes at the exact edited Working tree file. The session containing the
 link becomes the **default session** for that Source Control browser-history
 entry. Back/forward and navigation among Source Control modes preserve it; a
@@ -301,7 +301,8 @@ Pull/Push actions:
   accustomed-to quick-check experience. Changes owns the current
   HEAD-to-filesystem view: one row per changed path,
   staged/unstaged/both/untracked state, and the same diff/comment stack with
-  `uncommitted` anchors. A clean tree shows a quiet clean state. The intended
+  `uncommitted` anchors. It also keeps a read-only recent-commits list in the
+  quick-check view, including beside a quiet clean state. The intended
   direction is to make Changes gradually redundant by making a dirty
   **Working tree** revision in Commits equally immediate and useful, while
   preserving Changes as the dedicated fast path during that convergence.

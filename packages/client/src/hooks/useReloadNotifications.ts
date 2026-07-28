@@ -239,6 +239,7 @@ export function useReloadNotifications() {
     unsubscribers.push(
       activityBus.on("backend-reloaded", () => {
         setPendingReloads((prev) => ({ ...prev, backend: false }));
+        setDismissedReloads((prev) => ({ ...prev, backend: false }));
         setSafeRestartState(IDLE_SAFE_RESTART_STATE);
         setSafeRestartLoaded(true);
       }),
@@ -318,7 +319,6 @@ export function useReloadNotifications() {
         method: "POST",
       });
       setSafeRestartState(state);
-      setPendingReloads((prev) => ({ ...prev, backend: true }));
     } finally {
       setSafeRestartMutating(false);
     }

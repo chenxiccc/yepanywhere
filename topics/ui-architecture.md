@@ -114,6 +114,25 @@ Interactive help panels remain popovers with their own state. The observable
 contract and native fallback are in
 [tooltip-interactions](tooltip-interactions.md).
 
+## Global Reload Notice Placement
+
+The shared backend/frontend reload notice preserves page identity and
+navigation rather than claiming the full top edge. On desktop and tablet it is
+an intrinsic-width card at the lower viewport edge, where unused space is more
+likely; it must not cover a session title, page-level navigation, or session
+composer controls. The notice measures the live session controls: it occupies
+the lower-right composer-side space when that space is clear and lifts above
+the composer when it would collide. On phone it may remain at the top, but
+stays inset from both viewport edges instead of becoming a full-width bar.
+
+Every form has an explicit × dismiss control with at least a 36×36 pixel hit
+target. Visible copy stays compact; complete restart-risk and action wording
+remains available through accessible names and hover titles. All
+`ReloadBanner` callers inherit this placement and interaction contract.
+Choosing any action consumes the current notice instead of morphing it into a
+status or confirmation panel. The requested reload or safe-restart schedule
+continues; after a reload, later source changes may produce a fresh notice.
+
 ## Settings Pane Conventions
 
 Settings panes apply changes immediately on interaction — the house style

@@ -672,7 +672,7 @@ describe("EditRenderer collapsed preview fallback", () => {
       </MemoryRouter>,
     );
 
-    const link = screen.getByRole("link", { name: "Review dirty file" });
+    const link = screen.getByRole("link", { name: "Review" });
     expect(link.getAttribute("href")).toBe(
       "/git-status?projectId=project-1&worktreeFile=src%2Fexample.ts",
     );
