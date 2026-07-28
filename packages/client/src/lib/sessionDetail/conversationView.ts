@@ -26,8 +26,12 @@ function isMediaToolCall(item: ToolCallItem): boolean {
  * associated with the assistant turn.
  */
 export function isConversationViewActivity(item: RenderItem): boolean {
-  if (item.type === "thinking" || item.type === "task_notification") {
+  if (item.type === "thinking") {
     return true;
+  }
+  if (item.type === "task_notification") {
+    const status = item.status?.toLowerCase();
+    return status !== "failed" && status !== "error";
   }
   if (item.type === "system") {
     return item.subtype === "subagent_activity";

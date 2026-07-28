@@ -82,6 +82,22 @@ describe("projectConversationView", () => {
         },
       }),
       tool("failed-tool", 5_000, { status: "error" }),
+      {
+        type: "task_notification",
+        id: "failed-task",
+        raw: "<task-notification><status>failed</status></task-notification>",
+        status: "failed",
+        summary: "Background task failed",
+        sourceMessages: [source("failed-task-source", 5_500)],
+      },
+      {
+        type: "task_notification",
+        id: "completed-task",
+        raw: "<task-notification><status>completed</status></task-notification>",
+        status: "completed",
+        summary: "Background task completed",
+        sourceMessages: [source("completed-task-source", 6_000)],
+      },
     ];
 
     const projected = projectConversationView(items, {
@@ -94,14 +110,15 @@ describe("projectConversationView", () => {
       "answer",
       "image-tool",
       "failed-tool",
+      "failed-task",
       "conversation-activity-thinking",
     ]);
     expect(summary(projected)).toMatchObject({
-      activityCount: 3,
+      activityCount: 4,
       active: false,
       expanded: false,
       startedAtMs: 1_000,
-      endedAtMs: 5_000,
+      endedAtMs: 6_000,
     });
   });
 

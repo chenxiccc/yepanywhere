@@ -40,10 +40,13 @@ provider-history rewrite and not deletion.
   objects, agent-authored text, ordinary system notices, warnings, and errors.
   Tool calls with media remain visible, using their existing media renderer, so
   images stay associated with the agent turn's text.
-- Routine tool calls (pending, complete, or aborted), Thinking rows, task
-  notifications, and subagent-activity notices condense. Tool errors and
-  incomplete calls retain their ordinary rows because the user may need the
-  failure detail.
+- Routine tool calls (pending, complete, or aborted), Thinking rows,
+  non-failing task notifications, and subagent-activity notices condense.
+  Tool errors, incomplete calls, and task notifications whose structured
+  status is `failed` or `error` retain their ordinary rows because their
+  summary or output path may be the only human-readable failure detail.
+  Notifications without a structured failure status remain routine activity;
+  YA does not infer failure from unconstrained summary prose.
 - Each assistant turn with condensed activity ends in one summary button. A
   completed summary reads like `4m elapsed · 17 activities hidden`; the live
   edge reads like `Working 4m · 17 activities`. If source timestamps are
