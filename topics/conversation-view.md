@@ -85,12 +85,15 @@ provider-history rewrite and not deletion.
   searchable again.
 - The thinking-transcript visibility control composes with Conversation View
   instead of being shadowed by it. When thinking is visible, a compact preview
-  follows the final activity summary on the same wrapping row: the latest block
-  (current while streaming) and at most one preceding completed block. A block
-  restored by expanding its ordinary activity summary is not duplicated in the
-  preview. Preview text participates in the projected search scope. The row
-  packs the activity summary and both previews together whenever their measured
-  target widths fit, then wraps whole cards when they do not.
+  follows the final activity summary on the same wrapping row. A completed turn
+  keeps only its latest thinking block. While the next block streams, its
+  immediately preceding completed block returns as the expanded previous
+  preview, preserving live-turn context without leaving two completed cards
+  behind. A block restored by expanding its ordinary activity summary is not
+  duplicated in the preview. Preview text participates in the projected search
+  scope. The row packs the activity summary and available previews together
+  whenever their measured target widths fit, then wraps whole cards when they
+  do not.
 - Each thinking-preview slot can be collapsed or dismissed independently.
   Streaming updates to the block occupying a slot do not reopen a collapsed
   card. Dismissing the final visible card switches the thinking-transcript

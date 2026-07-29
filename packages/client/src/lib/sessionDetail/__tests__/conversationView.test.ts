@@ -392,6 +392,35 @@ describe("selectConversationThinkingPreviews", () => {
     ).toEqual(["current", "previous"]);
   });
 
+  it("keeps only the latest thinking preview after the turn completes", () => {
+    const projected = projectConversationView(
+      [
+        {
+          type: "thinking",
+          id: "previous",
+          thinking: "Previous",
+          status: "complete",
+          sourceMessages: [],
+        },
+        {
+          type: "thinking",
+          id: "latest",
+          thinking: "Latest",
+          status: "complete",
+          sourceMessages: [],
+        },
+      ],
+      {
+        active: false,
+        nowMs: 1_000,
+      },
+    );
+
+    expect(
+      summary(projected).thinkingPreviews?.map((preview) => preview.id),
+    ).toEqual(["latest"]);
+  });
+
   it("omits dismissed preview slots without changing the source transcript", () => {
     const items: RenderItem[] = [
       {

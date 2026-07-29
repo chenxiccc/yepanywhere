@@ -235,9 +235,10 @@ function getRecentActivities(
 }
 
 /**
- * Keep the latest thinking block and the immediately preceding completed one.
- * The latest block is called current while streaming and latest after it
- * completes. Ordering is by preview priority rather than transcript position.
+ * Keep the latest thinking block. While it is streaming, also keep the
+ * immediately preceding completed block so a new turn starts with context;
+ * once the latest block completes, the superseded preview disappears.
+ * Ordering is by preview priority rather than transcript position.
  */
 export function selectConversationThinkingPreviews(
   items: readonly RenderItem[],
@@ -262,6 +263,8 @@ export function selectConversationThinkingPreviews(
       status: latest.status,
     },
   ];
+  if (latest.status !== "streaming") return previews;
+
   for (let index = latestIndex - 1; index >= 0; index -= 1) {
     const candidate = items[index];
     if (candidate?.type !== "thinking" || candidate.status !== "complete") {
