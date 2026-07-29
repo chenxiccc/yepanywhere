@@ -786,7 +786,7 @@ describe("useSession completion reconciliation", () => {
     ]);
   });
 
-  it("does not clear deferred chips from a user-message echo", () => {
+  it("clears every delivered deferred chip from a bundled user echo", () => {
     const { result } = renderHook(() =>
       useSession(PROJECT_ID, "sess-1", {
         owner: "self",
@@ -800,27 +800,100 @@ describe("useSession completion reconciliation", () => {
         messages: [
           {
             tempId: "temp-a",
-            content: "still queued",
+            content: "first queued message",
             timestamp: "2026-04-24T00:00:00.000Z",
+          },
+          {
+            tempId: "temp-b",
+            content: "second queued message",
+            timestamp: "2026-04-24T00:00:01.000Z",
+          },
+          {
+            tempId: "temp-c",
+            content: "unrelated queued message",
+            timestamp: "2026-04-24T00:00:02.000Z",
           },
         ],
       });
     });
 
-    // A user echo with matching text must NOT remove the chip — only a server
-    // deferred-queue event can change the mirror.
     act(() => {
       sessionStreamHandler?.({
         eventType: "message",
         type: "user",
         uuid: "uuid-echo",
         tempId: "temp-a",
-        message: { role: "user", content: "still queued" },
+        tempIds: ["temp-a", "temp-b"],
+        message: {
+          role: "user",
+          content: "first queued message\n\n--------\n\nsecond queued message",
+        },
       });
     });
 
     expect(result.current.deferredMessages).toMatchObject([
-      { tempId: "temp-a", content: "still queued" },
+      { tempId: "temp-c", content: "unrelated queued message" },
+    ]);
+
+    // A slower queue snapshot must not resurrect rows whose delivery was
+    // already proven by the user echo.
+    act(() => {
+      sessionStreamHandler?.({
+        eventType: "deferred-queue",
+        messages: [
+          {
+            tempId: "temp-a",
+            content: "first queued message",
+            timestamp: "2026-04-24T00:00:00.000Z",
+          },
+          {
+            tempId: "temp-b",
+            content: "second queued message",
+            timestamp: "2026-04-24T00:00:01.000Z",
+          },
+          {
+            tempId: "temp-c",
+            content: "unrelated queued message",
+            timestamp: "2026-04-24T00:00:02.000Z",
+          },
+        ],
+      });
+    });
+
+    expect(result.current.deferredMessages).toMatchObject([
+      { tempId: "temp-c", content: "unrelated queued message" },
+    ]);
+  });
+
+  it("does not clear a deferred chip from matching echo text alone", () => {
+    const { result } = renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+
+    act(() => {
+      sessionStreamHandler?.({
+        eventType: "deferred-queue",
+        messages: [
+          {
+            tempId: "temp-a",
+            content: "repeatable prompt",
+            timestamp: "2026-04-24T00:00:00.000Z",
+          },
+        ],
+      });
+      sessionStreamHandler?.({
+        eventType: "message",
+        type: "user",
+        uuid: "uuid-echo",
+        message: { role: "user", content: "repeatable prompt" },
+      });
+    });
+
+    expect(result.current.deferredMessages).toMatchObject([
+      { tempId: "temp-a", content: "repeatable prompt" },
     ]);
   });
 

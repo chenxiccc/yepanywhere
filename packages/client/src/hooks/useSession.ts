@@ -294,9 +294,10 @@ export interface PendingMessage {
 /**
  * Deferred message queued server-side, waiting for the agent's turn to end.
  *
- * This is a pure mirror of the server's queue summary — the client never
- * persists it, never reconciles it by text, and never adds delivery states of
- * its own. The server is the single source of truth.
+ * The server owns the queue summary. The client never persists it or
+ * reconciles it by text, but a delivered user echo can remove matching rows by
+ * tempId because that identity is definitive proof that the server accepted
+ * them.
  */
 export type DeferredMessage = SessionQueuedMessageSummary;
 
@@ -620,18 +621,30 @@ export function useSession(
   // These are displayed separately from the main message list
   const [pendingMessages, setPendingMessages] = useState<PendingMessage[]>([]);
 
-  // Deferred messages queue — a pure mirror of the server's queue summary.
-  // The server is authoritative: the client never persists this or reconciles
-  // it by text. It is replaced wholesale whenever the server reports new state
-  // (connected event, deferred-queue event, or a queue/cancel REST response).
-  const [deferredMessages, setDeferredMessages] = useState<DeferredMessage[]>(
-    [],
-  );
+  // Deferred messages queue — a mirror of the server's queue summary. Server
+  // snapshots replace it wholesale; delivered user echoes may remove rows by
+  // tempId so a missed queue event cannot leave accepted messages visible.
+  const [deferredMessages, setDeferredMessagesState] = useState<
+    DeferredMessage[]
+  >([]);
+  const deliveredDeferredTempIdsRef = useRef<Set<string>>(new Set());
+  const setDeferredMessages = useCallback((messages: DeferredMessage[]) => {
+    const deliveredTempIds = deliveredDeferredTempIdsRef.current;
+    setDeferredMessagesState(
+      deliveredTempIds.size === 0
+        ? messages
+        : messages.filter(
+            (message) =>
+              !message.tempId || !deliveredTempIds.has(message.tempId),
+          ),
+    );
+  }, []);
 
   // Reset when switching sessions; the server's connected event repopulates it.
   useEffect(() => {
     void sessionId;
-    setDeferredMessages([]);
+    deliveredDeferredTempIdsRef.current.clear();
+    setDeferredMessagesState([]);
   }, [sessionId]);
 
   // Compacting state - true when context is being compressed. The setter below
@@ -833,7 +846,7 @@ export function useSession(
         void api.refreshSessionPreview(projectId, sessionId).catch(() => {});
       }
     },
-    [applyServerModeUpdate, projectId, sessionId],
+    [applyServerModeUpdate, projectId, sessionId, setDeferredMessages],
   );
 
   // Handle initial load error
@@ -956,8 +969,8 @@ export function useSession(
   }, [sessionId]);
 
   // Optimistic pending sends (the normal-send flow) reconcile against the
-  // transcript by content. Deferred messages do not: the server removes them
-  // from its queue and pushes the updated list, which we mirror directly.
+  // transcript by content. Deferred rows reconcile only by explicit tempId in
+  // the live echo; queue snapshots remain authoritative for every other change.
   useEffect(() => {
     setPendingMessages((prev) =>
       removeDeliveredPendingMessages(prev, messages),
@@ -1351,7 +1364,12 @@ export function useSession(
         });
       }
     },
-    [projectId, reportProviderRuntimeStatus, sessionId],
+    [
+      projectId,
+      reportProviderRuntimeStatus,
+      sessionId,
+      setDeferredMessages,
+    ],
   );
 
   // Handle activity bus reconnection (e.g., after phone screen wake).
@@ -1387,7 +1405,13 @@ export function useSession(
     } catch {
       // Silent fail - non-critical
     }
-  }, [projectId, sessionId, fetchNewMessages, reportProviderRuntimeStatus]);
+  }, [
+    projectId,
+    sessionId,
+    fetchNewMessages,
+    reportProviderRuntimeStatus,
+    setDeferredMessages,
+  ]);
 
   useFileActivity({
     onSessionStatusChange: handleSessionStatusChange,
@@ -1628,12 +1652,16 @@ export function useSession(
           });
           // Clear optimistic pending sends (the normal-send flow) by id, or by
           // content for providers that omit tempId on the user echo. Deferred
-          // messages are not reconciled here — the server removes them from its
-          // queue on promotion and the deferred-queue event mirrors that.
+          // rows clear only by identity: matching text is not enough because an
+          // identical prompt could still be queued.
           if (echoedTempIds.length) {
             for (const id of echoedTempIds) {
               removePendingMessage(id);
+              deliveredDeferredTempIdsRef.current.add(id);
             }
+            setDeferredMessagesState((prev) =>
+              removeEchoedQueueMessage(prev, echoedTempIds),
+            );
           } else if (incomingText) {
             setPendingMessages((prev) =>
               removeEchoedQueueMessage(prev, undefined, incomingText),
@@ -1988,6 +2016,7 @@ export function useSession(
       clearAgentStreamingPlaceholders,
       clearStreamingPlaceholders,
       setIsCompacting,
+      setDeferredMessages,
       updateSession,
       fetchNewMessages,
       throttledFetch,
@@ -2031,7 +2060,12 @@ export function useSession(
       setProcessState("idle");
       setPendingInputRequest(null);
     }
-  }, [projectId, sessionId, reportProviderRuntimeStatus]);
+  }, [
+    projectId,
+    sessionId,
+    reportProviderRuntimeStatus,
+    setDeferredMessages,
+  ]);
 
   // Only connect to session stream when we own the session
   // External sessions are tracked via the activity stream instead

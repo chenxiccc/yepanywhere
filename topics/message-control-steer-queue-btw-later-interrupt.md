@@ -214,7 +214,7 @@ advance it past never-fetched connector rows.
 - `/btw` must remain distinct from queue modes and steering.
 - Parent session composer actions should be explicit; no implicit route sharing.
 
-## Deferred queue reconciliation note (known desync)
+## Deferred queue reconciliation
 
 Delivered-turn bubbles now carry this contract's spirit: a self-sent
 turn renders as "sent" — fainter, with a margin "sent" tag — until its
@@ -239,48 +239,31 @@ the agent's next response is responding to (2026-07-04 request; dequeue
 pairing in [stream-durable-id-dedup.md](stream-durable-id-dedup.md)
 §Claude).
 
-Deferred rows should be treated as optimistic until the provider proves delivery.
-For both Claude and Codex, there are observed cases where local queue state drifts:
+Deferred rows are server-owned queue state, not a second client-persisted
+queue. A `connected` event, `deferred-queue` event, or queue-action response
+replaces the client mirror with the reported server snapshot.
 
-- queued message remains visible after the provider has already consumed it,
-- message disappears from history while still rendered in local queued state,
-- message echoes are missing `tempId`, which delays removal from local scratch.
+A delivered user echo is also authoritative server evidence. Its `tempId`
+removes the matching deferred row; when a queued batch is joined into one
+provider turn, `concatUserMessages` records every chunk's `tempId` in
+`UserMessage.tempIds`, the echo carries the whole list, and the client removes
+every matching chip. The client remembers those delivered identities for the
+mounted session so a slower, older queue snapshot cannot resurrect accepted
+rows. Unrelated queued rows remain visible.
 
-When the next reconnect/`connected`/`deferred-queue` snapshot does not resolve
-the drift, preserve the row and expose recovery actions (`edit`, `cancel`, `retry`)
-rather than implying a firm `"sent"` or `"queued"` terminal state.
+Deferred rows do not reconcile by text. Identical prompt text can legitimately
+exist in a delivered turn and a still-queued turn, so an echo without identity
+waits for the next server queue snapshot or reconnect. Reload likewise rebuilds
+the mirror from server state rather than restoring client queue scratch.
+Content-and-timestamp reconciliation remains limited to optimistic normal sends,
+whose providers can omit a temporary identifier.
 
-Suggested reconciliation contract:
-
-- prefer `tempId` match to mark definitive delivery,
-- a self-sent steering turn that is still only an optimistic `sent` echo and
-  has not been consumed by the provider must expose Cancel. Cancel is
-  conditional: if the provider input queue still holds that `tempId`, remove the
-  provider-queue entry and the local echo; if the provider has already acted on
-  it, leave the row in place and report failure/refresh rather than pretending
-  the message was cancelled.
-- a bundled delivery is reconciled by identity, not text: when a queued batch is
-  merged into one provider turn, the bundle records every chunk's `tempId`
-  (`concatUserMessages` -> `UserMessage.tempIds`) and the delivered-turn echo
-  carries that whole list (`tempIds` on the emitted user message). The client
-  clears all of those chips by id on the echo — O(chips), and independent of the
-  merged/time-marked turn text. This keeps the optimistic `sending` state intact
-  (chips clear on the echo, i.e. proven delivery, not at promote time).
-- fallback to content match only when no identifier is available,
-- when neither path has confirmed, mark as `Queued (verifying)` in UI copy.
-- if a row remains unverified across compact/turn boundaries, trigger a snapshot
-  refresh before user-visible "stability" assumptions.
-- the content-match fallback must tolerate provider-merged turns: split on the
-  `\n\n--------\n\n` concatenation separator and strip any legacy leading
-  per-chunk `(Ns ago)` / `(Ns later)` time marker before comparing. Without
-  this, chips from older prefixed turns can stay stuck on
-  `Sending queued message...` and persist across reload (queued chips live in
-  `localStorage` under `queued-message-<id>`).
-- match against the full loaded transcript, not just a recent tail, so a chip
-  restored from storage on reload still reconciles after its delivered turn has
-  scrolled back; guard the full scan with the queue timestamp (delivered turn
-  must not predate the queue time beyond clock skew) so an unrelated older
-  identical turn cannot false-match.
+A self-sent steering turn that is still only an optimistic `sent` echo and has
+not been consumed by the provider must expose Cancel. Cancel is conditional: if
+the provider input queue still holds that `tempId`, remove the provider-queue
+entry and the local echo; if the provider has already acted on it, leave the row
+in place and report failure/refresh rather than pretending the message was
+cancelled.
 
 ## Action matrix by readiness
 
