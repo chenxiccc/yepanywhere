@@ -106,8 +106,10 @@ provider-history rewrite and not deletion.
   Streaming updates to the block occupying a slot do not reopen a collapsed
   card. Dismissing the final visible card switches the thinking-transcript
   control off; switching that control on again restores both available cards
-  expanded. A lone remaining card may use the width released by its dismissed
-  peer.
+  expanded. Scrolling an expanded preview away from its live edge pauses
+  follow for that logical block while it grows; when a new block replaces it
+  in the same slot, that new block starts at its own live edge. A lone remaining
+  card may use the width released by its dismissed peer.
 - While the latest assistant turn is active and at least one thinking preview
   is expanded, the activity column may show the newest concrete activity kinds
   below its count. The visible count is decided by layout, not a fixed number:

@@ -8,6 +8,12 @@ import { type RefObject, useCallback, useLayoutEffect, useRef } from "react";
  */
 export const STICK_TO_BOTTOM_NEAR_PX = 32;
 
+interface StickToBottomOptions {
+  enabled?: boolean;
+  /** Logical content identity whose replacement starts a fresh follow state. */
+  identity?: unknown;
+}
+
 /** True when `el` is scrolled within `nearPx` of its bottom. */
 export function isNearScrollBottom(
   el: Pick<HTMLElement, "scrollHeight" | "scrollTop" | "clientHeight">,
@@ -30,10 +36,12 @@ export function isNearScrollBottom(
 export function useStickToBottom<T extends HTMLElement>(
   ref: RefObject<T | null>,
   dependency: unknown,
-  enabled = true,
+  options: StickToBottomOptions = {},
 ): { onScroll: () => void } {
+  const { enabled = true, identity } = options;
   // Follow by default; the scroll handler is the only thing that turns it off.
   const followingRef = useRef(true);
+  const identityRef = useRef(identity);
 
   const onScroll = useCallback(() => {
     const el = ref.current;
@@ -46,11 +54,15 @@ export function useStickToBottom<T extends HTMLElement>(
   // trigger — the body never reads it; a change means "content grew, re-pin".
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentional trigger dep
   useLayoutEffect(() => {
+    if (!Object.is(identityRef.current, identity)) {
+      identityRef.current = identity;
+      followingRef.current = true;
+    }
     if (!enabled) return;
     const el = ref.current;
     if (!el || !followingRef.current) return;
     el.scrollTop = el.scrollHeight;
-  }, [ref, dependency, enabled]);
+  }, [ref, dependency, enabled, identity]);
 
   return { onScroll };
 }

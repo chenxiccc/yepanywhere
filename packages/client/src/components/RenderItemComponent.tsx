@@ -544,7 +544,10 @@ function ConversationThinkingPreview({
   const { onScroll: onContentScroll } = useStickToBottom(
     contentRef,
     preview.thinking,
-    preview.status === "streaming",
+    {
+      enabled: preview.status === "streaming",
+      identity: preview.id,
+    },
   );
 
   return (

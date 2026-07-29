@@ -61,7 +61,7 @@ describe("useStickToBottom", () => {
     const el = makeEl({ scrollHeight: 1000, clientHeight: 200, scrollTop: 0 });
     const ref = refTo(el);
     const { rerender } = renderHook(
-      ({ dep }) => useStickToBottom(ref, dep, true),
+      ({ dep }) => useStickToBottom(ref, dep, { enabled: true }),
       { initialProps: { dep: "a" } },
     );
 
@@ -76,7 +76,7 @@ describe("useStickToBottom", () => {
     const el = makeEl({ scrollHeight: 1000, clientHeight: 200, scrollTop: 0 });
     const ref = refTo(el);
     const { result, rerender } = renderHook(
-      ({ dep }) => useStickToBottom(ref, dep, true),
+      ({ dep }) => useStickToBottom(ref, dep, { enabled: true }),
       { initialProps: { dep: "a" } },
     );
 
@@ -99,7 +99,7 @@ describe("useStickToBottom", () => {
     const el = makeEl({ scrollHeight: 1000, clientHeight: 200, scrollTop: 0 });
     const ref = refTo(el);
     const { rerender } = renderHook(
-      ({ dep }) => useStickToBottom(ref, dep, false),
+      ({ dep }) => useStickToBottom(ref, dep, { enabled: false }),
       { initialProps: { dep: "a" } },
     );
 
@@ -107,5 +107,31 @@ describe("useStickToBottom", () => {
     el.scrollHeight = 2000;
     rerender({ dep: "b" });
     expect(el.scrollTop).toBe(0);
+  });
+
+  it("starts following when a new logical stream replaces scrolled-up content", () => {
+    const el = makeEl({ scrollHeight: 1000, clientHeight: 200, scrollTop: 100 });
+    const ref = refTo(el);
+    const { result, rerender } = renderHook(
+      ({ dep, enabled, identity }) =>
+        useStickToBottom(ref, dep, { enabled, identity }),
+      {
+        initialProps: {
+          dep: "finished",
+          enabled: false,
+          identity: "old-thinking",
+        },
+      },
+    );
+    act(() => result.current.onScroll());
+
+    el.scrollHeight = 1500;
+    rerender({
+      dep: "new stream",
+      enabled: true,
+      identity: "new-thinking",
+    });
+
+    expect(el.scrollTop).toBe(1500);
   });
 });
