@@ -44,6 +44,24 @@ describe("ServerSettingsService", () => {
     expect(reloaded.getSetting("hostProcessObservabilityEnabled")).toBe(false);
   });
 
+  it("notifies process-local owners when live settings change", async () => {
+    const service = new ServerSettingsService({ dataDir: testDir });
+    await service.initialize();
+    const changes: Array<{ current: boolean; previous: boolean }> = [];
+    const unsubscribe = service.onSettingsChanged((settings, previous) => {
+      changes.push({
+        current: settings.hostProcessObservabilityEnabled,
+        previous: previous.hostProcessObservabilityEnabled,
+      });
+    });
+
+    await service.updateSettings({ hostProcessObservabilityEnabled: false });
+    unsubscribe();
+    await service.updateSettings({ hostProcessObservabilityEnabled: true });
+
+    expect(changes).toEqual([{ current: false, previous: true }]);
+  });
+
   it("normalizes malformed host process observability values to enabled", async () => {
     await fs.writeFile(
       path.join(testDir, "server-settings.json"),

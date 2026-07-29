@@ -7,7 +7,7 @@ import {
   parsePsSnapshot,
   type HostProcessSnapshot,
 } from "../../src/services/HostAgentProcessService.js";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 function ownedProcess(pid: number): ProcessInfo {
   return {
@@ -23,6 +23,17 @@ function ownedProcess(pid: number): ProcessInfo {
     provider: "codex",
     pid,
   };
+}
+
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+} {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((nextResolve) => {
+    resolve = nextResolve;
+  });
+  return { promise, resolve };
 }
 
 describe("HostAgentProcessService", () => {
@@ -177,5 +188,26 @@ describe("HostAgentProcessService", () => {
       observations: [],
     });
     expect(read).toBe(false);
+  });
+
+  it("shares one in-flight snapshot for simultaneous equivalent requests", async () => {
+    const snapshot = deferred<HostProcessSnapshot[]>();
+    const readSnapshot = vi.fn(() => snapshot.promise);
+    const service = new HostAgentProcessService(
+      readSnapshot,
+      "linux",
+      () => Date.parse("2026-07-28T12:00:10.000Z"),
+      async () => new Map(),
+    );
+
+    const first = service.sample([ownedProcess(100)]);
+    const second = service.sample([ownedProcess(100)]);
+    expect(readSnapshot).toHaveBeenCalledOnce();
+
+    snapshot.resolve([]);
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      expect.objectContaining({ observations: [] }),
+      expect.objectContaining({ observations: [] }),
+    ]);
   });
 });

@@ -39,6 +39,13 @@ interface CachedResponse {
   response: HostAgentProcessesResponse;
 }
 
+type LocalOwnedProcess = ProcessInfo & { pid: number };
+
+interface InFlightSample {
+  generation: number;
+  promise: Promise<HostAgentProcessesResponse>;
+}
+
 let linuxClockTicksPromise: Promise<number> | null = null;
 
 function basename(value: string): string {
@@ -323,6 +330,8 @@ function collectTree(
 export class HostAgentProcessService {
   private readonly previousCpuByIdentity = new Map<string, PreviousCpuSample>();
   private cachedResponse: CachedResponse | null = null;
+  private generation = 0;
+  private readonly inFlightByKey = new Map<string, InFlightSample>();
 
   constructor(
     private readonly readSnapshot: HostProcessSnapshotReader = readHostProcessSnapshot,
@@ -336,8 +345,10 @@ export class HostAgentProcessService {
   }
 
   clear(): void {
+    this.generation += 1;
     this.previousCpuByIdentity.clear();
     this.cachedResponse = null;
+    this.inFlightByKey.clear();
   }
 
   async sample(
@@ -349,11 +360,8 @@ export class HostAgentProcessService {
     }
 
     const localOwned = supervisorProcesses.filter(
-      (
-        process,
-      ): process is ProcessInfo & {
-        pid: number;
-      } => process.pid !== undefined && process.executor === undefined,
+      (process): process is LocalOwnedProcess =>
+        process.pid !== undefined && process.executor === undefined,
     );
     const cacheKey = localOwned
       .map((process) => `${process.id}:${process.pid}`)
@@ -368,6 +376,27 @@ export class HostAgentProcessService {
       return this.cachedResponse.response;
     }
 
+    const generation = this.generation;
+    const pending = this.inFlightByKey.get(cacheKey);
+    if (pending?.generation === generation) {
+      return pending.promise;
+    }
+    const promise = this.sampleUncached(localOwned, cacheKey, generation);
+    this.inFlightByKey.set(cacheKey, { generation, promise });
+    try {
+      return await promise;
+    } finally {
+      if (this.inFlightByKey.get(cacheKey)?.promise === promise) {
+        this.inFlightByKey.delete(cacheKey);
+      }
+    }
+  }
+
+  private async sampleUncached(
+    localOwned: readonly LocalOwnedProcess[],
+    cacheKey: string,
+    generation: number,
+  ): Promise<HostAgentProcessesResponse> {
     const processes = await this.readSnapshot();
     const sampledAtMs = this.now();
     const sampledAt = new Date(sampledAtMs).toISOString();
@@ -523,17 +552,19 @@ export class HostAgentProcessService {
       };
     });
 
-    for (const process of processes) {
-      const identity = `${process.pid}:${process.startedAtMs}`;
-      currentIdentities.add(identity);
-      this.previousCpuByIdentity.set(identity, {
-        cpuTimeMs: process.cpuTimeMs,
-        sampledAtMs,
-      });
-    }
-    for (const identity of this.previousCpuByIdentity.keys()) {
-      if (!currentIdentities.has(identity)) {
-        this.previousCpuByIdentity.delete(identity);
+    if (generation === this.generation) {
+      for (const process of processes) {
+        const identity = `${process.pid}:${process.startedAtMs}`;
+        currentIdentities.add(identity);
+        this.previousCpuByIdentity.set(identity, {
+          cpuTimeMs: process.cpuTimeMs,
+          sampledAtMs,
+        });
+      }
+      for (const identity of this.previousCpuByIdentity.keys()) {
+        if (!currentIdentities.has(identity)) {
+          this.previousCpuByIdentity.delete(identity);
+        }
       }
     }
 
@@ -553,11 +584,13 @@ export class HostAgentProcessService {
       sampledAt,
       observations,
     };
-    this.cachedResponse = {
-      key: cacheKey,
-      sampledAtMs,
-      response,
-    };
+    if (generation === this.generation) {
+      this.cachedResponse = {
+        key: cacheKey,
+        sampledAtMs,
+        response,
+      };
+    }
     return response;
   }
 }

@@ -15,24 +15,39 @@ export function createHostAgentProcessesRoutes(
 ) {
   const routes = new Hono();
   const service = deps.service ?? new HostAgentProcessService();
+  deps.serverSettingsService.onSettingsChanged((settings, previousSettings) => {
+    if (
+      previousSettings.hostProcessObservabilityEnabled &&
+      !settings.hostProcessObservabilityEnabled
+    ) {
+      service.clear();
+    }
+  });
+  const disabledResponse = (): HostAgentProcessesResponse => ({
+    enabled: false,
+    supported: service.isSupported(),
+    observations: [],
+  });
 
   routes.get("/", async (c) => {
     if (
       !deps.serverSettingsService.getSettings().hostProcessObservabilityEnabled
     ) {
       service.clear();
-      const response: HostAgentProcessesResponse = {
-        enabled: false,
-        supported: service.isSupported(),
-        observations: [],
-      };
-      return c.json(response);
+      return c.json(disabledResponse());
     }
 
     try {
       const response = await service.sample(
         deps.supervisor.getProcessInfoList(),
       );
+      if (
+        !deps.serverSettingsService.getSettings()
+          .hostProcessObservabilityEnabled
+      ) {
+        service.clear();
+        return c.json(disabledResponse());
+      }
       return c.json(response);
     } catch {
       return c.json({ error: "Host process observation failed" }, 503);

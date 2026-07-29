@@ -358,12 +358,18 @@ export interface ServerSettingsServiceOptions {
   dataDir: string;
 }
 
+export type ServerSettingsChangeListener = (
+  settings: Readonly<ServerSettings>,
+  previousSettings: Readonly<ServerSettings>,
+) => void;
+
 export class ServerSettingsService {
   private state: SettingsState;
   private dataDir: string;
   private filePath: string;
   private initialized = false;
   private save = createCoalescingSaver(() => this.doSave()).save;
+  private readonly changeListeners = new Set<ServerSettingsChangeListener>();
 
   constructor(options: ServerSettingsServiceOptions) {
     this.dataDir = options.dataDir;
@@ -442,6 +448,15 @@ export class ServerSettingsService {
   }
 
   /**
+   * Observe live settings changes for process-local resources whose lifetime
+   * follows a setting.
+   */
+  onSettingsChanged(listener: ServerSettingsChangeListener): () => void {
+    this.changeListeners.add(listener);
+    return () => this.changeListeners.delete(listener);
+  }
+
+  /**
    * Update settings.
    */
   async updateSettings(
@@ -449,14 +464,20 @@ export class ServerSettingsService {
   ): Promise<ServerSettings> {
     this.ensureInitialized();
 
+    const previousSettings = this.state.settings;
     this.state.settings = {
-      ...this.state.settings,
+      ...previousSettings,
       ...updates,
     };
 
+    const settings = { ...this.state.settings };
+    const previous = { ...previousSettings };
+    for (const listener of this.changeListeners) {
+      listener(settings, previous);
+    }
     await this.save();
     this.publishDeferredDelivery();
-    return { ...this.state.settings };
+    return settings;
   }
 
   /**
