@@ -111,9 +111,11 @@ provider-history rewrite and not deletion.
 - While the latest assistant turn is active and at least one thinking preview
   is expanded, the activity column may show the newest concrete activity kinds
   below its count. The visible count is decided by layout, not a fixed number:
-  the list fills the height the current thinking block requests and clips the
-  older overflow, so a short thinking block shows few names and a tall one shows
-  more. File operations may add a basename and commands may add a bounded
+  the list is newest-first and fills the height the current thinking block
+  requests, so a short thinking block shows few names and a tall one shows more.
+  The newest row stays whole at the top; when the list overflows, the oldest
+  rows clip at the bottom behind a fade rather than a hard cut. File operations
+  may add a basename and commands may add a bounded
   description or verb-first command fragment. These previews remain whole single
   lines, may truncate, and cannot widen the activity column; the complete
   ordinary tool summary remains available as a tooltip. The activity names never

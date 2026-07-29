@@ -59,6 +59,20 @@ describe("conversation preview height contract", () => {
     expect(declarations).toMatch(/overflow:\s*hidden\s*;/);
   });
 
+  it("fades the activity list's clipped bottom edge instead of a hard cut", async () => {
+    const css = await readStylesheet();
+    const declarations = getRuleDeclarations(
+      css,
+      ".conversation-recent-activities.is-clipped",
+    );
+    // A bottom mask gradient fades the oldest (clipped) rows; applied only under
+    // .is-clipped so a fully-fitting list is not faded.
+    expect(
+      declarations,
+      "clipped activity list must fade its bottom edge via a mask gradient",
+    ).toMatch(/mask-image:\s*linear-gradient\([^;]*transparent[^;]*\)\s*;/);
+  });
+
   it("caps the previous preview to the current height: min(current, previous)", async () => {
     const css = await readStylesheet();
     const match =

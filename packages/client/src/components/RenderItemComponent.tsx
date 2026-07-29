@@ -277,6 +277,19 @@ function ConversationActivitySummary({
 }) {
   const { t } = useI18n();
   const rowRef = useRef<HTMLDivElement>(null);
+  const activityListRef = useRef<HTMLUListElement>(null);
+  // The recent-activity list is newest-first and clips its oldest (bottom) rows
+  // when they exceed the thinking height. Mark it so the stylesheet can fade
+  // that bottom edge — but only while it actually overflows, so a short list
+  // that fully fits is not faded as if more rows were hidden below it.
+  const syncActivityClip = useCallback(() => {
+    const list = activityListRef.current;
+    if (!list) return;
+    list.classList.toggle(
+      "is-clipped",
+      list.scrollHeight - list.clientHeight > 1,
+    );
+  }, []);
   // Publish the current/latest thinking preview's rendered content height as a
   // CSS var on the row. Its siblings — the recent-activity list and the
   // superseded "previous" preview — cap themselves to it, so neither claims
@@ -322,12 +335,21 @@ function ConversationActivitySummary({
         "--conversation-thinking-height",
         `${content.offsetHeight}px`,
       );
+      // The cap change alters the list's clientHeight; re-evaluate its bottom
+      // fade in the same layout pass.
+      syncActivityClip();
     };
     publishHeight();
     const observer = new ResizeObserver(publishHeight);
     observer.observe(content);
     return () => observer.disconnect();
-  }, [previewLayoutKey]);
+  }, [previewLayoutKey, syncActivityClip]);
+  // Re-evaluate the bottom fade when the rendered activity rows change (new
+  // rows can start overflowing the cap without the thinking height moving).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: recentActivities identity is the render-changed trigger
+  useLayoutEffect(() => {
+    syncActivityClip();
+  }, [syncActivityClip, item.recentActivities]);
   const elapsedSeconds =
     item.startedAtMs !== null &&
     item.endedAtMs !== null &&
@@ -392,6 +414,7 @@ function ConversationActivitySummary({
         </button>
         {hasExpandedThinkingPreview && item.recentActivities ? (
           <ul
+            ref={activityListRef}
             className="conversation-recent-activities"
             aria-label={t("conversationRecentActivities")}
           >

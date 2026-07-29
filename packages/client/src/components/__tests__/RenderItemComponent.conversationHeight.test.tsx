@@ -138,4 +138,53 @@ describe("conversation thinking preview height publication", () => {
       "0px",
     );
   });
+
+  it("marks the activity list clipped only while it overflows its cap", () => {
+    vi.stubGlobal("ResizeObserver", MockResizeObserver);
+
+    const { container } = render(
+      <I18nProvider>
+        <RenderItemComponent
+          item={conversationActivityItem()}
+          isStreaming
+          thinkingExpanded={false}
+          toggleThinkingExpanded={() => {}}
+        />
+      </I18nProvider>,
+    );
+
+    const list = container.querySelector<HTMLElement>(
+      ".conversation-recent-activities",
+    );
+    const latestContent = container.querySelector<HTMLElement>(
+      '.conversation-thinking-preview[data-preview-slot="latest"] .conversation-thinking-preview-content',
+    );
+    expect(list).not.toBeNull();
+    const watching = observers.find((observer) =>
+      observer.targets.includes(latestContent as Element),
+    );
+
+    Object.defineProperty(list, "scrollHeight", {
+      configurable: true,
+      get: () => 200,
+    });
+    let clientHeight = 100;
+    Object.defineProperty(list, "clientHeight", {
+      configurable: true,
+      get: () => clientHeight,
+    });
+
+    // Older rows overflow the cap → the bottom edge fades.
+    act(() => {
+      watching?.cb([], watching as unknown as ResizeObserver);
+    });
+    expect(list?.classList.contains("is-clipped")).toBe(true);
+
+    // The whole list fits → no fade, so it does not read as "more below".
+    clientHeight = 200;
+    act(() => {
+      watching?.cb([], watching as unknown as ResizeObserver);
+    });
+    expect(list?.classList.contains("is-clipped")).toBe(false);
+  });
 });

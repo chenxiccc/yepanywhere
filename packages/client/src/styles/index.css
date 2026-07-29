@@ -9018,6 +9018,19 @@ div.bang-command-error-message {
   list-style: none;
 }
 
+/* When the newest-first list overflows its cap it clips the oldest (bottom)
+   rows; fade that bottom edge to signal the hidden older rows instead of a hard
+   cut. Applied only while actually overflowing (RenderItemComponent toggles
+   .is-clipped) so a list that fully fits is not faded. */
+.conversation-recent-activities.is-clipped {
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    #000 calc(100% - 1.1rem),
+    transparent
+  );
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 1.1rem), transparent);
+}
+
 .conversation-recent-activities li {
   display: flex;
   min-width: 0;
