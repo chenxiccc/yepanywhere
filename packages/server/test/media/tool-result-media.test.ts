@@ -188,6 +188,147 @@ describe("tool-result media storage", () => {
     await expect(readFile(file?.path ?? "")).resolves.toEqual(PNG_BYTES);
   });
 
+  it("admits only the matching Grok project/session image root", async () => {
+    const grokSessionsDir = join(tempDir, "grok-sessions");
+    const sessionId = "grok-session";
+    const imageRoot = join(
+      grokSessionsDir,
+      encodeURIComponent(projectDir),
+      sessionId,
+      "images",
+    );
+    const sourcePath = join(imageRoot, "1.png");
+    await mkdir(imageRoot, { recursive: true });
+    await writeFile(sourcePath, PNG_BYTES);
+    const store = new ToolResultMediaStore({
+      dataDir,
+      resolveSourcePath: async () => null,
+      providerSourceRoots: ({ provider, projectPath, sessionId }) =>
+        provider === "grok"
+          ? [
+              join(
+                grokSessionsDir,
+                encodeURIComponent(projectPath),
+                sessionId,
+                "images",
+              ),
+            ]
+          : [],
+    });
+    const projectId = encodeProjectId(projectDir);
+    const context = {
+      provider: "grok" as const,
+      projectId,
+      projectPath: projectDir,
+      getSessionId: () => sessionId,
+    };
+    const otherProjectDir = join(tempDir, "other-project");
+    await mkdir(otherProjectDir);
+
+    await expect(
+      store.capture({ originalPath: sourcePath }, context, "call-grok", 0),
+    ).resolves.toMatchObject({
+      state: "stored",
+      mimeType: "image/png",
+    });
+    await expect(
+      store.capture(
+        { originalPath: sourcePath },
+        { ...context, provider: "codex" },
+        "call-wrong-provider",
+        0,
+      ),
+    ).resolves.toEqual({
+      state: "rejected",
+      toolCallId: "call-wrong-provider",
+      reason: "source-unavailable",
+      filename: "1.png",
+    });
+    await expect(
+      store.capture(
+        { originalPath: sourcePath },
+        {
+          ...context,
+          projectId: encodeProjectId(otherProjectDir),
+          projectPath: otherProjectDir,
+        },
+        "call-wrong-project",
+        0,
+      ),
+    ).resolves.toEqual({
+      state: "rejected",
+      toolCallId: "call-wrong-project",
+      reason: "source-unavailable",
+      filename: "1.png",
+    });
+    await expect(
+      store.capture(
+        { originalPath: sourcePath },
+        { ...context, getSessionId: () => "other-session" },
+        "call-wrong-session",
+        0,
+      ),
+    ).resolves.toEqual({
+      state: "rejected",
+      toolCallId: "call-wrong-session",
+      reason: "source-unavailable",
+      filename: "1.png",
+    });
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "rejects a symlink escaping the Grok session image root",
+    async () => {
+      const grokSessionsDir = join(tempDir, "grok-sessions");
+      const sessionId = "grok-session";
+      const imageRoot = join(
+        grokSessionsDir,
+        encodeURIComponent(projectDir),
+        sessionId,
+        "images",
+      );
+      const outsidePath = join(tempDir, "outside.png");
+      const sourcePath = join(imageRoot, "linked.png");
+      await mkdir(imageRoot, { recursive: true });
+      await writeFile(outsidePath, PNG_BYTES);
+      await symlink(outsidePath, sourcePath);
+      const store = new ToolResultMediaStore({
+        dataDir,
+        resolveSourcePath: async () => null,
+        providerSourceRoots: ({ provider, projectPath, sessionId }) =>
+          provider === "grok"
+            ? [
+                join(
+                  grokSessionsDir,
+                  encodeURIComponent(projectPath),
+                  sessionId,
+                  "images",
+                ),
+              ]
+            : [],
+      });
+
+      await expect(
+        store.capture(
+          { originalPath: sourcePath },
+          {
+            provider: "grok",
+            projectId: encodeProjectId(projectDir),
+            projectPath: projectDir,
+            getSessionId: () => sessionId,
+          },
+          "call-grok-symlink",
+          0,
+        ),
+      ).resolves.toEqual({
+        state: "rejected",
+        toolCallId: "call-grok-symlink",
+        reason: "source-unavailable",
+        filename: "linked.png",
+      });
+    },
+  );
+
   it.skipIf(process.platform === "win32")(
     "falls back to the server data directory for a symlinked .yep",
     async () => {

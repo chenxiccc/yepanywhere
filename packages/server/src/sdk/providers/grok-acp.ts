@@ -19,8 +19,10 @@
  * - Gated behind `ENABLED_PROVIDERS=grok` (or equivalent filter); when the env var
  *   does not list "grok", this code is unreachable and other providers are 100% unaffected.
  *
- * Modeled *closely* on gemini-acp.ts + ACPClient (patterns copied/adapted *into this file only*;
- * no shared refactoring or extraction until Grok proven in later phases).
+ * Modeled closely on gemini-acp.ts + ACPClient. Grok's live and persisted
+ * tool lifecycles share only the provider-specific normalizer in
+ * grok-tool-normalization.ts; no other provider or shared hot path depends on
+ * Grok's extension metadata.
  *
  * Authoritative references (highest priority):
  * - /local/graehl/yepanywhere/topics/grok.md (full contract, Phase plan, non-goals)
@@ -33,8 +35,8 @@
  * - Local ~/.grok/models_cache.json + `grok models` + `~/.grok/bin/grok --help` (model info)
  * Native ACP fork and full /btw remain later phases.
  *
- * Audited through Grok 0.2.111 (2026-07) using the installed binary/docs and
- * the first-party xai-org/grok-build source (public tree at 0.2.110).
+ * Audited through Grok 0.2.112 (2026-07) using the installed binary, complete
+ * live tool streams, and matching first-party xai-org/grok-build source.
  */
 
 import { exec, execFile } from "node:child_process";
@@ -58,6 +60,7 @@ import type {
   SlashCommand,
 } from "@yep-anywhere/shared";
 import { getLogger } from "../../logging/logger.js";
+import { attachToolResultMediaCandidates } from "../../media/inlineImageData.js";
 import { whichCommand } from "../cli-detection.js";
 import { MessageQueue } from "../messageQueue.js";
 import type {
@@ -66,6 +69,15 @@ import type {
   ToolApprovalResult,
 } from "../types.js";
 import { ACPClient } from "./acp/client.js";
+import {
+  type NormalizedGrokToolState,
+  buildGrokStructuredToolResult,
+  formatGrokToolResultContent,
+  grokToolResultMediaCandidate,
+  hasGrokToolUseMetadata,
+  isTerminalGrokToolUpdate,
+  normalizeGrokToolUpdate,
+} from "./grok-tool-normalization.js";
 import type {
   AgentProvider,
   AgentSession,
@@ -281,6 +293,10 @@ interface GrokPromptRuntime {
   activePromptCount: number;
   promptError: unknown;
 }
+
+type GrokLiveToolState = NormalizedGrokToolState & {
+  resultEmitted: boolean;
+};
 
 interface GrokCommandInventory {
   commands: SlashCommand[];
@@ -1086,7 +1102,7 @@ export class GrokACPProvider implements AgentProvider {
     let assistantMessageId: string | null = null;
     const toolStates = new Map<
       string,
-      { name: string; input: Record<string, unknown> }
+      GrokLiveToolState
     >();
 
     // Accumulate agent_thought_chunk deltas so we emit growing (not per-token) thinking blocks.
@@ -1278,7 +1294,7 @@ export class GrokACPProvider implements AgentProvider {
   private convertUpdateToSDKMessage(
     update: SessionUpdate,
     sessionId: string,
-    toolStates: Map<string, { name: string; input: Record<string, unknown> }>,
+    toolStates: Map<string, GrokLiveToolState>,
     commandInventory: GrokCommandInventory,
   ): SDKMessage | null {
     const updateType = update.sessionUpdate;
@@ -1326,15 +1342,28 @@ export class GrokACPProvider implements AgentProvider {
           sessionUpdate: "tool_call_update";
           error?: string;
         };
-        if (this.isTerminalToolUpdate(toolResultUpdate)) {
+        if (isTerminalGrokToolUpdate(toolResultUpdate)) {
           const toolCallId = toolResultUpdate.toolCallId ?? "";
-          return {
+          const previous = toolStates.get(toolCallId);
+          const normalized = normalizeGrokToolUpdate(
+            toolResultUpdate,
+            previous,
+          );
+          const state: GrokLiveToolState = {
+            ...normalized,
+            resultEmitted: previous?.resultEmitted ?? false,
+          };
+          toolStates.set(toolCallId, state);
+          if (state.resultEmitted) return null;
+          state.resultEmitted = true;
+
+          const message = {
             type: "user",
             uuid: toolCallId ? `${toolCallId}:result` : undefined,
             session_id: sessionId,
-            toolUseResult: this.buildStructuredToolResult(
+            toolUseResult: buildGrokStructuredToolResult(
               toolResultUpdate,
-              toolStates.get(toolCallId)?.input,
+              state,
             ),
             message: {
               role: "user",
@@ -1345,13 +1374,22 @@ export class GrokACPProvider implements AgentProvider {
                   is_error:
                     toolResultUpdate.status === "failed" ||
                     !!toolResultUpdate.error,
-                  content: this.formatToolResultContent(toolResultUpdate),
+                  content: formatGrokToolResultContent(
+                    toolResultUpdate,
+                    state,
+                  ),
                 },
               ],
             },
           } as SDKMessage;
+          const mediaCandidate =
+            grokToolResultMediaCandidate(toolResultUpdate);
+          if (mediaCandidate) {
+            attachToolResultMediaCandidates(message, [mediaCandidate]);
+          }
+          return message;
         }
-        if (this.hasToolUseMetadata(toolResultUpdate)) {
+        if (hasGrokToolUseMetadata(toolResultUpdate)) {
           return this.buildToolUseMessage(
             toolResultUpdate,
             sessionId,
@@ -1578,13 +1616,16 @@ export class GrokACPProvider implements AgentProvider {
   private buildToolUseMessage(
     toolUpdate: ToolCall | ToolCallUpdate,
     sessionId: string,
-    toolStates: Map<string, { name: string; input: Record<string, unknown> }>,
+    toolStates: Map<string, GrokLiveToolState>,
   ): SDKMessage {
     const toolCallId = toolUpdate.toolCallId ?? randomUUID();
     const previous = toolStates.get(toolCallId);
-    const name = this.mapToolUpdateToToolName(toolUpdate, previous);
-    const input = this.buildToolInput(toolUpdate, previous?.input);
-    toolStates.set(toolCallId, { name, input });
+    const normalized = normalizeGrokToolUpdate(toolUpdate, previous);
+    const state: GrokLiveToolState = {
+      ...normalized,
+      resultEmitted: previous?.resultEmitted ?? false,
+    };
+    toolStates.set(toolCallId, state);
     return {
       type: "assistant",
       uuid: toolCallId,
@@ -1595,167 +1636,12 @@ export class GrokACPProvider implements AgentProvider {
           {
             type: "tool_use",
             id: toolCallId,
-            name,
-            input,
+            name: state.name,
+            input: state.input,
           },
         ],
       },
     } as SDKMessage;
-  }
-
-  private mapToolUpdateToToolName(
-    toolUpdate: ToolCall | ToolCallUpdate,
-    previous?: { name: string },
-  ): string {
-    const kind = "kind" in toolUpdate ? toolUpdate.kind : undefined;
-    const title = "title" in toolUpdate ? toolUpdate.title : undefined;
-    if (kind) {
-      return this.mapKindToToolName(kind, title ?? undefined);
-    }
-    switch (title) {
-      case "read_file":
-        return "Read";
-      case "run_terminal_command":
-        return "Bash";
-      default:
-        return title ?? previous?.name ?? "GrokTool";
-    }
-  }
-
-  private buildToolInput(
-    toolUpdate: ToolCall | ToolCallUpdate,
-    previousInput?: Record<string, unknown>,
-  ): Record<string, unknown> {
-    const input: Record<string, unknown> = { ...previousInput };
-    const kind = "kind" in toolUpdate ? toolUpdate.kind : undefined;
-    const title = "title" in toolUpdate ? toolUpdate.title : undefined;
-    const rawInput = this.asRecord(
-      "rawInput" in toolUpdate ? toolUpdate.rawInput : undefined,
-    );
-    const locations =
-      "locations" in toolUpdate && toolUpdate.locations?.length
-        ? toolUpdate.locations
-        : undefined;
-    const firstPath = this.firstLocationPath(locations);
-
-    if (this.isReadTool(kind, title)) {
-      const filePath = this.stringField(rawInput, "target_file") ?? firstPath;
-      if (filePath) input.file_path = filePath;
-    }
-    if (this.isExecuteTool(kind, title)) {
-      const command = this.stringField(rawInput, "command");
-      const description = this.stringField(rawInput, "description");
-      const timeout = this.numberField(rawInput, "timeout");
-      if (command) input.command = command;
-      if (description) input.description = description;
-      if (timeout !== undefined) input.timeout = timeout;
-    }
-
-    if ("kind" in toolUpdate && toolUpdate.kind) input.kind = toolUpdate.kind;
-    if ("title" in toolUpdate && toolUpdate.title)
-      input.title = toolUpdate.title;
-    if ("status" in toolUpdate && toolUpdate.status)
-      input.status = toolUpdate.status;
-    if (locations) input.locations = locations;
-    if ("rawInput" in toolUpdate && toolUpdate.rawInput !== undefined) {
-      input.rawInput = toolUpdate.rawInput;
-    }
-    if ("content" in toolUpdate && toolUpdate.content?.length) {
-      input.content = toolUpdate.content;
-    }
-    return input;
-  }
-
-  private isTerminalToolUpdate(update: ToolCallUpdate & { error?: string }) {
-    return (
-      update.status === "completed" ||
-      update.status === "failed" ||
-      !!update.error
-    );
-  }
-
-  private hasToolUseMetadata(update: ToolCallUpdate): boolean {
-    return (
-      !!update.kind ||
-      !!update.title ||
-      !!update.status ||
-      !!update.locations?.length ||
-      update.rawInput !== undefined ||
-      update.content !== undefined
-    );
-  }
-
-  private formatToolResultContent(
-    update: ToolCallUpdate & { error?: string },
-  ): string {
-    if (update.error) return update.error;
-    if (typeof update.rawOutput === "string") return update.rawOutput;
-    if (update.rawOutput !== undefined) return JSON.stringify(update.rawOutput);
-    if (update.content !== undefined) return JSON.stringify(update.content);
-    return update.status ?? "completed";
-  }
-
-  private buildStructuredToolResult(
-    update: ToolCallUpdate & { error?: string },
-    toolInput?: Record<string, unknown>,
-  ): unknown {
-    if (update.error) return update.error;
-    const rawOutput = this.asRecord(update.rawOutput);
-    if (!rawOutput) {
-      return update.content ?? update.status ?? "completed";
-    }
-
-    if (rawOutput.type === "Bash") {
-      return {
-        stdout:
-          this.decodeByteArray(rawOutput.output) ??
-          this.stringField(rawOutput, "output_for_prompt") ??
-          "",
-        stderr: "",
-        interrupted: false,
-        isImage: false,
-      };
-    }
-
-    if (rawOutput.type === "ReadFile") {
-      const fileContent = this.asRecord(rawOutput.FileContent);
-      const content = this.stringField(fileContent, "content") ?? "";
-      const totalLines =
-        this.numberField(fileContent, "total_lines") ??
-        (content ? content.split("\n").length : 0);
-      const filePath =
-        this.stringField(fileContent, "absolute_path") ??
-        this.firstLocationPath(update.locations) ??
-        this.stringField(this.asRecord(update.rawInput), "target_file") ??
-        this.stringField(toolInput, "file_path") ??
-        "";
-      return {
-        type: "text",
-        file: {
-          filePath,
-          content,
-          numLines: totalLines,
-          startLine: 1,
-          totalLines,
-        },
-      };
-    }
-
-    return update.rawOutput;
-  }
-
-  private isReadTool(
-    kind: ToolKind | null | undefined,
-    title: string | null | undefined,
-  ): boolean {
-    return kind === "read" || title === "read_file";
-  }
-
-  private isExecuteTool(
-    kind: ToolKind | null | undefined,
-    title: string | null | undefined,
-  ): boolean {
-    return kind === "execute" || title === "run_terminal_command";
   }
 
   private asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -1772,30 +1658,6 @@ export class GrokACPProvider implements AgentProvider {
     return typeof value === "string" && value.length > 0 ? value : undefined;
   }
 
-  private numberField(
-    record: Record<string, unknown> | undefined,
-    field: string,
-  ): number | undefined {
-    const value = record?.[field];
-    return typeof value === "number" ? value : undefined;
-  }
-
-  private firstLocationPath(
-    locations: ToolCall["locations"] | ToolCallUpdate["locations"] | undefined,
-  ): string | undefined {
-    const first = locations?.[0] as { path?: unknown } | undefined;
-    return typeof first?.path === "string" ? first.path : undefined;
-  }
-
-  private decodeByteArray(value: unknown): string | undefined {
-    if (
-      !Array.isArray(value) ||
-      !value.every((byte) => Number.isInteger(byte) && byte >= 0 && byte <= 255)
-    ) {
-      return undefined;
-    }
-    return new TextDecoder().decode(Uint8Array.from(value as number[]));
-  }
 }
 
 /**

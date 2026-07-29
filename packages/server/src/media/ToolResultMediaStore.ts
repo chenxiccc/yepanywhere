@@ -79,6 +79,15 @@ export interface ToolResultMediaStoreOptions {
   dataDir?: string;
   maxImageBytes?: number;
   resolveSourcePath?: (absolutePath: string) => Promise<string | null>;
+  providerSourceRoots?: (
+    context: ToolResultMediaProviderSourceContext,
+  ) => readonly string[];
+}
+
+export interface ToolResultMediaProviderSourceContext {
+  provider: ProviderName;
+  projectPath: string;
+  sessionId: string;
 }
 
 export class ToolResultMediaStore {
@@ -87,11 +96,17 @@ export class ToolResultMediaStore {
   private readonly resolveSourcePath:
     | ((absolutePath: string) => Promise<string | null>)
     | undefined;
+  private readonly providerSourceRoots:
+    | ((
+        context: ToolResultMediaProviderSourceContext,
+      ) => readonly string[])
+    | undefined;
 
   constructor(options: ToolResultMediaStoreOptions = {}) {
     this.dataDir = options.dataDir;
     this.maxImageBytes = options.maxImageBytes ?? DEFAULT_MAX_IMAGE_BYTES;
     this.resolveSourcePath = options.resolveSourcePath;
+    this.providerSourceRoots = options.providerSourceRoots;
   }
 
   createMaterializer(
@@ -134,7 +149,11 @@ export class ToolResultMediaStore {
     } else if (originalPath) {
       const sourcePath = await this.resolvePermittedSourcePath(
         originalPath,
-        context.projectPath,
+        {
+          provider: context.provider,
+          projectPath: context.projectPath,
+          sessionId,
+        },
       );
       if (!sourcePath) return rejected("source-unavailable");
       originalPath = sourcePath;
@@ -247,27 +266,36 @@ export class ToolResultMediaStore {
 
   private async resolvePermittedSourcePath(
     sourcePath: string,
-    projectPath: string,
+    context: ToolResultMediaProviderSourceContext,
   ): Promise<string | null> {
     const absolutePath = isAbsolute(sourcePath)
       ? sourcePath
-      : resolve(projectPath, sourcePath);
+      : resolve(context.projectPath, sourcePath);
     if (this.resolveSourcePath) {
-      return await this.resolveSourcePath(absolutePath).catch(() => null);
+      const generallyAllowed = await this.resolveSourcePath(absolutePath).catch(
+        () => null,
+      );
+      if (generallyAllowed) return generallyAllowed;
     }
 
-    const [resolvedSource, resolvedProject] = await Promise.all([
-      realpath(absolutePath).catch(() => null),
-      realpath(projectPath).catch(() => null),
-    ]);
-    if (
-      !resolvedSource ||
-      !resolvedProject ||
-      !isWithin(resolvedSource, resolvedProject)
-    ) {
-      return null;
+    const resolvedSource = await realpath(absolutePath).catch(() => null);
+    if (!resolvedSource) return null;
+
+    const providerRoots = this.providerSourceRoots?.(context) ?? [];
+    for (const root of providerRoots) {
+      const resolvedRoot = await realpath(root).catch(() => null);
+      if (resolvedRoot && isWithin(resolvedSource, resolvedRoot)) {
+        return resolvedSource;
+      }
     }
-    return resolvedSource;
+
+    if (this.resolveSourcePath) return null;
+    const resolvedProject = await realpath(context.projectPath).catch(
+      () => null,
+    );
+    return resolvedProject && isWithin(resolvedSource, resolvedProject)
+      ? resolvedSource
+      : null;
   }
 
   private async getWriteRoot(

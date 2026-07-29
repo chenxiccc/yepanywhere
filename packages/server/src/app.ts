@@ -519,6 +519,17 @@ export function createApp(options: AppOptions): AppResult {
         await localResourcePathPolicy.resolveAllowedFilePath(absolutePath);
       return resolved.ok ? resolved.file.resolvedPath : null;
     },
+    providerSourceRoots: ({ provider, projectPath, sessionId }) =>
+      provider === "grok"
+        ? [
+            join(
+              GROK_SESSIONS_DIR,
+              encodeURIComponent(projectPath),
+              sessionId,
+              "images",
+            ),
+          ]
+        : [],
   });
   const effectiveDataDir =
     options.dataDir ??

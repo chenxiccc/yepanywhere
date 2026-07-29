@@ -9,7 +9,7 @@ conditional extension-request hook that remains absent for other providers.
 
 Related topics: [claude.md](claude.md), [provider-state-machine.md](provider-state-machine.md), [provider-model-glyphs.md](provider-model-glyphs.md), architecture-mandates.md.
 
-## Current upstream and local surface (2026-07-23)
+## Current upstream and local surface (2026-07-29)
 
 Grok Build is xAI's terminal-first coding agent. It supports an interactive
 TUI, headless mode, subagents, skills, AGENTS.md, hooks, MCP, a sandbox and
@@ -19,12 +19,13 @@ the installed binary and state as a first-party compatibility reference.
 
 Local evidence on this host (non-destructive inspection of the installed binary and state):
 
-- Installed version: `grok 0.2.111 (94172f2aa4) [stable]`.
+- Installed version: `grok 0.2.112 (9bbd559437) [stable]`; the stable update
+  check also reports 0.2.112 as latest.
 - `grok models` advertises only `grok-4.5` and marks it as the default.
 - `~/.grok/models_cache.json` describes Grok 4.5 with a 500k context window
   and `high` (default), `medium`, and `low` reasoning efforts.
 - `grok agent stdio` remains YA's transport. A live, no-model-call ACP
-  initialize probe reported protocol version 1, agent version 0.2.111,
+  initialize probe reported protocol version 1, agent version 0.2.112,
   `grok-4.5`, and commands including `compact`, `context`, `session-info`,
   `deep-research`, `workflow`, and `goal`.
 - The base ACP update union now includes transcript-bearing message, thought,
@@ -50,6 +51,63 @@ ACP (via the already-vendored `@agentclientprotocol/sdk` and YA's `ACPClient`) i
 - Permission requests (map to YA `onToolApproval`)
 
 This gives first-class visibility into read, edit (with diffs), bash/execute, and thinking — comparable or better structured than current Claude events for supervision use cases.
+
+## 0.2.112 Tool Vocabulary and Rendering Contract
+
+Grok 0.2.112 attaches a versioned `_meta["x.ai/tool"]` object to ordinary
+tool-call updates. The matching public `xai-org/grok-build` source is git
+`5da6962e4adb9c857f3def762542b52b4ec3e522`, with monorepo `SOURCE_REV`
+`2a818575225183d8ca915f5632a09b8067b5156a`. Its package version and the
+installed stable CLI are both 0.2.112, so the source schema is applicable to
+the runtime traces in this audit.
+
+The canonical envelope is the primary identity contract:
+
+- `label` is the cross-harness grouping/display key.
+- `kind` is an open, finer-grained action category; unknown values must remain
+  usable.
+- `name` is Grok's native model-facing name and remains useful for diagnostics.
+- `input` is only a canonical projection. YA merges it with `rawInput` from
+  every update for the same `toolCallId`, because edit strings, write contents,
+  and some lifecycle fields intentionally remain raw or arrive only once.
+- `namespace` is parsed loosely. A namespace added upstream must not make the
+  whole tool unusable in YA.
+
+Live ACP and `updates.jsonl` replay use the same Grok-specific normalizer and
+therefore have the same externally visible contract:
+
+| Grok action | YA tool name | Result treatment |
+| --- | --- | --- |
+| `read_file`, `grep`, `search_replace`, `write` | `Read`, `Grep`, `Edit`, `Write` | Existing compatible file/search schemas |
+| `run_terminal_command` | `Bash` | Foreground output or background task id |
+| `todo_write` | `TodoWrite` | Full post-update todo state |
+| backend web search, `web_fetch` | `WebSearch`, `WebFetch` | Existing web result schemas |
+| `ask_user_question`, `exit_plan_mode` | `AskUserQuestion`, `ExitPlanMode` | Existing interaction/plan schemas |
+| `spawn_subagent` | `spawn_agent` | Existing spawn schema plus native diagnostic text |
+| `list_dir`, background output/kill, enter-plan | Native Grok name | Generic activity row; no misleading renderer alias |
+| `image_gen`, `image_edit` | `ImageGen`, `ImageEdit` | Generic activity row plus a hidden local-path media candidate |
+
+An update may change its generic ACP title or omit input entirely. The
+display name and accumulated input stay stable for the whole call. Terminal
+updates emit exactly one result per `toolCallId`, including background-command
+launches whose later updates continue reporting progress.
+
+Image generation and editing deliberately do not impersonate `ViewImage`:
+their invocation does not have that renderer's input schema. Instead, the
+terminal image path is attached as a media candidate for YA's existing
+relay-safe materializer. Markdown image links written by Grok remain ordinary
+provider text and follow the shared media-rendering policy.
+
+Grok's generated images live outside the project tree. Media capture grants
+only the realpath-resolved
+`GROK_SESSIONS_DIR/<encoded-project>/<session-id>/images/` root for the
+matching Grok project and session. It rejects another provider, project,
+session, or a symlink escape; this exception does not add `~/.grok` to the
+normal local-file/image allowlist.
+
+Unknown future canonical kinds keep their native name, canonical metadata,
+raw input, generic row, and terminal output. Adding a Grok kind should degrade
+to useful diagnostics rather than becoming an orphaned or mislabeled call.
 
 ## Model and Effort Controls — Recommendation for YA New Session UI
 
@@ -151,9 +209,11 @@ Replay should follow the provider optional-detail dictionary in
 terminal execution, `grep`, `search_replace`, and `todo_write` to existing YA
 `Read`, `Bash`, `Grep`, `Edit`, and `TodoWrite` schemas when the fields are
 one-to-one enough; otherwise keep compact Grok-specific detail rather than
-forcing misleading generic shapes. Per-update Grok `_meta` is noisy telemetry
-and should not be carried into replayed messages unless a future UI explicitly
-needs a stable subset.
+forcing misleading generic shapes. Do not copy arbitrary per-update `_meta`
+telemetry. The stable `x.ai/tool` identity subset is retained under
+`input.grokTool` so future renderers and diagnostics can distinguish native
+name, label, kind, namespace, read-only intent, and schema version without
+depending on raw ACP envelopes.
 
 ## ACP Extension Request Contract
 
@@ -182,23 +242,23 @@ does not require an ACP dependency upgrade.
 
 ## Open Questions & Epistemic Status
 
-- A paid live 0.2.111 prompt could not be completed during this refresh because
-  the current account returned HTTP 402. Initialize, model/command discovery,
-  durable update shapes, first-party source, and mocked extension round-trips
-  were still verified.
-- Real-world richness of 0.2.111 `agent_thought_chunk` and
-  `tool_call_update` events remains to be re-smoked once model access is
-  available.
+- Three successful Grok 4.5 medium-effort sessions exercised the 0.2.112
+  vocabulary against a disposable project: read/list/grep/write/edit/bash,
+  todo updates, web search/fetch, image generation/editing and Markdown links,
+  subagent spawn, background start/output/kill, user question, enter-plan,
+  plan-file write, and exit-plan. A spawned read-only subagent supplied a
+  fourth persisted session. This replaces the earlier HTTP 402 evidence gap.
+- The public schema lists `goal_update`, but the requested goal-oriented live
+  run used `todo_write`; no distinct `goal_update` event was observed. YA
+  therefore has no speculative renderer mapping for it.
 - Grok questions in plan mode can advertise provider-specific "Chat about
   this" and "Skip interview" outcomes. YA currently exposes the shared
   answer-or-cancel surface only.
 - Evolution of the on-disk multi-file + sqlite layout during the beta (treat as unstable; ACP live path is the stable contract for supervision).
 
 Claims above are grounded in the installed binary/state, live no-cost ACP
-probes, and the first-party public source. The public checkout's package
-version is 0.2.110 while this host runs 0.2.111, so source findings were
-cross-checked against the installed CLI and not treated as proof of the final
-patch release.
+probes, successful model/tool streams, persisted replay, and the matching
+0.2.112 first-party public source.
 
 ## Steering, Interject, and /btw Forking Support
 
@@ -274,7 +334,7 @@ periodically from an internal monorepo and may trail the released binary, so
 compare its package version and `SOURCE_REV` against `grok --version` before
 using a source finding as evidence for the installed patch.
 
-## Progress Snapshot (2026-05-26 Takeover)
+## Historical Progress Snapshot (2026-05-26 Takeover)
 
 Current live repo state has a Grok ACP provider at a verified Phase 1 point.
 It has landed as an isolated provider integration, with history replay left as
@@ -338,29 +398,27 @@ Verification completed during takeover:
    `~/.grok/sessions`, YA session metadata, and recents; no Grok YA processes
    or stale Grok debug processes remained after cleanup.
 
-Known remaining gap:
+Gap at that snapshot, now resolved:
 
-- `GrokSessionReader.getSession()` is summary-oriented today. Native-id
-  recovery/listing works, but full Grok transcript replay after server restart
-  is still Phase 2 scanner/history work.
+- `GrokSessionReader.getSession()` was summary-only. It now replays
+  transcript-bearing `updates.jsonl` records and uses the same tool
+  normalization as live ACP.
 
 ## Open Provider Work
 
 Grok provider work remains broader than modal prompt/interview handling:
 
 - **Source refresh:** the provider-refresh audit currently marks Grok ACP as
-  current through installed 0.2.111 and public source 0.2.110. Re-run it when
+  current through installed and public-source 0.2.112. Re-run it when
   the installed model/command catalog, ACP dependency, or first-party request
   and notification enums change.
-- **Full history replay:** `updates.jsonl` replay remains incomplete; summary
-  lookup and native-id recovery are not a substitute for restart/reconnect
-  transcript visibility.
-- **Live 0.2.111 smoke:** repeat an assistant/tool/steering run once the
-  account can make model calls; the present refresh stopped at the upstream
-  HTTP 402 instead of treating it as a provider success.
+- **Broader replay corpus:** current `updates.jsonl` replay covers the
+  transcript and 0.2.112 vocabulary observed in the live coverage sessions.
+  Preserve generic fallbacks for valid future tool kinds and provider metadata
+  that have no YA surface.
 - **Default-enable decision:** keep Grok isolated behind provider gating until
-  ACP stability, history replay, and current live prompt behavior are good
-  enough for ordinary use.
+  ACP stability and ongoing live prompt behavior are good enough for ordinary
+  use.
 
 ## 0.2.3 Refresh and Steering Smoke (2026-05-28)
 
@@ -462,11 +520,17 @@ place. Liveness-specific evidence from the takeover also informs
   and 0.2.3 live smoke passed)
 - [x] 0.2.3 CLI/docs refresh audited and recorded
 - [x] 0.2.111 CLI/cache/ACP and public 0.2.110 source audited
+- [x] 0.2.112 installed CLI, matching public source, canonical tool metadata,
+  full live vocabulary, and persisted replay audited
+- [x] Live and replay tool lifecycles share stable canonical normalization,
+  compatible YA renderer schemas, one terminal result, and image media
+  candidates
 - [x] Prompt/interview and plan-exit extension requests mapped to YA pending
   input
 - [x] Dynamic model catalog reconciled with the current local Grok binary and
   cache
-- [ ] (Phase 2) `grok-scanner.ts` + minimal schema for session listing + history — summary reader exists; full scanner/history replay not done
+- [ ] (Phase 2) `grok-scanner.ts` + minimal schema for project discovery —
+  session listing and full `updates.jsonl` transcript replay exist
 - [ ] Docs updates + version pinning note — topic and `CLAUDE.md` provider list updated; broader README/provider capability docs not done
 - [ ] Decision point: promote "grok" to default-enabled once ACP surface proves stable
 
@@ -477,5 +541,6 @@ task file; that file references this committed topic, not the reverse.
 
 Topic: grok
 
-<!-- epistemic status: installed 0.2.111 binary/cache/ACP probes + public
-xai-org/grok-build 0.2.110 source as of 2026-07; provider remains gated -->
+<!-- epistemic status: installed 0.2.112 binary/cache + successful Grok 4.5
+ACP/tool sessions + matching public xai-org/grok-build 0.2.112 source as of
+2026-07-29; provider remains gated -->

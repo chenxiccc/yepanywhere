@@ -348,6 +348,7 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
   let releaseHeldPrompt: (() => void) | null = null;
   let failResume = false;
   let extensionMethodCallback: ExtensionMethodCallback | null = null;
+  let promptUpdates: Array<Record<string, unknown>> = [];
 
   // Minimal fake ACPClient that records calls and allows controlling flow
   class FakeACPClient {
@@ -413,8 +414,15 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
     }
     async prompt(_sessionId: string, _text: string) {
       promptCalls.push({ sessionId: _sessionId, text: _text });
-      // Simulate a quick success with one update if cb present
-      if (this.updateCb) {
+      if (this.updateCb && promptUpdates.length > 0) {
+        for (const update of promptUpdates) {
+          this.updateCb({
+            sessionId: _sessionId,
+            update: update as never,
+          });
+        }
+      } else if (this.updateCb) {
+        // Simulate a quick success with one update if cb present.
         this.updateCb({
           sessionId: _sessionId,
           update: {
@@ -441,6 +449,7 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
     releaseHeldPrompt = null;
     failResume = false;
     extensionMethodCallback = null;
+    promptUpdates = [];
     acpClientMock = vi.fn(() => new FakeACPClient());
 
     // Mock fs for isInstalled / findGrokPath to always succeed in these tests
@@ -553,6 +562,109 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
     } finally {
       session.abort();
     }
+  });
+
+  it("keeps canonical tool identity stable and emits one terminal result", async () => {
+    promptUpdates = [
+      {
+        sessionUpdate: "tool_call",
+        toolCallId: "write-1",
+        kind: "edit",
+        title: "Starting write",
+        rawInput: {
+          variant: "Write",
+          file_path: "/tmp/note.txt",
+          content: "hello\n",
+        },
+        _meta: {
+          "x.ai/tool": {
+            version: 1,
+            name: "write",
+            kind: "write",
+            namespace: "opencode",
+            label: "Write",
+            read_only: false,
+            input: { path: "/tmp/note.txt" },
+          },
+        },
+      },
+      {
+        sessionUpdate: "tool_call_update",
+        toolCallId: "write-1",
+        status: "in_progress",
+        title: "Writing note.txt",
+      },
+      {
+        sessionUpdate: "tool_call_update",
+        toolCallId: "write-1",
+        status: "completed",
+        rawOutput: {
+          type: "SearchReplace",
+          EditsApplied: {
+            absolute_path: "/tmp/note.txt",
+            new_string: "hello\n",
+          },
+        },
+      },
+      {
+        sessionUpdate: "tool_call_update",
+        toolCallId: "write-1",
+        status: "completed",
+        rawOutput: {
+          type: "SearchReplace",
+          EditsApplied: {
+            absolute_path: "/tmp/note.txt",
+            new_string: "hello\n",
+          },
+        },
+      },
+    ];
+    const provider = await loadFreshGrokProvider({ grokPath: "/fake/grok" });
+    const session = await provider.startSession({
+      cwd: "/tmp",
+      initialMessage: { text: "write" },
+    });
+    const messages: SDKMessage[] = [];
+
+    try {
+      for await (const message of session.iterator) {
+        messages.push(message);
+        if (message.type === "result") break;
+      }
+    } finally {
+      session.abort();
+    }
+
+    const toolUses = messages.flatMap((message) => {
+      const content = message.message?.content;
+      if (!Array.isArray(content)) return [];
+      return content.flatMap((block) =>
+        block.type === "tool_use"
+          ? [{ uuid: message.uuid, name: block.name }]
+          : [],
+      );
+    });
+    expect(toolUses).toHaveLength(2);
+    expect(toolUses).toEqual([
+      { uuid: "write-1", name: "Write" },
+      { uuid: "write-1", name: "Write" },
+    ]);
+    const results = messages.filter(
+      (message) =>
+        message.type === "user" &&
+        message.message?.content?.[0]?.type === "tool_result",
+    );
+    expect(results).toHaveLength(1);
+    expect(results[0]?.toolUseResult).toEqual({
+      type: "text",
+      file: {
+        filePath: "/tmp/note.txt",
+        content: "hello\n",
+        numLines: 2,
+        startLine: 1,
+        totalLines: 2,
+      },
+    });
   });
 
   it("builds correct args for `grok agent stdio` including effort mapping", async () => {
