@@ -101,4 +101,24 @@ describe("turn inline media model", () => {
       narrow.reduce((height, row) => height + row.height, 8),
     ).toBeLessThanOrEqual(280);
   });
+
+  it("keeps four screenshots in one row when splitting would shrink them", () => {
+    const images = ["desktop-a", "phone-a", "desktop-b", "phone-b"].map(
+      (id, originalIndex) => ({ id, originalIndex }),
+    );
+    const dimensions = new Map([
+      ["desktop-a", { height: 1080, width: 1920 }],
+      ["phone-a", { height: 1920, width: 1080 }],
+      ["desktop-b", { height: 1080, width: 1920 }],
+      ["phone-b", { height: 1920, width: 1080 }],
+    ]);
+
+    const rows = packTurnGalleryRows(images, dimensions, 1000, 120);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.height).toBe(120);
+    expect(
+      rows[0]?.items.reduce((width, item) => width + item.width, 24),
+    ).toBeLessThanOrEqual(1000);
+  });
 });

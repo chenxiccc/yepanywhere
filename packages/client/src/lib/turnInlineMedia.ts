@@ -155,37 +155,24 @@ function validAspectRatio(dimensions: GalleryImageDimensions | undefined) {
   return Math.max(0.2, Math.min(5, dimensions.width / dimensions.height));
 }
 
-/**
- * Stable justified-row packing. Row membership depends only on image
- * dimensions and count; resizing changes sizes, not ordering.
- */
-export function packTurnGalleryRows(
-  images: readonly Pick<TurnInlineImage, "id" | "originalIndex">[],
-  dimensions: ReadonlyMap<string, GalleryImageDimensions>,
+interface GalleryAspectImage {
+  aspect: number;
+  id: string;
+  originalIndex: number;
+}
+
+function packGalleryRowCount(
+  images: readonly GalleryAspectImage[],
+  rowCount: number,
   availableWidth: number,
   maxHeight: number,
-  gap = 8,
+  gap: number,
 ): GalleryLayoutRow[] {
-  if (images.length === 0 || availableWidth <= 0 || maxHeight <= 0) {
-    return [];
-  }
-
-  const rowCount = Math.min(3, Math.max(1, Math.ceil(images.length / 3)));
   const rows = Array.from({ length: rowCount }, () => ({
     aspectSum: 0,
-    images: [] as Array<{ aspect: number; id: string; originalIndex: number }>,
+    images: [] as GalleryAspectImage[],
   }));
-  const sorted = images
-    .map((image) => ({
-      ...image,
-      aspect: validAspectRatio(dimensions.get(image.id)),
-    }))
-    .sort(
-      (left, right) =>
-        right.aspect - left.aspect || left.originalIndex - right.originalIndex,
-    );
-
-  for (const image of sorted) {
+  for (const image of images) {
     let target = rows[0];
     if (!target) {
       continue;
@@ -221,4 +208,50 @@ export function packTurnGalleryRows(
         })),
       };
     });
+}
+
+/**
+ * Stable justified-row packing. Compare a small bounded set of row counts and
+ * choose the one with the largest minimum thumbnail height. Iterating upward
+ * means equally legible layouts keep the fewer-row arrangement.
+ */
+export function packTurnGalleryRows(
+  images: readonly Pick<TurnInlineImage, "id" | "originalIndex">[],
+  dimensions: ReadonlyMap<string, GalleryImageDimensions>,
+  availableWidth: number,
+  maxHeight: number,
+  gap = 8,
+): GalleryLayoutRow[] {
+  if (images.length === 0 || availableWidth <= 0 || maxHeight <= 0) {
+    return [];
+  }
+
+  const sorted = images
+    .map((image) => ({
+      ...image,
+      aspect: validAspectRatio(dimensions.get(image.id)),
+    }))
+    .sort(
+      (left, right) =>
+        right.aspect - left.aspect || left.originalIndex - right.originalIndex,
+    );
+
+  let bestLayout: GalleryLayoutRow[] = [];
+  let bestMinimumHeight = 0;
+  const maximumRowCount = Math.min(3, images.length);
+  for (let rowCount = 1; rowCount <= maximumRowCount; rowCount += 1) {
+    const layout = packGalleryRowCount(
+      sorted,
+      rowCount,
+      availableWidth,
+      maxHeight,
+      gap,
+    );
+    const minimumHeight = Math.min(...layout.map((row) => row.height));
+    if (minimumHeight > bestMinimumHeight) {
+      bestLayout = layout;
+      bestMinimumHeight = minimumHeight;
+    }
+  }
+  return bestLayout;
 }

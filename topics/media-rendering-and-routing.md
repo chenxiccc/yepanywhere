@@ -227,6 +227,9 @@ The compact-gallery goals, in priority order, are:
   the turn text fit.
 - Keep relative reduction reasonably even: one screenshot should not become
   illegible merely so another can remain close to its normal inline size.
+- Choose among the viable row counts by maximizing the smallest thumbnail
+  height, preferring fewer rows on a tie. Do not split a row when dividing the
+  same vertical budget would only make its images smaller.
 - Use the available vertical budget without treating complete content-width
   fill as a goal. Rows may have different heights.
 - Present ordinary completed rows as justified image rows. The final or
