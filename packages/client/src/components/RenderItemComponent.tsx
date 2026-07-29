@@ -70,6 +70,7 @@ interface Props {
   onFollowForkSummary?: (objectId: string) => void;
   bangCommandHandlers?: BangCommandHandlers;
   onToggleConversationActivity?: (itemId: string) => void;
+  widerConversationActivityPreviews?: boolean;
   collapsedConversationThinkingPreviewSlots?: ReadonlySet<ConversationThinkingPreviewSlot>;
   onToggleConversationThinkingPreview?: (
     slot: ConversationThinkingPreviewSlot,
@@ -268,12 +269,14 @@ function ConversationActivitySummary({
   collapsedThinkingPreviewSlots,
   onToggleThinkingPreview,
   onDismissThinkingPreview,
+  widerActivityPreviews,
 }: {
   item: Extract<RenderItem, { type: "conversation_activity" }>;
   onToggle?: (itemId: string) => void;
   collapsedThinkingPreviewSlots: ReadonlySet<ConversationThinkingPreviewSlot>;
   onToggleThinkingPreview?: (slot: ConversationThinkingPreviewSlot) => void;
   onDismissThinkingPreview?: (slot: ConversationThinkingPreviewSlot) => void;
+  widerActivityPreviews: boolean;
 }) {
   const { t } = useI18n();
   const rowRef = useRef<HTMLDivElement>(null);
@@ -393,7 +396,12 @@ function ConversationActivitySummary({
   );
 
   return (
-    <div className="conversation-activity-row" ref={rowRef}>
+    <div
+      className={`conversation-activity-row${
+        widerActivityPreviews ? " is-wide-activity-previews" : ""
+      }`}
+      ref={rowRef}
+    >
       <div className="conversation-activity-column">
         <button
           type="button"
@@ -614,6 +622,7 @@ export const RenderItemComponent = memo(function RenderItemComponent({
   onFollowForkSummary,
   bangCommandHandlers,
   onToggleConversationActivity,
+  widerConversationActivityPreviews = false,
   collapsedConversationThinkingPreviewSlots = new Set<ConversationThinkingPreviewSlot>(),
   onToggleConversationThinkingPreview,
   onDismissConversationThinkingPreview,
@@ -770,6 +779,7 @@ export const RenderItemComponent = memo(function RenderItemComponent({
             }
             onToggleThinkingPreview={onToggleConversationThinkingPreview}
             onDismissThinkingPreview={onDismissConversationThinkingPreview}
+            widerActivityPreviews={widerConversationActivityPreviews}
           />
         );
 

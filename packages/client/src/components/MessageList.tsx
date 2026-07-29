@@ -23,6 +23,7 @@ import {
   subscribeConversationViewPreference,
   subscribeConversationViewTurnLimit,
 } from "../hooks/useConversationView";
+import { useWiderConversationActivityPreviews } from "../hooks/useWiderConversationActivityPreviews";
 import { useMessageListIsearch } from "../hooks/useMessageListIsearch";
 import { useMessageListSelectionQuote } from "../hooks/useMessageListSelectionQuote";
 import { useRelativeNow } from "../hooks/useRelativeNow";
@@ -1022,6 +1023,8 @@ export const MessageList = memo(function MessageList({
   const [isScrolledToBottom, setIsScrolledToBottom] = useState(true);
   const [newOutputBelowVisible, setNewOutputBelowVisible] = useState(false);
   const { t } = useI18n();
+  const { widerConversationActivityPreviews } =
+    useWiderConversationActivityPreviews();
   const nowMs = useRelativeNow();
   const conversationViewActivated =
     !previousConversationViewEnabledRef.current &&
@@ -2986,6 +2989,9 @@ export const MessageList = memo(function MessageList({
                     latestVisibleTimestampMs={latestVisibleTimestampMs}
                     thinkingDurationMs={assistantRow.thinkingDurationMs}
                     onToggleConversationActivity={toggleConversationActivity}
+                    widerConversationActivityPreviews={
+                      widerConversationActivityPreviews
+                    }
                     collapsedConversationThinkingPreviewSlots={
                       collapsedConversationThinkingPreviewSlots
                     }

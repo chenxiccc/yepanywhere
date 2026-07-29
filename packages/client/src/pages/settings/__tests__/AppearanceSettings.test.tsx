@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 import { I18nProvider } from "../../../i18n";
+import { invalidateLocalStorageValues } from "../../../lib/localStorageValue";
 import { UI_KEYS } from "../../../lib/storageKeys";
 import { AppearanceSettings } from "../AppearanceSettings";
 
@@ -21,6 +22,7 @@ describe("AppearanceSettings tooltip controls", () => {
   afterEach(() => {
     cleanup();
     localStorage.clear();
+    invalidateLocalStorageValues();
   });
 
   it("keeps style and delay in one row and valid delay edits select themed", () => {
@@ -68,5 +70,25 @@ describe("AppearanceSettings tooltip controls", () => {
     expect(container.textContent).toContain(
       "It opens automatically when inline media starts expanded",
     );
+  });
+
+  it("keeps wider Conversation activity previews default-off in Appearance", () => {
+    renderAppearanceSettings();
+    const toggle = screen.getByRole<HTMLInputElement>("checkbox", {
+      name: "Wider activity previews",
+    });
+
+    expect(toggle.checked).toBe(false);
+    expect(
+      screen.getByText(
+        "In Conversation view, move thinking to the right to make room for longer activity previews.",
+      ),
+    ).toBeTruthy();
+
+    fireEvent.click(toggle);
+    expect(toggle.checked).toBe(true);
+    expect(
+      localStorage.getItem(UI_KEYS.widerConversationActivityPreviews),
+    ).toBe("true");
   });
 });

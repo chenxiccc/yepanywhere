@@ -38,6 +38,7 @@ export const BROWSER_SETTINGS_BACKUP_KEYS = [
   UI_KEYS.developerMode,
   UI_KEYS.conversationView,
   UI_KEYS.conversationViewTurnLimit,
+  UI_KEYS.widerConversationActivityPreviews,
   UI_KEYS.sessionToolbarPresence,
   UI_KEYS.tooltipMode,
   UI_KEYS.tooltipDelayMs,

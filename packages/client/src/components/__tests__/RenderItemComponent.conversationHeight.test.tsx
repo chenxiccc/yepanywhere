@@ -187,4 +187,43 @@ describe("conversation thinking preview height publication", () => {
     });
     expect(list?.classList.contains("is-clipped")).toBe(false);
   });
+
+  it("enables the wide activity layout only when requested", () => {
+    vi.stubGlobal("ResizeObserver", MockResizeObserver);
+
+    const { container, rerender } = render(
+      <I18nProvider>
+        <RenderItemComponent
+          item={conversationActivityItem()}
+          isStreaming
+          thinkingExpanded={false}
+          toggleThinkingExpanded={() => {}}
+        />
+      </I18nProvider>,
+    );
+
+    expect(
+      container
+        .querySelector(".conversation-activity-row")
+        ?.classList.contains("is-wide-activity-previews"),
+    ).toBe(false);
+
+    rerender(
+      <I18nProvider>
+        <RenderItemComponent
+          item={conversationActivityItem()}
+          isStreaming
+          thinkingExpanded={false}
+          toggleThinkingExpanded={() => {}}
+          widerConversationActivityPreviews
+        />
+      </I18nProvider>,
+    );
+
+    expect(
+      container
+        .querySelector(".conversation-activity-row")
+        ?.classList.contains("is-wide-activity-previews"),
+    ).toBe(true);
+  });
 });

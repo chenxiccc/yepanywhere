@@ -92,4 +92,34 @@ describe("conversation preview height contract", () => {
       "previous preview must cap to the published current thinking height",
     ).toMatch(/max-height:\s*var\(\s*--conversation-thinking-height/);
   });
+
+  it("uses leftover width for activities while keeping the summary pill intrinsic", async () => {
+    const css = await readStylesheet();
+    const rowDeclarations = getRuleDeclarations(
+      css,
+      ".conversation-activity-row.is-wide-activity-previews",
+    );
+    expect(rowDeclarations).toMatch(/justify-content:\s*flex-end\s*;/);
+
+    const columnDeclarations = getRuleDeclarations(
+      css,
+      ".conversation-activity-row.is-wide-activity-previews\n  > .conversation-activity-column",
+    );
+    expect(columnDeclarations).toMatch(/max-width:\s*100%\s*;/);
+    expect(columnDeclarations).toMatch(/flex:\s*1 1 12rem\s*;/);
+
+    const activityDeclarations = getRuleDeclarations(
+      css,
+      ".conversation-activity-row.is-wide-activity-previews\n  .conversation-recent-activities",
+    );
+    expect(activityDeclarations).toMatch(/width:\s*100%\s*;/);
+    expect(activityDeclarations).toMatch(/min-width:\s*0\s*;/);
+
+    const summaryDeclarations = getRuleDeclarations(
+      css,
+      ".conversation-activity-summary",
+    );
+    expect(summaryDeclarations).toMatch(/display:\s*inline-flex\s*;/);
+    expect(summaryDeclarations).not.toMatch(/(?:^|\n)\s*width:\s*100%\s*;/);
+  });
 });

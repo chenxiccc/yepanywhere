@@ -8968,6 +8968,17 @@ div.bang-command-error-message {
   flex: 0 1 auto;
 }
 
+.conversation-activity-row.is-wide-activity-previews {
+  justify-content: flex-end;
+}
+
+.conversation-activity-row.is-wide-activity-previews
+  > .conversation-activity-column {
+  min-width: 0;
+  max-width: 100%;
+  flex: 1 1 12rem;
+}
+
 .conversation-activity-summary {
   display: inline-flex;
   min-height: 28px;
@@ -8975,7 +8986,7 @@ div.bang-command-error-message {
   align-items: center;
   gap: 0.38rem;
   margin: 4px 0 8px;
-  padding: 3px 8px 3px 5px;
+  padding: 3px 9px 3px 4px;
   border: 1px solid color-mix(in srgb, var(--border-color) 74%, transparent);
   border-radius: 999px;
   background: color-mix(in srgb, var(--bg-secondary) 66%, transparent);
@@ -9016,6 +9027,13 @@ div.bang-command-error-message {
   font-size: var(--font-size-xs);
   line-height: 1.45;
   list-style: none;
+}
+
+.conversation-activity-row.is-wide-activity-previews
+  .conversation-recent-activities {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
 }
 
 /* When the newest-first list overflows its cap it clips the oldest (bottom)
@@ -9186,15 +9204,19 @@ div.bang-command-error-message {
 }
 
 .conversation-activity-chevron {
+  display: inline-flex;
   width: 0.8rem;
+  align-items: center;
+  justify-content: center;
   color: currentColor;
+  line-height: 1;
   opacity: 0.8;
-  text-align: center;
+  transform: translateY(0.025em);
 }
 
 .conversation-activity-pulse {
-  width: 5px;
-  height: 5px;
+  width: 4px;
+  height: 4px;
   flex: 0 0 auto;
   border-radius: 999px;
   background: currentColor;

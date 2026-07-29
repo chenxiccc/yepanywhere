@@ -151,6 +151,8 @@
   "appearanceOutputVerticalSpacingLabel": "Paragraph spacing (% of font)",
   "appearanceOutputToolPreviewLinesLabel": "Tool preview lines",
   "appearanceOutputToolPreviewLinesUnit": "lines",
+  "appearanceWiderActivityPreviewsTitle": "Wider activity previews",
+  "appearanceWiderActivityPreviewsDescription": "In Conversation view, move thinking to the right to make room for longer activity previews.",
   "appearanceOutputPreviewLabel": "Output preview",
   "appearanceOutputSpecimenLabel": "Specimen",
   "appearanceOutputTypographyReset": "Reset typography",

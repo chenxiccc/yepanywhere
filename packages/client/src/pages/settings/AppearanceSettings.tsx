@@ -105,6 +105,7 @@ import {
   TOOLTIP_DELAY_STEP_MS,
   useTooltipAppearance,
 } from "../../hooks/useTooltipAppearance";
+import { useWiderConversationActivityPreviews } from "../../hooks/useWiderConversationActivityPreviews";
 
 const OUTPUT_INLINE_MATH_SAMPLE = "$E=mc^2$";
 
@@ -193,6 +194,10 @@ export function AppearanceSettings() {
   } = useOutputAppearance();
   const { tabSize, setTabSize } = useTabSize();
   const { contentMaxWidth, setContentMaxWidth } = useContentMaxWidth();
+  const {
+    widerConversationActivityPreviews,
+    setWiderConversationActivityPreviews,
+  } = useWiderConversationActivityPreviews();
   const { hoverCardMaxHeightPx, setHoverCardMaxHeightPx } =
     useHoverCardAppearance();
   const { tooltipMode, tooltipDelayMs, setTooltipMode, setTooltipDelayMs } =
@@ -302,6 +307,10 @@ export function AppearanceSettings() {
     undoEntry(tabSize, setTabSize),
     undoEntry(contentMaxWidth, setContentMaxWidth, (value) =>
       setContentMaxWidthDraft(String(value)),
+    ),
+    undoEntry(
+      widerConversationActivityPreviews,
+      setWiderConversationActivityPreviews,
     ),
     undoEntry(tooltipDelayMs, setTooltipDelayMs),
     undoEntry(tooltipMode, setTooltipMode),
@@ -471,6 +480,7 @@ export function AppearanceSettings() {
         "text size",
         "line spacing",
         "generated titles",
+        "conversation view activity previews thinking",
       ]}
     >
       <div className="settings-group">
@@ -636,6 +646,22 @@ export function AppearanceSettings() {
               {t("appearanceOutputToolPreviewLinesUnit")}
             </span>
           </div>
+        </SettingsItem>
+        <SettingsItem
+          label={t("appearanceWiderActivityPreviewsTitle")}
+          description={t("appearanceWiderActivityPreviewsDescription")}
+        >
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={widerConversationActivityPreviews}
+              onChange={(event) =>
+                setWiderConversationActivityPreviews(event.target.checked)
+              }
+              aria-label={t("appearanceWiderActivityPreviewsTitle")}
+            />
+            <span className="toggle-slider" />
+          </label>
         </SettingsItem>
         <SettingsItem
           label={t("appearanceTabSizeTitle")}

@@ -17,6 +17,7 @@ describe("browser settings backup", () => {
     localStorage.setItem(UI_KEYS.tooltipMode, "native");
     localStorage.setItem(UI_KEYS.tooltipDelayMs, "80");
     localStorage.setItem(UI_KEYS.conversationViewTurnLimit, "150");
+    localStorage.setItem(UI_KEYS.widerConversationActivityPreviews, "true");
     localStorage.setItem(UI_KEYS.compactMultiImageGalleries, "false");
     localStorage.setItem(BROWSER_LOCAL_KEYS.model, "gpt-5.6");
     localStorage.setItem(BROWSER_LOCAL_KEYS.browserProfileId, "device-1");
@@ -29,6 +30,7 @@ describe("browser settings backup", () => {
       [UI_KEYS.tooltipMode]: "native",
       [UI_KEYS.tooltipDelayMs]: "80",
       [UI_KEYS.conversationViewTurnLimit]: "150",
+      [UI_KEYS.widerConversationActivityPreviews]: "true",
       [UI_KEYS.compactMultiImageGalleries]: "false",
       [BROWSER_LOCAL_KEYS.model]: "gpt-5.6",
     });

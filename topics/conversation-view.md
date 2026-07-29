@@ -117,12 +117,18 @@ provider-history rewrite and not deletion.
   rows clip at the bottom behind a fade rather than a hard cut. File operations
   may add a basename and commands may add a bounded
   description or verb-first command fragment. These previews remain whole single
-  lines, may truncate, and cannot widen the activity column; the complete
-  ordinary tool summary remains available as a tooltip. The activity names never
-  persist past the active turn: turn completion removes them while preserving
-  the expandable activity summary and latest-thinking preview. Because the names
-  cap to the current/latest card's rendered height, collapsing that card clips
-  them away; they never reserve vertical space.
+  lines and may truncate; by default they cannot widen the activity column. The
+  complete ordinary tool summary remains available as a tooltip. The activity
+  names never persist past the active turn: turn completion removes them while
+  preserving the expandable activity summary and latest-thinking preview.
+  Because the names cap to the current/latest card's rendered height, collapsing
+  that card clips them away; they never reserve vertical space.
+- **Appearance → Wider activity previews** is a browser-local, default-off
+  option included in browser-settings backup. In Conversation view it lets the
+  activity column consume otherwise unused inline space and aligns thinking
+  cards to the trailing edge, exposing more of long command and file previews.
+  The rounded activity summary remains intrinsic-width. Thinking-card target
+  widths, wrapping, height caps, and complete-summary tooltips do not change.
 - A thinking card begins at a compact target width. Its target may grow as the
   same thinking block streams but never shrinks until that slot receives a new
   block; the card may then reset to a narrower measured target. Targets remain
