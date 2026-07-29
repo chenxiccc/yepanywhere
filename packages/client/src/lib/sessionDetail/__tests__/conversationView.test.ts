@@ -451,7 +451,7 @@ describe("selectConversationThinkingPreviews", () => {
     expect(items.map((item) => item.id)).toEqual(["previous", "latest"]);
   });
 
-  it("provides the three newest concrete activities while the turn is active", () => {
+  it("provides the newest concrete activities while the turn is active", () => {
     const projected = projectConversationView(
       [
         tool("read", 1_000, {
@@ -489,6 +489,7 @@ describe("selectConversationThinkingPreviews", () => {
       { label: "Write", detail: "Write: report.md", preview: "report.md" },
       { label: "Run", detail: "Run: pnpm test", preview: "pnpm test" },
       { label: "Edit", detail: "Edit: app.ts", preview: "app.ts" },
+      { label: "Read", detail: "Read: Reading...", preview: "Reading..." },
     ]);
   });
 

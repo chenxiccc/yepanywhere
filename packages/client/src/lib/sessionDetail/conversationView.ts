@@ -16,7 +16,12 @@ import type {
 } from "../../types/renderItems";
 import { groupRenderItemsIntoTurns } from "./renderItems";
 
-const RECENT_ACTIVITY_LIMIT = 3;
+// Upper bound on activity rows produced; the visible count is decided by
+// layout, not this constant. `.conversation-recent-activities` caps its height
+// to the thinking-preview budget and clips the overflow, so the newest rows
+// that fit are shown. This is the most that can fit that budget at the current
+// row metrics, so short viewports still clip while tall ones fill.
+const RECENT_ACTIVITY_LIMIT = 24;
 const COMMAND_WRAPPERS = new Set(["command", "env", "exec", "sudo", "time"]);
 const SETUP_COMMAND = /^(?:cd|export|popd|pushd)\b/;
 
