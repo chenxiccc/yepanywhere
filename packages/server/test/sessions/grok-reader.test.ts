@@ -147,7 +147,7 @@ describe("GrokSessionReader tool replay", () => {
     );
 
     expect(loaded?.data.provider).toBe("grok");
-    if (!loaded || loaded.data.provider !== "grok") {
+    if (loaded?.data.provider !== "grok") {
       throw new Error("Expected a Grok session");
     }
     const messages = loaded.data.session.messages;
