@@ -451,7 +451,7 @@ describe("selectConversationThinkingPreviews", () => {
     expect(items.map((item) => item.id)).toEqual(["previous", "latest"]);
   });
 
-  it("provides the three newest concrete activity kinds with detail tooltips", () => {
+  it("provides the three newest concrete activities while the turn is active", () => {
     const projected = projectConversationView(
       [
         tool("read", 1_000, {
@@ -482,7 +482,7 @@ describe("selectConversationThinkingPreviews", () => {
           toolInput: { file_path: "/repo/report.md", content: "done" },
         }),
       ],
-      { active: false, nowMs: 5_000 },
+      { active: true, nowMs: 5_000 },
     );
 
     expect(summary(projected).recentActivities).toEqual([
@@ -490,5 +490,43 @@ describe("selectConversationThinkingPreviews", () => {
       { label: "Run", detail: "Run: pnpm test", preview: "pnpm test" },
       { label: "Edit", detail: "Edit: app.ts", preview: "app.ts" },
     ]);
+  });
+
+  it("hides recent activity names after completion without removing expansion", () => {
+    const items: RenderItem[] = [
+      tool("read", 1_000, {
+        toolName: "Read",
+        toolInput: { file_path: "/repo/README.md" },
+      }),
+      {
+        type: "thinking",
+        id: "latest",
+        thinking: "Done",
+        status: "complete",
+        sourceMessages: [],
+      },
+    ];
+    const compact = projectConversationView(items, {
+      active: false,
+      nowMs: 2_000,
+    });
+    const compactSummary = summary(compact);
+
+    expect(compactSummary.recentActivities).toBeUndefined();
+    expect(
+      compactSummary.thinkingPreviews?.map((preview) => preview.id),
+    ).toEqual(["latest"]);
+
+    const expanded = projectConversationView(items, {
+      active: false,
+      expandedActivityIds: new Set([compactSummary.id]),
+      nowMs: 2_000,
+    });
+    expect(expanded.map((item) => item.id)).toEqual([
+      "read",
+      "latest",
+      compactSummary.id,
+    ]);
+    expect(summary(expanded).expanded).toBe(true);
   });
 });

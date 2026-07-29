@@ -377,7 +377,9 @@ export function projectConversationView(
           ? thinkingPreviews
           : undefined,
       recentActivities:
-        groupIndex === lastActivityGroupIndex && thinkingPreviews.length > 0
+        isActive &&
+        groupIndex === lastActivityGroupIndex &&
+        thinkingPreviews.length > 0
           ? getRecentActivities(hiddenItems)
           : undefined,
       startedAtMs,

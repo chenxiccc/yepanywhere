@@ -100,13 +100,15 @@ provider-history rewrite and not deletion.
   control off; switching that control on again restores both available cards
   expanded. A lone remaining card may use the width released by its dismissed
   peer.
-- While at least one thinking preview is expanded, the activity column may show
-  the three newest concrete activity kinds below its count. File operations may
-  add a basename and commands may add a bounded description or verb-first
-  command fragment. These previews remain whole single lines, may truncate, and
-  cannot widen the activity column; the complete ordinary tool summary remains
-  available as a tooltip. Collapsing every thinking card removes the activity
-  names without reserving vertical space.
+- While the latest assistant turn is active and at least one thinking preview
+  is expanded, the activity column may show the three newest concrete activity
+  kinds below its count. File operations may add a basename and commands may
+  add a bounded description or verb-first command fragment. These previews
+  remain whole single lines, may truncate, and cannot widen the activity
+  column; the complete ordinary tool summary remains available as a tooltip.
+  Turn completion removes the names while preserving the expandable activity
+  summary and latest-thinking preview. Collapsing every thinking card also
+  removes the names without reserving vertical space.
 - A thinking card begins at a compact target width. Its target may grow as the
   same thinking block streams but never shrinks until that slot receives a new
   block; the card may then reset to a narrower measured target. Targets remain

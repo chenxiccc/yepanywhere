@@ -463,7 +463,7 @@ describe("MessageList rendering", () => {
       ]),
     ];
     const { container, rerender } = render(
-      <MessageList messages={messages("Current plan")} />,
+      <MessageList isProcessing messages={messages("Current plan")} />,
     );
 
     expect(screen.getByText("Run")).toBeTruthy();
@@ -482,7 +482,9 @@ describe("MessageList rendering", () => {
     expect(screen.queryByText("Run")).toBeNull();
     expect(screen.queryByText("Edit")).toBeNull();
 
-    rerender(<MessageList messages={messages("Updated current plan")} />);
+    rerender(
+      <MessageList isProcessing messages={messages("Updated current plan")} />,
+    );
 
     expect(screen.queryByText("Updated current plan")).toBeNull();
     expect(

@@ -139,8 +139,9 @@ export interface ConversationActivityItem extends RenderItemBase {
    */
   thinkingPreviews?: ConversationThinkingPreview[];
   /**
-   * Newest concrete activity kinds, kept intentionally short. The visible row
-   * is only a name; its ordinary tool summary remains available as a tooltip.
+   * Newest concrete activity kinds for a live turn, kept intentionally short.
+   * The visible row is only a name; its ordinary tool summary remains
+   * available as a tooltip.
    */
   recentActivities?: ConversationRecentActivity[];
   /** Earliest observed source-message timestamp in the assistant turn. */
