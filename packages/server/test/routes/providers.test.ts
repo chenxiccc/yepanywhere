@@ -132,6 +132,34 @@ describe("Providers Routes", () => {
     expect(provider.getAvailableModels).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps disabled providers out of collection and named routes", async () => {
+    const claude = createProvider();
+    const codexUsage = vi.fn(async () => null);
+    const codex = createProvider({
+      name: "codex",
+      displayName: "Codex",
+      getSubscriptionUsage: codexUsage,
+    });
+    const routes = createProvidersRoutes({
+      providers: [claude, codex],
+      enabledProviders: ["claude"],
+    });
+
+    const list = await routes.request("/");
+    const detail = await routes.request("/codex");
+    const usage = await routes.request("/codex/subscription-usage");
+
+    expect(list.status).toBe(200);
+    expect(await list.json()).toEqual({
+      providers: [expect.objectContaining({ name: "claude" })],
+    });
+    expect(detail.status).toBe(404);
+    expect(usage.status).toBe(404);
+    expect(codex.getAuthStatus).not.toHaveBeenCalled();
+    expect(codex.getAvailableModels).not.toHaveBeenCalled();
+    expect(codexUsage).not.toHaveBeenCalled();
+  });
+
   it("invalidates cached model projection when its settings key changes", async () => {
     let selected = false;
     const provider = createProvider({

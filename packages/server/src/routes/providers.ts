@@ -79,6 +79,16 @@ export function createProvidersRoutes(deps: ProviderRouteDeps = {}): Hono {
   const cacheTtlMs = deps.cacheTtlMs ?? PROVIDER_INFO_CACHE_TTL_MS;
   const usageCacheTtlMs =
     deps.usageCacheTtlMs ?? PROVIDER_USAGE_CACHE_TTL_MS;
+  const getExposedProviders = (): AgentProvider[] => {
+    const providers = deps.providers ?? getAllProviders();
+    if (!deps.enabledProviders || deps.enabledProviders.length === 0) {
+      return providers;
+    }
+    const enabled = new Set(deps.enabledProviders);
+    return providers.filter((provider) => enabled.has(provider.name));
+  };
+  const getExposedProvider = (name: string): AgentProvider | undefined =>
+    getExposedProviders().find((provider) => provider.name === name);
 
   const getProviderInfo = async (
     provider: AgentProvider,
@@ -208,13 +218,10 @@ export function createProvidersRoutes(deps: ProviderRouteDeps = {}): Hono {
   // GET /api/providers - Get all available providers with auth status and models
   routes.get("/", async (c) => {
     const forceRefresh = isRefreshRequest(c);
-    let providers = deps.providers ?? getAllProviders();
-    if (deps.enabledProviders && deps.enabledProviders.length > 0) {
-      const enabled = new Set(deps.enabledProviders);
-      providers = providers.filter((p) => enabled.has(p.name));
-    }
     const providerInfos: ProviderInfo[] = await Promise.all(
-      providers.map((provider) => getProviderInfo(provider, forceRefresh)),
+      getExposedProviders().map((provider) =>
+        getProviderInfo(provider, forceRefresh),
+      ),
     );
 
     return c.json({ providers: providerInfos });
@@ -224,8 +231,7 @@ export function createProvidersRoutes(deps: ProviderRouteDeps = {}): Hono {
   routes.get("/:name/subscription-usage", async (c) => {
     const forceRefresh = isRefreshRequest(c);
     const name = c.req.param("name");
-    const providers = deps.providers ?? getAllProviders();
-    const provider = providers.find((candidate) => candidate.name === name);
+    const provider = getExposedProvider(name);
 
     if (!provider) {
       return c.json({ error: "Provider not found" }, 404);
@@ -239,8 +245,7 @@ export function createProvidersRoutes(deps: ProviderRouteDeps = {}): Hono {
   routes.get("/:name", async (c) => {
     const forceRefresh = isRefreshRequest(c);
     const name = c.req.param("name");
-    const providers = deps.providers ?? getAllProviders();
-    const provider = providers.find((p) => p.name === name);
+    const provider = getExposedProvider(name);
 
     if (!provider) {
       return c.json({ error: "Provider not found" }, 404);
