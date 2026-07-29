@@ -20,6 +20,56 @@ describe("renderSafeMarkdown — math", () => {
     expect(html).not.toContain("yepkatex-placeholder");
   });
 
+  it("renders bracket-delimited inline and display math through katex", () => {
+    const html = renderSafeMarkdown(String.raw`
+For each token \(t\), it formed only a local emission score:
+
+\[
+e_t(y)=(Wh_t+b)_y
+\]
+`);
+
+    expect(html.match(/class="katex"/g)).toHaveLength(2);
+    expect(html).toContain('class="katex-display"');
+    expect(html).toContain('class="msupsub"');
+    expect(html).not.toContain("\\(t\\)");
+    expect(html).not.toContain("\\[");
+  });
+
+  it("keeps escaped, empty, and unclosed bracket delimiters literal", () => {
+    const escaped = renderSafeMarkdown(
+      String.raw`literal \\(x\\) and \\[y\\]`,
+    );
+    const empty = renderSafeMarkdown("\\[\n\n\\]");
+    const unclosed = renderSafeMarkdown(String.raw`unclosed \(x`);
+
+    expect(escaped).not.toContain('class="katex"');
+    expect(empty).not.toContain('class="katex"');
+    expect(unclosed).not.toContain('class="katex"');
+  });
+
+  it("does not close bracketed math at escaped closing delimiters", () => {
+    const html = renderSafeMarkdown(String.raw`
+\[
+x \\] + y
+\]
+`);
+
+    expect(html.match(/class="katex"/g)).toHaveLength(1);
+    expect(html).toContain('class="katex-display"');
+    expect(html).not.toContain("<p>+ y");
+  });
+
+  it("keeps bracket delimiters literal inside code", () => {
+    const html = renderSafeMarkdown(
+      "inline `\\(x_t\\)`\n\n```text\n\\[\nx_t\n\\]\n```",
+    );
+
+    expect(html).not.toContain('class="katex"');
+    expect(html).toContain("<code>\\(x_t\\)</code>");
+    expect(html).toContain("\\[\nx_t\n\\]");
+  });
+
   it("does not treat currency-like $100 and $200 as math", () => {
     const html = renderSafeMarkdown("price is $100 and $200 total");
     expect(html).not.toContain("katex");

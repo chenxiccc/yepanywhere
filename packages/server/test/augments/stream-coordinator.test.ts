@@ -230,6 +230,28 @@ describe("StreamCoordinator", () => {
   });
 
   describe("integration: realistic Claude streaming", () => {
+    it("renders bracketed math after streaming block completion", async () => {
+      const chunks = [
+        "For token \\(t\\), use the local score.\n\n",
+        "\\[\n",
+        "e_t(y)=(Wh_t+b)_y\n",
+        "\\]\n\n",
+      ];
+      const augments: Awaited<
+        ReturnType<typeof coordinator.onChunk>
+      >["augments"] = [];
+
+      for (const chunk of chunks) {
+        const result = await coordinator.onChunk(chunk);
+        augments.push(...result.augments);
+      }
+
+      expect(augments).toHaveLength(2);
+      expect(augments[0]?.html).toContain('class="katex"');
+      expect(augments[1]?.html).toContain('class="katex-display"');
+      expect(augments[1]?.html).toContain('class="msupsub"');
+    });
+
     it("handles many small chunks forming complete document", async () => {
       // Simulate Claude streaming character by character (more realistic: small chunks)
       const fullText =

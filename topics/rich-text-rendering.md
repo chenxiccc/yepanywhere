@@ -82,6 +82,33 @@ These run unconditionally and are not user-configurable:
   assistant Markdown for this.
 - **Line numbers** — shown in the plain-text fallback path (no Shiki highlight).
 
+## Math delimiter parity
+
+Every surface that opts into KaTeX accepts the same explicit LaTeX delimiters:
+`\(…\)` for inline math and `\[…\]` for display math, alongside `$…$` and
+`$$…$$`. This includes completed and streamed assistant Markdown, rendered
+Markdown documents and tool results, fixed-font output panels, and Markdown or
+non-Markdown edit diffs in their rendered mode. An explicit closing delimiter
+must be unescaped; inline bracket math must stay on one line.
+
+Those surfaces share YA's KaTeX font and output-math size setting. An overwide
+display formula scrolls horizontally inside its own rendered surface rather
+than widening or clipping the surrounding transcript.
+
+Streaming assistant text may remain source-like while its current Markdown
+block is incomplete. Once the paragraph or display block completes, its
+server-supplied augment must contain KaTeX rather than exposing bracket
+delimiters for the client's fallback renderer to rediscover.
+
+In a diff, a multiline display formula renders only when its opening delimiter,
+body, and closing delimiter all belong to one lane: added, removed, context, or
+unprefixed. The rendered formula retains that lane's gutter and colour. A block
+that crosses lanes remains literal so an addition and removal can never be
+combined into a formula that exists on neither side.
+
+Thinking summaries and fenced or inline code remain literal under their
+separate source-preservation contracts; they are not KaTeX-enabled surfaces.
+
 ## File Content Viewer Contract
 
 When a renderer shows file contents outside an inline transcript block, it

@@ -688,8 +688,55 @@ function renderKatexPlaceholder(tex: string, displayMode: boolean): string {
   return `<span class="yepkatex-placeholder yepkatex-id-${id}"></span>`;
 }
 
+function findUnescapedDelimiter(
+  source: string,
+  delimiter: string,
+  start = 0,
+): number | undefined {
+  let index = source.indexOf(delimiter, start);
+  while (index >= 0) {
+    let precedingBackslashes = 0;
+    for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+      if (source[cursor] !== "\\") {
+        break;
+      }
+      precedingBackslashes += 1;
+    }
+    if (precedingBackslashes % 2 === 0) {
+      return index;
+    }
+    index = source.indexOf(delimiter, index + delimiter.length);
+  }
+  return undefined;
+}
+
 markdownRenderer.use({
   extensions: [
+    {
+      name: "mathBracketBlock",
+      level: "block",
+      start(src: string) {
+        return findUnescapedDelimiter(src, "\\[");
+      },
+      tokenizer(src: string) {
+        if (!src.startsWith("\\[")) return undefined;
+        const closing = findUnescapedDelimiter(src, "\\]", 2);
+        if (closing === undefined) return undefined;
+        const suffix = /^[ \t]*(?:\n|$)/.exec(src.slice(closing + 2));
+        const tex = src.slice(2, closing).trim();
+        if (!suffix || !tex) return undefined;
+        const rawEnd = closing + 2 + suffix[0].length;
+        return {
+          type: "mathBracketBlock",
+          raw: src.slice(0, rawEnd),
+          text: tex,
+        };
+      },
+      renderer(token) {
+        const tex = (token as { text?: string }).text ?? "";
+        return renderKatexPlaceholder(tex, true);
+      },
+    },
     {
       name: "mathBlock",
       level: "block",
@@ -709,6 +756,29 @@ markdownRenderer.use({
       renderer(token) {
         const tex = (token as { text?: string }).text ?? "";
         return renderKatexPlaceholder(tex, true);
+      },
+    },
+    {
+      name: "mathBracketInline",
+      level: "inline",
+      start(src: string) {
+        return findUnescapedDelimiter(src, "\\(");
+      },
+      tokenizer(src: string) {
+        if (!src.startsWith("\\(")) return undefined;
+        const closing = findUnescapedDelimiter(src, "\\)", 2);
+        if (closing === undefined) return undefined;
+        const tex = src.slice(2, closing).trim();
+        if (!tex || tex.includes("\n")) return undefined;
+        return {
+          type: "mathBracketInline",
+          raw: src.slice(0, closing + 2),
+          text: tex,
+        };
+      },
+      renderer(token) {
+        const tex = (token as { text?: string }).text ?? "";
+        return renderKatexPlaceholder(tex, false);
       },
     },
     {

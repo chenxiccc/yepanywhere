@@ -312,6 +312,83 @@ describe("EditRenderer collapsed preview fallback", () => {
     expect(container.textContent).toContain("-| old | $x^2$ |");
   });
 
+  it("renders bracket-delimited display math in completed edits", () => {
+    const structuredPatch = [
+      {
+        oldStart: 1,
+        oldLines: 1,
+        newStart: 1,
+        newLines: 3,
+        lines: ["-old score", "+\\[", "+e_t(y)=(Wh_t+b)_y", "+\\]"],
+      },
+    ];
+
+    const { container } = render(
+      <div>
+        {renderCollapsedPreview(
+          {
+            _structuredPatch: structuredPatch,
+          } as never,
+          {
+            filePath: "notes.md",
+            structuredPatch,
+          } as never,
+          false,
+          renderContext,
+        )}
+      </div>,
+    );
+
+    expect(container.querySelector(".katex-display")).toBeTruthy();
+    expect(container.querySelector(".katex .msupsub")).toBeTruthy();
+    expect(
+      container.querySelector(".fixed-font-diff-added .katex-display"),
+    ).toBeTruthy();
+    expect(
+      Array.from(container.querySelectorAll(".fixed-font-diff-gutter")).map(
+        (node) => node.textContent,
+      ),
+    ).toContain("+");
+  });
+
+  it("keeps bracketed display math diff-aware in non-Markdown edits", () => {
+    const structuredPatch = [
+      {
+        oldStart: 1,
+        oldLines: 1,
+        newStart: 1,
+        newLines: 3,
+        lines: ["-old score", "+\\[", "+e_t(y)=(Wh_t+b)_y", "+\\]"],
+      },
+    ];
+
+    const { container } = render(
+      <div>
+        {renderCollapsedPreview(
+          {
+            _structuredPatch: structuredPatch,
+          } as never,
+          {
+            filePath: "model.py",
+            structuredPatch,
+          } as never,
+          false,
+          renderContext,
+        )}
+      </div>,
+    );
+
+    expect(
+      container.querySelector(".fixed-font-diff-added .katex-display"),
+    ).toBeTruthy();
+    expect(container.querySelector(".katex .msupsub")).toBeTruthy();
+    expect(
+      Array.from(container.querySelectorAll(".fixed-font-diff-gutter")).map(
+        (node) => node.textContent,
+      ),
+    ).toContain("+");
+  });
+
   it("renders markdown headings and inline markup in completed edits", () => {
     const structuredPatch = [
       {

@@ -290,7 +290,17 @@
   margin: 0.35rem 0;
 }
 
+.fixed-font-rendered__content .katex-display,
+.text-block-content .katex-display,
+.text-block-local-rendered .katex-display,
+.markdown-preview .markdown-rendered .katex-display {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
 .fixed-font-rendered__content .katex,
+.text-block-content .katex,
 .text-block-local-rendered .katex,
 .markdown-preview .markdown-rendered .katex {
   font-family: var(--font-math);

@@ -66,6 +66,10 @@ interface RenderOptions {
   publicShare?: PublicShareContextValue | null;
 }
 
+interface MathRenderOptions {
+  diffAware?: boolean;
+}
+
 // biome-ignore lint/complexity/useRegexLiterals: constructor form avoids noControlCharactersInRegex noise for deliberate ANSI control escapes
 const ANSI_ESCAPE_RE = new RegExp(
   String.raw`\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\)|[@-Z\\-_])`,
@@ -390,11 +394,20 @@ function renderFixedFontMathInner(sourceText: string): RenderedMathResult {
   return { html, changed };
 }
 
-export function renderFixedFontMath(sourceText: string): RenderedMathResult {
+export function renderFixedFontMath(
+  sourceText: string,
+  options: MathRenderOptions = {},
+): RenderedMathResult {
   return profileRenderWork(
     "fixed-font-math",
-    () => getProfileSize(sourceText),
-    () => renderFixedFontMathInner(sourceText),
+    () => ({
+      ...getProfileSize(sourceText),
+      diffAware: options.diffAware ?? false,
+    }),
+    () =>
+      options.diffAware
+        ? renderDiffAwareMath(sourceText)
+        : renderFixedFontMathInner(sourceText),
   );
 }
 
@@ -762,8 +775,6 @@ function renderStandaloneDisplayMath(
   start: number,
   diffAware: boolean,
 ): { end: number; html: string } | null {
-  if (diffAware) return null;
-
   const opening = lines[start]?.content.trim();
   const closing = opening === "$$" ? "$$" : opening === "\\[" ? "\\]" : null;
   if (!closing) return null;
@@ -781,9 +792,29 @@ function renderStandaloneDisplayMath(
     .trim();
   if (!tex) return null;
 
+  const mathHtml = renderKatexHtml(tex, true);
+  if (diffAware) {
+    const blockLines = lines.slice(start, end + 1);
+    const prefix = blockLines[0]?.prefix ?? "";
+    if (blockLines.some((line) => line.prefix !== prefix)) {
+      return null;
+    }
+    return {
+      end: end + 1,
+      html: renderRichLine(
+        { content: "", prefix },
+        {
+          changed: true,
+          className: "fixed-font-markdown-display-math",
+          html: mathHtml,
+        },
+      ),
+    };
+  }
+
   return {
     end: end + 1,
-    html: renderKatexHtml(tex, true),
+    html: mathHtml,
   };
 }
 
@@ -800,6 +831,40 @@ function renderRichLine(
     .join(" ");
   const styleAttr = rendered.style ? ` style="${rendered.style}"` : "";
   return `<div class="${classes}">${renderDiffGutter(line.prefix)}<div class="fixed-font-rendered-line__content"${styleAttr}>${rendered.html}</div></div>`;
+}
+
+function renderDiffAwareMath(sourceText: string): RenderedMathResult {
+  const lines = stripAnsiEscapes(sourceText)
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => splitDiffAwareLine(line, true));
+  let html = "";
+  let changed = false;
+  let index = 0;
+
+  while (index < lines.length) {
+    const displayMath = renderStandaloneDisplayMath(lines, index, true);
+    if (displayMath) {
+      html += displayMath.html;
+      changed = true;
+      index = displayMath.end;
+      continue;
+    }
+
+    const line = lines[index];
+    if (!line) {
+      index += 1;
+      continue;
+    }
+    const rendered = renderFixedFontMathInner(line.content);
+    html += renderRichLine(line, rendered);
+    if (rendered.changed) {
+      changed = true;
+    }
+    index += 1;
+  }
+
+  return { html, changed };
 }
 
 function renderFixedFontRichContentInner(
@@ -959,7 +1024,7 @@ export function FixedFontMathToggle({
     () =>
       precomputedRendered ??
       (renderMode === "math"
-        ? renderFixedFontMath(sourceText)
+        ? renderFixedFontMath(sourceText, { diffAware })
         : renderFixedFontRichContent(sourceText, {
             diffAware,
             projectId: sessionMetadata?.projectId,

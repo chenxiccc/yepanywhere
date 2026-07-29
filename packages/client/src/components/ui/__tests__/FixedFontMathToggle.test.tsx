@@ -89,6 +89,40 @@ describe("fixed-font LaTeX delimiters", () => {
     expect(rendered.html).not.toContain("\\]");
   });
 
+  it("renders bracketed display math within one diff lane", () => {
+    const diff = [
+      "-\\[",
+      "-e_t(y)=old_t",
+      "-\\]",
+      "+\\[",
+      "+e_t(y)=(Wh_t+b)_y",
+      "+\\]",
+    ].join("\n");
+    const rendered = renderFixedFontMath(diff, { diffAware: true });
+
+    expect(rendered.changed).toBe(true);
+    expect(rendered.html.match(/class="katex-display"/g)).toHaveLength(2);
+    expect(rendered.html).toContain(
+      "fixed-font-rendered-line fixed-font-diff-removed",
+    );
+    expect(rendered.html).toContain(
+      "fixed-font-rendered-line fixed-font-diff-added",
+    );
+    expect(rendered.html).not.toContain("+e_t");
+  });
+
+  it("leaves display math literal when its diff lanes are mixed", () => {
+    const rendered = renderFixedFontMath(
+      ["+\\[", "-e_t(y)=old_t", "+\\]"].join("\n"),
+      { diffAware: true },
+    );
+
+    expect(rendered.html).not.toContain('class="katex-display"');
+    expect(rendered.html).toContain("\\[");
+    expect(rendered.html).toContain("e_t(y)=old_t");
+    expect(rendered.html).toContain("\\]");
+  });
+
   it("does not treat escaped or unclosed bracket delimiters as math", () => {
     expect(renderFixedFontMath(String.raw`literal \\(x\\)`)).toMatchObject({
       changed: false,
