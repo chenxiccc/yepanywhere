@@ -165,6 +165,51 @@ These font-metric assumptions were exposed earlier by the output-typography
 specimen container-query work and the later selectable UI font / UI size
 feature in Typography settings — both since landed.
 
+### User-turn action packing
+
+A 774 px-wide capture exposed the same fixed-metric mistake in user turns.
+`shouldStackUserPromptActions` in `UserPromptBlock.tsx` chooses a horizontal
+row or vertical rail from source character count (`80`) and explicit newlines,
+not rendered geometry. A prompt can therefore remain one rendered line while
+being classified as “long”: its three actions become a vertical rail, but
+`.user-prompt-container` reserves only one action's block size, so the final
+button overlaps the following turn. Two-action turns have the same failure at
+shorter rendered heights.
+
+The invariant is:
+
+> Every visible user-turn action remains inside its own turn. Action packing is
+> chosen from the actual rendered prompt extent, available inline size, action
+> count, and current font metrics; source character count and source line count
+> are not layout predicates.
+
+Use a small deterministic shape ladder rather than a general solver. Evaluate
+the applicable one-column, `2×2`, `1×2`, and `1×3` candidates against the
+prompt width each would leave. Prefer the narrowest action allocation whose
+block size fits inside the resulting prompt, so already-tall prompts keep their
+inline space. For a short prompt, widen the action allocation when a `2×2` or
+one-row layout contains every action without increasing the prompt's rendered
+line count; if no candidate avoids growth, choose the one with the smallest
+resulting overall turn block size. Use a fixed tie-break order so resize and
+font changes cannot make equally fitting shapes oscillate.
+
+Narrowing the prompt's wrapped width is only ever justified when it strictly
+avoids adding a rendered line. A prompt already tall enough to contain the
+one-column rail keeps the same layout today's default already renders for it —
+the existing full-width-plus-edge-rail arrangement is correct there, not a bug
+to replace, so this packing must not trade a text line (or edge alignment) for a
+reshape it does not need. The geometry rule only overrides the default to cure
+the short-prompt clipping case.
+
+The selected action grid must participate in the turn's block-size allocation
+(normal flow, grid sizing, or an equivalent explicit minimum), even if the
+controls remain visually positioned at the edge. Geometry-driven packing is
+an optimization; containment is unconditional. Re-evaluate when available
+width, font/size/spacing, or action membership changes, not on an unbounded
+polling loop. Browser coverage should exercise two and three actions at widths
+on both sides of a text-wrap boundary and assert from element rectangles that
+the action grid stays within its turn and clear of the following turn.
+
 ## Layout Invariant Scheme
 
 Browsers already have intrinsic sizing algorithms, not an arbitrary constraint
