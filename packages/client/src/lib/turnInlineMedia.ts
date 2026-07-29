@@ -22,6 +22,8 @@ export interface GalleryImageDimensions {
 export interface GalleryLayoutItem {
   height: number;
   id: string;
+  naturalHeight: number | null;
+  naturalWidth: number | null;
   width: number;
 }
 
@@ -167,6 +169,7 @@ interface GalleryAspectImage {
   aspect: number;
   id: string;
   naturalHeight: number | null;
+  naturalWidth: number | null;
   originalIndex: number;
 }
 
@@ -216,6 +219,8 @@ function packGalleryRowCount(
         return {
           height: itemHeight,
           id: image.id,
+          naturalHeight: image.naturalHeight,
+          naturalWidth: image.naturalWidth,
           width: image.aspect * itemHeight,
         };
       });
@@ -249,6 +254,7 @@ export function packTurnGalleryRows(
         ...image,
         aspect: validAspectRatio(imageDimensions),
         naturalHeight: imageDimensions?.height ?? null,
+        naturalWidth: imageDimensions?.width ?? null,
       };
     })
     .sort(

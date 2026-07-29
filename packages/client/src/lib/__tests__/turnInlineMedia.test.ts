@@ -139,7 +139,17 @@ describe("turn inline media model", () => {
 
     expect(rows).toHaveLength(1);
     expect(rows[0]?.height).toBe(120);
-    expect(itemById.get("small")).toMatchObject({ height: 40, width: 160 });
-    expect(itemById.get("large")).toMatchObject({ height: 120, width: 160 });
+    expect(itemById.get("small")).toMatchObject({
+      height: 40,
+      naturalHeight: 40,
+      naturalWidth: 160,
+      width: 160,
+    });
+    expect(itemById.get("large")).toMatchObject({
+      height: 120,
+      naturalHeight: 600,
+      naturalWidth: 800,
+      width: 160,
+    });
   });
 });

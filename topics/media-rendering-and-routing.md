@@ -234,7 +234,9 @@ The compact-gallery goals, in priority order, are:
   same vertical budget would only make its images smaller.
 - A thumbnail's rendered height must never exceed its natural pixel height.
   Natural-size caps may leave unused space or produce ragged alignment; do not
-  upscale an image merely to align it with its row or fill the gallery.
+  upscale an image merely to align it with its row or fill the gallery. The
+  phone swipe presentation retains the same natural width and height ceilings;
+  its target card width is not permission to enlarge a small image.
 - Use the available vertical budget without treating complete content-width
   fill as a goal. Rows may have different heights.
 - Present ordinary completed rows as justified image rows. The final or

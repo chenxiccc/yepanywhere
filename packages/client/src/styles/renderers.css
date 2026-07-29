@@ -975,6 +975,8 @@
 
 .turn-image-gallery-item {
   flex: none;
+  width: var(--turn-gallery-item-width);
+  height: var(--turn-gallery-item-height);
   min-width: 0;
   overflow: hidden;
   border: 1px solid transparent;
@@ -1106,8 +1108,16 @@
   }
 
   .turn-image-gallery-item {
-    width: min(78vw, 320px) !important;
-    height: min(var(--turn-gallery-max-height), 28dvh) !important;
+    width: min(
+      78vw,
+      320px,
+      var(--turn-gallery-natural-width, 320px)
+    );
+    height: min(
+      var(--turn-gallery-max-height),
+      28dvh,
+      var(--turn-gallery-natural-height, var(--turn-gallery-max-height))
+    );
     scroll-snap-align: center;
     scroll-snap-stop: normal;
   }

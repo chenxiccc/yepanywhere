@@ -330,7 +330,20 @@ export function AssistantTurnImageGallery({
         layout.flatMap((row) =>
           row.items.map((item) => [
             item.id,
-            { height: item.height, width: item.width },
+            {
+              "--turn-gallery-item-height": `${item.height}px`,
+              "--turn-gallery-item-width": `${item.width}px`,
+              ...(item.naturalHeight === null
+                ? {}
+                : {
+                    "--turn-gallery-natural-height": `${item.naturalHeight}px`,
+                  }),
+              ...(item.naturalWidth === null
+                ? {}
+                : {
+                    "--turn-gallery-natural-width": `${item.naturalWidth}px`,
+                  }),
+            } as CSSProperties,
           ]),
         ),
       ),
