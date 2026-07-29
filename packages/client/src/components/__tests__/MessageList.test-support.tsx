@@ -95,6 +95,7 @@ vi.mock("../../i18n", () => ({
         turnImageGalleryLabel: "Turn image gallery",
         turnImageGalleryLoading: "Loading image…",
         turnImageGalleryOpen: "Open {label}",
+        turnImageGalleryShow: "Gallery",
         turnImageGalleryUnavailable: "Image unavailable",
       };
       const value = translations[key] ?? key;

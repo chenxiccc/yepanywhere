@@ -37,6 +37,8 @@ interface TurnImageGalleryNavigation {
   activate: (id: string) => void;
   available: boolean;
   candidateIds: ReadonlySet<string>;
+  closedActionTarget: TurnInlineImage | null;
+  show: () => void;
 }
 
 const TurnImageGalleryContext =
@@ -179,11 +181,9 @@ export function AssistantTurnImageGallery({
     () => new Set(candidates.map((candidate) => candidate.id)),
     [candidates],
   );
-  const galleryAvailable =
-    compactMultiImageGalleries &&
-    inlineMediaExpandedByDefault &&
-    candidates.length >= 2;
+  const galleryAvailable = compactMultiImageGalleries && candidates.length >= 2;
   const [dismissed, setDismissed] = useState(false);
+  const [manuallyOpened, setManuallyOpened] = useState(false);
   const [featuredId, setFeaturedId] = useState(candidates[0]?.id ?? "");
   const [selectedImage, setSelectedImage] = useState<TurnInlineImage | null>(
     null,
@@ -200,8 +200,16 @@ export function AssistantTurnImageGallery({
   const thumbnailElementsRef = useRef(new Map<string, HTMLElement>());
   const pendingCenterIdRef = useRef<string | null>(null);
   const scrollFrameRef = useRef<number | null>(null);
+  const pointerFrameRef = useRef<number | null>(null);
+  const pointerPositionRef = useRef<{
+    clientX: number;
+    clientY: number;
+  } | null>(null);
   const mediaSource = useGalleryMediaSource();
-  const galleryActive = galleryAvailable && !dismissed;
+  const galleryActive =
+    galleryAvailable &&
+    !dismissed &&
+    (inlineMediaExpandedByDefault || manuallyOpened);
 
   useEffect(() => {
     if (!candidateIds.has(featuredId)) {
@@ -254,6 +262,7 @@ export function AssistantTurnImageGallery({
       }
       pendingCenterIdRef.current = id;
       setFeaturedId(id);
+      setManuallyOpened(true);
       setDismissed(false);
       if (galleryActive) {
         centerGalleryImage(id);
@@ -261,6 +270,19 @@ export function AssistantTurnImageGallery({
     },
     [candidateIds, centerGalleryImage, galleryActive],
   );
+
+  const showGallery = useCallback(() => {
+    if (!galleryAvailable) {
+      return;
+    }
+    const id = candidateIds.has(featuredId) ? featuredId : candidates[0]?.id;
+    if (id) {
+      pendingCenterIdRef.current = id;
+      setFeaturedId(id);
+    }
+    setManuallyOpened(true);
+    setDismissed(false);
+  }, [candidateIds, candidates, featuredId, galleryAvailable]);
 
   useLayoutEffect(() => {
     if (galleryActive && pendingCenterIdRef.current) {
@@ -317,13 +339,25 @@ export function AssistantTurnImageGallery({
   const featured =
     candidates.find((candidate) => candidate.id === featuredId) ??
     candidates[0];
+  const closedActionTarget =
+    galleryAvailable && !galleryActive
+      ? (candidates[candidates.length - 1] ?? null)
+      : null;
   const navigation = useMemo<TurnImageGalleryNavigation>(
     () => ({
       activate: activateGallery,
       available: galleryAvailable,
       candidateIds,
+      closedActionTarget,
+      show: showGallery,
     }),
-    [activateGallery, candidateIds, galleryAvailable],
+    [
+      activateGallery,
+      candidateIds,
+      closedActionTarget,
+      galleryAvailable,
+      showGallery,
+    ],
   );
 
   const updateCenteredImage = useCallback(() => {
@@ -346,10 +380,62 @@ export function AssistantTurnImageGallery({
     }
   }, []);
 
+  const featureNearestPointerImage = useCallback(
+    (clientX: number, clientY: number) => {
+      let closest: {
+        centerDistance: number;
+        edgeDistance: number;
+        id: string;
+      } | null = null;
+      for (const [id, element] of thumbnailElementsRef.current) {
+        const rect = element.getBoundingClientRect();
+        const dx = Math.max(rect.left - clientX, 0, clientX - rect.right);
+        const dy = Math.max(rect.top - clientY, 0, clientY - rect.bottom);
+        const edgeDistance = dx * dx + dy * dy;
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        const centerDistance =
+          (centerX - clientX) ** 2 + (centerY - clientY) ** 2;
+        if (
+          !closest ||
+          edgeDistance < closest.edgeDistance ||
+          (edgeDistance === closest.edgeDistance &&
+            centerDistance < closest.centerDistance)
+        ) {
+          closest = { centerDistance, edgeDistance, id };
+        }
+      }
+      if (closest) {
+        setFeaturedId(closest.id);
+      }
+    },
+    [],
+  );
+
+  const scheduleNearestPointerImage = useCallback(
+    (clientX: number, clientY: number) => {
+      pointerPositionRef.current = { clientX, clientY };
+      if (pointerFrameRef.current !== null) {
+        return;
+      }
+      pointerFrameRef.current = requestAnimationFrame(() => {
+        pointerFrameRef.current = null;
+        const position = pointerPositionRef.current;
+        if (position) {
+          featureNearestPointerImage(position.clientX, position.clientY);
+        }
+      });
+    },
+    [featureNearestPointerImage],
+  );
+
   useEffect(
     () => () => {
       if (scrollFrameRef.current !== null) {
         cancelAnimationFrame(scrollFrameRef.current);
+      }
+      if (pointerFrameRef.current !== null) {
+        cancelAnimationFrame(pointerFrameRef.current);
       }
     },
     [],
@@ -366,6 +452,16 @@ export function AssistantTurnImageGallery({
           <section
             className="turn-image-gallery"
             aria-label={t("turnImageGalleryLabel")}
+            onPointerLeave={(event) => {
+              if (event.pointerType !== "touch") {
+                if (pointerFrameRef.current !== null) {
+                  cancelAnimationFrame(pointerFrameRef.current);
+                  pointerFrameRef.current = null;
+                }
+                pointerPositionRef.current = null;
+                setFeaturedId(candidates[0]?.id ?? "");
+              }
+            }}
             onKeyDown={(event: KeyboardEvent<HTMLElement>) => {
               if (event.key === "Escape") {
                 event.preventDefault();
@@ -385,6 +481,11 @@ export function AssistantTurnImageGallery({
                 if (scrollFrameRef.current === null) {
                   scrollFrameRef.current =
                     requestAnimationFrame(updateCenteredImage);
+                }
+              }}
+              onPointerMove={(event) => {
+                if (event.pointerType !== "touch") {
+                  scheduleNearestPointerImage(event.clientX, event.clientY);
                 }
               }}
             >

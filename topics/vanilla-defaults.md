@@ -93,13 +93,16 @@ remain authoritative.
 
 [media-rendering-and-routing](media-rendering-and-routing.md) compact
 multi-image galleries ship default-on as a browser-local Appearance preference.
-They apply only when **Expand Inline Media by Default** is already enabled and
-an assistant turn has at least two eligible images, replacing an unbounded
-vertical stack with one bounded gallery while preserving every original text
-link and full-size target. Disabling the gallery preference restores independent
+For an assistant turn with at least two eligible images, the preference enables
+one turn gallery while preserving every original text link and full-size target.
+**Expand Inline Media by Default** controls only whether that gallery starts
+open. When inline expansion is off, a compact **Gallery** action beside the
+final image link makes the capability available without expanding content;
+disabling the gallery preference removes the action and restores independent
 inline previews. Authorized by graehl on 2026-07-29 because the default bounds
-an already-requested automatic presentation rather than revealing more content
-or changing provider behavior.
+an already-requested automatic presentation, adds only a contextual action on
+multi-image turns otherwise, and avoids burdening new users with another
+preference.
 
 [agents-process-observability](agents-process-observability.md) ships
 default-on in the existing Agents view. Sampling is request-driven and occurs

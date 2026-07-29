@@ -151,28 +151,41 @@ like an interrupted response on return: the visible tail is mostly screenshots,
 while the actual completion text is offscreen.
 
 Appearance exposes **Compact Multi-Image Galleries** beside **Expand Inline
-Media by Default**. The gallery setting is relevant only to automatically
-expanded assistant-turn images; manual expansion retains the ordinary full
-inline preview. The gallery setting defaults on by explicit maintainer approval
-(graehl, 2026-07-29), while disabling it restores the existing independent
-inline previews. This is a deliberate default-on exception under
-[`vanilla-defaults.md`](vanilla-defaults.md), justified because it bounds an
-already-enabled automatic presentation rather than exposing additional
-transcript content or changing provider behavior.
+Media by Default**. The gallery setting enables one gallery capability for
+completed assistant turns with two or more eligible linked images. **Expand
+Inline Media by Default** controls only its initial visibility: with inline
+expansion enabled, the gallery starts open; otherwise the ordinary compact
+image links remain and a small **Gallery** action follows the final eligible
+link in source order. Disabling the gallery setting removes that action and
+restores the existing independent inline-preview behavior.
+
+The gallery setting defaults on by explicit maintainer approval (graehl,
+2026-07-29). This is a deliberate default-on exception under
+[`vanilla-defaults.md`](vanilla-defaults.md): a gallery does not open unless the
+user already requested automatic inline expansion, and the closed-state action
+appears only where a turn has multiple images. It adds no provider behavior or
+transcript content and avoids another global preference merely to govern that
+one affordance.
 
 The compact presentation is owned by the whole assistant turn, not by the
 position of an image link within its text. Images anywhere in that turn are
-eligible. It applies only to previews that YA expanded automatically; an image
-the user explicitly expands remains full-size and outside the compact gallery.
-One image retains the existing inline presentation. Two or more eligible images
-use one turn gallery.
+eligible. One image retains the existing inline presentation. With two or more
+eligible images and the gallery setting enabled, the per-image links and `+`
+controls become image-specific entrances to the same turn gallery; the generic
+**Gallery** action opens it at the last featured image, or the first source
+image when none has yet been featured. With the gallery setting disabled,
+manual and automatic per-image expansion retain their ordinary full inline
+presentation.
 
-The original image links remain at their original positions in the turn text
-while the gallery is visible. Activating one scrolls to the gallery and centers
+The original image links remain at their original positions in the turn text.
+Activating one opens the gallery when necessary, then scrolls to it and centers
 and features that link's thumbnail. The gallery has one shared featured-item
 caption rather than repeating captions below every thumbnail:
 
-- Pointer hover or keyboard focus features an item on desktop.
+- On desktop, the pointer continuously features the nearest thumbnail while it
+  remains inside the gallery image area, including when it rests in a gap;
+  leaving the gallery resets the feature to the first source image. Keyboard
+  focus features its item directly.
 - In the horizontally swipeable phone row, the item nearest the row's center
   becomes featured as the user scrolls or drags.
 - The original link label is the primary caption. The literal basename may
@@ -217,13 +230,15 @@ reshuffling.
 
 The gallery has one turn-level **Dismiss gallery** action, with a keyboard
 accelerator. Dismissing removes the reordered gallery and reinstates each image
-as the existing minimal expandable link at that image reference's original
-inline position. (The links were already visible while the gallery was active;
-dismissal restores their individual `+` affordances.) The transcript's original
-text/image-reference order is therefore always recoverable even though gallery
-packing may reorder thumbnails. Re-expanding one of those compact links restores
-the same deterministic gallery arrangement and centers that image; there is no
-second “dismiss to expanded inline images” state.
+as the existing minimal link and `+` affordance at that image reference's
+original inline position. It also restores the small **Gallery** action beside
+the final eligible link; that stable label is used for both an initially closed
+gallery and a dismissed one, rather than introducing a distinct restore mode.
+The transcript's original text/image-reference order is therefore always
+recoverable even though gallery packing may reorder thumbnails. Activating a
+specific image link restores the same deterministic gallery arrangement
+centered on that image; activating **Gallery** restores it at the last featured
+image. There is no second “dismiss to expanded inline images” state.
 
 ### Phone presentation and deferred gesture
 

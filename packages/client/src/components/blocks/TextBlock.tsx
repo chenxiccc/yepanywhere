@@ -3,10 +3,12 @@ import {
   type MouseEvent,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { useRenderModeToggle } from "../../contexts/RenderModeContext";
 import {
   createCommentAnchor,
@@ -30,7 +32,10 @@ import {
 import { renderFixedFontMath } from "../ui/FixedFontMathToggle";
 import { RenderModeGlyph } from "../ui/RenderModeGlyph";
 import { useTurnImageGalleryNavigation } from "../TurnImageGallery";
-import { getTurnInlineImageIdForTarget } from "../../lib/turnInlineMedia";
+import {
+  findTurnInlineImageAnchor,
+  getTurnInlineImageIdForTarget,
+} from "../../lib/turnInlineMedia";
 
 const EMPTY_LOCAL_MATH_PREVIEW = { html: "", changed: false };
 
@@ -102,6 +107,8 @@ export const TextBlock = memo(function TextBlock({
 }: Props) {
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
+  const [galleryActionHost, setGalleryActionHost] =
+    useState<HTMLElement | null>(null);
   const copySourceRef = useRef<HTMLDivElement>(null);
   const textBlockRef = useRef<HTMLDivElement>(null);
   const paragraphBlocksRef = useRef<HTMLElement[]>([]);
@@ -263,6 +270,32 @@ export const TextBlock = memo(function TextBlock({
   // before first augment arrives. Hidden until useStreamingContent becomes true.
   const renderStreamingContainer = isStreaming;
   const paragraphLayoutKey = [showRendered, text, augmentHtml ?? ""].join("\0");
+  const closedGalleryTarget = turnImageGallery?.closedActionTarget ?? null;
+
+  useLayoutEffect(() => {
+    const content = copySourceRef.current;
+    let host: HTMLSpanElement | null = null;
+    if (
+      content &&
+      showRendered &&
+      !showStreamingContent &&
+      renderItemId &&
+      closedGalleryTarget?.sourceItemId === renderItemId
+    ) {
+      const anchor = findTurnInlineImageAnchor(
+        content,
+        closedGalleryTarget.sourceIndex,
+      );
+      const group = anchor?.closest(".local-media-link-group");
+      if (group) {
+        host = document.createElement("span");
+        host.className = "turn-image-gallery-inline-action-host";
+        group.append(host);
+      }
+    }
+    setGalleryActionHost(host);
+    return () => host?.remove();
+  }, [closedGalleryTarget, renderItemId, showRendered, showStreamingContent]);
 
   // Measure each rendered top-level block so a per-paragraph quote circle can
   // sit at its end. Skipped while streaming (paragraph boundaries are still
@@ -413,6 +446,22 @@ export const TextBlock = memo(function TextBlock({
             </pre>
           ))}
       </div>
+      {galleryActionHost
+        ? createPortal(
+            <button
+              type="button"
+              className="turn-image-gallery-inline-action"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                turnImageGallery?.show();
+              }}
+            >
+              {t("turnImageGalleryShow")}
+            </button>,
+            galleryActionHost,
+          )
+        : null}
 
       {modal && (
         <LocalMediaModal

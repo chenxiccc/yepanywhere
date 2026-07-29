@@ -899,6 +899,29 @@
   opacity: 0.6;
 }
 
+.turn-image-gallery-inline-action-host {
+  display: inline-flex;
+}
+
+.turn-image-gallery-inline-action {
+  padding: 0.08em 0.4em;
+  border: 1px solid
+    color-mix(in srgb, var(--link-color) 35%, var(--border-color));
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--link-color);
+  font: inherit;
+  font-size: 0.78em;
+  line-height: 1.35;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.turn-image-gallery-inline-action:hover {
+  border-color: var(--link-color);
+  background: color-mix(in srgb, var(--link-color) 7%, transparent);
+}
+
 .local-media-inline-preview {
   display: block;
   margin: var(--space-2) 0;

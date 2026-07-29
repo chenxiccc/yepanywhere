@@ -30,6 +30,11 @@ describe("MessageList rendering", () => {
       configurable: true,
       value: vi.fn(),
     });
+    let pointerFrame: FrameRequestCallback | null = null;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      pointerFrame = callback;
+      return 1;
+    });
 
     const { container } = render(
       <MessageList
@@ -47,6 +52,7 @@ describe("MessageList rendering", () => {
 
     const gallery = container.querySelector(".turn-image-gallery");
     expect(gallery).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Gallery" })).toBeNull();
     expect(container.querySelectorAll(".turn-image-gallery-item")).toHaveLength(
       2,
     );
@@ -66,6 +72,57 @@ describe("MessageList rendering", () => {
         ?.textContent,
     ).toBe("Phone result");
 
+    galleryItems[0]!.getBoundingClientRect = vi.fn(
+      () =>
+        ({
+          bottom: 100,
+          height: 100,
+          left: 0,
+          right: 100,
+          top: 0,
+          width: 100,
+        }) as DOMRect,
+    );
+    galleryItems[1]!.getBoundingClientRect = vi.fn(
+      () =>
+        ({
+          bottom: 100,
+          height: 100,
+          left: 140,
+          right: 240,
+          top: 0,
+          width: 100,
+        }) as DOMRect,
+    );
+    const galleryRows = container.querySelector(
+      ".turn-image-gallery-rows",
+    ) as HTMLElement;
+    const movePointer = (clientX: number, clientY: number) => {
+      const event = new MouseEvent("pointermove", {
+        bubbles: true,
+        clientX,
+        clientY,
+      });
+      Object.defineProperty(event, "pointerType", { value: "mouse" });
+      fireEvent(galleryRows, event);
+      act(() => pointerFrame?.(0));
+    };
+    movePointer(110, 50);
+    expect(
+      container.querySelector(".turn-image-gallery-caption > span")
+        ?.textContent,
+    ).toBe("Desktop result");
+    movePointer(210, 50);
+    expect(
+      container.querySelector(".turn-image-gallery-caption > span")
+        ?.textContent,
+    ).toBe("Phone result");
+    fireEvent.pointerLeave(gallery as HTMLElement, { pointerType: "mouse" });
+    expect(
+      container.querySelector(".turn-image-gallery-caption > span")
+        ?.textContent,
+    ).toBe("Desktop result");
+
     const phoneLink = Array.from(
       container.querySelectorAll<HTMLAnchorElement>("a.local-media-link"),
     ).find((link) => link.textContent?.includes("Phone result"));
@@ -84,6 +141,18 @@ describe("MessageList rendering", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Dismiss gallery" }));
     expect(container.querySelector(".turn-image-gallery")).toBeNull();
+    const galleryAction = screen.getByRole("button", { name: "Gallery" });
+    expect(
+      phoneLink?.closest(".local-media-link-group")?.contains(galleryAction),
+    ).toBe(true);
+    fireEvent.click(galleryAction);
+    expect(container.querySelector(".turn-image-gallery")).toBeTruthy();
+    expect(
+      container.querySelector(".turn-image-gallery-caption > span")
+        ?.textContent,
+    ).toBe("Phone result");
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss gallery" }));
     fireEvent.click(
       Array.from(
         container.querySelectorAll<HTMLButtonElement>(
@@ -96,6 +165,61 @@ describe("MessageList rendering", () => {
       container.querySelector(".turn-image-gallery-caption > span")
         ?.textContent,
     ).toBe("Phone result");
+  });
+
+  it("offers a turn gallery when inline media does not start expanded", () => {
+    window.localStorage.setItem(UI_KEYS.inlineMediaExpandedByDefault, "false");
+    window.localStorage.setItem(UI_KEYS.compactMultiImageGalleries, "true");
+    invalidateLocalStorageValues();
+    Object.defineProperty(Element.prototype, "scrollIntoView", {
+      configurable: true,
+      value: vi.fn(),
+    });
+
+    const { container } = render(
+      <MessageList
+        messages={[assistantMessage("assistant-1", "Two results")]}
+        markdownAugments={{
+          "assistant-1": {
+            html: `<p>${galleryMediaHtml("One", "/repo/one.png")} ${galleryMediaHtml("Two", "/repo/two.png")}</p>`,
+          },
+        }}
+      />,
+    );
+
+    expect(container.querySelector(".turn-image-gallery")).toBeNull();
+    expect(
+      container.querySelectorAll(
+        ".local-media-inline-preview[data-expanded='false']",
+      ),
+    ).toHaveLength(2);
+    const links =
+      container.querySelectorAll<HTMLAnchorElement>("a.local-media-link");
+    const galleryAction = screen.getByRole("button", { name: "Gallery" });
+    expect(
+      links[1]?.closest(".local-media-link-group")?.contains(galleryAction),
+    ).toBe(true);
+
+    fireEvent.click(galleryAction);
+    expect(container.querySelector(".turn-image-gallery")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Gallery" })).toBeNull();
+
+    fireEvent.pointerEnter(
+      container.querySelectorAll(".turn-image-gallery-item")[1] as HTMLElement,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss gallery" }));
+    fireEvent.click(links[0] as HTMLAnchorElement);
+    expect(
+      container.querySelector(".turn-image-gallery-caption > span")
+        ?.textContent,
+    ).toBe("One");
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss gallery" }));
+    fireEvent.click(screen.getByRole("button", { name: "Gallery" }));
+    expect(
+      container.querySelector(".turn-image-gallery-caption > span")
+        ?.textContent,
+    ).toBe("One");
   });
 
   it("keeps independent inline previews when compact galleries are disabled", () => {
@@ -115,6 +239,7 @@ describe("MessageList rendering", () => {
     );
 
     expect(container.querySelector(".turn-image-gallery")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Gallery" })).toBeNull();
     expect(
       container.querySelectorAll(
         ".local-media-inline-preview[data-expanded='true']",

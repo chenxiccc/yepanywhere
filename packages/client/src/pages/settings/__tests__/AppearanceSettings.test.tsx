@@ -66,7 +66,7 @@ describe("AppearanceSettings tooltip controls", () => {
       "false",
     );
     expect(container.textContent).toContain(
-      "Links in the response jump to their thumbnails.",
+      "It opens automatically when inline media starts expanded",
     );
   });
 });
