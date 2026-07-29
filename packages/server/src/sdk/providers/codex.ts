@@ -118,6 +118,7 @@ import type {
   SummaryGenerationRequest,
   SummaryGenerationResult,
 } from "./types.js";
+import type { SessionSandboxRuntime } from "../../session-sandbox.js";
 
 const log = getLogger().child({ component: "codex-provider" });
 const CODEX_DESKTOP_BROWSER_SKILL_NAME = "browser:control-in-app-browser";
@@ -575,6 +576,7 @@ class CodexAppServerClient {
     private readonly shouldSuppressNotification?: (
       notification: JsonRpcNotification,
     ) => boolean,
+    private readonly sessionSandbox?: SessionSandboxRuntime,
   ) {}
 
   get isClosed(): boolean {
@@ -597,13 +599,23 @@ class CodexAppServerClient {
       throw new Error("Codex app-server already connected");
     }
 
-    const child = spawn(this.command, ["app-server", "--listen", "stdio://"], {
-      cwd: this.cwd,
-      detached: process.platform !== "win32",
-      stdio: ["pipe", "pipe", "pipe"],
-      env: this.env,
-      shell: process.platform === "win32",
-    });
+    const commandArgs = ["app-server", "--listen", "stdio://"];
+    const sandboxed = this.sessionSandbox?.wrapSpawn(
+      this.command,
+      commandArgs,
+      this.env,
+    );
+    const child = spawn(
+      sandboxed?.command ?? this.command,
+      sandboxed?.args ?? commandArgs,
+      {
+        cwd: sandboxed?.cwd ?? this.cwd,
+        detached: process.platform !== "win32",
+        stdio: ["pipe", "pipe", "pipe"],
+        env: sandboxed?.env ?? this.env,
+        shell: sandboxed ? false : process.platform === "win32",
+      },
+    );
 
     this.process = child;
 
@@ -1346,12 +1358,15 @@ export class CodexProvider implements AgentProvider {
     cwd: string;
     upToMessageId?: string;
     title?: string;
+    sessionSandbox?: SessionSandboxRuntime;
   }): Promise<{ sessionId: string }> {
     const codexCommand = await this.resolveCodexCommand();
     const appServer = new CodexAppServerClient(
       codexCommand,
       options.cwd,
       this.getCodexEnv(),
+      undefined,
+      options.sessionSandbox,
     );
     appServer.setServerRequestHandler((request) =>
       this.handleForkServerRequest(request),
@@ -1550,6 +1565,7 @@ export class CodexProvider implements AgentProvider {
       codexEnv,
       (notification) =>
         this.shouldSuppressLiveDeltaNotification(notification, options),
+      options.sessionSandbox,
     );
     setActiveClient(appServer);
 
@@ -2353,6 +2369,8 @@ export class CodexProvider implements AgentProvider {
       codexCommand,
       request.cwd,
       this.getCodexEnv(),
+      undefined,
+      request.sessionSandbox,
     );
     const abortController = new AbortController();
     let timedOut = false;

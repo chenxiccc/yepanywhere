@@ -409,6 +409,26 @@ export const ALL_PERMISSION_MODES: readonly PermissionMode[] = [
 ] as const;
 
 /**
+ * YA-owned host filesystem confinement selected before provider launch.
+ * "none" preserves provider/default behavior; "project-write" makes the
+ * selected project the only persistent writable project-facing root.
+ */
+export type SessionSandboxLevel = "none" | "project-write";
+
+export const SESSION_SANDBOX_LEVELS: readonly SessionSandboxLevel[] = [
+  "none",
+  "project-write",
+] as const;
+
+export interface SessionSandboxEnforcement {
+  requested: SessionSandboxLevel;
+  effective: SessionSandboxLevel;
+  state: "enforced" | "unsupported" | "setup-failed";
+  hostBackend?: string;
+  providerPolicy?: string;
+}
+
+/**
  * Saved defaults for the new session form.
  */
 export interface ProviderSessionDefaults {
@@ -430,6 +450,8 @@ export interface NewSessionDefaults {
   /** @deprecated Use providers[provider].serviceTier. Preserved for migration. */
   serviceTier?: string;
   permissionMode?: PermissionMode;
+  /** Default-off YA host filesystem confinement for newly created sessions. */
+  sandboxLevel?: SessionSandboxLevel;
   recapMode?: RecapMode;
   /**
    * Browser-away duration before YA asks the live process for a recap.

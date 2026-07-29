@@ -595,9 +595,7 @@ describe("Settings Routes", () => {
       ["non-string", 42],
       [
         "too long",
-        `gateway start ${"x".repeat(
-          MAX_CLAUDE_GATEWAY_START_COMMAND_LENGTH,
-        )}`,
+        `gateway start ${"x".repeat(MAX_CLAUDE_GATEWAY_START_COMMAND_LENGTH)}`,
       ],
       ["NUL byte", "gateway\u0000start"],
     ])("rejects a %s Claude gateway start command", async (_case, command) => {
@@ -1085,6 +1083,7 @@ describe("Settings Routes", () => {
             provider: "codex",
             model: "legacy-codex",
             serviceTier: "legacy-priority",
+            sandboxLevel: "project-write",
             providers: {
               claude: {
                 model: "opus",
@@ -1110,6 +1109,7 @@ describe("Settings Routes", () => {
           provider: "codex",
           model: "legacy-codex",
           serviceTier: "legacy-priority",
+          sandboxLevel: "project-write",
           providers: {
             claude: {
               model: "opus",
@@ -1127,6 +1127,28 @@ describe("Settings Routes", () => {
           },
         },
       });
+    });
+
+    it("rejects an invalid new-session sandbox default", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          newSessionDefaults: {
+            sandboxLevel: "home-write",
+          },
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({
+        error: "Invalid newSessionDefaults setting",
+      });
+      expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
     });
 
     it("accepts exact opt-in Claude model selections", async () => {

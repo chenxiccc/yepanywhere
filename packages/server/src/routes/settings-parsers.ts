@@ -513,6 +513,24 @@ export function parseNewSessionDefaults(
     }
   }
 
+  if ("sandboxLevel" in input) {
+    if (
+      input.sandboxLevel !== undefined &&
+      input.sandboxLevel !== null &&
+      input.sandboxLevel !== "" &&
+      input.sandboxLevel !== "none" &&
+      input.sandboxLevel !== "project-write"
+    ) {
+      return null;
+    }
+    if (
+      input.sandboxLevel === "none" ||
+      input.sandboxLevel === "project-write"
+    ) {
+      parsed.sandboxLevel = input.sandboxLevel;
+    }
+  }
+
   if ("recapMode" in input) {
     if (
       input.recapMode !== undefined &&

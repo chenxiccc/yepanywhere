@@ -446,6 +446,54 @@ export const SERVER_CAPABILITIES = {
         "Hosted clients can outpace installed servers, and older servers do not expose the minimized host process route or setting.",
     },
   },
+  sessionSandboxing: {
+    name: "session-sandboxing",
+    kind: "permanent",
+    area: "localAccess",
+    introducedIn: "0.7.1",
+    description:
+      "Server accepts, persists, enforces, and reports the default-off YA session filesystem sandbox selection.",
+    clientFallback:
+      "Hide session sandbox controls, omit sandbox fields, and preserve unsandboxed session behavior.",
+    serverContract: {
+      routes: [
+        "GET /api/settings",
+        "PUT /api/settings",
+        "POST /api/projects/:projectId/sessions",
+        "POST /api/projects/:projectId/sessions/create",
+        "POST /api/projects/:projectId/queue",
+        "POST /api/projects/:projectId/sessions/:sessionId/resume",
+        "POST /api/projects/:projectId/sessions/:sessionId/reactivate",
+        "POST /api/projects/:projectId/sessions/:sessionId/recap",
+        "POST /api/projects/:projectId/sessions/:sessionId/restart",
+        "POST /api/projects/:projectId/sessions/:sessionId/fork",
+        "POST /api/projects/:projectId/sessions/:sessionId/retitle",
+        "POST /api/projects/:projectId/sessions/:sessionId/fork-summary",
+        "POST /api/sessions",
+        "POST /api/sessions/create",
+      ],
+      requestFields: [
+        "settings.newSessionDefaults.sandboxLevel",
+        "sessionStart.sandboxLevel",
+        "sessionCreate.sandboxLevel",
+        "projectQueue.target.sandboxLevel",
+        "sessionRestart.sandboxLevel",
+      ],
+      responseFields: [
+        "settings.newSessionDefaults.sandboxLevel",
+        "sessionStart.sandboxEnforcement",
+        "sessionResume.sandboxEnforcement",
+        "sessionReactivate.sandboxEnforcement",
+        "sessionRestart.sandboxEnforcement",
+        "process.sandboxEnforcement",
+      ],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Older servers do not preserve or enforce the launch boundary, so hosted clients must never imply or request it without an exact capability.",
+    },
+  },
   projectQueue: {
     name: "projectQueue",
     kind: "permanent",
@@ -651,6 +699,9 @@ export const HOST_AWAKE_CONTROL_CAPABILITY =
 
 export const HOST_AGENT_PROCESS_OBSERVABILITY_CAPABILITY =
   SERVER_CAPABILITIES.hostAgentProcessObservability.name;
+
+export const SESSION_SANDBOXING_CAPABILITY =
+  SERVER_CAPABILITIES.sessionSandboxing.name;
 
 export const VOICE_INPUT_CAPABILITY = SERVER_CAPABILITIES.voiceInput.name;
 

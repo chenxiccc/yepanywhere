@@ -1,15 +1,16 @@
 # Session Sandboxing
 
 > A YA session sandbox is a default-off, all-provider launch-time toggle whose
-> enabled policy uses host-OS enforcement to keep persistent
-> agent-controlled filesystem mutations inside the canonical session project,
-> with provider-native controls serving only as additional defense.
+> enabled policy uses host-OS enforcement to keep ordinary persistent
+> agent-controlled filesystem mutations inside the canonical session project.
+> Fixed YA-private provider-state, cache, and temporary roots support provider
+> replay and common tools; provider-native controls are additional defense.
 
 Topic: session-sandboxing
 
-Status: **design contract; Linux v1 requires Bubblewrap, while non-Linux and
-provider-state mechanics remain open.** This topic does not authorize an
-implementation by itself.
+Status: **implemented Linux v1 contract.** Local Claude-family and Codex
+sessions use trusted Bubblewrap; other providers, remote executors, and
+non-Linux hosts fail an enabled launch before provider work begins.
 
 See also:
 
@@ -102,10 +103,11 @@ actionable error; it never falls back to `none`.
 
 ## Compatibility Boundary
 
-The future setting, launch field, and effective-status fields require one
-permanent server capability. Without it, a new client hides the control, sends
-no sandbox field, and retains existing launch behavior. Existing clients omit
-the field and therefore resolve to `none` on a new server.
+The setting, launch field, and effective-status fields use the permanent
+`session-sandboxing` server capability, introduced in 0.7.1. Without it, a new
+client hides the control, sends no sandbox field, and retains existing launch
+behavior. Existing clients omit the field and therefore resolve to `none` on a
+new server.
 
 The protocol capability means “this server understands and preserves the YA
 sandbox contract,” not “this execution host can enforce every level.” Host,
@@ -113,10 +115,10 @@ platform, provider, and remote-executor support are runtime facts checked
 before launch. Advertising the capability must never make an unsupported
 `project-write` request fall back to an unlocked process.
 
-Before implementation, perform the stable-release corpus audit required by
-[server-capabilities](server-capabilities.md) and
-[remote-hosted-compatibility](remote-hosted-compatibility.md), then pin the
-exact capability and fallback contract there.
+The pre-implementation stable-release audit covered v0.7.0 and v0.6.2. Neither
+release has the YA `sandboxLevel` launch field or capability. The exact routes,
+request and response fields, and no-capability fallback are pinned in
+`SERVER_CAPABILITIES.sessionSandboxing`.
 
 ## Distinct From Permission Mode
 
@@ -246,21 +248,26 @@ read-only may therefore break startup or resume, while a broad exception for
 the provider's home directory gives agent-controlled children a bypass.
 
 Ordinary scripts also assume writable temporary and cache locations. The
-enabled v1 policy may therefore provide fixed, sandbox-private writable
-locations and redirect `TMPDIR`, `TMP`, `TEMP`, `XDG_CACHE_HOME`, and
-well-established tool cache variables to them. It may mount a private writable
-view over conventional cache paths such as `~/.cache` when that is more
-compatible than environment rewriting. These roots must be:
+enabled v1 policy provides fixed, sandbox-private writable locations and
+redirects `TMPDIR`, `TMP`, `TEMP`, `XDG_CACHE_HOME`, and established
+HuggingFace, pip, uv, npm, and Yarn cache variables to them. A later backend
+may mount a private writable view over conventional cache paths such as
+`~/.cache` when that is more compatible than environment rewriting. These
+roots must be:
 
-- private to the session or an equivalently isolated execution domain;
-- bounded in size and cleaned up under a defined lifecycle;
+- private to one canonical project sandbox or an equivalently isolated
+  execution domain;
+- retained under YA's data directory so every sandboxed session and fork for
+  that project remains replayable across server restarts;
 - unable to resolve, rename, link, or mount their way to host-persistent paths;
   and
 - reported as private scratch/cache rather than as another persistent writable
   root.
 
-Shared persistent caches are not part of v1. They add cross-session poisoning,
-quota, ownership, and cleanup questions.
+Globally shared persistent caches are not part of v1. They add cross-project
+poisoning, quota, ownership, and cleanup questions. V1 does share its private
+cache among sandboxed sessions for the same canonical project; the project
+boundary is the isolation and retention unit.
 
 Conda, Pixi, and similar environments need the same distinction. An
 environment beneath the project is already writable. An environment outside
@@ -282,14 +289,69 @@ explicitly. Possible shapes include:
   not addressable by agent tools; or
 - a stronger OS process split.
 
-The provider-state mechanism is deliberately not selected here. A generic
-writable exception for the real `$HOME`, provider state directory, `/tmp`,
-cache root, or shared language environment is not equivalent to Project writes
-only. If a provider cannot function without such an agent-visible persistent
-exception, it is unsupported for this level until the boundary is redesigned.
+Linux v1 gives each canonical project that has used sandboxing one YA-owned
+private provider-state, temporary, and cache root beneath the YA data
+directory. Its stable key is derived from the canonical project path and is
+persisted in session metadata so a YA server restart keeps using the same
+state. Claude and Codex have separate provider subtrees within that root:
+Claude receives a private `CLAUDE_CONFIG_DIR`; Codex receives a private
+`CODEX_HOME`.
+
+Those provider trees contain the authoritative live transcripts. Each session
+and explicit fork still has its own provider transcript file; they share the
+project's provider configuration, agents/skills, cache, and temporary space,
+not one JSONL. YA does not copy or append a concurrently written JSONL into the
+provider's global tree.
+
+The first initialization bootstraps a narrow provider-specific set of auth,
+configuration, plugin, rule, and skill entries. Regular mutable files are
+copy-on-write filesystem clones when supported, with a normal-copy fallback.
+They are never hard links: a hard link would be the same inode and would grant
+the sandbox write access to the original. Symlinks may be preserved for
+deliberately read-only assets; the Bubblewrap contract keeps an outside target
+read-only, and the regression suite verifies both the target and bootstrap
+source remain unchanged. Session transcripts, logs, cache, and temporary files
+start private rather than being linked from global state.
+
+A generic writable exception for the real `$HOME`, provider state directory,
+`/tmp`, cache root, or shared language environment is not equivalent to
+Project writes only. If a provider cannot function with the private-state
+shape, it is unsupported for this level until the boundary is redesigned.
 
 Project-local temporary/cache directories may be used when doing so preserves
 provider behavior and does not rewrite unrelated user configuration.
+
+### Future global transcript integration
+
+V1 keeps Claude and Codex transcripts in their project-private provider-state
+directories and merges those directories into YA's ordinary session readers.
+This preserves one authoritative file while providing list, detail, replay,
+resume, and same-session process recreation after a YA server restart.
+
+A follow-up should continuously integrate sandboxed Claude and Codex
+transcripts into each provider's conventional global session tree. Besides the
+main YA view, that makes provider-native discovery, external diagnostics, and
+manual session identification work normally. Do not implement this as an
+assumed-safe copy or second writer. First establish each provider version's
+actual locking and persistence protocol using available source plus targeted
+decompilation and `strace`/`truss`-style filesystem tracing. The evidence must
+cover open flags, advisory or mandatory locks, append behavior, rename/replace,
+flush and close boundaries, sidecar/index files, crash recovery, and concurrent
+reader behavior. The integration design must then preserve the provider's
+single-writer and lock semantics while a transcript is live, and its regression
+tests must detect provider upgrades that invalidate those findings.
+
+There is also a retention-policy knowledge gap. YA does not yet know what
+sunset, age, total-disk, per-session quota, compaction, or index-pruning policy
+Claude and Codex currently apply to their global session state, nor what a
+future harness release may add. Private v1 transcripts are deliberately outside
+those conventional trees, which reduces their exposure to provider rotation;
+YA's private-state retention policy is therefore a separate decision. V1 keeps
+that state rather than aging it out automatically and may report its disk usage.
+Before later publishing transcripts into conventional provider trees, establish
+how provider cleanup recognizes live, indexed, and removable state so that the
+integration does not make a replayable sandbox session unexpectedly eligible
+for provider rotation.
 
 ## OS Enforcement Contract
 
@@ -324,9 +386,13 @@ separately installed, narrowly scoped privileged helper, but the
 agent-controlled child must not be able to widen or directly invoke that
 authority.
 
-Whole-YA privilege hardening is a separate precaution: it should apply even
-when a session selects `none`, and is therefore not part of the meaning of
-`project-write`.
+Whole-YA privilege hardening is a separate precaution: YA should attempt to
+disable later privilege gain by default, with an explicit operator opt-out,
+even when every session selects `none`. It is therefore not part of the
+meaning of `project-write`. Linux v1 drops capabilities and installs
+no-new-privileges for the sandboxed provider domain; applying the precaution
+to the already-running YA server and every unsandboxed provider launch remains
+separate work.
 
 For an SSH or other remote executor, enforcement must be installed and
 attested by the remote execution host. Sandboxing the local SSH client does not
@@ -356,20 +422,32 @@ transcript reports a native sandbox policy.
 
 New-session derivatives must not silently weaken confinement:
 
-- a fork, handoff, or restart-as-new flow inherits the source level by default;
-- a visible pre-launch control may change it for the new session; and
+- an explicit transcript fork, fork-after-summary target, retitle helper,
+  recap fork, handoff, or restart-as-new flow inherits the source level;
+- an explicit fork cannot override the source level;
+- a separately created New Session settles its own visible pre-launch choice;
+  and
 - resuming the same session uses its persisted level, not the user's newer
   global default.
 
-Provider children and YA-simulated side sessions inherit the parent level
-unless they are visibly created as separate sessions with their own
-pre-launch choice. A helper must never escape merely because it uses a
-different provider.
+Provider children created beneath the provider process inherit its Bubblewrap
+namespace. Same-session process recreation reloads the persisted level and
+private state key. Every derivative for the same canonical project uses that
+project's same private provider-state root while its provider-native transcript
+file remains distinct.
+
+Linux v1 runs explicit transcript forks, retitle-via-fork, fork-summary
+generation and target creation, and fork-mode recaps through the inherited
+private provider-state launcher. Host-side Claude transcript copying opens the
+private transcript directory component by component without following
+agent-controlled symlinks. YA-simulated `side-session` recaps remain
+unavailable and are rejected before launch; Off, Native, and fork recaps remain
+available.
 
 ## Status And Evidence
 
-A requested value is not enough for security-facing UI. The server should
-expose a normalized status concept along these lines:
+A requested value is not enough for security-facing UI. The server exposes a
+normalized status concept:
 
 ```ts
 interface SessionSandboxEnforcement {
@@ -381,8 +459,6 @@ interface SessionSandboxEnforcement {
 }
 ```
 
-Names are directional, not final wire design. The important distinctions are:
-
 - configured vs. active;
 - YA host enforcement vs. provider-reported policy; and
 - local vs. remote execution host.
@@ -391,9 +467,9 @@ Agents and Process Info may show **Project writes only** only for `enforced`.
 They should show setup failure rather than an unlocked process row, because a
 requested confined session must never launch unlocked.
 
-The server must persist enough evidence to explain how a session was launched
-without persisting sensitive command lines, environment variables, or mount
-contents.
+The server persists the requested level, project-scoped state key, canonical
+project path, and effective backend status. It does not expose or persist the
+full provider or Bubblewrap command line as sandbox status.
 
 ## Threat Model
 
@@ -490,6 +566,20 @@ Keep an outside sentinel tree and verify its contents and metadata are
 byte-for-byte unchanged after the escape suite. Add adversarial agent runs as
 supplemental evidence, not as a replacement for syscall-level tests: a model
 failing to discover an escape does not prove the boundary.
+
+The current automated Linux baseline in
+`packages/server/test/session-sandbox.test.ts` executes the production
+Bubblewrap wrapper. It proves project, provider-state, and temporary writes
+succeed while direct outside writes, project-to-outside symlink writes, and
+bootstrap-symlink writes fail; it also verifies copied configuration has a
+different inode, missing and unusable Bubblewrap diagnostics stay distinct,
+unsupported providers and remote executors fail, project state keys are
+stable, Claude forks create separate JSONL in the inherited private root,
+agent-controlled transcript-directory symlinks are rejected, and persisted
+metadata reconstructs a replayable private reader after service reload.
+The escape case also verifies no-new-privileges, empty effective and permitted
+capability sets, and refusal to create an outside-file hard link through the
+writable project mount.
 
 ## Linux Mechanism Survey: Rocky 8 And Later
 
@@ -680,19 +770,39 @@ failures into warnings.
 
 ### Linux v1 decision
 
-Linux v1 requires trusted non-setuid Bubblewrap. Use it when the binary and
-runtime probe pass; otherwise fail an enabled launch before provider process
-creation with an actionable error. Absence of `bwrap` should include an
-installation command, while a failed runtime probe should name the relevant
-host prerequisite.
+Linux v1 requires trusted non-setuid Bubblewrap 0.4.0 or newer. Use it when the
+version check and runtime probe pass; otherwise fail an enabled launch before
+provider process creation with an actionable error. Absence of `bwrap` includes
+an installation command, while an old version or failed runtime probe names
+the relevant prerequisite.
 
 Never substitute provider cooperation, plain chroot, PRoot, or an unlocked
 process merely because Bubblewrap is missing.
 
+The implemented provider matrix is intentionally small:
+
+- local `claude`, `claude-gateway`, and `claude-ollama` sessions use the
+  Claude private-state launcher;
+- local standard `codex` sessions use the Codex private-state launcher;
+- `codex-oss`, Gemini, OpenCode, Grok, Pi, ACP, and other providers reject
+  `project-write`;
+- SSH/remote executors reject it because confinement must run on the remote
+  host; and
+- non-Linux hosts reject it until a backend satisfies the same contract.
+
+YA accepts only a root-owned Bubblewrap binary at a fixed system path that is
+not group- or world-writable. The launcher probes the complete baseline mount
+shape with `/bin/true` before it starts the provider. The enabled process gets
+a read-only host root, writable canonical project and private state binds,
+private `/tmp` and `/var/tmp`, a private `/run`, new process/device views, a
+dropped capability set, a new terminal session, parent-death coupling, and
+sanitized broker environment variables. The argument set is exercised against
+Rocky 8's Bubblewrap 0.4.0.
+
 ## Backend Integration Gate
 
-Before implementation, validate the Bubblewrap policy and any future platform
-backend on:
+Before changing the Bubblewrap policy or adding a future platform backend,
+validate it on:
 
 - unprivileged availability and installation burden;
 - Linux, macOS, Windows, and remote-host coverage;
@@ -703,8 +813,8 @@ backend on:
 - auditable setup success and fail-closed behavior; and
 - maintenance risk as kernels and provider launch paths evolve.
 
-The chosen backend and provider matrix should be recorded here before code
-claims `project-write`. A provider-cooperative-only prototype may be useful for
+Record each chosen backend and provider matrix here before code claims
+`project-write`. A provider-cooperative-only prototype may be useful for
 learning, but its UI/status must say provider policy rather than YA-enforced
 Project writes only.
 
@@ -723,7 +833,5 @@ Project writes only.
 - Would an optional provider-context notification about the active boundary
   save enough failed attempts to outweigh context churn and bypass-seeking
   behavior?
-- Which derivative flows inherit the level automatically, and which should
-  reopen New Session for an explicit choice?
 - What exact admission, approval, and audit contract should the future locked
   share use?

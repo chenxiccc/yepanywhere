@@ -10,6 +10,7 @@ import {
   type RecapMode,
   type SessionLivenessProbeStatus,
   type SessionLivenessSnapshot,
+  type SessionSandboxLevel,
   type ThinkingConfig,
   type UrlProjectId,
   type WorkstreamId,
@@ -21,6 +22,10 @@ import { getLogger } from "../logging/logger.js";
 import type { SessionMetadataService } from "../metadata/index.js";
 import type { ToolResultMediaStore } from "../media/ToolResultMediaStore.js";
 import { getProjectName } from "../projects/paths.js";
+import {
+  getSessionSandboxSettingsError,
+  prepareSessionSandbox,
+} from "../session-sandbox.js";
 import { getProvider } from "../sdk/providers/index.js";
 import { CacheMissBillingMonitor } from "../services/CacheMissBillingMonitor.js";
 import type { SessionQueuePersistenceService } from "../services/SessionQueuePersistenceService.js";
@@ -395,6 +400,10 @@ export interface ModelSettings {
    * undefined and ignores always-1M for opus/sonnet.
    */
   compactAtContextWindow?: number;
+  /** Settled YA host filesystem confinement for this session. */
+  sandboxLevel?: SessionSandboxLevel;
+  /** Opaque project-private provider-state key restored from session metadata. */
+  sandboxStateKey?: string;
 }
 
 export interface SessionLaunchOptions {
@@ -498,6 +507,8 @@ export interface SupervisorOptions {
   sessionQueuePersistenceService?: SessionQueuePersistenceService;
   /** Durable store for image-bearing tool results. */
   toolResultMediaStore?: ToolResultMediaStore;
+  /** Root for persistent project-private provider state. */
+  sandboxStateRoot?: string;
 }
 
 export class Supervisor {
@@ -550,6 +561,7 @@ export class Supervisor {
   private sessionMetadataService?: SessionMetadataService;
   private sessionQueuePersistenceService?: SessionQueuePersistenceService;
   private toolResultMediaStore?: ToolResultMediaStore;
+  private sandboxStateRoot?: string;
   // In-flight forked recaps, keyed by process id. The AbortController cancels
   // the generator-fork helper turn when the parent becomes active again, so a
   // returning user's new turn is never shadowed by a stale recap. See
@@ -589,6 +601,7 @@ export class Supervisor {
     this.sessionQueuePersistenceService =
       options.sessionQueuePersistenceService;
     this.toolResultMediaStore = options.toolResultMediaStore;
+    this.sandboxStateRoot = options.sandboxStateRoot;
     this.staleCheckTimer = setInterval(
       () => this.terminateStaleProcesses(),
       STALE_CHECK_INTERVAL_MS,
@@ -697,6 +710,7 @@ export class Supervisor {
     modelSettings?: ModelSettings,
     launchOptions?: SessionLaunchOptions,
   ): Promise<Process | QueuedResponse | QueueFullResponse> {
+    this.assertSessionSandboxSettings(modelSettings);
     const projectId = launchOptions?.projectId ?? encodeProjectId(projectPath);
 
     // Check if at capacity
@@ -762,6 +776,7 @@ export class Supervisor {
       message,
       undefined,
       permissionMode,
+      modelSettings,
     );
   }
 
@@ -776,6 +791,7 @@ export class Supervisor {
     modelSettings?: ModelSettings,
     launchOptions?: SessionLaunchOptions,
   ): Promise<Process | QueuedResponse | QueueFullResponse> {
+    this.assertSessionSandboxSettings(modelSettings);
     const projectId = launchOptions?.projectId ?? encodeProjectId(projectPath);
 
     // Check if at capacity
@@ -855,9 +871,11 @@ export class Supervisor {
     modelSettings?: ModelSettings,
     options?: { preempt?: boolean },
   ): Promise<Process> {
+    this.assertSessionSandboxSettings(modelSettings);
     const existing = this.getProcessForSession(resumeSessionId);
     if (existing) {
       if (!existing.isTerminated) {
+        this.assertProcessSandboxMatches(existing, modelSettings);
         return existing;
       }
       this.unregisterProcess(existing);
@@ -866,13 +884,16 @@ export class Supervisor {
     const activeActivation =
       this.sessionActivationInFlight.get(resumeSessionId);
     if (activeActivation) {
-      return activeActivation;
+      const activated = await activeActivation;
+      this.assertProcessSandboxMatches(activated, modelSettings);
+      return activated;
     }
 
     return this.startSessionActivation(resumeSessionId, async () => {
       const activated = this.getProcessForSession(resumeSessionId);
       if (activated) {
         if (!activated.isTerminated) {
+          this.assertProcessSandboxMatches(activated, modelSettings);
           return activated;
         }
         this.unregisterProcess(activated);
@@ -940,6 +961,16 @@ export class Supervisor {
       modelSettings?.promptSuggestionMode,
       { supportsNativePromptSuggestions: true },
     );
+    const tempSessionId = resumeSessionId ?? randomUUID();
+    const sessionSandbox = await prepareSessionSandbox({
+      level: modelSettings?.sandboxLevel,
+      provider: "claude",
+      projectPath,
+      executor: modelSettings?.executor,
+      stateKey: modelSettings?.sandboxStateKey,
+      resumeSessionId,
+      stateRoot: this.sandboxStateRoot,
+    });
 
     // Start session WITHOUT an initial message - agent will wait
     const result = await this.realSdk.startSession({
@@ -953,6 +984,7 @@ export class Supervisor {
       clientName: modelSettings?.clientName,
       globalInstructions: modelSettings?.globalInstructions,
       promptSuggestions: promptSuggestionMode === "native",
+      sessionSandbox,
       onProviderRetentionChange: () =>
         this.handleProviderRetentionChanged(processHolder),
       onToolApproval: async (toolName, input, opts) => {
@@ -980,7 +1012,6 @@ export class Supervisor {
       publishAgentctlSessionId,
     } = result;
 
-    const tempSessionId = resumeSessionId ?? randomUUID();
     const options: ProcessConstructorOptions = {
       projectPath,
       projectId,
@@ -1022,6 +1053,9 @@ export class Supervisor {
       recapAfterSeconds: modelSettings?.recapAfterSeconds,
       promptSuggestionMode,
       helperSideModel: modelSettings?.helperSideModel,
+      sandboxEnforcement: sessionSandbox?.enforcement,
+      sandboxStateKey: sessionSandbox?.stateKey,
+      sandboxProjectPath: sessionSandbox?.projectPath,
     };
 
     const process = new Process(iterator, options);
@@ -1031,6 +1065,9 @@ export class Supervisor {
     // Wait for the real session ID from the SDK
     if (!resumeSessionId) {
       await process.waitForSessionId();
+    }
+    if (sessionSandbox) {
+      await this.persistProcessSandboxOrAbort(process);
     }
 
     // Recreated processes for an existing session should not emit session-created again.
@@ -1414,6 +1451,15 @@ export class Supervisor {
       modelSettings?.promptSuggestionMode,
       { supportsNativePromptSuggestions: true },
     );
+    const sessionSandbox = await prepareSessionSandbox({
+      level: modelSettings?.sandboxLevel,
+      provider: "claude",
+      projectPath,
+      executor: modelSettings?.executor,
+      stateKey: modelSettings?.sandboxStateKey,
+      resumeSessionId,
+      stateRoot: this.sandboxStateRoot,
+    });
 
     const result = await this.realSdk.startSession({
       cwd: projectPath,
@@ -1427,6 +1473,7 @@ export class Supervisor {
       remoteEnv: modelSettings?.remoteEnv,
       globalInstructions: modelSettings?.globalInstructions,
       promptSuggestions: promptSuggestionMode === "native",
+      sessionSandbox,
       onProviderRetentionChange: () =>
         this.handleProviderRetentionChanged(processHolder),
       onToolApproval: async (toolName, input, opts) => {
@@ -1496,6 +1543,9 @@ export class Supervisor {
       recapAfterSeconds: modelSettings?.recapAfterSeconds,
       promptSuggestionMode,
       helperSideModel: modelSettings?.helperSideModel,
+      sandboxEnforcement: sessionSandbox?.enforcement,
+      sandboxStateKey: sessionSandbox?.stateKey,
+      sandboxProjectPath: sessionSandbox?.projectPath,
     };
 
     const process = new Process(iterator, options);
@@ -1506,6 +1556,9 @@ export class Supervisor {
     // This ensures the client gets the correct ID to use for persistence
     if (!resumeSessionId) {
       await process.waitForSessionId();
+    }
+    if (sessionSandbox) {
+      await this.persistProcessSandboxOrAbort(process);
     }
 
     const queued = await this.queueProcessMessage(process, message, {
@@ -1544,6 +1597,16 @@ export class Supervisor {
       modelSettings?.promptSuggestionMode,
       activeProvider,
     );
+    const tempSessionId = resumeSessionId ?? randomUUID();
+    const sessionSandbox = await prepareSessionSandbox({
+      level: modelSettings?.sandboxLevel,
+      provider: activeProvider.name,
+      projectPath,
+      executor: modelSettings?.executor,
+      stateKey: modelSettings?.sandboxStateKey,
+      resumeSessionId,
+      stateRoot: this.sandboxStateRoot,
+    });
 
     // Start session WITHOUT an initial message - agent will wait
     const result = await activeProvider.startSession({
@@ -1560,6 +1623,7 @@ export class Supervisor {
       remoteEnv: modelSettings?.remoteEnv,
       globalInstructions: modelSettings?.globalInstructions,
       promptSuggestions: promptSuggestionMode === "native",
+      sessionSandbox,
       shouldEmitLiveDeltas: () =>
         processHolder.process?.hasLiveDeltaSubscribers() ?? false,
       onProviderRetentionChange: () =>
@@ -1591,7 +1655,6 @@ export class Supervisor {
       publishAgentctlSessionId,
     } = result;
 
-    const tempSessionId = resumeSessionId ?? randomUUID();
     const options: ProcessConstructorOptions = {
       projectPath,
       projectId,
@@ -1636,6 +1699,9 @@ export class Supervisor {
       recapAfterSeconds: modelSettings?.recapAfterSeconds,
       promptSuggestionMode,
       helperSideModel: modelSettings?.helperSideModel,
+      sandboxEnforcement: sessionSandbox?.enforcement,
+      sandboxStateKey: sessionSandbox?.stateKey,
+      sandboxProjectPath: sessionSandbox?.projectPath,
     };
 
     const process = new Process(iterator, options);
@@ -1645,6 +1711,9 @@ export class Supervisor {
     // Wait for the real session ID from the provider
     if (!resumeSessionId) {
       await process.waitForSessionId();
+    }
+    if (sessionSandbox) {
+      await this.persistProcessSandboxOrAbort(process);
     }
 
     // Recreated processes for an existing session should not emit session-created again.
@@ -1679,6 +1748,16 @@ export class Supervisor {
       modelSettings?.promptSuggestionMode,
       activeProvider,
     );
+    const tempSessionId = resumeSessionId ?? randomUUID();
+    const sessionSandbox = await prepareSessionSandbox({
+      level: modelSettings?.sandboxLevel,
+      provider: activeProvider.name,
+      projectPath,
+      executor: modelSettings?.executor,
+      stateKey: modelSettings?.sandboxStateKey,
+      resumeSessionId,
+      stateRoot: this.sandboxStateRoot,
+    });
 
     const result = await activeProvider.startSession({
       cwd: projectPath,
@@ -1695,6 +1774,7 @@ export class Supervisor {
       remoteEnv: modelSettings?.remoteEnv,
       globalInstructions: modelSettings?.globalInstructions,
       promptSuggestions: promptSuggestionMode === "native",
+      sessionSandbox,
       shouldEmitLiveDeltas: () =>
         processHolder.process?.hasLiveDeltaSubscribers() ?? false,
       onProviderRetentionChange: () =>
@@ -1726,7 +1806,6 @@ export class Supervisor {
       publishAgentctlSessionId,
     } = result;
 
-    const tempSessionId = resumeSessionId ?? randomUUID();
     const options: ProcessConstructorOptions = {
       projectPath,
       projectId,
@@ -1771,6 +1850,9 @@ export class Supervisor {
       recapAfterSeconds: modelSettings?.recapAfterSeconds,
       promptSuggestionMode,
       helperSideModel: modelSettings?.helperSideModel,
+      sandboxEnforcement: sessionSandbox?.enforcement,
+      sandboxStateKey: sessionSandbox?.stateKey,
+      sandboxProjectPath: sessionSandbox?.projectPath,
     };
 
     const process = new Process(iterator, options);
@@ -1780,6 +1862,9 @@ export class Supervisor {
     // Wait for the real session ID from the provider before registering
     if (!resumeSessionId) {
       await process.waitForSessionId();
+    }
+    if (sessionSandbox) {
+      await this.persistProcessSandboxOrAbort(process);
     }
 
     const queued = await this.queueProcessMessage(process, message, {
@@ -1804,7 +1889,13 @@ export class Supervisor {
     message: UserMessage,
     resumeSessionId?: string,
     permissionMode?: PermissionMode,
+    modelSettings?: ModelSettings,
   ): Process {
+    if (modelSettings?.sandboxLevel === "project-write") {
+      throw new Error(
+        "Project-write session sandboxing requires a local Claude or Codex provider runtime.",
+      );
+    }
     // sdk is guaranteed to exist here (checked in startSession)
     if (!this.sdk) {
       throw new Error("sdk is not available");
@@ -1846,6 +1937,7 @@ export class Supervisor {
     permissionMode?: PermissionMode,
     modelSettings?: ModelSettings,
   ): Promise<Process | QueuedResponse | QueueFullResponse> {
+    this.assertSessionSandboxSettings(modelSettings);
     await this.waitForSessionActivation(sessionId);
 
     // Check if already have a process for this session
@@ -1857,6 +1949,7 @@ export class Supervisor {
         if (existingProcess.isTerminated) {
           this.unregisterProcess(existingProcess);
         } else {
+          this.assertProcessSandboxMatches(existingProcess, modelSettings);
           let restartExistingProcess = false;
           // Check if thinking/effort settings changed
           const thinkingChanged = !thinkingConfigsEqual(
@@ -2083,6 +2176,7 @@ export class Supervisor {
         message,
         sessionId,
         permissionMode,
+        modelSettings,
       );
     });
   }
@@ -2107,7 +2201,13 @@ export class Supervisor {
     providerName?: ProviderName;
     upToMessageId?: string;
     title?: string;
-  }): Promise<{ sessionId: string }> {
+    sandboxLevel?: SessionSandboxLevel;
+    sandboxStateKey?: string;
+  }): Promise<{
+    sessionId: string;
+    sandboxStateKey?: string;
+    sessionSandbox?: Awaited<ReturnType<typeof prepareSessionSandbox>>;
+  }> {
     const provider = this.resolveProvider(
       options.providerName ? { providerName: options.providerName } : undefined,
     );
@@ -2117,12 +2217,25 @@ export class Supervisor {
     if (typeof provider.forkSession !== "function") {
       throw new Error(`${provider.name} does not support transcript fork`);
     }
-    return provider.forkSession({
+    const sessionSandbox = await prepareSessionSandbox({
+      level: options.sandboxLevel,
+      provider: provider.name,
+      projectPath: options.projectPath,
+      stateKey: options.sandboxStateKey,
+      stateRoot: this.sandboxStateRoot,
+    });
+    const fork = await provider.forkSession({
       sessionId: options.sessionId,
       cwd: options.projectPath,
       upToMessageId: options.upToMessageId,
       title: options.title,
+      sessionSandbox,
     });
+    return {
+      ...fork,
+      sandboxStateKey: sessionSandbox?.stateKey,
+      sessionSandbox,
+    };
   }
 
   async generateSummary(
@@ -2165,6 +2278,18 @@ export class Supervisor {
       childSessionId,
       process.requestedModel,
     );
+    if (
+      process.sandboxEnforcement?.effective === "project-write" &&
+      process.sandboxStateKey
+    ) {
+      await this.sessionMetadataService.setSessionSandbox(childSessionId, {
+        level: "project-write",
+        stateKey: process.sandboxStateKey,
+        projectPath: process.sandboxProjectPath ?? process.projectPath,
+        projectId: process.projectId,
+        provider: providerName,
+      });
+    }
   }
 
   private publishRecapListUpdate(
@@ -2320,9 +2445,11 @@ export class Supervisor {
     try {
       const generator = await this.forkSession({
         sessionId: process.sessionId,
-        projectPath: process.projectPath,
+        projectPath: process.sandboxProjectPath ?? process.projectPath,
         providerName: process.provider,
         title: "Recap generator",
+        sandboxLevel: process.sandboxEnforcement?.effective,
+        sandboxStateKey: process.sandboxStateKey,
       });
       generatorSessionId = generator.sessionId;
       await this.archiveHelperFork(
@@ -2339,6 +2466,7 @@ export class Supervisor {
           generatorSessionId: generator.sessionId,
           cwd: process.projectPath,
           signal: abortController.signal,
+          sessionSandbox: generator.sessionSandbox,
         })
       ).text.trim();
       if (!text) {
@@ -2514,6 +2642,8 @@ export class Supervisor {
       recapAfterSeconds: process.recapAfterSeconds,
       promptSuggestionMode: process.promptSuggestionMode,
       helperSideModel: process.helperSideModel,
+      sandboxLevel: process.sandboxEnforcement?.effective,
+      sandboxStateKey: process.sandboxStateKey,
     };
 
     await process.abort();
@@ -2540,6 +2670,13 @@ export class Supervisor {
     const process = this.getProcess(processId);
     if (!process || process.isTerminated) {
       return null;
+    }
+    const sandboxError = getSessionSandboxSettingsError(
+      process.sandboxEnforcement?.effective,
+      config.recapMode,
+    );
+    if (sandboxError) {
+      throw new Error(sandboxError);
     }
     process.setRecapConfig(config);
     this.emitOwnershipChange(process.sessionId, process.projectId, {
@@ -3367,6 +3504,17 @@ export class Supervisor {
         reason: "process not found",
       };
     }
+    const sandboxError = getSessionSandboxSettingsError(
+      process.sandboxEnforcement?.effective,
+      process.recapMode,
+    );
+    if (sandboxError) {
+      return {
+        supported: false,
+        emitted: false,
+        reason: sandboxError,
+      };
+    }
 
     const provider = getProvider(process.provider);
     if (!provider) {
@@ -3832,6 +3980,64 @@ export class Supervisor {
 
     // Emit worker activity after registering (new worker added)
     this.emitWorkerActivity();
+  }
+
+  private async persistProcessSandboxOrAbort(process: Process): Promise<void> {
+    if (process.sandboxEnforcement?.effective !== "project-write") {
+      return;
+    }
+    if (!process.sandboxStateKey || !this.sessionMetadataService) {
+      await process.abort();
+      throw new Error(
+        "Sandboxed sessions require durable session metadata before provider work begins.",
+      );
+    }
+    try {
+      await this.sessionMetadataService.setSessionSandbox(process.sessionId, {
+        provider: process.provider,
+        level: "project-write",
+        stateKey: process.sandboxStateKey,
+        projectPath: process.sandboxProjectPath ?? process.projectPath,
+        projectId: process.projectId,
+      });
+    } catch (error) {
+      await process.abort();
+      throw new Error(
+        `Failed to persist session sandbox metadata: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        { cause: error },
+      );
+    }
+  }
+
+  private assertSessionSandboxSettings(
+    modelSettings: ModelSettings | undefined,
+  ): void {
+    const error = getSessionSandboxSettingsError(
+      modelSettings?.sandboxLevel,
+      modelSettings?.recapMode,
+    );
+    if (error) {
+      throw new Error(error);
+    }
+  }
+
+  private assertProcessSandboxMatches(
+    process: Process,
+    modelSettings: ModelSettings | undefined,
+  ): void {
+    const requested = modelSettings?.sandboxLevel ?? "none";
+    const effective = process.sandboxEnforcement?.effective ?? "none";
+    const stateKeyChanged =
+      requested === "project-write" &&
+      modelSettings?.sandboxStateKey !== undefined &&
+      modelSettings.sandboxStateKey !== process.sandboxStateKey;
+    if (requested !== effective || stateKeyChanged) {
+      throw new Error(
+        "The live process does not match this session's settled sandbox configuration.",
+      );
+    }
   }
 
   private unregisterProcess(process: Process): void {
@@ -4429,6 +4635,7 @@ export class Supervisor {
       message,
       resumeSessionId,
       permissionMode,
+      modelSettings,
     );
   }
 

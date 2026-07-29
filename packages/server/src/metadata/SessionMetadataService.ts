@@ -13,6 +13,7 @@ import {
   type ProviderName,
   type PromptSuggestionMode,
   type RecapMode,
+  type SessionSandboxLevel,
   type TranscriptDisplayObject,
   type UrlProjectId,
   type WorkstreamId,
@@ -63,6 +64,12 @@ export interface SessionMetadata {
   promptSuggestionMode?: PromptSuggestionMode;
   /** Browser-away duration before YA asks the live process for a recap. */
   recapAfterSeconds?: number;
+  /** Settled YA host filesystem confinement for every launch of this session. */
+  sandboxLevel?: SessionSandboxLevel;
+  /** Opaque key for the canonical project's private provider runtime state. */
+  sandboxStateKey?: string;
+  /** Effective host project path used to locate private provider transcripts. */
+  sandboxProjectPath?: string;
   /**
    * Per-session recap strategy (off | native | side-session | fork). Durable
    * so a process-dead session still knows whether/how to recap — required to
@@ -461,6 +468,30 @@ export class SessionMetadataService {
   }
 
   /**
+   * Set the durable YA host sandbox selection and private provider-state root.
+   */
+  async setSessionSandbox(
+    sessionId: string,
+    sandbox: {
+      level: SessionSandboxLevel;
+      stateKey?: string;
+      projectPath: string;
+      projectId: UrlProjectId;
+      provider?: ProviderName;
+    },
+  ): Promise<void> {
+    this.updateSessionMetadata(sessionId, (metadata) => ({
+      ...metadata,
+      ...(sandbox.provider ? { provider: sandbox.provider } : {}),
+      sandboxLevel: sandbox.level,
+      sandboxStateKey: sandbox.stateKey,
+      sandboxProjectPath: sandbox.projectPath,
+      workingProjectId: sandbox.projectId,
+    }));
+    await this.save();
+  }
+
+  /**
    * Get the provider for a session.
    * Returns undefined if the provider was never explicitly saved.
    */
@@ -704,6 +735,15 @@ export class SessionMetadataService {
     }
     if (updated.recapMode) {
       cleaned.recapMode = updated.recapMode;
+    }
+    if (updated.sandboxLevel) {
+      cleaned.sandboxLevel = updated.sandboxLevel;
+    }
+    if (updated.sandboxStateKey) {
+      cleaned.sandboxStateKey = updated.sandboxStateKey;
+    }
+    if (updated.sandboxProjectPath) {
+      cleaned.sandboxProjectPath = updated.sandboxProjectPath;
     }
     if (updated.workingProjectId) {
       cleaned.workingProjectId = updated.workingProjectId;

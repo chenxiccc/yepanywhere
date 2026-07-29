@@ -702,6 +702,9 @@ export class ProjectQueueScheduler {
       ...(thinkingConfig.effort ? { effort: thinkingConfig.effort } : {}),
       ...(target.provider ? { providerName: target.provider } : {}),
       ...(target.executor ? { executor: target.executor } : {}),
+      ...(target.type === "new-session" && target.sandboxLevel
+        ? { sandboxLevel: target.sandboxLevel }
+        : {}),
       ...(globalInstructions ? { globalInstructions } : {}),
     };
   }

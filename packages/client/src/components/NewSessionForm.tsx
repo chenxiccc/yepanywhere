@@ -3,16 +3,19 @@ import {
   DEFAULT_PROJECT_QUEUE_CTRL_ENTER_ENABLED,
   HELPER_SIDE_MODEL_CHEAPEST,
   HELPER_SIDE_MODEL_SAME_AS_MAIN,
+  SESSION_SANDBOXING_CAPABILITY,
   type EffortLevel,
   type ModelInfo,
   type PromptSuggestionMode,
   type ProviderName,
   type RecapMode,
+  type SessionSandboxLevel,
   type ThinkingMode,
   type Workstream,
   type WorkstreamId,
   normalizeRecapAfterSeconds,
   resolveModel,
+  serverHasCapability,
 } from "@yep-anywhere/shared";
 import {
   type ChangeEvent,
@@ -269,6 +272,7 @@ export function NewSessionForm({
   const [selectedEffortLevel, setSelectedEffortLevel] =
     useState<EffortLevel>("high");
   const [selectedRecapMode, setSelectedRecapMode] = useState<RecapMode>("off");
+  const [sandboxLevel, setSandboxLevel] = useState<SessionSandboxLevel>("none");
   const [recapAfterSeconds, setRecapAfterSeconds] = useState(
     DEFAULT_RECAP_AFTER_SECONDS,
   );
@@ -348,7 +352,11 @@ export function NewSessionForm({
   } = useModelSettings();
 
   // Server version for voiceBackends advertisement
-  const { version: versionInfo } = useVersion();
+  const { version: versionInfo, loading: versionLoading } = useVersion();
+  const supportsSessionSandboxing = serverHasCapability(
+    versionInfo,
+    SESSION_SANDBOXING_CAPABILITY,
+  );
   const supportsProjectQueue = serverSupportsProjectQueue(versionInfo);
   const projectQueueCtrlEnterEnabled =
     versionInfo?.clientDefaults?.projectQueueCtrlEnterEnabled ??
@@ -1112,7 +1120,8 @@ export function NewSessionForm({
     if (
       hasInitializedDefaultsRef.current ||
       providersLoading ||
-      settingsLoading
+      settingsLoading ||
+      versionLoading
     ) {
       return;
     }
@@ -1174,7 +1183,21 @@ export function NewSessionForm({
     );
     setSelectedThinkingMode(initialProviderDefaults.thinkingMode ?? "off");
     setSelectedEffortLevel(initialProviderDefaults.effortLevel ?? "high");
-    setSelectedRecapMode(getPreferredRecapMode(initialProvider, savedDefaults));
+    const savedSandboxLevel =
+      supportsSessionSandboxing &&
+      savedDefaults?.sandboxLevel === "project-write"
+        ? "project-write"
+        : "none";
+    const savedRecapMode = getPreferredRecapMode(
+      initialProvider,
+      savedDefaults,
+    );
+    setSelectedRecapMode(
+      savedSandboxLevel === "project-write" && savedRecapMode === "side-session"
+        ? "off"
+        : savedRecapMode,
+    );
+    setSandboxLevel(savedSandboxLevel);
     setRecapAfterSeconds(
       normalizeRecapAfterSeconds(savedDefaults?.recapAfterSeconds),
     );
@@ -1189,6 +1212,8 @@ export function NewSessionForm({
     providersLoading,
     settings,
     settingsLoading,
+    supportsSessionSandboxing,
+    versionLoading,
     getLegacyProviderDefaultSeed,
     preferredProvider,
     preferredModel,
@@ -1487,10 +1512,13 @@ export function NewSessionForm({
   // avoid a toast on every click.
   useEffect(() => {
     if (!hasUserCustomizedDefaultsRef.current || !selectedProvider) return;
-    const { helperSideModel: _legacyHelperSideModel, ...baseDefaults } =
-      (newSessionDefaultsRef.current ?? {}) as NonNullable<
-        typeof newSessionDefaultsRef.current
-      > & { helperSideModel?: string };
+    const {
+      helperSideModel: _legacyHelperSideModel,
+      sandboxLevel: _savedSandboxLevel,
+      ...baseDefaults
+    } = (newSessionDefaultsRef.current ?? {}) as NonNullable<
+      typeof newSessionDefaultsRef.current
+    > & { helperSideModel?: string };
     void Promise.resolve(
       updateServerSetting("newSessionDefaults", {
         ...withProviderSessionDefaults(
@@ -1504,6 +1532,7 @@ export function NewSessionForm({
             recapMode: selectedRecapMode,
             recapAfterSeconds,
             promptSuggestionMode: selectedPromptSuggestionMode,
+            ...(supportsSessionSandboxing ? { sandboxLevel } : {}),
           },
           selectedProvider,
           {
@@ -1523,12 +1552,14 @@ export function NewSessionForm({
     helperSideModel,
     mode,
     recapAfterSeconds,
+    sandboxLevel,
     selectedModel,
     selectedEffortLevel,
     selectedProvider,
     selectedPromptSuggestionMode,
     selectedRecapMode,
     selectedThinkingMode,
+    supportsSessionSandboxing,
     updateServerSetting,
   ]);
 
@@ -1700,6 +1731,7 @@ export function NewSessionForm({
           showThinking,
           provider: selectedProvider ?? undefined,
           executor: selectedExecutor ?? undefined,
+          ...(supportsSessionSandboxing ? { sandboxLevel } : {}),
           recapMode: effectiveRecapMode,
           recapAfterSeconds,
           promptSuggestionMode: effectivePromptSuggestionMode,
@@ -1714,6 +1746,7 @@ export function NewSessionForm({
           thinking,
           provider: selectedProvider ?? null,
           executor: selectedExecutor ?? null,
+          sandboxLevel: supportsSessionSandboxing ? sandboxLevel : null,
           recapMode: effectiveRecapMode,
           recapAfterSeconds,
           promptSuggestionMode: effectivePromptSuggestionMode,
@@ -1936,6 +1969,7 @@ export function NewSessionForm({
       pendingFiles,
       projectInput,
       recapAfterSeconds,
+      sandboxLevel,
       resolvePendingAttachmentsForSession,
       resolveProjectIdForSubmission,
       selectedExecutor,
@@ -1947,6 +1981,7 @@ export function NewSessionForm({
       selectedRecapMode,
       setPendingFiles,
       showToast,
+      supportsSessionSandboxing,
       t,
     ],
   );
@@ -2019,6 +2054,7 @@ export function NewSessionForm({
           showThinking,
           provider: selectedProvider ?? undefined,
           executor: selectedExecutor ?? undefined,
+          ...(supportsSessionSandboxing ? { sandboxLevel } : {}),
           title: trimmedMessage,
         },
         message: {
@@ -2047,6 +2083,7 @@ export function NewSessionForm({
         thinking,
         provider: selectedProvider ?? null,
         executor: selectedExecutor ?? null,
+        sandboxLevel: supportsSessionSandboxing ? sandboxLevel : null,
         textLength: trimmedMessage.length,
         attachmentCount: stagedRefs.length,
         uploadWaitMs: Date.now() - actionAtMs,
@@ -3074,7 +3111,10 @@ export function NewSessionForm({
               hasUserCustomizedDefaultsRef.current = true;
               setSelectedRecapMode(modeValue);
             }}
-            disabled={isStarting}
+            disabled={
+              isStarting ||
+              (sandboxLevel === "project-write" && modeValue === "side-session")
+            }
             title={getRecapModeDescription(modeValue, t, recapAfterSeconds)}
           >
             <span className={`mode-option-dot recap-${modeValue}`} />
@@ -3161,6 +3201,36 @@ export function NewSessionForm({
       </div>
     </div>
   ) : null;
+  const sandboxSection = supportsSessionSandboxing ? (
+    <div className="new-session-helper-section new-session-sandbox-section">
+      <h3>{t("newSessionSandboxTitle")}</h3>
+      <label className="settings-item">
+        <div className="settings-item-info">
+          <strong>{t("newSessionSandboxLabel")}</strong>
+        </div>
+        <input
+          type="checkbox"
+          checked={sandboxLevel === "project-write"}
+          disabled={isStarting}
+          onChange={(event) => {
+            hasUserCustomizedDefaultsRef.current = true;
+            const enabled = event.currentTarget.checked;
+            setSandboxLevel(enabled ? "project-write" : "none");
+            if (enabled && selectedRecapMode === "side-session") {
+              setSelectedRecapMode("off");
+            }
+          }}
+          aria-label={t("newSessionSandboxLabel")}
+        />
+      </label>
+      <p className="session-default-section-description">
+        {t("newSessionSandboxDescription")}
+      </p>
+      <p className="session-default-section-description">
+        {t("newSessionSandboxAvailability")}
+      </p>
+    </div>
+  ) : null;
 
   // Compact mode: just the input area, no header or mode selector
   if (compact) {
@@ -3198,10 +3268,12 @@ export function NewSessionForm({
           helperSideModelSection ||
           recapSection ||
           promptSuggestionSection ||
+          sandboxSection ||
           permissionSection) && (
           <div className="new-session-provider-slot">
             {recapSection}
             {promptSuggestionSection}
+            {sandboxSection}
             {permissionSection}
             {showThinkingSection}
             {providerSection}

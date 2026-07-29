@@ -2350,9 +2350,59 @@ describe("Sessions metadata route", () => {
     expect(abortProcess).toHaveBeenCalledWith("proc-old");
   });
 
+  it("does not allow a handoff restart to weaken the source sandbox", async () => {
+    const project = createProject();
+    const startSession = vi.fn();
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => undefined),
+        startSession,
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(
+        () =>
+          ({
+            getSessionSummary: vi.fn(async () => null),
+          }) as unknown as ISessionReader,
+      ),
+      sessionMetadataService: {
+        getMetadata: vi.fn(() => ({
+          sandboxLevel: "project-write",
+          sandboxStateKey: "project-sandbox",
+          sandboxProjectPath: project.path,
+        })),
+        getExecutor: vi.fn(() => undefined),
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+    });
+
+    const response = await routes.request(
+      `/projects/${project.id}/sessions/sess-1/restart`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          restartMode: "handoff",
+          sandboxLevel: "none",
+        }),
+      },
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error:
+        "A restarted session inherits the source sandbox level and cannot change it",
+    });
+    expect(startSession).not.toHaveBeenCalled();
+  });
+
   it("forks the transcript instead of handing off when restartMode is fork", async () => {
     const project = createProject();
-    const forkSession = vi.fn(async () => ({ sessionId: "sess-fork" }));
+    const forkSession = vi.fn(async () => ({
+      sessionId: "sess-fork",
+      sandboxStateKey: "project-sandbox",
+    }));
     const startSession = vi.fn();
     const resumeSession = vi.fn(async () => ({
       id: "proc-new",
@@ -2363,6 +2413,7 @@ describe("Sessions metadata route", () => {
       resolvedModel: "sonnet",
       permissionMode: "default",
       modeVersion: 0,
+      sandboxStateKey: "project-sandbox",
       subscribe: vi.fn(() => vi.fn()),
     }));
     const interruptProcess = vi.fn(async () => ({
@@ -2371,6 +2422,7 @@ describe("Sessions metadata route", () => {
     }));
     const abortProcess = vi.fn(async () => true);
     const updateMetadata = vi.fn(async () => undefined);
+    const setSessionSandbox = vi.fn(async () => undefined);
     const emit = vi.fn();
 
     const routes = createSessionsRoutes({
@@ -2414,8 +2466,14 @@ describe("Sessions metadata route", () => {
         getRequestedModel: vi.fn(() => undefined),
         setRequestedModel: vi.fn(async () => undefined),
         getExecutor: vi.fn(() => undefined),
-        getMetadata: vi.fn(() => ({ customTitle: "Refactor session" })),
+        getMetadata: vi.fn(() => ({
+          customTitle: "Refactor session",
+          sandboxLevel: "project-write",
+          sandboxStateKey: "project-sandbox",
+          sandboxProjectPath: project.path,
+        })),
         setProvider: vi.fn(async () => undefined),
+        setSessionSandbox,
         updateMetadata,
       } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
       eventBus: { emit } as unknown as SessionsDeps["eventBus"],
@@ -2449,6 +2507,8 @@ describe("Sessions metadata route", () => {
       providerName: "claude",
       upToMessageId: "msg-uuid-7",
       title: "Fork: Refactor session",
+      sandboxLevel: "project-write",
+      sandboxStateKey: "project-sandbox",
     });
     expect(startSession).not.toHaveBeenCalled();
     expect(resumeSession).toHaveBeenCalledWith(
@@ -2456,8 +2516,18 @@ describe("Sessions metadata route", () => {
       project.path,
       expect.objectContaining({ text: "Continue from this fork point." }),
       undefined,
-      expect.objectContaining({ providerName: "claude" }),
+      expect.objectContaining({
+        providerName: "claude",
+        sandboxLevel: "project-write",
+        sandboxStateKey: "project-sandbox",
+      }),
     );
+    expect(setSessionSandbox).toHaveBeenCalledWith("sess-fork", {
+      level: "project-write",
+      stateKey: "project-sandbox",
+      projectPath: project.path,
+      projectId: project.id,
+    });
     expect(updateMetadata).toHaveBeenCalledWith("sess-fork", {
       title: "Fork: Refactor session",
     });
@@ -2465,10 +2535,14 @@ describe("Sessions metadata route", () => {
 
   it("forks a transcript without starting a process via the fork endpoint", async () => {
     const project = createProject();
-    const forkSession = vi.fn(async () => ({ sessionId: "sess-fork" }));
+    const forkSession = vi.fn(async () => ({
+      sessionId: "sess-fork",
+      sandboxStateKey: "project-sandbox",
+    }));
     const resumeSession = vi.fn();
     const startSession = vi.fn();
     const setProvider = vi.fn(async () => undefined);
+    const setSessionSandbox = vi.fn(async () => undefined);
     const updateMetadata = vi.fn(async () => undefined);
     const emit = vi.fn();
 
@@ -2494,8 +2568,14 @@ describe("Sessions metadata route", () => {
         getRequestedModel: vi.fn(() => undefined),
         setRequestedModel: vi.fn(async () => undefined),
         getExecutor: vi.fn(() => undefined),
-        getMetadata: vi.fn(() => ({ customTitle: "Refactor session" })),
+        getMetadata: vi.fn(() => ({
+          customTitle: "Refactor session",
+          sandboxLevel: "project-write",
+          sandboxStateKey: "project-sandbox",
+          sandboxProjectPath: project.path,
+        })),
         setProvider,
+        setSessionSandbox,
         updateMetadata,
       } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
       eventBus: { emit } as unknown as SessionsDeps["eventBus"],
@@ -2525,11 +2605,19 @@ describe("Sessions metadata route", () => {
       providerName: "claude",
       upToMessageId: "msg-uuid-3",
       title: "Fork: Refactor session",
+      sandboxLevel: "project-write",
+      sandboxStateKey: "project-sandbox",
     });
     // Fork-only: no process is started or resumed, no message sent.
     expect(resumeSession).not.toHaveBeenCalled();
     expect(startSession).not.toHaveBeenCalled();
     expect(setProvider).toHaveBeenCalledWith("sess-fork", "claude");
+    expect(setSessionSandbox).toHaveBeenCalledWith("sess-fork", {
+      level: "project-write",
+      stateKey: "project-sandbox",
+      projectPath: project.path,
+      projectId: project.id,
+    });
     expect(updateMetadata).toHaveBeenCalledWith("sess-fork", {
       title: "Fork: Refactor session",
       parentSessionId: "sess-1",
@@ -2729,13 +2817,22 @@ describe("Sessions metadata route", () => {
 
   it("owns fork-summary generation after returning a durable display object", async () => {
     const project = createProject();
+    const sessionSandbox = { stateKey: "project-sandbox" };
     const generateSummary = vi.fn(async () => ({
       text: "Title: Refactor continuation\n\nKept the setup; continue from the fixed test failure.",
     }));
     const forkSession = vi
       .fn()
-      .mockResolvedValueOnce({ sessionId: "sess-generator" })
-      .mockResolvedValueOnce({ sessionId: "sess-target" });
+      .mockResolvedValueOnce({
+        sessionId: "sess-generator",
+        sandboxStateKey: "project-sandbox",
+        sessionSandbox,
+      })
+      .mockResolvedValueOnce({
+        sessionId: "sess-target",
+        sandboxStateKey: "project-sandbox",
+        sessionSandbox,
+      });
     const resumeSession = vi.fn(async () => ({
       id: "proc-target",
       sessionId: "sess-target",
@@ -2746,11 +2843,13 @@ describe("Sessions metadata route", () => {
       permissionMode: "default",
       modeVersion: 0,
       promptSuggestionMode: "native",
+      sandboxStateKey: "project-sandbox",
       subscribe: vi.fn(() => vi.fn()),
     }));
     const updateMetadata = vi.fn(async () => undefined);
     const setProvider = vi.fn(async () => undefined);
     const setRequestedModel = vi.fn(async () => undefined);
+    const setSessionSandbox = vi.fn(async () => undefined);
     const emit = vi.fn();
     let transcriptDisplayObjects: TranscriptDisplayObject[] = [];
     const addTranscriptDisplayObject = vi.fn(async (_sessionId, object) => {
@@ -2819,11 +2918,15 @@ describe("Sessions metadata route", () => {
         getMetadata: vi.fn(() => ({
           customTitle: "Refactor session",
           promptSuggestionMode: "native",
+          sandboxLevel: "project-write",
+          sandboxStateKey: "project-sandbox",
+          sandboxProjectPath: project.path,
         })),
         getTranscriptDisplayObjects: vi.fn(() => transcriptDisplayObjects),
         addTranscriptDisplayObject,
         updateTranscriptDisplayObject,
         setProvider,
+        setSessionSandbox,
         updateMetadata,
       } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
       eventBus: { emit } as unknown as SessionsDeps["eventBus"],
@@ -2860,6 +2963,8 @@ describe("Sessions metadata route", () => {
       projectPath: project.path,
       providerName: "claude",
       title: "Fork summary generator",
+      sandboxLevel: "project-write",
+      sandboxStateKey: "project-sandbox",
     });
     expect(generateSummary).toHaveBeenCalledWith(
       "claude",
@@ -2871,6 +2976,7 @@ describe("Sessions metadata route", () => {
         afterTurnMessageId: "msg-after-initial-turn",
         afterTurnContext: "Loaded AGENTS and found the failing test.",
         instructions: "focus on verification and next action",
+        sessionSandbox,
       }),
     );
     expect(forkSession).toHaveBeenNthCalledWith(2, {
@@ -2879,6 +2985,8 @@ describe("Sessions metadata route", () => {
       providerName: "claude",
       upToMessageId: "msg-after-initial-turn",
       title: "Refactor continuation",
+      sandboxLevel: "project-write",
+      sandboxStateKey: "project-sandbox",
     });
     expect(resumeSession).toHaveBeenCalledWith(
       "sess-target",
@@ -2891,6 +2999,24 @@ describe("Sessions metadata route", () => {
         providerName: "claude",
         model: "sonnet",
         promptSuggestionMode: "native",
+        sandboxLevel: "project-write",
+        sandboxStateKey: "project-sandbox",
+      }),
+    );
+    expect(setSessionSandbox).toHaveBeenCalledWith(
+      "sess-generator",
+      expect.objectContaining({
+        level: "project-write",
+        stateKey: "project-sandbox",
+        projectPath: project.path,
+      }),
+    );
+    expect(setSessionSandbox).toHaveBeenCalledWith(
+      "sess-target",
+      expect.objectContaining({
+        level: "project-write",
+        stateKey: "project-sandbox",
+        projectPath: project.path,
       }),
     );
     expect(updateMetadata).toHaveBeenCalledWith("sess-generator", {

@@ -5,6 +5,7 @@ import {
   HELPER_SIDE_MODEL_SAME_AS_MAIN,
   PROMPT_CACHE_KEEPALIVE_MODES,
   PROMPT_SUGGESTION_MODES,
+  SESSION_SANDBOXING_CAPABILITY,
   type EffortLevel,
   type NewSessionDefaults,
   resolveModel,
@@ -19,6 +20,7 @@ import {
   type RecapMode,
   type ThinkingMode,
   normalizeRecapAfterSeconds,
+  serverHasCapability,
 } from "@yep-anywhere/shared";
 import {
   MODEL_OPTIONS,
@@ -45,6 +47,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useForkSummaryAutoOpen } from "../../hooks/useForkSummaryAutoOpen";
 import { useServerSettings } from "../../hooks/useServerSettings";
+import { useVersion } from "../../hooks/useVersion";
 import { useI18n } from "../../i18n";
 import { SettingsItem } from "./SettingsItem";
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
@@ -210,6 +213,11 @@ export function ModelSettings() {
     isLoading: settingsLoading,
     updateSetting,
   } = useServerSettings();
+  const { version } = useVersion();
+  const supportsSessionSandboxing = serverHasCapability(
+    version,
+    SESSION_SANDBOXING_CAPABILITY,
+  );
 
   const availableProviders = getAvailableProviders(providers);
   const savedDefaults = settings?.newSessionDefaults;
@@ -264,10 +272,12 @@ export function ModelSettings() {
       })
     : ({} satisfies ProviderSessionDefaults);
   const helperSelectableModels = selectedModels;
-  const selectedRecapMode = getPreferredRecapMode(
-    selectedProvider,
-    savedDefaults,
-  );
+  const savedRecapMode = getPreferredRecapMode(selectedProvider, savedDefaults);
+  const selectedRecapMode =
+    savedDefaults?.sandboxLevel === "project-write" &&
+    savedRecapMode === "side-session"
+      ? "off"
+      : savedRecapMode;
   const selectedRecapAfterSeconds = normalizeRecapAfterSeconds(
     savedDefaults?.recapAfterSeconds ?? DEFAULT_RECAP_AFTER_SECONDS,
   );
@@ -467,10 +477,14 @@ export function ModelSettings() {
     updates: NewSessionDefaults,
   ): Promise<void> => {
     try {
-      await updateSetting("newSessionDefaults", {
+      const nextDefaults: NewSessionDefaults = {
         ...savedDefaults,
         ...updates,
-      });
+      };
+      if (!supportsSessionSandboxing) {
+        delete nextDefaults.sandboxLevel;
+      }
+      await updateSetting("newSessionDefaults", nextDefaults);
       showToast(t("newSessionDefaultsSaved"), "success");
     } catch (err) {
       showToast(
@@ -573,6 +587,7 @@ export function ModelSettings() {
         "prompt suggestions",
         "compact",
         "prompt cache keepalive",
+        "sandbox bubblewrap project writes",
         "helper model",
         "fork summary",
       ]}
@@ -580,6 +595,37 @@ export function ModelSettings() {
       <HideInSettingsSearch>
         <div className="settings-group">
           <div className="settings-session-defaults-panel">
+            {supportsSessionSandboxing && (
+              <div className="new-session-helper-section session-default-sandbox-section">
+                <h3>{t("modelSettingsSandboxDefaultTitle")}</h3>
+                <label className="settings-item">
+                  <div className="settings-item-info">
+                    <strong>{t("newSessionSandboxLabel")}</strong>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={savedDefaults?.sandboxLevel === "project-write"}
+                    disabled={settingsLoading}
+                    onChange={(event) => {
+                      const enabled = event.currentTarget.checked;
+                      void updateNewSessionDefaults({
+                        sandboxLevel: enabled ? "project-write" : "none",
+                        ...(enabled && savedRecapMode === "side-session"
+                          ? { recapMode: "off" }
+                          : {}),
+                      });
+                    }}
+                    aria-label={t("modelSettingsSandboxDefaultTitle")}
+                  />
+                </label>
+                <p className="session-default-section-description">
+                  {t("newSessionSandboxDescription")}
+                </p>
+                <p className="session-default-section-description">
+                  {t("newSessionSandboxAvailability")}
+                </p>
+              </div>
+            )}
             <div className="session-default-discovery-row">
               <div className="new-session-helper-section session-default-recap-section">
                 <h3>{t("newSessionRecapTitle")}</h3>
@@ -594,7 +640,11 @@ export function ModelSettings() {
                       onClick={() =>
                         void updateNewSessionDefaults({ recapMode: modeValue })
                       }
-                      disabled={settingsLoading}
+                      disabled={
+                        settingsLoading ||
+                        (savedDefaults?.sandboxLevel === "project-write" &&
+                          modeValue === "side-session")
+                      }
                       title={getRecapModeDescription(
                         modeValue,
                         t,

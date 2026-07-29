@@ -8,7 +8,10 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { PROJECT_QUEUE_CAPABILITY } from "@yep-anywhere/shared";
+import {
+  PROJECT_QUEUE_CAPABILITY,
+  SESSION_SANDBOXING_CAPABILITY,
+} from "@yep-anywhere/shared";
 import {
   Fragment,
   forwardRef,
@@ -144,6 +147,7 @@ const {
         recapMode?: "off" | "native" | "side-session" | "fork";
         recapAfterSeconds?: number;
         promptSuggestionMode?: "off" | "native";
+        sandboxLevel?: "none" | "project-write";
         helperSideModel?: string;
         providers?: Partial<
           Record<
@@ -512,10 +516,7 @@ vi.mock("../FilterDropdown", () => ({
         {options.map((option) => (
           <Fragment key={option.value}>
             {option.groupLabelBefore && <p>{option.groupLabelBefore}</p>}
-            <button
-              type="button"
-              onClick={() => onChange([option.value])}
-            >
+            <button type="button" onClick={() => onChange([option.value])}>
               {option.label}
             </button>
           </Fragment>
@@ -776,7 +777,9 @@ describe("NewSessionForm", () => {
     expect(screen.getByRole("button", { name: "Claude" }).className).toContain(
       "selected",
     );
-    expect(screen.getAllByTestId("filter-selected")[0]!.textContent).toBe("opus");
+    expect(screen.getAllByTestId("filter-selected")[0]!.textContent).toBe(
+      "opus",
+    );
 
     serverSettingsState.settings = {
       newSessionDefaults: {
@@ -796,7 +799,9 @@ describe("NewSessionForm", () => {
       expect(
         screen.getByRole("button", { name: "Codex" }).className,
       ).not.toContain("selected");
-      expect(screen.getAllByTestId("filter-selected")[0]!.textContent).toBe("opus");
+      expect(screen.getAllByTestId("filter-selected")[0]!.textContent).toBe(
+        "opus",
+      );
     });
   });
 
@@ -817,7 +822,9 @@ describe("NewSessionForm", () => {
       expect(screen.getByRole("button", { name: "Codex" }).className).toContain(
         "selected",
       );
-      expect(screen.getAllByTestId("filter-selected")[0]!.textContent).toBe("gpt-5.4");
+      expect(screen.getAllByTestId("filter-selected")[0]!.textContent).toBe(
+        "gpt-5.4",
+      );
     });
   });
 
@@ -851,7 +858,9 @@ describe("NewSessionForm", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getAllByTestId("filter-selected")[0]!.textContent).toBe("opus");
+      expect(screen.getAllByTestId("filter-selected")[0]!.textContent).toBe(
+        "opus",
+      );
       expect(screen.getByRole("radio", { name: "Medium" }).className).toContain(
         "active",
       );
@@ -872,7 +881,9 @@ describe("NewSessionForm", () => {
     fireEvent.click(screen.getByRole("button", { name: "Claude" }));
 
     await waitFor(() => {
-      expect(screen.getAllByTestId("filter-selected")[0]!.textContent).toBe("opus");
+      expect(screen.getAllByTestId("filter-selected")[0]!.textContent).toBe(
+        "opus",
+      );
       expect(screen.getByRole("radio", { name: "Medium" }).className).toContain(
         "active",
       );
@@ -920,8 +931,9 @@ describe("NewSessionForm", () => {
     expect(screen.getAllByText("previousModelsGroup").length).toBeGreaterThan(
       0,
     );
-    expect(screen.getAllByRole("button", { name: "removed-default" }).length)
-      .toBeGreaterThan(0);
+    expect(
+      screen.getAllByRole("button", { name: "removed-default" }).length,
+    ).toBeGreaterThan(0);
   });
 
   it("refreshes and blocks Claude Gateway until its catalog has a model", async () => {
@@ -956,7 +968,9 @@ describe("NewSessionForm", () => {
     await waitFor(() => {
       expect(mockRefetchProviders).toHaveBeenCalledTimes(1);
     });
-    expect(screen.getByText("newSessionGatewayCatalogUnavailable")).toBeDefined();
+    expect(
+      screen.getByText("newSessionGatewayCatalogUnavailable"),
+    ).toBeDefined();
     expect(screen.queryByRole("button", { name: "gpt-5.5" })).toBeNull();
     fireEvent.click(
       screen.getByRole("button", { name: "newSessionGatewayCatalogRetry" }),
@@ -1135,6 +1149,149 @@ describe("NewSessionForm", () => {
           initialProvider: "claude",
         }),
       }),
+    );
+  });
+
+  it("shows and submits the saved sandbox only with server capability", async () => {
+    versionState.version = {
+      capabilities: [PROJECT_QUEUE_CAPABILITY, SESSION_SANDBOXING_CAPABILITY],
+    };
+    serverSettingsState.settings = {
+      newSessionDefaults: {
+        provider: "claude",
+        model: "opus",
+        permissionMode: "default",
+        sandboxLevel: "project-write",
+      },
+    };
+    serverSettingsState.isLoading = false;
+
+    render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+
+    expect(
+      (
+        screen.getByRole("checkbox", {
+          name: "newSessionSandboxLabel",
+        }) as HTMLInputElement
+      ).checked,
+    ).toBe(true);
+    fireEvent.change(screen.getByPlaceholderText("newSessionPlaceholder"), {
+      target: { value: "sandbox this" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "newSessionStartAction" }),
+    );
+
+    await waitFor(() => {
+      expect(mockStartSession).toHaveBeenCalledTimes(1);
+    });
+    expect(mockStartSession.mock.calls[0]?.[2]).toEqual(
+      expect.objectContaining({ sandboxLevel: "project-write" }),
+    );
+  });
+
+  it("turns off side-session recaps when sandboxing is enabled", async () => {
+    versionState.version = {
+      capabilities: [PROJECT_QUEUE_CAPABILITY, SESSION_SANDBOXING_CAPABILITY],
+    };
+    serverSettingsState.settings = {
+      newSessionDefaults: {
+        provider: "claude",
+        permissionMode: "default",
+        recapMode: "side-session",
+      },
+    };
+    serverSettingsState.isLoading = false;
+
+    render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+
+    const sandbox = screen.getByRole("checkbox", {
+      name: "newSessionSandboxLabel",
+    });
+    const sideSession = screen.getByRole("button", {
+      name: "recapModeSideSession",
+    }) as HTMLButtonElement;
+    expect(sideSession.disabled).toBe(false);
+
+    fireEvent.click(sandbox);
+
+    expect(sideSession.disabled).toBe(true);
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "recapModeFork",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+    expect(
+      screen.getByRole("button", { name: "recapModeOff" }).className,
+    ).toContain("selected");
+
+    fireEvent.change(screen.getByPlaceholderText("newSessionPlaceholder"), {
+      target: { value: "sandbox without side helper" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "newSessionStartAction" }),
+    );
+
+    await waitFor(() => {
+      expect(mockStartSession).toHaveBeenCalledTimes(1);
+    });
+    expect(mockStartSession.mock.calls[0]?.[2]).toEqual(
+      expect.objectContaining({
+        sandboxLevel: "project-write",
+        recapMode: "off",
+      }),
+    );
+  });
+
+  it("hides and omits sandbox state from an older server", async () => {
+    versionState.version = { capabilities: [PROJECT_QUEUE_CAPABILITY] };
+    serverSettingsState.settings = {
+      newSessionDefaults: {
+        provider: "claude",
+        model: "opus",
+        permissionMode: "default",
+        sandboxLevel: "project-write",
+      },
+    };
+    serverSettingsState.isLoading = false;
+
+    render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("checkbox", { name: "newSessionSandboxLabel" }),
+    ).toBeNull();
+    fireEvent.change(screen.getByPlaceholderText("newSessionPlaceholder"), {
+      target: { value: "ordinary session" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "newSessionStartAction" }),
+    );
+
+    await waitFor(() => {
+      expect(mockStartSession).toHaveBeenCalledTimes(1);
+    });
+    expect(mockStartSession.mock.calls[0]?.[2]).not.toHaveProperty(
+      "sandboxLevel",
     );
   });
 
@@ -1397,9 +1554,10 @@ describe("NewSessionForm", () => {
     );
     expect(mockStartSession).not.toHaveBeenCalled();
     expect(mockNavigate).not.toHaveBeenCalled();
-    expect(mockReportProjectQueueCollectionSnapshot).toHaveBeenCalledWith(
-      { projectId: "project-1", items: [] },
-    );
+    expect(mockReportProjectQueueCollectionSnapshot).toHaveBeenCalledWith({
+      projectId: "project-1",
+      items: [],
+    });
   });
 
   it("uses Ctrl+Enter to queue a new session through Project Queue", async () => {

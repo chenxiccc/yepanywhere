@@ -1,3 +1,4 @@
+import type { SessionSandboxEnforcement } from "@yep-anywhere/shared";
 import {
   useCallback,
   useEffect,
@@ -55,6 +56,8 @@ export interface ProcessInfo {
   providerRuntimeStatus?: ProviderRuntimeStatus;
   /** Browser-away duration before YA asks this process for a recap. */
   recapAfterSeconds?: number;
+  /** Verified YA host filesystem confinement for this process. */
+  sandboxEnforcement?: SessionSandboxEnforcement;
   /** Provider-native child work attached to this canonical YA session. */
   providerChildren?: ProviderChildSessionSummary[];
 }

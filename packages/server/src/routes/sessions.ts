@@ -8,6 +8,7 @@ import {
   type RecapMode,
   type SessionMetadataResponse,
   type SessionOwnership,
+  type SessionSandboxLevel,
   type ShowThinking,
   type ThinkingOption,
   type TranscriptDisplayObject,
@@ -43,6 +44,7 @@ import { parseSlashCommandSubmission } from "../sdk/slashCommandEmulation.js";
 import { getProjectDirFromCwd, syncSessions } from "../sdk/session-sync.js";
 import type { PermissionMode, SDKMessage, UserMessage } from "../sdk/types.js";
 import { appendApprovalAuditLog } from "../security/approvalAuditLog.js";
+import { getSessionSandboxSettingsError } from "../session-sandbox.js";
 import type { ModelInfoService } from "../services/ModelInfoService.js";
 import type { ServerSettingsService } from "../services/ServerSettingsService.js";
 import type { SessionQueuePersistenceService } from "../services/SessionQueuePersistenceService.js";
@@ -271,6 +273,8 @@ interface StartSessionBody {
   tempId?: string;
   /** SSH host alias for remote execution (undefined = local) */
   executor?: string;
+  /** Default-off YA host filesystem confinement settled at session creation. */
+  sandboxLevel?: SessionSandboxLevel;
   /** Permission rules for tool filtering (deny/allow patterns) */
   permissions?: PermissionRules;
   /** Session recap behavior for future away-return triggers. */
@@ -297,6 +301,8 @@ interface CreateSessionBody {
   provider?: ProviderName;
   /** SSH host alias for remote execution (undefined = local) */
   executor?: string;
+  /** Default-off YA host filesystem confinement settled at session creation. */
+  sandboxLevel?: SessionSandboxLevel;
   /** Permission rules for tool filtering (deny/allow patterns) */
   permissions?: PermissionRules;
   /** Session recap behavior for future away-return triggers. */
@@ -316,6 +322,18 @@ interface InputResponseBody {
   response: "approve" | "approve_accept_edits" | "deny" | string;
   answers?: UserQuestionAnswers;
   feedback?: string;
+}
+
+function parseSessionSandboxLevel(
+  value: unknown,
+): { sandboxLevel: SessionSandboxLevel } | { error: string } {
+  if (value === undefined || value === null || value === "") {
+    return { sandboxLevel: "none" };
+  }
+  if (value === "none" || value === "project-write") {
+    return { sandboxLevel: value };
+  }
+  return { error: 'sandboxLevel must be "none" or "project-write"' };
 }
 
 interface RestartSessionBody extends CreateSessionBody {
@@ -1779,6 +1797,12 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     promptSuggestionMode?: PromptSuggestionMode,
     recapAfterSeconds?: number,
     workstreamId?: WorkstreamId,
+    sandbox?: {
+      level: SessionSandboxLevel;
+      stateKey?: string;
+      projectPath: string;
+      projectId: UrlProjectId;
+    },
   ): Promise<void> => {
     if (!deps.sessionMetadataService) {
       return;
@@ -1819,6 +1843,9 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     }
     if (workstreamId !== undefined) {
       await deps.sessionMetadataService.setWorkstream(sessionId, workstreamId);
+    }
+    if (sandbox) {
+      await deps.sessionMetadataService.setSessionSandbox?.(sessionId, sandbox);
     }
   };
 
@@ -2983,9 +3010,20 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     if (executorError) {
       return c.json({ error: executorError }, 400);
     }
+    const sandboxSelection = parseSessionSandboxLevel(body.sandboxLevel);
+    if ("error" in sandboxSelection) {
+      return c.json({ error: sandboxSelection.error }, 400);
+    }
     const helperSettings = parseHelperSettings(body);
     if (helperSettings.error) {
       return c.json({ error: helperSettings.error }, 400);
+    }
+    const sandboxSettingsError = getSessionSandboxSettingsError(
+      sandboxSelection.sandboxLevel,
+      helperSettings.recapMode,
+    );
+    if (sandboxSettingsError) {
+      return c.json({ error: sandboxSettingsError }, 400);
     }
     const workstreamTarget = resolveLaunchWorkstreamTarget(
       project,
@@ -3032,6 +3070,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         effort,
         providerName: body.provider,
         executor,
+        sandboxLevel: sandboxSelection.sandboxLevel,
         globalInstructions: getGlobalInstructions(),
         permissions: body.permissions,
         recapMode: helperSettings.recapMode,
@@ -3067,6 +3106,12 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       result.promptSuggestionMode,
       helperSettings.recapAfterSeconds,
       workstreamTarget.workstreamId,
+      {
+        level: sandboxSelection.sandboxLevel,
+        stateKey: result.sandboxStateKey,
+        projectPath: result.sandboxProjectPath ?? result.projectPath,
+        projectId: result.projectId,
+      },
     );
 
     return c.json({
@@ -3076,6 +3121,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       permissionMode: result.permissionMode,
       modeVersion: result.modeVersion,
       recapAfterSeconds: result.recapAfterSeconds,
+      sandboxEnforcement: result.sandboxEnforcement,
       serverTimestamp,
     });
   });
@@ -3109,9 +3155,20 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     if (executorError) {
       return c.json({ error: executorError }, 400);
     }
+    const sandboxSelection = parseSessionSandboxLevel(body.sandboxLevel);
+    if ("error" in sandboxSelection) {
+      return c.json({ error: sandboxSelection.error }, 400);
+    }
     const helperSettings = parseHelperSettings(body);
     if (helperSettings.error) {
       return c.json({ error: helperSettings.error }, 400);
+    }
+    const sandboxSettingsError = getSessionSandboxSettingsError(
+      sandboxSelection.sandboxLevel,
+      helperSettings.recapMode,
+    );
+    if (sandboxSettingsError) {
+      return c.json({ error: sandboxSettingsError }, 400);
     }
     const workstreamTarget = resolveLaunchWorkstreamTarget(
       project,
@@ -3138,6 +3195,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         effort,
         providerName: body.provider,
         executor,
+        sandboxLevel: sandboxSelection.sandboxLevel,
         globalInstructions: getGlobalInstructions(),
         permissions: body.permissions,
         recapMode: helperSettings.recapMode,
@@ -3173,6 +3231,12 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       result.promptSuggestionMode,
       helperSettings.recapAfterSeconds,
       workstreamTarget.workstreamId,
+      {
+        level: sandboxSelection.sandboxLevel,
+        stateKey: result.sandboxStateKey,
+        projectPath: result.sandboxProjectPath ?? result.projectPath,
+        projectId: result.projectId,
+      },
     );
 
     return c.json({
@@ -3182,6 +3246,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       permissionMode: result.permissionMode,
       modeVersion: result.modeVersion,
       recapAfterSeconds: result.recapAfterSeconds,
+      sandboxEnforcement: result.sandboxEnforcement,
       serverTimestamp: Date.now(),
     });
   });
@@ -3204,9 +3269,20 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     if (executorError) {
       return c.json({ error: executorError }, 400);
     }
+    const sandboxSelection = parseSessionSandboxLevel(body.sandboxLevel);
+    if ("error" in sandboxSelection) {
+      return c.json({ error: sandboxSelection.error }, 400);
+    }
     const helperSettings = parseHelperSettings(body);
     if (helperSettings.error) {
       return c.json({ error: helperSettings.error }, 400);
+    }
+    const sandboxSettingsError = getSessionSandboxSettingsError(
+      sandboxSelection.sandboxLevel,
+      helperSettings.recapMode,
+    );
+    if (sandboxSettingsError) {
+      return c.json({ error: sandboxSettingsError }, 400);
     }
 
     const projectPath = await ensureDetachedProjectPath(executor);
@@ -3237,6 +3313,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         effort,
         providerName: body.provider,
         executor,
+        sandboxLevel: sandboxSelection.sandboxLevel,
         globalInstructions: getGlobalInstructions(),
         permissions: body.permissions,
         recapMode: helperSettings.recapMode,
@@ -3265,6 +3342,13 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       body.model,
       result.promptSuggestionMode,
       helperSettings.recapAfterSeconds,
+      undefined,
+      {
+        level: sandboxSelection.sandboxLevel,
+        stateKey: result.sandboxStateKey,
+        projectPath: result.sandboxProjectPath ?? result.projectPath,
+        projectId: result.projectId,
+      },
     );
 
     return c.json({
@@ -3274,6 +3358,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       permissionMode: result.permissionMode,
       modeVersion: result.modeVersion,
       recapAfterSeconds: result.recapAfterSeconds,
+      sandboxEnforcement: result.sandboxEnforcement,
       serverTimestamp,
     });
   });
@@ -3293,9 +3378,20 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     if (executorError) {
       return c.json({ error: executorError }, 400);
     }
+    const sandboxSelection = parseSessionSandboxLevel(body.sandboxLevel);
+    if ("error" in sandboxSelection) {
+      return c.json({ error: sandboxSelection.error }, 400);
+    }
     const helperSettings = parseHelperSettings(body);
     if (helperSettings.error) {
       return c.json({ error: helperSettings.error }, 400);
+    }
+    const sandboxSettingsError = getSessionSandboxSettingsError(
+      sandboxSelection.sandboxLevel,
+      helperSettings.recapMode,
+    );
+    if (sandboxSettingsError) {
+      return c.json({ error: sandboxSettingsError }, 400);
     }
 
     const projectPath = await ensureDetachedProjectPath(executor);
@@ -3311,6 +3407,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       effort,
       providerName: body.provider,
       executor,
+      sandboxLevel: sandboxSelection.sandboxLevel,
       globalInstructions: getGlobalInstructions(),
       permissions: body.permissions,
       recapMode: helperSettings.recapMode,
@@ -3338,6 +3435,13 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       body.model,
       result.promptSuggestionMode,
       helperSettings.recapAfterSeconds,
+      undefined,
+      {
+        level: sandboxSelection.sandboxLevel,
+        stateKey: result.sandboxStateKey,
+        projectPath: result.sandboxProjectPath ?? result.projectPath,
+        projectId: result.projectId,
+      },
     );
 
     return c.json({
@@ -3347,6 +3451,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       permissionMode: result.permissionMode,
       modeVersion: result.modeVersion,
       recapAfterSeconds: result.recapAfterSeconds,
+      sandboxEnforcement: result.sandboxEnforcement,
       serverTimestamp: Date.now(),
     });
   });
@@ -3390,6 +3495,35 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({ error: parsedResumeMode.error }, 400);
     }
     const resumeMode = parsedResumeMode.resumeMode ?? "full";
+    const persistedMetadata =
+      deps.sessionMetadataService?.getMetadata?.(sessionId);
+    const settledSandboxLevel = persistedMetadata?.sandboxLevel ?? "none";
+    const resumeProjectPath =
+      settledSandboxLevel === "project-write"
+        ? (persistedMetadata?.sandboxProjectPath ?? project.path)
+        : project.path;
+    if (body.sandboxLevel !== undefined) {
+      const requestedSandbox = parseSessionSandboxLevel(body.sandboxLevel);
+      if ("error" in requestedSandbox) {
+        return c.json({ error: requestedSandbox.error }, 400);
+      }
+      if (requestedSandbox.sandboxLevel !== settledSandboxLevel) {
+        return c.json(
+          {
+            error:
+              "sandboxLevel is settled when the session is created and cannot change on resume",
+          },
+          409,
+        );
+      }
+    }
+    const sandboxSettingsError = getSessionSandboxSettingsError(
+      settledSandboxLevel,
+      helperSettings.recapMode,
+    );
+    if (sandboxSettingsError) {
+      return c.json({ error: sandboxSettingsError }, 400);
+    }
 
     const serverTimestamp = Date.now();
     const userMessage: UserMessage = {
@@ -3431,7 +3565,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     // For remote sessions, sync local files TO remote before resuming
     // This ensures the remote has the latest session state
     if (executor) {
-      const projectDir = getProjectDirFromCwd(project.path);
+      const projectDir = getProjectDirFromCwd(resumeProjectPath);
       const syncResult = await syncSessions({
         host: executor,
         projectDir,
@@ -3556,7 +3690,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     try {
       result = await deps.supervisor.resumeSession(
         sessionId,
-        project.path,
+        resumeProjectPath,
         userMessage,
         body.mode,
         {
@@ -3566,6 +3700,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           effort,
           providerName,
           executor,
+          sandboxLevel: settledSandboxLevel,
+          sandboxStateKey: persistedMetadata?.sandboxStateKey,
           globalInstructions,
           permissions: body.permissions,
           recapMode: helperSettings.recapMode,
@@ -3634,6 +3770,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       permissionMode: result.permissionMode,
       modeVersion: result.modeVersion,
       recapAfterSeconds: result.recapAfterSeconds,
+      sandboxEnforcement: result.sandboxEnforcement,
       serverTimestamp,
       resume: {
         ...resumeDiagnostics,
@@ -3674,6 +3811,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           permissionMode: existing.permissionMode,
           modeVersion: existing.modeVersion,
           recapAfterSeconds: existing.recapAfterSeconds,
+          sandboxEnforcement: existing.sandboxEnforcement,
           serverTimestamp: Date.now(),
         });
       }
@@ -3697,7 +3835,14 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
 
       // Resolve provider/model/executor from the YA launch record (persisted on
       // launch) so reactivation resumes with the correct backend and model.
-      const metadata = deps.sessionMetadataService?.getMetadata(sessionId);
+      const metadata = deps.sessionMetadataService?.getMetadata?.(sessionId);
+      const sandboxSettingsError = getSessionSandboxSettingsError(
+        metadata?.sandboxLevel,
+        helperSettings.recapMode ?? metadata?.recapMode,
+      );
+      if (sandboxSettingsError) {
+        return c.json({ error: sandboxSettingsError }, 400);
+      }
       const providerName =
         (metadata?.provider as ProviderName | undefined) ??
         body.provider ??
@@ -3711,11 +3856,15 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           : metadata?.requestedModel;
       const model = rawModel && rawModel !== "default" ? rawModel : undefined;
       const { thinking, effort } = buildThinkingOptions(body);
+      const reactivationProjectPath =
+        metadata?.sandboxLevel === "project-write"
+          ? (metadata.sandboxProjectPath ?? project.path)
+          : project.path;
 
       let process: Process;
       try {
         process = await deps.supervisor.reactivateSession(
-          project.path,
+          reactivationProjectPath,
           sessionId,
           body.mode,
           {
@@ -3724,6 +3873,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
             effort,
             providerName,
             executor,
+            sandboxLevel: metadata?.sandboxLevel,
+            sandboxStateKey: metadata?.sandboxStateKey,
             globalInstructions: getGlobalInstructions(),
             recapAfterSeconds:
               helperSettings.recapAfterSeconds ?? metadata?.recapAfterSeconds,
@@ -3750,6 +3901,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         permissionMode: process.permissionMode,
         modeVersion: process.modeVersion,
         recapAfterSeconds: process.recapAfterSeconds,
+        sandboxEnforcement: process.sandboxEnforcement,
         serverTimestamp: Date.now(),
       });
     },
@@ -3791,7 +3943,21 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     // Cold session: only fork mode can recap from the on-disk transcript —
     // side-session/native recaps need in-memory recent text a revived process
     // lacks. Other modes simply skip until the session is live again.
-    const recapMode = deps.sessionMetadataService?.getRecapMode(sessionId);
+    const metadata = deps.sessionMetadataService?.getMetadata?.(sessionId);
+    const recapMode =
+      metadata?.recapMode ??
+      deps.sessionMetadataService?.getRecapMode?.(sessionId);
+    const sandboxSettingsError = getSessionSandboxSettingsError(
+      metadata?.sandboxLevel,
+      recapMode,
+    );
+    if (sandboxSettingsError) {
+      return c.json({
+        supported: false,
+        emitted: false,
+        reason: sandboxSettingsError,
+      });
+    }
     if (recapMode !== "fork") {
       return c.json({
         supported: true,
@@ -3805,7 +3971,6 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({ error: "Project not found or path does not exist" }, 404);
     }
 
-    const metadata = deps.sessionMetadataService?.getMetadata(sessionId);
     const providerName =
       (metadata?.provider as ProviderName | undefined) ?? project.provider;
     const rawModel = metadata?.requestedModel;
@@ -3813,14 +3978,20 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
 
     let process: Process;
     try {
+      const recapProjectPath =
+        metadata?.sandboxLevel === "project-write"
+          ? (metadata.sandboxProjectPath ?? project.path)
+          : project.path;
       process = await deps.supervisor.reactivateSession(
-        project.path,
+        recapProjectPath,
         sessionId,
         undefined,
         {
           model,
           providerName,
           executor: metadata?.executor,
+          sandboxLevel: metadata?.sandboxLevel,
+          sandboxStateKey: metadata?.sandboxStateKey,
           globalInstructions: getGlobalInstructions(),
           recapAfterSeconds: metadata?.recapAfterSeconds,
           recapMode: "fork",
@@ -3878,6 +4049,23 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     if (helperSettings.error) {
       return c.json({ error: helperSettings.error }, 400);
     }
+    const originalMetadata =
+      deps.sessionMetadataService?.getMetadata?.(sessionId);
+    const requestedRestartSandbox =
+      body.sandboxLevel === undefined
+        ? { sandboxLevel: originalMetadata?.sandboxLevel ?? ("none" as const) }
+        : parseSessionSandboxLevel(body.sandboxLevel);
+    if ("error" in requestedRestartSandbox) {
+      return c.json({ error: requestedRestartSandbox.error }, 400);
+    }
+    const restartSandboxLevel = requestedRestartSandbox.sandboxLevel;
+    const sandboxSettingsError = getSessionSandboxSettingsError(
+      restartSandboxLevel,
+      helperSettings.recapMode ?? originalMetadata?.recapMode,
+    );
+    if (sandboxSettingsError) {
+      return c.json({ error: sandboxSettingsError }, 400);
+    }
 
     let executor = parsedBodyExecutor.executor;
     if (!executor) {
@@ -3898,6 +4086,21 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({ error: 'restartMode must be "handoff" or "fork"' }, 400);
     }
     const restartMode = body.restartMode ?? "handoff";
+    if (
+      restartSandboxLevel !== (originalMetadata?.sandboxLevel ?? "none")
+    ) {
+      return c.json(
+        {
+          error:
+            "A restarted session inherits the source sandbox level and cannot change it",
+        },
+        409,
+      );
+    }
+    const restartProjectPath =
+      originalMetadata?.sandboxLevel === "project-write"
+        ? (originalMetadata.sandboxProjectPath ?? project.path)
+        : project.path;
 
     const oldProcess = deps.supervisor.getProcessForSession(sessionId);
     const metadataProvider = deps.sessionMetadataService?.getProvider(
@@ -3925,8 +4128,6 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
 
     const sourceProvider = sourceSession.provider ?? preferredSourceProvider;
     const providerName = body.provider ?? sourceProvider;
-    const originalMetadata =
-      deps.sessionMetadataService?.getMetadata(sessionId);
 
     const { thinking, effort } = buildThinkingOptions(body);
     const model =
@@ -3953,14 +4154,16 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         preferredTitle: originalMetadata?.customTitle,
         sourceSession,
       });
-      let fork: { sessionId: string };
+      let fork: Awaited<ReturnType<Supervisor["forkSession"]>>;
       try {
         fork = await deps.supervisor.forkSession({
           sessionId,
-          projectPath: project.path,
+          projectPath: restartProjectPath,
           providerName: sourceProvider,
           upToMessageId: body.forkUpToMessageId,
           title: forkTitle,
+          sandboxLevel: restartSandboxLevel,
+          sandboxStateKey: originalMetadata?.sandboxStateKey,
         });
       } catch (error) {
         getLogger().warn(
@@ -3987,7 +4190,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         body.reason?.trim() || "Continue from this fork point.";
       const result = await deps.supervisor.resumeSession(
         fork.sessionId,
-        project.path,
+        restartProjectPath,
         { text: forkMessage, mode: body.mode },
         body.mode,
         {
@@ -3997,6 +4200,9 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           effort,
           providerName: sourceProvider,
           executor,
+          sandboxLevel: restartSandboxLevel,
+          sandboxStateKey:
+            fork.sandboxStateKey ?? originalMetadata?.sandboxStateKey,
           globalInstructions: getGlobalInstructions(),
           permissions: body.permissions,
           recapMode: helperSettings.recapMode,
@@ -4036,6 +4242,16 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         body.model ?? deps.sessionMetadataService?.getRequestedModel(sessionId),
         result.promptSuggestionMode,
         result.recapAfterSeconds,
+        originalMetadata?.workstreamId,
+        {
+          level: restartSandboxLevel,
+          stateKey:
+            result.sandboxStateKey ??
+            fork.sandboxStateKey ??
+            originalMetadata?.sandboxStateKey,
+          projectPath: restartProjectPath,
+          projectId: result.projectId,
+        },
       );
       if (deps.sessionMetadataService) {
         await deps.sessionMetadataService.updateMetadata(result.sessionId, {
@@ -4064,6 +4280,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         permissionMode: result.permissionMode,
         modeVersion: result.modeVersion,
         recapAfterSeconds: result.recapAfterSeconds,
+        sandboxEnforcement: result.sandboxEnforcement,
         restartedFrom: sessionId,
         forkUpToMessageId: body.forkUpToMessageId,
         oldProcessId: oldProcess?.id,
@@ -4087,14 +4304,14 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       sourceModel: oldProcess?.resolvedModel ?? sourceSession.model,
       sourceProcess: oldProcess,
       compactAttempt,
-      projectPath: project.path,
+      projectPath: restartProjectPath,
       reason: body.reason,
       omittedCount,
       transcript,
     });
 
     const result = await deps.supervisor.startSession(
-      project.path,
+      restartProjectPath,
       {
         text: handoff,
         mode: body.mode,
@@ -4108,6 +4325,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         providerName,
         clientName: "yep-anywhere",
         executor,
+        sandboxLevel: restartSandboxLevel,
         globalInstructions: getGlobalInstructions(),
         permissions: body.permissions,
         recapMode: helperSettings.recapMode,
@@ -4148,6 +4366,13 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       body.model ?? deps.sessionMetadataService?.getRequestedModel(sessionId),
       result.promptSuggestionMode,
       result.recapAfterSeconds,
+      undefined,
+      {
+        level: restartSandboxLevel,
+        stateKey: result.sandboxStateKey,
+        projectPath: result.sandboxProjectPath ?? result.projectPath,
+        projectId: result.projectId,
+      },
     );
     if (deps.sessionMetadataService) {
       await deps.sessionMetadataService.updateMetadata(result.sessionId, {
@@ -4176,6 +4401,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       permissionMode: result.permissionMode,
       modeVersion: result.modeVersion,
       recapAfterSeconds: result.recapAfterSeconds,
+      sandboxEnforcement: result.sandboxEnforcement,
       restartedFrom: sessionId,
       oldProcessId: oldProcess?.id,
       oldProcessInterrupted,
@@ -4236,7 +4462,11 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     }
 
     const originalMetadata =
-      deps.sessionMetadataService?.getMetadata(sessionId);
+      deps.sessionMetadataService?.getMetadata?.(sessionId);
+    const forkProjectPath =
+      originalMetadata?.sandboxLevel === "project-write"
+        ? (originalMetadata.sandboxProjectPath ?? project.path)
+        : project.path;
     let baseTitle = normalizeRestartTitleCandidate(
       originalMetadata?.customTitle,
     );
@@ -4249,14 +4479,16 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         )
       : undefined;
 
-    let fork: { sessionId: string };
+    let fork: Awaited<ReturnType<Supervisor["forkSession"]>>;
     try {
       fork = await deps.supervisor.forkSession({
         sessionId,
-        projectPath: project.path,
+        projectPath: forkProjectPath,
         providerName,
         upToMessageId,
         title: forkTitle,
+        sandboxLevel: originalMetadata?.sandboxLevel,
+        sandboxStateKey: originalMetadata?.sandboxStateKey,
       });
     } catch (error) {
       getLogger().warn(
@@ -4290,6 +4522,14 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       deps.sessionMetadataService?.getRequestedModel(sessionId),
       originalMetadata?.promptSuggestionMode,
       originalMetadata?.recapAfterSeconds,
+      originalMetadata?.workstreamId,
+      {
+        level: originalMetadata?.sandboxLevel ?? "none",
+        stateKey: fork.sandboxStateKey ?? originalMetadata?.sandboxStateKey,
+        projectPath: forkProjectPath,
+        projectId:
+          originalMetadata?.workingProjectId ?? (projectId as UrlProjectId),
+      },
     );
     if (deps.sessionMetadataService) {
       await deps.sessionMetadataService.updateMetadata(fork.sessionId, {
@@ -4393,7 +4633,12 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     let requestedModel =
       deps.sessionMetadataService.getRequestedModel(sessionId) ??
       liveSourceProcess?.model;
-    const sourceMetadata = deps.sessionMetadataService.getMetadata(sessionId);
+    const sourceMetadata =
+      deps.sessionMetadataService.getMetadata?.(sessionId);
+    const sourceProjectPath =
+      sourceMetadata?.sandboxLevel === "project-write"
+        ? (sourceMetadata.sandboxProjectPath ?? project.path)
+        : project.path;
     const promptSuggestionMode = sourceMetadata?.promptSuggestionMode;
     const recapAfterSeconds = sourceMetadata?.recapAfterSeconds;
     const abortController = new AbortController();
@@ -4410,7 +4655,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     try {
       if (!liveSourceProcess) {
         sourceProcess = await deps.supervisor.reactivateSession(
-          project.path,
+          sourceProjectPath,
           sessionId,
           undefined,
           {
@@ -4420,6 +4665,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
                 : undefined,
             providerName,
             executor: savedExecutor,
+            sandboxLevel: sourceMetadata?.sandboxLevel,
+            sandboxStateKey: sourceMetadata?.sandboxStateKey,
             globalInstructions: getGlobalInstructions(),
             promptSuggestionMode,
             recapAfterSeconds,
@@ -4430,9 +4677,11 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
 
       const generator = await deps.supervisor.forkSession({
         sessionId,
-        projectPath: project.path,
+        projectPath: sourceProjectPath,
         providerName,
         title: "Retitle generator",
+        sandboxLevel: sourceMetadata?.sandboxLevel,
+        sandboxStateKey: sourceMetadata?.sandboxStateKey,
       });
       generatorSessionId = generator.sessionId;
       await updateForkSummaryChildMetadata(
@@ -4449,6 +4698,15 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         requestedModel,
         promptSuggestionMode,
         recapAfterSeconds,
+        sourceMetadata?.workstreamId,
+        {
+          level: sourceMetadata?.sandboxLevel ?? "none",
+          stateKey:
+            generator.sandboxStateKey ?? sourceMetadata?.sandboxStateKey,
+          projectPath: sourceProjectPath,
+          projectId:
+            sourceMetadata?.workingProjectId ?? (projectId as UrlProjectId),
+        },
       );
       if (abortController.signal.aborted) {
         throw new DOMException("Retitle cancelled", "AbortError");
@@ -4458,10 +4716,11 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         purpose: "session-retitle",
         strategy: "fork",
         generatorSessionId: generator.sessionId,
-        cwd: project.path,
+        cwd: sourceProjectPath,
         currentTitle,
         lengthTarget,
         signal: abortController.signal,
+        sessionSandbox: generator.sessionSandbox,
       });
       const title = generatedRetitleCandidate(generated.text);
       if (!title) {
@@ -4566,6 +4825,12 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       if (!deps.sessionMetadataService) {
         return c.json({ error: "Session metadata service not available" }, 503);
       }
+      const originalMetadata =
+        deps.sessionMetadataService.getMetadata?.(sessionId);
+      const sourceProjectPath =
+        originalMetadata?.sandboxLevel === "project-write"
+          ? (originalMetadata.sandboxProjectPath ?? project.path)
+          : project.path;
       if (activeForkSummaryJobs.has(sessionId)) {
         return c.json(
           { error: "A fork summary is already generating for this session" },
@@ -4624,8 +4889,6 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       }
       emitTranscriptDisplayObjects(sessionId);
 
-      const originalMetadata =
-        deps.sessionMetadataService.getMetadata(sessionId);
       const baseTitle = normalizeRestartTitleCandidate(
         originalMetadata?.customTitle ?? sourceSession.title,
       );
@@ -4650,9 +4913,11 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         try {
           const generator = await deps.supervisor.forkSession({
             sessionId,
-            projectPath: project.path,
+            projectPath: sourceProjectPath,
             providerName,
             title: "Fork summary generator",
+            sandboxLevel: originalMetadata?.sandboxLevel,
+            sandboxStateKey: originalMetadata?.sandboxStateKey,
           });
           generatorSessionId = generator.sessionId;
           await updateForkSummaryChildMetadata(
@@ -4669,6 +4934,16 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
             requestedModel,
             originalMetadata?.promptSuggestionMode,
             originalMetadata?.recapAfterSeconds,
+            originalMetadata?.workstreamId,
+            {
+              level: originalMetadata?.sandboxLevel ?? "none",
+              stateKey:
+                generator.sandboxStateKey ?? originalMetadata?.sandboxStateKey,
+              projectPath: sourceProjectPath,
+              projectId:
+                originalMetadata?.workingProjectId ??
+                (projectId as UrlProjectId),
+            },
           );
           if (abortController.signal.aborted) {
             throw new DOMException("Fork summary cancelled", "AbortError");
@@ -4680,11 +4955,12 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
               purpose: "fork-after-summary",
               strategy: "fork",
               generatorSessionId: generator.sessionId,
-              cwd: project.path,
+              cwd: sourceProjectPath,
               afterTurnMessageId: boundary.retainedThroughMessageId,
               afterTurnContext: boundary.retainedThroughContext,
               instructions,
               signal: abortController.signal,
+              sessionSandbox: generator.sessionSandbox,
             },
           );
           if (abortController.signal.aborted) {
@@ -4695,10 +4971,12 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           targetTitle = title;
           const target = await deps.supervisor.forkSession({
             sessionId,
-            projectPath: project.path,
+            projectPath: sourceProjectPath,
             providerName,
             upToMessageId: boundary.retainedThroughMessageId,
             title,
+            sandboxLevel: originalMetadata?.sandboxLevel,
+            sandboxStateKey: originalMetadata?.sandboxStateKey,
           });
           targetSessionId = target.sessionId;
           await updateForkSummaryChildMetadata(
@@ -4715,6 +4993,16 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
             requestedModel,
             originalMetadata?.promptSuggestionMode,
             originalMetadata?.recapAfterSeconds,
+            originalMetadata?.workstreamId,
+            {
+              level: originalMetadata?.sandboxLevel ?? "none",
+              stateKey:
+                target.sandboxStateKey ?? originalMetadata?.sandboxStateKey,
+              projectPath: sourceProjectPath,
+              projectId:
+                originalMetadata?.workingProjectId ??
+                (projectId as UrlProjectId),
+            },
           );
           if (abortController.signal.aborted) {
             throw new DOMException("Fork summary cancelled", "AbortError");
@@ -4722,12 +5010,15 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
 
           const result = await deps.supervisor.resumeSession(
             target.sessionId,
-            project.path,
+            sourceProjectPath,
             { text: generated.text, mode },
             mode,
             {
               providerName,
               executor: savedExecutor,
+              sandboxLevel: originalMetadata?.sandboxLevel,
+              sandboxStateKey:
+                target.sandboxStateKey ?? originalMetadata?.sandboxStateKey,
               globalInstructions: getGlobalInstructions(),
               model: requestedModel,
               promptSuggestionMode: originalMetadata?.promptSuggestionMode,
@@ -4756,6 +5047,16 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
             requestedModel,
             result.promptSuggestionMode,
             result.recapAfterSeconds,
+            originalMetadata?.workstreamId,
+            {
+              level: originalMetadata?.sandboxLevel ?? "none",
+              stateKey:
+                result.sandboxStateKey ??
+                target.sandboxStateKey ??
+                originalMetadata?.sandboxStateKey,
+              projectPath: result.sandboxProjectPath ?? result.projectPath,
+              projectId: result.projectId,
+            },
           );
           await updateForkSummaryChildMetadata(
             result.sessionId,

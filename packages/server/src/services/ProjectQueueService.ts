@@ -138,6 +138,16 @@ function optionalShowThinking(value: unknown): ShowThinking | undefined {
   return value;
 }
 
+function optionalSandboxLevel(
+  value: unknown,
+): "none" | "project-write" | undefined {
+  if (value === undefined) return undefined;
+  if (value !== "none" && value !== "project-write") {
+    throw new ProjectQueueValidationError("target.sandboxLevel is invalid");
+  }
+  return value;
+}
+
 function normalizeUploadedFile(value: unknown, index: number): UploadedFile {
   if (!isRecord(value)) {
     throw new ProjectQueueValidationError(
@@ -379,6 +389,7 @@ function normalizeTarget(raw: unknown): ProjectQueueTarget {
     return {
       type: "new-session",
       title: optionalString(raw.title, "target.title"),
+      sandboxLevel: optionalSandboxLevel(raw.sandboxLevel),
       ...common,
     };
   }

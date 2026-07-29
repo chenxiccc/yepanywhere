@@ -9,6 +9,7 @@ import {
   GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,
   HOST_AWAKE_CONTROL_CAPABILITY,
   HOST_IDENTITY_CAPABILITY,
+  SESSION_SANDBOXING_CAPABILITY,
 } from "@yep-anywhere/shared";
 import { getServerCapabilities } from "../../src/routes/version.js";
 
@@ -53,5 +54,9 @@ describe("Version Routes", () => {
     expect(getServerCapabilities()).toContain(
       GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,
     );
+  });
+
+  it("advertises session sandboxing", () => {
+    expect(getServerCapabilities()).toContain(SESSION_SANDBOXING_CAPABILITY);
   });
 });

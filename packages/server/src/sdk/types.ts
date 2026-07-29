@@ -11,6 +11,7 @@ import type {
   UploadedFile,
   UserMessageMetadata,
 } from "@yep-anywhere/shared";
+import type { SessionSandboxRuntime } from "../session-sandbox.js";
 
 export interface ContentBlock {
   type: "text" | "tool_use" | "tool_result" | "image" | "thinking";
@@ -196,6 +197,8 @@ export interface StartSessionOptions {
   promptSuggestions?: boolean;
   /** Called when provider-owned retention evidence changes. */
   onProviderRetentionChange?: () => void;
+  /** Prepared YA host sandbox applied to every provider child for this session. */
+  sessionSandbox?: SessionSandboxRuntime;
 }
 
 export interface StartSessionResult {

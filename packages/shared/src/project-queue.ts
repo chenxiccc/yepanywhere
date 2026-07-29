@@ -1,6 +1,7 @@
 import type {
   PermissionMode,
   ProviderName,
+  SessionSandboxLevel,
   ShowThinking,
   ThinkingOption,
 } from "./types.js";
@@ -119,6 +120,7 @@ export type ProjectQueueTarget =
       model?: string;
       serviceTier?: string;
       executor?: string;
+      sandboxLevel?: SessionSandboxLevel;
       title?: string;
       thinking?: ThinkingOption;
       showThinking?: ShowThinking;

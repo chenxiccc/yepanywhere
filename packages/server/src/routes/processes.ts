@@ -17,6 +17,7 @@ import type { ProjectScanner } from "../projects/scanner.js";
 import { getProvider } from "../sdk/providers/index.js";
 import type { ResumeExemptionResult } from "../sessions/resume-exemption.js";
 import type { ISessionReader } from "../sessions/types.js";
+import { getSessionSandboxSettingsError } from "../session-sandbox.js";
 import type { Supervisor } from "../supervisor/Supervisor.js";
 import type { ProcessInfo, Project } from "../supervisor/types.js";
 
@@ -352,6 +353,13 @@ export function createProcessesRoutes(deps: ProcessesDeps): Hono {
           : trimmed === HELPER_SIDE_MODEL_CHEAPEST
             ? HELPER_SIDE_MODEL_CHEAPEST
             : trimmed || HELPER_SIDE_MODEL_CHEAPEST;
+    }
+    const sandboxSettingsError = getSessionSandboxSettingsError(
+      process.sandboxEnforcement?.effective,
+      updates.recapMode,
+    );
+    if (sandboxSettingsError) {
+      return c.json({ error: sandboxSettingsError }, 400);
     }
 
     const updatedProcess = deps.supervisor.configureProcessRecaps(

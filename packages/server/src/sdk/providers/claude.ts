@@ -7,6 +7,7 @@ import {
   readFileSync,
   statSync,
 } from "node:fs";
+import { open as openFile, type FileHandle } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
@@ -15,6 +16,8 @@ import {
   type SDKMessage as AgentSDKMessage,
   type Query,
   type CanUseTool as SDKCanUseTool,
+  type SessionStore,
+  type SessionStoreEntry,
   type Settings,
   type SpawnedProcess,
   forkSession as sdkForkSession,
@@ -65,6 +68,7 @@ import type {
   SummaryGenerationRequest,
   SummaryGenerationResult,
 } from "./types.js";
+import type { SessionSandboxRuntime } from "../../session-sandbox.js";
 
 type ClaudeSdkModelInfo = Awaited<ReturnType<Query["supportedModels"]>>[number];
 
@@ -88,6 +92,99 @@ const CLAUDE_EFFORT_LEVELS: EffortLevel[] = [
   "max",
 ];
 const execFileAsync = promisify(execFile);
+const SESSION_ID_PATTERN = /^[0-9a-f-]{36}$/i;
+
+function createSandboxedClaudeSpawn(
+  sessionSandbox: SessionSandboxRuntime,
+): (
+  options: import("@anthropic-ai/claude-agent-sdk").SpawnOptions,
+) => SpawnedProcess {
+  return (options) => {
+    const sandboxed = sessionSandbox.wrapSpawn(
+      options.command,
+      options.args,
+      options.env as NodeJS.ProcessEnv,
+    );
+    const child = spawn(sandboxed.command, sandboxed.args, {
+      cwd: sandboxed.cwd,
+      env: sandboxed.env,
+      stdio: ["pipe", "pipe", "pipe"],
+      shell: false,
+    });
+    const abort = () => child.kill("SIGTERM");
+    options.signal.addEventListener("abort", abort, { once: true });
+    child.once("exit", () => {
+      options.signal.removeEventListener("abort", abort);
+    });
+    return child;
+  };
+}
+
+function assertClaudeForkSessionId(sessionId: string): void {
+  if (!SESSION_ID_PATTERN.test(sessionId)) {
+    throw new Error("Invalid Claude fork session id");
+  }
+}
+
+function createClaudeForkStore(directory: FileHandle): SessionStore {
+  const directoryPath = `/proc/self/fd/${directory.fd}`;
+  return {
+    async load(key): Promise<SessionStoreEntry[] | null> {
+      if (key.subpath) {
+        throw new Error("Claude fork source subpaths are not supported");
+      }
+      assertClaudeForkSessionId(key.sessionId);
+      let file: FileHandle;
+      try {
+        file = await openFile(
+          join(directoryPath, `${key.sessionId}.jsonl`),
+          constants.O_RDONLY | constants.O_NOFOLLOW,
+        );
+      } catch (error) {
+        if (
+          error &&
+          typeof error === "object" &&
+          "code" in error &&
+          error.code === "ENOENT"
+        ) {
+          return null;
+        }
+        throw error;
+      }
+      try {
+        const content = await file.readFile("utf8");
+        return content
+          .split("\n")
+          .filter((line) => line.trim().length > 0)
+          .map((line) => JSON.parse(line) as SessionStoreEntry);
+      } finally {
+        await file.close();
+      }
+    },
+    async append(key, entries): Promise<void> {
+      if (key.subpath) {
+        throw new Error("Claude fork target subpaths are not supported");
+      }
+      assertClaudeForkSessionId(key.sessionId);
+      const file = await openFile(
+        join(directoryPath, `${key.sessionId}.jsonl`),
+        constants.O_WRONLY |
+          constants.O_CREAT |
+          constants.O_EXCL |
+          constants.O_NOFOLLOW,
+        0o600,
+      );
+      try {
+        await file.writeFile(
+          `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`,
+          "utf8",
+        );
+      } finally {
+        await file.close();
+      }
+    },
+  };
+}
 const requireFromHere = createRequire(import.meta.url);
 const requireFromClaudeSdk = createRequire(
   requireFromHere.resolve("@anthropic-ai/claude-agent-sdk"),
@@ -1258,6 +1355,9 @@ export class ClaudeProvider implements AgentProvider {
           settings: this.getSettings(),
           resume: request.generatorSessionId,
           maxTurns: 1,
+          spawnClaudeCodeProcess: request.sessionSandbox
+            ? createSandboxedClaudeSpawn(request.sessionSandbox)
+            : undefined,
           systemPrompt:
             request.purpose === "session-retitle"
               ? "You are a title helper. Reply with the session title only, no preamble."
@@ -1358,6 +1458,7 @@ export class ClaudeProvider implements AgentProvider {
     remoteEnv?: Record<string, string>;
     pathToClaudeCodeExecutable?: string;
     env: Record<string, string | undefined>;
+    sessionSandbox?: SessionSandboxRuntime;
   }): Promise<PromptCacheRefreshResult> {
     const abortController = new AbortController();
     const timeout = setTimeout(
@@ -1388,7 +1489,9 @@ export class ClaudeProvider implements AgentProvider {
           host: options.executor,
           remoteEnv: options.remoteEnv,
         })
-      : undefined;
+      : options.sessionSandbox
+        ? createSandboxedClaudeSpawn(options.sessionSandbox)
+        : undefined;
 
     try {
       const sdkQuery = query({
@@ -1449,12 +1552,27 @@ export class ClaudeProvider implements AgentProvider {
     cwd: string;
     upToMessageId?: string;
     title?: string;
+    sessionSandbox?: SessionSandboxRuntime;
   }): Promise<{ sessionId: string }> {
-    return sdkForkSession(options.sessionId, {
-      dir: options.cwd,
-      upToMessageId: options.upToMessageId,
-      title: options.title,
-    });
+    if (!options.sessionSandbox) {
+      return sdkForkSession(options.sessionId, {
+        dir: options.cwd,
+        upToMessageId: options.upToMessageId,
+        title: options.title,
+      });
+    }
+    const transcriptDirectory =
+      await options.sessionSandbox.openTranscriptDirectory();
+    try {
+      return await sdkForkSession(options.sessionId, {
+        dir: options.cwd,
+        upToMessageId: options.upToMessageId,
+        title: options.title,
+        sessionStore: createClaudeForkStore(transcriptDirectory),
+      });
+    } finally {
+      await transcriptDirectory.close();
+    }
   }
 
   /**
@@ -1585,26 +1703,36 @@ export class ClaudeProvider implements AgentProvider {
         host: options.executor,
         remoteEnv,
       });
-    } else if (USE_SPAWN_WRAPPER) {
+    } else if (USE_SPAWN_WRAPPER || options.sessionSandbox) {
       // Local spawn wrapper: delegates to child_process.spawn but captures the
       // SpawnedProcess reference so we can check liveness (exitCode) later.
       spawnClaudeCodeProcess = (spawnOpts) => {
         const stderrTail: string[] = [];
-        const proc = spawn(spawnOpts.command, spawnOpts.args, {
-          cwd: spawnOpts.cwd,
-          env: spawnOpts.env as NodeJS.ProcessEnv,
-          stdio: ["pipe", "pipe", "pipe"],
-          shell: process.platform === "win32",
-        });
+        const sandboxed = options.sessionSandbox?.wrapSpawn(
+          spawnOpts.command,
+          spawnOpts.args,
+          spawnOpts.env as NodeJS.ProcessEnv,
+        );
+        const proc = spawn(
+          sandboxed?.command ?? spawnOpts.command,
+          sandboxed?.args ?? spawnOpts.args,
+          {
+            cwd: sandboxed?.cwd ?? spawnOpts.cwd,
+            env: sandboxed?.env ?? (spawnOpts.env as NodeJS.ProcessEnv),
+            stdio: ["pipe", "pipe", "pipe"],
+            shell: sandboxed ? false : process.platform === "win32",
+          },
+        );
 
         log.info(
           {
             event: "claude_child_spawn_start",
             command: spawnOpts.command,
-            args: spawnOpts.args,
+            args: sandboxed ? undefined : spawnOpts.args,
             cwd: spawnOpts.cwd,
             shell: process.platform === "win32",
             resolvedExecutable: pathToClaudeCodeExecutable,
+            sandboxed: Boolean(sandboxed),
           },
           "Starting Claude child process",
         );
@@ -1824,6 +1952,7 @@ export class ClaudeProvider implements AgentProvider {
           remoteEnv,
           pathToClaudeCodeExecutable,
           env: claudeEnv,
+          sessionSandbox: options.sessionSandbox,
         }),
       publishAgentctlSessionId: (sessionId: string) => {
         agentctlSessionEnvBridge?.publishSessionId(sessionId);

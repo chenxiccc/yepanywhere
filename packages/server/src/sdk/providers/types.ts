@@ -6,6 +6,7 @@ import type {
   SlashCommand,
 } from "@yep-anywhere/shared";
 import type { MessageQueue } from "../messageQueue.js";
+import type { SessionSandboxRuntime } from "../../session-sandbox.js";
 import type {
   CanUseTool,
   ProviderActivitySnapshot,
@@ -103,6 +104,8 @@ export interface StartSessionOptions {
   shouldEmitLiveDeltas?: () => boolean;
   /** Called when provider-owned retention evidence changes. */
   onProviderRetentionChange?: () => void;
+  /** Prepared YA host sandbox applied to every provider child for this session. */
+  sessionSandbox?: SessionSandboxRuntime;
 }
 
 /**
@@ -320,6 +323,8 @@ export interface AgentProvider {
     upToMessageId?: string;
     /** Title for the forked session. */
     title?: string;
+    /** Project-private provider state and process confinement inherited by the fork. */
+    sessionSandbox?: SessionSandboxRuntime;
   }) => Promise<{ sessionId: string }>;
 }
 
@@ -339,6 +344,8 @@ export type SummaryGenerationRequest =
       cwd: string;
       /** Cancels the helper query when the request is abandoned. */
       signal?: AbortSignal;
+      /** Shared project-private provider state inherited from the source. */
+      sessionSandbox?: SessionSandboxRuntime;
     }
   | {
       purpose: "fork-after-summary";
@@ -355,6 +362,8 @@ export type SummaryGenerationRequest =
       instructions?: string;
       /** Cancels the helper query when the server-owned job is cancelled. */
       signal?: AbortSignal;
+      /** Shared project-private provider state inherited from the source. */
+      sessionSandbox?: SessionSandboxRuntime;
     }
   | {
       purpose: "session-retitle";
@@ -369,6 +378,8 @@ export type SummaryGenerationRequest =
       lengthTarget?: number;
       /** Cancels the helper query when the request is abandoned. */
       signal?: AbortSignal;
+      /** Shared project-private provider state inherited from the source. */
+      sessionSandbox?: SessionSandboxRuntime;
     };
 
 export interface SummaryGenerationResult {

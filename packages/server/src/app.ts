@@ -11,6 +11,7 @@ import {
   DEFAULT_PROMPT_CACHE_KEEPALIVE_INACTIVITY_MINUTES,
   buildEffectiveAgentContext,
   clampProjectQueueQuietSeconds,
+  isClaudeProviderName,
 } from "@yep-anywhere/shared";
 import { Hono } from "hono";
 import { compress } from "hono/compress";
@@ -25,6 +26,10 @@ import type {
   SessionMetadataService,
 } from "./metadata/index.js";
 import { ToolResultMediaStore } from "./media/ToolResultMediaStore.js";
+import {
+  getClaudeSandboxProjectDir,
+  getCodexSandboxSessionsDir,
+} from "./session-sandbox.js";
 import { updateAllowedHosts } from "./middleware/allowed-hosts.js";
 import { createAuthMiddleware } from "./middleware/auth.js";
 import { structuredErrorHandler } from "./middleware/error-handler.js";
@@ -154,6 +159,7 @@ import { CodexSessionReader } from "./sessions/codex-reader.js";
 import { createCodexSessionDiscoveryIndex } from "./sessions/codex-discovery.js";
 import { GeminiSessionReader } from "./sessions/gemini-reader.js";
 import { GrokSessionReader } from "./sessions/grok-reader.js";
+import { MergedSessionReader } from "./sessions/merged-reader.js";
 import { OpenCodeSessionReader } from "./sessions/opencode-reader.js";
 import { PiSessionReader } from "./sessions/pi-reader.js";
 import {
@@ -514,6 +520,9 @@ export function createApp(options: AppOptions): AppResult {
       return resolved.ok ? resolved.file.resolvedPath : null;
     },
   });
+  const effectiveDataDir =
+    options.dataDir ??
+    join(process.env.HOME ?? process.env.USERPROFILE ?? ".", ".yep-anywhere");
   const bangCommandService =
     options.sessionMetadataService && options.dataDir
       ? new BangCommandService({
@@ -574,10 +583,73 @@ export function createApp(options: AppOptions): AppResult {
         : "";
 
     switch (project.provider) {
-      case "codex":
+      case "codex": {
+        const sandboxSessionRoots = [
+          ...new Map(
+            Object.values(
+              options.sessionMetadataService?.getAllMetadata() ?? {},
+            ).flatMap((metadata) => {
+              if (
+                metadata.provider !== "codex" ||
+                metadata.sandboxLevel !== "project-write" ||
+                !metadata.sandboxStateKey ||
+                metadata.workingProjectId !== project.id
+              ) {
+                return [];
+              }
+              const root = {
+                sessionsDir: getCodexSandboxSessionsDir({
+                  dataDir: effectiveDataDir,
+                  stateKey: metadata.sandboxStateKey,
+                }),
+                projectPath: metadata.sandboxProjectPath ?? project.path,
+              };
+              return [
+                [`${root.sessionsDir}\0${root.projectPath}`, root] as const,
+              ];
+            }),
+          ).values(),
+        ];
+        const sandboxKey =
+          sandboxSessionRoots.length > 0
+            ? `::sandbox=${sandboxSessionRoots
+                .map(
+                  ({ sessionsDir, projectPath }) =>
+                    `${sessionsDir}:${projectPath}`,
+                )
+                .join(",")}`
+            : "";
+        return getOrCreateReader(
+          `codex::${project.sessionDir}::${project.path}${sandboxKey}`,
+          () => {
+            const discoveryIndex = getCodexDiscoveryIndex(project.sessionDir);
+            const globalReader = new CodexSessionReader({
+              sessionsDir: project.sessionDir,
+              projectPath: project.path,
+              summaryParserWorkerMode: options.codexSummaryParserWorkerMode,
+              ...(discoveryIndex ? { discoveryIndex } : {}),
+            });
+            if (sandboxSessionRoots.length === 0) {
+              return globalReader;
+            }
+            return new MergedSessionReader([
+              ...sandboxSessionRoots.map(
+                ({ sessionsDir, projectPath }) =>
+                  new CodexSessionReader({
+                    sessionsDir,
+                    projectPath,
+                    summaryParserWorkerMode:
+                      options.codexSummaryParserWorkerMode,
+                  }),
+              ),
+              globalReader,
+            ]);
+          },
+        );
+      }
       case "codex-oss":
         return getOrCreateReader(
-          `codex::${project.sessionDir}::${project.path}`,
+          `codex-oss::${project.sessionDir}::${project.path}`,
           () => {
             const discoveryIndex = getCodexDiscoveryIndex(project.sessionDir);
             return new CodexSessionReader({
@@ -603,12 +675,41 @@ export function createApp(options: AppOptions): AppResult {
       case "claude-gateway":
       case "claude-ollama": {
         const mis = options.modelInfoService;
+        const sandboxSessionDirs = [
+          ...new Set(
+            Object.values(
+              options.sessionMetadataService?.getAllMetadata() ?? {},
+            ).flatMap((metadata) =>
+              metadata.provider &&
+              isClaudeProviderName(metadata.provider) &&
+              metadata.sandboxLevel === "project-write" &&
+              metadata.sandboxStateKey &&
+              metadata.workingProjectId === project.id
+                ? [
+                    getClaudeSandboxProjectDir({
+                      dataDir: effectiveDataDir,
+                      stateKey: metadata.sandboxStateKey,
+                      projectPath: metadata.sandboxProjectPath ?? project.path,
+                    }),
+                  ]
+                : [],
+            ),
+          ),
+        ];
+        const allAdditionalDirs = [
+          ...(project.mergedSessionDirs ?? []),
+          ...sandboxSessionDirs,
+        ];
+        const sandboxKey =
+          sandboxSessionDirs.length > 0
+            ? `::sandbox=${sandboxSessionDirs.join(",")}`
+            : "";
         return getOrCreateReader(
-          `claude::${project.sessionDir}${mergedKey}`,
+          `claude::${project.sessionDir}${mergedKey}${sandboxKey}`,
           () =>
             new ClaudeSessionReader({
               sessionDir: project.sessionDir,
-              additionalDirs: project.mergedSessionDirs,
+              additionalDirs: allAdditionalDirs,
               summaryParserWorkerMode: options.claudeSummaryParserWorkerMode,
               getContextWindow: mis
                 ? (model, provider) => mis.getContextWindow(model, provider)
@@ -839,6 +940,7 @@ export function createApp(options: AppOptions): AppResult {
     maxQueueSize: options.maxQueueSize,
     sessionQueuePersistenceService: options.sessionQueuePersistenceService,
     toolResultMediaStore,
+    sandboxStateRoot: join(effectiveDataDir, "session-sandboxes"),
     // Save executor for remote sessions to support resume
     onSessionExecutor: options.sessionMetadataService
       ? (sessionId, executor) =>

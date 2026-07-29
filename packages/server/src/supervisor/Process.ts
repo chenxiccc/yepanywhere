@@ -9,6 +9,7 @@ import type {
   ProviderRuntimeStatus,
   RecapMode,
   SessionLivenessSnapshot,
+  SessionSandboxEnforcement,
   SessionWakeReason,
   SessionWakeReasonSnapshot,
   SlashCommand,
@@ -763,6 +764,9 @@ export class Process {
   readonly serviceTier: string | undefined;
   /** SSH host for remote execution (undefined = local) */
   readonly executor: string | undefined;
+  readonly sandboxEnforcement: SessionSandboxEnforcement | undefined;
+  readonly sandboxStateKey: string | undefined;
+  readonly sandboxProjectPath: string | undefined;
 
   private legacyQueue: UserMessage[] = [];
   private messageQueue: MessageQueue | null;
@@ -979,6 +983,9 @@ export class Process {
     this._requestedModel = options.model;
     this.serviceTier = options.serviceTier;
     this.executor = options.executor;
+    this.sandboxEnforcement = options.sandboxEnforcement;
+    this.sandboxStateKey = options.sandboxStateKey;
+    this.sandboxProjectPath = options.sandboxProjectPath;
     this._thinking = options.thinking;
     this._effort = options.effort;
     this.setMaxThinkingTokensFn = options.setMaxThinkingTokensFn ?? null;
@@ -2137,6 +2144,7 @@ export class Process {
       recapAfterSeconds: this._recapAfterSeconds,
       promptSuggestionMode: this._promptSuggestionMode,
       helperSideModel: this._helperSideModel,
+      sandboxEnforcement: this.sandboxEnforcement,
     };
 
     // Add idleSince if idle

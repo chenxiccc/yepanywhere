@@ -41,6 +41,8 @@ import type {
   SessionMetadataResponse,
   SessionQueuedMessageSummary,
   SessionLivenessSnapshot,
+  SessionSandboxEnforcement,
+  SessionSandboxLevel,
   ShowThinking,
   SlashCommand,
   ThinkingOption,
@@ -188,6 +190,8 @@ export interface SessionOptions {
   provider?: ProviderName;
   /** SSH host alias for remote execution (undefined = local) */
   executor?: string;
+  /** Default-off YA host filesystem confinement for a newly created session. */
+  sandboxLevel?: SessionSandboxLevel;
   /** Recap behavior for future away-return triggers in this session. */
   recapMode?: RecapMode;
   /** Browser-away duration before YA asks this session for a recap. */
@@ -531,6 +535,7 @@ export const api = {
       permissionMode: PermissionMode;
       modeVersion: number;
       recapAfterSeconds?: number;
+      sandboxEnforcement?: SessionSandboxEnforcement;
       serverTimestamp: number;
     }>(`/projects/${projectId}/sessions`, {
       method: "POST",
@@ -543,6 +548,7 @@ export const api = {
         showThinking: options?.showThinking,
         provider: options?.provider,
         executor: options?.executor,
+        sandboxLevel: options?.sandboxLevel,
         recapMode: options?.recapMode,
         recapAfterSeconds: options?.recapAfterSeconds,
         promptSuggestionMode: options?.promptSuggestionMode,
@@ -566,6 +572,7 @@ export const api = {
       permissionMode: PermissionMode;
       modeVersion: number;
       recapAfterSeconds?: number;
+      sandboxEnforcement?: SessionSandboxEnforcement;
       serverTimestamp: number;
     }>(`/projects/${projectId}/sessions/create`, {
       method: "POST",
@@ -577,6 +584,7 @@ export const api = {
         showThinking: options?.showThinking,
         provider: options?.provider,
         executor: options?.executor,
+        sandboxLevel: options?.sandboxLevel,
         recapMode: options?.recapMode,
         recapAfterSeconds: options?.recapAfterSeconds,
         promptSuggestionMode: options?.promptSuggestionMode,
@@ -599,6 +607,7 @@ export const api = {
       permissionMode: PermissionMode;
       modeVersion: number;
       recapAfterSeconds?: number;
+      sandboxEnforcement?: SessionSandboxEnforcement;
       serverTimestamp: number;
     }>(`/sessions`, {
       method: "POST",
@@ -611,6 +620,7 @@ export const api = {
         showThinking: options?.showThinking,
         provider: options?.provider,
         executor: options?.executor,
+        sandboxLevel: options?.sandboxLevel,
         recapMode: options?.recapMode,
         recapAfterSeconds: options?.recapAfterSeconds,
         promptSuggestionMode: options?.promptSuggestionMode,
@@ -629,6 +639,7 @@ export const api = {
       permissionMode: PermissionMode;
       modeVersion: number;
       recapAfterSeconds?: number;
+      sandboxEnforcement?: SessionSandboxEnforcement;
       serverTimestamp: number;
     }>(`/sessions/create`, {
       method: "POST",
@@ -640,6 +651,7 @@ export const api = {
         showThinking: options?.showThinking,
         provider: options?.provider,
         executor: options?.executor,
+        sandboxLevel: options?.sandboxLevel,
         recapMode: options?.recapMode,
         recapAfterSeconds: options?.recapAfterSeconds,
         promptSuggestionMode: options?.promptSuggestionMode,
@@ -662,6 +674,7 @@ export const api = {
       permissionMode: PermissionMode;
       modeVersion: number;
       recapAfterSeconds?: number;
+      sandboxEnforcement?: SessionSandboxEnforcement;
       serverTimestamp: number;
       resume?: {
         requestedMode: "full" | "compact-first";
@@ -714,6 +727,7 @@ export const api = {
       permissionMode: PermissionMode;
       modeVersion: number;
       recapAfterSeconds?: number;
+      sandboxEnforcement?: SessionSandboxEnforcement;
       serverTimestamp: number;
     }>(`/projects/${projectId}/sessions/${sessionId}/reactivate`, {
       method: "POST",
@@ -746,6 +760,7 @@ export const api = {
       permissionMode: PermissionMode;
       modeVersion: number;
       recapAfterSeconds?: number;
+      sandboxEnforcement?: SessionSandboxEnforcement;
       restartedFrom: string;
       forkUpToMessageId?: string;
       oldProcessId?: string;
@@ -762,6 +777,7 @@ export const api = {
         showThinking: options?.showThinking,
         provider: options?.provider,
         executor: options?.executor,
+        sandboxLevel: options?.sandboxLevel,
         recapMode: options?.recapMode,
         recapAfterSeconds: options?.recapAfterSeconds,
         promptSuggestionMode: options?.promptSuggestionMode,

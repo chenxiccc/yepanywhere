@@ -11,6 +11,7 @@ import type {
   ProviderChildSessionSummary,
   ProviderName,
   RecapMode,
+  SessionSandboxEnforcement,
   ThinkingConfig,
   UrlProjectId,
   SessionLivenessSnapshot,
@@ -265,6 +266,8 @@ export interface ProcessInfo {
   providerChildren?: ProviderChildSessionSummary[];
   /** Session-level helper side model for simulated helper features. */
   helperSideModel?: string;
+  /** YA-owned host filesystem confinement evidence for this process. */
+  sandboxEnforcement?: SessionSandboxEnforcement;
 }
 
 export interface ProcessAbortResult {
@@ -355,4 +358,10 @@ export interface ProcessOptions {
   permissions?: PermissionRules;
   /** OS PID of the spawned agent child process, or getter for deferred resolution */
   pid?: number | (() => number | undefined);
+  /** YA-owned host filesystem confinement evidence for this process. */
+  sandboxEnforcement?: SessionSandboxEnforcement;
+  /** Opaque private provider-state key persisted with session metadata. */
+  sandboxStateKey?: string;
+  /** Canonical project path used by the sandbox mount and transcript layout. */
+  sandboxProjectPath?: string;
 }
