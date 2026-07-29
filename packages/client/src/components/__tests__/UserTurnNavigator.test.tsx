@@ -177,6 +177,9 @@ describe("UserTurnNavigator", () => {
     const secondMarker = await screen.findByRole("button", {
       name: "Jump to turn: Second request with more context",
     });
+    expect(
+      document.querySelector<HTMLElement>(".user-turn-nav")?.style.right,
+    ).toBe(`${window.innerWidth - 500 + (380 - 360)}px`);
 
     fireEvent.pointerEnter(secondMarker);
     expect(screen.getByText("Second request with more context")).toBeTruthy();

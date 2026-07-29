@@ -58,6 +58,52 @@ dash, dot, hit target, and preview label all use it, so they stay aligned.
 constants in `UserTurnNavigator.tsx`, **not** user-facing settings. If a setting
 is ever wanted, expose `MARKER_SPREAD_PX` (0 → max) as the one knob.
 
+## Transcript content clearance
+
+The rail's 22 px marker targets may share a small amount of horizontal space
+with transcript content on constrained windows, but that overlap must fade
+continuously as the viewport widens. Transcript inline-end padding uses
+`clamp(12px, calc(1vw + 6px), 22px)`: the measured 22 px total reaches full
+marker/content separation at 1600 px and adds no further padding beyond that
+width. The compact phone transcript preserves this inline-end reserve even
+while its other edges use tighter spacing.
+
+This reserve is viewport-fluid and applies on both sides of the 1100 px sidebar
+mode switch. Do not put a larger reserve only inside the desktop media query;
+doing so makes the right content edge jump when the left sidebar appears or
+disappears. Right-side transcript action floats additionally move inward by the
+remaining overlap plus 2 px, so their hit targets never compete with a turn
+marker while ordinary text retains the gradual overlap. The composer sits below
+the rail and keeps independent, denser window-edge spacing. Its inline padding
+grows continuously from 2 px at 600 px and below to 8 px at 1600 px and above;
+growing the viewport must not move the composer edge inward at the phone
+breakpoint. The desktop header and composer trim one pixel from their previous
+block padding; phone retains its top edge and trims only the composer bottom by
+one pixel. Do not apply the transcript rail reserve to the composer.
+
+The rail target ends at the transcript scroll container's client edge. On
+desktop, that is the inner edge of the always-visible native scrollbar; the
+outermost trim-circle pixel sits 2 px before it. Compact phone layout hides the
+native scrollbar and its otherwise empty gutter because the custom track is the
+scroll-position affordance, placing that circle pixel 2 px inside the physical
+viewport edge. This stays within the 3 px rounded-screen tap margin while
+preserving the full marker target inside the usable edge.
+
+## Tabled proposal: independent composer width cap
+
+The composer currently inherits `--content-max-width`; there is no separate
+narrow-composer preference. A future browser-local Appearance option could
+define an optional composer maximum whose effective value is
+`min(content max width, composer max width)`. The default must remain “inherit
+content width,” preserving the current wide composer and adding no new concept
+for users who did not opt in.
+
+Before implementation, decide whether a deliberately narrower composer remains
+centered (the less surprising default) or stays aligned to the transcript start
+edge and places all extra room after it. The setting must never widen the
+composer beyond transcript content, and should be removed rather than retained
+if narrow-composer use does not justify another Appearance option.
+
 ## Search preview hover stability
 
 Ctrl-S search mode renders match-preview excerpts beside the turn rail, and

@@ -340,6 +340,27 @@
   );
   --tab-size: 2;
   --content-max-width: 830px;
+  /* The 22px marker target ends at the scroll container's client edge.
+     Content overlap decreases linearly from 600px to exact separation at
+     1600px, independent of the 1100px sidebar mode switch. Floats reserve
+     the remaining overlap plus a 2px activation gap. */
+  --turn-rail-content-padding-inline-end: clamp(
+    12px,
+    calc(1vw + 6px),
+    22px
+  );
+  --turn-rail-float-inset-inline-end: max(
+    2px,
+    calc(24px - var(--turn-rail-content-padding-inline-end))
+  );
+  /* Preserve the 2px phone edge, then grow continuously to the 8px desktop
+     edge at 1600px. A breakpoint jump here visibly reverses the composer's
+     right edge while the viewport is growing. */
+  --composer-window-padding-inline: clamp(
+    2px,
+    calc(0.6vw - 1.6px),
+    8px
+  );
   --blame-author-color-lightness: 0.78;
   --blame-author-color-chroma: 0.13;
 
@@ -1913,7 +1934,7 @@ textarea {
 }
 
 .session-header-inner {
-  padding: 0.5rem 1rem 0.5rem 0.25rem;
+  padding: calc(0.5rem - 1px) 1rem calc(0.5rem - 1px) 0.25rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -3048,6 +3069,7 @@ a.sidebar-nav-item {
   overflow-y: auto;
   scrollbar-gutter: stable;
   padding: 1rem;
+  padding-inline-end: var(--turn-rail-content-padding-inline-end);
   min-height: 0;
   -webkit-overflow-scrolling: touch;
   /* Softly fade the bottom few px of scrolling content into the composer,
@@ -3082,7 +3104,7 @@ a.sidebar-nav-item {
   content: "";
   position: absolute;
   top: 0;
-  right: 9px;
+  right: 5px;
   bottom: 0;
   width: 2px;
   border-radius: 999px;
@@ -3091,7 +3113,7 @@ a.sidebar-nav-item {
 
 .user-turn-nav-thumb {
   position: absolute;
-  right: 8px;
+  right: 4px;
   min-height: 18px;
   width: 4px;
   border-radius: 999px;
@@ -3100,7 +3122,7 @@ a.sidebar-nav-item {
 
 .user-turn-nav-motion-cue {
   position: absolute;
-  right: 3px;
+  right: -1px;
   z-index: 2;
   width: 14px;
   height: 48px;
@@ -3219,7 +3241,7 @@ a.sidebar-nav-item {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  right: 12px;
+  right: 8px;
   width: 8px;
   height: 3px;
   border-radius: 999px;
@@ -3266,7 +3288,7 @@ a.sidebar-nav-item {
 .user-turn-nav-trim-marker {
   appearance: none;
   position: absolute;
-  right: 3px;
+  right: 1px;
   width: 10px;
   /* height + margin-top set inline per marker (sized to neighbor gaps). */
   padding: 0;
@@ -3665,7 +3687,7 @@ a.sidebar-nav-item {
 
 .session-input {
   flex-shrink: 0; /* Never shrink the input area */
-  padding: 0.75rem 1rem;
+  padding: calc(0.75rem - 1px) var(--composer-window-padding-inline);
   background: var(--bg-surface);
 }
 
@@ -4163,10 +4185,18 @@ a.sidebar-nav-item {
 
   .session-messages {
     padding: 0.5rem 0.375rem;
+    padding-inline-end: var(--turn-rail-content-padding-inline-end);
+    scrollbar-gutter: auto;
+    scrollbar-width: none;
+  }
+
+  .session-messages::-webkit-scrollbar {
+    display: none;
   }
 
   .session-input {
     padding: 0.5rem 0.375rem;
+    padding-bottom: calc(0.5rem - 1px);
   }
 
   .btw-aside-card {
@@ -4322,7 +4352,8 @@ a.linkified-url:hover {
   --user-prompt-action-size: 34px;
   --user-prompt-actions-space: calc(
     (var(--user-prompt-action-size) * 4) +
-    (var(--space-1) * 4)
+    (var(--space-1) * 4) +
+    var(--turn-rail-float-inset-inline-end)
   );
 
   position: relative;
@@ -4337,21 +4368,24 @@ a.linkified-url:hover {
 .user-prompt-container.has-stacked-actions {
   --user-prompt-actions-space: calc(
     var(--user-prompt-action-size) +
-    var(--space-1)
+    var(--space-1) +
+    var(--turn-rail-float-inset-inline-end)
   );
 }
 
 .user-prompt-container.has-cancel-unconfirmed-action {
   --user-prompt-actions-space: calc(
     (var(--user-prompt-action-size) * 5) +
-    (var(--space-1) * 5)
+    (var(--space-1) * 5) +
+    var(--turn-rail-float-inset-inline-end)
   );
 }
 
 .user-prompt-container.has-stacked-actions.has-cancel-unconfirmed-action {
   --user-prompt-actions-space: calc(
     var(--user-prompt-action-size) +
-    var(--space-1)
+    var(--space-1) +
+    var(--turn-rail-float-inset-inline-end)
   );
 }
 
@@ -4362,7 +4396,7 @@ a.linkified-url:hover {
 .user-prompt-actions {
   position: absolute;
   inset-block-start: 0;
-  inset-inline-end: 0;
+  inset-inline-end: var(--turn-rail-float-inset-inline-end);
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
@@ -4455,21 +4489,24 @@ a.linkified-url:hover {
     --user-prompt-action-size: 30px;
     --user-prompt-actions-space: calc(
       (var(--user-prompt-action-size) * 4) +
-      (var(--space-1) * 4)
+      (var(--space-1) * 4) +
+      var(--turn-rail-float-inset-inline-end)
     );
   }
 
   .user-prompt-container.has-cancel-unconfirmed-action {
     --user-prompt-actions-space: calc(
       (var(--user-prompt-action-size) * 5) +
-      (var(--space-1) * 5)
+      (var(--space-1) * 5) +
+      var(--turn-rail-float-inset-inline-end)
     );
   }
 
   .user-prompt-container.has-stacked-actions.has-cancel-unconfirmed-action {
     --user-prompt-actions-space: calc(
       var(--user-prompt-action-size) +
-      var(--space-1)
+      var(--space-1) +
+      var(--turn-rail-float-inset-inline-end)
     );
   }
 
@@ -16112,7 +16149,6 @@ div.bang-command-error-message {
   .main-content-constrained .session-messages {
     overflow-y: auto;
     scrollbar-gutter: stable;
-    padding-right: calc(1rem + min(30px, 2vw));
     -webkit-overflow-scrolling: touch;
   }
 
@@ -16122,10 +16158,6 @@ div.bang-command-error-message {
     max-width: var(--content-max-width);
     margin: 0 auto;
     width: 100%;
-  }
-
-  .main-content-constrained .session-input {
-    padding-right: calc(1rem + min(30px, 2vw));
   }
 
   /* Keep the normal session transcript/composer on the user's content-width

@@ -104,7 +104,6 @@ interface PreviewFacsimile {
 }
 
 const MIN_NAV_ANCHORS = 2;
-const NAV_EDGE_INSET_PX = 4;
 const NAV_VERTICAL_INSET_PX = 8;
 // Per-marker hit/hover target height is sized to the gap to its neighbors (so
 // targets tile without overlap and don't activate blank space), clamped to this
@@ -570,7 +569,6 @@ function measureLayout(
   const right =
     window.innerWidth -
     scrollRect.right +
-    NAV_EDGE_INSET_PX +
     (scrollContainer.offsetWidth - scrollContainer.clientWidth);
   const previewMaxWidthPx = clamp(window.innerWidth - right - 42, 160, 620);
   const layoutWithoutSignature = {
