@@ -25,6 +25,9 @@ import { ClaudeSessionReader } from "../src/sessions/reader.js";
 import { ClaudeProvider } from "../src/sdk/providers/claude.js";
 import type { UrlProjectId } from "@yep-anywhere/shared";
 
+const hostSandboxAvailable =
+  (await probeSessionSandboxAvailability()).state === "available";
+
 async function runSandboxed(spawnOptions: SessionSandboxSpawn): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const child = spawn(spawnOptions.command, spawnOptions.args, {
@@ -54,8 +57,8 @@ async function runSandboxed(spawnOptions: SessionSandboxSpawn): Promise<void> {
 
 describe("session sandbox", () => {
   const roots: string[] = [];
-  // Bubblewrap integration cases only run on their supported host OS.
-  const t = process.platform === "linux" ? it : it.skip;
+  const linuxIt = process.platform === "linux" ? it : it.skip;
+  const t = hostSandboxAvailable ? it : it.skip;
 
   afterEach(async () => {
     vi.unstubAllEnvs();
@@ -232,7 +235,7 @@ describe("session sandbox", () => {
     },
   );
 
-  t(
+  linuxIt(
     "fails closed with install guidance when Bubblewrap is absent",
     async () => {
       const root = await fixtureRoot();
@@ -252,7 +255,7 @@ describe("session sandbox", () => {
     },
   );
 
-  t(
+  linuxIt(
     "distinguishes an unusable Bubblewrap runtime from a missing package",
     async () => {
       const root = await fixtureRoot();
