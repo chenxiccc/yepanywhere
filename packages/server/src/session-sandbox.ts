@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
+import { closeSync, fstatSync, openSync } from "node:fs";
 import {
   constants as fsConstants,
   chmod,
@@ -63,6 +64,7 @@ const SUPPORTED_PROVIDERS = new Set<ProviderName>([
 const SANDBOX_STATE_KEY_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/;
 const MINIMUM_BWRAP_VERSION = [0, 4, 0] as const;
 const SESSION_SANDBOX_AVAILABILITY_TTL_MS = 60_000;
+const PROJECT_DIRECTORY_CHILD_FD = 3;
 
 type SessionSandboxSetupFailureState = Exclude<
   SessionSandboxAvailabilityState,
@@ -95,6 +97,9 @@ export interface SessionSandboxSpawn {
   args: string[];
   cwd: string;
   env: NodeJS.ProcessEnv;
+  stdio: ["pipe", "pipe", "pipe", number];
+  /** Release the parent copy after child_process.spawn() has inherited it. */
+  release(): void;
 }
 
 export interface SessionSandboxRuntime {
@@ -209,10 +214,14 @@ async function resolveTrustedBwrap(explicit?: string): Promise<string> {
 async function runBwrapProbe(
   bwrapPath: string,
   args: readonly string[],
+  projectDirectoryFd?: number,
 ): Promise<void> {
   await new Promise<void>((resolveProbe, rejectProbe) => {
     const child = spawn(bwrapPath, [...args, "--", "/bin/true"], {
-      stdio: ["ignore", "ignore", "pipe"],
+      stdio:
+        projectDirectoryFd === undefined
+          ? ["ignore", "ignore", "pipe"]
+          : ["ignore", "ignore", "pipe", projectDirectoryFd],
       env: process.env,
     });
     let stderr = "";
@@ -511,8 +520,69 @@ export function getCodexSandboxSessionsDir(options: {
   );
 }
 
+interface ProjectDirectoryIdentity {
+  device: bigint;
+  inode: bigint;
+}
+
+interface ProjectDirectoryAnchor {
+  fd: number;
+  identity: ProjectDirectoryIdentity;
+  release(): void;
+}
+
+function openProjectDirectoryAnchor(
+  projectPath: string,
+  expectedIdentity?: ProjectDirectoryIdentity,
+): ProjectDirectoryAnchor {
+  let fd: number | undefined;
+  try {
+    fd = openSync(
+      projectPath,
+      fsConstants.O_RDONLY |
+        fsConstants.O_DIRECTORY |
+        fsConstants.O_NOFOLLOW,
+    );
+    const info = fstatSync(fd, { bigint: true });
+    if (!info.isDirectory()) {
+      throw new Error("the selected project is no longer a directory");
+    }
+    if (
+      expectedIdentity &&
+      (info.dev !== expectedIdentity.device ||
+        info.ino !== expectedIdentity.inode)
+    ) {
+      throw new Error("the selected project's filesystem identity changed");
+    }
+
+    const anchorFd = fd;
+    let released = false;
+    return {
+      fd: anchorFd,
+      identity: { device: info.dev, inode: info.ino },
+      release() {
+        if (released) return;
+        released = true;
+        closeSync(anchorFd);
+      },
+    };
+  } catch (error) {
+    if (fd !== undefined) closeSync(fd);
+    const detail = error instanceof Error ? ` (${error.message})` : "";
+    if (expectedIdentity) {
+      throw new Error(
+        `Session sandbox project boundary changed before provider launch; refusing to follow ${projectPath}${detail}.`,
+      );
+    }
+    throw new Error(
+      `Session sandbox could not anchor the selected project directory ${projectPath}${detail}.`,
+    );
+  }
+}
+
 function buildBwrapBaseArgs(options: {
   projectPath: string;
+  projectSourcePath: string;
   providerStateDir: string;
   cacheDir: string;
   tempDir: string;
@@ -542,7 +612,7 @@ function buildBwrapBaseArgs(options: {
     options.varTempDir,
     "/var/tmp",
     "--bind",
-    options.projectPath,
+    options.projectSourcePath,
     options.projectPath,
     "--bind",
     options.providerStateDir,
@@ -671,15 +741,22 @@ export async function prepareSessionSandbox(
   const mountPrivateClaudeJson =
     options.provider !== "codex" && (await hasClaudeJsonMountPoint());
 
+  const initialProjectAnchor = openProjectDirectoryAnchor(projectPath);
+  const projectIdentity = initialProjectAnchor.identity;
   const baseArgs = buildBwrapBaseArgs({
     projectPath,
+    projectSourcePath: `/proc/self/fd/${PROJECT_DIRECTORY_CHILD_FD}`,
     providerStateDir,
     cacheDir,
     tempDir,
     varTempDir,
     privateClaudeJson: mountPrivateClaudeJson ? privateClaudeJson : undefined,
   });
-  await runBwrapProbe(bwrapPath, baseArgs);
+  try {
+    await runBwrapProbe(bwrapPath, baseArgs, initialProjectAnchor.fd);
+  } finally {
+    initialProjectAnchor.release();
+  }
 
   const sandboxEnv: NodeJS.ProcessEnv = {
     TMPDIR: "/tmp",
@@ -712,11 +789,20 @@ export async function prepareSessionSandbox(
       hostBackend: `bubblewrap:${basename(bwrapPath)}`,
     },
     wrapSpawn(command, args, env) {
+      const projectAnchor = openProjectDirectoryAnchor(
+        projectPath,
+        projectIdentity,
+      );
       return {
         command: bwrapPath,
         args: [...baseArgs, "--", command, ...args],
-        cwd: projectPath,
+        // Bubblewrap changes to the project only after installing the
+        // descriptor-backed bind. Its host-side cwd must not follow a
+        // pathname replacement between wrapSpawn() and spawn().
+        cwd: "/",
         env: { ...env, ...sandboxEnv },
+        stdio: ["pipe", "pipe", "pipe", projectAnchor.fd],
+        release: () => projectAnchor.release(),
       };
     },
   };

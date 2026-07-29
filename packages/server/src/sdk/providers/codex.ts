@@ -628,17 +628,23 @@ class CodexAppServerClient {
       commandArgs,
       this.env,
     );
-    const child = spawn(
-      sandboxed?.command ?? this.command,
-      sandboxed?.args ?? commandArgs,
-      {
-        cwd: sandboxed?.cwd ?? this.cwd,
-        detached: process.platform !== "win32",
-        stdio: ["pipe", "pipe", "pipe"],
-        env: sandboxed?.env ?? this.env,
-        shell: sandboxed ? false : process.platform === "win32",
-      },
-    );
+    const child = (() => {
+      try {
+        return spawn(
+          sandboxed?.command ?? this.command,
+          sandboxed?.args ?? commandArgs,
+          {
+            cwd: sandboxed?.cwd ?? this.cwd,
+            detached: process.platform !== "win32",
+            stdio: sandboxed?.stdio ?? ["pipe", "pipe", "pipe"],
+            env: sandboxed?.env ?? this.env,
+            shell: sandboxed ? false : process.platform === "win32",
+          },
+        );
+      } finally {
+        sandboxed?.release();
+      }
+    })();
 
     this.process = child;
 

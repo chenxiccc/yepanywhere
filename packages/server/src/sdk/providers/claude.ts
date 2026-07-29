@@ -1,4 +1,9 @@
-import { type ChildProcess, execFile, spawn } from "node:child_process";
+import {
+  type ChildProcess,
+  type ChildProcessWithoutNullStreams,
+  execFile,
+  spawn,
+} from "node:child_process";
 import {
   accessSync,
   constants,
@@ -107,12 +112,18 @@ function createSandboxedClaudeSpawn(
       options.args,
       options.env as NodeJS.ProcessEnv,
     );
-    const child = spawn(sandboxed.command, sandboxed.args, {
-      cwd: sandboxed.cwd,
-      env: sandboxed.env,
-      stdio: ["pipe", "pipe", "pipe"],
-      shell: false,
-    });
+    const child = (() => {
+      try {
+        return spawn(sandboxed.command, sandboxed.args, {
+          cwd: sandboxed.cwd,
+          env: sandboxed.env,
+          stdio: sandboxed.stdio,
+          shell: false,
+        }) as ChildProcessWithoutNullStreams;
+      } finally {
+        sandboxed.release();
+      }
+    })();
     const abort = () => child.kill("SIGTERM");
     options.signal.addEventListener("abort", abort, { once: true });
     child.once("exit", () => {
@@ -1741,16 +1752,22 @@ export class ClaudeProvider implements AgentProvider {
           spawnOpts.args,
           spawnOpts.env as NodeJS.ProcessEnv,
         );
-        const proc = spawn(
-          sandboxed?.command ?? spawnOpts.command,
-          sandboxed?.args ?? spawnOpts.args,
-          {
-            cwd: sandboxed?.cwd ?? spawnOpts.cwd,
-            env: sandboxed?.env ?? (spawnOpts.env as NodeJS.ProcessEnv),
-            stdio: ["pipe", "pipe", "pipe"],
-            shell: sandboxed ? false : process.platform === "win32",
-          },
-        );
+        const proc = (() => {
+          try {
+            return spawn(
+              sandboxed?.command ?? spawnOpts.command,
+              sandboxed?.args ?? spawnOpts.args,
+              {
+                cwd: sandboxed?.cwd ?? spawnOpts.cwd,
+                env: sandboxed?.env ?? (spawnOpts.env as NodeJS.ProcessEnv),
+                stdio: sandboxed?.stdio ?? ["pipe", "pipe", "pipe"],
+                shell: sandboxed ? false : process.platform === "win32",
+              },
+            ) as ChildProcessWithoutNullStreams;
+          } finally {
+            sandboxed?.release();
+          }
+        })();
 
         log.info(
           {
