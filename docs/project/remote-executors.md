@@ -8,6 +8,12 @@ Run Claude sessions on remote machines over SSH, with session files synced back 
 
 **Solution**: Use the SDK's `spawnClaudeCodeProcess` hook to SSH to a remote machine and run Claude there. Session files are synced back via rsync so the local yep-anywhere UI stays current.
 
+This remains an SSH process-transport feature owned by one YA server. It is
+distinct from the proposed
+[federated super-session](../../topics/federated-super-sessions.md), where a
+canonical single-writer session and its provider bundle move between equal YA
+peers so the target server resumes the provider locally.
+
 ## Assumptions
 
 1. User has SSH config aliases set up (`~/.ssh/config`)

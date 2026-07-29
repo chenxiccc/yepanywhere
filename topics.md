@@ -200,3 +200,5 @@
   inspected 1920x1080 + phone captures of the result.
 - source-control - Repository-navigation workbench: changes, commits, files,
   blame, diffs, responsive panes, and links to relevant agent sessions.
+- federated-super-sessions - One canonical YA session whose active provider
+  runtime can migrate safely between trusted cross-platform YA peers.

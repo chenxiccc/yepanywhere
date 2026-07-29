@@ -56,6 +56,8 @@
 - Session summary fidelity (bounded list projections, complete-index isolation,
   and partial-observation nondowngrade rules)
 - Client source runtime topology (per-YA-server runtime boundary above summary/query/session-detail stores)
+- Federated super sessions (one canonical single-writer provider session
+  migrates between trusted YA peers for native cross-platform work)
 - Session media handles (problem statement for lazy transcript image/blob
   payloads behind authenticated server media IDs)
 - Session exit navigation latency (large transcript should not delay first

@@ -51,6 +51,10 @@ section below for what would have to change at higher fan-out.
   — vision for explicit per-source client runtimes so local/direct/relay YA
   servers can own their API transport, activity stream, summary stores, and
   session-detail services without hidden current-source globals.
+- [`topics/federated-super-sessions.md`](topics/federated-super-sessions.md)
+  — proposal for one canonical, single-writer YA session that can transfer a
+  provider-specific portable bundle and active ownership between trusted YA
+  peers while the client follows the same session identity.
 - [`topics/session-id-remap.md`](topics/session-id-remap.md) — problem
   statement for startup-time temporary session IDs that later canonicalize,
   including the activity event and client summary-store merge shape needed to

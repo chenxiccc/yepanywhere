@@ -11,6 +11,7 @@ Related topics: [session-context-actions](session-context-actions.md),
 [resume-compaction](resume-compaction.md),
 [cost-efficiency](cost-efficiency.md),
 [prompt-cache-keepalive](prompt-cache-keepalive.md),
+[federated-super-sessions](federated-super-sessions.md),
 [forged-transcript-handoff](forged-transcript-handoff.md)
 
 ## The model: stateless API + transcript replay
