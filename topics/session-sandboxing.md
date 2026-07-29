@@ -37,9 +37,12 @@ YA should expose one provider-independent **Sandbox session** toggle at new
 session creation. Settings > Session Defaults exposes the matching **Sandbox
 new sessions** toggle. Both are off by default.
 
-The toggle appears only for the implemented local Claude-family and standard
-Codex backends. New Session also hides it while a remote executor is selected;
-unsupported providers and executors do not get explanatory placeholder copy.
+The toggle appears only when the server advertises an actively available
+session-sandbox backend and the selected execution target is an implemented
+local Claude-family or standard Codex backend. New Session hides it on macOS,
+Windows, Linux hosts whose trusted Bubblewrap preflight fails, and while a
+remote executor is selected. Unsupported hosts, providers, and executors do
+not get explanatory placeholder copy.
 
 The toggle has short informational text:
 
@@ -109,17 +112,26 @@ actionable error; it never falls back to `none`.
 
 ## Compatibility Boundary
 
-The setting, launch field, and effective-status fields use the permanent
-`session-sandboxing` server capability, introduced in 0.7.1. Without it, a new
-client hides the control, sends no sandbox field, and retains existing launch
-behavior. Existing clients omit the field and therefore resolve to `none` on a
-new server.
+The setting, launch field, and effective-status fields use the permanent,
+dynamically advertised `session-sandboxing` server capability, introduced in
+0.7.1. A server advertises it only while its local host preflight reports an
+available backend. Without it, a client hides the control, sends no sandbox
+field, and retains existing launch behavior. Existing clients omit the field
+and therefore resolve to `none` on a new server.
 
-The protocol capability means “this server understands and preserves the YA
-sandbox contract,” not “this execution host can enforce every level.” Host,
-platform, provider, and remote-executor support are runtime facts checked
-before launch. Advertising the capability must never make an unsupported
-`project-write` request fall back to an unlocked process.
+The separate permanent `session-sandboxing-status` capability gates the
+structured `version.sessionSandboxing` preflight result. A client requires
+both capabilities plus an `available` result before rendering or sending the
+control. This deliberately hides the feature against intermediate development
+servers that advertised only protocol understanding on unsupported hosts.
+Missing status support has the same no-field fallback as a missing sandbox
+capability.
+
+Preflight is advisory and cached briefly for routine version reads; it has no
+background polling loop. A fresh version request rechecks it. Every requested
+`project-write` launch repeats the authoritative checks with the final project
+and private-state bind policy. Capability or preflight staleness must therefore
+produce a closed launch failure, never an unlocked provider process.
 
 The pre-implementation stable-release audit covered v0.7.0 and v0.6.2. Neither
 release has the YA `sandboxLevel` launch field or capability. The exact routes,
@@ -453,7 +465,25 @@ available.
 ## Status And Evidence
 
 A requested value is not enough for security-facing UI. The server exposes a
-normalized status concept:
+normalized host-availability concept before launch:
+
+```ts
+interface SessionSandboxAvailability {
+  state:
+    | "available"
+    | "unsupported-platform"
+    | "missing-bubblewrap"
+    | "untrusted-bubblewrap"
+    | "unsupported-version"
+    | "probe-failed";
+  platform: string;
+  backend?: "bubblewrap";
+  version?: string;
+}
+```
+
+Only `available` permits the `session-sandboxing` capability. Separately, an
+enabled process exposes normalized enforcement evidence:
 
 ```ts
 interface SessionSandboxEnforcement {
@@ -562,6 +592,8 @@ configuration:
 - the production launch policy works with Bubblewrap 0.4.0 and does not assume
   an unprobed newer option;
 - unsupported local and remote hosts fail before the first provider turn;
+- macOS, Windows, missing, untrusted, outdated, and runtime-unusable
+  Bubblewrap preflights do not advertise the usable capability;
 - a missing `bwrap` error names Bubblewrap and includes the detected
   distribution's installation command, while a failed runtime probe reports
   its different cause;
@@ -578,7 +610,8 @@ The current automated Linux baseline in
 Bubblewrap wrapper. It proves project, provider-state, and temporary writes
 succeed while direct outside writes, project-to-outside symlink writes, and
 bootstrap-symlink writes fail; it also verifies copied configuration has a
-different inode, missing and unusable Bubblewrap diagnostics stay distinct,
+different inode, missing, untrusted, and unusable Bubblewrap diagnostics stay
+distinct,
 unsupported providers and remote executors fail, project state keys are
 stable, Claude forks create separate JSONL in the inherited private root,
 agent-controlled transcript-directory symlinks are rejected, and persisted
@@ -797,10 +830,12 @@ The implemented provider matrix is intentionally small:
 - non-Linux hosts reject it until a backend satisfies the same contract.
 
 YA accepts only a root-owned Bubblewrap binary at a fixed system path that is
-not group- or world-writable. The launcher probes the complete baseline mount
-shape with `/bin/true` before it starts the provider. The enabled process gets
-a read-only host root, writable canonical project and private state binds,
-private `/tmp` and `/var/tmp`, a private `/run`, new process/device views, a
+not group- or world-writable. Host preflight checks the trusted path, version,
+and baseline namespace/mount policy before advertising availability. The
+launcher then probes the complete final mount shape with `/bin/true` before it
+starts the provider. The enabled process gets a read-only host root, writable
+canonical project and private state binds, private `/tmp` and `/var/tmp`, a
+private `/run`, new process/device views, a
 dropped capability set, a new terminal session, parent-death coupling, and
 sanitized broker environment variables. The argument set is exercised against
 Rocky 8's Bubblewrap 0.4.0.

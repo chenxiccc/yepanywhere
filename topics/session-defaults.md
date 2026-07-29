@@ -18,8 +18,9 @@ Those scopes must stay separate in storage, UI grouping, and migration.
 ### All-provider defaults
 
 All-provider defaults apply no matter which provider is selected. Provider
-capabilities may decide whether a choice has an effect at launch, but the UI
-should not hide or rewrite the user's standing preference merely because the
+capabilities may decide whether a choice has an effect at launch. Except for a
+security boundary whose current execution host cannot enforce, the UI should
+not hide or rewrite the user's standing preference merely because the
 currently selected provider lacks the feature.
 
 - **Default AI provider** — the provider chosen when opening a new-session form.
@@ -32,7 +33,8 @@ currently selected provider lacks the feature.
   default is not a provider/model economics choice.
 - **Sandbox new sessions** — the default-off launch-time host-confinement
   toggle. The saved value is provider-independent and each New Session may
-  override it before process creation; see
+  override it before process creation. The control is rendered and sent only
+  when the server reports a currently available host backend; see
   [session-sandboxing](session-sandboxing.md).
 - **Recaps** — recap mode and away threshold belong together. They are
   presented above AI Provider because they are standing session-helper choices,

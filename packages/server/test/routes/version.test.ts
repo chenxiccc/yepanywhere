@@ -10,6 +10,7 @@ import {
   HOST_AWAKE_CONTROL_CAPABILITY,
   HOST_IDENTITY_CAPABILITY,
   SESSION_SANDBOXING_CAPABILITY,
+  SESSION_SANDBOXING_STATUS_CAPABILITY,
 } from "@yep-anywhere/shared";
 import { getServerCapabilities } from "../../src/routes/version.js";
 
@@ -56,7 +57,22 @@ describe("Version Routes", () => {
     );
   });
 
-  it("advertises session sandboxing", () => {
-    expect(getServerCapabilities()).toContain(SESSION_SANDBOXING_CAPABILITY);
+  it("advertises sandbox status but only advertises use when preflight passes", () => {
+    expect(getServerCapabilities()).toContain(
+      SESSION_SANDBOXING_STATUS_CAPABILITY,
+    );
+    expect(getServerCapabilities()).not.toContain(
+      SESSION_SANDBOXING_CAPABILITY,
+    );
+    expect(
+      getServerCapabilities({
+        sessionSandboxAvailability: {
+          state: "available",
+          platform: "linux",
+          backend: "bubblewrap",
+          version: "0.4.0",
+        },
+      }),
+    ).toContain(SESSION_SANDBOXING_CAPABILITY);
   });
 });

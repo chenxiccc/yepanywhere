@@ -25,12 +25,35 @@ import {
 import type {
   ProviderName,
   RecapMode,
+  SessionSandboxAvailability,
+  SessionSandboxAvailabilityState,
   SessionSandboxEnforcement,
   SessionSandboxLevel,
 } from "@yep-anywhere/shared";
 import { getDefaultCodexHomeDir } from "./projects/codex-scanner.js";
 
 const BWRAP_CANDIDATES = ["/usr/bin/bwrap", "/bin/bwrap"] as const;
+const BWRAP_PREFLIGHT_ARGS = [
+  "--unshare-all",
+  "--share-net",
+  "--die-with-parent",
+  "--new-session",
+  "--cap-drop",
+  "ALL",
+  "--ro-bind",
+  "/",
+  "/",
+  "--proc",
+  "/proc",
+  "--dev",
+  "/dev",
+  "--tmpfs",
+  "/run",
+  "--tmpfs",
+  "/tmp",
+  "--tmpfs",
+  "/var/tmp",
+] as const;
 const SUPPORTED_PROVIDERS = new Set<ProviderName>([
   "claude",
   "claude-gateway",
@@ -39,6 +62,33 @@ const SUPPORTED_PROVIDERS = new Set<ProviderName>([
 ]);
 const SANDBOX_STATE_KEY_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/;
 const MINIMUM_BWRAP_VERSION = [0, 4, 0] as const;
+const SESSION_SANDBOX_AVAILABILITY_TTL_MS = 60_000;
+
+type SessionSandboxSetupFailureState = Exclude<
+  SessionSandboxAvailabilityState,
+  "available" | "unsupported-platform"
+>;
+
+class SessionSandboxSetupError extends Error {
+  constructor(
+    readonly state: SessionSandboxSetupFailureState,
+    message: string,
+    readonly version?: string,
+  ) {
+    super(message);
+    this.name = "SessionSandboxSetupError";
+  }
+}
+
+let cachedSessionSandboxAvailability:
+  | {
+      checkedAt: number;
+      value: SessionSandboxAvailability;
+    }
+  | undefined;
+let pendingSessionSandboxAvailability:
+  | Promise<SessionSandboxAvailability>
+  | undefined;
 
 export interface SessionSandboxSpawn {
   command: string;
@@ -93,17 +143,27 @@ export function getSessionSandboxSettingsError(
   return undefined;
 }
 
-function sandboxInstallError(detail?: string): Error {
+function sandboxInstallError(detail?: string): SessionSandboxSetupError {
   const suffix = detail ? ` (${detail})` : "";
-  return new Error(
+  return new SessionSandboxSetupError(
+    "missing-bubblewrap",
     `Sandboxed sessions require Bubblewrap (bwrap)${suffix}. ` +
       "Install it with `sudo dnf install bubblewrap` on Rocky/RHEL/Fedora " +
       "or `sudo apt install bubblewrap` on Debian/Ubuntu.",
   );
 }
 
-function sandboxRuntimeError(detail: string): Error {
-  return new Error(
+function sandboxTrustError(): SessionSandboxSetupError {
+  return new SessionSandboxSetupError(
+    "untrusted-bubblewrap",
+    "Sandboxed sessions require a root-owned Bubblewrap binary at " +
+      "/usr/bin/bwrap or /bin/bwrap that is not group- or world-writable.",
+  );
+}
+
+function sandboxRuntimeError(detail: string): SessionSandboxSetupError {
+  return new SessionSandboxSetupError(
+    "probe-failed",
     `Bubblewrap is installed but could not enforce the session sandbox (${detail}). ` +
       "Check that this host permits unprivileged user and mount namespaces.",
   );
@@ -125,11 +185,13 @@ function hasErrorCode(error: unknown, code: string): boolean {
 
 async function resolveTrustedBwrap(explicit?: string): Promise<string> {
   const candidates = explicit ? [explicit] : BWRAP_CANDIDATES;
+  let foundCandidate = false;
   for (const candidate of candidates) {
     if (!isAbsolute(candidate)) continue;
     try {
       const resolved = await realpath(candidate);
       const info = await stat(resolved);
+      foundCandidate = true;
       if (!info.isFile() || info.uid !== 0 || (info.mode & 0o022) !== 0) {
         continue;
       }
@@ -137,6 +199,9 @@ async function resolveTrustedBwrap(explicit?: string): Promise<string> {
     } catch {
       // Try the next trusted system location.
     }
+  }
+  if (foundCandidate) {
+    throw sandboxTrustError();
   }
   throw sandboxInstallError();
 }
@@ -170,7 +235,9 @@ async function runBwrapProbe(
   });
 }
 
-async function requireSupportedBwrapVersion(bwrapPath: string): Promise<void> {
+async function requireSupportedBwrapVersion(
+  bwrapPath: string,
+): Promise<string> {
   const output = await new Promise<string>((resolveVersion, rejectVersion) => {
     const child = spawn(bwrapPath, ["--version"], {
       stdio: ["ignore", "pipe", "pipe"],
@@ -216,11 +283,100 @@ async function requireSupportedBwrapVersion(bwrapPath: string): Promise<void> {
         (found[1] === MINIMUM_BWRAP_VERSION[1] &&
           found[2] >= MINIMUM_BWRAP_VERSION[2])));
   if (!supported) {
-    throw new Error(
+    const version = found.join(".");
+    throw new SessionSandboxSetupError(
+      "unsupported-version",
       `Sandboxed sessions require Bubblewrap 0.4.0 or newer (found ${found.join(".")}). ` +
         "Upgrade Bubblewrap before starting this session.",
+      version,
     );
   }
+  return found.join(".");
+}
+
+export interface ProbeSessionSandboxAvailabilityOptions {
+  /** Test-only platform override. Production probes the execution host. */
+  platform?: NodeJS.Platform;
+  /** Test-only binary override. Production uses fixed trusted system paths. */
+  bwrapPath?: string;
+}
+
+/**
+ * Check whether this server host can currently offer a local session sandbox.
+ * The project-specific launch path repeats all checks with its final binds.
+ */
+export async function probeSessionSandboxAvailability(
+  options: ProbeSessionSandboxAvailabilityOptions = {},
+): Promise<SessionSandboxAvailability> {
+  const platform = options.platform ?? process.platform;
+  if (platform !== "linux") {
+    return {
+      state: "unsupported-platform",
+      platform,
+    };
+  }
+
+  try {
+    const bwrapPath = await resolveTrustedBwrap(options.bwrapPath);
+    const version = await requireSupportedBwrapVersion(bwrapPath);
+    await runBwrapProbe(bwrapPath, BWRAP_PREFLIGHT_ARGS);
+    return {
+      state: "available",
+      platform,
+      backend: "bubblewrap",
+      version,
+    };
+  } catch (error) {
+    if (error instanceof SessionSandboxSetupError) {
+      return {
+        state: error.state,
+        platform,
+        backend: "bubblewrap",
+        ...(error.version ? { version: error.version } : {}),
+      };
+    }
+    return {
+      state: "probe-failed",
+      platform,
+      backend: "bubblewrap",
+    };
+  }
+}
+
+/**
+ * Coalesce and briefly cache host preflight checks for version/capability
+ * reads. There is intentionally no background poll; `fresh=1` rechecks.
+ */
+export function getSessionSandboxAvailability(options?: {
+  forceRefresh?: boolean;
+}): Promise<SessionSandboxAvailability> {
+  const now = Date.now();
+  if (
+    !options?.forceRefresh &&
+    cachedSessionSandboxAvailability &&
+    now - cachedSessionSandboxAvailability.checkedAt <
+      SESSION_SANDBOX_AVAILABILITY_TTL_MS
+  ) {
+    return Promise.resolve(cachedSessionSandboxAvailability.value);
+  }
+  if (!options?.forceRefresh && pendingSessionSandboxAvailability) {
+    return pendingSessionSandboxAvailability;
+  }
+
+  const request = probeSessionSandboxAvailability().then((value) => {
+    cachedSessionSandboxAvailability = {
+      checkedAt: Date.now(),
+      value,
+    };
+    return value;
+  });
+  pendingSessionSandboxAvailability = request;
+  void request.finally(() => {
+    if (pendingSessionSandboxAvailability === request) {
+      pendingSessionSandboxAvailability = undefined;
+    }
+  });
+  return request;
 }
 
 async function copyBootstrapEntry(
@@ -455,14 +611,14 @@ export async function prepareSessionSandbox(
       "Project-write session sandboxing is not supported for remote executors.",
     );
   }
-  if (process.platform !== "linux") {
-    throw new Error(
-      "Project-write session sandboxing currently requires Linux and Bubblewrap.",
-    );
-  }
   if (!SUPPORTED_PROVIDERS.has(options.provider)) {
     throw new Error(
       `Project-write session sandboxing is not yet supported for provider ${options.provider}.`,
+    );
+  }
+  if (process.platform !== "linux") {
+    throw new Error(
+      "Project-write session sandboxing currently requires Linux and Bubblewrap.",
     );
   }
   const projectPath = await realpath(options.projectPath);
@@ -521,9 +677,7 @@ export async function prepareSessionSandbox(
     cacheDir,
     tempDir,
     varTempDir,
-    privateClaudeJson: mountPrivateClaudeJson
-      ? privateClaudeJson
-      : undefined,
+    privateClaudeJson: mountPrivateClaudeJson ? privateClaudeJson : undefined,
   });
   await runBwrapProbe(bwrapPath, baseArgs);
 

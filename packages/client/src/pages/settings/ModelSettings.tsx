@@ -5,7 +5,6 @@ import {
   HELPER_SIDE_MODEL_SAME_AS_MAIN,
   PROMPT_CACHE_KEEPALIVE_MODES,
   PROMPT_SUGGESTION_MODES,
-  SESSION_SANDBOXING_CAPABILITY,
   type EffortLevel,
   type NewSessionDefaults,
   resolveModel,
@@ -20,7 +19,6 @@ import {
   type RecapMode,
   type ThinkingMode,
   normalizeRecapAfterSeconds,
-  serverHasCapability,
 } from "@yep-anywhere/shared";
 import {
   MODEL_OPTIONS,
@@ -38,6 +36,7 @@ import {
   withProviderSessionDefaults,
 } from "../../lib/newSessionDefaults";
 import { providerSupportsLocalSessionSandbox } from "../../lib/providerCapabilities";
+import { serverHasAvailableSessionSandbox } from "../../lib/sessionSandboxAvailability";
 import { getRecapModeDescription } from "../../lib/recapModes";
 import { getPermissionModeOptions } from "../../lib/permissionModes";
 import {
@@ -215,10 +214,7 @@ export function ModelSettings() {
     updateSetting,
   } = useServerSettings();
   const { version } = useVersion();
-  const supportsSessionSandboxing = serverHasCapability(
-    version,
-    SESSION_SANDBOXING_CAPABILITY,
-  );
+  const supportsSessionSandboxing = serverHasAvailableSessionSandbox(version);
 
   const availableProviders = getAvailableProviders(providers);
   const savedDefaults = settings?.newSessionDefaults;

@@ -428,6 +428,25 @@ export interface SessionSandboxEnforcement {
   providerPolicy?: string;
 }
 
+export type SessionSandboxAvailabilityState =
+  | "available"
+  | "unsupported-platform"
+  | "missing-bubblewrap"
+  | "untrusted-bubblewrap"
+  | "unsupported-version"
+  | "probe-failed";
+
+/**
+ * Server-host preflight for offering YA session sandboxing. This is advisory
+ * UI availability only; every enabled launch repeats the authoritative probe.
+ */
+export interface SessionSandboxAvailability {
+  state: SessionSandboxAvailabilityState;
+  platform: string;
+  backend?: "bubblewrap";
+  version?: string;
+}
+
 /**
  * Saved defaults for the new session form.
  */

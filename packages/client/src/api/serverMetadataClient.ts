@@ -1,4 +1,7 @@
-import type { ClientDefaults } from "@yep-anywhere/shared";
+import type {
+  ClientDefaults,
+  SessionSandboxAvailability,
+} from "@yep-anywhere/shared";
 import { fetchJSON } from "./sourceApiFetch";
 
 export interface VersionInfo {
@@ -13,6 +16,8 @@ export interface VersionInfo {
   remoteCompatibilityLevel?: number;
   /** Feature capabilities supported by the server. Undefined on older servers. */
   capabilities?: string[];
+  /** Local server-host sandbox preflight. Undefined on older servers. */
+  sessionSandboxing?: SessionSandboxAvailability;
   /** Server-routed speech backend ids validated by the server. */
   voiceBackends?: string[];
   /** Configured server-routed speech backends, including validation state. */

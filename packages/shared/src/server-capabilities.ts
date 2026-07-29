@@ -452,7 +452,7 @@ export const SERVER_CAPABILITIES = {
     area: "localAccess",
     introducedIn: "0.7.1",
     description:
-      "Server accepts, persists, enforces, and reports the default-off YA session filesystem sandbox selection.",
+      "Server currently has a usable local backend for accepting, persisting, enforcing, and reporting the default-off YA session filesystem sandbox selection.",
     clientFallback:
       "Hide session sandbox controls, omit sandbox fields, and preserve unsandboxed session behavior.",
     serverContract: {
@@ -491,7 +491,26 @@ export const SERVER_CAPABILITIES = {
     lifecycle: {
       kind: "permanent",
       reason:
-        "Older servers do not preserve or enforce the launch boundary, so hosted clients must never imply or request it without an exact capability.",
+        "Older servers and unsupported hosts cannot preserve and enforce the launch boundary, so clients must never imply or request it without a dynamically advertised usable backend.",
+    },
+  },
+  sessionSandboxingStatus: {
+    name: "session-sandboxing-status",
+    kind: "permanent",
+    area: "localAccess",
+    introducedIn: "0.7.1",
+    description:
+      "Server reports the local session-sandbox backend preflight state independently from launch-time enforcement.",
+    clientFallback:
+      "Hide session sandbox controls and make no unsupported sandbox requests.",
+    serverContract: {
+      routes: ["GET /api/version"],
+      responseFields: ["version.sessionSandboxing"],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Hosted clients need to distinguish protocol-aware but unsupported hosts and intermediate development servers from hosts with a verified usable backend.",
     },
   },
   projectQueue: {
@@ -702,6 +721,9 @@ export const HOST_AGENT_PROCESS_OBSERVABILITY_CAPABILITY =
 
 export const SESSION_SANDBOXING_CAPABILITY =
   SERVER_CAPABILITIES.sessionSandboxing.name;
+
+export const SESSION_SANDBOXING_STATUS_CAPABILITY =
+  SERVER_CAPABILITIES.sessionSandboxingStatus.name;
 
 export const VOICE_INPUT_CAPABILITY = SERVER_CAPABILITIES.voiceInput.name;
 

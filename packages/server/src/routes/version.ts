@@ -28,10 +28,13 @@ import {
   PROJECT_QUEUE_CAPABILITY,
   PROJECT_QUEUE_NEW_SESSION_SHORTCUT_SETTING_CAPABILITY,
   SESSION_SANDBOXING_CAPABILITY,
+  SESSION_SANDBOXING_STATUS_CAPABILITY,
   VOICE_INPUT_CAPABILITY,
   type ClientDefaults,
+  type SessionSandboxAvailability,
 } from "@yep-anywhere/shared";
 import { Hono } from "hono";
+import { getSessionSandboxAvailability as getLocalSessionSandboxAvailability } from "../session-sandbox.js";
 import type {
   SpeechBackendCapabilities,
   SpeechBackendInfo,
@@ -223,6 +226,8 @@ export interface VersionInfo {
   remoteCompatibilityLevel: number;
   /** Feature capabilities supported by this server. Used by clients to show/hide UI. */
   capabilities: string[];
+  /** Local host preflight for the optional YA session sandbox backend. */
+  sessionSandboxing?: SessionSandboxAvailability;
   /**
    * Speech backend ids this server has validated and is willing to route
    * audio to. Browser-native remains client-side and is not listed here.
@@ -266,7 +271,7 @@ const BASE_CAPABILITIES: string[] = [
   HOST_IDENTITY_CAPABILITY,
   PROJECT_QUEUE_CAPABILITY,
   PROJECT_QUEUE_NEW_SESSION_SHORTCUT_SETTING_CAPABILITY,
-  SESSION_SANDBOXING_CAPABILITY,
+  SESSION_SANDBOXING_STATUS_CAPABILITY,
 ];
 
 export type DeviceBridgeState =
@@ -307,6 +312,12 @@ export interface VersionRouteOptions {
   getVoiceBackendCapabilities?: () => Record<string, SpeechBackendCapabilities>;
   /** Browser-client defaults persisted by this server. */
   getClientDefaults?: () => ClientDefaults | undefined;
+  /** Resolved local sandbox preflight used while constructing capabilities. */
+  sessionSandboxAvailability?: SessionSandboxAvailability;
+  /** Test/service override for the cached host preflight. */
+  getSessionSandboxAvailability?: (options?: {
+    forceRefresh?: boolean;
+  }) => Promise<SessionSandboxAvailability>;
 }
 
 export interface ServerCompatibilityInfo {
@@ -346,6 +357,9 @@ function getCapabilitiesForDeviceBridgeState(
 
 export function getServerCapabilities(options?: VersionRouteOptions): string[] {
   const capabilities: string[] = [...BASE_CAPABILITIES];
+  if (options?.sessionSandboxAvailability?.state === "available") {
+    capabilities.push(SESSION_SANDBOXING_CAPABILITY);
+  }
   if (options?.browserSettingsBackupAvailable) {
     capabilities.push(BROWSER_SETTINGS_BACKUP_CAPABILITY);
   }
@@ -382,12 +396,21 @@ export function getServerCompatibilityInfo(
   options?: VersionRouteOptions,
 ): Promise<ServerCompatibilityInfo> {
   const clientDefaults = options?.getClientDefaults?.();
-  return getCurrentVersionInfo().then((versionInfo) => ({
+  return Promise.all([
+    getCurrentVersionInfo(),
+    (
+      options?.getSessionSandboxAvailability ??
+      getLocalSessionSandboxAvailability
+    )(),
+  ]).then(([versionInfo, sessionSandboxAvailability]) => ({
     appVersion: versionInfo.version,
     installSource: versionInfo.installSource,
     resumeProtocolVersion: RESUME_PROTOCOL_VERSION,
     remoteCompatibilityLevel: REMOTE_COMPATIBILITY_LEVEL,
-    capabilities: getServerCapabilities(options),
+    capabilities: getServerCapabilities({
+      ...options,
+      sessionSandboxAvailability,
+    }),
     ...(clientDefaults ? { clientDefaults } : {}),
   }));
 }
@@ -403,9 +426,14 @@ export function createVersionRoutes(options?: VersionRouteOptions): Hono {
     const deviceBridgeStatus = options?.getDeviceBridgeStatus
       ? await options.getDeviceBridgeStatus({ forceRefresh: fresh })
       : { state: options?.getDeviceBridgeState?.() ?? "unavailable" };
+    const sessionSandboxAvailability = await (
+      options?.getSessionSandboxAvailability ??
+      getLocalSessionSandboxAvailability
+    )({ forceRefresh: fresh });
     const capabilities = getServerCapabilities({
       ...options,
       getDeviceBridgeState: () => deviceBridgeStatus.state,
+      sessionSandboxAvailability,
     });
     const voiceBackends = getEnabledVoiceBackends(options);
     const voiceBackendStatuses = options?.getVoiceBackendStatuses?.() ?? [];
@@ -428,6 +456,7 @@ export function createVersionRoutes(options?: VersionRouteOptions): Hono {
       resumeProtocolVersion: RESUME_PROTOCOL_VERSION,
       remoteCompatibilityLevel: REMOTE_COMPATIBILITY_LEVEL,
       capabilities,
+      sessionSandboxing: sessionSandboxAvailability,
       voiceBackends,
       voiceBackendStatuses,
       voiceBackendCapabilities,

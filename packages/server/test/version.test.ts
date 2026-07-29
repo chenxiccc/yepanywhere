@@ -5,6 +5,8 @@ import {
   DEVICE_BRIDGE_UPDATE_CAPABILITY,
   PROJECT_QUEUE_CAPABILITY,
   PROJECT_QUEUE_NEW_SESSION_SHORTCUT_SETTING_CAPABILITY,
+  SESSION_SANDBOXING_CAPABILITY,
+  SESSION_SANDBOXING_STATUS_CAPABILITY,
   VOICE_INPUT_CAPABILITY,
 } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -220,6 +222,44 @@ describe("GET /version", () => {
     expect(json.remoteCompatibilityLevel).toBe(REMOTE_COMPATIBILITY_LEVEL);
     expect(Array.isArray(json.capabilities)).toBe(true);
     expect(json.capabilities).toContain(CLAUDE_ADDITIONAL_MODELS_CAPABILITY);
+    expect(json.capabilities).toContain(SESSION_SANDBOXING_STATUS_CAPABILITY);
+  });
+
+  it("advertises session sandboxing only for an available host backend", async () => {
+    mockFetch(() => new Response(null, { status: 204 }));
+
+    const { createVersionRoutes } = await importVersion();
+    const availableRoutes = createVersionRoutes({
+      getSessionSandboxAvailability: async () => ({
+        state: "available",
+        platform: "linux",
+        backend: "bubblewrap",
+        version: "0.4.0",
+      }),
+    });
+    const available = await (await availableRoutes.request("/")).json();
+    expect(available.sessionSandboxing).toEqual({
+      state: "available",
+      platform: "linux",
+      backend: "bubblewrap",
+      version: "0.4.0",
+    });
+    expect(available.capabilities).toContain(SESSION_SANDBOXING_CAPABILITY);
+
+    const unsupportedRoutes = createVersionRoutes({
+      getSessionSandboxAvailability: async () => ({
+        state: "unsupported-platform",
+        platform: "darwin",
+      }),
+    });
+    const unsupported = await (await unsupportedRoutes.request("/")).json();
+    expect(unsupported.sessionSandboxing).toEqual({
+      state: "unsupported-platform",
+      platform: "darwin",
+    });
+    expect(unsupported.capabilities).not.toContain(
+      SESSION_SANDBOXING_CAPABILITY,
+    );
   });
 
   it("advertises validated server-routed voice backends", async () => {

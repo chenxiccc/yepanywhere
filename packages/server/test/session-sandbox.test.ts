@@ -18,6 +18,7 @@ import {
   getCodexSandboxSessionsDir,
   getSessionSandboxSettingsError,
   prepareSessionSandbox,
+  probeSessionSandboxAvailability,
   type SessionSandboxSpawn,
 } from "../src/session-sandbox.js";
 import { ClaudeSessionReader } from "../src/sessions/reader.js";
@@ -53,6 +54,8 @@ async function runSandboxed(spawnOptions: SessionSandboxSpawn): Promise<void> {
 
 describe("session sandbox", () => {
   const roots: string[] = [];
+  // Bubblewrap integration cases only run on their supported host OS.
+  const t = process.platform === "linux" ? it : it.skip;
 
   afterEach(async () => {
     vi.unstubAllEnvs();
@@ -67,54 +70,112 @@ describe("session sandbox", () => {
     return root;
   }
 
-  it("allows project and private writes while denying outside aliases", async () => {
+  it("reports unsupported platforms without probing Bubblewrap", async () => {
+    await expect(
+      probeSessionSandboxAvailability({ platform: "darwin" }),
+    ).resolves.toEqual({
+      state: "unsupported-platform",
+      platform: "darwin",
+    });
+    await expect(
+      probeSessionSandboxAvailability({ platform: "win32" }),
+    ).resolves.toEqual({
+      state: "unsupported-platform",
+      platform: "win32",
+    });
+  });
+
+  it("distinguishes missing, untrusted, and unusable Linux backends", async () => {
     const root = await fixtureRoot();
-    const projectPath = join(root, "project");
-    const outsidePath = join(root, "outside");
-    const stateRoot = join(root, "state");
-    const sourceConfig = join(root, "claude-source");
-    const linkedSkills = join(outsidePath, "skills");
-    await Promise.all([
-      mkdir(projectPath),
-      mkdir(outsidePath),
-      mkdir(sourceConfig),
-    ]);
-    await mkdir(linkedSkills);
-    await writeFile(join(outsidePath, "sentinel.txt"), "unchanged\n");
-    await writeFile(join(sourceConfig, "settings.json"), '{"theme":"dark"}\n');
-    await symlink(linkedSkills, join(sourceConfig, "skills"));
-    await symlink(outsidePath, join(projectPath, "outside-link"));
-    vi.stubEnv("CLAUDE_CONFIG_DIR", sourceConfig);
+    const missingPath = join(root, "missing-bwrap");
+    const untrustedPath = join(root, "untrusted-bwrap");
+    await writeFile(untrustedPath, "#!/bin/sh\nexit 0\n");
 
-    const runtime = await prepareSessionSandbox({
-      level: "project-write",
-      provider: "claude",
-      projectPath,
-      stateKey: "test-session",
-      stateRoot,
+    await expect(
+      probeSessionSandboxAvailability({
+        platform: "linux",
+        bwrapPath: missingPath,
+      }),
+    ).resolves.toMatchObject({
+      state: "missing-bubblewrap",
+      platform: "linux",
+      backend: "bubblewrap",
     });
-    expect(runtime?.enforcement).toMatchObject({
-      requested: "project-write",
-      effective: "project-write",
-      state: "enforced",
-      hostBackend: "bubblewrap:bwrap",
+    await expect(
+      probeSessionSandboxAvailability({
+        platform: "linux",
+        bwrapPath: untrustedPath,
+      }),
+    ).resolves.toMatchObject({
+      state: "untrusted-bubblewrap",
+      platform: "linux",
+      backend: "bubblewrap",
     });
-    const privateConfig = join(
-      stateRoot,
-      "test-session",
-      "claude",
-      "settings.json",
-    );
-    expect((await lstat(privateConfig)).ino).not.toBe(
-      (await lstat(join(sourceConfig, "settings.json"))).ino,
-    );
-    expect(
-      (
-        await lstat(join(stateRoot, "test-session", "claude", "skills"))
-      ).isSymbolicLink(),
-    ).toBe(true);
+    await expect(
+      probeSessionSandboxAvailability({
+        platform: "linux",
+        bwrapPath: "/usr/bin/false",
+      }),
+    ).resolves.toMatchObject({
+      state: "probe-failed",
+      platform: "linux",
+      backend: "bubblewrap",
+    });
+  });
 
-    const script = `
+  t(
+    "allows project and private writes while denying outside aliases",
+    async () => {
+      const root = await fixtureRoot();
+      const projectPath = join(root, "project");
+      const outsidePath = join(root, "outside");
+      const stateRoot = join(root, "state");
+      const sourceConfig = join(root, "claude-source");
+      const linkedSkills = join(outsidePath, "skills");
+      await Promise.all([
+        mkdir(projectPath),
+        mkdir(outsidePath),
+        mkdir(sourceConfig),
+      ]);
+      await mkdir(linkedSkills);
+      await writeFile(join(outsidePath, "sentinel.txt"), "unchanged\n");
+      await writeFile(
+        join(sourceConfig, "settings.json"),
+        '{"theme":"dark"}\n',
+      );
+      await symlink(linkedSkills, join(sourceConfig, "skills"));
+      await symlink(outsidePath, join(projectPath, "outside-link"));
+      vi.stubEnv("CLAUDE_CONFIG_DIR", sourceConfig);
+
+      const runtime = await prepareSessionSandbox({
+        level: "project-write",
+        provider: "claude",
+        projectPath,
+        stateKey: "test-session",
+        stateRoot,
+      });
+      expect(runtime?.enforcement).toMatchObject({
+        requested: "project-write",
+        effective: "project-write",
+        state: "enforced",
+        hostBackend: "bubblewrap:bwrap",
+      });
+      const privateConfig = join(
+        stateRoot,
+        "test-session",
+        "claude",
+        "settings.json",
+      );
+      expect((await lstat(privateConfig)).ino).not.toBe(
+        (await lstat(join(sourceConfig, "settings.json"))).ino,
+      );
+      expect(
+        (
+          await lstat(join(stateRoot, "test-session", "claude", "skills"))
+        ).isSymbolicLink(),
+      ).toBe(true);
+
+      const script = `
       set -eu
       printf 'inside\\n' > "$PROJECT_PATH/inside.txt"
       printf 'private\\n' > "$CLAUDE_CONFIG_DIR/settings.json"
@@ -135,72 +196,83 @@ describe("session sandbox", () => {
         exit 13
       fi
     `;
-    if (!runtime) throw new Error("sandbox runtime was not prepared");
-    await runSandboxed(
-      runtime.wrapSpawn("/bin/sh", ["-c", script], {
-        ...process.env,
-        PROJECT_PATH: projectPath,
-        OUTSIDE_PATH: outsidePath,
-      }),
-    );
+      if (!runtime) throw new Error("sandbox runtime was not prepared");
+      await runSandboxed(
+        runtime.wrapSpawn("/bin/sh", ["-c", script], {
+          ...process.env,
+          PROJECT_PATH: projectPath,
+          OUTSIDE_PATH: outsidePath,
+        }),
+      );
 
-    expect(await readFile(join(projectPath, "inside.txt"), "utf8")).toBe(
-      "inside\n",
-    );
-    expect(await readFile(join(outsidePath, "sentinel.txt"), "utf8")).toBe(
-      "unchanged\n",
-    );
-    expect(await readFile(join(sourceConfig, "settings.json"), "utf8")).toBe(
-      '{"theme":"dark"}\n',
-    );
-    await expect(lstat(join(outsidePath, "direct.txt"))).rejects.toMatchObject({
-      code: "ENOENT",
-    });
-    await expect(lstat(join(outsidePath, "linked.txt"))).rejects.toMatchObject({
-      code: "ENOENT",
-    });
-    await expect(
-      lstat(join(projectPath, "outside-hardlink")),
-    ).rejects.toMatchObject({
-      code: "ENOENT",
-    });
-  });
+      expect(await readFile(join(projectPath, "inside.txt"), "utf8")).toBe(
+        "inside\n",
+      );
+      expect(await readFile(join(outsidePath, "sentinel.txt"), "utf8")).toBe(
+        "unchanged\n",
+      );
+      expect(await readFile(join(sourceConfig, "settings.json"), "utf8")).toBe(
+        '{"theme":"dark"}\n',
+      );
+      await expect(
+        lstat(join(outsidePath, "direct.txt")),
+      ).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+      await expect(
+        lstat(join(outsidePath, "linked.txt")),
+      ).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+      await expect(
+        lstat(join(projectPath, "outside-hardlink")),
+      ).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+    },
+  );
 
-  it("fails closed with install guidance when Bubblewrap is absent", async () => {
-    const root = await fixtureRoot();
-    const projectPath = join(root, "project");
-    await mkdir(projectPath);
+  t(
+    "fails closed with install guidance when Bubblewrap is absent",
+    async () => {
+      const root = await fixtureRoot();
+      const projectPath = join(root, "project");
+      await mkdir(projectPath);
 
-    await expect(
-      prepareSessionSandbox({
+      await expect(
+        prepareSessionSandbox({
+          level: "project-write",
+          provider: "codex",
+          projectPath,
+          stateKey: "missing-bwrap",
+          stateRoot: join(root, "state"),
+          bwrapPath: join(root, "not-installed", "bwrap"),
+        }),
+      ).rejects.toThrow(/sudo dnf install bubblewrap/);
+    },
+  );
+
+  t(
+    "distinguishes an unusable Bubblewrap runtime from a missing package",
+    async () => {
+      const root = await fixtureRoot();
+      const projectPath = join(root, "project");
+      await mkdir(projectPath);
+
+      const preparation = prepareSessionSandbox({
         level: "project-write",
         provider: "codex",
         projectPath,
-        stateKey: "missing-bwrap",
+        stateKey: "broken-bwrap",
         stateRoot: join(root, "state"),
-        bwrapPath: join(root, "not-installed", "bwrap"),
-      }),
-    ).rejects.toThrow(/sudo dnf install bubblewrap/);
-  });
-
-  it("distinguishes an unusable Bubblewrap runtime from a missing package", async () => {
-    const root = await fixtureRoot();
-    const projectPath = join(root, "project");
-    await mkdir(projectPath);
-
-    const preparation = prepareSessionSandbox({
-      level: "project-write",
-      provider: "codex",
-      projectPath,
-      stateKey: "broken-bwrap",
-      stateRoot: join(root, "state"),
-      bwrapPath: "/bin/false",
-    });
-    await expect(preparation).rejects.toThrow(
-      /installed but could not enforce the session sandbox/,
-    );
-    await expect(preparation).rejects.not.toThrow(/dnf install/);
-  });
+        bwrapPath: "/bin/false",
+      });
+      await expect(preparation).rejects.toThrow(
+        /installed but could not enforce the session sandbox/,
+      );
+      await expect(preparation).rejects.not.toThrow(/dnf install/);
+    },
+  );
 
   it("rejects unsupported providers and remote executors before launch", async () => {
     const root = await fixtureRoot();
@@ -243,7 +315,7 @@ describe("session sandbox", () => {
     );
   });
 
-  it("reuses one project state key across providers", async () => {
+  t("reuses one project state key across providers", async () => {
     const root = await fixtureRoot();
     const projectPath = join(root, "project");
     const projectLink = join(root, "project-link");
@@ -269,7 +341,7 @@ describe("session sandbox", () => {
     expect(codex?.projectPath).toBe(projectPath);
   });
 
-  it("forks Claude transcripts inside the inherited private state", async () => {
+  t("forks Claude transcripts inside the inherited private state", async () => {
     const root = await fixtureRoot();
     const projectPath = join(root, "project");
     const stateRoot = join(root, "state");
@@ -285,7 +357,7 @@ describe("session sandbox", () => {
     await mkdir(runtime.transcriptDir, { recursive: true });
     await writeFile(
       join(runtime.transcriptDir, `${sourceSessionId}.jsonl`),
-      [
+      `${[
         JSON.stringify({
           type: "user",
           uuid: "22222222-2222-4222-8222-222222222222",
@@ -304,7 +376,7 @@ describe("session sandbox", () => {
           timestamp: "2026-07-28T00:00:01.000Z",
           message: { role: "assistant", content: "Ready" },
         }),
-      ].join("\n") + "\n",
+      ].join("\n")}\n`,
     );
 
     const fork = await new ClaudeProvider().forkSession({
@@ -325,7 +397,7 @@ describe("session sandbox", () => {
     expect(forked).toContain('"customTitle":"Private fork"');
   });
 
-  it("refuses agent-controlled transcript directory symlinks", async () => {
+  t("refuses agent-controlled transcript directory symlinks", async () => {
     const root = await fixtureRoot();
     const projectPath = join(root, "project");
     const stateRoot = join(root, "state");

@@ -11,6 +11,7 @@ import {
 import {
   PROJECT_QUEUE_CAPABILITY,
   SESSION_SANDBOXING_CAPABILITY,
+  SESSION_SANDBOXING_STATUS_CAPABILITY,
 } from "@yep-anywhere/shared";
 import {
   Fragment,
@@ -175,6 +176,18 @@ const {
   versionState: {
     version: null as {
       capabilities?: string[];
+      sessionSandboxing?: {
+        state:
+          | "available"
+          | "unsupported-platform"
+          | "missing-bubblewrap"
+          | "untrusted-bubblewrap"
+          | "unsupported-version"
+          | "probe-failed";
+        platform: string;
+        backend?: "bubblewrap";
+        version?: string;
+      };
       voiceBackends?: string[];
       voiceBackendCapabilities?: Record<
         string,
@@ -1154,7 +1167,17 @@ describe("NewSessionForm", () => {
 
   it("shows and submits the saved sandbox only with server capability", async () => {
     versionState.version = {
-      capabilities: [PROJECT_QUEUE_CAPABILITY, SESSION_SANDBOXING_CAPABILITY],
+      capabilities: [
+        PROJECT_QUEUE_CAPABILITY,
+        SESSION_SANDBOXING_CAPABILITY,
+        SESSION_SANDBOXING_STATUS_CAPABILITY,
+      ],
+      sessionSandboxing: {
+        state: "available",
+        platform: "linux",
+        backend: "bubblewrap",
+        version: "0.4.0",
+      },
     };
     serverSettingsState.settings = {
       newSessionDefaults: {
@@ -1198,7 +1221,17 @@ describe("NewSessionForm", () => {
 
   it("turns off side-session recaps when sandboxing is enabled", async () => {
     versionState.version = {
-      capabilities: [PROJECT_QUEUE_CAPABILITY, SESSION_SANDBOXING_CAPABILITY],
+      capabilities: [
+        PROJECT_QUEUE_CAPABILITY,
+        SESSION_SANDBOXING_CAPABILITY,
+        SESSION_SANDBOXING_STATUS_CAPABILITY,
+      ],
+      sessionSandboxing: {
+        state: "available",
+        platform: "linux",
+        backend: "bubblewrap",
+        version: "0.4.0",
+      },
     };
     serverSettingsState.settings = {
       newSessionDefaults: {
@@ -1295,9 +1328,73 @@ describe("NewSessionForm", () => {
     );
   });
 
-  it("hides and disables sandboxing for an unimplemented provider", async () => {
+  it("hides sandboxing from an intermediate protocol-only server", () => {
     versionState.version = {
       capabilities: [PROJECT_QUEUE_CAPABILITY, SESSION_SANDBOXING_CAPABILITY],
+    };
+    serverSettingsState.settings = {
+      newSessionDefaults: {
+        provider: "claude",
+        sandboxLevel: "project-write",
+      },
+    };
+    serverSettingsState.isLoading = false;
+
+    render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("checkbox", { name: "newSessionSandboxLabel" }),
+    ).toBeNull();
+  });
+
+  it("hides sandboxing when the server reports an unsupported host", () => {
+    versionState.version = {
+      capabilities: [SESSION_SANDBOXING_STATUS_CAPABILITY],
+      sessionSandboxing: {
+        state: "unsupported-platform",
+        platform: "darwin",
+      },
+    };
+    serverSettingsState.settings = {
+      newSessionDefaults: {
+        provider: "claude",
+        sandboxLevel: "project-write",
+      },
+    };
+    serverSettingsState.isLoading = false;
+
+    render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("checkbox", { name: "newSessionSandboxLabel" }),
+    ).toBeNull();
+  });
+
+  it("hides and disables sandboxing for an unimplemented provider", async () => {
+    versionState.version = {
+      capabilities: [
+        PROJECT_QUEUE_CAPABILITY,
+        SESSION_SANDBOXING_CAPABILITY,
+        SESSION_SANDBOXING_STATUS_CAPABILITY,
+      ],
+      sessionSandboxing: {
+        state: "available",
+        platform: "linux",
+        backend: "bubblewrap",
+        version: "0.4.0",
+      },
     };
     providersState.providers = [
       {

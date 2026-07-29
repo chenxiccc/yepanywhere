@@ -3,7 +3,6 @@ import {
   DEFAULT_PROJECT_QUEUE_CTRL_ENTER_ENABLED,
   HELPER_SIDE_MODEL_CHEAPEST,
   HELPER_SIDE_MODEL_SAME_AS_MAIN,
-  SESSION_SANDBOXING_CAPABILITY,
   type EffortLevel,
   type ModelInfo,
   type PromptSuggestionMode,
@@ -15,7 +14,6 @@ import {
   type WorkstreamId,
   normalizeRecapAfterSeconds,
   resolveModel,
-  serverHasCapability,
 } from "@yep-anywhere/shared";
 import {
   type ChangeEvent,
@@ -75,6 +73,7 @@ import {
   withProviderVisibleModelSelection,
 } from "../lib/modelCatalog";
 import { providerSupportsLocalSessionSandbox } from "../lib/providerCapabilities";
+import { serverHasAvailableSessionSandbox } from "../lib/sessionSandboxAvailability";
 import {
   type PendingFile,
   type PendingLocalFile,
@@ -354,16 +353,15 @@ export function NewSessionForm({
 
   // Server version for voiceBackends advertisement
   const { version: versionInfo, loading: versionLoading } = useVersion();
-  const supportsSessionSandboxing = serverHasCapability(
-    versionInfo,
-    SESSION_SANDBOXING_CAPABILITY,
-  );
+  const supportsSessionSandboxing =
+    serverHasAvailableSessionSandbox(versionInfo);
   const canConfigureSessionSandbox =
     supportsSessionSandboxing &&
     selectedExecutor === null &&
     providerSupportsLocalSessionSandbox(selectedProvider);
-  const effectiveSandboxLevel: SessionSandboxLevel =
-    canConfigureSessionSandbox ? sandboxLevel : "none";
+  const effectiveSandboxLevel: SessionSandboxLevel = canConfigureSessionSandbox
+    ? sandboxLevel
+    : "none";
   const supportsProjectQueue = serverSupportsProjectQueue(versionInfo);
   const projectQueueCtrlEnterEnabled =
     versionInfo?.clientDefaults?.projectQueueCtrlEnterEnabled ??
@@ -2098,9 +2096,7 @@ export function NewSessionForm({
         thinking,
         provider: selectedProvider ?? null,
         executor: selectedExecutor ?? null,
-        sandboxLevel: supportsSessionSandboxing
-          ? effectiveSandboxLevel
-          : null,
+        sandboxLevel: supportsSessionSandboxing ? effectiveSandboxLevel : null,
         textLength: trimmedMessage.length,
         attachmentCount: stagedRefs.length,
         uploadWaitMs: Date.now() - actionAtMs,

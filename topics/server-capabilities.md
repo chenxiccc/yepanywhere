@@ -24,6 +24,12 @@ entry, including permanent static features and dynamic environment/state
 capabilities. Keeping the complete set in shared code lets client and server
 call sites import constants instead of repeating wire strings.
 
+For session sandboxing, `session-sandboxing-status` advertises the structured
+host-preflight contract while `session-sandboxing` is dynamic and means the
+local host currently has a usable enforcement backend. Clients require both
+and an `available` status before showing or sending the optional launch field;
+the launch path still rechecks and fails closed.
+
 ## Capability Classes
 
 Use `kind: "permanent"` for capabilities that may vary indefinitely across
