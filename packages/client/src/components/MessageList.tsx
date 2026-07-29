@@ -948,6 +948,7 @@ export const MessageList = memo(function MessageList({
   const observedThinkingItemIdsRef = useRef<ReadonlySet<string> | null>(null);
   const autoExpandedHistoricalThinkingProviderRef = useRef<string | null>(null);
   const thinkingDeltaFollowAllowedRef = useRef(false);
+  const wasTurnActiveRef = useRef(false);
   const navMotionCueTokenRef = useRef(0);
   const navMotionCueClearTimerRef = useRef<ReturnType<
     typeof setTimeout
@@ -1201,6 +1202,23 @@ export const MessageList = memo(function MessageList({
     },
     [clearForcedCurrentScrollTimers, scrollToBottom],
   );
+
+  // On a turn ending, re-assert follow before the browser reacts to the
+  // finalization height change. A completing turn collapses its bounded
+  // thinking preview and recent-activity rows out of the flow (a shrink), and
+  // the browser's clamp-fired scroll event would otherwise run the scroll
+  // handler, read the shrink as a user scroll-away, and drop follow. Reading
+  // shouldAutoScroll in a layout effect captures the pre-finalization intent
+  // (scroll events dispatch after layout effects run), so a reader on the live
+  // tail rides down to the new bottom instead of being stranded above it.
+  useLayoutEffect(() => {
+    const turnActive = isProcessing || isStreaming;
+    const wasActive = wasTurnActiveRef.current;
+    wasTurnActiveRef.current = turnActive;
+    if (wasActive && !turnActive && shouldAutoScrollRef.current) {
+      forceScrollToCurrent();
+    }
+  }, [isProcessing, isStreaming, forceScrollToCurrent]);
 
   // Preprocess messages into render items and group into turns
   const renderItems = useMemo(() => {

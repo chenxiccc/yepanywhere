@@ -775,6 +775,54 @@ describe("MessageList scroll and follow", () => {
     composerTarget.remove();
   });
 
+  it("re-pins to the new bottom on turn completion while following", () => {
+    const { container, rerender } = render(
+      <MessageList
+        provider="codex"
+        isProcessing={true}
+        messages={[
+          userMessage("user-1", "go"),
+          assistantMessage("assistant-1", "working"),
+        ]}
+      />,
+    );
+    let scrollHeight = 1000;
+    Object.defineProperty(container, "scrollTop", {
+      configurable: true,
+      value: 500,
+      writable: true,
+    });
+    Object.defineProperty(container, "scrollHeight", {
+      configurable: true,
+      get: () => scrollHeight,
+    });
+    Object.defineProperty(container, "clientHeight", {
+      configurable: true,
+      value: 500,
+    });
+
+    // Establish an active follow at the bottom.
+    fireEvent.scroll(container);
+
+    // Turn completes: the thinking preview and activity rows collapse out of
+    // the flow, shrinking total height. The completion-boundary layout effect
+    // must re-pin an active follower to the new bottom before a clamp-fired
+    // scroll event can read the shrink as a scroll-away.
+    scrollHeight = 700;
+    rerender(
+      <MessageList
+        provider="codex"
+        isProcessing={false}
+        messages={[
+          userMessage("user-1", "go"),
+          assistantMessage("assistant-1", "done"),
+        ]}
+      />,
+    );
+
+    expect(container.scrollTop).toBe(200); // 700 - 500
+  });
+
   it("lets a user wheel away cancel live follow before resize catch-up", () => {
     let resizeCallback: ResizeObserverCallback | null = null;
     class CapturingResizeObserver {
