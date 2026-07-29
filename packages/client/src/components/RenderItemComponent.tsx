@@ -27,6 +27,7 @@ import type {
   RenderItem,
 } from "../types/renderItems";
 import { formatCommandDuration } from "../lib/shellToolOutput";
+import { useStickToBottom } from "../lib/stickToBottom";
 import {
   THINKING_PREVIEW_DEFAULT_WIDTH_PX,
   type ThinkingPreviewWidthState,
@@ -455,6 +456,14 @@ function ConversationThinkingPreview({
     );
   }, [collapsed, preview.id, preview.thinking]);
 
+  // Follow the streaming tail so newly appended thinking stays visible, unless
+  // the user has scrolled up to read. Static/previous thinking never follows.
+  const { onScroll: onContentScroll } = useStickToBottom(
+    contentRef,
+    preview.thinking,
+    preview.status === "streaming",
+  );
+
   return (
     <div
       className={`conversation-thinking-preview${
@@ -493,7 +502,11 @@ function ConversationThinkingPreview({
         </button>
       </div>
       {!collapsed ? (
-        <div ref={contentRef} className="conversation-thinking-preview-content">
+        <div
+          ref={contentRef}
+          className="conversation-thinking-preview-content"
+          onScroll={onContentScroll}
+        >
           <ThinkingText
             text={preview.thinking}
             isStreaming={preview.status === "streaming"}

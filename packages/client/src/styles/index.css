@@ -9107,7 +9107,12 @@ div.bang-command-error-message {
 }
 
 .conversation-thinking-preview-content {
-  max-height: min(42vh, 24rem);
+  /* Deliberately cap the block so the preceding non-thinking turn keeps ~40% of
+     the viewport for context (e.g. returning after unattended progress): the
+     40vh arm reserves ≥60vh for the rest on any window; the 24rem arm keeps the
+     block from growing gratuitously tall on large monitors. Viewport/font
+     relative, not fixed px — see topics/responsive-layout-gaps.md. */
+  max-height: min(40vh, 24rem);
   padding: 0 10px 8px 18px;
   overflow: auto;
   border-top: 1px solid color-mix(in srgb, var(--border-color) 58%, transparent);
