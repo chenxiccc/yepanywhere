@@ -7,7 +7,11 @@ controls, and (later) history interop from `~/.grok/` artifacts. Grok behavior
 is isolated behind `ENABLED_PROVIDERS`; the only shared ACP addition is a
 conditional extension-request hook that remains absent for other providers.
 
-Related topics: [claude.md](claude.md), [provider-state-machine.md](provider-state-machine.md), [provider-model-glyphs.md](provider-model-glyphs.md), architecture-mandates.md.
+Related topics: [claude.md](claude.md),
+[provider-state-machine.md](provider-state-machine.md),
+[provider-model-glyphs.md](provider-model-glyphs.md),
+[media-rendering-and-routing.md](media-rendering-and-routing.md), and
+architecture-mandates.md.
 
 ## Current upstream and local surface (2026-07-29)
 
@@ -95,8 +99,12 @@ launches whose later updates continue reporting progress.
 Image generation and editing deliberately do not impersonate `ViewImage`:
 their invocation does not have that renderer's input schema. Instead, the
 terminal image path is attached as a media candidate for YA's existing
-relay-safe materializer. Markdown image links written by Grok remain ordinary
-provider text and follow the shared media-rendering policy.
+relay-safe materializer and renders through the shared session-scoped
+tool-result media row. Markdown image links written by Grok remain ordinary
+provider text; when they occur in assistant text, the shared rich-text path
+makes them eligible for the turn image gallery. Do not route opaque
+session-media handles through that path-backed gallery or add a Grok-specific
+client branch.
 
 Grok's generated images live outside the project tree. Media capture grants
 only the realpath-resolved
