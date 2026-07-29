@@ -1,3 +1,5 @@
+import { extractRawPatchFromEditInput } from "../../augments/edit-raw-patch.js";
+
 /**
  * Normalize OpenCode tool calls to YA's canonical tool renderer contract.
  *
@@ -22,6 +24,12 @@ export interface NormalizedOpenCodeTool {
   input: Record<string, unknown>;
 }
 
+export interface OpenCodeToolAttachment {
+  type?: string;
+  mime?: string;
+  url?: string;
+}
+
 /** OpenCode lower-case tool name -> YA canonical renderer name. */
 const OPENCODE_TOOL_NAME_MAP: Record<string, string> = {
   bash: "Bash",
@@ -33,6 +41,8 @@ const OPENCODE_TOOL_NAME_MAP: Record<string, string> = {
   todowrite: "TodoWrite",
   task: "Task",
   webfetch: "WebFetch",
+  websearch: "WebSearch",
+  apply_patch: "Edit",
   question: "AskUserQuestion",
 };
 
@@ -46,6 +56,7 @@ const OPENCODE_TOOL_FIELD_RENAMES: Record<string, Record<string, string>> = {
     newString: "new_string",
     replaceAll: "replace_all",
   },
+  apply_patch: { patchText: "patch" },
   grep: { include: "glob" },
 };
 
@@ -75,9 +86,55 @@ export function normalizeOpenCodeTool(
 ): NormalizedOpenCodeTool {
   const lower = (toolName ?? "").toLowerCase();
   const name = OPENCODE_TOOL_NAME_MAP[lower] ?? toolName ?? "unknown";
-  const input = asRecord(rawInput);
+  let input = asRecord(rawInput);
   const renames = OPENCODE_TOOL_FIELD_RENAMES[lower];
-  return { name, input: renames ? renameFields(input, renames) : input };
+  if (renames) {
+    input = renameFields(input, renames);
+  }
+  if (lower === "apply_patch") {
+    const rawPatch =
+      extractRawPatchFromEditInput(rawInput) ??
+      extractRawPatchFromEditInput(input);
+    if (rawPatch) {
+      input = {
+        ...input,
+        rawPatch,
+        _rawPatch: rawPatch,
+      };
+    }
+  }
+  return { name, input };
+}
+
+/**
+ * Preserve image attachments returned by current OpenCode tools in the same
+ * structured result shape used by YA's tool-result media materializer.
+ */
+export function normalizeOpenCodeToolResult(
+  toolName: string | undefined,
+  attachments: readonly OpenCodeToolAttachment[] | undefined,
+): unknown {
+  if ((toolName ?? "").toLowerCase() !== "read") return undefined;
+  const attachment = attachments?.find(
+    (candidate) =>
+      candidate.type === "file" &&
+      typeof candidate.mime === "string" &&
+      candidate.mime.startsWith("image/") &&
+      typeof candidate.url === "string" &&
+      candidate.url.startsWith(`data:${candidate.mime};base64,`),
+  );
+  if (!attachment?.mime || !attachment.url) return undefined;
+  const commaIndex = attachment.url.indexOf(",");
+  const base64 = attachment.url.slice(commaIndex + 1);
+  if (!base64) return undefined;
+  return {
+    type: "image",
+    file: {
+      base64,
+      type: attachment.mime,
+      originalSize: Buffer.from(base64, "base64").byteLength,
+    },
+  };
 }
 
 /**

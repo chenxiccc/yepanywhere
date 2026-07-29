@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   mapOpenCodeQuestionAnswers,
   normalizeOpenCodeTool,
+  normalizeOpenCodeToolResult,
 } from "../../../src/sdk/providers/opencode-tools.js";
 
 describe("normalizeOpenCodeTool", () => {
@@ -15,6 +16,8 @@ describe("normalizeOpenCodeTool", () => {
     expect(normalizeOpenCodeTool("todowrite", {}).name).toBe("TodoWrite");
     expect(normalizeOpenCodeTool("task", {}).name).toBe("Task");
     expect(normalizeOpenCodeTool("webfetch", {}).name).toBe("WebFetch");
+    expect(normalizeOpenCodeTool("websearch", {}).name).toBe("WebSearch");
+    expect(normalizeOpenCodeTool("apply_patch", {}).name).toBe("Edit");
     expect(normalizeOpenCodeTool("question", {}).name).toBe("AskUserQuestion");
   });
 
@@ -50,6 +53,19 @@ describe("normalizeOpenCodeTool", () => {
     ).toEqual({ pattern: "x", glob: "*.py" });
   });
 
+  it("maps apply_patch input to canonical Edit raw-patch fields", () => {
+    const patch =
+      "*** Begin Patch\n*** Update File: a.ts\n@@\n-old\n+new\n*** End Patch";
+    expect(normalizeOpenCodeTool("apply_patch", { patchText: patch })).toEqual({
+      name: "Edit",
+      input: {
+        patch,
+        rawPatch: patch,
+        _rawPatch: patch,
+      },
+    });
+  });
+
   it("passes through tools with matching field shapes (bash, todowrite)", () => {
     expect(
       normalizeOpenCodeTool("bash", { command: "ls", description: "d" }).input,
@@ -69,6 +85,48 @@ describe("normalizeOpenCodeTool", () => {
   it("tolerates missing/non-object input", () => {
     expect(normalizeOpenCodeTool("read", undefined).input).toEqual({});
     expect(normalizeOpenCodeTool(undefined, null).name).toBe("unknown");
+  });
+});
+
+describe("normalizeOpenCodeToolResult", () => {
+  it("preserves completed image-read attachments for tool-result media", () => {
+    expect(
+      normalizeOpenCodeToolResult("read", [
+        {
+          type: "file",
+          mime: "image/png",
+          url: "data:image/png;base64,aGVsbG8=",
+        },
+      ]),
+    ).toEqual({
+      type: "image",
+      file: {
+        base64: "aGVsbG8=",
+        type: "image/png",
+        originalSize: 5,
+      },
+    });
+  });
+
+  it("ignores non-read and non-image attachments", () => {
+    expect(
+      normalizeOpenCodeToolResult("write", [
+        {
+          type: "file",
+          mime: "image/png",
+          url: "data:image/png;base64,aGVsbG8=",
+        },
+      ]),
+    ).toBeUndefined();
+    expect(
+      normalizeOpenCodeToolResult("read", [
+        {
+          type: "file",
+          mime: "text/plain",
+          url: "data:text/plain;base64,aGVsbG8=",
+        },
+      ]),
+    ).toBeUndefined();
   });
 });
 

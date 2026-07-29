@@ -217,7 +217,7 @@ describe.skipIf(!DatabaseSync)(
       expect(loaded?.summary.contextUsage).toMatchObject({ inputTokens: 150 });
 
       const normalized = normalizeSession(loaded!);
-      expect(normalized.messages).toHaveLength(2);
+      expect(normalized.messages).toHaveLength(3);
       expect(normalized.messages[0]).toMatchObject({
         type: "user",
         message: {
@@ -226,15 +226,29 @@ describe.skipIf(!DatabaseSync)(
         },
       });
 
-      // empty reasoning dropped; tool emits use+result; tool name normalized.
+      // Empty reasoning is dropped and the tool name is normalized. The
+      // settled result is a separate user message, matching the live path and
+      // preserving per-call structured results/media.
       // toMatchObject on an array checks length + each element, so a stray block
       // (e.g. the skipped empty reasoning) would fail here.
       expect(normalized.messages[1].message?.content).toMatchObject([
         { type: "thinking", thinking: "thinking aloud" },
         { type: "tool_use", name: "Bash" },
-        { type: "tool_result", content: "file.txt\n" },
         { type: "text", text: "final answer" },
       ]);
+      expect(normalized.messages[2]).toMatchObject({
+        type: "user",
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "call_1",
+              content: "file.txt\n",
+            },
+          ],
+        },
+      });
     });
 
     it("pages with afterMessageId but keeps a full-session summary", async () => {
@@ -255,8 +269,14 @@ describe.skipIf(!DatabaseSync)(
       expect(spawnMock).not.toHaveBeenCalled();
 
       const normalized = normalizeSession(loaded!);
-      expect(normalized.messages).toHaveLength(1);
+      expect(normalized.messages).toHaveLength(2);
       expect(normalized.messages[0].type).toBe("assistant");
+      expect(normalized.messages[1]).toMatchObject({
+        type: "user",
+        message: {
+          content: [{ type: "tool_result", tool_use_id: "call_1" }],
+        },
+      });
       // summary still describes the whole session, not just the page
       expect(loaded?.summary.messageCount).toBe(2);
     });

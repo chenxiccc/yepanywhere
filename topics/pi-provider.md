@@ -408,6 +408,41 @@ these pieces:
    names/fields/results, durable reload parity, duplicate live tool snapshots,
    and pending Bash preview rendering.
 
+### Pi 0.82.1 action-vocabulary refresh — 2026-07-29
+
+The current release was exercised end to end with installed Pi 0.82.1 and
+`github-copilot/claude-haiku-4.5` at low effort in a disposable project. The
+prompt requested directory listing, file finding, content search, read, write,
+edit, shell, image read, Markdown image linking, web fetch/search, interactive
+question, and todos. Raw RPC, live YA normalization, persisted Pi JSONL, durable
+YA normalization, and the rendered conversation were compared.
+
+**Default tool vocabulary.** Pi's default coding-agent profile exposes
+`read`, `write`, `edit`, and `bash`. Its `grep`, `find`, and `ls` tools belong
+to a different/read-only profile, so the model used `bash` for listing,
+finding, and searching. Web fetch/search, interactive questions, and todos
+were not exposed. Those absences are provider/model-profile choices, not YA
+normalization gaps. The exercised canonical YA actions were `Read`, `Write`,
+`Edit`, and `Bash`, including progressive Bash previews and edit patches.
+
+**Image-result contract.** Pi 0.82.1 returns an image read as a
+`tool_execution_end` result whose `content` contains both a text block and an
+`{type:"image", data, mimeType}` block. `normalizePiToolResult()` must preserve
+the image block as YA's structured
+`{type:"image", file:{base64,type,originalSize}}` result. The tool-result media
+materializer then removes inline base64 from the API message, stores the bytes,
+and emits `toolResultMedia`; live and durable readers use the same result
+normalizer. The coverage fixture was a 6,071-byte, 192×192 PNG, retained
+identically in both paths and rendered as the canonical `Read … (image)` row
+at desktop and phone widths.
+
+**Executable-selection caution.** `PiProvider.findPiPath()` gives
+`PI_EXECUTABLE` / `PI_PATH` precedence over the configured `piPath`. A provider
+refresh intended to test a newly installed release must unset an older shell
+override or it will unknowingly exercise that override instead. The initial
+probe encountered exactly this with a local 0.80.2 build; the recorded 0.82.1
+coverage explicitly removed `PI_EXECUTABLE`.
+
 ## Capability flags (initial `AgentProvider`)
 
 `supportsSteering=true`, `supportsSteerNow=true` (steer lands before next LLM

@@ -41,6 +41,11 @@ interface PiTextFile {
   totalLines: number;
 }
 
+interface PiImageBlock {
+  data: string;
+  mimeType: string;
+}
+
 interface PiToolResultPayload {
   content?: unknown;
   details?: unknown;
@@ -88,6 +93,23 @@ function textFromContent(content: unknown): string {
       .join("\n");
   }
   return "";
+}
+
+function imageFromContent(content: unknown): PiImageBlock | undefined {
+  if (!Array.isArray(content)) return undefined;
+  for (const block of content) {
+    const record = maybeRecord(block);
+    if (
+      record?.type === "image" &&
+      typeof record.data === "string" &&
+      record.data.length > 0 &&
+      typeof record.mimeType === "string" &&
+      record.mimeType.startsWith("image/")
+    ) {
+      return { data: record.data, mimeType: record.mimeType };
+    }
+  }
+  return undefined;
 }
 
 export function stringifyPiToolResult(result: unknown): string {
@@ -270,6 +292,17 @@ export function normalizePiToolResult(
         isImage: false,
       };
     case "Read": {
+      const image = imageFromContent(payload.content);
+      if (image) {
+        return {
+          type: "image",
+          file: {
+            base64: image.data,
+            type: image.mimeType,
+            originalSize: Buffer.from(image.data, "base64").byteLength,
+          },
+        };
+      }
       const filePath = stringField(toolInput, "file_path") ?? "";
       const startLine = numberField(toolInput ?? {}, "offset") ?? 1;
       return makeTextFileResult(filePath, text, startLine);

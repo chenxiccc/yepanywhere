@@ -38,11 +38,11 @@ translate more provider-specific concepts itself:
 | Session startup and resume | SDK `query()` with `resume` and native session files. | App-server `thread/start` / `thread/resume`. | Starts or resumes native `ses_*` sessions through `opencode serve`; YA currently exposes that native ID as the session ID. |
 | Initial message | Queued through `MessageQueue`. | Queued through `MessageQueue`. | Queued through `MessageQueue`, then sent as a single OpenCode text part. |
 | Global instructions | SDK system prompt append. | Prompt-visible `[Global context]` prefix on first turn. | Same prompt-visible `[Global context]` prefix as Codex, not a native system/config channel. |
-| Uploaded file references | `.attachments` references are appended by `MessageQueue`; image blocks can also be passed to the Claude SDK. | `.attachments` references survive as text; image blocks are discarded when Codex extracts text for app-server input. | `.attachments` references survive as text; image blocks are discarded when OpenCode extracts text for the POST body. |
-| Permission modes | Passed to SDK; YA `canUseTool` mediates approvals. | Maps YA modes to app-server approval/sandbox policy and handles approval requests. | Provider reports no YA permission-mode support. An optional e2e test observes OpenCode `permission.asked`, but YA does not yet route it to the normal approval UI. |
+| Uploaded file references | `.attachments` references are appended by `MessageQueue`; image blocks can also be passed to the Claude SDK. | `.attachments` references survive as text; image blocks are discarded when Codex extracts text for app-server input. | `.attachments` references survive as text; base64 image blocks become OpenCode file parts with data URLs. |
+| Permission modes | Passed to SDK; YA `canUseTool` mediates approvals. | Maps YA modes to app-server approval/sandbox policy and handles approval requests. | No static YA permission-mode mapping, but `permission.asked` and `question.asked` are bridged through the normal YA approval/question UI. |
 | Slash commands | Native SDK command list, with YA `/goal` alias for `/loop` when needed. | YA advertises built-in `/goal`; native command surface is app-server-specific. | `supportsSlashCommands=false`; no advertised command list or `/compact` equivalent in YA. |
-| Thinking and effort settings | Passed to SDK and adjustable through `setMaxThinkingTokens`. | Maps YA thinking/effort to Codex reasoning effort. | `supportsThinkingToggle=false`; OpenCode model/provider options are selected, but YA thinking/effort controls do not map to provider options. |
-| Steering and interrupt | Graceful interrupt exists; provider steering flag is false. | Supports active `turn/steer` and `turn/interrupt`. | No steering hook and no graceful interrupt hook; abort terminates the per-session `opencode serve` process. |
+| Thinking and effort settings | Passed to SDK and adjustable through `setMaxThinkingTokens`. | Maps YA thinking/effort to Codex reasoning effort. | Per-model OpenCode variants map to YA effort; thinking text is rendered when the upstream provider supplies it. |
+| Steering and interrupt | Graceful interrupt exists; provider steering flag is false. | Supports active `turn/steer` and `turn/interrupt`. | No steering hook; graceful interrupt posts to `/session/:id/abort`, while hard abort terminates the per-session server. |
 | Model changes | SDK-supported `setModel` and supported-model inventory. | Model inventory from app-server/fallbacks; model/service tier passed at thread and turn start. | Model inventory from `opencode models`, with `local-glm/*` sorted first; no dynamic `setModel` hook. |
 | Recaps and prompt suggestions | Recaps plus native prompt suggestions. | Recaps, but not native prompt suggestions. | No recap or prompt-suggestion capability flags. |
 | Clone/DAG UI metadata | Client metadata says DAG and cloning are supported. | Client metadata says cloning is supported, linear history. | Client metadata marks both DAG and cloning unsupported. |
@@ -63,10 +63,10 @@ Live stream path in `opencode.ts`:
 | `type: "reasoning"` | YA `thinking` block. | Covered live, but only when the part is seen through SSE or POST fallback. |
 | `type: "tool-use"` | YA `tool_use` block. | Generic block is covered; OpenCode lower-case tool names still miss rich renderer aliases. |
 | `type: "tool-result"` | YA `tool_result` block. | Pairing assumes the result part ID is the correct `tool_use_id`; this should be fixture-tested against real OpenCode events. |
-| `type: "step-finish"` with tokens | YA `result` usage message. | Cost, reason, and snapshot metadata are not rendered. |
+| `type: "step-finish"` with tokens | Records one model-step's usage; emits no terminal message. | Cost, reason, and snapshot metadata are not rendered. |
 | `type: "step-start"` | Ignored. | Usually metadata, but the ignored count should stay visible in coverage metrics. |
 | `session.diff` | Ignored. | File-change summaries are not mapped to read/edit/diff UI. |
-| `permission.asked` | Ignored by the provider adapter. | No bridge to the YA approval UI. |
+| `permission.asked` | Routed through YA approval and replied to through OpenCode's permission endpoint. | Static YA permission modes remain unsupported. |
 
 Durable reader path in `normalization.ts`:
 
@@ -137,6 +137,45 @@ element list. Key shape correction and closures:
 - **Background bash**: opencode's bash tool is foreground-only (`command`,
   `description`, `timeout`); background is a separate `/pty/shells` feature the
   agent doesn't use as a tool — nothing to map.
+
+## 1.18.9 action-vocabulary refresh (2026-07-29)
+
+OpenCode 1.18.9 (official tag `v1.18.9`,
+`4da7bb227ac0259168bd8af7f7d99f21c9e0a03a`) was exercised through YA with
+`github-copilot/claude-haiku-4.5` in a disposable project. The audit compared
+official source, raw SSE, the message POST/export, live YA messages, the
+SQLite-backed durable reader, and rendered desktop/phone conversations.
+
+**Turn boundary.** A current OpenCode turn can contain many
+`step-start`/model/tool/`step-finish` cycles. `step-finish` ends one model step;
+it does not mean the user's turn is idle. The coverage trace contained 23
+assistant steps and exactly one `session.idle`. YA therefore retains the latest
+usage for each `step-finish` part ID, emits no result for those parts, and emits
+one terminal YA `result` after the matching `session.idle`, with aggregate
+input/output/cache-read/cache-write usage. This is load-bearing for queue
+semantics: treating each step as terminal lets a queued user turn enter while
+OpenCode is still executing the previous one.
+
+**Current tool vocabulary.** The live Copilot run exercised `todowrite`,
+directory `read`, `glob`, `grep`, text/image `read`, `write`, `edit`, `bash`,
+`webfetch`, and `question`; all reached the corresponding canonical YA
+renderers. The 1.18.9 registry also contains `websearch` and `apply_patch`.
+YA maps those to `WebSearch` and `Edit`; `patchText` is preserved as the
+canonical raw-patch fields so the existing edit renderer can parse it. The
+Copilot-backed run did not execute `websearch` because that OpenCode provider
+configuration did not expose a usable search backend. `skill`, experimental
+LSP/plan/code-mode, invalid, custom, and MCP tools stay explicit raw fallbacks
+unless a semantically equivalent YA renderer exists.
+
+**Image-result contract.** A completed image `read` stores a `state.attachments`
+file entry with `mime` and a base64 data URL. Both streaming and stored-part
+schemas must retain that field. Live and durable normalization convert an image
+attachment to YA's structured image result; durable tool results are emitted
+as separate user messages so each result keeps its own `callID` and media when
+an assistant message contains multiple tools. The media materializer removes
+the data URL/base64 from the response and stores the image. The live and
+reloaded coverage sessions each retained the same 6,071-byte, 192×192 PNG and
+rendered the standard `Read … (image)` row at desktop and phone widths.
 
 ## Durable Storage Format: SQLite (1.16+), legacy JSON tree dead
 
@@ -421,10 +460,13 @@ current where they disagree.
 OpenCode backend changes should be checked against both live and durable paths:
 
 - live SSE fixture: text deltas, final updates, reasoning, tool use/result,
-  `step-finish` usage, and role-filtered user parts;
+  repeated and distinct `step-finish` usage, one `session.idle` terminal
+  boundary, and role-filtered user parts;
 - durable export fixture: old stored `tool`, live-style `tool-use` /
-  `tool-result`, `reasoning`, `step-finish` usage, and lower-case tool names;
+  `tool-result`, `reasoning`, image attachments, `step-finish` usage, and
+  lower-case tool names;
 - UI renderer fixture or client test: OpenCode `bash` and `task` aliases either
-  reach rich renderers or intentionally fall back with clear raw display;
+  reach rich renderers or intentionally fall back with clear raw display; image
+  tool results render after both live streaming and durable reload;
 - liveness fixture: `/session/status`, `session.status`, `session.idle`, and
   malformed/missing entries still follow `topics/session-liveness.md`.

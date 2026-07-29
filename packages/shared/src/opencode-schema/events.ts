@@ -61,6 +61,24 @@ export const OpenCodeTimeSchema = z.object({
 export type OpenCodeTime = z.infer<typeof OpenCodeTimeSchema>;
 
 /**
+ * File attachment emitted on completed tool state. OpenCode uses data URLs
+ * here for image reads.
+ */
+export const OpenCodeToolAttachmentSchema = z.object({
+  type: z.string(),
+  mime: z.string().optional(),
+  url: z.string().optional(),
+  filename: z.string().optional(),
+  id: z.string().optional(),
+  sessionID: z.string().optional(),
+  messageID: z.string().optional(),
+});
+
+export type OpenCodeToolAttachment = z.infer<
+  typeof OpenCodeToolAttachmentSchema
+>;
+
+/**
  * Message part - the streaming content unit.
  */
 export const OpenCodePartSchema = z.object({
@@ -88,6 +106,7 @@ export const OpenCodePartSchema = z.object({
       error: z.string().optional(),
       title: z.string().optional(),
       metadata: z.unknown().optional(),
+      attachments: z.array(OpenCodeToolAttachmentSchema).optional(),
       time: z
         .object({ start: z.number().optional(), end: z.number().optional() })
         .optional(),

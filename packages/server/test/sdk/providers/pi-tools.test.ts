@@ -124,6 +124,28 @@ describe("normalizePiTool", () => {
     });
   });
 
+  it("preserves pi image read payloads for tool-result media", () => {
+    expect(
+      normalizePiToolResult(
+        "Read",
+        {
+          content: [
+            { type: "text", text: "Read image file [image/png]" },
+            { type: "image", data: "aGVsbG8=", mimeType: "image/png" },
+          ],
+        },
+        { file_path: "fixture.png" },
+      ),
+    ).toEqual({
+      type: "image",
+      file: {
+        base64: "aGVsbG8=",
+        type: "image/png",
+        originalSize: 5,
+      },
+    });
+  });
+
   it("attaches pi edit patches to canonical Edit inputs", () => {
     const input = normalizePiTool("edit", {
       path: "a.ts",

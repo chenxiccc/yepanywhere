@@ -571,6 +571,213 @@ describe("OpenCodeProvider.startSession — blocking session ID", () => {
     session.abort();
   });
 
+  it("treats step-finish as nonterminal and aggregates usage at session.idle", async () => {
+    const sessionId = "ses_multi_step";
+    const firstStep = {
+      id: "prt_step_1",
+      sessionID: sessionId,
+      messageID: "msg_a",
+      type: "step-finish",
+      tokens: {
+        input: 10,
+        output: 2,
+        cache: { read: 3, write: 1 },
+      },
+    };
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes("/event")) {
+        return Promise.resolve(
+          sseResponse([
+            {
+              type: "message.updated",
+              properties: {
+                info: {
+                  id: "msg_a",
+                  sessionID: sessionId,
+                  role: "assistant",
+                },
+              },
+            },
+            {
+              type: "message.part.updated",
+              properties: { part: firstStep },
+            },
+            // Repeated updates for one part replace its usage; they do not
+            // double-count it.
+            {
+              type: "message.part.updated",
+              properties: { part: firstStep },
+            },
+            {
+              type: "message.part.updated",
+              properties: {
+                part: {
+                  id: "prt_text",
+                  sessionID: sessionId,
+                  messageID: "msg_a",
+                  type: "text",
+                  text: "after the first model step",
+                },
+              },
+            },
+            {
+              type: "message.part.updated",
+              properties: {
+                part: {
+                  id: "prt_step_2",
+                  sessionID: sessionId,
+                  messageID: "msg_a",
+                  type: "step-finish",
+                  tokens: {
+                    input: 5,
+                    output: 4,
+                    cache: { read: 2, write: 3 },
+                  },
+                },
+              },
+            },
+            { type: "session.idle", properties: { sessionID: sessionId } },
+          ]),
+        );
+      }
+      if (url.endsWith(`/session/${sessionId}/message`)) {
+        return Promise.resolve(jsonResponse({ ok: true }));
+      }
+      if (init?.method === "POST") {
+        return Promise.resolve(jsonResponse({ id: sessionId }));
+      }
+      return Promise.resolve(jsonResponse({ sessions: [] }));
+    });
+
+    const { OpenCodeProvider } = await import(
+      "../../../src/sdk/providers/opencode.js"
+    );
+    const provider = new OpenCodeProvider({ opencodePath: "/fake/opencode" });
+    const session = await provider.startSession({
+      cwd: "/tmp/test",
+      initialMessage: { text: "take multiple steps" },
+    });
+
+    const messages = [];
+    for (let i = 0; i < 10; i += 1) {
+      const next = await session.iterator.next();
+      if (next.done) break;
+      messages.push(next.value);
+      if (next.value.type === "result") break;
+    }
+
+    expect(
+      messages.filter((message) => message.type === "result"),
+    ).toHaveLength(1);
+    expect(
+      messages.find((message) => message.type === "assistant"),
+    ).toMatchObject({
+      message: { content: "after the first model step" },
+    });
+    expect(messages.at(-1)).toMatchObject({
+      type: "result",
+      usage: {
+        input_tokens: 15,
+        output_tokens: 6,
+        cache_read_input_tokens: 5,
+        cache_creation_input_tokens: 4,
+      },
+    });
+
+    session.abort();
+  });
+
+  it("preserves image attachments on live read tool results", async () => {
+    const sessionId = "ses_tool_image";
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes("/event")) {
+        return Promise.resolve(
+          sseResponse([
+            {
+              type: "message.updated",
+              properties: {
+                info: {
+                  id: "msg_a",
+                  sessionID: sessionId,
+                  role: "assistant",
+                },
+              },
+            },
+            {
+              type: "message.part.updated",
+              properties: {
+                part: {
+                  id: "prt_tool",
+                  sessionID: sessionId,
+                  messageID: "msg_a",
+                  type: "tool",
+                  tool: "read",
+                  callID: "call_image",
+                  state: {
+                    status: "completed",
+                    input: { filePath: "fixture.png" },
+                    output: "Image read successfully",
+                    attachments: [
+                      {
+                        type: "file",
+                        mime: "image/png",
+                        url: "data:image/png;base64,aGVsbG8=",
+                      },
+                    ],
+                  },
+                },
+              },
+            },
+            { type: "session.idle", properties: { sessionID: sessionId } },
+          ]),
+        );
+      }
+      if (url.endsWith(`/session/${sessionId}/message`)) {
+        return Promise.resolve(jsonResponse({ ok: true }));
+      }
+      if (init?.method === "POST") {
+        return Promise.resolve(jsonResponse({ id: sessionId }));
+      }
+      return Promise.resolve(jsonResponse({ sessions: [] }));
+    });
+
+    const { OpenCodeProvider } = await import(
+      "../../../src/sdk/providers/opencode.js"
+    );
+    const provider = new OpenCodeProvider({ opencodePath: "/fake/opencode" });
+    const session = await provider.startSession({
+      cwd: "/tmp/test",
+      initialMessage: { text: "read the image" },
+    });
+
+    const messages = [];
+    for (let i = 0; i < 10; i += 1) {
+      const next = await session.iterator.next();
+      if (next.done) break;
+      messages.push(next.value);
+      if (next.value.type === "result") break;
+    }
+
+    const result = messages.find(
+      (message) =>
+        message.type === "user" &&
+        Array.isArray(message.message?.content) &&
+        message.message.content.some((block) => block.type === "tool_result"),
+    );
+    expect(result).toMatchObject({
+      toolUseResult: {
+        type: "image",
+        file: {
+          base64: "aGVsbG8=",
+          type: "image/png",
+          originalSize: 5,
+        },
+      },
+    });
+
+    session.abort();
+  });
+
   it("routes a permission.asked event to onToolApproval and replies once on allow", async () => {
     const sessionId = "ses_perm_bridge";
     const onToolApproval = vi.fn().mockResolvedValue({ behavior: "allow" });

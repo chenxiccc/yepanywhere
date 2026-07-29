@@ -10,6 +10,7 @@
  */
 
 import { z } from "zod";
+import { OpenCodeToolAttachmentSchema } from "./events.js";
 
 /**
  * OpenCode project JSON file.
@@ -140,6 +141,7 @@ export const OpenCodeStoredPartSchema = z.object({
       error: z.string().optional(),
       title: z.string().optional(),
       metadata: z.unknown().optional(),
+      attachments: z.array(OpenCodeToolAttachmentSchema).optional(),
       time: z
         .object({
           start: z.number().optional(),

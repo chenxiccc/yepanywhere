@@ -37,6 +37,7 @@ import { MessageQueue } from "../messageQueue.js";
 import {
   mapOpenCodeQuestionAnswers,
   normalizeOpenCodeTool,
+  normalizeOpenCodeToolResult,
 } from "./opencode-tools.js";
 import {
   getLocalGlmModelDescription,
@@ -110,8 +111,39 @@ interface OpenCodeStreamState {
   // and tool_result emissions per callID so they appear exactly once.
   toolUseEmitted: Set<string>;
   toolResultEmitted: Set<string>;
+  // A turn may contain many model/tool steps. step-finish is not terminal;
+  // retain the latest usage for each part and report the aggregate once the
+  // session.idle boundary ends the turn.
+  stepUsageByPartId: Map<string, OpenCodeUsage>;
   sawAssistantContent: boolean;
   usedPostBodyFallback: boolean;
+}
+
+interface OpenCodeUsage {
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_input_tokens: number;
+  cache_creation_input_tokens: number;
+}
+
+function aggregateOpenCodeUsage(
+  usageByPartId: ReadonlyMap<string, OpenCodeUsage>,
+): OpenCodeUsage | undefined {
+  if (usageByPartId.size === 0) return undefined;
+  const aggregate: OpenCodeUsage = {
+    input_tokens: 0,
+    output_tokens: 0,
+    cache_read_input_tokens: 0,
+    cache_creation_input_tokens: 0,
+  };
+  for (const usage of usageByPartId.values()) {
+    aggregate.input_tokens += usage.input_tokens;
+    aggregate.output_tokens += usage.output_tokens;
+    aggregate.cache_read_input_tokens += usage.cache_read_input_tokens;
+    aggregate.cache_creation_input_tokens +=
+      usage.cache_creation_input_tokens;
+  }
+  return aggregate;
 }
 
 interface OpenCodeMessageResponse {
@@ -779,6 +811,7 @@ export class OpenCodeProvider implements AgentProvider {
       partSentLengthsById: new Map(),
       toolUseEmitted: new Set(),
       toolResultEmitted: new Set(),
+      stepUsageByPartId: new Map(),
       sawAssistantContent: false,
       usedPostBodyFallback: false,
     };
@@ -1022,10 +1055,13 @@ export class OpenCodeProvider implements AgentProvider {
       await ssePromise; // Ensure SSE task completes
     }
 
-    // Emit result message
+    // session.idle is OpenCode's turn boundary. Individual step-finish parts
+    // above are nonterminal model/tool-step boundaries.
+    const usage = aggregateOpenCodeUsage(streamState.stepUsageByPartId);
     yield {
       type: "result",
       session_id: sessionId,
+      ...(usage ? { usage } : {}),
     } as SDKMessage;
   }
 
@@ -1348,18 +1384,14 @@ export class OpenCodeProvider implements AgentProvider {
         return [];
 
       case "step-finish": {
-        // End of processing step - emit usage info if available
+        // End of one model/tool step, not the end of the user turn.
         if (part.tokens) {
-          return [
-            {
-              type: "result",
-              session_id: sessionId,
-              usage: {
-                input_tokens: part.tokens.input ?? 0,
-                output_tokens: part.tokens.output ?? 0,
-              },
-            } as SDKMessage,
-          ];
+          streamState.stepUsageByPartId.set(part.id, {
+            input_tokens: part.tokens.input ?? 0,
+            output_tokens: part.tokens.output ?? 0,
+            cache_read_input_tokens: part.tokens.cache?.read ?? 0,
+            cache_creation_input_tokens: part.tokens.cache?.write ?? 0,
+          });
         }
         return [];
       }
@@ -1467,6 +1499,10 @@ export class OpenCodeProvider implements AgentProvider {
       const content =
         error ??
         (typeof output === "string" ? output : JSON.stringify(output ?? ""));
+      const toolUseResult = normalizeOpenCodeToolResult(
+        part.tool,
+        part.state?.attachments,
+      );
       messages.push({
         type: "user",
         session_id: sessionId,
@@ -1481,6 +1517,7 @@ export class OpenCodeProvider implements AgentProvider {
             },
           ],
         },
+        ...(toolUseResult !== undefined ? { toolUseResult } : {}),
       } as SDKMessage);
     }
 
