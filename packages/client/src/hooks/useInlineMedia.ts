@@ -6,8 +6,13 @@ const store = createLocalStorageBoolean(
   UI_KEYS.inlineMediaExpandedByDefault,
   false,
 );
+const galleryStore = createLocalStorageBoolean(
+  UI_KEYS.compactMultiImageGalleries,
+  true,
+);
 
 export const setInlineMediaExpandedPreference = store.set;
+export const setCompactMultiImageGalleriesPreference = galleryStore.set;
 
 export function useInlineMedia() {
   const inlineMediaExpandedByDefault = useSyncExternalStore(
@@ -15,8 +20,15 @@ export function useInlineMedia() {
     store.read,
     store.read,
   );
+  const compactMultiImageGalleries = useSyncExternalStore(
+    galleryStore.subscribe,
+    galleryStore.read,
+    galleryStore.read,
+  );
   return {
+    compactMultiImageGalleries,
     inlineMediaExpandedByDefault,
+    setCompactMultiImageGalleries: galleryStore.set,
     setInlineMediaExpandedByDefault: store.set,
   };
 }

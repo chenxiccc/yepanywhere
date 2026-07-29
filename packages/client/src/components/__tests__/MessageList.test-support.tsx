@@ -90,6 +90,12 @@ vi.mock("../../i18n", () => ({
         conversationThinkingPreviewExpand: "Expand thinking preview",
         conversationThinkingPreviewDismiss: "Dismiss {label}",
         conversationRecentActivities: "Most recent activities",
+        turnImageGalleryCount: "{current} of {count}",
+        turnImageGalleryDismiss: "Dismiss gallery",
+        turnImageGalleryLabel: "Turn image gallery",
+        turnImageGalleryLoading: "Loading image…",
+        turnImageGalleryOpen: "Open {label}",
+        turnImageGalleryUnavailable: "Image unavailable",
       };
       const value = translations[key] ?? key;
       return value.replace(/\{(\w+)\}/g, (_, param: string) =>

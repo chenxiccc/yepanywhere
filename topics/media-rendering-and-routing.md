@@ -140,7 +140,9 @@ turns, and parsed user-prompt blocks):
 - Leave touch behavior on the explicit click modal; hover-only enlargement is a
   desktop affordance.
 
-## Proposed refinement: compact turn image galleries
+## Compact turn image galleries
+
+Status: implemented.
 
 When **Expand Inline Media by Default** is enabled, several tall images in one
 assistant turn can consume the visible transcript and push the turn's
@@ -148,13 +150,40 @@ informative text above the viewport. A completed final response can then look
 like an interrupted response on return: the visible tail is mostly screenshots,
 while the actual completion text is offscreen.
 
+Appearance exposes **Compact Multi-Image Galleries** beside **Expand Inline
+Media by Default**. The gallery setting is relevant only to automatically
+expanded assistant-turn images; manual expansion retains the ordinary full
+inline preview. The gallery setting defaults on by explicit maintainer approval
+(graehl, 2026-07-29), while disabling it restores the existing independent
+inline previews. This is a deliberate default-on exception under
+[`vanilla-defaults.md`](vanilla-defaults.md), justified because it bounds an
+already-enabled automatic presentation rather than exposing additional
+transcript content or changing provider behavior.
+
 The compact presentation is owned by the whole assistant turn, not by the
 position of an image link within its text. Images anywhere in that turn are
 eligible. It applies only to previews that YA expanded automatically; an image
 the user explicitly expands remains full-size and outside the compact gallery.
-One image may retain the existing inline presentation. Multiple images use a
-gallery when their ordinary vertical stack would exceed the turn's media
-budget.
+One image retains the existing inline presentation. Two or more eligible images
+use one turn gallery.
+
+The original image links remain at their original positions in the turn text
+while the gallery is visible. Activating one scrolls to the gallery and centers
+and features that link's thumbnail. The gallery has one shared featured-item
+caption rather than repeating captions below every thumbnail:
+
+- Pointer hover or keyboard focus features an item on desktop.
+- In the horizontally swipeable phone row, the item nearest the row's center
+  becomes featured as the user scrolls or drags.
+- The original link label is the primary caption. The literal basename may
+  appear as smaller, lower-emphasis secondary text when it differs and adds
+  useful identity.
+- Activating the featured caption scrolls back to and focuses that image's
+  original link in the turn text.
+
+Selecting the thumbnail itself opens the full-screen image viewer. Navigation
+between the turn text and gallery therefore remains distinct from full-size
+inspection.
 
 The compact-gallery goals, in priority order, are:
 
@@ -188,13 +217,13 @@ reshuffling.
 
 The gallery has one turn-level **Dismiss gallery** action, with a keyboard
 accelerator. Dismissing removes the reordered gallery and reinstates each image
-as the existing minimal filename link at that image reference's original
-inline position. The transcript's original text/image-reference order is
-therefore always recoverable even though gallery packing may reorder
-thumbnails. Re-expanding those compact links restores the same deterministic
-gallery arrangement; there is no second “dismiss to expanded inline images”
-state. Selecting a thumbnail opens a full-screen image viewer; full-size
-inspection is separate from persistent full inline expansion.
+as the existing minimal expandable link at that image reference's original
+inline position. (The links were already visible while the gallery was active;
+dismissal restores their individual `+` affordances.) The transcript's original
+text/image-reference order is therefore always recoverable even though gallery
+packing may reorder thumbnails. Re-expanding one of those compact links restores
+the same deterministic gallery arrangement and centers that image; there is no
+second “dismiss to expanded inline images” state.
 
 ### Phone presentation and deferred gesture
 

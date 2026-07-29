@@ -240,11 +240,11 @@ function buildMediaApiPath(
   return mediaSource?.buildApiPath?.(path) ?? localMediaApiPath(path);
 }
 
-async function fetchMediaBlobWithSource(
+export async function fetchLocalMediaBlob(
   path: string,
   mediaSource: LocalMediaSource | undefined,
   purpose: "inline" | "modal",
-  transport: SourceTransport,
+  transport = getSourceRuntimeRegistry().getCurrentSourceRuntime().transport,
 ): Promise<Blob> {
   const apiPath = buildMediaApiPath(path, mediaSource);
   if (!apiPath) {
@@ -385,7 +385,7 @@ export function LocalMediaModal({
     setError(null);
     setUrl(null);
 
-    void fetchMediaBlobWithSource(path, mediaSource, "modal", transport)
+    void fetchLocalMediaBlob(path, mediaSource, "modal", transport)
       .then((blob) => {
         if (cancelled) return;
         objectUrl = URL.createObjectURL(blob);
@@ -898,6 +898,7 @@ export function useLocalMediaInlinePreviews(
   rootRef: RefObject<HTMLElement | null>,
   refreshKey?: unknown,
   mediaSource?: LocalMediaSource,
+  options: { suppressAutomaticImages?: boolean } = {},
 ) {
   const { inlineMediaExpandedByDefault } = useInlineMedia();
   const transport = useCurrentSourceRuntime().transport;
@@ -947,26 +948,22 @@ export function useLocalMediaInlinePreviews(
       );
       for (const toggle of toggles) {
         if (toggle.dataset.userToggled === "true") continue;
-        if (
-          toggle.dataset.defaultExpanded ===
-          String(inlineMediaExpandedByDefault)
-        ) {
+        const mediaType = getInlineMediaType(toggle);
+        const defaultExpanded =
+          options.suppressAutomaticImages && mediaType === "image"
+            ? false
+            : inlineMediaExpandedByDefault;
+        if (toggle.dataset.defaultExpanded === String(defaultExpanded)) {
           continue;
         }
 
-        const mediaType = getInlineMediaType(toggle);
-        setToggleExpanded(toggle, inlineMediaExpandedByDefault, mediaType);
-        toggle.dataset.defaultExpanded = String(inlineMediaExpandedByDefault);
+        setToggleExpanded(toggle, defaultExpanded, mediaType);
+        toggle.dataset.defaultExpanded = String(defaultExpanded);
 
         const preview = getPreviewForToggle(toggle);
         if (preview && preview.dataset.userToggled !== "true") {
-          preview.setAttribute(
-            "data-expanded",
-            String(inlineMediaExpandedByDefault),
-          );
-          preview.dataset.defaultExpanded = String(
-            inlineMediaExpandedByDefault,
-          );
+          preview.setAttribute("data-expanded", String(defaultExpanded));
+          preview.dataset.defaultExpanded = String(defaultExpanded);
         }
       }
     };
@@ -990,7 +987,7 @@ export function useLocalMediaInlinePreviews(
         loading.textContent = "Loading...";
         element.append(loading);
 
-        fetchMediaBlobWithSource(path, mediaSource, "inline", transport)
+        fetchLocalMediaBlob(path, mediaSource, "inline", transport)
           .then((blob) => {
             const objectUrl = URL.createObjectURL(blob);
             objectUrls.add(objectUrl);
@@ -1025,6 +1022,7 @@ export function useLocalMediaInlinePreviews(
     rootRef,
     refreshKey,
     mediaSource,
+    options.suppressAutomaticImages,
     transport,
   ]);
 }

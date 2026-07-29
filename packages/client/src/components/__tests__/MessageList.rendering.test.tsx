@@ -14,11 +14,189 @@ import {
   userMessage,
 } from "./MessageList.test-support";
 import { createComposerDraftSignal } from "../../lib/composerDraftSignal";
+import { invalidateLocalStorageValues } from "../../lib/localStorageValue";
 import { MessageList } from "../MessageList";
 
 installMessageListTestEnvironment();
 
 describe("MessageList rendering", () => {
+  const galleryMediaHtml = (label: string, path: string) =>
+    `<span class="local-media-link-group"><button type="button" class="local-media-inline-toggle" data-media-path="${path}" data-media-type="image" data-expanded="false" aria-label="Expand image" aria-expanded="false">+</button><a href="/api/local-image?path=${encodeURIComponent(path)}" class="local-media-link" data-media-type="image" data-ya-path="${path}" data-ya-media-type="image">${label}<span class="local-media-type">(image)</span></a></span><span class="local-media-inline-preview" data-media-path="${path}" data-media-type="image" data-expanded="false"></span>`;
+
+  it("groups turn images while preserving bidirectional text-link navigation", () => {
+    window.localStorage.setItem(UI_KEYS.inlineMediaExpandedByDefault, "true");
+    invalidateLocalStorageValues();
+    Object.defineProperty(Element.prototype, "scrollIntoView", {
+      configurable: true,
+      value: vi.fn(),
+    });
+
+    const { container } = render(
+      <MessageList
+        messages={[
+          userMessage("user-1", "show both"),
+          assistantMessage("assistant-1", "Two results"),
+        ]}
+        markdownAugments={{
+          "assistant-1": {
+            html: `<p>Two results: ${galleryMediaHtml("Desktop result", "/repo/desktop.png")} and ${galleryMediaHtml("Phone result", "/repo/phone.png")}</p>`,
+          },
+        }}
+      />,
+    );
+
+    const gallery = container.querySelector(".turn-image-gallery");
+    expect(gallery).toBeTruthy();
+    expect(container.querySelectorAll(".turn-image-gallery-item")).toHaveLength(
+      2,
+    );
+    expect(
+      container.querySelectorAll(".text-block-content a.local-media-link"),
+    ).toHaveLength(2);
+    expect(
+      container.querySelectorAll(
+        ".local-media-inline-preview[data-expanded='false']",
+      ),
+    ).toHaveLength(2);
+
+    const galleryItems = container.querySelectorAll(".turn-image-gallery-item");
+    fireEvent.pointerEnter(galleryItems[1] as HTMLElement);
+    expect(
+      container.querySelector(".turn-image-gallery-caption > span")
+        ?.textContent,
+    ).toBe("Phone result");
+
+    const phoneLink = Array.from(
+      container.querySelectorAll<HTMLAnchorElement>("a.local-media-link"),
+    ).find((link) => link.textContent?.includes("Phone result"));
+    fireEvent.click(phoneLink as HTMLAnchorElement);
+    expect(
+      container.querySelector(".turn-image-gallery-caption > span")
+        ?.textContent,
+    ).toBe("Phone result");
+
+    fireEvent.click(
+      container.querySelector(
+        ".turn-image-gallery-caption",
+      ) as HTMLButtonElement,
+    );
+    expect(document.activeElement).toBe(phoneLink);
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss gallery" }));
+    expect(container.querySelector(".turn-image-gallery")).toBeNull();
+    fireEvent.click(
+      Array.from(
+        container.querySelectorAll<HTMLButtonElement>(
+          ".local-media-inline-toggle",
+        ),
+      )[1] as HTMLButtonElement,
+    );
+    expect(container.querySelector(".turn-image-gallery")).toBeTruthy();
+    expect(
+      container.querySelector(".turn-image-gallery-caption > span")
+        ?.textContent,
+    ).toBe("Phone result");
+  });
+
+  it("keeps independent inline previews when compact galleries are disabled", () => {
+    window.localStorage.setItem(UI_KEYS.inlineMediaExpandedByDefault, "true");
+    window.localStorage.setItem(UI_KEYS.compactMultiImageGalleries, "false");
+    invalidateLocalStorageValues();
+
+    const { container } = render(
+      <MessageList
+        messages={[assistantMessage("assistant-1", "Two results")]}
+        markdownAugments={{
+          "assistant-1": {
+            html: `<p>${galleryMediaHtml("One", "/repo/one.png")} ${galleryMediaHtml("Two", "/repo/two.png")}</p>`,
+          },
+        }}
+      />,
+    );
+
+    expect(container.querySelector(".turn-image-gallery")).toBeNull();
+    expect(
+      container.querySelectorAll(
+        ".local-media-inline-preview[data-expanded='true']",
+      ),
+    ).toHaveLength(2);
+  });
+
+  it("forms the gallery when final streamed markdown arrives", () => {
+    window.localStorage.setItem(UI_KEYS.inlineMediaExpandedByDefault, "true");
+    invalidateLocalStorageValues();
+    const messages = [assistantMessage("assistant-1", "Two results")];
+    const { container, rerender } = render(<MessageList messages={messages} />);
+
+    expect(container.querySelector(".turn-image-gallery")).toBeNull();
+
+    rerender(
+      <MessageList
+        messages={messages}
+        markdownAugments={{
+          "assistant-1": {
+            html: `<p>${galleryMediaHtml("One", "/repo/one.png")} ${galleryMediaHtml("Two", "/repo/two.png")}</p>`,
+          },
+        }}
+      />,
+    );
+
+    expect(container.querySelectorAll(".turn-image-gallery-item")).toHaveLength(
+      2,
+    );
+    expect(
+      container.querySelectorAll(".text-block-content a.local-media-link"),
+    ).toHaveLength(2);
+  });
+
+  it("features the image nearest the gallery center after a swipe", () => {
+    window.localStorage.setItem(UI_KEYS.inlineMediaExpandedByDefault, "true");
+    invalidateLocalStorageValues();
+    let scrollFrame: FrameRequestCallback | null = null;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      scrollFrame = callback;
+      return 1;
+    });
+
+    const { container } = render(
+      <MessageList
+        messages={[assistantMessage("assistant-1", "Two results")]}
+        markdownAugments={{
+          "assistant-1": {
+            html: `<p>${galleryMediaHtml("One", "/repo/one.png")} ${galleryMediaHtml("Two", "/repo/two.png")}</p>`,
+          },
+        }}
+      />,
+    );
+    const rows = container.querySelector(
+      ".turn-image-gallery-rows",
+    ) as HTMLDivElement;
+    const items = Array.from(
+      container.querySelectorAll<HTMLElement>(".turn-image-gallery-item"),
+    );
+    Object.defineProperty(rows, "clientWidth", {
+      configurable: true,
+      value: 300,
+    });
+    rows.getBoundingClientRect = vi.fn(
+      () => ({ left: 0, width: 300 }) as DOMRect,
+    );
+    items[0]!.getBoundingClientRect = vi.fn(
+      () => ({ left: 0, width: 100 }) as DOMRect,
+    );
+    items[1]!.getBoundingClientRect = vi.fn(
+      () => ({ left: 130, width: 100 }) as DOMRect,
+    );
+
+    fireEvent.scroll(rows);
+    act(() => scrollFrame?.(0));
+
+    expect(
+      container.querySelector(".turn-image-gallery-caption > span")
+        ?.textContent,
+    ).toBe("Two");
+  });
+
   it("does not commit a 1,000-row transcript for draft changes", () => {
     window.localStorage.setItem(UI_KEYS.conversationView, "false");
     const composerDraftSignal = createComposerDraftSignal();

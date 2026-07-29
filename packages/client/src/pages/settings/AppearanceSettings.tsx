@@ -237,8 +237,12 @@ export function AppearanceSettings() {
     useState(() => formatNumberSetting(outputToolPreviewLineCount));
   const { theme, setTheme } = useTheme();
   const { settingsIconStyle, setSettingsIconStyle } = useSettingsIconStyle();
-  const { inlineMediaExpandedByDefault, setInlineMediaExpandedByDefault } =
-    useInlineMedia();
+  const {
+    compactMultiImageGalleries,
+    inlineMediaExpandedByDefault,
+    setCompactMultiImageGalleries,
+    setInlineMediaExpandedByDefault,
+  } = useInlineMedia();
   const { quoteReplyButtonMode, setQuoteReplyButtonMode } =
     useQuoteReplyButtonMode();
   const { funPhrasesEnabled, setFunPhrasesEnabled } = useFunPhrases();
@@ -311,6 +315,7 @@ export function AppearanceSettings() {
     undoEntry(theme, setTheme),
     undoEntry(settingsIconStyle, setSettingsIconStyle),
     undoEntry(inlineMediaExpandedByDefault, setInlineMediaExpandedByDefault),
+    undoEntry(compactMultiImageGalleries, setCompactMultiImageGalleries),
     undoEntry(quoteReplyButtonMode, setQuoteReplyButtonMode),
     undoEntry(funPhrasesEnabled, setFunPhrasesEnabled),
     undoEntry(floatingActionButtonEnabled, setFloatingActionButtonEnabled),
@@ -846,6 +851,20 @@ export function AppearanceSettings() {
               onChange={(e) =>
                 setInlineMediaExpandedByDefault(e.target.checked)
               }
+            />
+            <span className="toggle-slider" />
+          </label>
+        </SettingsItem>
+        <SettingsItem
+          label={t("appearanceImageGalleriesTitle")}
+          description={t("appearanceImageGalleriesDescription")}
+        >
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              aria-label={t("appearanceImageGalleriesTitle")}
+              checked={compactMultiImageGalleries}
+              onChange={(e) => setCompactMultiImageGalleries(e.target.checked)}
             />
             <span className="toggle-slider" />
           </label>

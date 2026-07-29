@@ -47,4 +47,26 @@ describe("AppearanceSettings tooltip controls", () => {
     fireEvent.blur(number);
     expect(localStorage.getItem(UI_KEYS.tooltipDelayMs)).toBe("80");
   });
+
+  it("places compact image galleries beside inline media and defaults them on", () => {
+    const { container } = renderAppearanceSettings();
+    const galleryToggle = screen.getByRole<HTMLInputElement>("checkbox", {
+      name: "Compact Multi-Image Galleries",
+    });
+    const galleryRow = galleryToggle.closest("[data-settings-item]");
+
+    expect(galleryToggle.checked).toBe(true);
+    expect(
+      galleryRow?.previousElementSibling?.getAttribute("data-settings-item"),
+    ).toBe("expand-inline-media-by-default");
+
+    fireEvent.click(galleryToggle);
+    expect(galleryToggle.checked).toBe(false);
+    expect(localStorage.getItem(UI_KEYS.compactMultiImageGalleries)).toBe(
+      "false",
+    );
+    expect(container.textContent).toContain(
+      "Links in the response jump to their thumbnails.",
+    );
+  });
 });

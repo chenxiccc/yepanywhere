@@ -582,6 +582,7 @@ export const RenderItemComponent = memo(function RenderItemComponent({
             text={item.text}
             isStreaming={item.isStreaming}
             augmentHtml={item.augmentHtml}
+            renderItemId={item.id}
             onQuoteBlock={onQuoteTextBlock}
             alwaysShowQuoteCircle={alwaysShowQuoteCircle}
             paragraphQuoteCirclesEnabled={paragraphQuoteCirclesEnabled}

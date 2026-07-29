@@ -1,4 +1,12 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  type MouseEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useRenderModeToggle } from "../../contexts/RenderModeContext";
 import {
   createCommentAnchor,
@@ -21,6 +29,8 @@ import {
 } from "../LocalMediaModal";
 import { renderFixedFontMath } from "../ui/FixedFontMathToggle";
 import { RenderModeGlyph } from "../ui/RenderModeGlyph";
+import { useTurnImageGalleryNavigation } from "../TurnImageGallery";
+import { getTurnInlineImageIdForTarget } from "../../lib/turnInlineMedia";
 
 const EMPTY_LOCAL_MATH_PREVIEW = { html: "", changed: false };
 
@@ -78,6 +88,7 @@ interface Props {
   onQuoteBlock?: (anchor: CommentAnchor) => void;
   alwaysShowQuoteCircle?: boolean;
   paragraphQuoteCirclesEnabled?: boolean;
+  renderItemId?: string;
 }
 
 export const TextBlock = memo(function TextBlock({
@@ -87,6 +98,7 @@ export const TextBlock = memo(function TextBlock({
   onQuoteBlock,
   alwaysShowQuoteCircle = false,
   paragraphQuoteCirclesEnabled = true,
+  renderItemId,
 }: Props) {
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
@@ -208,7 +220,30 @@ export const TextBlock = memo(function TextBlock({
     closeProjectFileModal,
     contextMenuElement,
   } = useLocalResourceClick();
-  useLocalMediaInlinePreviews(copySourceRef);
+  const turnImageGallery = useTurnImageGalleryNavigation();
+  useLocalMediaInlinePreviews(copySourceRef, undefined, undefined, {
+    suppressAutomaticImages: turnImageGallery?.available === true,
+  });
+  const handleContentClick = useCallback(
+    (event: MouseEvent<HTMLDivElement>) => {
+      const content = copySourceRef.current;
+      const galleryImageId =
+        content && renderItemId && turnImageGallery?.available
+          ? getTurnInlineImageIdForTarget(content, renderItemId, event.target)
+          : null;
+      if (
+        galleryImageId &&
+        turnImageGallery?.candidateIds.has(galleryImageId)
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        turnImageGallery.activate(galleryImageId);
+        return;
+      }
+      handleClick(event);
+    },
+    [handleClick, renderItemId, turnImageGallery],
+  );
 
   const showStreamingContent = isStreaming && useStreamingContent;
   const canToggleRendered = serverMarkdownChanged || localMathPreview.changed;
@@ -280,6 +315,7 @@ export const TextBlock = memo(function TextBlock({
     <div
       ref={textBlockRef}
       className={`text-block text-block-assistant timeline-item${isStreaming ? " streaming" : ""}`}
+      data-turn-image-source-id={renderItemId}
     >
       {onQuoteBlock && (
         <div className="text-block-quote-rail">
@@ -339,7 +375,7 @@ export const TextBlock = memo(function TextBlock({
       <div
         ref={copySourceRef}
         className="text-block-content"
-        onClick={handleClick}
+        onClick={handleContentClick}
         onContextMenu={handleContextMenu}
       >
         {/* Always render streaming elements when streaming so refs are ready for augments */}

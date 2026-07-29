@@ -91,6 +91,16 @@ condensed conversation presentation users already encounter in the Codex and
 Claude harnesses. Existing browser-local mode and toolbar-presence choices
 remain authoritative.
 
+[media-rendering-and-routing](media-rendering-and-routing.md) compact
+multi-image galleries ship default-on as a browser-local Appearance preference.
+They apply only when **Expand Inline Media by Default** is already enabled and
+an assistant turn has at least two eligible images, replacing an unbounded
+vertical stack with one bounded gallery while preserving every original text
+link and full-size target. Disabling the gallery preference restores independent
+inline previews. Authorized by graehl on 2026-07-29 because the default bounds
+an already-requested automatic presentation rather than revealing more content
+or changing provider behavior.
+
 [agents-process-observability](agents-process-observability.md) ships
 default-on in the existing Agents view. Sampling is request-driven and occurs
 only while that view is open and visible; a Performance setting disables it,

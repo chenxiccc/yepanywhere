@@ -93,6 +93,7 @@ import { MessageAge } from "./MessageAge";
 import { ProcessingIndicator } from "./ProcessingIndicator";
 import type { BangCommandHandlers } from "./BangCommandDisplayObject";
 import { RenderItemComponent } from "./RenderItemComponent";
+import { AssistantTurnImageGallery } from "./TurnImageGallery";
 import {
   UserTurnNavigator,
   type UserTurnNavMotionCue,
@@ -2910,7 +2911,10 @@ export const MessageList = memo(function MessageList({
           }
 
           return (
-            <div key={timelineRow.key} className="assistant-turn">
+            <AssistantTurnImageGallery
+              key={timelineRow.key}
+              items={timelineRow.group.items}
+            >
               {timelineRow.rows.map((assistantRow) => {
                 if (assistantRow.kind === "explored") {
                   return (
@@ -2973,7 +2977,7 @@ export const MessageList = memo(function MessageList({
                   />
                 );
               })}
-            </div>
+            </AssistantTurnImageGallery>
           );
         })}
         {composerTailRows.map((tailRow) => {

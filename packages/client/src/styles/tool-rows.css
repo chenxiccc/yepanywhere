@@ -31,7 +31,10 @@
 }
 
 /* Last item in a turn - hide the line below */
-.assistant-turn > :last-child .timeline-item::after {
+.assistant-turn > :last-child .timeline-item::after,
+.assistant-turn.has-turn-image-gallery
+  > :nth-last-child(2)
+  .timeline-item::after {
   display: none;
 }
 

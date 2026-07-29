@@ -85,6 +85,8 @@ export const UI_KEYS = {
     "yep-anywhere-stable-tool-preview-rendering-enabled",
   // Preserve the first-shipped key; true now means previews start expanded.
   inlineMediaExpandedByDefault: "yep-anywhere-inline-images-enabled",
+  compactMultiImageGalleries:
+    "yep-anywhere-compact-multi-image-galleries-enabled",
   schemaValidation: "yep-anywhere-schema-validation",
   emulatorMaxFps: "yep-anywhere-emulator-max-fps",
   emulatorMaxWidth: "yep-anywhere-emulator-max-width",
