@@ -25,6 +25,7 @@ import {
 } from "react";
 import { api } from "../api/client";
 import { getModelSetting } from "../hooks/useModelSettings";
+import { useProviderSubscriptionUsage } from "../hooks/useProviderSubscriptionUsage";
 import {
   getAvailableProviders,
   getDefaultProvider,
@@ -51,6 +52,7 @@ import {
   withVisibleModelSelection,
 } from "../lib/modelCatalog";
 import { Modal } from "./ui/Modal";
+import { ModelSubscriptionUsage } from "./ModelSubscriptionUsage";
 
 type ThinkingMode = "off" | "auto" | "on";
 
@@ -323,6 +325,8 @@ export function RestartSessionModal({
       defaults: settings?.newSessionDefaults,
     }),
   );
+  const { usage: subscriptionUsage } =
+    useProviderSubscriptionUsage(selectedProvider);
   const hasUserSelectedProviderRef = useRef(false);
   const selectedProviderModels = useMemo(
     () =>
@@ -826,6 +830,10 @@ export function RestartSessionModal({
                         )}
                       </span>
                       <span className="model-switch-item-meta">
+                        <ModelSubscriptionUsage
+                          usage={subscriptionUsage}
+                          modelId={model.id}
+                        />
                         {isCurrent && (
                           <span className="model-switch-tag">
                             {t("modelSwitchCurrent")}

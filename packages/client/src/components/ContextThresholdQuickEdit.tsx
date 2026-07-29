@@ -1,9 +1,15 @@
-import { getModelContextWindow } from "@yep-anywhere/shared";
+import {
+  getModelContextWindow,
+  getMostUsedSubscriptionUsageWindow,
+  type ProviderName,
+} from "@yep-anywhere/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useProviderSubscriptionUsage } from "../hooks/useProviderSubscriptionUsage";
 import { useServerSettings } from "../hooks/useServerSettings";
 import { useI18n } from "../i18n";
 import type { ContextUsage } from "../types";
 import { ContextUsageIndicator } from "./ContextUsageIndicator";
+import { SubscriptionUsageDetails } from "./SubscriptionUsageDetails";
 import { CommittedRangeInput } from "./ui/CommittedRangeInput";
 
 interface ContextThresholdQuickEditProps {
@@ -14,6 +20,8 @@ interface ContextThresholdQuickEditProps {
    * not the reported one. See topics/provider-abstraction.md.
    */
   model?: string;
+  /** Provider account whose subscription windows apply to this model. */
+  provider?: ProviderName;
   /** Model context window, for the token preview. */
   contextWindow?: number;
   size?: number;
@@ -52,16 +60,28 @@ function effectiveContextWindow(
 export function ContextThresholdQuickEdit({
   usage,
   model,
+  provider,
   contextWindow,
   size = 16,
 }: ContextThresholdQuickEditProps) {
   const { t } = useI18n();
   const { settings, updateSetting } = useServerSettings();
-  const [open, setOpen] = useState(false);
+  const {
+    usage: subscriptionUsage,
+    loading: subscriptionUsageLoading,
+    refresh: refreshSubscriptionUsage,
+  } = useProviderSubscriptionUsage(provider);
+  const [open, setOpen] = useState<"usage" | "threshold" | null>(null);
   const wrapRef = useRef<HTMLSpanElement | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suppressClickRef = useRef(false);
 
   const canEdit = !!usage && !!model && model !== "default";
+  const bindingUsageWindow = getMostUsedSubscriptionUsageWindow(
+    subscriptionUsage,
+    model,
+  );
+  const canInspectUsage = bindingUsageWindow !== null;
   const stored =
     (model
       ? settings?.clientDefaults?.compactAtContextPercent?.[model]
@@ -99,11 +119,11 @@ export function ContextThresholdQuickEdit({
     if (!open) return;
     const onDown = (e: MouseEvent) => {
       if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
-        setOpen(false);
+        setOpen(null);
       }
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") setOpen(null);
     };
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
@@ -125,10 +145,18 @@ export function ContextThresholdQuickEdit({
       ? `${Math.round((effWindow * draft) / 100 / 1024)}K`
       : null;
 
-  // No editable model → just the plain indicator, no interaction wrapper.
-  if (!canEdit) {
+  // No quota detail or editable model → preserve the passive indicator.
+  if (!canEdit && !canInspectUsage) {
     return <ContextUsageIndicator usage={usage} size={size} />;
   }
+
+  const ariaLabel =
+    canInspectUsage && bindingUsageWindow
+      ? t("subscriptionUsageContextAria", {
+          contextPercent: Math.round(usage.percentage),
+          usagePercent: Math.round(bindingUsageWindow.usedPercent),
+        })
+      : t("compactThresholdQuickTitle");
 
   return (
     <span
@@ -137,30 +165,70 @@ export function ContextThresholdQuickEdit({
       role="button"
       tabIndex={0}
       aria-haspopup="dialog"
-      aria-expanded={open}
-      aria-label={t("compactThresholdQuickTitle")}
+      aria-expanded={open !== null}
+      aria-label={ariaLabel}
+      onClick={(event) => {
+        const target = event.target;
+        if (
+          target instanceof Element &&
+          target.closest(
+            ".context-threshold-popover, .context-subscription-popover",
+          )
+        ) {
+          return;
+        }
+        if (suppressClickRef.current) {
+          suppressClickRef.current = false;
+          return;
+        }
+        if (canInspectUsage) {
+          setOpen((current) => (current === "usage" ? null : "usage"));
+        }
+      }}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          setOpen((o) => !o);
+          if (canInspectUsage) {
+            setOpen((current) => (current === "usage" ? null : "usage"));
+          } else if (canEdit) {
+            setOpen((current) =>
+              current === "threshold" ? null : "threshold",
+            );
+          }
         }
       }}
       onContextMenu={(e) => {
+        if (!canEdit) return;
         e.preventDefault();
-        setOpen((o) => !o);
+        setOpen((current) =>
+          current === "threshold" ? null : "threshold",
+        );
       }}
       onTouchStart={() => {
+        if (!canEdit) return;
         clearLongPress();
         longPressTimer.current = setTimeout(() => {
           longPressTimer.current = null;
-          setOpen(true);
+          suppressClickRef.current = true;
+          setOpen("threshold");
         }, LONG_PRESS_MS);
       }}
       onTouchEnd={clearLongPress}
       onTouchMove={clearLongPress}
     >
       <ContextUsageIndicator usage={usage} size={size} />
-      {open && (
+      {open === "usage" && subscriptionUsage && (
+        <SubscriptionUsageDetails
+          usage={subscriptionUsage}
+          modelId={model}
+          refreshing={subscriptionUsageLoading}
+          onRefresh={() => void refreshSubscriptionUsage()}
+          onEditCompactThreshold={
+            canEdit ? () => setOpen("threshold") : undefined
+          }
+        />
+      )}
+      {open === "threshold" && (
         <div className="context-threshold-popover" role="dialog">
           <div className="context-threshold-popover-title">
             {t("compactThresholdQuickTitle")}

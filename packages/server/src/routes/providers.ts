@@ -1,4 +1,8 @@
-import type { ProviderInfo, ProviderName } from "@yep-anywhere/shared";
+import type {
+  ProviderInfo,
+  ProviderName,
+  ProviderSubscriptionUsage,
+} from "@yep-anywhere/shared";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { getAllProviders } from "../sdk/providers/index.js";
@@ -6,6 +10,7 @@ import type { AgentProvider } from "../sdk/providers/types.js";
 import type { ModelInfoService } from "../services/ModelInfoService.js";
 
 const PROVIDER_INFO_CACHE_TTL_MS = 5 * 60_000;
+const PROVIDER_USAGE_CACHE_TTL_MS = 60_000;
 
 interface ProviderRouteDeps {
   modelInfoService?: ModelInfoService;
@@ -15,6 +20,8 @@ interface ProviderRouteDeps {
   providers?: AgentProvider[];
   /** Provider info cache TTL in ms. */
   cacheTtlMs?: number;
+  /** Provider subscription usage cache TTL in ms. */
+  usageCacheTtlMs?: number;
 }
 
 interface ProviderInfoCacheEntry {
@@ -58,7 +65,20 @@ function getProviderImageSizing(
 export function createProvidersRoutes(deps: ProviderRouteDeps = {}): Hono {
   const routes = new Hono();
   const cache = new Map<ProviderName, ProviderInfoCacheEntry>();
+  const usageCache = new Map<
+    ProviderName,
+    {
+      expiresAt: number;
+      value: ProviderSubscriptionUsage | null;
+    }
+  >();
+  const usageRequests = new Map<
+    ProviderName,
+    Promise<ProviderSubscriptionUsage | null>
+  >();
   const cacheTtlMs = deps.cacheTtlMs ?? PROVIDER_INFO_CACHE_TTL_MS;
+  const usageCacheTtlMs =
+    deps.usageCacheTtlMs ?? PROVIDER_USAGE_CACHE_TTL_MS;
 
   const getProviderInfo = async (
     provider: AgentProvider,
@@ -142,6 +162,49 @@ export function createProvidersRoutes(deps: ProviderRouteDeps = {}): Hono {
     c.req.query("refresh") === "1" ||
     c.req.header("cache-control")?.toLowerCase().includes("no-cache") === true;
 
+  const getSubscriptionUsage = async (
+    provider: AgentProvider,
+    forceRefresh: boolean,
+  ): Promise<ProviderSubscriptionUsage | null> => {
+    const readSubscriptionUsage = provider.getSubscriptionUsage;
+    if (!readSubscriptionUsage) return null;
+    const providerName = provider.name as ProviderName;
+    const cached = usageCache.get(providerName);
+    if (!forceRefresh && cached && cached.expiresAt > Date.now()) {
+      return cached.value;
+    }
+    const pending = usageRequests.get(providerName);
+    if (!forceRefresh && pending) return pending;
+
+    const request = (async () => {
+      const providerInfo = await getProviderInfo(provider, false);
+      if (!providerInfo.authenticated) return null;
+      try {
+        return await readSubscriptionUsage.call(
+          provider,
+          providerInfo.models ?? [],
+        );
+      } catch {
+        return null;
+      }
+    })();
+    usageRequests.set(providerName, request);
+    try {
+      const value = await request;
+      if (usageRequests.get(providerName) === request) {
+        usageCache.set(providerName, {
+          value,
+          expiresAt: Date.now() + usageCacheTtlMs,
+        });
+      }
+      return value;
+    } finally {
+      if (usageRequests.get(providerName) === request) {
+        usageRequests.delete(providerName);
+      }
+    }
+  };
+
   // GET /api/providers - Get all available providers with auth status and models
   routes.get("/", async (c) => {
     const forceRefresh = isRefreshRequest(c);
@@ -155,6 +218,21 @@ export function createProvidersRoutes(deps: ProviderRouteDeps = {}): Hono {
     );
 
     return c.json({ providers: providerInfos });
+  });
+
+  // GET /api/providers/:name/subscription-usage - normalized account limits
+  routes.get("/:name/subscription-usage", async (c) => {
+    const forceRefresh = isRefreshRequest(c);
+    const name = c.req.param("name");
+    const providers = deps.providers ?? getAllProviders();
+    const provider = providers.find((candidate) => candidate.name === name);
+
+    if (!provider) {
+      return c.json({ error: "Provider not found" }, 404);
+    }
+
+    const usage = await getSubscriptionUsage(provider, forceRefresh);
+    return c.json({ usage });
   });
 
   // GET /api/providers/:name - Get specific provider status with models

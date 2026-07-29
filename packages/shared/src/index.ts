@@ -322,6 +322,13 @@ export {
   clampProjectQueueQuietSeconds,
 } from "./project-queue.js";
 export {
+  getApplicableSubscriptionUsageWindows,
+  getMostUsedSubscriptionUsageWindow,
+  type ProviderSubscriptionUsage,
+  type ProviderSubscriptionUsageScope,
+  type ProviderSubscriptionUsageWindow,
+} from "./provider-subscription-usage.js";
+export {
   APPROVAL_AUDIT_LOG_CAPABILITY,
   BANG_COMMANDS_CAPABILITY,
   BROWSER_SETTINGS_BACKUP_CAPABILITY,
@@ -339,6 +346,7 @@ export {
   SESSION_SANDBOXING_STATUS_CAPABILITY,
   PROJECT_QUEUE_CAPABILITY,
   PROJECT_QUEUE_NEW_SESSION_SHORTCUT_SETTING_CAPABILITY,
+  PROVIDER_SUBSCRIPTION_USAGE_CAPABILITY,
   SERVER_CAPABILITIES,
   VOICE_INPUT_CAPABILITY,
   serverHasCapability,

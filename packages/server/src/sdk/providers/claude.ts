@@ -30,6 +30,7 @@ import {
   type EffortLevel,
   type ModelInfo,
   type PromptCacheKeepaliveProviderInfo,
+  type ProviderSubscriptionUsage,
   type SlashCommand,
   getModelContextWindow,
 } from "@yep-anywhere/shared";
@@ -58,6 +59,7 @@ import type {
 } from "../types.js";
 import { createAgentctlSessionEnvBridge } from "./agentctl-session-env.js";
 import { filterEnvForChildProcess } from "./env-filter.js";
+import { normalizeClaudeSubscriptionUsage } from "./provider-subscription-usage.js";
 import type {
   AgentProvider,
   AgentSession,
@@ -1056,6 +1058,31 @@ export class ClaudeProvider implements AgentProvider {
     }
   }
 
+  async getSubscriptionUsage(
+    models: readonly ModelInfo[],
+  ): Promise<ProviderSubscriptionUsage | null> {
+    // Gateway and Ollama subclasses use Claude's SDK transport without a
+    // claude.ai subscription account behind it.
+    if (this.name !== "claude") return null;
+    const authStatus = await this.getAuthStatus();
+    if (!authStatus.authenticated) return null;
+
+    try {
+      const rawUsage = await this.runControlProbe(
+        "Claude subscription usage probe",
+        (sdkQuery) =>
+          sdkQuery.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET(),
+      );
+      return normalizeClaudeSubscriptionUsage(rawUsage, models);
+    } catch (error) {
+      getLogger().debug(
+        { error },
+        "Claude subscription usage probe is unavailable",
+      );
+      return null;
+    }
+  }
+
   /**
    * Get filtered environment variables for child processes.
    * Subclasses can override to inject custom env vars (e.g., ANTHROPIC_BASE_URL).
@@ -1107,16 +1134,13 @@ export class ClaudeProvider implements AgentProvider {
       : { type: "preset" as const, preset: "claude_code" as const };
   }
 
-  /**
-   * Probe for available models by starting a minimal session.
-   * The session doesn't send any messages - it just calls supportedModels()
-   * on the SDK query and then aborts.
-   */
-  private async probeModels(): Promise<ModelInfo[]> {
+  private async runControlProbe<T>(
+    label: string,
+    request: (sdkQuery: Query) => Promise<T>,
+  ): Promise<T> {
     const abortController = new AbortController();
 
-    // Generator that waits indefinitely — keeps the SDK process alive
-    // while we query supportedModels() from the initialization handshake.
+    // Keep the SDK process alive while the read-only control request completes.
     // Resolves (rather than rejects) on abort to avoid unhandled rejections.
     async function* waitForever(): AsyncGenerator<never> {
       await new Promise<void>((resolve) => {
@@ -1152,19 +1176,23 @@ export class ClaudeProvider implements AgentProvider {
         }
       })();
 
-      // supportedModels() resolves once the initialize handshake completes.
-      // Race against a timeout in case the process hangs.
-      const models = await Promise.race([
-        sdkQuery.supportedModels(),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("Model probe timed out")), 15000),
-        ),
-      ]);
-
-      return mergeClaudeModels(models.map((model) => mapClaudeSdkModel(model)));
+      return await withTimeout(request(sdkQuery), 15_000, label);
     } finally {
       abortController.abort();
     }
+  }
+
+  /**
+   * Probe for available models by starting a minimal session.
+   * The session doesn't send any messages - it just calls supportedModels()
+   * on the SDK query and then aborts.
+   */
+  private async probeModels(): Promise<ModelInfo[]> {
+    const models = await this.runControlProbe(
+      "Claude model probe",
+      (sdkQuery) => sdkQuery.supportedModels(),
+    );
+    return mergeClaudeModels(models.map((model) => mapClaudeSdkModel(model)));
   }
 
   /**

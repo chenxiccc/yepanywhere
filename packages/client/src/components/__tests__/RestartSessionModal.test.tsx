@@ -60,6 +60,15 @@ vi.mock("../../hooks/useServerSettings", () => ({
   }),
 }));
 
+vi.mock("../../hooks/useProviderSubscriptionUsage", () => ({
+  useProviderSubscriptionUsage: () => ({
+    usage: null,
+    loading: false,
+    supported: false,
+    refresh: vi.fn(),
+  }),
+}));
+
 vi.mock("../../i18n", () => ({
   useI18n: () => ({
     t: (key: string, params?: Record<string, string>) =>

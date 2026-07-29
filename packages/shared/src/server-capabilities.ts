@@ -343,6 +343,28 @@ export const SERVER_CAPABILITIES = {
         "No maintained client still branches on claude-gateway-autostart.",
     },
   },
+  providerSubscriptionUsage: {
+    name: "provider-subscription-usage",
+    kind: "transitional",
+    area: "providers",
+    introducedIn: "0.7.1",
+    description:
+      "Server exposes normalized read-only provider subscription and rate-limit windows.",
+    clientFallback:
+      "Make no subscription-usage request and hide model usage badges and context usage detail.",
+    serverContract: {
+      routes: ["GET /api/providers/:name/subscription-usage"],
+      responseFields: ["usage"],
+    },
+    lifecycle: {
+      kind: "transitional",
+      reviewAfter: "2026-10-29",
+      removeClientGateWhen:
+        "The hosted-client compatibility floor excludes servers older than the subscription-usage route.",
+      removeServerAdvertisementWhen:
+        "No maintained client still branches on provider-subscription-usage.",
+    },
+  },
   bangCommands: {
     name: "bang-commands",
     kind: "permanent",
@@ -708,6 +730,9 @@ export const CLAUDE_GATEWAY_CAPABILITY = SERVER_CAPABILITIES.claudeGateway.name;
 
 export const CLAUDE_GATEWAY_AUTOSTART_CAPABILITY =
   SERVER_CAPABILITIES.claudeGatewayAutostart.name;
+
+export const PROVIDER_SUBSCRIPTION_USAGE_CAPABILITY =
+  SERVER_CAPABILITIES.providerSubscriptionUsage.name;
 
 export const BANG_COMMANDS_CAPABILITY = SERVER_CAPABILITIES.bangCommands.name;
 

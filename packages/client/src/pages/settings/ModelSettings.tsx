@@ -46,6 +46,7 @@ import {
 } from "../../hooks/useProviders";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useForkSummaryAutoOpen } from "../../hooks/useForkSummaryAutoOpen";
+import { useProviderSubscriptionUsage } from "../../hooks/useProviderSubscriptionUsage";
 import { useServerSettings } from "../../hooks/useServerSettings";
 import { useVersion } from "../../hooks/useVersion";
 import { useI18n } from "../../i18n";
@@ -61,6 +62,7 @@ import {
 } from "../../components/FilterDropdown";
 import { CommittedRangeInput } from "../../components/ui/CommittedRangeInput";
 import { ProviderBadge } from "../../components/ProviderBadge";
+import { ModelSubscriptionUsage } from "../../components/ModelSubscriptionUsage";
 import { RecapAfterSecondsControl } from "../../components/RecapAfterSecondsControl";
 import {
   ShowThinkingControls,
@@ -249,6 +251,9 @@ export function ModelSettings() {
   useSettingsUndoBaseline(undoState, restoreUndoState);
   const selectedProvider =
     getPreferredProvider(providers, savedDefaults?.provider) ?? null;
+  const { usage: subscriptionUsage } = useProviderSubscriptionUsage(
+    selectedProvider?.name,
+  );
   const canConfigureSessionSandbox =
     supportsSessionSandboxing &&
     providerSupportsLocalSessionSandbox(selectedProvider?.name);
@@ -455,6 +460,12 @@ export function ModelSettings() {
       icon: selectedProvider ? (
         <ProviderBadge provider={selectedProvider.name} model={option.id} />
       ) : undefined,
+      meta: (
+        <ModelSubscriptionUsage
+          usage={subscriptionUsage}
+          modelId={option.id}
+        />
+      ),
     };
   });
   const helperSideModelOptions: FilterOption<string>[] = [

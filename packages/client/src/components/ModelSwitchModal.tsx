@@ -18,6 +18,7 @@ import {
   getThinkingMode,
   useModelSettings,
 } from "../hooks/useModelSettings";
+import { useProviderSubscriptionUsage } from "../hooks/useProviderSubscriptionUsage";
 import { useI18n } from "../i18n";
 import {
   getEffortLevelLabel,
@@ -37,6 +38,7 @@ import {
   withVisibleModelSelection,
 } from "../lib/modelCatalog";
 import { ProviderBadge } from "./ProviderBadge";
+import { ModelSubscriptionUsage } from "./ModelSubscriptionUsage";
 import { Modal } from "./ui/Modal";
 
 interface ModelSwitchModalProps {
@@ -110,6 +112,8 @@ export function ModelSwitchModal({
   const { setThinkingMode, setEffortLevel } = useModelSettings();
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [provider, setProvider] = useState<ProviderName | null>(null);
+  const { usage: subscriptionUsage } =
+    useProviderSubscriptionUsage(provider);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [switching, setSwitching] = useState(false);
@@ -611,6 +615,10 @@ export function ModelSwitchModal({
                               )}
                             </span>
                             <span className="model-switch-item-meta">
+                              <ModelSubscriptionUsage
+                                usage={subscriptionUsage}
+                                modelId={model.id}
+                              />
                               {isCurrent && (
                                 <span className="model-switch-tag">
                                   {t("modelSwitchCurrent")}

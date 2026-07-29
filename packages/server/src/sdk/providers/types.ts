@@ -3,6 +3,7 @@ import type {
   ModelInfo,
   PermissionMode,
   PromptCacheKeepaliveProviderInfo,
+  ProviderSubscriptionUsage,
   SlashCommand,
 } from "@yep-anywhere/shared";
 import type { MessageQueue } from "../messageQueue.js";
@@ -270,6 +271,15 @@ export interface AgentProvider {
    * For cloud providers (Claude, Gemini), this returns a static list.
    */
   getAvailableModels(): Promise<ModelInfo[]>;
+
+  /**
+   * Read account/subscription quota windows without creating a provider turn.
+   * Absence means the provider has no supported read path; null means the
+   * current account/auth mode has no subscription usage to report.
+   */
+  getSubscriptionUsage?(
+    models: readonly ModelInfo[],
+  ): Promise<ProviderSubscriptionUsage | null>;
 
   /**
    * Server-maintained choices users may opt into separately from the primary

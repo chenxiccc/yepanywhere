@@ -629,6 +629,8 @@ interface ToolbarActionsControl {
   contextUsage?: ContextUsage;
   /** Session model id, for the long-press compact-threshold quick-edit. */
   contextModel?: string;
+  /** Provider account whose subscription windows apply to the context model. */
+  contextProvider?: ProviderName;
   /** Model context window, for the quick-edit token preview. */
   contextWindow?: number;
   btw?: ToolbarBtwControl | null;
@@ -1070,6 +1072,7 @@ export function MessageInputToolbarView({
         <ContextThresholdQuickEdit
           usage={actionsControl.contextUsage}
           model={actionsControl.contextModel}
+          provider={actionsControl.contextProvider}
           contextWindow={actionsControl.contextWindow}
           size={16}
         />
@@ -2917,6 +2920,7 @@ export function MessageInputToolbar({
         voiceDisabled,
         contextUsage,
         contextModel: contextRequestedModel ?? thinkingModel,
+        contextProvider: thinkingProviderInfo?.name,
         contextWindow: thinkingModelInfo?.contextWindow,
         btw: onBtwClick
           ? {

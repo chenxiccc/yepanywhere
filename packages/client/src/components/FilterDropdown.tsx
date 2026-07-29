@@ -17,6 +17,7 @@ export interface FilterOption<T extends string> {
   label: string;
   icon?: ReactNode;
   description?: string; // Optional description shown below label
+  meta?: ReactNode; // Optional trailing metadata, e.g. provider quota usage
   count?: number;
   color?: string; // For provider colors (colored dot)
   clearSelection?: false;
@@ -30,6 +31,7 @@ export interface FilterResetOption {
   label: string;
   icon?: ReactNode;
   description?: string;
+  meta?: ReactNode;
   count?: number;
   color?: string;
   clearSelection: true; // Option row that resets selected values
@@ -287,6 +289,10 @@ export function FilterDropdown<T extends string>({
                   </span>
                 )}
               </span>
+
+              {option.meta && (
+                <span className="filter-dropdown-meta">{option.meta}</span>
+              )}
 
               {option.count !== undefined && (
                 <span className="filter-dropdown-count">{option.count}</span>

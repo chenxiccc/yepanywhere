@@ -38,4 +38,26 @@ describe("FilterDropdown", () => {
     expect(screen.getByText("Previous models")).toBeTruthy();
     expect(screen.getByText("Previous")).toBeTruthy();
   });
+
+  it("renders trailing option metadata", () => {
+    render(
+      <FilterDropdown
+        label="Models"
+        options={[
+          {
+            value: "fable",
+            label: "Fable",
+            meta: <span>100% used</span>,
+          },
+        ]}
+        selected={[]}
+        onChange={vi.fn()}
+        multiSelect={false}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "filterByLabel" }));
+
+    expect(screen.getByText("100% used")).toBeTruthy();
+  });
 });

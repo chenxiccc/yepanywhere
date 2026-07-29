@@ -169,11 +169,13 @@ import {
 import { isVoiceInputShortcut } from "../lib/voiceInputShortcut";
 import { generateUUID } from "../lib/uuid";
 import { useVersion } from "../hooks/useVersion";
+import { useProviderSubscriptionUsage } from "../hooks/useProviderSubscriptionUsage";
 import { shortenPath } from "../lib/text";
 import { getPermissionModeOptions } from "../lib/permissionModes";
 import type { PermissionMode, Project } from "../types";
 import { FilterDropdown, type FilterOption } from "./FilterDropdown";
 import { ProviderBadge } from "./ProviderBadge";
+import { ModelSubscriptionUsage } from "./ModelSubscriptionUsage";
 import { RecapAfterSecondsControl } from "./RecapAfterSecondsControl";
 import { SpeechControlMenu } from "./SpeechControlMenu";
 import {
@@ -706,6 +708,8 @@ export function NewSessionForm({
     loading: providersLoading,
     refetch: refetchProviders,
   } = useProviders();
+  const { usage: subscriptionUsage } =
+    useProviderSubscriptionUsage(selectedProvider);
   const {
     settings,
     isLoading: settingsLoading,
@@ -1361,9 +1365,15 @@ export function NewSessionForm({
         icon: selectedProvider ? (
           <ProviderBadge provider={selectedProvider} model={model.id} />
         ) : undefined,
+        meta: (
+          <ModelSubscriptionUsage
+            usage={subscriptionUsage}
+            modelId={model.id}
+          />
+        ),
       };
     });
-  }, [selectedProvider, t, visibleModels]);
+  }, [selectedProvider, subscriptionUsage, t, visibleModels]);
 
   // Handle model selection from FilterDropdown
   const handleModelSelect = useCallback((selected: string[]) => {

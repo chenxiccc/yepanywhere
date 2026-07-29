@@ -33,6 +33,7 @@ import type {
   PromptCacheKeepaliveSettings,
   ProviderInfo,
   ProviderName,
+  ProviderSubscriptionUsage,
   ProviderRuntimeStatus,
   RecapMode,
   PublicSessionShareSessionStatusResponse,
@@ -297,6 +298,19 @@ export const api = {
   getProviders: (options?: { refresh?: boolean }) =>
     fetchJSON<{ providers: ProviderInfo[] }>(
       options?.refresh ? "/providers?refresh=1" : "/providers",
+      options?.refresh
+        ? { headers: { "Cache-Control": "no-cache" } }
+        : undefined,
+    ),
+
+  getProviderSubscriptionUsage: (
+    provider: ProviderName,
+    options?: { refresh?: boolean },
+  ) =>
+    fetchJSON<{ usage: ProviderSubscriptionUsage | null }>(
+      `/providers/${encodeURIComponent(provider)}/subscription-usage${
+        options?.refresh ? "?refresh=1" : ""
+      }`,
       options?.refresh
         ? { headers: { "Cache-Control": "no-cache" } }
         : undefined,

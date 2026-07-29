@@ -11,6 +11,7 @@ import {
   CODEX_TOOL_CORRELATION_FIELD,
   createCodexToolCorrelation,
   type ModelInfo,
+  type ProviderSubscriptionUsage,
 } from "@yep-anywhere/shared";
 import {
   isCodexCorrelationDebugEnabled,
@@ -81,6 +82,7 @@ import {
   normalizeCodexModelList,
   normalizeSemver,
 } from "./codex-model-catalog.js";
+import { normalizeCodexSubscriptionUsage } from "./provider-subscription-usage.js";
 import {
   asCodexAgentMessageDeltaNotification,
   asCodexCommandExecutionOutputDeltaNotification,
@@ -174,6 +176,7 @@ function stringifyTraceValue(value: unknown): string {
 
 const MODEL_CACHE_TTL_MS = 60 * 60 * 1000;
 const MODEL_LIST_TIMEOUT_MS = 8000;
+const ACCOUNT_RATE_LIMITS_TIMEOUT_MS = 8000;
 const APP_SERVER_INIT_REQUEST_ID = 1;
 const APP_SERVER_MODEL_LIST_REQUEST_ID = 2;
 const APP_SERVER_SHUTDOWN_GRACE_MS = 1500;
@@ -184,6 +187,26 @@ const CODEX_FAILURE_PREVIEW_CHARS = 240;
 const CODEX_THINKING_OFF_MIN_REASONING_EFFORT_PREFIXES = [
   "gpt-5.3-codex-spark",
 ] as const;
+
+async function withCodexTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  label: string,
+): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeout = setTimeout(
+      () => reject(new Error(`${label} timed out after ${timeoutMs}ms`)),
+      timeoutMs,
+    );
+    timeout.unref?.();
+  });
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
 
 /**
  * Local debug knobs for Codex app-server policy behavior.
@@ -983,6 +1006,19 @@ export class CodexProvider implements AgentProvider {
     return models;
   }
 
+  async getSubscriptionUsage(
+    models: readonly ModelInfo[],
+  ): Promise<ProviderSubscriptionUsage | null> {
+    if (!(await this.isCodexCliInstalled())) return null;
+    try {
+      const rawUsage = await this.requestAppServerRateLimits();
+      return normalizeCodexSubscriptionUsage(rawUsage, models);
+    } catch (error) {
+      log.debug({ error }, "Codex account rate limits are unavailable");
+      return null;
+    }
+  }
+
   private async getModelsFromAppServer(): Promise<ModelInfo[]> {
     try {
       const appServerModels = await this.requestAppServerModelList();
@@ -1142,6 +1178,33 @@ export class CodexProvider implements AgentProvider {
         })}\n`,
       );
     });
+  }
+
+  private async requestAppServerRateLimits(): Promise<unknown> {
+    const appServer = new CodexAppServerClient(
+      await this.resolveCodexCommand(),
+      homedir(),
+      this.getCodexEnv(),
+    );
+    try {
+      return await withCodexTimeout(
+        (async () => {
+          await appServer.connect();
+          await appServer.request<{ userAgent: string }>(
+            "initialize",
+            this.createInitializeParams(false),
+          );
+          appServer.notify("initialized");
+          return await appServer.request<unknown>("account/rateLimits/read");
+        })(),
+        ACCOUNT_RATE_LIMITS_TIMEOUT_MS,
+        "Codex account rate-limit probe",
+      );
+    } finally {
+      await appServer.close().catch((error) => {
+        log.debug({ error }, "Failed to close Codex rate-limit app-server");
+      });
+    }
   }
 
   private async getFallbackCodexModels(): Promise<ModelInfo[]> {

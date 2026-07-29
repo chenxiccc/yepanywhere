@@ -277,4 +277,52 @@ describe("Providers Routes", () => {
       }),
     ]);
   });
+
+  it("caches normalized subscription usage and refreshes on demand", async () => {
+    const getSubscriptionUsage = vi.fn(async () => ({
+      provider: "claude" as const,
+      fetchedAt: "2026-07-29T00:00:00.000Z",
+      windows: [
+        {
+          id: "weekly",
+          usedPercent: 72,
+          windowDurationMinutes: 10_080,
+          scope: { type: "provider" as const },
+        },
+      ],
+    }));
+    const provider = createProvider({ getSubscriptionUsage });
+    const routes = createProvidersRoutes({
+      providers: [provider],
+      usageCacheTtlMs: 60_000,
+    });
+
+    const first = await routes.request("/claude/subscription-usage");
+    const cached = await routes.request("/claude/subscription-usage");
+    const refreshed = await routes.request(
+      "/claude/subscription-usage?refresh=1",
+    );
+
+    expect(first.status).toBe(200);
+    expect(cached.status).toBe(200);
+    expect(refreshed.status).toBe(200);
+    expect(getSubscriptionUsage).toHaveBeenCalledTimes(2);
+    expect(await refreshed.json()).toEqual({
+      usage: expect.objectContaining({
+        provider: "claude",
+        windows: [expect.objectContaining({ usedPercent: 72 })],
+      }),
+    });
+  });
+
+  it("returns null usage when a provider has no supported read path", async () => {
+    const routes = createProvidersRoutes({
+      providers: [createProvider()],
+    });
+
+    const response = await routes.request("/claude/subscription-usage");
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ usage: null });
+  });
 });
