@@ -288,6 +288,12 @@ formulas as literal text, matching the experience in their editor.
 
 ## Known gaps / future work
 
+- Declined pending real-session evidence: bracketed display math could recover
+  a missing `\]` by treating a bare `]` or blank line as an implied close, or by
+  applying another restoration heuristic. Do not explore or add permissive
+  recovery unless measured provider-session delimiter failures exceed 0.1%;
+  either proposed sentinel can occur in intentional TeX, so speculative
+  recovery risks silently truncating valid formulas.
 - Local resource links need a shared context-aware routing layer so rendered
   `/api/local-file`, `/api/local-image`, and project-file links do not bypass
   the secure relay path in hosted remote mode. See
