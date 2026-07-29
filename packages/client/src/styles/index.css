@@ -14213,6 +14213,11 @@ div.bang-command-error-message {
   position: relative;
   display: inline-flex;
   align-items: center;
+}
+
+.context-threshold-quickedit-trigger {
+  display: inline-flex;
+  align-items: center;
   cursor: pointer;
 }
 

@@ -44,6 +44,10 @@ indicator has two distinct interactions:
   editor. The usage detail also links to that editor so it remains keyboard
   accessible.
 
+The context trigger and either dialog are separate interactive surfaces.
+Keyboard or pointer activation of Refresh, Edit, or another dialog control
+acts on that control without retriggering the context indicator.
+
 The existing context percentage remains context-window consumption, not
 subscription usage.
 

@@ -99,4 +99,46 @@ describe("ContextThresholdQuickEdit", () => {
       "Compact context early",
     );
   });
+
+  it("keeps subscription dialog controls keyboard-operable", () => {
+    render(
+      <I18nProvider>
+        <ContextThresholdQuickEdit
+          provider="claude"
+          model="fable"
+          usage={{
+            inputTokens: 50_000,
+            contextWindow: 1_000_000,
+            percentage: 5,
+          }}
+        />
+      </I18nProvider>,
+    );
+    const trigger = screen.getByRole("button", {
+      name: /Subscription usage 100% used/,
+    });
+    fireEvent.keyDown(trigger, { key: "Enter" });
+
+    const refreshButton = screen.getByRole("button", {
+      name: "Refresh subscription usage",
+    });
+    fireEvent.keyDown(refreshButton, { key: "Enter" });
+    expect(
+      screen.getByRole("dialog", { name: "Subscription usage" }),
+    ).toBeTruthy();
+    fireEvent.click(refreshButton);
+    expect(refresh).toHaveBeenCalledOnce();
+
+    const editButton = screen.getByRole("button", {
+      name: "Edit compact threshold",
+    });
+    fireEvent.keyDown(editButton, { key: " " });
+    expect(
+      screen.getByRole("dialog", { name: "Subscription usage" }),
+    ).toBeTruthy();
+    fireEvent.click(editButton);
+    expect(screen.getByRole("dialog").textContent).toContain(
+      "Compact context early",
+    );
+  });
 });

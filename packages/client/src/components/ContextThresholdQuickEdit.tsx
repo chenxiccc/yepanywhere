@@ -72,7 +72,7 @@ export function ContextThresholdQuickEdit({
     refresh: refreshSubscriptionUsage,
   } = useProviderSubscriptionUsage(provider);
   const [open, setOpen] = useState<"usage" | "threshold" | null>(null);
-  const wrapRef = useRef<HTMLSpanElement | null>(null);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const suppressClickRef = useRef(false);
 
@@ -159,64 +159,59 @@ export function ContextThresholdQuickEdit({
       : t("compactThresholdQuickTitle");
 
   return (
-    <span
+    <div
       ref={wrapRef}
       className="context-threshold-quickedit"
-      role="button"
-      tabIndex={0}
-      aria-haspopup="dialog"
-      aria-expanded={open !== null}
-      aria-label={ariaLabel}
-      onClick={(event) => {
-        const target = event.target;
-        if (
-          target instanceof Element &&
-          target.closest(
-            ".context-threshold-popover, .context-subscription-popover",
-          )
-        ) {
-          return;
-        }
-        if (suppressClickRef.current) {
-          suppressClickRef.current = false;
-          return;
-        }
-        if (canInspectUsage) {
-          setOpen((current) => (current === "usage" ? null : "usage"));
-        }
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
+    >
+      <span
+        className="context-threshold-quickedit-trigger"
+        role="button"
+        tabIndex={0}
+        aria-haspopup="dialog"
+        aria-expanded={open !== null}
+        aria-label={ariaLabel}
+        onClick={() => {
+          if (suppressClickRef.current) {
+            suppressClickRef.current = false;
+            return;
+          }
           if (canInspectUsage) {
             setOpen((current) => (current === "usage" ? null : "usage"));
-          } else if (canEdit) {
-            setOpen((current) =>
-              current === "threshold" ? null : "threshold",
-            );
           }
-        }
-      }}
-      onContextMenu={(e) => {
-        if (!canEdit) return;
-        e.preventDefault();
-        setOpen((current) =>
-          current === "threshold" ? null : "threshold",
-        );
-      }}
-      onTouchStart={() => {
-        if (!canEdit) return;
-        clearLongPress();
-        longPressTimer.current = setTimeout(() => {
-          longPressTimer.current = null;
-          suppressClickRef.current = true;
-          setOpen("threshold");
-        }, LONG_PRESS_MS);
-      }}
-      onTouchEnd={clearLongPress}
-      onTouchMove={clearLongPress}
-    >
-      <ContextUsageIndicator usage={usage} size={size} />
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            if (canInspectUsage) {
+              setOpen((current) => (current === "usage" ? null : "usage"));
+            } else if (canEdit) {
+              setOpen((current) =>
+                current === "threshold" ? null : "threshold",
+              );
+            }
+          }
+        }}
+        onContextMenu={(e) => {
+          if (!canEdit) return;
+          e.preventDefault();
+          setOpen((current) =>
+            current === "threshold" ? null : "threshold",
+          );
+        }}
+        onTouchStart={() => {
+          if (!canEdit) return;
+          clearLongPress();
+          longPressTimer.current = setTimeout(() => {
+            longPressTimer.current = null;
+            suppressClickRef.current = true;
+            setOpen("threshold");
+          }, LONG_PRESS_MS);
+        }}
+        onTouchEnd={clearLongPress}
+        onTouchMove={clearLongPress}
+      >
+        <ContextUsageIndicator usage={usage} size={size} />
+      </span>
       {open === "usage" && subscriptionUsage && (
         <SubscriptionUsageDetails
           usage={subscriptionUsage}
@@ -252,6 +247,6 @@ export function ContextThresholdQuickEdit({
           </div>
         </div>
       )}
-    </span>
+    </div>
   );
 }
