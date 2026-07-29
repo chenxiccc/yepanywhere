@@ -182,10 +182,11 @@ Activating one opens the gallery when necessary, then scrolls to it and centers
 and features that link's thumbnail. The gallery has one shared featured-item
 caption rather than repeating captions below every thumbnail:
 
-- On desktop, the pointer continuously features the nearest thumbnail while it
-  remains inside the gallery image area, including when it rests in a gap;
-  leaving the gallery resets the feature to the first source image. Keyboard
-  focus features its item directly.
+- On desktop, while the gallery is active, the pointer continuously features
+  the nearest thumbnail across the browser viewport, including above or below
+  the thumbnail rows and in their gaps. Opening the image viewer pauses this
+  tracking so returning preserves the selected item. Keyboard focus features
+  its item directly.
 - In the horizontally swipeable phone row, the item nearest the row's center
   becomes featured as the user scrolls or drags.
 - The original link label is the primary caption. The literal basename may
@@ -197,6 +198,24 @@ caption rather than repeating captions below every thumbnail:
 Selecting the thumbnail itself opens the full-screen image viewer. Navigation
 between the turn text and gallery therefore remains distinct from full-size
 inspection.
+
+The shared image viewer uses the useful viewport rather than the generic modal
+preview ceiling. Selecting a thumbnail enters one maximized viewer state;
+clicking the displayed image, activating the visible **Close** control, or
+pressing Escape returns to the gallery. Fit, 1:1, and stepped zoom are explicit
+inspection controls within that one state, not further expansion levels. A
+1:1 or otherwise zoomed image remains scrollable and pannable instead of being
+clipped; trackpad pinch/wheel zoom remains anchored near the pointer.
+
+On touch screens, the gallery row retains its horizontal swipe behavior until
+an image is selected. The selected image then owns a full-screen stage with
+two-finger pinch zoom and one-finger pan, while closing it returns to the same
+transcript/gallery position.
+
+The viewer header exposes the basename as a link to the fetched full-resolution
+image, and its explicit **Download** action saves those same fetched bytes under
+that basename. Both use the relay-safe object URL; neither navigates the browser
+to a bare API route.
 
 The compact-gallery goals, in priority order, are:
 

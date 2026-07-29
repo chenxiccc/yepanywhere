@@ -228,8 +228,8 @@ filename/type metadata, an individual `+ / -` toggle, and a lazy inline
 preview. The browser-local `inlineMediaExpandedByDefault` setting chooses the
 initial state until that row is toggled. Collapsed rows fetch no bytes; expanded
 rows fetch through the active source transport and render an object URL.
-Filename and image clicks may still open `LocalMediaModal` and its native-tab
-affordance.
+Filename and image clicks may still open the shared full-image viewer, whose
+linked filename, 1:1/fit controls, and download action use that same object URL.
 
 Stable transcript media handles would also unlock durable client UI state for
 inline preview expansion. The 2026-07-04 inline-media regression showed that

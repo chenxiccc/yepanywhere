@@ -29,6 +29,7 @@ import {
   FilePathContextMenu,
   useStartNewSessionFromFileAction,
 } from "./FileResourceActions";
+import { ImageViewer } from "./ImageViewer";
 import { Modal } from "./ui/Modal";
 
 export interface LocalMediaSource {
@@ -407,27 +408,36 @@ export function LocalMediaModal({
   }, [mediaSource, path, transport]);
 
   return (
-    <Modal title={fileName} onClose={onClose}>
-      <div className="local-media-modal-content">
-        {loading && <div className="local-media-loading">Loading...</div>}
-        {error && <div className="local-media-error">{error}</div>}
-        {url &&
-          (mediaType === "video" ? (
+    <Modal
+      title={
+        url && mediaType === "image" ? (
+          <a
+            className="local-media-title-link"
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={openImageInNewTabLabel}
+          >
+            {fileName}
+          </a>
+        ) : (
+          fileName
+        )
+      }
+      onClose={onClose}
+    >
+      {url && mediaType === "image" ? (
+        <ImageViewer fileName={fileName} onClose={onClose} url={url} />
+      ) : (
+        <div className="local-media-modal-content">
+          {loading && <div className="local-media-loading">Loading...</div>}
+          {error && <div className="local-media-error">{error}</div>}
+          {url && mediaType === "video" ? (
             // biome-ignore lint/a11y/useMediaCaption: user-generated local files, no captions available
             <video controls autoPlay className="local-media-player" src={url} />
-          ) : (
-            <a
-              className="local-media-image-link"
-              href={url}
-              target="_blank"
-              rel="noopener noreferrer"
-              title={openImageInNewTabLabel}
-              aria-label={openImageInNewTabLabel}
-            >
-              <img className="local-media-image" src={url} alt={fileName} />
-            </a>
-          ))}
-      </div>
+          ) : null}
+        </div>
+      )}
     </Modal>
   );
 }

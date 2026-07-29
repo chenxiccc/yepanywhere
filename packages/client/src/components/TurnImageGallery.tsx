@@ -429,6 +429,21 @@ export function AssistantTurnImageGallery({
     [featureNearestPointerImage],
   );
 
+  useEffect(() => {
+    if (!galleryActive || selectedImage) {
+      return;
+    }
+    const handlePointerMove = (event: PointerEvent) => {
+      if (event.pointerType !== "touch") {
+        scheduleNearestPointerImage(event.clientX, event.clientY);
+      }
+    };
+    window.addEventListener("pointermove", handlePointerMove, {
+      passive: true,
+    });
+    return () => window.removeEventListener("pointermove", handlePointerMove);
+  }, [galleryActive, scheduleNearestPointerImage, selectedImage]);
+
   useEffect(
     () => () => {
       if (scrollFrameRef.current !== null) {
@@ -452,16 +467,6 @@ export function AssistantTurnImageGallery({
           <section
             className="turn-image-gallery"
             aria-label={t("turnImageGalleryLabel")}
-            onPointerLeave={(event) => {
-              if (event.pointerType !== "touch") {
-                if (pointerFrameRef.current !== null) {
-                  cancelAnimationFrame(pointerFrameRef.current);
-                  pointerFrameRef.current = null;
-                }
-                pointerPositionRef.current = null;
-                setFeaturedId(candidates[0]?.id ?? "");
-              }
-            }}
             onKeyDown={(event: KeyboardEvent<HTMLElement>) => {
               if (event.key === "Escape") {
                 event.preventDefault();
@@ -481,11 +486,6 @@ export function AssistantTurnImageGallery({
                 if (scrollFrameRef.current === null) {
                   scrollFrameRef.current =
                     requestAnimationFrame(updateCenteredImage);
-                }
-              }}
-              onPointerMove={(event) => {
-                if (event.pointerType !== "touch") {
-                  scheduleNearestPointerImage(event.clientX, event.clientY);
                 }
               }}
             >

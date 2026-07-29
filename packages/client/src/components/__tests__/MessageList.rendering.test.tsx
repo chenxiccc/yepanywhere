@@ -50,8 +50,7 @@ describe("MessageList rendering", () => {
       />,
     );
 
-    const gallery = container.querySelector(".turn-image-gallery");
-    expect(gallery).toBeTruthy();
+    expect(container.querySelector(".turn-image-gallery")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Gallery" })).toBeNull();
     expect(container.querySelectorAll(".turn-image-gallery-item")).toHaveLength(
       2,
@@ -94,9 +93,6 @@ describe("MessageList rendering", () => {
           width: 100,
         }) as DOMRect,
     );
-    const galleryRows = container.querySelector(
-      ".turn-image-gallery-rows",
-    ) as HTMLElement;
     const movePointer = (clientX: number, clientY: number) => {
       const event = new MouseEvent("pointermove", {
         bubbles: true,
@@ -104,24 +100,19 @@ describe("MessageList rendering", () => {
         clientY,
       });
       Object.defineProperty(event, "pointerType", { value: "mouse" });
-      fireEvent(galleryRows, event);
+      fireEvent(window, event);
       act(() => pointerFrame?.(0));
     };
-    movePointer(110, 50);
+    movePointer(110, 500);
     expect(
       container.querySelector(".turn-image-gallery-caption > span")
         ?.textContent,
     ).toBe("Desktop result");
-    movePointer(210, 50);
+    movePointer(210, 500);
     expect(
       container.querySelector(".turn-image-gallery-caption > span")
         ?.textContent,
     ).toBe("Phone result");
-    fireEvent.pointerLeave(gallery as HTMLElement, { pointerType: "mouse" });
-    expect(
-      container.querySelector(".turn-image-gallery-caption > span")
-        ?.textContent,
-    ).toBe("Desktop result");
 
     const phoneLink = Array.from(
       container.querySelectorAll<HTMLAnchorElement>("a.local-media-link"),

@@ -73,7 +73,7 @@ afterEach(() => {
 });
 
 describe("ViewImageRenderer", () => {
-  it("lazily opens viewed images through the shared native-tab modal", async () => {
+  it("lazily opens viewed images through the shared full-image viewer", async () => {
     Object.defineProperty(URL, "createObjectURL", {
       configurable: true,
       value: vi.fn(() => "blob:view-image"),
@@ -118,12 +118,15 @@ describe("ViewImageRenderer", () => {
         "/local-image?path=%2Ftmp%2Fplot.png",
       );
     });
-    const imageLink = await screen.findByRole("link", {
-      name: "Open image in new tab",
-    });
+    const imageLink = await screen.findByRole("link", { name: "plot.png" });
     expect(imageLink.getAttribute("href")).toBe("blob:view-image");
     expect(imageLink.getAttribute("target")).toBe("_blank");
     expect(imageLink.getAttribute("rel")).toBe("noopener noreferrer");
+    expect(
+      screen
+        .getByRole("link", { name: "Download plot.png" })
+        .getAttribute("download"),
+    ).toBe("plot.png");
     expect(screen.getByRole("img", { name: "plot.png" })).toBeTruthy();
   });
 });
