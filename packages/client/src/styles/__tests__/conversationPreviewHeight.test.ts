@@ -25,7 +25,7 @@ function getRuleDeclarations(css: string, selector: string): string {
 }
 
 describe("conversation preview height contract", () => {
-  it("caps the thinking preview to a viewport fraction and scrolls past it", async () => {
+  it("caps the current thinking preview to a viewport fraction and scrolls past it", async () => {
     const css = await readStylesheet();
     const declarations = getRuleDeclarations(
       css,
@@ -33,26 +33,29 @@ describe("conversation preview height contract", () => {
     );
     // Viewport-relative cap (contains vh, not a fixed pixel budget) so the
     // preceding non-thinking turn keeps space; overflow scrolls internally.
-    // See topics/responsive-layout-gaps.md.
+    // This is the measurement source, so it must NOT depend on the published
+    // height — see topics/responsive-layout-gaps.md.
     expect(
       declarations,
-      "thinking preview must cap its height relative to the viewport, not a fixed px",
+      "current thinking preview must cap its height relative to the viewport, not a fixed px",
     ).toMatch(/max-height:[^;]*vh[^;]*;/);
     expect(declarations).toMatch(/overflow:\s*auto\s*;/);
   });
 
-  it("caps the recent-activity list to the preview budget and clips overflow", async () => {
+  it("caps the recent-activity list to the published thinking height and clips overflow", async () => {
     const css = await readStylesheet();
     const declarations = getRuleDeclarations(
       css,
       ".conversation-recent-activities",
     );
-    // Fills the height beside the preview and clips the oldest rows, rather
-    // than showing a fixed row count.
+    // Never exceed the space the current thinking block requests: bound to the
+    // measured --conversation-thinking-height, with a viewport-relative fallback
+    // before the first measurement. Clips the oldest rows rather than showing a
+    // fixed count.
     expect(
       declarations,
-      "recent-activity list must bound its height to the viewport-relative preview budget",
-    ).toMatch(/max-height:[^;]*vh[^;]*;/);
+      "recent-activity list must cap to the published thinking height",
+    ).toMatch(/max-height:\s*var\(\s*--conversation-thinking-height/);
     expect(declarations).toMatch(/overflow:\s*hidden\s*;/);
   });
 });

@@ -276,6 +276,58 @@ function ConversationActivitySummary({
   onDismissThinkingPreview?: (slot: ConversationThinkingPreviewSlot) => void;
 }) {
   const { t } = useI18n();
+  const rowRef = useRef<HTMLDivElement>(null);
+  // Publish the current/latest thinking preview's rendered content height as a
+  // CSS var on the row. Its siblings — the recent-activity list and the
+  // superseded "previous" preview — cap themselves to it, so neither claims
+  // more vertical space than the current thinking block requests. Capping the
+  // previous preview to the current height also lets the current block own the
+  // row height, so the previous preview vanishing at turn end causes no shrink
+  // (and thus no autofollow flicker). See topics/responsive-layout-gaps.md.
+  const previewLayoutKey = item.thinkingPreviews
+    ?.map(
+      (preview) =>
+        `${preview.slot}:${
+          collapsedThinkingPreviewSlots.has(preview.slot) ? "c" : "o"
+        }`,
+    )
+    .join("|");
+  // biome-ignore lint/correctness/useExhaustiveDependencies: previewLayoutKey re-attaches the observer when the measured preview element mounts/unmounts
+  useLayoutEffect(() => {
+    const row = rowRef.current;
+    if (!row) return;
+    const latestCard = row.querySelector<HTMLElement>(
+      '.conversation-thinking-preview[data-preview-slot="latest"]',
+    );
+    if (!latestCard) {
+      // No current/latest preview: nothing to cap to (the previous preview
+      // cannot exist and the activity list is gated off), so leave the CSS
+      // fallback in place.
+      row.style.removeProperty("--conversation-thinking-height");
+      return;
+    }
+    const content = latestCard.querySelector<HTMLElement>(
+      ".conversation-thinking-preview-content",
+    );
+    if (!content) {
+      // The current/latest card is collapsed to its header. Publish 0 so the
+      // previous preview and activity list clip to that header-only height too,
+      // rather than falling back to the full viewport cap and rendering taller
+      // than the current card — height(previous) ≤ height(current) always.
+      row.style.setProperty("--conversation-thinking-height", "0px");
+      return;
+    }
+    const publishHeight = () => {
+      row.style.setProperty(
+        "--conversation-thinking-height",
+        `${content.offsetHeight}px`,
+      );
+    };
+    publishHeight();
+    const observer = new ResizeObserver(publishHeight);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [previewLayoutKey]);
   const elapsedSeconds =
     item.startedAtMs !== null &&
     item.endedAtMs !== null &&
@@ -319,7 +371,7 @@ function ConversationActivitySummary({
   );
 
   return (
-    <div className="conversation-activity-row">
+    <div className="conversation-activity-row" ref={rowRef}>
       <div className="conversation-activity-column">
         <button
           type="button"

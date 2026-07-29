@@ -8999,11 +8999,17 @@ div.bang-command-error-message {
   padding: 0 8px;
   width: 0;
   min-width: 100%;
-  /* Fill the height beside the thinking preview and show as many of the
-     newest activities as fit, clipping the older overflow. Budget tracks the
-     preview cap (min(40vh, 24rem)) less the summary chip above it. Viewport/
-     font relative, not a fixed row count — see topics/responsive-layout-gaps.md. */
-  max-height: calc(min(40vh, 24rem) - 2.5rem);
+  /* Never exceed the space the current thinking block requests: cap to the
+     latest preview's rendered content height, published as
+     --conversation-thinking-height on the row (measured in RenderItemComponent).
+     Fill that height with the newest activities and clip the older overflow.
+     The fallback (before the first measurement) tracks the preview cap
+     (min(40vh, 24rem)) less the summary chip. Viewport/font relative, not a
+     fixed row count — see topics/responsive-layout-gaps.md. */
+  max-height: var(
+    --conversation-thinking-height,
+    calc(min(40vh, 24rem) - 2.5rem)
+  );
   overflow: hidden;
   color: var(--text-dimmed);
   font-family: var(--font-mono);
