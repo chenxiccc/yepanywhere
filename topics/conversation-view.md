@@ -94,6 +94,14 @@ provider-history rewrite and not deletion.
   scope. The row packs the activity summary and available previews together
   whenever their measured target widths fit, then wraps whole cards when they
   do not.
+- The activity list and the superseded *previous* thinking preview each cap
+  their height to the current/latest preview's rendered content height, measured
+  and published on the row as `--conversation-thinking-height`. Neither sibling
+  may claim more vertical space than the current thinking block requests, and
+  the previous preview's height is `min(natural, current)`, growing with the
+  current block as it streams. Because the current block thus owns the row
+  height, the previous preview (and the activity names) disappearing at turn
+  completion causes no shrink — and so no main-conversation autofollow flicker.
 - Each thinking-preview slot can be collapsed or dismissed independently.
   Streaming updates to the block occupying a slot do not reopen a collapsed
   card. Dismissing the final visible card switches the thinking-transcript

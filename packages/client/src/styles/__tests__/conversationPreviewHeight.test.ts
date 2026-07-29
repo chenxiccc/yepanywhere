@@ -58,4 +58,24 @@ describe("conversation preview height contract", () => {
     ).toMatch(/max-height:\s*var\(\s*--conversation-thinking-height/);
     expect(declarations).toMatch(/overflow:\s*hidden\s*;/);
   });
+
+  it("caps the previous preview to the current height: min(current, previous)", async () => {
+    const css = await readStylesheet();
+    const match =
+      /\.conversation-thinking-preview\[data-preview-slot="previous"\]\s*\.conversation-thinking-preview-content\s*\{([^}]*)\}/.exec(
+        css,
+      );
+    expect(
+      match,
+      "previous preview content should have a dedicated cap rule in index.css",
+    ).not.toBeNull();
+    const declarations = match?.[1] ?? "";
+    // height(previous) = min(natural, current): capping to the current height
+    // keeps the current block owning the row height, so the previous preview
+    // disappearing at turn end causes no shrink (no autofollow flicker).
+    expect(
+      declarations,
+      "previous preview must cap to the published current thinking height",
+    ).toMatch(/max-height:\s*var\(\s*--conversation-thinking-height/);
+  });
 });

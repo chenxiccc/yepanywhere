@@ -9129,6 +9129,17 @@ div.bang-command-error-message {
   border-top: 1px solid color-mix(in srgb, var(--border-color) 58%, transparent);
 }
 
+/* The superseded "previous" preview never claims more height than the current
+   block: height(previous) = min(natural, current). Capping to the current
+   height (published as --conversation-thinking-height on the row, and growing
+   as the current block streams) keeps the current block owning the row height,
+   so the previous preview disappearing at turn end causes no shrink — and thus
+   no autofollow flicker. See topics/responsive-layout-gaps.md. */
+.conversation-thinking-preview[data-preview-slot="previous"]
+  .conversation-thinking-preview-content {
+  max-height: var(--conversation-thinking-height, min(40vh, 24rem));
+}
+
 .conversation-thinking-preview-content .thinking-text {
   margin-top: 0.42rem;
   color: var(--text-muted);
