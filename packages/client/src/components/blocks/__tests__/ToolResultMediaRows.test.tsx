@@ -119,7 +119,7 @@ describe("ToolResultMediaRows", () => {
       });
       expect(fetchBlob).toHaveBeenCalledTimes(1);
       expect(
-        screen.getByRole("img", { name: "first.png tool result" }),
+        await screen.findByRole("img", { name: "first.png tool result" }),
       ).toBeTruthy();
       expect(
         screen.getByRole("button", { name: "Expand image preview" }),
