@@ -2438,15 +2438,18 @@ export const MessageList = memo(function MessageList({
 
     const resizeObserver = new ResizeObserver(() => {
       const newHeight = scrollContainer.scrollHeight;
-      const heightIncreased = newHeight > lastHeightRef.current;
+      const heightChanged = newHeight !== lastHeightRef.current;
 
-      // Auto-scroll when content height increases and auto-scroll is enabled
-      if (heightIncreased && shouldAutoScrollRef.current) {
+      // Continue an already-active follow through any height change. Growth is
+      // the streaming case; a *shrink* is turn completion collapsing the
+      // bounded thinking preview and recent-activity rows out of the flow,
+      // which used to strand a following reader slightly above the new bottom.
+      if (heightChanged && shouldAutoScrollRef.current) {
         scrollToBottom(scrollContainer);
       } else {
         // A size change must never *start* following — only continue it (the
-        // branch above). Re-arming here from proximity is what trapped the
-        // reading area near the bottom. Just track the new height.
+        // branch above requires shouldAutoScroll already set). Re-arming here
+        // from proximity is what trapped the reading area near the bottom.
         lastHeightRef.current = newHeight;
       }
     });

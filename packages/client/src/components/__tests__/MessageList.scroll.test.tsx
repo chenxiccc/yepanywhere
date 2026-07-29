@@ -7,12 +7,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import {
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   installMessageListTestEnvironment,
   assistantMessage,
@@ -683,6 +678,100 @@ describe("MessageList scroll and follow", () => {
     });
 
     expect(container.scrollTop).toBe(1100);
+    composerTarget.remove();
+  });
+
+  it("re-pins an active follower to the new bottom when content shrinks", async () => {
+    const composerTarget = document.createElement("div");
+    composerTarget.className = "session-input-inner";
+    document.body.append(composerTarget);
+
+    let resizeCallback: ResizeObserverCallback | null = null;
+    class CapturingResizeObserver {
+      constructor(callback: ResizeObserverCallback) {
+        resizeCallback = callback;
+      }
+      observe() {}
+      disconnect() {}
+    }
+    Object.defineProperty(window, "ResizeObserver", {
+      configurable: true,
+      value: CapturingResizeObserver,
+    });
+
+    const { container, rerender } = render(
+      <MessageList provider="codex" isProcessing={true} messages={[]} />,
+    );
+    let scrollHeight = 1000;
+    Object.defineProperty(container, "scrollTop", {
+      configurable: true,
+      value: 500,
+      writable: true,
+    });
+    Object.defineProperty(container, "scrollHeight", {
+      configurable: true,
+      get: () => scrollHeight,
+    });
+    Object.defineProperty(container, "clientHeight", {
+      configurable: true,
+      value: 500,
+    });
+    container.scrollTo = vi.fn((options: ScrollToOptions) => {
+      container.scrollTop = Number(options.top ?? 0);
+    }) as typeof container.scrollTo;
+
+    rerender(
+      <MessageList
+        provider="codex"
+        isProcessing={true}
+        messages={[
+          codexThinkingMessage(
+            "thinking-1",
+            "Initial visible thought",
+            "2026-04-25T00:00:00.000Z",
+            true,
+          ),
+        ]}
+      />,
+    );
+
+    // Grow while not following, which surfaces the Follow control.
+    scrollHeight = 1400;
+    rerender(
+      <MessageList
+        provider="codex"
+        isProcessing={true}
+        messages={[
+          codexThinkingMessage(
+            "thinking-1",
+            "Initial visible thought\nA longer visible thinking delta",
+            "2026-04-25T00:00:00.000Z",
+            true,
+          ),
+        ]}
+      />,
+    );
+    act(() => {
+      resizeCallback?.([], {} as ResizeObserver);
+    });
+    expect(container.scrollTop).toBe(500);
+
+    // Opt into follow, setting shouldAutoScroll.
+    const followButton = await screen.findByRole("button", {
+      name: "Follow latest session output",
+    });
+    fireEvent.click(followButton);
+    expect(container.scrollTop).toBe(900); // 1400 - 500
+
+    // Turn completes: the bounded thinking preview and recent-activity rows
+    // collapse out of the flow, so total content height shrinks. An active
+    // follower must ride down to the new bottom, not be stranded above it.
+    scrollHeight = 1100;
+    act(() => {
+      resizeCallback?.([], {} as ResizeObserver);
+    });
+
+    expect(container.scrollTop).toBe(600); // 1100 - 500
     composerTarget.remove();
   });
 
