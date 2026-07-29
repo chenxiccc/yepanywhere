@@ -322,7 +322,23 @@ export function ImageViewer({
       </div>
       <div
         ref={stageRef}
-        className="local-media-image-stage"
+        className={`local-media-image-stage is-${viewMode}`}
+        role="button"
+        tabIndex={0}
+        aria-label={t("imageViewerCloseImage", { name: fileName })}
+        onClick={() => {
+          if (suppressClickRef.current) {
+            suppressClickRef.current = false;
+            return;
+          }
+          onClose();
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onClose();
+          }
+        }}
         onPointerCancel={handlePointerEnd}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
@@ -330,17 +346,8 @@ export function ImageViewer({
         onWheel={handleWheel}
       >
         <div className="local-media-image-canvas" style={canvasStyle}>
-          <button
-            type="button"
+          <div
             className={`local-media-image-surface is-${viewMode}`}
-            aria-label={t("imageViewerCloseImage", { name: fileName })}
-            onClick={() => {
-              if (suppressClickRef.current) {
-                suppressClickRef.current = false;
-                return;
-              }
-              onClose();
-            }}
           >
             <img
               className="local-media-image"
@@ -355,7 +362,7 @@ export function ImageViewer({
                 });
               }}
             />
-          </button>
+          </div>
         </div>
       </div>
     </div>

@@ -201,11 +201,13 @@ inspection.
 
 The shared image viewer uses the useful viewport rather than the generic modal
 preview ceiling. Selecting a thumbnail enters one maximized viewer state;
-clicking the displayed image, activating the visible **Close** control, or
-pressing Escape returns to the gallery. Fit, 1:1, and stepped zoom are explicit
-inspection controls within that one state, not further expansion levels. A
-1:1 or otherwise zoomed image remains scrollable and pannable instead of being
-clipped; trackpad pinch/wheel zoom remains anchored near the pointer.
+clicking anywhere in the image stage (including outside an off-center or
+zoomed image), activating the visible **Close** control, or pressing Escape
+returns to the gallery. Toolbar controls remain operable without dismissing
+the viewer. Fit, 1:1, and stepped zoom are explicit inspection controls within
+that one state, not further expansion levels. A 1:1 or otherwise zoomed image
+remains scrollable and pannable instead of being clipped; trackpad pinch/wheel
+zoom remains anchored near the pointer.
 
 On touch screens, the gallery row retains its horizontal swipe behavior until
 an image is selected. The selected image then owns a full-screen stage with

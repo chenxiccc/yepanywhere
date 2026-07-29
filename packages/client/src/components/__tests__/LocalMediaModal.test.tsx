@@ -224,7 +224,7 @@ describe("LocalMediaModal", () => {
     );
   });
 
-  it("dismisses the image viewer by image click, Close, or Escape", async () => {
+  it("dismisses the image viewer from its stage, image, controls, and keyboard", async () => {
     Object.defineProperty(URL, "createObjectURL", {
       configurable: true,
       value: vi.fn(() => "blob:local-media-image"),
@@ -249,19 +249,31 @@ describe("LocalMediaModal", () => {
       </I18nProvider>,
     );
 
-    fireEvent.click(
-      await screen.findByRole("button", {
-        name: "Close viewer and return from plot.png",
-      }),
-    );
+    const stageControl = await screen.findByRole("button", {
+      name: "Close viewer and return from plot.png",
+    });
+    const stage = screen
+      .getByRole("dialog")
+      .querySelector<HTMLElement>(".local-media-image-stage");
+    expect(stage).toBeTruthy();
+    if (!stage) return;
+    expect(stage).toBe(stageControl);
+
+    fireEvent.click(stage);
     expect(onClose).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("img", { name: "plot.png" }));
+    expect(onClose).toHaveBeenCalledTimes(2);
+
+    fireEvent.keyDown(stage, { key: "Enter" });
+    expect(onClose).toHaveBeenCalledTimes(3);
 
     fireEvent.click(
       screen.getByRole("button", { name: "Close image viewer" }),
     );
-    expect(onClose).toHaveBeenCalledTimes(2);
+    expect(onClose).toHaveBeenCalledTimes(4);
 
     fireEvent.keyDown(document, { key: "Escape" });
-    expect(onClose).toHaveBeenCalledTimes(3);
+    expect(onClose).toHaveBeenCalledTimes(5);
   });
 });

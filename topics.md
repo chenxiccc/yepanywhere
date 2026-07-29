@@ -29,6 +29,8 @@
 - client-session-collection-store - Normalized client session facts and list projection consistency.
 - relative-filenames - Shortest-unambiguous file path display and link targets.
 - rich-text-rendering - Rendered file/message/diff previews and local-link handling.
+- media-rendering-and-routing - Relay-safe media discovery, compact turn
+  galleries, and full-image viewer interaction.
 - security - YA trust-boundary contracts for local, authenticated, relay, and public surfaces.
 - trusted-client-packaging - Signed/local client packaging and relay-only transport trust roots.
 - message-control-steer-queue-btw-later-interrupt - Steer/queue control state, ownership normalization, and metadata contract cleanup.

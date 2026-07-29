@@ -1284,6 +1284,7 @@
   overscroll-behavior: contain;
   background: var(--bg-primary);
   container-type: size;
+  cursor: zoom-out;
   touch-action: none;
 }
 
