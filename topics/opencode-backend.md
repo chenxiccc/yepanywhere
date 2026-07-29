@@ -48,16 +48,16 @@ translate more provider-specific concepts itself:
 | Clone/DAG UI metadata | Client metadata says DAG and cloning are supported. | Client metadata says cloning is supported, linear history. | Client metadata marks both DAG and cloning unsupported. |
 | Liveness | SDK/process probes. | App-server thread probes and raw event cadence. | `/session/status`, `session.status`, and `session.idle` are integrated as liveness evidence. |
 
-## Transcript Rendering Coverage
+## Transcript Rendering Coverage: 1.15.13 Baseline
 
-The generic YA renderer already understands these normalized content block
-types: `text`, `thinking`, `tool_use`, and `tool_result`. OpenCode quality in
-the session view therefore depends mostly on how completely the live and durable
-OpenCode paths produce those blocks.
+This section records the 2026-06-01 OpenCode 1.15.13 baseline that motivated
+the later provider work. It is historical evidence, not the current mapping
+contract. The 1.17.9 and 1.18.9 sections below supersede it where the provider
+shape or YA behavior changed.
 
-Live stream path in `opencode.ts`:
+Live stream path observed in `opencode.ts` at that baseline:
 
-| OpenCode SSE shape | Current YA mapping | Gap |
+| OpenCode SSE shape | YA mapping at the 1.15.13 audit | Gap at that audit |
 |---|---|---|
 | `message.part.updated` / `message.part.delta` with `type: "text"` | Assistant text, after role filtering through `message.updated`. | Covered for live text; user text parts are intentionally not assistant progress. |
 | `type: "reasoning"` | YA `thinking` block. | Covered live, but only when the part is seen through SSE or POST fallback. |
@@ -68,9 +68,9 @@ Live stream path in `opencode.ts`:
 | `session.diff` | Ignored. | File-change summaries are not mapped to read/edit/diff UI. |
 | `permission.asked` | Routed through YA approval and replied to through OpenCode's permission endpoint. | Static YA permission modes remain unsupported. |
 
-Durable reader path in `normalization.ts`:
+Durable reader path observed in `normalization.ts` at that baseline:
 
-| OpenCode stored/export shape | Current YA mapping | Gap |
+| OpenCode stored/export shape | YA mapping at the 1.15.13 audit | Gap at that audit |
 |---|---|---|
 | `type: "text"` | YA `text` block. | Covered. |
 | old stored `type: "tool"` with `callID` | YA `tool_use`; completed tools also produce `tool_result`. | Generic block is covered, but lower-case OpenCode tool names fall through to the raw JSON fallback renderer. |
@@ -120,10 +120,10 @@ element list. Key shape correction and closures:
 - **Unified tool part.** 1.16+ streams a tool as a single `type:"tool"` part
   (`callID` + nested `state.{status,input,output,error}`), confirmed via a live
   `/event` capture — *not* the split `tool-use`/`tool-result` parts the live
-  tables below describe. The live path had no case for it, so live tool calls
-  were invisible; now handled (emit tool_use when underway, tool_result when
-  settled, deduped by callID). New part types seen: `patch` (snapshot) and
-  `compaction` (marker), both treated as metadata.
+  baseline tables above describe. The live path had no case for it, so live
+  tool calls were invisible; now handled (emit tool_use when underway,
+  tool_result when settled, deduped by callID). New part types seen: `patch`
+  (snapshot) and `compaction` (marker), both treated as metadata.
 - **Tool name + field normalization** (`opencode-tools.ts`): lower-case names →
   YA canonical (`bash`→`Bash`, …) and fields → Claude shape
   (`filePath`→`file_path`, `oldString`→`old_string`, grep `include`→`glob`, …),
@@ -422,9 +422,9 @@ async `/api/server-info` dependency in the settings path.
 
 ## Gaps To Close
 
-Status tags added 2026-06-21 (DONE = landed this review). The live-path table
-above predates the unified `tool` part; treat the 1.17.9 status section as
-current where they disagree.
+Status tags added 2026-06-21 (DONE = landed in that review). These statuses and
+the later 1.18.9 refresh govern current behavior; the explicitly dated
+1.15.13 tables above remain only as the baseline that exposed the gaps.
 
 1. **DONE.** Durable reasoning: stored `reasoning` parts now map to YA `thinking`
    blocks (with a unit test); empty timing-only parts are skipped.
