@@ -142,7 +142,9 @@ export function findTurnInlineImageAnchor(
   return getInlineImageAnchors(root)[sourceIndex] ?? null;
 }
 
-function validAspectRatio(dimensions: GalleryImageDimensions | undefined) {
+function validImageDimensions(
+  dimensions: GalleryImageDimensions | undefined,
+): GalleryImageDimensions | null {
   if (
     !dimensions ||
     !Number.isFinite(dimensions.width) ||
@@ -150,14 +152,21 @@ function validAspectRatio(dimensions: GalleryImageDimensions | undefined) {
     dimensions.width <= 0 ||
     dimensions.height <= 0
   ) {
-    return 4 / 3;
+    return null;
   }
-  return Math.max(0.2, Math.min(5, dimensions.width / dimensions.height));
+  return dimensions;
+}
+
+function validAspectRatio(dimensions: GalleryImageDimensions | null) {
+  return dimensions
+    ? Math.max(0.2, Math.min(5, dimensions.width / dimensions.height))
+    : 4 / 3;
 }
 
 interface GalleryAspectImage {
   aspect: number;
   id: string;
+  naturalHeight: number | null;
   originalIndex: number;
 }
 
@@ -199,13 +208,20 @@ function packGalleryRowCount(
         1,
         Math.min(perRowHeight, usableWidth / row.aspectSum),
       );
-      return {
-        height,
-        items: row.images.map((image) => ({
-          height,
+      const items = row.images.map((image) => {
+        const itemHeight =
+          image.naturalHeight === null
+            ? height
+            : Math.min(height, image.naturalHeight);
+        return {
+          height: itemHeight,
           id: image.id,
-          width: image.aspect * height,
-        })),
+          width: image.aspect * itemHeight,
+        };
+      });
+      return {
+        height: Math.max(...items.map((item) => item.height)),
+        items,
       };
     });
 }
@@ -227,10 +243,14 @@ export function packTurnGalleryRows(
   }
 
   const sorted = images
-    .map((image) => ({
-      ...image,
-      aspect: validAspectRatio(dimensions.get(image.id)),
-    }))
+    .map((image) => {
+      const imageDimensions = validImageDimensions(dimensions.get(image.id));
+      return {
+        ...image,
+        aspect: validAspectRatio(imageDimensions),
+        naturalHeight: imageDimensions?.height ?? null,
+      };
+    })
     .sort(
       (left, right) =>
         right.aspect - left.aspect || left.originalIndex - right.originalIndex,
@@ -247,7 +267,9 @@ export function packTurnGalleryRows(
       maxHeight,
       gap,
     );
-    const minimumHeight = Math.min(...layout.map((row) => row.height));
+    const minimumHeight = Math.min(
+      ...layout.flatMap((row) => row.items.map((item) => item.height)),
+    );
     if (minimumHeight > bestMinimumHeight) {
       bestLayout = layout;
       bestMinimumHeight = minimumHeight;

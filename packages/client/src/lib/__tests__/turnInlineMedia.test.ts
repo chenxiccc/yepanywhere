@@ -121,4 +121,25 @@ describe("turn inline media model", () => {
       rows[0]?.items.reduce((width, item) => width + item.width, 24),
     ).toBeLessThanOrEqual(1000);
   });
+
+  it("never upscales a thumbnail beyond its natural image height", () => {
+    const images = ["small", "large"].map((id, originalIndex) => ({
+      id,
+      originalIndex,
+    }));
+    const dimensions = new Map([
+      ["small", { height: 40, width: 160 }],
+      ["large", { height: 600, width: 800 }],
+    ]);
+
+    const rows = packTurnGalleryRows(images, dimensions, 1000, 120);
+    const itemById = new Map(
+      rows.flatMap((row) => row.items.map((item) => [item.id, item])),
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.height).toBe(120);
+    expect(itemById.get("small")).toMatchObject({ height: 40, width: 160 });
+    expect(itemById.get("large")).toMatchObject({ height: 120, width: 160 });
+  });
 });

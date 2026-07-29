@@ -230,6 +230,9 @@ The compact-gallery goals, in priority order, are:
 - Choose among the viable row counts by maximizing the smallest thumbnail
   height, preferring fewer rows on a tie. Do not split a row when dividing the
   same vertical budget would only make its images smaller.
+- A thumbnail's rendered height must never exceed its natural pixel height.
+  Natural-size caps may leave unused space or produce ragged alignment; do not
+  upscale an image merely to align it with its row or fill the gallery.
 - Use the available vertical budget without treating complete content-width
   fill as a goal. Rows may have different heights.
 - Present ordinary completed rows as justified image rows. The final or
