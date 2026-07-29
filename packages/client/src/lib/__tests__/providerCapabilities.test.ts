@@ -1,6 +1,9 @@
 import type { ProviderInfo } from "@yep-anywhere/shared";
 import { describe, expect, it } from "vitest";
-import { resolveSessionProviderCapabilities } from "../providerCapabilities";
+import {
+  providerSupportsLocalSessionSandbox,
+  resolveSessionProviderCapabilities,
+} from "../providerCapabilities";
 
 function provider(
   name: ProviderInfo["name"],
@@ -74,4 +77,20 @@ describe("resolveSessionProviderCapabilities", () => {
     expect(capabilities.supportsCurrentTurnSteering).toBe(true);
     expect(capabilities.supportsSteerNow).toBe(true);
   });
+});
+
+describe("providerSupportsLocalSessionSandbox", () => {
+  it.each(["claude", "claude-gateway", "claude-ollama", "codex"] as const)(
+    "supports the implemented local %s backend",
+    (providerName) => {
+      expect(providerSupportsLocalSessionSandbox(providerName)).toBe(true);
+    },
+  );
+
+  it.each(["codex-oss", "gemini", "gemini-acp", "grok", "opencode", "pi"] as const)(
+    "hides the unimplemented %s backend",
+    (providerName) => {
+      expect(providerSupportsLocalSessionSandbox(providerName)).toBe(false);
+    },
+  );
 });

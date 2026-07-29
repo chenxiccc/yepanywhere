@@ -141,7 +141,7 @@ const {
   serverSettingsState: {
     settings: null as {
       newSessionDefaults?: {
-        provider?: "claude" | "claude-gateway" | "codex";
+        provider?: "claude" | "claude-gateway" | "codex" | "opencode";
         model?: string;
         permissionMode?: "default" | "auto";
         recapMode?: "off" | "native" | "side-session" | "fork";
@@ -1292,6 +1292,57 @@ describe("NewSessionForm", () => {
     });
     expect(mockStartSession.mock.calls[0]?.[2]).not.toHaveProperty(
       "sandboxLevel",
+    );
+  });
+
+  it("hides and disables sandboxing for an unimplemented provider", async () => {
+    versionState.version = {
+      capabilities: [PROJECT_QUEUE_CAPABILITY, SESSION_SANDBOXING_CAPABILITY],
+    };
+    providersState.providers = [
+      {
+        name: "opencode",
+        displayName: "OpenCode",
+        installed: true,
+        authenticated: true,
+        supportsPermissionMode: true,
+        supportsThinkingToggle: true,
+        models: [{ id: "default", name: "Default" }],
+      },
+    ];
+    serverSettingsState.settings = {
+      newSessionDefaults: {
+        provider: "opencode",
+        model: "default",
+        permissionMode: "default",
+        sandboxLevel: "project-write",
+      },
+    };
+    serverSettingsState.isLoading = false;
+
+    render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("checkbox", { name: "newSessionSandboxLabel" }),
+    ).toBeNull();
+    fireEvent.change(screen.getByPlaceholderText("newSessionPlaceholder"), {
+      target: { value: "ordinary OpenCode session" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "newSessionStartAction" }),
+    );
+
+    await waitFor(() => {
+      expect(mockStartSession).toHaveBeenCalledTimes(1);
+    });
+    expect(mockStartSession.mock.calls[0]?.[2]).toEqual(
+      expect.objectContaining({ sandboxLevel: "none" }),
     );
   });
 

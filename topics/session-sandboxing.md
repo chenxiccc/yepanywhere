@@ -37,10 +37,16 @@ YA should expose one provider-independent **Sandbox session** toggle at new
 session creation. Settings > Session Defaults exposes the matching **Sandbox
 new sessions** toggle. Both are off by default.
 
+The toggle appears only for the implemented local Claude-family and standard
+Codex backends. New Session also hides it while a remote executor is selected;
+unsupported providers and executors do not get explanatory placeholder copy.
+
 The toggle has short informational text:
 
-> Limits persistent writes to this project. Keep installable environments in
-> the project (for example, `.venv` or `.pixi`).
+> Limits persistent writes to this project; other host files stay readable.
+> Keep installable environments here (e.g. `.venv` or `.pixi`).
+>
+> Requires Linux + Bubblewrap.
 
 More detailed help may explain that the sandbox also supplies private temporary
 and cache space. This is product/UI guidance, not a message injected into the

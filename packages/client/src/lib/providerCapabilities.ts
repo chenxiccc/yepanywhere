@@ -3,6 +3,9 @@ import type { ProviderInfo, ProviderName } from "@yep-anywhere/shared";
 const PROVIDERS_WITH_STATIC_STEERING_FALLBACK: ReadonlySet<ProviderName> =
   new Set(["codex", "grok"]);
 
+const PROVIDERS_WITH_LOCAL_SESSION_SANDBOX: ReadonlySet<ProviderName> =
+  new Set(["claude", "claude-gateway", "claude-ollama", "codex"]);
+
 export interface SessionProviderCapabilities {
   providerName?: ProviderName;
   providerInfo: ProviderInfo | null;
@@ -16,6 +19,14 @@ export function providerHasStaticSteeringFallback(
 ): boolean {
   return providerName
     ? PROVIDERS_WITH_STATIC_STEERING_FALLBACK.has(providerName)
+    : false;
+}
+
+export function providerSupportsLocalSessionSandbox(
+  providerName?: ProviderName | null,
+): boolean {
+  return providerName
+    ? PROVIDERS_WITH_LOCAL_SESSION_SANDBOX.has(providerName)
     : false;
 }
 

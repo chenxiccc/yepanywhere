@@ -37,6 +37,7 @@ import {
   getProviderSessionDefaults,
   withProviderSessionDefaults,
 } from "../../lib/newSessionDefaults";
+import { providerSupportsLocalSessionSandbox } from "../../lib/providerCapabilities";
 import { getRecapModeDescription } from "../../lib/recapModes";
 import { getPermissionModeOptions } from "../../lib/permissionModes";
 import {
@@ -252,6 +253,9 @@ export function ModelSettings() {
   useSettingsUndoBaseline(undoState, restoreUndoState);
   const selectedProvider =
     getPreferredProvider(providers, savedDefaults?.provider) ?? null;
+  const canConfigureSessionSandbox =
+    supportsSessionSandboxing &&
+    providerSupportsLocalSessionSandbox(selectedProvider?.name);
   const selectedModels = selectedProvider?.models ?? [];
   const selectedModel =
     selectedProvider === null
@@ -274,6 +278,7 @@ export function ModelSettings() {
   const helperSelectableModels = selectedModels;
   const savedRecapMode = getPreferredRecapMode(selectedProvider, savedDefaults);
   const selectedRecapMode =
+    canConfigureSessionSandbox &&
     savedDefaults?.sandboxLevel === "project-write" &&
     savedRecapMode === "side-session"
       ? "off"
@@ -595,7 +600,7 @@ export function ModelSettings() {
       <HideInSettingsSearch>
         <div className="settings-group">
           <div className="settings-session-defaults-panel">
-            {supportsSessionSandboxing && (
+            {canConfigureSessionSandbox && (
               <div className="new-session-helper-section session-default-sandbox-section">
                 <h3>{t("modelSettingsSandboxDefaultTitle")}</h3>
                 <label className="settings-item">
@@ -642,7 +647,8 @@ export function ModelSettings() {
                       }
                       disabled={
                         settingsLoading ||
-                        (savedDefaults?.sandboxLevel === "project-write" &&
+                        (canConfigureSessionSandbox &&
+                          savedDefaults?.sandboxLevel === "project-write" &&
                           modeValue === "side-session")
                       }
                       title={getRecapModeDescription(

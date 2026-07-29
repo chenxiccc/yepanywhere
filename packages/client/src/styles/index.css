@@ -11794,6 +11794,12 @@ div.bang-command-error-message {
   grid-column: 1 / -1;
 }
 
+@container (min-width: 36rem) {
+  .settings-session-defaults-panel .session-default-sandbox-section {
+    grid-column: span 2;
+  }
+}
+
 .settings-session-defaults-panel .session-default-discovery-row {
   grid-column: 1 / -1;
   display: flex;
@@ -15322,6 +15328,10 @@ div.bang-command-error-message {
   margin-bottom: 0;
 }
 
+.new-session-provider-slot > .new-session-sandbox-section {
+  grid-column: span 2;
+}
+
 .new-session-mode-section h3 {
   font-size: var(--font-size-sm);
   font-weight: 600;
@@ -15902,6 +15912,10 @@ div.bang-command-error-message {
 
 /* Mobile adjustments for new session page */
 @media (max-width: 600px) {
+  .new-session-provider-slot > .new-session-sandbox-section {
+    grid-column: 1 / -1;
+  }
+
   .new-session-header h1 {
     font-size: 1.05rem;
   }

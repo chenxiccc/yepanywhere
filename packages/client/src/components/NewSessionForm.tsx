@@ -74,6 +74,7 @@ import {
   startsAdditionalModelGroup,
   withProviderVisibleModelSelection,
 } from "../lib/modelCatalog";
+import { providerSupportsLocalSessionSandbox } from "../lib/providerCapabilities";
 import {
   type PendingFile,
   type PendingLocalFile,
@@ -357,6 +358,12 @@ export function NewSessionForm({
     versionInfo,
     SESSION_SANDBOXING_CAPABILITY,
   );
+  const canConfigureSessionSandbox =
+    supportsSessionSandboxing &&
+    selectedExecutor === null &&
+    providerSupportsLocalSessionSandbox(selectedProvider);
+  const effectiveSandboxLevel: SessionSandboxLevel =
+    canConfigureSessionSandbox ? sandboxLevel : "none";
   const supportsProjectQueue = serverSupportsProjectQueue(versionInfo);
   const projectQueueCtrlEnterEnabled =
     versionInfo?.clientDefaults?.projectQueueCtrlEnterEnabled ??
@@ -1193,7 +1200,9 @@ export function NewSessionForm({
       savedDefaults,
     );
     setSelectedRecapMode(
-      savedSandboxLevel === "project-write" && savedRecapMode === "side-session"
+      providerSupportsLocalSessionSandbox(initialProvider.name) &&
+        savedSandboxLevel === "project-write" &&
+        savedRecapMode === "side-session"
         ? "off"
         : savedRecapMode,
     );
@@ -1731,7 +1740,9 @@ export function NewSessionForm({
           showThinking,
           provider: selectedProvider ?? undefined,
           executor: selectedExecutor ?? undefined,
-          ...(supportsSessionSandboxing ? { sandboxLevel } : {}),
+          ...(supportsSessionSandboxing
+            ? { sandboxLevel: effectiveSandboxLevel }
+            : {}),
           recapMode: effectiveRecapMode,
           recapAfterSeconds,
           promptSuggestionMode: effectivePromptSuggestionMode,
@@ -1746,7 +1757,9 @@ export function NewSessionForm({
           thinking,
           provider: selectedProvider ?? null,
           executor: selectedExecutor ?? null,
-          sandboxLevel: supportsSessionSandboxing ? sandboxLevel : null,
+          sandboxLevel: supportsSessionSandboxing
+            ? effectiveSandboxLevel
+            : null,
           recapMode: effectiveRecapMode,
           recapAfterSeconds,
           promptSuggestionMode: effectivePromptSuggestionMode,
@@ -1969,7 +1982,7 @@ export function NewSessionForm({
       pendingFiles,
       projectInput,
       recapAfterSeconds,
-      sandboxLevel,
+      effectiveSandboxLevel,
       resolvePendingAttachmentsForSession,
       resolveProjectIdForSubmission,
       selectedExecutor,
@@ -2054,7 +2067,9 @@ export function NewSessionForm({
           showThinking,
           provider: selectedProvider ?? undefined,
           executor: selectedExecutor ?? undefined,
-          ...(supportsSessionSandboxing ? { sandboxLevel } : {}),
+          ...(supportsSessionSandboxing
+            ? { sandboxLevel: effectiveSandboxLevel }
+            : {}),
           title: trimmedMessage,
         },
         message: {
@@ -2083,7 +2098,9 @@ export function NewSessionForm({
         thinking,
         provider: selectedProvider ?? null,
         executor: selectedExecutor ?? null,
-        sandboxLevel: supportsSessionSandboxing ? sandboxLevel : null,
+        sandboxLevel: supportsSessionSandboxing
+          ? effectiveSandboxLevel
+          : null,
         textLength: trimmedMessage.length,
         attachmentCount: stagedRefs.length,
         uploadWaitMs: Date.now() - actionAtMs,
@@ -3113,7 +3130,8 @@ export function NewSessionForm({
             }}
             disabled={
               isStarting ||
-              (sandboxLevel === "project-write" && modeValue === "side-session")
+              (effectiveSandboxLevel === "project-write" &&
+                modeValue === "side-session")
             }
             title={getRecapModeDescription(modeValue, t, recapAfterSeconds)}
           >
@@ -3201,7 +3219,7 @@ export function NewSessionForm({
       </div>
     </div>
   ) : null;
-  const sandboxSection = supportsSessionSandboxing ? (
+  const sandboxSection = canConfigureSessionSandbox ? (
     <div className="new-session-helper-section new-session-sandbox-section">
       <h3>{t("newSessionSandboxTitle")}</h3>
       <label className="settings-item">
