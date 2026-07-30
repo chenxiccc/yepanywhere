@@ -1294,7 +1294,10 @@ export function createApp(options: AppOptions): AppResult {
   if (options.dataDir) {
     app.route(
       "/api/onboarding",
-      createOnboardingRoutes({ dataDir: options.dataDir }),
+      createOnboardingRoutes({
+        dataDir: options.dataDir,
+        completeByDefault: options.desktopRuntime === true,
+      }),
     );
   }
 

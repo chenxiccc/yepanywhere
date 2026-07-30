@@ -9,6 +9,7 @@
 - Advisory Claude/Codex application detection with links to the official installers when neither is found.
 - Windows Job Object ownership for the bundled server process tree.
 - A packaged-runtime smoke test that exercises dynamic-port readiness, health, bootstrap, and authenticated API access.
+- Explicit dashboard-close choices to unload the hidden WebView after five minutes, keep it loaded, or quit Yep Anywhere.
 
 ### Changed
 - First launch now opens the bundled dashboard directly; the multi-page component installer and provider login wizard have been removed.
@@ -17,6 +18,10 @@
 - Tauri is pinned to 2.11.5 with explicit command manifests, per-window capabilities, and packaged/server content security policies.
 - Windows installer shutdown targets only Yep Anywhere's process tree and never kills unrelated `bun.exe` processes.
 - Tagged releases now require updater signing and complete Windows code-signing credentials.
+- The default close behavior now keeps the bundled server running while unloading a dashboard that remains hidden for five minutes; reopening restores its last route.
+- Existing `run_in_background` preferences migrate to the corresponding explicit close behavior.
+- Clean desktop profiles now bypass the legacy web onboarding wizard as required by the v0 first-launch flow.
+- Register the single-instance guard before all other Tauri plugins so rapid or repeated launches focus the existing dashboard without starting a competing app instance.
 
 ### Removed
 - First-run downloads of Yep Anywhere, Bun, Claude Code, and Codex.

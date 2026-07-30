@@ -47,7 +47,8 @@ booleans while `desktopRuntime` is active. Older clients ignore the field.
 New clients treat an absent field as the existing `installed` signal, so they
 do not require a new route or capability from older supported servers. The
 notice refreshes when the browser regains focus and through an explicit retry;
-it does not add a polling loop.
+it does not add a polling loop. Dismissing the notice is browser-local and
+survives reload or WebView recreation on the running desktop server origin.
 
 The server provider catalog remains authoritative for actual provider
 availability. Provider launch and authentication failures use the ordinary
@@ -62,16 +63,52 @@ Desktop startup is single-flight. Rapid cold launches join the same server
 startup attempt and open at most one dashboard. A second operating-system
 launch while the server is starting waits for that attempt; it does not spawn
 another server or reveal the hidden recovery surface. A second launch while
-the server is running focuses the existing dashboard without reloading it.
-Concurrent callers receive the same startup failure and do not turn a failed
-attempt into an implicit retry. A later explicit Retry may start a new
-attempt, while a launch queued during shutdown must not resurrect the server.
+the server is running focuses a retained dashboard without reloading it, or
+recreates an intentionally unloaded dashboard at its saved route. Concurrent
+callers receive the same startup failure and do not turn a failed attempt into
+an implicit retry. A later explicit Retry may start a new attempt, while a
+launch queued during shutdown must not resurrect the server.
 
 The packaged launcher is a recovery surface, not an ordinary application
 window or onboarding step. It stays hidden during normal startup and repeat
 launches. `starting`, `running`, `stopping`, `stopped`, and `error` are
 distinct supervisor states; the launcher must not describe an in-progress
 startup as stopped.
+
+## Dashboard Close And Resource Contract
+
+Dashboard close behavior is an explicit three-way choice:
+
+- `unload_after_delay` (the default) hides the dashboard immediately and
+  unloads its WebView after five continuously hidden minutes while the tray
+  app and bundled server continue running;
+- `keep_loaded` hides the dashboard and retains its WebView; and
+- `quit` stops the bundled server and exits the desktop application.
+
+Configs containing the legacy `run_in_background: true` migrate to
+`unload_after_delay`; `false` migrates to `quit`. Tray-only startup cannot be
+combined with `quit` because that would start an application with no durable
+surface.
+
+The unload delay is one cancellable timer owned by the dashboard window
+lifecycle. Reopening the dashboard or changing its close behavior cancels the
+timer, and repeated close/reopen cycles do not accumulate dormant timers. An
+unloaded dashboard releases its client connections, subscriptions, and WebView
+memory without stopping server-owned provider sessions.
+
+Before unloading, native code retains only the current dashboard path, query,
+and fragment in process memory. It never retains a bootstrap URL or code.
+Reopening mints a new single-use bootstrap code and passes the saved route
+through a bounded, same-origin-only return target. Invalid, cross-origin, or
+oversized return targets fall back to `/`. Route memory ends when the desktop
+process exits.
+
+Tests may shorten the delay only when `YEP_DESKTOP_TEST_MODE=1` and
+`YEP_DESKTOP_TEST_UNLOAD_DELAY_MS` contains an unsigned millisecond value.
+Without both values the release default remains five minutes, and the override
+never mutates saved configuration. The same explicit test mode may pair with
+`YEP_DESKTOP_TEST_DATA_DIR` to isolate a smoke run from the installed desktop
+profile; the override is ignored outside test mode.
 
 ## Stable And Development Coexistence
 

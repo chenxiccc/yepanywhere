@@ -1,6 +1,10 @@
 import type { ProviderInfo } from "@yep-anywhere/shared";
 import { describe, expect, it } from "vitest";
-import { hasDesktopProviderRuntime } from "../DesktopProviderNotice";
+import {
+  hasDesktopProviderRuntime,
+  readDesktopProviderNoticeDismissed,
+  writeDesktopProviderNoticeDismissed,
+} from "../DesktopProviderNotice";
 
 function provider(
   name: "claude" | "codex",
@@ -43,5 +47,17 @@ describe("desktop provider notice detection", () => {
         }),
       ]),
     ).toBe(false);
+  });
+
+  it("persists dismissal across dashboard reloads and WebView recreation", () => {
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+    };
+
+    expect(readDesktopProviderNoticeDismissed(storage)).toBe(false);
+    writeDesktopProviderNoticeDismissed(storage);
+    expect(readDesktopProviderNoticeDismissed(storage)).toBe(true);
   });
 });

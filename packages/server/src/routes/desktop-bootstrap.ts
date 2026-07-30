@@ -7,6 +7,8 @@ import {
 } from "../desktop/DesktopBootstrapService.js";
 
 const MASTER_SECRET_HEADER = "x-yep-desktop-bootstrap-secret";
+const RETURN_TO_BASE_URL = "http://desktop.local";
+const MAX_RETURN_TO_BYTES = 8 * 1024;
 
 function isLoopbackAddress(value: string | undefined): boolean {
   if (!value) return false;
@@ -34,6 +36,26 @@ function shouldUseSecureCookie(url: string): boolean {
     return new URL(url).protocol === "https:";
   } catch {
     return false;
+  }
+}
+
+export function sanitizeDesktopReturnTo(value: string | undefined): string {
+  if (
+    !value ||
+    new TextEncoder().encode(value).byteLength > MAX_RETURN_TO_BYTES ||
+    !value.startsWith("/") ||
+    value.startsWith("//")
+  ) {
+    return "/";
+  }
+  try {
+    const target = new URL(value, RETURN_TO_BASE_URL);
+    if (target.origin !== RETURN_TO_BASE_URL) {
+      return "/";
+    }
+    return `${target.pathname}${target.search}${target.hash}`;
+  } catch {
+    return "/";
   }
 }
 
@@ -76,7 +98,7 @@ export function createDesktopBootstrapRoutes(
     });
     c.header("Cache-Control", "no-store");
     c.header("Referrer-Policy", "no-referrer");
-    return c.redirect("/", 303);
+    return c.redirect(sanitizeDesktopReturnTo(c.req.query("return_to")), 303);
   });
 
   return routes;

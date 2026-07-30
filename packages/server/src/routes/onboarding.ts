@@ -28,6 +28,7 @@ function saveOnboardingState(dataDir: string, state: OnboardingState): void {
 
 export interface OnboardingRoutesOptions {
   dataDir: string;
+  completeByDefault?: boolean;
 }
 
 export function createOnboardingRoutes(options: OnboardingRoutesOptions): Hono {
@@ -35,6 +36,9 @@ export function createOnboardingRoutes(options: OnboardingRoutesOptions): Hono {
 
   // GET /api/onboarding - Get onboarding status
   app.get("/", (c) => {
+    if (options.completeByDefault) {
+      return c.json({ complete: true });
+    }
     const state = loadOnboardingState(options.dataDir);
     return c.json({ complete: state.complete });
   });

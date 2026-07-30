@@ -4,7 +4,10 @@ import {
   DESKTOP_SESSION_COOKIE_NAME,
   DesktopBootstrapService,
 } from "../../src/desktop/DesktopBootstrapService.js";
-import { createDesktopBootstrapRoutes } from "../../src/routes/desktop-bootstrap.js";
+import {
+  createDesktopBootstrapRoutes,
+  sanitizeDesktopReturnTo,
+} from "../../src/routes/desktop-bootstrap.js";
 
 const MASTER_SECRET = "s".repeat(64);
 
@@ -96,5 +99,37 @@ describe("desktop bootstrap routes", () => {
 
     expect(remote.status).toBe(404);
     expect(wrongSecret.status).toBe(404);
+  });
+
+  it("returns a bootstrapped dashboard to its saved same-origin route", async () => {
+    const service = new DesktopBootstrapService({
+      masterSecret: MASTER_SECRET,
+    });
+    const routes = createDesktopBootstrapRoutes(service);
+    const bindings = socketBindings();
+    const { code } = service.mintCode();
+
+    const exchange = await routes.request(
+      `http://127.0.0.1/${code}?return_to=${encodeURIComponent(
+        "/sessions/abc?view=all#turn-4",
+      )}`,
+      undefined,
+      bindings,
+    );
+
+    expect(exchange.status).toBe(303);
+    expect(exchange.headers.get("location")).toBe(
+      "/sessions/abc?view=all#turn-4",
+    );
+  });
+
+  it("rejects cross-origin and malformed bootstrap return targets", () => {
+    expect(sanitizeDesktopReturnTo("//example.com/session")).toBe("/");
+    expect(sanitizeDesktopReturnTo("https://example.com/session")).toBe("/");
+    expect(sanitizeDesktopReturnTo("/\\example.com/session")).toBe("/");
+    expect(sanitizeDesktopReturnTo(`/${"é".repeat(4096)}`)).toBe("/");
+    expect(sanitizeDesktopReturnTo("/sessions/abc?view=all#turn-4")).toBe(
+      "/sessions/abc?view=all#turn-4",
+    );
   });
 });

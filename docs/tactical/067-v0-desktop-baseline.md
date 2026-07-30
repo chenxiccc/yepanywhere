@@ -97,8 +97,9 @@ post-install behavior still need a clean-machine acceptance test.
 - A server-start failure opens a small native diagnostic surface with the
   actual error, recent bounded output, Retry, and Quit. It never falls back to
   the old component installer.
-- Existing startup-view, run-in-background, port, and autostart choices remain
-  authoritative. The migration must not silently enable autostart.
+- Existing startup-view, close-behavior, port, and autostart choices remain
+  authoritative. Legacy run-in-background choices migrate without silently
+  enabling autostart.
 
 ### Provider discovery and guidance
 
@@ -352,7 +353,9 @@ The 2026-07-30 implementation includes:
 - direct first launch, the diagnostic fallback, bounded/redacted server
   output, random port readiness, and Windows Job Object ownership;
 - advisory Claude/Codex application detection, focus/Retry refresh, official
-  links, and no setup or authentication gate; and
+  links, and no setup or authentication gate;
+- an explicit three-tier dashboard close policy whose default releases the
+  hidden WebView after five minutes while retaining the bundled server; and
 - release workflow checks for signed updater artifacts and complete Windows
   signing credentials.
 

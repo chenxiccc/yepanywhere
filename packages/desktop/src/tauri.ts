@@ -2,6 +2,10 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
 export type StartupView = "dashboard" | "server_output" | "tray_only";
+export type DashboardCloseBehavior =
+  | "unload_after_delay"
+  | "keep_loaded"
+  | "quit";
 export type ServerStatus =
   | "stopped"
   | "starting"
@@ -17,7 +21,7 @@ export interface AppConfig {
   /** Backwards-compatible field for configs saved before startup_view. */
   start_minimized: boolean;
   startup_view: StartupView;
-  run_in_background: boolean;
+  dashboard_close_behavior: DashboardCloseBehavior;
 }
 
 export interface ServerOutputChunk {

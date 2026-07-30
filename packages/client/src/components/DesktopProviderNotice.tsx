@@ -6,6 +6,27 @@ import { useI18n } from "../i18n";
 
 const CLAUDE_DOWNLOAD_URL = "https://claude.com/download";
 const CODEX_DOWNLOAD_URL = "https://openai.com/codex/get-started/";
+const DISMISSED_STORAGE_KEY = "desktop-provider-notice-dismissed";
+
+export function readDesktopProviderNoticeDismissed(
+  storage: Pick<Storage, "getItem"> = window.localStorage,
+): boolean {
+  try {
+    return storage.getItem(DISMISSED_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+export function writeDesktopProviderNoticeDismissed(
+  storage: Pick<Storage, "setItem"> = window.localStorage,
+): void {
+  try {
+    storage.setItem(DISMISSED_STORAGE_KEY, "true");
+  } catch {
+    // A storage failure leaves the current in-memory dismissal in place.
+  }
+}
 
 export function hasDesktopProviderRuntime(providers: ProviderInfo[]): boolean {
   return providers.some(
@@ -19,7 +40,9 @@ export function DesktopProviderNotice() {
   const { t } = useI18n();
   const { version } = useVersion();
   const { providers, loading, error, refetch } = useProviders();
-  const [dismissed, setDismissed] = useState(false);
+  const [dismissed, setDismissed] = useState(() =>
+    readDesktopProviderNoticeDismissed(),
+  );
 
   useEffect(() => {
     if (version?.desktopRuntime !== true) return;
@@ -58,7 +81,10 @@ export function DesktopProviderNotice() {
           type="button"
           className="desktop-provider-notice__dismiss"
           aria-label={t("desktopProviderNoticeDismiss")}
-          onClick={() => setDismissed(true)}
+          onClick={() => {
+            writeDesktopProviderNoticeDismissed();
+            setDismissed(true);
+          }}
         >
           ×
         </button>

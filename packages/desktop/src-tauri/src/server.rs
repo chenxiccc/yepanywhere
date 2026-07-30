@@ -133,8 +133,6 @@ pub struct ServerState {
     output: Mutex<ServerOutputBuffer>,
     lifecycle: Mutex<ServerLifecycle>,
     operation_gate: AsyncMutex<()>,
-    pub(crate) dashboard_gate: AsyncMutex<()>,
-    pub(crate) dashboard_attempt: Mutex<Option<u64>>,
 }
 
 impl ServerState {
@@ -151,8 +149,6 @@ impl ServerState {
                 attempt: 0,
             }),
             operation_gate: AsyncMutex::new(()),
-            dashboard_gate: AsyncMutex::new(()),
-            dashboard_attempt: Mutex::new(None),
         }
     }
 
@@ -858,6 +854,13 @@ pub fn get_server_error(app: AppHandle) -> Result<Option<String>, String> {
 
 #[tauri::command]
 pub async fn get_dashboard_url(app: AppHandle) -> Result<String, String> {
+    get_dashboard_url_for_route(app, None).await
+}
+
+pub(crate) async fn get_dashboard_url_for_route(
+    app: AppHandle,
+    return_to: Option<&str>,
+) -> Result<String, String> {
     let state = app.state::<ServerState>();
     let port = state
         .port
@@ -887,7 +890,15 @@ pub async fn get_dashboard_url(app: AppHandle) -> Result<String, String> {
         .json::<MintBootstrapResponse>()
         .await
         .map_err(|error| format!("Invalid desktop bootstrap response: {error}"))?;
-    Ok(format!("{base_url}/desktop-bootstrap/{}", minted.code))
+    let mut bootstrap_url =
+        reqwest::Url::parse(&format!("{base_url}/desktop-bootstrap/{}", minted.code))
+            .map_err(|error| format!("Invalid desktop bootstrap URL: {error}"))?;
+    if let Some(return_to) = return_to {
+        bootstrap_url
+            .query_pairs_mut()
+            .append_pair("return_to", return_to);
+    }
+    Ok(bootstrap_url.to_string())
 }
 
 #[tauri::command]

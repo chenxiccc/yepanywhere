@@ -5,6 +5,35 @@ mod windows;
 
 use tauri::Manager;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WindowCloseAction {
+    Hide,
+    HideAndUnloadDashboard,
+    Quit,
+}
+
+fn window_close_action(
+    label: &str,
+    dashboard_behavior: config::DashboardCloseBehavior,
+) -> Option<WindowCloseAction> {
+    if !matches!(
+        label,
+        "main" | "dashboard" | "server-output" | "diagnostics"
+    ) {
+        return None;
+    }
+    if label != "dashboard" {
+        return Some(WindowCloseAction::Hide);
+    }
+    Some(match dashboard_behavior {
+        config::DashboardCloseBehavior::UnloadAfterDelay => {
+            WindowCloseAction::HideAndUnloadDashboard
+        }
+        config::DashboardCloseBehavior::KeepLoaded => WindowCloseAction::Hide,
+        config::DashboardCloseBehavior::Quit => WindowCloseAction::Quit,
+    })
+}
+
 #[tauri::command]
 fn get_config() -> Result<config::AppConfig, String> {
     Ok(config::load_config())
@@ -39,8 +68,8 @@ pub fn run() {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         builder = builder
-            .plugin(tauri_plugin_updater::Builder::new().build())
-            .plugin(tauri_plugin_process::init())
+            // Tauri requires this plugin to be registered first so another
+            // launch cannot run setup or another plugin before it exits.
             .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
                 let handle = app.clone();
                 tauri::async_runtime::spawn(async move {
@@ -50,6 +79,8 @@ pub fn run() {
                     }
                 });
             }))
+            .plugin(tauri_plugin_updater::Builder::new().build())
+            .plugin(tauri_plugin_process::init())
             .plugin(tauri_plugin_autostart::init(
                 tauri_plugin_autostart::MacosLauncher::LaunchAgent,
                 None,
@@ -63,6 +94,7 @@ pub fn run() {
 
     builder
         .manage(server::ServerState::new())
+        .manage(windows::DashboardWindowState::new())
         .invoke_handler(tauri::generate_handler![
             get_config,
             save_app_config,
@@ -126,28 +158,32 @@ pub fn run() {
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let label = window.label();
-                let is_primary_surface = matches!(
-                    label,
-                    "main" | "dashboard" | "server-output" | "diagnostics"
-                );
-                if !is_primary_surface {
+                let close_behavior = config::load_config().dashboard_close_behavior;
+                let Some(action) = window_close_action(label, close_behavior) else {
                     return;
+                };
+                match action {
+                    WindowCloseAction::Hide => {
+                        let _ = window.hide();
+                        api.prevent_close();
+                    }
+                    WindowCloseAction::HideAndUnloadDashboard => {
+                        let _ = window.hide();
+                        api.prevent_close();
+                        windows::schedule_dashboard_unload(
+                            window.app_handle(),
+                            windows::dashboard_unload_delay(),
+                        );
+                    }
+                    WindowCloseAction::Quit => {
+                        api.prevent_close();
+                        let app = window.app_handle().clone();
+                        tauri::async_runtime::spawn(async move {
+                            let _ = server::stop_server(app.clone()).await;
+                            app.exit(0);
+                        });
+                    }
                 }
-
-                if config::load_config().run_in_background {
-                    // Close to tray instead of quitting.
-                    let _ = window.hide();
-                    api.prevent_close();
-                    return;
-                }
-
-                // Fully quit when background mode is disabled.
-                api.prevent_close();
-                let app = window.app_handle().clone();
-                tauri::async_runtime::spawn(async move {
-                    let _ = server::stop_server(app.clone()).await;
-                    app.exit(0);
-                });
             }
         })
         .build(tauri::generate_context!())
@@ -162,6 +198,8 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    use super::{window_close_action, WindowCloseAction};
+    use crate::config::DashboardCloseBehavior;
     use serde_json::Value;
 
     fn tauri_config() -> Value {
@@ -214,5 +252,33 @@ mod tests {
         assert!(csp.contains("default-src 'self'"));
         assert!(csp.contains("object-src 'none'"));
         assert!(!csp.contains("script-src 'self' 'unsafe-inline'"));
+    }
+
+    #[test]
+    fn dashboard_close_behavior_has_three_explicit_outcomes() {
+        assert_eq!(
+            window_close_action("dashboard", DashboardCloseBehavior::UnloadAfterDelay),
+            Some(WindowCloseAction::HideAndUnloadDashboard)
+        );
+        assert_eq!(
+            window_close_action("dashboard", DashboardCloseBehavior::KeepLoaded),
+            Some(WindowCloseAction::Hide)
+        );
+        assert_eq!(
+            window_close_action("dashboard", DashboardCloseBehavior::Quit),
+            Some(WindowCloseAction::Quit)
+        );
+    }
+
+    #[test]
+    fn recovery_surfaces_hide_without_changing_dashboard_policy() {
+        assert_eq!(
+            window_close_action("diagnostics", DashboardCloseBehavior::Quit),
+            Some(WindowCloseAction::Hide)
+        );
+        assert_eq!(
+            window_close_action("unmanaged", DashboardCloseBehavior::Quit),
+            None
+        );
     }
 }

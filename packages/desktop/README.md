@@ -37,8 +37,18 @@ preserve the desktop data directory at `%USERPROFILE%\.yep-anywhere-desktop`.
 Remove that directory only when an explicit full data reset is intended.
 
 The tray menu provides Dashboard, Server Output, Desktop Diagnostics, update
-checks, autostart, background behavior, startup view, restart, and quit. A
-manual reinstall of a signed release is the v0 recovery path; automatic
+checks, autostart, startup view, restart, quit, and three explicit dashboard
+close behaviors:
+
+- **Unload Dashboard After 5 Minutes** (default) hides immediately, then
+  destroys the WebView if it stays hidden while leaving the tray app, server,
+  and provider sessions running. Reopening restores the last dashboard route.
+- **Keep Dashboard Loaded** hides the window but keeps its WebView alive for
+  the fastest possible reopen.
+- **Quit Yep Anywhere** stops the bundled server and exits when the dashboard
+  is closed.
+
+A manual reinstall of a signed release is the v0 recovery path; automatic
 downgrade is not supported.
 
 ## Local Windows build and smoke
@@ -54,3 +64,18 @@ scripts\install-local-tauri-windows.bat
 The local helper builds an unsigned NSIS package, installs it with `/S`, and
 launches the installed app. Use `--no-launch` when only install behavior is
 being tested.
+
+To smoke the delayed-unload lifecycle without waiting five minutes, launch the
+app from a test shell with both explicit overrides:
+
+```powershell
+$env:YEP_DESKTOP_TEST_MODE = "1"
+$env:YEP_DESKTOP_TEST_UNLOAD_DELAY_MS = "1500"
+$env:YEP_DESKTOP_TEST_DATA_DIR = "$env:TEMP\yep-desktop-smoke"
+.\YepAnywhere.exe
+```
+
+The delay override is ignored unless test mode is also exactly `1`, and it
+does not change the saved desktop preference. The optional data-directory
+override is guarded by the same test-mode switch so an isolated smoke does not
+touch the normal desktop profile.

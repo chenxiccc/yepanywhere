@@ -5,7 +5,7 @@ use tauri::{
 };
 use tauri_plugin_autostart::ManagerExt as _;
 
-use crate::config::{self, StartupView};
+use crate::config::{self, DashboardCloseBehavior, StartupView};
 
 fn sync_startup_view_items(
     view: StartupView,
@@ -18,30 +18,102 @@ fn sync_startup_view_items(
     let _ = tray_only_item.set_checked(view == StartupView::TrayOnly);
 }
 
+fn sync_dashboard_close_items(
+    behavior: DashboardCloseBehavior,
+    unload_item: &CheckMenuItem<tauri::Wry>,
+    keep_loaded_item: &CheckMenuItem<tauri::Wry>,
+    quit_item: &CheckMenuItem<tauri::Wry>,
+) {
+    let _ = unload_item.set_checked(behavior == DashboardCloseBehavior::UnloadAfterDelay);
+    let _ = keep_loaded_item.set_checked(behavior == DashboardCloseBehavior::KeepLoaded);
+    let _ = quit_item.set_checked(behavior == DashboardCloseBehavior::Quit);
+}
+
+#[allow(clippy::too_many_arguments)]
 fn save_startup_view(
+    app: &AppHandle,
     view: StartupView,
     dashboard_item: &CheckMenuItem<tauri::Wry>,
     server_output_item: &CheckMenuItem<tauri::Wry>,
     tray_only_item: &CheckMenuItem<tauri::Wry>,
-    run_in_background_item: &CheckMenuItem<tauri::Wry>,
+    unload_item: &CheckMenuItem<tauri::Wry>,
+    keep_loaded_item: &CheckMenuItem<tauri::Wry>,
+    quit_item: &CheckMenuItem<tauri::Wry>,
 ) {
     let mut cfg = config::load_config();
     let previous = cfg.startup_view;
-    let previous_run_in_background = cfg.run_in_background;
+    let previous_close_behavior = cfg.dashboard_close_behavior;
     cfg.startup_view = view;
     cfg.start_minimized = view == StartupView::TrayOnly;
-    if view == StartupView::TrayOnly {
-        cfg.run_in_background = true;
+    if view == StartupView::TrayOnly && cfg.dashboard_close_behavior == DashboardCloseBehavior::Quit
+    {
+        cfg.dashboard_close_behavior = DashboardCloseBehavior::UnloadAfterDelay;
     }
     match config::save_config(&cfg) {
         Ok(()) => {
             sync_startup_view_items(view, dashboard_item, server_output_item, tray_only_item);
-            let _ = run_in_background_item.set_checked(cfg.run_in_background);
+            sync_dashboard_close_items(
+                cfg.dashboard_close_behavior,
+                unload_item,
+                keep_loaded_item,
+                quit_item,
+            );
+            if cfg.dashboard_close_behavior != previous_close_behavior {
+                crate::windows::refresh_hidden_dashboard_policy(app);
+            }
         }
         Err(err) => {
             eprintln!("Failed to save startup view setting: {err}");
             sync_startup_view_items(previous, dashboard_item, server_output_item, tray_only_item);
-            let _ = run_in_background_item.set_checked(previous_run_in_background);
+            sync_dashboard_close_items(
+                previous_close_behavior,
+                unload_item,
+                keep_loaded_item,
+                quit_item,
+            );
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn save_dashboard_close_behavior(
+    app: &AppHandle,
+    behavior: DashboardCloseBehavior,
+    unload_item: &CheckMenuItem<tauri::Wry>,
+    keep_loaded_item: &CheckMenuItem<tauri::Wry>,
+    quit_item: &CheckMenuItem<tauri::Wry>,
+    startup_dashboard_item: &CheckMenuItem<tauri::Wry>,
+    startup_server_output_item: &CheckMenuItem<tauri::Wry>,
+    startup_tray_only_item: &CheckMenuItem<tauri::Wry>,
+) {
+    let mut cfg = config::load_config();
+    let previous_behavior = cfg.dashboard_close_behavior;
+    let previous_startup_view = cfg.startup_view;
+    cfg.dashboard_close_behavior = behavior;
+    if behavior == DashboardCloseBehavior::Quit && cfg.startup_view == StartupView::TrayOnly {
+        cfg.startup_view = StartupView::Dashboard;
+        cfg.start_minimized = false;
+    }
+    match config::save_config(&cfg) {
+        Ok(()) => {
+            sync_dashboard_close_items(behavior, unload_item, keep_loaded_item, quit_item);
+            sync_startup_view_items(
+                cfg.startup_view,
+                startup_dashboard_item,
+                startup_server_output_item,
+                startup_tray_only_item,
+            );
+            crate::windows::refresh_hidden_dashboard_policy(app);
+        }
+        Err(err) => {
+            eprintln!("Failed to save dashboard-close setting: {err}");
+            sync_dashboard_close_items(previous_behavior, unload_item, keep_loaded_item, quit_item);
+            sync_startup_view_items(
+                previous_startup_view,
+                startup_dashboard_item,
+                startup_server_output_item,
+                startup_tray_only_item,
+            );
         }
     }
 }
@@ -80,12 +152,28 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         app.autolaunch().is_enabled().unwrap_or(false),
         None::<&str>,
     )?;
-    let run_in_background = CheckMenuItem::with_id(
+    let close_unload = CheckMenuItem::with_id(
         app,
-        "run-in-background",
-        "Run in Background",
+        "close-unload",
+        "Unload Dashboard After 5 Minutes",
         true,
-        cfg.run_in_background,
+        cfg.dashboard_close_behavior == DashboardCloseBehavior::UnloadAfterDelay,
+        None::<&str>,
+    )?;
+    let close_keep_loaded = CheckMenuItem::with_id(
+        app,
+        "close-keep-loaded",
+        "Keep Dashboard Loaded",
+        true,
+        cfg.dashboard_close_behavior == DashboardCloseBehavior::KeepLoaded,
+        None::<&str>,
+    )?;
+    let close_quit = CheckMenuItem::with_id(
+        app,
+        "close-quit",
+        "Quit Yep Anywhere",
+        true,
+        cfg.dashboard_close_behavior == DashboardCloseBehavior::Quit,
         None::<&str>,
     )?;
     let startup_dashboard = CheckMenuItem::with_id(
@@ -117,9 +205,14 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         .item(&startup_server_output)
         .item(&startup_tray_only)
         .build()?;
+    let dashboard_close = SubmenuBuilder::new(app, "When Dashboard Closes")
+        .item(&close_unload)
+        .item(&close_keep_loaded)
+        .item(&close_quit)
+        .build()?;
     let settings = SubmenuBuilder::new(app, "Settings")
         .item(&autostart)
-        .item(&run_in_background)
+        .item(&dashboard_close)
         .item(&startup_view)
         .build()?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
@@ -142,7 +235,9 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     )?;
 
     let autostart_item = autostart.clone();
-    let run_in_background_item = run_in_background.clone();
+    let close_unload_item = close_unload.clone();
+    let close_keep_loaded_item = close_keep_loaded.clone();
+    let close_quit_item = close_quit.clone();
     let startup_dashboard_item = startup_dashboard.clone();
     let startup_server_output_item = startup_server_output.clone();
     let startup_tray_only_item = startup_tray_only.clone();
@@ -188,54 +283,70 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             }
-            "run-in-background" => {
-                let mut cfg = config::load_config();
-                cfg.run_in_background = !cfg.run_in_background;
-                if !cfg.run_in_background && cfg.startup_view == StartupView::TrayOnly {
-                    cfg.startup_view = StartupView::Dashboard;
-                    cfg.start_minimized = false;
-                }
-                match config::save_config(&cfg) {
-                    Ok(()) => {
-                        let _ = run_in_background_item.set_checked(cfg.run_in_background);
-                        sync_startup_view_items(
-                            cfg.startup_view,
-                            &startup_dashboard_item,
-                            &startup_server_output_item,
-                            &startup_tray_only_item,
-                        );
-                    }
-                    Err(err) => {
-                        eprintln!("Failed to save run-in-background setting: {err}");
-                        let _ = run_in_background_item.set_checked(!cfg.run_in_background);
-                    }
-                }
-            }
+            "close-unload" => save_dashboard_close_behavior(
+                app,
+                DashboardCloseBehavior::UnloadAfterDelay,
+                &close_unload_item,
+                &close_keep_loaded_item,
+                &close_quit_item,
+                &startup_dashboard_item,
+                &startup_server_output_item,
+                &startup_tray_only_item,
+            ),
+            "close-keep-loaded" => save_dashboard_close_behavior(
+                app,
+                DashboardCloseBehavior::KeepLoaded,
+                &close_unload_item,
+                &close_keep_loaded_item,
+                &close_quit_item,
+                &startup_dashboard_item,
+                &startup_server_output_item,
+                &startup_tray_only_item,
+            ),
+            "close-quit" => save_dashboard_close_behavior(
+                app,
+                DashboardCloseBehavior::Quit,
+                &close_unload_item,
+                &close_keep_loaded_item,
+                &close_quit_item,
+                &startup_dashboard_item,
+                &startup_server_output_item,
+                &startup_tray_only_item,
+            ),
             "startup-dashboard" => {
                 save_startup_view(
+                    app,
                     StartupView::Dashboard,
                     &startup_dashboard_item,
                     &startup_server_output_item,
                     &startup_tray_only_item,
-                    &run_in_background_item,
+                    &close_unload_item,
+                    &close_keep_loaded_item,
+                    &close_quit_item,
                 );
             }
             "startup-server-output" => {
                 save_startup_view(
+                    app,
                     StartupView::ServerOutput,
                     &startup_dashboard_item,
                     &startup_server_output_item,
                     &startup_tray_only_item,
-                    &run_in_background_item,
+                    &close_unload_item,
+                    &close_keep_loaded_item,
+                    &close_quit_item,
                 );
             }
             "startup-tray-only" => {
                 save_startup_view(
+                    app,
                     StartupView::TrayOnly,
                     &startup_dashboard_item,
                     &startup_server_output_item,
                     &startup_tray_only_item,
-                    &run_in_background_item,
+                    &close_unload_item,
+                    &close_keep_loaded_item,
+                    &close_quit_item,
                 );
             }
             "restart" => {
