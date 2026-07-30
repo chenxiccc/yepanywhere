@@ -42,16 +42,23 @@ pub fn run() {
             .plugin(tauri_plugin_updater::Builder::new().build())
             .plugin(tauri_plugin_process::init())
             .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                }
+                let handle = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(error) = windows::show_dashboard_window(&handle).await {
+                        eprintln!("Failed to activate dashboard: {error}");
+                        let _ = windows::show_main_window(&handle);
+                    }
+                });
             }))
             .plugin(tauri_plugin_autostart::init(
                 tauri_plugin_autostart::MacosLauncher::LaunchAgent,
                 None,
             ))
-            .plugin(tauri_plugin_window_state::Builder::default().build());
+            .plugin(
+                tauri_plugin_window_state::Builder::default()
+                    .skip_initial_state("main")
+                    .build(),
+            );
     }
 
     builder
@@ -73,6 +80,13 @@ pub fn run() {
             quit_app,
         ])
         .setup(|app| {
+            // The packaged main window hosts updater and recovery UI. It is
+            // never an ordinary startup surface, even if an older build saved
+            // it as visible through the window-state plugin.
+            if let Some(main) = app.get_webview_window("main") {
+                main.hide()?;
+            }
+
             let mut cfg = config::load_config();
             if !cfg.setup_complete {
                 cfg.setup_complete = true;
@@ -85,15 +99,13 @@ pub fn run() {
             let handle = app.handle().clone();
             let startup_view = cfg.startup_view;
             tauri::async_runtime::spawn(async move {
-                match server::start_server(handle.clone()).await {
-                    Ok(()) => {
-                        if startup_view == config::StartupView::Dashboard {
-                            if let Err(error) = windows::show_dashboard_window(&handle).await {
-                                eprintln!("Failed to open dashboard: {error}");
-                                let _ = windows::show_main_window(&handle);
-                            }
-                        }
-                    }
+                let result = if startup_view == config::StartupView::Dashboard {
+                    windows::show_dashboard_window(&handle).await
+                } else {
+                    server::start_server(handle.clone()).await
+                };
+                match result {
+                    Ok(()) => {}
                     Err(error) => {
                         eprintln!("Failed to start bundled server: {error}");
                         let _ = windows::show_main_window(&handle);

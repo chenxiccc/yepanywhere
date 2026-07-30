@@ -2,6 +2,12 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
 export type StartupView = "dashboard" | "server_output" | "tray_only";
+export type ServerStatus =
+  | "stopped"
+  | "starting"
+  | "running"
+  | "stopping"
+  | "error";
 
 export interface AppConfig {
   setup_complete: boolean;
@@ -45,7 +51,7 @@ export async function stopServer(): Promise<void> {
   return invoke("stop_server");
 }
 
-export async function getServerStatus(): Promise<string> {
+export async function getServerStatus(): Promise<ServerStatus> {
   return invoke("get_server_status");
 }
 

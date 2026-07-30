@@ -5,7 +5,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use tokio::{
     io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader},
     process::{Child, Command},
-    sync::oneshot,
+    sync::{oneshot, Mutex as AsyncMutex},
 };
 
 use crate::config;
@@ -31,6 +31,56 @@ struct DesktopReady {
 #[derive(Deserialize)]
 struct MintBootstrapResponse {
     code: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ServerPhase {
+    Stopped,
+    Starting,
+    Running,
+    Stopping,
+    Error,
+}
+
+impl ServerPhase {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Stopped => "stopped",
+            Self::Starting => "starting",
+            Self::Running => "running",
+            Self::Stopping => "stopping",
+            Self::Error => "error",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ServerLifecycle {
+    phase: ServerPhase,
+    attempt: u64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum StartDecision {
+    AlreadyRunning,
+    ShareFailure,
+    Start,
+    RejectStopping,
+}
+
+fn decide_start(observed: ServerLifecycle, current: ServerLifecycle) -> StartDecision {
+    if current.phase == ServerPhase::Running {
+        return StartDecision::AlreadyRunning;
+    }
+    if observed.phase == ServerPhase::Stopping || current.phase == ServerPhase::Stopping {
+        return StartDecision::RejectStopping;
+    }
+    if current.phase == ServerPhase::Error
+        && (observed.phase == ServerPhase::Starting || current.attempt != observed.attempt)
+    {
+        return StartDecision::ShareFailure;
+    }
+    StartDecision::Start
 }
 
 struct ServerOutputBuffer {
@@ -81,6 +131,10 @@ pub struct ServerState {
     port: Mutex<Option<u16>>,
     last_error: Mutex<Option<String>>,
     output: Mutex<ServerOutputBuffer>,
+    lifecycle: Mutex<ServerLifecycle>,
+    operation_gate: AsyncMutex<()>,
+    pub(crate) dashboard_gate: AsyncMutex<()>,
+    pub(crate) dashboard_attempt: Mutex<Option<u64>>,
 }
 
 impl ServerState {
@@ -92,7 +146,34 @@ impl ServerState {
             port: Mutex::new(None),
             last_error: Mutex::new(None),
             output: Mutex::new(ServerOutputBuffer::new()),
+            lifecycle: Mutex::new(ServerLifecycle {
+                phase: ServerPhase::Stopped,
+                attempt: 0,
+            }),
+            operation_gate: AsyncMutex::new(()),
+            dashboard_gate: AsyncMutex::new(()),
+            dashboard_attempt: Mutex::new(None),
         }
+    }
+
+    fn lifecycle(&self) -> Result<ServerLifecycle, String> {
+        self.lifecycle
+            .lock()
+            .map(|lifecycle| *lifecycle)
+            .map_err(|error| error.to_string())
+    }
+
+    fn set_phase(&self, phase: ServerPhase) -> Result<ServerLifecycle, String> {
+        let mut lifecycle = self.lifecycle.lock().map_err(|error| error.to_string())?;
+        lifecycle.phase = phase;
+        Ok(*lifecycle)
+    }
+
+    fn begin_start(&self) -> Result<ServerLifecycle, String> {
+        let mut lifecycle = self.lifecycle.lock().map_err(|error| error.to_string())?;
+        lifecycle.attempt = lifecycle.attempt.saturating_add(1);
+        lifecycle.phase = ServerPhase::Starting;
+        Ok(*lifecycle)
     }
 
     /// Called during app exit, when the async runtime may no longer be usable.
@@ -116,6 +197,9 @@ impl ServerState {
         }
         if let Ok(mut port) = self.port.lock() {
             *port = None;
+        }
+        if let Ok(mut lifecycle) = self.lifecycle.lock() {
+            lifecycle.phase = ServerPhase::Stopped;
         }
     }
 }
@@ -532,19 +616,48 @@ async fn stop_child(
 
 #[tauri::command]
 pub async fn start_server(app: AppHandle) -> Result<(), String> {
-    if let Ok(mut error) = app.state::<ServerState>().last_error.lock() {
+    let state = app.state::<ServerState>();
+    let observed = inspect_server_lifecycle(&app)?;
+    let _operation = state.operation_gate.lock().await;
+    let current = inspect_server_lifecycle(&app)?;
+
+    match decide_start(observed, current) {
+        StartDecision::AlreadyRunning => return Ok(()),
+        StartDecision::ShareFailure => {
+            let error = state
+                .last_error
+                .lock()
+                .map_err(|lock_error| lock_error.to_string())?
+                .clone()
+                .unwrap_or_else(|| "Bundled server failed to start".to_string());
+            return Err(error);
+        }
+        StartDecision::RejectStopping => {
+            return Err("Bundled server is stopping".to_string());
+        }
+        StartDecision::Start => {}
+    }
+
+    state.begin_start()?;
+    if let Ok(mut error) = state.last_error.lock() {
         *error = None;
     }
     let result = start_server_inner(app.clone()).await;
-    if let Err(error) = &result {
-        if let Ok(mut last_error) = app.state::<ServerState>().last_error.lock() {
-            *last_error = Some(error.clone());
+    match &result {
+        Ok(()) => {
+            state.set_phase(ServerPhase::Running)?;
         }
-        record_server_output(
-            &app,
-            "system",
-            format!("\r\n[server start failed: {error}]\r\n"),
-        );
+        Err(error) => {
+            state.set_phase(ServerPhase::Error)?;
+            if let Ok(mut last_error) = state.last_error.lock() {
+                *last_error = Some(error.clone());
+            }
+            record_server_output(
+                &app,
+                "system",
+                format!("\r\n[server start failed: {error}]\r\n"),
+            );
+        }
     }
     result
 }
@@ -554,7 +667,7 @@ async fn start_server_inner(app: AppHandle) -> Result<(), String> {
     {
         let child = state.child.lock().map_err(|error| error.to_string())?;
         if child.is_some() {
-            return Err("Server is already running".to_string());
+            return Err("Bundled server state is inconsistent before startup".to_string());
         }
     }
 
@@ -634,6 +747,12 @@ async fn start_server_inner(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub async fn stop_server(app: AppHandle) -> Result<(), String> {
     let state = app.state::<ServerState>();
+    let _operation = state.operation_gate.lock().await;
+    let current = inspect_server_lifecycle(&app)?;
+    if current.phase == ServerPhase::Stopped {
+        return Ok(());
+    }
+    state.set_phase(ServerPhase::Stopping)?;
     let child = state
         .child
         .lock()
@@ -651,38 +770,80 @@ pub async fn stop_server(app: AppHandle) -> Result<(), String> {
         .take();
     let port = state.port.lock().map_err(|error| error.to_string())?.take();
 
-    if let Some(child) = child {
+    let result = if let Some(child) = child {
         let graceful = port.zip(secret);
-        stop_child(child, process_job, graceful).await?;
+        stop_child(child, process_job, graceful).await
+    } else {
+        Ok(())
+    };
+    match &result {
+        Ok(()) => {
+            state.set_phase(ServerPhase::Stopped)?;
+            record_server_output(&app, "system", "\r\n[server stopped]\r\n".to_string());
+        }
+        Err(error) => {
+            state.set_phase(ServerPhase::Error)?;
+            if let Ok(mut last_error) = state.last_error.lock() {
+                *last_error = Some(error.clone());
+            }
+        }
     }
-    record_server_output(&app, "system", "\r\n[server stopped]\r\n".to_string());
-    Ok(())
+    result
+}
+
+fn inspect_server_lifecycle(app: &AppHandle) -> Result<ServerLifecycle, String> {
+    let state = app.state::<ServerState>();
+    let lifecycle = state.lifecycle()?;
+    if lifecycle.phase != ServerPhase::Running {
+        return Ok(lifecycle);
+    }
+
+    let exit_error = {
+        let mut child = state.child.lock().map_err(|error| error.to_string())?;
+        match child.as_mut() {
+            None => Some("Bundled server process is missing".to_string()),
+            Some(process) => match process.try_wait() {
+                Ok(Some(status)) => {
+                    *child = None;
+                    Some(format!("Bundled server exited unexpectedly ({status})"))
+                }
+                Ok(None) => None,
+                Err(error) => return Err(error.to_string()),
+            },
+        }
+    };
+
+    let Some(exit_error) = exit_error else {
+        return Ok(lifecycle);
+    };
+    if let Ok(mut job) = state.process_job.lock() {
+        *job = None;
+    }
+    if let Ok(mut secret) = state.bootstrap_secret.lock() {
+        *secret = None;
+    }
+    if let Ok(mut port) = state.port.lock() {
+        *port = None;
+    }
+    if let Ok(mut last_error) = state.last_error.lock() {
+        *last_error = Some(exit_error.clone());
+    }
+    let lifecycle = state.set_phase(ServerPhase::Error)?;
+    record_server_output(
+        app,
+        "system",
+        format!("\r\n[server process failed: {exit_error}]\r\n"),
+    );
+    Ok(lifecycle)
 }
 
 #[tauri::command]
-pub async fn get_server_status(app: AppHandle) -> Result<String, String> {
-    let state = app.state::<ServerState>();
-    let mut child = state.child.lock().map_err(|error| error.to_string())?;
-    match child.as_mut() {
-        None => Ok("stopped".to_string()),
-        Some(process) => match process.try_wait() {
-            Ok(Some(_)) => {
-                *child = None;
-                if let Ok(mut job) = state.process_job.lock() {
-                    *job = None;
-                }
-                if let Ok(mut secret) = state.bootstrap_secret.lock() {
-                    *secret = None;
-                }
-                if let Ok(mut port) = state.port.lock() {
-                    *port = None;
-                }
-                Ok("stopped".to_string())
-            }
-            Ok(None) => Ok("running".to_string()),
-            Err(error) => Err(error.to_string()),
-        },
-    }
+pub fn get_server_status(app: AppHandle) -> Result<String, String> {
+    Ok(inspect_server_lifecycle(&app)?.phase.as_str().to_string())
+}
+
+pub(crate) fn get_server_attempt(app: &AppHandle) -> Result<u64, String> {
+    Ok(inspect_server_lifecycle(app)?.attempt)
 }
 
 #[tauri::command]
@@ -740,7 +901,14 @@ pub async fn get_server_output_buffer(app: AppHandle) -> Result<Vec<ServerOutput
 mod tests {
     use std::path::Path;
 
-    use super::{redact_server_output, server_entry_candidates, DESKTOP_READY_PREFIX};
+    use super::{
+        decide_start, redact_server_output, server_entry_candidates, ServerLifecycle, ServerPhase,
+        StartDecision, DESKTOP_READY_PREFIX,
+    };
+
+    fn lifecycle(phase: ServerPhase, attempt: u64) -> ServerLifecycle {
+        ServerLifecycle { phase, attempt }
+    }
 
     #[test]
     fn redacts_legacy_and_bootstrap_credentials() {
@@ -757,6 +925,53 @@ mod tests {
     #[test]
     fn readiness_prefix_contains_no_secret() {
         assert_eq!(DESKTOP_READY_PREFIX, "YEP_DESKTOP_READY ");
+    }
+
+    #[test]
+    fn concurrent_start_callers_share_one_completed_attempt() {
+        assert_eq!(
+            decide_start(
+                lifecycle(ServerPhase::Stopped, 0),
+                lifecycle(ServerPhase::Error, 1),
+            ),
+            StartDecision::ShareFailure
+        );
+        assert_eq!(
+            decide_start(
+                lifecycle(ServerPhase::Starting, 1),
+                lifecycle(ServerPhase::Error, 1),
+            ),
+            StartDecision::ShareFailure
+        );
+        assert_eq!(
+            decide_start(
+                lifecycle(ServerPhase::Starting, 1),
+                lifecycle(ServerPhase::Running, 1),
+            ),
+            StartDecision::AlreadyRunning
+        );
+    }
+
+    #[test]
+    fn a_later_explicit_start_retries_after_failure() {
+        assert_eq!(
+            decide_start(
+                lifecycle(ServerPhase::Error, 1),
+                lifecycle(ServerPhase::Error, 1),
+            ),
+            StartDecision::Start
+        );
+    }
+
+    #[test]
+    fn a_launch_queued_during_shutdown_does_not_restart_the_server() {
+        assert_eq!(
+            decide_start(
+                lifecycle(ServerPhase::Stopping, 1),
+                lifecycle(ServerPhase::Stopped, 1),
+            ),
+            StartDecision::RejectStopping
+        );
     }
 
     #[test]

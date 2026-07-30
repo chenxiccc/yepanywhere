@@ -9,10 +9,11 @@ import {
   openServerOutputWindow,
   quitApp,
   startServer,
+  type ServerStatus,
 } from "../tauri";
 
 export function LauncherView() {
-  const [status, setStatus] = useState("checking");
+  const [status, setStatus] = useState<ServerStatus | "checking">("checking");
   const [dataDir, setDataDir] = useState("");
   const [devDir, setDevDir] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -23,7 +24,11 @@ export function LauncherView() {
     getServerStatus()
       .then((nextStatus) => {
         setStatus(nextStatus);
-        if (nextStatus !== "running") {
+        if (
+          nextStatus !== "running" &&
+          nextStatus !== "starting" &&
+          nextStatus !== "stopping"
+        ) {
           void getServerError().then(setError);
           void getServerOutputBuffer().then((chunks) => {
             setRecentOutput(
@@ -33,6 +38,8 @@ export function LauncherView() {
                 .slice(-8000),
             );
           });
+        } else {
+          setError(null);
         }
       })
       .catch((value) => {
@@ -66,6 +73,9 @@ export function LauncherView() {
     }
   };
 
+  const transitioning =
+    status === "checking" || status === "starting" || status === "stopping";
+
   return (
     <div className="launcher-view">
       <div className="desktop-titlebar" data-tauri-drag-region />
@@ -83,9 +93,15 @@ export function LauncherView() {
           <button
             className="btn-primary"
             onClick={openDashboard}
-            disabled={busy}
+            disabled={busy || transitioning}
           >
-            {busy ? "Starting..." : error ? "Retry" : "Open Dashboard"}
+            {busy || status === "starting"
+              ? "Starting..."
+              : status === "stopping"
+                ? "Stopping..."
+                : error
+                  ? "Retry"
+                  : "Open Dashboard"}
           </button>
           <button className="btn-secondary" onClick={openServerOutputWindow}>
             Server Output

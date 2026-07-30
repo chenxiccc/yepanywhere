@@ -1,5 +1,13 @@
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
+fn dashboard_is_current(
+    dashboard_exists: bool,
+    dashboard_attempt: Option<u64>,
+    server_attempt: u64,
+) -> bool {
+    dashboard_exists && dashboard_attempt == Some(server_attempt)
+}
+
 fn show_existing(window: &WebviewWindow) {
     let _ = window.show();
     let _ = window.unminimize();
@@ -34,27 +42,47 @@ pub fn show_main_window(app: &AppHandle) -> Result<(), String> {
 }
 
 pub async fn show_dashboard_window(app: &AppHandle) -> Result<(), String> {
-    if crate::server::get_server_status(app.clone()).await? != "running" {
-        crate::server::start_server(app.clone()).await?;
+    crate::server::start_server(app.clone()).await?;
+
+    let state = app.state::<crate::server::ServerState>();
+    let _dashboard = state.dashboard_gate.lock().await;
+    let server_attempt = crate::server::get_server_attempt(app)?;
+    let dashboard_attempt = *state
+        .dashboard_attempt
+        .lock()
+        .map_err(|error| error.to_string())?;
+    if dashboard_is_current(
+        app.get_webview_window("dashboard").is_some(),
+        dashboard_attempt,
+        server_attempt,
+    ) {
+        if let Some(window) = app.get_webview_window("dashboard") {
+            show_existing(&window);
+            return Ok(());
+        }
     }
+
     let url = crate::server::get_dashboard_url(app.clone()).await?;
     let url = url
         .parse()
         .map_err(|error| format!("Invalid desktop dashboard URL: {error}"))?;
 
-    if let Some(window) = app.get_webview_window("dashboard") {
+    let window = if let Some(window) = app.get_webview_window("dashboard") {
         window.navigate(url).map_err(|error| error.to_string())?;
-        show_existing(&window);
-        return Ok(());
-    }
-
-    let window = WebviewWindowBuilder::new(app, "dashboard", WebviewUrl::External(url))
-        .title("Yep Anywhere")
-        .inner_size(1100.0, 750.0)
-        .visible(true)
-        .build()
-        .map_err(|error| error.to_string())?;
+        window
+    } else {
+        WebviewWindowBuilder::new(app, "dashboard", WebviewUrl::External(url))
+            .title("Yep Anywhere")
+            .inner_size(1100.0, 750.0)
+            .visible(true)
+            .build()
+            .map_err(|error| error.to_string())?
+    };
     show_existing(&window);
+    *state
+        .dashboard_attempt
+        .lock()
+        .map_err(|error| error.to_string())? = Some(server_attempt);
     Ok(())
 }
 
@@ -93,4 +121,17 @@ pub fn open_server_output_window(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn open_diagnostics_window(app: AppHandle) -> Result<(), String> {
     show_diagnostics_window(&app)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::dashboard_is_current;
+
+    #[test]
+    fn repeat_launch_focuses_only_the_current_dashboard() {
+        assert!(dashboard_is_current(true, Some(3), 3));
+        assert!(!dashboard_is_current(false, Some(3), 3));
+        assert!(!dashboard_is_current(true, Some(2), 3));
+        assert!(!dashboard_is_current(true, None, 3));
+    }
 }

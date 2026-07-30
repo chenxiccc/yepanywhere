@@ -51,6 +51,21 @@ An unavailable bundled server opens a bounded diagnostic surface with the
 startup error, recent redacted output, Retry, and Quit. It must not fall back
 to downloading runtime components.
 
+Desktop startup is single-flight. Rapid cold launches join the same server
+startup attempt and open at most one dashboard. A second operating-system
+launch while the server is starting waits for that attempt; it does not spawn
+another server or reveal the hidden recovery surface. A second launch while
+the server is running focuses the existing dashboard without reloading it.
+Concurrent callers receive the same startup failure and do not turn a failed
+attempt into an implicit retry. A later explicit Retry may start a new
+attempt, while a launch queued during shutdown must not resurrect the server.
+
+The packaged launcher is a recovery surface, not an ordinary application
+window or onboarding step. It stays hidden during normal startup and repeat
+launches. `starting`, `running`, `stopping`, `stopped`, and `error` are
+distinct supervisor states; the launcher must not describe an in-progress
+startup as stopped.
+
 ## Stable And Development Coexistence
 
 The signed app uses its own immutable runtime resources, desktop data root,
