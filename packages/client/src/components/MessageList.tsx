@@ -1884,7 +1884,7 @@ export const MessageList = memo(function MessageList({
           : null;
       const anchorBefore = wasAtBottom
         ? null
-        : preferredAnchorRow
+        : preferredAnchorRow && preferredAnchorId
           ? {
               id: preferredAnchorId,
               topOffset:
