@@ -191,6 +191,36 @@ describe("projectConversationView", () => {
       endedAtMs: 8_000,
     });
   });
+
+  it("does not start elapsed activity at an older compact boundary", () => {
+    const projected = projectConversationView(
+      [
+        {
+          type: "system",
+          id: "compact-boundary",
+          subtype: "compact_boundary",
+          content: "Earlier context compacted",
+          sourceMessages: [source("compact-source", 100)],
+        },
+        tool("visible-tail-activity", 1_000),
+        {
+          type: "text",
+          id: "answer",
+          text: "Done.",
+          sourceMessages: [source("answer-source", 3_000)],
+        },
+      ],
+      {
+        active: false,
+        nowMs: 4_000,
+      },
+    );
+
+    expect(summary(projected)).toMatchObject({
+      startedAtMs: 1_000,
+      endedAtMs: 3_000,
+    });
+  });
 });
 
 describe("compactCommandActivityPreview", () => {

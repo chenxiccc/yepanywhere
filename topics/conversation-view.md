@@ -160,9 +160,11 @@ provider-history rewrite and not deletion.
 ## Time and count semantics
 
 The duration is an **elapsed activity span**, never CPU time, focused-work time,
-or billing time. For a completed assistant turn it spans the earliest to latest
-observed source-message timestamps in that turn. While the latest assistant turn
-is active, its end is the current client clock.
+or billing time. It starts at the earliest source-message timestamp among the
+activities represented by the summary, so an older compact-history or other
+retained turn-boundary row cannot inflate the result. For a completed assistant
+turn it ends at the latest observed source-message timestamp in that turn. While
+the latest assistant turn is active, its end is the current client clock.
 
 The count is the number of activities hidden by this view. A tool parent counts
 its ordered semantic display actions when the provider projection supplies

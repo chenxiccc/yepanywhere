@@ -287,19 +287,24 @@ export function selectConversationThinkingPreviews(
   return previews;
 }
 
-function getTurnTimestampBounds(items: readonly RenderItem[]): {
+function getActivityTimestampBounds(
+  activityItems: readonly RenderItem[],
+  turnItems: readonly RenderItem[],
+): {
   startedAtMs: number | null;
   endedAtMs: number | null;
 } {
   let startedAtMs: number | null = null;
   let endedAtMs: number | null = null;
-  for (const item of items) {
+  for (const item of activityItems) {
     const itemStart = getEarliestMessageTimestampMs(item.sourceMessages);
-    const itemEnd = getLatestMessageTimestampMs(item.sourceMessages);
     if (itemStart !== null) {
       startedAtMs =
         startedAtMs === null ? itemStart : Math.min(startedAtMs, itemStart);
     }
+  }
+  for (const item of turnItems) {
+    const itemEnd = getLatestMessageTimestampMs(item.sourceMessages);
     if (itemEnd !== null) {
       endedAtMs = endedAtMs === null ? itemEnd : Math.max(endedAtMs, itemEnd);
     }
@@ -367,7 +372,10 @@ export function projectConversationView(
       `conversation-activity-${hiddenItems[0]?.id ?? groupIndex}`;
     const expanded = expandedActivityIds.has(summaryId);
     const isActive = active && groupIndex === lastAssistantGroupIndex;
-    const { startedAtMs, endedAtMs } = getTurnTimestampBounds(group.items);
+    const { startedAtMs, endedAtMs } = getActivityTimestampBounds(
+      hiddenItems,
+      group.items,
+    );
     const summary: ConversationActivityItem = {
       type: "conversation_activity",
       id: summaryId,
