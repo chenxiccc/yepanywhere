@@ -205,19 +205,6 @@ chatty, run `pnpm console:scan` with the pre-commit checks and read
 the budget policy, the remediation preference order, the measurement
 tools, and the ratcheting baseline.
 
-## Commit Lock Protocol
-
-Before staging or committing, acquire `.git/yepanywhere-commit.lock`. The
-required flow is:
-
-1. Check for and acquire `.git/yepanywhere-commit.lock`.
-2. If it already exists, sleep 10 seconds and retry.
-3. Hold the lock through:
-   - staging
-   - staged diff review
-   - `git commit`
-4. Remove the lock after the commit completes.
-
 The working tree may contain concurrent human or agent edits. Avoid reverting
 or tidying unrelated changes unless the task directly requires them.
 

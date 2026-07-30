@@ -89,9 +89,9 @@ it. When the two disagree, this topic wins and the tactical doc gets fixed.
 - Before claiming a slice, scan the ledger in doc 058, the owning docs above,
   and recent `git log` for an in-flight series touching the same files. If an
   overlap exists, defer the slice or coordinate in the owning doc first.
-- Follow the AGENTS.md commit lock protocol and commit message guidance. Every
-  slice commit carries `Topic: typescript-module-boundary-refactor`, plus the
-  owning series' topic trailer when the slice lands through another ledger.
+- Follow the AGENTS.md commit message guidance. Every slice commit carries
+  `Topic: typescript-module-boundary-refactor`, plus the owning series' topic
+  trailer when the slice lands through another ledger.
 
 ## Tripwire Matrix
 
