@@ -44,7 +44,11 @@ async function provisionHosts(
     const { provisionRelayHostSession } = await import(
       /* @vite-ignore */ modulePath
     );
-    await Promise.all(provisionInputs.map(provisionRelayHostSession));
+    // Saved-host order is part of the monitor contract. Authenticate
+    // sequentially so handshake completion timing cannot reorder localStorage.
+    for (const input of provisionInputs) {
+      await provisionRelayHostSession(input);
+    }
   }, inputs);
 }
 
