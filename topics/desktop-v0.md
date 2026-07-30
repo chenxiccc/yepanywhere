@@ -25,6 +25,11 @@ silently rebuild or replace the already-smoked runtime input. Temporary-tree
 cleanup tolerates only bounded platform sharing violations, and a preparation
 failure reports its final output in the CI annotation.
 
+macOS Tauri packaging retries one failed build or upload attempt to absorb
+transient runner-level DMG assembly failures. The retry is bounded: a second
+failure remains a failed job and reports whether an app bundle existed without
+the required DMG.
+
 Desktop application files and user data have separate lifecycles. Update,
 reinstall, and ordinary uninstall preserve sessions, settings, auth state, and
 provider configuration unless the user explicitly chooses a data-removal

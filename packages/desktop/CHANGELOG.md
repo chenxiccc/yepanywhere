@@ -25,6 +25,7 @@
 
 ### Fixed
 - Desktop runtime preparation now handles Windows archive paths and clean CI package stores without weakening lockfile-pinned dependency selection.
+- Desktop CI now retries one failed macOS Tauri build or upload to absorb transient DMG assembly failures before requiring intervention.
 
 ### Removed
 - First-run downloads of Yep Anywhere, Bun, Claude Code, and Codex.

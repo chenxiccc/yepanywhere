@@ -226,6 +226,7 @@ jobs:
           releaseBody: ${{ steps.changelog.outputs.notes || 'See the assets to download and install this version.' }}
           releaseDraft: false
           prerelease: false
+          retryAttempts: ${{ matrix.platform == 'macos-latest' && '1' || '0' }}
           includeUpdaterJson: ${{ startsWith(github.ref, 'refs/tags/') }}
           updaterJsonKeepUniversal: true
           args: >-
@@ -246,7 +247,7 @@ jobs:
           app=$(find packages/desktop/src-tauri/target -type d -path '*/release/bundle/macos/*.app' 2>/dev/null | head -1)
           dmg=$(find packages/desktop/src-tauri/target -type f -path '*/release/bundle/dmg/*.dmg' 2>/dev/null | head -1)
           if [ -n "$app" ] && [ -z "$dmg" ]; then
-            echo "::error::macOS .app built and signed but no .dmg produced — likely the flaky hdiutil/bundle_dmg issue on GH runners. Re-run: gh run rerun ${{ github.run_id }} --failed"
+            echo "::error::macOS .app built and signed but no .dmg produced after the bounded Tauri action retry — likely the flaky hdiutil/bundle_dmg issue on GH runners. Re-run: gh run rerun ${{ github.run_id }} --failed"
           elif [ -z "$app" ]; then
             echo "::error::macOS pipeline failed before the app bundle was produced. Read the first failed step (runtime preparation / compile / config / codesign); this is a real error, NOT a DMG flake."
           else
