@@ -444,12 +444,12 @@ Explicitly out of scope; each is a deliberate future slice:
   activity) per the topology topic's resource-cost section.
 - Server-instance identity populating `SavedHost.serverInstanceId` so one
   logical server reached via direct and relay is one source.
-- Full secure/relay multi-source coexistence proof is intentionally deferred
-  from this completed boundary series. Product work now plans that proof in
+- Full secure/relay multi-source coexistence was intentionally deferred from
+  this completed boundary series and is now proven in
   [`066-multi-host-monitor-coexistence-harness.md`](066-multi-host-monitor-coexistence-harness.md):
-  first over existing independent relay sockets, then through a separately
-  gated relay mux series. Known caveats remain until that proof lands: several
-  concurrent relay-backed `SecureConnection` instances, relay reconnect/re-pair
-  isolation, auth-required isolation, and provider-backed live session streams
-  across real servers. T10 proves the current minimal localhost plus
-  plain-WebSocket path only.
+  first over existing independent relay sockets, then through the
+  compatibility-gated relay mux. That proof covers several concurrent
+  relay-backed `SecureConnection` instances, relay reconnect/re-pair
+  isolation, and auth-required isolation. Provider-backed live session streams
+  across real servers remain outside the summary monitor's current scope. T10
+  still proves the minimal localhost plus plain-WebSocket path.

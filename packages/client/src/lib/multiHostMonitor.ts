@@ -1,5 +1,9 @@
 import type { GlobalSessionsResponse, InboxResponse } from "../api/client";
-import { SecureConnection } from "./connection/SecureConnection";
+import { RelayMuxSocketPool } from "./connection/RelayMuxPool";
+import {
+  SecureConnection,
+  type RelaySocketFactory,
+} from "./connection/SecureConnection";
 import { openRelayClientSocket } from "./connection/RelayClientSocket";
 import {
   createGlobalSessionsCollectionQueryDescriptor,
@@ -74,10 +78,13 @@ export interface MultiHostMonitorConnectorOptions {
   signal: AbortSignal;
 }
 
-export type MultiHostMonitorConnector = (
-  host: SavedHost,
-  options: MultiHostMonitorConnectorOptions,
-) => Promise<MultiHostMonitorConnection>;
+export interface MultiHostMonitorConnector {
+  (
+    host: SavedHost,
+    options: MultiHostMonitorConnectorOptions,
+  ): Promise<MultiHostMonitorConnection>;
+  dispose?(): void;
+}
 
 export class MultiHostSignInRequiredError extends Error {
   constructor(message: string) {
@@ -141,9 +148,9 @@ export class MultiHostMonitorController {
 
   constructor(
     hosts: readonly SavedHost[],
-    connector: MultiHostMonitorConnector = connectSavedHostForMonitor,
+    connector?: MultiHostMonitorConnector,
   ) {
-    this.connector = connector;
+    this.connector = connector ?? createMultiHostMonitorConnector(hosts);
     for (const host of hosts) {
       this.records.set(host.id, {
         abortController: null,
@@ -204,6 +211,7 @@ export class MultiHostMonitorController {
       record.connection?.dispose();
       record.connection = null;
     }
+    this.connector.dispose?.();
     this.listeners.clear();
   }
 
@@ -321,6 +329,7 @@ function isSignInRequiredError(error: unknown): boolean {
 async function createSecureConnection(
   host: SavedHost,
   signal: AbortSignal,
+  relaySocketFactory?: RelaySocketFactory,
 ): Promise<SecureConnection> {
   const session = host.session;
   if (!session) {
@@ -355,7 +364,8 @@ async function createSecureConnection(
       "The saved relay host is incomplete",
     );
   }
-  const ws = await openRelayClientSocket({
+  const openSocket = relaySocketFactory ?? openRelayClientSocket;
+  const ws = await openSocket({
     relayUrl: host.relayUrl,
     relayUsername: host.relayUsername,
     signal,
@@ -370,6 +380,7 @@ async function createSecureConnection(
       {
         relayUrl: host.relayUrl,
         relayUsername: host.relayUsername,
+        openSocket: relaySocketFactory,
       },
     );
     await connection.fetch("/auth/status");
@@ -437,6 +448,7 @@ class RuntimeMonitorConnection implements MultiHostMonitorConnection {
 export async function connectSavedHostForMonitor(
   host: SavedHost,
   options: MultiHostMonitorConnectorOptions,
+  relaySocketFactory?: RelaySocketFactory,
 ): Promise<MultiHostMonitorConnection> {
   if (!host.session) {
     throw new MultiHostSignInRequiredError("A saved session is required");
@@ -454,7 +466,11 @@ export async function connectSavedHostForMonitor(
   let connection: SecureConnection | null = null;
   let monitorConnection: RuntimeMonitorConnection | null = null;
   try {
-    connection = await createSecureConnection(host, options.signal);
+    connection = await createSecureConnection(
+      host,
+      options.signal,
+      relaySocketFactory,
+    );
     if (options.signal.aborted) {
       connection.close();
       throw new DOMException("Host connection aborted", "AbortError");
@@ -510,4 +526,20 @@ export async function connectSavedHostForMonitor(
     }
     throw error;
   }
+}
+
+function createMultiHostMonitorConnector(
+  hosts: readonly SavedHost[],
+): MultiHostMonitorConnector {
+  const relayMuxPool = new RelayMuxSocketPool(hosts);
+  const connector: MultiHostMonitorConnector = (host, options) =>
+    connectSavedHostForMonitor(
+      host,
+      options,
+      host.mode === "relay"
+        ? relayMuxPool.createSocketFactory(host)
+        : undefined,
+    );
+  connector.dispose = () => relayMuxPool.dispose();
+  return connector;
 }

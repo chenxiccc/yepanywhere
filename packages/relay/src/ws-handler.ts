@@ -128,6 +128,12 @@ export function createWsHandler(
       // State is initialized lazily on first message
     },
 
+    onServerClaimed(ws: WebSocket): void {
+      const state = getState(ws);
+      state.paired = true;
+      stopPingInterval(state);
+    },
+
     onMessage(ws: WebSocket, data: RawData, isBinary: boolean): void {
       const state = getState(ws);
 

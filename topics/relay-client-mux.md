@@ -7,8 +7,9 @@
 
 Topic: relay-client-mux
 
-Status: Compatibility plan proposed 2026-07-30; implementation awaits
-maintainer approval.
+Status: Landed 2026-07-30 after compatibility approval. The experimental
+monitor uses mux when the relay advertises it and preserves exact `/ws`
+fallback.
 
 Related:
 
@@ -26,7 +27,7 @@ Mux is an optional transport optimization for the experimental multi-host
 monitor. It is not federation, an account system, a server membership model,
 or a prerequisite for viewing multiple hosts.
 
-The current observable contract is the fallback:
+The observable contract preserves the fallback:
 
 - each saved relay host owns an independent SRP identity, resume session,
   NaCl key, source runtime, and readiness state;
@@ -330,16 +331,23 @@ fallback cannot satisfy the mux assertion accidentally.
 ## Implementation Slices
 
 1. **B0 — contract and approval:** land this topic, stable-release audit, and
-   exact compatibility plan. Do not edit relay/client contracts before
-   maintainer approval.
+   exact compatibility plan. Landed 2026-07-30 after maintainer approval.
 2. **B1 — relay protocol:** add shared mux types/framing, health discovery,
    generalized relay pairing, bounds, telemetry, and raw relay tests. Preserve
-   `/ws`.
+   `/ws`. Landed 2026-07-30.
 3. **B2 — client pool:** add the narrow socket boundary, relay discovery,
    logical circuits, grouped monitor connector, and exact legacy fallback.
+   Landed 2026-07-30.
 4. **B3 — browser exit gate:** run the full matrix in legacy and mux modes,
    retain the existing independent-socket proof, and update this status from
-   experimental implementation to landed.
+   experimental implementation to landed. Landed 2026-07-30.
+
+The lower-level suite proves routing, frame-type preservation, per-circuit
+failure, physical cleanup, fair scheduling, and the configured circuit,
+queue, rate, and idle bounds. The browser suite runs all seven multi-host
+coexistence scenarios in both legacy and mux modes: legacy observes exactly
+three `/ws` sockets, while mux observes exactly one `/mux` socket for the same
+three independently authenticated sources.
 
 ## Non-Goals
 

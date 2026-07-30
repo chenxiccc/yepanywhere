@@ -63,7 +63,7 @@ section below for what would have to change at higher fan-out.
   source-bound transport facade that makes localhost, plain multiplex
   WebSocket, and secure/relay modes explicit without hiding channel status.
 - [`topics/relay-client-mux.md`](topics/relay-client-mux.md) — compatibility-
-  gated proposal for carrying several independently authenticated YA host
+  gated optional transport carrying several independently authenticated YA host
   circuits over one browser-to-relay WebSocket while preserving `/ws`.
 - [`topics/session-detail-data-layer.md`](topics/session-detail-data-layer.md)
   — lower-level vision for a canonical client session-detail data layer

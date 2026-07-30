@@ -23,6 +23,7 @@ export {
   type VisibilityInterface,
 } from "./ConnectionManager";
 export { WebSocketConnection } from "./WebSocketConnection";
+export type { SecureConnectionSocket } from "./SecureConnectionSocket";
 // SecureConnection is NOT re-exported here to avoid eagerly loading tssrp6a,
 // which crashes in non-secure contexts (HTTP on LAN IPs) because crypto.subtle
 // is unavailable. Import directly from "./SecureConnection" where needed.

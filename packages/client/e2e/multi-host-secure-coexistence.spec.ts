@@ -33,6 +33,54 @@ interface SourceDisposalResult {
   titles: string[];
 }
 
+type MonitorTransportMode = "legacy" | "mux";
+
+function relaySiblingUrl(relayUrl: string, leaf: "health" | "mux"): string {
+  const url = new URL(relayUrl);
+  url.protocol = leaf === "health"
+    ? url.protocol === "wss:"
+      ? "https:"
+      : "http:"
+    : url.protocol;
+  url.pathname = url.pathname.replace(/\/ws$/, `/${leaf}`);
+  return url.toString();
+}
+
+async function configureMonitorTransport(
+  page: Page,
+  relayUrl: string,
+  mode: MonitorTransportMode,
+): Promise<void> {
+  if (mode === "mux") return;
+  await page.route(relaySiblingUrl(relayUrl, "health"), async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "Access-Control-Allow-Origin": "*" },
+      body: JSON.stringify({
+        status: "ok",
+        uptime: 1,
+        waiting: 3,
+        pairs: 0,
+      }),
+    });
+  });
+}
+
+function observeMonitorRelaySockets(
+  page: Page,
+  relayUrl: string,
+): PlaywrightWebSocket[] {
+  const sockets: PlaywrightWebSocket[] = [];
+  const muxUrl = relaySiblingUrl(relayUrl, "mux");
+  page.on("websocket", (socket) => {
+    if (socket.url() === relayUrl || socket.url() === muxUrl) {
+      sockets.push(socket);
+    }
+  });
+  return sockets;
+}
+
 async function provisionHosts(
   page: Page,
   inputs: ProvisionInput[],
@@ -247,7 +295,8 @@ async function runSingleSourceDisposal(
   });
 }
 
-test.describe("Secure multi-host coexistence", () => {
+for (const transportMode of ["legacy", "mux"] as const) {
+test.describe(`Secure multi-host coexistence (${transportMode})`, () => {
   test.describe.configure({ mode: "serial", timeout: 60_000 });
   let harness: MultiHostRelayHarness | null = null;
 
@@ -268,13 +317,19 @@ test.describe("Secure multi-host coexistence", () => {
   }, testInfo) => {
     if (!harness) throw new Error("Multi-host harness did not start");
     await provisionHarnessHosts(page, remoteClientURL, harness);
+    await configureMonitorTransport(page, harness.relayUrl, transportMode);
+    if (transportMode === "mux") {
+      const capabilities = await page.evaluate(async (healthUrl) => {
+        const response = await fetch(healthUrl);
+        const body = (await response.json()) as {
+          relayCapabilities?: string[];
+        };
+        return body.relayCapabilities ?? [];
+      }, relaySiblingUrl(harness.relayUrl, "health"));
+      expect(capabilities).toContain("client-mux-v1");
+    }
 
-    const relaySockets: PlaywrightWebSocket[] = [];
-    page.on("websocket", (socket) => {
-      if (socket.url() === harness?.relayUrl) {
-        relaySockets.push(socket);
-      }
-    });
+    const relaySockets = observeMonitorRelaySockets(page, harness.relayUrl);
 
     const result = await runMonitorController(page);
     if (result.connectedCount !== 3) {
@@ -288,7 +343,12 @@ test.describe("Secure multi-host coexistence", () => {
       connectedCount: 3,
       selectedCount: 3,
     });
-    expect(relaySockets).toHaveLength(3);
+    expect(relaySockets.map((socket) => socket.url())).toEqual(
+      transportMode === "mux"
+        ? [relaySiblingUrl(harness.relayUrl, "mux")]
+        : Array.from({ length: 3 }, () => harness.relayUrl),
+    );
+    expect(relaySockets).toHaveLength(transportMode === "mux" ? 1 : 3);
     expect(result.hosts.map((host) => host.state)).toEqual([
       "connected",
       "connected",
@@ -324,6 +384,7 @@ test.describe("Secure multi-host coexistence", () => {
     }
 
     await expect(page.locator(".host-picker-item")).toHaveCount(3);
+    await configureMonitorTransport(page, harness.relayUrl, transportMode);
     await page.goto(`${remoteClientURL}/-/monitor`);
     await expect(page.getByTestId("multi-host-connected-count")).toHaveText(
       "Connected 3 of 3",
@@ -342,13 +403,9 @@ test.describe("Secure multi-host coexistence", () => {
   }, testInfo) => {
     if (!harness) throw new Error("Multi-host harness did not start");
     await provisionHarnessHosts(page, remoteClientURL, harness);
+    await configureMonitorTransport(page, harness.relayUrl, transportMode);
 
-    const relaySockets: PlaywrightWebSocket[] = [];
-    page.on("websocket", (socket) => {
-      if (socket.url() === harness?.relayUrl) {
-        relaySockets.push(socket);
-      }
-    });
+    const relaySockets = observeMonitorRelaySockets(page, harness.relayUrl);
 
     await page.goto(`${remoteClientURL}/-/monitor`);
     try {
@@ -364,7 +421,9 @@ test.describe("Secure multi-host coexistence", () => {
       throw error;
     }
 
-    await expect.poll(() => relaySockets.length, { timeout: 10_000 }).toBe(3);
+    await expect
+      .poll(() => relaySockets.length, { timeout: 10_000 })
+      .toBe(transportMode === "mux" ? 1 : 3);
     for (const host of harness.hosts) {
       const card = page.locator(
         `.multi-host-card[data-host-name="${host.displayName}"]`,
@@ -374,7 +433,7 @@ test.describe("Secure multi-host coexistence", () => {
     }
 
     const captureDir = process.env.YEP_E2E_UI_CAPTURE_DIR;
-    if (captureDir) {
+    if (captureDir && transportMode === "mux") {
       mkdirSync(captureDir, { recursive: true });
       await page.setViewportSize({ width: 1920, height: 1080 });
       await page.screenshot({
@@ -406,6 +465,7 @@ test.describe("Secure multi-host coexistence", () => {
     if (!harness) throw new Error("Multi-host harness did not start");
     await provisionHarnessHosts(page, remoteClientURL, harness);
     await makeLastHostOffline(page);
+    await configureMonitorTransport(page, harness.relayUrl, transportMode);
 
     await page.goto(`${remoteClientURL}/-/monitor`);
     await expect(page.getByTestId("multi-host-connected-count")).toHaveText(
@@ -437,6 +497,7 @@ test.describe("Secure multi-host coexistence", () => {
   }) => {
     if (!harness) throw new Error("Multi-host harness did not start");
     await provisionHarnessHosts(page, remoteClientURL, harness);
+    await configureMonitorTransport(page, harness.relayUrl, transportMode);
 
     const result = await runSingleSourceDisposal(page);
 
@@ -454,6 +515,7 @@ test.describe("Secure multi-host coexistence", () => {
     if (!harness) throw new Error("Multi-host harness did not start");
     await provisionHarnessHosts(page, remoteClientURL, harness);
     await makeLastHostSessionStale(page);
+    await configureMonitorTransport(page, harness.relayUrl, transportMode);
 
     await page.goto(`${remoteClientURL}/-/monitor`);
     await expect(page.getByTestId("multi-host-connected-count")).toHaveText(
@@ -486,6 +548,7 @@ test.describe("Secure multi-host coexistence", () => {
   }) => {
     if (!harness) throw new Error("Multi-host harness did not start");
     await provisionHarnessHosts(page, remoteClientURL, harness);
+    await configureMonitorTransport(page, harness.relayUrl, transportMode);
     await page.goto(`${remoteClientURL}/-/monitor`);
     await expect(page.getByTestId("multi-host-connected-count")).toHaveText(
       "Connected 3 of 3",
@@ -514,3 +577,4 @@ test.describe("Secure multi-host coexistence", () => {
     }
   });
 });
+}

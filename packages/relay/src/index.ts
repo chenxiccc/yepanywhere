@@ -1,6 +1,7 @@
 import { writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { getRequestListener } from "@hono/node-server";
+import { RELAY_CLIENT_MUX_V1_CAPABILITY } from "@yep-anywhere/shared";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { WebSocketServer } from "ws";
@@ -9,6 +10,7 @@ import { loadConfig } from "./config.js";
 import { ConnectionManager } from "./connections.js";
 import { createDb } from "./db.js";
 import { createLogger } from "./logger.js";
+import { createMuxHandler } from "./mux-handler.js";
 import {
   getRelayCorsAllowOrigin,
   isRelayOriginAllowed,
@@ -61,12 +63,6 @@ const unauthenticatedLimiter = new UnauthenticatedConnectionLimiter(
   config.unauthenticatedConnectionTimeoutMs,
 );
 const telemetry = createRelayTelemetryRecorder(config.telemetry, logger);
-telemetry.startSampling(() => ({
-  waiting: connectionManager.getWaitingCount(),
-  pairs: connectionManager.getPairCount(),
-  registered: registry.count(),
-  activeServers: connectionManager.getActiveServers().length,
-}));
 
 // Create Hono app for HTTP endpoints
 const app = new Hono();
@@ -88,6 +84,7 @@ app.get("/health", (c) => {
     uptime: process.uptime(),
     waiting: connectionManager.getWaitingCount(),
     pairs: connectionManager.getPairCount(),
+    relayCapabilities: [RELAY_CLIENT_MUX_V1_CAPABILITY],
   });
 });
 
@@ -101,6 +98,7 @@ app.get("/status", (c) => {
     registered: registry.count(),
     activeServers: connectionManager.getActiveServers(),
     compatibility: connectionManager.getActiveServerSummary(),
+    mux: muxHandler.getStatus(),
     telemetry: telemetry.getStatus(),
     memory: process.memoryUsage(),
   });
@@ -136,35 +134,75 @@ const wsHandler = createWsHandler(
     onProtocolAccepted: (ws) => unauthenticatedLimiter.release(ws),
   },
 );
+const muxHandler = createMuxHandler(
+  connectionManager,
+  config,
+  logger,
+  telemetry,
+  {
+    onProtocolAccepted: (ws) => unauthenticatedLimiter.release(ws),
+    onServerClaimed: (ws) => wsHandler.onServerClaimed(ws),
+  },
+);
+telemetry.startSampling(() => {
+  const mux = muxHandler.getStatus();
+  return {
+    waiting: connectionManager.getWaitingCount(),
+    pairs: connectionManager.getPairCount(),
+    registered: registry.count(),
+    activeServers: connectionManager.getActiveServers().length,
+    muxPhysicalSockets: mux.physicalSockets,
+    muxCircuits: mux.liveCircuits,
+  };
+});
 
 // Create HTTP server with Hono
 const requestListener = getRequestListener(app.fetch);
 const server = createServer(requestListener);
 
 // Create WebSocket server attached to the HTTP server, but with noServer
-// so we can manually handle upgrades for /ws path only
+// so we can manually handle upgrades for the supported relay paths.
 const wss = new WebSocketServer({ noServer: true });
 
 // Handle WebSocket connections
 wss.on("connection", (ws, request) => {
-  unauthenticatedLimiter.track(ws, getClientIp(request, config.trustedProxies));
-  wsHandler.onOpen(ws);
+  const clientIp = getClientIp(request, config.trustedProxies);
+  const path = (request.url ?? "/").split("?")[0];
+  const isMux = path === "/mux";
+  unauthenticatedLimiter.track(ws, clientIp);
+  if (isMux) {
+    muxHandler.onOpen(ws, clientIp);
+  } else {
+    wsHandler.onOpen(ws);
+  }
 
   ws.on("message", (data, isBinary) => {
-    wsHandler.onMessage(ws, data, isBinary);
+    if (isMux) {
+      muxHandler.onMessage(ws, data, isBinary);
+    } else {
+      wsHandler.onMessage(ws, data, isBinary);
+    }
   });
 
   ws.on("close", (code, reason) => {
     unauthenticatedLimiter.release(ws);
-    wsHandler.onClose(ws, code, reason);
+    if (isMux) {
+      muxHandler.onClose(ws, code, reason);
+    } else {
+      wsHandler.onClose(ws, code, reason);
+    }
   });
 
   ws.on("error", (error) => {
-    wsHandler.onError(ws, error);
+    if (isMux) {
+      muxHandler.onError(ws, error);
+    } else {
+      wsHandler.onError(ws, error);
+    }
   });
 
   ws.on("pong", () => {
-    wsHandler.onPong(ws);
+    if (!isMux) wsHandler.onPong(ws);
   });
 });
 
@@ -176,8 +214,8 @@ server.on("upgrade", (request, socket, head) => {
     "Received upgrade request",
   );
 
-  // Only handle /ws path
-  if (!urlPath.startsWith("/ws")) {
+  const upgradePath = urlPath.split("?")[0];
+  if (upgradePath !== "/ws" && upgradePath !== "/mux") {
     socket.write("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n");
     socket.destroy();
     return;

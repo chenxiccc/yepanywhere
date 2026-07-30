@@ -269,6 +269,11 @@ export default async function globalSetup() {
           RELAY_ALLOWED_ORIGINS: "*",
           RELAY_LOG_LEVEL: "warn", // Reduce noise, port comes from file
           RELAY_LOG_TO_FILE: "false",
+          // The multi-host matrix deliberately remounts the same three targets
+          // seven times in under a minute. Raw relay tests cover the production
+          // per-target default; keep the browser lifecycle matrix below its
+          // own higher test-only ceiling.
+          RELAY_MUX_OPEN_ATTEMPTS_PER_MINUTE_PER_IP_USERNAME: "20",
         },
         stdio: ["ignore", "pipe", "pipe"],
         detached: true,

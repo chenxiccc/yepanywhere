@@ -30,9 +30,16 @@ export type CloseResult =
     }
   | { kind: "none" };
 
+export interface RelayClientEndpoint {
+  /** Stable object identity used to route and close this logical client. */
+  key: object;
+  close(code: number, reason: string): void;
+  send(data: Buffer, isBinary: boolean): void;
+}
+
 interface Pair {
   server: WebSocket;
-  client: WebSocket;
+  client: RelayClientEndpoint;
 }
 
 export interface ActiveRelayServer extends RelayServerCompatibilityMetadata {
@@ -70,8 +77,8 @@ export class ConnectionManager {
   private waiting = new Map<string, WebSocket>();
   /** Active server/client pairs */
   private pairs = new Set<Pair>();
-  /** Lookup from WebSocket to its pair (for forwarding) */
-  private pairLookup = new Map<WebSocket, Pair>();
+  /** Lookup from server WebSocket or logical client identity to its pair. */
+  private pairLookup = new Map<object, Pair>();
   /** Active server connections keyed by the server WebSocket. */
   private activeServers = new Map<WebSocket, ActiveRelayServer>();
   /** Registry for username validation */
@@ -160,6 +167,22 @@ export class ConnectionManager {
     username: string,
     channel: RelayChannel = DEFAULT_RELAY_CHANNEL,
   ): ConnectionResult {
+    return this.connectClientEndpoint(
+      {
+        key: ws,
+        close: (code, reason) => ws.close(code, reason),
+        send: (data, isBinary) => ws.send(data, { binary: isBinary }),
+      },
+      username,
+      channel,
+    );
+  }
+
+  connectClientEndpoint(
+    client: RelayClientEndpoint,
+    username: string,
+    channel: RelayChannel = DEFAULT_RELAY_CHANNEL,
+  ): ConnectionResult {
     // Check if username is registered at all
     if (!this.registry.isRegistered(username)) {
       return { status: "unknown_username" };
@@ -180,10 +203,10 @@ export class ConnectionManager {
     }
 
     // Create pair
-    const pair: Pair = { server: serverWs, client: ws };
+    const pair: Pair = { server: serverWs, client };
     this.pairs.add(pair);
     this.pairLookup.set(serverWs, pair);
-    this.pairLookup.set(ws, pair);
+    this.pairLookup.set(client.key, pair);
 
     // Update last seen for the username
     this.registry.updateLastSeen(username);
@@ -195,22 +218,22 @@ export class ConnectionManager {
    * Forward data from one WebSocket to its pair.
    * Preserves frame type (text vs binary) by using the isBinary flag.
    *
-   * @param ws - Source WebSocket
+   * @param source - Source server WebSocket or logical client identity
    * @param data - Data to forward (Buffer from ws library)
    * @param isBinary - Whether the data was received as a binary frame
    */
-  forward(ws: WebSocket, data: Buffer, isBinary: boolean): void {
-    const pair = this.pairLookup.get(ws);
+  forward(source: object, data: Buffer, isBinary: boolean): void {
+    const pair = this.pairLookup.get(source);
     if (!pair) {
       return; // Not paired, ignore
     }
 
-    // Determine the other end
-    const target = pair.server === ws ? pair.client : pair.server;
-
     try {
-      // Use the isBinary flag to preserve frame type
-      target.send(data, { binary: isBinary });
+      if (pair.server === source) {
+        pair.client.send(data, isBinary);
+      } else {
+        pair.server.send(data, { binary: isBinary });
+      }
     } catch {
       // Ignore send errors (connection may have closed)
     }
@@ -240,13 +263,16 @@ export class ConnectionManager {
       const serverInfo = this.activeServers.get(pair.server) ?? null;
       this.pairs.delete(pair);
       this.pairLookup.delete(pair.server);
-      this.pairLookup.delete(pair.client);
+      this.pairLookup.delete(pair.client.key);
       this.activeServers.delete(pair.server);
 
       // Close the other end
-      const other = pair.server === ws ? pair.client : pair.server;
       try {
-        other.close(1000, "Peer disconnected");
+        if (pair.server === ws) {
+          pair.client.close(1000, "Peer disconnected");
+        } else {
+          pair.server.close(1000, "Peer disconnected");
+        }
       } catch {
         // Ignore close errors
       }
@@ -257,6 +283,29 @@ export class ConnectionManager {
       };
     }
     return { kind: "none" };
+  }
+
+  handleClientEndpointClose(clientKey: object): CloseResult {
+    const pair = this.pairLookup.get(clientKey);
+    if (!pair || pair.client.key !== clientKey) {
+      return { kind: "none" };
+    }
+
+    this.pairs.delete(pair);
+    this.pairLookup.delete(pair.server);
+    this.pairLookup.delete(pair.client.key);
+    const serverInfo = this.activeServers.get(pair.server) ?? null;
+    this.activeServers.delete(pair.server);
+    try {
+      pair.server.close(1000, "Peer disconnected");
+    } catch {
+      // Ignore close errors
+    }
+    return {
+      kind: "pair_disconnected",
+      initiator: "client",
+      server: serverInfo,
+    };
   }
 
   /**

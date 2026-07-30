@@ -31,6 +31,26 @@ export interface RelayConfig {
   unauthenticatedConnectionLimitPerIp: number;
   /** Time allowed for a new WebSocket to send a valid relay protocol message. */
   unauthenticatedConnectionTimeoutMs: number;
+  /** Maximum logical circuits carried by one client mux socket. */
+  muxMaxCircuitsPerSocket: number;
+  /** Maximum live mux circuits associated with one effective client IP. */
+  muxMaxCircuitsPerIp: number;
+  /** Maximum circuit-open attempts per minute on one mux socket. */
+  muxOpenAttemptsPerMinutePerSocket: number;
+  /** Maximum circuit-open attempts per minute from one effective client IP. */
+  muxOpenAttemptsPerMinutePerIp: number;
+  /** Maximum circuit-open attempts per minute for one IP/username pair. */
+  muxOpenAttemptsPerMinutePerIpUsername: number;
+  /** Maximum opaque inner payload size accepted by mux. */
+  muxMaxFrameBytes: number;
+  /** Maximum queued relay-to-client bytes for one mux circuit. */
+  muxMaxQueuedBytesPerCircuit: number;
+  /** Maximum queued relay-to-client bytes for one physical mux socket. */
+  muxMaxQueuedBytesPerSocket: number;
+  /** Physical socket bufferedAmount threshold before mux queues writes. */
+  muxBufferedAmountHighWaterBytes: number;
+  /** Maximum lifetime of a mux socket with no circuits. */
+  muxIdleTimeoutMs: number;
   /**
    * IPs/CIDRs whose `X-Forwarded-For` header is trusted when resolving the
    * client IP for the per-IP unauthenticated-connection cap. Empty by default
@@ -80,6 +100,40 @@ export function loadConfig(): RelayConfig {
       "RELAY_UNAUTHENTICATED_CONNECTION_TIMEOUT_MS",
       30_000,
     ),
+    muxMaxCircuitsPerSocket: getEnvNumber(
+      "RELAY_MUX_MAX_CIRCUITS_PER_SOCKET",
+      5,
+    ),
+    muxMaxCircuitsPerIp: getEnvNumber("RELAY_MUX_MAX_CIRCUITS_PER_IP", 20),
+    muxOpenAttemptsPerMinutePerSocket: getEnvNumber(
+      "RELAY_MUX_OPEN_ATTEMPTS_PER_MINUTE_PER_SOCKET",
+      20,
+    ),
+    muxOpenAttemptsPerMinutePerIp: getEnvNumber(
+      "RELAY_MUX_OPEN_ATTEMPTS_PER_MINUTE_PER_IP",
+      60,
+    ),
+    muxOpenAttemptsPerMinutePerIpUsername: getEnvNumber(
+      "RELAY_MUX_OPEN_ATTEMPTS_PER_MINUTE_PER_IP_USERNAME",
+      6,
+    ),
+    muxMaxFrameBytes: getEnvNumber(
+      "RELAY_MUX_MAX_FRAME_BYTES",
+      2 * 1024 * 1024,
+    ),
+    muxMaxQueuedBytesPerCircuit: getEnvNumber(
+      "RELAY_MUX_MAX_QUEUED_BYTES_PER_CIRCUIT",
+      2 * 1024 * 1024,
+    ),
+    muxMaxQueuedBytesPerSocket: getEnvNumber(
+      "RELAY_MUX_MAX_QUEUED_BYTES_PER_SOCKET",
+      8 * 1024 * 1024,
+    ),
+    muxBufferedAmountHighWaterBytes: getEnvNumber(
+      "RELAY_MUX_BUFFERED_AMOUNT_HIGH_WATER_BYTES",
+      1024 * 1024,
+    ),
+    muxIdleTimeoutMs: getEnvNumber("RELAY_MUX_IDLE_TIMEOUT_MS", 30_000),
     trustedProxies: parseTrustedProxies(process.env.RELAY_TRUSTED_PROXIES),
     allowedOrigins: parseRelayAllowedOrigins(process.env.RELAY_ALLOWED_ORIGINS),
     logging: {

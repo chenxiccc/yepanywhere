@@ -215,6 +215,39 @@ describe("ConnectionManager", () => {
       expect(manager.isWaiting("alice")).toBe(true);
       expect(manager.isWaiting("alice", SPEECH_RELAY_CHANNEL)).toBe(false);
     });
+
+    it("pairs a logical client endpoint without requiring a client WebSocket", () => {
+      const serverWs = createMockWs();
+      const endpointKey = {};
+      const endpoint = {
+        key: endpointKey,
+        close: vi.fn(),
+        send: vi.fn(),
+      };
+
+      manager.registerServer(serverWs, "alice", "install-1");
+      expect(
+        manager.connectClientEndpoint(endpoint, "alice").status,
+      ).toBe("connected");
+
+      manager.forward(serverWs, Buffer.from("from server"), false);
+      expect(endpoint.send).toHaveBeenCalledWith(
+        Buffer.from("from server"),
+        false,
+      );
+
+      manager.forward(endpointKey, Buffer.from("from client"), true);
+      expect(serverWs.send).toHaveBeenCalledWith(Buffer.from("from client"), {
+        binary: true,
+      });
+
+      expect(manager.handleClientEndpointClose(endpointKey)).toMatchObject({
+        kind: "pair_disconnected",
+        initiator: "client",
+      });
+      expect(serverWs.close).toHaveBeenCalled();
+      expect(manager.getPairCount()).toBe(0);
+    });
   });
 
   describe("forward", () => {

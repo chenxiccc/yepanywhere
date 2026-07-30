@@ -1,7 +1,7 @@
 # Multi-Host Monitor And Coexistence Harness
 
-Status: Existing-transport series landed 2026-07-30. Relay multiplexing is a
-separate, compatibility-gated follow-up.
+Status: Existing-transport and compatibility-gated relay-mux series landed
+2026-07-30.
 
 Topic: client-source-runtime-topology
 Topic: source-transport
@@ -20,8 +20,9 @@ source. Separate relay tests prove one real SRP login and resume. Neither test
 proves that three relay-backed sources can coexist without state, auth, or
 reconnect leakage.
 
-A future relay `/mux` transport could reduce the phone or browser side from one
-physical WebSocket per host to one physical WebSocket per relay URL. Building
+The relay `/mux` transport now reduces the phone or browser side from one
+physical WebSocket per host to one physical WebSocket per relay URL when the
+relay advertises support. Building
 the monitor, multi-source controller, relay protocol, and all failure behavior
 in one change would make failures difficult to localize. This plan therefore
 proves the product behavior over the existing relay transport before changing
@@ -39,8 +40,8 @@ The work is two separate implementation series:
    logical circuits. Re-run the same browser contract with a different
    physical-socket expectation.
 
-The first series must not contain relay mux protocol code. The second series
-must not weaken or replace the legacy connection path.
+The first series did not contain relay mux protocol code. The second series
+preserves the legacy connection path.
 
 ## First-Series Product Shape
 
@@ -310,12 +311,12 @@ Do not begin mux implementation until the existing-transport series proves:
 If this gate exposes a runtime, auth, or cache ownership problem, fix and prove
 that boundary over existing transports. Do not hide it inside mux code.
 
-## Later Relay Mux Series
+## Relay Mux Series
 
 The first-series exit gate is green. The relay mux contract and compatibility
 audit now live in
 [`topics/relay-client-mux.md`](../../topics/relay-client-mux.md). Its
-implementation remains paused for the required maintainer approval.
+implementation landed after maintainer approval.
 
 That contract defines:
 
@@ -340,15 +341,15 @@ traffic only if fair per-circuit queues prevent one busy circuit from starving
 the rest. Bulk/media traffic may remain on a dedicated legacy socket if
 measurements show the shared transport is unsuitable.
 
-Before client or relay contract edits:
+The implementation followed the approved compatibility plan:
 
-1. inspect the supported stable release corpus required by
+1. inspected the supported stable release corpus required by
    `topics/server-capabilities.md` and
    `topics/remote-hosted-compatibility.md`;
-2. present the capability/discovery and missing-capability fallback for
+2. presented the capability/discovery and missing-capability fallback for
    maintainer approval;
-3. keep the existing `/ws` path and capability meanings unchanged; and
-4. ensure a client never attempts `/mux` until support is known.
+3. kept the existing `/ws` path and capability meanings unchanged; and
+4. ensured a client never attempts `/mux` until support is known.
 
 The intended fallback is exact behavioral parity through ordinary independent
 relay sockets. Mux is an optional transport optimization, not a new
@@ -356,18 +357,19 @@ requirement for the monitor.
 
 ### Mux verification
 
-Reuse the first-series browser scenarios. In mux mode, change the transport
-assertions to require:
+The first-series browser scenarios now run in both transport modes. In mux
+mode, the assertions require:
 
 - exactly one browser WebSocket to `/mux` for the shared relay URL;
 - three independently ready logical circuits;
 - distinguishable source data from all three real YA servers; and
 - one circuit failure or closure without disturbance to the other two.
 
-Add lower-level relay integration tests first using one raw mux client and
-three registered server sockets. Those tests own framing, routing, quota,
-fairness, and circuit lifecycle. The browser suite owns full SRP/resume,
-runtime isolation, fallback, and user-visible behavior.
+Lower-level relay integration tests use one raw mux client and three
+registered server sockets. Those tests own framing, routing, quota, fairness,
+and circuit lifecycle. The browser suite owns full SRP/resume, runtime
+isolation, fallback, and user-visible behavior. All seven browser scenarios
+pass in legacy and mux modes.
 
 ## Non-Goals
 

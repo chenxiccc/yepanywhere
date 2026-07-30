@@ -89,6 +89,8 @@ describe("Relay telemetry", () => {
       pairs: 2,
       registered: 5,
       activeServers: 5,
+      muxPhysicalSockets: 1,
+      muxCircuits: 3,
     }));
 
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -106,7 +108,9 @@ describe("Relay telemetry", () => {
           event.waiting === 3 &&
           event.pairs === 2 &&
           event.registered === 5 &&
-          event.activeServers === 5,
+          event.activeServers === 5 &&
+          event.muxPhysicalSockets === 1 &&
+          event.muxCircuits === 3,
       ),
     ).toBe(true);
   });

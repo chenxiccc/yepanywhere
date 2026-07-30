@@ -9,6 +9,7 @@ import { type Server, createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getRequestListener } from "@hono/node-server";
+import { RELAY_CLIENT_MUX_V1_CAPABILITY } from "@yep-anywhere/shared";
 import type Database from "better-sqlite3";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
@@ -19,6 +20,7 @@ import type { RelayConfig } from "./config.js";
 import { ConnectionManager } from "./connections.js";
 import { createDb, createTestDb } from "./db.js";
 import type { LogLevel } from "./logger.js";
+import { createMuxHandler } from "./mux-handler.js";
 import {
   getRelayCorsAllowOrigin,
   isRelayOriginAllowed,
@@ -64,6 +66,26 @@ export interface RelayServerOptions {
   unauthenticatedConnectionLimitPerIp?: number;
   /** Time allowed for a new WebSocket to send a valid relay protocol message. */
   unauthenticatedConnectionTimeoutMs?: number;
+  /** Maximum logical circuits carried by one client mux socket. */
+  muxMaxCircuitsPerSocket?: number;
+  /** Maximum live mux circuits associated with one effective client IP. */
+  muxMaxCircuitsPerIp?: number;
+  /** Maximum circuit-open attempts per minute on one mux socket. */
+  muxOpenAttemptsPerMinutePerSocket?: number;
+  /** Maximum circuit-open attempts per minute from one effective client IP. */
+  muxOpenAttemptsPerMinutePerIp?: number;
+  /** Maximum circuit-open attempts per minute for one IP/username pair. */
+  muxOpenAttemptsPerMinutePerIpUsername?: number;
+  /** Maximum opaque inner payload size accepted by mux. */
+  muxMaxFrameBytes?: number;
+  /** Maximum queued relay-to-client bytes for one mux circuit. */
+  muxMaxQueuedBytesPerCircuit?: number;
+  /** Maximum queued relay-to-client bytes for one physical mux socket. */
+  muxMaxQueuedBytesPerSocket?: number;
+  /** Physical socket bufferedAmount threshold before mux queues writes. */
+  muxBufferedAmountHighWaterBytes?: number;
+  /** Maximum lifetime of a mux socket with no circuits. */
+  muxIdleTimeoutMs?: number;
   /**
    * Comma-separated list of IPs/CIDRs whose `X-Forwarded-For` is trusted
    * for client-IP resolution. Default: none.
@@ -122,6 +144,22 @@ export async function createRelayServer(
     unauthenticatedConnectionTimeoutMs:
       options.unauthenticatedConnectionTimeoutMs ??
       DEFAULT_UNAUTHENTICATED_CONNECTION_TIMEOUT_MS,
+    muxMaxCircuitsPerSocket: options.muxMaxCircuitsPerSocket ?? 5,
+    muxMaxCircuitsPerIp: options.muxMaxCircuitsPerIp ?? 20,
+    muxOpenAttemptsPerMinutePerSocket:
+      options.muxOpenAttemptsPerMinutePerSocket ?? 20,
+    muxOpenAttemptsPerMinutePerIp:
+      options.muxOpenAttemptsPerMinutePerIp ?? 60,
+    muxOpenAttemptsPerMinutePerIpUsername:
+      options.muxOpenAttemptsPerMinutePerIpUsername ?? 6,
+    muxMaxFrameBytes: options.muxMaxFrameBytes ?? 2 * 1024 * 1024,
+    muxMaxQueuedBytesPerCircuit:
+      options.muxMaxQueuedBytesPerCircuit ?? 2 * 1024 * 1024,
+    muxMaxQueuedBytesPerSocket:
+      options.muxMaxQueuedBytesPerSocket ?? 8 * 1024 * 1024,
+    muxBufferedAmountHighWaterBytes:
+      options.muxBufferedAmountHighWaterBytes ?? 1024 * 1024,
+    muxIdleTimeoutMs: options.muxIdleTimeoutMs ?? 30_000,
     trustedProxies: parseTrustedProxies(options.trustedProxies),
     allowedOrigins: parseRelayAllowedOrigins(options.allowedOrigins),
     logging: {
@@ -185,12 +223,6 @@ export async function createRelayServer(
     config.unauthenticatedConnectionTimeoutMs,
   );
   const telemetry = createRelayTelemetryRecorder(config.telemetry, logger);
-  telemetry.startSampling(() => ({
-    waiting: connectionManager.getWaitingCount(),
-    pairs: connectionManager.getPairCount(),
-    registered: registry.count(),
-    activeServers: connectionManager.getActiveServers().length,
-  }));
 
   // Create Hono app for HTTP endpoints
   const app = new Hono();
@@ -213,6 +245,7 @@ export async function createRelayServer(
       uptime: process.uptime(),
       waiting: connectionManager.getWaitingCount(),
       pairs: connectionManager.getPairCount(),
+      relayCapabilities: [RELAY_CLIENT_MUX_V1_CAPABILITY],
     });
   });
 
@@ -226,6 +259,7 @@ export async function createRelayServer(
       registered: registry.count(),
       activeServers: connectionManager.getActiveServers(),
       compatibility: connectionManager.getActiveServerSummary(),
+      mux: muxHandler.getStatus(),
       telemetry: telemetry.getStatus(),
       memory: process.memoryUsage(),
     });
@@ -265,6 +299,27 @@ export async function createRelayServer(
       onProtocolAccepted: (ws) => unauthenticatedLimiter.release(ws),
     },
   );
+  const muxHandler = createMuxHandler(
+    connectionManager,
+    config,
+    logger,
+    telemetry,
+    {
+      onProtocolAccepted: (ws) => unauthenticatedLimiter.release(ws),
+      onServerClaimed: (ws) => wsHandler.onServerClaimed(ws),
+    },
+  );
+  telemetry.startSampling(() => {
+    const mux = muxHandler.getStatus();
+    return {
+      waiting: connectionManager.getWaitingCount(),
+      pairs: connectionManager.getPairCount(),
+      registered: registry.count(),
+      activeServers: connectionManager.getActiveServers().length,
+      muxPhysicalSockets: mux.physicalSockets,
+      muxCircuits: mux.liveCircuits,
+    };
+  });
 
   // Create HTTP server with Hono
   const requestListener = getRequestListener(app.fetch);
@@ -275,27 +330,43 @@ export async function createRelayServer(
 
   // Handle WebSocket connections
   wss.on("connection", (ws, request) => {
-    unauthenticatedLimiter.track(
-      ws,
-      getClientIp(request, config.trustedProxies),
-    );
-    wsHandler.onOpen(ws);
+    const clientIp = getClientIp(request, config.trustedProxies);
+    const path = (request.url ?? "/").split("?")[0];
+    const isMux = path === "/mux";
+    unauthenticatedLimiter.track(ws, clientIp);
+    if (isMux) {
+      muxHandler.onOpen(ws, clientIp);
+    } else {
+      wsHandler.onOpen(ws);
+    }
 
     ws.on("message", (data, isBinary) => {
-      wsHandler.onMessage(ws, data, isBinary);
+      if (isMux) {
+        muxHandler.onMessage(ws, data, isBinary);
+      } else {
+        wsHandler.onMessage(ws, data, isBinary);
+      }
     });
 
     ws.on("close", (code, reason) => {
       unauthenticatedLimiter.release(ws);
-      wsHandler.onClose(ws, code, reason);
+      if (isMux) {
+        muxHandler.onClose(ws, code, reason);
+      } else {
+        wsHandler.onClose(ws, code, reason);
+      }
     });
 
     ws.on("error", (error) => {
-      wsHandler.onError(ws, error);
+      if (isMux) {
+        muxHandler.onError(ws, error);
+      } else {
+        wsHandler.onError(ws, error);
+      }
     });
 
     ws.on("pong", () => {
-      wsHandler.onPong(ws);
+      if (!isMux) wsHandler.onPong(ws);
     });
   });
 
@@ -303,8 +374,8 @@ export async function createRelayServer(
   server.on("upgrade", (request, socket, head) => {
     const urlPath = request.url || "/";
 
-    // Only handle /ws path
-    if (!urlPath.startsWith("/ws")) {
+    const upgradePath = urlPath.split("?")[0];
+    if (upgradePath !== "/ws" && upgradePath !== "/mux") {
       socket.write("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n");
       socket.destroy();
       return;

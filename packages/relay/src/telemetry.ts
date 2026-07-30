@@ -1,5 +1,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import type {
+  RelayMuxClosedReason,
+  RelayMuxErrorReason,
+} from "@yep-anywhere/shared";
 import type { Logger } from "pino";
 
 export interface RelayTelemetryConfig {
@@ -23,6 +27,8 @@ export interface RelayConnectionSnapshot {
   pairs: number;
   registered: number;
   activeServers: number;
+  muxPhysicalSockets: number;
+  muxCircuits: number;
 }
 
 interface RelayTelemetryEventBase {
@@ -70,6 +76,36 @@ export type RelayTelemetryEvent =
       closeCode: number;
       closeReason: string;
     })
+  | (RelayTelemetryEventBase & {
+      event: "mux_socket_opened";
+      clientIp: string;
+    })
+  | (RelayTelemetryEventBase & {
+      event: "mux_socket_closed";
+      clientIp: string;
+      closeCode: number;
+      closeReason: string;
+    })
+  | (RelayTelemetryEventBase & {
+      event: "mux_circuit_opened";
+      clientIp: string;
+      circuitId: number;
+      username: string;
+    })
+  | (RelayTelemetryEventBase & {
+      event: "mux_circuit_error";
+      clientIp: string;
+      circuitId: number;
+      username?: string;
+      reason: RelayMuxErrorReason;
+    })
+  | (RelayTelemetryEventBase & {
+      event: "mux_circuit_closed";
+      clientIp: string;
+      circuitId: number;
+      username: string;
+      reason: RelayMuxClosedReason;
+    })
   | (RelayTelemetryEventBase &
       RelayConnectionSnapshot & {
         event: "connection_sample";
@@ -102,6 +138,36 @@ type RelayTelemetryEventInput =
       initiator: "server" | "client";
       closeCode: number;
       closeReason: string;
+    }
+  | {
+      event: "mux_socket_opened";
+      clientIp: string;
+    }
+  | {
+      event: "mux_socket_closed";
+      clientIp: string;
+      closeCode: number;
+      closeReason: string;
+    }
+  | {
+      event: "mux_circuit_opened";
+      clientIp: string;
+      circuitId: number;
+      username: string;
+    }
+  | {
+      event: "mux_circuit_error";
+      clientIp: string;
+      circuitId: number;
+      username?: string;
+      reason: RelayMuxErrorReason;
+    }
+  | {
+      event: "mux_circuit_closed";
+      clientIp: string;
+      circuitId: number;
+      username: string;
+      reason: RelayMuxClosedReason;
     }
   | (RelayConnectionSnapshot & {
       event: "connection_sample";

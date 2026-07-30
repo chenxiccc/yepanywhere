@@ -246,9 +246,9 @@ sources impossible by hiding source or connection identity in a singleton.
 The first concrete product/E2E probe is implemented in
 [`docs/tactical/066-multi-host-monitor-coexistence-harness.md`](../docs/tactical/066-multi-host-monitor-coexistence-harness.md):
 a hidden/default-off monitor backed by three real secure relay sources. It
-passes over today's independent relay sockets. A later relay mux may reduce the
-client-side socket count, but it is an optional transport optimization and must
-preserve the independent-socket fallback.
+uses one relay mux socket when a shared relay advertises
+`client-mux-v1`, and otherwise preserves the proven independent-socket
+fallback.
 
 ### Experimental monitor contract
 
@@ -272,10 +272,9 @@ preserve the independent-socket fallback.
   remain usable. Leaving the route disposes every acquired connection,
   subscription, activity lease, reconnect owner, and runtime; it must not keep
   hidden background sockets alive.
-- The initial transport deliberately opens one ordinary browser-to-relay
-  WebSocket per selected relay host. Relay mux may change that physical count
-  only behind a new optional capability and must preserve this visible
-  behavior through legacy fallback.
+- A shared capable relay uses one browser-to-relay `/mux` WebSocket for up to
+  five selected hosts. A missing or failed capability probe preserves one
+  ordinary `/ws` socket per host, with the same visible behavior.
 
 ## Concurrent Runtime Cost
 

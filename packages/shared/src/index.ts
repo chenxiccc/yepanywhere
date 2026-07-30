@@ -872,3 +872,34 @@ export {
   USERNAME_REGEX,
   isValidRelayUsername,
 } from "./relay-protocol.js";
+
+export type {
+  RelayMuxReady,
+  RelayMuxOpen,
+  RelayMuxOpened,
+  RelayMuxErrorReason,
+  RelayMuxError,
+  RelayMuxClose,
+  RelayMuxClosedReason,
+  RelayMuxClosed,
+  RelayMuxClientControl,
+  RelayMuxServerControl,
+  RelayMuxDataFrame,
+} from "./relay-mux.js";
+
+export {
+  RELAY_CLIENT_MUX_V1_CAPABILITY,
+  RELAY_MUX_PROTOCOL_VERSION,
+  RELAY_MUX_HEADER_BYTES,
+  RELAY_MUX_BINARY_FLAG,
+  RelayMuxFrameError,
+  isRelayMuxCircuitId,
+  isRelayMuxReady,
+  isRelayMuxOpen,
+  isRelayMuxOpened,
+  isRelayMuxError,
+  isRelayMuxClose,
+  isRelayMuxClosed,
+  encodeRelayMuxDataFrame,
+  decodeRelayMuxDataFrame,
+} from "./relay-mux.js";
