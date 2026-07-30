@@ -18,7 +18,6 @@ import {
 import {
   type ChangeEvent,
   type ClipboardEvent,
-  Fragment,
   type KeyboardEvent,
   type ReactNode,
   useCallback,
@@ -55,6 +54,7 @@ import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useRemoteExecutors } from "../hooks/useRemoteExecutors";
 import { useServerSettings } from "../hooks/useServerSettings";
 import { useSessionToolbarPresence } from "../hooks/useSessionToolbarPresence";
+import { useSpeechCaptureSettings } from "../hooks/useSpeechCaptureSettings";
 import { useI18n } from "../i18n";
 import {
   getEffortLevelOptions,
@@ -154,7 +154,6 @@ import {
   clearSpeechInsertionRangeReplacement,
   createSpeechInsertionRange,
   getSpeechSelectionFinalDelayMs,
-  getSpeechMirrorSegments,
   getSpeechTranscriptInsertionParts,
   getSpeechTranscriptReplacementParts,
   mapSpeechInsertionRangeThroughEdit,
@@ -252,6 +251,7 @@ export function NewSessionForm({
   preferredModel,
 }: NewSessionFormProps) {
   const { t } = useI18n();
+  const { smoothPausedCapitalization } = useSpeechCaptureSettings();
   const navigate = useNavigate();
   const basePath = useRemoteBasePath();
   const clientSummarySourceKey = useClientSummarySourceKey();
@@ -2128,8 +2128,8 @@ export function NewSessionForm({
   };
 
   const handleKeyDown = (e: KeyboardEvent) => {
-    // Escape cancels a pending post-capture wait (its label is inline at the
-    // cursor; no chip ✕). Active listening still finalizes on Escape below.
+    // Escape cancels a pending post-capture wait. Active listening still
+    // finalizes on Escape below.
     if (
       e.key === "Escape" &&
       !e.ctrlKey &&
@@ -2336,12 +2336,13 @@ export function NewSessionForm({
           },
           composerEditedDuringSpeech: () =>
             composerEditedDuringSpeechRef.current,
+          smoothPausedCapitalization,
         },
         transcript,
         metadata,
       );
-      // A completed overlapping (non-active) target's result has landed; forget
-      // its range so its tag clears (active target is forgotten on pending->null).
+      // A completed overlapping (non-active) target's result has landed;
+      // forget its range (active target is forgotten on pending->null).
       const committedTargetId = metadata?.speechTargetId;
       if (
         committedTargetId &&
@@ -2351,7 +2352,7 @@ export function NewSessionForm({
         setSpeechPreviewRevision((revision) => revision + 1);
       }
     },
-    [draftControls, handleStartSession],
+    [draftControls, handleStartSession, smoothPausedCapitalization],
   );
 
   const handleVoiceTranscript = useCallback(
@@ -2392,6 +2393,7 @@ export function NewSessionForm({
   const handleListeningStop = useCallback(() => {
     flushPendingSpeechFinal();
     setInterimTranscript("");
+    textareaRef.current?.focus();
   }, [flushPendingSpeechFinal]);
 
   const handleInterimTranscript = useCallback((transcript: string) => {
@@ -2401,8 +2403,8 @@ export function NewSessionForm({
   const handlePendingSpeechChange = useCallback(
     (kind: SpeechPendingKind | null) => {
       if (kind === null) {
-        // Active recording finished: forget its target so the inline tag clears
-        // and completed targets don't accumulate (see MessageInput).
+        // Active recording finished: forget its target so completed targets do
+        // not accumulate (see MessageInput).
         const targetId = activeSpeechTargetIdRef.current;
         if (targetId) {
           speechInsertionRangesRef.current.delete(targetId);
@@ -2415,10 +2417,9 @@ export function NewSessionForm({
     [],
   );
 
-  // Cancel a pending transcription/finalization from the chip's ✕. The provider
-  // discards the in-flight result (keeping committed text); here we drop the
-  // pending speech target. Cancel is explicit-click-only so backspace can never
-  // trigger it.
+  // Cancel a pending transcription/finalization. The provider discards the
+  // in-flight result (keeping committed text); here we drop the pending speech
+  // target.
   const handleCancelTranscription = useCallback(() => {
     voiceButtonRef.current?.cancelProcessing();
     clearPendingSpeechFinal();
@@ -2482,72 +2483,22 @@ export function NewSessionForm({
         : t("toolbarProjectQueueTooltip")
       : t("projectQueueNewSessionNeedsProject");
   const interimDisplayTranscript = interimTranscript.trim();
-  // The inline mirror previews speech in place at the insertion point: streaming
-  // interim text, otherwise the pending-state label (Listening…/Transcribing…/
-  // Finalizing…), unified with the streaming preview rather than a sibling chip.
-  // See topics/mic-button-speech-ui.md.
-  const speechPendingLabel = speechPending
-    ? speechPending === "finalizing"
-      ? t("speechFinalizingPlaceholder" as never)
-      : speechPending === "listening"
-        ? t("speechListeningPlaceholder" as never)
-        : t("speechTranscribingPlaceholder" as never)
-    : "";
-  const speechInlineTranscript = interimDisplayTranscript || speechPendingLabel;
+  // Only mutable provisional speech uses the textarea mirror. Capture and
+  // post-capture status live with the mic so the real draft and caret stay
+  // untouched while transcription is pending.
   const speechInsertionRange = speechInsertionRangeRef.current;
   const interimInsertion = speechInsertionRange
     ? getSpeechTranscriptReplacementParts(
         message,
-        speechInlineTranscript,
+        interimDisplayTranscript,
         speechInsertionRange.end,
         speechInsertionRange.replaceEnd ?? speechInsertionRange.end,
       )
     : getSpeechTranscriptInsertionParts(
         message,
-        speechInlineTranscript,
+        interimDisplayTranscript,
         message.length,
       );
-
-  // One tag per pending speech target at its own insertion point (arrival
-  // order, "(N)" on the Nth>1); see MessageInput / topics/mic-button-speech-ui.md.
-  const pendingTagLabel = (kind: SpeechPendingKind | null): string =>
-    kind === "finalizing"
-      ? t("speechFinalizingPlaceholder" as never)
-      : kind === "listening"
-        ? t("speechListeningPlaceholder" as never)
-        : t("speechTranscribingPlaceholder" as never);
-  const speechRangeTags = interimDisplayTranscript
-    ? []
-    : [...speechInsertionRangesRef.current.entries()].map(
-        ([targetId, range], index) => {
-          const active = targetId === activeSpeechTargetIdRef.current;
-          return {
-            targetId,
-            position: range.end,
-            replaceEnd: range.replaceEnd ?? range.end,
-            active,
-            ordinal: index + 1,
-            label: pendingTagLabel(active ? speechPending : "transcribing"),
-          };
-        },
-      );
-  const speechPendingTags =
-    speechRangeTags.length === 0 && !interimDisplayTranscript && speechPending
-      ? [
-          {
-            targetId: "pending",
-            position: message.length,
-            replaceEnd: message.length,
-            active: true,
-            ordinal: 1,
-            label: pendingTagLabel(speechPending),
-          },
-        ]
-      : speechRangeTags;
-  const speechMirrorSegments = getSpeechMirrorSegments(
-    message,
-    speechPendingTags,
-  );
 
   const getTranscriptionContext =
     useCallback((): SpeechTranscriptionContext => {
@@ -2565,57 +2516,21 @@ export function NewSessionForm({
   const inputArea = (
     <>
       <div
-        className={`speech-draft-field ${speechInlineTranscript ? "has-interim" : ""}${
-          speechInlineTranscript && !interimDisplayTranscript
-            ? " has-pending-tag"
-            : ""
+        className={`speech-draft-field ${
+          interimDisplayTranscript ? "has-interim" : ""
         }`}
       >
         <div className="speech-draft-inline">
-          {speechInlineTranscript && (
+          {interimDisplayTranscript && (
             <div className="speech-draft-mirror" aria-hidden="true">
-              {interimDisplayTranscript ? (
-                <>
-                  <span>{interimInsertion.before}</span>
-                  {interimInsertion.separatorBefore}
-                  <span className="speech-interim-inline">
-                    {interimInsertion.transcript}
-                  </span>
-                  {interimInsertion.separatorAfter}
-                  <span>{interimInsertion.after}</span>
-                </>
-              ) : (
-                speechMirrorSegments.map((seg) =>
-                  seg.type === "text" ? (
-                    <span key={seg.key}>{seg.text}</span>
-                  ) : (
-                    <Fragment key={seg.tag.targetId}>
-                      <span className="speech-processing-inline">
-                        {seg.tag.label}
-                        {seg.tag.ordinal > 1 && (
-                          <span className="speech-tag-ordinal">
-                            {` (${seg.tag.ordinal})`}
-                          </span>
-                        )}
-                        {seg.tag.active && (
-                          <button
-                            type="button"
-                            className="speech-tag-cancel"
-                            tabIndex={-1}
-                            aria-hidden="true"
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={handleCancelTranscription}
-                            title={t("speechTranscribingCancel" as never)}
-                          >
-                            ×
-                          </button>
-                        )}
-                      </span>
-                      {seg.tag.active && <span className="speech-tag-caret" />}
-                    </Fragment>
-                  ),
-                )
-              )}
+              <span>{interimInsertion.before}</span>
+              {interimInsertion.separatorBefore}
+              <span className="speech-interim-inline">
+                {interimInsertion.transcript}
+              </span>
+              <span className="speech-interim-caret" />
+              {interimInsertion.separatorAfter}
+              <span>{interimInsertion.after}</span>
             </div>
           )}
           <textarea
@@ -2750,7 +2665,7 @@ export function NewSessionForm({
           />
           {selectedProvider && modelOptions.length > 0 && (
             <FilterDropdown
-              className="composer-model-chip"
+              className="composer-model-chip model-filter-dropdown"
               label={t("newSessionModelTitle")}
               options={modelOptions}
               selected={selectedModel ? [selectedModel] : []}

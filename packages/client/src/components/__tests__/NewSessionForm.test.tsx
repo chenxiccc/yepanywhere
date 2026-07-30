@@ -94,6 +94,7 @@ const {
         kind: "listening" | "transcribing" | "finalizing" | null,
       ) => void;
       onInterimTranscript?: (text: string) => void;
+      onListeningStop?: () => void;
     },
   },
   draftKeys: [] as string[],
@@ -2311,7 +2312,7 @@ describe("NewSessionForm", () => {
     expect(mockVoiceToggle).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps the new-session composer editable with a cancellable transcribing chip", async () => {
+  it("keeps the real new-session textarea editable while transcribing", async () => {
     render(
       <NewSessionForm
         projectId="project-1"
@@ -2323,17 +2324,18 @@ describe("NewSessionForm", () => {
       "newSessionPlaceholder",
     ) as HTMLTextAreaElement;
 
-    expect(document.querySelector(".speech-processing-inline")).toBeNull();
-
     act(() => {
+      screen.getByRole("button", { name: "voice" }).focus();
+      voicePropsState.current?.onListeningStop?.();
       voicePropsState.current?.onPendingSpeechChange?.("transcribing");
     });
-    const badge = await waitFor(() => {
-      const el = document.querySelector(".speech-processing-inline");
-      expect(el).not.toBeNull();
-      return el as HTMLElement;
+    await waitFor(() => {
+      expect(document.querySelector(".speech-draft-mirror")).toBeNull();
     });
-    expect(badge.textContent).toContain("Transcribing");
+    expect(
+      document.querySelector(".speech-draft-field")?.classList,
+    ).not.toContain("has-interim");
+    expect(document.activeElement).toBe(textarea);
 
     expect(textarea.disabled).toBe(false);
     fireEvent.change(textarea, {
@@ -2343,10 +2345,36 @@ describe("NewSessionForm", () => {
 
     fireEvent.keyDown(textarea, { key: "Escape" });
     expect(mockVoiceCancelProcessing).toHaveBeenCalledTimes(1);
-    await waitFor(() => {
-      expect(document.querySelector(".speech-processing-inline")).toBeNull();
-    });
     expect(textarea.value).toBe("typed while transcribing");
+  });
+
+  it("keeps Listening out of the draft and places the caret after provisional speech", async () => {
+    render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+
+    act(() => {
+      voicePropsState.current?.onPendingSpeechChange?.("listening");
+    });
+    await waitFor(() =>
+      expect(document.querySelector(".speech-draft-mirror")).toBeNull(),
+    );
+
+    act(() => {
+      voicePropsState.current?.onInterimTranscript?.("live words");
+    });
+    const interim = await waitFor(() => {
+      const el = document.querySelector(".speech-interim-inline");
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    expect(interim.nextElementSibling?.classList).toContain(
+      "speech-interim-caret",
+    );
   });
 
   it("hides a stored YA-routed Grok batch method from the method list", () => {

@@ -66,8 +66,86 @@ export function computeSpeechDelta(
 
 const NO_SPACE_BEFORE_TRANSCRIPT = /^[,.;:!?%)]/;
 const INITIAL_TITLE_CASE_WORD = /^(\s*[(["'`]*)([A-Z])(?=[a-z])/;
+const INITIAL_TITLE_CASE_TOKEN = /^(\s*[(["'`]*)([A-Z][a-z]+)(?=$|[^A-Za-z])/;
 const LOWERCASE_CONTEXT_WORD = /^[^A-Za-z]*[a-z]/;
 const SENTENCE_INITIAL_CONTEXT = /(?:^|[.!?][)"'\]]*)$/;
+const COMMON_CONTINUATION_WORDS = new Set([
+  "after",
+  "although",
+  "and",
+  "anyway",
+  "are",
+  "as",
+  "at",
+  "basically",
+  "because",
+  "before",
+  "but",
+  "can",
+  "could",
+  "did",
+  "do",
+  "does",
+  "even",
+  "finally",
+  "for",
+  "from",
+  "had",
+  "has",
+  "have",
+  "he",
+  "her",
+  "here",
+  "however",
+  "how",
+  "if",
+  "in",
+  "is",
+  "it",
+  "its",
+  "just",
+  "like",
+  "meanwhile",
+  "maybe",
+  "my",
+  "not",
+  "now",
+  "of",
+  "okay",
+  "on",
+  "or",
+  "our",
+  "really",
+  "she",
+  "so",
+  "still",
+  "that",
+  "the",
+  "their",
+  "then",
+  "there",
+  "they",
+  "this",
+  "those",
+  "though",
+  "to",
+  "ultimately",
+  "was",
+  "we",
+  "well",
+  "what",
+  "when",
+  "where",
+  "which",
+  "while",
+  "who",
+  "why",
+  "with",
+  "would",
+  "yeah",
+  "you",
+  "your",
+]);
 export const SPEECH_SELECTION_FINAL_GRACE_MS = 300;
 
 export function getSpeechTranscriptSeparator(
@@ -151,54 +229,6 @@ export function getSpeechTranscriptInsertionParts(
   };
 }
 
-export interface SpeechMirrorTagPosition {
-  /** Insertion point in the base text (where this pending result will land). */
-  position: number;
-  /** End of any selected span this tag replaces (>= position), else equals it. */
-  replaceEnd: number;
-}
-
-export type SpeechMirrorSegment<T extends SpeechMirrorTagPosition> =
-  | { type: "text"; text: string; key: string }
-  | { type: "tag"; tag: T };
-
-/**
- * Split `base` into text runs interleaved with pending-speech tags, each placed
- * at its own insertion point, sorted left to right (ties keep arrival order).
- * Lets the composer mirror render one tag per pending request at its own
- * position — e.g. two overlapping batch transcriptions — instead of a single
- * tag standing in for all of them. A tag that replaces a selected span consumes
- * `[position, replaceEnd]` of the base.
- */
-export function getSpeechMirrorSegments<T extends SpeechMirrorTagPosition>(
-  base: string,
-  tags: readonly T[],
-): SpeechMirrorSegment<T>[] {
-  const sorted = [...tags].sort((a, b) => a.position - b.position);
-  const segments: SpeechMirrorSegment<T>[] = [];
-  let cursor = 0;
-  for (const tag of sorted) {
-    const at = Math.max(cursor, Math.min(tag.position, base.length));
-    if (at > cursor) {
-      segments.push({
-        type: "text",
-        text: base.slice(cursor, at),
-        key: `t${cursor}`,
-      });
-    }
-    segments.push({ type: "tag", tag });
-    cursor = Math.max(at, Math.min(tag.replaceEnd, base.length));
-  }
-  if (cursor < base.length) {
-    segments.push({
-      type: "text",
-      text: base.slice(cursor),
-      key: `t${cursor}`,
-    });
-  }
-  return segments;
-}
-
 function lowercaseInitialTitleCaseWord(transcript: string): string {
   return transcript.replace(
     INITIAL_TITLE_CASE_WORD,
@@ -211,9 +241,36 @@ function isSentenceInitialReplacementContext(
   base: string,
   replacementStart: number,
 ): boolean {
-  return SENTENCE_INITIAL_CONTEXT.test(
-    base.slice(0, replacementStart).trimEnd(),
+  const context = base.slice(0, replacementStart);
+  return (
+    /\n\s*$/.test(context) || SENTENCE_INITIAL_CONTEXT.test(context.trimEnd())
   );
+}
+
+/**
+ * Smooth a recognizer-created chunk boundary without broadly guessing at
+ * proper nouns. Speech services often title-case each phrase after a pause;
+ * this only lowercases a conservative set of ordinary continuation words when
+ * the insertion context is still mid-sentence. Acronyms, single letters, and
+ * unlisted title-case words (Android, Google, Jay) remain provider-verbatim.
+ */
+export function smoothPausedSpeechCapitalization(
+  base: string,
+  transcript: string,
+  insertionIndex: number,
+): string {
+  const trimmedTranscript = transcript.trim();
+  if (
+    !trimmedTranscript ||
+    isSentenceInitialReplacementContext(base, insertionIndex)
+  ) {
+    return trimmedTranscript;
+  }
+  const token = INITIAL_TITLE_CASE_TOKEN.exec(trimmedTranscript)?.[2];
+  if (!token || !COMMON_CONTINUATION_WORDS.has(token.toLowerCase())) {
+    return trimmedTranscript;
+  }
+  return lowercaseInitialTitleCaseWord(trimmedTranscript);
 }
 
 function normalizeSpeechTranscriptForReplacementContext(
@@ -303,6 +360,14 @@ export function replaceSpeechTranscriptBefore(
 
 export interface SpeechRangeReplacement extends SpeechTranscriptReplacement {
   range: SpeechInsertionRange;
+}
+
+export interface SpeechRangeReplacementOptions {
+  /**
+   * Smooth ordinary title-cased continuation words on a second or later
+   * provider chunk. Default false: this changes provider-returned text.
+   */
+  smoothPausedCapitalization?: boolean;
 }
 
 export function createSpeechInsertionRange(
@@ -461,6 +526,7 @@ export function replaceSpeechTranscriptInRange(
   transcript: string,
   range: SpeechInsertionRange,
   previousChars: number,
+  options: SpeechRangeReplacementOptions = {},
 ): SpeechRangeReplacement {
   const replacementEnd = Math.max(range.end, range.replaceEnd ?? range.end);
   const replacingExplicitRange =
@@ -475,16 +541,23 @@ export function replaceSpeechTranscriptInRange(
     replacementStart,
     Math.min(replacementEnd, base.length),
   );
+  const normalizedTranscript =
+    options.smoothPausedCapitalization === true &&
+    range.chunks.length > 0 &&
+    previousChars === 0 &&
+    !replacingExplicitRange
+      ? smoothPausedSpeechCapitalization(base, transcript, replacementStart)
+      : transcript;
   const insertion = replacingExplicitRange
     ? getSpeechTranscriptReplacementParts(
         base,
-        transcript,
+        normalizedTranscript,
         replacementStart,
         clampedReplacementEnd,
       )
     : getSpeechTranscriptInsertionParts(
         `${base.slice(0, replacementStart)}${base.slice(clampedReplacementEnd)}`,
-        transcript,
+        normalizedTranscript,
         replacementStart,
       );
   const insertionStart = insertion.before.length;

@@ -1174,8 +1174,16 @@ describe("MessageInput", () => {
   describe("composer recall drawer", () => {
     const turnRecall = {
       entries: [
-        { id: "turn-deploy", text: "deploy the app", preview: "deploy the app" },
-        { id: "turn-debug", text: "debug the crash", preview: "debug the crash" },
+        {
+          id: "turn-deploy",
+          text: "deploy the app",
+          preview: "deploy the app",
+        },
+        {
+          id: "turn-debug",
+          text: "debug the crash",
+          preview: "debug the crash",
+        },
         { id: "turn-run", text: "run the tests", preview: "run the tests" },
       ],
     };
@@ -1650,22 +1658,26 @@ describe("MessageInput", () => {
     });
   });
 
-  it("shows the Transcribing label inline at the cursor and cancels on Escape", async () => {
+  it("keeps the real draft and caret mode while transcribing; Escape cancels", async () => {
     const textarea = renderMessageInput() as HTMLTextAreaElement;
-
-    expect(document.querySelector(".speech-processing-inline")).toBeNull();
+    fireEvent.change(textarea, { target: { value: "draft" } });
+    act(() => {
+      textarea.focus();
+      textarea.setSelectionRange(5, 5);
+    });
 
     // Enter the batch processing wait (no interim), e.g. parakeet first-load.
     act(() => {
       voicePropsState.current?.onPendingSpeechChange?.("transcribing");
     });
 
-    const badge = await waitFor(() => {
-      const el = document.querySelector(".speech-processing-inline");
-      expect(el).not.toBeNull();
-      return el as HTMLElement;
+    await waitFor(() => {
+      expect(document.querySelector(".speech-draft-mirror")).toBeNull();
     });
-    expect(badge.textContent).toContain("Transcribing");
+    expect(
+      document.querySelector(".speech-draft-field")?.classList,
+    ).not.toContain("has-interim");
+    expect(textarea.selectionStart).toBe(5);
 
     // The field stays editable while transcription is pending.
     expect(textarea.disabled).toBe(false);
@@ -1674,87 +1686,71 @@ describe("MessageInput", () => {
     });
     expect(textarea.value).toBe("typed while transcribing");
 
-    // Escape is the deliberate cancel path now (no chip ✕; backspace can't
-    // reach it). Cancel leaves the user's typed text intact.
+    // Escape remains the deliberate cancel path and leaves typed text intact.
     fireEvent.keyDown(textarea, { key: "Escape" });
     expect(mockVoiceCancelProcessing).toHaveBeenCalledTimes(1);
-    await waitFor(() => {
-      expect(document.querySelector(".speech-processing-inline")).toBeNull();
-    });
     expect(textarea.value).toBe("typed while transcribing");
   });
 
-  it("previews interim inline, then shows the Finalizing label inline; Escape cancels", async () => {
+  it("previews interim inline, then restores the real field while finalizing", async () => {
     const textarea = renderMessageInput() as HTMLTextAreaElement;
 
-    // Active streaming: interim text previews inline (green highlight).
+    // Active streaming: provisional text previews inline with a mirror caret
+    // immediately after the visible dictated phrase.
     act(() => {
       voicePropsState.current?.onInterimTranscript?.("live words");
     });
-    await waitFor(() => {
-      expect(document.querySelector(".speech-interim-inline")).not.toBeNull();
-    });
-    expect(document.querySelector(".speech-processing-inline")).toBeNull();
-
-    // Flush (stop): the finalize wait shows its label inline at the same place,
-    // unified with the batch transcribe wait; Escape cancels.
-    act(() => {
-      voicePropsState.current?.onInterimTranscript?.("");
-      voicePropsState.current?.onPendingSpeechChange?.("finalizing");
-    });
-    const badge = await waitFor(() => {
-      const el = document.querySelector(".speech-processing-inline");
+    const interim = await waitFor(() => {
+      const el = document.querySelector(".speech-interim-inline");
       expect(el).not.toBeNull();
       return el as HTMLElement;
     });
-    expect(badge.textContent).toContain("Finalizing");
+    expect(interim.nextElementSibling?.classList).toContain(
+      "speech-interim-caret",
+    );
+    // Flush (stop): provisional text disappears and the textarea returns to
+    // native rendering/caret behavior. Finalizing status belongs to the mic.
+    act(() => {
+      screen.getAllByRole("button", { name: "voice" })[0]?.focus();
+      voicePropsState.current?.onListeningStop?.();
+      voicePropsState.current?.onInterimTranscript?.("");
+      voicePropsState.current?.onPendingSpeechChange?.("finalizing");
+    });
+    await waitFor(() => {
+      expect(document.querySelector(".speech-draft-mirror")).toBeNull();
+    });
+    expect(
+      document.querySelector(".speech-draft-field")?.classList,
+    ).not.toContain("has-interim");
+    expect(document.activeElement).toBe(textarea);
 
     fireEvent.keyDown(textarea, { key: "Escape" });
     expect(mockVoiceCancelProcessing).toHaveBeenCalledTimes(1);
   });
 
-  it("shows the Listening label inline during active capture", async () => {
+  it("does not insert a Listening label into the draft", async () => {
     renderMessageInput();
 
-    // Active live capture previews the pending state inline at the insertion
-    // point too, not as a chip below the composer.
     act(() => {
       voicePropsState.current?.onListeningStart?.();
       voicePropsState.current?.onPendingSpeechChange?.("listening");
     });
-    const badge = await waitFor(() => {
-      const el = document.querySelector(".speech-processing-inline");
-      expect(el).not.toBeNull();
-      return el as HTMLElement;
-    });
-    expect(badge.textContent).toContain("Listening");
-  });
 
-  it("cancels the inline pending tag via its ✕ button", async () => {
-    renderMessageInput();
-
-    act(() => {
-      voicePropsState.current?.onPendingSpeechChange?.("transcribing");
-    });
-    const badge = await waitFor(() => {
-      const el = document.querySelector(".speech-processing-inline");
-      expect(el).not.toBeNull();
-      return el as HTMLElement;
-    });
-    fireEvent.click(
-      badge.querySelector(".speech-tag-cancel") as HTMLButtonElement,
+    await waitFor(() =>
+      expect(document.querySelector(".speech-draft-mirror")).toBeNull(),
     );
-    expect(mockVoiceCancelProcessing).toHaveBeenCalledTimes(1);
-    await waitFor(() => {
-      expect(document.querySelector(".speech-processing-inline")).toBeNull();
-    });
   });
 
-  it("renders one tag per overlapping pending target, ordinal on the 2nd", async () => {
+  it("never duplicates pending statuses inside the draft", async () => {
     const textarea = renderMessageInput() as HTMLTextAreaElement;
     fireEvent.change(textarea, { target: { value: "draft" } });
+    act(() => {
+      textarea.focus();
+      textarea.setSelectionRange(5, 5);
+    });
 
-    // Two recordings started before either result lands: each gets its own tag.
+    // Two overlapping recordings used to create "Transcribing… Transcribing…
+    // (2)" in the mirror and hide the native caret.
     act(() => {
       voicePropsState.current?.onListeningStart?.();
       voicePropsState.current?.onPendingSpeechChange?.("transcribing");
@@ -1763,14 +1759,13 @@ describe("MessageInput", () => {
     });
 
     await waitFor(() => {
-      expect(
-        document.querySelectorAll(".speech-processing-inline").length,
-      ).toBe(2);
+      expect(document.querySelector(".speech-draft-mirror")).toBeNull();
     });
-    // Only the 2nd (later) tag carries a "(N)" ordinal.
-    const ordinals = document.querySelectorAll(".speech-tag-ordinal");
-    expect(ordinals.length).toBe(1);
-    expect(ordinals[0]?.textContent).toContain("2");
+    expect(
+      document.querySelector(".speech-draft-field")?.classList,
+    ).not.toContain("has-interim");
+    expect(textarea.value).toBe("draft");
+    expect(textarea.selectionStart).toBe(5);
   });
 
   it("retires an older failed target while a newer recording stays active", async () => {
@@ -1787,60 +1782,45 @@ describe("MessageInput", () => {
       voicePropsState.current?.onPendingSpeechChange?.("listening");
     });
 
-    await waitFor(() => {
-      expect(
-        document.querySelectorAll(".speech-processing-inline"),
-      ).toHaveLength(2);
-    });
-
     act(() => {
       voicePropsState.current?.onTranscriptionSettled?.({
         speechTargetId: firstTargetId,
         status: "error",
       });
+      voicePropsState.current?.onInterimTranscript?.("new recording");
     });
 
-    await waitFor(() => {
-      expect(
-        document.querySelectorAll(".speech-processing-inline"),
-      ).toHaveLength(1);
+    const interim = await waitFor(() => {
+      const el = document.querySelector(".speech-interim-inline");
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
     });
-    expect(document.querySelector(".speech-tag-ordinal")).toBeNull();
-    expect(document.querySelector(".speech-tag-cancel")).not.toBeNull();
+    expect(interim.textContent).toBe("new recording");
   });
 
-  it("clears a completed recording's tag; a later activation does not revive it", async () => {
+  it("does not revive a completed recording in a later provisional preview", async () => {
     renderMessageInput();
 
     act(() => {
       voicePropsState.current?.onListeningStart?.();
       voicePropsState.current?.onPendingSpeechChange?.("transcribing");
     });
-    await waitFor(() => {
-      expect(
-        document.querySelectorAll(".speech-processing-inline").length,
-      ).toBe(1);
-    });
-
-    // Recording completes (result committed, pending ends) -> tag clears.
     act(() => {
       voicePropsState.current?.onPendingSpeechChange?.(null);
     });
-    await waitFor(() => {
-      expect(document.querySelector(".speech-processing-inline")).toBeNull();
-    });
 
-    // A second activation shows exactly one tag, not a revived stack.
     act(() => {
       voicePropsState.current?.onListeningStart?.();
       voicePropsState.current?.onPendingSpeechChange?.("listening");
+      voicePropsState.current?.onInterimTranscript?.("fresh words");
     });
-    await waitFor(() => {
-      expect(
-        document.querySelectorAll(".speech-processing-inline").length,
-      ).toBe(1);
+
+    const interim = await waitFor(() => {
+      const el = document.querySelector(".speech-interim-inline");
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
     });
-    expect(document.querySelector(".speech-tag-ordinal")).toBeNull();
+    expect(interim.textContent).toBe("fresh words");
   });
 
   it("does not grace-delay the selection that started the mic transaction", () => {
@@ -4475,7 +4455,10 @@ describe("MessageInput bang commands", () => {
 
   // Completion fetch result shape: token candidates plus the global
   // command-history matches the client ranks ahead of them.
-  const completionsResult = (completions: string[], history: string[] = []) => ({
+  const completionsResult = (
+    completions: string[],
+    history: string[] = [],
+  ) => ({
     completions,
     history,
   });
@@ -4490,8 +4473,7 @@ describe("MessageInput bang commands", () => {
     return {
       onRun: overrides.onRun ?? vi.fn(),
       fetchCompletions:
-        overrides.fetchCompletions ??
-        vi.fn(async () => completionsResult([])),
+        overrides.fetchCompletions ?? vi.fn(async () => completionsResult([])),
       history: overrides.history ?? [],
     };
   }
@@ -4573,9 +4555,10 @@ describe("MessageInput bang commands", () => {
   });
 
   it("discards a Tab completion after the draft changes", async () => {
-    let resolveCompletions: (
-      result: { completions: string[]; history: string[] },
-    ) => void = () => {};
+    let resolveCompletions: (result: {
+      completions: string[];
+      history: string[];
+    }) => void = () => {};
     const fetchCompletions = vi.fn(
       () =>
         new Promise<{ completions: string[]; history: string[] }>((resolve) => {
@@ -4657,11 +4640,7 @@ describe("MessageInput bang commands", () => {
     });
     fireEvent.change(textarea, { target: { value: "!!git" } });
     await waitFor(() =>
-      expect(bangMenuLabels()).toEqual([
-        "git status",
-        "gitalike",
-        "gitother",
-      ]),
+      expect(bangMenuLabels()).toEqual(["git status", "gitalike", "gitother"]),
     );
     // Move selection down to the first token candidate ("gitalike").
     fireEvent.keyDown(textarea, { key: "ArrowDown" });
@@ -4670,9 +4649,10 @@ describe("MessageInput bang commands", () => {
   });
 
   it("opens the menu on Tab when only history matches (no auto-apply)", async () => {
-    let resolve: (
-      result: { completions: string[]; history: string[] },
-    ) => void = () => {};
+    let resolve: (result: {
+      completions: string[];
+      history: string[];
+    }) => void = () => {};
     const fetchCompletions = vi.fn(
       () =>
         new Promise<{ completions: string[]; history: string[] }>((r) => {

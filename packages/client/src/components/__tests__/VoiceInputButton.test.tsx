@@ -12,35 +12,34 @@ const {
   sourceTransport,
   speechState,
   versionState,
-} =
-  vi.hoisted(() => {
-    const openSpeechSocket = vi.fn();
-    return {
-      observedSpeechOptions: [] as UseSpeechRecognitionOptions[],
-      openSpeechSocket,
-      sourceTransport: {
-        capabilities: {
-          sameOriginUrls: false,
-          speech: { open: openSpeechSocket },
-        },
+} = vi.hoisted(() => {
+  const openSpeechSocket = vi.fn();
+  return {
+    observedSpeechOptions: [] as UseSpeechRecognitionOptions[],
+    openSpeechSocket,
+    sourceTransport: {
+      capabilities: {
+        sameOriginUrls: false,
+        speech: { open: openSpeechSocket },
       },
-      speechState: {
-        isListening: false,
-        status: "idle" as
-          | "idle"
-          | "starting"
-          | "listening"
-          | "receiving"
-          | "processing"
-          | "finalizing"
-          | "reconnecting"
-          | "error",
-      },
-      versionState: {
-        capabilities: [] as string[],
-      },
-    };
-  });
+    },
+    speechState: {
+      isListening: false,
+      status: "idle" as
+        | "idle"
+        | "starting"
+        | "listening"
+        | "receiving"
+        | "processing"
+        | "finalizing"
+        | "reconnecting"
+        | "error",
+    },
+    versionState: {
+      capabilities: [] as string[],
+    },
+  };
+});
 
 vi.mock("../../contexts/SourceRuntimeContext", () => ({
   useCurrentSourceRuntime: () => ({
@@ -167,6 +166,7 @@ describe("VoiceInputButton", () => {
     expect(button.className).not.toContain("listening");
     expect(button.getAttribute("aria-pressed")).toBe("false");
     expect(document.querySelector(".voice-input-recording")).toBeNull();
+    expect(screen.getByRole("status").textContent).toBe("Transcribing");
   });
 
   it("passes the browser-selected Parakeet model to speech providers", () => {

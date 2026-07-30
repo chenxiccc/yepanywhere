@@ -49,6 +49,11 @@ export interface SpeechCommitContext {
    * No-op if absent. See topics/mic-button-speech-ui.md.
    */
   composerEditedDuringSpeech?: () => boolean;
+  /**
+   * Browser-local, default-off normalization for recognizers that title-case
+   * each finalized phrase after a pause.
+   */
+  smoothPausedCapitalization?: boolean;
 }
 
 /**
@@ -85,6 +90,7 @@ export function commitSpeechTranscript(
     onTranscriptionId,
     onSmartTurnSend,
     composerEditedDuringSpeech,
+    smoothPausedCapitalization,
   } = ctx;
   const targetId = metadata?.speechTargetId;
   const getSpeechRange = () =>
@@ -207,6 +213,7 @@ export function commitSpeechTranscript(
           trimmedTranscript,
           speechRange,
           metadata?.replacePreviousTranscriptChars ?? 0,
+          { smoothPausedCapitalization },
         );
         nextSpeechRange = rangeReplacement.range;
         return rangeReplacement;

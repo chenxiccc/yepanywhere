@@ -44,10 +44,10 @@ import type {
 } from "../lib/speechProviders/SpeechProvider";
 
 /**
- * A cancellable in-progress speech state the composer surfaces as a chip:
- * `listening` during active capture, `transcribing` for a batch wait,
- * `finalizing` for a streaming flush. The chip's ✕ cancels the non-final
- * portion in every case; already-committed finals stay in the draft.
+ * A cancellable in-progress speech state the composer uses for lifecycle:
+ * `listening` during active capture, `transcribing` for a batch wait, and
+ * `finalizing` for a streaming flush. Already-committed finals stay in the
+ * draft when the remaining work is cancelled.
  */
 export type SpeechPendingKind = "listening" | "transcribing" | "finalizing";
 
@@ -235,10 +235,10 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
   const wasCapturingRef = useRef(false);
   const waveformVisible =
     showWaveform && speechMethod !== DEFAULT_SPEECH_METHOD && isCapturing;
-  // A cancellable in-progress speech state the composer surfaces as a chip.
-  // Active capture is "listening"; the batch wait is "transcribing"; the
-  // streaming flush is "finalizing". The chip's ✕ routes to the unified
-  // cancel() (drops the non-final portion, keeps committed finals) in all three.
+  const showPostCaptureStatus = isProcessing || isFinalizing;
+  // Keep the parent informed for insertion-target and keyboard-cancel
+  // lifecycle. Visual capture/processing status stays with this mic control;
+  // the composer never inserts it into the textarea mirror.
   const pendingKind: SpeechPendingKind | null = isProcessing
     ? "transcribing"
     : isFinalizing
@@ -415,19 +415,23 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
     </button>
   );
 
-  // If showing status text, wrap in container; otherwise just return the button.
-  // Show during "starting" too so the user sees "Connecting..." instead of a
-  // button that looks live before capture has actually begun. Errors break
-  // through the desktop-only gate: on a phone (coarse pointer / narrow) the
-  // status text is normally hidden, which left mic failures with no feedback
-  // at all — the original complaint. An error must always be visible.
-  if ((showStatusText && isActive && !waveformVisible) || error) {
+  // Active-capture status text remains a wide-screen enhancement. Post-capture
+  // waits and errors always remain visible beside the mic, including on phones:
+  // the textarea must stay entirely real/editable while those states are
+  // pending, so the toolbar is their single visual home.
+  if (
+    (showStatusText && isActive && !waveformVisible) ||
+    showPostCaptureStatus ||
+    error
+  ) {
     return (
       <div
         className={`voice-input-container ${isCapturing ? "listening" : ""} ${statusClass}`}
       >
         {button}
-        <span className="voice-input-status">{statusLabel}</span>
+        <span className="voice-input-status" role="status" aria-live="polite">
+          {statusLabel}
+        </span>
       </div>
     );
   }

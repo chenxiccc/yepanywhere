@@ -20,7 +20,6 @@ import {
 } from "@yep-anywhere/shared";
 import {
   type ClipboardEvent,
-  Fragment,
   type KeyboardEvent,
   useCallback,
   useEffect,
@@ -34,6 +33,7 @@ import {
   type DraftControls,
   useDraftPersistence,
 } from "../hooks/useDraftPersistence";
+import { useSpeechCaptureSettings } from "../hooks/useSpeechCaptureSettings";
 import { useSessionToolbarPresence } from "../hooks/useSessionToolbarPresence";
 import { useVersion } from "../hooks/useVersion";
 import { useI18n } from "../i18n";
@@ -66,7 +66,6 @@ import {
   clearSpeechInsertionRangeReplacement,
   createSpeechInsertionRange,
   getSpeechSelectionFinalDelayMs,
-  getSpeechMirrorSegments,
   getSpeechTranscriptInsertionParts,
   getSpeechTranscriptReplacementParts,
   mapSpeechInsertionRangeThroughEdit,
@@ -85,9 +84,7 @@ import {
   longestCommonPrefix,
   resolveComposerBangDraft,
 } from "../lib/bangCommands";
-import {
-  getSlashCommandMenuParts,
-} from "../lib/slashCommands";
+import { getSlashCommandMenuParts } from "../lib/slashCommands";
 import {
   createClientSpeechTurnId,
   createSpeechTargetId,
@@ -398,6 +395,7 @@ export function MessageInput({
   turnRecall,
 }: Props) {
   const { t } = useI18n();
+  const { smoothPausedCapitalization } = useSpeechCaptureSettings();
   const { visibility: toolbarVisibility } = useSessionToolbarPresence();
   const [text, setText, controls] = useDraftPersistence(draftKey, {
     sessionDraft: draftIndex,
@@ -492,9 +490,8 @@ export function MessageInput({
   }, [invocationQuery, slashCommands]);
   const hasExactSlashCommand =
     invocationQuery !== null &&
-    matchingSlashCommands.some(
-      (command) =>
-        getInvocationNames(command).includes(invocationQuery.query),
+    matchingSlashCommands.some((command) =>
+      getInvocationNames(command).includes(invocationQuery.query),
     );
   const showSlashSuggestions =
     !collapsed &&
@@ -509,8 +506,7 @@ export function MessageInput({
         new Set(
           findSkillInvocations(text, slashCommands)
             .filter(
-              (match) =>
-                match.command.invocation?.inventoryState === "current",
+              (match) => match.command.invocation?.inventoryState === "current",
             )
             .map((match) => match.canonicalToken),
         ),
@@ -580,77 +576,22 @@ export function MessageInput({
       uploadProgress.length === 0
     : !!(text.trim() || attachments.length > 0);
   const interimDisplayTranscript = interimTranscript.trim();
-  // The inline mirror previews speech in place at the insertion point (replacing
-  // any selected span): streaming interim text while words arrive, otherwise the
-  // pending-state label (Listening…/Transcribing…/Finalizing…) so the wait shows
-  // where the result will land — unified with the streaming preview rather than a
-  // separate chip below the composer. See topics/mic-button-speech-ui.md.
-  const speechPendingLabel = speechPending
-    ? speechPending === "finalizing"
-      ? t("speechFinalizingPlaceholder" as never)
-      : speechPending === "listening"
-        ? t("speechListeningPlaceholder" as never)
-        : t("speechTranscribingPlaceholder" as never)
-    : "";
-  const speechInlineTranscript = interimDisplayTranscript || speechPendingLabel;
+  // Only mutable provisional speech uses the textarea mirror. Capture and
+  // post-capture status live with the mic so the real draft and caret stay
+  // untouched while transcription is pending.
   const speechInsertionRange = speechInsertionRangeRef.current;
   const interimInsertion = speechInsertionRange
     ? getSpeechTranscriptReplacementParts(
         text,
-        speechInlineTranscript,
+        interimDisplayTranscript,
         speechInsertionRange.end,
         speechInsertionRange.replaceEnd ?? speechInsertionRange.end,
       )
     : getSpeechTranscriptInsertionParts(
         text,
-        speechInlineTranscript,
+        interimDisplayTranscript,
         text.length,
       );
-
-  // Pending tags for the no-interim (batch/pending) mirror: one per active
-  // speech target at its own insertion point, in arrival order, so overlapping
-  // batch transcriptions each show where they will land. The active target's
-  // label follows speechPending; the rest are still transcribing. Streaming
-  // interim keeps the single interimInsertion path above. Range-map changes are
-  // accompanied by state updates (setText/setInterimTranscript/setSpeechPending
-  // or setSpeechPreviewRevision), so this recomputes on re-render.
-  const pendingTagLabel = (kind: SpeechPendingKind | null): string =>
-    kind === "finalizing"
-      ? t("speechFinalizingPlaceholder" as never)
-      : kind === "listening"
-        ? t("speechListeningPlaceholder" as never)
-        : t("speechTranscribingPlaceholder" as never);
-  const speechRangeTags = interimDisplayTranscript
-    ? []
-    : [...speechInsertionRangesRef.current.entries()].map(
-        ([targetId, range], index) => {
-          const active = targetId === activeSpeechTargetIdRef.current;
-          return {
-            targetId,
-            position: range.end,
-            replaceEnd: range.replaceEnd ?? range.end,
-            active,
-            ordinal: index + 1,
-            label: pendingTagLabel(active ? speechPending : "transcribing"),
-          };
-        },
-      );
-  // Pending but no tracked range yet: show a single tag at the cursor end so
-  // the label still appears inline.
-  const speechPendingTags =
-    speechRangeTags.length === 0 && !interimDisplayTranscript && speechPending
-      ? [
-          {
-            targetId: "pending",
-            position: text.length,
-            replaceEnd: text.length,
-            active: true,
-            ordinal: 1,
-            label: pendingTagLabel(speechPending),
-          },
-        ]
-      : speechRangeTags;
-  const speechMirrorSegments = getSpeechMirrorSegments(text, speechPendingTags);
   const bangFetchRef = useRef(bangSupport?.fetchCompletions);
   bangFetchRef.current = bangSupport?.fetchCompletions;
   const bangFetchKind = bangQuery?.kind ?? null;
@@ -1816,9 +1757,9 @@ export function MessageInput({
       }
     }
 
-    // The pending post-capture wait now shows its label inline at the cursor
-    // (no chip ✕). Escape cancels it — drops the uncommitted result, keeps any
-    // already-committed text. (Active listening still finalizes on Escape below.)
+    // Escape cancels a pending post-capture wait — dropping the uncommitted
+    // result while keeping any already-committed text. Active listening still
+    // finalizes on Escape below.
     if (
       e.key === "Escape" &&
       !e.ctrlKey &&
@@ -2212,14 +2153,14 @@ export function MessageInput({
           onSmartTurnSend: handleSubmit,
           composerEditedDuringSpeech: () =>
             composerEditedDuringSpeechRef.current,
+          smoothPausedCapitalization,
         },
         transcript,
         metadata,
       );
-      // An overlapping (non-active) target's batch result has now landed; forget
-      // its range so its tag clears. The active target is forgotten on the
-      // pending->null transition instead (it may still get more streaming
-      // finals).
+      // An overlapping (non-active) target's batch result has now landed;
+      // forget its range. The active target is forgotten on the pending->null
+      // transition instead (it may still get more streaming finals).
       const committedTargetId = metadata?.speechTargetId;
       if (
         committedTargetId &&
@@ -2229,7 +2170,7 @@ export function MessageInput({
         setSpeechPreviewRevision((revision) => revision + 1);
       }
     },
-    [controls, handleSubmit, noteComposerEdit],
+    [controls, handleSubmit, noteComposerEdit, smoothPausedCapitalization],
   );
 
   const handleVoiceTranscript = useCallback(
@@ -2270,6 +2211,7 @@ export function MessageInput({
   const handleListeningStop = useCallback(() => {
     flushPendingSpeechFinal();
     setInterimTranscript("");
+    textareaRef.current?.focus();
   }, [flushPendingSpeechFinal]);
 
   const handleInterimTranscript = useCallback((transcript: string) => {
@@ -2280,9 +2222,8 @@ export function MessageInput({
     (kind: SpeechPendingKind | null) => {
       if (kind === null) {
         // The active recording finished (its result has already committed);
-        // forget its insertion target so the inline tag clears and the range
-        // map does not accumulate completed targets (which would revive as
-        // stale "Transcribing…" tags on the next mic activation).
+        // forget its insertion target so the range map does not accumulate
+        // completed targets.
         const targetId = activeSpeechTargetIdRef.current;
         if (targetId) {
           speechInsertionRangesRef.current.delete(targetId);
@@ -2315,10 +2256,9 @@ export function MessageInput({
     [clearPendingSpeechFinal],
   );
 
-  // Cancel a pending transcription/finalization from the chip's ✕. The provider
-  // discards the in-flight result (keeping any committed text); here we drop the
-  // pending speech target so the composer forgets the reserved insertion point.
-  // Backspace never reaches this — cancel is intentionally explicit-click-only.
+  // Cancel a pending transcription/finalization. The provider discards the
+  // in-flight result (keeping any committed text); here we drop the pending
+  // speech target so the composer forgets the reserved insertion point.
   const handleCancelTranscription = useCallback(() => {
     voiceButtonRef.current?.cancelProcessing();
     clearPendingSpeechFinal();
@@ -2480,64 +2420,21 @@ export function MessageInput({
         } ${interimTranscript ? "voice-recording" : ""}`}
       >
         <div
-          className={`speech-draft-field ${speechInlineTranscript ? "has-interim" : ""}${
-            speechInlineTranscript && !interimDisplayTranscript
-              ? " has-pending-tag"
-              : ""
+          className={`speech-draft-field ${
+            interimDisplayTranscript ? "has-interim" : ""
           }`}
         >
           <div className="speech-draft-inline">
-            {speechInlineTranscript && (
+            {interimDisplayTranscript && (
               <div className="speech-draft-mirror" aria-hidden="true">
-                {interimDisplayTranscript ? (
-                  <>
-                    <span>{interimInsertion.before}</span>
-                    {interimInsertion.separatorBefore}
-                    <span className="speech-interim-inline">
-                      {interimInsertion.transcript}
-                    </span>
-                    {interimInsertion.separatorAfter}
-                    <span>{interimInsertion.after}</span>
-                  </>
-                ) : (
-                  // One tag per pending speech target at its own insertion point,
-                  // in arrival order; the Nth (N>1) carries a "(N)" ordinal. The
-                  // active tag gets the ✕ and the faked caret. The real caret
-                  // can't sit after a zero-width-in-value tag — see
-                  // composer-rich-input.md.
-                  speechMirrorSegments.map((seg) =>
-                    seg.type === "text" ? (
-                      <span key={seg.key}>{seg.text}</span>
-                    ) : (
-                      <Fragment key={seg.tag.targetId}>
-                        <span className="speech-processing-inline">
-                          {seg.tag.label}
-                          {seg.tag.ordinal > 1 && (
-                            <span className="speech-tag-ordinal">
-                              {` (${seg.tag.ordinal})`}
-                            </span>
-                          )}
-                          {seg.tag.active && (
-                            <button
-                              type="button"
-                              className="speech-tag-cancel"
-                              tabIndex={-1}
-                              aria-hidden="true"
-                              onMouseDown={(e) => e.preventDefault()}
-                              onClick={handleCancelTranscription}
-                              title={t("speechTranscribingCancel" as never)}
-                            >
-                              ×
-                            </button>
-                          )}
-                        </span>
-                        {seg.tag.active && (
-                          <span className="speech-tag-caret" />
-                        )}
-                      </Fragment>
-                    ),
-                  )
-                )}
+                <span>{interimInsertion.before}</span>
+                {interimInsertion.separatorBefore}
+                <span className="speech-interim-inline">
+                  {interimInsertion.transcript}
+                </span>
+                <span className="speech-interim-caret" />
+                {interimInsertion.separatorAfter}
+                <span>{interimInsertion.after}</span>
               </div>
             )}
             <textarea

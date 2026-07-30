@@ -46,6 +46,8 @@ export const UI_KEYS = {
   streamingEnabled: "yep-anywhere-streaming-enabled",
   speechKeepMicWarm: "yep-anywhere-speech-keep-mic-warm",
   speechMicDeviceId: "yep-anywhere-speech-mic-device-id",
+  speechSmoothPausedCapitalization:
+    "yep-anywhere-speech-smooth-paused-capitalization",
   floatingActionButtonEnabled: "yep-anywhere-floating-action-button-enabled",
   developerMode: "yep-anywhere-developer-mode",
   conversationView: "yep-anywhere-conversation-view-enabled",
