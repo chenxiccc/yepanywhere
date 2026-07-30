@@ -8,6 +8,7 @@
     "prepare-server-resource": "node scripts/prepare-server-resource.mjs",
     "prepare-runtime": "pnpm prepare-sidecar && pnpm prepare-server-resource",
     "smoke-runtime": "node scripts/smoke-runtime.mjs",
+    "test:scripts": "node --test scripts/*.test.mjs",
     "dev": "node ../../scripts/run-with-safe-home.js vite",
     "build": "tsc && vite build",
     "tauri": "tauri",

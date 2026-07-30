@@ -12,11 +12,19 @@ The signed desktop installer owns one tested release unit:
 - the Tauri shell;
 - a private JavaScript runtime that is not added to the user's `PATH`;
 - the server and client artifacts built from the same commit; and
-- a manifest that identifies those versions.
+- a manifest that identifies the independent desktop release version, exact
+  bundled YA Git build, source commit, and runtime versions.
 
 First launch must not download or install YA, Bun, Claude Code, Codex, or a
 package manager. A desktop update replaces the shell, runtime, and bundled YA
 artifact together. Provider software remains externally managed.
+
+The desktop release and bundled YA build remain independently versioned. In a
+desktop-created dashboard, **Settings → About** reports both values as
+**Desktop** and **Bundled YA**. The native package metadata is authoritative
+for the desktop version; the runtime manifest's Git description is
+authoritative for the bundled YA build. Ordinary browser and remote dashboards
+retain the existing server/client version presentation.
 
 Release CI prepares that runtime as an explicit packaging input before Tauri
 runs, verifies the pinned Bun archive hash, and retries transient archive
@@ -194,6 +202,12 @@ Packaged Tauri-origin windows receive only the native commands required by
 their surface. The loopback dashboard window receives no custom Tauri command
 capability. Remote content must not be able to install software, spawn a shell
 or PTY, read desktop secrets, control the server, or change desktop settings.
+
+The native shell may inject immutable, non-secret desktop and bundled-build
+metadata into the top-level loopback dashboard document for version reporting.
+That injection is limited to `http://127.0.0.1` or `http://localhost`, conveys
+no credential or native function, and does not add a server route, response
+field, capability, or Tauri command permission.
 
 Packaged pages and server-served pages each carry an explicit CSP appropriate
 to their origin. Release builds do not expose development tools by default.

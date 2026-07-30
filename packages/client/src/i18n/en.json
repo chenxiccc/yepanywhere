@@ -2057,6 +2057,8 @@
   "aboutInstalled": "Installed",
   "aboutInstall": "Install",
   "aboutVersionTitle": "Version",
+  "aboutDesktopVersion": "Desktop:",
+  "aboutBundledYaVersion": "Bundled YA:",
   "aboutServerVersion": "Server:",
   "aboutClientVersion": "Client:",
   "aboutVersionAvailable": "(v{version} available)",

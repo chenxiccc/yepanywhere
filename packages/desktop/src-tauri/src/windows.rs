@@ -227,6 +227,9 @@ pub async fn show_dashboard_window(app: &AppHandle) -> Result<(), String> {
         WebviewWindowBuilder::new(app, "dashboard", WebviewUrl::External(url))
             .title("Yep Anywhere")
             .inner_size(1100.0, 750.0)
+            .initialization_script(crate::runtime_metadata::dashboard_initialization_script(
+                app,
+            ))
             .visible(true)
             .build()
             .map_err(|error| error.to_string())?

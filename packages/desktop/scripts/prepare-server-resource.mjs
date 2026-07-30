@@ -16,6 +16,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { selectBundledYaVersion } from "./runtime-manifest.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const desktopDir = resolve(scriptDir, "..");
@@ -272,12 +273,21 @@ const serverPackage = JSON.parse(
 const runtimeVersions = JSON.parse(
   readFileSync(join(desktopDir, "runtime-versions.json"), "utf8"),
 );
+const bundledYaVersion = selectBundledYaVersion(
+  runGit([
+    "describe",
+    "--tags",
+    "--always",
+    "--dirty",
+    "--match",
+    "v[0-9]*",
+  ]),
+  rootPackage.version,
+);
 const manifest = {
   schemaVersion: 1,
   desktopVersion: desktopPackage.version,
-  yepVersion:
-    rootPackage.version ||
-    runGit(["describe", "--tags", "--always", "--match", "v[0-9]*"]),
+  yepVersion: bundledYaVersion,
   serverPackageVersion: serverPackage.version,
   commit: runGit(["rev-parse", "HEAD"]),
   bunVersion: runtimeVersions.bun.version,

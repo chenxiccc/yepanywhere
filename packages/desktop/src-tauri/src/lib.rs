@@ -1,4 +1,5 @@
 mod config;
+mod runtime_metadata;
 mod server;
 mod tray;
 mod windows;

@@ -21,6 +21,10 @@ import {
   getRemoteCompatibilityNotices,
   parseSemver,
 } from "../../lib/remoteCompatibilityNotices";
+import {
+  formatDesktopBuildVersion,
+  getDesktopRuntimeMetadata,
+} from "../../lib/desktopRuntime";
 
 export function AboutSettings() {
   const { t } = useI18n();
@@ -34,6 +38,7 @@ export function AboutSettings() {
   } = useVersion({ freshOnMount: true });
   const remoteConnection = useOptionalRemoteConnection();
   const { resetOnboarding } = useOnboarding();
+  const desktopRuntime = getDesktopRuntimeMetadata();
   const currentRelayUsername = remoteConnection?.currentRelayUsername ?? null;
   const getNoticesForVersion = useCallback(
     (candidate: VersionInfo | null) => {
@@ -150,38 +155,57 @@ export function AboutSettings() {
             <div className="settings-version-item__row">
               <div className="settings-item-info">
                 <strong>{t("aboutVersionTitle")}</strong>
-                <p>
-                  {t("aboutServerVersion")}{" "}
-                  {versionInfo ? (
-                    <>
-                      {formatRemoteServerVersion(
-                        versionInfo.current,
-                        versionInfo.installSource,
+                {desktopRuntime ? (
+                  <>
+                    <p>
+                      {t("aboutDesktopVersion")}{" "}
+                      {formatDesktopBuildVersion(
+                        desktopRuntime.desktopVersion,
                       )}
-                      {parseSemver(versionInfo.current) &&
-                      versionInfo.updateAvailable &&
-                      versionInfo.latest ? (
-                        <span className="settings-update-available">
-                          {" "}
-                          {t("aboutVersionAvailable", {
-                            version: versionInfo.latest,
-                          })}
-                        </span>
-                      ) : parseSemver(versionInfo.current) &&
-                        versionInfo.latest ? (
-                        <span className="settings-up-to-date">
-                          {" "}
-                          {t("aboutUpToDate")}
-                        </span>
-                      ) : null}
-                    </>
-                  ) : (
-                    t("loginLoading")
-                  )}
-                </p>
-                <p>
-                  {t("aboutClientVersion")} v{__APP_VERSION__}
-                </p>
+                    </p>
+                    <p>
+                      {t("aboutBundledYaVersion")}{" "}
+                      {formatDesktopBuildVersion(
+                        desktopRuntime.bundledYaVersion ?? __APP_VERSION__,
+                      )}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p>
+                      {t("aboutServerVersion")}{" "}
+                      {versionInfo ? (
+                        <>
+                          {formatRemoteServerVersion(
+                            versionInfo.current,
+                            versionInfo.installSource,
+                          )}
+                          {parseSemver(versionInfo.current) &&
+                          versionInfo.updateAvailable &&
+                          versionInfo.latest ? (
+                            <span className="settings-update-available">
+                              {" "}
+                              {t("aboutVersionAvailable", {
+                                version: versionInfo.latest,
+                              })}
+                            </span>
+                          ) : parseSemver(versionInfo.current) &&
+                            versionInfo.latest ? (
+                            <span className="settings-up-to-date">
+                              {" "}
+                              {t("aboutUpToDate")}
+                            </span>
+                          ) : null}
+                        </>
+                      ) : (
+                        t("loginLoading")
+                      )}
+                    </p>
+                    <p>
+                      {t("aboutClientVersion")} v{__APP_VERSION__}
+                    </p>
+                  </>
+                )}
                 {versionError && (
                   <p className="settings-warning">{t("aboutUnableRefresh")}</p>
                 )}
