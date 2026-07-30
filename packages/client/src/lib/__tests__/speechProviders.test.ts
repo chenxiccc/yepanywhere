@@ -540,6 +540,80 @@ describe("browser-native speech provider", () => {
     provider.dispose();
   });
 
+  it("distinguishes capture readiness from active speech", () => {
+    const Recognition = installFakeSpeechRecognition();
+    const provider = new BrowserNativeProvider();
+
+    provider.start();
+    Recognition.instance?.onaudiostart?.(new Event("audiostart"));
+    expect(provider.getState()).toMatchObject({
+      status: "listening",
+      isListening: true,
+    });
+
+    Recognition.instance?.onspeechstart?.(new Event("speechstart"));
+    expect(provider.getState()).toMatchObject({
+      status: "receiving",
+      isListening: true,
+    });
+
+    Recognition.instance?.onspeechend?.(new Event("speechend"));
+    expect(provider.getState()).toMatchObject({
+      status: "listening",
+      isListening: true,
+    });
+
+    Recognition.instance?.onresult?.({
+      resultIndex: 0,
+      results: {
+        length: 1,
+        0: {
+          isFinal: true,
+          0: { transcript: "hello" },
+        },
+      },
+    } as unknown as Event);
+    expect(provider.getState()).toMatchObject({
+      status: "receiving",
+      isListening: true,
+    });
+
+    provider.dispose();
+  });
+
+  it("returns to capture-ready after recognition results go quiet", () => {
+    vi.useFakeTimers();
+    try {
+      const Recognition = installFakeSpeechRecognition();
+      const provider = new BrowserNativeProvider();
+
+      provider.start();
+      Recognition.instance?.onresult?.({
+        resultIndex: 0,
+        results: {
+          length: 1,
+          0: {
+            isFinal: false,
+            0: { transcript: "hello" },
+          },
+        },
+      } as unknown as Event);
+      expect(provider.getState().status).toBe("receiving");
+
+      vi.advanceTimersByTime(1199);
+      expect(provider.getState().status).toBe("receiving");
+      vi.advanceTimersByTime(1);
+      expect(provider.getState()).toMatchObject({
+        status: "listening",
+        isListening: true,
+      });
+
+      provider.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("treats browser-native results as capture evidence if audio-start is skipped", () => {
     const Recognition = installFakeSpeechRecognition();
     const onInterimResult = vi.fn();

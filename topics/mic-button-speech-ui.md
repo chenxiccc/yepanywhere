@@ -301,19 +301,32 @@ speech chunk and keeps recognition running.
 
 ## Feedback
 
-The mic's capture readiness stays event-driven. Yellow means capture is
-starting or connecting; red/listening means the active path has produced a real
-listening/capture event. While capture is active, the configurable live waveform
-uses whatever measured center space remains between the bottom row's anchored
-control groups; it yields before moving or overlapping those controls, as
-specified in
+The mic's capture readiness stays event-driven. Yellow `Starting…` means the
+capture path is initializing. Once the path produces a real capture event, the
+wide-screen status says `Speak now…`; while the recognizer reports speech or
+delivers transcription results, it says `Listening…`. Because browsers do not
+reliably emit a matching speech-end event, 1.2 seconds without a provisional or
+final recognition update returns the status to `Speak now…`; an explicit
+speech-end event returns it immediately. This inactivity inference changes only
+the feedback label, never transcript boundaries or capitalization.
+Browser-native Web Speech sessions that end unexpectedly and are automatically
+restarted return to `Starting…`; they do not expose the network-sounding
+internal `reconnecting` state. The changing words provide the status feedback;
+all non-error status text keeps the normal text color and weight instead of
+flashing between state-specific red, green, and amber treatments. Actual error
+text remains red. The mic control itself turns red after the active path
+produces a real listening/capture event. While capture is active, the
+configurable live waveform uses whatever measured center space remains between
+the bottom row's anchored control groups; it yields before moving or
+overlapping those controls, as specified in
 [composer-bottom-bar-overflow.md](composer-bottom-bar-overflow.md). The
 waveform is a default-on element in Appearance → Session toolbar. The
 waveform is available for YA-controlled capture paths, where YA receives real
 audio samples; browser-native Web Speech does not expose its microphone samples
 and therefore does not show a fabricated waveform. When the waveform is shown,
-the desktop `Listening…` text beside the mic is suppressed as redundant;
-connecting, finalizing, and error text remain useful state feedback. Waveform
+the desktop `Speak now…` / `Listening…` text beside the mic is suppressed as
+redundant; starting, finalizing, and error text remain useful state feedback.
+Waveform
 amplitude uses a bounded decibel scale, saturates at 80% input amplitude, and
 may reach the toolbar's exact top and bottom bounds without a rectangular
 background or outline. The visible sample count is a client-side presentation

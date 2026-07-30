@@ -206,11 +206,11 @@ export const INITIAL_SPEECH_STATE: SpeechProviderState = {
 /** Human-readable labels for each status. */
 export const SPEECH_STATUS_LABELS: Record<SpeechProviderStatus, string> = {
   idle: "Ready",
-  starting: "Connecting...",
-  listening: "Listening...",
-  receiving: "Receiving...",
+  starting: "Starting...",
+  listening: "Speak now...",
+  receiving: "Listening...",
   processing: "Transcribing...",
   finalizing: "Finalizing...",
-  reconnecting: "Reconnecting...",
+  reconnecting: "Starting...",
   error: "Error",
 };

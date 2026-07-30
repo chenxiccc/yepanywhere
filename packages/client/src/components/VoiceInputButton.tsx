@@ -15,14 +15,11 @@ import { useBrowserXaiSttApiKey } from "../hooks/useBrowserXaiSttApiKey";
 import { useModelSettings } from "../hooks/useModelSettings";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useSpeechCaptureSettings } from "../hooks/useSpeechCaptureSettings";
-import {
-  SPEECH_STATUS_LABELS,
-  useSpeechRecognition,
-} from "../hooks/useSpeechRecognition";
+import { useSpeechRecognition } from "../hooks/useSpeechRecognition";
 import { useVersion } from "../hooks/useVersion";
 import { useViewportWidth } from "../hooks/useViewportWidth";
 import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
-import { useI18n } from "../i18n";
+import { type MessageKey, useI18n } from "../i18n";
 import { hasCoarsePointer } from "../lib/deviceDetection";
 import {
   DEFAULT_SPEECH_METHOD,
@@ -37,11 +34,23 @@ import {
   publishSpeechWaveformSamples,
 } from "../lib/speechWaveform";
 import type {
+  SpeechProviderStatus,
   SpeechSmartTurnSettings,
   SpeechTranscriptionContext,
   SpeechTranscriptionResultMetadata,
   SpeechTranscriptionSettlement,
 } from "../lib/speechProviders/SpeechProvider";
+
+const SPEECH_STATUS_MESSAGE_KEYS: Record<SpeechProviderStatus, MessageKey> = {
+  idle: "speechReadyStatus",
+  starting: "speechStartingStatus",
+  listening: "speechSpeakNowStatus",
+  receiving: "speechListeningPlaceholder",
+  processing: "speechTranscribingPlaceholder",
+  finalizing: "speechFinalizingPlaceholder",
+  reconnecting: "speechStartingStatus",
+  error: "speechErrorStatus",
+};
 
 /**
  * A cancellable in-progress speech state the composer uses for lifecycle:
@@ -249,8 +258,9 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
 
   const isAvailable = isSupported && voiceInputEnabled && serverVoiceEnabled;
 
-  // Get display text for status
-  const statusLabel = error || SPEECH_STATUS_LABELS[status];
+  // Translate provider lifecycle states into familiar dictation language.
+  // "reconnecting" is an internal recognizer restart, not a network failure.
+  const statusLabel = error || t(SPEECH_STATUS_MESSAGE_KEYS[status]);
 
   // Expose methods and state to parent
   useImperativeHandle(

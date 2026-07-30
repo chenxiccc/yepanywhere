@@ -69,16 +69,6 @@ vi.mock("../../hooks/useSpeechCaptureSettings", () => ({
 }));
 
 vi.mock("../../hooks/useSpeechRecognition", () => ({
-  SPEECH_STATUS_LABELS: {
-    idle: "Idle",
-    starting: "Connecting...",
-    listening: "Listening",
-    receiving: "Receiving",
-    processing: "Transcribing",
-    finalizing: "Finalizing",
-    reconnecting: "Reconnecting...",
-    error: "Error",
-  },
   useSpeechRecognition: (options: UseSpeechRecognitionOptions) => {
     observedSpeechOptions.push(options);
     return {
@@ -111,7 +101,16 @@ vi.mock("../../hooks/useViewportWidth", () => ({
 
 vi.mock("../../i18n", () => ({
   useI18n: () => ({
-    t: (key: string) => key,
+    t: (key: string) =>
+      ({
+        speechReadyStatus: "Ready",
+        speechStartingStatus: "Starting...",
+        speechSpeakNowStatus: "Speak now...",
+        speechListeningPlaceholder: "Listening...",
+        speechTranscribingPlaceholder: "Transcribing...",
+        speechFinalizingPlaceholder: "Finalizing...",
+        speechErrorStatus: "Error",
+      })[key] ?? key,
   }),
 }));
 
@@ -166,7 +165,7 @@ describe("VoiceInputButton", () => {
     expect(button.className).not.toContain("listening");
     expect(button.getAttribute("aria-pressed")).toBe("false");
     expect(document.querySelector(".voice-input-recording")).toBeNull();
-    expect(screen.getByRole("status").textContent).toBe("Transcribing");
+    expect(screen.getByRole("status").textContent).toBe("Transcribing...");
   });
 
   it("passes the browser-selected Parakeet model to speech providers", () => {
@@ -194,7 +193,7 @@ describe("VoiceInputButton", () => {
       />,
     );
 
-    const button = screen.getByRole("button", { name: "Finalizing" });
+    const button = screen.getByRole("button", { name: "Finalizing..." });
     expect(button.className).not.toContain("listening");
     expect(button.getAttribute("aria-pressed")).toBe("false");
     expect(document.querySelector(".voice-input-recording")).toBeNull();
@@ -236,7 +235,7 @@ describe("VoiceInputButton", () => {
     expect(document.querySelector(".voice-input-recording")).toBeTruthy();
   });
 
-  it("keeps listening text for browser-native capture without sample access", () => {
+  it("prompts when browser-native capture is ready without sample access", () => {
     speechState.status = "listening";
     speechState.isListening = true;
 
@@ -250,7 +249,36 @@ describe("VoiceInputButton", () => {
     );
 
     expect(document.querySelector(".voice-input-status")?.textContent).toBe(
-      "Listening",
+      "Speak now...",
     );
+  });
+
+  it("shows listening while browser-native speech is active", () => {
+    speechState.status = "receiving";
+    speechState.isListening = true;
+
+    render(
+      <VoiceInputButton
+        onTranscript={vi.fn()}
+        onInterimTranscript={vi.fn()}
+        speechMethod="browser-native"
+      />,
+    );
+
+    expect(screen.getByRole("status").textContent).toBe("Listening...");
+  });
+
+  it("describes an automatic recognizer restart as starting", () => {
+    speechState.status = "reconnecting";
+
+    render(
+      <VoiceInputButton
+        onTranscript={vi.fn()}
+        onInterimTranscript={vi.fn()}
+        speechMethod="browser-native"
+      />,
+    );
+
+    expect(screen.getByRole("status").textContent).toBe("Starting...");
   });
 });
