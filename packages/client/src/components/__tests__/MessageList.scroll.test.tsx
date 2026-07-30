@@ -8,6 +8,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { setConversationViewPreference } from "../../hooks/useConversationView";
 import {
   installMessageListTestEnvironment,
   assistantMessage,
@@ -19,6 +20,117 @@ import { MessageList } from "../MessageList";
 installMessageListTestEnvironment();
 
 describe("MessageList scroll and follow", () => {
+  it("keeps a clicked activity summary fixed while scrolled up", async () => {
+    setConversationViewPreference(true);
+    const { container } = render(
+      <MessageList
+        messages={[
+          userMessage("user-1", "inspect this"),
+          codexThinkingMessage("thinking-1", "private planning"),
+          assistantMessage("assistant-1", "Visible answer"),
+          userMessage("user-2", "next question"),
+          assistantMessage("assistant-2", "Later answer"),
+        ]}
+      />,
+    );
+    const summary = screen.getByRole("button", {
+      name: /activity hidden/,
+    });
+    const summaryRow = summary.closest<HTMLElement>("[data-render-id]");
+    expect(summaryRow?.dataset.renderId).toBeTruthy();
+    const summaryId = summaryRow?.dataset.renderId;
+
+    Object.defineProperty(container, "scrollTop", {
+      configurable: true,
+      value: 200,
+      writable: true,
+    });
+    Object.defineProperty(container, "scrollHeight", {
+      configurable: true,
+      get: () =>
+        container
+          .querySelector(".conversation-activity-summary")
+          ?.getAttribute("aria-expanded") === "true"
+          ? 1500
+          : 1200,
+    });
+    Object.defineProperty(container, "clientHeight", {
+      configurable: true,
+      value: 400,
+    });
+    const rectFor = (top: number, height: number): DOMRect =>
+      ({
+        top,
+        bottom: top + height,
+        height,
+        left: 0,
+        right: 400,
+        width: 400,
+        x: 0,
+        y: top,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function getRect(this: HTMLElement) {
+        if (this === container) {
+          return rectFor(0, 400);
+        }
+        if (this.dataset.renderId === "user-1") {
+          return rectFor(220 - container.scrollTop, 40);
+        }
+        if (this.dataset.renderId === summaryId) {
+          const expanded =
+            this.querySelector(".conversation-activity-summary")?.getAttribute(
+              "aria-expanded",
+            ) === "true";
+          return rectFor(
+            (expanded ? 750 : 450) - container.scrollTop,
+            40,
+          );
+        }
+        return rectFor(900 - container.scrollTop, 40);
+      });
+
+    try {
+      const topBefore = summaryRow?.getBoundingClientRect().top;
+      expect(summary.getAttribute("aria-expanded")).toBe("false");
+      expect(topBefore).toBe(250);
+      fireEvent.click(summary);
+
+      await waitFor(() => {
+        const expandedSummary = screen.getByRole("button", {
+          name: /activity hidden/,
+        });
+        expect(expandedSummary.getAttribute("aria-expanded")).toBe("true");
+        expect(
+          expandedSummary
+            .closest<HTMLElement>("[data-render-id]")
+            ?.getBoundingClientRect().top,
+        ).toBe(topBefore);
+      });
+
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: /activity hidden/,
+        }),
+      );
+      await waitFor(() => {
+        const collapsedSummary = screen.getByRole("button", {
+          name: /activity hidden/,
+        });
+        expect(collapsedSummary.getAttribute("aria-expanded")).toBe("false");
+        expect(
+          collapsedSummary
+            .closest<HTMLElement>("[data-render-id]")
+            ?.getBoundingClientRect().top,
+        ).toBe(topBefore);
+      });
+    } finally {
+      rectSpy.mockRestore();
+    }
+  });
+
   it("preserves live-tail follow across an active-window prefix trim", () => {
     const onFollowingBottomChange = vi.fn();
     const onScrollSnapshotChange = vi.fn();

@@ -69,17 +69,20 @@ provider-history rewrite and not deletion.
   Notifications without a structured failure status remain routine activity;
   YA does not infer failure from unconstrained summary prose.
 - Each assistant turn with condensed activity ends in one summary button. A
-  completed summary reads like `4m elapsed · 17 activities hidden`; the live
+  completed summary reads like `4m · 17 activities hidden`; the live
   edge reads like `Working 4m · 17 activities`. If source timestamps are
   unavailable, the label keeps the activity count without inventing a time.
+  Durations below 10 seconds retain one decimal place; durations from 10
+  seconds onward use whole seconds (or the existing compact minute/hour form).
 - Clicking the summary restores every condensed row in its original transcript
   position. The summary remains at the turn end as the one-click collapse
-  control. Manual expansion remains sticky while that session view stays
-  mounted.
-- Switching the whole mode or expanding one turn preserves bottom-follow when
-  already at the live edge; otherwise it restores the visible render-row anchor
-  (with height-delta fallback) so the reader does not jump to an unrelated
-  passage.
+  control. While reading above the live edge, direct expansion or collapse
+  keeps that clicked summary at the same viewport position even though the
+  document height and scrollbar change. Manual expansion remains sticky while
+  that session view stays mounted.
+- Switching the whole mode preserves bottom-follow when already at the live
+  edge; otherwise it restores the visible render-row anchor (with height-delta
+  fallback) so the reader does not jump to an unrelated passage.
 - Search follows the currently projected transcript. Condensed tool/thinking
   text does not produce hidden matches; expanding its turn makes those rows
   searchable again.

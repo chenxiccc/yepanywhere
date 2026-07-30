@@ -421,6 +421,57 @@ describe("MessageList rendering", () => {
     ).toBe("true");
   });
 
+  it("shows compact conversation activity durations", () => {
+    window.localStorage.setItem(UI_KEYS.conversationView, "true");
+    const { container } = render(
+      <MessageList
+        messages={[
+          userMessage("user-short", "short turn", "2026-07-28T07:00:00.000Z"),
+          codexThinkingMessage(
+            "thinking-short-1",
+            "starting",
+            "2026-07-28T07:00:01.000Z",
+          ),
+          codexThinkingMessage(
+            "thinking-short-2",
+            "finishing",
+            "2026-07-28T07:00:09.000Z",
+          ),
+          assistantMessage(
+            "assistant-short",
+            "Short answer",
+            "2026-07-28T07:00:09.400Z",
+          ),
+          userMessage("user-long", "long turn", "2026-07-28T07:00:20.000Z"),
+          codexThinkingMessage(
+            "thinking-long-1",
+            "starting",
+            "2026-07-28T07:00:21.000Z",
+          ),
+          codexThinkingMessage(
+            "thinking-long-2",
+            "finishing",
+            "2026-07-28T07:00:33.000Z",
+          ),
+          assistantMessage(
+            "assistant-long",
+            "Long answer",
+            "2026-07-28T07:00:33.400Z",
+          ),
+        ]}
+      />,
+    );
+
+    const labels = Array.from(
+      container.querySelectorAll(".conversation-activity-summary"),
+      (summary) => summary.textContent,
+    );
+    expect(labels).toEqual([
+      expect.stringContaining("8.4s · 2 activities hidden"),
+      expect.stringContaining("12s · 2 activities hidden"),
+    ]);
+  });
+
   it("keeps preview collapse and dismiss state by slot until thinking is retoggled", () => {
     window.localStorage.setItem(UI_KEYS.conversationView, "true");
     const messages = (currentThinking: string) => [

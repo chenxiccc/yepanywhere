@@ -76,8 +76,7 @@ vi.mock("../../i18n", () => ({
         conversationActivityPlural: "activities",
         conversationActivityActive: "Working {duration} · {count} {activity}",
         conversationActivityActiveWithoutTime: "Working · {count} {activity}",
-        conversationActivityComplete:
-          "{duration} elapsed · {count} {activity} hidden",
+        conversationActivityComplete: "{duration} · {count} {activity} hidden",
         conversationActivityCompleteWithoutTime: "{count} {activity} hidden",
         conversationActivityExpandTitle:
           "Show hidden activity in its original positions",

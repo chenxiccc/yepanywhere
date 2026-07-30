@@ -1867,7 +1867,7 @@ export const MessageList = memo(function MessageList({
   const noopToggleThinkingExpanded = useCallback(() => {}, []);
 
   const preserveScrollAfterTranscriptHeightChange = useCallback(
-    (mutate: () => void) => {
+    (mutate: () => void, preferredAnchorId?: string) => {
       const messageList = containerRef.current;
       const scrollContainer = messageList?.parentElement;
       if (!messageList || !scrollContainer) {
@@ -1878,9 +1878,20 @@ export const MessageList = memo(function MessageList({
       const wasAtBottom = isNearScrollBottom(scrollContainer);
       const scrollTopBefore = scrollContainer.scrollTop;
       const scrollHeightBefore = scrollContainer.scrollHeight;
+      const preferredAnchorRow =
+        !wasAtBottom && preferredAnchorId
+          ? findRenderRow(messageList, preferredAnchorId)
+          : null;
       const anchorBefore = wasAtBottom
         ? null
-        : getFirstVisibleRenderAnchor(messageList, scrollContainer);
+        : preferredAnchorRow
+          ? {
+              id: preferredAnchorId,
+              topOffset:
+                preferredAnchorRow.getBoundingClientRect().top -
+                scrollContainer.getBoundingClientRect().top,
+            }
+          : getFirstVisibleRenderAnchor(messageList, scrollContainer);
 
       mutate();
 
@@ -1971,7 +1982,7 @@ export const MessageList = memo(function MessageList({
           }
           return next;
         });
-      });
+      }, itemId);
     },
     [preserveScrollAfterTranscriptHeightChange],
   );

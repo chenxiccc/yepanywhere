@@ -263,6 +263,13 @@ function CollapsibleSystemMessage({
   );
 }
 
+function formatConversationActivityDuration(seconds: number): string {
+  if (seconds >= 10 && seconds < 60) {
+    return `${Math.round(seconds)}s`;
+  }
+  return formatCommandDuration(seconds);
+}
+
 function ConversationActivitySummary({
   item,
   onToggle,
@@ -360,7 +367,9 @@ function ConversationActivitySummary({
       ? (item.endedAtMs - item.startedAtMs) / 1000
       : null;
   const duration =
-    elapsedSeconds === null ? "" : formatCommandDuration(elapsedSeconds);
+    elapsedSeconds === null
+      ? ""
+      : formatConversationActivityDuration(elapsedSeconds);
   const activity = t(
     item.activityCount === 1
       ? "conversationActivitySingular"
