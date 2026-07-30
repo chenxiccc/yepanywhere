@@ -112,6 +112,26 @@ store.
 
 ---
 
+### Phase 9: Experimental Multi-Host Monitor (planned)
+
+The next product proof is a hidden/default-off `/-/monitor` route that mounts
+several saved source runtimes at once. It starts on the existing relay
+transport, where three hosts deliberately mean three browser-to-relay
+WebSockets.
+
+The implementation and E2E sequence is tracked in
+[`../tactical/066-multi-host-monitor-coexistence-harness.md`](../tactical/066-multi-host-monitor-coexistence-harness.md).
+That runbook requires a real relay, three isolated YA server profiles, genuine
+SRP/resume sessions, colliding project/session ids, per-source failure tests,
+and direct socket-count observation.
+
+Relay `/mux` is a later, separately reviewed transport series. The existing
+multi-host monitor must pass over ordinary independent connections before mux
+work starts, and must retain those connections as the fallback when a relay
+does not advertise mux support.
+
+---
+
 ## Testing Checklist
 
 - [ ] Fresh install: Login page shows empty, can add relay host
@@ -126,6 +146,10 @@ store.
 - [ ] Bookmarks: Saved URL auto-connects to correct host
 - [ ] Switch host: Settings link goes to host picker
 - [ ] Status indicators: Shows online/offline for relay hosts
+- [ ] Multi-host monitor: Three relay hosts coexist with isolated summary data
+- [ ] Partial failure: One offline or unauthenticated host leaves the others live
+- [ ] Route teardown: Leaving the monitor releases every acquired source lease
+- [ ] Transport baseline: Three selected hosts use three observed relay sockets
 
 ---
 

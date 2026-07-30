@@ -243,6 +243,13 @@ Likely UI shapes:
 The first architectural bar is simpler: no subsystem should make side-by-side
 sources impossible by hiding source or connection identity in a singleton.
 
+The first concrete product/E2E probe is now planned in
+[`docs/tactical/066-multi-host-monitor-coexistence-harness.md`](../docs/tactical/066-multi-host-monitor-coexistence-harness.md):
+a hidden/default-off monitor backed by three real secure relay sources. It must
+first pass over today's independent relay sockets. A later relay mux may reduce
+the client-side socket count, but it is an optional transport optimization and
+must preserve the independent-socket fallback.
+
 ## Concurrent Runtime Cost
 
 This is a mobile-first client. Every live remote runtime is a WebSocket, a

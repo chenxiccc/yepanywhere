@@ -721,11 +721,13 @@ Acceptance:
 - Persisted snapshots are versioned and source/auth scoped.
 - Restored persisted snapshots are always revalidated through `SourceApiClient`.
 
-## Phase 8: Deferred Full Coexistence Proof
+## Phase 8: Full Coexistence Proof
 
-Status: Deferred until a product feature wants a UI with two live clients or
-sources mounted at once. The current single-source UX should not change merely
-to satisfy this proof.
+Status: Activated as a separate product/E2E series by
+[`066-multi-host-monitor-coexistence-harness.md`](066-multi-host-monitor-coexistence-harness.md).
+The current single-source UX remains unchanged; the new proof is a
+hidden/default-off monitor rather than an incidental part of this topology
+refactor.
 
 The fake-runtime tests in earlier phases prove key isolation, not capability.
 T10 in [`057-source-transport-boundary.md`](057-source-transport-boundary.md)
@@ -769,6 +771,10 @@ Known caveats:
   provider-owned live session streams running at once.
 - Suspension policy for non-current runtimes is still a product/resource-cost
   decision, especially if a future UI keeps multiple remote clients mounted.
+
+Tactical 066 expands this to three isolated real server profiles and requires
+the secure/relay proof over existing independent sockets before any relay mux
+transport work begins.
 
 ## Multi-Host UI Follow-On
 
