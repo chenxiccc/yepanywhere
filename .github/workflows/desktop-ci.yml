@@ -46,7 +46,7 @@ jobs:
           - platform: windows-latest
             args: ''
             rust_target: ''
-            target_triple: ''
+            target_triple: x86_64-pc-windows-msvc
 
     runs-on: ${{ matrix.runner || matrix.platform }}
 
@@ -171,11 +171,14 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --ignore-scripts
 
+      - name: Prepare packaged desktop runtime
+        env:
+          TARGET_TRIPLE: ${{ matrix.target_triple }}
+        run: pnpm --dir packages/desktop prepare-runtime
+
       - name: Smoke packaged Windows runtime
         if: matrix.platform == 'windows-latest'
-        env:
-          TARGET_TRIPLE: x86_64-pc-windows-msvc
-        run: pnpm --dir packages/desktop prepare-runtime && pnpm --dir packages/desktop smoke-runtime
+        run: pnpm --dir packages/desktop smoke-runtime
 
       # --- Extract changelog ---
       - name: Extract changelog
@@ -211,6 +214,7 @@ jobs:
           updaterJsonKeepUniversal: true
           args: >-
             ${{ matrix.args }}
+            --config src-tauri/tauri.ci.conf.json
             ${{ matrix.platform == 'macos-latest' && env.HAS_MACOS_SIGNING != 'true' && '--no-sign' || '' }}
             ${{ env.HAS_UPDATER_KEY == 'true' && '--config ''{"bundle":{"createUpdaterArtifacts":true}}''' || '' }}
             ${{ matrix.platform == 'windows-latest' && secrets.AZURE_CLIENT_SECRET != '' && '--config ''{"bundle":{"windows":{"signCommand":"trusted-signing-cli -e https://eus.codesigning.azure.net -a kylegraehl -c jstorrent-profile %1"}}}''' || '' }}

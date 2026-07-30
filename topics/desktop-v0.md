@@ -18,6 +18,11 @@ First launch must not download or install YA, Bun, Claude Code, Codex, or a
 package manager. A desktop update replaces the shell, runtime, and bundled YA
 artifact together. Provider software remains externally managed.
 
+Release CI prepares that runtime as an explicit packaging input before Tauri
+runs, verifies the pinned Bun archive hash, and retries transient archive
+download failures within a bounded attempt count. Tauri packaging must not
+silently rebuild or replace the already-smoked runtime input.
+
 Desktop application files and user data have separate lifecycles. Update,
 reinstall, and ordinary uninstall preserve sessions, settings, auth state, and
 provider configuration unless the user explicitly chooses a data-removal

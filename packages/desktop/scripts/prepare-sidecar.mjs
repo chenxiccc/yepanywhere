@@ -16,10 +16,13 @@ import { get } from "node:https";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const desktopDir = resolve(scriptDir, "..");
+const downloadAttempts = 3;
+const downloadTimeoutMs = 120_000;
 const versions = JSON.parse(
   readFileSync(join(desktopDir, "runtime-versions.json"), "utf8"),
 );
@@ -44,8 +47,8 @@ function detectTargetTriple() {
   );
 }
 
-function download(url, destination) {
-  return new Promise((resolveDownload, reject) => {
+function downloadOnce(url, destination, redirectsRemaining = 10) {
+  return new Promise((resolveDownload, rejectDownload) => {
     const request = get(
       url,
       {
@@ -61,30 +64,62 @@ function download(url, destination) {
           response.headers.location
         ) {
           response.resume();
-          download(response.headers.location, destination).then(
+          if (redirectsRemaining === 0) {
+            rejectDownload(new Error("Download exceeded 10 redirects"));
+            return;
+          }
+          downloadOnce(
+            new URL(response.headers.location, url),
+            destination,
+            redirectsRemaining - 1,
+          ).then(
             resolveDownload,
-            reject,
+            rejectDownload,
           );
           return;
         }
         if (response.statusCode !== 200) {
           response.resume();
-          reject(
+          rejectDownload(
             new Error(`Download failed with HTTP ${response.statusCode}`),
           );
           return;
         }
         const output = createWriteStream(destination, { flags: "wx" });
-        response.pipe(output);
-        output.on("finish", () => {
-          output.close();
-          resolveDownload();
-        });
-        output.on("error", reject);
+        pipeline(response, output).then(resolveDownload, rejectDownload);
       },
     );
-    request.on("error", reject);
+    request.setTimeout(downloadTimeoutMs, () => {
+      request.destroy(
+        new Error(`Download made no progress for ${downloadTimeoutMs}ms`),
+      );
+    });
+    request.on("error", rejectDownload);
   });
+}
+
+async function download(url, destination) {
+  for (let attempt = 1; attempt <= downloadAttempts; attempt += 1) {
+    rmSync(destination, { force: true });
+    try {
+      await downloadOnce(url, destination);
+      return;
+    } catch (error) {
+      rmSync(destination, { force: true });
+      const message = error instanceof Error ? error.message : String(error);
+      if (attempt === downloadAttempts) {
+        throw new Error(
+          `Download failed after ${downloadAttempts} attempts: ${message}`,
+          { cause: error },
+        );
+      }
+      const delayMs = attempt * 1_000;
+      console.log(
+        `Download attempt ${attempt}/${downloadAttempts} failed (${message}); retrying in ${delayMs}ms...`,
+      );
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, delayMs));
+    }
+  }
 }
 
 function sha256(file) {
