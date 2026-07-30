@@ -18,6 +18,30 @@ YA has several surfaces with different security expectations:
   itself. Authentication, encryption, explicit opt-ins, and server-side gates
   remain the controlling security mechanisms.
 
+### Desktop loopback
+
+The desktop loopback dashboard is authenticated local content, but a random
+port or a localhost origin is not identity. The native shell must not expose a
+long-lived desktop credential to renderer JavaScript.
+
+Desktop v0 uses a private native/server startup secret to mint a short-lived,
+single-use navigation code. Consuming that code establishes a host-only,
+HttpOnly, SameSite=Strict session cookie. Bootstrap credentials and routes are
+accepted only on the loopback listener, never optional LAN, relay, or
+internally forwarded surfaces. Reload uses the cookie and must not require a
+token in the URL, JavaScript module state, request header, or WebSocket query.
+
+The implementation bounds bootstrap state to 16 codes with a 30-second
+lifetime, 30 invalid attempts per minute, and 32 in-memory desktop sessions
+with a 30-day server-side lifetime. State dies with the bundled server and is
+never persisted. Because v0 serves plain loopback HTTP, its host-only cookie
+cannot use `Secure`; it remains HttpOnly, SameSite=Strict, and path-rooted.
+
+The loopback dashboard is a remote origin from Tauri's perspective and receives
+no custom native-command capability. Packaged Tauri-origin diagnostic surfaces
+receive narrowly scoped commands. See [`desktop-v0.md`](desktop-v0.md) for the
+distribution, compatibility, lifecycle, and same-user-process threat model.
+
 ## Public Share File Access
 
 Public read-only shares may open project files through a share-scoped public

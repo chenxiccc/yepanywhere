@@ -20,6 +20,10 @@ import type { MiddlewareHandler } from "hono";
 import { getCookie } from "hono/cookie";
 import type { AuthService } from "../auth/AuthService.js";
 import { SESSION_COOKIE_NAME } from "../auth/routes.js";
+import {
+  DESKTOP_SESSION_COOKIE_NAME,
+  type DesktopBootstrapService,
+} from "../desktop/DesktopBootstrapService.js";
 import { WS_INTERNAL_AUTHENTICATED } from "./internal-auth.js";
 
 export interface AuthMiddlewareOptions {
@@ -28,6 +32,8 @@ export interface AuthMiddlewareOptions {
   authDisabled?: boolean;
   /** Desktop auth token from Tauri app. Acts as minimum auth floor when no other auth is configured. */
   desktopAuthToken?: string;
+  /** Reload-safe desktop session authentication for bootstrap-v1 shells. */
+  desktopBootstrapService?: DesktopBootstrapService;
 }
 
 /**
@@ -66,13 +72,26 @@ function hasValidDesktopToken(
 export function createAuthMiddleware(
   options: AuthMiddlewareOptions,
 ): MiddlewareHandler {
-  const { authService, authDisabled = false, desktopAuthToken } = options;
+  const {
+    authService,
+    authDisabled = false,
+    desktopAuthToken,
+    desktopBootstrapService,
+  } = options;
 
   return async (c, next) => {
     const path = c.req.path;
 
     // Skip auth for health check (always open for readiness probes)
     if (path === "/health") {
+      await next();
+      return;
+    }
+
+    const desktopSession = getCookie(c, DESKTOP_SESSION_COOKIE_NAME);
+    if (desktopBootstrapService?.validateSession(desktopSession)) {
+      c.set("authenticated", true);
+      c.set("authenticatedViaSession", true);
       await next();
       return;
     }
@@ -94,17 +113,20 @@ export function createAuthMiddleware(
     // Skip local password auth for requests from the SRP tunnel.
     // The relay handler sets this Symbol when routing requests through app.fetch().
     // Using a Symbol ensures this cannot be forged by external HTTP requests.
-    if (c.env[WS_INTERNAL_AUTHENTICATED]) {
+    if (c.env?.[WS_INTERNAL_AUTHENTICATED]) {
       c.set("authenticated", true);
       await next();
       return;
     }
 
-    // If auth is not enabled in settings, the desktop token acts as a floor:
-    // when set, require it (unless localhostOpen is enabled); otherwise pass through.
+    // If auth is not enabled in settings, either desktop credential acts as
+    // a floor (unless localhostOpen is explicitly enabled).
     if (!authService.isEnabled()) {
-      if (desktopAuthToken && !authService.isLocalhostOpen()) {
-        // Desktop token is set but request didn't have it (checked above).
+      if (
+        (desktopAuthToken || desktopBootstrapService) &&
+        !authService.isLocalhostOpen()
+      ) {
+        // A desktop credential exists but this request did not carry it.
         // Allow auth status so the UI can detect state.
         if (path === "/api/auth/status") {
           await next();

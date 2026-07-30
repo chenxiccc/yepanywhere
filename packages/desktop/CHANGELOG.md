@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.1.0] - Unreleased
+
+### Added
+- A commit-matched bundled server/client resource and hash-verified private Bun runtime.
+- Reload-safe loopback dashboard authentication using one-time bootstrap codes and an HttpOnly session cookie.
+- Desktop diagnostics with bounded server output, retry, quit, and stable/development runtime identification.
+- Advisory Claude/Codex application detection with links to the official installers when neither is found.
+- Windows Job Object ownership for the bundled server process tree.
+- A packaged-runtime smoke test that exercises dynamic-port readiness, health, bootstrap, and authenticated API access.
+
+### Changed
+- First launch now opens the bundled dashboard directly; the multi-page component installer and provider login wizard have been removed.
+- Desktop updates replace the shell, Bun runtime, and YA server/client as one tested unit.
+- Production builds ignore ambient `YEP_DEV_DIR`; debug builds retain the explicit checkout-backed development path.
+- Tauri is pinned to 2.11.5 with explicit command manifests, per-window capabilities, and packaged/server content security policies.
+- Windows installer shutdown targets only Yep Anywhere's process tree and never kills unrelated `bun.exe` processes.
+- Tagged releases now require updater signing and complete Windows code-signing credentials.
+
+### Removed
+- First-run downloads of Yep Anywhere, Bun, Claude Code, and Codex.
+- Desktop PTY, general shell, provider authentication, and component installer commands.
+
 ## [0.0.5] - 2026-06-27
 
 ### Fixed
@@ -38,13 +60,3 @@
 
 ### Added
 - Disposable desktop release for validating CI artifacts, signing fallback, and release publishing.
-
-## [0.1.0] - Unreleased
-
-### Added
-- Initial desktop app with setup wizard
-- Bundled Bun runtime for running Yep Anywhere server
-- Agent installation (Claude Code, Codex CLI)
-- System tray with server management
-- Auto-start and window state persistence
-- Auto-updater support

@@ -2,6 +2,13 @@
 
 Status: Implemented.
 
+2026-07-30 v0 note: the updater now replaces the Tauri shell, private Bun
+runtime, and commit-matched YA server/client as one unit. Provider software is
+externally managed; a managed Claude/Codex component screen is deferred rather
+than part of desktop v0. Tagged releases fail when updater signing or complete
+Windows signing credentials are absent. See
+[`067-v0-desktop-baseline.md`](067-v0-desktop-baseline.md).
+
 Progress:
 
 - [x] 2026-06-09: Captured the first desktop updater slice and recorded the

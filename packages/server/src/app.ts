@@ -18,6 +18,7 @@ import { compress } from "hono/compress";
 import { join } from "node:path";
 import type { AuthService } from "./auth/AuthService.js";
 import { createAuthRoutes } from "./auth/routes.js";
+import type { DesktopBootstrapService } from "./desktop/DesktopBootstrapService.js";
 import type { DeviceBridgeService } from "./device/DeviceBridgeService.js";
 import type { FrontendProxy } from "./frontend/index.js";
 import type { SessionIndexService } from "./indexes/index.js";
@@ -73,6 +74,7 @@ import { createClientLogsRoutes } from "./routes/client-logs.js";
 import { createConnectionsRoutes } from "./routes/connections.js";
 import { createDebugStreamingRoutes } from "./routes/debug-streaming.js";
 import { createDevRoutes } from "./routes/dev.js";
+import { createDesktopBootstrapRoutes } from "./routes/desktop-bootstrap.js";
 import { createDeviceRoutes } from "./routes/devices.js";
 import { createFilesRoutes } from "./routes/files.js";
 import { createBangCommandsRoutes } from "./routes/bang-commands.js";
@@ -242,6 +244,10 @@ export interface AppOptions {
   authDisabled?: boolean;
   /** Desktop auth token for Tauri app. Requests with matching X-Desktop-Token header bypass auth. */
   desktopAuthToken?: string;
+  /** Reload-safe desktop bootstrap/session service owned by the native shell. */
+  desktopBootstrapService?: DesktopBootstrapService;
+  /** Whether this server was launched by the signed desktop runtime. */
+  desktopRuntime?: boolean;
   /** RemoteAccessService for SRP-based remote access (optional) */
   remoteAccessService?: RemoteAccessService;
   /** RemoteSessionService for session persistence (optional) */
@@ -276,6 +282,8 @@ export interface AppOptions {
     ) => Promise<{ success: boolean; error?: string }>;
     /** Live accessor for the addresses the server is actually listening on. */
     getActiveListeners?: () => string[];
+    /** Live localhost port after an optional port-0 bind. */
+    getLocalhostPort?: () => number;
   };
   /** ConnectedBrowsersService for tracking active browser connections */
   connectedBrowsers?: ConnectedBrowsersService;
@@ -394,6 +402,12 @@ export function createApp(options: AppOptions): AppResult {
   const codexSessionsDir = options.codexSessionsDir ?? CODEX_SESSIONS_DIR;
 
   const app = new Hono<{ Bindings: HttpBindings }>();
+  if (options.desktopBootstrapService) {
+    app.route(
+      "/desktop-bootstrap",
+      createDesktopBootstrapRoutes(options.desktopBootstrapService),
+    );
+  }
   // Unhandled route throws — including from every mounted sub-app, whose
   // errors Hono routes here rather than to the sub-app — return structured
   // JSON instead of an opaque empty 500.
@@ -437,6 +451,7 @@ export function createApp(options: AppOptions): AppResult {
         authService: options.authService,
         authDisabled: options.authDisabled,
         desktopAuthToken: options.desktopAuthToken,
+        desktopBootstrapService: options.desktopBootstrapService,
       }),
     );
   }
@@ -450,6 +465,7 @@ export function createApp(options: AppOptions): AppResult {
         authService: options.authService,
         authDisabled: options.authDisabled,
         desktopAuthToken: options.desktopAuthToken,
+        desktopBootstrapService: options.desktopBootstrapService,
       }),
     );
   }
@@ -1193,16 +1209,20 @@ export function createApp(options: AppOptions): AppResult {
         options.speechBackendRegistry?.enabledCapabilities() ?? {},
       getClientDefaults: () =>
         options.serverSettingsService?.getSetting("clientDefaults"),
+      desktopRuntime: options.desktopRuntime,
     }),
   );
 
   // Server info (host/port binding info for Local Access settings)
-  if (options.serverHost && options.serverPort) {
+  if (options.serverHost && options.serverPort !== undefined) {
     app.route(
       "/api/server-info",
       createServerInfoRoutes({
         host: options.serverHost,
-        port: options.serverPort,
+        port: () =>
+          options.networkBindingCallbackHolder?.getLocalhostPort?.() ??
+          options.serverPort ??
+          0,
         installId: options.installId,
         deviceBridgeAvailable: !!options.deviceBridgeService?.hasBinary(),
       }),
@@ -1612,6 +1632,7 @@ export function createApp(options: AppOptions): AppResult {
     createProvidersRoutes({
       modelInfoService: options.modelInfoService,
       enabledProviders: options.enabledProviders,
+      desktopRuntime: options.desktopRuntime,
     }),
   );
 

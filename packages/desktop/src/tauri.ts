@@ -49,12 +49,8 @@ export async function getServerStatus(): Promise<string> {
   return invoke("get_server_status");
 }
 
-export async function getDesktopToken(): Promise<string | null> {
-  return invoke("get_desktop_token");
-}
-
-export async function getServerPort(): Promise<number | null> {
-  return invoke("get_server_port");
+export async function getServerError(): Promise<string | null> {
+  return invoke("get_server_error");
 }
 
 export async function getServerOutputBuffer(): Promise<ServerOutputChunk[]> {
@@ -69,71 +65,12 @@ export async function openServerOutputWindow(): Promise<void> {
   return invoke("open_server_output_window");
 }
 
-export async function openSetupWindow(): Promise<void> {
-  return invoke("open_setup_window");
+export async function openDiagnosticsWindow(): Promise<void> {
+  return invoke("open_diagnostics_window");
 }
 
-export async function installYepServer(): Promise<void> {
-  return invoke("install_yep_server");
-}
-
-export async function installClaude(): Promise<void> {
-  return invoke("install_claude");
-}
-
-export async function installCodex(): Promise<void> {
-  return invoke("install_codex");
-}
-
-export async function checkAgentInstalled(agent: string): Promise<boolean> {
-  return invoke("check_agent_installed", { agent });
-}
-
-export async function checkClaudeAuth(): Promise<boolean> {
-  return invoke("check_claude_auth");
-}
-
-export async function spawnPty(
-  command: string,
-  args: string[],
-): Promise<void> {
-  return invoke("spawn_pty", { command, args });
-}
-
-export async function writePty(data: string): Promise<void> {
-  return invoke("write_pty", { data });
-}
-
-export async function resizePty(cols: number, rows: number): Promise<void> {
-  return invoke("resize_pty", { cols, rows });
-}
-
-export async function killPty(): Promise<void> {
-  return invoke("kill_pty");
-}
-
-export interface InstallProgress {
-  agent: string;
-  status: string;
-  message: string;
-}
-
-export function onInstallProgress(
-  callback: (progress: InstallProgress) => void,
-) {
-  return listen<InstallProgress>("install-progress", (event) =>
-    callback(event.payload),
-  );
-}
-
-export function onPtyOutput(callback: (data: string) => void) {
-  return listen<{ data: string }>("pty-output", (event) =>
-    callback(event.payload.data),
-  );
-}
-
-export function onPtyExit(callback: () => void) {
-  return listen("pty-exit", () => callback());
+export async function quitApp(): Promise<void> {
+  return invoke("quit_app");
 }
 
 export function onServerOutput(callback: (chunk: ServerOutputChunk) => void) {

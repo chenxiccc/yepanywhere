@@ -53,11 +53,24 @@ jobs:
     env:
       HAS_MACOS_SIGNING: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 != '' }}
       HAS_MACOS_NOTARIZATION: ${{ secrets.ASC_API_KEY_P8_BASE64 != '' }}
-      HAS_WINDOWS_SIGNING: ${{ secrets.AZURE_CLIENT_SECRET != '' }}
+      HAS_WINDOWS_SIGNING: ${{ secrets.AZURE_CLIENT_ID != '' && secrets.AZURE_TENANT_ID != '' && secrets.AZURE_CLIENT_SECRET != '' }}
       HAS_UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
 
     steps:
       - uses: actions/checkout@v6
+
+      - name: Validate tagged release signing requirements
+        if: startsWith(github.ref, 'refs/tags/desktop-v')
+        shell: bash
+        run: |
+          if [ "$HAS_UPDATER_KEY" != "true" ]; then
+            echo "::error::Tagged desktop releases require TAURI_SIGNING_PRIVATE_KEY."
+            exit 1
+          fi
+          if [ "${{ matrix.platform }}" = "windows-latest" ] && [ "$HAS_WINDOWS_SIGNING" != "true" ]; then
+            echo "::error::Tagged Windows releases require complete Azure Trusted Signing credentials."
+            exit 1
+          fi
 
       # --- Node.js + pnpm ---
       - name: Setup Node.js
@@ -158,6 +171,12 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --ignore-scripts
 
+      - name: Smoke packaged Windows runtime
+        if: matrix.platform == 'windows-latest'
+        env:
+          TARGET_TRIPLE: x86_64-pc-windows-msvc
+        run: pnpm --dir packages/desktop prepare-runtime && pnpm --dir packages/desktop smoke-runtime
+
       # --- Extract changelog ---
       - name: Extract changelog
         id: changelog
@@ -241,7 +260,6 @@ jobs:
           done
 
       - name: Validate latest.json updater artifact
-        if: env.HAS_UPDATER_KEY == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -261,8 +279,18 @@ jobs:
               assert 'url' in p, f'{key}: missing url'
               assert 'signature' in p, f'{key}: missing signature'
               assert len(p['signature']) > 10, f'{key}: signature suspiciously short'
+          windows = platforms.get('windows-x86_64')
+          nsis = platforms.get('windows-x86_64-nsis')
+          assert windows, 'missing windows-x86_64 updater entry'
+          assert nsis, 'missing windows-x86_64-nsis updater entry'
+          assert windows['url'].endswith(('.msi', '.exe')), 'Windows updater URL is not an installer'
+          assert nsis['url'].endswith('.exe'), 'Windows NSIS updater URL is not an executable'
           print(f'latest.json valid: v{data[\"version\"]} with {len(platforms)} platform(s): {list(platforms.keys())}')
           "
+          WINDOWS_URLS=$(python3 -c "import json; p=json.load(open('/tmp/latest.json'))['platforms']; print(p['windows-x86_64']['url']); print(p['windows-x86_64-nsis']['url'])")
+          while read -r url; do
+            curl --fail --location --head "$url" >/dev/null
+          done <<< "$WINDOWS_URLS"
 
       - name: Update release body with download table
         env:

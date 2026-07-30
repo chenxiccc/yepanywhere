@@ -9,7 +9,7 @@ if /I not "%OS%"=="Windows_NT" (
 set "SCRIPT_DIR=%~dp0"
 set "DESKTOP_DIR=%SCRIPT_DIR%.."
 
-call "%SCRIPT_DIR%prepare-sidecar.bat"
+call pnpm --dir "%DESKTOP_DIR%" prepare-runtime
 if errorlevel 1 exit /b %ERRORLEVEL%
 
 set "TSC=%DESKTOP_DIR%\node_modules\typescript\lib\tsc.js"

@@ -246,6 +246,8 @@ export interface VersionInfo {
   latestDeviceBridgeVersion?: string | null;
   /** Server-learned browser defaults used when local storage is unset. */
   clientDefaults?: ClientDefaults;
+  /** Whether this process is the server bundled with the desktop shell. */
+  desktopRuntime?: boolean;
 }
 
 /** Resume protocol version with mutual nonce challenge + server proof binding. */
@@ -314,6 +316,8 @@ export interface VersionRouteOptions {
   getVoiceBackendCapabilities?: () => Record<string, SpeechBackendCapabilities>;
   /** Browser-client defaults persisted by this server. */
   getClientDefaults?: () => ClientDefaults | undefined;
+  /** Whether this process is the server bundled with the desktop shell. */
+  desktopRuntime?: boolean;
   /** Resolved local sandbox preflight used while constructing capabilities. */
   sessionSandboxAvailability?: SessionSandboxAvailability;
   /** Test/service override for the cached host preflight. */
@@ -330,6 +334,7 @@ export interface ServerCompatibilityInfo {
   renderProtocolVersion?: number;
   capabilities: string[];
   clientDefaults?: ClientDefaults;
+  desktopRuntime?: boolean;
 }
 
 function getCapabilitiesForDeviceBridgeState(
@@ -414,6 +419,7 @@ export function getServerCompatibilityInfo(
       sessionSandboxAvailability,
     }),
     ...(clientDefaults ? { clientDefaults } : {}),
+    ...(options?.desktopRuntime ? { desktopRuntime: true } : {}),
   }));
 }
 
@@ -466,6 +472,7 @@ export function createVersionRoutes(options?: VersionRouteOptions): Hono {
       deviceBridgeVersion: deviceBridgeStatus.installedVersion ?? null,
       latestDeviceBridgeVersion: deviceBridgeStatus.latestVersion ?? null,
       ...(clientDefaults ? { clientDefaults } : {}),
+      ...(options?.desktopRuntime ? { desktopRuntime: true } : {}),
     };
 
     return c.json(info);

@@ -41,6 +41,33 @@ function deferred<T>(): {
 }
 
 describe("Providers Routes", () => {
+  it("adds a coarse application hint only for the desktop runtime", async () => {
+    const provider = createProvider({
+      getAuthStatus: vi.fn(async () => ({
+        installed: false,
+        authenticated: false,
+        enabled: false,
+      })),
+    });
+    const routes = createProvidersRoutes({
+      providers: [provider],
+      desktopRuntime: true,
+      applicationDetector: () => true,
+    });
+
+    const response = await routes.request("/");
+
+    expect(await response.json()).toEqual({
+      providers: [
+        expect.objectContaining({
+          name: "claude",
+          installed: false,
+          applicationDetected: true,
+        }),
+      ],
+    });
+  });
+
   it("caches provider scans for repeated list requests", async () => {
     const provider = createProvider();
     const routes = createProvidersRoutes({

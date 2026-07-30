@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-open-server-output-window"
+description = "Enables the open_server_output_window command without any pre-configured scope."
+commands.allow = ["open_server_output_window"]
+
+[[permission]]
+identifier = "deny-open-server-output-window"
+description = "Denies the open_server_output_window command without any pre-configured scope."
+commands.deny = ["open_server_output_window"]

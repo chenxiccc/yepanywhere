@@ -1,28 +1,28 @@
 {
   "name": "@yep-anywhere/desktop",
-  "version": "0.0.5",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "prepare-sidecar": "bash scripts/prepare-sidecar.sh",
+    "prepare-sidecar": "node scripts/prepare-sidecar.mjs",
+    "prepare-server-resource": "node scripts/prepare-server-resource.mjs",
+    "prepare-runtime": "pnpm prepare-sidecar && pnpm prepare-server-resource",
+    "smoke-runtime": "node scripts/smoke-runtime.mjs",
     "dev": "node ../../scripts/run-with-safe-home.js vite",
     "build": "tsc && vite build",
-    "tauri": "pnpm prepare-sidecar && tauri"
+    "tauri": "tauri"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2",
-    "@tauri-apps/plugin-autostart": "^2.5.1",
-    "@tauri-apps/plugin-opener": "^2",
-    "@tauri-apps/plugin-process": "^2",
-    "@tauri-apps/plugin-shell": "^2",
-    "@tauri-apps/plugin-updater": "^2",
+    "@tauri-apps/api": "2.11.1",
+    "@tauri-apps/plugin-process": "2.3.1",
+    "@tauri-apps/plugin-updater": "2.10.1",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2",
+    "@tauri-apps/cli": "2.11.4",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.6.0",

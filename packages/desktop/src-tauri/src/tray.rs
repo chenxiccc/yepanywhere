@@ -57,7 +57,13 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         true,
         None::<&str>,
     )?;
-    let setup = MenuItem::with_id(app, "setup", "Setup / Repair", true, None::<&str>)?;
+    let diagnostics = MenuItem::with_id(
+        app,
+        "diagnostics",
+        "Desktop Diagnostics",
+        true,
+        None::<&str>,
+    )?;
     let check_updates = MenuItem::with_id(
         app,
         "check-updates",
@@ -125,7 +131,7 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         &[
             &open,
             &server_output,
-            &setup,
+            &diagnostics,
             &check_updates,
             &restart,
             &sep1,
@@ -147,13 +153,19 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         .tooltip("Yep Anywhere")
         .on_menu_event(move |app, event| match event.id.as_ref() {
             "open" => {
-                let _ = crate::windows::show_dashboard_window(app);
+                let app = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(error) = crate::windows::show_dashboard_window(&app).await {
+                        eprintln!("Failed to open dashboard: {error}");
+                        let _ = crate::windows::show_main_window(&app);
+                    }
+                });
             }
             "server-output" => {
                 let _ = crate::windows::show_server_output_window(app);
             }
-            "setup" => {
-                let _ = crate::windows::show_setup_window(app);
+            "diagnostics" => {
+                let _ = crate::windows::show_diagnostics_window(app);
             }
             "check-updates" => {
                 let _ = app.emit("check-for-updates", ());
@@ -230,7 +242,15 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
                     let _ = crate::server::stop_server(app.clone()).await;
-                    let _ = crate::server::start_server(app).await;
+                    match crate::server::start_server(app.clone()).await {
+                        Ok(()) => {
+                            let _ = crate::windows::show_dashboard_window(&app).await;
+                        }
+                        Err(error) => {
+                            eprintln!("Failed to restart bundled server: {error}");
+                            let _ = crate::windows::show_main_window(&app);
+                        }
+                    }
                 });
             }
             "quit" => {
@@ -250,7 +270,13 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
             } = event
             {
                 let app = tray.app_handle();
-                let _ = crate::windows::show_dashboard_window(app);
+                let app = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(error) = crate::windows::show_dashboard_window(&app).await {
+                        eprintln!("Failed to open dashboard: {error}");
+                        let _ = crate::windows::show_main_window(&app);
+                    }
+                });
             }
         })
         .build(app)?;

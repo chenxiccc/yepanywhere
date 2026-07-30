@@ -356,6 +356,11 @@ export interface ProviderInfo {
   name: ProviderName;
   displayName: string;
   installed: boolean;
+  /**
+   * Coarse desktop-only hint that provider-owned app/config data was found.
+   * It does not assert authentication or that the provider can be launched.
+   */
+  applicationDetected?: boolean;
   authenticated: boolean;
   enabled: boolean;
   expiresAt?: string;

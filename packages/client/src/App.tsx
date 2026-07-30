@@ -5,11 +5,9 @@ import { CacheMissBillingToasts } from "./components/CacheMissBillingToasts";
 import { ClientLogRecordingBadge } from "./components/ClientLogRecordingBadge";
 import { CodexUpdatePrompt } from "./components/CodexUpdatePrompt";
 import { ConnectionBar } from "./components/ConnectionBar";
+import { DesktopProviderNotice } from "./components/DesktopProviderNotice";
 import { FloatingActionButton } from "./components/FloatingActionButton";
-import {
-  ReloadBanner,
-  ReloadBannerStack,
-} from "./components/ReloadBanner";
+import { ReloadBanner, ReloadBannerStack } from "./components/ReloadBanner";
 import { OnboardingWizard } from "./components/onboarding";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ClientSummarySourceBinding } from "./contexts/ClientSummarySourceBinding";
@@ -46,11 +44,7 @@ function AppContent({ children }: Props) {
   const location = useLocation();
   const isSessionDetailRoute = /\/sessions\/[^/]+/.test(location.pathname);
   const { icon: hostIdentityIcon } = useHostIdentity();
-  const {
-    authEnabled,
-    isAuthenticated,
-    isLoading: authLoading,
-  } = useAuth();
+  const { authEnabled, isAuthenticated, isLoading: authLoading } = useAuth();
   const sourceKey = useClientSummarySourceKey();
 
   // Manage SSE connection based on auth state (prevents 401s on login page)
@@ -104,6 +98,7 @@ function AppContent({ children }: Props) {
   return (
     <>
       <ConnectionBar />
+      <DesktopProviderNotice />
       <CacheMissBillingToasts />
       {!isSessionDetailRoute && <ClientLogRecordingBadge />}
       <ReloadBannerStack avoidSessionComposer={isSessionDetailRoute}>

@@ -5,6 +5,7 @@ import type {
 } from "@yep-anywhere/shared";
 import type { Context } from "hono";
 import { Hono } from "hono";
+import { detectDesktopProviderApplication } from "../desktop/providerDetection.js";
 import { getAllProviders } from "../sdk/providers/index.js";
 import type { AgentProvider } from "../sdk/providers/types.js";
 import type { ModelInfoService } from "../services/ModelInfoService.js";
@@ -22,6 +23,10 @@ interface ProviderRouteDeps {
   cacheTtlMs?: number;
   /** Provider subscription usage cache TTL in ms. */
   usageCacheTtlMs?: number;
+  /** Whether this route belongs to the bundled desktop runtime. */
+  desktopRuntime?: boolean;
+  /** Injectable coarse application detector for desktop route tests. */
+  applicationDetector?: (provider: ProviderName) => boolean;
 }
 
 interface ProviderInfoCacheEntry {
@@ -77,8 +82,7 @@ export function createProvidersRoutes(deps: ProviderRouteDeps = {}): Hono {
     Promise<ProviderSubscriptionUsage | null>
   >();
   const cacheTtlMs = deps.cacheTtlMs ?? PROVIDER_INFO_CACHE_TTL_MS;
-  const usageCacheTtlMs =
-    deps.usageCacheTtlMs ?? PROVIDER_USAGE_CACHE_TTL_MS;
+  const usageCacheTtlMs = deps.usageCacheTtlMs ?? PROVIDER_USAGE_CACHE_TTL_MS;
   const getExposedProviders = (): AgentProvider[] => {
     const providers = deps.providers ?? getAllProviders();
     if (!deps.enabledProviders || deps.enabledProviders.length === 0) {
@@ -123,6 +127,14 @@ export function createProvidersRoutes(deps: ProviderRouteDeps = {}): Hono {
         name: provider.name,
         displayName: provider.displayName,
         installed: authStatus.installed,
+        ...(deps.desktopRuntime &&
+        (providerName === "claude" || providerName === "codex")
+          ? {
+              applicationDetected: (
+                deps.applicationDetector ?? detectDesktopProviderApplication
+              )(providerName),
+            }
+          : {}),
         authenticated: authStatus.authenticated,
         enabled: authStatus.enabled,
         expiresAt: authStatus.expiresAt?.toISOString(),

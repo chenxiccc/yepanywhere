@@ -7,7 +7,7 @@ import {
   getServerStatus,
   onServerOutput,
   openDashboardWindow,
-  openSetupWindow,
+  openDiagnosticsWindow,
   startServer,
   stopServer,
   type ServerOutputChunk,
@@ -113,8 +113,8 @@ export function ServerOutputView() {
           <button className="btn-secondary" onClick={openDashboardWindow}>
             Dashboard
           </button>
-          <button className="btn-secondary" onClick={openSetupWindow}>
-            Setup
+          <button className="btn-secondary" onClick={openDiagnosticsWindow}>
+            Diagnostics
           </button>
           <button className="btn-secondary" onClick={restart} disabled={busy}>
             {busy ? "Restarting..." : "Restart"}

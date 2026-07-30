@@ -21,6 +21,8 @@ import {
 import { loadConfig } from "./config.js";
 import { DeviceBridgeService } from "./device/DeviceBridgeService.js";
 import { detectAdb } from "./device/adb.js";
+import { DESKTOP_BOOTSTRAP_PROTOCOL_VERSION } from "./desktop/DesktopBootstrapService.js";
+import { readDesktopBootstrapServiceFromStdin } from "./desktop/startup.js";
 import {
   attachUnifiedUpgradeHandler,
   createFrontendProxy,
@@ -128,6 +130,7 @@ process.on("unhandledRejection", (reason) => {
   }
 });
 
+const desktopBootstrapService = await readDesktopBootstrapServiceFromStdin();
 const config = loadConfig();
 const ATTACHMENT_STAGING_CLEANUP_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
@@ -612,9 +615,7 @@ async function startServer() {
   // Seed Claude transport settings from persisted settings
   await ClaudeGatewayProvider.configureGateway({
     url: serverSettingsService.getSetting("claudeGatewayUrl"),
-    startCommand: serverSettingsService.getSetting(
-      "claudeGatewayStartCommand",
-    ),
+    startCommand: serverSettingsService.getSetting("claudeGatewayStartCommand"),
   });
   const savedOllamaUrl = serverSettingsService.getSetting("ollamaUrl");
   const savedOllamaSystemPrompt =
@@ -688,6 +689,8 @@ async function startServer() {
     ) => Promise<{ success: boolean; error?: string }>;
     /** Live: addresses currently bound (reads real sockets at call time). */
     getActiveListeners?: () => string[];
+    /** Live localhost port after an optional port-0 bind. */
+    getLocalhostPort?: () => number;
   } = {};
 
   // Determine effective port for server-info (CLI override or saved setting)
@@ -765,6 +768,8 @@ async function startServer() {
     authService,
     authDisabled: config.authDisabled,
     desktopAuthToken: config.desktopAuthToken,
+    desktopBootstrapService,
+    desktopRuntime: config.desktopRuntime,
     remoteAccessService,
     remoteSessionService,
     relayClientService,
@@ -1268,10 +1273,17 @@ async function startServer() {
     }
     return listeners;
   };
+  networkBindingCallbackHolder.getLocalhostPort = () => {
+    const address = localhostServer?.address();
+    return address && typeof address === "object"
+      ? address.port
+      : effectiveServerPort;
+  };
 
   // Create the main localhost server
   const expectedServerUrl = `${serverProtocol}://127.0.0.1:${effectivePort}`;
   console.log(`[Server] Starting on ${expectedServerUrl}`);
+  let desktopReadySent = false;
   localhostServer = createServer(
     effectivePort,
     "127.0.0.1",
@@ -1283,6 +1295,15 @@ async function startServer() {
       }
 
       const serverUrl = `${serverProtocol}://127.0.0.1:${info.port}`;
+      if (desktopBootstrapService && !desktopReadySent) {
+        desktopReadySent = true;
+        process.stdout.write(
+          `YEP_DESKTOP_READY ${JSON.stringify({
+            protocol: DESKTOP_BOOTSTRAP_PROTOCOL_VERSION,
+            port: info.port,
+          })}\n`,
+        );
+      }
       console.log(`Server URL: ${serverUrl}`);
       console.log(`Server running at ${serverUrl}`);
       console.log(`Projects dir: ${config.claudeProjectsDir}`);

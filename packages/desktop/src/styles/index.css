@@ -161,6 +161,76 @@ label.toggle input {
   justify-content: center;
 }
 
+.desktop-loading {
+  display: grid;
+  height: 100vh;
+  place-items: center;
+  color: var(--text-secondary);
+}
+
+.desktop-runtime-status {
+  margin: -12px 0 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  text-transform: capitalize;
+}
+
+.desktop-runtime-status.is-running {
+  color: var(--success);
+}
+
+.desktop-runtime-status.is-error,
+.desktop-runtime-error {
+  color: var(--error);
+}
+
+.desktop-runtime-output {
+  width: 100%;
+  max-height: 220px;
+  padding: 12px;
+  box-sizing: border-box;
+  overflow: auto;
+  color: #d1d5db;
+  background: #09090b;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  font: 12px/1.4 "Cascadia Mono", Consolas, monospace;
+  white-space: pre-wrap;
+}
+
+.desktop-runtime-error {
+  max-width: 620px;
+  margin: -12px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.desktop-runtime-details {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px 12px;
+  width: min(100%, 620px);
+  margin: 8px 0 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+  font-size: 12px;
+}
+
+.desktop-runtime-details dt {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.desktop-runtime-details dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 .server-output-toolbar {
   display: flex;
   align-items: center;

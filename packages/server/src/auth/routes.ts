@@ -5,6 +5,10 @@
 import * as crypto from "node:crypto";
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
+import {
+  DESKTOP_SESSION_COOKIE_NAME,
+  type DesktopBootstrapService,
+} from "../desktop/DesktopBootstrapService.js";
 import type { AuthService } from "./AuthService.js";
 
 export const SESSION_COOKIE_NAME = "yep-anywhere-session";
@@ -15,6 +19,8 @@ export interface AuthRoutesDeps {
   authDisabled?: boolean;
   /** Desktop auth token (for protecting localhost-access endpoint). */
   desktopAuthToken?: string;
+  /** Reload-safe desktop session authentication for bootstrap-v1 shells. */
+  desktopBootstrapService?: DesktopBootstrapService;
 }
 
 interface SetupBody {
@@ -53,7 +59,12 @@ function shouldUseSecureCookie(c: {
 
 export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
   const app = new Hono();
-  const { authService, authDisabled = false, desktopAuthToken } = deps;
+  const {
+    authService,
+    authDisabled = false,
+    desktopAuthToken,
+    desktopBootstrapService,
+  } = deps;
 
   /**
    * GET /api/auth/status
@@ -69,7 +80,7 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
   app.get("/status", async (c) => {
     const isEnabled = authService.isEnabled();
     const base = {
-      hasDesktopToken: !!desktopAuthToken,
+      hasDesktopToken: !!desktopAuthToken || !!desktopBootstrapService,
       localhostOpen: authService.isLocalhostOpen(),
       authFilePath: authService.getFilePath(),
     };
@@ -85,12 +96,26 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
       });
     }
 
+    const desktopSession = getCookie(c, DESKTOP_SESSION_COOKIE_NAME);
+    if (desktopBootstrapService?.validateSession(desktopSession)) {
+      return c.json({
+        ...base,
+        enabled: isEnabled,
+        authenticated: true,
+        setupRequired: false,
+        disabledByEnv: false,
+      });
+    }
+
     // If auth is not enabled in settings, no auth required
     if (!isEnabled) {
+      const desktopFloorEnabled =
+        (!!desktopAuthToken || !!desktopBootstrapService) &&
+        !authService.isLocalhostOpen();
       return c.json({
         ...base,
         enabled: false,
-        authenticated: true, // No auth needed
+        authenticated: !desktopFloorEnabled,
         setupRequired: false,
         disabledByEnv: false,
       });

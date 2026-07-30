@@ -46,6 +46,8 @@ export interface VersionInfo {
   latestDeviceBridgeVersion?: string | null;
   /** Server-learned browser defaults used when local storage has no explicit value. */
   clientDefaults?: ClientDefaults;
+  /** True when this server is bundled with the native desktop shell. */
+  desktopRuntime?: boolean;
 }
 
 export interface ServerInfo {

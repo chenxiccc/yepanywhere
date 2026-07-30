@@ -10,4 +10,6 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   </React.StrictMode>,
 );
 
-initUpdater();
+if (!new URLSearchParams(window.location.search).has("view")) {
+  initUpdater();
+}

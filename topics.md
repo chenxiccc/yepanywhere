@@ -211,3 +211,6 @@
   text.
 - relay-client-mux - Optional relay-owned client multiplexing for several
   independently authenticated YA hosts with exact legacy `/ws` fallback.
+- desktop-v0 - Windows-first self-contained Tauri release with an atomic
+  private runtime/server resource, advisory external providers, reload-safe
+  loopback bootstrap, and owned process lifecycle.

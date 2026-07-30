@@ -1,4 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 
@@ -53,6 +54,7 @@ async function checkForUpdates(reason: CheckReason): Promise<void> {
 }
 
 function showInfoDialog(message: string): void {
+  revealUpdaterWindow();
   const overlay = createOverlay();
   const dialog = getDialog(overlay);
   dialog.innerHTML = `
@@ -68,6 +70,7 @@ function showInfoDialog(message: string): void {
 }
 
 function showUpdateDialog(update: Update): void {
+  revealUpdaterWindow();
   const overlay = createOverlay();
   const dialog = getDialog(overlay);
   dialog.innerHTML = `
@@ -98,6 +101,16 @@ function showUpdateDialog(update: Update): void {
     .querySelector('[data-action="install"]')
     ?.addEventListener("click", () => {
       void installUpdate(update, dialog);
+    });
+}
+
+function revealUpdaterWindow(): void {
+  const window = getCurrentWindow();
+  void window
+    .show()
+    .then(() => window.setFocus())
+    .catch(() => {
+      // The update UI remains available if a platform cannot focus the window.
     });
 }
 

@@ -2,6 +2,12 @@
 
 Status: Implemented.
 
+2026-07-30 v0 note: tactical 067 supersedes Setup / Repair and the
+desktop-managed component model. The retained surfaces are Dashboard, bounded
+Server Output, tray settings, and a focused startup diagnostic fallback. See
+[`067-v0-desktop-baseline.md`](067-v0-desktop-baseline.md) and
+[`topics/desktop-v0.md`](../../topics/desktop-v0.md).
+
 Progress:
 
 - [x] 2026-06-09: Captured the first-class desktop surface model and server

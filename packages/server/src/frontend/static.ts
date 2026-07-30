@@ -15,6 +15,21 @@ export interface StaticServeOptions {
   basePath?: string;
 }
 
+const APP_CONTENT_SECURITY_POLICY = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "object-src 'none'",
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline'",
+  "font-src 'self' data:",
+  "img-src 'self' data: blob: https:",
+  "media-src 'self' data: blob: https:",
+  "frame-src 'self' blob:",
+  "connect-src 'self' http: https: ws: wss:",
+  "worker-src 'self' blob:",
+  "frame-ancestors 'self' tauri://localhost https://tauri.localhost",
+].join("; ");
+
 /**
  * Create Hono routes for serving static files.
  *
@@ -75,10 +90,10 @@ export function createStaticRoutes(options: StaticServeOptions): Hono {
           "Cache-Control": cacheControl,
         };
 
-        // Add CSP frame-ancestors for HTML files (must be HTTP header, not meta tag)
+        // Browser-enforced policy for app documents. The inline allowance is
+        // limited to the packaged theme bootstrap and generated component CSS.
         if (ext === ".html") {
-          headers["Content-Security-Policy"] =
-            "frame-ancestors 'self' tauri://localhost https://tauri.localhost";
+          headers["Content-Security-Policy"] = APP_CONTENT_SECURITY_POLICY;
         }
 
         return c.body(content, 200, headers);
@@ -100,9 +115,7 @@ export function createStaticRoutes(options: StaticServeOptions): Hono {
     try {
       const indexHtml = await fs.promises.readFile(indexPath, "utf-8");
       return c.html(indexHtml, 200, {
-        // frame-ancestors must be set via HTTP header (not meta tag)
-        "Content-Security-Policy":
-          "frame-ancestors 'self' tauri://localhost https://tauri.localhost",
+        "Content-Security-Policy": APP_CONTENT_SECURITY_POLICY,
         // Don't cache index.html (hashed asset paths change on rebuild)
         "Cache-Control": "no-cache",
       });

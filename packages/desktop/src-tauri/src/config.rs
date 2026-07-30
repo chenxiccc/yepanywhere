@@ -16,7 +16,9 @@ fn default_startup_view() -> StartupView {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
+    #[serde(default = "default_true")]
     pub setup_complete: bool,
+    #[serde(default)]
     pub agents: Vec<String>,
     /// User-specified port override. None = auto-pick a free port on each launch.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -37,7 +39,7 @@ fn default_true() -> bool {
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
-            setup_complete: false,
+            setup_complete: true,
             agents: vec![],
             port: None,
             start_minimized: false,
@@ -56,13 +58,18 @@ pub fn config_path() -> PathBuf {
     data_dir().join("config.json")
 }
 
-pub fn bin_dir() -> PathBuf {
-    data_dir().join("bin")
-}
-
-/// If `YEP_DEV_DIR` is set, run from local source instead of installed npm package.
+/// Development builds may explicitly run a checkout. Signed/release binaries
+/// always use their immutable bundled server so an ambient machine variable
+/// cannot silently replace the stable fallback.
 pub fn dev_dir() -> Option<PathBuf> {
-    std::env::var("YEP_DEV_DIR").ok().map(PathBuf::from)
+    #[cfg(debug_assertions)]
+    {
+        std::env::var("YEP_DEV_DIR").ok().map(PathBuf::from)
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        None
+    }
 }
 
 pub fn load_config() -> AppConfig {
@@ -70,6 +77,9 @@ pub fn load_config() -> AppConfig {
     if path.exists() {
         let contents = fs::read_to_string(&path).unwrap_or_default();
         let mut config: AppConfig = serde_json::from_str(&contents).unwrap_or_default();
+        if !contents.contains("\"setup_complete\"") || !config.setup_complete {
+            config.setup_complete = true;
+        }
         if !contents.contains("\"startup_view\"") && config.start_minimized {
             config.startup_view = StartupView::TrayOnly;
         }

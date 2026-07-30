@@ -1,19 +1,36 @@
 use rand::Rng;
-use serde::Serialize;
-use std::{collections::VecDeque, process::Stdio, sync::Mutex};
+use serde::{Deserialize, Serialize};
+use std::{collections::VecDeque, path::PathBuf, process::Stdio, sync::Mutex, time::Duration};
 use tauri::{AppHandle, Emitter, Manager};
-use tokio::io::{AsyncRead, AsyncReadExt};
-use tokio::process::{Child, Command};
+use tokio::{
+    io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader},
+    process::{Child, Command},
+    sync::oneshot,
+};
 
 use crate::config;
 
+const DESKTOP_BOOTSTRAP_PROTOCOL_VERSION: u8 = 1;
+const DESKTOP_READY_PREFIX: &str = "YEP_DESKTOP_READY ";
 const MAX_SERVER_OUTPUT_BYTES: usize = 1024 * 1024;
+const SERVER_READY_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[derive(Clone, Serialize)]
 pub struct ServerOutputChunk {
     pub sequence: u64,
     pub stream: String,
     pub data: String,
+}
+
+#[derive(Deserialize)]
+struct DesktopReady {
+    protocol: u8,
+    port: u16,
+}
+
+#[derive(Deserialize)]
+struct MintBootstrapResponse {
+    code: String,
 }
 
 struct ServerOutputBuffer {
@@ -58,10 +75,11 @@ impl ServerOutputBuffer {
 }
 
 pub struct ServerState {
-    pub child: Mutex<Option<Child>>,
-    pub desktop_token: Mutex<Option<String>>,
-    /// The port the server is actually running on (auto-picked or user-specified).
-    pub port: Mutex<Option<u16>>,
+    child: Mutex<Option<Child>>,
+    process_job: Mutex<Option<ProcessJob>>,
+    bootstrap_secret: Mutex<Option<String>>,
+    port: Mutex<Option<u16>>,
+    last_error: Mutex<Option<String>>,
     output: Mutex<ServerOutputBuffer>,
 }
 
@@ -69,40 +87,119 @@ impl ServerState {
     pub fn new() -> Self {
         Self {
             child: Mutex::new(None),
-            desktop_token: Mutex::new(None),
+            process_job: Mutex::new(None),
+            bootstrap_secret: Mutex::new(None),
             port: Mutex::new(None),
+            last_error: Mutex::new(None),
             output: Mutex::new(ServerOutputBuffer::new()),
         }
     }
 
-    /// Synchronously kill the server process and its entire process group.
-    /// Called during app exit when the async runtime may not be available.
+    /// Called during app exit, when the async runtime may no longer be usable.
     pub fn kill_sync(&self) {
+        if let Ok(mut job) = self.process_job.lock() {
+            // Closing a Windows job configured with KILL_ON_JOB_CLOSE is the
+            // final ownership guarantee for every descendant.
+            *job = None;
+        }
         if let Ok(mut lock) = self.child.lock() {
             if let Some(ref mut child) = *lock {
                 if let Some(pid) = child.id() {
-                    #[cfg(unix)]
-                    unsafe {
-                        // Kill the entire process group (negative PID = PGID).
-                        // Works because we set process_group(0) on spawn.
-                        libc::kill(-(pid as i32), libc::SIGTERM);
-                    }
-                    #[cfg(not(unix))]
-                    {
-                        let _ = child.start_kill();
-                    }
+                    kill_process_tree_sync(pid);
                 }
+                let _ = child.start_kill();
             }
             *lock = None;
+        }
+        if let Ok(mut secret) = self.bootstrap_secret.lock() {
+            *secret = None;
+        }
+        if let Ok(mut port) = self.port.lock() {
+            *port = None;
         }
     }
 }
 
-/// Generate a 32-byte random hex token for desktop auth.
-fn generate_token() -> String {
+#[cfg(windows)]
+struct ProcessJob(windows_sys::Win32::Foundation::HANDLE);
+
+#[cfg(windows)]
+unsafe impl Send for ProcessJob {}
+
+#[cfg(windows)]
+unsafe impl Sync for ProcessJob {}
+
+#[cfg(windows)]
+impl Drop for ProcessJob {
+    fn drop(&mut self) {
+        if !self.0.is_null() {
+            unsafe {
+                windows_sys::Win32::Foundation::CloseHandle(self.0);
+            }
+        }
+    }
+}
+
+#[cfg(not(windows))]
+struct ProcessJob;
+
+#[cfg(windows)]
+fn assign_process_job(child: &Child) -> Result<ProcessJob, String> {
+    use windows_sys::Win32::{
+        Foundation::HANDLE,
+        System::JobObjects::{
+            AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
+            SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        },
+    };
+
+    let job = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
+    if job.is_null() {
+        return Err(format!(
+            "Could not create desktop process job: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+    let owned_job = ProcessJob(job);
+    let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    let configured = unsafe {
+        SetInformationJobObject(
+            job,
+            JobObjectExtendedLimitInformation,
+            std::ptr::addr_of!(limits).cast(),
+            std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+        )
+    };
+    if configured == 0 {
+        return Err(format!(
+            "Could not configure desktop process job: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+    let process = child.raw_handle().ok_or_else(|| {
+        "Bundled server exited before process ownership was established".to_string()
+    })? as HANDLE;
+    let assigned = unsafe { AssignProcessToJobObject(job, process) };
+    if assigned == 0 {
+        return Err(format!(
+            "Could not assign bundled server to desktop process job: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+    Ok(owned_job)
+}
+
+#[cfg(not(windows))]
+fn assign_process_job(_child: &Child) -> Result<ProcessJob, String> {
+    Ok(ProcessJob)
+}
+
+fn generate_secret() -> String {
     let mut rng = rand::thread_rng();
     let bytes: [u8; 32] = rng.gen();
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 fn redact_after_marker(mut text: String, marker: &str) -> String {
@@ -126,39 +223,59 @@ fn redact_after_marker(mut text: String, marker: &str) -> String {
 
 fn redact_server_output(data: String) -> String {
     let data = redact_after_marker(data, "desktop_token=");
-    redact_after_marker(data, "DESKTOP_AUTH_TOKEN=")
+    let data = redact_after_marker(data, "DESKTOP_AUTH_TOKEN=");
+    redact_after_marker(data, "x-yep-desktop-bootstrap-secret:")
 }
 
 fn record_server_output(app: &AppHandle, stream: &str, data: String) {
     let data = redact_server_output(data);
-
     let state = app.state::<ServerState>();
     let chunk = match state.output.lock() {
         Ok(mut output) => output.push(stream, data),
         Err(_) => return,
     };
-
     let _ = app.emit("server-output", chunk);
 }
 
-fn spawn_output_reader<R>(app: AppHandle, stream: &'static str, mut reader: R)
-where
+fn spawn_stdout_reader<R>(
+    app: AppHandle,
+    reader: R,
+    ready_tx: oneshot::Sender<Result<DesktopReady, String>>,
+) where
     R: AsyncRead + Unpin + Send + 'static,
 {
     tauri::async_runtime::spawn(async move {
-        let mut buf = [0u8; 4096];
+        let mut lines = BufReader::new(reader).lines();
+        let mut ready_tx = Some(ready_tx);
         loop {
-            match reader.read(&mut buf).await {
-                Ok(0) => break,
-                Ok(n) => {
-                    let data = String::from_utf8_lossy(&buf[..n]).to_string();
-                    record_server_output(&app, stream, data);
+            match lines.next_line().await {
+                Ok(Some(line)) => {
+                    if let Some(payload) = line.strip_prefix(DESKTOP_READY_PREFIX) {
+                        let result = serde_json::from_str::<DesktopReady>(payload)
+                            .map_err(|error| format!("Invalid desktop readiness record: {error}"));
+                        if let Some(sender) = ready_tx.take() {
+                            let _ = sender.send(result);
+                        }
+                    }
+                    record_server_output(&app, "stdout", format!("{line}\n"));
                 }
-                Err(err) => {
+                Ok(None) => {
+                    if let Some(sender) = ready_tx.take() {
+                        let _ = sender.send(Err(
+                            "Server exited before reporting desktop readiness".to_string(),
+                        ));
+                    }
+                    break;
+                }
+                Err(error) => {
+                    if let Some(sender) = ready_tx.take() {
+                        let _ =
+                            sender.send(Err(format!("Failed to read desktop readiness: {error}")));
+                    }
                     record_server_output(
                         &app,
                         "system",
-                        format!("\r\n[server output read error: {err}]\r\n"),
+                        format!("\r\n[server output read error: {error}]\r\n"),
                     );
                     break;
                 }
@@ -167,176 +284,376 @@ where
     });
 }
 
-/// Resolve the bundled Bun sidecar binary path.
-/// Tauri places externalBin sidecars next to the main executable (Contents/MacOS/).
-fn bun_path(_app: &AppHandle) -> Result<std::path::PathBuf, String> {
-    let exe = std::env::current_exe().map_err(|e| format!("Could not resolve executable: {e}"))?;
-    let exe_dir = exe
+fn spawn_output_reader<R>(app: AppHandle, stream: &'static str, mut reader: R)
+where
+    R: AsyncRead + Unpin + Send + 'static,
+{
+    tauri::async_runtime::spawn(async move {
+        let mut buf = [0_u8; 4096];
+        loop {
+            match reader.read(&mut buf).await {
+                Ok(0) => break,
+                Ok(count) => {
+                    record_server_output(
+                        &app,
+                        stream,
+                        String::from_utf8_lossy(&buf[..count]).to_string(),
+                    );
+                }
+                Err(error) => {
+                    record_server_output(
+                        &app,
+                        "system",
+                        format!("\r\n[server output read error: {error}]\r\n"),
+                    );
+                    break;
+                }
+            }
+        }
+    });
+}
+
+fn bun_path() -> Result<PathBuf, String> {
+    let executable = std::env::current_exe()
+        .map_err(|error| format!("Could not resolve executable: {error}"))?;
+    let executable_dir = executable
         .parent()
         .ok_or_else(|| "Could not resolve executable directory".to_string())?;
-    let bin_name = if cfg!(windows) { "bun.exe" } else { "bun" };
-    let path = exe_dir.join(bin_name);
-    if path.exists() {
-        return Ok(path);
-    }
-    Err(format!("Bun sidecar not found at {}", path.display()))
+    let name = if cfg!(windows) { "bun.exe" } else { "bun" };
+    let path = executable_dir.join(name);
+    path.exists()
+        .then_some(path.clone())
+        .ok_or_else(|| format!("Bundled Bun runtime not found at {}", path.display()))
 }
 
-/// Find the yep server entry point.
-fn server_entry() -> Result<std::path::PathBuf, String> {
-    let installed = config::data_dir()
-        .join("node_modules")
-        .join("yepanywhere")
-        .join("dist")
-        .join("index.js");
-    if installed.exists() {
-        return Ok(installed);
-    }
-
-    Err("Yep Anywhere server not found. Run setup first.".to_string())
+fn server_entry_candidates(resource_dir: &std::path::Path) -> [PathBuf; 2] {
+    [
+        resource_dir.join("server").join("dist").join("index.js"),
+        resource_dir
+            .join("resources")
+            .join("server")
+            .join("dist")
+            .join("index.js"),
+    ]
 }
 
-/// Resolve the Codex CLI installed by the desktop setup flow, if present.
-fn desktop_codex_path() -> Option<std::path::PathBuf> {
-    let bin_name = if cfg!(windows) { "codex.exe" } else { "codex" };
-    let path = config::bin_dir().join(bin_name);
-    path.exists().then_some(path)
+fn server_entry(app: &AppHandle) -> Result<PathBuf, String> {
+    let resource_dir = app
+        .path()
+        .resource_dir()
+        .map_err(|error| format!("Could not resolve desktop resources: {error}"))?;
+    let candidates = server_entry_candidates(&resource_dir);
+    candidates
+        .iter()
+        .find(|entry| entry.exists())
+        .cloned()
+        .ok_or_else(|| {
+            format!(
+                "Bundled Yep Anywhere server not found beneath {}",
+                resource_dir.display()
+            )
+        })
 }
 
-/// Mark the child server as desktop-launched and pass desktop-owned tool paths.
-fn apply_desktop_server_env(cmd: &mut Command) {
-    cmd.env("YEP_DESKTOP", "1");
-    if let Some(path) = desktop_codex_path() {
-        cmd.env(
-            "YEP_DESKTOP_CODEX_CLI_PATH",
-            path.to_string_lossy().as_ref(),
-        );
-    }
+fn apply_desktop_server_env(command: &mut Command, port: u16, data_dir: &std::path::Path) {
+    command
+        .env("NODE_ENV", "production")
+        .env("PORT", port.to_string())
+        .env("YEP_DATA_DIR", data_dir)
+        .env("YEP_DESKTOP", "1")
+        .env("YEP_DESKTOP_BOOTSTRAP", "stdin-v1")
+        .env_remove("DESKTOP_AUTH_TOKEN");
 }
 
-/// Set up child process for clean shutdown: kill-on-drop and own process group.
-fn setup_child_process(cmd: &mut Command) {
-    cmd.kill_on_drop(true);
-    cmd.stdout(Stdio::piped());
-    cmd.stderr(Stdio::piped());
+fn setup_child_process(command: &mut Command) {
+    command.kill_on_drop(true);
+    command.stdin(Stdio::piped());
+    command.stdout(Stdio::piped());
+    command.stderr(Stdio::piped());
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
-        cmd.as_std_mut().process_group(0);
+        command.as_std_mut().process_group(0);
     }
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-        cmd.as_std_mut().creation_flags(CREATE_NO_WINDOW);
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.as_std_mut().creation_flags(CREATE_NO_WINDOW);
+    }
+}
+
+fn create_server_command(
+    app: &AppHandle,
+    port: u16,
+    data_dir: &std::path::Path,
+) -> Result<Command, String> {
+    if let Some(dev_dir) = config::dev_dir() {
+        #[cfg(windows)]
+        let mut command = {
+            let mut command = Command::new("pnpm.cmd");
+            command.arg("dev");
+            command
+        };
+        #[cfg(not(windows))]
+        let mut command = {
+            let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+            let mut command = Command::new(shell);
+            command.args(["-l", "-c", "exec pnpm dev"]);
+            command
+        };
+        command.current_dir(dev_dir);
+        apply_desktop_server_env(&mut command, port, data_dir);
+        setup_child_process(&mut command);
+        return Ok(command);
+    }
+
+    let bun = bun_path()?;
+    let entry = server_entry(app)?;
+    let server_dir = entry
+        .parent()
+        .and_then(std::path::Path::parent)
+        .ok_or_else(|| "Could not resolve bundled server directory".to_string())?;
+    let mut command = Command::new(bun);
+    command.arg("run").arg(&entry).current_dir(server_dir);
+    apply_desktop_server_env(&mut command, port, data_dir);
+    setup_child_process(&mut command);
+    Ok(command)
+}
+
+async fn send_startup_frame(child: &mut Child, secret: &str) -> Result<(), String> {
+    let mut stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| "Desktop server stdin was not piped".to_string())?;
+    let frame = serde_json::json!({
+        "protocol": DESKTOP_BOOTSTRAP_PROTOCOL_VERSION,
+        "masterSecret": secret,
+    });
+    stdin
+        .write_all(format!("{frame}\n").as_bytes())
+        .await
+        .map_err(|error| format!("Failed to send desktop startup frame: {error}"))?;
+    stdin
+        .shutdown()
+        .await
+        .map_err(|error| format!("Failed to close desktop startup pipe: {error}"))
+}
+
+#[cfg(windows)]
+fn kill_process_tree_sync(pid: u32) {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let _ = std::process::Command::new("taskkill")
+        .args(["/PID", &pid.to_string(), "/T", "/F"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .status();
+}
+
+#[cfg(unix)]
+fn kill_process_tree_sync(pid: u32) {
+    unsafe {
+        libc::kill(-(pid as i32), libc::SIGTERM);
+    }
+}
+
+async fn request_graceful_shutdown(port: u16, secret: &str) -> Result<(), String> {
+    let base_url = format!("http://127.0.0.1:{port}");
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(Duration::from_secs(3))
+        .build()
+        .map_err(|error| error.to_string())?;
+    let mint = client
+        .post(format!("{base_url}/desktop-bootstrap/mint"))
+        .header("x-yep-desktop-bootstrap-secret", secret)
+        .send()
+        .await
+        .map_err(|error| error.to_string())?;
+    let code = mint
+        .error_for_status()
+        .map_err(|error| error.to_string())?
+        .json::<MintBootstrapResponse>()
+        .await
+        .map_err(|error| error.to_string())?
+        .code;
+    let exchange = client
+        .get(format!("{base_url}/desktop-bootstrap/{code}"))
+        .send()
+        .await
+        .map_err(|error| error.to_string())?;
+    let cookie = exchange
+        .headers()
+        .get(reqwest::header::SET_COOKIE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(';').next())
+        .ok_or_else(|| "Desktop shutdown bootstrap did not return a cookie".to_string())?;
+    client
+        .post(format!("{base_url}/api/server/restart"))
+        .header(reqwest::header::COOKIE, cookie)
+        .header("X-Yep-Anywhere", "true")
+        .send()
+        .await
+        .map_err(|error| error.to_string())?
+        .error_for_status()
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+async fn stop_child(
+    mut child: Child,
+    mut process_job: Option<ProcessJob>,
+    graceful: Option<(u16, String)>,
+) -> Result<(), String> {
+    if let Some((port, secret)) = graceful {
+        let _ = request_graceful_shutdown(port, &secret).await;
+        if let Ok(result) = tokio::time::timeout(Duration::from_secs(5), child.wait()).await {
+            process_job.take();
+            return result
+                .map(|_| ())
+                .map_err(|error| format!("Failed waiting for server shutdown: {error}"));
+        }
+    }
+
+    // Closing the Windows job terminates the complete owned tree. The
+    // PID-specific fallback covers Unix process groups and older Windows
+    // environments where a descendant escaped before assignment.
+    process_job.take();
+    if let Some(pid) = child.id() {
+        kill_process_tree_sync(pid);
+    }
+    let _ = child.start_kill();
+    match tokio::time::timeout(Duration::from_secs(10), child.wait()).await {
+        Ok(Ok(_)) => Ok(()),
+        Ok(Err(error)) => Err(format!("Failed waiting for server shutdown: {error}")),
+        Err(_) => Err("Timed out waiting for server shutdown".to_string()),
     }
 }
 
 #[tauri::command]
 pub async fn start_server(app: AppHandle) -> Result<(), String> {
-    let state = app.state::<ServerState>();
+    if let Ok(mut error) = app.state::<ServerState>().last_error.lock() {
+        *error = None;
+    }
+    let result = start_server_inner(app.clone()).await;
+    if let Err(error) = &result {
+        if let Ok(mut last_error) = app.state::<ServerState>().last_error.lock() {
+            *last_error = Some(error.clone());
+        }
+        record_server_output(
+            &app,
+            "system",
+            format!("\r\n[server start failed: {error}]\r\n"),
+        );
+    }
+    result
+}
 
+async fn start_server_inner(app: AppHandle) -> Result<(), String> {
+    let state = app.state::<ServerState>();
     {
-        let child_lock = state.child.lock().map_err(|e| e.to_string())?;
-        if child_lock.is_some() {
+        let child = state.child.lock().map_err(|error| error.to_string())?;
+        if child.is_some() {
             return Err("Server is already running".to_string());
         }
     }
 
-    let cfg = config::load_config();
+    let config = config::load_config();
+    let requested_port = config.port.unwrap_or(0);
     let data_dir = config::data_dir();
-    let token = generate_token();
-
-    // Resolve port: use user override or auto-pick a free port.
-    let port = match cfg.port {
-        Some(p) => p,
-        None => {
-            let listener = std::net::TcpListener::bind("127.0.0.1:0")
-                .map_err(|e| format!("Failed to find free port: {e}"))?;
-            let addr = listener.local_addr().map_err(|e| e.to_string())?;
-            addr.port()
-            // listener is dropped here, freeing the port for the server
-        }
-    };
-
+    let bootstrap_secret = generate_secret();
     record_server_output(
         &app,
         "system",
-        format!("\r\n[server starting on port {port}]\r\n"),
+        format!("\r\n[server starting on loopback port {requested_port}]\r\n"),
     );
 
-    let mut child = if let Some(dev_dir) = config::dev_dir() {
-        // Dev mode: run `pnpm dev` from local source.
-        // Use a login shell so pnpm/node are on PATH (GUI apps have minimal PATH).
-        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
-        let mut cmd = Command::new(&shell);
-        cmd.args(["--login", "-c", "exec pnpm dev"])
-            .current_dir(&dev_dir)
-            .env("PORT", port.to_string())
-            .env("YEP_DATA_DIR", data_dir.to_string_lossy().as_ref())
-            .env("DESKTOP_AUTH_TOKEN", &token);
-        apply_desktop_server_env(&mut cmd);
-        setup_child_process(&mut cmd);
-        cmd.spawn()
-            .map_err(|e| format!("Failed to start dev server in {}: {e}", dev_dir.display()))?
-    } else {
-        // Production mode: use bundled bun + installed npm package.
-        let bun = bun_path(&app)?;
-        let entry = server_entry()?;
-        let mut cmd = Command::new(&bun);
-        cmd.arg("run")
-            .arg(&entry)
-            .env("NODE_ENV", "production")
-            .env("PORT", port.to_string())
-            .env("YEP_DATA_DIR", data_dir.to_string_lossy().as_ref())
-            .env("DESKTOP_AUTH_TOKEN", &token);
-        apply_desktop_server_env(&mut cmd);
-        setup_child_process(&mut cmd);
-        cmd.spawn()
-            .map_err(|e| format!("Failed to start server: {e}"))?
+    let mut command = create_server_command(&app, requested_port, &data_dir)?;
+    let mut child = command
+        .spawn()
+        .map_err(|error| format!("Failed to start bundled server: {error}"))?;
+    let process_job = assign_process_job(&child)?;
+    if let Err(error) = send_startup_frame(&mut child, &bootstrap_secret).await {
+        let _ = stop_child(child, Some(process_job), None).await;
+        return Err(error);
+    }
+
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "Desktop server stdout was not piped".to_string())?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| "Desktop server stderr was not piped".to_string())?;
+    let (ready_tx, ready_rx) = oneshot::channel();
+    spawn_stdout_reader(app.clone(), stdout, ready_tx);
+    spawn_output_reader(app.clone(), "stderr", stderr);
+
+    let ready = match tokio::time::timeout(SERVER_READY_TIMEOUT, ready_rx).await {
+        Ok(Ok(Ok(ready))) => ready,
+        Ok(Ok(Err(error))) => {
+            let _ = stop_child(child, Some(process_job), None).await;
+            return Err(error);
+        }
+        Ok(Err(_)) => {
+            let _ = stop_child(child, Some(process_job), None).await;
+            return Err("Desktop readiness channel closed unexpectedly".to_string());
+        }
+        Err(_) => {
+            let _ = stop_child(child, Some(process_job), None).await;
+            return Err("Timed out waiting for bundled server readiness".to_string());
+        }
     };
-
-    if let Some(stdout) = child.stdout.take() {
-        spawn_output_reader(app.clone(), "stdout", stdout);
+    if ready.protocol != DESKTOP_BOOTSTRAP_PROTOCOL_VERSION {
+        let _ = stop_child(child, Some(process_job), None).await;
+        return Err(format!(
+            "Bundled server uses unsupported desktop protocol {}",
+            ready.protocol
+        ));
     }
-    if let Some(stderr) = child.stderr.take() {
-        spawn_output_reader(app.clone(), "stderr", stderr);
-    }
 
-    let mut child_lock = state.child.lock().map_err(|e| e.to_string())?;
-    *child_lock = Some(child);
-
-    let mut token_lock = state.desktop_token.lock().map_err(|e| e.to_string())?;
-    *token_lock = Some(token);
-
-    let mut port_lock = state.port.lock().map_err(|e| e.to_string())?;
-    *port_lock = Some(port);
-
+    *state.child.lock().map_err(|error| error.to_string())? = Some(child);
+    *state
+        .process_job
+        .lock()
+        .map_err(|error| error.to_string())? = Some(process_job);
+    *state
+        .bootstrap_secret
+        .lock()
+        .map_err(|error| error.to_string())? = Some(bootstrap_secret);
+    *state.port.lock().map_err(|error| error.to_string())? = Some(ready.port);
+    record_server_output(
+        &app,
+        "system",
+        format!("\r\n[server ready on port {}]\r\n", ready.port),
+    );
     Ok(())
 }
 
 #[tauri::command]
 pub async fn stop_server(app: AppHandle) -> Result<(), String> {
     let state = app.state::<ServerState>();
+    let child = state
+        .child
+        .lock()
+        .map_err(|error| error.to_string())?
+        .take();
+    let process_job = state
+        .process_job
+        .lock()
+        .map_err(|error| error.to_string())?
+        .take();
+    let secret = state
+        .bootstrap_secret
+        .lock()
+        .map_err(|error| error.to_string())?
+        .take();
+    let port = state.port.lock().map_err(|error| error.to_string())?.take();
 
-    // Take the child out of the mutex so we don't hold the lock across .await
-    let child = {
-        let mut child_lock = state.child.lock().map_err(|e| e.to_string())?;
-        child_lock.take()
-    };
-
-    // Clear the desktop token and port
-    {
-        let mut token_lock = state.desktop_token.lock().map_err(|e| e.to_string())?;
-        *token_lock = None;
-    }
-    {
-        let mut port_lock = state.port.lock().map_err(|e| e.to_string())?;
-        *port_lock = None;
-    }
-
-    if let Some(mut child) = child {
-        child.kill().await.map_err(|e| e.to_string())?;
+    if let Some(child) = child {
+        let graceful = port.zip(secret);
+        stop_child(child, process_job, graceful).await?;
     }
     record_server_output(&app, "system", "\r\n[server stopped]\r\n".to_string());
     Ok(())
@@ -345,38 +662,113 @@ pub async fn stop_server(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub async fn get_server_status(app: AppHandle) -> Result<String, String> {
     let state = app.state::<ServerState>();
-    let mut child_lock = state.child.lock().map_err(|e| e.to_string())?;
-
-    match child_lock.as_mut() {
+    let mut child = state.child.lock().map_err(|error| error.to_string())?;
+    match child.as_mut() {
         None => Ok("stopped".to_string()),
-        Some(child) => match child.try_wait() {
-            Ok(Some(_status)) => {
-                *child_lock = None;
+        Some(process) => match process.try_wait() {
+            Ok(Some(_)) => {
+                *child = None;
+                if let Ok(mut job) = state.process_job.lock() {
+                    *job = None;
+                }
+                if let Ok(mut secret) = state.bootstrap_secret.lock() {
+                    *secret = None;
+                }
+                if let Ok(mut port) = state.port.lock() {
+                    *port = None;
+                }
                 Ok("stopped".to_string())
             }
             Ok(None) => Ok("running".to_string()),
-            Err(e) => Err(e.to_string()),
+            Err(error) => Err(error.to_string()),
         },
     }
 }
 
 #[tauri::command]
-pub async fn get_desktop_token(app: AppHandle) -> Result<Option<String>, String> {
+pub fn get_server_error(app: AppHandle) -> Result<Option<String>, String> {
     let state = app.state::<ServerState>();
-    let token_lock = state.desktop_token.lock().map_err(|e| e.to_string())?;
-    Ok(token_lock.clone())
+    let error = state
+        .last_error
+        .lock()
+        .map_err(|lock_error| lock_error.to_string())?;
+    Ok(error.clone())
 }
 
 #[tauri::command]
-pub async fn get_server_port(app: AppHandle) -> Result<Option<u16>, String> {
+pub async fn get_dashboard_url(app: AppHandle) -> Result<String, String> {
     let state = app.state::<ServerState>();
-    let port_lock = state.port.lock().map_err(|e| e.to_string())?;
-    Ok(*port_lock)
+    let port = state
+        .port
+        .lock()
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "Bundled server is not ready".to_string())?;
+    let secret = state
+        .bootstrap_secret
+        .lock()
+        .map_err(|error| error.to_string())?
+        .clone()
+        .ok_or_else(|| "Desktop bootstrap is unavailable".to_string())?;
+    let base_url = format!("http://127.0.0.1:{port}");
+    let response = reqwest::Client::new()
+        .post(format!("{base_url}/desktop-bootstrap/mint"))
+        .header("x-yep-desktop-bootstrap-secret", secret)
+        .send()
+        .await
+        .map_err(|error| format!("Failed to mint desktop session: {error}"))?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "Bundled server rejected desktop bootstrap ({})",
+            response.status()
+        ));
+    }
+    let minted = response
+        .json::<MintBootstrapResponse>()
+        .await
+        .map_err(|error| format!("Invalid desktop bootstrap response: {error}"))?;
+    Ok(format!("{base_url}/desktop-bootstrap/{}", minted.code))
 }
 
 #[tauri::command]
 pub async fn get_server_output_buffer(app: AppHandle) -> Result<Vec<ServerOutputChunk>, String> {
     let state = app.state::<ServerState>();
-    let output = state.output.lock().map_err(|e| e.to_string())?;
+    let output = state.output.lock().map_err(|error| error.to_string())?;
     Ok(output.snapshot())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::{redact_server_output, server_entry_candidates, DESKTOP_READY_PREFIX};
+
+    #[test]
+    fn redacts_legacy_and_bootstrap_credentials() {
+        let output = redact_server_output(
+            "desktop_token=one DESKTOP_AUTH_TOKEN=two x-yep-desktop-bootstrap-secret:three"
+                .to_string(),
+        );
+        assert_eq!(
+            output,
+            "desktop_token=[redacted] DESKTOP_AUTH_TOKEN=[redacted] x-yep-desktop-bootstrap-secret:[redacted]"
+        );
+    }
+
+    #[test]
+    fn readiness_prefix_contains_no_secret() {
+        assert_eq!(DESKTOP_READY_PREFIX, "YEP_DESKTOP_READY ");
+    }
+
+    #[test]
+    fn accepts_tauri_resource_and_windows_install_layouts() {
+        let candidates = server_entry_candidates(Path::new("app-resources"));
+        assert_eq!(
+            candidates[0],
+            Path::new("app-resources/server/dist/index.js")
+        );
+        assert_eq!(
+            candidates[1],
+            Path::new("app-resources/resources/server/dist/index.js")
+        );
+    }
 }
