@@ -35,6 +35,23 @@ signs each module with the release identity and a secure timestamp before Tauri
 assembles and notarizes the app. CI verifies every nested signature it creates;
 an unsigned nested module must fail packaging rather than reach users.
 
+The hardened macOS Bun sidecar carries only the
+`com.apple.security.cs.allow-jit` runtime exception required by
+JavaScriptCore. It must not receive unsigned-executable-memory, executable-page
+protection, or library-validation exceptions. Tauri 2.11 applies one
+entitlements plist to its executable signing targets, so the native Tauri
+executable receives the same `allow-jit` exception even though YA does not use
+it there. Remote dashboard JavaScript remains isolated in WKWebView and gains
+no Tauri command capability from this executable entitlement.
+
+Release CI starts the packaged server with `Contents/MacOS/bun` and the server
+resource from the final signed and notarized `.app`, before the release action
+uploads artifacts. The smoke verifies the Bun signature, requires
+`allow-jit=true`, rejects broader executable-memory/library-validation
+exceptions, and exercises readiness, health, bootstrap exchange, and
+authenticated API access. Unsigned pull-request builds run the same final-app
+runtime smoke without requiring a release entitlement.
+
 Desktop application files and user data have separate lifecycles. Update,
 reinstall, and ordinary uninstall preserve sessions, settings, auth state, and
 provider configuration unless the user explicitly chooses a data-removal

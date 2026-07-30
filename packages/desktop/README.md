@@ -79,3 +79,19 @@ The delay override is ignored unless test mode is also exactly `1`, and it
 does not change the saved desktop preference. The optional data-directory
 override is guarded by the same test-mode switch so an isolated smoke does not
 touch the normal desktop profile.
+
+## Local macOS build and smoke
+
+From a prepared checkout:
+
+```bash
+pnpm --dir packages/desktop prepare-runtime
+pnpm --dir packages/desktop smoke-runtime
+scripts/install-local-tauri-macos.sh
+```
+
+Tagged macOS releases sign the Tauri shell and private Bun sidecar with the
+hardened runtime. Bun uses JavaScriptCore, so the final Bun signature must
+retain `com.apple.security.cs.allow-jit=true`. Release CI smokes the Bun and
+server resources from the final signed `.app` before the release action uploads
+artifacts.

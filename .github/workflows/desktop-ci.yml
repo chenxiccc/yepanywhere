@@ -51,8 +51,8 @@ jobs:
     runs-on: ${{ matrix.runner || matrix.platform }}
 
     env:
-      HAS_MACOS_SIGNING: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 != '' }}
-      HAS_MACOS_NOTARIZATION: ${{ secrets.ASC_API_KEY_P8_BASE64 != '' }}
+      HAS_MACOS_SIGNING: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 != '' && secrets.MACOS_CERTIFICATE_PASSWORD != '' && secrets.MACOS_KEYCHAIN_PASSWORD != '' }}
+      HAS_MACOS_NOTARIZATION: ${{ secrets.ASC_API_KEY_P8_BASE64 != '' && secrets.ASC_API_KEY_ID != '' && secrets.ASC_API_ISSUER_ID != '' }}
       HAS_WINDOWS_SIGNING: ${{ secrets.AZURE_CLIENT_ID != '' && secrets.AZURE_TENANT_ID != '' && secrets.AZURE_CLIENT_SECRET != '' }}
       HAS_UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
 
@@ -65,6 +65,14 @@ jobs:
         run: |
           if [ "$HAS_UPDATER_KEY" != "true" ]; then
             echo "::error::Tagged desktop releases require TAURI_SIGNING_PRIVATE_KEY."
+            exit 1
+          fi
+          if [ "${{ matrix.platform }}" = "macos-latest" ] && [ "$HAS_MACOS_SIGNING" != "true" ]; then
+            echo "::error::Tagged macOS releases require Developer ID signing credentials."
+            exit 1
+          fi
+          if [ "${{ matrix.platform }}" = "macos-latest" ] && [ "$HAS_MACOS_NOTARIZATION" != "true" ]; then
+            echo "::error::Tagged macOS releases require notarization credentials."
             exit 1
           fi
           if [ "${{ matrix.platform }}" = "windows-latest" ] && [ "$HAS_WINDOWS_SIGNING" != "true" ]; then

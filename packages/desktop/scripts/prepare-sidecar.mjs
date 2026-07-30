@@ -39,7 +39,7 @@ function run(command, args, options = {}) {
       `${command} ${args.join(" ")} failed: ${result.stderr || result.stdout}`,
     );
   }
-  return result.stdout.trim();
+  return result.stdout?.trim() ?? "";
 }
 function detectTargetTriple() {
   return (

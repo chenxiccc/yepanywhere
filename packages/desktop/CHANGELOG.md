@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.1] - 2026-07-30
+
+### Fixed
+- Hardened macOS releases now preserve the JavaScriptCore JIT entitlement required by the bundled Bun runtime, preventing a `SharedArrayBuffer is not defined` server startup failure.
+- macOS release builds now smoke the Bun and server resources from the final signed app before artifacts are uploaded.
+- Local macOS runtime preparation no longer crashes after a successful ad-hoc Bun signature.
+
+### Changed
+- Tagged macOS releases now require complete Developer ID signing and notarization credentials.
+
 ## [0.1.0] - 2026-07-30
 
 ### Added

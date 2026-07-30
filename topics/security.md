@@ -42,6 +42,15 @@ no custom native-command capability. Packaged Tauri-origin diagnostic surfaces
 receive narrowly scoped commands. See [`desktop-v0.md`](desktop-v0.md) for the
 distribution, compatibility, lifecycle, and same-user-process threat model.
 
+The signed macOS runtime grants `com.apple.security.cs.allow-jit` to Tauri's
+executable signing targets because the bundled Bun/JavaScriptCore sidecar
+cannot expose the JavaScript runtime required by the server under hardened
+runtime without it. Tauri's shared signing configuration also puts the
+entitlement on the native shell; it does not grant it to remote dashboard
+content running in WKWebView. The release must not add the broader
+unsigned-executable-memory, executable-page-protection, or
+disable-library-validation exceptions.
+
 ## Public Share File Access
 
 Public read-only shares may open project files through a share-scoped public
