@@ -474,7 +474,7 @@ describe("Process", () => {
       await process.abort();
     });
 
-    it("rewrites unknown Codex slash commands to skill mentions", async () => {
+    it("keeps unknown Codex slash-shaped text literal", async () => {
       let resolveIterator!: () => void;
       const iterator: AsyncIterator<SDKMessage> = {
         next: () =>
@@ -505,11 +505,54 @@ describe("Process", () => {
 
       expect(result.success).toBe(true);
       expect(process.getMessageHistory()[0]?.message?.content).toBe(
-        "@harsh-review on last 3 commits",
+        "/harsh-review on last 3 commits",
       );
       const queuedProviderTurn = await queue[Symbol.asyncIterator]().next();
       expect(queuedProviderTurn.value?.message.content).toBe(
-        "@harsh-review on last 3 commits",
+        "/harsh-review on last 3 commits",
+      );
+
+      resolveIterator?.();
+      await process.abort();
+    });
+
+    it("canonicalizes recognized Codex skills anywhere in the message", async () => {
+      let resolveIterator!: () => void;
+      const iterator: AsyncIterator<SDKMessage> = {
+        next: () =>
+          new Promise((resolve) => {
+            resolveIterator = () => resolve({ done: true, value: undefined });
+          }),
+      };
+      const queue = new MessageQueue();
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+        queue,
+        provider: "codex",
+        supportedCommandsFn: async () => [
+          {
+            name: "doubt",
+            description: "Verify independently",
+            invocation: { kind: "skill", prefix: "$" },
+          },
+        ],
+      });
+
+      await process.supportedCommands();
+      const result = process.queueMessage({
+        text: "Check this with /doubt and leave /unknown literal",
+      });
+
+      expect(result.success).toBe(true);
+      expect(process.getMessageHistory()[0]?.message?.content).toBe(
+        "Check this with $doubt and leave /unknown literal",
+      );
+      const queuedProviderTurn = await queue[Symbol.asyncIterator]().next();
+      expect(queuedProviderTurn.value?.message.content).toBe(
+        "Check this with $doubt and leave /unknown literal",
       );
 
       resolveIterator?.();

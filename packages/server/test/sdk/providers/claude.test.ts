@@ -303,6 +303,7 @@ describe("Claude provider slash commands", () => {
           "Keep working toward a verifiable end state until it is met",
         argumentHint: "<verifiable end state>",
         emulation: { providerText: "/loop wish {{argument}}" },
+        invocation: { kind: "emulated", prefix: "/" },
       },
     ]);
   });

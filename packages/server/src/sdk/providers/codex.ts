@@ -9,9 +9,12 @@ import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { homedir } from "node:os";
 import {
   CODEX_TOOL_CORRELATION_FIELD,
+  canonicalizeSkillInvocations,
   createCodexToolCorrelation,
+  hasInvocationCandidate,
   type ModelInfo,
   type ProviderSubscriptionUsage,
+  type SlashCommand,
 } from "@yep-anywhere/shared";
 import {
   isCodexCorrelationDebugEnabled,
@@ -49,6 +52,9 @@ import type {
   PermissionsRequestApprovalResponse,
   RawResponseItemCompletedNotification,
   SandboxMode as CodexSandboxMode,
+  SkillMetadata,
+  SkillsListParams,
+  SkillsListResponse,
   ThreadForkParams,
   ThreadForkResponse,
   ThreadReadParams,
@@ -74,6 +80,7 @@ import type {
   TurnStartResponse,
   TurnSteerParams,
   TurnSteerResponse,
+  UserInput,
 } from "./codex-protocol/index.js";
 import { createAgentctlSessionEnvBridge } from "./agentctl-session-env.js";
 import {
@@ -282,6 +289,11 @@ interface CodexTurnRuntimeState {
   activeTurnId: string | null;
   activeToolCallIds: Set<string>;
   backgroundToolCallIds: Set<string>;
+}
+
+interface CodexSessionSkillInventory {
+  skills: SkillMetadata[];
+  stale: boolean;
 }
 
 function isProcessTargetRunning(target: number): boolean {
@@ -1308,6 +1320,10 @@ export class CodexProvider implements AgentProvider {
     }
 
     let activeClient: CodexAppServerClient | null = null;
+    const skillInventory: CodexSessionSkillInventory = {
+      skills: [],
+      stale: true,
+    };
     const iterator = this.runSession(
       options,
       queue,
@@ -1316,6 +1332,7 @@ export class CodexProvider implements AgentProvider {
       (client) => {
         activeClient = client;
       },
+      skillInventory,
     );
 
     return {
@@ -1336,20 +1353,47 @@ export class CodexProvider implements AgentProvider {
       },
       probeLiveness: async () =>
         this.probeCodexLiveness(activeClient, runtimeState),
-      supportedCommands: async () => [...CODEX_BUILTIN_COMMANDS],
+      supportedCommands: async () => {
+        if (activeClient) {
+          await this.refreshCodexSkills(
+            activeClient,
+            options.cwd,
+            skillInventory,
+            skillInventory.stale,
+          );
+        }
+        return this.createCodexSlashCommands(
+          skillInventory.skills,
+          skillInventory.stale ? "stale" : "current",
+        );
+      },
       steer: async (message) => {
         if (!activeClient) return false;
         if (!runtimeState.threadId || !runtimeState.activeTurnId) return false;
 
-        const userPrompt = this.extractTextFromMessage(message);
+        let userPrompt = this.extractTextFromMessage(message);
         if (!userPrompt) return true;
 
         try {
+          if (hasInvocationCandidate(userPrompt)) {
+            await this.refreshCodexSkills(
+              activeClient,
+              options.cwd,
+              skillInventory,
+              true,
+            );
+          }
+          const prepared = this.createCodexUserInputs(
+            userPrompt,
+            skillInventory.skills,
+            skillInventory.stale ? "stale" : "current",
+          );
+          userPrompt = prepared.text;
           const steerResult = await activeClient.request<TurnSteerResponse>(
             "turn/steer",
             {
               threadId: runtimeState.threadId,
-              input: [{ type: "text", text: userPrompt, text_elements: [] }],
+              input: prepared.input,
               expectedTurnId: runtimeState.activeTurnId,
             } satisfies TurnSteerParams,
           );
@@ -1614,6 +1658,7 @@ export class CodexProvider implements AgentProvider {
     signal: AbortSignal,
     runtimeState: CodexTurnRuntimeState,
     setActiveClient: (client: CodexAppServerClient) => void,
+    skillInventory: CodexSessionSkillInventory,
   ): AsyncIterableIterator<SDKMessage> {
     const codexCommand = await this.resolveCodexCommand();
     const agentctlSessionEnvBridge = createAgentctlSessionEnvBridge(
@@ -1661,6 +1706,12 @@ export class CodexProvider implements AgentProvider {
         options.clientName,
       );
       appServer.notify("initialized");
+      await this.refreshCodexSkills(
+        appServer,
+        options.cwd,
+        skillInventory,
+        false,
+      );
 
       const policy = this.mapPermissionModeToThreadPolicy(
         options.permissionMode,
@@ -1705,6 +1756,10 @@ export class CodexProvider implements AgentProvider {
         subtype: "init",
         session_id: sessionId,
         cwd: options.cwd,
+        slash_command_inventory: this.createCodexSlashCommands(
+          skillInventory.skills,
+          skillInventory.stale ? "stale" : "current",
+        ),
       } as SDKMessage);
 
       const requestedReasoningEffort = this.mapEffortToReasoningEffort(
@@ -1744,6 +1799,21 @@ export class CodexProvider implements AgentProvider {
           isFirstMessage = false;
         }
 
+        if (hasInvocationCandidate(userPrompt)) {
+          await this.refreshCodexSkills(
+            appServer,
+            options.cwd,
+            skillInventory,
+            true,
+          );
+        }
+        const preparedInput = this.createCodexUserInputs(
+          userPrompt,
+          skillInventory.skills,
+          skillInventory.stale ? "stale" : "current",
+        );
+        userPrompt = preparedInput.text;
+
         // Emit user message with UUID from queue to enable deduplication.
         const userMessage = withCodexTimestamp({
           type: "user",
@@ -1772,7 +1842,7 @@ export class CodexProvider implements AgentProvider {
           : null;
         const turnStartParams = this.createTurnStartParams(
           sessionId,
-          userPrompt,
+          preparedInput.input,
           options,
           turnPolicy,
         );
@@ -1803,6 +1873,25 @@ export class CodexProvider implements AgentProvider {
             continue;
           }
           logRawNotification(notification);
+          if (notification.method === "skills/changed") {
+            skillInventory.stale = true;
+            await this.refreshCodexSkills(
+              appServer,
+              options.cwd,
+              skillInventory,
+              true,
+            );
+            yield withCodexTimestamp({
+              type: "system",
+              subtype: "commands_changed",
+              session_id: sessionId,
+              slash_command_inventory: this.createCodexSlashCommands(
+                skillInventory.skills,
+                skillInventory.stale ? "stale" : "current",
+              ),
+            } as SDKMessage);
+            continue;
+          }
           const currentActiveTurnId = runtimeState.activeTurnId ?? activeTurnId;
           failureTrace.activeTurnId = currentActiveTurnId;
 
@@ -2266,9 +2355,106 @@ export class CodexProvider implements AgentProvider {
     return config;
   }
 
+  private createCodexSlashCommands(
+    skills: readonly SkillMetadata[],
+    inventoryState: "current" | "stale" = "current",
+  ): SlashCommand[] {
+    const commands: SlashCommand[] = [...CODEX_BUILTIN_COMMANDS];
+    const seenSkills = new Set<string>();
+    for (const skill of skills) {
+      const name = skill.name.trim();
+      const normalized = name.toLowerCase();
+      if (
+        !skill.enabled ||
+        name === CODEX_DESKTOP_BROWSER_SKILL_NAME ||
+        !name ||
+        seenSkills.has(normalized)
+      ) {
+        continue;
+      }
+      seenSkills.add(normalized);
+      commands.push({
+        name,
+        description:
+          skill.interface?.shortDescription ??
+          skill.shortDescription ??
+          skill.description,
+        invocation: { kind: "skill", prefix: "$", inventoryState },
+      });
+    }
+    return commands;
+  }
+
+  private async refreshCodexSkills(
+    appServer: CodexAppServerClient,
+    cwd: string,
+    inventory: CodexSessionSkillInventory,
+    forceReload: boolean,
+  ): Promise<void> {
+    try {
+      const result = await appServer.request<SkillsListResponse>(
+        "skills/list",
+        {
+          cwds: [cwd],
+          forceReload,
+        } satisfies SkillsListParams,
+      );
+      inventory.skills = result.data.flatMap((entry) => entry.skills);
+      inventory.stale = false;
+    } catch (error) {
+      inventory.stale = true;
+      log.debug(
+        {
+          error: error instanceof Error ? error.message : String(error),
+          cwd,
+        },
+        "Codex skill inventory is unavailable",
+      );
+    }
+  }
+
+  private createCodexUserInputs(
+    text: string,
+    skills: readonly SkillMetadata[],
+    inventoryState: "current" | "stale",
+  ): { text: string; input: UserInput[] } {
+    const canonical = canonicalizeSkillInvocations(
+      text,
+      this.createCodexSlashCommands(skills, inventoryState),
+    );
+    const skillByName = new Map(
+      skills
+        .filter(
+          (skill) =>
+            skill.enabled &&
+            skill.name !== CODEX_DESKTOP_BROWSER_SKILL_NAME,
+        )
+        .map((skill) => [skill.name.toLowerCase(), skill]),
+    );
+    const structuredSkills: UserInput[] = [];
+    const seenPaths = new Set<string>();
+    for (const match of canonical.matches) {
+      const skill = skillByName.get(match.command.name.toLowerCase());
+      if (!skill || seenPaths.has(skill.path)) continue;
+      seenPaths.add(skill.path);
+      structuredSkills.push({
+        type: "skill",
+        name: skill.name,
+        path: skill.path,
+      });
+    }
+    return {
+      text: canonical.text,
+      input: [
+        { type: "text", text: canonical.text, text_elements: [] },
+        ...structuredSkills,
+      ],
+    };
+  }
+
   private createTurnStartParams(
     threadId: string,
-    userPrompt: string,
+    input: UserInput[],
     options: StartSessionOptions,
     turnPolicy: CodexThreadPolicy | null = null,
   ): TurnStartParams {
@@ -2276,7 +2462,7 @@ export class CodexProvider implements AgentProvider {
       threadId,
       model: options.model ?? null,
       ...(options.serviceTier ? { serviceTier: options.serviceTier } : {}),
-      input: [{ type: "text", text: userPrompt, text_elements: [] }],
+      input,
       effort: this.mapEffortToReasoningEffort(
         options.effort,
         options.thinking,

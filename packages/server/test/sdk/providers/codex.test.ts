@@ -314,6 +314,77 @@ describe("CodexProvider", () => {
 });
 
 describe("CodexProvider app-server lifecycle", () => {
+  it("discovers and dispatches Codex skills with canonical text and metadata", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "codex-provider-skills-"));
+    const logPath = join(tempDir, "fake-codex-requests.jsonl");
+    const codexPath = createFakeCodexCommand(
+      tempDir,
+      "fake-codex-skills",
+      buildFakeCodexAppServer(logPath),
+    );
+    const testProvider = new CodexProvider({ codexPath });
+    const session = await testProvider.startSession({
+      cwd: tempDir,
+      initialMessage: { text: "check /doubt and keep /missing literal" },
+    });
+
+    try {
+      const init = await session.iterator.next();
+      expect(init.value).toMatchObject({
+        type: "system",
+        subtype: "init",
+        slash_command_inventory: expect.arrayContaining([
+          expect.objectContaining({
+            name: "doubt",
+            invocation: {
+              kind: "skill",
+              prefix: "$",
+              inventoryState: "current",
+            },
+          }),
+        ]),
+      });
+      let userMessage: unknown;
+      while (
+        !userMessage ||
+        (userMessage as { type?: unknown }).type !== "user"
+      ) {
+        userMessage = (await session.iterator.next()).value;
+      }
+      expect(userMessage).toMatchObject({
+        type: "user",
+        message: {
+          content: "check $doubt and keep /missing literal",
+        },
+      });
+
+      const turnProgress = session.iterator.next();
+      await waitForFakeCodexRequest(logPath, "turn/start");
+      const request = readFakeCodexRequests(logPath).find(
+        (entry) => entry.method === "turn/start",
+      );
+      expect(request?.params).toMatchObject({
+        input: [
+          {
+            type: "text",
+            text: "check $doubt and keep /missing literal",
+            text_elements: [],
+          },
+          {
+            type: "skill",
+            name: "doubt",
+            path: "/skills/doubt/SKILL.md",
+          },
+        ],
+      });
+      await session.abort();
+      await turnProgress;
+    } finally {
+      await session.abort();
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   unixIt(
     "escalates shutdown when the Codex app-server ignores SIGTERM",
     async () => {
@@ -1151,6 +1222,21 @@ function handleMessage(message) {
   switch (message.method) {
     case "initialize":
       respond(message.id, { userAgent: "fake-codex" });
+      break;
+    case "skills/list":
+      respond(message.id, {
+        data: [{
+          cwd: message.params?.cwds?.[0] ?? "",
+          skills: [{
+            name: "doubt",
+            description: "Verify a conclusion independently",
+            path: "/skills/doubt/SKILL.md",
+            scope: "user",
+            enabled: true,
+          }],
+          errors: [],
+        }],
+      });
       break;
     case "thread/start":
       respond(message.id, {

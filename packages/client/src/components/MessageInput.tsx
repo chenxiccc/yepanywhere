@@ -3,9 +3,16 @@ import {
   DEFAULT_PROJECT_QUEUE_CTRL_ENTER_ENABLED,
   type BusyComposerDefaultAction,
   clampPatientPatienceSeconds,
+  commandMatchesInvocationQuery,
   type CollapsedComposerButtonPreference,
   type EffortLevel,
+  findSkillInvocations,
+  findUnrecognizedInvocations,
+  getCanonicalInvocationToken,
+  getInvocationCompletionQuery,
+  getInvocationNames,
   type SessionLivenessSnapshot,
+  type SlashCommand,
   type ThinkingMode,
   type UserMessageCompositionMetadata,
   type UserMessageDeliveryIntent,
@@ -79,9 +86,7 @@ import {
   resolveComposerBangDraft,
 } from "../lib/bangCommands";
 import {
-  getLeadingSlashQuery,
   getSlashCommandMenuParts,
-  normalizeSlashCommandForMatch,
 } from "../lib/slashCommands";
 import {
   createClientSpeechTurnId,
@@ -226,8 +231,8 @@ interface Props {
   supportsSteerNow?: boolean;
   /** Current behavior of the primary composer action. */
   primaryActionKind?: "send" | "steer" | "queue";
-  /** Available slash commands (without "/" prefix) */
-  slashCommands?: string[];
+  /** Available provider and client commands. */
+  slashCommands?: SlashCommand[];
   /** Callback for custom client-side commands (e.g., "model"). Return true if handled. */
   onCustomCommand?: (command: string) => boolean;
   /** Start a /btw aside. When text is present, the caller may send it immediately. */
@@ -432,6 +437,7 @@ export function MessageInput({
     null,
   );
   const [selectedSlashIndex, setSelectedSlashIndex] = useState(0);
+  const [composerCursor, setComposerCursor] = useState(text.length);
   const [bangCandidates, setBangCandidates] = useState<string[]>([]);
   const [bangHistoryCandidates, setBangHistoryCandidates] = useState<string[]>(
     [],
@@ -456,25 +462,85 @@ export function MessageInput({
 
   // Panel is collapsed if user collapsed it OR if externally collapsed (approval panel showing)
   const collapsed = userCollapsed || externalCollapsed;
-  const slashQuery = getLeadingSlashQuery(text);
+  const invocationQuery = getInvocationCompletionQuery(text, composerCursor);
+  const slashQueryKey = invocationQuery
+    ? `${invocationQuery.start}:${invocationQuery.end}:${invocationQuery.sigil}:${invocationQuery.query}`
+    : null;
   const matchingSlashCommands = useMemo(() => {
-    if (slashQuery === null) return [];
-    return slashCommands.filter((command) =>
-      normalizeSlashCommandForMatch(command).startsWith(slashQuery),
+    if (!invocationQuery) return [];
+    const matched = slashCommands.filter((command) =>
+      commandMatchesInvocationQuery(command, invocationQuery),
     );
-  }, [slashCommands, slashQuery]);
+    const preferredByName = new Map<string, SlashCommand>();
+    for (const command of matched) {
+      const normalizedName = command.name.trim().toLowerCase();
+      const existing = preferredByName.get(normalizedName);
+      if (
+        !existing ||
+        (invocationQuery.leading &&
+          invocationQuery.sigil === "/" &&
+          existing.invocation?.kind === "skill" &&
+          command.invocation?.kind !== "skill")
+      ) {
+        preferredByName.set(normalizedName, command);
+      }
+    }
+    return matched.filter(
+      (command) =>
+        preferredByName.get(command.name.trim().toLowerCase()) === command,
+    );
+  }, [invocationQuery, slashCommands]);
   const hasExactSlashCommand =
-    slashQuery !== null &&
+    invocationQuery !== null &&
     matchingSlashCommands.some(
-      (command) => normalizeSlashCommandForMatch(command) === slashQuery,
+      (command) =>
+        getInvocationNames(command).includes(invocationQuery.query),
     );
   const showSlashSuggestions =
     !collapsed &&
     !disabled &&
-    slashQuery !== null &&
+    invocationQuery !== null &&
     !hasExactSlashCommand &&
-    dismissedSlashQuery !== slashQuery &&
+    dismissedSlashQuery !== slashQueryKey &&
     matchingSlashCommands.length > 0;
+  const recognizedSkillTokens = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          findSkillInvocations(text, slashCommands)
+            .filter(
+              (match) =>
+                match.command.invocation?.inventoryState === "current",
+            )
+            .map((match) => match.canonicalToken),
+        ),
+      ),
+    [slashCommands, text],
+  );
+  const unrecognizedSkillTokens = useMemo(() => {
+    if (
+      !slashCommands.some(
+        (command) =>
+          command.invocation?.kind === "skill" &&
+          command.invocation.inventoryState === "current",
+      )
+    ) {
+      return [];
+    }
+    return Array.from(
+      new Set(
+        findUnrecognizedInvocations(text, slashCommands)
+          .filter(
+            (candidate) =>
+              matchingSlashCommands.length === 0 ||
+              invocationQuery === null ||
+              candidate.start !== invocationQuery.start ||
+              candidate.end !== invocationQuery.end,
+          )
+          .map((candidate) => candidate.token),
+      ),
+    );
+  }, [invocationQuery, matchingSlashCommands.length, slashCommands, text]);
   const bangQuery =
     bangSupport && !collapsed ? getBangCompletionQuery(text) : null;
   const bangQueryKey = bangQuery ? bangCompletionQueryKey(text) : null;
@@ -634,7 +700,7 @@ export function MessageInput({
     }
   }, [text]);
 
-  const slashSelectionResetKey = `${slashQuery}\0${matchingSlashCommands.length}`;
+  const slashSelectionResetKey = `${slashQueryKey}\0${matchingSlashCommands.length}`;
 
   useEffect(() => {
     void slashSelectionResetKey;
@@ -905,8 +971,15 @@ export function MessageInput({
       }
       noteComposerEdit(nextText);
       setText(nextText);
-      const nextSlashQuery = getLeadingSlashQuery(nextText);
-      if (nextSlashQuery !== dismissedSlashQuery) {
+      setComposerCursor(nextText.length);
+      const nextSlashQuery = getInvocationCompletionQuery(
+        nextText,
+        nextText.length,
+      );
+      const nextSlashQueryKey = nextSlashQuery
+        ? `${nextSlashQuery.start}:${nextSlashQuery.end}:${nextSlashQuery.sigil}:${nextSlashQuery.query}`
+        : null;
+      if (nextSlashQueryKey !== dismissedSlashQuery) {
         setDismissedSlashQuery(null);
       }
       return nextText;
@@ -1390,34 +1463,61 @@ export function MessageInput({
 
   // Handle slash command selection - run active client commands or insert text.
   const handleSlashCommand = useCallback(
-    (command: string) => {
-      if (!command) return;
-      const normalizedCommand = command.startsWith("/")
-        ? command
-        : `/${command}`;
-      const bare = normalizedCommand.slice(1);
-      if (onCustomCommand?.(bare)) {
+    (command: SlashCommand) => {
+      const canonicalToken = getCanonicalInvocationToken(command);
+      if (
+        command.invocation?.kind === "emulated" &&
+        onCustomCommand?.(command.name)
+      ) {
         return;
       }
 
-      const slashDraft = getLeadingSlashQuery(text) !== null;
-      const trimmed = text.trimEnd();
-      const nextText = slashDraft
-        ? `${normalizedCommand} `
-        : trimmed
-          ? `${trimmed} ${normalizedCommand} `
-          : `${normalizedCommand} `;
+      const activeQuery = getInvocationCompletionQuery(text, composerCursor);
+      let editStart: number;
+      let editEnd: number;
+      let nextText: string;
+      let nextCursor: number;
+      if (activeQuery) {
+        const suffix = /\s/.test(text[activeQuery.end] ?? "") ? "" : " ";
+        const replacement = `${canonicalToken}${suffix}`;
+        editStart = activeQuery.start;
+        editEnd = activeQuery.end;
+        nextText =
+          text.slice(0, activeQuery.start) +
+          replacement +
+          text.slice(activeQuery.end);
+        nextCursor = activeQuery.start + replacement.length;
+      } else {
+        const trimmed = text.trimEnd();
+        const separator = trimmed ? " " : "";
+        const replacement = `${separator}${canonicalToken} `;
+        editStart = trimmed.length;
+        editEnd = text.length;
+        nextText = `${trimmed}${replacement}`;
+        nextCursor = nextText.length;
+      }
       noteDraftTextChange(text, nextText, {
-        start: slashDraft ? 0 : trimmed.length,
-        end: text.length,
+        start: editStart,
+        end: editEnd,
         inputType: "insertText",
       });
       noteComposerEdit(nextText);
       setText(nextText);
+      setComposerCursor(nextCursor);
       setDismissedSlashQuery(null);
-      textareaRef.current?.focus();
+      requestAnimationFrame(() => {
+        textareaRef.current?.focus();
+        textareaRef.current?.setSelectionRange(nextCursor, nextCursor);
+      });
     },
-    [text, setText, onCustomCommand, noteComposerEdit, noteDraftTextChange],
+    [
+      composerCursor,
+      text,
+      setText,
+      onCustomCommand,
+      noteComposerEdit,
+      noteDraftTextChange,
+    ],
   );
 
   // Apply a highlighted/clicked bang menu row. A history row replaces the
@@ -1687,7 +1787,7 @@ export function MessageInput({
     if (showSlashSuggestions) {
       if (e.key === "Escape") {
         e.preventDefault();
-        setDismissedSlashQuery(slashQuery);
+        setDismissedSlashQuery(slashQueryKey);
         return;
       }
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -1710,7 +1810,8 @@ export function MessageInput({
           !e.altKey)
       ) {
         e.preventDefault();
-        handleSlashCommand(matchingSlashCommands[selectedSlashIndex] ?? "");
+        const command = matchingSlashCommands[selectedSlashIndex];
+        if (command) handleSlashCommand(command);
         return;
       }
     }
@@ -2069,8 +2170,9 @@ export function MessageInput({
 
   const handleTextareaSelectionTarget = useCallback(() => {
     handleSpeechSelectionTarget();
+    setComposerCursor(textareaRef.current?.selectionStart ?? text.length);
     revealCollapsedTextareaCursor();
-  }, [handleSpeechSelectionTarget, revealCollapsedTextareaCursor]);
+  }, [handleSpeechSelectionTarget, revealCollapsedTextareaCursor, text.length]);
 
   const clearSpeechSelectionTarget = useCallback(() => {
     clearPendingSpeechFinal();
@@ -2502,8 +2604,16 @@ export function MessageInput({
                 }
                 noteComposerEdit(nextText);
                 setText(nextText);
-                const nextSlashQuery = getLeadingSlashQuery(nextText);
-                if (nextSlashQuery !== dismissedSlashQuery) {
+                const nextCursor = e.target.selectionStart;
+                setComposerCursor(nextCursor);
+                const nextSlashQuery = getInvocationCompletionQuery(
+                  nextText,
+                  nextCursor,
+                );
+                const nextSlashQueryKey = nextSlashQuery
+                  ? `${nextSlashQuery.start}:${nextSlashQuery.end}:${nextSlashQuery.sigil}:${nextSlashQuery.query}`
+                  : null;
+                if (nextSlashQueryKey !== dismissedSlashQuery) {
                   setDismissedSlashQuery(null);
                 }
               }}
@@ -2565,6 +2675,24 @@ export function MessageInput({
           </div>
         )}
 
+        {recognizedSkillTokens.length > 0 && (
+          <div className="skill-invocation-status" role="status">
+            <span>{t("skillInvocationRecognized")}</span>
+            <code>{recognizedSkillTokens.join(", ")}</code>
+          </div>
+        )}
+
+        {unrecognizedSkillTokens.length > 0 && (
+          <div
+            className="skill-invocation-status skill-invocation-status--warning"
+            role="status"
+          >
+            <span>{t("skillInvocationUnrecognized")}</span>
+            <code>{unrecognizedSkillTokens.join(", ")}</code>
+            <span>{t("skillInvocationStillSent")}</span>
+          </div>
+        )}
+
         {showBangSuggestions && (
           <div
             className="slash-command-menu composer-slash-command-menu bang-completion-menu"
@@ -2600,7 +2728,7 @@ export function MessageInput({
               const parts = getSlashCommandMenuParts(command);
               return (
                 <button
-                  key={command}
+                  key={`${getCanonicalInvocationToken(command)}:${command.invocation?.kind ?? "legacy"}`}
                   type="button"
                   className={`slash-command-item${index === selectedSlashIndex ? " active" : ""}`}
                   onMouseEnter={() => setSelectedSlashIndex(index)}
@@ -2614,7 +2742,16 @@ export function MessageInput({
                       {parts.shortcut}
                     </strong>
                   )}
-                  <span>{parts.rest}</span>
+                  <span className="slash-command-copy">
+                    <span>{parts.rest}</span>
+                    {(command.description || command.argumentHint) && (
+                      <span className="slash-command-detail">
+                        {[command.description, command.argumentHint]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </span>
+                    )}
+                  </span>
                 </button>
               );
             })}

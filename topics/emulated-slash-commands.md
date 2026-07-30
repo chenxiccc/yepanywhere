@@ -24,11 +24,12 @@ as the runtime skills directory.
   `/doubt`, `/rep`, `/harsh-review`, `/goal`, or another native equivalent, YA
   must expose and send the native command unaltered unless a provider-specific
   topic explicitly says otherwise.
-- Codex user skills currently activate through `@skill`, not `/skill`, even
-  when the skill's own instructions describe slash invocation. For Codex-backed
-  sessions, YA should preserve native/system slash commands such as `/goal` but
-  rewrite non-native skill-shaped submissions from `/name ...` to `@name ...`
-  before provider ingress.
+- Codex user skills activate through `$skill`, not `/skill`. For Codex-backed
+  sessions, YA preserves native/system slash commands such as a leading
+  `/goal`, but translates an exact `/name` token to `$name` only when the
+  current Codex `skills/list` inventory resolves that installed, enabled skill.
+  Unknown slash-shaped text remains literal. The adapter also supplies Codex's
+  structured `skill` input item for resolved skills.
 - The command menu should distinguish availability from implementation shape.
   A command may be native, provider-text emulated, YA-routed, or unavailable;
   unsupported commands should not silently fall through as ordinary prompt text

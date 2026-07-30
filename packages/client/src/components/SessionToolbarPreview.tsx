@@ -8,6 +8,7 @@ import {
 } from "../hooks/useSessionToolbarPresence";
 import { useI18n } from "../i18n";
 import { getEffortLevelOptions } from "../lib/effortLevels";
+import { createClientSlashCommand } from "../lib/slashCommands";
 import type { ContextUsage } from "../types";
 import {
   type LivenessDisplay,
@@ -88,7 +89,9 @@ function usePreviewToolbarControls(previewNowMs: number) {
         onAttachClick: noop,
       },
       slashControl: {
-        commands: ["model", "btw", "compact", "done"],
+        commands: ["model", "btw", "compact", "done"].map(
+          createClientSlashCommand,
+        ),
         onSelectCommand: noop,
       },
       thinkingControl: {

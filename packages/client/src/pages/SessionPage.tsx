@@ -7,12 +7,14 @@ import type {
   ProjectQueueItemSummary,
   ProjectQueueStagedAttachments,
   PublicSessionShareSessionStatusResponse,
+  SlashCommand,
   ThinkingMode,
   TranscriptDisplayObject,
   UploadedFile,
   UserQuestionAnswers,
 } from "@yep-anywhere/shared";
 import {
+  getCanonicalInvocationToken,
   isClaudeProviderName,
   thinkingOptionToConfig,
 } from "@yep-anywhere/shared";
@@ -190,6 +192,8 @@ import {
 } from "../lib/sessionTitleHelpers";
 import {
   CLIENT_SLASH_COMMANDS,
+  createClientSlashCommand,
+  normalizeSlashCommandForMatch,
   resolveComposerSlashTurn,
 } from "../lib/slashCommands";
 import { generateUUID } from "../lib/uuid";
@@ -876,7 +880,10 @@ function SessionPageContent({
   );
 
   const supportsManualCompact =
-    status.owner === "self" && slashCommands.includes("compact");
+    status.owner === "self" &&
+    slashCommands.some(
+      (command) => normalizeSlashCommandForMatch(command.name) === "compact",
+    );
 
   // Inject custom client-side commands alongside SDK-discovered ones.
   // Keep /model last so it stays nearest the slash button in the upward menu.
@@ -885,27 +892,40 @@ function SessionPageContent({
       return [];
     }
 
-    const orderedCommands: string[] =
+    const orderedCommands: SlashCommand[] =
       status.owner === "self"
         ? CLIENT_SLASH_COMMANDS.filter(
             (command) =>
               command !== "model" &&
               (command !== "btw" || supportsBtwAsides) &&
               (command !== "done" || !!focusedBtwAsideId),
-          )
+          ).map(createClientSlashCommand)
         : [];
     if (supportsManualCompact) {
-      orderedCommands.push("compact");
+      const compact = slashCommands.find(
+        (command) => normalizeSlashCommandForMatch(command.name) === "compact",
+      );
+      if (compact) orderedCommands.push(compact);
     }
 
     for (const command of slashCommands) {
-      if (command !== "model" && !orderedCommands.includes(command)) {
+      const normalized = normalizeSlashCommandForMatch(command.name);
+      const providerModelSkill =
+        normalized === "model" && command.invocation?.kind === "skill";
+      if (
+        (normalized !== "model" || providerModelSkill) &&
+        !orderedCommands.some(
+          (candidate) =>
+            normalizeSlashCommandForMatch(candidate.name) === normalized &&
+            candidate.invocation?.kind === command.invocation?.kind,
+        )
+      ) {
         orderedCommands.push(command);
       }
     }
 
     if (status.owner === "self") {
-      orderedCommands.push("model");
+      orderedCommands.push(createClientSlashCommand("model"));
     }
 
     return orderedCommands;
@@ -3455,16 +3475,24 @@ function SessionPageContent({
   );
 
   const handleToolbarSlashCommand = useCallback(
-    (command: string) => {
-      const bare = command.startsWith("/") ? command.slice(1) : command;
-      if (handleCustomCommand(bare)) {
+    (command: SlashCommand) => {
+      const bare = normalizeSlashCommandForMatch(command.name);
+      if (
+        command.invocation?.kind === "emulated" &&
+        handleCustomCommand(bare)
+      ) {
         return;
       }
       const controls = draftControlsRef.current;
       if (!controls) {
         return;
       }
-      controls.setDraft(appendSlashCommandDraft(controls.getDraft(), bare));
+      controls.setDraft(
+        appendSlashCommandDraft(
+          controls.getDraft(),
+          getCanonicalInvocationToken(command),
+        ),
+      );
     },
     [handleCustomCommand],
   );

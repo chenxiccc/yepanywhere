@@ -10,6 +10,10 @@ export type { ThreadRollbackParams } from "./generated/v2/ThreadRollbackParams.j
 export type { TurnStartParams } from "./generated/v2/TurnStartParams.js";
 export type { TurnSteerParams } from "./generated/v2/TurnSteerParams.js";
 export type { TurnInterruptParams } from "./generated/v2/TurnInterruptParams.js";
+export type { UserInput } from "./generated/v2/UserInput.js";
+export type { SkillMetadata } from "./generated/v2/SkillMetadata.js";
+export type { SkillsListParams } from "./generated/v2/SkillsListParams.js";
+export type { SkillsListResponse } from "./generated/v2/SkillsListResponse.js";
 export type { ThreadStartResponse } from "./generated/v2/ThreadStartResponse.js";
 export type { ThreadResumeResponse } from "./generated/v2/ThreadResumeResponse.js";
 export type { ThreadReadResponse } from "./generated/v2/ThreadReadResponse.js";

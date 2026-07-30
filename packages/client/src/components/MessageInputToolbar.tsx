@@ -4,6 +4,7 @@ import type {
   ProviderName,
   SessionLivenessSnapshot,
   ShowThinking,
+  SlashCommand,
 } from "@yep-anywhere/shared";
 import {
   DEFAULT_PROJECT_QUEUE_CTRL_ENTER_ENABLED,
@@ -206,8 +207,8 @@ export interface MessageInputToolbarProps {
   getTranscriptionContext?: () => SpeechTranscriptionContext | undefined;
 
   // Slash commands
-  slashCommands?: string[];
-  onSelectSlashCommand?: (command: string) => void;
+  slashCommands?: SlashCommand[];
+  onSelectSlashCommand?: (command: SlashCommand) => void;
   onBtwClick?: () => void;
   btwActive?: boolean;
   btwHasAsides?: boolean;
@@ -463,8 +464,8 @@ interface ToolbarAttachmentControl {
 }
 
 interface ToolbarSlashControl {
-  commands: string[];
-  onSelectCommand: (command: string) => void;
+  commands: SlashCommand[];
+  onSelectCommand: (command: SlashCommand) => void;
   disabled?: boolean;
 }
 

@@ -4,10 +4,12 @@ export const CODEX_BUILTIN_COMMANDS: readonly SlashCommand[] = [
   {
     name: "compact",
     description: "",
+    invocation: { kind: "native", prefix: "/" },
   },
   {
     name: "goal",
     description: "",
+    invocation: { kind: "native", prefix: "/" },
   },
 ];
 

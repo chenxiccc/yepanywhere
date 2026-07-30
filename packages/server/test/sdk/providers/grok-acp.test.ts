@@ -536,6 +536,20 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
         type: "system",
         subtype: "init",
         slash_commands: ["compact", "ship"],
+        slash_command_inventory: [
+          expect.objectContaining({
+            name: "compact",
+            invocation: { kind: "native", prefix: "/" },
+          }),
+          expect.objectContaining({
+            name: "ship",
+            invocation: {
+              kind: "skill",
+              prefix: "/",
+              inventoryState: "current",
+            },
+          }),
+        ],
       });
 
       const commands = await session.supportedCommands?.();
@@ -545,6 +559,7 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
           description: "Compress conversation history to save context window",
           argumentHint: "optional context about what to preserve",
           providerDetails: { grok: { source: "builtin" } },
+          invocation: { kind: "native", prefix: "/" },
         },
         {
           name: "ship",
@@ -556,6 +571,11 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
               scope: "user",
               path: "/home/graehl/.grok/skills/ship/SKILL.md",
             },
+          },
+          invocation: {
+            kind: "skill",
+            prefix: "/",
+            inventoryState: "current",
           },
         },
       ]);

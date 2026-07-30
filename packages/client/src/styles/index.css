@@ -8310,14 +8310,17 @@ div.bang-command-error-message {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  min-width: 160px;
+  min-width: 220px;
+  max-width: min(380px, calc(100vw - var(--space-4)));
   max-height: 240px;
   overflow-y: auto;
   z-index: 100;
 }
 
 .slash-command-item {
-  display: block;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
   width: 100%;
   padding: var(--space-2) var(--space-3);
   background: transparent;
@@ -8328,6 +8331,40 @@ div.bang-command-error-message {
   text-align: left;
   cursor: pointer;
   transition: background 0.15s;
+}
+
+.slash-command-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.slash-command-detail {
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  line-height: 1.25;
+  white-space: normal;
+}
+
+.skill-invocation-status {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  padding: 0 var(--space-2) var(--space-1);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+.skill-invocation-status code {
+  color: var(--link-color);
+  font-family: var(--font-mono);
+}
+
+.skill-invocation-status--warning,
+.skill-invocation-status--warning code {
+  color: var(--warning-color);
 }
 
 .slash-command-item:hover {

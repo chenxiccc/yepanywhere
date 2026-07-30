@@ -66,9 +66,12 @@ export function appendSlashCommandDraft(
   currentDraft: string,
   command: string,
 ): string {
-  const normalizedCommand = command.startsWith("/") ? command : `/${command}`;
+  const normalizedCommand =
+    command.startsWith("/") || command.startsWith("$")
+      ? command
+      : `/${command}`;
   const current = currentDraft.trimEnd();
-  if (/^\/[^\s/]*$/.test(current)) {
+  if (/^[/\\$][^\s/\\$]*$/.test(current)) {
     return `${normalizedCommand} `;
   }
   return current ? `${current} ${normalizedCommand} ` : `${normalizedCommand} `;

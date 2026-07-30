@@ -123,6 +123,10 @@ export type {
   PromptSuggestionMode,
   HelperTargetConfig,
   SlashCommand,
+  SlashCommandInvocation,
+  SlashCommandInvocationKind,
+  SlashCommandInvocationPrefix,
+  SlashCommandInventoryState,
   PermissionMode,
   SessionSandboxLevel,
   SessionSandboxEnforcement,
@@ -153,6 +157,21 @@ export type {
   MarkdownAugment,
   PermissionRules,
 } from "./types.js";
+export {
+  canonicalizeSkillInvocations,
+  commandMatchesInvocationQuery,
+  findInvocationCandidates,
+  findSkillInvocations,
+  findUnrecognizedInvocations,
+  getCanonicalInvocationToken,
+  getInvocationCompletionQuery,
+  getInvocationNames,
+  hasInvocationCandidate,
+  normalizeInvocationName,
+  type InvocationCompletionQuery,
+  type InvocationCandidate,
+  type SkillInvocationMatch,
+} from "./skill-invocations.js";
 export {
   ALL_PROVIDERS,
   ALL_PERMISSION_MODES,

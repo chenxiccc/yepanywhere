@@ -206,3 +206,6 @@
   blame, diffs, responsive panes, and links to relevant agent sessions.
 - federated-super-sessions - One canonical YA session whose active provider
   runtime can migrate safely between trusted cross-platform YA peers.
+- skill-invocation - Provider-aware `/name` and `$name` skill discovery,
+  composer completion, and exact-token dispatch without constraining prompt
+  text.

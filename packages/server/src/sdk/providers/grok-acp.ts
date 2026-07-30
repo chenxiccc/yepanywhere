@@ -59,6 +59,7 @@ import type {
   ModelInfo,
   SlashCommand,
 } from "@yep-anywhere/shared";
+import { canonicalizeSkillInvocations } from "@yep-anywhere/shared";
 import { getLogger } from "../../logging/logger.js";
 import { attachToolResultMediaCandidates } from "../../media/inlineImageData.js";
 import { whichCommand } from "../cli-detection.js";
@@ -508,6 +509,7 @@ export class GrokACPProvider implements AgentProvider {
           runtime,
           message,
           abortController.signal,
+          commandInventory.commands,
         ),
       supportedCommands: async () => [...commandInventory.commands],
     };
@@ -633,6 +635,7 @@ export class GrokACPProvider implements AgentProvider {
         slash_commands: commandInventory.commands.map(
           (command) => command.name,
         ),
+        slash_command_inventory: commandInventory.commands,
       } as SDKMessage;
 
       // Process messages from the queue (identical pattern to gemini-acp)
@@ -642,6 +645,10 @@ export class GrokACPProvider implements AgentProvider {
         if (signal.aborted) break;
 
         let userText = this.extractTextFromMessage(message);
+        userText = canonicalizeSkillInvocations(
+          userText,
+          commandInventory.commands,
+        ).text;
 
         if (isFirstNewMessage && options.globalInstructions) {
           userText = `[Global context]\n${options.globalInstructions}\n\n---\n\n${userText}`;
@@ -748,19 +755,27 @@ export class GrokACPProvider implements AgentProvider {
 
     const input = this.asRecord(command?.input);
     const argumentHint = this.stringField(input, "hint");
+    const providerDetails = this.grokSlashCommandProviderDetails(
+      this.asRecord(command?._meta),
+    );
     return {
       name,
       description: this.stringField(command, "description") ?? "",
       ...(argumentHint ? { argumentHint } : {}),
-      providerDetails: this.grokSlashCommandProviderDetails(
-        this.asRecord(command?._meta),
-      ),
+      providerDetails,
+      invocation: {
+        kind: providerDetails.grok?.source === "skill" ? "skill" : "native",
+        prefix: "/",
+        ...(providerDetails.grok?.source === "skill"
+          ? { inventoryState: "current" as const }
+          : {}),
+      },
     };
   }
 
   private grokSlashCommandProviderDetails(
     meta: Record<string, unknown> | undefined,
-  ): SlashCommand["providerDetails"] {
+  ): NonNullable<SlashCommand["providerDetails"]> {
     const scope = this.stringField(meta, "scope");
     const path = this.stringField(meta, "path");
     return {
@@ -1260,6 +1275,7 @@ export class GrokACPProvider implements AgentProvider {
     runtime: GrokPromptRuntime,
     message: unknown,
     signal: AbortSignal,
+    commands: readonly SlashCommand[],
   ): Promise<boolean> {
     if (
       signal.aborted ||
@@ -1269,7 +1285,10 @@ export class GrokACPProvider implements AgentProvider {
       return false;
     }
 
-    const text = this.extractTextFromMessage(message).trim();
+    const text = canonicalizeSkillInvocations(
+      this.extractTextFromMessage(message).trim(),
+      commands,
+    ).text;
     if (!text) {
       return true;
     }
@@ -1424,11 +1443,12 @@ export class GrokACPProvider implements AgentProvider {
       case "available_commands_update":
         return {
           type: "system",
-          subtype: "init",
+          subtype: "commands_changed",
           session_id: sessionId,
           slash_commands: commandInventory.commands.map(
             (command) => command.name,
           ),
+          slash_command_inventory: commandInventory.commands,
         } as SDKMessage;
 
       default:

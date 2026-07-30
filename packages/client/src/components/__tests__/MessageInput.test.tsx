@@ -27,6 +27,7 @@ import {
   type ComposerToolbarOverflowLayoutSignatureInput,
 } from "../../hooks/useMessageInputToolbarLayout";
 import { SESSION_ISEARCH_GUIDE_EVENT } from "../../lib/sessionIsearchGuide";
+import { createClientSlashCommand } from "../../lib/slashCommands";
 import { UI_KEYS } from "../../lib/storageKeys";
 import {
   YA_GROK_BATCH_SPEECH_METHOD,
@@ -278,6 +279,9 @@ vi.mock("../../i18n", () => ({
           toolbarSteerNowTooltip:
             "Steer now interrupts in-flight generation without ending the turn.",
           toolbarOverflowMenu: "More toolbar controls",
+          skillInvocationRecognized: "Recognized skill:",
+          skillInvocationUnrecognized: "Skill not found:",
+          skillInvocationStillSent: "Text will still be sent.",
           toolbarThinkingTitle: `Click to choose thinking mode. Current: ${params?.current ?? ""}`,
           toolbarThinkingAppliesNextTurn: "Applies next turn",
           newSessionThinkingOff: "Thinking off",
@@ -2387,7 +2391,7 @@ describe("MessageInput", () => {
     const textarea = renderMessageInput(
       vi.fn(() => true),
       {
-        slashCommands: ["compact", "goal"],
+        slashCommands: ["compact", "goal"].map(createClientSlashCommand),
         onCustomCommand: vi.fn(() => false),
       },
     );
@@ -2402,7 +2406,7 @@ describe("MessageInput", () => {
     const textarea = renderMessageInput(
       vi.fn(() => true),
       {
-        slashCommands: ["compact", "goal"],
+        slashCommands: ["compact", "goal"].map(createClientSlashCommand),
         onCustomCommand: vi.fn(() => false),
       },
     ) as HTMLTextAreaElement;
@@ -2417,7 +2421,7 @@ describe("MessageInput", () => {
     const textarea = renderMessageInput(
       vi.fn(() => true),
       {
-        slashCommands: ["clear", "compact"],
+        slashCommands: ["clear", "compact"].map(createClientSlashCommand),
         onCustomCommand: vi.fn(() => false),
       },
     ) as HTMLTextAreaElement;
@@ -2434,7 +2438,7 @@ describe("MessageInput", () => {
       vi.fn(() => true),
       {
         onSend,
-        slashCommands: ["clear"],
+        slashCommands: ["clear"].map(createClientSlashCommand),
         onCustomCommand: vi.fn(() => false),
       },
     ) as HTMLTextAreaElement;
@@ -2446,6 +2450,118 @@ describe("MessageInput", () => {
 
     expectSubmission(onSend, "/clear", "direct");
     restoreMatchMedia();
+  });
+
+  it("completes a provider-canonical skill token inside ordinary text", () => {
+    const textarea = renderMessageInput(
+      vi.fn(() => true),
+      {
+        slashCommands: [
+          {
+            name: "doubt",
+            description: "Verify independently",
+            invocation: {
+              kind: "skill",
+              prefix: "$",
+              inventoryState: "current",
+            },
+          },
+        ],
+        onCustomCommand: vi.fn(() => false),
+      },
+    ) as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "please /dou" } });
+
+    expect(screen.getByRole("menuitem", { name: "$doubt" })).toBeTruthy();
+    expect(screen.queryByText("Skill not found:")).toBeNull();
+    fireEvent.keyDown(textarea, { key: "Tab" });
+    expect(textarea.value).toBe("please $doubt ");
+  });
+
+  it("shows resolved and soft-unrecognized skill feedback", () => {
+    const textarea = renderMessageInput(
+      vi.fn(() => true),
+      {
+        slashCommands: [
+          {
+            name: "doubt",
+            description: "Verify independently",
+            invocation: {
+              kind: "skill",
+              prefix: "$",
+              inventoryState: "current",
+            },
+          },
+        ],
+      },
+    ) as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "use /doubt" } });
+    expect(screen.getByText("Recognized skill:")).toBeTruthy();
+    expect(screen.getByText("$doubt")).toBeTruthy();
+
+    fireEvent.change(textarea, { target: { value: "use $missing" } });
+    expect(screen.getByText("Skill not found:")).toBeTruthy();
+    expect(screen.getByText("$missing")).toBeTruthy();
+    expect(screen.getByText("Text will still be sent.")).toBeTruthy();
+  });
+
+  it("does not infer a missing skill from stale inventory", () => {
+    const textarea = renderMessageInput(
+      vi.fn(() => true),
+      {
+        slashCommands: [
+          {
+            name: "doubt",
+            description: "Verify independently",
+            invocation: {
+              kind: "skill",
+              prefix: "$",
+              inventoryState: "stale",
+            },
+          },
+        ],
+      },
+    ) as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "use $doubt" } });
+    expect(screen.queryByText("Recognized skill:")).toBeNull();
+
+    fireEvent.change(textarea, { target: { value: "use $missing" } });
+    expect(screen.queryByText("Skill not found:")).toBeNull();
+  });
+
+  it("shows one position-appropriate completion for a native/skill collision", () => {
+    const textarea = renderMessageInput(
+      vi.fn(() => true),
+      {
+        slashCommands: [
+          {
+            name: "goal",
+            description: "Set a native goal",
+            invocation: { kind: "native", prefix: "/" },
+          },
+          {
+            name: "goal",
+            description: "Invoke the goal skill",
+            invocation: {
+              kind: "skill",
+              prefix: "$",
+              inventoryState: "current",
+            },
+          },
+        ],
+      },
+    ) as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "/go" } });
+    expect(screen.getByRole("menuitem", { name: "/goal" })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: "$goal" })).toBeNull();
+
+    fireEvent.change(textarea, { target: { value: "please /go" } });
+    expect(screen.getByRole("menuitem", { name: "$goal" })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: "/goal" })).toBeNull();
   });
 
   it("shows the isearch key guide on shortcut help hover while search is active", async () => {

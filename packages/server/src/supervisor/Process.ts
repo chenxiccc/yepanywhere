@@ -23,6 +23,7 @@ import {
   HELPER_SIDE_MODEL_CHEAPEST,
   HELPER_SIDE_MODEL_SAME_AS_MAIN,
   clampPatientPatienceSeconds,
+  hasInvocationCandidate,
   isClaudeProviderName,
   normalizeRecapAfterSeconds,
   stripPatientQueuePrefix,
@@ -49,7 +50,6 @@ import type {
 } from "../sdk/providers/types.js";
 import {
   expandSlashCommandEmulation,
-  isSlashCommandSubmission,
 } from "../sdk/slashCommandEmulation.js";
 import type {
   PermissionMode,
@@ -212,7 +212,6 @@ function patientPatienceMsForEntry(entry: DeferredQueueEntry): number {
   return patienceSeconds * 1000;
 }
 
-const CODEX_NATIVE_SLASH_COMMAND_NAMES = new Set(["compact", "goal"]);
 const ASK_USER_QUESTION_TOOL_NAME = "AskUserQuestion";
 const PROMPT_CACHE_KEEPALIVE_RECHECK_MS = 30_000;
 const PROMPT_CACHE_KEEPALIVE_MIN_DELAY_MS = 1_000;
@@ -245,18 +244,6 @@ function buildAskUserQuestionPrompt(input: unknown): string {
   return questions.length === 1
     ? trimmed
     : `${trimmed} (+${questions.length - 1} more)`;
-}
-
-function getCodexSkillCommandPrefix(
-  provider: ProviderName,
-): string | undefined {
-  return provider === "codex" || provider === "codex-oss" ? "@" : undefined;
-}
-
-function getKnownNativeSlashCommands(
-  provider: ProviderName,
-): ReadonlySet<string> | undefined {
-  return provider === "codex" ? CODEX_NATIVE_SLASH_COMMAND_NAMES : undefined;
 }
 
 function parseIsoMs(value: string | null | undefined): number | null {
@@ -1930,7 +1917,7 @@ export class Process {
   }
 
   async primeSupportedCommandsForMessage(message: UserMessage): Promise<void> {
-    if (!isSlashCommandSubmission(message.text)) {
+    if (!hasInvocationCandidate(message.text)) {
       return;
     }
     await this.primeSupportedCommands();
@@ -2650,10 +2637,7 @@ export class Process {
   }
 
   private expandEmulatedSlashCommand(message: UserMessage): UserMessage {
-    return expandSlashCommandEmulation(message, this.supportedCommandsCache, {
-      unknownCommandPrefix: getCodexSkillCommandPrefix(this.provider),
-      nativeCommandNames: getKnownNativeSlashCommands(this.provider),
-    });
+    return expandSlashCommandEmulation(message, this.supportedCommandsCache);
   }
 
   /**
@@ -3832,6 +3816,10 @@ export class Process {
         this._lastProviderMessageTime = receivedAt;
         this.recordNativeRecap(message, receivedAt);
         this.observeProviderRuntimeStatus(message, receivedAt);
+        if (Array.isArray(message.slash_command_inventory)) {
+          this.supportedCommandsCache =
+            message.slash_command_inventory as SlashCommand[];
+        }
 
         // Store message in history for replay to late-joining clients.
         // Exclude stream_event messages - they're transient streaming deltas that

@@ -319,6 +319,21 @@ export interface SlashCommandEmulation {
   providerText: string;
 }
 
+export type SlashCommandInvocationKind = "native" | "skill" | "emulated";
+export type SlashCommandInvocationPrefix = "/" | "$";
+export type SlashCommandInventoryState = "current" | "stale";
+
+export interface SlashCommandInvocation {
+  /** What the inventory entry invokes, when the provider can say precisely. */
+  kind: SlashCommandInvocationKind;
+  /** Provider-canonical sigil used for insertion and provider ingress. */
+  prefix: SlashCommandInvocationPrefix;
+  /** Provider-reported alternative names, without a sigil. */
+  aliases?: string[];
+  /** Freshness of the provider inventory that established a skill entry. */
+  inventoryState?: SlashCommandInventoryState;
+}
+
 export interface SlashCommand {
   /** Command name without leading slash (e.g., "commit", "review-pr") */
   name: string;
@@ -330,6 +345,8 @@ export interface SlashCommand {
   emulation?: SlashCommandEmulation;
   /** Optional provider-specific provenance or capability detail. */
   providerDetails?: SlashCommandProviderDetails;
+  /** Optional invocation semantics; absent on legacy command inventories. */
+  invocation?: SlashCommandInvocation;
 }
 
 /**

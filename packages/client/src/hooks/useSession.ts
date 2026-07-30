@@ -6,6 +6,7 @@ import {
   type RecapMode,
   type SessionQueuedMessageSummary,
   type SessionLivenessSnapshot,
+  type SlashCommand,
   type UploadedFile,
   DEFAULT_RECAP_AFTER_SECONDS,
   getModelContextWindow,
@@ -770,7 +771,7 @@ export function useSession(
   }, [sessionId, projectId]);
 
   // Slash commands available for this session (from init message)
-  const [slashCommands, setSlashCommands] = useState<string[]>([]);
+  const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([]);
   // Tools available for this session (from init message)
   const [sessionTools, setSessionTools] = useState<string[]>([]);
   // MCP servers available for this session (from init message)
@@ -835,7 +836,7 @@ export function useSession(
       // Set slash commands from API response so the "/" button appears reliably.
       // The SSE init message that normally carries these is discarded after
       // ~30s; stopped providers with static commands also rely on this payload.
-      setSlashCommands(result.slashCommands?.map((c) => c.name) ?? []);
+      setSlashCommands(result.slashCommands ?? []);
       setDeferredMessages(result.deferredMessages ?? []);
 
       // Focusing a non-running session: its list/hover preview gets no live
@@ -1582,10 +1583,25 @@ export function useSession(
         // Remove eventType from the message (it's stream envelope, not message data)
         (incoming as { eventType?: string }).eventType = undefined;
 
+        if (Array.isArray(sdkMessage.slash_command_inventory)) {
+          setSlashCommands(
+            sdkMessage.slash_command_inventory as SlashCommand[],
+          );
+        }
+
         // Extract slash_commands, tools, and mcp_servers from init messages
         if (msgType === "system" && sdkMessage.subtype === "init") {
           if (Array.isArray(sdkMessage.slash_commands)) {
-            setSlashCommands(sdkMessage.slash_commands as string[]);
+            const legacyNames = sdkMessage.slash_commands as string[];
+            setSlashCommands((current) => {
+              if (current.some((command) => command.invocation)) {
+                return current;
+              }
+              return legacyNames.map((name) => ({
+                name,
+                description: "",
+              }));
+            });
           }
           if (Array.isArray(sdkMessage.tools)) {
             setSessionTools(sdkMessage.tools as string[]);

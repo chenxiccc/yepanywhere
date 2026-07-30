@@ -1,4 +1,8 @@
-import type { ThinkingOption } from "@yep-anywhere/shared";
+import {
+  getCanonicalInvocationToken,
+  type SlashCommand,
+  type ThinkingOption,
+} from "@yep-anywhere/shared";
 
 export const CLIENT_SLASH_COMMANDS = [
   "fast",
@@ -31,19 +35,38 @@ const COMMAND_DISPLAY: Record<string, { label: string; shortcut: string }> = {
   model: { label: "model", shortcut: "/m" },
 };
 
-export function getSlashCommandMenuParts(command: string): {
+export function createClientSlashCommand(name: string): SlashCommand {
+  const normalized = normalizeSlashCommandForMatch(name);
+  return {
+    name: normalized,
+    description: "",
+    invocation: { kind: "emulated", prefix: "/" },
+  };
+}
+
+export function getSlashCommandMenuParts(
+  command: string | SlashCommand,
+): {
   shortcut: string;
   rest: string;
   label: string;
 } {
-  const normalized = command.startsWith("/") ? command.slice(1) : command;
+  const normalized =
+    typeof command === "string"
+      ? normalizeSlashCommandForMatch(command)
+      : normalizeSlashCommandForMatch(command.name);
+  const canonical =
+    typeof command === "string"
+      ? command.startsWith("/") || command.startsWith("$")
+        ? command
+        : `/${normalized}`
+      : getCanonicalInvocationToken(command);
   const display = COMMAND_DISPLAY[normalized];
   if (!display) {
-    const label = `/${normalized}`;
     return {
       shortcut: "",
-      rest: label,
-      label,
+      rest: canonical,
+      label: canonical,
     };
   }
 
@@ -61,7 +84,7 @@ export function getLeadingSlashQuery(text: string): string | null {
 }
 
 export function normalizeSlashCommandForMatch(command: string): string {
-  return command.replace(/^\/+/, "").toLowerCase();
+  return command.replace(/^[/\\$]+/, "").toLowerCase();
 }
 
 export function parseComposerSlashCommand(

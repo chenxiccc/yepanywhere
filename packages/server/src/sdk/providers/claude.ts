@@ -78,6 +78,9 @@ import type {
 import type { SessionSandboxRuntime } from "../../session-sandbox.js";
 
 type ClaudeSdkModelInfo = Awaited<ReturnType<Query["supportedModels"]>>[number];
+type ClaudeSdkSlashCommand = Awaited<
+  ReturnType<Query["supportedCommands"]>
+>[number];
 
 /**
  * Use a spawn wrapper to capture the child process reference for liveness checks.
@@ -615,6 +618,7 @@ const CLAUDE_GOAL_LOOP_ALIAS_COMMAND: SlashCommand = {
   emulation: {
     providerText: "/loop wish {{argument}}",
   },
+  invocation: { kind: "emulated", prefix: "/" },
 };
 
 function isClaudeEffortLevel(value: unknown): value is EffortLevel {
@@ -642,6 +646,20 @@ export function withClaudeGoalAlias(commands: SlashCommand[]): SlashCommand[] {
     return commands;
   }
   return [...commands, CLAUDE_GOAL_LOOP_ALIAS_COMMAND];
+}
+
+function mapClaudeSlashCommand(command: ClaudeSdkSlashCommand): SlashCommand {
+  return {
+    name: command.name,
+    description: command.description,
+    argumentHint: command.argumentHint || undefined,
+    invocation: {
+      kind: "skill",
+      prefix: "/",
+      inventoryState: "current",
+      ...(command.aliases?.length ? { aliases: command.aliases } : {}),
+    },
+  };
 }
 
 function enrichClaudeModel(model: ModelInfo): ModelInfo {
@@ -2016,14 +2034,7 @@ export class ClaudeProvider implements AgentProvider {
       },
       supportedCommands: async (): Promise<SlashCommand[]> => {
         const commands = await sdkQuery.supportedCommands();
-        // Map SDK SlashCommand to our SlashCommand (same fields, just normalize)
-        return withClaudeGoalAlias(
-          commands.map((c) => ({
-            name: c.name,
-            description: c.description,
-            argumentHint: c.argumentHint || undefined,
-          })),
-        );
+        return withClaudeGoalAlias(commands.map(mapClaudeSlashCommand));
       },
       setModel: (model?: string) =>
         sdkQuery.setModel(withExtendedClaudeContext(model)),
@@ -2117,6 +2128,49 @@ export class ClaudeProvider implements AgentProvider {
   private convertMessage(message: AgentSDKMessage): SDKMessage {
     // Pass through all fields, only normalize content blocks
     const sdkMessage = message as unknown as SDKMessage;
+    if (
+      sdkMessage.type === "system" &&
+      sdkMessage.subtype === "commands_changed" &&
+      Array.isArray(sdkMessage.commands)
+    ) {
+      return {
+        ...sdkMessage,
+        slash_command_inventory: withClaudeGoalAlias(
+          (sdkMessage.commands as ClaudeSdkSlashCommand[]).map(
+            mapClaudeSlashCommand,
+          ),
+        ),
+      };
+    }
+    if (
+      sdkMessage.type === "system" &&
+      sdkMessage.subtype === "init" &&
+      Array.isArray(sdkMessage.slash_commands)
+    ) {
+      const skillNames = new Set(
+        Array.isArray(sdkMessage.skills)
+          ? (sdkMessage.skills as string[]).map((name) => name.toLowerCase())
+          : [],
+      );
+      return {
+        ...sdkMessage,
+        slash_command_inventory: (sdkMessage.slash_commands as string[]).map(
+          (name): SlashCommand => ({
+            name,
+            description: "",
+            ...(skillNames.has(name.toLowerCase())
+              ? {
+                  invocation: {
+                    kind: "skill",
+                    prefix: "/",
+                    inventoryState: "current",
+                  },
+                }
+              : {}),
+          }),
+        ),
+      };
+    }
 
     // For messages with content, normalize the content blocks
     if (sdkMessage.message?.content) {

@@ -2,6 +2,7 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createClientSlashCommand } from "../../lib/slashCommands";
 import { SlashCommandButton } from "../SlashCommandButton";
 
 vi.mock("../../i18n", () => ({
@@ -9,8 +10,8 @@ vi.mock("../../i18n", () => ({
     t: (key: string) =>
       (
         ({
-          slashCommandsLabel: "Slash commands",
-          slashCommandsShow: "Show slash commands",
+          slashCommandsLabel: "Commands and skills",
+          slashCommandsShow: "Show commands and skills",
         }) satisfies Record<string, string>
       )[key] ?? key,
   }),
@@ -24,16 +25,18 @@ describe("SlashCommandButton", () => {
   it("shows documented slash command words with bold shortcuts", () => {
     render(
       <SlashCommandButton
-        commands={["fast", "run", "goal", "compact", "model"]}
+        commands={["fast", "run", "goal", "compact", "model"].map(
+          createClientSlashCommand,
+        )}
         onSelectCommand={vi.fn()}
       />,
     );
 
-    fireEvent.click(screen.getByLabelText("Show slash commands"));
+    fireEvent.click(screen.getByLabelText("Show commands and skills"));
 
-    expect(screen.getByRole("menuitem", { name: "/model" }).textContent).toBe(
-      "/model",
-    );
+    expect(
+      screen.getByRole("menuitem", { name: "/model" }).textContent,
+    ).toBe("/model");
     expect(
       screen.getByRole("menuitem", { name: "/fast turn" }).textContent,
     ).toBe("/fast turn");
@@ -57,14 +60,68 @@ describe("SlashCommandButton", () => {
     const onSelectCommand = vi.fn();
     render(
       <SlashCommandButton
-        commands={["fast"]}
+        commands={[createClientSlashCommand("fast")]}
         onSelectCommand={onSelectCommand}
       />,
     );
 
-    fireEvent.click(screen.getByLabelText("Show slash commands"));
+    fireEvent.click(screen.getByLabelText("Show commands and skills"));
     fireEvent.click(screen.getByRole("menuitem", { name: "/fast turn" }));
 
-    expect(onSelectCommand).toHaveBeenCalledWith("/fast");
+    expect(onSelectCommand).toHaveBeenCalledWith(
+      createClientSlashCommand("fast"),
+    );
+  });
+
+  it("shows and selects the provider-canonical skill token", () => {
+    const skill = {
+      name: "doubt",
+      description: "Verify a conclusion independently",
+      argumentHint: "[claim]",
+      invocation: { kind: "skill" as const, prefix: "$" as const },
+    };
+    const onSelectCommand = vi.fn();
+    render(
+      <SlashCommandButton
+        commands={[skill]}
+        onSelectCommand={onSelectCommand}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText("Show commands and skills"));
+    const row = screen.getByRole("menuitem", { name: "$doubt" });
+    expect(row.textContent).toContain("$doubt");
+    expect(row.textContent).toContain("Verify a conclusion independently");
+    expect(row.textContent).toContain("[claim]");
+    fireEvent.click(row);
+    expect(onSelectCommand).toHaveBeenCalledWith(skill);
+  });
+
+  it("shows one native entry for a same-name native/skill collision", () => {
+    render(
+      <SlashCommandButton
+        commands={[
+          {
+            name: "goal",
+            description: "Invoke the goal skill",
+            invocation: {
+              kind: "skill",
+              prefix: "$",
+              inventoryState: "current",
+            },
+          },
+          {
+            name: "goal",
+            description: "Set a native goal",
+            invocation: { kind: "native", prefix: "/" },
+          },
+        ]}
+        onSelectCommand={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText("Show commands and skills"));
+    expect(screen.getAllByRole("menuitem")).toHaveLength(1);
+    expect(screen.getByRole("menuitem", { name: "/goal" })).toBeTruthy();
   });
 });

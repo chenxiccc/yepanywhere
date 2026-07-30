@@ -1,20 +1,24 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  getCanonicalInvocationToken,
+  type SlashCommand,
+} from "@yep-anywhere/shared";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useI18n } from "../i18n";
 import { getSlashCommandMenuParts } from "../lib/slashCommands";
 
 interface SlashCommandButtonProps {
-  /** Available slash commands (without the "/" prefix) */
-  commands: string[];
+  /** Available provider and client commands. */
+  commands: SlashCommand[];
   /** Callback when a command is selected */
-  onSelectCommand: (command: string) => void;
+  onSelectCommand: (command: SlashCommand) => void;
   /** Whether the button should be disabled */
   disabled?: boolean;
 }
 
 /**
  * Button that shows available slash commands in a dropdown menu.
- * Selecting a command inserts "/{command}" into the message input.
+ * Selecting a command inserts its provider-canonical invocation token.
  */
 export function SlashCommandButton({
   commands,
@@ -27,6 +31,24 @@ export function SlashCommandButton({
     bottom: number;
     left: number;
   } | null>(null);
+  const displayCommands = useMemo(() => {
+    const preferredByName = new Map<string, SlashCommand>();
+    for (const command of commands) {
+      const normalizedName = command.name.trim().toLowerCase();
+      const existing = preferredByName.get(normalizedName);
+      if (
+        !existing ||
+        (existing.invocation?.kind === "skill" &&
+          command.invocation?.kind !== "skill")
+      ) {
+        preferredByName.set(normalizedName, command);
+      }
+    }
+    return commands.filter(
+      (command) =>
+        preferredByName.get(command.name.trim().toLowerCase()) === command,
+    );
+  }, [commands]);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -84,8 +106,8 @@ export function SlashCommandButton({
   }, [isOpen]);
 
   const handleCommandClick = useCallback(
-    (command: string) => {
-      onSelectCommand(`/${command}`);
+    (command: SlashCommand) => {
+      onSelectCommand(command);
       setIsOpen(false);
     },
     [onSelectCommand],
@@ -109,7 +131,7 @@ export function SlashCommandButton({
         aria-expanded={isOpen}
         aria-haspopup="menu"
       >
-        <span className="slash-icon">/</span>
+        <span className="slash-icon">/$</span>
       </button>
       {isOpen &&
         menuPos &&
@@ -125,9 +147,9 @@ export function SlashCommandButton({
             role="menu"
             aria-label={t("slashCommandsLabel")}
           >
-            {commands.map((command) => (
+            {displayCommands.map((command) => (
               <SlashCommandMenuItem
-                key={command}
+                key={`${getCanonicalInvocationToken(command)}:${command.invocation?.kind ?? "legacy"}`}
                 command={command}
                 onSelect={handleCommandClick}
               />
@@ -143,8 +165,8 @@ function SlashCommandMenuItem({
   command,
   onSelect,
 }: {
-  command: string;
-  onSelect: (command: string) => void;
+  command: SlashCommand;
+  onSelect: (command: SlashCommand) => void;
 }) {
   const parts = getSlashCommandMenuParts(command);
   return (
@@ -158,7 +180,16 @@ function SlashCommandMenuItem({
       {parts.shortcut && (
         <strong className="slash-command-shortcut">{parts.shortcut}</strong>
       )}
-      <span>{parts.rest}</span>
+      <span className="slash-command-copy">
+        <span>{parts.rest}</span>
+        {(command.description || command.argumentHint) && (
+          <span className="slash-command-detail">
+            {[command.description, command.argumentHint]
+              .filter(Boolean)
+              .join(" · ")}
+          </span>
+        )}
+      </span>
     </button>
   );
 }
