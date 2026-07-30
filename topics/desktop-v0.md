@@ -30,6 +30,11 @@ transient runner-level DMG assembly failures. The retry is bounded: a second
 failure remains a failed job and reports whether an app bundle existed without
 the required DMG.
 
+When the bundled server contains Mach-O native modules, signed macOS packaging
+signs each module with the release identity and a secure timestamp before Tauri
+assembles and notarizes the app. CI verifies every nested signature it creates;
+an unsigned nested module must fail packaging rather than reach users.
+
 Desktop application files and user data have separate lifecycles. Update,
 reinstall, and ordinary uninstall preserve sessions, settings, auth state, and
 provider configuration unless the user explicitly chooses a data-removal

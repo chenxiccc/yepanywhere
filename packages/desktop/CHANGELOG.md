@@ -26,6 +26,7 @@
 ### Fixed
 - Desktop runtime preparation now handles Windows archive paths and clean CI package stores without weakening lockfile-pinned dependency selection.
 - Desktop CI now retries one failed macOS Tauri build or upload to absorb transient DMG assembly failures before requiring intervention.
+- Signed macOS packages now sign and verify native modules nested in the bundled server before app notarization.
 
 ### Removed
 - First-run downloads of Yep Anywhere, Bun, Claude Code, and Codex.

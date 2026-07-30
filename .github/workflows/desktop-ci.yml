@@ -196,6 +196,23 @@ jobs:
         if: matrix.platform == 'windows-latest'
         run: pnpm --dir packages/desktop smoke-runtime
 
+      - name: Sign bundled macOS native modules
+        if: matrix.platform == 'macos-latest' && env.HAS_MACOS_SIGNING == 'true'
+        shell: bash
+        run: |
+          signed=0
+          while IFS= read -r -d '' binary; do
+            if file "$binary" | grep -q 'Mach-O'; then
+              codesign --force --timestamp --options runtime \
+                --keychain build.keychain \
+                --sign "$APPLE_SIGNING_IDENTITY" \
+                "$binary"
+              codesign --verify --strict --verbose=2 "$binary"
+              signed=$((signed + 1))
+            fi
+          done < <(find packages/desktop/src-tauri/resources/server -type f -name '*.node' -print0)
+          echo "Signed and verified $signed bundled Mach-O native module(s)."
+
       # --- Extract changelog ---
       - name: Extract changelog
         id: changelog
@@ -255,7 +272,7 @@ jobs:
           app=$(find packages/desktop/src-tauri/target -type d -path '*/release/bundle/macos/*.app' 2>/dev/null | head -1)
           dmg=$(find packages/desktop/src-tauri/target -type f -path '*/release/bundle/dmg/*.dmg' 2>/dev/null | head -1)
           if [ -n "$app" ] && [ -z "$dmg" ]; then
-            echo "::error::macOS .app built and signed but no .dmg produced after the bounded Tauri action retry — likely the flaky hdiutil/bundle_dmg issue on GH runners. Re-run: gh run rerun ${{ github.run_id }} --failed"
+            echo "::error::macOS .app assembly completed but no .dmg was produced after the bounded Tauri action retry. Read the captured Tauri tail for nested signing, notarization, or DMG details."
           elif [ -z "$app" ]; then
             echo "::error::macOS pipeline failed before the app bundle was produced. Read the first failed step (runtime preparation / compile / config / codesign); this is a real error, NOT a DMG flake."
           else
