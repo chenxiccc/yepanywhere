@@ -11,10 +11,6 @@
  */
 
 import {
-  isRelayClientConnected,
-  isRelayClientError,
-} from "@yep-anywhere/shared";
-import {
   createContext,
   type ReactNode,
   useCallback,
@@ -32,6 +28,7 @@ import {
   SecureConnection,
   type StoredSession,
 } from "../lib/connection/SecureConnection";
+import { openRelayClientSocket } from "../lib/connection/RelayClientSocket";
 import type { Connection } from "../lib/connection/types";
 import { SecureSourceTransport } from "../lib/transport";
 import {
@@ -442,10 +439,7 @@ export function RemoteConnectionProvider({ children }: Props) {
         transport.status.subscribe(syncStatus);
       syncStatus();
     },
-    [
-      clearTransportStatusSubscription,
-      handleTransportDisconnected,
-    ],
+    [clearTransportStatusSubscription, handleTransportDisconnected],
   );
 
   const attachConnectionTransport = useCallback(
@@ -469,12 +463,15 @@ export function RemoteConnectionProvider({ children }: Props) {
     [clearTransportStatusSubscription],
   );
 
-  const publishConnection = useCallback((conn: SecureConnection) => {
-    const transport = attachConnectionTransport(conn);
-    connectionRef.current = conn;
-    setConnection(conn);
-    subscribeToTransportStatus(transport, conn);
-  }, [attachConnectionTransport, subscribeToTransportStatus]);
+  const publishConnection = useCallback(
+    (conn: SecureConnection) => {
+      const transport = attachConnectionTransport(conn);
+      connectionRef.current = conn;
+      setConnection(conn);
+      subscribeToTransportStatus(transport, conn);
+    },
+    [attachConnectionTransport, subscribeToTransportStatus],
+  );
 
   const detachTransport = useCallback(() => {
     clearTransportStatusSubscription();
@@ -643,75 +640,14 @@ export function RemoteConnectionProvider({ children }: Props) {
       onStatusChange?.("connecting_relay");
 
       try {
-        // 1. Connect to relay server
-        const ws = new WebSocket(relayUrl);
-        ws.binaryType = "arraybuffer";
-
-        // Wait for WebSocket to open
-        await new Promise<void>((resolve, reject) => {
-          const timeout = setTimeout(() => {
-            ws.close();
-            reject(new Error("Relay connection timeout"));
-          }, 15000);
-
-          ws.onopen = () => {
-            clearTimeout(timeout);
-            resolve();
-          };
-
-          ws.onerror = () => {
-            clearTimeout(timeout);
-            reject(new Error("Failed to connect to relay server"));
-          };
+        // 1. Connect to the relay and claim the server's waiting socket.
+        const ws = await openRelayClientSocket({
+          relayUrl,
+          relayUsername,
+          onOpen: () => onStatusChange?.("waiting_server"),
         });
 
-        // 2. Send client_connect message
-        onStatusChange?.("waiting_server");
-        ws.send(
-          JSON.stringify({ type: "client_connect", username: relayUsername }),
-        );
-
-        // 3. Wait for client_connected or error
-        await new Promise<void>((resolve, reject) => {
-          const timeout = setTimeout(() => {
-            ws.close();
-            reject(new Error("Waiting for server timed out"));
-          }, 30000);
-
-          ws.onmessage = (event) => {
-            clearTimeout(timeout);
-            try {
-              const msg = JSON.parse(event.data as string);
-              if (isRelayClientConnected(msg)) {
-                // Successfully paired with server
-                resolve();
-              } else if (isRelayClientError(msg)) {
-                ws.close();
-                reject(new Error(msg.reason));
-              } else {
-                // Unexpected message - might be server sending first message
-                // This shouldn't happen, but treat as success
-                resolve();
-              }
-            } catch {
-              // JSON parse error - unexpected message format
-              ws.close();
-              reject(new Error("Invalid relay response"));
-            }
-          };
-
-          ws.onclose = () => {
-            clearTimeout(timeout);
-            reject(new Error("Relay connection closed"));
-          };
-
-          ws.onerror = () => {
-            clearTimeout(timeout);
-            reject(new Error("Relay connection error"));
-          };
-        });
-
-        // 4. Now we have a direct pipe to yepanywhere server - do SRP auth
+        // 2. Now we have a direct pipe to yepanywhere server - do SRP auth
         onStatusChange?.("authenticating");
 
         // Store credentials if rememberMe
@@ -861,69 +797,13 @@ export function RemoteConnectionProvider({ children }: Props) {
           }
           setCurrentRelayUsername(relayUsername);
 
-          // 1. Connect to relay server
-          const ws = new WebSocket(relayUrl);
-          ws.binaryType = "arraybuffer";
-
-          await new Promise<void>((resolve, reject) => {
-            const timeout = setTimeout(() => {
-              ws.close();
-              reject(new Error("Relay connection timeout"));
-            }, 15000);
-
-            ws.onopen = () => {
-              clearTimeout(timeout);
-              resolve();
-            };
-
-            ws.onerror = () => {
-              clearTimeout(timeout);
-              reject(new Error("Failed to connect to relay server"));
-            };
+          // 1. Connect to the relay and claim the server's waiting socket.
+          const ws = await openRelayClientSocket({
+            relayUrl,
+            relayUsername,
           });
 
-          // 2. Send client_connect message
-          ws.send(
-            JSON.stringify({ type: "client_connect", username: relayUsername }),
-          );
-
-          // 3. Wait for client_connected or error
-          await new Promise<void>((resolve, reject) => {
-            const timeout = setTimeout(() => {
-              ws.close();
-              reject(new Error("Waiting for server timed out"));
-            }, 30000);
-
-            ws.onmessage = (event) => {
-              clearTimeout(timeout);
-              try {
-                const msg = JSON.parse(event.data as string);
-                if (isRelayClientConnected(msg)) {
-                  resolve();
-                } else if (isRelayClientError(msg)) {
-                  ws.close();
-                  reject(new Error(msg.reason));
-                } else {
-                  resolve();
-                }
-              } catch {
-                ws.close();
-                reject(new Error("Invalid relay response"));
-              }
-            };
-
-            ws.onclose = () => {
-              clearTimeout(timeout);
-              reject(new Error("Relay connection closed"));
-            };
-
-            ws.onerror = () => {
-              clearTimeout(timeout);
-              reject(new Error("Relay connection error"));
-            };
-          });
-
-          // 4. Create SecureConnection for resume using the existing socket
+          // 2. Create SecureConnection for resume using the existing socket
           conn = await SecureConnection.forResumeOnlyWithSocket(
             ws,
             storedSession,
