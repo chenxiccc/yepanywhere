@@ -10,7 +10,8 @@
     "smoke-runtime": "node scripts/smoke-runtime.mjs",
     "dev": "node ../../scripts/run-with-safe-home.js vite",
     "build": "tsc && vite build",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "tauri-ci": "node scripts/tauri-ci.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "2.11.1",

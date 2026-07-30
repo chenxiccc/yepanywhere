@@ -220,7 +220,7 @@ jobs:
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
         with:
           projectPath: packages/desktop
-          tauriScript: pnpm tauri
+          tauriScript: ${{ matrix.platform == 'macos-latest' && 'pnpm tauri-ci' || 'pnpm tauri' }}
           tagName: ${{ startsWith(github.ref, 'refs/tags/') && 'desktop-v__VERSION__' || '' }}
           releaseName: 'Yep Anywhere Desktop v__VERSION__'
           releaseBody: ${{ steps.changelog.outputs.notes || 'See the assets to download and install this version.' }}
@@ -244,6 +244,14 @@ jobs:
         if: failure() && matrix.platform == 'macos-latest'
         shell: bash
         run: |
+          log="$RUNNER_TEMP/yep-tauri-build.log"
+          if [ -f "$log" ]; then
+            detail=$(tail -n 40 "$log")
+            detail="${detail//'%'/'%25'}"
+            detail="${detail//$'\r'/'%0D'}"
+            detail="${detail//$'\n'/'%0A'}"
+            echo "::error title=macOS Tauri build tail::$detail"
+          fi
           app=$(find packages/desktop/src-tauri/target -type d -path '*/release/bundle/macos/*.app' 2>/dev/null | head -1)
           dmg=$(find packages/desktop/src-tauri/target -type f -path '*/release/bundle/dmg/*.dmg' 2>/dev/null | head -1)
           if [ -n "$app" ] && [ -z "$dmg" ]; then
