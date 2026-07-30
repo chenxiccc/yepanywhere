@@ -24,6 +24,7 @@
     "allow-open-dashboard-window",
     "allow-open-server-output-window",
     "allow-open-diagnostics-window",
+    "allow-open-updater-window",
     "allow-quit-app"
   ]
 }

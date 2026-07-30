@@ -1,7 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
+import { openUpdaterWindow } from "./tauri";
 
 const STARTUP_CHECK_DELAY_MS = 5_000;
 const PERIODIC_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -39,22 +39,21 @@ async function checkForUpdates(reason: CheckReason): Promise<void> {
       headers: { "X-Check-Reason": reason },
     });
     if (update) {
-      showUpdateDialog(update);
+      await showUpdateDialog(update);
     } else if (reason === "manual") {
-      showInfoDialog("You are running the latest version.");
+      await showInfoDialog("You are running the latest version.");
     }
   } catch (error) {
     console.error("Update check failed:", error);
     if (reason === "manual") {
-      showInfoDialog(`Failed to check for updates: ${String(error)}`);
+      await showInfoDialog(`Failed to check for updates: ${String(error)}`);
     }
   } finally {
     checkInFlight = false;
   }
 }
 
-function showInfoDialog(message: string): void {
-  revealUpdaterWindow();
+async function showInfoDialog(message: string): Promise<void> {
   const overlay = createOverlay();
   const dialog = getDialog(overlay);
   dialog.innerHTML = `
@@ -67,10 +66,10 @@ function showInfoDialog(message: string): void {
   dialog.querySelector('[data-action="close"]')?.addEventListener("click", () => {
     overlay.remove();
   });
+  await revealUpdaterWindow();
 }
 
-function showUpdateDialog(update: Update): void {
-  revealUpdaterWindow();
+async function showUpdateDialog(update: Update): Promise<void> {
   const overlay = createOverlay();
   const dialog = getDialog(overlay);
   dialog.innerHTML = `
@@ -102,16 +101,15 @@ function showUpdateDialog(update: Update): void {
     ?.addEventListener("click", () => {
       void installUpdate(update, dialog);
     });
+  await revealUpdaterWindow();
 }
 
-function revealUpdaterWindow(): void {
-  const window = getCurrentWindow();
-  void window
-    .show()
-    .then(() => window.setFocus())
-    .catch(() => {
-      // The update UI remains available if a platform cannot focus the window.
-    });
+async function revealUpdaterWindow(): Promise<void> {
+  try {
+    await openUpdaterWindow();
+  } catch (error) {
+    console.error("Failed to activate updater window:", error);
+  }
 }
 
 async function installUpdate(update: Update, dialog: Element): Promise<void> {

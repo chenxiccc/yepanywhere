@@ -227,6 +227,12 @@ The app checks the signed Tauri updater automatically and asks before
 installing/relaunching. A tagged release fails if its signed updater artifact
 or Windows entry in `latest.json` is missing.
 
+An available update opens and foregrounds the trusted native updater surface
+before asking to install and relaunch. A manual check also foregrounds that
+surface when the app is current or the check fails, so selecting **Check for
+Updates** never leaves its result hidden behind another application. Automatic
+checks remain silent when no update is available or when the check fails.
+
 The v0 recovery path is a manual reinstall of a signed release. Automatic
 downgrade and unattended background update installation are not claimed.
 

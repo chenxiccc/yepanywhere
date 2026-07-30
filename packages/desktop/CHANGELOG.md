@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- Update results now foreground the trusted desktop updater window instead of appearing behind the active macOS application.
+
 ## [0.1.1] - 2026-07-30
 
 ### Fixed

@@ -43,10 +43,10 @@ fn dashboard_is_current(
     dashboard_exists && dashboard_attempt == Some(server_attempt)
 }
 
-fn show_existing(window: &WebviewWindow) {
-    let _ = window.show();
-    let _ = window.unminimize();
-    let _ = window.set_focus();
+fn show_existing(window: &WebviewWindow) -> Result<(), String> {
+    window.show().map_err(|error| error.to_string())?;
+    window.unminimize().map_err(|error| error.to_string())?;
+    window.set_focus().map_err(|error| error.to_string())
 }
 
 fn dashboard_route_from_url(url: &Url) -> Option<String> {
@@ -168,8 +168,7 @@ fn show_packaged_window(
     height: f64,
 ) -> Result<(), String> {
     if let Some(window) = app.get_webview_window(label) {
-        show_existing(&window);
-        return Ok(());
+        return show_existing(&window);
     }
 
     let window = WebviewWindowBuilder::new(app, label, WebviewUrl::App(url.into()))
@@ -178,8 +177,7 @@ fn show_packaged_window(
         .visible(true)
         .build()
         .map_err(|error| error.to_string())?;
-    show_existing(&window);
-    Ok(())
+    show_existing(&window)
 }
 
 pub fn show_main_window(app: &AppHandle) -> Result<(), String> {
@@ -203,7 +201,7 @@ pub async fn show_dashboard_window(app: &AppHandle) -> Result<(), String> {
         server_attempt,
     ) {
         if let Some(window) = app.get_webview_window("dashboard") {
-            show_existing(&window);
+            show_existing(&window)?;
             return Ok(());
         }
     }
@@ -233,7 +231,7 @@ pub async fn show_dashboard_window(app: &AppHandle) -> Result<(), String> {
             .build()
             .map_err(|error| error.to_string())?
     };
-    show_existing(&window);
+    show_existing(&window)?;
     *state
         .server_attempt
         .lock()
@@ -276,6 +274,11 @@ pub fn open_server_output_window(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn open_diagnostics_window(app: AppHandle) -> Result<(), String> {
     show_diagnostics_window(&app)
+}
+
+#[tauri::command]
+pub fn open_updater_window(app: AppHandle) -> Result<(), String> {
+    show_main_window(&app)
 }
 
 #[cfg(test)]

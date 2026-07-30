@@ -13,6 +13,7 @@ fn main() {
         "open_dashboard_window",
         "open_server_output_window",
         "open_diagnostics_window",
+        "open_updater_window",
         "quit_app",
     ];
     tauri_build::try_build(

@@ -109,6 +109,7 @@ pub fn run() {
             windows::open_dashboard_window,
             windows::open_server_output_window,
             windows::open_diagnostics_window,
+            windows::open_updater_window,
             quit_app,
         ])
         .setup(|app| {
@@ -239,6 +240,26 @@ mod tests {
             assert!(!permission.starts_with("shell:"));
             assert!(!permission.starts_with("opener:"));
             assert!(!permission.starts_with("dialog:"));
+        }
+    }
+
+    #[test]
+    fn updater_uses_a_narrow_native_window_activation_command() {
+        let capability: Value = serde_json::from_str(include_str!("../capabilities/default.json"))
+            .expect("default capability should be valid JSON");
+        let permissions = capability["permissions"]
+            .as_array()
+            .expect("capability permissions must be an array");
+
+        assert!(permissions
+            .iter()
+            .any(|permission| permission == "allow-open-updater-window"));
+        for permission in [
+            "core:window:allow-show",
+            "core:window:allow-unminimize",
+            "core:window:allow-set-focus",
+        ] {
+            assert!(!permissions.iter().any(|candidate| candidate == permission));
         }
     }
 

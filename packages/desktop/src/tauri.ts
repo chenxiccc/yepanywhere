@@ -79,6 +79,10 @@ export async function openDiagnosticsWindow(): Promise<void> {
   return invoke("open_diagnostics_window");
 }
 
+export async function openUpdaterWindow(): Promise<void> {
+  return invoke("open_updater_window");
+}
+
 export async function quitApp(): Promise<void> {
   return invoke("quit_app");
 }
