@@ -117,6 +117,10 @@ It does not accept those overrides on `turn/steer`. Therefore:
   teardown, Kill, resume, reactivation, or a new public session id.
 - Changing mode while a turn is active does not retroactively change that
   turn's sandbox. The selected value is pending for the next real turn.
+- The closed mode selector remains the normal compact control while a turn is
+  active. Its tooltip and the timing note at the top of the opened menu explain
+  that a selection applies to the next turn; passive context must not widen the
+  toolbar with a persistent badge.
 - The UI must not imply that an active Bypass turn has already been tightened
   merely because Ask was selected for the next turn. Immediate tightening
   requires interrupting the active turn and beginning a new one.
@@ -211,10 +215,11 @@ As of 2026-07-30:
 - Codex `item/tool/requestUserInput` is surfaced through YA's question panel
   and returned to app-server by question id. Secret free-form answers use a
   password input and remain in component memory rather than persisted drafts.
-- While Codex is active, the mode selector labels changes as applying to the
-  next turn. Turn-start logs include the effective YA mode and both native
-  policy fields; Process Info continues to expose Codex's reported
-  `turn_context` policy.
+- While Codex is active, the mode selector's tooltip and opened menu explain
+  that changes apply to the next turn without changing the compact closed
+  control. Turn-start logs include the effective YA mode and both native policy
+  fields; Process Info continues to expose Codex's reported `turn_context`
+  policy.
 
 ## Regression History And Evidence
 

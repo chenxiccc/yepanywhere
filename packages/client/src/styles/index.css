@@ -6155,7 +6155,6 @@ div.bang-command-error-message {
 }
 
 .composer-bottom-overflow-menu-group .mode-button-label,
-.composer-bottom-overflow-menu-group .mode-button-badge,
 .composer-bottom-overflow-menu-group .thinking-toggle-label {
   display: none;
 }
@@ -6299,14 +6298,6 @@ div.bang-command-error-message {
   border-color: var(--border-input);
 }
 
-.mode-button-next-turn {
-  border-color: color-mix(
-    in srgb,
-    var(--warning-color) 55%,
-    var(--border-color)
-  );
-}
-
 .mode-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -6316,18 +6307,6 @@ div.bang-command-error-message {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.mode-button-badge {
-  flex-shrink: 0;
-  padding: 1px 4px;
-  border: 1px solid color-mix(in srgb, var(--warning-color) 45%, transparent);
-  border-radius: 999px;
-  color: var(--warning-color);
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1.2;
-  letter-spacing: 0;
 }
 
 .mode-dot {
@@ -14647,8 +14626,7 @@ div.bang-command-error-message {
     padding: 0;
   }
 
-  .mode-button-label,
-  .mode-button-badge {
+  .mode-button-label {
     display: none;
   }
 }

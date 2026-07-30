@@ -165,9 +165,7 @@ export function ModeSelector({
       <button
         ref={buttonRef}
         type="button"
-        className={`mode-button ${
-          changesApplyNextTurn ? "mode-button-next-turn" : ""
-        }`}
+        className="mode-button"
         onClick={handleButtonClick}
         disabled={disabled}
         title={buttonTitle}
@@ -176,11 +174,6 @@ export function ModeSelector({
       >
         <span className={`mode-dot ${displayDotClass}`} />
         <span className="mode-button-label">{displayLabel}</span>
-        {changesApplyNextTurn && (
-          <span className="mode-button-badge">
-            {t("modeNextTurnBadge" as never)}
-          </span>
-        )}
       </button>
       {dropdown}
     </div>
