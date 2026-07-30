@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.1.0] - Unreleased
+## [0.1.0] - 2026-07-30
 
 ### Added
 - A commit-matched bundled server/client resource and hash-verified private Bun runtime.
