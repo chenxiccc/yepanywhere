@@ -209,3 +209,5 @@
 - skill-invocation - Provider-aware `/name` and `$name` skill discovery,
   composer completion, and exact-token dispatch without constraining prompt
   text.
+- relay-client-mux - Optional relay-owned client multiplexing for several
+  independently authenticated YA hosts with exact legacy `/ws` fallback.

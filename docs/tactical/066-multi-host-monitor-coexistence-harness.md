@@ -312,8 +312,12 @@ that boundary over existing transports. Do not hide it inside mux code.
 
 ## Later Relay Mux Series
 
-Relay mux deserves its own topic contract when the first-series exit gate is
-green. That contract must define:
+The first-series exit gate is green. The relay mux contract and compatibility
+audit now live in
+[`topics/relay-client-mux.md`](../../topics/relay-client-mux.md). Its
+implementation remains paused for the required maintainer approval.
+
+That contract defines:
 
 - `/mux` discovery and a new capability/protocol gate;
 - the exact outer frame and circuit lifecycle;
