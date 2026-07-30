@@ -56,6 +56,7 @@ export function concatUserMessages(
     text: parts.join("\n\n"),
     uuid: first.uuid,
     tempId: first.tempId,
+    ...(first.mode ? { mode: first.mode } : {}),
   };
   // Record every chunk's temp id so the delivered-turn echo can clear all of
   // the queued chips by identity (the merged text is time-marked and would not
@@ -291,7 +292,14 @@ export class MessageQueue implements AsyncIterable<SDKUserMessage> {
 
   /** Internal drain without the drainedByExternal flag (used by iterator) */
   private concatDrainInternal(): UserMessage | null {
-    const drained = this.queue.splice(0);
+    const first = this.queue[0];
+    if (!first) return null;
+    const firstMode = first.mode;
+    let end = 1;
+    while (end < this.queue.length && this.queue[end]?.mode === firstMode) {
+      end += 1;
+    }
+    const drained = this.queue.splice(0, end);
     if (drained.length === 0) return null;
 
     return concatUserMessages(drained);
@@ -351,6 +359,7 @@ export class MessageQueue implements AsyncIterable<SDKUserMessage> {
       return {
         type: "user",
         uuid: msg.uuid,
+        ...(msg.mode ? { mode: msg.mode } : {}),
         ...(msg.priority ? { priority: msg.priority } : {}),
         message: {
           role: "user",
@@ -362,6 +371,7 @@ export class MessageQueue implements AsyncIterable<SDKUserMessage> {
     return {
       type: "user",
       uuid: msg.uuid,
+      ...(msg.mode ? { mode: msg.mode } : {}),
       ...(msg.priority ? { priority: msg.priority } : {}),
       message: {
         role: "user",

@@ -141,6 +141,62 @@ describe("Process", () => {
       expect(result.behavior).toBe("allow");
     });
 
+    it("uses a provider-frozen Ask mode after the toolbar changes", async () => {
+      const iterator = createMockIterator([]);
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "codex",
+        idleTimeoutMs: 100,
+        permissionMode: "bypassPermissions",
+      });
+      const abortController = new AbortController();
+
+      const approvalPromise = process.handleToolApproval(
+        "Bash",
+        { command: "touch frozen-mode" },
+        {
+          signal: abortController.signal,
+          permissionMode: "default",
+        },
+      );
+      expect(process.state.type).toBe("waiting-input");
+
+      process.setPermissionMode("bypassPermissions");
+      expect(process.state.type).toBe("waiting-input");
+
+      const pendingRequest = process.getPendingInputRequest();
+      process.respondToInput(pendingRequest?.id ?? "", "deny");
+      await expect(approvalPromise).resolves.toMatchObject({
+        behavior: "deny",
+      });
+    });
+
+    it("uses a provider-frozen Bypass mode after Ask launch", async () => {
+      const iterator = createMockIterator([]);
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "codex",
+        idleTimeoutMs: 100,
+        permissionMode: "default",
+      });
+
+      await expect(
+        process.handleToolApproval(
+          "Bash",
+          { command: "touch bypass-mode" },
+          {
+            signal: new AbortController().signal,
+            permissionMode: "bypassPermissions",
+          },
+        ),
+      ).resolves.toEqual({ behavior: "allow" });
+      expect(process.getPendingInputRequest()).toBeNull();
+    });
+
     it("handleToolApproval auto-allows read-only tools in plan mode", async () => {
       const iterator = createMockIterator([]);
       const process = new Process(iterator, {

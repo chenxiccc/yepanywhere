@@ -5208,6 +5208,9 @@ function SessionPageContent({
                   <MessageInputToolbar
                     mode={permissionMode}
                     onModeChange={setPermissionMode}
+                    modeChangesApplyNextTurn={
+                      effectiveProvider === "codex" && shouldDeferMessages
+                    }
                     supportsPermissionMode={supportsPermissionMode}
                     supportsThinkingToggle={supportsThinkingToggle}
                     slashCommands={allSlashCommands}
@@ -5295,6 +5298,9 @@ function SessionPageContent({
                 }
                 mode={permissionMode}
                 onModeChange={setPermissionMode}
+                modeChangesApplyNextTurn={
+                  effectiveProvider === "codex" && shouldDeferMessages
+                }
                 supportsPermissionMode={supportsPermissionMode}
                 supportsThinkingToggle={supportsThinkingToggle}
                 supportsSteering={generallySupportsSteering}

@@ -146,7 +146,14 @@ export interface ToolApprovalResult {
 export type CanUseTool = (
   toolName: string,
   input: unknown,
-  options: { signal: AbortSignal },
+  options: {
+    signal: AbortSignal;
+    /**
+     * Provider-frozen mode for the turn that issued this request.
+     * Falls back to the Process's current mode when omitted.
+     */
+    permissionMode?: PermissionMode;
+  },
 ) => Promise<ToolApprovalResult>;
 
 export interface ProviderLivenessProbeResult {

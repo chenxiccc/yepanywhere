@@ -314,6 +314,103 @@ describe("CodexProvider", () => {
 });
 
 describe("CodexProvider app-server lifecycle", () => {
+  it("switches complete turn policies without restarting app-server", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "codex-provider-policy-"));
+    const logPath = join(tempDir, "fake-codex-requests.jsonl");
+    const codexPath = createFakeCodexCommand(
+      tempDir,
+      "fake-codex-policy",
+      buildFakeCodexPermissionAppServer(logPath),
+    );
+    const testProvider = new CodexProvider({ codexPath });
+    const session = await testProvider.startSession({
+      cwd: tempDir,
+      initialMessage: { text: "ask turn", mode: "default" },
+      permissionMode: "default",
+    });
+
+    try {
+      await consumeCodexTurn(session.iterator);
+      session.queue.push({
+        text: "bypass turn",
+        mode: "bypassPermissions",
+      });
+      await consumeCodexTurn(session.iterator);
+      session.queue.push({ text: "ask again", mode: "default" });
+      await consumeCodexTurn(session.iterator);
+
+      const requests = readFakeCodexRequests(logPath);
+      const turnStarts = requests.filter(
+        (request) => request.method === "turn/start",
+      );
+      expect(
+        requests.filter((request) => request.method === "thread/start"),
+      ).toHaveLength(1);
+      expect(new Set(requests.map((request) => request.pid))).toHaveLength(1);
+      expect(turnStarts).toHaveLength(3);
+      expect(turnStarts.map((request) => request.params)).toEqual([
+        expect.objectContaining({
+          approvalPolicy: "on-request",
+          sandboxPolicy: {
+            type: "workspaceWrite",
+            writableRoots: ["/configured-write-root"],
+            networkAccess: true,
+            excludeTmpdirEnvVar: true,
+            excludeSlashTmp: true,
+          },
+        }),
+        expect.objectContaining({
+          approvalPolicy: "never",
+          sandboxPolicy: { type: "dangerFullAccess" },
+        }),
+        expect.objectContaining({
+          approvalPolicy: "on-request",
+          sandboxPolicy: {
+            type: "workspaceWrite",
+            writableRoots: ["/configured-write-root"],
+            networkAccess: true,
+            excludeTmpdirEnvVar: true,
+            excludeSlashTmp: true,
+          },
+        }),
+      ]);
+      expect(
+        turnStarts.map((request) => ({
+          approvalPolicy: request.effectiveApprovalPolicy,
+          sandboxPolicy: request.effectiveSandboxPolicy,
+        })),
+      ).toEqual([
+        {
+          approvalPolicy: "on-request",
+          sandboxPolicy: {
+            type: "workspaceWrite",
+            writableRoots: ["/configured-write-root"],
+            networkAccess: true,
+            excludeTmpdirEnvVar: true,
+            excludeSlashTmp: true,
+          },
+        },
+        {
+          approvalPolicy: "never",
+          sandboxPolicy: { type: "dangerFullAccess" },
+        },
+        {
+          approvalPolicy: "on-request",
+          sandboxPolicy: {
+            type: "workspaceWrite",
+            writableRoots: ["/configured-write-root"],
+            networkAccess: true,
+            excludeTmpdirEnvVar: true,
+            excludeSlashTmp: true,
+          },
+        },
+      ]);
+    } finally {
+      await session.abort();
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("discovers and dispatches Codex skills with canonical text and metadata", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "codex-provider-skills-"));
     const logPath = join(tempDir, "fake-codex-requests.jsonl");
@@ -1286,6 +1383,127 @@ process.stdin.on("data", (chunk) => {
 `;
 }
 
+function buildFakeCodexPermissionAppServer(logPath: string): string {
+  return `#!/usr/bin/env node
+import { appendFileSync } from "node:fs";
+
+const logPath = ${JSON.stringify(logPath)};
+let buffer = "";
+let turnSequence = 0;
+let effectiveApprovalPolicy = "on-request";
+const configuredWorkspaceWritePolicy = {
+  type: "workspaceWrite",
+  writableRoots: ["/configured-write-root"],
+  networkAccess: true,
+  excludeTmpdirEnvVar: true,
+  excludeSlashTmp: true,
+};
+let effectiveSandboxPolicy = configuredWorkspaceWritePolicy;
+
+function write(payload) {
+  process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...payload }) + "\\n");
+}
+
+function logRequest(message, extra = {}) {
+  appendFileSync(
+    logPath,
+    JSON.stringify({
+      id: message.id,
+      method: message.method,
+      params: message.params,
+      pid: process.pid,
+      ...extra,
+    }) + "\\n",
+  );
+}
+
+function respond(id, result) {
+  write({ id, result });
+}
+
+function legacySandboxPolicy(sandbox) {
+  if (sandbox === "danger-full-access") {
+    return { type: "dangerFullAccess" };
+  }
+  if (sandbox === "read-only") {
+    return { type: "readOnly", networkAccess: false };
+  }
+  return configuredWorkspaceWritePolicy;
+}
+
+function handleMessage(message) {
+  if (!message || typeof message !== "object") return;
+  if (message.id === undefined) {
+    logRequest(message);
+    return;
+  }
+
+  if (message.method === "turn/start") {
+    effectiveApprovalPolicy =
+      message.params?.approvalPolicy ?? effectiveApprovalPolicy;
+    effectiveSandboxPolicy =
+      message.params?.sandboxPolicy ?? effectiveSandboxPolicy;
+    logRequest(message, {
+      effectiveApprovalPolicy,
+      effectiveSandboxPolicy,
+    });
+  } else {
+    logRequest(message);
+  }
+
+  switch (message.method) {
+    case "initialize":
+      respond(message.id, { userAgent: "fake-codex-policy" });
+      break;
+    case "skills/list":
+      respond(message.id, {
+        data: [{
+          cwd: message.params?.cwds?.[0] ?? "",
+          skills: [],
+          errors: [],
+        }],
+      });
+      break;
+    case "thread/start":
+      effectiveApprovalPolicy =
+        message.params?.approvalPolicy ?? effectiveApprovalPolicy;
+      effectiveSandboxPolicy = legacySandboxPolicy(message.params?.sandbox);
+      respond(message.id, {
+        thread: { id: "thread-policy" },
+        model: "gpt-5.4-mini",
+        reasoningEffort: "low",
+        sandbox: effectiveSandboxPolicy,
+      });
+      break;
+    case "turn/start": {
+      turnSequence += 1;
+      respond(message.id, {
+        turn: {
+          id: \`turn-\${turnSequence}\`,
+          status: "completed",
+          error: null,
+        },
+      });
+      break;
+    }
+    default:
+      respond(message.id, {});
+      break;
+  }
+}
+
+process.stdin.on("data", (chunk) => {
+  buffer += chunk.toString("utf-8");
+  const lines = buffer.split("\\n");
+  buffer = lines.pop() || "";
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    handleMessage(JSON.parse(line));
+  }
+});
+`;
+}
+
 function buildFakeCodexAppServerWithLiveDelta(logPath: string): string {
   return `#!/usr/bin/env node
 import { appendFileSync } from "node:fs";
@@ -2064,6 +2282,9 @@ function readFakeCodexRequests(logPath: string): Array<{
   id?: number;
   method?: string;
   params?: Record<string, unknown>;
+  pid?: number;
+  effectiveApprovalPolicy?: string;
+  effectiveSandboxPolicy?: Record<string, unknown>;
   agentctlSessionId?: string;
   processEnvAgentctlSessionId?: string;
 }> {
@@ -2072,6 +2293,15 @@ function readFakeCodexRequests(logPath: string): Array<{
     .split("\n")
     .filter((line) => line.trim().length > 0)
     .map((line) => JSON.parse(line));
+}
+
+async function consumeCodexTurn(
+  iterator: AsyncIterableIterator<Record<string, unknown>>,
+): Promise<void> {
+  while (true) {
+    const next = await iterator.next();
+    if (next.done || next.value.type === "result") return;
+  }
 }
 
 async function waitForFakeCodexRequest(
@@ -2727,6 +2957,144 @@ describe("CodexProvider Event Normalization", () => {
     expect(params).toMatchObject({
       threadId: "thread-1",
       summary: "auto",
+    });
+  });
+
+  it("pairs every turn approval override with its native sandbox policy", () => {
+    const provider = createTestProvider() as unknown as {
+      normalizePermissionMode: (permissionMode?: string) => string;
+      mapPermissionModeToThreadPolicy: (permissionMode?: string) => {
+        approvalPolicy: string;
+        sandbox: string;
+      };
+      buildTurnPermissionParams: (
+        policy: {
+          approvalPolicy: string;
+          sandbox: string;
+        },
+        workspaceWriteSandboxPolicy?: Record<string, unknown>,
+      ) => Record<string, unknown>;
+    };
+
+    expect(
+      [
+        "default",
+        "acceptEdits",
+        "plan",
+        "bypassPermissions",
+        "auto",
+      ].map((mode) => {
+        const effectiveMode = provider.normalizePermissionMode(mode);
+        return {
+          mode,
+          effectiveMode,
+          params: provider.buildTurnPermissionParams(
+            provider.mapPermissionModeToThreadPolicy(effectiveMode),
+          ),
+        };
+      }),
+    ).toEqual([
+      {
+        mode: "default",
+        effectiveMode: "default",
+        params: {
+          approvalPolicy: "on-request",
+          sandboxPolicy: {
+            type: "workspaceWrite",
+            writableRoots: [],
+            networkAccess: false,
+            excludeTmpdirEnvVar: false,
+            excludeSlashTmp: false,
+          },
+        },
+      },
+      {
+        mode: "acceptEdits",
+        effectiveMode: "acceptEdits",
+        params: {
+          approvalPolicy: "on-request",
+          sandboxPolicy: {
+            type: "workspaceWrite",
+            writableRoots: [],
+            networkAccess: false,
+            excludeTmpdirEnvVar: false,
+            excludeSlashTmp: false,
+          },
+        },
+      },
+      {
+        mode: "plan",
+        effectiveMode: "plan",
+        params: {
+          approvalPolicy: "on-request",
+          sandboxPolicy: { type: "readOnly", networkAccess: false },
+        },
+      },
+      {
+        mode: "bypassPermissions",
+        effectiveMode: "bypassPermissions",
+        params: {
+          approvalPolicy: "never",
+          sandboxPolicy: { type: "dangerFullAccess" },
+        },
+      },
+      {
+        mode: "auto",
+        effectiveMode: "default",
+        params: {
+          approvalPolicy: "on-request",
+          sandboxPolicy: {
+            type: "workspaceWrite",
+            writableRoots: [],
+            networkAccess: false,
+            excludeTmpdirEnvVar: false,
+            excludeSlashTmp: false,
+          },
+        },
+      },
+    ]);
+
+    expect(
+      provider.buildTurnPermissionParams(
+        {
+          approvalPolicy: "on-request",
+          sandbox: "workspace-write",
+        },
+        {
+          type: "workspaceWrite",
+          writableRoots: ["/configured-write-root"],
+          networkAccess: true,
+          excludeTmpdirEnvVar: true,
+          excludeSlashTmp: true,
+        },
+      ),
+    ).toEqual({
+      approvalPolicy: "on-request",
+      sandboxPolicy: {
+        type: "workspaceWrite",
+        writableRoots: ["/configured-write-root"],
+        networkAccess: true,
+        excludeTmpdirEnvVar: true,
+        excludeSlashTmp: true,
+      },
+    });
+    expect(
+      provider.buildTurnPermissionParams({
+        approvalPolicy: "on-request",
+        sandbox: "read-only",
+      }),
+    ).toEqual({
+      approvalPolicy: "on-request",
+      sandboxPolicy: { type: "readOnly", networkAccess: false },
+    });
+    expect(
+      provider.buildTurnPermissionParams({
+        approvalPolicy: "never",
+        sandbox: "danger-full-access",
+      }),
+    ).toEqual({
+      approvalPolicy: "never",
+      sandboxPolicy: { type: "dangerFullAccess" },
     });
   });
 
@@ -3762,12 +4130,13 @@ describe("CodexProvider Event Normalization", () => {
     ).toBe(true);
   });
 
-  it("grants requested permission profiles automatically in bypass mode", async () => {
+  it("grants requested permissions for only the requesting bypass turn", async () => {
     const provider = createTestProvider() as unknown as {
       handleServerRequestApproval: (
         request: { method: string; id: number; params?: unknown },
         options: { permissionMode?: string },
         signal: AbortSignal,
+        permissionMode?: string,
       ) => Promise<Record<string, unknown>>;
     };
 
@@ -3794,12 +4163,13 @@ describe("CodexProvider Event Normalization", () => {
           },
         },
       },
-      { permissionMode: "bypassPermissions" },
+      { permissionMode: "default" },
       new AbortController().signal,
+      "bypassPermissions",
     );
 
     expect(response).toMatchObject({
-      scope: "session",
+      scope: "turn",
       permissions: {
         network: { enabled: true },
         fileSystem: {
@@ -3810,6 +4180,139 @@ describe("CodexProvider Event Normalization", () => {
             },
           ],
         },
+      },
+    });
+  });
+
+  it("does not let launch bypass override an Ask turn permission request", async () => {
+    const onToolApproval = vi.fn(async () => ({
+      behavior: "deny" as const,
+    }));
+    const provider = createTestProvider() as unknown as {
+      handleServerRequestApproval: (
+        request: { method: string; id: number; params?: unknown },
+        options: {
+          permissionMode?: string;
+          onToolApproval?: typeof onToolApproval;
+        },
+        signal: AbortSignal,
+        permissionMode?: string,
+      ) => Promise<Record<string, unknown>>;
+    };
+
+    const response = await provider.handleServerRequestApproval(
+      {
+        method: "item/permissions/requestApproval",
+        id: 1,
+        params: {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          itemId: "permission-1",
+          cwd: "/tmp/project",
+          reason: "Need network",
+          permissions: { network: { enabled: true } },
+        },
+      },
+      { permissionMode: "bypassPermissions", onToolApproval },
+      new AbortController().signal,
+      "default",
+    );
+
+    expect(onToolApproval).toHaveBeenCalledWith(
+      "Permissions",
+      expect.any(Object),
+      expect.objectContaining({ permissionMode: "default" }),
+    );
+    expect(response).toEqual({ permissions: {}, scope: "turn" });
+  });
+
+  it("surfaces Codex user-input requests and returns answers by question id", async () => {
+    const onToolApproval = vi.fn(
+      async (
+        _toolName: string,
+        _input: unknown,
+        _options: { signal: AbortSignal; permissionMode?: string },
+      ) => ({
+        behavior: "allow" as const,
+        updatedInput: {
+          answers: {
+            "secret-id": "swordfish",
+            "Choose checks": ["Unit", "Types"],
+          },
+        },
+      }),
+    );
+    const provider = createTestProvider() as unknown as {
+      handleServerRequestApproval: (
+        request: { method: string; id: number; params?: unknown },
+        options: {
+          permissionMode?: string;
+          onToolApproval?: typeof onToolApproval;
+        },
+        signal: AbortSignal,
+        permissionMode?: string,
+      ) => Promise<Record<string, unknown>>;
+    };
+
+    const response = await provider.handleServerRequestApproval(
+      {
+        method: "item/tool/requestUserInput",
+        id: 2,
+        params: {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          itemId: "question-1",
+          autoResolutionMs: null,
+          questions: [
+            {
+              id: "secret-id",
+              header: "Secret",
+              question: "Enter the token",
+              isOther: true,
+              isSecret: true,
+              options: null,
+            },
+            {
+              id: "checks-id",
+              header: "Checks",
+              question: "Choose checks",
+              isOther: false,
+              isSecret: false,
+              options: [
+                { label: "Unit", description: "Run unit tests" },
+                { label: "Types", description: "Run typecheck" },
+              ],
+            },
+          ],
+        },
+      },
+      { permissionMode: "bypassPermissions", onToolApproval },
+      new AbortController().signal,
+      "default",
+    );
+
+    expect(onToolApproval).toHaveBeenCalledWith(
+      "AskUserQuestion",
+      expect.objectContaining({
+        questions: [
+          expect.objectContaining({
+            id: "secret-id",
+            isSecret: true,
+            isOther: true,
+          }),
+          expect.objectContaining({
+            id: "checks-id",
+            isSecret: false,
+            isOther: false,
+          }),
+        ],
+      }),
+      expect.objectContaining({ permissionMode: "default" }),
+    );
+    expect(response).toEqual({
+      answers: {
+        "secret-id": { answers: ["swordfish"] },
+        "checks-id": { answers: ["Unit", "Types"] },
       },
     });
   });

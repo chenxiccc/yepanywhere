@@ -46,6 +46,15 @@ describe("concatUserMessages", () => {
 
     expect(combined.priority).toBe("now");
   });
+
+  it("keeps the permission mode selected for the provider turn", () => {
+    const combined = concatUserMessages([
+      { ...msg("first"), mode: "bypassPermissions" },
+      { ...msg("second"), mode: "bypassPermissions" },
+    ]);
+
+    expect(combined.mode).toBe("bypassPermissions");
+  });
 });
 
 describe("MessageQueue", () => {
@@ -63,5 +72,28 @@ describe("MessageQueue", () => {
       "temp-1",
       "temp-3",
     ]);
+  });
+
+  it("emits different permission modes as separate provider turns", async () => {
+    const queue = new MessageQueue();
+    queue.push({ ...msg("ask"), mode: "default" });
+    queue.push({ ...msg("bypass"), mode: "bypassPermissions" });
+    const iterator = queue[Symbol.asyncIterator]();
+
+    await expect(iterator.next()).resolves.toMatchObject({
+      done: false,
+      value: {
+        mode: "default",
+        message: { content: "ask" },
+      },
+    });
+    await expect(iterator.next()).resolves.toMatchObject({
+      done: false,
+      value: {
+        mode: "bypassPermissions",
+        message: { content: "bypass" },
+      },
+    });
+    await iterator.return?.();
   });
 });

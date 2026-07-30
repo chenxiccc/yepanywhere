@@ -18,6 +18,8 @@ See also:
   seeds New Session.
 - [permission-mode](permission-mode.md) — approval policy is independent from
   filesystem confinement.
+- [codex-permission-mode](codex-permission-mode.md) — Codex's own coupled
+  approval/native-sandbox mapping and live turn boundary.
 - [security](security.md) — authenticated, public, and future delegated-access
   trust boundaries.
 - [subprocess-environment](subprocess-environment.md) — process-creation
@@ -171,10 +173,13 @@ YA already has two related but narrower mechanisms:
 1. `SessionSandboxPolicy` in session summaries is a read-only projection of
    Codex `turn_context.sandbox_policy`. It records what a provider transcript
    reported; it is not a YA launch request or enforcement proof.
-2. `CodexProvider.mapPermissionModeToThreadPolicy` currently maps ordinary
-   modes to provider-native `workspace-write`, Plan to `read-only`, and Bypass
-   to `danger-full-access`. That mapping is coupled to permission mode and does
-   not define a cross-provider sandbox level.
+2. `CodexProvider.mapPermissionModeToThreadPolicy` maps ordinary modes to
+   provider-native `workspace-write`, Plan to `read-only`, and Bypass to
+   `danger-full-access`. Thread start/resume and each real turn apply both the
+   matching approval policy and native sandbox. The mapping remains coupled to
+   permission mode and does not define a cross-provider sandbox level;
+   [codex-permission-mode](codex-permission-mode.md) owns its next-turn
+   contract.
 
 Do not repurpose either as the new source of truth. A later implementation
 should keep separate concepts:

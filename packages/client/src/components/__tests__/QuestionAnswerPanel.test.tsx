@@ -144,4 +144,52 @@ describe("QuestionAnswerPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: /Beta/ }));
     expect(screen.queryByText("PREVIEW-ALPHA")).toBeNull();
   });
+
+  it("keeps secret free-form answers out of persistent drafts", async () => {
+    const request: InputRequest = {
+      id: "req-secret",
+      sessionId: "sess-secret",
+      type: "question",
+      prompt: "Enter the token",
+      toolName: "AskUserQuestion",
+      toolInput: {
+        questions: [
+          {
+            id: "token-id",
+            question: "Enter the token",
+            header: "Token",
+            options: [],
+            multiSelect: false,
+            isOther: true,
+            isSecret: true,
+          },
+        ],
+      },
+      timestamp: "2026-07-30T00:00:00.000Z",
+    };
+    const onSubmit = vi.fn<(_: UserQuestionAnswers) => Promise<void>>(
+      async () => {},
+    );
+
+    render(
+      <QuestionAnswerPanel
+        request={request}
+        sessionId="sess-secret"
+        onSubmit={onSubmit}
+        onDeny={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Other/ }));
+    const input = screen.getByPlaceholderText("Type your answer...");
+    expect(input.getAttribute("type")).toBe("password");
+    fireEvent.change(input, { target: { value: "swordfish" } });
+    expect(localStorage.length).toBe(0);
+
+    fireEvent.click(screen.getByRole("button", { name: /Submit/ }));
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith({ "token-id": "swordfish" });
+    });
+    expect(localStorage.length).toBe(0);
+  });
 });

@@ -169,7 +169,7 @@ copy, and suggested action.
 | `internalServerError` | Upstream internal failure or internal agent death. | `server_error`; retry requires a new user turn after Codex exhausts its own retry loop. |
 | `unauthorized` | Auth refresh failed. | `auth`; offer authentication diagnostics or reauthentication. |
 | `badRequest` | Unsupported operation, missing thread, agent limit, or another rejected request. | `request`; raw provider text is important because the category is broad. |
-| `sandboxError` | Codex sandbox execution/setup failed. | `sandbox`; point toward permissions or environment details. |
+| `sandboxError` | Codex sandbox execution/setup failed. | `sandbox`; distinguish it from user denial and point toward the permission/environment boundary in [codex-permission-mode](codex-permission-mode.md). |
 | `other` or absent | No stable public classification. | `unknown`; always preserve the provider message and request id. |
 
 `threadRollbackFailed` and `activeTurnNotSteerable` explicitly return false

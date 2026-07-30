@@ -2659,12 +2659,16 @@ export class Process {
     message: UserMessage,
     composeAnchor?: string | null,
   ): UserMessage {
-    return this.withProviderDeliveryPriority(
+    const prepared = this.withProviderDeliveryPriority(
       this.applyComposeAnchor(
         this.expandEmulatedSlashCommand(message),
         composeAnchor,
       ),
     );
+    return {
+      ...prepared,
+      mode: prepared.mode ?? this._permissionMode,
+    };
   }
 
   private withProviderDeliveryPriority(message: UserMessage): UserMessage {
@@ -3341,10 +3345,15 @@ export class Process {
   async handleToolApproval(
     toolName: string,
     input: unknown,
-    options: { signal: AbortSignal },
+    options: {
+      signal: AbortSignal;
+      permissionMode?: PermissionMode;
+    },
   ): Promise<ToolApprovalResult> {
+    const effectivePermissionMode =
+      options.permissionMode ?? this._permissionMode;
     console.log(
-      `[handleToolApproval] toolName=${toolName}, permissionMode=${this._permissionMode}`,
+      `[handleToolApproval] toolName=${toolName}, permissionMode=${effectivePermissionMode}`,
     );
 
     // Check if aborted
@@ -3369,7 +3378,7 @@ export class Process {
     }
 
     // Handle based on permission mode
-    switch (this._permissionMode) {
+    switch (effectivePermissionMode) {
       case "bypassPermissions": {
         // Always prompt for user questions and plan approval, even in bypass mode
         // These are inherently interactive and shouldn't be auto-answered
@@ -4198,8 +4207,8 @@ export class Process {
   /**
    * Leading run of entries whose consecutive compose times are within the
    * join window. With the default window of 0 the group is always a single
-   * entry, so queued turns deliver one per boundary; a large window
-   * approximates "always join".
+   * entry, so queued turns deliver one per boundary. A mode change always
+   * starts a new group; otherwise a large window approximates "always join".
    */
   private leadingJoinGroup(
     entries: DeferredQueueEntry[],
@@ -4210,6 +4219,7 @@ export class Process {
     // 0 means never join, even for sends composed in the same millisecond.
     if (windowMs <= 0) return group;
     for (let i = 1; i < entries.length; i++) {
+      if (entries[i]!.message.mode !== entries[0]!.message.mode) break;
       const gapMs =
         this.composedAtMsForEntry(entries[i]!) -
         this.composedAtMsForEntry(entries[i - 1]!);

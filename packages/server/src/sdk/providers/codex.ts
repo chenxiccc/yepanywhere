@@ -13,6 +13,7 @@ import {
   createCodexToolCorrelation,
   hasInvocationCandidate,
   type ModelInfo,
+  type PermissionMode,
   type ProviderSubscriptionUsage,
   type SlashCommand,
 } from "@yep-anywhere/shared";
@@ -82,6 +83,7 @@ import type {
   TurnSteerResponse,
   UserInput,
 } from "./codex-protocol/index.js";
+import type { SandboxPolicy as CodexSandboxPolicy } from "./codex-protocol/generated/v2/SandboxPolicy.js";
 import { createAgentctlSessionEnvBridge } from "./agentctl-session-env.js";
 import {
   type AppServerModel,
@@ -287,6 +289,8 @@ interface TokenUsageSnapshot {
 interface CodexTurnRuntimeState {
   threadId: string;
   activeTurnId: string | null;
+  activePermissionMode: PermissionMode;
+  workspaceWriteSandboxPolicy: CodexSandboxPolicy | null;
   activeToolCallIds: Set<string>;
   backgroundToolCallIds: Set<string>;
 }
@@ -1301,6 +1305,37 @@ export class CodexProvider implements AgentProvider {
     });
   }
 
+  private normalizePermissionMode(
+    permissionMode?: StartSessionOptions["permissionMode"],
+  ): PermissionMode {
+    return permissionMode && permissionMode !== "auto"
+      ? permissionMode
+      : "default";
+  }
+
+  private mapThreadSandboxToTurnSandbox(
+    sandbox: CodexSandboxMode,
+    workspaceWriteSandboxPolicy: CodexSandboxPolicy | null = null,
+  ): CodexSandboxPolicy {
+    switch (sandbox) {
+      case "danger-full-access":
+        return { type: "dangerFullAccess" };
+      case "read-only":
+        return { type: "readOnly", networkAccess: false };
+      case "workspace-write":
+        if (workspaceWriteSandboxPolicy?.type === "workspaceWrite") {
+          return workspaceWriteSandboxPolicy;
+        }
+        return {
+          type: "workspaceWrite",
+          writableRoots: [],
+          networkAccess: false,
+          excludeTmpdirEnvVar: false,
+          excludeSlashTmp: false,
+        };
+    }
+  }
+
   /**
    * Start a new Codex session.
    */
@@ -1310,6 +1345,10 @@ export class CodexProvider implements AgentProvider {
     const runtimeState: CodexTurnRuntimeState = {
       threadId: options.resumeSessionId ?? "",
       activeTurnId: null,
+      activePermissionMode: this.normalizePermissionMode(
+        options.permissionMode,
+      ),
+      workspaceWriteSandboxPolicy: null,
       activeToolCallIds: new Set(),
       backgroundToolCallIds: new Set(),
     };
@@ -1695,7 +1734,12 @@ export class CodexProvider implements AgentProvider {
     };
 
     appServer.setServerRequestHandler(async (request) => {
-      return await this.handleServerRequestApproval(request, options, signal);
+      return await this.handleServerRequestApproval(
+        request,
+        options,
+        signal,
+        runtimeState.activePermissionMode,
+      );
     });
 
     try {
@@ -1713,9 +1757,11 @@ export class CodexProvider implements AgentProvider {
         false,
       );
 
-      const policy = this.mapPermissionModeToThreadPolicy(
+      const initialPermissionMode = this.normalizePermissionMode(
         options.permissionMode,
       );
+      const policy =
+        this.mapPermissionModeToThreadPolicy(initialPermissionMode);
 
       const threadResumeParams = this.createThreadResumeParams(
         options,
@@ -1734,11 +1780,14 @@ export class CodexProvider implements AgentProvider {
       sessionId = threadResult.thread.id;
       agentctlSessionEnvBridge.publishSessionId(sessionId);
       runtimeState.threadId = sessionId;
+      if (threadResult.sandbox?.type === "workspaceWrite") {
+        runtimeState.workspaceWriteSandboxPolicy = threadResult.sandbox;
+      }
       failureTrace.sessionId = sessionId;
       log.info(
         {
           sessionId,
-          permissionMode: options.permissionMode ?? "default",
+          permissionMode: initialPermissionMode,
           approvalPolicy: policy.approvalPolicy,
           sandbox: policy.sandbox,
           policyOverrides: {
@@ -1835,16 +1884,18 @@ export class CodexProvider implements AgentProvider {
         };
         yield userMessage;
 
-        const messagePermissionMode =
-          this.getPermissionModeFromMessage(message);
-        const turnPolicy = messagePermissionMode
-          ? this.mapPermissionModeToThreadPolicy(messagePermissionMode)
-          : null;
+        const turnPermissionMode = this.normalizePermissionMode(
+          this.getPermissionModeFromMessage(message) ?? options.permissionMode,
+        );
+        const turnPolicy =
+          this.mapPermissionModeToThreadPolicy(turnPermissionMode);
+        runtimeState.activePermissionMode = turnPermissionMode;
         const turnStartParams = this.createTurnStartParams(
           sessionId,
           preparedInput.input,
           options,
           turnPolicy,
+          runtimeState.workspaceWriteSandboxPolicy,
         );
         const turnResult = await appServer.request<TurnStartResponse>(
           "turn/start",
@@ -1861,6 +1912,9 @@ export class CodexProvider implements AgentProvider {
             sessionId,
             turnId: activeTurnId,
             turnStatus: turnResult.turn.status,
+            permissionMode: turnPermissionMode,
+            approvalPolicy: turnPolicy.approvalPolicy,
+            sandboxPolicy: turnStartParams.sandboxPolicy,
           },
           "Started Codex app-server turn",
         );
@@ -2457,6 +2511,7 @@ export class CodexProvider implements AgentProvider {
     input: UserInput[],
     options: StartSessionOptions,
     turnPolicy: CodexThreadPolicy | null = null,
+    workspaceWriteSandboxPolicy: CodexSandboxPolicy | null = null,
   ): TurnStartParams {
     return {
       threadId,
@@ -2469,15 +2524,25 @@ export class CodexProvider implements AgentProvider {
         options.model,
       ),
       summary: "auto",
-      ...this.buildTurnPermissionParams(turnPolicy),
+      ...this.buildTurnPermissionParams(
+        turnPolicy,
+        workspaceWriteSandboxPolicy,
+      ),
     };
   }
 
   private buildTurnPermissionParams(
     policy: CodexThreadPolicy | null,
-  ): Partial<Pick<TurnStartParams, "approvalPolicy">> {
+    workspaceWriteSandboxPolicy: CodexSandboxPolicy | null = null,
+  ): Partial<Pick<TurnStartParams, "approvalPolicy" | "sandboxPolicy">> {
     if (!policy) return {};
-    return { approvalPolicy: policy.approvalPolicy };
+    return {
+      approvalPolicy: policy.approvalPolicy,
+      sandboxPolicy: this.mapThreadSandboxToTurnSandbox(
+        policy.sandbox,
+        workspaceWriteSandboxPolicy,
+      ),
+    };
   }
 
   /**
@@ -3260,12 +3325,13 @@ export class CodexProvider implements AgentProvider {
     request: JsonRpcServerRequest,
     options: StartSessionOptions,
     signal: AbortSignal,
+    permissionMode = this.normalizePermissionMode(options.permissionMode),
   ): Promise<unknown> {
     log.info(
       {
         method: request.method,
         requestId: request.id,
-        permissionMode: options.permissionMode ?? "default",
+        permissionMode,
       },
       "Codex app-server sent server request",
     );
@@ -3321,6 +3387,7 @@ export class CodexProvider implements AgentProvider {
             signal,
             "accept",
             "decline",
+            permissionMode,
           );
         log.info(
           {
@@ -3378,6 +3445,7 @@ export class CodexProvider implements AgentProvider {
             signal,
             "accept",
             "decline",
+            permissionMode,
           );
         log.info(
           {
@@ -3414,6 +3482,7 @@ export class CodexProvider implements AgentProvider {
           signal,
           "approved",
           "denied",
+          permissionMode,
         );
         log.info(
           {
@@ -3447,6 +3516,7 @@ export class CodexProvider implements AgentProvider {
           signal,
           "approved",
           "denied",
+          permissionMode,
         );
         log.info(
           {
@@ -3480,28 +3550,80 @@ export class CodexProvider implements AgentProvider {
           options,
           permissionParams,
           signal,
+          permissionMode,
         );
       }
 
       case "item/tool/requestUserInput": {
         const requestInput = this.asToolRequestUserInputParams(request.params);
-        const questions = requestInput?.questions ?? [];
-
-        // MVP: return empty answers so request can complete without blocking.
-        const answers: ToolRequestUserInputResponse["answers"] = {};
-        for (const question of questions) {
-          answers[question.id] = { answers: [] };
+        if (!requestInput) {
+          log.warn(
+            {
+              method: request.method,
+              requestId: request.id,
+            },
+            "Codex tool user-input params invalid; returning no answers",
+          );
+          return { answers: {} } satisfies ToolRequestUserInputResponse;
         }
-        log.warn(
+
+        const toolInput = {
+          questions: requestInput.questions.map((question) => ({
+            id: question.id,
+            header: question.header,
+            question: question.question,
+            options: question.options ?? [],
+            multiSelect: false,
+            isOther: question.isOther,
+            isSecret: question.isSecret,
+          })),
+          autoResolutionMs: requestInput.autoResolutionMs,
+          threadId: requestInput.threadId,
+          turnId: requestInput.turnId,
+          itemId: requestInput.itemId,
+        };
+        const result = await this.resolveToolApprovalResult(
+          options,
+          "AskUserQuestion",
+          toolInput,
+          signal,
+          permissionMode,
+        );
+        const updatedInput =
+          result.behavior === "allow" &&
+          result.updatedInput &&
+          typeof result.updatedInput === "object"
+            ? (result.updatedInput as {
+                answers?: Record<string, string | string[]>;
+              })
+            : null;
+        const submittedAnswers = updatedInput?.answers ?? {};
+        const answers: ToolRequestUserInputResponse["answers"] = {};
+        for (const question of requestInput.questions) {
+          const submitted =
+            submittedAnswers[question.id] ??
+            submittedAnswers[question.question];
+          answers[question.id] = {
+            answers: Array.isArray(submitted)
+              ? submitted.filter(
+                  (answer): answer is string => typeof answer === "string",
+                )
+              : typeof submitted === "string"
+                ? [submitted]
+                : [],
+          };
+        }
+        log.info(
           {
             method: request.method,
             requestId: request.id,
-            questionCount: questions.length,
-            threadId: requestInput?.threadId ?? null,
-            turnId: requestInput?.turnId ?? null,
-            itemId: requestInput?.itemId ?? null,
+            questionCount: requestInput.questions.length,
+            threadId: requestInput.threadId,
+            turnId: requestInput.turnId,
+            itemId: requestInput.itemId,
+            behavior: result.behavior,
           },
-          "Codex requested tool user input; returning empty answers in MVP",
+          "Resolved Codex tool user-input request",
         );
         const response: ToolRequestUserInputResponse = { answers };
         return response;
@@ -3524,24 +3646,45 @@ export class CodexProvider implements AgentProvider {
     signal: AbortSignal,
     allowDecision: TDecision,
     denyDecision: TDecision,
+    permissionMode: PermissionMode,
   ): Promise<TDecision> {
+    const result = await this.resolveToolApprovalResult(
+      options,
+      toolName,
+      toolInput,
+      signal,
+      permissionMode,
+    );
+    return result.behavior === "allow" ? allowDecision : denyDecision;
+  }
+
+  private async resolveToolApprovalResult(
+    options: StartSessionOptions,
+    toolName: string,
+    toolInput: unknown,
+    signal: AbortSignal,
+    permissionMode: PermissionMode,
+  ): Promise<ToolApprovalResult> {
     if (!options.onToolApproval) {
       log.warn(
         { toolName },
         "No onToolApproval handler available; denying Codex approval request",
       );
-      return denyDecision;
+      return { behavior: "deny" };
     }
 
     let result: ToolApprovalResult;
     try {
-      result = await options.onToolApproval(toolName, toolInput, { signal });
+      result = await options.onToolApproval(toolName, toolInput, {
+        signal,
+        permissionMode,
+      });
     } catch (error) {
       log.warn(
         { toolName, error },
         "onToolApproval threw; denying Codex approval request",
       );
-      return denyDecision;
+      return { behavior: "deny" };
     }
 
     log.info(
@@ -3549,16 +3692,17 @@ export class CodexProvider implements AgentProvider {
       "Resolved tool approval callback result",
     );
 
-    return result.behavior === "allow" ? allowDecision : denyDecision;
+    return result;
   }
 
   private async resolvePermissionRequestApproval(
     options: StartSessionOptions,
     params: PermissionsRequestApprovalParams,
     signal: AbortSignal,
+    permissionMode: PermissionMode,
   ): Promise<PermissionsRequestApprovalResponse> {
-    if (options.permissionMode === "bypassPermissions") {
-      return this.createGrantedPermissionResponse(params, "session");
+    if (permissionMode === "bypassPermissions") {
+      return this.createGrantedPermissionResponse(params, "turn");
     }
 
     const toolInput = {
@@ -3576,9 +3720,10 @@ export class CodexProvider implements AgentProvider {
       signal,
       "accept",
       "decline",
+      permissionMode,
     );
     return decision === "accept"
-      ? this.createGrantedPermissionResponse(params, "session")
+      ? this.createGrantedPermissionResponse(params, "turn")
       : this.createDeclinedPermissionResponse();
   }
 

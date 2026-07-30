@@ -6,8 +6,14 @@
 
 Topic: permission-mode
 
-See also: [session-defaults](session-defaults.md) for why permission mode lives
-with all-provider session defaults rather than provider/model economics.
+See also:
+
+- [session-defaults](session-defaults.md) — why permission mode lives with
+  all-provider session defaults rather than provider/model economics.
+- [codex-permission-mode](codex-permission-mode.md) — Codex's coupled approval
+  and native-sandbox mapping and live turn boundary.
+- [session-sandboxing](session-sandboxing.md) — the independent optional outer
+  filesystem boundary.
 
 ## Auto mode and provider capability
 
@@ -43,3 +49,19 @@ equivalent is `Ask`, not `Bypass` and not a hidden provider-specific setting.
   unless the user explicitly chooses `Ask`.
 - New-session launch must send only a mode the selected provider/model can
   honor. For unsupported `Auto`, send `default`.
+
+## Provider Adapter Invariants
+
+- A provider adapter must translate the effective YA mode into every
+  provider-native field needed to preserve its meaning. If approval and
+  confinement are separate native fields, they must be updated atomically.
+- A live mode change applies without replacing the provider process when the
+  provider exposes an appropriate next-turn boundary. It need not and must not
+  be forced into an already active turn whose provider cannot change policy
+  in-flight.
+- While a turn is active, the UI must distinguish its current effective mode
+  from a different mode selected for the next turn.
+- Approval callbacks must use the effective mode of the request's turn, not a
+  launch-time mode captured by a long-lived provider process.
+- Tightening a mode is never less important than loosening it. A UI that says
+  Ask must not leave the next turn running under a sticky Bypass policy.

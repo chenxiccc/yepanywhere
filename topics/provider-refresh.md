@@ -106,6 +106,8 @@ Primary sources:
 - `packages/server/src/sdk/providers/codex-protocol/README.md`;
 - `packages/server/src/sdk/providers/codex.ts`;
 - `packages/shared/src/codex-schema/`;
+- `topics/codex-permission-mode.md` for approval/sandbox coupling and live
+  turn-boundary invariants;
 - persisted JSONL under `~/.codex/sessions/`.
 
 Routine probes:
@@ -130,6 +132,9 @@ Difference detectors:
   `parseCodexSessionEntry()` returns raw unknown entries.
 - App-server turn, steer, interrupt, approval, user-input, raw-item, or token
   usage notifications change shape.
+- `turn/start` approval, `sandboxPolicy`, or named `permissions` fields change
+  shape or sticky-default semantics in a way that could break
+  [codex-permission-mode](codex-permission-mode.md).
 - Server startup warns that detected Codex version differs from
   `expectedVersion`; this alone is a trigger to run the checks above.
 
