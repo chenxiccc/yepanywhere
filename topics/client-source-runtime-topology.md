@@ -243,12 +243,39 @@ Likely UI shapes:
 The first architectural bar is simpler: no subsystem should make side-by-side
 sources impossible by hiding source or connection identity in a singleton.
 
-The first concrete product/E2E probe is now planned in
+The first concrete product/E2E probe is implemented in
 [`docs/tactical/066-multi-host-monitor-coexistence-harness.md`](../docs/tactical/066-multi-host-monitor-coexistence-harness.md):
-a hidden/default-off monitor backed by three real secure relay sources. It must
-first pass over today's independent relay sockets. A later relay mux may reduce
-the client-side socket count, but it is an optional transport optimization and
-must preserve the independent-socket fallback.
+a hidden/default-off monitor backed by three real secure relay sources. It
+passes over today's independent relay sockets. A later relay mux may reduce the
+client-side socket count, but it is an optional transport optimization and must
+preserve the independent-socket fallback.
+
+### Experimental monitor contract
+
+- The remote client owns `/-/monitor` outside the ordinary single-current-host
+  provider tree. Direct navigation is deliberate experimental access; the
+  normal remote UI exposes a link near **Switch Host** only when the
+  browser-local development setting is enabled.
+- Mounting the route selects all saved hosts and attempts resume only for hosts
+  with a stored session. A host without one is **Sign-in required** and does
+  not open a login dialog automatically.
+- Each host progresses independently through connecting, connected, offline,
+  or sign-in-required. `Connected N of M` counts ready sources only. One
+  source's failure never redirects or signs out healthy peers.
+- Connected cards show source-scoped activity, attention, and recent-session
+  summaries. Colliding project and YA-visible session ids on different servers
+  must resolve to the data from their own source.
+- An offline host can be retried independently. Stale or rejected resume state
+  is cleared only for the affected saved host and becomes an explicit sign-in
+  action.
+- Deactivating one source releases its transport/runtime while peer runtimes
+  remain usable. Leaving the route disposes every acquired connection,
+  subscription, activity lease, reconnect owner, and runtime; it must not keep
+  hidden background sockets alive.
+- The initial transport deliberately opens one ordinary browser-to-relay
+  WebSocket per selected relay host. Relay mux may change that physical count
+  only behind a new optional capability and must preserve this visible
+  behavior through legacy fallback.
 
 ## Concurrent Runtime Cost
 

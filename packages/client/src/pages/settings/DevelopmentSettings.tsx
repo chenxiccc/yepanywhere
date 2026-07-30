@@ -33,7 +33,8 @@ const sessionScrollMemoryModeDescriptionKeys: Record<
   SessionScrollMemoryModeDescriptionKey
 > = {
   "live-tail": "developmentSessionScrollMemoryModeLiveTailDescription",
-  "remember-place": "developmentSessionScrollMemoryModeRememberPlaceDescription",
+  "remember-place":
+    "developmentSessionScrollMemoryModeRememberPlaceDescription",
   "manual-follow": "developmentSessionScrollMemoryModeManualFollowDescription",
   "no-memory": "developmentSessionScrollMemoryModeNoMemoryDescription",
 };
@@ -62,15 +63,15 @@ export function DevelopmentSettings() {
   const { settings: validationSettings, setEnabled: setValidationEnabled } =
     useSchemaValidation();
   const {
+    multiHostMonitorEnabled,
+    setMultiHostMonitorEnabled,
     relayDebugEnabled,
     setRelayDebugEnabled,
     remoteLogCollectionEnabled,
     setRemoteLogCollectionEnabled,
   } = useDeveloperMode();
-  const {
-    sessionScrollBehaviorMode,
-    setSessionScrollBehaviorMode,
-  } = useSessionPerformanceSettings();
+  const { sessionScrollBehaviorMode, setSessionScrollBehaviorMode } =
+    useSessionPerformanceSettings();
   const { ignoredTools, clearIgnoredTools } = useSchemaValidationContext();
   const { settings: serverSettings, updateSetting: updateServerSetting } =
     useServerSettings();
@@ -80,6 +81,7 @@ export function DevelopmentSettings() {
       serverSettings
         ? {
             validationEnabled: validationSettings.enabled,
+            multiHostMonitorEnabled,
             relayDebugEnabled,
             remoteLogCollectionEnabled,
             sessionScrollBehaviorMode,
@@ -89,6 +91,7 @@ export function DevelopmentSettings() {
         : null,
     [
       validationSettings.enabled,
+      multiHostMonitorEnabled,
       relayDebugEnabled,
       remoteLogCollectionEnabled,
       serverSettings,
@@ -98,6 +101,7 @@ export function DevelopmentSettings() {
   const restoreUndoState = useCallback(
     (snapshot: NonNullable<typeof undoState>) => {
       setValidationEnabled(snapshot.validationEnabled);
+      setMultiHostMonitorEnabled(snapshot.multiHostMonitorEnabled);
       setRelayDebugEnabled(snapshot.relayDebugEnabled);
       setRemoteLogCollectionEnabled(snapshot.remoteLogCollectionEnabled);
       setSessionScrollBehaviorMode(snapshot.sessionScrollBehaviorMode);
@@ -112,6 +116,7 @@ export function DevelopmentSettings() {
     },
     [
       setValidationEnabled,
+      setMultiHostMonitorEnabled,
       setRelayDebugEnabled,
       setRemoteLogCollectionEnabled,
       setSessionScrollBehaviorMode,
@@ -181,6 +186,22 @@ export function DevelopmentSettings() {
             </button>
           </SettingsItem>
         )}
+        <SettingsItem
+          label={t("developmentMultiHostMonitorTitle")}
+          description={t("developmentMultiHostMonitorDescription")}
+        >
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              aria-label={t("developmentMultiHostMonitorTitle")}
+              checked={multiHostMonitorEnabled}
+              onChange={(event) =>
+                setMultiHostMonitorEnabled(event.target.checked)
+              }
+            />
+            <span className="toggle-slider" />
+          </label>
+        </SettingsItem>
         <SettingsItem
           label={t("developmentRelayDebugTitle")}
           description={t("developmentRelayDebugDescription")}

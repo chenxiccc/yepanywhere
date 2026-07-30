@@ -44,6 +44,7 @@ import { GitStatusPage } from "./pages/GitStatusPage";
 import { GlobalSessionsPage } from "./pages/GlobalSessionsPage";
 import { HostPickerPage } from "./pages/HostPickerPage";
 import { InboxPage } from "./pages/InboxPage";
+import { MultiHostMonitorPage } from "./pages/MultiHostMonitorPage";
 import { NewSessionPage } from "./pages/NewSessionPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
 import { PublicShareFilePage } from "./pages/PublicShareFilePage";
@@ -150,6 +151,7 @@ createRoot(rootElement).render(
             element={<PublicShareFilePage />}
           />
           <Route path="/remote/share/:secret" element={<PublicSharePage />} />
+          <Route path="/-/monitor" element={<MultiHostMonitorPage />} />
           <Route
             path="*"
             element={

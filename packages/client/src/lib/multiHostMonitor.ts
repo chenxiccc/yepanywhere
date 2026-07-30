@@ -182,6 +182,17 @@ export class MultiHostMonitorController {
     void this.connectRecord(record);
   }
 
+  deactivateHost(hostId: string): void {
+    if (this.disposed) return;
+    const record = this.records.get(hostId);
+    if (!record) return;
+    record.abortController?.abort();
+    record.unsubscribe?.();
+    record.connection?.dispose();
+    this.records.delete(hostId);
+    this.emit();
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -301,6 +312,7 @@ function isSignInRequiredError(error: unknown): boolean {
     normalized.includes("authentication") ||
     normalized.includes("invalid_identity") ||
     normalized.includes("resume_incompatible") ||
+    normalized.includes("session invalid") ||
     normalized.includes("session resume") ||
     normalized.includes("unauthorized")
   );

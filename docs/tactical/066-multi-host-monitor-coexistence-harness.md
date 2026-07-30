@@ -1,7 +1,7 @@
 # Multi-Host Monitor And Coexistence Harness
 
-Status: Planned. Implement the existing-transport proof first. Relay
-multiplexing is a separate, gated follow-up.
+Status: Existing-transport series landed 2026-07-30. Relay multiplexing is a
+separate, compatibility-gated follow-up.
 
 Topic: client-source-runtime-topology
 Topic: source-transport
@@ -250,9 +250,7 @@ Status: Landed 2026-07-30.
 
 ### Slice A1 — secure relay coexistence proof
 
-Status: Baseline landed 2026-07-30. The three-source success/collision path,
-controller ownership tests, and ordinary relay regressions are green. Real
-partial-failure and route-teardown browser cases remain in A3.
+Status: Landed 2026-07-30.
 
 - Provision three real relay/SRP sessions.
 - Instantiate three source runtimes without adding the monitor UI.
@@ -263,6 +261,8 @@ partial-failure and route-teardown browser cases remain in A3.
 
 ### Slice A2 — experimental monitor
 
+Status: Landed 2026-07-30.
+
 - Add the hidden route and optional development-setting link.
 - Add explicit cross-source selectors/controller state; do not repurpose a
   hidden global current-source selector.
@@ -271,10 +271,30 @@ partial-failure and route-teardown browser cases remain in A3.
 
 ### Slice A3 — failure and lifecycle gate
 
+Status: Landed 2026-07-30. The existing-transport exit gate is green.
+
 - Add offline, stale-session, late-disconnect, and route-teardown scenarios.
 - Verify warning-free focused tests, lint, typecheck, client console budget,
   and the full relevant E2E suite.
 - Capture and inspect the final result at 1920x1080 and 375x812.
+
+The browser suite now covers visible three-host enrollment, genuine SRP
+provisioning, three ordinary relay sockets, colliding project/session ids,
+offline and stale-session isolation, a connected source dropping, explicit
+single-source disposal followed by successful requests through both peers, and
+route teardown returning all relay targets to waiting.
+
+Reviewed final captures:
+
+- `.artifacts/ui-testing/2026-07-30-multi-host-monitor/multi-host-monitor-desktop.png`
+  (1920x1080)
+- `.artifacts/ui-testing/2026-07-30-multi-host-monitor/multi-host-monitor-phone.png`
+  (375x812)
+
+The reviewed layouts keep the experiment label and saved-host escape visible,
+use one card per source with clear readiness and summary grouping, collapse to
+one column without horizontal overflow, and leave the third phone card
+reachable by normal vertical scrolling.
 
 ## Exit Gate Before Relay Mux
 

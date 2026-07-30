@@ -16,6 +16,7 @@ import type { PublicShareStatusResponse } from "../../api/client";
 import { RemoteAccessSetup } from "../../components/RemoteAccessSetup";
 import { useHostIdentity } from "../../contexts/HostIdentityContext";
 import { useOptionalRemoteConnection } from "../../contexts/RemoteConnectionContext";
+import { useDeveloperMode } from "../../hooks/useDeveloperMode";
 import { usePublicShareStatus } from "../../hooks/usePublicShareStatus";
 import { useHostAwakeStatus } from "../../hooks/useHostAwakeStatus";
 import { useServerSettings } from "../../hooks/useServerSettings";
@@ -342,6 +343,7 @@ export function RemoteAccessSettings() {
   useSettingsPaneTitle(t("settingsRemoteTitle"));
   const navigate = useNavigate();
   const remoteConnection = useOptionalRemoteConnection();
+  const { multiHostMonitorEnabled } = useDeveloperMode();
   const { supported: hostIdentitySupported } = useHostIdentity();
   const { version } = useVersion();
   const hostAwakeSupported = serverHasCapability(
@@ -562,13 +564,24 @@ export function RemoteAccessSettings() {
             label={t("remoteAccessCurrentHostTitle")}
             description={displayName}
           >
-            <button
-              type="button"
-              className="settings-button"
-              onClick={handleSwitchHost}
-            >
-              {t("sidebarSwitchHost")}
-            </button>
+            <div className="settings-item-actions">
+              <button
+                type="button"
+                className="settings-button"
+                onClick={handleSwitchHost}
+              >
+                {t("sidebarSwitchHost")}
+              </button>
+              {multiHostMonitorEnabled && (
+                <button
+                  type="button"
+                  className="settings-button settings-button-secondary"
+                  onClick={() => navigate("/-/monitor")}
+                >
+                  {t("multiHostMonitorOpen")}
+                </button>
+              )}
+            </div>
           </SettingsItem>
           {hostIdentityItem}
           <SettingsItem

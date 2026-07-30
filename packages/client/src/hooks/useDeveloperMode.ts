@@ -2,6 +2,8 @@ import { useCallback, useSyncExternalStore } from "react";
 import { UI_KEYS } from "../lib/storageKeys";
 
 interface DeveloperModeSettings {
+  /** Expose the experimental all-hosts monitor link */
+  multiHostMonitorEnabled: boolean;
   /** Log relay requests/responses to console for debugging */
   relayDebugEnabled: boolean;
   /** Capture connection logs and send to server for debugging */
@@ -11,6 +13,7 @@ interface DeveloperModeSettings {
 }
 
 const DEFAULT_SETTINGS: DeveloperModeSettings = {
+  multiHostMonitorEnabled: false,
   relayDebugEnabled: false,
   remoteLogCollectionEnabled: false,
   showConnectionBars: false,
@@ -31,6 +34,9 @@ function normalizeSettings(raw: unknown): DeveloperModeSettings {
   }
   const parsed = raw as Partial<DeveloperModeSettings>;
   return {
+    multiHostMonitorEnabled:
+      parsed.multiHostMonitorEnabled ??
+      DEFAULT_SETTINGS.multiHostMonitorEnabled,
     relayDebugEnabled:
       parsed.relayDebugEnabled ?? DEFAULT_SETTINGS.relayDebugEnabled,
     remoteLogCollectionEnabled:
@@ -43,7 +49,8 @@ function normalizeSettings(raw: unknown): DeveloperModeSettings {
 
 function loadSettings(): DeveloperModeSettings {
   const storage = getBrowserLocalStorage();
-  if (!storage || typeof storage.getItem !== "function") return DEFAULT_SETTINGS;
+  if (!storage || typeof storage.getItem !== "function")
+    return DEFAULT_SETTINGS;
   const stored = storage.getItem(UI_KEYS.developerMode);
   if (!stored) return DEFAULT_SETTINGS;
   try {
@@ -102,6 +109,10 @@ export function __resetDeveloperModeForTest(): void {
 export function useDeveloperMode() {
   const settings = useSyncExternalStore(subscribe, getSnapshot);
 
+  const setMultiHostMonitorEnabled = useCallback((enabled: boolean) => {
+    updateSettings({ ...currentSettings, multiHostMonitorEnabled: enabled });
+  }, []);
+
   const setRelayDebugEnabled = useCallback((enabled: boolean) => {
     updateSettings({ ...currentSettings, relayDebugEnabled: enabled });
   }, []);
@@ -116,6 +127,8 @@ export function useDeveloperMode() {
   }, []);
 
   return {
+    multiHostMonitorEnabled: settings.multiHostMonitorEnabled,
+    setMultiHostMonitorEnabled,
     relayDebugEnabled: settings.relayDebugEnabled,
     setRelayDebugEnabled,
     remoteLogCollectionEnabled: settings.remoteLogCollectionEnabled,

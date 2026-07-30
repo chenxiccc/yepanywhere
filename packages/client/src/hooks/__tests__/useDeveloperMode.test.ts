@@ -21,11 +21,29 @@ describe("useDeveloperMode", () => {
     __resetDeveloperModeForTest();
   });
 
-  it("defaults remote log collection to disabled", () => {
+  it("defaults experimental developer features to disabled", () => {
     const { result } = renderHook(() => useDeveloperMode());
 
+    expect(result.current.multiHostMonitorEnabled).toBe(false);
     expect(result.current.remoteLogCollectionEnabled).toBe(false);
     expect(getRemoteLogCollectionEnabled()).toBe(false);
+  });
+
+  it("persists and publishes the all-hosts monitor toggle", () => {
+    const { result: first } = renderHook(() => useDeveloperMode());
+    const { result: second } = renderHook(() => useDeveloperMode());
+
+    act(() => {
+      first.current.setMultiHostMonitorEnabled(true);
+    });
+
+    expect(first.current.multiHostMonitorEnabled).toBe(true);
+    expect(second.current.multiHostMonitorEnabled).toBe(true);
+    expect(
+      JSON.parse(localStorage.getItem(UI_KEYS.developerMode) ?? "{}"),
+    ).toMatchObject({
+      multiHostMonitorEnabled: true,
+    });
   });
 
   it("persists and publishes remote log collection updates", () => {

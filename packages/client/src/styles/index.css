@@ -344,11 +344,7 @@
      Content overlap decreases linearly from 600px to exact separation at
      1600px, independent of the 1100px sidebar mode switch. Floats reserve
      the remaining overlap plus a 2px activation gap. */
-  --turn-rail-content-padding-inline-end: clamp(
-    12px,
-    calc(1vw + 6px),
-    22px
-  );
+  --turn-rail-content-padding-inline-end: clamp(12px, calc(1vw + 6px), 22px);
   --turn-rail-float-inset-inline-end: max(
     2px,
     calc(24px - var(--turn-rail-content-padding-inline-end))
@@ -356,11 +352,7 @@
   /* Preserve the 2px phone edge, then grow continuously to the 8px desktop
      edge at 1600px. A breakpoint jump here visibly reverses the composer's
      right edge while the viewport is growing. */
-  --composer-window-padding-inline: clamp(
-    2px,
-    calc(0.6vw - 1.6px),
-    8px
-  );
+  --composer-window-padding-inline: clamp(2px, calc(0.6vw - 1.6px), 8px);
   --blame-author-color-lightness: 0.78;
   --blame-author-color-chroma: 0.13;
 
@@ -9241,7 +9233,7 @@ div.bang-command-error-message {
    so the previous preview disappearing at turn end causes no shrink — and thus
    no autofollow flicker. See topics/responsive-layout-gaps.md. */
 .conversation-thinking-preview[data-preview-slot="previous"]
-  .conversation-thinking-preview-content {
+.conversation-thinking-preview-content {
   max-height: var(--conversation-thinking-height, min(40vh, 24rem));
 }
 
@@ -17493,6 +17485,276 @@ div.bang-command-error-message {
 
 .host-picker-add-title {
   margin-top: var(--space-4);
+}
+
+/* ==========================================================================
+   Experimental all-hosts monitor
+   ========================================================================== */
+
+.multi-host-page {
+  min-height: 100dvh;
+  padding: clamp(var(--space-4), 4vw, calc(var(--space-4) * 2));
+  color: var(--text-primary);
+  background: var(--bg-surface);
+}
+
+.multi-host-shell {
+  width: min(100%, 72rem);
+  margin: 0 auto;
+}
+
+.multi-host-page-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--space-4);
+  align-items: center;
+  padding-bottom: calc(var(--space-4) + var(--space-1));
+  border-bottom: 1px solid var(--border-color);
+}
+
+.multi-host-brand {
+  display: flex;
+  color: inherit;
+}
+
+.multi-host-brand .yep-anywhere-logo-icon {
+  width: 2.5rem;
+  height: 2.5rem;
+}
+
+.multi-host-brand .yep-anywhere-logo-text {
+  display: none;
+}
+
+.multi-host-heading h1,
+.multi-host-card h2,
+.multi-host-card h3,
+.multi-host-empty h2 {
+  margin: 0;
+}
+
+.multi-host-title-row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.multi-host-title-row h1 {
+  font-size: 20px;
+}
+
+.multi-host-title-row span,
+.multi-host-state {
+  padding: 0.3rem 0.5rem;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  line-height: 1;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+}
+
+.multi-host-heading > p {
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.multi-host-connection-count {
+  margin: calc(var(--space-4) + var(--space-1)) 0 var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.multi-host-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.multi-host-card {
+  min-width: 0;
+  padding: var(--space-4);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+}
+
+.multi-host-card--connected {
+  border-color: color-mix(
+    in srgb,
+    var(--success-color) 35%,
+    var(--border-color)
+  );
+}
+
+.multi-host-card--offline,
+.multi-host-card--sign-in-required {
+  border-color: color-mix(in srgb, var(--error-color) 25%, var(--border-color));
+}
+
+.multi-host-card-header,
+.multi-host-card-identity {
+  display: flex;
+  align-items: center;
+}
+
+.multi-host-card-header {
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.multi-host-card-identity {
+  min-width: 0;
+  gap: var(--space-2);
+}
+
+.multi-host-card h2 {
+  overflow: hidden;
+  font-size: var(--font-size-base);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.multi-host-card-endpoint {
+  margin: 0.2rem 0 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.multi-host-status {
+  width: 0.55rem;
+  height: 0.55rem;
+  flex: 0 0 auto;
+  background: var(--text-muted);
+  border-radius: 50%;
+}
+
+.multi-host-status--connecting {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.multi-host-status--connected {
+  background: var(--success-color);
+}
+
+.multi-host-status--offline,
+.multi-host-status--sign-in-required {
+  background: var(--error-color);
+}
+
+.multi-host-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin: var(--space-4) 0;
+}
+
+.multi-host-metrics > div {
+  padding: var(--space-3);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+}
+
+.multi-host-metrics dt {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.multi-host-metrics dd {
+  margin: var(--space-1) 0 0;
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+}
+
+.multi-host-sessions h3 {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.multi-host-sessions ul {
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.multi-host-sessions li {
+  overflow: hidden;
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--border-color);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.multi-host-sessions a {
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.multi-host-sessions a:hover {
+  color: var(--link-color);
+}
+
+.multi-host-empty-sessions {
+  margin: var(--space-3) 0 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.multi-host-card-action {
+  display: flex;
+  min-height: 7rem;
+  align-items: center;
+  justify-content: center;
+}
+
+.multi-host-empty {
+  max-width: 30rem;
+  margin: 15vh auto 0;
+  padding: calc(var(--space-4) + var(--space-2));
+  text-align: center;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+}
+
+.multi-host-empty p {
+  margin: var(--space-2) 0 var(--space-4);
+  color: var(--text-muted);
+}
+
+@media (max-width: 40rem) {
+  .multi-host-page {
+    padding: var(--space-3);
+  }
+
+  .multi-host-page-header {
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: var(--space-3);
+  }
+
+  .multi-host-page-header > .settings-button {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+    text-align: center;
+  }
+
+  .multi-host-heading > p {
+    display: none;
+  }
+
+  .multi-host-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .multi-host-card {
+    padding: var(--space-3);
+  }
 }
 
 /* ==========================================================================

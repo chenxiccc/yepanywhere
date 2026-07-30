@@ -180,6 +180,32 @@ describe("MultiHostMonitorController", () => {
     ]);
   });
 
+  it("disposes one source without disturbing its healthy peer", async () => {
+    const alpha = new FakeConnection("ready", "Alpha");
+    const beta = new FakeConnection("ready", "Beta");
+    const controller = new MultiHostMonitorController(
+      [savedHost("alpha"), savedHost("beta")],
+      async (host) => (host.id === "alpha" ? alpha : beta),
+    );
+    controller.start();
+    await vi.waitFor(() => {
+      expect(controller.getSnapshot().connectedCount).toBe(2);
+    });
+
+    controller.deactivateHost("alpha");
+
+    expect(alpha.dispose).toHaveBeenCalledOnce();
+    expect(beta.dispose).not.toHaveBeenCalled();
+    expect(controller.getSnapshot()).toMatchObject({
+      connectedCount: 1,
+      hosts: [{ hostId: "beta", state: "connected" }],
+      selectedCount: 1,
+    });
+
+    beta.update("reconnecting");
+    expect(controller.getSnapshot().hosts[0]?.state).toBe("connecting");
+  });
+
   it("disposes a late connection after route teardown", async () => {
     const pending = deferred<MultiHostMonitorConnection>();
     const connection = new FakeConnection("ready", "Late");
