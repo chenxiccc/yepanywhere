@@ -33,7 +33,6 @@ import {
   type DraftControls,
   useDraftPersistence,
 } from "../hooks/useDraftPersistence";
-import { useSpeechCaptureSettings } from "../hooks/useSpeechCaptureSettings";
 import { useSessionToolbarPresence } from "../hooks/useSessionToolbarPresence";
 import { useVersion } from "../hooks/useVersion";
 import { useI18n } from "../i18n";
@@ -66,6 +65,7 @@ import {
   clearSpeechInsertionRangeReplacement,
   createSpeechInsertionRange,
   getSpeechSelectionFinalDelayMs,
+  getSpeechInterimDisplayTranscript,
   getSpeechTranscriptInsertionParts,
   getSpeechTranscriptReplacementParts,
   mapSpeechInsertionRangeThroughEdit,
@@ -395,7 +395,6 @@ export function MessageInput({
   turnRecall,
 }: Props) {
   const { t } = useI18n();
-  const { smoothPausedCapitalization } = useSpeechCaptureSettings();
   const { visibility: toolbarVisibility } = useSessionToolbarPresence();
   const [text, setText, controls] = useDraftPersistence(draftKey, {
     sessionDraft: draftIndex,
@@ -575,11 +574,15 @@ export function MessageInput({
       attachments.length === 0 &&
       uploadProgress.length === 0
     : !!(text.trim() || attachments.length > 0);
-  const interimDisplayTranscript = interimTranscript.trim();
+  const speechInsertionRange = speechInsertionRangeRef.current;
+  const interimDisplayTranscript = getSpeechInterimDisplayTranscript(
+    text,
+    interimTranscript,
+    speechInsertionRange,
+  );
   // Only mutable provisional speech uses the textarea mirror. Capture and
   // post-capture status live with the mic so the real draft and caret stay
   // untouched while transcription is pending.
-  const speechInsertionRange = speechInsertionRangeRef.current;
   const interimInsertion = speechInsertionRange
     ? getSpeechTranscriptReplacementParts(
         text,
@@ -2153,7 +2156,6 @@ export function MessageInput({
           onSmartTurnSend: handleSubmit,
           composerEditedDuringSpeech: () =>
             composerEditedDuringSpeechRef.current,
-          smoothPausedCapitalization,
         },
         transcript,
         metadata,
@@ -2170,7 +2172,7 @@ export function MessageInput({
         setSpeechPreviewRevision((revision) => revision + 1);
       }
     },
-    [controls, handleSubmit, noteComposerEdit, smoothPausedCapitalization],
+    [controls, handleSubmit, noteComposerEdit],
   );
 
   const handleVoiceTranscript = useCallback(

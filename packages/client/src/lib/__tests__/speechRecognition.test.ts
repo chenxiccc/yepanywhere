@@ -4,6 +4,7 @@ import {
   appendSpeechTranscript,
   computeSpeechDelta,
   createSpeechInsertionRange,
+  getSpeechInterimDisplayTranscript,
   getSpeechSelectionFinalDelayMs,
   getSpeechTranscriptInsertionParts,
   getSpeechTranscriptReplacementParts,
@@ -289,6 +290,71 @@ describe("speech transcript text edits", () => {
       replacementStart: "prefix first.".length,
       replacementEnd: "prefix first. second.".length,
     });
+  });
+
+  it("smooths ordinary capitalization on later mid-sentence chunks", () => {
+    const first = replaceSpeechTranscriptInRange(
+      "",
+      "This is",
+      createSpeechInsertionRange(0, 0),
+      0,
+    );
+    const second = replaceSpeechTranscriptInRange(
+      first.text,
+      "The next part",
+      first.range,
+      0,
+    );
+
+    expect(second.text).toBe("This is the next part");
+  });
+
+  it("shows later provisional chunks with their committed capitalization", () => {
+    const first = replaceSpeechTranscriptInRange(
+      "",
+      "This is",
+      createSpeechInsertionRange(0, 0),
+      0,
+    );
+
+    expect(
+      getSpeechInterimDisplayTranscript(
+        first.text,
+        "The next part",
+        first.range,
+      ),
+    ).toBe("the next part");
+    expect(
+      getSpeechInterimDisplayTranscript(
+        "",
+        "The first part",
+        createSpeechInsertionRange(0, 0),
+      ),
+    ).toBe("The first part");
+  });
+
+  it("preserves sentence starts, acronyms, letters, and likely names", () => {
+    const append = (firstChunk: string, secondChunk: string) => {
+      const first = replaceSpeechTranscriptInRange(
+        "",
+        firstChunk,
+        createSpeechInsertionRange(0, 0),
+        0,
+      );
+      return replaceSpeechTranscriptInRange(
+        first.text,
+        secondChunk,
+        first.range,
+        0,
+      ).text;
+    };
+
+    expect(append("This ended.", "The next part")).toBe(
+      "This ended. The next part",
+    );
+    expect(append("Call it", "API")).toBe("Call it API");
+    expect(append("Call it", "J")).toBe("Call it J");
+    expect(append("Use", "Android")).toBe("Use Android");
   });
 
   it("maps a speech-owned range across user edits before it", () => {

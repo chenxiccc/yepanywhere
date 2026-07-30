@@ -13,7 +13,6 @@ import { useDraftPersistence } from "../hooks/useDraftPersistence";
 import { createFabDraftKey } from "../hooks/useDrafts";
 import { useFabVisibility } from "../hooks/useFabVisibility";
 import { useFloatingActionButtonEnabled } from "../hooks/useFloatingActionButtonEnabled";
-import { useSpeechCaptureSettings } from "../hooks/useSpeechCaptureSettings";
 import { setRecentProjectId } from "../hooks/useRecentProject";
 import { setNewSessionPrefill } from "../lib/newSessionPrefill";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
@@ -24,6 +23,7 @@ import {
   clearSpeechInsertionRangeReplacement,
   createSpeechInsertionRange,
   getSpeechSelectionFinalDelayMs,
+  getSpeechInterimDisplayTranscript,
   getSpeechTranscriptInsertionParts,
   getSpeechTranscriptReplacementParts,
   mapSpeechInsertionRangeThroughEdit,
@@ -85,7 +85,6 @@ interface PendingSpeechFinal {
  */
 export function FloatingActionButton() {
   const { t } = useI18n();
-  const { smoothPausedCapitalization } = useSpeechCaptureSettings();
   const navigate = useNavigate();
   const location = useLocation();
   const basePath = useRemoteBasePath();
@@ -118,11 +117,15 @@ export function FloatingActionButton() {
   const composerEditedDuringSpeechRef = useRef(false);
   const pendingTextareaSelectionRef =
     useRef<PendingTextareaSelectionRestore | null>(null);
-  const interimDisplayTranscript = interimTranscript.trim();
+  const speechInsertionRange = speechInsertionRangeRef.current;
+  const interimDisplayTranscript = getSpeechInterimDisplayTranscript(
+    message,
+    interimTranscript,
+    speechInsertionRange,
+  );
   // Only mutable provisional speech uses the textarea mirror. Capture and
   // post-capture status live with the mic so the real draft and caret stay
   // untouched while transcription is pending.
-  const speechInsertionRange = speechInsertionRangeRef.current;
   const interimInsertion = speechInsertionRange
     ? getSpeechTranscriptReplacementParts(
         message,
@@ -373,7 +376,6 @@ export function FloatingActionButton() {
           onSmartTurnSend: handleSubmit,
           composerEditedDuringSpeech: () =>
             composerEditedDuringSpeechRef.current,
-          smoothPausedCapitalization,
         },
         transcript,
         metadata,
@@ -389,7 +391,7 @@ export function FloatingActionButton() {
         setSpeechPreviewRevision((revision) => revision + 1);
       }
     },
-    [draftControls, handleSubmit, smoothPausedCapitalization],
+    [draftControls, handleSubmit],
   );
 
   const handleVoiceTranscript = useCallback(

@@ -55,6 +55,24 @@ when the selected text starts lowercase and the replacement context is not
 sentence-initial. It must not do this for collapsed-cursor insertion or for
 all-caps/acronym-looking words.
 
+Across separate finalized chunks in one mic transaction, YA also smooths a
+provider-created capitalization boundary when the new chunk begins with a
+conservative allowlist of ordinary continuation words in mid-sentence context.
+This behavior is always active and has no setting. It applies only after at
+least one chunk has committed, never to provider revisions or explicit
+selected-span replacements, and preserves sentence starts, acronyms, single
+letters, and unlisted title-case words such as likely names. A provisional
+preview for such a later chunk uses the same normalization, so capitalization
+does not visibly change merely because the chunk commits.
+
+For browser-native Web Speech, YA feature-detects the
+`SpeechRecognition.unspokenPunctuation` property and enables it when present.
+Recognizers without that property must continue normally with their raw
+transcripts; browser support is detected from the recognition instance rather
+than inferred from a user-agent string. The capitalization fallback above
+remains active because older Chrome and Android do not provide inferred
+punctuation through this interface.
+
 ## Streaming Behavior
 
 Streaming providers may emit mutable interim text, finalized chunks

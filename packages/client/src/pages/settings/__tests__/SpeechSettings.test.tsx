@@ -32,8 +32,6 @@ const modelSettings = vi.hoisted(() => {
 const speechCaptureSettings = vi.hoisted(() => ({
   keepMicWarm: false,
   setKeepMicWarm: vi.fn(),
-  smoothPausedCapitalization: false,
-  setSmoothPausedCapitalization: vi.fn(),
 }));
 const browserXaiKey = vi.hoisted(() => ({
   browserXaiSttApiKey: "",
@@ -112,7 +110,6 @@ describe("SpeechSettings", () => {
     modelSettings.setSpeechMethod.mockClear();
     modelSettings.setParakeetSpeechModel.mockClear();
     speechCaptureSettings.setKeepMicWarm.mockClear();
-    speechCaptureSettings.setSmoothPausedCapitalization.mockClear();
     browserXaiKey.setBrowserXaiSttApiKey.mockClear();
     prewarmYaServerSpeechBackend.mockClear();
   });
@@ -134,18 +131,6 @@ describe("SpeechSettings", () => {
       "ya-parakeet",
       "nvidia/parakeet-ctc-1.1b",
     );
-  });
-
-  it("updates paused-capitalization smoothing", () => {
-    render(<SpeechSettings />);
-
-    fireEvent.click(
-      screen.getByLabelText("speechSettingsSmoothCapitalizationTitle"),
-    );
-
-    expect(
-      speechCaptureSettings.setSmoothPausedCapitalization,
-    ).toHaveBeenCalledWith(true);
   });
 
   it("shows a validating backend immediately but does not allow selection", () => {

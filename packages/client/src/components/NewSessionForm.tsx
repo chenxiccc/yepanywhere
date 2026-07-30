@@ -54,7 +54,6 @@ import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useRemoteExecutors } from "../hooks/useRemoteExecutors";
 import { useServerSettings } from "../hooks/useServerSettings";
 import { useSessionToolbarPresence } from "../hooks/useSessionToolbarPresence";
-import { useSpeechCaptureSettings } from "../hooks/useSpeechCaptureSettings";
 import { useI18n } from "../i18n";
 import {
   getEffortLevelOptions,
@@ -154,6 +153,7 @@ import {
   clearSpeechInsertionRangeReplacement,
   createSpeechInsertionRange,
   getSpeechSelectionFinalDelayMs,
+  getSpeechInterimDisplayTranscript,
   getSpeechTranscriptInsertionParts,
   getSpeechTranscriptReplacementParts,
   mapSpeechInsertionRangeThroughEdit,
@@ -251,7 +251,6 @@ export function NewSessionForm({
   preferredModel,
 }: NewSessionFormProps) {
   const { t } = useI18n();
-  const { smoothPausedCapitalization } = useSpeechCaptureSettings();
   const navigate = useNavigate();
   const basePath = useRemoteBasePath();
   const clientSummarySourceKey = useClientSummarySourceKey();
@@ -2336,7 +2335,6 @@ export function NewSessionForm({
           },
           composerEditedDuringSpeech: () =>
             composerEditedDuringSpeechRef.current,
-          smoothPausedCapitalization,
         },
         transcript,
         metadata,
@@ -2352,7 +2350,7 @@ export function NewSessionForm({
         setSpeechPreviewRevision((revision) => revision + 1);
       }
     },
-    [draftControls, handleStartSession, smoothPausedCapitalization],
+    [draftControls, handleStartSession],
   );
 
   const handleVoiceTranscript = useCallback(
@@ -2482,11 +2480,15 @@ export function NewSessionForm({
         ? t("toolbarProjectQueueTooltipWithShortcut")
         : t("toolbarProjectQueueTooltip")
       : t("projectQueueNewSessionNeedsProject");
-  const interimDisplayTranscript = interimTranscript.trim();
+  const speechInsertionRange = speechInsertionRangeRef.current;
+  const interimDisplayTranscript = getSpeechInterimDisplayTranscript(
+    message,
+    interimTranscript,
+    speechInsertionRange,
+  );
   // Only mutable provisional speech uses the textarea mirror. Capture and
   // post-capture status live with the mic so the real draft and caret stay
   // untouched while transcription is pending.
-  const speechInsertionRange = speechInsertionRangeRef.current;
   const interimInsertion = speechInsertionRange
     ? getSpeechTranscriptReplacementParts(
         message,

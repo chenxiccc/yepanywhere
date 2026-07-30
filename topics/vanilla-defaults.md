@@ -115,6 +115,15 @@ explicit product decision: Agents is already the process-inventory surface,
 and standard process metrics plus independently launched agent processes make
 that purpose useful without changing session or provider behavior elsewhere.
 
+[mic-button-speech-ui](mic-button-speech-ui.md) treats conservative
+mid-sentence capitalization smoothing as built-in speech-input behavior, with
+no preference. Some recognizers title-case every finalized phrase after a
+pause; YA lowercases only an allowlist of ordinary continuation words on a
+second or later chunk in the same mic transaction. Sentence starts, provider
+revisions, acronyms, single letters, and unlisted title-case words remain
+provider-verbatim. Authorized by Kyle on 2026-07-30 as an explicit product
+decision after observing the pause-boundary behavior interactively.
+
 ## Worked instances: queued-turn delivery
 
 [compose-time-context-anchors](compose-time-context-anchors.md)

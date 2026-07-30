@@ -469,19 +469,51 @@ describe("browser-native speech provider", () => {
     }
   }
 
-  function installFakeSpeechRecognition(): typeof FakeSpeechRecognition {
+  function installFakeSpeechRecognition(
+    Recognition = FakeSpeechRecognition,
+  ): typeof FakeSpeechRecognition {
     FakeSpeechRecognition.instance = null;
     Object.defineProperty(window, "webkitSpeechRecognition", {
       configurable: true,
-      value: FakeSpeechRecognition,
+      value: Recognition,
     });
-    return FakeSpeechRecognition;
+    return Recognition;
   }
 
   it("does not expose prewarm, avoiding browser-owned recording indicators", () => {
     const provider = new BrowserNativeProvider();
 
     expect("prewarm" in provider).toBe(false);
+  });
+
+  it("enables inferred punctuation when the recognizer supports it", () => {
+    class PunctuatedSpeechRecognition extends FakeSpeechRecognition {
+      unspokenPunctuation = false;
+    }
+    const Recognition = installFakeSpeechRecognition(
+      PunctuatedSpeechRecognition,
+    );
+    const provider = new BrowserNativeProvider();
+
+    provider.start();
+
+    expect(
+      (Recognition.instance as PunctuatedSpeechRecognition | null)
+        ?.unspokenPunctuation,
+    ).toBe(true);
+    provider.dispose();
+  });
+
+  it("starts normally when inferred punctuation is unsupported", () => {
+    const Recognition = installFakeSpeechRecognition();
+    const provider = new BrowserNativeProvider();
+
+    provider.start();
+
+    expect(Recognition.instance?.continuous).toBe(true);
+    expect(Recognition.instance?.interimResults).toBe(true);
+    expect("unspokenPunctuation" in (Recognition.instance ?? {})).toBe(false);
+    provider.dispose();
   });
 
   it("keeps browser-native amber until Chrome reports audio capture", () => {

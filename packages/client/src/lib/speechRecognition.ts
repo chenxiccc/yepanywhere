@@ -273,6 +273,34 @@ export function smoothPausedSpeechCapitalization(
   return lowercaseInitialTitleCaseWord(trimmedTranscript);
 }
 
+/**
+ * Apply the same pause-boundary treatment to provisional text that a normal
+ * finalized chunk at this speech range will receive. This keeps the mirror
+ * from visibly changing capitalization when the chunk commits.
+ */
+export function getSpeechInterimDisplayTranscript(
+  base: string,
+  transcript: string,
+  range: SpeechInsertionRange | null,
+): string {
+  const trimmedTranscript = transcript.trim();
+  const replacingExplicitRange =
+    range !== null && (range.replaceEnd ?? range.end) > range.end;
+  if (
+    !range ||
+    range.chunks.length === 0 ||
+    replacingExplicitRange ||
+    !trimmedTranscript
+  ) {
+    return trimmedTranscript;
+  }
+  return smoothPausedSpeechCapitalization(
+    base,
+    trimmedTranscript,
+    range.end,
+  );
+}
+
 function normalizeSpeechTranscriptForReplacementContext(
   base: string,
   transcript: string,
@@ -360,14 +388,6 @@ export function replaceSpeechTranscriptBefore(
 
 export interface SpeechRangeReplacement extends SpeechTranscriptReplacement {
   range: SpeechInsertionRange;
-}
-
-export interface SpeechRangeReplacementOptions {
-  /**
-   * Smooth ordinary title-cased continuation words on a second or later
-   * provider chunk. Default false: this changes provider-returned text.
-   */
-  smoothPausedCapitalization?: boolean;
 }
 
 export function createSpeechInsertionRange(
@@ -526,7 +546,6 @@ export function replaceSpeechTranscriptInRange(
   transcript: string,
   range: SpeechInsertionRange,
   previousChars: number,
-  options: SpeechRangeReplacementOptions = {},
 ): SpeechRangeReplacement {
   const replacementEnd = Math.max(range.end, range.replaceEnd ?? range.end);
   const replacingExplicitRange =
@@ -542,7 +561,6 @@ export function replaceSpeechTranscriptInRange(
     Math.min(replacementEnd, base.length),
   );
   const normalizedTranscript =
-    options.smoothPausedCapitalization === true &&
     range.chunks.length > 0 &&
     previousChars === 0 &&
     !replacingExplicitRange

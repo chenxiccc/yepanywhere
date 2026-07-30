@@ -59,12 +59,7 @@ export function SpeechSettings() {
   } = useModelSettings();
   const parakeetModelPresetId = useId();
   const parakeetModelInputId = useId();
-  const {
-    keepMicWarm,
-    setKeepMicWarm,
-    smoothPausedCapitalization,
-    setSmoothPausedCapitalization,
-  } = useSpeechCaptureSettings();
+  const { keepMicWarm, setKeepMicWarm } = useSpeechCaptureSettings();
   const {
     browserXaiSttApiKey,
     hasBrowserXaiSttApiKey,
@@ -78,7 +73,6 @@ export function SpeechSettings() {
       speechMethod,
       speechSmartTurnSettings,
       keepMicWarm,
-      smoothPausedCapitalization,
       parakeetSpeechModel,
     }),
     [
@@ -86,7 +80,6 @@ export function SpeechSettings() {
       speechMethod,
       speechSmartTurnSettings,
       keepMicWarm,
-      smoothPausedCapitalization,
       parakeetSpeechModel,
     ],
   );
@@ -96,7 +89,6 @@ export function SpeechSettings() {
       setSpeechMethod(snapshot.speechMethod);
       setSpeechSmartTurnSettings(snapshot.speechSmartTurnSettings);
       setKeepMicWarm(snapshot.keepMicWarm);
-      setSmoothPausedCapitalization(snapshot.smoothPausedCapitalization);
       setParakeetSpeechModel(snapshot.parakeetSpeechModel);
     },
     [
@@ -104,7 +96,6 @@ export function SpeechSettings() {
       setSpeechMethod,
       setSpeechSmartTurnSettings,
       setKeepMicWarm,
-      setSmoothPausedCapitalization,
       setParakeetSpeechModel,
     ],
   );
@@ -410,23 +401,6 @@ export function SpeechSettings() {
               checked={keepMicWarm}
               onChange={(event) => setKeepMicWarm(event.target.checked)}
               aria-label={t("speechSettingsKeepMicWarmTitle")}
-            />
-            <span className="toggle-slider" />
-          </label>
-        </SettingsItem>
-
-        <SettingsItem
-          label={t("speechSettingsSmoothCapitalizationTitle")}
-          description={t("speechSettingsSmoothCapitalizationDescription")}
-        >
-          <label className="toggle-switch">
-            <input
-              type="checkbox"
-              checked={smoothPausedCapitalization}
-              onChange={(event) =>
-                setSmoothPausedCapitalization(event.target.checked)
-              }
-              aria-label={t("speechSettingsSmoothCapitalizationTitle")}
             />
             <span className="toggle-slider" />
           </label>

@@ -47,6 +47,7 @@ interface SpeechRecognitionErrorEvent extends Event {
 interface SpeechRecognition extends EventTarget {
   continuous: boolean;
   interimResults: boolean;
+  unspokenPunctuation?: boolean;
   lang: string;
   maxAlternatives: number;
   onstart: ((this: SpeechRecognition, ev: Event) => void) | null;
@@ -153,6 +154,11 @@ export class BrowserNativeProvider implements SpeechProvider {
     this.recognition = recognition;
     recognition.continuous = true;
     recognition.interimResults = true;
+    // Chrome 151+ can infer punctuation from pauses and prosody. Keep older
+    // browsers on their existing raw-transcript path without UA sniffing.
+    if ("unspokenPunctuation" in recognition) {
+      recognition.unspokenPunctuation = true;
+    }
     // Always set lang explicitly so we don't depend on the browser's
     // locale guess. Caller's override wins; otherwise fall back to the
     // browser's reported preferred language.
