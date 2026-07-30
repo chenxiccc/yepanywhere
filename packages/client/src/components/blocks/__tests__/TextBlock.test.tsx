@@ -432,6 +432,33 @@ describe("TextBlock", () => {
     expect(await screen.findByText(/"ok": true/)).toBeTruthy();
   });
 
+  it("copies a direct rendered file link URL from its context menu", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    render(
+      <I18nProvider>
+        <TextBlock
+          text="[research-practice.md](/home/graehl/agents/user/research-practice.md:1)"
+          augmentHtml={
+            '<p><a href="/api/local-file?path=%2Fhome%2Fgraehl%2Fagents%2Fuser%2Fresearch-practice.md&amp;render=1&amp;line=1" data-ya-resource="local-file" data-ya-path="/home/graehl/agents/user/research-practice.md" data-ya-render-markdown="true" data-ya-line="1">research-practice.md</a></p>'
+          }
+        />
+      </I18nProvider>,
+    );
+
+    fireEvent.contextMenu(
+      screen.getByRole("link", { name: "research-practice.md" }),
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy URL" }));
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith(
+        "http://localhost:3000/api/local-file?path=%2Fhome%2Fgraehl%2Fagents%2Fuser%2Fresearch-practice.md&render=1&line=1",
+      );
+    });
+  });
+
   it("opens absolute local-file links under the active project in FileViewer", async () => {
     apiMocks.getFile.mockResolvedValueOnce({
       content: "# Project doc\n\nRendered through FileViewer.",

@@ -634,6 +634,7 @@ function LocalResourceContextMenu({
     y: number;
     resource: LocalResourceRef;
     projectFileTarget: ProjectFileModalTarget | null;
+    url: string | null;
   };
   projectContext: ProjectContext | null | undefined;
   sameOriginUrls: boolean;
@@ -645,6 +646,7 @@ function LocalResourceContextMenu({
   ) => void;
 }) {
   const startNewSessionFromFile = useStartNewSessionFromFileAction();
+  const copyUrl = contextMenu.url;
 
   return (
     <FilePathContextMenu
@@ -671,6 +673,9 @@ function LocalResourceContextMenu({
         void writeClipboardText(
           contextMenu.projectFileTarget?.filePath ?? contextMenu.resource.path,
         )
+      }
+      onCopyUrl={
+        copyUrl ? () => void writeClipboardText(copyUrl) : undefined
       }
       onCopyContents={() => {
         const { projectFileTarget, resource } = contextMenu;
@@ -719,6 +724,7 @@ export function useLocalResourceClick(
     y: number;
     resource: LocalResourceRef;
     projectFileTarget: ProjectFileModalTarget | null;
+    url: string | null;
   } | null>(null);
 
   const openResource = (
@@ -866,6 +872,7 @@ export function useLocalResourceClick(
         resource,
         projectContext,
       ),
+      url: sameOriginUrls ? target.href : null,
     });
   };
 

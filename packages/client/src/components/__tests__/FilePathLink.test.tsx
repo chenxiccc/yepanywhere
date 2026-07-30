@@ -6,13 +6,15 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { toUrlProjectId } from "@yep-anywhere/shared";
+import { StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PublicShareProvider } from "../../contexts/PublicShareContext";
 import { I18nProvider } from "../../i18n";
 import { LOCAL_CLIENT_SUMMARY_SOURCE_KEY } from "../../lib/clientSummaryStore";
 import { getNewSessionPrefill } from "../../lib/newSessionPrefill";
 import { UI_KEYS } from "../../lib/storageKeys";
-import { FilePathLink } from "../FilePathLink";
+import type { FileViewerSource } from "../FileViewer";
+import { FilePathLink, FileViewerModal } from "../FilePathLink";
 
 describe("FilePathLink", () => {
   afterEach(() => {
@@ -39,6 +41,61 @@ describe("FilePathLink", () => {
     );
     expect(link.getAttribute("title")).toBe("docs/guide.md:12");
     expect(link.getAttribute("data-tooltip")).toBeNull();
+  });
+
+  it("copies the standalone viewer URL from the context menu", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    render(
+      <I18nProvider>
+        <FilePathLink
+          projectId="project-id"
+          filePath="docs/guide.md"
+          lineNumber={12}
+          displayText="guide.md"
+        />
+      </I18nProvider>,
+    );
+
+    fireEvent.contextMenu(
+      screen.getByRole("link", { name: /guide\.md\s*:12/ }),
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy URL" }));
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith(
+        "http://localhost:3000/projects/project-id/file?path=docs%2Fguide.md&line=12",
+      );
+    });
+  });
+
+  it("does not traverse history while opening in Strict Mode", async () => {
+    const historyBack = vi
+      .spyOn(window.history, "back")
+      .mockImplementation(() => {});
+    const source: FileViewerSource = {
+      loadFile: vi.fn(() => new Promise<never>(() => {})),
+    };
+
+    const { unmount } = render(
+      <StrictMode>
+        <I18nProvider>
+          <FileViewerModal
+            projectId="project-id"
+            filePath="docs/guide.md"
+            source={source}
+            onClose={() => {}}
+          />
+        </I18nProvider>
+      </StrictMode>,
+    );
+
+    expect(screen.getByRole("dialog")).toBeDefined();
+    expect(historyBack).not.toHaveBeenCalled();
+
+    unmount();
+    await waitFor(() => expect(historyBack).toHaveBeenCalledTimes(1));
   });
 
   it("uses only the concise native path hint in native tooltip mode", () => {

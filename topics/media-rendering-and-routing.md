@@ -96,6 +96,14 @@ and the route it pulls from.
   URL, and (direct mode) HTML/Markdown in a sandboxed iframe. `LocalFileModal`
   → `/api/local-file`. Relay-safe.
 
+File-viewer modals own one same-URL browser-history entry: Back dismisses the
+viewer without leaving the underlying session, while opening or React effect
+replay must never traverse pre-modal history. File-link custom context menus
+preserve the browser-standard copy-link affordance as **Copy URL** whenever the
+standalone target is valid for the current connection. Relay-only local API
+links omit that action rather than copying an unusable hosted-origin `/api`
+URL.
+
 ### Composer and new-session
 
 - **Attachment chips** — image thumbnails on a sent user message and in the

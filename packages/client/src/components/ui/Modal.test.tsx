@@ -22,6 +22,7 @@ describe("Modal closeOnBackGesture", () => {
     );
 
     // Mounting pushed a history entry; a back gesture fires popstate.
+    window.history.replaceState({}, "", "/");
     window.dispatchEvent(new PopStateEvent("popstate"));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
@@ -61,7 +62,7 @@ describe("Modal closeOnBackGesture", () => {
 
     expect(window.history.state).toEqual({
       ...priorState,
-      yaModal: true,
+      yaModal: expect.stringMatching(/^yaModal-\d+$/),
     });
   });
 });

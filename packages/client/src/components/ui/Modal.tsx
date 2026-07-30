@@ -12,6 +12,7 @@ import { QUOTE_SELECTION_ROOT_ATTRIBUTES } from "../../lib/markdownSelectionCopy
 
 const ANCHORED_MODAL_MARGIN_PX = 8;
 const ANCHORED_MODAL_MIN_VIEWPORT_WIDTH_PX = 600;
+let modalHistoryEntrySequence = 0;
 
 export interface ModalAnchorRect {
   bottom: number;
@@ -36,6 +37,78 @@ interface ModalProps {
   closeOnBackGesture?: boolean;
 }
 
+function getHistoryState(): Record<string, unknown> {
+  return window.history.state &&
+    typeof window.history.state === "object" &&
+    !Array.isArray(window.history.state)
+    ? window.history.state
+    : {};
+}
+
+/**
+ * Own one same-URL history entry while a modal is open.
+ *
+ * Cleanup is deferred by a microtask so React Strict Mode's development-only
+ * effect replay can cancel it during the immediate re-setup. A real unmount
+ * still removes the entry, while a browser Back that already popped it only
+ * closes the modal.
+ */
+export function useModalBackGesture(
+  onClose: () => void,
+  enabled = true,
+  stateKey = "yaModal",
+) {
+  const onCloseRef = useRef(onClose);
+  const ownsHistoryEntryRef = useRef(false);
+  const cleanupGenerationRef = useRef(0);
+  const historyEntryIdRef = useRef<string | null>(null);
+  onCloseRef.current = onClose;
+  if (historyEntryIdRef.current === null) {
+    modalHistoryEntrySequence += 1;
+    historyEntryIdRef.current = `${stateKey}-${modalHistoryEntrySequence}`;
+  }
+
+  useEffect(() => {
+    if (!enabled) return;
+
+    cleanupGenerationRef.current += 1;
+    const historyEntryId = historyEntryIdRef.current;
+    if (!ownsHistoryEntryRef.current) {
+      window.history.pushState(
+        { ...getHistoryState(), [stateKey]: historyEntryId },
+        "",
+      );
+      ownsHistoryEntryRef.current = true;
+    }
+
+    const onPopState = () => {
+      if (window.history.state?.[stateKey] === historyEntryId) {
+        return;
+      }
+      ownsHistoryEntryRef.current = false;
+      onCloseRef.current();
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => {
+      window.removeEventListener("popstate", onPopState);
+      const cleanupGeneration = cleanupGenerationRef.current + 1;
+      cleanupGenerationRef.current = cleanupGeneration;
+      queueMicrotask(() => {
+        if (
+          cleanupGenerationRef.current !== cleanupGeneration ||
+          !ownsHistoryEntryRef.current
+        ) {
+          return;
+        }
+        ownsHistoryEntryRef.current = false;
+        if (window.history.state?.[stateKey] === historyEntryId) {
+          window.history.back();
+        }
+      });
+    };
+  }, [enabled, stateKey]);
+}
+
 /**
  * Reusable modal component with overlay, header, and scrollable content area.
  * Renders via portal to avoid event bubbling issues.
@@ -52,38 +125,7 @@ export function Modal({
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
   const overlayPointerStartedOnOverlayRef = useRef(false);
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-
-  // Optional back-gesture dismissal. Mount-only (empty deps) so exactly one
-  // history entry is pushed; a ref carries the latest onClose. A popstate (back
-  // button / mobile back-swipe) closes the modal; closing another way pops the
-  // pushed entry on cleanup so history stays balanced.
-  useEffect(() => {
-    if (!closeOnBackGesture || typeof window === "undefined") return;
-    const priorState =
-      window.history.state &&
-      typeof window.history.state === "object" &&
-      !Array.isArray(window.history.state)
-        ? window.history.state
-        : {};
-    window.history.pushState({ ...priorState, yaModal: true }, "");
-    let dismissedByBack = false;
-    const onPopState = () => {
-      dismissedByBack = true;
-      onCloseRef.current();
-    };
-    window.addEventListener("popstate", onPopState);
-    return () => {
-      window.removeEventListener("popstate", onPopState);
-      if (
-        !dismissedByBack &&
-        (window.history.state as { yaModal?: boolean } | null)?.yaModal
-      ) {
-        window.history.back();
-      }
-    };
-  }, [closeOnBackGesture]);
+  useModalBackGesture(onClose, closeOnBackGesture);
   const isAnchored =
     !!anchorRect &&
     typeof window !== "undefined" &&

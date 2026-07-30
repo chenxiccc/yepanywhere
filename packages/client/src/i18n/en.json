@@ -2283,6 +2283,7 @@
   "fileLinkDismissMenu": "Dismiss file menu",
   "fileLinkMenuView": "View",
   "fileLinkMenuNewSession": "New session",
+  "fileLinkMenuCopyUrl": "Copy URL",
   "fileLinkMenuCopyPath": "Copy path",
   "fileLinkMenuCopyContents": "Copy contents",
   "voiceInputStart": "Start voice input (Ctrl+Space)",

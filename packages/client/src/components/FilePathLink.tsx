@@ -28,6 +28,7 @@ import {
 } from "./FileResourceActions";
 import { createPublicShareFileViewerSource } from "./publicShareFileViewerSource";
 import { CopyTextButton } from "./ui/CopyTextButton";
+import { useModalBackGesture } from "./ui/Modal";
 
 /**
  * Faint copy-to-clipboard affordance rendered after a pathname. Copies the
@@ -216,6 +217,10 @@ export const FilePathLink = memo(function FilePathLink({
   const handleCopyPathFromMenu = useCallback(() => {
     void writeClipboardText(viewerFilePath);
   }, [viewerFilePath]);
+  const handleCopyUrlFromMenu = useCallback(() => {
+    if (!fileViewUrl) return;
+    void writeClipboardText(new URL(fileViewUrl, window.location.href).href);
+  }, [fileViewUrl]);
   const handleCopyContentsFromMenu = useCallback(() => {
     const loadFile = publicShareFileViewerSource
       ? publicShareFileViewerSource.loadFile(projectId, viewerFilePath, false)
@@ -259,6 +264,7 @@ export const FilePathLink = memo(function FilePathLink({
           onClose={closeContextMenu}
           onView={handleViewFromMenu}
           onStartNewSession={startNewSession}
+          onCopyUrl={fileViewUrl ? handleCopyUrlFromMenu : undefined}
           onCopyPath={handleCopyPathFromMenu}
           onCopyContents={handleCopyContentsFromMenu}
         />
@@ -320,29 +326,7 @@ export function FileViewerModal({
     return () => document.removeEventListener("keydown", handleKeyDown, true);
   }, [onClose]);
 
-  // Make the back gesture (mobile edge-swipe or browser Back) close this
-  // pane instead of navigating the underlying session route back to the
-  // session list. Push a history entry on open; popping it (via Back) fires
-  // popstate, which we translate into onClose. The pushed entry keeps the
-  // same URL, so the router does not actually change routes. Closing via the
-  // X or Escape pops our own entry so history does not keep a dead state.
-  useEffect(() => {
-    const priorState =
-      typeof window !== "undefined" ? window.history.state : null;
-    window.history.pushState({ ...priorState, __fileViewerModal: true }, "");
-    let closedByPop = false;
-    const handlePopState = () => {
-      closedByPop = true;
-      onClose();
-    };
-    window.addEventListener("popstate", handlePopState);
-    return () => {
-      window.removeEventListener("popstate", handlePopState);
-      if (!closedByPop) {
-        window.history.back();
-      }
-    };
-  }, [onClose]);
+  useModalBackGesture(onClose, true, "__fileViewerModal");
 
   // Prevent body scroll when modal is open
   useEffect(() => {

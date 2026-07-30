@@ -14,6 +14,7 @@ interface FilePathContextMenuProps {
   onClose: () => void;
   onCopyContents?: () => void;
   onCopyPath: () => void;
+  onCopyUrl?: () => void;
   onStartNewSession?: () => void;
   onView: () => void;
 }
@@ -71,6 +72,7 @@ export function FilePathContextMenu({
   onClose,
   onCopyContents,
   onCopyPath,
+  onCopyUrl,
   onStartNewSession,
   onView,
 }: FilePathContextMenuProps) {
@@ -118,6 +120,11 @@ export function FilePathContextMenu({
         {canStartNewSession && onStartNewSession ? (
           <FilePathContextMenuItem onSelect={() => select(onStartNewSession)}>
             {t("fileLinkMenuNewSession" as never)}
+          </FilePathContextMenuItem>
+        ) : null}
+        {onCopyUrl ? (
+          <FilePathContextMenuItem onSelect={() => select(onCopyUrl)}>
+            {t("fileLinkMenuCopyUrl" as never)}
           </FilePathContextMenuItem>
         ) : null}
         <FilePathContextMenuItem onSelect={() => select(onCopyPath)}>
