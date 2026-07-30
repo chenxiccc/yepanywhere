@@ -1,21 +1,21 @@
 # UI Testing
 
-> Browser-first visual QA for client UI changes: a UI tweak request
-> ends with rendered captures of the result at 1920×1080 and a phone
-> width (375×812), inspected against the request before the change is
-> called done.
+> Browser-first visual QA is the default for client UI changes: capture
+> and inspect the result at 1920×1080 and a phone width (375×812), unless
+> the user explicitly takes ownership of visual verification or asks to
+> skip screenshots or visual validation.
 
 Topic: ui-testing
 
 ## Principle
 
-Any request that changes what the client renders — a UI tweak, layout
-or spacing fix, control/toolbar placement, grouping, or interaction
-semantics — is **done** only after real browser screenshots of the
-final result are captured at desktop and phone widths, inspected by
-the agent against the request, and archived where a human can review
-them. In-progress captures are optional while implementing (worthwhile
-at milestones); the final-result captures are not optional.
+By default, a request that changes what the client renders — a UI tweak,
+layout or spacing fix, control/toolbar placement, grouping, or interaction
+semantics — is **done** only after real browser screenshots of the final result
+are captured at desktop and phone widths, inspected by the agent against the
+request, and archived where a human can review them. In-progress captures are
+optional while implementing (worthwhile at milestones); final-result captures
+are required when visual verification remains agent-owned.
 
 Inspection is the point: open each capture and check spacing, flow,
 and control placement against the request — "route loaded, nav
@@ -24,23 +24,49 @@ spatial/aesthetic guess; models routinely one-shot UI that is
 functional but mis-spaced with misplaced controls (instituted
 2026-07-26 after a commit-browser build landed exactly that way).
 
+## User-owned visual verification
+
+The user may explicitly take ownership of visual verification for a request or
+a stated iteration series. Phrases such as "I will check it," "no screenshots,"
+or "skip visual validation" are an intentional handoff, not a conflict with
+this topic.
+
+When the user makes that handoff:
+
+1. Do not capture screenshots or launch a browser solely for visual QA.
+2. Continue relevant nonvisual checks such as lint, typecheck, and focused
+   automated tests unless the user also changes that scope.
+3. Do not infer or report that the result was visually confirmed by the agent.
+   State in the final response that visual verification was left to the user.
+4. Do not wait for the user to report back before handing off the implemented
+   change; their explicit acceptance of the visual check completes the agent's
+   visual-QA responsibility.
+
+Apply the handoff only to the scope the user stated. A handoff for an iteration
+series may persist across its related tweaks, but do not silently carry it into
+an unrelated request or a new session. Conversely, do not infer a handoff from
+the user's presence, response speed, device, or presumed access to a live
+build. When there is no explicit handoff, use the default capture workflow.
+
 ## Browser-first check protocol
 
-1. Start the app UI and reproduce the target path in a real browser.
-2. Navigate to the affected view (page, panel, or control).
-3. Take screenshots at:
+1. Confirm that the user has not handed visual verification off to themselves.
+   If they have, use the user-owned workflow above and stop this protocol.
+2. Start the app UI and reproduce the target path in a real browser.
+3. Navigate to the affected view (page, panel, or control).
+4. Take screenshots at:
    - desktop width `1920x1080`,
    - narrow mobile width (`375x812` or equivalent).
-4. Visually inspect each screenshot and confirm:
+5. Visually inspect each screenshot and confirm:
    - the requested change is present and correctly placed,
    - control rows and their descriptive text are grouped together,
    - active control state is visually clear,
    - no element overflows, crowds its row, or wastes obvious space.
-5. Archive reviewed screenshots under a readable path (for example,
+6. Archive reviewed screenshots under a readable path (for example,
    `.artifacts/ui-testing/<yyyy-mm-dd>-<topic>/...`), and cite the
    file names in the final response (and the task note when one
    exists).
-6. Leave a short reviewer note about what changed and what was
+7. Leave a short reviewer note about what changed and what was
    visually confirmed.
 
 ## Recommended automation
@@ -80,6 +106,10 @@ browser automation path or a manual browser session:
 
 ## Verification acceptance checklist
 
+Complete either the agent-owned or user-owned branch.
+
+### Agent-owned visual verification
+
 - [ ] The requested change is visible and correctly placed in both
       captures.
 - [ ] A single logical setting row does not span a control row and its
@@ -91,3 +121,12 @@ browser automation path or a manual browser session:
 - [ ] Layout works at the mobile width without horizontal overflow.
 - [ ] Screenshots at 1920×1080 and a phone width were captured,
       inspected by the agent, and cited for human review.
+
+### User-owned visual verification
+
+- [ ] The user explicitly took ownership of the visual check or asked
+      to skip screenshots or visual validation.
+- [ ] No browser or screenshot work was performed solely for visual QA.
+- [ ] Relevant nonvisual verification still ran unless separately waived.
+- [ ] The final response identifies visual verification as user-owned
+      and does not claim independent visual confirmation.

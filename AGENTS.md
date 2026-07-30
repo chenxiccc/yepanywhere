@@ -63,13 +63,20 @@ Novel features remain welcome; do not assume first-party harnesses already
 cover all useful behavior. Read the topic before adding or enabling any
 user-visible feature that is not configurable default-off.
 
-## UI Tweak Result Captures
+## UI Tweak Visual Verification
 
-Any UI tweak or layout/control-placement request ends with rendered
-browser captures of the final result at 1920×1080 and a phone width
-(375×812), inspected by the agent against the request before claiming
-completion; in-progress captures are optional. Protocol, commands, and
-archive paths: `topics/ui-testing.md`.
+By default, any UI tweak or layout/control-placement request ends with rendered
+browser captures of the final result at 1920×1080 and a phone width (375×812),
+inspected by the agent against the request before claiming completion;
+in-progress captures are optional.
+
+An explicit user handoff overrides this default. If the user says they will
+visually verify the result or asks to skip screenshots or visual validation, do
+not capture screenshots or launch a browser solely for visual QA. Continue
+relevant nonvisual checks, and state in the final response that visual
+verification was left to the user rather than claiming it was performed. Do
+not cite this repository default as a reason to disregard that handoff.
+Protocol, commands, scope, and archive paths: `topics/ui-testing.md`.
 
 ## Observable Behavior Contracts
 

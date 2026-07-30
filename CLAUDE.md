@@ -148,9 +148,10 @@ pnpm --filter @yep-anywhere/client exec playwright screenshot \
 Use `--viewport-size "375,812"` for a mobile-width capture. For multi-step
 interaction testing, add or run a focused `@playwright/test` case under
 `packages/client/e2e/`. A missing in-app browser backend is not a blocker while
-the repository Playwright command is available. Capture-confirmation
+the repository Playwright command is available. Default capture-confirmation
 requirements for UI tweak requests (final result at 1920×1080 + phone width,
-inspected before claiming completion) are in `topics/ui-testing.md`.
+inspected before claiming completion), including the explicit user-owned
+visual-review exception, are in `topics/ui-testing.md`.
 
 ## ChromeOS Debugging
 

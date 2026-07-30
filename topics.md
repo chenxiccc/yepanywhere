@@ -200,8 +200,8 @@
   images, and failures behind per-turn expandable elapsed/activity summaries.
 - acli-ui - ACLI capability detection (`acli:` help line) and richer
   bang-composer completion/help UI proposal.
-- ui-testing - Capture-confirmed browser QA: UI tweak requests end with
-  inspected 1920x1080 + phone captures of the result.
+- ui-testing - Capture-confirmed browser QA by default, with an explicit
+  user-owned visual-verification handoff that skips agent capture work.
 - source-control - Repository-navigation workbench: changes, commits, files,
   blame, diffs, responsive panes, and links to relevant agent sessions.
 - federated-super-sessions - One canonical YA session whose active provider
