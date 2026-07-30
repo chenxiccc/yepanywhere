@@ -62,6 +62,15 @@ function hashFile(path) {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
+function removeTree(path) {
+  rmSync(path, {
+    recursive: true,
+    force: true,
+    maxRetries: 10,
+    retryDelay: 200,
+  });
+}
+
 function packageRoots(directory) {
   if (!existsSync(directory)) return [];
   const roots = [];
@@ -113,7 +122,7 @@ function prunePhysicalModules(directory, deployedPackages) {
       !identity ||
       !deployedPackages.get(identity.name)?.has(identity.version)
     ) {
-      rmSync(packageRoot, { recursive: true, force: true });
+      removeTree(packageRoot);
       continue;
     }
     prunePhysicalModules(join(packageRoot, "node_modules"), deployedPackages);
@@ -123,7 +132,7 @@ function prunePhysicalModules(directory, deployedPackages) {
     if (entry.name.startsWith("@")) {
       const scopeDir = join(directory, entry.name);
       if (readdirSync(scopeDir).length === 0) {
-        rmSync(scopeDir, { recursive: true, force: true });
+        removeTree(scopeDir);
       }
     }
   }
@@ -146,7 +155,7 @@ runPnpm(["--filter", "@yep-anywhere/client", "build"]);
 runPnpm(["--filter", "@yep-anywhere/server", "build"]);
 
 if (existsSync(resourceDir)) {
-  rmSync(resourceDir, { recursive: true, force: true });
+  removeTree(resourceDir);
 }
 mkdirSync(resourceParent, { recursive: true });
 
@@ -166,11 +175,11 @@ runPnpm([
 // They are not part of the deployment and can otherwise dirty the checkout.
 const shadowResourceDir = join(serverDir, relative(rootDir, resourceDir));
 if (existsSync(shadowResourceDir)) {
-  rmSync(shadowResourceDir, { recursive: true, force: true });
+  removeTree(shadowResourceDir);
 }
 
 const deployedPackages = collectDeployedPackages(join(modulesDir, ".pnpm"));
-rmSync(modulesDir, { recursive: true, force: true });
+removeTree(modulesDir);
 
 // NSIS does not preserve pnpm's junction-based isolated layout. Materialize a
 // hoisted tree from the workspace lock, then prune it back to the exact package
@@ -216,10 +225,10 @@ try {
     recursive: true,
   });
 } finally {
-  rmSync(moduleWorkspace, { recursive: true, force: true });
+  removeTree(moduleWorkspace);
 }
-rmSync(join(modulesDir, ".pnpm"), { recursive: true, force: true });
-rmSync(join(modulesDir, ".bin"), { recursive: true, force: true });
+removeTree(join(modulesDir, ".pnpm"));
+removeTree(join(modulesDir, ".bin"));
 rmSync(join(modulesDir, ".modules.yaml"), { force: true });
 prunePhysicalModules(modulesDir, deployedPackages);
 
@@ -246,7 +255,7 @@ for (const name of [
 ]) {
   const candidate = join(resourceDir, name);
   if (existsSync(candidate)) {
-    rmSync(candidate, { recursive: true, force: true });
+    removeTree(candidate);
   }
 }
 

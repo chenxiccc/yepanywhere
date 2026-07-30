@@ -178,11 +178,19 @@ try {
   if (!triple.includes("windows")) {
     chmodSync(bunOutput, 0o755);
   }
-  if (process.platform === "darwin") {
+  if (
+    process.platform === "darwin" &&
+    process.env.YEP_DESKTOP_SKIP_ADHOC_SIGN !== "1"
+  ) {
     run("codesign", ["-fs", "-", bunOutput], { stdio: "inherit" });
   }
   writeFileSync(versionMarker, expectedMarker);
   console.log(`Bun ${versions.bun.version} ready at ${bunOutput}`);
 } finally {
-  rmSync(tempRoot, { recursive: true, force: true });
+  rmSync(tempRoot, {
+    recursive: true,
+    force: true,
+    maxRetries: 10,
+    retryDelay: 200,
+  });
 }

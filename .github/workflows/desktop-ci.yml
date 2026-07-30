@@ -172,9 +172,25 @@ jobs:
         run: pnpm install --ignore-scripts
 
       - name: Prepare packaged desktop runtime
+        shell: bash
         env:
           TARGET_TRIPLE: ${{ matrix.target_triple }}
-        run: pnpm --dir packages/desktop prepare-runtime
+          # Tauri signs external binaries with the release identity while
+          # assembling the app bundle. Avoid an earlier ad-hoc replacement
+          # after CI has switched macOS to its isolated signing keychain.
+          YEP_DESKTOP_SKIP_ADHOC_SIGN: ${{ matrix.platform == 'macos-latest' && '1' || '' }}
+        run: |
+          set -o pipefail
+          log="$RUNNER_TEMP/desktop-runtime-prepare.log"
+          if pnpm --dir packages/desktop prepare-runtime 2>&1 | tee "$log"; then
+            exit 0
+          fi
+          detail=$(tail -n 30 "$log")
+          detail="${detail//'%'/'%25'}"
+          detail="${detail//$'\r'/'%0D'}"
+          detail="${detail//$'\n'/'%0A'}"
+          echo "::error title=Desktop runtime preparation failed::$detail"
+          exit 1
 
       - name: Smoke packaged Windows runtime
         if: matrix.platform == 'windows-latest'
@@ -232,7 +248,7 @@ jobs:
           if [ -n "$app" ] && [ -z "$dmg" ]; then
             echo "::error::macOS .app built and signed but no .dmg produced — likely the flaky hdiutil/bundle_dmg issue on GH runners. Re-run: gh run rerun ${{ github.run_id }} --failed"
           elif [ -z "$app" ]; then
-            echo "::error::macOS build failed before the app bundle was produced (compile / config / codesign). Read the 'Build Tauri app' step log — this is a real error, NOT a DMG flake."
+            echo "::error::macOS pipeline failed before the app bundle was produced. Read the first failed step (runtime preparation / compile / config / codesign); this is a real error, NOT a DMG flake."
           else
             echo "::error::macOS .app and .dmg both built; failure was a later step (updater signing / latest.json). Read the 'Build Tauri app' step log — NOT a DMG flake."
           fi

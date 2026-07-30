@@ -21,7 +21,9 @@ artifact together. Provider software remains externally managed.
 Release CI prepares that runtime as an explicit packaging input before Tauri
 runs, verifies the pinned Bun archive hash, and retries transient archive
 download failures within a bounded attempt count. Tauri packaging must not
-silently rebuild or replace the already-smoked runtime input.
+silently rebuild or replace the already-smoked runtime input. Temporary-tree
+cleanup tolerates only bounded platform sharing violations, and a preparation
+failure reports its final output in the CI annotation.
 
 Desktop application files and user data have separate lifecycles. Update,
 reinstall, and ordinary uninstall preserve sessions, settings, auth state, and
