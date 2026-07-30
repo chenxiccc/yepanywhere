@@ -45,6 +45,7 @@ describe("session navigation state", () => {
         owner: "self",
         processId: "process-1",
         permissionMode: "anything-goes",
+        appliedPermissionMode: "also-invalid",
         modeVersion: -1,
       }),
     ).toEqual({ owner: "self", processId: "process-1" });
@@ -57,6 +58,7 @@ describe("session navigation state", () => {
           state: "owned",
           processId: "process-1",
           permissionMode: "acceptEdits",
+          appliedPermissionMode: "default",
           modeVersion: 1,
         },
         initialTitle: "Start here",
@@ -69,6 +71,7 @@ describe("session navigation state", () => {
         owner: "self",
         processId: "process-1",
         permissionMode: "acceptEdits",
+        appliedPermissionMode: "default",
         modeVersion: 1,
       },
       initialTitle: "Start here",

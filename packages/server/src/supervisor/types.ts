@@ -58,6 +58,8 @@ export type SessionOwnership =
       owner: "self";
       processId: string;
       permissionMode?: PermissionMode;
+      /** Mode applied at the latest successful provider policy boundary. */
+      appliedPermissionMode?: PermissionMode;
       modeVersion?: number;
       recapAfterSeconds?: number;
     } // we control it
@@ -289,6 +291,7 @@ export type ProcessEvent =
       status: ProviderRuntimeStatus;
     }
   | { type: "mode-change"; mode: PermissionMode; version: number }
+  | { type: "mode-applied"; mode: PermissionMode }
   | { type: "session-id-changed"; oldSessionId: string; newSessionId: string }
   | {
       type: "context-window-observed";

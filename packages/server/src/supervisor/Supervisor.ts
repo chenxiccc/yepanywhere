@@ -1626,6 +1626,8 @@ export class Supervisor {
       sessionSandbox,
       shouldEmitLiveDeltas: () =>
         processHolder.process?.hasLiveDeltaSubscribers() ?? false,
+      onPermissionModeApplied: (mode) =>
+        processHolder.process?.setAppliedPermissionMode(mode),
       onProviderRetentionChange: () =>
         this.handleProviderRetentionChanged(processHolder),
       onToolApproval: async (toolName, input, opts) => {
@@ -1777,6 +1779,8 @@ export class Supervisor {
       sessionSandbox,
       shouldEmitLiveDeltas: () =>
         processHolder.process?.hasLiveDeltaSubscribers() ?? false,
+      onPermissionModeApplied: (mode) =>
+        processHolder.process?.setAppliedPermissionMode(mode),
       onProviderRetentionChange: () =>
         this.handleProviderRetentionChanged(processHolder),
       onToolApproval: async (toolName, input, opts) => {
@@ -2683,6 +2687,7 @@ export class Supervisor {
       owner: "self",
       processId: process.id,
       permissionMode: process.permissionMode,
+      appliedPermissionMode: process.appliedPermissionMode,
       modeVersion: process.modeVersion,
       recapAfterSeconds: process.recapAfterSeconds,
     });
@@ -3822,6 +3827,7 @@ export class Supervisor {
           owner: "self",
           processId: process.id,
           permissionMode: process.permissionMode,
+          appliedPermissionMode: process.appliedPermissionMode,
           modeVersion: process.modeVersion,
           recapAfterSeconds: process.recapAfterSeconds,
         };
@@ -3941,6 +3947,7 @@ export class Supervisor {
       owner: "self",
       processId: process.id,
       permissionMode: process.permissionMode,
+      appliedPermissionMode: process.appliedPermissionMode,
       modeVersion: process.modeVersion,
       recapAfterSeconds: process.recapAfterSeconds,
     };

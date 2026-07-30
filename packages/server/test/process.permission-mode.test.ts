@@ -52,6 +52,40 @@ describe("Process", () => {
       expect(process.permissionMode).toBe("plan");
     });
 
+    it("tracks the selected and applied Codex modes separately", async () => {
+      const iterator = createMockIterator([]);
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "codex",
+        idleTimeoutMs: 100,
+        permissionMode: "default",
+      });
+      const events: ProcessEvent[] = [];
+      process.subscribe((event) => {
+        if (event.type === "mode-applied") {
+          events.push(event);
+        }
+      });
+
+      expect(process.appliedPermissionMode).toBeUndefined();
+      process.setAppliedPermissionMode("default");
+
+      process.setPermissionMode("bypassPermissions");
+      expect(process.permissionMode).toBe("bypassPermissions");
+      expect(process.appliedPermissionMode).toBe("default");
+
+      process.setAppliedPermissionMode("bypassPermissions");
+      process.setAppliedPermissionMode("bypassPermissions");
+
+      expect(process.appliedPermissionMode).toBe("bypassPermissions");
+      expect(events).toEqual([
+        { type: "mode-applied", mode: "default" },
+        { type: "mode-applied", mode: "bypassPermissions" },
+      ]);
+    });
+
     it("initializes modeVersion to 0", async () => {
       const iterator = createMockIterator([]);
       const process = new Process(iterator, {

@@ -547,6 +547,7 @@ export const api = {
       provider?: ProviderName;
       model?: string;
       permissionMode: PermissionMode;
+      appliedPermissionMode?: PermissionMode;
       modeVersion: number;
       recapAfterSeconds?: number;
       sandboxEnforcement?: SessionSandboxEnforcement;
@@ -584,6 +585,7 @@ export const api = {
       processId: string;
       projectId: string;
       permissionMode: PermissionMode;
+      appliedPermissionMode?: PermissionMode;
       modeVersion: number;
       recapAfterSeconds?: number;
       sandboxEnforcement?: SessionSandboxEnforcement;
@@ -619,6 +621,7 @@ export const api = {
       processId: string;
       projectId: string;
       permissionMode: PermissionMode;
+      appliedPermissionMode?: PermissionMode;
       modeVersion: number;
       recapAfterSeconds?: number;
       sandboxEnforcement?: SessionSandboxEnforcement;
@@ -651,6 +654,7 @@ export const api = {
       processId: string;
       projectId: string;
       permissionMode: PermissionMode;
+      appliedPermissionMode?: PermissionMode;
       modeVersion: number;
       recapAfterSeconds?: number;
       sandboxEnforcement?: SessionSandboxEnforcement;
@@ -686,6 +690,7 @@ export const api = {
     fetchJSON<{
       processId: string;
       permissionMode: PermissionMode;
+      appliedPermissionMode?: PermissionMode;
       modeVersion: number;
       recapAfterSeconds?: number;
       sandboxEnforcement?: SessionSandboxEnforcement;
@@ -739,6 +744,7 @@ export const api = {
     fetchJSON<{
       processId: string;
       permissionMode: PermissionMode;
+      appliedPermissionMode?: PermissionMode;
       modeVersion: number;
       recapAfterSeconds?: number;
       sandboxEnforcement?: SessionSandboxEnforcement;
@@ -772,6 +778,7 @@ export const api = {
       provider?: ProviderName;
       title?: string;
       permissionMode: PermissionMode;
+      appliedPermissionMode?: PermissionMode;
       modeVersion: number;
       recapAfterSeconds?: number;
       sandboxEnforcement?: SessionSandboxEnforcement;
@@ -1035,6 +1042,7 @@ export const api = {
       processId: string;
       processState?: "idle" | "in-turn" | "waiting-input";
       permissionMode?: PermissionMode;
+      appliedPermissionMode?: PermissionMode;
       modeVersion?: number;
       recapAfterSeconds?: number;
       deferredMessages: DeferredQueueMessage[];
@@ -1053,6 +1061,7 @@ export const api = {
       processId: string;
       processState?: "idle" | "in-turn" | "waiting-input";
       permissionMode?: PermissionMode;
+      appliedPermissionMode?: PermissionMode;
       modeVersion?: number;
       recapAfterSeconds?: number;
       deferredMessages: DeferredQueueMessage[];
@@ -1189,7 +1198,11 @@ export const api = {
     ),
 
   setPermissionMode: (sessionId: string, mode: PermissionMode) =>
-    fetchJSON<{ permissionMode: PermissionMode; modeVersion: number }>(
+    fetchJSON<{
+      permissionMode: PermissionMode;
+      appliedPermissionMode?: PermissionMode;
+      modeVersion: number;
+    }>(
       `/sessions/${sessionId}/mode`,
       { method: "PUT", body: JSON.stringify({ mode }) },
     ),

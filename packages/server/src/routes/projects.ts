@@ -251,6 +251,7 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
             owner: "self",
             processId: process.id,
             permissionMode: process.permissionMode,
+            appliedPermissionMode: process.appliedPermissionMode,
             modeVersion: process.modeVersion,
             recapAfterSeconds: process.recapAfterSeconds,
           },
@@ -300,6 +301,7 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
             owner: "self" as const,
             processId: process.id,
             permissionMode: process.permissionMode,
+            appliedPermissionMode: process.appliedPermissionMode,
             modeVersion: process.modeVersion,
             recapAfterSeconds: process.recapAfterSeconds,
           }

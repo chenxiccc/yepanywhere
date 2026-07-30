@@ -1217,6 +1217,45 @@ describe("useSession completion reconciliation", () => {
     expect(result.current.modeVersion).toBe(2);
   });
 
+  it("keeps a Codex mode pending until the server reports it applied", async () => {
+    apiMocks.setPermissionMode.mockResolvedValueOnce({
+      permissionMode: "bypassPermissions",
+      appliedPermissionMode: "default",
+      modeVersion: 3,
+    });
+    const { result } = renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+        permissionMode: "default",
+        appliedPermissionMode: "default",
+        modeVersion: 2,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.setPermissionMode("bypassPermissions");
+    });
+
+    expect(result.current.permissionMode).toBe("bypassPermissions");
+    expect(result.current.status).toMatchObject({
+      owner: "self",
+      appliedPermissionMode: "default",
+    });
+
+    act(() => {
+      sessionStreamHandler?.({
+        eventType: "mode-applied",
+        appliedPermissionMode: "bypassPermissions",
+      });
+    });
+
+    expect(result.current.status).toMatchObject({
+      owner: "self",
+      appliedPermissionMode: "bypassPermissions",
+    });
+  });
+
   it("keeps the same-page toolbar mode after ownership drops", async () => {
     const { result } = renderHook(() =>
       useSession(PROJECT_ID, "sess-1", {

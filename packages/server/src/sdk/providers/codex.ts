@@ -1776,6 +1776,7 @@ export class CodexProvider implements AgentProvider {
         threadStartParams,
         threadResumeParams,
       );
+      options.onPermissionModeApplied?.(initialPermissionMode);
 
       sessionId = threadResult.thread.id;
       agentctlSessionEnvBridge.publishSessionId(sessionId);
@@ -1901,6 +1902,7 @@ export class CodexProvider implements AgentProvider {
           "turn/start",
           turnStartParams,
         );
+        options.onPermissionModeApplied?.(turnPermissionMode);
 
         const activeTurnId = turnResult.turn.id;
         runtimeState.activeTurnId = activeTurnId;

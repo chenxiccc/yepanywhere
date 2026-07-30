@@ -182,6 +182,7 @@ export interface MessageInputToolbarProps {
   mode?: PermissionMode;
   onModeChange?: (mode: PermissionMode) => void;
   modeChangesApplyNextTurn?: boolean;
+  modeChangePending?: boolean;
 
   // Provider capability flags (default to true for backwards compatibility)
   supportsPermissionMode?: boolean;
@@ -455,6 +456,7 @@ interface ToolbarModeControl {
   onModeChange: (mode: PermissionMode) => void;
   modes?: readonly PermissionMode[];
   changesApplyNextTurn?: boolean;
+  modeChangePending?: boolean;
 }
 
 interface ToolbarAttachmentControl {
@@ -1318,6 +1320,7 @@ export function MessageInputToolbarView({
               onModeChange={modeControl.onModeChange}
               modes={modeControl.modes}
               changesApplyNextTurn={modeControl.changesApplyNextTurn}
+              modeChangePending={modeControl.modeChangePending}
             />
           </span>
         )}
@@ -1561,6 +1564,7 @@ export function MessageInputToolbarView({
                         onModeChange={modeControl.onModeChange}
                         modes={modeControl.modes}
                         changesApplyNextTurn={modeControl.changesApplyNextTurn}
+                        modeChangePending={modeControl.modeChangePending}
                       />
                     </span>
                   )}
@@ -2175,6 +2179,7 @@ export function MessageInputToolbar({
   mode = "default",
   onModeChange,
   modeChangesApplyNextTurn,
+  modeChangePending,
   supportsPermissionMode = true,
   supportsThinkingToggle = true,
   canAttach,
@@ -2788,6 +2793,7 @@ export function MessageInputToolbar({
               onModeChange,
               modes: permissionModeOptions,
               changesApplyNextTurn: modeChangesApplyNextTurn,
+              modeChangePending,
             }
           : null
       }

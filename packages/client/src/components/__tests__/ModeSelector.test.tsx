@@ -11,6 +11,7 @@ const translations: Record<string, string> = {
   modeClickToSelect: "Click to select mode",
   modeDefaultLabel: "Ask",
   modeNextTurnHint: "Applies to the next user turn",
+  modePendingSuffix: "(pending)",
   modePlanLabel: "Plan",
   modeSelectLabel: "Select mode",
 };
@@ -50,6 +51,24 @@ describe("ModeSelector", () => {
     expect(screen.getByText("Ask")).toBeTruthy();
     expect(screen.queryByText("Next turn")).toBeNull();
     expect(screen.getByTitle("Click to select mode")).toBeTruthy();
+  });
+
+  it("marks only a selected mode that is still pending", () => {
+    render(
+      <ModeSelector
+        mode="bypassPermissions"
+        onModeChange={vi.fn()}
+        modeChangePending
+      />,
+    );
+
+    expect(screen.getByText("Bypass (pending)")).toBeTruthy();
+    expect(
+      screen.getByTitle("Click to select mode - Applies to the next user turn"),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /Bypass \(pending\)/ }));
+    expect(screen.getByText("Applies to the next user turn")).toBeTruthy();
   });
 
   it("renders supplied auto mode choices", () => {

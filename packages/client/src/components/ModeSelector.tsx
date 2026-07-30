@@ -11,6 +11,8 @@ interface ModeSelectorProps {
   disabled?: boolean;
   /** Whether permission mode changes are deferred until the next user turn. */
   changesApplyNextTurn?: boolean;
+  /** Whether the selected mode has not reached a provider turn boundary yet. */
+  modeChangePending?: boolean;
 }
 
 /**
@@ -23,6 +25,7 @@ export function ModeSelector({
   modes,
   disabled,
   changesApplyNextTurn = false,
+  modeChangePending = false,
 }: ModeSelectorProps) {
   const { t } = useI18n();
   const [isOpen, setIsOpen] = useState(false);
@@ -102,14 +105,15 @@ export function ModeSelector({
 
   const displayLabel = modeLabels[mode];
   const displayDotClass = `mode-${mode}`;
-  const buttonTitle = changesApplyNextTurn
+  const showNextTurnTiming = changesApplyNextTurn || modeChangePending;
+  const buttonTitle = showNextTurnTiming
     ? `${t("modeClickToSelect" as never)} - ${t("modeNextTurnHint" as never)}`
     : t("modeClickToSelect" as never);
 
   // Shared dropdown options content
   const optionsContent = (
     <>
-      {changesApplyNextTurn && (
+      {showNextTurnTiming && (
         <div className="mode-selector-timing-note" role="status">
           {t("modeNextTurnHint" as never)}
         </div>
@@ -173,7 +177,12 @@ export function ModeSelector({
         aria-expanded={isOpen}
       >
         <span className={`mode-dot ${displayDotClass}`} />
-        <span className="mode-button-label">{displayLabel}</span>
+        <span className="mode-button-label">
+          {displayLabel}
+          {modeChangePending
+            ? ` ${t("modePendingSuffix" as never)}`
+            : null}
+        </span>
       </button>
       {dropdown}
     </div>

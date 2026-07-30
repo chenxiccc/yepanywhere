@@ -376,6 +376,8 @@ export type SessionOwnership =
       owner: "self";
       processId: string;
       permissionMode?: PermissionMode;
+      /** Mode applied at the latest successful provider policy boundary. */
+      appliedPermissionMode?: PermissionMode;
       modeVersion?: number;
       recapAfterSeconds?: number;
       /** Recap strategy of the live process; lets the client suppress the

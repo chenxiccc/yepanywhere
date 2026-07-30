@@ -182,6 +182,8 @@ interface Props {
   onModeChange?: (mode: PermissionMode) => void;
   /** Permission mode changes are visibly staged for the next user turn. */
   modeChangesApplyNextTurn?: boolean;
+  /** Selected permission mode is waiting for a provider turn boundary. */
+  modeChangePending?: boolean;
   isRunning?: boolean;
   isThinking?: boolean;
   onStop?: () => void;
@@ -345,6 +347,7 @@ export function MessageInput({
   mode = "default",
   onModeChange,
   modeChangesApplyNextTurn,
+  modeChangePending,
   isRunning,
   isThinking,
   onStop,
@@ -2297,6 +2300,7 @@ export function MessageInput({
     mode,
     onModeChange,
     modeChangesApplyNextTurn,
+    modeChangePending,
     supportsPermissionMode,
     supportsThinkingToggle,
     canAttach,

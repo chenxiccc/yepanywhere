@@ -654,6 +654,11 @@ function SessionPageContent({
   // Effective provider/model for immediate display before session data loads
   const effectiveProvider = session?.provider ?? initialProvider;
   const effectiveModel = session?.model ?? initialModel;
+  const codexPermissionModeChangePending =
+    effectiveProvider === "codex" &&
+    status.owner === "self" &&
+    status.appliedPermissionMode !== undefined &&
+    permissionMode !== status.appliedPermissionMode;
   const [liveModelConfig, setLiveModelConfig] =
     useState<LiveModelConfig | null>(null);
 
@@ -2064,6 +2069,7 @@ function SessionPageContent({
           owner: "self",
           processId: result.processId,
           permissionMode: result.permissionMode,
+          appliedPermissionMode: result.appliedPermissionMode,
           modeVersion: result.modeVersion,
           recapAfterSeconds: result.recapAfterSeconds,
         });
@@ -2181,6 +2187,7 @@ function SessionPageContent({
             owner: "self",
             processId: result.processId,
             permissionMode: result.permissionMode,
+            appliedPermissionMode: result.appliedPermissionMode,
             modeVersion: result.modeVersion,
             recapAfterSeconds: result.recapAfterSeconds,
           });
@@ -2583,6 +2590,7 @@ function SessionPageContent({
             owner: "self",
             processId: result.processId,
             permissionMode: result.permissionMode,
+            appliedPermissionMode: result.appliedPermissionMode,
             modeVersion: result.modeVersion,
             recapAfterSeconds: result.recapAfterSeconds,
           });
@@ -3009,6 +3017,7 @@ function SessionPageContent({
           owner: "self",
           processId: result.processId,
           permissionMode: result.permissionMode,
+          appliedPermissionMode: result.appliedPermissionMode,
           modeVersion: result.modeVersion,
           recapAfterSeconds: result.recapAfterSeconds,
         });
@@ -3037,6 +3046,7 @@ function SessionPageContent({
           owner: "self",
           processId: result.processId,
           permissionMode: result.permissionMode,
+          appliedPermissionMode: result.appliedPermissionMode,
           modeVersion: result.modeVersion,
           recapAfterSeconds: result.recapAfterSeconds,
         });
@@ -4948,6 +4958,7 @@ function SessionPageContent({
               owner: "self",
               processId: result.processId,
               permissionMode: result.permissionMode,
+              appliedPermissionMode: result.appliedPermissionMode,
               modeVersion: result.modeVersion,
               recapAfterSeconds: result.recapAfterSeconds,
             });
@@ -4988,6 +4999,7 @@ function SessionPageContent({
                   owner: "self",
                   processId: result.processId,
                   permissionMode: result.permissionMode,
+                  appliedPermissionMode: result.appliedPermissionMode,
                   modeVersion: result.modeVersion,
                   recapAfterSeconds: result.recapAfterSeconds,
                 },
@@ -5211,6 +5223,7 @@ function SessionPageContent({
                     modeChangesApplyNextTurn={
                       effectiveProvider === "codex" && shouldDeferMessages
                     }
+                    modeChangePending={codexPermissionModeChangePending}
                     supportsPermissionMode={supportsPermissionMode}
                     supportsThinkingToggle={supportsThinkingToggle}
                     slashCommands={allSlashCommands}
@@ -5301,6 +5314,7 @@ function SessionPageContent({
                 modeChangesApplyNextTurn={
                   effectiveProvider === "codex" && shouldDeferMessages
                 }
+                modeChangePending={codexPermissionModeChangePending}
                 supportsPermissionMode={supportsPermissionMode}
                 supportsThinkingToggle={supportsThinkingToggle}
                 supportsSteering={generallySupportsSteering}

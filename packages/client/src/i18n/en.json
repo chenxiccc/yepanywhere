@@ -629,6 +629,7 @@
   "modeAutoDescription": "Provider decides",
   "modeNextTurnBadge": "Next turn",
   "modeNextTurnHint": "Applies to the next user turn",
+  "modePendingSuffix": "(pending)",
   "sessionInvalidUrl": "Invalid session URL",
   "sessionUntitled": "Untitled",
   "sessionUploading": "Uploading...",

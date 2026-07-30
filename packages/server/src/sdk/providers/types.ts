@@ -97,6 +97,8 @@ export interface StartSessionOptions {
   globalInstructions?: string;
   /** Native prompt-suggestion protocol opt-in for providers that support it. */
   promptSuggestions?: boolean;
+  /** Called after a provider applies this mode at a policy boundary. */
+  onPermissionModeApplied?: (mode: PermissionMode) => void;
   /**
    * Whether live provider deltas currently have an active consumer.
    * Providers that can skip expensive transient delta work should treat

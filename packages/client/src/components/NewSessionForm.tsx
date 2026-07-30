@@ -1721,6 +1721,7 @@ export function NewSessionForm({
         let processId: string;
         const sessionMode = effectivePermissionMode;
         let initialPermissionMode: PermissionMode = sessionMode;
+        let initialAppliedPermissionMode: PermissionMode | undefined;
         let initialModeVersion = 0;
         const uploadedFiles: UploadedFile[] = [];
 
@@ -1794,6 +1795,8 @@ export function NewSessionForm({
           sessionId = createResult.sessionId;
           processId = createResult.processId;
           initialPermissionMode = createResult.permissionMode;
+          initialAppliedPermissionMode =
+            createResult.appliedPermissionMode;
           initialModeVersion = createResult.modeVersion;
           resolvedProjectId = activeProjectId;
           logSessionUiTrace("new-session-created", {
@@ -1878,6 +1881,7 @@ export function NewSessionForm({
           sessionId = result.sessionId;
           processId = result.processId;
           initialPermissionMode = result.permissionMode;
+          initialAppliedPermissionMode = result.appliedPermissionMode;
           initialModeVersion = result.modeVersion;
           resolvedProjectId = result.projectId;
           logSessionUiTrace("new-session-started", {
@@ -1922,6 +1926,7 @@ export function NewSessionForm({
                 owner: "self",
                 processId,
                 permissionMode: initialPermissionMode,
+                appliedPermissionMode: initialAppliedPermissionMode,
                 modeVersion: initialModeVersion,
                 recapAfterSeconds,
               },

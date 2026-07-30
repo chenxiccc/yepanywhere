@@ -10,6 +10,7 @@ export interface InitialSessionStatus {
   owner: "self";
   processId: string;
   permissionMode?: PermissionMode;
+  appliedPermissionMode?: PermissionMode;
   modeVersion?: number;
   recapAfterSeconds?: number;
 }
@@ -72,6 +73,9 @@ export function normalizeInitialSessionStatus(
     processId: value.processId,
     ...(isPermissionMode(value.permissionMode)
       ? { permissionMode: value.permissionMode }
+      : {}),
+    ...(isPermissionMode(value.appliedPermissionMode)
+      ? { appliedPermissionMode: value.appliedPermissionMode }
       : {}),
     ...(modeVersion !== undefined ? { modeVersion } : {}),
     ...(typeof value.recapAfterSeconds === "number" &&

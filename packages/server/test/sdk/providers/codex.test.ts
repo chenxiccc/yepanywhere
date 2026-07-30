@@ -323,10 +323,12 @@ describe("CodexProvider app-server lifecycle", () => {
       buildFakeCodexPermissionAppServer(logPath),
     );
     const testProvider = new CodexProvider({ codexPath });
+    const onPermissionModeApplied = vi.fn();
     const session = await testProvider.startSession({
       cwd: tempDir,
       initialMessage: { text: "ask turn", mode: "default" },
       permissionMode: "default",
+      onPermissionModeApplied,
     });
 
     try {
@@ -348,6 +350,12 @@ describe("CodexProvider app-server lifecycle", () => {
       ).toHaveLength(1);
       expect(new Set(requests.map((request) => request.pid))).toHaveLength(1);
       expect(turnStarts).toHaveLength(3);
+      expect(onPermissionModeApplied.mock.calls).toEqual([
+        ["default"],
+        ["default"],
+        ["bypassPermissions"],
+        ["default"],
+      ]);
       expect(turnStarts.map((request) => request.params)).toEqual([
         expect.objectContaining({
           approvalPolicy: "on-request",

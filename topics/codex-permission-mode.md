@@ -119,8 +119,14 @@ It does not accept those overrides on `turn/steer`. Therefore:
   turn's sandbox. The selected value is pending for the next real turn.
 - The closed mode selector remains the normal compact control while a turn is
   active. Its tooltip and the timing note at the top of the opened menu explain
-  that a selection applies to the next turn; passive context must not widen the
-  toolbar with a persistent badge.
+  that a selection applies to the next turn. After a selection actually
+  diverges from the mode at the latest successful provider policy boundary,
+  the compact label appends `(pending)` until a matching `turn/start`
+  succeeds. It must not show a persistent passive next-turn badge when the
+  values already agree.
+- `appliedPermissionMode` is optional backwards-compatible server evidence.
+  When an older server omits it, the client retains the tooltip/menu timing
+  explanation and does not guess at or show a pending state.
 - The UI must not imply that an active Bypass turn has already been tightened
   merely because Ask was selected for the next turn. Immediate tightening
   requires interrupting the active turn and beginning a new one.
@@ -206,6 +212,11 @@ As of 2026-07-30:
 - `Process.setPermissionMode` updates YA state and multi-tab versioning only;
   it does not itself mutate an active app-server turn. The complete pair is
   sent at the next real `turn/start`, while steering inherits the active turn.
+- `Process.appliedPermissionMode` starts with the successful Codex thread
+  start/resume policy and then records each successful `turn/start`, separately
+  from the standing selector value. Ownership status, stream connection state,
+  and `mode-applied` events expose it as an optional field, allowing new
+  clients to render `(pending)` while remaining compatible with older servers.
 - Codex freezes the effective mode before `turn/start` and passes it through
   every approval callback. `Process.handleToolApproval` uses that request mode
   instead of a later toolbar value.
@@ -259,6 +270,9 @@ The implementation has deterministic coverage for:
 - provider-observed turn context agreeing with the requested next-turn mode;
 - mode selection during an active turn applying only to the next real turn and
   never through `turn/steer`;
+- the pending selector marker appearing only while selected and applied modes
+  differ, clearing after a successful matching `turn/start`, and remaining
+  absent against an older server that supplies no applied-mode evidence;
 - deferred messages retaining their submission mode until the turn they
   create;
 - pending approvals remaining explicit decisions rather than being resolved by

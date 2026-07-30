@@ -414,6 +414,7 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
               owner: "self",
               processId: process.id,
               permissionMode: process.permissionMode,
+              appliedPermissionMode: process.appliedPermissionMode,
               modeVersion: process.modeVersion,
               recapAfterSeconds: process.recapAfterSeconds,
             }

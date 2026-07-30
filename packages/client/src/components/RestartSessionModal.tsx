@@ -272,6 +272,7 @@ interface RestartSessionModalProps {
       model?: string;
       title?: string;
       permissionMode: PermissionMode;
+      appliedPermissionMode?: PermissionMode;
       modeVersion: number;
       recapAfterSeconds?: number;
       oldProcessAborted: boolean;

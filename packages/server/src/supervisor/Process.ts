@@ -829,6 +829,9 @@ export class Process {
   /** Current permission mode for tool approvals */
   private _permissionMode: PermissionMode = "default";
 
+  /** Codex mode applied at the latest successful thread or turn boundary. */
+  private _appliedPermissionMode: PermissionMode | undefined;
+
   /** Permission rules for tool filtering (deny/allow patterns from API caller) */
   private _permissions: PermissionRules | undefined;
 
@@ -1569,6 +1572,10 @@ export class Process {
     return this._permissionMode;
   }
 
+  get appliedPermissionMode(): PermissionMode | undefined {
+    return this._appliedPermissionMode;
+  }
+
   get permissions(): PermissionRules | undefined {
     return this._permissions;
   }
@@ -2011,6 +2018,18 @@ export class Process {
     this._permissionMode = mode;
     this._modeVersion++;
     this.emit({ type: "mode-change", mode, version: this._modeVersion });
+  }
+
+  /**
+   * Record the permission mode accepted at a provider turn boundary.
+   * This intentionally remains separate from the standing selector value.
+   */
+  setAppliedPermissionMode(mode: PermissionMode): void {
+    if (this._appliedPermissionMode === mode) {
+      return;
+    }
+    this._appliedPermissionMode = mode;
+    this.emit({ type: "mode-applied", mode });
   }
 
   /**

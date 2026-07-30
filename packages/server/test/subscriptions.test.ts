@@ -66,6 +66,7 @@ function createMockProcess(overrides?: Partial<Record<string, unknown>>): {
     sessionId: "sess-1",
     state: { type: "in-turn" } as ProcessState,
     permissionMode: "default",
+    appliedPermissionMode: "acceptEdits",
     modeVersion: 1,
     provider: "anthropic",
     model: "claude-sonnet-4-5-20250929",
@@ -227,6 +228,7 @@ describe("createSessionSubscription", () => {
       sessionId: "sess-1",
       state: "waiting-input",
       permissionMode: "default",
+      appliedPermissionMode: "acceptEdits",
       modeVersion: 1,
       provider: "anthropic",
       model: "claude-sonnet-4-5-20250929",
@@ -358,6 +360,24 @@ describe("createSessionSubscription", () => {
     expect(modeChange?.[1]).toEqual({
       permissionMode: "plan",
       modeVersion: 2,
+    });
+  });
+
+  it("forwards mode-applied events", async () => {
+    const { process, fireEvent } = createMockProcess();
+    const { emit, events } = collectEmit();
+
+    createSessionSubscription(process, emit);
+
+    await fireEvent({
+      type: "mode-applied",
+      mode: "bypassPermissions",
+    } as ProcessEvent);
+
+    const modeApplied = events.find(([type]) => type === "mode-applied");
+    expect(modeApplied).toBeDefined();
+    expect(modeApplied?.[1]).toEqual({
+      appliedPermissionMode: "bypassPermissions",
     });
   });
 

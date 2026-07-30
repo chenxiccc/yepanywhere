@@ -455,6 +455,7 @@ export function useSession(
     owner: "self";
     processId: string;
     permissionMode?: PermissionMode;
+    appliedPermissionMode?: PermissionMode;
     modeVersion?: number;
     recapAfterSeconds?: number;
     recapMode?: RecapMode;
@@ -1002,6 +1003,16 @@ export function useSession(
             lastKnownModeVersionRef.current = result.modeVersion;
             setServerMode(result.permissionMode);
             setModeVersion(result.modeVersion);
+          }
+          if (result.appliedPermissionMode) {
+            setStatus((prev) =>
+              prev.owner === "self"
+                ? {
+                    ...prev,
+                    appliedPermissionMode: result.appliedPermissionMode,
+                  }
+                : prev,
+            );
           }
         } catch (err) {
           // If API fails (e.g., no active process), mode will be sent on next message
@@ -1824,6 +1835,7 @@ export function useSession(
           sessionId?: string;
           state?: string;
           permissionMode?: PermissionMode;
+          appliedPermissionMode?: PermissionMode;
           modeVersion?: number;
           request?: InputRequest;
           provider?: ProviderName;
@@ -1854,6 +1866,8 @@ export function useSession(
           serverSessionId: serverSessionId ?? null,
           state: connectedData.state ?? null,
           permissionMode: connectedData.permissionMode ?? null,
+          appliedPermissionMode:
+            connectedData.appliedPermissionMode ?? null,
           modeVersion: connectedData.modeVersion ?? null,
           provider: connectedData.provider ?? null,
           model: connectedData.model ?? null,
@@ -1898,6 +1912,16 @@ export function useSession(
           applyServerModeUpdate(
             connectedData.permissionMode,
             connectedData.modeVersion,
+          );
+        }
+        if (connectedData.appliedPermissionMode) {
+          setStatus((prev) =>
+            prev.owner === "self"
+              ? {
+                  ...prev,
+                  appliedPermissionMode: connectedData.appliedPermissionMode,
+                }
+              : prev,
           );
         }
 
@@ -1946,6 +1970,21 @@ export function useSession(
         };
         if (modeData.permissionMode && modeData.modeVersion !== undefined) {
           applyServerModeUpdate(modeData.permissionMode, modeData.modeVersion);
+        }
+      } else if (data.eventType === "mode-applied") {
+        const modeData = data as {
+          eventType: string;
+          appliedPermissionMode?: PermissionMode;
+        };
+        if (modeData.appliedPermissionMode) {
+          setStatus((prev) =>
+            prev.owner === "self"
+              ? {
+                  ...prev,
+                  appliedPermissionMode: modeData.appliedPermissionMode,
+                }
+              : prev,
+          );
         }
       } else if (data.eventType === "markdown-augment") {
         // Handle markdown augment events (server-rendered)

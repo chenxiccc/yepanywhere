@@ -755,6 +755,8 @@ export type SessionOwnership =
       owner: "self";
       processId: string;
       permissionMode?: PermissionMode;
+      /** Mode applied at the latest successful provider policy boundary. */
+      appliedPermissionMode?: PermissionMode;
       modeVersion?: number;
       recapAfterSeconds?: number;
     }

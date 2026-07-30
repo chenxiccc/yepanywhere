@@ -1917,6 +1917,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           owner: "self",
           processId: process.id,
           permissionMode: process.permissionMode,
+          appliedPermissionMode: process.appliedPermissionMode,
           modeVersion: process.modeVersion,
           recapAfterSeconds: process.recapAfterSeconds,
         },
@@ -2145,6 +2146,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           owner: "self" as const,
           processId: process.id,
           permissionMode: process.permissionMode,
+          appliedPermissionMode: process.appliedPermissionMode,
           modeVersion: process.modeVersion,
           recapAfterSeconds: process.recapAfterSeconds,
         }
@@ -2597,6 +2599,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           owner: "self" as const,
           processId: process.id,
           permissionMode: process.permissionMode,
+          appliedPermissionMode: process.appliedPermissionMode,
           modeVersion: process.modeVersion,
           recapAfterSeconds: process.recapAfterSeconds,
         }
@@ -3119,6 +3122,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       processId: result.id,
       projectId: result.projectId,
       permissionMode: result.permissionMode,
+      appliedPermissionMode: result.appliedPermissionMode,
       modeVersion: result.modeVersion,
       recapAfterSeconds: result.recapAfterSeconds,
       sandboxEnforcement: result.sandboxEnforcement,
@@ -3244,6 +3248,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       processId: result.id,
       projectId: result.projectId,
       permissionMode: result.permissionMode,
+      appliedPermissionMode: result.appliedPermissionMode,
       modeVersion: result.modeVersion,
       recapAfterSeconds: result.recapAfterSeconds,
       sandboxEnforcement: result.sandboxEnforcement,
@@ -3356,6 +3361,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       processId: result.id,
       projectId: result.projectId,
       permissionMode: result.permissionMode,
+      appliedPermissionMode: result.appliedPermissionMode,
       modeVersion: result.modeVersion,
       recapAfterSeconds: result.recapAfterSeconds,
       sandboxEnforcement: result.sandboxEnforcement,
@@ -3449,6 +3455,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       processId: result.id,
       projectId: result.projectId,
       permissionMode: result.permissionMode,
+      appliedPermissionMode: result.appliedPermissionMode,
       modeVersion: result.modeVersion,
       recapAfterSeconds: result.recapAfterSeconds,
       sandboxEnforcement: result.sandboxEnforcement,
@@ -3768,6 +3775,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     return c.json({
       processId: result.id,
       permissionMode: result.permissionMode,
+      appliedPermissionMode: result.appliedPermissionMode,
       modeVersion: result.modeVersion,
       recapAfterSeconds: result.recapAfterSeconds,
       sandboxEnforcement: result.sandboxEnforcement,
@@ -3809,6 +3817,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         return c.json({
           processId: existing.id,
           permissionMode: existing.permissionMode,
+          appliedPermissionMode: existing.appliedPermissionMode,
           modeVersion: existing.modeVersion,
           recapAfterSeconds: existing.recapAfterSeconds,
           sandboxEnforcement: existing.sandboxEnforcement,
@@ -3899,6 +3908,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({
         processId: process.id,
         permissionMode: process.permissionMode,
+        appliedPermissionMode: process.appliedPermissionMode,
         modeVersion: process.modeVersion,
         recapAfterSeconds: process.recapAfterSeconds,
         sandboxEnforcement: process.sandboxEnforcement,
@@ -4278,6 +4288,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         model: result.resolvedModel ?? result.model,
         title: forkTitle,
         permissionMode: result.permissionMode,
+        appliedPermissionMode: result.appliedPermissionMode,
         modeVersion: result.modeVersion,
         recapAfterSeconds: result.recapAfterSeconds,
         sandboxEnforcement: result.sandboxEnforcement,
@@ -4399,6 +4410,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       model: result.resolvedModel ?? result.model,
       title: handoffTitle,
       permissionMode: result.permissionMode,
+      appliedPermissionMode: result.appliedPermissionMode,
       modeVersion: result.modeVersion,
       recapAfterSeconds: result.recapAfterSeconds,
       sandboxEnforcement: result.sandboxEnforcement,
@@ -5582,6 +5594,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         processId: process.id,
         processState: reportableProcessState(process),
         permissionMode: process.permissionMode,
+        appliedPermissionMode: process.appliedPermissionMode,
         modeVersion: process.modeVersion,
         recapAfterSeconds: process.recapAfterSeconds,
         deferredMessages: sessionQueueSummaries(deps, sessionId, process),
@@ -5647,6 +5660,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         processId: process.id,
         processState: reportableProcessState(process),
         permissionMode: process.permissionMode,
+        appliedPermissionMode: process.appliedPermissionMode,
         modeVersion: process.modeVersion,
         recapAfterSeconds: process.recapAfterSeconds,
         deferredMessages: sessionQueueSummaries(deps, sessionId, process),
@@ -5741,6 +5755,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
 
     return c.json({
       permissionMode: process.permissionMode,
+      appliedPermissionMode: process.appliedPermissionMode,
       modeVersion: process.modeVersion,
     });
   });
