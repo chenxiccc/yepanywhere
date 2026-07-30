@@ -160,7 +160,8 @@ if (existsSync(resourceDir)) {
 mkdirSync(resourceParent, { recursive: true });
 
 runPnpm([
-  "--offline",
+  "--prefer-offline",
+  "--frozen-lockfile",
   "--config.virtual-store-dir-max-length=32",
   "--config.ignore-scripts=true",
   "--filter",
@@ -210,7 +211,7 @@ try {
   );
   runPnpm(
     [
-      "--offline",
+      "--prefer-offline",
       "--config.ignore-scripts=true",
       "--config.node-linker=hoisted",
       "--filter",

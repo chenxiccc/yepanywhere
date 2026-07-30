@@ -23,6 +23,9 @@
 - Clean desktop profiles now bypass the legacy web onboarding wizard as required by the v0 first-launch flow.
 - Register the single-instance guard before all other Tauri plugins so rapid or repeated launches focus the existing dashboard without starting a competing app instance.
 
+### Fixed
+- Desktop runtime preparation now handles Windows archive paths and clean CI package stores without weakening lockfile-pinned dependency selection.
+
 ### Removed
 - First-run downloads of Yep Anywhere, Bun, Claude Code, and Codex.
 - Desktop PTY, general shell, provider authentication, and component installer commands.

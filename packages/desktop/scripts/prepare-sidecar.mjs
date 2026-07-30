@@ -164,7 +164,12 @@ try {
 
   const extractDir = join(tempRoot, "extract");
   mkdirSync(extractDir);
-  run("tar", ["-xf", archive, "-C", extractDir]);
+  // Windows bsdtar treats the drive colon in an absolute archive path as a
+  // remote-host separator. Run from the temporary root with relative paths so
+  // the same extraction command is reliable on every CI platform.
+  run("tar", ["-xf", basename(archive), "-C", basename(extractDir)], {
+    cwd: tempRoot,
+  });
   const extracted = join(
     extractDir,
     basename(target.asset, ".zip"),
