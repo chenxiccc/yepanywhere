@@ -85,10 +85,13 @@ last-run status.
 
 - YA discovers routine files from both conventional directories and reflects
   edits made outside YA.
-- Creating a local routine force-excludes `.yep/routines/` in the clone's
-  `.git/info/exclude`, following the safety model in
-  [attachment-storage](attachment-storage.md). Do not ignore all of `.yep/`;
-  other YA conventions may deliberately keep committed configuration there.
+- When YA creates `.yep/routines/`, that same creation operation adds it to the
+  clone's repository-local Git exclude, following the safety model in
+  [attachment-storage](attachment-storage.md). Creating a routine in an
+  existing directory never adds or restores the exclusion: the project owner
+  may have removed it deliberately. Do not use `.gitignore` or ignore all of
+  `.yep/`; other YA conventions may deliberately keep committed configuration
+  there.
 - If `.yep/routines/` is already tracked, YA must refuse to describe a newly
   written file there as Local. It should offer the shared location or a
   genuinely untracked fallback rather than mislabeling the content.
