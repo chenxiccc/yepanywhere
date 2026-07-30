@@ -30,6 +30,10 @@ function createSettingsServiceForAuditLog(
   return {
     getSetting: (key: string) =>
       key === "approvalAuditLogEnabled" ? enabled : undefined,
+    getSettings: () => ({
+      hostProcessObservabilityEnabled: false,
+    }),
+    onSettingsChanged: () => () => {},
   } as unknown as ServerSettingsService;
 }
 
