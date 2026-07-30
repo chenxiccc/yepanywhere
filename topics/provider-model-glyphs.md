@@ -18,6 +18,11 @@ constraints here apply to all of them. (A session-composer top-right float
 shipped briefly and was removed as redundant with the header badge —
 2026-07-03.)
 
+The below-composer model chip and the full Model field must also open the same
+model-picker layout. On desktop, both use the model picker's wider panel and
+top-aligned badge, name/description, and usage columns; the compact trigger
+must not fall back to the generic narrow filter-dropdown layout.
+
 ## Current implementation (unicode symbols) — not good enough
 
 The current approach assigns abstract unicode symbols (◉, ⌬, ✦, etc.) to
