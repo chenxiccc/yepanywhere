@@ -242,11 +242,17 @@ the later series must reduce without changing the visible behavior.
 
 ### Slice A0 — reusable process harness
 
+Status: Landed 2026-07-30.
+
 - Extract isolated YA server profile startup/health/cleanup support.
 - Generalize it from one secondary server to a named array of profiles.
 - Preserve the existing localhost plus plain-WebSocket coexistence smoke.
 
 ### Slice A1 — secure relay coexistence proof
+
+Status: Baseline landed 2026-07-30. The three-source success/collision path,
+controller ownership tests, and ordinary relay regressions are green. Real
+partial-failure and route-teardown browser cases remain in A3.
 
 - Provision three real relay/SRP sessions.
 - Instantiate three source runtimes without adding the monitor UI.
