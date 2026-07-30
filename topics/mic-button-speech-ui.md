@@ -301,24 +301,42 @@ speech chunk and keeps recognition running.
 
 ## Feedback
 
-The mic's capture readiness stays event-driven. Yellow `Starting…` means the
-capture path is initializing. Once the path produces a real capture event, the
-wide-screen status says `Speak now…`; while the recognizer reports speech or
-delivers transcription results, it says `Listening…`. Because browsers do not
-reliably emit a matching speech-end event, 1.2 seconds without a provisional or
-final recognition update returns the status to `Speak now…`; an explicit
-speech-end event returns it immediately. This inactivity inference changes only
-the feedback label, never transcript boundaries or capitalization.
+The mic's capture readiness stays event-driven. While the capture path is
+initializing, the mic retains its normal inactive appearance and the
+wide-screen status says `Starting…`; startup does not add an amber color or
+pulse. Once the path produces a real capture event, the wide-screen status says
+`Speak now…`; while the recognizer reports speech or delivers transcription
+results, it says `Listening…`. Because browsers do not reliably emit a matching
+speech-end event, 1.2 seconds without a provisional or final recognition update
+returns the status to `Speak now…`; an explicit speech-end event returns it
+immediately. This inactivity inference changes only the feedback label, never
+transcript boundaries or capitalization.
 Browser-native Web Speech sessions that end unexpectedly and are automatically
 restarted return to `Starting…`; they do not expose the network-sounding
 internal `reconnecting` state. The changing words provide the status feedback;
 all non-error status text keeps the normal text color and weight instead of
 flashing between state-specific red, green, and amber treatments. Actual error
 text remains red. The mic control itself turns red after the active path
-produces a real listening/capture event. While capture is active, the
-configurable live waveform uses whatever measured center space remains between
-the bottom row's anchored control groups; it yields before moving or
-overlapping those controls, as specified in
+produces a real listening/capture event. Its active icon is a microphone
+knocked out of a filled circle in the input background color. The unified disc
+stays still at `Speak now…` and pulses only while the state says `Listening…`.
+Only the filled circle changes size; the larger microphone glyph remains fixed
+so the activity cue does not make the symbol itself wobble. Idle, starting, and
+active states all render the exact same microphone SVG geometry and size;
+capture changes only its foreground/background treatment and adds the disc
+behind it. The 18px icon is sized to balance with neighboring toolbar glyphs
+without filling the button. Even at rest, the disc fully contains the
+microphone and its stand; active pulsing expands outward from that baseline
+rather than shrinking behind the glyph. Its resting scale includes the
+microphone stroke extending beyond the path's nominal bounds. This is
+deliberately activity-driven, not a fabricated volume meter;
+browser-native Web Speech exposes sound/speech events but not audio samples.
+While capture is active, the configurable live waveform uses whatever measured
+center space remains between the bottom row's anchored control groups; it
+yields before moving or overlapping those controls. The animated mic and
+changing status copy are the only persistent capture indicators: neither the
+session composer nor the new-session composer draws a pulsing red strip across
+its top edge. Overflow behavior remains as specified in
 [composer-bottom-bar-overflow.md](composer-bottom-bar-overflow.md). The
 waveform is a default-on element in Appearance → Session toolbar. The
 waveform is available for YA-controlled capture paths, where YA receives real

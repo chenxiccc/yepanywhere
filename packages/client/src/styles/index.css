@@ -8159,82 +8159,45 @@ div.bang-command-error-message {
   background: rgba(239, 68, 68, 0.25);
 }
 
-/* Connecting: pipeline is starting but not yet capturing. Amber + a gentle
-   pulse so the button reads as "warming up", distinct from the red recording
-   state, and never implies audio is being captured before it is. */
-.voice-input-button.connecting {
-  background: rgba(234, 179, 8, 0.12);
-  border-color: rgb(234, 179, 8);
-  color: rgb(234, 179, 8);
-  animation: voice-connecting-pulse 1s ease-in-out infinite;
+/* Browser-native Web Speech exposes speech activity but not audio levels.
+   Keep the microphone fixed while ready and pulse only the filled disc behind
+   it while speech/results are active. */
+.voice-input-level-disc {
+  opacity: 0.82;
+  transform: scale(1.18);
+  transform-box: view-box;
+  transform-origin: center;
 }
 
-@keyframes voice-connecting-pulse {
+.voice-input-recording {
+  overflow: visible;
+}
+
+.voice-input-level-glyph {
+  color: var(--bg-input);
+}
+
+.voice-input-recording.is-speech-active .voice-input-level-disc {
+  animation: voice-input-level-pulse 0.9s ease-in-out infinite;
+}
+
+@keyframes voice-input-level-pulse {
   0%,
   100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
-}
-
-/* Animated bars for recording state */
-.voice-input-recording .bar {
-  animation: voice-bar-pulse 0.8s ease-in-out infinite;
-}
-
-.voice-input-recording .bar-1 {
-  animation-delay: 0s;
-}
-
-.voice-input-recording .bar-2 {
-  animation-delay: 0.2s;
-}
-
-.voice-input-recording .bar-3 {
-  animation-delay: 0.4s;
-}
-
-@keyframes voice-bar-pulse {
-  0%,
-  100% {
-    opacity: 0.4;
-    transform: scaleY(0.6);
+    opacity: 0.75;
+    transform: scale(1.18);
   }
   50% {
     opacity: 1;
-    transform: scaleY(1);
+    transform: scale(1.32);
   }
 }
 
-/* Voice recording indicator on input containers */
-.message-input.voice-recording,
-.new-session-form.voice-recording {
-  position: relative;
-}
-
-.message-input.voice-recording::before,
-.new-session-form.voice-recording::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: rgb(239, 68, 68);
-  animation: voice-pulse 1s ease-in-out infinite;
-  border-radius: var(--radius-md) var(--radius-md) 0 0;
-  z-index: 1;
-}
-
-@keyframes voice-pulse {
-  0%,
-  100% {
+@media (prefers-reduced-motion: reduce) {
+  .voice-input-recording.is-speech-active .voice-input-level-disc {
+    animation: none;
     opacity: 1;
-  }
-  50% {
-    opacity: 0.4;
+    transform: scale(1.25);
   }
 }
 

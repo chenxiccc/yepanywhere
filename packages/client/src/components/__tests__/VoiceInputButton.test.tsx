@@ -232,7 +232,9 @@ describe("VoiceInputButton", () => {
     );
 
     expect(document.querySelector(".voice-input-status")).toBeNull();
-    expect(document.querySelector(".voice-input-recording")).toBeTruthy();
+    const recordingIcon = document.querySelector(".voice-input-recording");
+    expect(recordingIcon).toBeTruthy();
+    expect(recordingIcon?.classList.contains("is-speech-active")).toBe(false);
   });
 
   it("prompts when browser-native capture is ready without sample access", () => {
@@ -266,6 +268,11 @@ describe("VoiceInputButton", () => {
     );
 
     expect(screen.getByRole("status").textContent).toBe("Listening...");
+    expect(
+      document
+        .querySelector(".voice-input-recording")
+        ?.classList.contains("is-speech-active"),
+    ).toBe(true);
   });
 
   it("describes an automatic recognizer restart as starting", () => {
@@ -280,5 +287,22 @@ describe("VoiceInputButton", () => {
     );
 
     expect(screen.getByRole("status").textContent).toBe("Starting...");
+  });
+
+  it("keeps the microphone neutral while capture starts", () => {
+    speechState.status = "starting";
+
+    render(
+      <VoiceInputButton
+        onTranscript={vi.fn()}
+        onInterimTranscript={vi.fn()}
+        speechMethod="browser-native"
+      />,
+    );
+
+    const button = screen.getByRole("button", { name: "voiceInputStopLabel" });
+    expect(button.classList.contains("connecting")).toBe(false);
+    expect(button.classList.contains("listening")).toBe(false);
+    expect(document.querySelector(".voice-input-recording")).toBeNull();
   });
 });

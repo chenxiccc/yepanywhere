@@ -2423,7 +2423,7 @@ export function MessageInput({
           (showCollapsedLineCount || showCollapsedDesktopMicrophone)
             ? "has-collapsed-side-actions"
             : ""
-        } ${interimTranscript ? "voice-recording" : ""}`}
+        }`}
       >
         <div
           className={`speech-draft-field ${

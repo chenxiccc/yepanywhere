@@ -3182,7 +3182,7 @@ export function NewSessionForm({
   if (compact) {
     return (
       <div
-        className={`new-session-form new-session-form-compact ${interimTranscript ? "voice-recording" : ""}`}
+        className="new-session-form new-session-form-compact"
         onKeyDownCapture={handleComposerKeyDown}
       >
         {inputArea}
@@ -3193,7 +3193,7 @@ export function NewSessionForm({
   // Full mode: form with header, input area, and mode selector
   return (
     <div
-      className={`new-session-form new-session-container ${interimTranscript ? "voice-recording" : ""}`}
+      className="new-session-form new-session-container"
       onKeyDownCapture={handleComposerKeyDown}
     >
       <div className="new-session-header">
