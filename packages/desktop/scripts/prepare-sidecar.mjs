@@ -30,6 +30,7 @@ const versions = JSON.parse(
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: options.cwd,
+    env: options.env,
     encoding: "utf8",
     stdio: options.stdio ?? "pipe",
   });
@@ -164,12 +165,26 @@ try {
 
   const extractDir = join(tempRoot, "extract");
   mkdirSync(extractDir);
-  // Windows bsdtar treats the drive colon in an absolute archive path as a
-  // remote-host separator. Run from the temporary root with relative paths so
-  // the same extraction command is reliable on every CI platform.
-  run("tar", ["-xf", basename(archive), "-C", basename(extractDir)], {
-    cwd: tempRoot,
-  });
+  if (process.platform === "win32") {
+    run(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        "Expand-Archive -LiteralPath $env:YEP_DESKTOP_BUN_ARCHIVE -DestinationPath $env:YEP_DESKTOP_BUN_EXTRACT_DIR -Force",
+      ],
+      {
+        env: {
+          ...process.env,
+          YEP_DESKTOP_BUN_ARCHIVE: archive,
+          YEP_DESKTOP_BUN_EXTRACT_DIR: extractDir,
+        },
+      },
+    );
+  } else {
+    run("unzip", ["-q", archive, "-d", extractDir]);
+  }
   const extracted = join(
     extractDir,
     basename(target.asset, ".zip"),
