@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionMetadataProvider } from "../../contexts/SessionMetadataContext";
 import { I18nProvider } from "../../i18n";
 import { ImageViewer } from "../ImageViewer";
+import imageViewerStyles from "../ImageViewer.module.css";
 import { LocalFileModal, LocalMediaModal } from "../LocalMediaModal";
 
 const originalCreateObjectUrlDescriptor = Object.getOwnPropertyDescriptor(
@@ -25,6 +26,10 @@ const originalImageDecodeDescriptor = Object.getOwnPropertyDescriptor(
   HTMLImageElement.prototype,
   "decode",
 );
+
+function hasClass(element: Element, className: string | undefined): boolean {
+  return className !== undefined && element.classList.contains(className);
+}
 
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -395,17 +400,19 @@ describe("LocalMediaModal", () => {
     expect(downloadLink.getAttribute("download")).toBe("plot.png");
 
     expect(
-      screen.getByRole("dialog").querySelector(".local-media-image-viewer"),
+      screen
+        .getByRole("dialog")
+        .querySelector(`.${imageViewerStyles.viewer}`),
     ).toBeTruthy();
     const imageSurface = screen
       .getByRole("dialog")
-      .querySelector<HTMLElement>(".local-media-image-stage");
+      .querySelector<HTMLElement>(`.${imageViewerStyles.stage}`);
     expect(imageSurface).toBeTruthy();
     if (!imageSurface) return;
     fireEvent.click(screen.getByRole("button", { name: "100%" }));
-    expect(imageSurface.classList.contains("is-zoom")).toBe(true);
+    expect(hasClass(imageSurface, imageViewerStyles.zoom)).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Fit" }));
-    expect(imageSurface.classList.contains("is-fit")).toBe(true);
+    expect(hasClass(imageSurface, imageViewerStyles.fit)).toBe(true);
 
     const image = screen.getByRole("img", { name: "plot.png" });
     Object.defineProperties(image, {
@@ -415,7 +422,7 @@ describe("LocalMediaModal", () => {
     fireEvent.load(image);
     const stage = screen
       .getByRole("dialog")
-      .querySelector<HTMLElement>(".local-media-image-stage");
+      .querySelector<HTMLElement>(`.${imageViewerStyles.stage}`);
     expect(stage).toBeTruthy();
     if (!stage) return;
     Object.defineProperties(stage, {
@@ -453,10 +460,11 @@ describe("LocalMediaModal", () => {
     dispatchTouchPointer("pointerdown", 1, 300);
     dispatchTouchPointer("pointerdown", 2, 500);
     dispatchTouchPointer("pointermove", 2, 700);
-    expect(imageSurface.classList.contains("is-zoom")).toBe(true);
+    expect(hasClass(imageSurface, imageViewerStyles.zoom)).toBe(true);
     expect(
-      screen.getByRole("dialog").querySelector(".local-media-image-zoom")
-        ?.textContent,
+      screen
+        .getByRole("dialog")
+        .querySelector(`.${imageViewerStyles.zoomLevel}`)?.textContent,
     ).toBe("101%");
 
     expect(fetchBlob).toHaveBeenCalledWith(
@@ -513,13 +521,14 @@ describe("LocalMediaModal", () => {
     rerender(renderModal(updatedOnNext, updatedOnPrevious));
     fireEvent.keyDown(document, { key: "ArrowLeft" });
     expect(
-      screen
-        .getByRole("group", { name: "Gallery image navigation" })
-        .classList.contains("is-hidden"),
+      hasClass(
+        screen.getByRole("group", { name: "Gallery image navigation" }),
+        imageViewerStyles.hidden,
+      ),
     ).toBe(true);
-    expect(screen.getByText("2 of 4").classList.contains("is-visible")).toBe(
-      true,
-    );
+    expect(
+      hasClass(screen.getByText("2 of 4"), imageViewerStyles.visible),
+    ).toBe(true);
     fireEvent.keyDown(document, { key: "ArrowRight" });
     fireEvent.keyDown(document, { key: "ArrowRight", repeat: true });
     fireEvent.keyDown(document, { ctrlKey: true, key: "ArrowRight" });
@@ -553,13 +562,13 @@ describe("LocalMediaModal", () => {
     );
 
     const viewer = document.querySelector<HTMLElement>(
-      ".local-media-image-viewer",
+      `.${imageViewerStyles.viewer}`,
     );
     const stageShell = document.querySelector<HTMLElement>(
-      ".local-media-image-stage-shell",
+      `.${imageViewerStyles.stageShell}`,
     );
     const stage = document.querySelector<HTMLElement>(
-      ".local-media-image-stage",
+      `.${imageViewerStyles.stage}`,
     );
     const navigation = screen.getByRole("group", {
       name: "Gallery image navigation",
@@ -570,8 +579,8 @@ describe("LocalMediaModal", () => {
     expect(stage).toBeTruthy();
     if (!viewer || !stageShell || !stage) return;
 
-    expect(navigation.classList.contains("is-visible")).toBe(true);
-    expect(position.classList.contains("is-visible")).toBe(true);
+    expect(hasClass(navigation, imageViewerStyles.visible)).toBe(true);
+    expect(hasClass(position, imageViewerStyles.visible)).toBe(true);
     expect(stageShell.contains(position)).toBe(false);
     expect(position.parentElement).toBe(viewer);
     expect(
@@ -582,14 +591,14 @@ describe("LocalMediaModal", () => {
     ).toBe("m15 18-6-6 6-6");
 
     act(() => vi.advanceTimersByTime(2_000));
-    expect(navigation.classList.contains("is-hidden")).toBe(true);
-    expect(position.classList.contains("is-hidden")).toBe(true);
+    expect(hasClass(navigation, imageViewerStyles.hidden)).toBe(true);
+    expect(hasClass(position, imageViewerStyles.hidden)).toBe(true);
 
     const mouseMove = new MouseEvent("pointermove", { bubbles: true });
     Object.defineProperty(mouseMove, "pointerType", { value: "mouse" });
     fireEvent(stage, mouseMove);
-    expect(navigation.classList.contains("is-visible")).toBe(true);
-    expect(position.classList.contains("is-visible")).toBe(true);
+    expect(hasClass(navigation, imageViewerStyles.visible)).toBe(true);
+    expect(hasClass(position, imageViewerStyles.visible)).toBe(true);
 
     rerender(
       <I18nProvider>
@@ -603,8 +612,8 @@ describe("LocalMediaModal", () => {
         />
       </I18nProvider>,
     );
-    expect(navigation.classList.contains("is-hidden")).toBe(true);
-    expect(position.classList.contains("is-visible")).toBe(true);
+    expect(hasClass(navigation, imageViewerStyles.hidden)).toBe(true);
+    expect(hasClass(position, imageViewerStyles.visible)).toBe(true);
 
     Object.defineProperty(stage, "setPointerCapture", {
       configurable: true,
@@ -618,8 +627,8 @@ describe("LocalMediaModal", () => {
       });
       fireEvent(stage, touchEvent);
     }
-    expect(navigation.classList.contains("is-visible")).toBe(true);
-    expect(position.classList.contains("is-visible")).toBe(true);
+    expect(hasClass(navigation, imageViewerStyles.visible)).toBe(true);
+    expect(hasClass(position, imageViewerStyles.visible)).toBe(true);
   });
 
   it("dismisses the image viewer only from explicit controls or Escape", async () => {
@@ -650,7 +659,7 @@ describe("LocalMediaModal", () => {
     await screen.findByRole("img", { name: "plot.png" });
     const stage = screen
       .getByRole("dialog")
-      .querySelector<HTMLElement>(".local-media-image-stage");
+      .querySelector<HTMLElement>(`.${imageViewerStyles.stage}`);
     expect(stage).toBeTruthy();
     if (!stage) return;
     expect(stage.getAttribute("role")).toBeNull();

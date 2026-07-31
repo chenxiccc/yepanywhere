@@ -8,10 +8,36 @@ import {
   useState,
 } from "react";
 import { useI18n } from "../i18n";
+import styles from "./ImageViewer.module.css";
 
 interface ImageDimensions {
   height: number;
   width: number;
+}
+
+type ImageViewMode = "fit" | "zoom";
+
+type NavigationChrome = "all" | "hidden" | "position";
+
+const VIEW_MODE_CLASS: Record<ImageViewMode, string | undefined> = {
+  fit: styles.fit,
+  zoom: styles.zoom,
+};
+
+const NAVIGATION_CHROME_CLASS: Record<NavigationChrome, string | undefined> = {
+  all: styles.visible,
+  hidden: styles.hidden,
+  position: styles.hidden,
+};
+
+const POSITION_CHROME_CLASS: Record<NavigationChrome, string | undefined> = {
+  all: styles.visible,
+  hidden: styles.hidden,
+  position: styles.visible,
+};
+
+function cx(...classNames: (string | false | undefined)[]): string {
+  return classNames.filter(Boolean).join(" ");
 }
 
 export interface ImageViewerNavigation {
@@ -37,7 +63,7 @@ function ImageViewerChevron({
 }) {
   return (
     <svg
-      className="local-media-image-navigation-icon"
+      className={styles.navigationIcon}
       viewBox="0 0 24 24"
       aria-hidden="true"
     >
@@ -99,12 +125,12 @@ export function ImageViewer({
   const navigationHideTimerRef = useRef<number | null>(null);
   const keyboardNavigationSequenceRef = useRef(keyboardNavigationSequence);
   const [dimensions, setDimensions] = useState<ImageDimensions | null>(null);
-  const [viewMode, setViewMode] = useState<"fit" | "zoom">("fit");
+  const [viewMode, setViewMode] = useState<ImageViewMode>("fit");
   const [scale, setScale] = useState(1);
   const hasNavigation = Boolean(navigation);
-  const [navigationChrome, setNavigationChrome] = useState<
-    "all" | "hidden" | "position"
-  >(() => (hasNavigation ? initialNavigationChrome : "hidden"));
+  const [navigationChrome, setNavigationChrome] = useState<NavigationChrome>(
+    () => (hasNavigation ? initialNavigationChrome : "hidden"),
+  );
 
   const clearNavigationHideTimer = useCallback(() => {
     if (navigationHideTimerRef.current !== null) {
@@ -391,17 +417,15 @@ export function ImageViewer({
   const zoomLabel = `${Math.round(getCurrentScale() * 100)}%`;
 
   return (
-    <div
-      className={`local-media-image-viewer${navigation ? " has-navigation" : ""}`}
-    >
+    <div className={cx(styles.viewer, navigation && styles.hasNavigation)}>
       <div
-        className="local-media-image-toolbar"
+        className={styles.toolbar}
         role="toolbar"
         aria-label={t("imageViewerControls")}
       >
         <button
           type="button"
-          className="local-media-image-control"
+          className={styles.control}
           aria-pressed={viewMode === "fit"}
           onClick={fitImage}
         >
@@ -409,7 +433,7 @@ export function ImageViewer({
         </button>
         <button
           type="button"
-          className="local-media-image-control"
+          className={styles.control}
           aria-pressed={viewMode === "zoom" && scale === 1}
           onClick={() => zoomAt(1)}
         >
@@ -417,25 +441,25 @@ export function ImageViewer({
         </button>
         <button
           type="button"
-          className="local-media-image-control"
+          className={styles.control}
           aria-label={t("imageViewerZoomOut")}
           onClick={() => zoomAt(getCurrentScale() / IMAGE_ZOOM_STEP)}
         >
           −
         </button>
-        <output className="local-media-image-zoom" aria-live="polite">
+        <output className={styles.zoomLevel} aria-live="polite">
           {zoomLabel}
         </output>
         <button
           type="button"
-          className="local-media-image-control"
+          className={styles.control}
           aria-label={t("imageViewerZoomIn")}
           onClick={() => zoomAt(getCurrentScale() * IMAGE_ZOOM_STEP)}
         >
           +
         </button>
         <a
-          className="local-media-image-download"
+          className={styles.download}
           href={url}
           download={fileName}
           aria-label={t("imageViewerDownload", { name: fileName })}
@@ -444,7 +468,7 @@ export function ImageViewer({
         </a>
         <button
           type="button"
-          className="local-media-image-close"
+          className={styles.close}
           aria-label={t("imageViewerClose")}
           onClick={onClose}
         >
@@ -452,7 +476,7 @@ export function ImageViewer({
         </button>
       </div>
       <div
-        className="local-media-image-stage-shell"
+        className={styles.stageShell}
         onPointerMoveCapture={(event) => {
           if (event.pointerType !== "touch") {
             onNavigationInput?.("controls");
@@ -462,17 +486,17 @@ export function ImageViewer({
       >
         <div
           ref={stageRef}
-          className={`local-media-image-stage is-${viewMode}`}
+          className={cx(styles.stage, VIEW_MODE_CLASS[viewMode])}
           onPointerCancel={handlePointerCancel}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onWheel={handleWheel}
         >
-          <div className="local-media-image-canvas" style={canvasStyle}>
-            <div className={`local-media-image-surface is-${viewMode}`}>
+          <div className={styles.canvas} style={canvasStyle}>
+            <div className={cx(styles.surface, VIEW_MODE_CLASS[viewMode])}>
               <img
-                className="local-media-image"
+                className={styles.image}
                 src={url}
                 alt={fileName}
                 draggable={false}
@@ -489,7 +513,10 @@ export function ImageViewer({
         </div>
         {navigation ? (
           <div
-            className={`local-media-image-navigation${navigationChrome === "all" ? " is-visible" : " is-hidden"}`}
+            className={cx(
+              styles.navigation,
+              NAVIGATION_CHROME_CLASS[navigationChrome],
+            )}
             role="group"
             aria-label={t("imageViewerGalleryNavigation")}
             onFocusCapture={() => {
@@ -511,7 +538,7 @@ export function ImageViewer({
           >
             <button
               type="button"
-              className="local-media-image-navigation-button is-previous"
+              className={cx(styles.navigationButton, styles.previous)}
               aria-label={t("imageViewerPrevious")}
               onClick={() => {
                 onNavigationInput?.("controls");
@@ -523,7 +550,7 @@ export function ImageViewer({
             </button>
             <button
               type="button"
-              className="local-media-image-navigation-button is-next"
+              className={cx(styles.navigationButton, styles.next)}
               aria-label={t("imageViewerNext")}
               onClick={() => {
                 onNavigationInput?.("controls");
@@ -538,7 +565,10 @@ export function ImageViewer({
       </div>
       {navigation ? (
         <output
-          className={`local-media-image-position${navigationChrome === "hidden" ? " is-hidden" : " is-visible"}`}
+          className={cx(
+            styles.position,
+            POSITION_CHROME_CLASS[navigationChrome],
+          )}
           aria-live="polite"
         >
           {t("imageViewerGalleryPosition", {

@@ -1,0 +1,226 @@
+/* Kept first to preserve the source order it had in renderers.css, where this
+   rule lived inside the shared 600px block alongside the modal shell. */
+@media (max-width: 600px) {
+  .close {
+    display: none;
+  }
+}
+
+.viewer {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.viewer.hasNavigation {
+  grid-template-rows: auto minmax(0, 1fr) 1.75rem;
+}
+
+.toolbar {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0.375rem 0.5rem;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+}
+
+.control,
+.download,
+.close {
+  min-width: 2rem;
+  min-height: 2rem;
+  box-sizing: border-box;
+  padding: 0.25rem 0.55rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.8125rem;
+  line-height: 1.25;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.control:hover,
+.download:hover,
+.close:hover,
+.control[aria-pressed="true"] {
+  border-color: var(--accent-color);
+  color: var(--text-primary);
+}
+
+.control[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--accent-color) 14%, var(--bg-primary));
+}
+
+.zoomLevel {
+  min-width: 3.25rem;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  text-align: center;
+}
+
+.download {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+}
+
+.stageShell {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.stage {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--bg-primary);
+  container-type: size;
+  touch-action: none;
+}
+
+.navigation {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  opacity: 1;
+  pointer-events: none;
+  transition: opacity 140ms ease;
+}
+
+.navigation.visible {
+  opacity: 1;
+}
+
+.navigation.hidden {
+  opacity: 0;
+}
+
+.navigation.hidden .navigationButton {
+  pointer-events: none;
+}
+
+.navigationButton {
+  position: absolute;
+  top: 50%;
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  place-items: center;
+  transform: translateY(-50%);
+  border: 1px solid
+    color-mix(in srgb, var(--text-primary) 30%, var(--border-color));
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--bg-secondary) 88%, transparent);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-md);
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.navigationIcon {
+  display: block;
+  width: 1.5rem;
+  height: 1.5rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.25;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.navigationButton.previous {
+  left: 0.75rem;
+}
+
+.navigationButton.next {
+  right: 0.75rem;
+}
+
+.navigationButton:hover,
+.navigationButton:focus-visible {
+  border-color: var(--accent-color);
+  background: color-mix(in srgb, var(--accent-color) 18%, var(--bg-secondary));
+}
+
+.position {
+  display: grid;
+  min-width: 0;
+  min-height: 1.75rem;
+  place-items: center;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  opacity: 1;
+  pointer-events: none;
+  transition: opacity 140ms ease;
+}
+
+.position.visible {
+  opacity: 1;
+}
+
+.position.hidden {
+  opacity: 0;
+}
+
+.canvas {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  min-width: 100%;
+  min-height: 100%;
+  box-sizing: border-box;
+  place-items: center;
+  padding: 1rem;
+}
+
+.surface {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  line-height: 0;
+}
+
+.surface.zoom {
+  max-width: none;
+  max-height: none;
+}
+
+.image {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  user-select: none;
+  border-radius: var(--radius-sm);
+}
+
+.surface.fit .image {
+  max-width: calc(100cqw - 2rem);
+  max-height: calc(100cqh - 2rem);
+}
+
+.surface.zoom .image {
+  max-width: none;
+  max-height: none;
+}
