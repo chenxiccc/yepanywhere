@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import type { RemoteExecutorTestResult } from "../../api/client";
 import { useRemoteExecutors } from "../../hooks/useRemoteExecutors";
 import { useI18n } from "../../i18n";
+import styles from "./RemoteExecutorsSettings.module.css";
 import { SettingsItem } from "./SettingsItem";
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
 import { HideInSettingsSearch } from "./SettingsSearchContext";
@@ -124,7 +125,7 @@ export function RemoteExecutorsSettings() {
           label={t("remoteExecutorsAddTitle")}
           description={t("remoteExecutorsAddDescription")}
         >
-          <div className="remote-executor-add">
+          <div className={styles.addRow}>
             <input
               type="text"
               value={newHost}
@@ -132,13 +133,13 @@ export function RemoteExecutorsSettings() {
               onKeyDown={handleKeyDown}
               placeholder={t("remoteExecutorsHostPlaceholder")}
               disabled={isAdding}
-              className="remote-executor-input"
+              className={styles.input}
             />
             <button
               type="button"
               onClick={handleAddExecutor}
               disabled={!newHost.trim() || isAdding}
-              className="remote-executor-add-button"
+              className={styles.addButton}
             >
               {isAdding ? t("remoteExecutorsAdding") : t("remoteExecutorsAdd")}
             </button>
@@ -156,13 +157,13 @@ export function RemoteExecutorsSettings() {
           ) : executors.length === 0 ? (
             <p className="settings-empty">{t("remoteExecutorsEmpty")}</p>
           ) : (
-            <div className="remote-executor-list">
+            <div className={styles.list}>
               {executors.map((host) => {
                 const status = executorStatus[host];
                 return (
-                  <div key={host} className="remote-executor-item">
-                    <div className="remote-executor-item-info">
-                      <span className="remote-executor-host">{host}</span>
+                  <div key={host} className={styles.item}>
+                    <div className={styles.itemInfo}>
+                      <span className={styles.host}>{host}</span>
                       {status?.result && (
                         <span
                           className={`settings-status-badge ${status.result.success ? "settings-status-detected" : "settings-status-not-detected"}`}
@@ -174,12 +175,12 @@ export function RemoteExecutorsSettings() {
                       )}
                     </div>
                     {status?.result && !status.result.success && (
-                      <p className="settings-error remote-executor-error">
+                      <p className={`settings-error ${styles.error}`}>
                         {status.result.error}
                       </p>
                     )}
                     {status?.result?.success && (
-                      <p className="remote-executor-details">
+                      <p className={styles.details}>
                         {status.result.claudeAvailable
                           ? status.result.claudeVersion
                             ? t("remoteExecutorsClaudeVersion", {
@@ -189,12 +190,12 @@ export function RemoteExecutorsSettings() {
                           : t("remoteExecutorsClaudeMissing")}
                       </p>
                     )}
-                    <div className="remote-executor-actions">
+                    <div className={styles.actions}>
                       <button
                         type="button"
                         onClick={() => handleTestExecutor(host)}
                         disabled={status?.testing}
-                        className="remote-executor-test-button"
+                        className={styles.testButton}
                       >
                         {status?.testing
                           ? t("remoteExecutorsTesting")
@@ -203,7 +204,7 @@ export function RemoteExecutorsSettings() {
                       <button
                         type="button"
                         onClick={() => handleRemoveExecutor(host)}
-                        className="remote-executor-remove-button"
+                        className={styles.removeButton}
                       >
                         {t("remoteExecutorsRemove")}
                       </button>
@@ -220,7 +221,7 @@ export function RemoteExecutorsSettings() {
       <HideInSettingsSearch>
         <div className="settings-group">
           <h3>{t("remoteExecutorsSetupRequirements")}</h3>
-          <ul className="settings-requirements">
+          <ul className={styles.requirements}>
             <li>{t("remoteExecutorsRequirementSshConfig")}</li>
             <li>{t("remoteExecutorsRequirementKeyAuth")}</li>
             <li>{t("remoteExecutorsRequirementClaude")}</li>
