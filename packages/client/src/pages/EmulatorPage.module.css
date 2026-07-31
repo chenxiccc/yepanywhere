@@ -1,0 +1,215 @@
+/* Device list */
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.groupTitle {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--app-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--app-card-bg);
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+}
+
+.itemInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.itemName {
+  font-weight: 500;
+  color: var(--app-text-primary);
+}
+
+.itemStatus {
+  font-size: 0.8em;
+  color: var(--app-text-secondary);
+}
+
+.itemStatus.running {
+  color: var(--app-yep-green);
+}
+
+.itemStatus.stopped {
+  color: var(--app-text-tertiary);
+}
+
+.itemActions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Buttons */
+.btn {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.85em;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btnPrimary {
+  background: var(--app-yep-green);
+  color: white;
+}
+
+.btnPrimary:hover {
+  background: var(--app-yep-green-dark);
+}
+
+.btnSecondary {
+  background: var(--app-button-secondary-bg, var(--app-bg-tertiary));
+  color: var(--app-text-primary);
+}
+
+.btnSecondary:hover {
+  background: var(--app-button-secondary-hover-bg, var(--app-bg-quaternary));
+}
+
+/* Stream view */
+.streamView {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  max-height: 100dvh;
+}
+
+.streamHeader {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.connectionState {
+  font-size: 0.85em;
+  color: var(--app-text-secondary);
+  text-transform: capitalize;
+  text-align: center;
+}
+
+.streamHeaderActions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.keyboardState {
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--app-border);
+  background: var(--app-bg-primary);
+  color: var(--app-text-secondary);
+  font-size: 0.75em;
+}
+
+.profileState {
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--app-border);
+  background: var(--app-bg-secondary);
+  color: var(--app-text-secondary);
+  font-size: 0.8em;
+}
+
+.profileTimeline {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--app-border);
+  background: var(--app-bg-primary);
+}
+
+.profileTimelineItem {
+  display: flex;
+  gap: 8px;
+  font-size: 0.75em;
+  color: var(--app-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.profileTimelineItem.latest {
+  color: var(--app-text-primary);
+}
+
+.profileTimelineTime {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+
+.profileTimelineDetail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.streamContainer {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  overflow: hidden;
+}
+
+/* Status messages */
+.loading,
+.empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--app-text-secondary);
+}
+
+.error {
+  padding: 12px 16px;
+  margin: 8px 0;
+  background: var(--app-error-bg, rgba(239, 68, 68, 0.1));
+  color: var(--app-error-text, #ef4444);
+  border-radius: 6px;
+  font-size: 0.9em;
+}
+
+.connecting {
+  padding: 24px;
+  text-align: center;
+  color: var(--app-text-secondary);
+}
+
+/* Download prompt */
+.downloadPrompt {
+  padding: 32px 24px;
+  text-align: center;
+  color: var(--app-text-secondary);
+}
+
+.downloadPrompt p {
+  margin: 0 0 16px;
+}
+
+.downloadPrompt .error {
+  margin-bottom: 16px;
+}

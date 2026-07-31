@@ -15,6 +15,7 @@ import { useEmulators } from "../hooks/useEmulators";
 import { useVersion } from "../hooks/useVersion";
 import { useI18n } from "../i18n";
 import { MainContent, useNavigationLayout } from "../layouts";
+import styles from "./EmulatorPage.module.css";
 
 const DEVICE_TYPE_ORDER: DeviceInfo["type"][] = [
   "emulator",
@@ -84,20 +85,20 @@ function EmulatorListItem({
   const canStop = hasAction(device, "stop");
 
   return (
-    <div className="emulator-list-item">
-      <div className="emulator-list-item-info">
-        <span className="emulator-list-item-name">{deviceLabel(device)}</span>
+    <div className={styles.item} data-testid="device-row">
+      <div className={styles.itemInfo}>
+        <span className={styles.itemName}>{deviceLabel(device)}</span>
         <span
-          className={`emulator-list-item-status ${device.state === "stopped" ? "stopped" : "running"}`}
+          className={`${styles.itemStatus} ${device.state === "stopped" ? styles.stopped : styles.running}`}
         >
           {device.state}
         </span>
       </div>
-      <div className="emulator-list-item-actions">
+      <div className={styles.itemActions}>
         {canConnect && (
           <button
             type="button"
-            className="emulator-btn emulator-btn-primary"
+            className={`${styles.btn} ${styles.btnPrimary}`}
             onClick={() => onConnect(device)}
           >
             Connect
@@ -106,7 +107,7 @@ function EmulatorListItem({
         {canStop && (
           <button
             type="button"
-            className="emulator-btn emulator-btn-secondary"
+            className={`${styles.btn} ${styles.btnSecondary}`}
             onClick={() => onStop(device.id)}
           >
             Stop
@@ -115,14 +116,14 @@ function EmulatorListItem({
         {!canStop && canStart && (
           <button
             type="button"
-            className="emulator-btn emulator-btn-secondary"
+            className={`${styles.btn} ${styles.btnSecondary}`}
             onClick={() => onStart(device.id)}
           >
             Start
           </button>
         )}
         {!canConnect && !canStop && !canStart && (
-          <span className="emulator-list-item-status">No actions</span>
+          <span className={styles.itemStatus}>No actions</span>
         )}
       </div>
     </div>
@@ -157,12 +158,16 @@ function DeviceList({
   }, [devices]);
 
   return (
-    <div className="emulator-list">
+    <div className={styles.list}>
       {Array.from(grouped.entries()).map(([type, entries]) => {
         if (entries.length === 0) return null;
         return (
-          <section key={type} className="emulator-list-group">
-            <h3 className="emulator-list-group-title">
+          <section
+            key={type}
+            className={styles.group}
+            data-testid="device-group"
+          >
+            <h3 className={styles.groupTitle} data-testid="device-group-title">
               {deviceTypeLabel(type)}
             </h3>
             {entries.map((device) => (
@@ -293,23 +298,26 @@ function StreamView({
   };
 
   return (
-    <div className="emulator-stream-view" ref={streamViewRef}>
-      <div className="emulator-stream-header">
+    <div className={styles.streamView} ref={streamViewRef}>
+      <div className={styles.streamHeader}>
         <button
           type="button"
-          className="emulator-btn emulator-btn-secondary"
+          className={`${styles.btn} ${styles.btnSecondary}`}
           onClick={handleBack}
         >
           Back
         </button>
-        <span className="emulator-connection-state">
+        <span
+          className={styles.connectionState}
+          data-testid="device-connection-state"
+        >
           {deviceLabel(device)} - {connectionState}
         </span>
-        <div className="emulator-stream-header-actions">
+        <div className={styles.streamHeaderActions}>
           {supportsImmersiveKeyboard && (
             <button
               type="button"
-              className="emulator-btn emulator-btn-secondary"
+              className={`${styles.btn} ${styles.btnSecondary}`}
               onClick={() => {
                 if (immersiveKeyboardActive) {
                   void exitImmersiveKeyboard();
@@ -331,18 +339,18 @@ function StreamView({
       </div>
 
       {supportsImmersiveKeyboard && (
-        <div className="emulator-keyboard-state">
+        <div className={styles.keyboardState}>
           Keyboard mode:{" "}
           {immersiveKeyboardActive ? "immersive (fullscreen)" : "standard"}
         </div>
       )}
 
       {immersiveKeyboardError && (
-        <div className="emulator-error">{immersiveKeyboardError}</div>
+        <div className={styles.error}>{immersiveKeyboardError}</div>
       )}
 
       {latestProfileEvent && (
-        <div className="emulator-profile-state">
+        <div className={styles.profileState}>
           Profile {latestProfileEvent.direction}: tier {latestProfileEvent.tier}
           /{latestProfileEvent.totalTiers} ({latestProfileEvent.width}x
           {latestProfileEvent.height}@{latestProfileEvent.fps}fps,{" "}
@@ -351,23 +359,20 @@ function StreamView({
       )}
 
       {profileEventHistory.length > 0 && (
-        <div
-          className="emulator-profile-timeline"
-          data-testid="profile-timeline"
-        >
+        <div className={styles.profileTimeline} data-testid="profile-timeline">
           {profileEventHistory.map((event, idx) => (
             <div
               key={`${event.receivedAt}-${event.direction}-${event.tier}-${idx}`}
-              className={`emulator-profile-timeline-item ${idx === 0 ? "latest" : ""}`}
+              className={`${styles.profileTimelineItem} ${idx === 0 ? styles.latest : ""}`}
             >
-              <span className="emulator-profile-timeline-time">
+              <span className={styles.profileTimelineTime}>
                 {new Date(event.receivedAt).toLocaleTimeString([], {
                   hour: "2-digit",
                   minute: "2-digit",
                   second: "2-digit",
                 })}
               </span>
-              <span className="emulator-profile-timeline-detail">
+              <span className={styles.profileTimelineDetail}>
                 {event.direction} tier {event.tier}/{event.totalTiers} (
                 {event.width}x{event.height}@{event.fps})
               </span>
@@ -376,13 +381,13 @@ function StreamView({
         </div>
       )}
 
-      {error && <div className="emulator-error">{error}</div>}
+      {error && <div className={styles.error}>{error}</div>}
 
       {connectionState === "connecting" && (
-        <div className="emulator-connecting">Connecting...</div>
+        <div className={styles.connecting}>Connecting...</div>
       )}
 
-      <div className="emulator-stream-container">
+      <div className={styles.streamContainer}>
         <EmulatorStream
           stream={remoteStream}
           dataChannel={dataChannel}
@@ -431,7 +436,7 @@ export function BridgeRuntimePrompt({
   };
 
   return (
-    <div className="emulator-download-prompt">
+    <div className={styles.downloadPrompt}>
       <p>
         {mode === "update" ? (
           <>
@@ -444,10 +449,10 @@ export function BridgeRuntimePrompt({
           t("emulatorBridgeDownloadRequired")
         )}
       </p>
-      {error && <div className="emulator-error">{error}</div>}
+      {error && <div className={styles.error}>{error}</div>}
       <button
         type="button"
-        className="emulator-btn emulator-btn-primary"
+        className={`${styles.btn} ${styles.btnPrimary}`}
         onClick={handleDownload}
         disabled={downloading}
       >
@@ -521,12 +526,10 @@ export function EmulatorPage() {
             />
           ) : (
             <>
-              {loading && <div className="emulator-loading">Loading...</div>}
-              {error && <div className="emulator-error">{error}</div>}
+              {loading && <div className={styles.loading}>Loading...</div>}
+              {error && <div className={styles.error}>{error}</div>}
               {!loading && emulators.length === 0 && (
-                <div className="emulator-empty">
-                  {t("emulatorPageNoDevices")}
-                </div>
+                <div className={styles.empty}>{t("emulatorPageNoDevices")}</div>
               )}
               {emulators.length > 0 && (
                 <DeviceList

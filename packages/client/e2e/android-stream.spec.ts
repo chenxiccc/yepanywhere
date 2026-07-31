@@ -109,11 +109,15 @@ async function connectToPhysicalDeviceStream(
   await page.goto(`${baseURL}/devices`);
   await dismissOnboardingIfVisible(page);
 
-  const row = page.locator(".emulator-list-item", { hasText: deviceSerial });
+  const row = page.locator('[data-testid="device-row"]', {
+    hasText: deviceSerial,
+  });
   await expect(row).toBeVisible({ timeout: 15_000 });
 
   await page.evaluate((serial) => {
-    const rows = Array.from(document.querySelectorAll(".emulator-list-item"));
+    const rows = Array.from(
+      document.querySelectorAll('[data-testid="device-row"]'),
+    );
     const rowEl = rows.find((r) => r.textContent?.includes(serial));
     if (!rowEl) {
       throw new Error(`device row not found for ${serial}`);
@@ -127,10 +131,9 @@ async function connectToPhysicalDeviceStream(
     (connectBtn as HTMLButtonElement).click();
   }, deviceSerial);
 
-  await expect(page.locator(".emulator-connection-state")).toHaveText(
-    /connected$/,
-    { timeout: 30_000 },
-  );
+  await expect(
+    page.locator('[data-testid="device-connection-state"]'),
+  ).toHaveText(/connected$/, { timeout: 30_000 });
 
   const video = page.locator("video.emulator-video");
   await expect(video).toBeVisible();
@@ -170,7 +173,8 @@ type StreamHealthSnapshot = {
 async function captureStreamHealth(page: Page): Promise<StreamHealthSnapshot> {
   return page.evaluate(() => {
     const connectionText =
-      document.querySelector(".emulator-connection-state")?.textContent ?? "";
+      document.querySelector('[data-testid="device-connection-state"]')
+        ?.textContent ?? "";
     const video = document.querySelector(
       "video.emulator-video",
     ) as HTMLVideoElement | null;

@@ -1,8 +1,8 @@
 {
   "legacyGlobalStyles": {
     "packages/client/src/styles/emulator.css": {
-      "maxLines": 261,
-      "reason": "Emulator DOM and streaming surface with shared global state selectors."
+      "maxLines": 49,
+      "reason": "Device stream video and nav-button vocabulary shared by EmulatorStream and EmulatorNavButtons."
     },
     "packages/client/src/styles/index.css": {
       "maxLines": 19728,

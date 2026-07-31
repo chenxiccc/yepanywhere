@@ -87,10 +87,14 @@ test("streams ChromeOS video over WebRTC when host is configured", async ({
   }
 
   const deviceLabel = `ChromeOS (${host})`;
-  const row = page.locator(".emulator-list-item", { hasText: deviceLabel });
+  const row = page.locator('[data-testid="device-row"]', {
+    hasText: deviceLabel,
+  });
   await expect(row).toBeVisible({ timeout: 15_000 });
   await page.evaluate((label) => {
-    const rows = Array.from(document.querySelectorAll(".emulator-list-item"));
+    const rows = Array.from(
+      document.querySelectorAll('[data-testid="device-row"]'),
+    );
     const rowEl = rows.find((r) => r.textContent?.includes(label));
     if (!rowEl) {
       throw new Error(`device row not found for ${label}`);
@@ -103,10 +107,9 @@ test("streams ChromeOS video over WebRTC when host is configured", async ({
     (connectBtn as HTMLButtonElement).click();
   }, deviceLabel);
 
-  await expect(page.locator(".emulator-connection-state")).toHaveText(
-    "connected",
-    { timeout: 30_000 },
-  );
+  await expect(
+    page.locator('[data-testid="device-connection-state"]'),
+  ).toHaveText("connected", { timeout: 30_000 });
 
   const video = page.locator("video.emulator-video");
   await expect(video).toBeVisible();

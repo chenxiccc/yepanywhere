@@ -108,10 +108,9 @@ async function assertAutoStreamConnects(
 
   // Wait for WebRTC to reach "connected" — generous timeout covers sidecar
   // cold start, ADB query, ICE gathering, and first frame.
-  await expect(page.locator(".emulator-connection-state")).toHaveText(
-    /connected$/,
-    { timeout: 30_000 },
-  );
+  await expect(
+    page.locator('[data-testid="device-connection-state"]'),
+  ).toHaveText(/connected$/, { timeout: 30_000 });
 
   // Video element must be visible
   const video = page.locator("video.emulator-video");
@@ -206,25 +205,27 @@ test("emits adaptive profile downshift/upshift events via APK transport override
   await dismissOnboardingIfVisible(page);
 
   await expect(
-    page.locator(".emulator-list-group-title", {
+    page.locator('[data-testid="device-group-title"]', {
       hasText: "Android Emulators",
     }),
   ).toBeVisible({ timeout: 15_000 });
 
   await page.evaluate((serial) => {
     const groups = Array.from(
-      document.querySelectorAll(".emulator-list-group"),
+      document.querySelectorAll('[data-testid="device-group"]'),
     );
     const groupEl = groups.find((g) =>
       g
-        .querySelector(".emulator-list-group-title")
+        .querySelector('[data-testid="device-group-title"]')
         ?.textContent?.includes("Android Emulators"),
     );
     if (!groupEl) {
       throw new Error("Android Emulators group not found");
     }
 
-    const rows = Array.from(groupEl.querySelectorAll(".emulator-list-item"));
+    const rows = Array.from(
+      groupEl.querySelectorAll('[data-testid="device-row"]'),
+    );
     if (rows.length === 0) {
       throw new Error("No rows in Android Emulators group");
     }
@@ -257,10 +258,9 @@ test("emits adaptive profile downshift/upshift events via APK transport override
     connectBtn.click();
   }, runningEmulator);
 
-  await expect(page.locator(".emulator-connection-state")).toHaveText(
-    /connected$/,
-    { timeout: 30_000 },
-  );
+  await expect(
+    page.locator('[data-testid="device-connection-state"]'),
+  ).toHaveText(/connected$/, { timeout: 30_000 });
 
   await expect(async () => {
     const transitions = await adaptiveProfileTransitionsFromClient(page);
