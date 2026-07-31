@@ -1,3 +1,4 @@
+import styles from "./ExitPlanModeRenderer.module.css";
 import type {
   ExitPlanModeInput,
   ExitPlanModeResult,
@@ -72,13 +73,13 @@ export const exitPlanModeRenderer: ToolRenderer<
           errorMessage = String(errorResult.message);
         }
       }
-      return <div className="exitplan-error">{errorMessage}</div>;
+      return <div className={styles.error}>{errorMessage}</div>;
     }
 
     // Show "Planning..." only if we don't have plan content yet
     if (!plan && !renderedHtml) {
       if (status === "pending") {
-        return <div className="exitplan-pending">Planning...</div>;
+        return <div className={styles.pending}>Planning...</div>;
       }
       return null;
     }
@@ -86,14 +87,14 @@ export const exitPlanModeRenderer: ToolRenderer<
     // Wrap in collapsible details element - expanded by default
     // Uses the same styling as ThinkingBlock for consistency
     return (
-      <details className="exitplan-collapsible collapsible" open>
+      <details className={`${styles.root} collapsible`} open>
         <summary className="collapsible__summary">
           <span>{status === "pending" ? "Planning..." : "Plan"}</span>
           <span className="collapsible__icon">▸</span>
         </summary>
         <div className="collapsible__content">
           <div
-            className={`exitplan-inline ${status === "pending" ? "pending" : ""}`}
+            className={`${styles.inline} ${status === "pending" ? "pending" : ""}`}
           >
             <PlanContent plan={plan} renderedHtml={renderedHtml} />
           </div>
