@@ -916,6 +916,9 @@
 }
 
 .turn-image-gallery-inline-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25em;
   padding: 0.08em 0.4em;
   border: 1px solid
     color-mix(in srgb, var(--link-color) 35%, var(--border-color));
@@ -943,8 +946,6 @@
   display: none;
 }
 
-.assistant-turn.has-turn-image-gallery
-  .local-media-inline-toggle[data-media-type="image"],
 .assistant-turn.has-turn-image-gallery
   .local-media-inline-preview[data-media-type="image"] {
   display: none;
@@ -1229,6 +1230,10 @@
     border: 0;
     border-radius: 0;
   }
+
+  .local-media-image-close {
+    display: none;
+  }
 }
 
 .local-media-title-link {
@@ -1299,7 +1304,16 @@
   margin-left: auto;
 }
 
+.local-media-image-stage-shell {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .local-media-image-stage {
+  width: 100%;
+  height: 100%;
   min-width: 0;
   min-height: 0;
   overflow: auto;
@@ -1308,6 +1322,64 @@
   container-type: size;
   cursor: zoom-out;
   touch-action: none;
+}
+
+.local-media-image-navigation {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  pointer-events: none;
+}
+
+.local-media-image-navigation-button {
+  position: absolute;
+  top: 50%;
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  place-items: center;
+  transform: translateY(-50%);
+  border: 1px solid
+    color-mix(in srgb, var(--text-primary) 30%, var(--border-color));
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--bg-secondary) 88%, transparent);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-md);
+  font: inherit;
+  font-size: 2rem;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.local-media-image-navigation-button.is-previous {
+  left: 0.75rem;
+}
+
+.local-media-image-navigation-button.is-next {
+  right: 0.75rem;
+}
+
+.local-media-image-navigation-button:hover,
+.local-media-image-navigation-button:focus-visible {
+  border-color: var(--accent-color);
+  background: color-mix(in srgb, var(--accent-color) 18%, var(--bg-secondary));
+}
+
+.local-media-image-position {
+  position: absolute;
+  bottom: 0.75rem;
+  left: 50%;
+  padding: 0.25rem 0.55rem;
+  transform: translateX(-50%);
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-secondary) 88%, transparent);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+  font-size: 0.8125rem;
+  pointer-events: none;
 }
 
 .local-media-image-canvas {

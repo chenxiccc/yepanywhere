@@ -90,12 +90,18 @@ vi.mock("../../i18n", () => ({
         conversationThinkingPreviewDismiss: "Dismiss {label}",
         conversationRecentActivities: "Most recent activities",
         turnImageGalleryCount: "{current} of {count}",
-        turnImageGalleryDismiss: "Dismiss gallery",
+        turnImageGalleryCollapse: "Collapse gallery",
+        turnImageGalleryExpand: "Expand gallery",
+        turnImageGalleryExpandAt: "Expand gallery at {label}",
         turnImageGalleryLabel: "Turn image gallery",
         turnImageGalleryLoading: "Loading image…",
         turnImageGalleryOpen: "Open {label}",
         turnImageGalleryShow: "Gallery",
         turnImageGalleryUnavailable: "Image unavailable",
+        imageViewerGalleryNavigation: "Gallery image navigation",
+        imageViewerGalleryPosition: "{current} of {count}",
+        imageViewerPrevious: "Previous image",
+        imageViewerNext: "Next image",
       };
       const value = translations[key] ?? key;
       return value.replace(/\{(\w+)\}/g, (_, param: string) =>

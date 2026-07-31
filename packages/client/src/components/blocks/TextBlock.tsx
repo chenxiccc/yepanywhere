@@ -34,7 +34,7 @@ import { RenderModeGlyph } from "../ui/RenderModeGlyph";
 import { useTurnImageGalleryNavigation } from "../TurnImageGallery";
 import {
   findTurnInlineImageAnchor,
-  getTurnInlineImageIdForTarget,
+  getTurnInlineImageTargetForTarget,
 } from "../../lib/turnInlineMedia";
 
 const EMPTY_LOCAL_MATH_PREVIEW = { html: "", changed: false };
@@ -234,17 +234,27 @@ export const TextBlock = memo(function TextBlock({
   const handleContentClick = useCallback(
     (event: MouseEvent<HTMLDivElement>) => {
       const content = copySourceRef.current;
-      const galleryImageId =
+      const galleryImageTarget =
         content && renderItemId && turnImageGallery?.available
-          ? getTurnInlineImageIdForTarget(content, renderItemId, event.target)
+          ? getTurnInlineImageTargetForTarget(
+              content,
+              renderItemId,
+              event.target,
+            )
           : null;
       if (
-        galleryImageId &&
-        turnImageGallery?.candidateIds.has(galleryImageId)
+        galleryImageTarget &&
+        turnImageGallery?.candidateIds.has(galleryImageTarget.id)
       ) {
         event.preventDefault();
         event.stopPropagation();
-        turnImageGallery.activate(galleryImageId);
+        if (galleryImageTarget.kind === "link") {
+          turnImageGallery.openImage(galleryImageTarget.id);
+        } else if (turnImageGallery.active) {
+          turnImageGallery.collapse();
+        } else {
+          turnImageGallery.activate(galleryImageTarget.id);
+        }
         return;
       }
       handleClick(event);
@@ -270,7 +280,51 @@ export const TextBlock = memo(function TextBlock({
   // before first augment arrives. Hidden until useStreamingContent becomes true.
   const renderStreamingContainer = isStreaming;
   const paragraphLayoutKey = [showRendered, text, augmentHtml ?? ""].join("\0");
-  const closedGalleryTarget = turnImageGallery?.closedActionTarget ?? null;
+  const galleryActionTarget = turnImageGallery?.actionTarget ?? null;
+  const galleryActive = turnImageGallery?.active === true;
+
+  useEffect(() => {
+    const content = copySourceRef.current;
+    if (
+      !content ||
+      !showRendered ||
+      showStreamingContent ||
+      !renderItemId ||
+      !turnImageGallery?.available
+    ) {
+      return;
+    }
+
+    const toggles = content.querySelectorAll<HTMLButtonElement>(
+      "button.local-media-inline-toggle[data-media-type='image']",
+    );
+    for (const toggle of toggles) {
+      const target = getTurnInlineImageTargetForTarget(
+        content,
+        renderItemId,
+        toggle,
+      );
+      if (!target || !turnImageGallery.candidateIds.has(target.id)) {
+        continue;
+      }
+      const label = turnImageGallery.candidateLabels.get(target.id) ?? "";
+      const controlLabel = galleryActive
+        ? t("turnImageGalleryCollapse")
+        : t("turnImageGalleryExpandAt", { label });
+      toggle.dataset.expanded = String(galleryActive);
+      toggle.setAttribute("aria-expanded", String(galleryActive));
+      toggle.setAttribute("aria-label", controlLabel);
+      toggle.title = controlLabel;
+      toggle.textContent = galleryActive ? "−" : "+";
+    }
+  }, [
+    galleryActive,
+    renderItemId,
+    showRendered,
+    showStreamingContent,
+    t,
+    turnImageGallery,
+  ]);
 
   useLayoutEffect(() => {
     const content = copySourceRef.current;
@@ -280,11 +334,11 @@ export const TextBlock = memo(function TextBlock({
       showRendered &&
       !showStreamingContent &&
       renderItemId &&
-      closedGalleryTarget?.sourceItemId === renderItemId
+      galleryActionTarget?.sourceItemId === renderItemId
     ) {
       const anchor = findTurnInlineImageAnchor(
         content,
-        closedGalleryTarget.sourceIndex,
+        galleryActionTarget.sourceIndex,
       );
       const group = anchor?.closest(".local-media-link-group");
       if (group) {
@@ -295,7 +349,7 @@ export const TextBlock = memo(function TextBlock({
     }
     setGalleryActionHost(host);
     return () => host?.remove();
-  }, [closedGalleryTarget, renderItemId, showRendered, showStreamingContent]);
+  }, [galleryActionTarget, renderItemId, showRendered, showStreamingContent]);
 
   // Measure each rendered top-level block so a per-paragraph quote circle can
   // sit at its end. Skipped while streaming (paragraph boundaries are still
@@ -451,12 +505,28 @@ export const TextBlock = memo(function TextBlock({
             <button
               type="button"
               className="turn-image-gallery-inline-action"
+              aria-expanded={galleryActive}
+              aria-label={t(
+                galleryActive
+                  ? "turnImageGalleryCollapse"
+                  : "turnImageGalleryExpand",
+              )}
+              title={t(
+                galleryActive
+                  ? "turnImageGalleryCollapse"
+                  : "turnImageGalleryExpand",
+              )}
               onClick={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                turnImageGallery?.show();
+                if (galleryActive) {
+                  turnImageGallery?.collapse();
+                } else {
+                  turnImageGallery?.show();
+                }
               }}
             >
+              <span aria-hidden="true">{galleryActive ? "−" : "+"}</span>
               {t("turnImageGalleryShow")}
             </button>,
             galleryActionHost,

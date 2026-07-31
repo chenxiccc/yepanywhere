@@ -34,10 +34,14 @@ import {
 } from "./LocalMediaModal";
 
 interface TurnImageGalleryNavigation {
+  active: boolean;
   activate: (id: string) => void;
   available: boolean;
+  candidateLabels: ReadonlyMap<string, string>;
   candidateIds: ReadonlySet<string>;
-  closedActionTarget: TurnInlineImage | null;
+  actionTarget: TurnInlineImage | null;
+  collapse: () => void;
+  openImage: (id: string) => void;
   show: () => void;
 }
 
@@ -181,6 +185,18 @@ export function AssistantTurnImageGallery({
     () => new Set(candidates.map((candidate) => candidate.id)),
     [candidates],
   );
+  const candidatesById = useMemo(
+    () =>
+      new Map(candidates.map((candidate) => [candidate.id, candidate] as const)),
+    [candidates],
+  );
+  const candidateLabels = useMemo(
+    () =>
+      new Map(
+        candidates.map((candidate) => [candidate.id, candidate.label] as const),
+      ),
+    [candidates],
+  );
   const galleryAvailable = compactMultiImageGalleries && candidates.length >= 2;
   const [dismissed, setDismissed] = useState(false);
   const [manuallyOpened, setManuallyOpened] = useState(false);
@@ -205,6 +221,10 @@ export function AssistantTurnImageGallery({
     clientX: number;
     clientY: number;
   } | null>(null);
+  const viewerOriginRef = useRef<"gallery" | "source" | null>(null);
+  const viewerReturnIdRef = useRef<string | null>(null);
+  const featuredIdRef = useRef(featuredId);
+  featuredIdRef.current = featuredId;
   const mediaSource = useGalleryMediaSource();
   const galleryActive =
     galleryAvailable &&
@@ -271,18 +291,25 @@ export function AssistantTurnImageGallery({
     [candidateIds, centerGalleryImage, galleryActive],
   );
 
+  const collapseGallery = useCallback(() => {
+    setDismissed(true);
+    setManuallyOpened(false);
+  }, []);
+
   const showGallery = useCallback(() => {
     if (!galleryAvailable) {
       return;
     }
-    const id = candidateIds.has(featuredId) ? featuredId : candidates[0]?.id;
+    const id = candidateIds.has(featuredIdRef.current)
+      ? featuredIdRef.current
+      : candidates[0]?.id;
     if (id) {
       pendingCenterIdRef.current = id;
       setFeaturedId(id);
     }
     setManuallyOpened(true);
     setDismissed(false);
-  }, [candidateIds, candidates, featuredId, galleryAvailable]);
+  }, [candidateIds, candidates, galleryAvailable]);
 
   useLayoutEffect(() => {
     if (galleryActive && pendingCenterIdRef.current) {
@@ -290,10 +317,10 @@ export function AssistantTurnImageGallery({
     }
   }, [centerGalleryImage, galleryActive]);
 
-  const jumpToSource = useCallback((candidate: TurnInlineImage) => {
+  const findSourceAnchor = useCallback((candidate: TurnInlineImage) => {
     const turn = turnRef.current;
     if (!turn) {
-      return;
+      return null;
     }
     const source = Array.from(
       turn.querySelectorAll<HTMLElement>("[data-turn-image-source-id]"),
@@ -303,16 +330,108 @@ export function AssistantTurnImageGallery({
     const anchor = source
       ? findTurnInlineImageAnchor(source, candidate.sourceIndex)
       : null;
-    if (!anchor) {
-      return;
-    }
-    anchor.scrollIntoView({
-      behavior: "smooth",
-      block: "center",
-      inline: "nearest",
-    });
-    anchor.focus({ preventScroll: true });
+    return anchor;
   }, []);
+
+  const jumpToSource = useCallback(
+    (candidate: TurnInlineImage) => {
+      const anchor = findSourceAnchor(candidate);
+      if (!anchor) {
+        return;
+      }
+      anchor.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+        inline: "nearest",
+      });
+      anchor.focus({ preventScroll: true });
+    },
+    [findSourceAnchor],
+  );
+
+  const openViewer = useCallback(
+    (candidate: TurnInlineImage, origin: "gallery" | "source") => {
+      viewerOriginRef.current = origin;
+      viewerReturnIdRef.current = origin === "source" ? candidate.id : null;
+      setFeaturedId(candidate.id);
+      setSelectedImage(candidate);
+    },
+    [],
+  );
+
+  const openSourceImage = useCallback(
+    (id: string) => {
+      const candidate = candidatesById.get(id);
+      if (candidate) {
+        openViewer(candidate, "source");
+      }
+    },
+    [candidatesById, openViewer],
+  );
+
+  const selectRelativeViewerImage = useCallback(
+    (offset: number) => {
+      if (!selectedImage || candidates.length < 2) {
+        return;
+      }
+      const currentIndex = candidates.findIndex(
+        (candidate) => candidate.id === selectedImage.id,
+      );
+      if (currentIndex < 0) {
+        return;
+      }
+      const nextIndex =
+        (currentIndex + offset + candidates.length) % candidates.length;
+      const nextCandidate = candidates[nextIndex];
+      if (!nextCandidate) {
+        return;
+      }
+      setFeaturedId(nextCandidate.id);
+      setSelectedImage(nextCandidate);
+    },
+    [candidates, selectedImage],
+  );
+
+  const closeViewer = useCallback(() => {
+    const selectedId = selectedImage?.id ?? null;
+    const origin = viewerOriginRef.current;
+    const returnId = viewerReturnIdRef.current;
+    viewerOriginRef.current = null;
+    viewerReturnIdRef.current = null;
+    setSelectedImage(null);
+
+    requestAnimationFrame(() => {
+      if (origin === "gallery" && selectedId && galleryActive) {
+        centerGalleryImage(selectedId);
+        return;
+      }
+      if (returnId) {
+        const returnCandidate = candidatesById.get(returnId);
+        if (returnCandidate) {
+          findSourceAnchor(returnCandidate)?.focus({ preventScroll: true });
+        }
+      }
+    });
+  }, [
+    candidatesById,
+    centerGalleryImage,
+    findSourceAnchor,
+    galleryActive,
+    selectedImage,
+  ]);
+
+  const selectedImageIndex = selectedImage
+    ? candidates.findIndex((candidate) => candidate.id === selectedImage.id)
+    : -1;
+  const imageNavigation =
+    selectedImageIndex >= 0 && candidates.length > 1
+      ? {
+          count: candidates.length,
+          current: selectedImageIndex + 1,
+          onNext: () => selectRelativeViewerImage(1),
+          onPrevious: () => selectRelativeViewerImage(-1),
+        }
+      : undefined;
 
   const layout = useMemo(
     () =>
@@ -352,23 +471,30 @@ export function AssistantTurnImageGallery({
   const featured =
     candidates.find((candidate) => candidate.id === featuredId) ??
     candidates[0];
-  const closedActionTarget =
-    galleryAvailable && !galleryActive
-      ? (candidates[candidates.length - 1] ?? null)
-      : null;
+  const actionTarget = galleryAvailable
+    ? (candidates[candidates.length - 1] ?? null)
+    : null;
   const navigation = useMemo<TurnImageGalleryNavigation>(
     () => ({
+      actionTarget,
+      active: galleryActive,
       activate: activateGallery,
       available: galleryAvailable,
+      candidateLabels,
       candidateIds,
-      closedActionTarget,
+      collapse: collapseGallery,
+      openImage: openSourceImage,
       show: showGallery,
     }),
     [
+      actionTarget,
       activateGallery,
+      candidateLabels,
       candidateIds,
-      closedActionTarget,
+      collapseGallery,
       galleryAvailable,
+      galleryActive,
+      openSourceImage,
       showGallery,
     ],
   );
@@ -483,7 +609,7 @@ export function AssistantTurnImageGallery({
             onKeyDown={(event: KeyboardEvent<HTMLElement>) => {
               if (event.key === "Escape") {
                 event.preventDefault();
-                setDismissed(true);
+                collapseGallery();
               }
             }}
           >
@@ -536,7 +662,9 @@ export function AssistantTurnImageGallery({
                           });
                         }}
                         onFeature={setFeaturedId}
-                        onOpen={setSelectedImage}
+                        onOpen={(candidate) =>
+                          openViewer(candidate, "gallery")
+                        }
                         registerElement={(id, element) => {
                           if (element) {
                             thumbnailElementsRef.current.set(id, element);
@@ -579,9 +707,9 @@ export function AssistantTurnImageGallery({
                 type="button"
                 className="turn-image-gallery-dismiss"
                 aria-keyshortcuts="Escape"
-                onClick={() => setDismissed(true)}
+                onClick={collapseGallery}
               >
-                {t("turnImageGalleryDismiss")}
+                {t("turnImageGalleryCollapse")}
               </button>
             </div>
           </section>
@@ -591,7 +719,8 @@ export function AssistantTurnImageGallery({
             path={selectedImage.path}
             mediaType="image"
             mediaSource={mediaSource}
-            onClose={() => setSelectedImage(null)}
+            imageNavigation={imageNavigation}
+            onClose={closeViewer}
           />
         ) : null}
       </div>

@@ -163,9 +163,10 @@ Media by Default**. The gallery setting enables one gallery capability for
 completed assistant turns with two or more eligible linked images. **Expand
 Inline Media by Default** controls only its initial visibility: with inline
 expansion enabled, the gallery starts open; otherwise the ordinary compact
-image links remain and a small **Gallery** action follows the final eligible
-link in source order. Disabling the gallery setting removes that action and
-restores the existing independent inline-preview behavior.
+image links remain and a small **+ Gallery** action follows the final eligible
+link in source order. While open, that action remains visible as **− Gallery**.
+Disabling the gallery setting removes that action and restores the existing
+independent inline-preview behavior.
 
 The gallery setting defaults on by explicit maintainer approval (graehl,
 2026-07-29). This is a deliberate default-on exception under
@@ -175,19 +176,24 @@ appears only where a turn has multiple images. It adds no provider behavior or
 transcript content and avoids another global preference merely to govern that
 one affordance.
 
-The compact presentation is owned by the whole assistant turn, not by the
-position of an image link within its text. Images anywhere in that turn are
-eligible. One image retains the existing inline presentation. With two or more
-eligible images and the gallery setting enabled, the per-image links and `+`
-controls become image-specific entrances to the same turn gallery; the generic
-**Gallery** action opens it at the last featured image, or the first source
-image when none has yet been featured. With the gallery setting disabled,
-manual and automatic per-image expansion retain their ordinary full inline
-presentation.
+The compact presentation is owned by the whole assistant turn, not by one text
+block or the position of an image link within it. Eligible images are linked
+images in rendered Markdown text items across that turn. Image-bearing
+`ViewImage`, `Read`, and provider-neutral tool-result rows retain their own
+independent media controls and are not gallery candidates. One eligible image
+retains the existing inline presentation. With two or more eligible images and
+the gallery setting enabled, every per-image `+` control opens the same turn
+gallery centered on that image. While the gallery is open, all of those
+controls become `−`; activating any one collapses the whole gallery. The
+generic **+ Gallery** action opens it at the last featured image, or the first
+source image when none has yet been featured, and becomes **− Gallery** while
+open. With the gallery setting disabled, manual and automatic per-image
+expansion retain their ordinary full inline presentation.
 
 The original image links remain at their original positions in the turn text.
-Activating one opens the gallery when necessary, then scrolls to it and centers
-and features that link's thumbnail. The gallery has one shared featured-item
+Activating an image link opens that image directly in the full-screen viewer
+with the complete turn gallery as navigation context. It does not change the
+inline gallery's open or closed state. The gallery has one shared featured-item
 caption rather than repeating captions below every thumbnail:
 
 - On desktop, while the gallery is active, the pointer continuously features
@@ -203,16 +209,20 @@ caption rather than repeating captions below every thumbnail:
 - Activating the featured caption scrolls back to and focuses that image's
   original link in the turn text.
 
-Selecting the thumbnail itself opens the full-screen image viewer. Navigation
-between the turn text and gallery therefore remains distinct from full-size
-inspection.
+Selecting a thumbnail also opens the full-screen image viewer at that image.
+Navigation between the turn text and gallery therefore remains distinct from
+full-size inspection.
 
 The shared image viewer uses the useful viewport rather than the generic modal
 preview ceiling. Selecting a thumbnail enters one maximized viewer state;
 clicking anywhere in the image stage (including outside an off-center or
 zoomed image), activating the visible **Close** control, or pressing Escape
-returns to the gallery. Toolbar controls remain operable without dismissing
-the viewer. Fit, 1:1, and stepped zoom are explicit inspection controls within
+returns to the prior transcript/gallery state. Toolbar controls remain operable
+without dismissing the viewer. When a turn gallery supplies context, visible
+previous/next buttons and the Left/Right arrow keys move through eligible
+images in original transcript order and wrap at either end. The viewer shows
+the source-order position even when compact packing visually reorders the
+thumbnails. Fit, 1:1, and stepped zoom are explicit inspection controls within
 that one state, not further expansion levels. A 1:1 or otherwise zoomed image
 remains scrollable and pannable instead of being clipped; trackpad pinch/wheel
 zoom remains anchored near the pointer.
@@ -220,7 +230,8 @@ zoom remains anchored near the pointer.
 On touch screens, the gallery row retains its horizontal swipe behavior until
 an image is selected. The selected image then owns a full-screen stage with
 two-finger pinch zoom and one-finger pan, while closing it returns to the same
-transcript/gallery position.
+transcript/gallery position. The visible previous/next buttons remain practical
+touch targets; full-screen horizontal swipe navigation is not required.
 
 The viewer header exposes the basename as a link to the fetched full-resolution
 image, and its explicit **Download** action saves those same fetched bytes under
@@ -265,17 +276,17 @@ permutation. The same image dimensions and available space should produce the
 same arrangement, and small resize changes should not cause gratuitous
 reshuffling.
 
-The gallery has one turn-level **Dismiss gallery** action, with a keyboard
-accelerator. Dismissing removes the reordered gallery and reinstates each image
-as the existing minimal link and `+` affordance at that image reference's
-original inline position. It also restores the small **Gallery** action beside
-the final eligible link; that stable label is used for both an initially closed
-gallery and a dismissed one, rather than introducing a distinct restore mode.
-The transcript's original text/image-reference order is therefore always
-recoverable even though gallery packing may reorder thumbnails. Activating a
-specific image link restores the same deterministic gallery arrangement
-centered on that image; activating **Gallery** restores it at the last featured
-image. There is no second “dismiss to expanded inline images” state.
+The gallery footer has a turn-level **Collapse gallery** action with an Escape
+keyboard accelerator. The `−` beside every eligible source link and the
+persistent **− Gallery** action collapse the same turn-level state. Collapsing
+removes the reordered gallery and reinstates each image as the existing minimal
+link and `+` affordance at that image reference's original inline position.
+The generic action returns to **+ Gallery**. The transcript's original
+text/image-reference order is therefore always recoverable even though gallery
+packing may reorder thumbnails. Activating a specific `+` restores the same
+deterministic gallery arrangement centered on that image; activating
+**+ Gallery** restores it at the last featured image. There is no second
+“collapse to expanded inline images” state.
 
 ### Phone presentation and deferred gesture
 

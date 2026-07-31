@@ -13,6 +13,13 @@ interface ImageDimensions {
   width: number;
 }
 
+export interface ImageViewerNavigation {
+  count: number;
+  current: number;
+  onNext: () => void;
+  onPrevious: () => void;
+}
+
 const IMAGE_VIEWER_PADDING_PX = 32;
 const IMAGE_ZOOM_MIN = 0.1;
 const IMAGE_ZOOM_MAX = 8;
@@ -31,10 +38,12 @@ function pointerDistance(
 
 export function ImageViewer({
   fileName,
+  navigation,
   onClose,
   url,
 }: {
   fileName: string;
+  navigation?: ImageViewerNavigation;
   onClose: () => void;
   url: string;
 }) {
@@ -320,50 +329,83 @@ export function ImageViewer({
           {t("modalClose")}
         </button>
       </div>
-      <div
-        ref={stageRef}
-        className={`local-media-image-stage is-${viewMode}`}
-        role="button"
-        tabIndex={0}
-        aria-label={t("imageViewerCloseImage", { name: fileName })}
-        onClick={() => {
-          if (suppressClickRef.current) {
-            suppressClickRef.current = false;
-            return;
-          }
-          onClose();
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
+      <div className="local-media-image-stage-shell">
+        <div
+          ref={stageRef}
+          className={`local-media-image-stage is-${viewMode}`}
+          role="button"
+          tabIndex={0}
+          aria-label={t("imageViewerCloseImage", { name: fileName })}
+          onClick={() => {
+            if (suppressClickRef.current) {
+              suppressClickRef.current = false;
+              return;
+            }
             onClose();
-          }
-        }}
-        onPointerCancel={handlePointerEnd}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerEnd}
-        onWheel={handleWheel}
-      >
-        <div className="local-media-image-canvas" style={canvasStyle}>
-          <div
-            className={`local-media-image-surface is-${viewMode}`}
-          >
-            <img
-              className="local-media-image"
-              src={url}
-              alt={fileName}
-              draggable={false}
-              style={imageStyle}
-              onLoad={(event) => {
-                setDimensions({
-                  height: event.currentTarget.naturalHeight,
-                  width: event.currentTarget.naturalWidth,
-                });
-              }}
-            />
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              onClose();
+            }
+          }}
+          onPointerCancel={handlePointerEnd}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerEnd}
+          onWheel={handleWheel}
+        >
+          <div className="local-media-image-canvas" style={canvasStyle}>
+            <div className={`local-media-image-surface is-${viewMode}`}>
+              <img
+                className="local-media-image"
+                src={url}
+                alt={fileName}
+                draggable={false}
+                style={imageStyle}
+                onLoad={(event) => {
+                  setDimensions({
+                    height: event.currentTarget.naturalHeight,
+                    width: event.currentTarget.naturalWidth,
+                  });
+                }}
+              />
+            </div>
           </div>
         </div>
+        {navigation ? (
+          <div
+            className="local-media-image-navigation"
+            role="group"
+            aria-label={t("imageViewerGalleryNavigation")}
+          >
+            <button
+              type="button"
+              className="local-media-image-navigation-button is-previous"
+              aria-label={t("imageViewerPrevious")}
+              onClick={navigation.onPrevious}
+            >
+              ‹
+            </button>
+            <output
+              className="local-media-image-position"
+              aria-live="polite"
+            >
+              {t("imageViewerGalleryPosition", {
+                count: navigation.count,
+                current: navigation.current,
+              })}
+            </output>
+            <button
+              type="button"
+              className="local-media-image-navigation-button is-next"
+              aria-label={t("imageViewerNext")}
+              onClick={navigation.onNext}
+            >
+              ›
+            </button>
+          </div>
+        ) : null}
       </div>
     </div>
   );

@@ -5,7 +5,7 @@ import type { RenderItem } from "../../types/renderItems";
 import {
   collectTurnInlineImages,
   findTurnInlineImageAnchor,
-  getTurnInlineImageIdForTarget,
+  getTurnInlineImageTargetForTarget,
   packTurnGalleryRows,
 } from "../turnInlineMedia";
 
@@ -68,12 +68,14 @@ describe("turn inline media model", () => {
     const link = root.querySelector("a");
     const toggle = root.querySelector("button");
 
-    expect(getTurnInlineImageIdForTarget(root, "answer", link)).toBe(
-      "answer:inline-image:0",
-    );
-    expect(getTurnInlineImageIdForTarget(root, "answer", toggle)).toBe(
-      "answer:inline-image:0",
-    );
+    expect(getTurnInlineImageTargetForTarget(root, "answer", link)).toEqual({
+      id: "answer:inline-image:0",
+      kind: "link",
+    });
+    expect(getTurnInlineImageTargetForTarget(root, "answer", toggle)).toEqual({
+      id: "answer:inline-image:0",
+      kind: "toggle",
+    });
     expect(findTurnInlineImageAnchor(root, 0)).toBe(link);
   });
 

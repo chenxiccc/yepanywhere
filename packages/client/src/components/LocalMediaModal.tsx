@@ -29,7 +29,10 @@ import {
   FilePathContextMenu,
   useStartNewSessionFromFileAction,
 } from "./FileResourceActions";
-import { ImageViewer } from "./ImageViewer";
+import {
+  ImageViewer,
+  type ImageViewerNavigation,
+} from "./ImageViewer";
 import { Modal } from "./ui/Modal";
 
 export interface LocalMediaSource {
@@ -45,6 +48,7 @@ interface LocalMediaModalProps {
   path: string;
   mediaType: LocalResourceMediaType;
   mediaSource?: LocalMediaSource;
+  imageNavigation?: ImageViewerNavigation;
   onClose: () => void;
 }
 
@@ -369,6 +373,7 @@ export function LocalMediaModal({
   path,
   mediaType,
   mediaSource,
+  imageNavigation,
   onClose,
 }: LocalMediaModalProps) {
   const { t } = useI18n();
@@ -407,6 +412,28 @@ export function LocalMediaModal({
     };
   }, [mediaSource, path, transport]);
 
+  useEffect(() => {
+    if (mediaType !== "image" || !imageNavigation) {
+      return;
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.altKey || event.ctrlKey || event.metaKey) {
+        return;
+      }
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        event.stopPropagation();
+        imageNavigation.onPrevious();
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        event.stopPropagation();
+        imageNavigation.onNext();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown, true);
+    return () => document.removeEventListener("keydown", handleKeyDown, true);
+  }, [imageNavigation, mediaType]);
+
   return (
     <Modal
       title={
@@ -427,7 +454,12 @@ export function LocalMediaModal({
       onClose={onClose}
     >
       {url && mediaType === "image" ? (
-        <ImageViewer fileName={fileName} onClose={onClose} url={url} />
+        <ImageViewer
+          fileName={fileName}
+          navigation={imageNavigation}
+          onClose={onClose}
+          url={url}
+        />
       ) : (
         <div className="local-media-modal-content">
           {loading && <div className="local-media-loading">Loading...</div>}

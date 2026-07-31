@@ -14,6 +14,11 @@ export interface TurnInlineImage {
   sourceItemId: string;
 }
 
+export interface TurnInlineImageTarget {
+  id: string;
+  kind: "link" | "toggle";
+}
+
 export interface GalleryImageDimensions {
   height: number;
   width: number;
@@ -110,11 +115,11 @@ export function collectTurnInlineImages(
   return images;
 }
 
-export function getTurnInlineImageIdForTarget(
+export function getTurnInlineImageTargetForTarget(
   root: ParentNode,
   sourceItemId: string,
   target: EventTarget | null,
-): string | null {
+): TurnInlineImageTarget | null {
   if (!(target instanceof Element)) {
     return null;
   }
@@ -134,7 +139,12 @@ export function getTurnInlineImageIdForTarget(
     return null;
   }
   const sourceIndex = getInlineImageAnchors(root).indexOf(anchor);
-  return sourceIndex >= 0 ? inlineImageId(sourceItemId, sourceIndex) : null;
+  return sourceIndex >= 0
+    ? {
+        id: inlineImageId(sourceItemId, sourceIndex),
+        kind: control instanceof HTMLAnchorElement ? "link" : "toggle",
+      }
+    : null;
 }
 
 export function findTurnInlineImageAnchor(

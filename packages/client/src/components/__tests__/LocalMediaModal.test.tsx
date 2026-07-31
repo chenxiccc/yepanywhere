@@ -213,7 +213,7 @@ describe("LocalMediaModal", () => {
         .classList.contains("is-zoom"),
     ).toBe(true);
     expect(
-      stage.parentElement?.querySelector(".local-media-image-zoom")
+      screen.getByRole("dialog").querySelector(".local-media-image-zoom")
         ?.textContent,
     ).toBe("101%");
 
@@ -222,6 +222,49 @@ describe("LocalMediaModal", () => {
       "/api/local-image?path=%2Ftmp%2Fplot.png",
       "modal",
     );
+  });
+
+  it("exposes gallery navigation through buttons and arrow keys", async () => {
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob:local-media-image"),
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn(),
+    });
+    const onNext = vi.fn();
+    const onPrevious = vi.fn();
+
+    render(
+      <I18nProvider>
+        <LocalMediaModal
+          path="/tmp/plot.png"
+          mediaType="image"
+          mediaSource={{
+            fetchBlob: async () =>
+              new Blob(["png"], { type: "image/png" }),
+          }}
+          imageNavigation={{
+            count: 4,
+            current: 2,
+            onNext,
+            onPrevious,
+          }}
+          onClose={() => {}}
+        />
+      </I18nProvider>,
+    );
+
+    expect(await screen.findByText("2 of 4")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Previous image" }));
+    fireEvent.click(screen.getByRole("button", { name: "Next image" }));
+    fireEvent.keyDown(document, { key: "ArrowLeft" });
+    fireEvent.keyDown(document, { key: "ArrowRight" });
+    fireEvent.keyDown(document, { ctrlKey: true, key: "ArrowRight" });
+
+    expect(onPrevious).toHaveBeenCalledTimes(2);
+    expect(onNext).toHaveBeenCalledTimes(2);
   });
 
   it("dismisses the image viewer from its stage, image, controls, and keyboard", async () => {

@@ -97,8 +97,11 @@ For an assistant turn with at least two eligible images, the preference enables
 one turn gallery while preserving every original text link and full-size target.
 **Expand Inline Media by Default** controls only whether that gallery starts
 open. When inline expansion is off, a compact **Gallery** action beside the
-final image link makes the capability available without expanding content;
-disabling the gallery preference removes the action and restores independent
+final image link makes the capability available without expanding content. It
+is a stateful **+ Gallery** / **− Gallery** toggle, while each image's own
+`+` / `−` toggles the same gallery centered on that image. Image links retain
+their conventional direct-view behavior without changing inline gallery state.
+Disabling the gallery preference removes the action and restores independent
 inline previews. Authorized by graehl on 2026-07-29 because the default bounds
 an already-requested automatic presentation, adds only a contextual action on
 multi-image turns otherwise, and avoids burdening new users with another
