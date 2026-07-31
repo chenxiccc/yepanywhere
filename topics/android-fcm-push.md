@@ -49,6 +49,12 @@ The hosted push broker should be a separate runtime service from the relay. The
 two services may share physical hosting, but they should not share a process,
 event loop, database, or delivery credentials.
 
+The official push broker is Linux-hosted infrastructure. Windows is not a
+supported deployment target, so the push-broker package test command exits
+before loading broker dependencies on native Windows. Linux CI remains the
+authoritative broker verification environment; macOS development runs may
+continue exercising the same package tests.
+
 This preserves the relay's latency-sensitive opaque forwarding path, allows
 broker persistence and outbound provider calls to proceed independently, and
 keeps Firebase credentials outside the relay's otherwise narrow trust boundary.
