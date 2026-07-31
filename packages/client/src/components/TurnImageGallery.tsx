@@ -32,6 +32,7 @@ import {
   LocalMediaModal,
   type LocalMediaSource,
 } from "./LocalMediaModal";
+import styles from "./TurnImageGallery.module.css";
 
 interface TurnImageGalleryNavigation {
   active: boolean;
@@ -130,7 +131,7 @@ function GalleryThumbnail({
   return (
     <div
       ref={(element) => registerElement(candidate.id, element)}
-      className={`turn-image-gallery-item${featured ? " is-featured" : ""}`}
+      className={`${styles.item}${featured ? ` ${styles.featured}` : ""}`}
       data-gallery-image-id={candidate.id}
       role="group"
       aria-label={candidate.label}
@@ -141,7 +142,7 @@ function GalleryThumbnail({
     >
       <button
         type="button"
-        className="turn-image-gallery-thumbnail"
+        className={styles.thumbnail}
         aria-label={t("turnImageGalleryOpen", { label: candidate.label })}
         onClick={() => onOpen(candidate)}
       >
@@ -159,7 +160,7 @@ function GalleryThumbnail({
             }}
           />
         ) : (
-          <span className="turn-image-gallery-placeholder">
+          <span className={styles.placeholder}>
             {error
               ? t("turnImageGalleryUnavailable")
               : t("turnImageGalleryLoading")}
@@ -604,7 +605,7 @@ export function AssistantTurnImageGallery({
         {children}
         {galleryActive ? (
           <section
-            className="turn-image-gallery"
+            className={styles.gallery}
             aria-label={t("turnImageGalleryLabel")}
             onKeyDown={(event: KeyboardEvent<HTMLElement>) => {
               if (event.key === "Escape") {
@@ -615,7 +616,7 @@ export function AssistantTurnImageGallery({
           >
             <div
               ref={galleryRowsRef}
-              className="turn-image-gallery-rows"
+              className={styles.rows}
               style={
                 {
                   "--turn-gallery-max-height": `${layoutBounds.height}px`,
@@ -631,7 +632,7 @@ export function AssistantTurnImageGallery({
               {layout.map((row, rowIndex) => (
                 <div
                   key={`${candidateSignature}:row:${rowIndex}`}
-                  className="turn-image-gallery-row"
+                  className={styles.row}
                   style={{ height: row.height }}
                 >
                   {row.items.map((layoutItem) => {
@@ -679,11 +680,11 @@ export function AssistantTurnImageGallery({
                 </div>
               ))}
             </div>
-            <div className="turn-image-gallery-footer">
+            <div className={styles.footer}>
               {featured ? (
                 <button
                   type="button"
-                  className="turn-image-gallery-caption"
+                  className={styles.caption}
                   onClick={() => jumpToSource(featured)}
                 >
                   <span>{featured.label}</span>
@@ -692,7 +693,7 @@ export function AssistantTurnImageGallery({
                   ) : null}
                 </button>
               ) : null}
-              <span className="turn-image-gallery-count">
+              <span className={styles.count}>
                 {t("turnImageGalleryCount", {
                   count: candidates.length,
                   current: Math.max(
@@ -705,7 +706,7 @@ export function AssistantTurnImageGallery({
               </span>
               <button
                 type="button"
-                className="turn-image-gallery-dismiss"
+                className={styles.dismiss}
                 aria-keyshortcuts="Escape"
                 onClick={collapseGallery}
               >

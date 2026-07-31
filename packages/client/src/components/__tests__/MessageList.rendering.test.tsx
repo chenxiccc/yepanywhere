@@ -16,6 +16,7 @@ import {
 import { createComposerDraftSignal } from "../../lib/composerDraftSignal";
 import { invalidateLocalStorageValues } from "../../lib/localStorageValue";
 import { MessageList } from "../MessageList";
+import galleryStyles from "../TurnImageGallery.module.css";
 
 installMessageListTestEnvironment();
 
@@ -50,7 +51,7 @@ describe("MessageList rendering", () => {
       />,
     );
 
-    expect(container.querySelector(".turn-image-gallery")).toBeTruthy();
+    expect(container.querySelector(`.${galleryStyles.gallery}`)).toBeTruthy();
     const sourceToggles = Array.from(
       container.querySelectorAll<HTMLButtonElement>(
         ".local-media-inline-toggle",
@@ -67,7 +68,7 @@ describe("MessageList rendering", () => {
     );
     expect(galleryAction?.textContent).toBe("−Gallery");
     expect(galleryAction?.getAttribute("aria-label")).toBe("Collapse gallery");
-    expect(container.querySelectorAll(".turn-image-gallery-item")).toHaveLength(
+    expect(container.querySelectorAll(`.${galleryStyles.item}`)).toHaveLength(
       2,
     );
     expect(
@@ -79,10 +80,10 @@ describe("MessageList rendering", () => {
       ),
     ).toHaveLength(2);
 
-    const galleryItems = container.querySelectorAll(".turn-image-gallery-item");
+    const galleryItems = container.querySelectorAll(`.${galleryStyles.item}`);
     fireEvent.pointerEnter(galleryItems[1] as HTMLElement);
     expect(
-      container.querySelector(".turn-image-gallery-caption > span")
+      container.querySelector(`.${galleryStyles.caption} > span`)
         ?.textContent,
     ).toBe("Phone result");
 
@@ -120,12 +121,12 @@ describe("MessageList rendering", () => {
     };
     movePointer(110, 500);
     expect(
-      container.querySelector(".turn-image-gallery-caption > span")
+      container.querySelector(`.${galleryStyles.caption} > span`)
         ?.textContent,
     ).toBe("Desktop result");
     movePointer(210, 500);
     expect(
-      container.querySelector(".turn-image-gallery-caption > span")
+      container.querySelector(`.${galleryStyles.caption} > span`)
         ?.textContent,
     ).toBe("Phone result");
 
@@ -137,9 +138,9 @@ describe("MessageList rendering", () => {
     expect(
       screen.getByRole("dialog").querySelector(".modal-title")?.textContent,
     ).toBe("phone.png");
-    expect(container.querySelector(".turn-image-gallery")).toBeTruthy();
+    expect(container.querySelector(`.${galleryStyles.gallery}`)).toBeTruthy();
     expect(
-      container.querySelector(".turn-image-gallery-caption > span")
+      container.querySelector(`.${galleryStyles.caption} > span`)
         ?.textContent,
     ).toBe("Phone result");
     fireEvent.keyDown(document, { key: "ArrowRight" });
@@ -154,13 +155,13 @@ describe("MessageList rendering", () => {
 
     fireEvent.click(
       container.querySelector(
-        ".turn-image-gallery-caption",
+        `.${galleryStyles.caption}`,
       ) as HTMLButtonElement,
     );
     expect(document.activeElement).toBe(phoneLink);
 
     fireEvent.click(sourceToggles[0] as HTMLButtonElement);
-    expect(container.querySelector(".turn-image-gallery")).toBeNull();
+    expect(container.querySelector(`.${galleryStyles.gallery}`)).toBeNull();
     expect(sourceToggles[0]?.textContent).toBe("+");
     expect(sourceToggles[1]?.textContent).toBe("+");
     expect(galleryAction?.textContent).toBe("+Gallery");
@@ -169,21 +170,21 @@ describe("MessageList rendering", () => {
       phoneLink?.closest(".local-media-link-group")?.contains(galleryAction),
     ).toBe(true);
     fireEvent.click(galleryAction as HTMLButtonElement);
-    expect(container.querySelector(".turn-image-gallery")).toBeTruthy();
+    expect(container.querySelector(`.${galleryStyles.gallery}`)).toBeTruthy();
     expect(
-      container.querySelector(".turn-image-gallery-caption > span")
+      container.querySelector(`.${galleryStyles.caption} > span`)
         ?.textContent,
       ).toBe("Phone result");
 
     fireEvent.click(
       container.querySelector(
-        ".turn-image-gallery-dismiss",
+        `.${galleryStyles.dismiss}`,
       ) as HTMLButtonElement,
     );
     fireEvent.click(sourceToggles[1] as HTMLButtonElement);
-    expect(container.querySelector(".turn-image-gallery")).toBeTruthy();
+    expect(container.querySelector(`.${galleryStyles.gallery}`)).toBeTruthy();
     expect(
-      container.querySelector(".turn-image-gallery-caption > span")
+      container.querySelector(`.${galleryStyles.caption} > span`)
         ?.textContent,
     ).toBe("Phone result");
   });
@@ -208,7 +209,7 @@ describe("MessageList rendering", () => {
       />,
     );
 
-    expect(container.querySelector(".turn-image-gallery")).toBeNull();
+    expect(container.querySelector(`.${galleryStyles.gallery}`)).toBeNull();
     expect(
       container.querySelectorAll(
         ".local-media-inline-preview[data-expanded='false']",
@@ -226,29 +227,29 @@ describe("MessageList rendering", () => {
     ).toBe(true);
 
     fireEvent.click(galleryAction as HTMLButtonElement);
-    expect(container.querySelector(".turn-image-gallery")).toBeTruthy();
+    expect(container.querySelector(`.${galleryStyles.gallery}`)).toBeTruthy();
     expect(galleryAction?.getAttribute("aria-label")).toBe("Collapse gallery");
     expect(galleryAction?.textContent).toBe("−Gallery");
 
     fireEvent.pointerEnter(
-      container.querySelectorAll(".turn-image-gallery-item")[1] as HTMLElement,
+      container.querySelectorAll(`.${galleryStyles.item}`)[1] as HTMLElement,
     );
     fireEvent.click(galleryAction as HTMLButtonElement);
-    expect(container.querySelector(".turn-image-gallery")).toBeNull();
+    expect(container.querySelector(`.${galleryStyles.gallery}`)).toBeNull();
     fireEvent.click(
       container.querySelectorAll<HTMLButtonElement>(
         ".local-media-inline-toggle",
       )[0] as HTMLButtonElement,
     );
     expect(
-      container.querySelector(".turn-image-gallery-caption > span")
+      container.querySelector(`.${galleryStyles.caption} > span`)
         ?.textContent,
     ).toBe("One");
 
     fireEvent.click(galleryAction as HTMLButtonElement);
     fireEvent.click(galleryAction as HTMLButtonElement);
     expect(
-      container.querySelector(".turn-image-gallery-caption > span")
+      container.querySelector(`.${galleryStyles.caption} > span`)
         ?.textContent,
     ).toBe("One");
   });
@@ -272,13 +273,13 @@ describe("MessageList rendering", () => {
       container.querySelectorAll<HTMLAnchorElement>("a.local-media-link");
 
     fireEvent.click(links[0] as HTMLAnchorElement);
-    expect(container.querySelector(".turn-image-gallery")).toBeNull();
+    expect(container.querySelector(`.${galleryStyles.gallery}`)).toBeNull();
     expect(
       screen.getByRole("dialog").querySelector(".modal-title")?.textContent,
     ).toBe("one.png");
 
     fireEvent.keyDown(document, { key: "ArrowRight" });
-    expect(container.querySelector(".turn-image-gallery")).toBeNull();
+    expect(container.querySelector(`.${galleryStyles.gallery}`)).toBeNull();
     expect(
       screen.getByRole("dialog").querySelector(".modal-title")?.textContent,
     ).toBe("two.png");
@@ -294,7 +295,7 @@ describe("MessageList rendering", () => {
     ).toBe("two.png");
 
     fireEvent.click(document.querySelector(".modal-close") as HTMLButtonElement);
-    expect(container.querySelector(".turn-image-gallery")).toBeNull();
+    expect(container.querySelector(`.${galleryStyles.gallery}`)).toBeNull();
   });
 
   it("keeps independent inline previews when compact galleries are disabled", () => {
@@ -313,7 +314,7 @@ describe("MessageList rendering", () => {
       />,
     );
 
-    expect(container.querySelector(".turn-image-gallery")).toBeNull();
+    expect(container.querySelector(`.${galleryStyles.gallery}`)).toBeNull();
     expect(
       container.querySelector(".turn-image-gallery-inline-action"),
     ).toBeNull();
@@ -330,7 +331,7 @@ describe("MessageList rendering", () => {
     const messages = [assistantMessage("assistant-1", "Two results")];
     const { container, rerender } = render(<MessageList messages={messages} />);
 
-    expect(container.querySelector(".turn-image-gallery")).toBeNull();
+    expect(container.querySelector(`.${galleryStyles.gallery}`)).toBeNull();
 
     rerender(
       <MessageList
@@ -343,7 +344,7 @@ describe("MessageList rendering", () => {
       />,
     );
 
-    expect(container.querySelectorAll(".turn-image-gallery-item")).toHaveLength(
+    expect(container.querySelectorAll(`.${galleryStyles.item}`)).toHaveLength(
       2,
     );
     expect(
@@ -371,10 +372,10 @@ describe("MessageList rendering", () => {
       />,
     );
     const rows = container.querySelector(
-      ".turn-image-gallery-rows",
+      `.${galleryStyles.rows}`,
     ) as HTMLDivElement;
     const items = Array.from(
-      container.querySelectorAll<HTMLElement>(".turn-image-gallery-item"),
+      container.querySelectorAll<HTMLElement>(`.${galleryStyles.item}`),
     );
     Object.defineProperty(rows, "clientWidth", {
       configurable: true,
@@ -394,7 +395,7 @@ describe("MessageList rendering", () => {
     act(() => scrollFrame?.(0));
 
     expect(
-      container.querySelector(".turn-image-gallery-caption > span")
+      container.querySelector(`.${galleryStyles.caption} > span`)
         ?.textContent,
     ).toBe("Two");
   });
