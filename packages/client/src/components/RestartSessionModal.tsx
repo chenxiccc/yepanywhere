@@ -567,6 +567,9 @@ export function RestartSessionModal({
         // message; omit it so the server's neutral continuation text is used.
         reason: isFork ? undefined : "Manual restart from Yep Anywhere",
         restartMode: isFork ? "fork" : undefined,
+        // The source session page the user is on now; surfaced verbatim in the
+        // handoff's Source Session block as a self-documenting pointer back.
+        sourceUrl: isFork ? undefined : window.location.href,
       });
       onRestarted(result, {
         openInNewWindow: shouldOpenInNewWindow,

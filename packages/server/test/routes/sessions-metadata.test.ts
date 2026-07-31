@@ -4018,14 +4018,13 @@ describe("Sessions metadata route", () => {
       interruptProcess.mock.invocationCallOrder[0] ?? 0,
     );
     const handoffText = startSession.mock.calls[0]?.[1].text;
-    expect(handoffText).toContain(
-      "- Provider-native compact: completed with /compact",
-    );
+    // The compact attempt still runs (its boundary feeds the summary section),
+    // but its status is no longer echoed as a handoff header line.
+    expect(handoffText).not.toContain("Provider-native compact:");
     expect(handoffText).toContain("## Provider-Native Compact Summary");
     expect(handoffText).toContain("Native compact summary text");
-    expect(handoffText).not.toContain(
-      "### user 2026-04-24T20:00:01.000Z\n\n/compact",
-    );
+    // The internal /compact command is still filtered out of the user turns.
+    expect(handoffText).not.toContain("### user\n\n/compact");
   });
 
   it("summarizes fallback activity and appends queued turns last", async () => {
@@ -4104,6 +4103,24 @@ describe("Sessions metadata route", () => {
               },
             },
             {
+              type: "assistant",
+              uuid: "a2",
+              timestamp: "2026-04-24T20:03:30.000Z",
+              message: {
+                role: "assistant",
+                content: [
+                  { type: "thinking", thinking: "PRIVATE_REASONING_TEXT" },
+                  { type: "text", text: "assistant conclusion prose" },
+                  {
+                    type: "tool_use",
+                    id: "bash-1",
+                    name: "Bash",
+                    input: { command: "pnpm test foo" },
+                  },
+                ],
+              },
+            },
+            {
               type: "user",
               uuid: "u2",
               timestamp: "2026-04-24T20:04:00.000Z",
@@ -4151,33 +4168,57 @@ describe("Sessions metadata route", () => {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider: "codex", model: "gpt-5.4" }),
+        body: JSON.stringify({
+          provider: "codex",
+          model: "gpt-5.4",
+          reason: "Manual restart from Yep Anywhere",
+          sourceUrl:
+            "https://localhost:3400/projects/proj-1/sessions/sess-1",
+        }),
       },
     );
 
     expect(response.status).toBe(200);
-    const handoffText = startSession.mock.calls[0]?.[1].text;
+    const handoffText = startSession.mock.calls[0]?.[1].text ?? "";
+    // Source Session block: self-documenting URL, no internal process id, no
+    // restart-reason or provider-compact noise.
     expect(handoffText).toContain(
-      "- Provider-native compact: skipped: source process was in-turn",
+      "- URL: https://localhost:3400/projects/proj-1/sessions/sess-1",
     );
+    expect(handoffText).not.toContain("Previous YA process");
+    expect(handoffText).not.toContain("Restart reason");
+    expect(handoffText).not.toContain("Provider-native compact:");
+    // The real compact summary section still renders.
     expect(handoffText).toContain("## Provider-Native Compact Summary");
     expect(handoffText).toContain("Existing compact summary");
+    // User turns keep a light divider; their content is verbatim.
     expect(handoffText).toContain("## Recent User Turns");
+    expect(handoffText).toContain("### user");
     expect(handoffText).toContain("older user turn");
     expect(handoffText).toContain("latest user direction");
-    expect(handoffText).toContain("[tool_use Read]");
-    expect(handoffText).toContain("read/search details omitted");
-    expect(handoffText).toContain("[tool_result] output omitted");
+    // Activity: assistant prose and bash commands survive, bare.
+    expect(handoffText).toContain("assistant conclusion prose");
+    expect(handoffText).toContain("$ pnpm test foo");
+    expect(handoffText).not.toContain("### assistant");
+    // Slimmed noise is gone: no timestamps, non-bash tool_use, tool results,
+    // or thinking.
+    expect(handoffText).not.toContain("2026-04-24T20:04:00.000Z");
+    expect(handoffText).not.toContain("[tool_use");
+    expect(handoffText).not.toContain("[tool_result");
+    expect(handoffText).not.toContain("thinking");
+    expect(handoffText).not.toContain("PRIVATE_REASONING_TEXT");
+    expect(handoffText).not.toContain("read/search details omitted");
     expect(handoffText).not.toContain(verboseReadOutput);
+    // Queued turns still come last.
     expect(handoffText).toContain("## Queued User Turns (Not Yet Processed)");
     expect(handoffText).toContain(
       "No agent response in the source session has processed them yet.",
     );
     expect(handoffText).toContain("queued follow-up");
     expect(handoffText).toContain("Attachments queued: 1");
-    expect(handoffText?.trim().endsWith("Temp ID: queued-1")).toBe(true);
-    expect(handoffText?.indexOf("## Queued User Turns")).toBeGreaterThan(
-      handoffText?.indexOf("## Recent Agent and Tool Activity") ?? -1,
+    expect(handoffText.trim().endsWith("Temp ID: queued-1")).toBe(true);
+    expect(handoffText.indexOf("## Queued User Turns")).toBeGreaterThan(
+      handoffText.indexOf("## Recent Agent and Tool Activity"),
     );
   });
 

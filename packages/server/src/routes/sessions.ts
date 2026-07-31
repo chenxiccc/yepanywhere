@@ -387,6 +387,12 @@ interface RestartSessionBody extends CreateSessionBody {
    * full-transcript fork. Only meaningful with restartMode "fork".
    */
   forkUpToMessageId?: string;
+  /**
+   * The client URL the user was viewing when they triggered the handoff.
+   * Surfaced in the handoff's Source Session block as a self-documenting,
+   * clickable pointer back to the source session. Validated server-side.
+   */
+  sourceUrl?: string;
 }
 
 const RESTART_HANDOFF_MAX_CHARS = 40_000;
@@ -493,12 +499,6 @@ function messageRole(message: Message): string {
     message.type ||
     "message"
   );
-}
-
-function messageTimestampSuffix(message: Message): string {
-  return typeof message.timestamp === "string" && message.timestamp.trim()
-    ? ` ${message.timestamp}`
-    : "";
 }
 
 function messageContent(message: Message): unknown {
@@ -632,22 +632,34 @@ function toolInputSummary(input: unknown): string {
     : compactRestartLine(stringifyForRestart(input, 400), 400);
 }
 
-function summarizeToolUse(name: string | undefined, input: unknown): string {
-  const toolName = name ?? "unknown";
-  const summary = toolInputSummary(input);
-  const lowerName = toolName.toLowerCase();
-  const behavior = /read|grep|glob|search|ls|list/.test(lowerName)
-    ? "read/search details omitted; rerun if needed"
-    : /edit|write|patch|notebook/.test(lowerName)
-      ? "edit/write details omitted; inspect the current repo diff"
-      : "tool input summarized";
-  return `[tool_use ${toolName}] ${summary} (${behavior})`;
+function shellCommandFromInput(input: unknown): string {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return "";
+  }
+  const command = (input as Record<string, unknown>).command;
+  if (typeof command === "string") {
+    return command.trim();
+  }
+  if (Array.isArray(command)) {
+    return command
+      .filter((part): part is string => typeof part === "string")
+      .join(" ")
+      .trim();
+  }
+  return "";
 }
 
-function summarizeToolResult(content: unknown): string {
-  const rendered = renderRestartContent(content);
-  const charCount = rendered.length;
-  return `[tool_result] output omitted (${charCount} chars; inspect live files or rerun reads if needed)`;
+// Only shell/bash commands survive in the activity log: they are the one tool
+// class whose intent is legible without the (dropped) output, and the source
+// session's jsonl holds everything else for grep. Non-shell tool calls, tool
+// results, and thinking are omitted entirely.
+// See topics/restart-handoff-template.md.
+function summarizeToolUse(name: string | undefined, input: unknown): string {
+  if (!/bash|shell/i.test(name ?? "")) {
+    return "";
+  }
+  const command = shellCommandFromInput(input) || toolInputSummary(input);
+  return command ? `$ ${compactRestartLine(command, 800)}` : "";
 }
 
 function renderRestartActivityContent(message: Message): string {
@@ -655,7 +667,8 @@ function renderRestartActivityContent(message: Message): string {
     return summarizeToolUse(message.toolUse.name, message.toolUse.input);
   }
   if (message.toolUseResult !== undefined) {
-    return summarizeToolResult(message.toolUseResult);
+    // Tool output is recovered from the source jsonl, not carried here.
+    return "";
   }
 
   const content = messageContent(message);
@@ -677,9 +690,8 @@ function renderRestartActivityContent(message: Message): string {
         case "tool_use":
           return summarizeToolUse(typed.name, typed.input);
         case "tool_result":
-          return summarizeToolResult(typed.content);
         case "thinking":
-          return typed.thinking ? "[thinking summary omitted]" : "[thinking]";
+          return "";
         default:
           return renderRestartContent([typed]);
       }
@@ -693,25 +705,27 @@ function formatRestartMessage(message: Message): string | null {
     return null;
   }
 
-  const role = messageRole(message);
-  const timestamp = messageTimestampSuffix(message);
-  const content = isHumanUserMessage(message)
+  const isUser = isHumanUserMessage(message);
+  const content = isUser
     ? renderRestartContent(messageContent(message))
     : renderRestartActivityContent(message);
-  const subtype =
-    typeof message.subtype === "string" ? `:${message.subtype}` : "";
   const trimmed = content.trim();
 
-  if (!trimmed && !subtype) {
+  if (!trimmed) {
     return null;
   }
 
-  return `### ${role}${subtype}${timestamp}\n\n${truncateForRestart(
-    trimmed || "[no textual content]",
-    isHumanUserMessage(message)
+  const body = truncateForRestart(
+    trimmed,
+    isUser
       ? RESTART_HANDOFF_USER_TURN_MAX_CHARS
       : RESTART_HANDOFF_ACTIVITY_ITEM_MAX_CHARS,
-  )}`;
+  );
+  // User turns keep a light divider (they are the load-bearing directions);
+  // activity items render bare — assistant prose and `$ commands` are
+  // self-delimiting under the section header, so per-item role/timestamp
+  // headers were pure token overhead. See topics/restart-handoff-template.md.
+  return isUser ? `### user\n\n${body}` : body;
 }
 
 function formatRestartQueuedMessage(
@@ -736,7 +750,7 @@ function formatRestartQueuedMessage(
         ? `\nAttachments queued: ${message.attachmentCount}`
         : "";
   const tempIdLine = message.tempId ? `\nTemp ID: ${message.tempId}` : "";
-  return `### queued user ${index + 1} ${message.timestamp}\n\n${truncateForRestart(
+  return `### queued user ${index + 1}\n\n${truncateForRestart(
     message.content.trim() || "[empty queued turn]",
     RESTART_HANDOFF_QUEUED_MAX_CHARS,
   )}${attachmentLines}${tempIdLine}`;
@@ -765,22 +779,6 @@ type RestartCompactAttempt =
 
 function isCompactBoundaryMessage(message: SDKMessage | Message): boolean {
   return message.type === "system" && message.subtype === "compact_boundary";
-}
-
-function describeRestartCompactAttempt(attempt: RestartCompactAttempt): string {
-  switch (attempt.status) {
-    case "completed":
-      return `completed with /${attempt.command}`;
-    case "timed-out":
-      return `tried /${attempt.command}; no compact boundary arrived before YA fallback`;
-    case "failed":
-      return attempt.command
-        ? `tried /${attempt.command}; failed: ${attempt.reason}`
-        : `failed: ${attempt.reason}`;
-    case "skipped":
-    case "unavailable":
-      return `${attempt.status}: ${attempt.reason}`;
-  }
 }
 
 async function waitForRestartCompactBoundary(
@@ -1228,9 +1226,8 @@ function buildRestartHandoff(params: {
   sourceProvider?: ProviderName;
   sourceModel?: string;
   sourceProcess?: Process;
-  compactAttempt?: RestartCompactAttempt;
+  sourceUrl?: string;
   projectPath: string;
-  reason?: string;
   omittedCount: number;
   transcript: string;
 }): string {
@@ -1240,19 +1237,20 @@ function buildRestartHandoff(params: {
     sourceProvider,
     sourceModel,
     sourceProcess,
-    compactAttempt,
+    sourceUrl,
     projectPath,
-    reason,
     omittedCount,
     transcript,
   } = params;
-  const oldProcessLine = sourceProcess
-    ? `- Previous YA process: ${sourceProcess.id} (${sourceProcess.state.type})`
-    : "- Previous YA process: none active";
-  const omittedLine =
+  const urlLine = formatRestartSourceUrl(sourceUrl);
+  const transcriptBlock = [
     omittedCount > 0
-      ? `\n${omittedCount} older rendered messages were omitted to keep this restart handoff bounded.`
-      : "";
+      ? `_${omittedCount} older rendered messages were omitted to keep this handoff bounded._`
+      : undefined,
+    transcript || "[No textual transcript was available.]",
+  ]
+    .filter((part): part is string => part !== undefined)
+    .join("\n\n");
   const queuedMessages = getRestartQueuedMessages(sourceProcess);
   const queuedSection =
     queuedMessages.length > 0
@@ -1274,22 +1272,27 @@ function buildRestartHandoff(params: {
     "## Source Session",
     "",
     `- Session ID: ${sourceSession.id}`,
+    urlLine,
     `- Project path: ${projectPath}`,
     `- Provider: ${sourceProvider ?? sourceSession.provider}`,
     `- Model: ${sourceModel ?? sourceSession.model ?? "unknown"}`,
-    oldProcessLine,
-    compactAttempt
-      ? `- Provider-native compact: ${describeRestartCompactAttempt(compactAttempt)}`
-      : undefined,
-    reason ? `- Restart reason: ${reason}` : undefined,
     "",
-    "## Recent Transcript",
-    omittedLine,
-    transcript || "[No textual transcript was available.]",
+    transcriptBlock,
     queuedSection,
   ]
     .filter((line): line is string => line !== undefined)
     .join("\n");
+}
+
+// The URL the user was viewing when they triggered the handoff — more
+// self-documenting than an internal process id, and clickable/resumable.
+// Validated to a single http(s) token so a stray value can't inject lines.
+function formatRestartSourceUrl(url: string | undefined): string | undefined {
+  const trimmed = (url ?? "").trim().split(/\s/)[0] ?? "";
+  if (!/^https?:\/\//i.test(trimmed)) {
+    return undefined;
+  }
+  return `- URL: ${compactRestartLine(trimmed, 400)}`;
 }
 
 function isRestartReplacementActivity(message: SDKMessage): boolean {
@@ -4083,9 +4086,12 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const preferredSourceProvider =
       metadataProvider ?? oldProcess?.provider ?? project.provider;
     // Fork copies the transcript as-is; pre-restart compaction is a
-    // handoff-only mitigation.
-    const compactAttempt =
-      restartMode === "fork" ? undefined : await tryRestartCompact(oldProcess);
+    // handoff-only mitigation. Run it for its effect (a compact boundary the
+    // transcript summary can then pick up); its status is no longer surfaced
+    // in the handoff header.
+    if (restartMode !== "fork") {
+      await tryRestartCompact(oldProcess);
+    }
     const oldProcessInterrupted =
       await interruptOldProcessForHandoff(oldProcess);
     const sourceSession = await loadRestartSourceSession(
@@ -4290,9 +4296,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       sourceProvider,
       sourceModel: oldProcess?.resolvedModel ?? sourceSession.model,
       sourceProcess: oldProcess,
-      compactAttempt,
+      sourceUrl: body.sourceUrl,
       projectPath: restartProjectPath,
-      reason: body.reason,
       omittedCount,
       transcript,
     });

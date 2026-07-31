@@ -769,6 +769,8 @@ export const api = {
       restartMode?: "handoff" | "fork";
       /** Fork slice point (transcript message UUID, inclusive). */
       forkUpToMessageId?: string;
+      /** Client URL the user was on; shown in the handoff Source Session block. */
+      sourceUrl?: string;
     },
   ) =>
     fetchJSON<{
@@ -806,6 +808,7 @@ export const api = {
         reason: options?.reason,
         restartMode: options?.restartMode,
         forkUpToMessageId: options?.forkUpToMessageId,
+        sourceUrl: options?.sourceUrl,
       }),
     }),
 
