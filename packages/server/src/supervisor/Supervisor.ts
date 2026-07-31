@@ -1166,16 +1166,12 @@ export class Supervisor {
   private async queueProcessMessage(
     process: Process,
     message: UserMessage,
-    options?: { allowSteer?: boolean; skipInputIntent?: boolean },
+    options?: { allowSteer?: boolean },
   ): Promise<ReturnType<Process["queueMessage"]>> {
     // Record delivery intent before slash-command discovery or any other
     // awaited preparation. Speculative idle work must yield as soon as input
-    // arrives, even while the process still reports `idle`. Callers that
-    // already noted intent at an earlier ingress boundary pass
-    // `skipInputIntent` so a single accepted turn increments the version once.
-    if (!options?.skipInputIntent) {
-      process.noteInputIntent();
-    }
+    // arrives, even while the process still reports `idle`.
+    process.noteInputIntent();
     await process.primeSupportedCommandsForMessage(message);
     return process.queueMessage(message, {
       allowSteer: options?.allowSteer,
@@ -2965,8 +2961,7 @@ export class Supervisor {
     // thinking/effort/service-tier updates below can await. An idle-threshold
     // compaction check that is mid-flight must observe that a turn has arrived
     // and yield, even while the process still reports `idle` during those
-    // awaits. queueProcessMessage below is told not to re-note (see
-    // `skipInputIntent`) so one accepted turn bumps the version exactly once.
+    // awaits.
     process.noteInputIntent();
 
     const isActiveSteeringMessage =
@@ -3171,9 +3166,7 @@ export class Supervisor {
         requestedCompactSettings.forceYaOrchestratedCompaction,
     });
 
-    const result = await this.queueProcessMessage(process, message, {
-      skipInputIntent: true,
-    });
+    const result = await this.queueProcessMessage(process, message);
     if (result.success) {
       return { success: true, process, restarted: false };
     }

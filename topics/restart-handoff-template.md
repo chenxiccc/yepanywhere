@@ -66,7 +66,8 @@ constants (40k total); slimming frees room within the same caps.
 - Project path: <path>
 - Provider: <provider>
 - Model: <model>
-- Full transcript (read or grep for detail …): <path>   (omitted if unknown)
+- Full transcript on <YA hostname> (read or grep there …): <path>
+  (omitted if unknown)
 ```
 
 - **URL replaces the internal process id.** The client passes
@@ -75,8 +76,9 @@ constants (40k total); slimming frees room within the same caps.
   single `http(s)` token (`formatRestartSourceUrl`) and renders it verbatim. It
   is self-documenting and clickable/resumable, unlike `Previous YA process:
   <uuid>`.
-- **Transcript pointer** (see below) is emitted here as a `- Full transcript
-  (read or grep for detail beyond this summary): <path>` line.
+- **Transcript pointer** (see below) identifies both the YA host and the
+  host-local path. When the successor uses an SSH executor, the line also
+  names that executor so the host boundary is explicit.
 - **Dropped:** the `- Provider-native compact: …` status line (the compaction
   *attempt* still runs for its boundary effect — `tryRestartCompact` — its
   status is just no longer echoed) and the `- Restart reason:` line (always
@@ -101,10 +103,18 @@ Wiring: the restart route resolves the source reader via `resolveSessionReader`
 `getSessionFilePath(sessionId)`, and threads the result to `buildRestartHandoff`
 as `sourceTranscriptPath` (rendered by `formatRestartTranscriptPath`).
 
-The pointer references the **source** session and is a plain host file read, so
-it works even when the fresh session switches provider. Absent/`null` → no line.
-This is what *licenses* the aggressive slimming above: full fidelity stays one
-grep away.
+The pointer references the **source** session and is a plain file on the YA
+server host, so switching providers does not change which reader resolves it.
+The line names `os.hostname()` and, when present, the successor's executor.
+Absent/`null` → no line.
+
+Remote-executor seam: a successor running over SSH may not be able to open the
+YA host's absolute path, and the remote Claude transcript sync completes in the
+background after provider results. The qualified pointer is therefore useful
+provenance, not a promise that every successor can read a current file. A
+future executor-aware handoff artifact should either transfer/translate and
+confirm the path or retain omitted activity when it cannot establish that
+guarantee.
 
 ## User-highlight marking (proposed, postponed)
 

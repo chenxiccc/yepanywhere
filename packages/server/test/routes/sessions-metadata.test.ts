@@ -366,6 +366,42 @@ describe("Sessions metadata route", () => {
     expect(deferMessage).toHaveBeenCalledOnce();
   });
 
+  it("records input intent before provider-native command dispatch awaits", async () => {
+    const noteInputIntent = vi.fn();
+    let resolveCommand!: (result: { handled: boolean }) => void;
+    const runProviderCommand = vi.fn(
+      () =>
+        new Promise<{ handled: boolean }>((resolve) => {
+          resolveCommand = resolve;
+        }),
+    );
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => ({
+          isTerminated: false,
+          noteInputIntent,
+          runProviderCommand,
+        })),
+      } as unknown as SessionsDeps["supervisor"],
+    });
+
+    const request = routes.request("/sessions/sess-1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "/compact" }),
+    });
+
+    await vi.waitFor(() => {
+      expect(runProviderCommand).toHaveBeenCalledWith("compact", "");
+    });
+    expect(noteInputIntent).toHaveBeenCalledOnce();
+
+    resolveCommand({ handled: true });
+    const response = await request;
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ queued: true });
+  });
+
   it("reports immediate promotion when returned by the process", async () => {
     const primeSupportedCommandsForMessage = vi.fn(async () => {});
     const deferMessage = vi.fn(() => ({
@@ -2232,6 +2268,7 @@ describe("Sessions metadata route", () => {
           model: "gpt-5.4",
           resolvedModel: "gpt-5.4",
           executor: undefined,
+          noteInputIntent: vi.fn(),
         })),
         queueMessageToSession,
       } as unknown as SessionsDeps["supervisor"],
@@ -2298,6 +2335,7 @@ describe("Sessions metadata route", () => {
           model: "sonnet",
           resolvedModel: "claude-sonnet-4-6",
           executor: undefined,
+          noteInputIntent: vi.fn(),
         })),
         queueMessageToSession,
       } as unknown as SessionsDeps["supervisor"],
@@ -4216,9 +4254,9 @@ describe("Sessions metadata route", () => {
     expect(handoffText).not.toContain("Previous YA process");
     expect(handoffText).not.toContain("Restart reason");
     expect(handoffText).not.toContain("Provider-native compact:");
-    // Provider reader points the successor at the on-disk transcript for grep.
+    expect(handoffText).toContain("- Full transcript on ");
     expect(handoffText).toContain(
-      "- Full transcript (read or grep for detail beyond this summary): /home/user/.claude/projects/enc/sess-1.jsonl",
+      "(read or grep there for detail beyond this summary): /home/user/.claude/projects/enc/sess-1.jsonl",
     );
     // The real compact summary section still renders.
     expect(handoffText).toContain("## Provider-Native Compact Summary");

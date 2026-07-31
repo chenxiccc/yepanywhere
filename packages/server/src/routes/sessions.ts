@@ -26,6 +26,7 @@ import {
 } from "@yep-anywhere/shared";
 import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
+import { hostname } from "node:os";
 import { performance } from "node:perf_hooks";
 import { Hono } from "hono";
 import { augmentTextBlocks } from "../augments/markdown-augments.js";
@@ -721,10 +722,8 @@ function formatRestartMessage(message: Message): string | null {
       ? RESTART_HANDOFF_USER_TURN_MAX_CHARS
       : RESTART_HANDOFF_ACTIVITY_ITEM_MAX_CHARS,
   );
-  // User turns keep a light divider (they are the load-bearing directions);
-  // activity items render bare — assistant prose and `$ commands` are
-  // self-delimiting under the section header, so per-item role/timestamp
-  // headers were pure token overhead. See topics/restart-handoff-template.md.
+  // User directions retain a divider. Assistant prose and shell commands are
+  // self-delimiting within the activity section.
   return isUser ? `### user\n\n${body}` : body;
 }
 
@@ -1228,6 +1227,8 @@ function buildRestartHandoff(params: {
   sourceProcess?: Process;
   sourceUrl?: string;
   sourceTranscriptPath?: string;
+  sourceTranscriptHost?: string;
+  targetExecutor?: string;
   projectPath: string;
   omittedCount: number;
   transcript: string;
@@ -1240,12 +1241,18 @@ function buildRestartHandoff(params: {
     sourceProcess,
     sourceUrl,
     sourceTranscriptPath,
+    sourceTranscriptHost,
+    targetExecutor,
     projectPath,
     omittedCount,
     transcript,
   } = params;
   const urlLine = formatRestartSourceUrl(sourceUrl);
-  const transcriptPathLine = formatRestartTranscriptPath(sourceTranscriptPath);
+  const transcriptPathLine = formatRestartTranscriptPath({
+    path: sourceTranscriptPath,
+    host: sourceTranscriptHost,
+    targetExecutor,
+  });
   const transcriptBlock = [
     omittedCount > 0
       ? `_${omittedCount} older rendered messages were omitted to keep this handoff bounded._`
@@ -1288,9 +1295,7 @@ function buildRestartHandoff(params: {
     .join("\n");
 }
 
-// The URL the user was viewing when they triggered the handoff — more
-// self-documenting than an internal process id, and clickable/resumable.
-// Validated to a single http(s) token so a stray value can't inject lines.
+// Keep the resumable source URL to one http(s) token so it cannot inject lines.
 function formatRestartSourceUrl(url: string | undefined): string | undefined {
   const trimmed = (url ?? "").trim().split(/\s/)[0] ?? "";
   if (!/^https?:\/\//i.test(trimmed)) {
@@ -1299,17 +1304,20 @@ function formatRestartSourceUrl(url: string | undefined): string | undefined {
   return `- URL: ${compactRestartLine(trimmed, 400)}`;
 }
 
-// Absolute path to the source session's provider transcript, resolved by that
-// provider's reader. The successor runs on the same host, so it can read/grep
-// this file for any detail the bounded summary dropped.
-function formatRestartTranscriptPath(
-  path: string | undefined,
-): string | undefined {
-  const trimmed = (path ?? "").trim().split(/[\r\n]/)[0] ?? "";
+function formatRestartTranscriptPath(params: {
+  path: string | undefined;
+  host?: string;
+  targetExecutor?: string;
+}): string | undefined {
+  const trimmed = (params.path ?? "").trim().split(/[\r\n]/)[0] ?? "";
   if (!trimmed) {
     return undefined;
   }
-  return `- Full transcript (read or grep for detail beyond this summary): ${compactRestartLine(
+  const host = compactRestartLine(params.host?.trim() || "YA server", 160);
+  const executorNote = params.targetExecutor
+    ? `; successor executor: ${compactRestartLine(params.targetExecutor, 160)}`
+    : "";
+  return `- Full transcript on ${host}${executorNote} (read or grep there for detail beyond this summary): ${compactRestartLine(
     trimmed,
     400,
   )}`;
@@ -4105,10 +4113,9 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     ) as ProviderName | undefined;
     const preferredSourceProvider =
       metadataProvider ?? oldProcess?.provider ?? project.provider;
-    // Fork copies the transcript as-is; pre-restart compaction is a
-    // handoff-only mitigation. Run it for its effect (a compact boundary the
-    // transcript summary can then pick up); its status is no longer surfaced
-    // in the handoff header.
+    // Fork copies the transcript as-is. Handoff first asks the provider to
+    // compact so the bounded transcript can include that boundary when one is
+    // available.
     if (restartMode !== "fork") {
       await tryRestartCompact(oldProcess);
     }
@@ -4329,6 +4336,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       sourceProcess: oldProcess,
       sourceUrl: body.sourceUrl,
       sourceTranscriptPath,
+      sourceTranscriptHost: hostname(),
+      targetExecutor: executor,
       projectPath: restartProjectPath,
       omittedCount,
       transcript,
@@ -5374,6 +5383,10 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       ); // 410 Gone
     }
 
+    // Invalidate speculative idle work before any provider-native command or
+    // delivery preparation can await.
+    process.noteInputIntent();
+
     // Provider-native slash commands (e.g. Codex `/compact`) are dispatched
     // through the provider's own protocol rather than delivered as turn text the
     // model would never interpret. Claude's `/compact` reports handled:false and
@@ -5410,10 +5423,6 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       if (body.mode) {
         process.setPermissionMode(body.mode);
       }
-      // Record delivery intent before slash-command preparation awaits, so an
-      // in-flight idle-threshold compaction check yields to this accepted
-      // deferred turn instead of racing ahead during the prime.
-      process.noteInputIntent();
       await process.primeSupportedCommandsForMessage(userMessage);
       const deferredResult = process.deferMessage(userMessage, {
         promoteIfReady: true,
