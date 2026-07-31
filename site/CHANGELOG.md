@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [site-v1.8.3] - 2026-07-31
+
+### Fixed
+- Opt the Pages artifact uploader into hidden files so the checked deployment
+  directory's `/.well-known/assetlinks.json` reaches production.
+
 ## [site-v1.8.2] - 2026-07-31
 
 ### Fixed

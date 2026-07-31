@@ -66,10 +66,14 @@ jobs:
         with:
           enablement: true
 
+      - name: Verify Digital Asset Links artifact
+        run: test -f deploy/.well-known/assetlinks.json
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v5
         with:
           path: deploy
+          include-hidden-files: true
 
       - name: Deploy to GitHub Pages
         id: deployment
