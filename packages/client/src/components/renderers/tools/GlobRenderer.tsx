@@ -4,6 +4,7 @@ import { useSchemaValidationContext } from "../../../contexts/SchemaValidationCo
 import { getPathBasename, makeDisplayPath } from "../../../lib/text";
 import { validateToolResult } from "../../../lib/validateToolResult";
 import { SchemaWarning } from "../../SchemaWarning";
+import styles from "./GlobRenderer.module.css";
 import type { GlobInput, GlobResult, ToolRenderer } from "./types";
 
 const MAX_FILES_COLLAPSED = 20;
@@ -26,10 +27,10 @@ function GlobToolUse({
   projectPath?: string | null;
 }) {
   return (
-    <div className="glob-tool-use">
-      <span className="glob-pattern">{input.pattern}</span>
+    <div className={styles.toolUse}>
+      <span className={styles.pattern}>{input.pattern}</span>
       {input.path && (
-        <span className="glob-path">
+        <span className={styles.path}>
           in {makeDisplayPath(input.path, projectPath)}
         </span>
       )}
@@ -74,7 +75,7 @@ function GlobToolResult({
   if (isError) {
     const errorResult = result as unknown as { content?: unknown } | undefined;
     return (
-      <div className="glob-error">
+      <div className={styles.error}>
         {showValidationWarning && validationErrors && (
           <SchemaWarning toolName="Glob" errors={validationErrors} />
         )}
@@ -87,7 +88,7 @@ function GlobToolResult({
 
   if (!result?.filenames || result.filenames.length === 0) {
     return (
-      <div className="glob-empty">
+      <div className={styles.empty}>
         {showValidationWarning && validationErrors && (
           <SchemaWarning toolName="Glob" errors={validationErrors} />
         )}
@@ -104,9 +105,9 @@ function GlobToolResult({
       : filenames;
 
   return (
-    <div className="glob-result">
-      <div className="glob-header">
-        <span className="glob-count">{numFiles} files</span>
+    <div className={styles.result}>
+      <div className={styles.header}>
+        <span className={styles.count}>{numFiles} files</span>
         {truncated && <span className="badge badge-warning">truncated</span>}
         {showValidationWarning && validationErrors && (
           <SchemaWarning toolName="Glob" errors={validationErrors} />
