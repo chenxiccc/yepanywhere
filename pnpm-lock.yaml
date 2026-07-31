@@ -26,6 +26,9 @@ importers:
       husky:
         specifier: ^9.1.7
         version: 9.1.7
+      postcss:
+        specifier: ^8.5.23
+        version: 8.5.23
       tsx:
         specifier: ^4.19.2
         version: 4.21.0

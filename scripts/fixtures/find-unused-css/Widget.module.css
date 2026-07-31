@@ -1,3 +1,5 @@
+/* A prose reference to
+   Widget.module.css must not create a local `.css` selector. */
 .root {
   display: flex;
 }

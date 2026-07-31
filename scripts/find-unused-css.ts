@@ -6,7 +6,7 @@
  * different namespaces (see topics/css-architecture.md):
  *
  * - Global stylesheets share one document-wide class namespace, so a class is
- *   used when any source file mentions it as a string.
+ *   used when any source file emits it from a string or template literal.
  * - `*.module.css` selectors are scoped per file and reached only through the
  *   binding an importer gives them (`styles.foo`, `styles["foo"]`), so usage is
  *   resolved per module rather than by name. Two modules may both define
@@ -19,7 +19,7 @@
  *
  * Options:
  *   --css-dir <dir>  Directory to scan for CSS (default: packages/client/src)
- *   --src-dir <dir>  Directory to scan for source files (default: packages/client/src)
+ *   --src-dir <dir>  Directory to scan for source files (default: packages)
  *   --verbose        Show which files each class was found in
  *   --json           Output as JSON
  *   --remove         Remove unused global CSS rules (writes changes to files)
@@ -29,6 +29,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import postcss from "postcss";
+import * as ts from "typescript";
 
 export interface Options {
   cssDir: string;
@@ -89,7 +91,7 @@ Usage:
 
 Options:
   --css-dir <dir>  Directory to scan for CSS (default: packages/client/src)
-  --src-dir <dir>  Directory to scan for source files (default: packages/client/src)
+  --src-dir <dir>  Directory to scan for source files (default: packages)
   --verbose        Show which files each class was found in
   --json           Output as JSON
   --remove         Remove unused global CSS rules (writes changes to files)
@@ -103,7 +105,7 @@ so their owning component can delete them deliberately.
 export function parseArgs(argv: string[] = process.argv.slice(2)): Options {
   const options: Options = {
     cssDir: "packages/client/src",
-    srcDir: "packages/client/src",
+    srcDir: "packages",
     verbose: false,
     json: false,
     remove: false,
@@ -111,6 +113,7 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): Options {
   };
 
   for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === "--") continue;
     switch (argv[i]) {
       case "--css-dir":
         options.cssDir = argv[++i];
@@ -139,16 +142,27 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): Options {
   return options;
 }
 
-function findFiles(dir: string, extensions: string[]): string[] {
+export function findFiles(dir: string, extensions: string[]): string[] {
   const results: string[] = [];
+  const skippedDirectories = new Set([
+    "node_modules",
+    "dist",
+    "build",
+    "coverage",
+    "target",
+    "test-results",
+    "playwright-report",
+  ]);
 
   function walk(currentDir: string) {
     const entries = fs.readdirSync(currentDir, { withFileTypes: true });
     for (const entry of entries) {
       const fullPath = path.join(currentDir, entry.name);
       if (entry.isDirectory()) {
-        // Skip node_modules and hidden directories
-        if (!entry.name.startsWith(".") && entry.name !== "node_modules") {
+        if (
+          !entry.name.startsWith(".") &&
+          !skippedDirectories.has(entry.name)
+        ) {
           walk(fullPath);
         }
       } else if (entry.isFile()) {
@@ -164,26 +178,29 @@ function findFiles(dir: string, extensions: string[]): string[] {
   return results;
 }
 
+/** Scan package source roots without pulling compiled assets back in. */
+export function findSourceFiles(dir: string, extensions: string[]): string[] {
+  if (path.basename(path.resolve(dir)) !== "packages") {
+    return findFiles(dir, extensions);
+  }
+
+  const results: string[] = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const sourceRoot = path.join(dir, entry.name, "src");
+    if (fs.existsSync(sourceRoot)) {
+      results.push(...findFiles(sourceRoot, extensions));
+    }
+  }
+  return results;
+}
+
 export function isModuleStylesheet(file: string): boolean {
   return file.endsWith(".module.css");
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
-}
-
 /** Match class selectors like .foo, .foo-bar, .foo_bar. */
-const CLASS_REGEX = /\.([a-zA-Z_][a-zA-Z0-9_-]*)/g;
-
-function isLikelySelectorLine(line: string): boolean {
-  const trimmed = line.trim();
-  if (trimmed.startsWith("*") || trimmed.startsWith("/*")) return false;
-  // Declarations (`color: red;`) carry a colon without a brace; selectors with
-  // pseudo-classes keep their brace or trailing comma.
-  if (line.includes(":") && !line.includes("{") && !line.includes(","))
-    return false;
-  return true;
-}
+export const CLASS_REGEX = /\.([a-zA-Z_][a-zA-Z0-9_-]*)/g;
 
 function isLikelyClassName(name: string): boolean {
   if (name.match(/^[0-9]/)) return false; // .5em etc
@@ -196,14 +213,10 @@ export function extractClassSelectors(
   filename: string,
 ): ClassInfo[] {
   const classes: ClassInfo[] = [];
-  const lines = cssContent.split("\n");
   const seen = new Set<string>();
 
-  for (let lineNum = 0; lineNum < lines.length; lineNum++) {
-    const line = lines[lineNum];
-    if (!isLikelySelectorLine(line)) continue;
-
-    for (const match of line.matchAll(CLASS_REGEX)) {
+  postcss.parse(cssContent, { from: filename }).walkRules((rule) => {
+    for (const match of rule.selector.matchAll(CLASS_REGEX)) {
       const className = match[1];
       if (!isLikelyClassName(className)) continue;
       if (seen.has(className)) continue;
@@ -211,11 +224,11 @@ export function extractClassSelectors(
       classes.push({
         name: className,
         cssFile: filename,
-        line: lineNum + 1,
+        line: rule.source?.start?.line ?? 1,
         usedIn: [],
       });
     }
-  }
+  });
 
   return classes;
 }
@@ -290,26 +303,24 @@ export interface ComposesReference {
 
 export function extractComposes(cssContent: string): ComposesReference {
   const result: ComposesReference = { local: [], external: [], global: [] };
-  const composesRegex = /composes\s*:\s*([^;}]+)/g;
-
-  for (const match of cssContent.matchAll(composesRegex)) {
-    const value = match[1].trim();
+  postcss.parse(cssContent).walkDecls("composes", (declaration) => {
+    const value = declaration.value.trim();
     const fromMatch = /^([\s\S]+?)\s+from\s+(.+)$/.exec(value);
 
     if (!fromMatch) {
       result.local.push(...value.split(/\s+/).filter(Boolean));
-      continue;
+      return;
     }
 
     const names = fromMatch[1].split(/\s+/).filter(Boolean);
     const source = fromMatch[2].trim();
     if (source === "global") {
       result.global.push(...names);
-      continue;
+      return;
     }
     const specifier = source.replace(/^["']|["']$/g, "");
     result.external.push({ specifier, names });
-  }
+  });
 
   return result;
 }
@@ -324,15 +335,13 @@ export function extractModuleSelectors(
 ): { selectors: ClassInfo[]; globalRefs: string[] } {
   const selectors: ClassInfo[] = [];
   const globalRefs = new Set<string>();
-  const lines = cssContent.split("\n");
   const seen = new Set<string>();
 
-  for (let lineNum = 0; lineNum < lines.length; lineNum++) {
-    const line = lines[lineNum];
-    const { scoped, globalRefs: lineGlobals } = splitGlobalReferences(line);
+  postcss.parse(cssContent, { from: filename }).walkRules((rule) => {
+    const { scoped, globalRefs: lineGlobals } = splitGlobalReferences(
+      rule.selector,
+    );
     for (const name of lineGlobals) globalRefs.add(name);
-
-    if (!isLikelySelectorLine(line)) continue;
 
     for (const match of scoped.matchAll(CLASS_REGEX)) {
       const className = match[1];
@@ -342,11 +351,11 @@ export function extractModuleSelectors(
       selectors.push({
         name: className,
         cssFile: filename,
-        line: lineNum + 1,
+        line: rule.source?.start?.line ?? 1,
         usedIn: [],
       });
     }
-  }
+  });
 
   const composes = extractComposes(cssContent);
   for (const name of composes.global) globalRefs.add(name);
@@ -360,21 +369,37 @@ export interface ModuleImport {
   specifier: string;
 }
 
-const MODULE_IMPORT_REGEX =
-  /import\s+(?:(?:\*\s+as\s+)?([A-Za-z_$][\w$]*)\s+from\s+)?["']([^"']+\.module\.css)["']/g;
-
-export function extractModuleImports(content: string): ModuleImport[] {
+export function extractModuleImports(
+  content: string,
+  filename = "source.tsx",
+): ModuleImport[] {
   const imports: ModuleImport[] = [];
-  for (const match of content.matchAll(MODULE_IMPORT_REGEX)) {
-    imports.push({ binding: match[1] ?? null, specifier: match[2] });
+  const sourceFile = ts.createSourceFile(
+    filename,
+    content,
+    ts.ScriptTarget.Latest,
+    true,
+    scriptKind(filename),
+  );
+
+  for (const statement of sourceFile.statements) {
+    if (
+      !ts.isImportDeclaration(statement) ||
+      !ts.isStringLiteral(statement.moduleSpecifier) ||
+      !statement.moduleSpecifier.text.endsWith(".module.css")
+    ) {
+      continue;
+    }
+    const importClause = statement.importClause;
+    const namespaceBinding = importClause?.namedBindings;
+    const binding =
+      importClause?.name?.text ??
+      (namespaceBinding && ts.isNamespaceImport(namespaceBinding)
+        ? namespaceBinding.name.text
+        : null);
+    imports.push({ binding, specifier: statement.moduleSpecifier.text });
   }
   return imports;
-}
-
-function stripComments(content: string): string {
-  return content
-    .replace(/\/\*[\s\S]*?\*\//g, " ")
-    .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
 }
 
 export interface BindingUsage {
@@ -396,33 +421,125 @@ export function extractBindingUsage(
 ): BindingUsage {
   const names = new Set<string>();
   let computed = false;
-
-  const withoutImports = content.replace(MODULE_IMPORT_REGEX, " ");
-  const scanned = stripComments(withoutImports);
-  const occurrence = new RegExp(
-    `(^|[^\\w$.])${escapeRegExp(binding)}(?![\\w$])`,
-    "g",
+  const sourceFile = ts.createSourceFile(
+    "source.tsx",
+    content,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
   );
 
-  for (const match of scanned.matchAll(occurrence)) {
-    const rest = scanned.slice(match.index + match[0].length);
-
-    const property = /^\s*\??\.\s*([A-Za-z_$][\w$]*)/.exec(rest);
-    if (property) {
-      names.add(property[1]);
-      continue;
+  function visit(node: ts.Node): void {
+    if (ts.isImportDeclaration(node)) return;
+    if (ts.isIdentifier(node) && node.text === binding) {
+      const parent = node.parent;
+      if (ts.isPropertyAccessExpression(parent) && parent.expression === node) {
+        names.add(parent.name.text);
+        return;
+      }
+      if (ts.isElementAccessExpression(parent) && parent.expression === node) {
+        const argument = parent.argumentExpression;
+        if (argument && ts.isStringLiteralLike(argument)) {
+          names.add(argument.text);
+        } else {
+          computed = true;
+        }
+        return;
+      }
+      if (ts.isPropertyAccessExpression(parent) && parent.name === node) {
+        return;
+      }
+      computed = true;
     }
-
-    const literalKey = /^\s*(?:\?\.)?\[\s*(["'`])([^"'`]*)\1\s*\]/.exec(rest);
-    if (literalKey) {
-      names.add(literalKey[2]);
-      continue;
-    }
-
-    computed = true;
+    ts.forEachChild(node, visit);
   }
 
+  visit(sourceFile);
+
   return { names, computed };
+}
+
+export interface SourceUsageIndex {
+  /** Complete class-like tokens found in source string literals. */
+  exact: Map<string, Set<string>>;
+  /** Template-literal prefixes such as `status-` in `status-${tone}`. */
+  dynamic: Map<string, Set<string>>;
+}
+
+function scriptKind(filename: string): ts.ScriptKind {
+  if (filename.endsWith(".tsx")) return ts.ScriptKind.TSX;
+  if (filename.endsWith(".jsx")) return ts.ScriptKind.JSX;
+  if (filename.endsWith(".js")) return ts.ScriptKind.JS;
+  return ts.ScriptKind.TS;
+}
+
+function addSourceFact(
+  facts: Map<string, Set<string>>,
+  value: string,
+  filename: string,
+): void {
+  const files = facts.get(value) ?? new Set<string>();
+  files.add(filename);
+  facts.set(value, files);
+}
+
+function addExactTokens(
+  exact: Map<string, Set<string>>,
+  value: string,
+  filename: string,
+): void {
+  for (const match of value.matchAll(/[a-zA-Z_][a-zA-Z0-9_-]*/g)) {
+    addSourceFact(exact, match[0], filename);
+  }
+}
+
+function addDynamicPrefix(
+  dynamic: Map<string, Set<string>>,
+  value: string,
+  filename: string,
+): void {
+  const match = /(?:^|[^a-zA-Z0-9_-])([a-zA-Z_][a-zA-Z0-9_-]*-)$/.exec(value);
+  if (match) addSourceFact(dynamic, match[1], filename);
+}
+
+/** Build an exact, comment-free source index using the TypeScript parser. */
+export function buildSourceUsageIndex(
+  srcFiles: Map<string, string>,
+): SourceUsageIndex {
+  const exact = new Map<string, Set<string>>();
+  const dynamic = new Map<string, Set<string>>();
+
+  for (const [filename, content] of srcFiles) {
+    const sourceFile = ts.createSourceFile(
+      filename,
+      content,
+      ts.ScriptTarget.Latest,
+      true,
+      scriptKind(filename),
+    );
+
+    function visit(node: ts.Node): void {
+      if (ts.isStringLiteralLike(node)) {
+        addExactTokens(exact, node.text, filename);
+      }
+      if (ts.isTemplateExpression(node)) {
+        addExactTokens(exact, node.head.text, filename);
+        addDynamicPrefix(dynamic, node.head.text, filename);
+        for (let index = 0; index < node.templateSpans.length; index++) {
+          const literal = node.templateSpans[index].literal.text;
+          addExactTokens(exact, literal, filename);
+          if (index < node.templateSpans.length - 1) {
+            addDynamicPrefix(dynamic, literal, filename);
+          }
+        }
+      }
+      ts.forEachChild(node, visit);
+    }
+
+    visit(sourceFile);
+  }
+
+  return { exact, dynamic };
 }
 
 /**
@@ -432,79 +549,31 @@ export function extractBindingUsage(
 export function extractDynamicPrefixes(
   srcFiles: Map<string, string>,
 ): string[] {
-  const prefixes = new Set<string>();
-
-  // Match patterns like: `prefix-${variable}`
-  // Captures the prefix before ${...}
-  const templateLiteralRegex = /`([a-zA-Z][a-zA-Z0-9-]*)-\$\{/g;
-
-  // Match patterns like: `something ${prefix}-${var}` (space before prefix)
-  const spacePrefixRegex = /\s([a-zA-Z][a-zA-Z0-9-]*)-\$\{/g;
-
-  // Match patterns like: className={`something ${prefix}-${var}`}
-  const nestedTemplateRegex = /\$\{[^}]*\}\s*([a-zA-Z][a-zA-Z0-9-]*)-\$\{/g;
-
-  for (const content of srcFiles.values()) {
-    for (const match of content.matchAll(templateLiteralRegex)) {
-      prefixes.add(`${match[1]}-`);
-    }
-    for (const match of content.matchAll(spacePrefixRegex)) {
-      prefixes.add(`${match[1]}-`);
-    }
-    for (const match of content.matchAll(nestedTemplateRegex)) {
-      prefixes.add(`${match[1]}-`);
-    }
-  }
-
-  return Array.from(prefixes);
+  return Array.from(buildSourceUsageIndex(srcFiles).dynamic.keys());
 }
 
-/**
- * Check if a class name matches any dynamic prefix pattern.
- */
-function matchesDynamicPrefix(className: string, prefixes: string[]): boolean {
-  return prefixes.some((prefix) => className.startsWith(prefix));
-}
-
-function searchForClass(
+export function findDynamicUsage(
   className: string,
-  srcFiles: Map<string, string>,
-  dynamicPrefixes: string[],
+  sourceIndex: SourceUsageIndex,
 ): string[] {
-  const foundIn: string[] = [];
-
-  // Check if this class matches a dynamic prefix pattern
-  // e.g., "mode-default" matches prefix "mode-" from `mode-${m}`
-  if (matchesDynamicPrefix(className, dynamicPrefixes)) {
-    // Consider it "used" via dynamic construction
-    return ["<dynamic>"];
+  const files = new Set<string>();
+  for (const [prefix, origins] of sourceIndex.dynamic) {
+    if (!className.startsWith(prefix)) continue;
+    for (const file of origins) files.add(file);
   }
+  return Array.from(files);
+}
 
-  // Patterns to search for:
-  // - className="foo" or className={`... foo ...`}
-  // - "foo" in ternary like isActive ? "foo" : ""
-  // - classList.add("foo")
-  // - class="foo" (HTML)
-
-  const escaped = escapeRegExp(className);
-
-  // Match the class name as a whole word in string contexts
-  const patterns = [
-    new RegExp(`["'\`]${escaped}["'\`]`, "g"), // Exact match in quotes
-    new RegExp(`["'\`][^"'\`]*\\b${escaped}\\b[^"'\`]*["'\`]`, "g"), // Part of a string
-    new RegExp(`\\b${escaped}\\b`, "g"), // Bare identifier (helper-built names)
-  ];
-
-  for (const [filename, content] of srcFiles) {
-    for (const pattern of patterns) {
-      if (pattern.test(content)) {
-        foundIn.push(filename);
-        break;
-      }
-    }
-  }
-
-  return foundIn;
+function searchSourceIndex(
+  className: string,
+  sourceIndex: SourceUsageIndex,
+): string[] {
+  return Array.from(
+    new Set([
+      ...(sourceIndex.exact.get(className) ?? []),
+      ...findDynamicUsage(className, sourceIndex),
+    ]),
+  );
 }
 
 function resolveSpecifier(fromFile: string, specifier: string): string {
@@ -519,7 +588,12 @@ export function analyze(options: Pick<Options, "cssDir" | "srcDir">): {
   const moduleFiles = cssFiles.filter(isModuleStylesheet);
   const globalCssFiles = cssFiles.filter((file) => !isModuleStylesheet(file));
 
-  const srcFiles = findFiles(options.srcDir, [".tsx", ".ts", ".jsx", ".js"]);
+  const srcFiles = findSourceFiles(options.srcDir, [
+    ".tsx",
+    ".ts",
+    ".jsx",
+    ".js",
+  ]);
   const srcContents = new Map<string, string>();
   for (const file of srcFiles) {
     srcContents.set(file, fs.readFileSync(file, "utf-8"));
@@ -563,7 +637,10 @@ export function analyze(options: Pick<Options, "cssDir" | "srcDir">): {
   };
 
   for (const [srcFile, content] of srcContents) {
-    for (const { binding, specifier } of extractModuleImports(content)) {
+    for (const { binding, specifier } of extractModuleImports(
+      content,
+      srcFile,
+    )) {
       const resolved = resolveSpecifier(srcFile, specifier);
       const report = moduleReports.get(resolved);
       if (!report) continue;
@@ -645,13 +722,14 @@ export function analyze(options: Pick<Options, "cssDir" | "srcDir">): {
     }
   }
 
-  const dynamicPrefixes = extractDynamicPrefixes(srcContents);
+  const sourceIndex = buildSourceUsageIndex(srcContents);
+  const dynamicPrefixes = Array.from(sourceIndex.dynamic.keys());
   const globalUsed: ClassInfo[] = [];
   const globalUnused: ClassInfo[] = [];
 
   for (const cls of uniqueGlobalClasses.values()) {
     cls.usedIn = [
-      ...searchForClass(cls.name, srcContents, dynamicPrefixes),
+      ...searchSourceIndex(cls.name, sourceIndex),
       ...(globalRefsFromModules.get(cls.name) ?? []),
     ];
     if (cls.usedIn.length === 0) {

@@ -8,6 +8,25 @@
   color: blue;
 }
 
+/* A longer class must not make its prefix look used. */
+.fixture-prefix {
+  color: purple;
+}
+
+.fixture-prefix-button {
+  color: green;
+}
+
+/* Source comments must not count as runtime usage. */
+.fixture-comment-only {
+  color: orange;
+}
+
+/* Emitted by a producer outside the fixture's pretend client component. */
+.fixture-generated {
+  color: teal;
+}
+
 /* Referenced only from Widget.module.css through :global(...). */
 .fixture-modal-shell {
   max-width: 30rem;

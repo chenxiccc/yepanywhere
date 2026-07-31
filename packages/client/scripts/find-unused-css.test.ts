@@ -14,6 +14,7 @@ import {
   extractBindingUsage,
   extractComposes,
   extractModuleImports,
+  parseArgs,
   splitGlobalReferences,
 } from "../../../scripts/find-unused-css.ts";
 
@@ -43,9 +44,29 @@ function unusedNames(basename: string): string[] {
 describe("global class analysis", () => {
   it("reports a global class no source file mentions", () => {
     const { globalUnused } = analyzeFixtures();
-    expect(globalUnused.map((cls) => cls.name)).toEqual([
+    expect(globalUnused.map((cls) => cls.name)).toContain(
       "fixture-unused-global",
-    ]);
+    );
+  });
+
+  it("matches complete class tokens instead of hyphenated prefixes", () => {
+    const result = analyzeFixtures();
+    expect(result.globalUnused.map((cls) => cls.name)).toContain(
+      "fixture-prefix",
+    );
+    expect(result.globalUsed.map((cls) => cls.name)).toContain(
+      "fixture-prefix-button",
+    );
+  });
+
+  it("ignores source comments and sees non-client producers", () => {
+    const result = analyzeFixtures();
+    expect(result.globalUnused.map((cls) => cls.name)).toContain(
+      "fixture-comment-only",
+    );
+    expect(result.globalUsed.map((cls) => cls.name)).toContain(
+      "fixture-generated",
+    );
   });
 
   it("counts a module's :global(...) selector as global usage", () => {
@@ -121,9 +142,19 @@ describe("module selector analysis", () => {
       expect(path.basename(selector.cssFile)).toBe("Widget.module.css");
     }
   });
+
+  it("does not extract selectors from CSS comments", () => {
+    expect(
+      moduleReport("Widget.module.css").selectors.map((item) => item.name),
+    ).not.toContain("css");
+  });
 });
 
 describe("parsing helpers", () => {
+  it("scans every package for generated vocabulary by default", () => {
+    expect(parseArgs([]).srcDir).toBe("packages");
+  });
+
   it("separates :global(...) references from module-scoped selectors", () => {
     expect(splitGlobalReferences(":global(.modal):has(.content) {")).toEqual({
       scoped: ":has(.content) {",

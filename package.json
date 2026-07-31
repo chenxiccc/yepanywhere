@@ -17,6 +17,7 @@
     "i18n:prune": "node scripts/prune-i18n-placeholders.mjs --write",
     "i18n:scan": "node scripts/find-raw-i18n-copy.mjs",
     "css:check": "node scripts/check-css-architecture.mjs",
+    "css:inventory": "tsx scripts/css-inventory.ts",
     "css:unused": "tsx scripts/find-unused-css.ts",
     "capabilities:audit": "tsx scripts/audit-server-capabilities.ts",
     "console:scan": "node scripts/find-console-chatter.mjs",
@@ -51,6 +52,7 @@
   "devDependencies": {
     "@biomejs/biome": "2.4.16",
     "husky": "^9.1.7",
+    "postcss": "^8.5.23",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   },

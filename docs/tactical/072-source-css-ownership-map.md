@@ -2,10 +2,11 @@
 
 Topic: css-architecture
 
-Reference map produced by the ownership-mapping step (step 4) of
+Historical reference map produced by the ownership-mapping work in the closed
 [`070-css-modules-migration.md`](070-css-modules-migration.md). Read-only: that
-step changed no stylesheet and no component. Its output is the ownership record
-the source-control chrome, review UI, and file viewer steps work against.
+work changed no stylesheet and no component. Its output records the evidence
+used for source-control chrome and the provisional boundaries considered at the
+time.
 
 The binding rules live in
 [`topics/css-architecture.md`](../../topics/css-architecture.md). This document
@@ -264,58 +265,44 @@ Not dead, despite looking dead to a literal search: `git-status-m/a/d/r/u/t/?`
 and `source-pane-splitter-files` (built by `ResizableSourceColumns` from a
 boundary variable), `worktree-file-state-*` (built by `WorkingTreeBrowser`).
 
-## Recommended step boundaries
+## Historical candidate boundaries
 
-This map's conclusion is that the campaign's original targets are right but
-their boundaries should follow components, not line ranges. These fed the step
-list in [`070-css-modules-migration.md`](070-css-modules-migration.md#steps);
-that document is where status and order now live.
+This map established that boundaries must follow components, not line ranges.
+The remaining candidates below are not scheduled and carry no current
+priority. Run `pnpm css:inventory` and follow the topic's selection protocol
+before choosing new migration work.
 
-**Delete the dead git-status rules** (step 5, landed 2026-07-31). The 184 + 24
-attributed lines above were a behavior-free ratchet with no composition work,
-worth landing alone since the source-control chrome step below could not
-honestly claim most of them. Actual removal was 222 + 25 raw lines.
+**Delete the dead git-status rules** (landed 2026-07-31). The 184 + 24
+attributed lines above became a behavior-free 222 + 25 raw-line ratchet.
 
-**Source-control chrome** (step 6, landed 2026-07-31). `RepoStatusBar`,
-`SourceModeTabs`, and `SourceContextMenu`, chosen because between them they sit
-behind all three reach-in shapes above, so the step proved each fix once. Actual
-ratchet: 264 raw lines from `renderers.css`, against a ~170 estimate in
-attributed declaration lines. See the landing note in
-[`070`](070-css-modules-migration.md#6--source-control-chrome).
+**Source-control chrome** (landed 2026-07-31). `RepoStatusBar`,
+`SourceModeTabs`, and `SourceContextMenu` proved all three mapped reach-in
+shapes. The change removed 264 raw lines from `renderers.css`.
 
-**Review UI** (step 7). `ReviewSubmitModal` (82), `ReviewCommentWindow` (67),
-`ReviewCommentsPanel` (80). The cleanest region: only `review-submit-go` and
-`review-submit-error` are shared, and only between two owners that can share a
-module. Expected ratchet: ~230 lines.
+**Review UI** (provisional). `ReviewSubmitModal`, `ReviewCommentWindow`, and
+`ReviewCommentsPanel` were estimated at roughly 230 lines with two shared
+selectors. This is ownership evidence, not a recommendation to take it next.
 
-**Blame view** (step 8). `BlameView` is the single largest owner (162 lines) and
-would otherwise be an attractive early target, but it is also the target of the
-`blame-browser-columns > .blame-view` placement reach-in and shares
-`source-search-*` with `CommitRevisionPane`. Step 6 established the placement
-pass-through it was waiting on. Note that `BlameBrowser`'s file rows now carry
-`sourceRowMenuSurface`, so the reveal contract is already in place there.
+**Blame view** (provisional). `BlameView` was attributed 162 lines but has a
+placement reach-in and shares `source-search-*` with `CommitRevisionPane`.
 
-**File viewer** (step 9). Still a candidate. `FileViewer` owns 215 attributed
-lines but the 190-line bare-element bucket beneath it needs parent ownership
-resolved first, and `FileViewer` is shared by `FilePage`,
-`PublicShareFilePage`, `FilePathLink`'s modal, and two tool renderers.
+**File viewer** (provisional). `FileViewer` was attributed 215 lines, while a
+190-line bare-element/generated-markup boundary and five consumers made the
+full surface less approachable.
 
-## Tooling caveats found
+## Tooling caveats resolved at campaign closeout
 
-Two limits in `scripts/find-unused-css.ts` surfaced while building this map.
-Both cause **false "used"** or **false "unused"** verdicts in exactly this
-region, so they matter before anyone acts on the report.
+Three correctness problems found while building this map were fixed before the
+campaign closed:
 
-1. **Source scope is `packages/client/src`.** Generated vocabulary produced in
-   `packages/shared` is invisible. 36 of the 44 classes the analyzer reports as
-   unused in `renderers.css` are the ANSI vocabulary from
-   `shared/src/ansi-renderer.ts`, and `file-link` is produced by
-   `shared/src/filePathDetection.ts`. The report is not currently safe to act on
-   as a standalone sweep.
-2. **Bare-word matching over-reports usage.** `\bfile-link\b` matches inside
-   `file-link-button`, and `\bcommit-jump\b` matches inside `commit-jump-btn`,
-   so both dead rules are reported as used. This is the same weakness noted for
-   `new-session-helper-model` when the analyzer learned about modules.
+1. Source discovery now scans every `packages/*/src` tree, so shared/server
+   generated vocabulary participates without compiled bundles being read back
+   in.
+2. TypeScript string tokens replace bare-word source matching, so `.foo` is not
+   kept alive merely by `.foo-bar`.
+3. A CSS parser supplies real rules and source positions, so prose such as
+   `index.css` inside a block comment cannot become a phantom `.css` selector.
 
-Fixing (1) is a scope change; fixing (2) needs the word boundary to reject a
-following `-`. Neither blocks any extraction step; both are tracked as step 10.
+The same parser-backed facts feed `pnpm css:inventory`, the current entry point
+for candidate selection. Both reports remain advisory and require human review
+at coupled, generated, and dynamic boundaries.

@@ -109,6 +109,18 @@ tokens, and document-level rules may remain global under the narrow exceptions
 in [`topics/css-architecture.md`](topics/css-architecture.md); ordinary React
 component layout and states belong in modules.
 
+For standalone paydown work, select a bounded owner from the parser-backed
+inventory instead of maintaining a speculative migration queue:
+
+```bash
+pnpm css:inventory
+pnpm css:inventory -- --owner <component-or-path>
+```
+
+The inventory is advisory. Inspect its coupled, generated, unresolved, dynamic,
+and test-reference findings before defining a slice. The full selection and
+verification protocol lives in the CSS architecture topic.
+
 ## Contribution Ethos: Minimalist Runtime
 
 Running code — everything outside test/build tooling — is hand-built and lean on

@@ -7,5 +7,8 @@ export function widgetClassNames(): string[] {
     styles.badge,
     styles.message,
     "fixture-used-global",
+    "fixture-prefix-button",
   ];
 }
+
+// fixture-comment-only is prose, not a rendered class.

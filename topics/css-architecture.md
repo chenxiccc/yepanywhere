@@ -6,7 +6,7 @@
 
 Topic: css-architecture
 
-## Status: frozen, paying down
+## Status: guarded, data-driven paydown
 
 YA's authored client CSS grew into four globally loaded stylesheets totaling
 more than 31,000 lines. The two largest files mixed unrelated ownership:
@@ -17,13 +17,12 @@ control.
 This is not a big-bang rewrite. The existing cascade remains in place while new
 work stops increasing it and touched features pay down their local part.
 
-## Campaign tracking
+## Migration tracking
 
 [`docs/tactical/070-css-modules-migration.md`](../docs/tactical/070-css-modules-migration.md)
-tracks the finite migration campaign: priority queue, slice status, baseline
-movement, verification evidence, and landing notes. This topic is the binding
-architecture and reusable runbook; the tactical is the worklog. When they
-disagree, this topic wins.
+is the closed campaign record. It no longer carries a priority queue. This
+topic is the binding architecture, candidate-selection protocol, and reusable
+runbook.
 
 [`docs/tactical/072-source-css-ownership-map.md`](../docs/tactical/072-source-css-ownership-map.md)
 records the ownership evidence for the file viewer, source review, source
@@ -97,12 +96,66 @@ content.
   Modules provide scoping and co-location while retaining static CSS and adding
   no client runtime dependency.
 
+## Data-driven slice selection
+
+Choose migration work from current repository evidence, not a standing list of
+features that looked attractive during an earlier inspection.
+
+Start with:
+
+```bash
+pnpm css:inventory
+pnpm css:inventory -- --owner <component-or-path>
+```
+
+The inventory parses legacy CSS with a CSS parser and package source with the
+TypeScript parser. It distinguishes exact string-literal callsites, dynamic
+template prefixes, test references, non-client/generated producers, and React
+owners. For each likely owner it reports:
+
+- **owned lines** — complete CSS rule spans attributed to that owner;
+- **span and coverage** — how concentrated those rules are between the first
+  and last owned rule in each stylesheet;
+- **stylesheets** — whether the component is split across legacy files;
+- **edges** — coupled or unresolved rules that need explicit review;
+- **dynamic classes** — template-built families that require a finite/open
+  construction decision; and
+- **tests** — files that mention the selector vocabulary and may rely on it.
+
+The default approachable list is deliberately conservative. Prefer a component
+or cohesive surface with substantial owned lines, high span coverage, one or
+two stylesheets, few edges, no generated vocabulary, and a deterministic way to
+exercise its important states. A 150–350 line local slice is often a better
+paydown than a larger owner scattered through shared primitives, but the report
+is evidence rather than a numeric mandate.
+
+Before naming a slice:
+
+1. drill into the owner and inspect every reported edge;
+2. search the complete repository for the involved selectors and dynamic
+   constructors;
+3. identify the focused tests and desktop/phone states that will verify it;
+4. define one bounded product surface, not a stylesheet range; and
+5. leave the candidate in the inventory rather than adding speculative future
+   steps to a tactical document.
+
+Do not normalize every `className` before selection. Literal classes can move
+with their owner. Finite switches or template unions become local module
+lookups during that slice. Open-ended construction and generated HTML remain a
+review boundary and may justify keeping the vocabulary global.
+
+Automation may rewrite an already reviewed, unambiguous slice, but it must not
+choose ownership, silently resolve composition, or delete coupled/generated
+rules. Add a conversion tool only after repeated completed slices demonstrate
+a stable mechanical transformation.
+
 ## Migration runbook
 
 ### 1. Establish ownership before moving rules
 
 Choose a feature whose selectors and DOM owner can be identified together.
-Search the entire client before editing:
+Begin with `pnpm css:inventory -- --owner <name>`, then search the entire
+repository before editing:
 
 - every class selector and state suffix;
 - CSS selectors elsewhere in the legacy cascade;
@@ -240,10 +293,11 @@ After editing:
    css:unused` reports global classes by name and module selectors per owning
    file; it treats a computed key, a side-effect-only import, and an unimported
    module as undetermined rather than unused, and never rewrites module rules.
-   Its global-class analysis reads only `packages/client/src` and matches on
-   word boundaries, so it reports generated vocabulary from other packages as
-   unused and reports a dead `.foo` as used when `.foo-bar` exists. Confirm a
-   verdict against the actual producer before deleting.
+   Its CSS and TypeScript parsers scan every `packages/*/src` producer and
+   match complete class-like string tokens. Dynamic prefixes remain
+   conservative, and a test-only reference can still be an intentional DOM
+   contract, so confirm a verdict against the reported producer before
+   deleting.
 2. Confirm callers no longer depend on removed child selectors.
 3. Run focused component and consumer tests.
 4. Prefer roles, labels, and stable data attributes in tests; module hashes and
@@ -259,7 +313,7 @@ Prefer extraction while a feature is already being changed. Standalone
 mechanical extractions are also welcome when they have a clear owner and can be
 verified without mixing in visual redesign.
 
-## Initial baseline
+## Established examples and baseline
 
 The containment pass established native Vite CSS Modules with three different
 ownership examples:
