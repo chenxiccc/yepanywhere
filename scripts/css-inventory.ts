@@ -162,6 +162,7 @@ function isTestFile(file: string): boolean {
   const normalized = file.split(path.sep).join("/");
   return (
     /(^|\/)(__tests__|tests?|e2e)(\/|\.|$)/.test(normalized) ||
+    /(^|\/)packages\/[^/]+\/scripts\//.test(normalized) ||
     /\.(test|spec)\.[cm]?[jt]sx?$/.test(normalized)
   );
 }
@@ -343,6 +344,8 @@ export function buildInventory(
     ".ts",
     ".jsx",
     ".js",
+    ".mjs",
+    ".cjs",
   ]);
   const sourceContents = new Map(
     sourceFiles.map((file) => [file, fs.readFileSync(file, "utf8")]),

@@ -178,7 +178,7 @@ export function findFiles(dir: string, extensions: string[]): string[] {
   return results;
 }
 
-const PACKAGE_ANALYSIS_ROOTS = ["src", "e2e"];
+const PACKAGE_ANALYSIS_ROOTS = ["src", "e2e", "scripts"];
 
 /** Scan authored package roots without pulling compiled assets back in. */
 export function findSourceFiles(dir: string, extensions: string[]): string[] {
@@ -476,7 +476,7 @@ export interface SourceUsageIndex {
 function scriptKind(filename: string): ts.ScriptKind {
   if (filename.endsWith(".tsx")) return ts.ScriptKind.TSX;
   if (filename.endsWith(".jsx")) return ts.ScriptKind.JSX;
-  if (filename.endsWith(".js")) return ts.ScriptKind.JS;
+  if (/\.[cm]?js$/.test(filename)) return ts.ScriptKind.JS;
   return ts.ScriptKind.TS;
 }
 
@@ -639,6 +639,8 @@ export function analyze(options: Pick<Options, "cssDir" | "srcDir">): {
     ".ts",
     ".jsx",
     ".js",
+    ".mjs",
+    ".cjs",
   ]);
   const srcContents = new Map<string, string>();
   for (const file of srcFiles) {

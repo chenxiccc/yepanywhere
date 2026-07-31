@@ -1,6 +1,9 @@
 export function Card() {
   return (
-    <a className="fixture-package-card" href="/projects">
+    <a
+      className="fixture-package-card fixture-package-script-card"
+      href="/projects"
+    >
       Project
     </a>
   );

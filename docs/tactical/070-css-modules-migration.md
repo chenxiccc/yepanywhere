@@ -24,7 +24,7 @@ The campaign established the steady state it set out to reach:
 - the four legacy global stylesheets cannot grow beyond ratcheting ceilings;
 - generated markup and deliberate global primitives remain global;
 - the unused-CSS report understands module namespaces and scans generated
-  producers across every package source root;
+  producers across package source, Playwright, and script roots;
 - a read-only inventory ranks likely owners by removable lines, locality,
   composition edges, dynamic classes, and test contracts; and
 - future extractions are selected from current repository data, then completed

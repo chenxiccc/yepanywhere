@@ -173,11 +173,13 @@ describe("parsing helpers", () => {
     expect(parseArgs([]).srcDir).toBe("packages");
   });
 
-  it("scans package Playwright roots with package source", () => {
+  it("scans package Playwright and script roots with package source", () => {
     const packageRoot = path.join(fixtureDir, "../css-package-roots");
     const files = findSourceFiles(path.join(packageRoot, "packages"), [
       ".tsx",
       ".ts",
+      ".mjs",
+      ".cjs",
     ]).map((file) =>
       path.relative(packageRoot, file).split(path.sep).join("/"),
     );
@@ -185,6 +187,8 @@ describe("parsing helpers", () => {
     expect(files).toEqual([
       "packages/client/src/Card.tsx",
       "packages/client/e2e/Card.spec.ts",
+      "packages/client/scripts/card-smoke.cjs",
+      "packages/client/scripts/card-smoke.mjs",
     ]);
   });
 

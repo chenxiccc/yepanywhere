@@ -74,4 +74,26 @@ describe("CSS migration inventory", () => {
       ),
     ).toBe(true);
   });
+
+  it("reports non-React consumers from package script roots", () => {
+    const packageRoot = path.join(fixtureDir, "../css-package-roots");
+    const result = buildInventory({
+      cssDir: packageRoot,
+      srcDir: path.join(packageRoot, "packages"),
+      ownerDir: path.join(packageRoot, "packages/client/src"),
+    });
+    const card = result.owners.find((owner) =>
+      owner.owner.endsWith("packages/client/src/Card.tsx"),
+    );
+    const scriptedRule = card?.ownedRules.find((rule) =>
+      rule.classes.includes("fixture-package-script-card"),
+    );
+
+    expect(
+      [...(scriptedRule?.testFiles ?? [])]
+        .filter((file) => file.includes("packages/client/scripts/card-smoke."))
+        .map((file) => path.extname(file))
+        .sort(),
+    ).toEqual([".cjs", ".mjs"]);
+  });
 });
