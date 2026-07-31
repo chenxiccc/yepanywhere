@@ -18,6 +18,7 @@ import { asClientSummarySourceKey } from "../../../lib/clientSummaryStore";
 import type { YaSourceRuntime } from "../../../lib/sourceRuntime";
 import { SourceRuntimeProvider } from "../../../lib/sourceRuntimeReact";
 import { FakeSourceTransport } from "../../../lib/transport";
+import localMediaStyles from "../../LocalMediaModal.module.css";
 import { TextBlock } from "../TextBlock";
 
 function GlobalRenderModeButton() {
@@ -150,7 +151,7 @@ describe("TextBlock", () => {
     expect(container.querySelector(".local-media-link")).toBeTruthy();
     expect(await screen.findByAltText("trajectory.png")).toBeTruthy();
     expect(
-      container.querySelector(".local-media-inline-image-button"),
+      container.querySelector(`.${localMediaStyles.inlineImageButton}`),
     ).toBeTruthy();
   });
 
@@ -278,7 +279,7 @@ describe("TextBlock", () => {
     expect(preview?.hidden).toBe(false);
     expect(preview?.getAttribute("data-expanded")).toBe("false");
     expect(
-      container.querySelector(".local-media-inline-image-button"),
+      container.querySelector(`.${localMediaStyles.inlineImageButton}`),
     ).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
 
@@ -333,7 +334,9 @@ describe("TextBlock", () => {
     expect(toggle?.textContent).toBe("+");
     expect(toggle?.getAttribute("aria-expanded")).toBe("false");
     expect(preview?.getAttribute("data-expanded")).toBe("false");
-    expect(container.querySelector(".local-media-inline-player")).toBeNull();
+    expect(
+      container.querySelector(`.${localMediaStyles.inlinePlayer}`),
+    ).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
 
     fireEvent.click(toggle as HTMLButtonElement);
@@ -342,12 +345,12 @@ describe("TextBlock", () => {
     expect(toggle?.getAttribute("aria-expanded")).toBe("true");
     await waitFor(() => {
       expect(
-        container.querySelector(".local-media-inline-player"),
+        container.querySelector(`.${localMediaStyles.inlinePlayer}`),
       ).toBeTruthy();
     });
     expect(
       container
-        .querySelector(".local-media-inline-player")
+        .querySelector(`.${localMediaStyles.inlinePlayer}`)
         ?.getAttribute("src"),
     ).toBe("blob:video-preview");
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -360,7 +363,7 @@ describe("TextBlock", () => {
     expect(screen.getByRole("dialog").textContent).toContain("demo.mp4");
     await waitFor(() => {
       expect(
-        screen.getByRole("dialog").querySelector(".local-media-player"),
+        screen.getByRole("dialog").querySelector(`.${localMediaStyles.player}`),
       ).toBeTruthy();
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);

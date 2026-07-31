@@ -35,6 +35,7 @@ import {
   type ImageViewerNavigation,
   type ImageViewerNavigationInput,
 } from "./ImageViewer";
+import styles from "./LocalMediaModal.module.css";
 import { Modal } from "./ui/Modal";
 
 export interface LocalMediaSource {
@@ -339,6 +340,20 @@ function isTextContentType(contentType: string): boolean {
   );
 }
 
+/**
+ * The inline preview nodes are built imperatively, so their module classes are
+ * resolved once into a finite map instead of being looked up by computed key.
+ */
+const inlinePreviewClass = {
+  copied: styles.inlineCopied ?? "",
+  error: styles.inlineError ?? "",
+  frame: styles.inlineFrame ?? "",
+  image: styles.inlineImage ?? "",
+  imageButton: styles.inlineImageButton ?? "",
+  loading: styles.inlineLoading ?? "",
+  player: styles.inlinePlayer ?? "",
+} as const;
+
 function renderInlinePreview(
   target: HTMLElement,
   path: string,
@@ -347,24 +362,24 @@ function renderInlinePreview(
   objectUrl: string,
 ) {
   const frame = document.createElement("span");
-  frame.className = "local-media-inline-frame";
+  frame.className = inlinePreviewClass.frame;
 
   if (mediaType === "video") {
     const video = document.createElement("video");
     video.controls = true;
     video.muted = true;
-    video.className = "local-media-inline-player";
+    video.className = inlinePreviewClass.player;
     video.src = objectUrl;
     frame.append(video);
   } else {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "local-media-inline-image-button";
+    button.className = inlinePreviewClass.imageButton;
     button.title = "Copy image";
     button.setAttribute("aria-label", `Copy ${getFileName(path)}`);
 
     const image = document.createElement("img");
-    image.className = "local-media-inline-image";
+    image.className = inlinePreviewClass.image;
     image.src = objectUrl;
     image.alt = getFileName(path);
     button.append(image);
@@ -377,7 +392,7 @@ function renderInlinePreview(
         button.setAttribute("aria-label", "Copied image");
 
         const copied = document.createElement("span");
-        copied.className = "local-media-inline-copied";
+        copied.className = inlinePreviewClass.copied;
         copied.textContent = "Copied";
         frame.append(copied);
         setTimeout(() => {
@@ -536,7 +551,7 @@ export function LocalMediaModal({
       title={
         displayedImage ? (
           <a
-            className="local-media-title-link"
+            className={styles.titleLink}
             href={displayedImage.url}
             target="_blank"
             rel="noopener noreferrer"
@@ -552,7 +567,7 @@ export function LocalMediaModal({
       variant={imageModalActive ? "image-viewer" : undefined}
     >
       {displayedImage ? (
-        <div className="local-media-image-frame" aria-busy={loading}>
+        <div className={styles.imageFrame} aria-busy={loading}>
           <ImageViewer
             key={`${displayedImage.path}\0${displayedImage.url}`}
             fileName={displayedImage.fileName}
@@ -570,25 +585,25 @@ export function LocalMediaModal({
             url={displayedImage.url}
           />
           {error ? (
-            <div className="local-media-image-load-error" role="alert">
+            <div className={styles.imageLoadError} role="alert">
               {error}
             </div>
           ) : null}
         </div>
       ) : (
         <div
-          className={`local-media-modal-content${
-            imageModalActive ? " local-media-image-placeholder" : ""
+          className={`${styles.modalContent}${
+            imageModalActive ? ` ${styles.imagePlaceholder}` : ""
           }`}
         >
-          {loading && <div className="local-media-loading">Loading...</div>}
-          {error && <div className="local-media-error">{error}</div>}
+          {loading && <div className={styles.loading}>Loading...</div>}
+          {error && <div className={styles.error}>{error}</div>}
           {displayedMedia?.mediaType === "video" ? (
             // biome-ignore lint/a11y/useMediaCaption: user-generated local files, no captions available
             <video
               controls
               autoPlay
-              className="local-media-player"
+              className={styles.player}
               src={displayedMedia.url}
             />
           ) : null}
@@ -668,30 +683,31 @@ export function LocalFileModal({ resource, onClose }: LocalFileModalProps) {
 
   return (
     <Modal title={fileName} onClose={onClose}>
-      <div className="local-file-modal-content">
+      <div className={styles.fileModalContent}>
         <div
-          className="local-file-modal-meta"
+          className={styles.fileModalMeta}
           title={`${resource.path}${locationSuffix}`}
         >
           {displayPath}
           {locationSuffix}
         </div>
         {state.status === "loading" && (
-          <div className="local-file-loading">Loading...</div>
+          <div className={styles.fileLoading}>Loading...</div>
         )}
         {state.status === "error" && (
-          <div className="local-file-error">{state.error}</div>
+          <div className={styles.fileError}>{state.error}</div>
         )}
         {state.status === "text" && (
-          <div className="local-file-text-frame">
-            <pre className="local-file-text">
+          <div className={styles.fileTextFrame}>
+            {/* The global class is the shared fixed-font hook in renderers.css. */}
+            <pre className={`${styles.fileText} local-file-text`}>
               <code>{state.text}</code>
             </pre>
           </div>
         )}
         {state.status === "html" && (
           <iframe
-            className="local-file-html-frame"
+            className={styles.fileHtmlFrame}
             sandbox=""
             srcDoc={state.html}
             title={fileName}
@@ -699,13 +715,13 @@ export function LocalFileModal({ resource, onClose }: LocalFileModalProps) {
         )}
         {state.status === "blob" && isPdfContentType(state.contentType) && (
           <iframe
-            className="local-file-blob-frame"
+            className={styles.fileBlobFrame}
             src={state.objectUrl}
             title={fileName}
           />
         )}
         {state.status === "blob" && !isPdfContentType(state.contentType) && (
-          <div className="local-file-error">
+          <div className={styles.fileError}>
             Preview is not available for {state.contentType || "this file"}.
           </div>
         )}
@@ -1156,7 +1172,7 @@ export function useLocalMediaInlinePreviews(
         element.replaceChildren();
 
         const loading = document.createElement("span");
-        loading.className = "local-media-inline-loading";
+        loading.className = inlinePreviewClass.loading;
         loading.textContent = "Loading...";
         element.append(loading);
 
@@ -1168,7 +1184,7 @@ export function useLocalMediaInlinePreviews(
           })
           .catch((err) => {
             const error = document.createElement("span");
-            error.className = "local-media-inline-error";
+            error.className = inlinePreviewClass.error;
             error.textContent =
               err instanceof Error ? err.message : "Failed to load media";
             element.replaceChildren(error);

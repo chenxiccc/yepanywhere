@@ -13,6 +13,7 @@ import { I18nProvider } from "../../i18n";
 import { ImageViewer } from "../ImageViewer";
 import imageViewerStyles from "../ImageViewer.module.css";
 import { LocalFileModal, LocalMediaModal } from "../LocalMediaModal";
+import localMediaStyles from "../LocalMediaModal.module.css";
 
 const originalCreateObjectUrlDescriptor = Object.getOwnPropertyDescriptor(
   URL,
@@ -104,7 +105,9 @@ describe("LocalMediaModal loading transitions", () => {
       "modal--image-viewer",
     );
     expect(
-      screen.getByRole("dialog").querySelector(".local-media-image-placeholder"),
+      screen
+        .getByRole("dialog")
+        .querySelector(`.${localMediaStyles.imagePlaceholder}`),
     ).toBeTruthy();
 
     imageBlob.resolve(new Blob(["png"], { type: "image/png" }));

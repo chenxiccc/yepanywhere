@@ -1,0 +1,195 @@
+/*
+ * Styles owned by LocalMediaModal.tsx: the inline preview nodes this module
+ * creates imperatively, the media modal shell, and the local file viewer.
+ *
+ * The generated markdown vocabulary that surrounds these previews
+ * (.local-media-link-group, .local-media-inline-toggle, .local-media-link,
+ * .local-media-type, .local-media-inline-preview) is produced outside React and
+ * stays global in renderers.css, as does the shared fixed-font rule set that
+ * composes .local-file-text with many other owners.
+ */
+
+.inlineFrame {
+  position: relative;
+  display: inline-block;
+  max-width: min(100%, 900px);
+}
+
+.inlineImageButton {
+  display: block;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: transparent;
+  cursor: copy;
+}
+
+.inlineImageButton:hover {
+  border-color: var(--text-secondary);
+}
+
+.inlineImage {
+  display: block;
+  max-width: 100%;
+  max-height: min(72vh, 720px);
+  object-fit: contain;
+  border-radius: calc(var(--radius-md) - 1px);
+}
+
+.inlinePlayer {
+  display: block;
+  max-width: 100%;
+  max-height: min(72vh, 720px);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.inlineLoading,
+.inlineError {
+  display: inline-block;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+}
+
+.inlineError {
+  color: var(--color-error);
+}
+
+.inlineCopied {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+  font-size: 12px;
+}
+
+/* Local media modal content */
+.modalContent {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.titleLink {
+  display: block;
+  overflow: hidden;
+  color: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.imageFrame,
+.imagePlaceholder {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+  background: var(--bg-primary);
+}
+
+.imageFrame {
+  position: relative;
+}
+
+.imageLoadError {
+  position: absolute;
+  z-index: 2;
+  top: var(--space-2);
+  left: 50%;
+  max-width: min(36rem, calc(100% - 2rem));
+  box-sizing: border-box;
+  padding: var(--space-2) var(--space-3);
+  transform: translateX(-50%);
+  border: 1px solid color-mix(in srgb, var(--color-error) 45%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--bg-secondary) 94%, transparent);
+  color: var(--color-error);
+  box-shadow: var(--shadow-md);
+  text-align: center;
+}
+
+.player {
+  max-width: 100%;
+  max-height: 80vh;
+  border-radius: var(--radius-md);
+}
+
+.loading,
+.error {
+  padding: 2rem;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.error {
+  color: var(--color-error);
+}
+
+/* The shared modal shell stays global; this module only sizes it. */
+:global(.modal):has(.fileModalContent) {
+  height: min(80vh, calc(100dvh - 1.5rem));
+}
+
+.fileModalContent {
+  display: flex;
+  flex-direction: column;
+  min-height: min(68vh, 720px);
+  height: 100%;
+}
+
+.fileModalMeta {
+  flex: none;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fileTextFrame {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--bg-code);
+}
+
+.fileText {
+  margin: 0;
+  padding: var(--space-3);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.fileHtmlFrame,
+.fileBlobFrame {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  background: var(--bg-primary);
+}
+
+.fileLoading,
+.fileError {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.fileError {
+  color: var(--color-error);
+}
