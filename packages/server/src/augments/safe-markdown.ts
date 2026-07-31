@@ -6,7 +6,9 @@ import {
   Marked,
   type RendererObject,
   type RendererThis,
+  type Token,
   type Tokens,
+  type TokensList,
 } from "marked";
 import sanitizeHtml from "sanitize-html";
 
@@ -148,6 +150,146 @@ function isMarkdownExtension(ext: string): boolean {
 
 function isWindowsDriveAbsolutePath(path: string): boolean {
   return /^[A-Za-z]:[\\/]/.test(path);
+}
+
+interface RawMarkdownDestination {
+  enclosed: boolean;
+  pathStart: number;
+}
+
+function findRawWindowsDriveDestination(
+  raw: string,
+  kind: "definition" | "inline",
+): RawMarkdownDestination | null {
+  const match =
+    kind === "definition"
+      ? /^ {0,3}\[(?:\\.|[^\]\\])+\]:[ \t]*(<?)([A-Za-z]:[\\/])/.exec(raw)
+      : /\]\([ \t]*(<?)([A-Za-z]:[\\/])/.exec(raw);
+  if (!match || match.index === undefined) {
+    return null;
+  }
+
+  const drivePrefix = match[2];
+  if (!drivePrefix) {
+    return null;
+  }
+
+  return {
+    enclosed: match[1] === "<",
+    pathStart: match.index + match[0].length - drivePrefix.length,
+  };
+}
+
+function canonicalizeRawWindowsDriveDestination(
+  raw: string,
+  kind: "definition" | "inline",
+): string | null {
+  const destination = findRawWindowsDriveDestination(raw, kind);
+  if (!destination) {
+    return null;
+  }
+
+  let pathEnd = destination.pathStart;
+  let parenthesisDepth = 0;
+  while (pathEnd < raw.length) {
+    const character = raw[pathEnd];
+    if (destination.enclosed) {
+      if (character === ">") break;
+    } else {
+      if (/\s/.test(character ?? "") && parenthesisDepth === 0) break;
+      if (character === "(") {
+        parenthesisDepth += 1;
+      } else if (character === ")") {
+        if (parenthesisDepth === 0) break;
+        parenthesisDepth -= 1;
+      }
+    }
+    pathEnd += 1;
+  }
+
+  const filePath = raw.slice(destination.pathStart, pathEnd);
+  if (!filePath.includes("\\") || !isWindowsDriveAbsolutePath(filePath)) {
+    return null;
+  }
+
+  return filePath.replace(/\\+/g, "/");
+}
+
+function walkMarkdownTokenTree(
+  tokens: Token[],
+  visit: (token: Token) => void,
+): void {
+  for (const token of tokens) {
+    visit(token);
+
+    if ("tokens" in token && Array.isArray(token.tokens)) {
+      walkMarkdownTokenTree(token.tokens, visit);
+    }
+
+    if (token.type === "list") {
+      walkMarkdownTokenTree(token.items, visit);
+    } else if (token.type === "table") {
+      for (const cell of [...token.header, ...token.rows.flat()]) {
+        walkMarkdownTokenTree(cell.tokens, visit);
+      }
+    }
+  }
+}
+
+/**
+ * Marked applies CommonMark backslash escapes before renderer callbacks. Repair
+ * only recognized drive-letter destinations from each token's untouched raw
+ * syntax so path separators before punctuation cannot disappear.
+ */
+function repairWindowsDriveMarkdownDestinations(
+  tokens: Token[] | TokensList,
+): Token[] | TokensList {
+  const referenceCorrections = new Map<string, string | null>();
+  const links = "links" in tokens ? tokens.links : undefined;
+
+  walkMarkdownTokenTree(tokens, (token) => {
+    if (token.type === "def") {
+      const corrected = canonicalizeRawWindowsDriveDestination(
+        token.raw,
+        "definition",
+      );
+      if (!corrected || corrected === token.href) return;
+
+      const originalHref = token.href;
+      const existing = referenceCorrections.get(originalHref);
+      referenceCorrections.set(
+        originalHref,
+        existing === undefined || existing === corrected ? corrected : null,
+      );
+      token.href = corrected;
+      const link = links?.[token.tag];
+      if (link) {
+        link.href = corrected;
+      }
+      return;
+    }
+
+    if (token.type !== "link" && token.type !== "image") return;
+    const corrected = canonicalizeRawWindowsDriveDestination(
+      token.raw,
+      "inline",
+    );
+    if (corrected) {
+      token.href = corrected;
+    }
+  });
+
+  if (referenceCorrections.size > 0) {
+    walkMarkdownTokenTree(tokens, (token) => {
+      if (token.type !== "link" && token.type !== "image") return;
+      const referenceCorrection = referenceCorrections.get(token.href);
+      if (referenceCorrection) {
+        token.href = referenceCorrection;
+      }
+    });
+  }
+
+  return tokens;
 }
 
 function getProjectPathFlavor(path: string): "posix" | "windows" {
@@ -656,6 +798,12 @@ const renderer: RendererObject<string, string> = {
 const markdownRenderer = new Marked({
   async: false,
   gfm: true,
+});
+
+markdownRenderer.use({
+  hooks: {
+    processAllTokens: repairWindowsDriveMarkdownDestinations,
+  },
 });
 
 // KaTeX output is generated inside the marked renderer and stashed in

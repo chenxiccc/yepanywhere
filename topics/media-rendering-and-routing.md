@@ -371,6 +371,22 @@ against the same file-access allow-set. So a `C:\tmp` image that takes the
 project-files route enforces the same allow-set as the media door would — the
 historical "safe-dir image opened through the project files route" 404 is gone.
 
+### Windows Markdown destinations
+
+Agent-authored Markdown may use native drive paths such as
+`D:\repo\.artifacts\capture.png`. CommonMark treats a backslash before
+punctuation as an escape, so the Markdown lexer would otherwise turn
+`repo\.artifacts` into the nonexistent `repo.artifacts` before YA can classify
+the path.
+
+The server Markdown boundary repairs this deterministically from the raw link,
+image, or reference-definition token before rendering: any absolute
+drive-letter destination (`A:` through `Z:`, case-insensitive) containing
+backslashes is canonicalized to forward slashes. The original transcript text
+is not rewritten. Code spans, code blocks, relative paths, URLs, and UNC paths
+are not changed, and the resulting path still passes through the normal
+project/file-access allow-set without fallback lookup or filesystem guessing.
+
 ## Known sharp edges
 
 - **Bare API URLs in relay mode** — the canonical failure. Fixed in the
