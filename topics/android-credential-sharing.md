@@ -8,9 +8,11 @@ Topic: android-credential-sharing
 ## Status
 
 The two-way Digital Asset Links declarations are implemented and live-verified
-for the current Android debug build. Google Autofill finds a credential dataset
-for the relay login, but sideloaded password-manager behavior remains an
-experiment until the app has a public Play release.
+for the current Android debug build. Android App Links verify successfully, but
+Google Password Manager does not automatically offer the
+`yepanywhere.com` credentials in the sideloaded build. It offers only the
+generic Passwords search action. Seamless Google Password Manager sharing
+therefore remains blocked on a public Play release.
 
 ## Observable Contract
 
@@ -83,15 +85,22 @@ Pixel 9 running Android 17:
    verification moved from the previously cached verifier error to `verified`.
 4. Confirmed the WebView exposes `relayUsername` as an editable field and
    `srpPassword` as a password field.
-5. Focused the relay login fields and inspected only system Autofill metadata.
+5. Confirmed through WebView debugging that the bundled Tauri page runs at
+   `http://tauri.localhost`, not at the saved credential's
+   `https://yepanywhere.com` origin.
+6. Focused the relay login fields and inspected only system Autofill metadata.
    Google Autofill recorded a successful response with one dataset for
-   `com.yepanywhere.mobile`; inline suggestions were enabled. Automation did
-   not print credential labels or values and did not submit a login.
+   `com.yepanywhere.mobile`; inline suggestions were enabled. The user's
+   visible test established that this dataset was the generic Passwords search
+   action, not a matched `yepanywhere.com` credential. The system count alone
+   was not sufficient evidence of a credential match.
 
-This proves the website/app association and suggestion lookup on the debug
-device. A user selection and successful field fill remain the final manual
-check because selecting a password-manager dataset can expose account data or
-require device authentication.
+This proves the published website/app statements, package certificate match,
+Android App Link verification, and valid Autofill field exposure. The
+sideloaded Google Password Manager result is negative for seamless credential
+sharing: the user must search manually. Do not claim automatic
+`yepanywhere.com` suggestions until a public Play build passes the visible
+device test.
 
 ## Production Follow-Up
 
