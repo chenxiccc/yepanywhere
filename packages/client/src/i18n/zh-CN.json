@@ -540,7 +540,7 @@
   "promptCacheKeepaliveModeOff": "关闭",
   "promptCacheKeepaliveModeOffDescription": "从不刷新；长时间空闲的会话会在下一条消息时支付完整的上下文费用。",
   "promptCacheKeepaliveCadenceLabel": "空闲时长",
-  "promptCacheKeepaliveCadenceHint": "{provider} 的提示词缓存默认可保留约 {lifetime} 分钟，请将此值设置得低于该时长。",
+  "promptCacheKeepaliveCadenceHint": "默认值在缓存有效期之内。设置得过高可能导致缓存在刷新前就已过期。",
   "promptCacheKeepaliveCadenceAria": "提示词缓存保活的空闲分钟数",
   "promptCacheKeepaliveCadenceUnit": "分钟",
   "promptCacheKeepaliveSaved": "已保存提示词缓存保活设置",

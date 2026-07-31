@@ -267,12 +267,6 @@ export interface PromptCacheKeepaliveProviderInfo {
   defaultMode: PromptCacheKeepaliveMode;
   /** Default idle cadence in minutes when no server setting overrides it. */
   defaultInactivityMinutes: number;
-  /**
-   * Approximate prompt-cache lifetime in minutes under YA's default launch
-   * config, so settings UI can explain why a cadence below it keeps the cache
-   * warm. Omit when the provider's retention window is unknown.
-   */
-  cacheLifetimeMinutes?: number;
 }
 
 export interface PromptCacheKeepaliveProviderSetting {
