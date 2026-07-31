@@ -2672,7 +2672,8 @@ export function NewSessionForm({
           />
           {selectedProvider && modelOptions.length > 0 && (
             <FilterDropdown
-              className="composer-model-chip model-filter-dropdown"
+              triggerVariant="chip"
+              panelVariant="model"
               label={t("newSessionModelTitle")}
               options={modelOptions}
               selected={selectedModel ? [selectedModel] : []}
@@ -2960,13 +2961,14 @@ export function NewSessionForm({
       <div className="new-session-model-field">
         <h3>{t("newSessionModelTitle")}</h3>
         <FilterDropdown
-          className="model-filter-dropdown"
+          panelVariant="model"
           label={t("newSessionModelTitle")}
           options={modelOptions}
           selected={selectedModel ? [selectedModel] : []}
           onChange={handleModelSelect}
           multiSelect={false}
           placeholder={t("newSessionModelPlaceholder")}
+          fullWidth
         />
       </div>
     ) : null;
@@ -3097,6 +3099,7 @@ export function NewSessionForm({
         }}
         multiSelect={false}
         placeholder={t("helperSideModelCheapest")}
+        fullWidth
       />
     </div>
   ) : null;

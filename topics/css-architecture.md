@@ -155,6 +155,20 @@ reach into the child's generated class name. Prefer named variants when several
 callers need the same meaningful presentation; prefer a wrapper for one-off
 layout.
 
+Migrating a component that callers already reach into inverts this: once its
+classes are hashed, `.caller .child-class` cannot be written at all, so each
+existing override must become part of the component's API before the move.
+`FilterDropdown` classifies its overrides three ways — a named boolean for a
+recurring need (`fullWidth`), a named variant for a meaningful presentation
+(`triggerVariant`, `panelVariant`), and a pass-through class for caller-specific
+sizing (`triggerClassName`). A pass-through targets one documented element; it
+is not a licence to restyle the subtree.
+
+When a caller rule that survives in a legacy stylesheet used to win through
+descendant specificity, keep it at that specificity — scope it under the
+caller's own wrapper. Otherwise it silently starts depending on stylesheet
+order relative to the module.
+
 Portals do not require global CSS. A module import emits static CSS, and the
 portal element can use the generated class anywhere in the document. Keep
 overlay, sheet, responsive, and keyframe rules in the owning module.
@@ -216,11 +230,15 @@ ownership examples:
 - `KillShellRenderer.module.css`: a React-owned tool renderer extracted from
   `renderers.css`.
 
-The initial post-extraction legacy ceilings are:
+`FilterDropdown.module.css` followed as the shared-component case: a portaled
+mobile sheet, a desktop panel, and five caller sites whose overrides became
+props. It is the reference for the composition rules above.
+
+The current legacy ceilings are:
 
 | Stylesheet | Maximum lines |
 |---|---:|
-| `index.css` | 21,441 |
+| `index.css` | 21,092 |
 | `renderers.css` | 8,331 |
 | `tool-rows.css` | 948 |
 | `emulator.css` | 261 |

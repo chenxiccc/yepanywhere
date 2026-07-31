@@ -8,9 +8,14 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useI18n } from "../i18n";
+import styles from "./FilterDropdown.module.css";
 
 // Breakpoint for desktop behavior (should match CSS)
 const DESKTOP_BREAKPOINT = 769;
+
+function cx(...classNames: (string | false | undefined)[]): string {
+  return classNames.filter(Boolean).join(" ");
+}
 
 export interface FilterOption<T extends string> {
   value: T;
@@ -55,6 +60,15 @@ export interface FilterDropdownProps<T extends string> {
   triggerContent?: ReactNode; // replaces the trigger label entirely (e.g. a badge chip)
   triggerTitle?: string; // title/aria-label override for the trigger button
   align?: "left" | "right"; // dropdown alignment, default left
+  /** Stretch the trigger to fill its field, e.g. a settings or form row. */
+  fullWidth?: boolean;
+  /** "chip" is the borderless trigger used in composer toolbars. */
+  triggerVariant?: "default" | "chip";
+  /** "model" top-aligns option rows for badge + description layout. */
+  panelVariant?: "default" | "model";
+  /** Caller-owned class for the trigger button, for caller-specific sizing. */
+  triggerClassName?: string;
+  /** Caller-owned class for the container and the mobile sheet. */
   className?: string;
 }
 
@@ -74,6 +88,10 @@ export function FilterDropdown<T extends string>({
   triggerContent,
   triggerTitle,
   align = "left",
+  fullWidth = false,
+  triggerVariant = "default",
+  panelVariant = "default",
+  triggerClassName,
   className = "",
 }: FilterDropdownProps<T>) {
   const { t } = useI18n();
@@ -198,18 +216,20 @@ export function FilterDropdown<T extends string>({
     return `${label} (${selected.length})`;
   })();
 
+  const isModelPanel = panelVariant === "model";
+
   const optionsContent = (
     <>
       {multiSelect && selected.length > 0 && !hasClearSelectionOption && (
         <>
           <button
             type="button"
-            className="filter-dropdown-option filter-dropdown-clear"
+            className={cx(styles.option, styles.clear)}
             onClick={handleClearAll}
           >
-            <span className="filter-dropdown-label">{t("filterClearAll")}</span>
+            <span className={styles.label}>{t("filterClearAll")}</span>
           </button>
-          <div className="filter-dropdown-divider" />
+          <div className={styles.divider} />
         </>
       )}
 
@@ -221,23 +241,26 @@ export function FilterDropdown<T extends string>({
         return (
           <Fragment key={option.value}>
             {(option.dividerBefore || option.groupLabelBefore) && (
-              <div className="filter-dropdown-divider" />
+              <div className={styles.divider} />
             )}
             {option.groupLabelBefore && (
-              <div className="filter-dropdown-group-label">
-                {option.groupLabelBefore}
-              </div>
+              <div className={styles.groupLabel}>{option.groupLabelBefore}</div>
             )}
             <button
               type="button"
-              className={`filter-dropdown-option ${isSelected ? "selected" : ""} ${!multiSelect ? "single-select" : ""} ${option.clearSelection ? "clear-selection" : ""}`}
+              className={cx(
+                styles.option,
+                isSelected && styles.selected,
+                !multiSelect && styles.singleSelect,
+                isModelPanel && styles.model,
+              )}
               onClick={() => handleOptionClick(option)}
               disabled={option.disabled}
               aria-pressed={isSelected}
             >
               {showCheckbox && (
                 <span
-                  className={`filter-dropdown-checkbox ${isSelected ? "checked" : ""}`}
+                  className={cx(styles.checkbox, isSelected && styles.checked)}
                   aria-hidden="true"
                 >
                   {isSelected && (
@@ -258,15 +281,12 @@ export function FilterDropdown<T extends string>({
                 </span>
               )}
               {multiSelect && option.clearSelection && (
-                <span
-                  className="filter-dropdown-checkbox-spacer"
-                  aria-hidden="true"
-                />
+                <span className={styles.checkboxSpacer} aria-hidden="true" />
               )}
 
               {option.color && (
                 <span
-                  className="filter-dropdown-color-dot"
+                  className={styles.colorDot}
                   style={{ backgroundColor: option.color }}
                   aria-hidden="true"
                 />
@@ -274,28 +294,26 @@ export function FilterDropdown<T extends string>({
 
               {option.icon && (
                 <span
-                  className="filter-dropdown-option-icon"
+                  className={cx(styles.optionIcon, isModelPanel && styles.model)}
                   aria-hidden="true"
                 >
                   {option.icon}
                 </span>
               )}
 
-              <span className="filter-dropdown-label-wrapper">
-                <span className="filter-dropdown-label">{option.label}</span>
+              <span className={styles.labelWrapper}>
+                <span className={styles.label}>{option.label}</span>
                 {option.description && (
-                  <span className="filter-dropdown-description">
+                  <span className={styles.description}>
                     {option.description}
                   </span>
                 )}
               </span>
 
-              {option.meta && (
-                <span className="filter-dropdown-meta">{option.meta}</span>
-              )}
+              {option.meta && <span className={styles.meta}>{option.meta}</span>}
 
               {option.count !== undefined && (
-                <span className="filter-dropdown-count">{option.count}</span>
+                <span className={styles.count}>{option.count}</span>
               )}
             </button>
           </Fragment>
@@ -310,21 +328,21 @@ export function FilterDropdown<T extends string>({
           // biome-ignore lint/a11y/noStaticElementInteractions: backdrop click closes the sheet; Escape is handled globally
           // biome-ignore lint/a11y/useKeyWithClickEvents: Escape key handled globally
           <div
-            className="filter-dropdown-overlay"
+            className={styles.overlay}
             onClick={handleOverlayClick}
             onMouseDown={(e) => e.stopPropagation()}
           >
             <div
               ref={sheetRef}
-              className={`filter-dropdown-sheet ${className}`.trim()}
+              className={cx(styles.sheet, className)}
               role="dialog"
               tabIndex={-1}
               aria-label={t("filterByLabel", { label })}
             >
-              <div className="filter-dropdown-header">
-                <span className="filter-dropdown-title">{label}</span>
+              <div className={styles.header}>
+                <span className={styles.title}>{label}</span>
               </div>
-              <div className="filter-dropdown-options">{optionsContent}</div>
+              <div className={styles.options}>{optionsContent}</div>
             </div>
           </div>,
           document.body,
@@ -335,32 +353,44 @@ export function FilterDropdown<T extends string>({
     isOpen && isDesktop ? (
       <div
         ref={sheetRef}
-        className={`filter-dropdown-dropdown ${align === "right" ? "align-right" : ""}`}
+        className={cx(
+          styles.dropdown,
+          align === "right" && styles.alignRight,
+          isModelPanel && styles.model,
+        )}
         role="dialog"
         tabIndex={-1}
         aria-label={t("filterByLabel", { label })}
       >
-        <div className="filter-dropdown-options">{optionsContent}</div>
+        <div className={styles.options}>{optionsContent}</div>
       </div>
     ) : null;
 
   return (
-    <div className={`filter-dropdown-container ${className}`.trim()}>
+    <div
+      className={cx(styles.container, fullWidth && styles.fullWidth, className)}
+    >
       <button
         ref={buttonRef}
         type="button"
-        className={`filter-dropdown-button ${selected.length > 0 ? "has-selection" : ""}`}
+        className={cx(
+          styles.button,
+          selected.length > 0 && styles.hasSelection,
+          fullWidth && styles.fullWidth,
+          triggerVariant === "chip" && styles.chip,
+          triggerClassName,
+        )}
         onClick={handleButtonClick}
         title={triggerTitle ?? t("filterByLabel", { label })}
         aria-label={triggerTitle ?? t("filterByLabel", { label })}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
       >
-        <span className="filter-dropdown-button-label">
+        <span className={styles.buttonLabel}>
           {triggerContent ?? displayContent}
         </span>
         <svg
-          className="filter-dropdown-chevron"
+          className={styles.chevron}
           width="12"
           height="12"
           viewBox="0 0 24 24"

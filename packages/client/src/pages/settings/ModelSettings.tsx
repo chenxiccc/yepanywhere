@@ -829,6 +829,7 @@ export function ModelSettings() {
                     }}
                     multiSelect={false}
                     placeholder={t("newSessionModelPlaceholder")}
+                    fullWidth
                   />
                 ) : (
                   <span className="model-settings-empty">
@@ -957,6 +958,7 @@ export function ModelSettings() {
                   }}
                   multiSelect={false}
                   placeholder={t("helperSideModelCheapest")}
+                  fullWidth
                 />
               </div>
             )}

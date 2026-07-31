@@ -363,6 +363,7 @@ export function SpeechSettings() {
               }}
               multiSelect={false}
               placeholder={t("speechSettingsBackendPlaceholder")}
+              fullWidth
             />
             {serverBackends.length === 0 && (
               <p className="settings-hint">

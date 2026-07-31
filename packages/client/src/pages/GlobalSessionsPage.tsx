@@ -838,7 +838,7 @@ export function GlobalSessionsPage() {
                 onChange={setStatusFilters}
                 placeholder={t("globalSessionsStatusAll")}
                 placeholderContent={statusPlaceholder}
-                className="filter-dropdown--status"
+                triggerClassName="filter-dropdown-trigger--status"
               />
               {providerOptions.length > 1 && (
                 <FilterDropdown
@@ -847,7 +847,7 @@ export function GlobalSessionsPage() {
                   selected={providerFilters}
                   onChange={setProviderFilters}
                   placeholder={t("globalSessionsProviderAll")}
-                  className="filter-dropdown--provider"
+                  triggerClassName="filter-dropdown-trigger--provider"
                 />
               )}
               {executorOptions.length > 1 && (

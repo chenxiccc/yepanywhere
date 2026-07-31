@@ -2,9 +2,9 @@
 
 Topic: css-architecture
 
-Status: Chapter 11 containment landed, and the unused-CSS analyzer now
-understands CSS Modules (A1). B1, the first shared-component migration, is
-ready to implement.
+Status: Chapter 11 containment landed, the unused-CSS analyzer understands CSS
+Modules (A1), and `FilterDropdown` proved the shared-component composition
+patterns (B1). Lane C — the renderer/source-control ownership split — is next.
 
 ## Contract
 
@@ -63,7 +63,7 @@ Initial post-extraction legacy ceilings:
 
 | Stylesheet | Maximum lines | Primary remaining ownership |
 |---|---:|---|
-| `index.css` | 21,441 | Tokens/themes/base plus legacy pages and components |
+| `index.css` | 21,092 (was 21,441 at A0) | Tokens/themes/base plus legacy pages and components |
 | `renderers.css` | 8,331 | Generated markup plus legacy renderer/page shells |
 | `tool-rows.css` | 948 | Shared tool-row composition and states |
 | `emulator.css` | 261 | Emulator streaming surface and global states |
@@ -78,8 +78,8 @@ Recommended order:
 
 1. ~~**A1 — module-aware unused-CSS analysis.**~~ Landed; see the A1 landing
    note below.
-2. **B1 — `FilterDropdown` migration.** Establish shared-component, portal,
-   variant, and caller-composition patterns.
+2. ~~**B1 — `FilterDropdown` migration.**~~ Landed; see the B1 landing note
+   below.
 3. **C0/C1 — source-control ownership map and first shell extraction.** Separate
    React-owned source-control/review UI from generated diff/highlight classes.
 4. **D1+ — opportunistic `index.css` extraction.** Migrate the next component
@@ -160,7 +160,7 @@ reviewable independently from the shared-component cascade work.
 | Slice | Status | Target | Accepted outcome |
 |---|---|---|---|
 | B0 | Done 2026-07-31 (`07e40ef1`) | Toast and HostOfflineModal | Local animation, portal-independent classes, and narrow `:global(.modal)` interop proven |
-| B1 | Ready after A1 | `FilterDropdown.tsx` | Base component styles move to a module; callers use deliberate props/wrappers for variants instead of reaching into global child selectors |
+| B1 | Done 2026-07-31 | `FilterDropdown.tsx` | Base component styles move to a module; callers use deliberate props/wrappers for variants instead of reaching into global child selectors |
 | B2 | Candidate | `ReloadBanner`, `RecentSessionsDropdown`, or another shared leaf | Choose based on active feature work; do not migrate merely to fill the ledger |
 
 #### B1 preflight inventory
@@ -196,6 +196,57 @@ Required B1 checks:
 - caller-specific widths and compact model-chip presentation;
 - `pnpm css:check --record` with an `index.css`-only downward ratchet; and
 - final desktop and mobile captures cited in the landing note.
+
+#### B1 landing note (Landed 2026-07-31)
+
+- **Moved:** the whole `FilterDropdown` vocabulary — container, trigger, label,
+  chevron, overlay, sheet, header, options, option states, checkbox, color dot,
+  meta, count, divider, group label, desktop dropdown, both keyframes, and the
+  desktop and narrow media queries — from `index.css` to
+  `components/FilterDropdown.module.css`.
+- **Stayed global:** `.filter-dropdowns` (a `GlobalSessionsPage` wrapper);
+  `.status-filter-placeholder` and `.status-filter-icon*` (rendered by
+  `GlobalSessionsPage` as `placeholderContent`); `.subscription-usage-badge*`
+  (rendered by `ModelSubscriptionUsage` as option `meta`); and
+  `.filter-clear-button`. All are owned by callers that are still legacy pages,
+  and each was previously grouped into a selector shared with the component.
+- **Composition decisions:** every caller reach-in became an explicit prop.
+  `fullWidth` replaces seven `<section> .filter-dropdown-container/-button
+  { width: 100% }` overrides in Settings and New Session. `triggerVariant="chip"`
+  replaces `.composer-model-chip .filter-dropdown-button/-chevron`.
+  `panelVariant="model"` replaces `.model-filter-dropdown ...`, which had to
+  become a prop because hashed child classes are unreachable from a caller.
+  `triggerClassName` is the deliberate caller-supplied class hook; Global
+  Sessions uses it for the status/provider trigger widths, which stay in
+  `index.css` scoped under `.filter-dropdowns` so they keep the specificity
+  that previously let them win over the component's narrow-width rule.
+- **Stale coupling removed:** `.new-session-speech-field` and
+  `.new-session-helper-model` reach-ins (including a `@media (min-width: 760px)`
+  rule) targeted wrappers that no longer exist in any TSX — `pnpm css:unused`
+  from A1 flagged the first one. The emitted-but-unstyled `clear-selection`
+  class was dropped; it had no rule and no consumer.
+- **Behavior note:** the narrow-width rules were unscoped selectors sitting
+  inside the sessions filter-bar `@media (max-width: 600px)` block, so they
+  applied to every FilterDropdown in the app. They moved into the module as
+  component-owned responsive rules, preserving that reach.
+- **Ratchet:** `index.css 21,441 → 21,092` (−349); `renderers.css` unchanged.
+- **Tests:** `FilterDropdown.test.tsx` 2 → 11 cases, adding open/close, Escape,
+  click-outside, single-select, multi-select with clear-all, right alignment,
+  portal sheet at 375px width, `fullWidth`, and `triggerClassName`; consumers
+  in `NewSessionForm`, `InboxContent`, and `GlobalSessionsPage` pass unchanged
+  (64 focused). Full client suite 2,761 passed, no warnings.
+- **Checks:** `pnpm css:check --record` (index.css only), lint, typecheck.
+- **Visual QA:** before/after captures at 1920×1080 and 375×812 over
+  `/sessions`, `/settings/model`, and `/new-session`, closed and open. Trigger
+  geometry — x, y, width, height, padding, min-width, justify-content, border,
+  background for all nine live triggers — is byte-identical before and after.
+  The mobile bottom sheet and the desktop model panel are pixel-identical
+  (0 differing pixels); the only pixel deltas anywhere were live session-list
+  content and 23 antialiased corner pixels that geometry proves are not a
+  layout change.
+- **Follow-up:** `GlobalSessionsPage`, `NewSessionForm`, and the settings panes
+  are now the owners of the last filter-bar globals; whichever is migrated next
+  can absorb them. C0 is unblocked.
 
 ### Lane C — renderer and source-control separation
 
