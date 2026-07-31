@@ -37,20 +37,31 @@ export function createHostAgentProcessesRoutes(
       return c.json(disabledResponse());
     }
 
+    // Both settlement paths recheck the setting so a toggle that lands while
+    // the sample is in flight yields the disabled response regardless of
+    // whether that now-obsolete sample resolved or rejected. Without this the
+    // rejected-sample race would leak a 503 instead of the off-state contract.
+    const respondIfDisabledDuringSample = () => {
+      if (
+        deps.serverSettingsService.getSettings()
+          .hostProcessObservabilityEnabled
+      ) {
+        return undefined;
+      }
+      service.clear();
+      return c.json(disabledResponse());
+    };
+
     try {
       const response = await service.sample(
         deps.supervisor.getProcessInfoList(),
       );
-      if (
-        !deps.serverSettingsService.getSettings()
-          .hostProcessObservabilityEnabled
-      ) {
-        service.clear();
-        return c.json(disabledResponse());
-      }
-      return c.json(response);
+      return respondIfDisabledDuringSample() ?? c.json(response);
     } catch {
-      return c.json({ error: "Host process observation failed" }, 503);
+      return (
+        respondIfDisabledDuringSample() ??
+        c.json({ error: "Host process observation failed" }, 503)
+      );
     }
   });
 

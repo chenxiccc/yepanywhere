@@ -124,4 +124,48 @@ describe("host agent process routes", () => {
       observations: [],
     });
   });
+
+  it("returns the disabled response when a sample rejects after observation is disabled", async () => {
+    const deps = createDeps(true);
+    let rejectSample!: (error: Error) => void;
+    vi.mocked(deps.service.sample).mockReturnValue(
+      new Promise((_resolve, reject) => {
+        rejectSample = reject;
+      }),
+    );
+    const routes = createHostAgentProcessesRoutes(deps);
+
+    const request = routes.request("/");
+    await vi.waitFor(() => {
+      expect(deps.service.sample).toHaveBeenCalledOnce();
+    });
+    deps.notifySettingsChanged(
+      { hostProcessObservabilityEnabled: false },
+      { hostProcessObservabilityEnabled: true },
+    );
+    rejectSample(new Error("sampler blew up mid-flight"));
+
+    const response = await request;
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      enabled: false,
+      supported: true,
+      observations: [],
+    });
+  });
+
+  it("still reports 503 when a sample rejects while observation stays enabled", async () => {
+    const deps = createDeps(true);
+    vi.mocked(deps.service.sample).mockRejectedValue(
+      new Error("sampler blew up"),
+    );
+    const routes = createHostAgentProcessesRoutes(deps);
+
+    const response = await routes.request("/");
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      error: "Host process observation failed",
+    });
+  });
 });
