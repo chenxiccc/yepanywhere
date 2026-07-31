@@ -11,6 +11,7 @@ import { SessionMetadataProvider } from "../../../../contexts/SessionMetadataCon
 import { I18nProvider } from "../../../../i18n";
 import { UI_KEYS } from "../../../../lib/storageKeys";
 import { grepRenderer, truncateGrepPatternForWidth } from "../GrepRenderer";
+import styles from "../GrepRenderer.module.css";
 
 vi.mock("../../../../contexts/SchemaValidationContext", () => ({
   useSchemaValidationContext: () => ({
@@ -70,7 +71,9 @@ describe("GrepRenderer", () => {
     expect(screen.getByText("12")).toBeTruthy();
     expect(screen.getByText("7:3")).toBeTruthy();
     expect(screen.getAllByText("needle")).toHaveLength(2);
-    expect(document.querySelectorAll(".grep-match-highlight")).toHaveLength(2);
+    expect(document.querySelectorAll(`.${styles.matchHighlight}`)).toHaveLength(
+      2,
+    );
   });
 
   it("does not cap the parsed match table at 100 rows", () => {
@@ -106,7 +109,7 @@ describe("GrepRenderer", () => {
     expect(
       screen.getByText(
         (_content, element) =>
-          element?.classList.contains("grep-match-text") === true &&
+          element?.matches(`.${styles.matchText}`) === true &&
           element.textContent === "needle-125",
       ),
     ).toBeDefined();
@@ -149,7 +152,7 @@ describe("GrepRenderer", () => {
     expect(
       screen.getByText(
         (_content, element) =>
-          element?.classList.contains("grep-match-text") === true &&
+          element?.matches(`.${styles.matchText}`) === true &&
           element.textContent === "needle two",
       ),
     ).toBeDefined();
@@ -189,7 +192,7 @@ describe("GrepRenderer", () => {
     expect(screen.getByText("one")).toBeDefined();
     expect(screen.queryByText("two")).toBeNull();
     expect(screen.getByText("+1 match")).toBeDefined();
-    expect(container.querySelector(".grep-preview-file")).toBeNull();
+    expect(container.querySelector(`.${styles.previewFile}`)).toBeNull();
   });
 
   it("keeps long patterns clipped until summary context expands them", () => {
@@ -224,9 +227,9 @@ describe("GrepRenderer", () => {
       </div>,
     );
 
-    expect(container.querySelector(".grep-summary-pattern-full")).toBeNull();
+    expect(container.querySelector(`.${styles.summaryPatternFull}`)).toBeNull();
     expect(
-      container.querySelector(".grep-summary-pattern-clip")?.textContent,
+      container.querySelector(`.${styles.summaryPatternClip}`)?.textContent,
     ).toBe(longPattern);
     expect(screen.getByRole("button", { name: "1 match" })).toBeDefined();
 
@@ -246,7 +249,7 @@ describe("GrepRenderer", () => {
     );
 
     expect(
-      container.querySelector(".grep-summary-pattern-full")?.textContent,
+      container.querySelector(`.${styles.summaryPatternFull}`)?.textContent,
     ).toBe(longPattern);
   });
 
@@ -264,14 +267,13 @@ describe("GrepRenderer", () => {
     const originalGetBoundingClientRect =
       HTMLElement.prototype.getBoundingClientRect;
     HTMLElement.prototype.getBoundingClientRect = function getRect() {
-      const classList = this.classList;
-      if (classList.contains("grep-summary-pattern-row")) {
+      if (this.matches(`.${styles.summaryPatternRow}`)) {
         return rect({ width: 180 });
       }
-      if (classList.contains("grep-summary-scope")) {
+      if (this.matches(`.${styles.summaryScope}`)) {
         return rect({ width: 96 });
       }
-      if (classList.contains("grep-summary-pattern-measure")) {
+      if (this.matches(`.${styles.summaryPatternMeasure}`)) {
         return rect({ width: (this.textContent ?? "").length * 8 });
       }
       return originalGetBoundingClientRect.call(this);

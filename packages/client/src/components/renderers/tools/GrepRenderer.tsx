@@ -15,6 +15,7 @@ import { validateToolResult } from "../../../lib/validateToolResult";
 import { SchemaWarning } from "../../SchemaWarning";
 import { SessionFilePathLink } from "../../SessionFilePathLink";
 import { Modal } from "../../ui/Modal";
+import styles from "./GrepRenderer.module.css";
 import type { GrepInput, GrepMatch, GrepResult, ToolRenderer } from "./types";
 
 const MAX_FILES_COLLAPSED = 20;
@@ -60,7 +61,7 @@ function renderHighlightedRanges(text: string, ranges: GrepMatch["ranges"]) {
     }
     if (end > start) {
       nodes.push(
-        <mark className="grep-match-highlight" key={`match-${key}`}>
+        <mark className={styles.matchHighlight} key={`match-${key}`}>
           {text.slice(start, end)}
         </mark>,
       );
@@ -103,7 +104,7 @@ function renderHighlightedText(
       nodes.push(text.slice(lastIndex, index));
     }
     nodes.push(
-      <mark className="grep-match-highlight" key={`match-${key}`}>
+      <mark className={styles.matchHighlight} key={`match-${key}`}>
         {matchText}
       </mark>,
     );
@@ -137,14 +138,14 @@ function GrepMatchDrilldown({
   const showFileColumn = hasMultipleGrepMatchFiles(matches);
 
   if (matches.length === 0) {
-    return <span className="grep-count">{label}</span>;
+    return <span className={styles.count}>{label}</span>;
   }
 
   return (
     <>
       <button
         type="button"
-        className="grep-match-count-button"
+        className={styles.matchCountButton}
         onClick={(event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -155,8 +156,8 @@ function GrepMatchDrilldown({
       </button>
       {showModal && (
         <Modal title={label} onClose={() => setShowModal(false)}>
-          <div className="grep-match-modal">
-            <table className="grep-match-table">
+          <div className={styles.matchModal}>
+            <table className={styles.matchTable}>
               <thead>
                 <tr>
                   {showFileColumn && <th>File</th>}
@@ -170,16 +171,16 @@ function GrepMatchDrilldown({
                     key={`${match.filePath}:${match.lineNumber}:${match.columnNumber ?? ""}:${index}`}
                   >
                     {showFileColumn && (
-                      <td className="grep-match-file">
+                      <td className={styles.matchFile}>
                         {makeDisplayPath(match.filePath, projectPath)}
                       </td>
                     )}
-                    <td className="grep-match-line">
+                    <td className={styles.matchLine}>
                       {match.columnNumber
                         ? `${match.lineNumber}:${match.columnNumber}`
                         : match.lineNumber}
                     </td>
-                    <td className="grep-match-text">
+                    <td className={styles.matchText}>
                       {renderHighlightedText(match.text, match.ranges, pattern)}
                     </td>
                   </tr>
@@ -216,11 +217,11 @@ function GrepToolUse({
   projectPath?: string | null;
 }) {
   return (
-    <div className="grep-tool-use">
-      <span className="grep-pattern">{input.pattern}</span>
-      {input.glob && <span className="grep-glob">({input.glob})</span>}
+    <div className={styles.toolUse}>
+      <span className={styles.pattern}>{input.pattern}</span>
+      {input.glob && <span className={styles.glob}>({input.glob})</span>}
       {input.path && (
-        <span className="grep-path">
+        <span className={styles.path}>
           in {makeDisplayPath(input.path, projectPath)}
         </span>
       )}
@@ -301,7 +302,7 @@ function ContentView({
 
   return (
     <>
-      <pre ref={contentRef} className="grep-content code-block">
+      <pre ref={contentRef} className={`${styles.content} code-block`}>
         <code>{displayContent}</code>
       </pre>
       {needsCollapse && (
@@ -346,21 +347,21 @@ function GrepCollapsedPreview({
   const hiddenMatchCount = Math.max(0, matches.length - previewMatches.length);
 
   return (
-    <div className="grep-collapsed-preview">
+    <div className={styles.collapsedPreview}>
       {previewMatches.map((match, index) => (
         <div
-          className="grep-preview-match"
+          className={styles.previewMatch}
           key={`${match.filePath}:${match.lineNumber}:${match.columnNumber ?? ""}:${index}`}
         >
           {showFileColumn && (
             <span
-              className="grep-preview-file"
+              className={styles.previewFile}
               title={makeDisplayPath(match.filePath, projectPath)}
             >
               {getFileName(makeDisplayPath(match.filePath, projectPath))}
             </span>
           )}
-          <span className="grep-preview-line">
+          <span className={styles.previewLine}>
             {match.columnNumber
               ? `${match.lineNumber}:${match.columnNumber}`
               : match.lineNumber}
@@ -369,7 +370,7 @@ function GrepCollapsedPreview({
         </div>
       ))}
       {hiddenMatchCount > 0 && (
-        <div className="grep-preview-more">
+        <div className={styles.previewMore}>
           +{hiddenMatchCount} {hiddenMatchCount === 1 ? "match" : "matches"}
         </div>
       )}
@@ -386,7 +387,7 @@ function GrepPreviewMatchText({
 }) {
   const ref = useQuoteableTextSource<HTMLSpanElement>(match.text);
   return (
-    <span ref={ref} className="grep-preview-text">
+    <span ref={ref} className={styles.previewText}>
       {renderHighlightedText(match.text, match.ranges, pattern)}
     </span>
   );
@@ -431,7 +432,7 @@ function GrepToolResult({
   if (isError) {
     const errorResult = result as unknown as { content?: unknown } | undefined;
     return (
-      <div className="grep-error">
+      <div className={styles.error}>
         {showValidationWarning && validationErrors && (
           <SchemaWarning toolName="Grep" errors={validationErrors} />
         )}
@@ -443,7 +444,7 @@ function GrepToolResult({
   }
 
   if (!result) {
-    return <div className="grep-empty">No results</div>;
+    return <div className={styles.empty}>No results</div>;
   }
 
   const { mode, filenames, numFiles, content, appliedLimit } = result;
@@ -451,11 +452,11 @@ function GrepToolResult({
   // Count mode - just show summary
   if (mode === "count") {
     return (
-      <div className="grep-result">
+      <div className={styles.result}>
         {showValidationWarning && validationErrors && (
           <SchemaWarning toolName="Grep" errors={validationErrors} />
         )}
-        <div className="grep-count-summary">
+        <div className={styles.countSummary}>
           {numFiles} {numFiles === 1 ? "file" : "files"} matched
         </div>
       </div>
@@ -469,8 +470,8 @@ function GrepToolResult({
     const matchLabel = `${matchCount} ${matchCount === 1 ? "match" : "matches"}`;
 
     return (
-      <div className="grep-result">
-        <div className="grep-header">
+      <div className={styles.result}>
+        <div className={styles.header}>
           <GrepMatchDrilldown
             label={matchLabel}
             matches={matches}
@@ -496,7 +497,7 @@ function GrepToolResult({
   // files_with_matches mode (default) - show file list
   if (!filenames || filenames.length === 0) {
     return (
-      <div className="grep-empty">
+      <div className={styles.empty}>
         {showValidationWarning && validationErrors && (
           <SchemaWarning toolName="Grep" errors={validationErrors} />
         )}
@@ -506,9 +507,9 @@ function GrepToolResult({
   }
 
   return (
-    <div className="grep-result">
-      <div className="grep-header">
-        <span className="grep-count">{numFiles} files</span>
+    <div className={styles.result}>
+      <div className={styles.header}>
+        <span className={styles.count}>{numFiles} files</span>
         {showValidationWarning && validationErrors && (
           <SchemaWarning toolName="Grep" errors={validationErrors} />
         )}
@@ -664,7 +665,7 @@ function GrepSummaryPattern({
     return () => resizeObserver.disconnect();
   }, [expanded, input.pattern, scopeValue]);
 
-  const clipClassName = `grep-summary-pattern-clip${onToggle ? " grep-summary-pattern-action" : ""}`;
+  const clipClassName = `${styles.summaryPatternClip}${onToggle ? ` ${styles.summaryPatternAction}` : ""}`;
   const clipContent = onToggle ? (
     <button
       type="button"
@@ -687,12 +688,14 @@ function GrepSummaryPattern({
   );
 
   return (
-    <span className={`grep-summary-pattern${expanded ? " is-expanded" : ""}`}>
-      <span className="grep-summary-pattern-row" ref={rowRef}>
+    <span
+      className={`${styles.summaryPattern}${expanded ? " is-expanded" : ""}`}
+    >
+      <span className={styles.summaryPatternRow} ref={rowRef}>
         {clipContent}
         {scope && (
-          <span className="grep-summary-scope" ref={scopeRef}>
-            <span className="grep-summary-scope-prefix">in</span>
+          <span className={styles.summaryScope} ref={scopeRef}>
+            <span className={styles.summaryScopePrefix}>in</span>
             {scope.kind === "path" ? (
               <SessionFilePathLink
                 displayPath={scope.label}
@@ -700,15 +703,15 @@ function GrepSummaryPattern({
                 showLineSuffix={false}
               />
             ) : (
-              <span className="grep-summary-scope-text" title={scope.value}>
+              <span className={styles.summaryScopeText} title={scope.value}>
                 {scope.label}
               </span>
             )}
           </span>
         )}
       </span>
-      <span className="grep-summary-pattern-measure" ref={measureRef} />
-      {expanded && <span className="grep-summary-pattern-full">{summary}</span>}
+      <span className={styles.summaryPatternMeasure} ref={measureRef} />
+      {expanded && <span className={styles.summaryPatternFull}>{summary}</span>}
     </span>
   );
 }
@@ -759,14 +762,14 @@ function GrepInteractiveSummary({
   }
   const resultLabel = getGrepResultLabel(result);
   return (
-    <span className="grep-inline-summary">
+    <span className={styles.inlineSummary}>
       <GrepSummaryPattern
         expanded={summaryExpanded ?? false}
         input={input}
         onToggle={toggleSummaryExpanded}
         projectPath={projectPath}
       />
-      <span className="grep-summary-arrow" aria-hidden="true">
+      <span className={styles.summaryArrow} aria-hidden="true">
         →
       </span>
       <GrepMatchDrilldown

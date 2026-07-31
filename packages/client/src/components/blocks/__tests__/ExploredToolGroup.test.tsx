@@ -6,6 +6,7 @@ import { I18nProvider } from "../../../i18n";
 import { buildAssistantRenderSegments } from "../../../lib/sessionDetail/renderSelectors";
 import type { Message } from "../../../types";
 import type { RenderItem, ToolCallItem } from "../../../types/renderItems";
+import grepStyles from "../../renderers/tools/GrepRenderer.module.css";
 import { ExploredToolGroup } from "../ExploredToolGroup";
 
 vi.mock("../../../contexts/SchemaValidationContext", () => ({
@@ -199,10 +200,10 @@ describe("ExploredToolGroup", () => {
       `/projects/${projectId}/file?path=topics%2Frich-text-rendering.md`,
     );
     const grepSummary = container.querySelector(
-      '[data-render-id="grep-1"] .grep-inline-summary',
+      `[data-render-id="grep-1"] .${grepStyles.inlineSummary}`,
     );
     const grepPattern = grepSummary?.querySelector(
-      ".grep-summary-pattern-clip",
+      `.${grepStyles.summaryPatternClip}`,
     );
     expect(grepPattern?.textContent).toBe("tool|bash");
     expect(grepPattern?.getAttribute("title")).toBe(
@@ -330,10 +331,10 @@ describe("ExploredToolGroup", () => {
     );
 
     const grepSummary = container.querySelector(
-      '[data-render-id="grep-1"] .grep-inline-summary',
+      `[data-render-id="grep-1"] .${grepStyles.inlineSummary}`,
     );
     const grepPattern = grepSummary?.querySelector(
-      ".grep-summary-pattern-clip",
+      `.${grepStyles.summaryPatternClip}`,
     );
     expect(grepPattern?.textContent).toBe("needle");
     expect(grepPattern?.getAttribute("title")).toBe("needle in src");
@@ -348,7 +349,9 @@ describe("ExploredToolGroup", () => {
     expect(screen.getByRole("dialog")).toBeTruthy();
     expect(screen.getByText("src/a.ts")).toBeDefined();
     expect(screen.getByText("12")).toBeDefined();
-    expect(document.querySelectorAll(".grep-match-highlight")).toHaveLength(2);
+    expect(
+      document.querySelectorAll(`.${grepStyles.matchHighlight}`),
+    ).toHaveLength(2);
   });
 
   it("renders one multi-action parent compactly and reveals one raw result owner", () => {
