@@ -52,6 +52,8 @@ For visual work, the controller prepares a fixture packet containing:
 - reveal steps that work from a clean page load, expressed as accessible roles,
   names, or other selectors that are not being migrated;
 - a stable target locator and the text or state expected inside it;
+- a change-specific marker that will prove the post-change page is serving the
+  current worktree rather than stale built assets;
 - the required desktop and phone viewports; and
 - baseline captures at both viewports, inspected by the controller.
 
@@ -63,7 +65,10 @@ scope.
 Give the complete packet and baseline paths to the worker. The worker replays
 that exact fixture after implementation and may not browse historical sessions
 for a substitute. This makes before/after comparison the normal path rather
-than a recovery step.
+than a recovery step. A visually identical result is not sufficient by itself:
+the worker must also prove the live target contains the supplied post-change
+marker, such as the new module class, and no longer contains its removed legacy
+class.
 
 ## 2. Build a bounded worker prompt
 
@@ -207,9 +212,10 @@ After the process reaches verified idle:
    console scan, and the relevant tests. Record an advisory `css:unused` exit
    separately from a regression.
 6. Replay the supplied fixture from a clean load, confirm its stable locator
-   and expected content, and compare the new desktop and phone captures with
-   the controller's baselines. Inspect all four images yourself. Computed
-   widths are useful supporting evidence but do not replace looking at them.
+   and expected content, prove the live DOM contains the change-specific marker,
+   and compare the new desktop and phone captures with the controller's
+   baselines. Inspect all four images yourself. Computed widths are useful
+   supporting evidence but do not replace looking at them.
 7. Accept and commit only when the controller's evidence is complete.
 
 If the worker committed before audit, acceptance is still a separate decision.
@@ -252,3 +258,10 @@ The stopped worker preserved a bounded staged diff. The controller then found
 a ten-message session whose normalized detail contained two Grep calls,
 expanded its single activity group, and captured the component directly. That
 is the preferred visual-state pattern for future renderer slices.
+
+The second CSS pilot supplied an exact standalone Glob row, reveal actions,
+assertions, and inspected baselines. The worker replayed it at both viewports
+without discovery or steering, then confirmed the live DOM carried the new CSS
+Module class and retained the intended shared global classes. That last check
+prevents an unchanged screenshot from falsely passing when a server happens to
+serve stale client assets.
