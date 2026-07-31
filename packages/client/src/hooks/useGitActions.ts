@@ -343,6 +343,17 @@ function getPullMessage(
 ): string {
   switch (result?.status) {
     case "pulled":
+      if (isCommitCount(result.commitsAdvanced)) {
+        if (result.commitsAdvanced === 0) {
+          return t("gitStatusPullAlreadyUpToDate");
+        }
+        return t(
+          result.commitsAdvanced === 1
+            ? "gitStatusPullSuccessSingle"
+            : "gitStatusPullSuccessMultiple",
+          { count: result.commitsAdvanced },
+        );
+      }
       return t("gitStatusPullSuccess");
     case "busy":
       return t("gitStatusPullBusy");
@@ -367,6 +378,14 @@ function getPushMessage(
 ): string {
   switch (result?.status) {
     case "pushed":
+      if (isCommitCount(result.commitsAdvanced)) {
+        return t(
+          result.commitsAdvanced === 1
+            ? "gitStatusPushSuccessSingle"
+            : "gitStatusPushSuccessMultiple",
+          { count: result.commitsAdvanced },
+        );
+      }
       return t("gitStatusPushSuccess");
     case "published":
       return t("gitStatusPushPublished");
@@ -391,6 +410,10 @@ function getPushMessage(
     default:
       return "";
   }
+}
+
+function isCommitCount(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
 function isDivergedStatus(

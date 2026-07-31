@@ -277,10 +277,15 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
 
     gitOperationsByProjectPath.add(project.path);
     try {
+      const previousHead = await getHeadCommit(project.path);
       await runGit(project.path, ["pull", "--ff-only"], {
         timeout: 60_000,
         disableTerminalPrompt: true,
       });
+      const commitsAdvanced = await countHeadAdvance(
+        project.path,
+        previousHead,
+      );
       const nextCheckedRemoteAt = new Date().toISOString();
       remoteCheckedAtByProjectPath.set(project.path, nextCheckedRemoteAt);
 
@@ -288,6 +293,7 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
         status: "pulled",
         checkedRemoteAt: nextCheckedRemoteAt,
         gitStatus: await getGitStatusWithRemoteCheckTime(project.path),
+        commitsAdvanced,
       };
       return c.json(result);
     } catch (err) {
@@ -360,15 +366,20 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
         timeout: 60_000,
         disableTerminalPrompt: true,
       });
+      const pushStatus: GitPushResult["status"] = status.upstream
+        ? isPushAlreadyUpToDateOutput(pushResult)
+          ? "up-to-date"
+          : "pushed"
+        : "published";
 
       const result: GitPushResult = {
-        status: status.upstream
-          ? isPushAlreadyUpToDateOutput(pushResult)
-            ? "up-to-date"
-            : "pushed"
-          : "published",
+        status: pushStatus,
         checkedRemoteAt: await getCheckedRemoteAt(project.path),
         gitStatus: await getGitStatusWithRemoteCheckTime(project.path),
+        commitsAdvanced:
+          pushStatus === "pushed" && status.ahead > 0
+            ? status.ahead
+            : undefined,
       };
       return c.json(result);
     } catch (err) {
@@ -790,6 +801,38 @@ async function hasGitRemote(
     return true;
   } catch {
     return false;
+  }
+}
+
+async function getHeadCommit(projectPath: string): Promise<string | null> {
+  try {
+    const { stdout } = await runGit(projectPath, [
+      "rev-parse",
+      "--verify",
+      "HEAD^{commit}",
+    ]);
+    return stdout.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+async function countHeadAdvance(
+  projectPath: string,
+  previousHead: string | null,
+): Promise<number | undefined> {
+  if (!previousHead) return undefined;
+
+  try {
+    const { stdout } = await runGit(projectPath, [
+      "rev-list",
+      "--count",
+      `${previousHead}..HEAD`,
+    ]);
+    const count = Number.parseInt(stdout.trim(), 10);
+    return Number.isSafeInteger(count) && count >= 0 ? count : undefined;
+  } catch {
+    return undefined;
   }
 }
 

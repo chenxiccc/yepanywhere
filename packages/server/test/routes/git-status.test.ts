@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import {
   type GitDiffResult,
   type GitIntegrationOptionsResult,
+  type GitPullResult,
   type GitPushResult,
   type GitStatusInfo,
   type GitUntrackedFolderInfo,
@@ -120,6 +121,7 @@ describe("git-status routes", () => {
   it("reports pushed when push sends local commits", async () => {
     const repoDir = await createRepoWithUpstream();
     await commitFile(repoDir, "README.md", "hello again\n", "Update readme");
+    await commitFile(repoDir, "SECOND.md", "second\n", "Add second file");
     const { projectId, routes } = createRoutesForProject(repoDir);
 
     const response = await routes.request(`/${projectId}/git/push`, {
@@ -129,7 +131,51 @@ describe("git-status routes", () => {
 
     expect(response.status).toBe(200);
     expect(body.status).toBe("pushed");
+    expect(body.commitsAdvanced).toBe(2);
     expect(body.gitStatus?.ahead).toBe(0);
+  });
+
+  it("reports how many commits a pull advances", async () => {
+    const repoDir = await createRepoWithUpstream();
+    const remoteDir = join(tempDir, "remote.git");
+    const peerDir = join(tempDir, "peer");
+
+    await execFileAsync("git", ["clone", remoteDir, peerDir]);
+    await runGit(peerDir, ["config", "user.email", "ya-test@example.com"]);
+    await runGit(peerDir, ["config", "user.name", "YA Test"]);
+    await commitFile(peerDir, "REMOTE.md", "remote\n", "Remote commit");
+    await commitFile(
+      peerDir,
+      "REMOTE-SECOND.md",
+      "remote second\n",
+      "Second remote commit",
+    );
+    await runGit(peerDir, ["push"]);
+
+    const { projectId, routes } = createRoutesForProject(repoDir);
+    const response = await routes.request(`/${projectId}/git/pull`, {
+      method: "POST",
+    });
+    const body = (await response.json()) as GitPullResult;
+
+    expect(response.status).toBe(200);
+    expect(body.status).toBe("pulled");
+    expect(body.commitsAdvanced).toBe(2);
+    expect(body.gitStatus?.behind).toBe(0);
+  });
+
+  it("reports zero commits when pull is already up to date", async () => {
+    const repoDir = await createRepoWithUpstream();
+    const { projectId, routes } = createRoutesForProject(repoDir);
+
+    const response = await routes.request(`/${projectId}/git/pull`, {
+      method: "POST",
+    });
+    const body = (await response.json()) as GitPullResult;
+
+    expect(response.status).toBe(200);
+    expect(body.status).toBe("pulled");
+    expect(body.commitsAdvanced).toBe(0);
   });
 
   it("reports the last fetch time recorded by git", async () => {

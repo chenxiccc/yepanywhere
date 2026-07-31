@@ -7,6 +7,14 @@ Topic: backward-compat
 
 ## Decisions
 
+2026-07-31 Source Control action commit counts — add optional
+`commitsAdvanced` fields to the existing Pull and Push responses without a new
+capability. Released capable servers `v0.6.0`, `v0.6.1`, `v0.6.2`, and
+`v0.7.0` omit the field; newer clients preserve the generic success feedback
+for those responses and make the same already-capability-gated request. Newer
+servers supply exact fast-forward Pull counts and the immediately observed
+pre-push ahead count; older clients ignore the additive field.
+
 2026-07-28 blame `authorColorSeed` — add the hue preference as an optional
 line field under the existing `git-source-review` capability rather than
 expanding that capability or adding a request. Older servers omit it; the

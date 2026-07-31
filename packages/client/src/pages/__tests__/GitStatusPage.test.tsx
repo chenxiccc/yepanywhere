@@ -554,6 +554,88 @@ describe("GitStatusPage released-server compatibility", () => {
     expect(mocks.listReviewComments).not.toHaveBeenCalled();
   });
 
+  it.each(
+    CORE_GIT_COMPATIBILITY_RELEASES,
+  )("keeps generic action feedback for $version ($releasedAt)", async () => {
+    mocks.useVersion.mockReturnValue({
+      version: { capabilities: [...RELEASED_BASIC_GIT_CAPABILITIES] },
+      loading: false,
+      error: null,
+    });
+
+    renderPage();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "gitStatusPull" }),
+    );
+    expect((await screen.findByRole("status")).textContent).toContain(
+      "gitStatusPullSuccess",
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "gitStatusPush" }),
+    );
+    expect((await screen.findByRole("status")).textContent).toContain(
+      "gitStatusPushSuccess",
+    );
+  });
+
+  it("shows commit counts supplied by a current server", async () => {
+    mocks.useVersion.mockReturnValue({
+      version: { capabilities: [...RELEASED_BASIC_GIT_CAPABILITIES] },
+      loading: false,
+      error: null,
+    });
+    mocks.pullGit.mockResolvedValue({
+      status: "pulled",
+      checkedRemoteAt: "2026-07-31T12:00:00.000Z",
+      gitStatus: status(),
+      commitsAdvanced: 2,
+    });
+    mocks.pushGit.mockResolvedValue({
+      status: "pushed",
+      checkedRemoteAt: "2026-07-31T12:00:00.000Z",
+      gitStatus: status(),
+      commitsAdvanced: 1,
+    });
+
+    renderPage();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "gitStatusPull" }),
+    );
+    expect((await screen.findByRole("status")).textContent).toContain(
+      'gitStatusPullSuccessMultiple {"count":2}',
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "gitStatusPush" }),
+    );
+    expect((await screen.findByRole("status")).textContent).toContain(
+      'gitStatusPushSuccessSingle {"count":1}',
+    );
+  });
+
+  it("reports an unchanged pull as already up to date", async () => {
+    mocks.useVersion.mockReturnValue({
+      version: { capabilities: [...RELEASED_BASIC_GIT_CAPABILITIES] },
+      loading: false,
+      error: null,
+    });
+    mocks.pullGit.mockResolvedValue({
+      status: "pulled",
+      checkedRemoteAt: "2026-07-31T12:00:00.000Z",
+      gitStatus: status(),
+      commitsAdvanced: 0,
+    });
+
+    renderPage();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "gitStatusPull" }),
+    );
+    expect((await screen.findByRole("status")).textContent).toContain(
+      "gitStatusPullAlreadyUpToDate",
+    );
+  });
+
   it("shows a persistent full-text divergence warning", async () => {
     const divergedStatus = {
       ...status(),

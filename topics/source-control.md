@@ -74,6 +74,15 @@ below the action row. The project selector retains its intrinsic width, up to
 its desktop cap, before branch and upstream text yield space; ordinary short
 project names must not truncate while unused header space remains.
 
+A successful fast-forward Pull reports the number of commits by which the
+local branch advanced, or **Already up to date** when `HEAD` did not move. A
+successful Push to an existing upstream reports the pre-push ahead count that
+the action advanced; publishing a new branch remains **Branch published**.
+Commit counts are optional additive response data under the existing Pull and
+Push contracts. Clients receiving an older response without the count retain
+the generic **Pull complete** or **Pushed commits** feedback and make no
+different request.
+
 ## Workbench geometry
 
 Source Control is a workbench, not prose or a transcript. It must use the

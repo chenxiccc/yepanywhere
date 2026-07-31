@@ -230,6 +230,8 @@ export interface GitPullResult {
   status: GitPullStatus;
   checkedRemoteAt: string | null;
   gitStatus?: GitStatusInfo;
+  /** Commits by which the local branch advanced; omitted by older servers or when unavailable. */
+  commitsAdvanced?: number;
   detail?: string;
 }
 
@@ -247,6 +249,8 @@ export interface GitPushResult {
   status: GitPushStatus;
   checkedRemoteAt: string | null;
   gitStatus?: GitStatusInfo;
+  /** Commits by which the remote branch advanced; omitted by older servers or when unavailable. */
+  commitsAdvanced?: number;
   detail?: string;
 }
 
