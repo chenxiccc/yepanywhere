@@ -6549,73 +6549,6 @@ pre.code-highlighter-plain,
   display: none;
 }
 
-.source-shortcut-help {
-  position: absolute;
-  z-index: 5;
-  top: 4px;
-  right: 6px;
-}
-
-.source-shortcut-help-trigger {
-  display: grid;
-  width: 22px;
-  height: 22px;
-  place-items: center;
-  padding: 0;
-  color: var(--text-muted);
-  font-size: 0.75rem;
-  font-weight: 700;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-subtle, #21262d);
-  border-radius: 50%;
-  cursor: help;
-}
-
-.source-shortcut-help-trigger:hover,
-.source-shortcut-help-trigger:focus-visible,
-.source-shortcut-help-trigger[aria-expanded="true"] {
-  color: var(--text-primary, #e6edf3);
-  border-color: var(--accent-color);
-  outline: none;
-}
-
-.source-shortcut-popover {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  display: grid;
-  width: max-content;
-  min-width: 210px;
-  padding: 8px;
-  color: var(--text-secondary, #8b949e);
-  font-size: 0.75rem;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md, 8px);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.34);
-}
-
-.source-shortcut-popover-title {
-  margin: 0 4px 5px;
-  color: var(--text-primary, #e6edf3);
-  font-weight: 600;
-}
-
-.source-shortcut-row {
-  display: grid;
-  grid-template-columns: 52px 1fr;
-  align-items: center;
-  gap: 8px;
-  padding: 3px 4px;
-}
-
-.source-shortcut-row kbd {
-  color: var(--text-primary, #e6edf3);
-  font: inherit;
-  font-family: var(--font-mono, monospace);
-  text-align: right;
-}
-
 .source-search-index-status {
   margin: calc(-1 * var(--space-1, 4px)) 2px var(--space-2, 8px);
   color: var(--text-muted);
@@ -6720,8 +6653,8 @@ pre.code-highlighter-plain,
     padding-right: 10px;
   }
 
-  .source-search-shortcut,
-  .source-shortcut-help {
+  /* The shortcut disclosure hides itself in SourceShortcutHelp.module.css. */
+  .source-search-shortcut {
     display: none;
   }
 

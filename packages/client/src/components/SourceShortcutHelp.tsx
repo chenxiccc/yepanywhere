@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { TranslationFn } from "../i18n";
+import styles from "./SourceShortcutHelp.module.css";
 
 /** Compact hover/focus/tap disclosure for Source Control keyboard shortcuts. */
 export function SourceShortcutHelp({ t }: { t: TranslationFn }) {
@@ -44,7 +45,7 @@ export function SourceShortcutHelp({ t }: { t: TranslationFn }) {
   return (
     <span
       ref={rootRef}
-      className="source-shortcut-help"
+      className={styles.root}
       onPointerEnter={() => setHovered(true)}
       onPointerLeave={() => setHovered(false)}
       onFocusCapture={() => setFocused(true)}
@@ -56,7 +57,7 @@ export function SourceShortcutHelp({ t }: { t: TranslationFn }) {
     >
       <button
         type="button"
-        className="source-shortcut-help-trigger"
+        className={styles.trigger}
         aria-label={t("sourceShortcutHelp")}
         aria-expanded={open}
         onClick={(event) => {
@@ -73,12 +74,12 @@ export function SourceShortcutHelp({ t }: { t: TranslationFn }) {
         ?
       </button>
       {open && (
-        <span className="source-shortcut-popover" role="tooltip">
-          <span className="source-shortcut-popover-title">
+        <span className={styles.popover} role="tooltip">
+          <span className={styles.popoverTitle}>
             {t("sourceShortcutHelp")}
           </span>
           {shortcuts.map(([keys, label]) => (
-            <span key={keys} className="source-shortcut-row">
+            <span key={keys} className={styles.row}>
               <kbd>{keys}</kbd>
               <span>{label}</span>
             </span>
