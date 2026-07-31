@@ -339,6 +339,154 @@ describe("git-status routes", () => {
     expect(body.structuredPatch[0]?.lines).toContain("+export const value = 1;");
   });
 
+  it("skips small untracked binary content regardless of its extension", async () => {
+    const repoDir = await createRepoWithUpstream();
+    await writeFile(
+      join(repoDir, "misleading.txt"),
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0xff, 0x01]),
+    );
+    const { projectId, routes } = createRoutesForProject(repoDir);
+
+    const response = await routes.request(`/${projectId}/git/diff`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: "misleading.txt",
+        staged: false,
+        status: "?",
+      }),
+    });
+    const body = (await response.json()) as GitDiffResult;
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({
+      diffHtml: "",
+      structuredPatch: [],
+      previewSkipped: {
+        reason: "binary",
+        totalBytes: 7,
+      },
+    });
+  });
+
+  it("renders UTF-8 text even when its extension usually denotes binary", async () => {
+    const repoDir = await createRepoWithUpstream();
+    await writeFile(join(repoDir, "notes.png"), "plain UTF-8 notes\n");
+    const { projectId, routes } = createRoutesForProject(repoDir);
+
+    const response = await routes.request(`/${projectId}/git/diff`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: "notes.png",
+        staged: false,
+        status: "?",
+      }),
+    });
+    const body = (await response.json()) as GitDiffResult;
+
+    expect(response.status).toBe(200);
+    expect(body.previewSkipped).toBeUndefined();
+    expect(body.structuredPatch[0]?.lines).toContain("+plain UTF-8 notes");
+  });
+
+  it("uses Git attributes when classifying a tracked diff", async () => {
+    const repoDir = await createRepoWithUpstream();
+    await writeFile(join(repoDir, ".gitattributes"), "forced.txt -diff\n");
+    await writeFile(join(repoDir, "forced.txt"), "before\n");
+    await runGit(repoDir, ["add", ".gitattributes", "forced.txt"]);
+    await runGit(repoDir, ["commit", "-m", "Add binary diff policy"]);
+    await writeFile(join(repoDir, "forced.txt"), "after\n");
+    const { projectId, routes } = createRoutesForProject(repoDir);
+
+    const response = await routes.request(`/${projectId}/git/diff`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: "forced.txt",
+        staged: false,
+        status: "M",
+      }),
+    });
+    const body = (await response.json()) as GitDiffResult;
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({
+      diffHtml: "",
+      structuredPatch: [],
+      previewSkipped: { reason: "binary" },
+    });
+  });
+
+  it("rejects unsafe bytes even when Git attributes force a text diff", async () => {
+    const repoDir = await createRepoWithUpstream();
+    await writeFile(join(repoDir, ".gitattributes"), "forced.data diff\n");
+    await writeFile(
+      join(repoDir, "forced.data"),
+      Buffer.from([0xff, 0xfe, 0x41]),
+    );
+    await runGit(repoDir, ["add", ".gitattributes", "forced.data"]);
+    await runGit(repoDir, ["commit", "-m", "Force text diff policy"]);
+    await writeFile(
+      join(repoDir, "forced.data"),
+      Buffer.from([0xff, 0xfe, 0x42]),
+    );
+    const { projectId, routes } = createRoutesForProject(repoDir);
+
+    const response = await routes.request(`/${projectId}/git/diff`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: "forced.data",
+        staged: false,
+        status: "M",
+      }),
+    });
+    const body = (await response.json()) as GitDiffResult;
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({
+      diffHtml: "",
+      structuredPatch: [],
+      previewSkipped: {
+        reason: "binary",
+        totalBytes: 6,
+      },
+    });
+  });
+
+  it("skips staged binary changes before reading them as text", async () => {
+    const repoDir = await createRepoWithUpstream();
+    await writeFile(
+      join(repoDir, "artifact.data"),
+      Buffer.from([0, 1, 2, 3]),
+    );
+    await runGit(repoDir, ["add", "artifact.data"]);
+    await runGit(repoDir, ["commit", "-m", "Add artifact"]);
+    await writeFile(
+      join(repoDir, "artifact.data"),
+      Buffer.from([0, 1, 2, 4]),
+    );
+    await runGit(repoDir, ["add", "artifact.data"]);
+    const { projectId, routes } = createRoutesForProject(repoDir);
+
+    const response = await routes.request(`/${projectId}/git/diff`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: "artifact.data",
+        staged: true,
+        status: "M",
+      }),
+    });
+    const body = (await response.json()) as GitDiffResult;
+
+    expect(response.status).toBe(200);
+    expect(body.previewSkipped).toEqual({ reason: "binary" });
+    expect(body.diffHtml).toBe("");
+    expect(body.structuredPatch).toEqual([]);
+  });
+
   it("can hide whitespace-only working-tree changes", async () => {
     const repoDir = await createRepoWithUpstream();
     await writeFile(join(repoDir, "README.md"), "hello   \n");

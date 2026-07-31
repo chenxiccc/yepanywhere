@@ -19,10 +19,16 @@ import type { ProjectScanner } from "../projects/scanner.js";
 import {
   GIT_DIFF_PREVIEW_MAX_LINE_CHARS,
   GIT_DIFF_PREVIEW_MAX_TOTAL_BYTES,
+  skippedBinaryGitDiffResult,
   skippedGitDiffResult,
 } from "../git/diffPreviewGuards.js";
-import { buildGitDiffResult } from "../git/diffResult.js";
-import { GIT_DECODE_PATHS_ARGS, runGit } from "../git/gitExec.js";
+import { gitDiffReportsBinary } from "../git/binaryDiff.js";
+import { buildGitDiffResultFromBytes } from "../git/diffResult.js";
+import {
+  GIT_DECODE_PATHS_ARGS,
+  runGit,
+  runGitBytes,
+} from "../git/gitExec.js";
 
 export interface GitStatusDeps {
   scanner: ProjectScanner;
@@ -456,6 +462,17 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
         return c.json(skippedGitDiffResult(untrackedSizeSkip));
       }
 
+      if (
+        status !== "?" &&
+        (await gitDiffReportsBinary(
+          project.path,
+          workingTreeDiffArgs(staged, againstHead),
+          path,
+        ))
+      ) {
+        return c.json(skippedBinaryGitDiffResult());
+      }
+
       const { oldContent, newContent } = await getFileVersions(
         project.path,
         path,
@@ -466,7 +483,7 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
       );
 
       return c.json(
-        await buildGitDiffResult({
+        await buildGitDiffResultFromBytes({
           toolUseId: "git-diff",
           path,
           oldContent,
@@ -483,6 +500,16 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
   });
 
   return routes;
+}
+
+function workingTreeDiffArgs(
+  staged: boolean,
+  againstHead: boolean | undefined,
+): string[] {
+  if (againstHead) {
+    return ["diff", "HEAD"];
+  }
+  return staged ? ["diff", "--cached"] : ["diff"];
 }
 
 async function getUntrackedDiffPreviewSizeSkip(
@@ -516,14 +543,14 @@ async function getFileVersions(
   status: string,
   againstHead = false,
   origPath?: string,
-): Promise<{ oldContent: string; newContent: string }> {
+): Promise<{ oldContent: Uint8Array; newContent: Uint8Array }> {
   if (againstHead) {
     const oldPath =
       (status === "R" || status === "C") && origPath ? origPath : path;
     const [oldContent, newContent] = await Promise.all([
       status === "?" || status === "A"
-        ? Promise.resolve("")
-        : runGit(cwd, ["show", `HEAD:${oldPath}`], {
+        ? Promise.resolve(Buffer.alloc(0))
+        : runGitBytes(cwd, ["show", `HEAD:${oldPath}`], {
             maxBuffer: AGAINST_HEAD_SHOW_MAX_BUFFER,
           }).then(
             (result) => result.stdout,
@@ -538,58 +565,58 @@ async function getFileVersions(
               ) {
                 throw error;
               }
-              return "";
+              return Buffer.alloc(0);
             },
           ),
-      readFile(resolve(cwd, path), "utf-8").catch(() => ""),
+      readFile(resolve(cwd, path)).catch(() => Buffer.alloc(0)),
     ]);
     return { oldContent, newContent };
   }
 
   // Untracked: entire file is new
   if (status === "?") {
-    const content = await readFile(resolve(cwd, path), "utf-8");
-    return { oldContent: "", newContent: content };
+    const content = await readFile(resolve(cwd, path));
+    return { oldContent: Buffer.alloc(0), newContent: content };
   }
 
   // Added (staged): new file in index
   if (status === "A") {
     if (staged) {
-      const { stdout } = await runGit(cwd, ["show", `:${path}`]);
-      return { oldContent: "", newContent: stdout };
+      const { stdout } = await runGitBytes(cwd, ["show", `:${path}`]);
+      return { oldContent: Buffer.alloc(0), newContent: stdout };
     }
     // Unstaged add shouldn't normally happen, but handle it
-    const content = await readFile(resolve(cwd, path), "utf-8");
-    return { oldContent: "", newContent: content };
+    const content = await readFile(resolve(cwd, path));
+    return { oldContent: Buffer.alloc(0), newContent: content };
   }
 
   // Deleted
   if (status === "D") {
     const ref = staged ? `HEAD:${path}` : `:${path}`;
-    const { stdout } = await runGit(cwd, ["show", ref]);
-    return { oldContent: stdout, newContent: "" };
+    const { stdout } = await runGitBytes(cwd, ["show", ref]);
+    return { oldContent: stdout, newContent: Buffer.alloc(0) };
   }
 
   // Modified or other statuses
   if (staged) {
     // Staged: compare HEAD to index
     const [oldResult, newResult] = await Promise.all([
-      runGit(cwd, ["show", `HEAD:${path}`]).catch(() => ({
-        stdout: "",
-        stderr: "",
+      runGitBytes(cwd, ["show", `HEAD:${path}`]).catch(() => ({
+        stdout: Buffer.alloc(0),
+        stderr: Buffer.alloc(0),
       })),
-      runGit(cwd, ["show", `:${path}`]),
+      runGitBytes(cwd, ["show", `:${path}`]),
     ]);
     return { oldContent: oldResult.stdout, newContent: newResult.stdout };
   }
 
   // Unstaged: compare index to working tree
   const [oldResult, newContent] = await Promise.all([
-    runGit(cwd, ["show", `:${path}`]).catch(() => ({
-      stdout: "",
-      stderr: "",
+    runGitBytes(cwd, ["show", `:${path}`]).catch(() => ({
+      stdout: Buffer.alloc(0),
+      stderr: Buffer.alloc(0),
     })),
-    readFile(resolve(cwd, path), "utf-8").catch(() => ""),
+    readFile(resolve(cwd, path)).catch(() => Buffer.alloc(0)),
   ]);
   return { oldContent: oldResult.stdout, newContent };
 }

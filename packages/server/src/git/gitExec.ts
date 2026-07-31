@@ -37,3 +37,26 @@ export async function runGit(
       : {}),
   });
 }
+
+/**
+ * Binary-safe counterpart to {@link runGit}. Use for blob content that must
+ * be classified before any UTF-8 decoding replaces malformed bytes.
+ */
+export async function runGitBytes(
+  cwd: string,
+  args: string[],
+  options?: {
+    timeout?: number;
+    disableTerminalPrompt?: boolean;
+    maxBuffer?: number;
+  },
+): Promise<{ stdout: Buffer; stderr: Buffer }> {
+  return (await execFileAsync("git", ["-C", cwd, ...args], {
+    encoding: "buffer",
+    maxBuffer: options?.maxBuffer ?? DEFAULT_MAX_BUFFER,
+    timeout: options?.timeout ?? 10_000,
+    ...(options?.disableTerminalPrompt
+      ? { env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } }
+      : {}),
+  })) as unknown as { stdout: Buffer; stderr: Buffer };
+}

@@ -11,9 +11,15 @@ import type {
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { getBlame } from "../git/blame.js";
-import { buildGitDiffResult } from "../git/diffResult.js";
+import { gitDiffReportsBinary } from "../git/binaryDiff.js";
+import { skippedBinaryGitDiffResult } from "../git/diffPreviewGuards.js";
+import { buildGitDiffResultFromBytes } from "../git/diffResult.js";
 import { buildGitFileChanges } from "../git/fileChanges.js";
-import { GIT_DECODE_PATHS_ARGS, runGit } from "../git/gitExec.js";
+import {
+  GIT_DECODE_PATHS_ARGS,
+  runGit,
+  runGitBytes,
+} from "../git/gitExec.js";
 import type { ProjectScanner } from "../projects/scanner.js";
 import { resolveProjectPath } from "./projectParam.js";
 
@@ -214,6 +220,23 @@ export function createGitBrowseRoutes(deps: GitBrowseDeps): Hono {
     }
 
     try {
+      if (
+        await gitDiffReportsBinary(
+          projectPath,
+          [
+            "diff-tree",
+            "--root",
+            "--no-commit-id",
+            "-r",
+            "-M",
+            sha,
+          ],
+          path,
+        )
+      ) {
+        return c.json(skippedBinaryGitDiffResult());
+      }
+
       const { oldContent, newContent } = await getCommitFileVersions(
         projectPath,
         sha,
@@ -223,7 +246,7 @@ export function createGitBrowseRoutes(deps: GitBrowseDeps): Hono {
       );
 
       return c.json(
-        await buildGitDiffResult({
+        await buildGitDiffResultFromBytes({
           toolUseId: "git-commit-diff",
           path,
           oldContent,
@@ -401,16 +424,16 @@ async function getCommitFileVersions(
   path: string,
   status: string,
   origPath: string | undefined,
-): Promise<{ oldContent: string; newContent: string }> {
+): Promise<{ oldContent: Uint8Array; newContent: Uint8Array }> {
   const letter = status[0]?.toUpperCase() ?? "M";
 
   if (letter === "A") {
     const cur = await showAt(cwd, `${sha}:${path}`);
-    return { oldContent: "", newContent: cur };
+    return { oldContent: Buffer.alloc(0), newContent: cur };
   }
   if (letter === "D") {
     const prev = await showAt(cwd, `${sha}^:${path}`);
-    return { oldContent: prev, newContent: "" };
+    return { oldContent: prev, newContent: Buffer.alloc(0) };
   }
 
   // Modified / renamed / copied / type-changed: parent's old vs. this commit's new.
@@ -424,14 +447,14 @@ async function getCommitFileVersions(
 }
 
 /** `git show <rev>:<path>`, resolving to "" when the object is absent. */
-async function showAt(cwd: string, spec: string): Promise<string> {
+async function showAt(cwd: string, spec: string): Promise<Uint8Array> {
   try {
-    const { stdout } = await runGit(cwd, ["show", spec], {
+    const { stdout } = await runGitBytes(cwd, ["show", spec], {
       maxBuffer: BROWSE_MAX_BUFFER,
     });
     return stdout;
   } catch {
-    return "";
+    return Buffer.alloc(0);
   }
 }
 

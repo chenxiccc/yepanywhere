@@ -81,3 +81,12 @@ export function skippedGitDiffResult(
     previewSkipped,
   };
 }
+
+export function skippedBinaryGitDiffResult(
+  totalBytes?: number,
+): GitDiffResult {
+  return skippedGitDiffResult({
+    reason: "binary",
+    ...(totalBytes === undefined ? {} : { totalBytes }),
+  });
+}

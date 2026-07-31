@@ -1304,6 +1304,7 @@
   "gitStatusWhitespaceChangesHidden": "Whitespace-only changes are hidden.",
   "gitStatusNoContentChanges": "No content changes.",
   "gitStatusDiffPreviewSkipped": "Preview skipped",
+  "gitStatusDiffPreviewSkippedBinary": "Binary files cannot be shown as a text diff.",
   "gitStatusDiffPreviewSkippedContentTooLarge": "The selected file is too large to preview safely.",
   "gitStatusDiffPreviewSkippedLineTooLong": "The selected file has a line that is too long to preview safely.",
   "gitStatusDiffPreviewSkippedHtmlTooLarge": "The highlighted diff is too large to render safely.",

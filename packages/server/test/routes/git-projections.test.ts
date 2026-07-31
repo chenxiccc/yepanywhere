@@ -174,4 +174,32 @@ describe("git projection routes", () => {
     expect(lines).toContain("-keep");
     expect(lines).toContain("+keep changed");
   });
+
+  it("skips binary files in exact revision comparisons", async () => {
+    await writeFile(
+      join(dir, "compiled.cache"),
+      Buffer.from([0x43, 0x41, 0x43, 0x48, 0, 0xff]),
+    );
+    const binaryHead = await commitAll("add binary cache");
+    const { projectId, routes } = createRoutesForProject(dir);
+
+    const response = await routes.request(`/${projectId}/git/compare-diff`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        baseSha: headSha,
+        headSha: binaryHead,
+        path: "compiled.cache",
+        status: "A",
+      }),
+    });
+    const body = (await response.json()) as GitDiffResult;
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({
+      diffHtml: "",
+      structuredPatch: [],
+      previewSkipped: { reason: "binary" },
+    });
+  });
 });

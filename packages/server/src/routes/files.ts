@@ -11,7 +11,6 @@ import {
   resolve,
 } from "node:path";
 import { createInterface } from "node:readline";
-import { TextDecoder } from "node:util";
 import {
   type FileContentResponse,
   type FileMetadata,
@@ -23,6 +22,7 @@ import { computeEditAugment } from "../augments/edit-augments.js";
 import { renderMarkdownFilePreview } from "../augments/markdown-file-preview.js";
 import { highlightFile } from "../highlighting/index.js";
 import type { ProjectScanner } from "../projects/scanner.js";
+import { isLikelyUtf8Text } from "../utils/utf8Text.js";
 import { createLocalResourcePathPolicy } from "./local-resource-policy.js";
 
 export interface FilesDeps {
@@ -46,8 +46,6 @@ const MAX_TARGET_WINDOW_SIZE = MAX_INLINE_SIZE;
 const MAX_EMBEDDED_MARKDOWN_MEDIA_BYTES = 8 * 1024 * 1024;
 const MAX_EMBEDDED_MARKDOWN_MEDIA_FILE_BYTES = 2 * 1024 * 1024;
 const TEXT_SNIFF_BYTES = 8192;
-const MAX_SUSPICIOUS_TEXT_CONTROL_RATIO = 0.01;
-const UTF8_TEXT_DECODER = new TextDecoder("utf-8", { fatal: true });
 
 /** MIME type mappings by extension */
 const MIME_TYPES: Record<string, string> = {
@@ -662,52 +660,6 @@ function isSniffableUnknownTextCandidate(
   mimeType: string,
 ): boolean {
   return mimeType === "application/octet-stream" && !isTextFile(filePath);
-}
-
-function isAllowedTextControlCode(codePoint: number): boolean {
-  return (
-    codePoint === 0x08 || // backspace, used by some terminal progress output
-    codePoint === 0x09 ||
-    codePoint === 0x0a ||
-    codePoint === 0x0c ||
-    codePoint === 0x0d ||
-    codePoint === 0x1b
-  );
-}
-
-function isLikelyUtf8Text(buffer: Buffer): boolean {
-  if (buffer.length === 0) {
-    return true;
-  }
-  if (buffer.includes(0)) {
-    return false;
-  }
-
-  let text: string;
-  try {
-    text = UTF8_TEXT_DECODER.decode(buffer);
-  } catch {
-    return false;
-  }
-
-  let suspiciousControls = 0;
-  for (const char of text) {
-    const codePoint = char.codePointAt(0);
-    if (codePoint === undefined) {
-      continue;
-    }
-    if (
-      (codePoint < 0x20 && !isAllowedTextControlCode(codePoint)) ||
-      codePoint === 0x7f
-    ) {
-      suspiciousControls += 1;
-    }
-  }
-
-  return (
-    suspiciousControls / Math.max(text.length, 1) <=
-    MAX_SUSPICIOUS_TEXT_CONTROL_RATIO
-  );
 }
 
 async function isSniffedTextFile(

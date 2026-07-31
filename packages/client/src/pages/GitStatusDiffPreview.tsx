@@ -736,7 +736,15 @@ function GitDiffContent({
   const markdownHtml =
     fullContextResult?.markdownHtml || diffResult.markdownHtml;
   const oversizedHtmlSkip = getOversizedDiffHtmlSkip(displayResult.diffHtml);
-  const previewSkipped = displayResult.previewSkipped ?? oversizedHtmlSkip;
+  const binaryPatchSkip = useMemo(
+    () =>
+      displayResult.previewSkipped
+        ? null
+        : getBinaryPatchSkip(displayResult.structuredPatch),
+    [displayResult.previewSkipped, displayResult.structuredPatch],
+  );
+  const previewSkipped =
+    displayResult.previewSkipped ?? binaryPatchSkip ?? oversizedHtmlSkip;
   const [hunkPosition, setHunkPosition] = useState({ index: 0, count: 0 });
   const hunkPositionRef = useRef(hunkPosition);
 
@@ -1219,11 +1227,49 @@ function getOversizedDiffHtmlSkip(
   };
 }
 
+function getBinaryPatchSkip(
+  structuredPatch: PatchHunk[],
+): GitDiffPreviewSkipped | null {
+  let characters = 0;
+  let suspiciousControls = 0;
+
+  for (const hunk of structuredPatch) {
+    for (const line of hunk.lines) {
+      for (const char of line) {
+        const codePoint = char.codePointAt(0);
+        if (codePoint === undefined) continue;
+        if (codePoint === 0 || codePoint === 0xfffd) {
+          return { reason: "binary" };
+        }
+        characters += 1;
+        if (
+          (codePoint < 0x20 &&
+            codePoint !== 0x08 &&
+            codePoint !== 0x09 &&
+            codePoint !== 0x0a &&
+            codePoint !== 0x0c &&
+            codePoint !== 0x0d &&
+            codePoint !== 0x1b) ||
+          codePoint === 0x7f
+        ) {
+          suspiciousControls += 1;
+        }
+      }
+    }
+  }
+
+  return suspiciousControls / Math.max(characters, 1) > 0.01
+    ? { reason: "binary" }
+    : null;
+}
+
 function getDiffPreviewSkippedMessage(
   previewSkipped: GitDiffPreviewSkipped,
   t: TranslationFn,
 ): string {
   switch (previewSkipped.reason) {
+    case "binary":
+      return t("gitStatusDiffPreviewSkippedBinary");
     case "content-too-large":
       return t("gitStatusDiffPreviewSkippedContentTooLarge");
     case "line-too-long":

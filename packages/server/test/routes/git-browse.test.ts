@@ -252,6 +252,33 @@ describe("git-browse routes", () => {
     expect(lines.some((l) => l.startsWith("-"))).toBe(false);
   });
 
+  it("skips binary files in commit diffs", async () => {
+    await writeFile(
+      join(dir, "compiled.cache"),
+      Buffer.from([0x43, 0x41, 0x43, 0x48, 0, 0xff]),
+    );
+    const binaryCommit = await commitAll("add binary cache");
+    const { projectId, routes } = createRoutesForProject(dir);
+
+    const res = await routes.request(`/${projectId}/git/commit-diff`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sha: binaryCommit,
+        path: "compiled.cache",
+        status: "A",
+      }),
+    });
+    const body = (await res.json()) as GitDiffResult;
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({
+      diffHtml: "",
+      structuredPatch: [],
+      previewSkipped: { reason: "binary" },
+    });
+  });
+
   it("rejects a non-hex commit id", async () => {
     const { projectId, routes } = createRoutesForProject(dir);
     const res = await routes.request(`/${projectId}/git/commit/not-a-sha`);

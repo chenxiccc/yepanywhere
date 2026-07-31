@@ -1,9 +1,15 @@
 import type { GitRevisionComparison } from "@yep-anywhere/shared";
 import type { Context } from "hono";
 import { Hono } from "hono";
-import { buildGitDiffResult } from "../git/diffResult.js";
+import { gitDiffReportsBinary } from "../git/binaryDiff.js";
+import { skippedBinaryGitDiffResult } from "../git/diffPreviewGuards.js";
+import { buildGitDiffResultFromBytes } from "../git/diffResult.js";
 import { buildGitFileChanges } from "../git/fileChanges.js";
-import { GIT_DECODE_PATHS_ARGS, runGit } from "../git/gitExec.js";
+import {
+  GIT_DECODE_PATHS_ARGS,
+  runGit,
+  runGitBytes,
+} from "../git/gitExec.js";
 import type { ProjectScanner } from "../projects/scanner.js";
 import { resolveProjectPath } from "./projectParam.js";
 
@@ -100,6 +106,15 @@ export function createGitProjectionRoutes(deps: GitProjectionDeps): Hono {
         resolveCommit(projectPath, body.baseSha),
         resolveCommit(projectPath, body.headSha),
       ]);
+      if (
+        await gitDiffReportsBinary(
+          projectPath,
+          ["diff", "-M", baseSha, headSha],
+          body.path,
+        )
+      ) {
+        return c.json(skippedBinaryGitDiffResult());
+      }
       const { oldContent, newContent } = await getRevisionFileVersions(
         projectPath,
         baseSha,
@@ -109,7 +124,7 @@ export function createGitProjectionRoutes(deps: GitProjectionDeps): Hono {
         body.origPath,
       );
       return c.json(
-        await buildGitDiffResult({
+        await buildGitDiffResultFromBytes({
           toolUseId: "git-compare-diff",
           path: body.path,
           oldContent,
@@ -178,18 +193,18 @@ async function getRevisionFileVersions(
   path: string,
   status: string,
   origPath?: string,
-): Promise<{ oldContent: string; newContent: string }> {
+): Promise<{ oldContent: Uint8Array; newContent: Uint8Array }> {
   const letter = status[0]?.toUpperCase() ?? "M";
   if (letter === "A") {
     return {
-      oldContent: "",
+      oldContent: Buffer.alloc(0),
       newContent: await showAt(cwd, headSha, path),
     };
   }
   if (letter === "D") {
     return {
       oldContent: await showAt(cwd, baseSha, path),
-      newContent: "",
+      newContent: Buffer.alloc(0),
     };
   }
 
@@ -206,9 +221,12 @@ async function showAt(
   cwd: string,
   revision: string,
   path: string,
-): Promise<string> {
+): Promise<Uint8Array> {
   try {
-    const { stdout } = await runGit(cwd, ["show", `${revision}:${path}`], {
+    const { stdout } = await runGitBytes(cwd, [
+      "show",
+      `${revision}:${path}`,
+    ], {
       maxBuffer: PROJECTION_MAX_BUFFER,
     });
     return stdout;
@@ -219,7 +237,7 @@ async function showAt(
     ) {
       throw err;
     }
-    return "";
+    return Buffer.alloc(0);
   }
 }
 

@@ -157,6 +157,17 @@ live working-tree refresh changes the diff while full context is open, YA
 invalidates and reloads that projection. An older request resolving later
 cannot overwrite the newer projection.
 
+Source Control presents a text diff only when the exact Git projection is not
+classified as binary and both file versions are safe UTF-8 text. Git attributes
+that mark a tracked path binary are authoritative; a filename extension alone
+is never authoritative in either direction. Binary working-tree, staged,
+commit, and selected-revision comparison files show a bounded skipped-preview
+state with the path and size when known, and their bytes never enter syntax
+highlighting. Untracked files receive the same treatment from their content.
+A current client also suppresses binary-looking structured patch text returned
+by an older server. Large-content, long-line, and highlighted-HTML limits remain
+independent reasons to omit a text preview.
+
 The wide diff pane keeps filename, path, view controls, hunk navigation, and
 file actions in one toolbar row when they fit. A narrow pane or phone modal may
 use a compact second row. The filename is the primary identity: it uses compact

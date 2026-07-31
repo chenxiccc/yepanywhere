@@ -157,6 +157,7 @@ export interface GitUntrackedFolderInfo {
 }
 
 export type GitDiffPreviewSkippedReason =
+  | "binary"
   | "content-too-large"
   | "line-too-long"
   | "html-too-large";
@@ -164,7 +165,7 @@ export type GitDiffPreviewSkippedReason =
 export interface GitDiffPreviewSkipped {
   /** Why the preview was omitted or downgraded. */
   reason: GitDiffPreviewSkippedReason;
-  /** Source content size in UTF-8 bytes, when known. */
+  /** Combined source content size in bytes, when known. */
   totalBytes?: number;
   /** Longest source line in JavaScript string characters, when known. */
   maxLineChars?: number;

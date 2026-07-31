@@ -168,4 +168,52 @@ describe("GitDiffBody", () => {
       ),
     );
   });
+
+  it("renders the server binary-file omission state", async () => {
+    getGitDiff.mockResolvedValue({
+      diffHtml: "",
+      structuredPatch: [],
+      previewSkipped: {
+        reason: "binary",
+        totalBytes: 2048,
+      },
+    } satisfies GitDiffResult);
+
+    render(
+      <MemoryRouter>
+        <GitDiffBody
+          file={{ ...FILE, path: "assets/icon.png" }}
+          fileKey="assets/icon.png:false"
+          projectId="p1"
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByText("gitStatusDiffPreviewSkippedBinary"),
+    ).toBeTruthy();
+    expect(screen.getByText("2.0 KB")).toBeTruthy();
+    expect(screen.getAllByText("assets/icon.png")).toHaveLength(2);
+  });
+
+  it("suppresses binary-looking patch text returned by an older server", async () => {
+    getGitDiff.mockResolvedValue(result("\u0000PNG\ufffd\u0001\u0002"));
+
+    render(
+      <MemoryRouter>
+        <GitDiffBody
+          file={{ ...FILE, path: "assets/icon.png" }}
+          fileKey="assets/icon.png:false"
+          projectId="p1"
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByText("gitStatusDiffPreviewSkippedBinary"),
+    ).toBeTruthy();
+    expect(document.querySelector(".code-highlighter-plain")).toBeNull();
+  });
 });
