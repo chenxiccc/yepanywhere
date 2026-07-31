@@ -165,9 +165,9 @@ export type GitDiffPreviewSkippedReason =
 export interface GitDiffPreviewSkipped {
   /** Why the preview was omitted or downgraded. */
   reason: GitDiffPreviewSkippedReason;
-  /** Combined source content size in bytes, when known. */
+  /** Size of the content the guard measured — the diff, or the source it refused to diff. */
   totalBytes?: number;
-  /** Longest source line in JavaScript string characters, when known. */
+  /** Longest measured line in JavaScript string characters, when known. */
   maxLineChars?: number;
   /** Highlighted HTML size in JavaScript string characters, for client guards. */
   htmlChars?: number;

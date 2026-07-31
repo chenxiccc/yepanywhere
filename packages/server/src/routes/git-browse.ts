@@ -247,7 +247,6 @@ export function createGitBrowseRoutes(deps: GitBrowseDeps): Hono {
 
       return c.json(
         await buildGitDiffResultFromBytes({
-          toolUseId: "git-commit-diff",
           path,
           oldContent,
           newContent,

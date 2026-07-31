@@ -316,6 +316,152 @@ describe("git-status routes", () => {
     expect(body.previewSkipped?.totalBytes).toBeGreaterThan(262_144);
   });
 
+  it("previews a small change inside a file far larger than the render budget", async () => {
+    const repoDir = await createRepoWithUpstream();
+    const lines = Array.from(
+      { length: 12_000 },
+      (_, index) => `  "key${index}": "value ${index}",`,
+    );
+    await commitFile(
+      repoDir,
+      "big.json",
+      `{\n${lines.join("\n")}\n}\n`,
+      "Add big file",
+    );
+    lines[6_000] = `  "key6000": "edited",`;
+    await writeFile(join(repoDir, "big.json"), `{\n${lines.join("\n")}\n}\n`);
+    const { projectId, routes } = createRoutesForProject(repoDir);
+
+    const response = await routes.request(`/${projectId}/git/diff`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: "big.json",
+        staged: false,
+        status: "M",
+      }),
+    });
+    const body = (await response.json()) as GitDiffResult;
+
+    expect(response.status).toBe(200);
+    expect(body.previewSkipped).toBeUndefined();
+    expect(body.structuredPatch).toHaveLength(1);
+    expect(body.structuredPatch[0]?.lines).toContain(`+  "key6000": "edited",`);
+    // Hunk coordinates stay absolute even though only the hunk was highlighted.
+    expect(body.structuredPatch[0]?.newStart).toBeGreaterThan(5_990);
+    expect(body.diffHtml).toContain("line-inserted");
+    expect(body.diffHtml).toContain("edited");
+    // Only the hunk is rendered, not the file it came from.
+    expect(body.diffHtml.length).toBeLessThan(20_000);
+  });
+
+  it("skips a large file rewritten wholesale", async () => {
+    const repoDir = await createRepoWithUpstream();
+    const original = Array.from(
+      { length: 12_000 },
+      (_, index) => `line ${index} ${"padding".repeat(4)}`,
+    ).join("\n");
+    await commitFile(repoDir, "rewritten.txt", `${original}\n`, "Add file");
+    const rewritten = Array.from(
+      { length: 12_000 },
+      (_, index) => `changed ${index} ${"different".repeat(4)}`,
+    ).join("\n");
+    await writeFile(join(repoDir, "rewritten.txt"), `${rewritten}\n`);
+    const { projectId, routes } = createRoutesForProject(repoDir);
+
+    const response = await routes.request(`/${projectId}/git/diff`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: "rewritten.txt",
+        staged: false,
+        status: "M",
+      }),
+    });
+    const rawBody = await response.text();
+    const body = JSON.parse(rawBody) as GitDiffResult;
+
+    expect(response.status).toBe(200);
+    expect(rawBody.length).toBeLessThan(2_000);
+    expect(body).toMatchObject({
+      diffHtml: "",
+      structuredPatch: [],
+      previewSkipped: { reason: "content-too-large" },
+    });
+  });
+
+  it("measures line length across the diff rather than the whole file", async () => {
+    const repoDir = await createRepoWithUpstream();
+    // The long line sits well outside the changed hunk's context window.
+    const minified = `const bundled = "${"x".repeat(30_000)}";`;
+    const filler = Array.from(
+      { length: 50 },
+      (_, index) => `const spacer${index} = ${index};`,
+    ).join("\n");
+    await commitFile(
+      repoDir,
+      "mixed.ts",
+      `${minified}\n${filler}\nexport const value = 1;\n`,
+      "Add mixed file",
+    );
+    await writeFile(
+      join(repoDir, "mixed.ts"),
+      `${minified}\n${filler}\nexport const value = 2;\n`,
+    );
+    const { projectId, routes } = createRoutesForProject(repoDir);
+
+    const response = await routes.request(`/${projectId}/git/diff`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: "mixed.ts",
+        staged: false,
+        status: "M",
+      }),
+    });
+    const body = (await response.json()) as GitDiffResult;
+
+    expect(response.status).toBe(200);
+    // The 30k-character line is context the hunk never touches.
+    expect(body.previewSkipped).toBeUndefined();
+    expect(body.structuredPatch[0]?.lines).toContain("+export const value = 2;");
+  });
+
+  it("skips full-context requests for files over the render budget", async () => {
+    const repoDir = await createRepoWithUpstream();
+    const lines = Array.from(
+      { length: 12_000 },
+      (_, index) => `  "key${index}": "value ${index}",`,
+    );
+    await commitFile(
+      repoDir,
+      "big.json",
+      `{\n${lines.join("\n")}\n}\n`,
+      "Add big file",
+    );
+    lines[6_000] = `  "key6000": "edited",`;
+    await writeFile(join(repoDir, "big.json"), `{\n${lines.join("\n")}\n}\n`);
+    const { projectId, routes } = createRoutesForProject(repoDir);
+
+    const response = await routes.request(`/${projectId}/git/diff`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: "big.json",
+        staged: false,
+        status: "M",
+        fullContext: true,
+      }),
+    });
+    const body = (await response.json()) as GitDiffResult;
+
+    expect(response.status).toBe(200);
+    expect(body.previewSkipped).toMatchObject({
+      reason: "content-too-large",
+      maxTotalBytes: 262_144,
+    });
+  });
+
   it("returns normal git diff previews for small untracked files", async () => {
     const repoDir = await createRepoWithUpstream();
     await writeFile(join(repoDir, "small.ts"), "export const value = 1;\n");

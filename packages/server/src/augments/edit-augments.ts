@@ -14,6 +14,31 @@ import { getLanguageForPath, highlightCode } from "../highlighting/index.js";
 const CONTEXT_LINES = 3;
 
 /**
+ * Combined source size above which we highlight only the lines the hunks
+ * reference instead of both whole files. `extractShikiLines` discards every
+ * other line anyway, so this keeps highlighting proportional to the change
+ * rather than the file. The cost is that an excerpt is tokenized without its
+ * surrounding context, which can colour a fragment that starts mid-construct
+ * slightly differently — a trade only large files pay.
+ */
+const WHOLE_FILE_HIGHLIGHT_MAX_CHARS = 256 * 1024;
+
+/**
+ * Per-line ceiling for whole-file highlighting. A single very long line (a
+ * minified bundle, an embedded blob) costs the tokenizer far more than its
+ * share of bytes, so one anywhere in the file sends us down the excerpt path —
+ * where it only matters if the diff actually touches it.
+ */
+const WHOLE_FILE_HIGHLIGHT_MAX_LINE_CHARS = 20_000;
+
+/**
+ * Wall-clock budget for one `structuredPatch` call. Diff cost grows with edit
+ * distance, not file size, so this bounds the one case that is genuinely
+ * expensive: a large file rewritten wholesale.
+ */
+const DIFF_TIMEOUT_MS = 2_000;
+
+/**
  * Input for computing an edit augment.
  */
 export interface EditInput {
@@ -280,6 +305,108 @@ function computeHunkWordDiffs(
   return { oldLineDiffs, newLineDiffs };
 }
 
+/** Looks up the highlighted HTML for an absolute 0-based source line index. */
+type HighlightedLineLookup = (index: number) => string | undefined;
+
+/** Longest line in `content`, measured in JavaScript string characters. */
+function longestLineChars(content: string): number {
+  let longest = 0;
+  let current = 0;
+
+  for (let index = 0; index < content.length; index++) {
+    if (content.charCodeAt(index) === 10) {
+      longest = Math.max(longest, current);
+      current = 0;
+    } else {
+      current++;
+    }
+  }
+
+  return Math.max(longest, current);
+}
+
+/**
+ * Whether both versions are cheap enough to highlight in full. Highlighting
+ * whole files gives the tokenizer exact context, so we keep it wherever it
+ * costs little.
+ */
+function canHighlightWholeFile(oldString: string, newString: string): boolean {
+  return (
+    oldString.length + newString.length <= WHOLE_FILE_HIGHLIGHT_MAX_CHARS &&
+    longestLineChars(oldString) <= WHOLE_FILE_HIGHLIGHT_MAX_LINE_CHARS &&
+    longestLineChars(newString) <= WHOLE_FILE_HIGHLIGHT_MAX_LINE_CHARS
+  );
+}
+
+/**
+ * The absolute 0-based line indices each side's hunks reference, ascending.
+ * Mirrors the walk in `highlightDiffWithSyntax` below, so every line that
+ * render asks for has been highlighted.
+ */
+function hunkLineIndices(hunks: PatchHunk[]): {
+  old: number[];
+  new: number[];
+} {
+  const old: number[] = [];
+  const next: number[] = [];
+
+  for (const hunk of hunks) {
+    let oldIdx = hunk.oldStart - 1;
+    let newIdx = hunk.newStart - 1;
+
+    for (const line of hunk.lines) {
+      const prefix = line[0];
+      if (prefix === " ") {
+        old.push(oldIdx++);
+        next.push(newIdx++);
+      } else if (prefix === "-") {
+        old.push(oldIdx++);
+      } else if (prefix === "+") {
+        next.push(newIdx++);
+      }
+    }
+  }
+
+  return { old, new: next };
+}
+
+/**
+ * Highlight one side of the diff, either whole (small files, exact tokenizer
+ * context) or as an excerpt of just `indices` (large files). Both return the
+ * same absolute-index lookup, so callers keep real file coordinates.
+ */
+async function highlightSideLines(
+  content: string,
+  lang: string,
+  indices: number[],
+  wholeFile: boolean,
+): Promise<HighlightedLineLookup | null> {
+  // highlightCode returns null for empty input; an absent side has no lines.
+  if (content.length === 0) return () => undefined;
+
+  if (wholeFile) {
+    const result = await highlightCode(content, lang);
+    if (!result) return null;
+    const lines = extractShikiLines(result.html);
+    return (index) => lines[index];
+  }
+
+  const sourceLines = content.split("\n");
+  const excerpt = indices.map((index) => sourceLines[index] ?? "").join("\n");
+  if (excerpt.length === 0) return () => "";
+
+  const result = await highlightCode(excerpt, lang);
+  if (!result) return null;
+
+  const highlighted = extractShikiLines(result.html);
+  const byIndex = new Map<number, string>();
+  indices.forEach((index, position) => {
+    const line = highlighted[position];
+    if (line !== undefined) byIndex.set(index, line);
+  });
+  return (index) => byIndex.get(index);
+}
+
 /**
  * Build syntax-highlighted diff HTML by highlighting old_string and new_string
  * separately with the file's language, then reconstructing the diff.
@@ -296,20 +423,24 @@ async function highlightDiffWithSyntax(
   const lang = getLanguageForPath(filePath);
   if (!lang) return null;
 
-  // Highlight both strings with the file's language
-  // Handle empty strings - highlightCode returns null for empty input
-  const oldResult =
-    oldString.length > 0 ? await highlightCode(oldString, lang) : null;
-  const newResult =
-    newString.length > 0 ? await highlightCode(newString, lang) : null;
+  const wholeFile = canHighlightWholeFile(oldString, newString);
+  const indices = wholeFile ? { old: [], new: [] } : hunkLineIndices(hunks);
 
-  // If both fail (not just empty), fall back
-  if (!oldResult && oldString.length > 0) return null;
-  if (!newResult && newString.length > 0) return null;
+  const oldLine = await highlightSideLines(
+    oldString,
+    lang,
+    indices.old,
+    wholeFile,
+  );
+  const newLine = await highlightSideLines(
+    newString,
+    lang,
+    indices.new,
+    wholeFile,
+  );
 
-  // Extract lines from Shiki HTML
-  const oldLines = oldResult ? extractShikiLines(oldResult.html) : [];
-  const newLines = newResult ? extractShikiLines(newResult.html) : [];
+  // If either side fails (as opposed to being empty), fall back
+  if (!oldLine || !newLine) return null;
 
   // Pre-compute word diffs for all hunks
   const allOldLineDiffs = new Map<number, WordDiffSegment[]>();
@@ -360,12 +491,12 @@ async function highlightDiffWithSyntax(
       if (prefix === " ") {
         // Context line - use old (identical in both)
         lineClass = "line line-context";
-        content = oldLines[oldIdx++] ?? "";
+        content = oldLine(oldIdx++) ?? "";
         newIdx++;
       } else if (prefix === "-") {
         // Deleted line - use old
         lineClass = "line line-deleted";
-        content = oldLines[oldIdx] ?? "";
+        content = oldLine(oldIdx) ?? "";
         // Apply word diff if available
         const wordDiff = allOldLineDiffs.get(oldIdx);
         if (wordDiff) {
@@ -375,7 +506,7 @@ async function highlightDiffWithSyntax(
       } else if (prefix === "+") {
         // Inserted line - use new
         lineClass = "line line-inserted";
-        content = newLines[newIdx] ?? "";
+        content = newLine(newIdx) ?? "";
         // Apply word diff if available
         const wordDiff = allNewLineDiffs.get(newIdx);
         if (wordDiff) {
@@ -451,6 +582,54 @@ export async function computeStructuredPatchDiffHtml(
 }
 
 /**
+ * Compute the structured patch for an edit, or null when diffing exceeded
+ * {@link DIFF_TIMEOUT_MS}. Split from the HTML render so callers can inspect
+ * the patch — and decline to render an unreasonable one — before paying for
+ * highlighting.
+ */
+export function computeEditPatch(
+  input: EditInput,
+  contextLines: number = CONTEXT_LINES,
+  options: EditDiffOptions = {},
+): PatchHunk[] | null {
+  const { file_path, old_string, new_string } = input;
+
+  if (options.ignoreWhitespace) {
+    return structuredPatchIgnoringWhitespace(
+      file_path,
+      old_string,
+      new_string,
+      contextLines,
+    );
+  }
+
+  const patch = structuredPatch(
+    file_path,
+    file_path,
+    old_string,
+    new_string,
+    "", // oldHeader
+    "", // newHeader
+    { context: contextLines, timeout: DIFF_TIMEOUT_MS },
+  );
+
+  return patch ? convertHunks(patch.hunks) : null;
+}
+
+/** Render highlighted diff HTML for an already-computed patch. */
+export async function computeEditDiffHtml(
+  input: EditInput,
+  hunks: PatchHunk[],
+): Promise<string> {
+  return buildDiffHtmlWithFallback({
+    oldString: input.old_string,
+    newString: input.new_string,
+    hunks,
+    filePath: input.file_path,
+  });
+}
+
+/**
  * Compute an edit augment for an Edit tool_use.
  *
  * @param toolUseId - The tool_use ID to associate with this augment
@@ -464,40 +643,18 @@ export async function computeEditAugment(
   contextLines: number = CONTEXT_LINES,
   options: EditDiffOptions = {},
 ): Promise<EditAugment> {
-  const { file_path, old_string, new_string } = input;
-
-  const structuredPatchResult = options.ignoreWhitespace
-    ? structuredPatchIgnoringWhitespace(
-        file_path,
-        old_string,
-        new_string,
-        contextLines,
-      )
-    : convertHunks(
-        structuredPatch(
-          file_path,
-          file_path,
-          old_string,
-          new_string,
-          "", // oldHeader
-          "", // newHeader
-          { context: contextLines },
-        ).hunks,
-      );
-
-  const diffHtml = await buildDiffHtmlWithFallback({
-    oldString: old_string,
-    newString: new_string,
-    hunks: structuredPatchResult,
-    filePath: file_path,
-  });
+  // Tool-call edits are bounded by the model's output, so an aborted diff here
+  // is pathological; render it as "no changes" rather than failing the augment.
+  const structuredPatchResult =
+    computeEditPatch(input, contextLines, options) ?? [];
+  const diffHtml = await computeEditDiffHtml(input, structuredPatchResult);
 
   return {
     toolUseId,
     type: "edit",
     structuredPatch: structuredPatchResult,
     diffHtml,
-    filePath: file_path,
+    filePath: input.file_path,
   };
 }
 
@@ -512,7 +669,7 @@ function structuredPatchIgnoringWhitespace(
   oldString: string,
   newString: string,
   contextLines: number,
-): PatchHunk[] {
+): PatchHunk[] | null {
   const oldLines = oldString.split("\n");
   const newLines = newString.split("\n");
   const stripWhitespace = (line: string) => line.replace(/\s/g, "");
@@ -523,8 +680,9 @@ function structuredPatchIgnoringWhitespace(
     newLines.map(stripWhitespace).join("\n"),
     "",
     "",
-    { context: contextLines },
+    { context: contextLines, timeout: DIFF_TIMEOUT_MS },
   );
+  if (!patch) return null;
 
   return convertHunks(patch.hunks).map((hunk) => {
     let oldIndex = hunk.oldStart - 1;

@@ -125,7 +125,6 @@ export function createGitProjectionRoutes(deps: GitProjectionDeps): Hono {
       );
       return c.json(
         await buildGitDiffResultFromBytes({
-          toolUseId: "git-compare-diff",
           path: body.path,
           oldContent,
           newContent,

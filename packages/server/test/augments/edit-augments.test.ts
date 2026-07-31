@@ -233,6 +233,62 @@ describe("computeEditAugment", () => {
       expect(augment.diffHtml).toContain('class="line line-hunk"');
     });
 
+    it("highlights only the hunk of a large file, keeping absolute coordinates", async () => {
+      const lines = Array.from(
+        { length: 12_000 },
+        (_, index) => `const value${index} = ${index};`,
+      );
+      const oldCode = lines.join("\n");
+      lines[6_000] = "const value6000 = 4242;";
+      const newCode = lines.join("\n");
+
+      const started = performance.now();
+      const augment = await computeEditAugment("tool-big", {
+        file_path: "/test/big.ts",
+        old_string: oldCode,
+        new_string: newCode,
+      });
+      const elapsedMs = performance.now() - started;
+
+      // Real file coordinates survive excerpt highlighting.
+      expect(augment.structuredPatch[0]?.newStart).toBe(5_998);
+      expect(augment.diffHtml).toContain("@@ -5998,7 +5998,7 @@");
+
+      // Both sides of the change render, syntax-highlighted, with their context.
+      expect(augment.diffHtml).toContain("4242");
+      expect(augment.diffHtml).toContain("6000");
+      expect(augment.diffHtml).toContain("value5997");
+      expect(augment.diffHtml).toContain('class="line line-deleted"');
+      expect(augment.diffHtml).toContain('class="line line-inserted"');
+
+      // Nothing outside the hunk is highlighted or shipped.
+      expect(augment.diffHtml).not.toContain("value100");
+      expect(augment.diffHtml.length).toBeLessThan(10_000);
+      expect(elapsedMs).toBeLessThan(1_000);
+    });
+
+    it("highlights around a long line the diff does not touch", async () => {
+      const minified = `const bundled = "${"x".repeat(30_000)}";`;
+      const filler = Array.from(
+        { length: 50 },
+        (_, index) => `const spacer${index} = ${index};`,
+      ).join("\n");
+      const oldCode = `${minified}\n${filler}\nconst value = 1;`;
+      const newCode = `${minified}\n${filler}\nconst value = 2;`;
+
+      const started = performance.now();
+      const augment = await computeEditAugment("tool-minified", {
+        file_path: "/test/minified.ts",
+        old_string: oldCode,
+        new_string: newCode,
+      });
+      const elapsedMs = performance.now() - started;
+
+      expect(augment.diffHtml).toContain('class="line line-inserted"');
+      expect(augment.diffHtml).not.toContain("xxxxxxxxxx");
+      expect(elapsedMs).toBeLessThan(1_000);
+    });
+
     it("adds line-context class for unchanged lines", async () => {
       // Create a diff with context lines
       const oldCode = "line1\nline2\nold\nline4\nline5";

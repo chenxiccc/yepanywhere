@@ -17,8 +17,8 @@ import {
 import { Hono } from "hono";
 import type { ProjectScanner } from "../projects/scanner.js";
 import {
+  GIT_DIFF_PREVIEW_MAX_DIFF_CHARS,
   GIT_DIFF_PREVIEW_MAX_LINE_CHARS,
-  GIT_DIFF_PREVIEW_MAX_TOTAL_BYTES,
   skippedBinaryGitDiffResult,
   skippedGitDiffResult,
 } from "../git/diffPreviewGuards.js";
@@ -484,7 +484,6 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
 
       return c.json(
         await buildGitDiffResultFromBytes({
-          toolUseId: "git-diff",
           path,
           oldContent,
           newContent,
@@ -512,19 +511,23 @@ function workingTreeDiffArgs(
   return staged ? ["diff", "--cached"] : ["diff"];
 }
 
+/**
+ * An untracked file is entirely additions, so the file *is* the diff and its
+ * size can be checked against the rendered budget without reading it.
+ */
 async function getUntrackedDiffPreviewSizeSkip(
   cwd: string,
   path: string,
 ): Promise<GitDiffPreviewSkipped | null> {
   const stats = await stat(resolve(cwd, path));
-  if (!stats.isFile() || stats.size <= GIT_DIFF_PREVIEW_MAX_TOTAL_BYTES) {
+  if (!stats.isFile() || stats.size <= GIT_DIFF_PREVIEW_MAX_DIFF_CHARS) {
     return null;
   }
 
   return {
     reason: "content-too-large",
     totalBytes: stats.size,
-    maxTotalBytes: GIT_DIFF_PREVIEW_MAX_TOTAL_BYTES,
+    maxTotalBytes: GIT_DIFF_PREVIEW_MAX_DIFF_CHARS,
     maxLineCharsLimit: GIT_DIFF_PREVIEW_MAX_LINE_CHARS,
   };
 }
