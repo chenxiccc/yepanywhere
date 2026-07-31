@@ -25,6 +25,12 @@ movement, verification evidence, and landing notes. This topic is the binding
 architecture and reusable runbook; the tactical is the worklog. When they
 disagree, this topic wins.
 
+[`docs/tactical/072-source-css-ownership-map.md`](../docs/tactical/072-source-css-ownership-map.md)
+records the ownership evidence for the file viewer, source review, source
+control, and blame regions: which classes are generated and stay global, which
+component owns each rule, every cross-owner reach-in a slice must convert, and
+the rules verified dead. It is reference data, not policy.
+
 ## Contract
 
 - A React component's new styles belong in a co-located `*.module.css`, imported
@@ -109,6 +115,22 @@ Classify each rule as component-owned, caller layout, shared primitive,
 document-level state, generated vocabulary, third-party override, or stale.
 Ambiguous ownership is a reason to pause, not a reason to use broad
 `:global(...)`.
+
+A feature's rules are not necessarily in one stylesheet, and a stylesheet's
+section headings describe where rules were written rather than what owns them.
+Source control keeps its Stage-3 browser shells in `renderers.css` and its older
+Git Status Page vocabulary in `index.css`, with six components owning rules in
+both. Slice by component and take every rule that component owns from every
+legacy file in the same change; a slice defined as a line range leaves its
+components half-owned.
+
+A class with no literal producer is not necessarily stale. Resolve dynamic
+construction by reading the expression that builds it —
+`` `git-status-${status.toLowerCase()}` `` and
+`` `source-pane-splitter-${boundary}` `` have no literal occurrence anywhere.
+Search outside `packages/client/src` as well: generated vocabulary is often
+produced in `packages/shared` or `packages/server`, which is precisely why it
+must stay global.
 
 ### 2. Move behavior before cleaning it up
 
@@ -204,6 +226,10 @@ After editing:
    css:unused` reports global classes by name and module selectors per owning
    file; it treats a computed key, a side-effect-only import, and an unimported
    module as undetermined rather than unused, and never rewrites module rules.
+   Its global-class analysis reads only `packages/client/src` and matches on
+   word boundaries, so it reports generated vocabulary from other packages as
+   unused and reports a dead `.foo` as used when `.foo-bar` exists. Confirm a
+   verdict against the actual producer before deleting.
 2. Confirm callers no longer depend on removed child selectors.
 3. Run focused component and consumer tests.
 4. Prefer roles, labels, and stable data attributes in tests; module hashes and

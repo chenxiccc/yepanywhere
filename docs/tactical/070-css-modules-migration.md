@@ -3,8 +3,9 @@
 Topic: css-architecture
 
 Status: Chapter 11 containment landed, the unused-CSS analyzer understands CSS
-Modules (A1), and `FilterDropdown` proved the shared-component composition
-patterns (B1). Lane C — the renderer/source-control ownership split — is next.
+Modules (A1), `FilterDropdown` proved the shared-component composition patterns
+(B1), and the source CSS ownership map is recorded (C0). C1 — the first
+source-control shell extraction — is next.
 
 ## Contract
 
@@ -80,9 +81,11 @@ Recommended order:
    note below.
 2. ~~**B1 — `FilterDropdown` migration.**~~ Landed; see the B1 landing note
    below.
-3. **C0/C1 — source-control ownership map and first shell extraction.** Separate
-   React-owned source-control/review UI from generated diff/highlight classes.
-4. **D1+ — opportunistic `index.css` extraction.** Migrate the next component
+3. ~~**C0 — source-control ownership map.**~~ Landed; see the C0 landing note
+   below and [`072-source-css-ownership-map.md`](072-source-css-ownership-map.md).
+4. **C1 — source-control chrome.** `RepoStatusBar`, `SourceModeTabs`, and
+   `SourceContextMenu`, converting the three reach-in shapes the map identified.
+5. **D1+ — opportunistic `index.css` extraction.** Migrate the next component
    when feature work already touches it.
 
 Land A1 and B1 as separate commits. The analyzer is tooling-only and should be
@@ -252,20 +255,58 @@ Required B1 checks:
 
 | Slice | Status | Target | Accepted outcome |
 |---|---|---|---|
-| C0 | Ready after B1 | `renderers.css` ownership map | Record React-owned shells versus generated global vocabularies for file viewer, source review, source control, and blame |
-| C1 | Not started | Source-control page shells | Move toolbar, status/header, tabs, commit/file rows, and responsive page layout into owning page/component modules |
-| C2 | Not started | Review UI shells | Move comment tray, submit modal, and React-owned review controls while preserving generated diff classes globally |
+| C0 | Done 2026-07-31 | Source CSS ownership map | Record React-owned shells versus generated global vocabularies for file viewer, source review, source control, and blame |
+| C1 | Next | Source-control chrome | `RepoStatusBar`, `SourceModeTabs`, and `SourceContextMenu` into modules; convert the reveal, placement, and shared-control reach-ins to props |
+| C1.5 | Ready, optional | Dead-rule sweep | Remove the 184 dead `index.css` lines and 4 dead `renderers.css` rules the map verified; ratchet both ceilings with no behavior change |
+| C2 | Not started | Review UI shells | `ReviewSubmitModal`, `ReviewCommentWindow`, and `ReviewCommentsPanel` while preserving generated diff classes globally |
 | C3 | Candidate | File viewer shell | Separate viewer/modal/page chrome from Shiki, plain-code, diff, and server-rendered markup |
 | C4 | Opportunistic | Individual tool renderers | Migrate React-owned renderer styles when the tool is otherwise touched |
 
-The current obvious mixed region begins around source-review commenting and
-runs through source-control and blame, roughly 2,078 lines. Size identifies the
-opportunity; DOM ownership determines the actual slice boundary.
+[`072-source-css-ownership-map.md`](072-source-css-ownership-map.md) is the map.
+Read it before starting any Lane C slice: it lists the generated vocabulary that
+must stay global, the owner of every rule in the region, the complete set of
+cross-owner reach-ins a slice must convert, and the dead rules already verified.
 
 Generated classes such as highlighted diff lines, Shiki token spans, streamed
 markdown, and fixed-font transforms may remain global. React-created headers,
 buttons, tabs, rows, trays, and responsive shells should not remain global
 merely because they surround generated content.
+
+#### C0 landing note (Landed 2026-07-31)
+
+- **Moved:** nothing. Read-only slice; no stylesheet, component, or test
+  changed.
+- **Corrected the campaign's premise:** the mixed region is not 2,078 lines in
+  one file. Source control's CSS is split across two legacy stylesheets —
+  `renderers.css` 6524–7834 holds the Stage-3 browser shells, `index.css`
+  19759–20557 holds the older Git Status Page vocabulary. Six components own
+  rules in both. Slicing by line range would leave them half-owned, so Lane C
+  slices are now defined by component and take both files in one change. Mapped
+  total across file viewer, source review, source control, and blame: 3,954
+  lines.
+- **Reach-ins enumerated:** 17 cross-owner descendant selectors, reducible to
+  three shapes — hover/focus reveal (four rules, one need, fixed by
+  `SourceContextMenu` owning the reveal), layout placement (fixed by a
+  `className` pass-through), and restyling a shared control (fixed by a named
+  variant). Same three-way classification `FilterDropdown` established in B1.
+- **Dead rules verified:** 184 lines across 33 `index.css` rules — the
+  pre-Stage-3 working-tree UI replaced by `WorkingTreeBrowser`/`SourceFileRow` —
+  plus 4 rules in `renderers.css`. Verified against dynamic construction and the
+  non-client packages, not just literal search. C1.5 exists to bank these.
+- **Rejected as dead on first pass, then cleared:** `git-status-m/a/d/r/u/t/?`,
+  `git-status-action-{success,warning}`, `source-pane-splitter-{revisions,files}`,
+  and `worktree-file-state-*` are all built from a variable. A literal search
+  finds no producer for any of them.
+- **Two analyzer defects found:** `pnpm css:unused` searches only
+  `packages/client/src`, so the 36 ANSI classes produced by
+  `shared/src/ansi-renderer.ts` and `file-link` from
+  `shared/src/filePathDetection.ts` are reported unused — 37 of the 44
+  `renderers.css` entries in the current report are this one bug. Separately,
+  bare-word matching reports `.file-link` and `.commit-jump` as used because the
+  word appears inside `file-link-button` and `commit-jump-btn`. Neither blocks
+  C1, but the report is not safe to act on as a standalone sweep until the scope
+  is widened.
+- **Follow-up:** C1 is unblocked and scoped. A2 should absorb the scope fix.
 
 ### Lane D — opportunistic legacy extraction
 
