@@ -5,14 +5,17 @@
 Concept note. This records the product and architecture direction for a native
 mobile companion app. It is not yet an implementation plan.
 
+The Android notification path is specified separately in
+[`topics/android-fcm-push.md`](../../topics/android-fcm-push.md).
+
 ## Motivation
 
 Yep Anywhere already supports browser push notifications through Web Push/VAPID,
 but mobile browser delivery can be delayed when the device is locked, idle, or in
 a pocket. For time-sensitive agent events such as pending input or task
 completion, the desired user experience is closer to a native messaging app:
-install, pair, grant notification permission, and receive reliable alerts without
-thinking about browser power-management behavior.
+install, authenticate to a YA server, grant notification permission, and receive
+reliable alerts without thinking about browser power-management behavior.
 
 The companion app should also provide a small mobile surface for checking agent
 activity across one or more YA servers without reimplementing the full web UI.
@@ -24,10 +27,13 @@ push infrastructure.
 
 1. Install the YA desktop/server app.
 2. Install the YA mobile app.
-3. Click "Pair mobile device" on desktop.
-4. Scan a QR code or open a pairing link on the phone.
+3. Add a YA server and log in with its existing SRP username/password flow.
+4. Enable native notifications for that authenticated server.
 5. Grant notification permission.
 6. Receive native mobile notifications and see a minimal activity dashboard.
+
+An optional future QR or deep-link flow may make the same SRP device login
+easier, but it is not required for the default path.
 
 Source builds and `adb install` should remain possible for advanced users, but
 they are not the product-defining path.
@@ -38,7 +44,7 @@ The app is a lightweight native companion, not a replacement YA client.
 
 Core surfaces:
 
-- Pairing and device status.
+- Authenticated server profiles and notification status.
 - Native notifications for pending input, task completion, halted sessions, and
   similar user-visible events.
 - A minimal inbox/activity dashboard.
@@ -66,11 +72,11 @@ For the published app, YA should own one mobile app identity and one hosted push
 path. The normal model is not "each relay owns an FCM project". It is:
 
 - The published Android app belongs to the YA Firebase project.
-- The app obtains an FCM registration token.
-- The app pairs with a YA server and registers its push route with a YA-hosted
-  push broker.
-- A YA server sends a small push intent to the broker when a paired device should
-  be notified.
+- The app maintains an FCM delivery registration with a YA-hosted push broker.
+- After SRP login, the app creates a device push subscription and gives its
+  credentials to the trusted YA server over the encrypted connection.
+- A YA server sends a small push intent to the broker when a subscribed device
+  should be notified.
 - The broker sends a high-priority FCM message to the Android device.
 - The app displays a notification or wakes briefly and fetches details from the
   paired YA server.
@@ -80,27 +86,29 @@ deployment if that is simpler operationally. Conceptually, it should remain a
 separate responsibility from the relay: the relay is encrypted transport, while
 the broker is a token registry and notification dispatcher.
 
-Payloads should be generic by default. Rich notification text can be added later
-only if it is encrypted to a mobile-device key or otherwise fits YA's privacy
-model.
+Payloads should be generic by default. A user may explicitly opt into bounded
+notification text passing in plaintext through the YA push broker and Google
+FCM. End-to-end-encrypted rich notification bodies remain possible future work,
+not a first-release requirement.
 
-## Pairing Model
+## Server Login And Push Enrollment
 
-Pairing should establish a durable relationship between one mobile app install
-and one YA server identity.
+The existing SRP login is the default way to establish a trusted relationship
+between one mobile app installation and one YA server identity. Native push
+enrollment follows that authenticated login rather than introducing another
+required pairing protocol.
 
-Likely pairing data:
+Likely relationship data:
 
 - Server identity and display name.
 - Relay or direct connection route.
 - Mobile device id and display name.
-- Broker registration id.
-- Mobile app public key for encrypted notification payloads or event handoff.
+- Broker device push subscription id and send secret.
 - Revocation metadata so a server can forget a phone and a phone can forget a
   server.
 
-The pairing flow should be driven by QR code or deep link. Manual entry can
-exist, but it should not be the common path.
+An optional QR code or deep link may later bootstrap the same authenticated
+device login. Manual SRP login remains supported and is the initial default.
 
 ## Multi-Server Inbox
 
@@ -189,16 +197,16 @@ Default broker-visible data should be limited to routing and delivery metadata:
 - Push intent type.
 - Timing and delivery attempts.
 
-The phone should fetch sensitive details from the paired YA server over the
-normal authenticated/encrypted path. If rich notification content is needed
-while the app is not connected, encrypt that content for the paired mobile
-device rather than making the broker trusted with plaintext.
+The phone should fetch sensitive details from the authenticated YA server over the
+normal authenticated/encrypted path in generic mode. In descriptive mode, the
+user explicitly accepts that bounded notification text is processed in
+plaintext by the YA push broker and Google FCM.
 
 Revocation must be first-class:
 
 - Server can remove a mobile device.
 - Mobile app can forget a server.
-- Broker tokens can be invalidated or rotated.
+- Device push subscriptions can be revoked or replaced.
 - Lost phones should be removable from the desktop/server UI.
 
 ## Open Questions
@@ -211,6 +219,8 @@ Revocation must be first-class:
   without pulling in the full web app session model?
 - Should notification acknowledgement be recorded by the app, the server, the
   broker, or all three?
+- What concrete FCM registration refresh and invalidation behavior is required
+  after testing the pinned SDK against a working broker?
 - How much local page-open/event handoff is worth building before there is a
   concrete use case?
 - What is the minimum source-build story that is acceptable without making it

@@ -214,3 +214,6 @@
 - desktop-v0 - Windows-first self-contained Tauri release with an atomic
   private runtime/server resource, advisory external providers, reload-safe
   loopback bootstrap, and owned process lifecycle.
+- android-fcm-push - Native Android device push subscriptions through a
+  hosted FCM broker, with SRP-first enrollment, generic/descriptive privacy
+  modes, and registration-lifecycle details deferred to implementation.

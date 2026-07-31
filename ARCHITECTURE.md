@@ -96,6 +96,10 @@ section below for what would have to change at higher fan-out.
   consumes through the streaming path.
 - [`docs/project/relay-design.md`](docs/project/relay-design.md) — the
   end-to-end-encrypted relay; the "dumb pipe" contract.
+- [`topics/android-fcm-push.md`](topics/android-fcm-push.md) — approved
+  direction for native Android notification subscriptions, the hosted FCM push
+  broker, privacy modes, and deliberately deferred registration-lifecycle
+  details.
 
 ## Bespoke vs. standard — and what to learn from it
 
