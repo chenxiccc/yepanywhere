@@ -178,7 +178,9 @@ export function findFiles(dir: string, extensions: string[]): string[] {
   return results;
 }
 
-/** Scan package source roots without pulling compiled assets back in. */
+const PACKAGE_ANALYSIS_ROOTS = ["src", "e2e"];
+
+/** Scan authored package roots without pulling compiled assets back in. */
 export function findSourceFiles(dir: string, extensions: string[]): string[] {
   if (path.basename(path.resolve(dir)) !== "packages") {
     return findFiles(dir, extensions);
@@ -187,9 +189,11 @@ export function findSourceFiles(dir: string, extensions: string[]): string[] {
   const results: string[] = [];
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
-    const sourceRoot = path.join(dir, entry.name, "src");
-    if (fs.existsSync(sourceRoot)) {
-      results.push(...findFiles(sourceRoot, extensions));
+    for (const rootName of PACKAGE_ANALYSIS_ROOTS) {
+      const sourceRoot = path.join(dir, entry.name, rootName);
+      if (fs.existsSync(sourceRoot)) {
+        results.push(...findFiles(sourceRoot, extensions));
+      }
     }
   }
   return results;

@@ -108,10 +108,11 @@ pnpm css:inventory
 pnpm css:inventory -- --owner <component-or-path>
 ```
 
-The inventory parses legacy CSS with a CSS parser and package source with the
-TypeScript parser. It distinguishes exact string-literal callsites, dynamic
-template prefixes, test references, non-client/generated producers, and React
-owners. For each likely owner it reports:
+The inventory parses legacy CSS with a CSS parser and package source roots plus
+Playwright suites with the TypeScript parser. It distinguishes exact
+string-literal callsites, dynamic template prefixes, test references,
+non-client/generated producers, and React owners. For each likely owner it
+reports:
 
 - **owned lines** — complete CSS rule spans attributed to that owner;
 - **span and coverage** — how concentrated those rules are between the first

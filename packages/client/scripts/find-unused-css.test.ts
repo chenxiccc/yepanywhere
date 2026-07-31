@@ -14,6 +14,7 @@ import {
   extractBindingUsage,
   extractComposes,
   extractModuleImports,
+  findSourceFiles,
   parseArgs,
   splitGlobalReferences,
 } from "../../../scripts/find-unused-css.ts";
@@ -153,6 +154,21 @@ describe("module selector analysis", () => {
 describe("parsing helpers", () => {
   it("scans every package for generated vocabulary by default", () => {
     expect(parseArgs([]).srcDir).toBe("packages");
+  });
+
+  it("scans package Playwright roots with package source", () => {
+    const packageRoot = path.join(fixtureDir, "../css-package-roots");
+    const files = findSourceFiles(path.join(packageRoot, "packages"), [
+      ".tsx",
+      ".ts",
+    ]).map((file) =>
+      path.relative(packageRoot, file).split(path.sep).join("/"),
+    );
+
+    expect(files).toEqual([
+      "packages/client/src/Card.tsx",
+      "packages/client/e2e/Card.spec.ts",
+    ]);
   });
 
   it("separates :global(...) references from module-scoped selectors", () => {

@@ -41,4 +41,22 @@ describe("CSS migration inventory", () => {
     expect(widget?.unresolvedRules).toHaveLength(1);
     expect(widget?.coverage).toBeGreaterThan(0.5);
   });
+
+  it("reports selector contracts from package Playwright roots", () => {
+    const packageRoot = path.join(fixtureDir, "../css-package-roots");
+    const result = buildInventory({
+      cssDir: packageRoot,
+      srcDir: path.join(packageRoot, "packages"),
+      ownerDir: path.join(packageRoot, "packages/client/src"),
+    });
+    const card = result.owners.find((owner) =>
+      owner.owner.endsWith("packages/client/src/Card.tsx"),
+    );
+
+    expect(
+      card?.testFiles.some((file) =>
+        file.endsWith("packages/client/e2e/Card.spec.ts"),
+      ),
+    ).toBe(true);
+  });
 });
