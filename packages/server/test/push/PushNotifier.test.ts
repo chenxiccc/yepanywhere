@@ -127,7 +127,9 @@ describe("PushNotifier", () => {
         expect(mockPushService.sendToAll).toHaveBeenCalled();
       });
 
-      const payload = vi.mocked(mockPushService.sendToAll).mock.calls[0][0];
+      const sendCall = vi.mocked(mockPushService.sendToAll).mock.calls[0];
+      expect(sendCall).toHaveLength(1);
+      const payload = sendCall[0];
       expect(payload.type).toBe("pending-input");
       expect(payload.sessionId).toBe("session-1");
       expect(payload.projectId).toBe(testProjectId);
@@ -823,111 +825,6 @@ describe("PushNotifier", () => {
       });
 
       consoleSpy.mockRestore();
-    });
-  });
-
-  describe("connected browser filtering", () => {
-    it("should exclude connected browser profiles from push", async () => {
-      const mockProcess = {
-        state: {
-          type: "waiting-input",
-          request: {
-            id: "req-1",
-            sessionId: "session-1",
-            type: "tool-approval",
-            prompt: "Allow Edit?",
-            toolName: "Edit",
-            timestamp: new Date().toISOString(),
-          } as InputRequest,
-        } as ProcessState,
-      };
-
-      vi.mocked(mockSupervisor.getProcessForSession).mockReturnValue(
-        mockProcess as unknown as ReturnType<
-          Supervisor["getProcessForSession"]
-        >,
-      );
-
-      // Mock connected browsers service
-      const mockConnectedBrowsers = {
-        getConnectedBrowserProfileIds: vi.fn(() => ["connected-profile-1"]),
-      };
-
-      new PushNotifier({
-        eventBus: mockEventBus,
-        pushService: mockPushService,
-        supervisor: mockSupervisor,
-        connectedBrowsers: mockConnectedBrowsers as unknown as Parameters<
-          typeof PushNotifier
-        >[0]["connectedBrowsers"],
-      });
-
-      const event: ProcessStateEvent = {
-        type: "process-state-changed",
-        sessionId: "session-1",
-        projectId: testProjectId,
-        activity: "waiting-input",
-        timestamp: new Date().toISOString(),
-      };
-
-      eventHandler?.(event);
-
-      await vi.waitFor(() => {
-        expect(mockPushService.sendToAll).toHaveBeenCalled();
-      });
-
-      // Verify sendToAll was called with exclude option
-      const options = vi.mocked(mockPushService.sendToAll).mock.calls[0][1];
-      expect(options?.excludeBrowserProfileIds).toEqual([
-        "connected-profile-1",
-      ]);
-    });
-
-    it("should send to all when no connectedBrowsers service", async () => {
-      const mockProcess = {
-        state: {
-          type: "waiting-input",
-          request: {
-            id: "req-1",
-            sessionId: "session-1",
-            type: "tool-approval",
-            prompt: "Allow Edit?",
-            toolName: "Edit",
-            timestamp: new Date().toISOString(),
-          } as InputRequest,
-        } as ProcessState,
-      };
-
-      vi.mocked(mockSupervisor.getProcessForSession).mockReturnValue(
-        mockProcess as unknown as ReturnType<
-          Supervisor["getProcessForSession"]
-        >,
-      );
-
-      // No connectedBrowsers service provided
-      new PushNotifier({
-        eventBus: mockEventBus,
-        pushService: mockPushService,
-        supervisor: mockSupervisor,
-      });
-
-      const event: ProcessStateEvent = {
-        type: "process-state-changed",
-        sessionId: "session-1",
-        projectId: testProjectId,
-        activity: "waiting-input",
-        timestamp: new Date().toISOString(),
-      };
-
-      eventHandler?.(event);
-
-      await vi.waitFor(() => {
-        expect(mockPushService.sendToAll).toHaveBeenCalled();
-      });
-
-      // Verify sendToAll was called with empty exclude list
-      const options = vi.mocked(mockPushService.sendToAll).mock.calls[0][1];
-      expect(options?.excludeBrowserProfileIds).toEqual([]);
     });
   });
 });

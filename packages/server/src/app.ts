@@ -1151,7 +1151,6 @@ export function createApp(options: AppOptions): AppResult {
       eventBus: options.eventBus,
       pushService: options.pushService,
       supervisor,
-      connectedBrowsers: options.connectedBrowsers,
     });
   }
 
@@ -1162,7 +1161,6 @@ export function createApp(options: AppOptions): AppResult {
       supervisor,
       projectQueueService: options.projectQueueService,
       externalTracker,
-      connectedBrowsers: options.connectedBrowsers,
     });
   }
 

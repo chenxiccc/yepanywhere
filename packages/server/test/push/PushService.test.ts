@@ -77,11 +77,19 @@ describe("PushService", () => {
     it("should handle corrupted subscription file gracefully", async () => {
       const filePath = path.join(tempDir, "push-subscriptions.json");
       await fs.writeFile(filePath, "not valid json");
+      const consoleSpy = vi
+        .spyOn(console, "warn")
+        .mockImplementation(() => {});
 
       const newService = new PushService({ dataDir: tempDir });
       await newService.initialize();
 
       expect(newService.getSubscriptionCount()).toBe(0);
+      expect(consoleSpy).toHaveBeenCalledWith(
+        "[PushService] Failed to load subscriptions, starting fresh:",
+        expect.any(SyntaxError),
+      );
+      consoleSpy.mockRestore();
     });
   });
 

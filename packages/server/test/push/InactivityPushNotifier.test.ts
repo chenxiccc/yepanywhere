@@ -7,7 +7,6 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InactivityPushNotifier } from "../../src/push/InactivityPushNotifier.js";
 import type { PushService } from "../../src/push/PushService.js";
-import type { ConnectedBrowsersService } from "../../src/services/ConnectedBrowsersService.js";
 import type {
   ProjectWorkProcessSnapshot,
   ProjectWorkSupervisor,
@@ -100,17 +99,12 @@ describe("InactivityPushNotifier", () => {
     vi.restoreAllMocks();
   });
 
-  function createNotifier(
-    options: {
-      connectedBrowsers?: ConnectedBrowsersService;
-    } = {},
-  ): InactivityPushNotifier {
+  function createNotifier(): InactivityPushNotifier {
     notifier = new InactivityPushNotifier({
       eventBus,
       pushService,
       supervisor,
       projectQueueService: { listAll: () => queueItems },
-      connectedBrowsers: options.connectedBrowsers,
       debounceMs: 1,
     });
     return notifier;
@@ -238,16 +232,13 @@ describe("InactivityPushNotifier", () => {
     });
   });
 
-  it("excludes connected browser profiles from inactivity pushes", async () => {
+  it("sends inactivity pushes to the complete subscribed audience", async () => {
     vi.mocked(pushService.isNotificationTypeEnabled).mockImplementation(
       (type) => type === "projectInactive",
     );
-    const connectedBrowsers = {
-      getConnectedBrowserProfileIds: vi.fn(() => ["profile-connected"]),
-    } as unknown as ConnectedBrowsersService;
     const process = createProcess(projectId, { state: { type: "in-turn" } });
     supervisor.processes = [process];
-    createNotifier({ connectedBrowsers });
+    createNotifier();
 
     eventBus.emit({
       type: "process-state-changed",
@@ -270,8 +261,6 @@ describe("InactivityPushNotifier", () => {
     await vi.waitFor(() => {
       expect(pushService.sendToAll).toHaveBeenCalledTimes(1);
     });
-    expect(vi.mocked(pushService.sendToAll).mock.calls[0]?.[1]).toEqual({
-      excludeBrowserProfileIds: ["profile-connected"],
-    });
+    expect(vi.mocked(pushService.sendToAll).mock.calls[0]).toHaveLength(1);
   });
 });

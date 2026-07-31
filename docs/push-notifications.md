@@ -3,7 +3,8 @@
 For the cross-platform architecture, current implementation status, and known
 gaps, see [Notifications](../topics/notifications.md).
 
-Push notifications allow Yep Anywhere to alert you when a session needs attention, even when the app is in the background or your phone is locked.
+Browser notifications allow Yep Anywhere to alert a subscribed desktop or
+mobile browser when a session needs attention, even when no YA tab is open.
 
 ## Requirements
 
@@ -88,9 +89,12 @@ server {
 
 ## Testing Push Notifications
 
-1. Go to **Settings > Notifications** in Yep Anywhere
-2. Enable **Push Notifications** (you'll be prompted for permission)
-3. Click **Send Test** to verify the notification arrives
+1. Go to **Settings > Notifications** in Yep Anywhere.
+2. Under **This browser**, enable **Browser notifications**. The browser will
+   prompt for permission.
+3. Under **Devices and delivery**, click **Test** beside the subscribed
+   browser. Expand **Testing and diagnostics** for test-only display and Web
+   Push priority controls.
 
 If the test notification doesn't appear:
 

@@ -10,7 +10,6 @@
 import { basename } from "node:path";
 import type { UrlProjectId } from "@yep-anywhere/shared";
 import { decodeProjectId, getProjectName } from "../projects/paths.js";
-import type { ConnectedBrowsersService } from "../services/ConnectedBrowsersService.js";
 import type { Supervisor } from "../supervisor/Supervisor.js";
 import type { InputRequest } from "../supervisor/types.js";
 import type {
@@ -31,15 +30,12 @@ export interface PushNotifierOptions {
   eventBus: EventBus;
   pushService: PushService;
   supervisor: Supervisor;
-  /** Optional: skip push for connected browser profiles */
-  connectedBrowsers?: ConnectedBrowsersService;
 }
 
 export class PushNotifier {
   private eventBus: EventBus;
   private pushService: PushService;
   private supervisor: Supervisor;
-  private connectedBrowsers?: ConnectedBrowsersService;
   private unsubscribe: (() => void) | null = null;
   /** Track sessions we've sent notifications for (to know when to send dismiss) */
   private sessionsWithNotification = new Set<string>();
@@ -50,7 +46,6 @@ export class PushNotifier {
     this.eventBus = options.eventBus;
     this.pushService = options.pushService;
     this.supervisor = options.supervisor;
-    this.connectedBrowsers = options.connectedBrowsers;
 
     // Subscribe to EventBus for process state changes
     this.unsubscribe = this.eventBus.subscribe((event: BusEvent) => {
@@ -131,18 +126,7 @@ export class PushNotifier {
     };
 
     try {
-      // Skip push for browser profiles that are already connected
-      const connectedIds =
-        this.connectedBrowsers?.getConnectedBrowserProfileIds() ?? [];
-      if (connectedIds.length > 0) {
-        console.log(
-          `[PushNotifier] Skipping push for ${connectedIds.length} connected browser profile(s)`,
-        );
-      }
-
-      const results = await this.pushService.sendToAll(payload, {
-        excludeBrowserProfileIds: connectedIds,
-      });
+      const results = await this.pushService.sendToAll(payload);
       const successCount = results.filter((r) => r.success).length;
       if (successCount > 0) {
         console.log(
@@ -228,17 +212,7 @@ export class PushNotifier {
     };
 
     try {
-      const connectedIds =
-        this.connectedBrowsers?.getConnectedBrowserProfileIds() ?? [];
-      if (connectedIds.length > 0) {
-        console.log(
-          `[PushNotifier] Skipping push for ${connectedIds.length} connected browser profile(s)`,
-        );
-      }
-
-      const results = await this.pushService.sendToAll(payload, {
-        excludeBrowserProfileIds: connectedIds,
-      });
+      const results = await this.pushService.sendToAll(payload);
       const successCount = results.filter((r) => r.success).length;
       if (successCount > 0) {
         console.log(

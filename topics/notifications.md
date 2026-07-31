@@ -6,10 +6,8 @@
 
 Topic: notifications
 
-Status: Current-system overview and refactor direction, recorded 2026-07-31.
-The browser Web Push path is implemented but has a connected-client
-suppression gap. Native Android delivery is only partially implemented. No
-notification refactor described here has landed yet.
+Status: Browser notification baseline landed 2026-07-31. Native Android
+delivery is only partially implemented.
 
 Related:
 
@@ -53,7 +51,7 @@ decision.
 
 | System | Current state | UI must remain open? |
 | --- | --- | --- |
-| Direct browser `Notification` API | The non-mobile settings control requests permission and can send a test. No production session-event path calls it, so its current user-facing promise is misleading. | Yes |
+| Direct browser `Notification` API | No active UI or event path. A future deduplicated low-latency role remains possible. | N/A |
 | Browser Web Push/VAPID | Implemented for any supported desktop or mobile browser profile. The server owns VAPID keys and subscriptions; a push wakes the origin's service worker. | No YA tab is required |
 | Browser service worker | Receives Web Push, renders notifications, handles clicks/dismissal, and already contains focused-window/session suppression logic. It is event-driven and must not own a persistent YA secure connection. | No |
 | Native Android FCM | The credential-free broker exists and direct Firebase registration/receipt was proven on a Pixel. App/broker enrollment, YA-server subscription storage, live broker delivery, and user-visible native presentation remain unimplemented. | No WebView is required |
@@ -65,15 +63,9 @@ for standard Web Push, and YA's ordinary `sendToAll` path does not filter event
 delivery by inferred desktop/mobile device type. The current mobile-only filter
 belongs to one bulk test control, not the underlying subscription model.
 
-## Known Browser Gap
+## Browser Presentation Contract
 
-The server's current event notifier excludes browser-profile ids reported as
-connected before calling Web Push. The separate direct desktop-notification
-path is not wired to production events. Consequently, an open or stale
-background desktop connection can be excluded from Web Push without displaying
-an equivalent direct notification.
-
-The intended correction is recipient-owned presentation:
+Browser delivery uses recipient-owned presentation:
 
 - deliver eligible Web Push intents to every subscribed browser profile;
 - let the service worker inspect actual focused windows and visible sessions;
@@ -83,15 +75,21 @@ The intended correction is recipient-owned presentation:
 - use stable event identity if multiple delivery paths ever coexist, so delayed
   push cannot duplicate a low-latency direct alert.
 
-The server may still omit a delivery for disabled event types, explicit
-subscription mute/revocation, rate limits, coalescing, or another durable send
-policy. Ephemeral client connection state is not such a policy.
+The server does not exclude a subscription merely because its browser profile
+has a live YA connection. It may still omit a delivery for disabled event
+types, explicit subscription mute/revocation, rate limits, coalescing, or
+another durable send policy. Ephemeral client connection state is not such a
+policy.
+
+Test pushes are an explicit diagnostic action and always display, including
+while YA is focused. Dismiss intents close the matching session notification
+without applying presentation suppression.
 
 ## Direct Browser Notifications
 
 Raw in-page `Notification` calls are not the primary cross-platform path. The
-existing broken settings surface should be removed to establish a truthful
-baseline before deciding whether the mechanism earns a new role.
+old permission/test-only settings surface and its unused implementation have
+been removed.
 
 A later direct path may still be useful for low-latency desktop alerts while a
 live tab already has the event, or as a fallback where the Notification API is
@@ -144,18 +142,21 @@ Event selection and presentation are separate controls:
   session details. Aligning browser/native privacy controls remains future
   product work rather than an assumed current guarantee.
 
-## Near-Term Refactor Direction
+## Browser Baseline And Manual Checkpoint
 
-The next browser notification pass should:
+The settings surface now presents Web Push as browser delivery on desktop and
+mobile, organized as **This browser**, **Events from this server**, and
+**Devices and delivery**. Test-only display and transport priority controls are
+collapsed under **Testing and diagnostics**.
 
-1. remove the unwired direct Desktop Notifications surface;
-2. present Web Push as supported browser notification delivery on desktop and
-   mobile;
-3. remove connected-profile suppression from eligible Web Push delivery;
-4. keep focus/session presentation suppression in the service worker;
-5. reorganize settings around **This device**, **Events from this server**,
-   **Devices and delivery**, and collapsed diagnostics; and
-6. verify subscribed desktop behavior with no YA tab, a background tab, a
-   focused unrelated session, and the notified session already visible.
+Automated contracts cover the complete subscribed server audience and these
+recipient decisions: no focused window displays, an unfocused window displays,
+a focused window suppresses by default, the focused-window opt-in displays for
+another session, and the session already visible stays suppressed.
 
-Native FCM enrollment and presentation remain a separate subsequent slice.
+Before release, manually verify a real subscribed desktop browser with no YA
+tab, a background tab, a focused unrelated session, and the notified session
+already visible. Safari and Firefox are useful follow-up spot checks. Mobile
+sleep/delivery delay is a separate longer-running measurement.
+
+Native FCM enrollment and presentation remain the next independent slice.

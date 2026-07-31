@@ -1,7 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { BrowserNotificationToggle } from "../../components/BrowserNotificationToggle";
 import { PushNotificationToggle } from "../../components/PushNotificationToggle";
-import { useBrowserNotifications } from "../../hooks/useBrowserNotifications";
 import { useConnectedDevices } from "../../hooks/useConnectedDevices";
 import {
   type NotificationSettings,
@@ -20,6 +18,7 @@ import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
 import { HideInSettingsSearch } from "./SettingsSearchContext";
 import { SettingsSection } from "./SettingsSection";
 import { useSettingsUndoBaseline } from "./SettingsUndoContext";
+import styles from "./NotificationsSettings.module.css";
 
 /**
  * Unified device that merges subscribed device info with connection status.
@@ -263,7 +262,6 @@ export function NotificationsSettings() {
   const { t } = useI18n();
   useSettingsPaneTitle(t("settingsNotificationsTitle"));
   const { browserProfileId } = usePushNotifications();
-  const { isMobile } = useBrowserNotifications();
   const {
     devices: subscribedDevices,
     isLoading: devicesLoading,
@@ -448,152 +446,57 @@ export function NotificationsSettings() {
 
   return (
     <>
-      {/* Push notifications, with the server-side notification types they
-          gate scoped underneath: without a subscribed device the server has
-          nowhere to deliver, so the type toggles are disabled. */}
       <SettingsSection
-        title={t("notificationsPushTitle")}
-        description={t("notificationsPushDescription")}
+        title={t("notificationsThisBrowserTitle")}
+        description={t("notificationsThisBrowserDescription")}
       >
         <HideInSettingsSearch>
           <div className="settings-group">
             <PushNotificationToggle />
           </div>
         </HideInSettingsSearch>
-        <div className="settings-subsection">
-          <HideInSettingsSearch>
-            <h3>{t("notificationsServerTitle")}</h3>
-            <p className="settings-section-description">
-              {t("notificationsServerDescription")}
-            </p>
-            {serverTogglesGated && !devicesLoading && (
-              <div className="settings-info-box settings-subsection-hint">
-                <p>{t("notificationsNoSubscribedDevices")}</p>
-              </div>
-            )}
-          </HideInSettingsSearch>
-          <div className="settings-group">
-            {SERVER_NOTIFICATION_ROWS.map((row) => (
-              <SettingsItem
-                key={row.key}
-                id={row.id}
-                title={gatedTooltip}
-                label={t(row.titleKey)}
-                description={t(row.descriptionKey)}
-              >
-                <label className="toggle-switch" title={gatedTooltip}>
-                  <input
-                    type="checkbox"
-                    checked={settings?.[row.key] ?? row.defaultValue}
-                    onChange={(e) => updateSetting(row.key, e.target.checked)}
-                    disabled={settingsLoading || serverTogglesGated}
-                  />
-                  <span className="toggle-slider" />
-                </label>
-              </SettingsItem>
-            ))}
-          </div>
+      </SettingsSection>
+
+      <SettingsSection
+        title={t("notificationsEventsTitle")}
+        description={t("notificationsEventsDescription")}
+      >
+        <HideInSettingsSearch>
+          {serverTogglesGated && !devicesLoading && (
+            <div className="settings-info-box settings-subsection-hint">
+              <p>{t("notificationsNoSubscribedDevices")}</p>
+            </div>
+          )}
+        </HideInSettingsSearch>
+        <div className="settings-group">
+          {SERVER_NOTIFICATION_ROWS.map((row) => (
+            <SettingsItem
+              key={row.key}
+              id={row.id}
+              title={gatedTooltip}
+              label={t(row.titleKey)}
+              description={t(row.descriptionKey)}
+            >
+              <label className="toggle-switch" title={gatedTooltip}>
+                <input
+                  type="checkbox"
+                  checked={settings?.[row.key] ?? row.defaultValue}
+                  onChange={(e) => updateSetting(row.key, e.target.checked)}
+                  disabled={settingsLoading || serverTogglesGated}
+                />
+                <span className="toggle-slider" />
+              </label>
+            </SettingsItem>
+          ))}
         </div>
       </SettingsSection>
 
-      {/* Desktop notifications - browser Notification API (not available on mobile) */}
-      {!isMobile && (
-        <SettingsSection
-          title={t("notificationsDesktopTitle")}
-          description={t("notificationsDesktopDescription")}
-        >
-          <HideInSettingsSearch>
-            <div className="settings-group">
-              <BrowserNotificationToggle />
-            </div>
-          </HideInSettingsSearch>
-        </SettingsSection>
-      )}
-
-      {/* Unified devices list */}
       <SettingsSection
         title={t("notificationsDevicesTitle")}
         description={t("notificationsDevicesDescription")}
       >
         <HideInSettingsSearch>
           <div className="settings-group">
-            {hasSubscriptions && (
-              <div className="settings-item push-test-controls">
-                <div className="settings-item-info">
-                  <strong>{t("notificationsTestPushTitle")}</strong>
-                  <p>{t("notificationsTestPushDescription")}</p>
-                  <p
-                    className={`push-test-status ${
-                      testStatus?.kind === "error"
-                        ? "settings-error"
-                        : "settings-hint"
-                    }`}
-                    aria-live="polite"
-                  >
-                    {testStatus?.message ?? "\u00a0"}
-                  </p>
-                </div>
-                <div className="settings-item-actions">
-                  <select
-                    className="settings-select"
-                    aria-label={t("pushToggleDisplayBehavior")}
-                    value={testDisplayUrgency}
-                    onChange={(e) =>
-                      setTestDisplayUrgency(
-                        e.target.value as TestNotificationUrgency,
-                      )
-                    }
-                    disabled={isTestingMobileDevices}
-                  >
-                    <option value="normal">
-                      {t("pushToggleUrgencyNormal")}
-                    </option>
-                    <option value="persistent">
-                      {t("pushToggleUrgencyPersistent")}
-                    </option>
-                    <option value="silent">
-                      {t("pushToggleUrgencySilent")}
-                    </option>
-                  </select>
-                  <select
-                    className="settings-select"
-                    aria-label={t("pushTestDeliveryPriority")}
-                    value={testDeliveryUrgency}
-                    onChange={(e) =>
-                      setTestDeliveryUrgency(
-                        e.target.value as PushDeliveryUrgency,
-                      )
-                    }
-                    disabled={isTestingMobileDevices}
-                  >
-                    <option value="high">{t("pushDeliveryHigh")}</option>
-                    <option value="normal">{t("pushDeliveryNormal")}</option>
-                    <option value="low">{t("pushDeliveryLow")}</option>
-                    <option value="very-low">{t("pushDeliveryVeryLow")}</option>
-                  </select>
-                  <button
-                    type="button"
-                    className="settings-button"
-                    onClick={sendTestToMobileDevices}
-                    disabled={
-                      mobilePushDevices.length === 0 || isTestingMobileDevices
-                    }
-                    title={
-                      mobilePushDevices.length === 0
-                        ? t("notificationsNoMobilePushDevices")
-                        : t("notificationsSendToMobileDevices", {
-                            count: mobilePushDevices.length,
-                          })
-                    }
-                  >
-                    {t("notificationsSendToMobileDevices", {
-                      count: mobilePushDevices.length,
-                    })}
-                  </button>
-                </div>
-              </div>
-            )}
-
             {isLoading ? (
               <p className="settings-hint">
                 {t("notificationsLoadingDevices")}
@@ -681,6 +584,104 @@ export function NotificationsSettings() {
               </div>
             )}
           </div>
+
+          {hasSubscriptions && (
+            <details className={styles.diagnostics}>
+              <summary className={styles.diagnosticsSummary}>
+                <span>
+                  <strong>{t("notificationsDiagnosticsTitle")}</strong>
+                  <span>{t("notificationsDiagnosticsDescription")}</span>
+                </span>
+              </summary>
+              <div className={styles.diagnosticsBody}>
+                <div className="settings-group">
+                  <div
+                    className={`settings-item push-test-controls ${styles.testRow}`}
+                  >
+                    <div className="settings-item-info">
+                      <strong>{t("notificationsTestPushTitle")}</strong>
+                      <p>{t("notificationsTestPushDescription")}</p>
+                      <p
+                        className={`push-test-status ${
+                          testStatus?.kind === "error"
+                            ? "settings-error"
+                            : "settings-hint"
+                        }`}
+                        aria-live="polite"
+                      >
+                        {testStatus?.message ?? "\u00a0"}
+                      </p>
+                    </div>
+                    <div
+                      className={`settings-item-actions ${styles.testActions}`}
+                    >
+                      <select
+                        className="settings-select"
+                        aria-label={t("pushToggleDisplayBehavior")}
+                        value={testDisplayUrgency}
+                        onChange={(e) =>
+                          setTestDisplayUrgency(
+                            e.target.value as TestNotificationUrgency,
+                          )
+                        }
+                        disabled={isTestingMobileDevices}
+                      >
+                        <option value="normal">
+                          {t("pushToggleUrgencyNormal")}
+                        </option>
+                        <option value="persistent">
+                          {t("pushToggleUrgencyPersistent")}
+                        </option>
+                        <option value="silent">
+                          {t("pushToggleUrgencySilent")}
+                        </option>
+                      </select>
+                      <select
+                        className="settings-select"
+                        aria-label={t("pushTestDeliveryPriority")}
+                        value={testDeliveryUrgency}
+                        onChange={(e) =>
+                          setTestDeliveryUrgency(
+                            e.target.value as PushDeliveryUrgency,
+                          )
+                        }
+                        disabled={isTestingMobileDevices}
+                      >
+                        <option value="high">{t("pushDeliveryHigh")}</option>
+                        <option value="normal">
+                          {t("pushDeliveryNormal")}
+                        </option>
+                        <option value="low">{t("pushDeliveryLow")}</option>
+                        <option value="very-low">
+                          {t("pushDeliveryVeryLow")}
+                        </option>
+                      </select>
+                      <button
+                        type="button"
+                        className="settings-button"
+                        onClick={sendTestToMobileDevices}
+                        disabled={
+                          mobilePushDevices.length === 0 ||
+                          isTestingMobileDevices
+                        }
+                        title={
+                          mobilePushDevices.length === 0
+                            ? t("notificationsNoMobilePushDevices")
+                            : t("notificationsSendToMobileDevices", {
+                                count: mobilePushDevices.length,
+                              })
+                        }
+                      >
+                        {t("notificationsSendToMobileDevices", {
+                          count: mobilePushDevices.length,
+                        })}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </details>
+          )}
         </HideInSettingsSearch>
       </SettingsSection>
     </>

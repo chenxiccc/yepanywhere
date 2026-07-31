@@ -18,7 +18,7 @@
 // Version constant for controlled updates
 // Increment this when making intentional SW changes
 // Browsers reinstall SW only when file content changes
-const SW_VERSION = "1.0.6";
+const SW_VERSION = "1.0.7";
 void SW_VERSION;
 const FRONTEND_RELOAD_QUERY_PARAM = "__ya_reload";
 
@@ -31,6 +31,21 @@ function assetUrl(path) {
 const settings = {
   notifyInApp: false, // When true, notify even when app is focused (if session not viewed)
 };
+
+/**
+ * Browser connection presence is not a presentation signal. Only a focused
+ * YA window can suppress an intent, and the local opt-in may still display it
+ * when that focused window is not showing the affected session.
+ */
+function shouldPresentNotification({
+  hasFocusedClient,
+  notifyInApp,
+  isSessionOpen,
+}) {
+  if (!hasFocusedClient) return true;
+  if (!notifyInApp) return false;
+  return !isSessionOpen;
+}
 
 // ============ Debug Logging ============
 // Logs are stored in IndexedDB for retrieval via main thread
@@ -296,29 +311,26 @@ async function handlePush(data) {
     return self.registration.showNotification("Yep Anywhere", options);
   }
 
-  // Determine if we should suppress notification
-  if (hasFocusedClient) {
-    if (settings.notifyInApp) {
-      // Check if any focused client is viewing THIS session
-      const sessionId = data.sessionId;
-      const isSessionOpen =
-        sessionId &&
-        focusedClients.some((client) => {
-          return client.url?.includes(`/sessions/${sessionId}`);
-        });
-
-      if (isSessionOpen) {
-        console.log(
-          "[SW] Session is open in focused window, skipping notification",
-        );
-        return;
-      }
-      // Session not open - continue to show notification
-    } else {
-      // notifyInApp disabled - skip if any window focused
-      console.log("[SW] App is focused, skipping notification");
-      return;
-    }
+  const sessionId = data.sessionId;
+  const isSessionOpen = Boolean(
+    sessionId &&
+      focusedClients.some((client) =>
+        client.url?.includes(`/sessions/${sessionId}`),
+      ),
+  );
+  if (
+    !shouldPresentNotification({
+      hasFocusedClient,
+      notifyInApp: settings.notifyInApp,
+      isSessionOpen,
+    })
+  ) {
+    console.log(
+      isSessionOpen
+        ? "[SW] Session is open in focused window, skipping notification"
+        : "[SW] App is focused, skipping notification",
+    );
+    return;
   }
 
   // Handle different notification types
@@ -474,7 +486,8 @@ async function openProject(projectId) {
     projectId,
     matchClient: (client) =>
       isProjectsPageUrl(client.url) ||
-      (projectId && client.url.includes(`project=${encodeURIComponent(projectId)}`)),
+      (projectId &&
+        client.url.includes(`project=${encodeURIComponent(projectId)}`)),
   });
 }
 

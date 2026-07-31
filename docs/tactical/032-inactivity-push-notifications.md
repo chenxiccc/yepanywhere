@@ -39,8 +39,9 @@ edges:
 1. A project has become inactive.
 2. YA has become inactive globally.
 
-This is push-only for the first slice. Desktop/browser notifications have
-different UX and suppression behavior and should be investigated separately.
+This is Web Push-only for the first slice. Web Push reaches subscribed desktop
+and mobile browsers; the separate raw in-page desktop notification mechanism
+was never part of this delivery path and has since been removed.
 
 Relevant standing contracts:
 
@@ -70,7 +71,8 @@ Relevant standing contracts:
 - Use the same Web Push delivery urgency as existing session notifications.
 - Coalesce project and global notifications so one quiet boundary does not send
   both "Project inactive" and "YA inactive" to the same device.
-- Do not mirror this into desktop/browser notifications in this slice.
+- Do not add a separate raw in-page notification path in this slice. The shared
+  Web Push path already reaches desktop and mobile browser subscriptions.
 
 ## Current Bearings
 
@@ -339,7 +341,8 @@ server-side toggles. Add the new fields there when implementing.
 - [x] Add service-worker rendering and click handling for the new payloads.
 - [x] Add an event-driven inactivity notifier service with one-shot dirty
       rechecks and clean disposal.
-- [x] Reuse connected-browser-profile suppression from current push sends.
+- [x] Send to the complete subscribed audience and leave focus/session
+      suppression to the receiving service worker.
 - [x] Coalesce project and YA inactive notifications in the same debounce
       batch.
 - [x] Mount the service from `app.ts` near `PushNotifier`.
