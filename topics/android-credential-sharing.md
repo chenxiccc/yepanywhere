@@ -55,6 +55,8 @@ For each website release:
 
 1. Confirm the URL returns HTTP 200, `Content-Type: application/json`, and no
    redirect.
+   The deployment artifact must copy hidden static directories; a wildcard
+   such as `site/dist/*` omits `.well-known`.
 2. Check both credential-sharing statements through the Digital Asset Links
    API or validator.
 3. Verify the APK's signing certificate matches the published fingerprint.

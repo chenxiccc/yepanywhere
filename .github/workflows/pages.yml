@@ -54,7 +54,7 @@ jobs:
       - name: Prepare deployment directory
         run: |
           mkdir -p deploy
-          cp -r site/dist/* deploy/
+          cp -r site/dist/. deploy/
           cp -r packages/client/dist-remote deploy/remote
           # GitHub Pages needs index.html to serve the /remote/ directory
           cp deploy/remote/remote.html deploy/remote/index.html
