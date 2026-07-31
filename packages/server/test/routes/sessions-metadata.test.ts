@@ -252,6 +252,7 @@ describe("Sessions metadata route", () => {
         getProcessForSession: vi.fn(() => ({
           isTerminated: false,
           setPermissionMode,
+          noteInputIntent: vi.fn(),
           primeSupportedCommandsForMessage,
           deferMessage,
           waitForPatientQueuePersistenceIdle,
@@ -321,6 +322,50 @@ describe("Sessions metadata route", () => {
     });
   });
 
+  it("records input intent before deferred slash-command preparation awaits", async () => {
+    const noteInputIntent = vi.fn();
+    let resolvePrime!: () => void;
+    const primeSupportedCommandsForMessage = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolvePrime = resolve;
+        }),
+    );
+    const deferMessage = vi.fn(() => ({ success: true, deferred: true }));
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => ({
+          isTerminated: false,
+          noteInputIntent,
+          primeSupportedCommandsForMessage,
+          deferMessage,
+          waitForPatientQueuePersistenceIdle: vi.fn(async () => {}),
+          getDeferredQueueSummary: vi.fn(() => []),
+        })),
+      } as unknown as SessionsDeps["supervisor"],
+    });
+
+    const request = routes.request("/sessions/sess-1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "queued text", deferred: true }),
+    });
+
+    // Intent must be recorded synchronously, while the prime is still pending,
+    // so an in-flight idle-threshold compaction check yields to this turn
+    // rather than racing ahead during preparation.
+    await vi.waitFor(() => {
+      expect(primeSupportedCommandsForMessage).toHaveBeenCalledOnce();
+    });
+    expect(noteInputIntent).toHaveBeenCalledOnce();
+    expect(deferMessage).not.toHaveBeenCalled();
+
+    resolvePrime();
+    const response = await request;
+    expect(response.status).toBe(200);
+    expect(deferMessage).toHaveBeenCalledOnce();
+  });
+
   it("reports immediate promotion when returned by the process", async () => {
     const primeSupportedCommandsForMessage = vi.fn(async () => {});
     const deferMessage = vi.fn(() => ({
@@ -336,6 +381,7 @@ describe("Sessions metadata route", () => {
       supervisor: {
         getProcessForSession: vi.fn(() => ({
           isTerminated: false,
+          noteInputIntent: vi.fn(),
           primeSupportedCommandsForMessage,
           deferMessage,
           waitForPatientQueuePersistenceIdle,
@@ -610,6 +656,7 @@ describe("Sessions metadata route", () => {
           modeVersion: 0,
           recapAfterSeconds: 300,
           setPermissionMode: vi.fn(),
+          noteInputIntent: vi.fn(),
           primeSupportedCommandsForMessage: vi.fn(async () => {}),
           deferMessage,
           waitForPatientQueuePersistenceIdle: vi.fn(async () => {}),
@@ -728,6 +775,7 @@ describe("Sessions metadata route", () => {
           modeVersion: 0,
           recapAfterSeconds: 300,
           setPermissionMode: vi.fn(),
+          noteInputIntent: vi.fn(),
           primeSupportedCommandsForMessage: vi.fn(async () => {}),
           deferMessage,
           waitForPatientQueuePersistenceIdle: vi.fn(async () => {}),
@@ -793,6 +841,7 @@ describe("Sessions metadata route", () => {
           modeVersion: 0,
           recapAfterSeconds: 300,
           setPermissionMode: vi.fn(),
+          noteInputIntent: vi.fn(),
           primeSupportedCommandsForMessage: vi.fn(async () => {}),
           deferMessage,
           steerPatientDeferredMessagesThrough,
@@ -899,6 +948,7 @@ describe("Sessions metadata route", () => {
           modeVersion: 0,
           recapAfterSeconds: 300,
           setPermissionMode: vi.fn(),
+          noteInputIntent: vi.fn(),
           primeSupportedCommandsForMessage,
           deferMessage,
           waitForPatientQueuePersistenceIdle,

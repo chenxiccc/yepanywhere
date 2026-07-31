@@ -1165,14 +1165,20 @@ export class Supervisor {
   private async queueProcessMessage(
     process: Process,
     message: UserMessage,
-    options?: { allowSteer?: boolean },
+    options?: { allowSteer?: boolean; skipInputIntent?: boolean },
   ): Promise<ReturnType<Process["queueMessage"]>> {
     // Record delivery intent before slash-command discovery or any other
     // awaited preparation. Speculative idle work must yield as soon as input
-    // arrives, even while the process still reports `idle`.
-    process.noteInputIntent();
+    // arrives, even while the process still reports `idle`. Callers that
+    // already noted intent at an earlier ingress boundary pass
+    // `skipInputIntent` so a single accepted turn increments the version once.
+    if (!options?.skipInputIntent) {
+      process.noteInputIntent();
+    }
     await process.primeSupportedCommandsForMessage(message);
-    return process.queueMessage(message, options);
+    return process.queueMessage(message, {
+      allowSteer: options?.allowSteer,
+    });
   }
 
   private watchResumeCompaction(
@@ -2953,6 +2959,14 @@ export class Supervisor {
       return { success: false, error: "Process terminated" };
     }
 
+    // Record delivery intent at the ingress boundary, before the dynamic
+    // thinking/effort/service-tier updates below can await. An idle-threshold
+    // compaction check that is mid-flight must observe that a turn has arrived
+    // and yield, even while the process still reports `idle` during those
+    // awaits. queueProcessMessage below is told not to re-note (see
+    // `skipInputIntent`) so one accepted turn bumps the version exactly once.
+    process.noteInputIntent();
+
     const isActiveSteeringMessage =
       message.metadata?.deliveryIntent === "steer" &&
       process.state.type === "in-turn";
@@ -3155,7 +3169,9 @@ export class Supervisor {
         requestedCompactSettings.forceYaOrchestratedCompaction,
     });
 
-    const result = await this.queueProcessMessage(process, message);
+    const result = await this.queueProcessMessage(process, message, {
+      skipInputIntent: true,
+    });
     if (result.success) {
       return { success: true, process, restarted: false };
     }

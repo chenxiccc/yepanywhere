@@ -595,6 +595,155 @@ describe("Supervisor", () => {
       await supervisorWithProvider.abortProcess(started.id);
     });
 
+    it("lets input beat speculative compaction across a dynamic effort update", async () => {
+      const delivered: string[] = [];
+      const runProviderCommand = vi.fn(async () => ({
+        handled: true,
+        error: "compaction should not start",
+      }));
+      let resolveSummary!: (summary: SessionSummary) => void;
+      const summary = new Promise<SessionSummary>((resolve) => {
+        resolveSummary = resolve;
+      });
+      // The compact command resolves immediately, so a would-be speculative
+      // compaction reaches runProviderCommand within the effort window — that
+      // is what a missing ingress note would let it do.
+      const supportedCommands = vi.fn(async () => [
+        { name: "compact", description: "Compact conversation" },
+      ]);
+      // A deferred effort update: queueMessageToSession awaits this before it
+      // reaches queueProcessMessage, which is exactly the window the accepted
+      // turn's intent must already cover.
+      let resolveSetEffort!: () => void;
+      const setEffort = vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveSetEffort = resolve;
+          }),
+      );
+      const startSession = vi.fn(
+        async (options: Parameters<AgentProvider["startSession"]>[0]) => {
+          const queue = new MessageQueue();
+          let aborted = false;
+
+          async function* iterator() {
+            yield {
+              type: "system" as const,
+              subtype: "init" as const,
+              session_id: options.resumeSessionId ?? "effort-race-session",
+            };
+            for await (const sdkMessage of queue) {
+              if (aborted) return;
+              const content = sdkMessage.message.content;
+              const text =
+                typeof content === "string"
+                  ? content
+                  : ((content[0] as { text?: string } | undefined)?.text ?? "");
+              delivered.push(text);
+              yield {
+                type: "assistant" as const,
+                message: { content: `reply to ${text}` },
+              };
+              yield {
+                type: "result" as const,
+                session_id: options.resumeSessionId ?? "effort-race-session",
+              };
+            }
+          }
+
+          return {
+            iterator: iterator(),
+            queue,
+            abort: () => {
+              aborted = true;
+              queue.push({ text: "__abort__" });
+            },
+            supportedCommands,
+            runProviderCommand,
+            setEffort,
+          };
+        },
+      );
+      const provider: AgentProvider = {
+        name: "codex",
+        displayName: "Codex",
+        supportsPermissionMode: true,
+        supportsThinkingToggle: true,
+        supportsSlashCommands: true,
+        supportsSteering: true,
+        supportsNativeCompactThreshold: true,
+        isInstalled: async () => true,
+        isAuthenticated: async () => true,
+        getAuthStatus: async () => ({
+          installed: true,
+          authenticated: true,
+          enabled: true,
+        }),
+        getAvailableModels: async () => [],
+        startSession,
+      };
+      const onSessionSummary = vi.fn(async () => summary);
+      const supervisorWithProvider = new Supervisor({
+        provider,
+        idleTimeoutMs: 100_000,
+        onSessionSummary,
+      });
+      const compactSettings = {
+        model: "gpt-5.6",
+        compactAtContextPercent: 50,
+        compactAtContextWindow: 200_000,
+        forceYaOrchestratedCompaction: true,
+      };
+
+      const started = await supervisorWithProvider.resumeSession(
+        "effort-race-session",
+        "/tmp/test",
+        { text: "first" },
+        undefined,
+        { ...compactSettings, effort: "low" },
+      );
+      if (!("id" in started)) {
+        throw new Error("expected process");
+      }
+      // Speculative idle compaction is now parked on the deferred summary read.
+      await vi.waitFor(() => {
+        expect(delivered).toEqual(["first"]);
+        expect(onSessionSummary).toHaveBeenCalledTimes(1);
+      });
+
+      const queued = supervisorWithProvider.queueMessageToSession(
+        "effort-race-session",
+        "/tmp/test",
+        { text: "second" },
+        undefined,
+        { ...compactSettings, effort: "high" },
+      );
+      // The queue is now awaiting the dynamic effort change, before it would
+      // otherwise record delivery intent.
+      await vi.waitFor(() => {
+        expect(setEffort).toHaveBeenCalledTimes(1);
+      });
+
+      // The parked speculative read now completes above the threshold while the
+      // effort update is still applying and the process still reports idle.
+      // Because intent was recorded at the ingress boundary (not later, in
+      // queueProcessMessage), the compaction check must observe the accepted
+      // turn and yield. Without the ingress note it would instead run
+      // runProviderCommand here, ahead of the turn.
+      resolveSummary({
+        contextUsage: { inputTokens: 150_000, percentage: 75 },
+      } as SessionSummary);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(runProviderCommand).not.toHaveBeenCalled();
+
+      // Let the effort change finish so the accepted turn is queued. The
+      // speculative compaction never started for it.
+      resolveSetEffort();
+      expect(await queued).toMatchObject({ success: true, restarted: false });
+      expect(setEffort).toHaveBeenCalledWith("high");
+      await supervisorWithProvider.abortProcess(started.id);
+    });
+
     it("applies an effort change without interrupting an active turn", async () => {
       let aborted = false;
       let completeTurn = () => {};

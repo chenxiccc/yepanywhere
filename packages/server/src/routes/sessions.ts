@@ -5373,6 +5373,10 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       if (body.mode) {
         process.setPermissionMode(body.mode);
       }
+      // Record delivery intent before slash-command preparation awaits, so an
+      // in-flight idle-threshold compaction check yields to this accepted
+      // deferred turn instead of racing ahead during the prime.
+      process.noteInputIntent();
       await process.primeSupportedCommandsForMessage(userMessage);
       const deferredResult = process.deferMessage(userMessage, {
         promoteIfReady: true,
