@@ -3,6 +3,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
   useCallback,
+  useEffect,
   useRef,
   useState,
 } from "react";
@@ -20,10 +21,32 @@ export interface ImageViewerNavigation {
   onPrevious: () => void;
 }
 
+export type ImageViewerNavigationInput = "controls" | "keyboard";
+
 const IMAGE_VIEWER_PADDING_PX = 32;
+const IMAGE_VIEWER_NAVIGATION_IDLE_MS = 1_800;
+const IMAGE_VIEWER_NAVIGATION_TOUCH_IDLE_MS = 2_600;
 const IMAGE_ZOOM_MIN = 0.1;
 const IMAGE_ZOOM_MAX = 8;
 const IMAGE_ZOOM_STEP = 1.25;
+
+function ImageViewerChevron({
+  direction,
+}: {
+  direction: "next" | "previous";
+}) {
+  return (
+    <svg
+      className="local-media-image-navigation-icon"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <path
+        d={direction === "previous" ? "m15 18-6-6 6-6" : "m9 6 6 6-6 6"}
+      />
+    </svg>
+  );
+}
 
 function clampImageScale(scale: number): number {
   return Math.min(IMAGE_ZOOM_MAX, Math.max(IMAGE_ZOOM_MIN, scale));
@@ -38,12 +61,18 @@ function pointerDistance(
 
 export function ImageViewer({
   fileName,
+  initialNavigationChrome = "all",
+  keyboardNavigationSequence = 0,
   navigation,
+  onNavigationInput,
   onClose,
   url,
 }: {
   fileName: string;
+  initialNavigationChrome?: "all" | "position";
+  keyboardNavigationSequence?: number;
   navigation?: ImageViewerNavigation;
+  onNavigationInput?: (input: ImageViewerNavigationInput) => void;
   onClose: () => void;
   url: string;
 }) {
@@ -66,9 +95,77 @@ export function ImageViewer({
     | null
   >(null);
   const suppressClickRef = useRef(false);
+  const navigationFocusWithinRef = useRef(false);
+  const navigationHideTimerRef = useRef<number | null>(null);
+  const keyboardNavigationSequenceRef = useRef(keyboardNavigationSequence);
   const [dimensions, setDimensions] = useState<ImageDimensions | null>(null);
   const [viewMode, setViewMode] = useState<"fit" | "zoom">("fit");
   const [scale, setScale] = useState(1);
+  const hasNavigation = Boolean(navigation);
+  const [navigationChrome, setNavigationChrome] = useState<
+    "all" | "hidden" | "position"
+  >(() => (hasNavigation ? initialNavigationChrome : "hidden"));
+
+  const clearNavigationHideTimer = useCallback(() => {
+    if (navigationHideTimerRef.current !== null) {
+      window.clearTimeout(navigationHideTimerRef.current);
+      navigationHideTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleNavigationChromeHide = useCallback(
+    (delay = IMAGE_VIEWER_NAVIGATION_IDLE_MS) => {
+      clearNavigationHideTimer();
+      navigationHideTimerRef.current = window.setTimeout(() => {
+        navigationHideTimerRef.current = null;
+        if (!navigationFocusWithinRef.current) {
+          setNavigationChrome("hidden");
+        }
+      }, delay);
+    },
+    [clearNavigationHideTimer],
+  );
+
+  const revealNavigationChrome = useCallback(
+    (
+      mode: "all" | "position",
+      delay = IMAGE_VIEWER_NAVIGATION_IDLE_MS,
+    ) => {
+      if (!hasNavigation) {
+        return;
+      }
+      setNavigationChrome(
+        mode === "position" && navigationFocusWithinRef.current ? "all" : mode,
+      );
+      scheduleNavigationChromeHide(delay);
+    },
+    [hasNavigation, scheduleNavigationChromeHide],
+  );
+
+  useEffect(() => {
+    if (!hasNavigation) {
+      clearNavigationHideTimer();
+      setNavigationChrome("hidden");
+      return;
+    }
+    revealNavigationChrome(initialNavigationChrome);
+    return clearNavigationHideTimer;
+  }, [
+    clearNavigationHideTimer,
+    hasNavigation,
+    initialNavigationChrome,
+    revealNavigationChrome,
+  ]);
+
+  useEffect(() => {
+    if (
+      keyboardNavigationSequenceRef.current === keyboardNavigationSequence
+    ) {
+      return;
+    }
+    keyboardNavigationSequenceRef.current = keyboardNavigationSequence;
+    revealNavigationChrome("position");
+  }, [keyboardNavigationSequence, revealNavigationChrome]);
 
   const getFitScale = useCallback(() => {
     const stage = stageRef.current;
@@ -217,7 +314,7 @@ export function ImageViewer({
     const stage = stageRef.current;
     const gesture = gestureRef.current;
     const point = points[0];
-    if (!stage || !point || gesture?.kind !== "pan" || viewMode === "fit") {
+    if (!point || gesture?.kind !== "pan") {
       return;
     }
     const dx = point.x - gesture.x;
@@ -225,16 +322,39 @@ export function ImageViewer({
     if (Math.abs(dx) + Math.abs(dy) > 4) {
       suppressClickRef.current = true;
     }
+    if (!stage || viewMode === "fit") {
+      return;
+    }
     stage.scrollLeft = gesture.scrollLeft - dx;
     stage.scrollTop = gesture.scrollTop - dy;
   };
 
-  const handlePointerEnd = (event: ReactPointerEvent<HTMLDivElement>) => {
+  const handlePointerCancel = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.pointerType !== "touch") {
       return;
     }
     pointersRef.current.delete(event.pointerId);
+    if (pointersRef.current.size === 0) {
+      suppressClickRef.current = false;
+    }
     startRemainingPointerPan();
+  };
+
+  const handlePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== "touch") {
+      return;
+    }
+    pointersRef.current.delete(event.pointerId);
+    const revealControls =
+      pointersRef.current.size === 0 && !suppressClickRef.current;
+    if (pointersRef.current.size === 0) {
+      suppressClickRef.current = false;
+    }
+    startRemainingPointerPan();
+    if (revealControls) {
+      onNavigationInput?.("controls");
+      revealNavigationChrome("all", IMAGE_VIEWER_NAVIGATION_TOUCH_IDLE_MS);
+    }
   };
 
   const handleWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
@@ -271,7 +391,9 @@ export function ImageViewer({
   const zoomLabel = `${Math.round(getCurrentScale() * 100)}%`;
 
   return (
-    <div className="local-media-image-viewer">
+    <div
+      className={`local-media-image-viewer${navigation ? " has-navigation" : ""}`}
+    >
       <div
         className="local-media-image-toolbar"
         role="toolbar"
@@ -329,30 +451,22 @@ export function ImageViewer({
           {t("modalClose")}
         </button>
       </div>
-      <div className="local-media-image-stage-shell">
+      <div
+        className="local-media-image-stage-shell"
+        onPointerMoveCapture={(event) => {
+          if (event.pointerType !== "touch") {
+            onNavigationInput?.("controls");
+            revealNavigationChrome("all");
+          }
+        }}
+      >
         <div
           ref={stageRef}
           className={`local-media-image-stage is-${viewMode}`}
-          role="button"
-          tabIndex={0}
-          aria-label={t("imageViewerCloseImage", { name: fileName })}
-          onClick={() => {
-            if (suppressClickRef.current) {
-              suppressClickRef.current = false;
-              return;
-            }
-            onClose();
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" || event.key === " ") {
-              event.preventDefault();
-              onClose();
-            }
-          }}
-          onPointerCancel={handlePointerEnd}
+          onPointerCancel={handlePointerCancel}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerEnd}
+          onPointerUp={handlePointerUp}
           onWheel={handleWheel}
         >
           <div className="local-media-image-canvas" style={canvasStyle}>
@@ -375,38 +489,64 @@ export function ImageViewer({
         </div>
         {navigation ? (
           <div
-            className="local-media-image-navigation"
+            className={`local-media-image-navigation${navigationChrome === "all" ? " is-visible" : " is-hidden"}`}
             role="group"
             aria-label={t("imageViewerGalleryNavigation")}
+            onFocusCapture={() => {
+              onNavigationInput?.("controls");
+              navigationFocusWithinRef.current = true;
+              clearNavigationHideTimer();
+              setNavigationChrome("all");
+            }}
+            onBlurCapture={(event) => {
+              if (
+                event.relatedTarget instanceof Node &&
+                event.currentTarget.contains(event.relatedTarget)
+              ) {
+                return;
+              }
+              navigationFocusWithinRef.current = false;
+              scheduleNavigationChromeHide();
+            }}
           >
             <button
               type="button"
               className="local-media-image-navigation-button is-previous"
               aria-label={t("imageViewerPrevious")}
-              onClick={navigation.onPrevious}
+              onClick={() => {
+                onNavigationInput?.("controls");
+                revealNavigationChrome("all");
+                navigation.onPrevious();
+              }}
             >
-              ‹
+              <ImageViewerChevron direction="previous" />
             </button>
-            <output
-              className="local-media-image-position"
-              aria-live="polite"
-            >
-              {t("imageViewerGalleryPosition", {
-                count: navigation.count,
-                current: navigation.current,
-              })}
-            </output>
             <button
               type="button"
               className="local-media-image-navigation-button is-next"
               aria-label={t("imageViewerNext")}
-              onClick={navigation.onNext}
+              onClick={() => {
+                onNavigationInput?.("controls");
+                revealNavigationChrome("all");
+                navigation.onNext();
+              }}
             >
-              ›
+              <ImageViewerChevron direction="next" />
             </button>
           </div>
         ) : null}
       </div>
+      {navigation ? (
+        <output
+          className={`local-media-image-position${navigationChrome === "hidden" ? " is-hidden" : " is-visible"}`}
+          aria-live="polite"
+        >
+          {t("imageViewerGalleryPosition", {
+            count: navigation.count,
+            current: navigation.current,
+          })}
+        </output>
+      ) : null}
     </div>
   );
 }

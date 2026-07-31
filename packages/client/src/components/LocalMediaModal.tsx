@@ -9,6 +9,7 @@ import {
   type ReactNode,
   type RefObject,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import { api } from "../api/client";
@@ -32,6 +33,7 @@ import {
 import {
   ImageViewer,
   type ImageViewerNavigation,
+  type ImageViewerNavigationInput,
 } from "./ImageViewer";
 import { Modal } from "./ui/Modal";
 
@@ -381,6 +383,13 @@ export function LocalMediaModal({
   const [url, setUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [keyboardNavigationSequence, setKeyboardNavigationSequence] =
+    useState(0);
+  const imageNavigationInputRef =
+    useRef<ImageViewerNavigationInput>("controls");
+  const imageNavigationRef = useRef(imageNavigation);
+  imageNavigationRef.current = imageNavigation;
+  const hasImageNavigation = Boolean(imageNavigation);
   const fileName = getFileName(path);
   const openImageInNewTabLabel = t("fileViewerOpenImageNewTab" as never);
 
@@ -413,7 +422,7 @@ export function LocalMediaModal({
   }, [mediaSource, path, transport]);
 
   useEffect(() => {
-    if (mediaType !== "image" || !imageNavigation) {
+    if (mediaType !== "image" || !hasImageNavigation) {
       return;
     }
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -423,16 +432,20 @@ export function LocalMediaModal({
       if (event.key === "ArrowLeft") {
         event.preventDefault();
         event.stopPropagation();
-        imageNavigation.onPrevious();
+        imageNavigationInputRef.current = "keyboard";
+        setKeyboardNavigationSequence((value) => value + 1);
+        imageNavigationRef.current?.onPrevious();
       } else if (event.key === "ArrowRight") {
         event.preventDefault();
         event.stopPropagation();
-        imageNavigation.onNext();
+        imageNavigationInputRef.current = "keyboard";
+        setKeyboardNavigationSequence((value) => value + 1);
+        imageNavigationRef.current?.onNext();
       }
     };
     document.addEventListener("keydown", handleKeyDown, true);
     return () => document.removeEventListener("keydown", handleKeyDown, true);
-  }, [imageNavigation, mediaType]);
+  }, [hasImageNavigation, mediaType]);
 
   return (
     <Modal
@@ -456,7 +469,14 @@ export function LocalMediaModal({
       {url && mediaType === "image" ? (
         <ImageViewer
           fileName={fileName}
+          initialNavigationChrome={
+            imageNavigationInputRef.current === "keyboard" ? "position" : "all"
+          }
+          keyboardNavigationSequence={keyboardNavigationSequence}
           navigation={imageNavigation}
+          onNavigationInput={(input) => {
+            imageNavigationInputRef.current = input;
+          }}
           onClose={onClose}
           url={url}
         />

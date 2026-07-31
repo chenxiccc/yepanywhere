@@ -214,24 +214,36 @@ Navigation between the turn text and gallery therefore remains distinct from
 full-size inspection.
 
 The shared image viewer uses the useful viewport rather than the generic modal
-preview ceiling. Selecting a thumbnail enters one maximized viewer state;
-clicking anywhere in the image stage (including outside an off-center or
-zoomed image), activating the visible **Close** control, or pressing Escape
-returns to the prior transcript/gallery state. Toolbar controls remain operable
-without dismissing the viewer. When a turn gallery supplies context, visible
-previous/next buttons and the Left/Right arrow keys move through eligible
-images in original transcript order and wrap at either end. The viewer shows
-the source-order position even when compact packing visually reorders the
-thumbnails. Fit, 1:1, and stepped zoom are explicit inspection controls within
-that one state, not further expansion levels. A 1:1 or otherwise zoomed image
-remains scrollable and pannable instead of being clipped; trackpad pinch/wheel
-zoom remains anchored near the pointer.
+preview ceiling. Selecting a thumbnail enters one maximized viewer state.
+Activating the modal **×** or visible **Close** control, or pressing Escape,
+returns to the prior transcript/gallery state. Clicking or tapping the image
+stage never dismisses the viewer. Toolbar controls remain operable without
+dismissing it. When a turn gallery supplies context, previous/next buttons and
+the Left/Right arrow keys move through eligible images in original transcript
+order and wrap at either end. The viewer shows the source-order position in
+reserved space outside the image stage, even when compact packing visually
+reorders the thumbnails.
+
+The previous/next buttons and position are transient viewer chrome. They appear
+briefly when the viewer opens. Fine-pointer movement over the image stage shows
+both, and inactivity hides them so they do not obscure the image. Keyboard
+Left/Right navigation reveals only the position; keyboard focus within the
+previous/next controls keeps the full chrome visible. On touch screens, a tap
+on the unzoomed or stationary image stage reveals the full chrome briefly
+instead of closing the viewer. Touch movement used for pan or pinch does not
+count as a tap.
+
+Fit, 1:1, and stepped zoom are explicit inspection controls within that one
+state, not further expansion levels. A 1:1 or otherwise zoomed image remains
+scrollable and pannable instead of being clipped; trackpad pinch/wheel zoom
+remains anchored near the pointer.
 
 On touch screens, the gallery row retains its horizontal swipe behavior until
 an image is selected. The selected image then owns a full-screen stage with
 two-finger pinch zoom and one-finger pan, while closing it returns to the same
-transcript/gallery position. The visible previous/next buttons remain practical
-touch targets; full-screen horizontal swipe navigation is not required.
+transcript/gallery position. The transient previous/next buttons remain
+practical touch targets; tapping the stage reveals them and full-screen
+horizontal swipe navigation is not required.
 
 The viewer header exposes the basename as a link to the fetched full-resolution
 image, and its explicit **Download** action saves those same fetched bytes under

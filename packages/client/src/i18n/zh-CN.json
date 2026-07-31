@@ -1172,7 +1172,6 @@
   "toolResultMediaUnnamed": "工具结果图片 {number}",
   "toolResultMediaUnsupportedMedia": "不支持返回的图片格式。",
   "turnImageGalleryCount": "第 {current} 张，共 {count} 张",
-  "turnImageGalleryDismiss": "关闭画廊",
   "turnImageGalleryLabel": "本轮图片画廊",
   "turnImageGalleryLoading": "正在加载图片…",
   "turnImageGalleryOpen": "打开 {label}",
