@@ -1,0 +1,282 @@
+/*
+ * Workstreams page: toolbar, create form, lane table, badges, and the
+ * neutral/error state panel.
+ *
+ * The caller-side layout composition
+ * `.main-content-constrained.workstreams-main-content .page-content-inner`
+ * stays in `styles/index.css`. It constrains the MainContent shell this page
+ * only tags with the literal `workstreams-main-content` inner class, so the
+ * relationship belongs to the layout, not to this module. The shared
+ * `page-scroll-container`, `page-content-inner`, and `loading` primitives stay
+ * global for the same reason.
+ */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.actionButton,
+.secondaryButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  min-height: 34px;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.actionButton {
+  color: var(--text-primary);
+  background: var(--bg-primary);
+}
+
+.actionButton:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.secondaryButton {
+  color: var(--text-secondary);
+  background: transparent;
+}
+
+.secondaryButton:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.actionButton:disabled,
+.secondaryButton:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.createForm {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.createField {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.createField label,
+.createPreview > span {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 650;
+}
+
+.createField input {
+  width: 100%;
+  min-height: 36px;
+  padding: 0.45rem 0.6rem;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-input, var(--border-color));
+  border-radius: var(--radius-sm);
+  font: inherit;
+}
+
+.createPreview {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.createPreview code {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-size-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.createPreview em {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  font-style: normal;
+}
+
+.createError {
+  margin: 0;
+  color: var(--error-color);
+  font-size: var(--font-size-sm);
+}
+
+.createActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.tableWrapper {
+  overflow-x: auto;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.table {
+  width: 100%;
+  min-width: 820px;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.table th,
+.table td {
+  padding: 0.75rem 0.85rem;
+  text-align: left;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.table th {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.table tbody th {
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.table tbody tr:last-child th,
+.table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.table th:nth-child(1) {
+  width: 18%;
+}
+
+.table th:nth-child(2),
+.table th:nth-child(4),
+.table th:nth-child(5),
+.table th:nth-child(6) {
+  width: 10%;
+}
+
+.table th:nth-child(3) {
+  width: 14%;
+}
+
+.table th:nth-child(7) {
+  width: 28%;
+}
+
+.laneLabel,
+.kind,
+.status,
+.path,
+.branch {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.path,
+.branch {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-size-xs);
+}
+
+.branch {
+  color: var(--text-secondary);
+}
+
+.placeholder {
+  color: var(--text-muted);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.6rem;
+  padding: 0.2rem 0.55rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.badgeRunning {
+  color: var(--success-color);
+  background: color-mix(in srgb, var(--success-color) 10%, transparent);
+  border-color: color-mix(in srgb, var(--success-color) 24%, transparent);
+}
+
+.badgePaused {
+  color: var(--warning-color);
+  background: color-mix(in srgb, var(--warning-color) 10%, transparent);
+  border-color: color-mix(in srgb, var(--warning-color) 24%, transparent);
+}
+
+.state {
+  padding: var(--space-3);
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.state h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--font-size-base);
+  line-height: 1.25;
+}
+
+.state p {
+  margin: var(--space-1) 0 0;
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+}
+
+.stateError {
+  color: var(--error-color);
+  border-color: color-mix(in srgb, var(--error-color) 35%, var(--border-color));
+  background: color-mix(in srgb, var(--error-color) 8%, var(--bg-secondary));
+}
+
+.stateError h2 {
+  color: var(--error-color);
+}
+
+@media (max-width: 700px) {
+  .table {
+    min-width: 760px;
+  }
+
+  .table th,
+  .table td {
+    padding: 0.65rem;
+  }
+}

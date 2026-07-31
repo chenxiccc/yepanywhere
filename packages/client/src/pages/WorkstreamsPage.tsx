@@ -20,6 +20,7 @@ import { useServerSettings } from "../hooks/useServerSettings";
 import { useI18n } from "../i18n";
 import { MainContent, useNavigationLayout } from "../layouts";
 import { activityBus } from "../lib/activityBus";
+import styles from "./WorkstreamsPage.module.css";
 
 type WorkstreamsLoadState =
   | { status: "idle" | "loading" }
@@ -58,7 +59,11 @@ function WorkstreamsStateMessage({
 }) {
   return (
     <div
-      className={`workstreams-state workstreams-state--${variant}`}
+      className={
+        variant === "error"
+          ? `${styles.state} ${styles.stateError}`
+          : styles.state
+      }
       role={variant === "error" ? "alert" : "status"}
     >
       <h2>{title}</h2>
@@ -302,12 +307,12 @@ export function WorkstreamsPage() {
       />
 
       <main className="page-scroll-container">
-        <div className="page-content-inner workstreams-page">
+        <div className={`page-content-inner ${styles.page}`}>
           {canShowCreate ? (
-            <div className="workstreams-toolbar">
+            <div className={styles.toolbar}>
               <button
                 type="button"
-                className="workstreams-action-button"
+                className={styles.actionButton}
                 onClick={() => {
                   setShowCreateForm(true);
                   setCreateError(null);
@@ -385,8 +390,8 @@ function WorkstreamCreateForm({
   t: ReturnType<typeof useI18n>["t"];
 }) {
   return (
-    <form className="workstreams-create-form" onSubmit={onSubmit}>
-      <div className="workstreams-create-field">
+    <form className={styles.createForm} onSubmit={onSubmit}>
+      <div className={styles.createField}>
         <label htmlFor="workstream-label-input">
           {t("workstreamsLabelLabel")}
         </label>
@@ -400,7 +405,7 @@ function WorkstreamCreateForm({
         />
       </div>
 
-      <div className="workstreams-create-preview">
+      <div className={styles.createPreview}>
         <span>{t("workstreamsDestinationLabel")}</span>
         {previewState.status === "loaded" ? (
           <code title={previewState.data.checkoutPath}>
@@ -409,24 +414,22 @@ function WorkstreamCreateForm({
         ) : previewState.status === "loading" ? (
           <em>{t("workstreamsDestinationLoading")}</em>
         ) : previewState.status === "error" ? (
-          <em className="workstreams-create-error">
-            {previewState.error.message}
-          </em>
+          <em className={styles.createError}>{previewState.error.message}</em>
         ) : (
           <em>{t("workstreamsDestinationPending")}</em>
         )}
       </div>
 
       {createError ? (
-        <p className="workstreams-create-error" role="alert">
+        <p className={styles.createError} role="alert">
           {createError}
         </p>
       ) : null}
 
-      <div className="workstreams-create-actions">
+      <div className={styles.createActions}>
         <button
           type="button"
-          className="workstreams-secondary-button"
+          className={styles.secondaryButton}
           onClick={onCancel}
           disabled={creating}
         >
@@ -434,7 +437,7 @@ function WorkstreamCreateForm({
         </button>
         <button
           type="submit"
-          className="workstreams-action-button"
+          className={styles.actionButton}
           disabled={!canSubmit}
         >
           {creating
@@ -468,11 +471,8 @@ function WorkstreamsTable({
 
   return (
     <>
-      <div className="workstreams-table-wrapper">
-        <table
-          className="workstreams-table"
-          aria-label={t("workstreamsTableLabel")}
-        >
+      <div className={styles.tableWrapper}>
+        <table className={styles.table} aria-label={t("workstreamsTableLabel")}>
           <thead>
             <tr>
               <th scope="col">{t("workstreamsColumnLane")}</th>
@@ -515,15 +515,13 @@ function WorkstreamsRow({
   return (
     <tr>
       <th scope="row">
-        <span className="workstreams-lane-label">{workstream.label}</span>
+        <span className={styles.laneLabel}>{workstream.label}</span>
       </th>
       <td>
-        <span className="workstreams-kind">
-          {kindLabel(workstream.kind, t)}
-        </span>
+        <span className={styles.kind}>{kindLabel(workstream.kind, t)}</span>
       </td>
       <td>
-        <code className="workstreams-branch">
+        <code className={styles.branch}>
           {workstream.branch ?? t("workstreamsValueNone")}
         </code>
       </td>
@@ -531,8 +529,8 @@ function WorkstreamsRow({
         <span
           className={
             workstream.queuePaused
-              ? "workstreams-badge workstreams-badge--paused"
-              : "workstreams-badge workstreams-badge--running"
+              ? `${styles.badge} ${styles.badgePaused}`
+              : `${styles.badge} ${styles.badgeRunning}`
           }
         >
           {workstream.queuePaused
@@ -541,17 +539,17 @@ function WorkstreamsRow({
         </span>
       </td>
       <td>
-        <span className="workstreams-status">
+        <span className={styles.status}>
           {statusLabel(workstream.status, t)}
         </span>
       </td>
       <td aria-label={t("workstreamsSessionsUnavailable")}>
-        <span className="workstreams-placeholder" aria-hidden="true">
+        <span className={styles.placeholder} aria-hidden="true">
           -
         </span>
       </td>
       <td>
-        <code className="workstreams-path" title={workstream.path}>
+        <code className={styles.path} title={workstream.path}>
           {workstream.path}
         </code>
       </td>
