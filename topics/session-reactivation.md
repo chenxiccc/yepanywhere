@@ -7,10 +7,10 @@
 
 Topic: session-reactivation
 
-Status: **implemented** (2026-06-17, after the kzahel merge). The message-less
-spawn primitive already existed in the supervisor; this work exposed it as a
-public `Supervisor.reactivateSession`, a `POST …/reactivate` route, and a
-client Activate button. See *As built* below.
+Status: **implemented** (2026-06-17, after the kzahel merge; lifecycle corrected
+2026-07-31). The message-less spawn primitive already existed in the
+supervisor; this work exposed it as a public `Supervisor.reactivateSession`, a
+`POST …/reactivate` route, and a client Activate button. See *As built* below.
 
 Naming: the user-facing button label is **"Activate"** (from the client's point
 of view a reaped session simply isn't active). The server primitive / this
@@ -63,6 +63,15 @@ resume:
   idle worker at capacity, else throws; otherwise calls
   `createProviderSession`/`createRealSession` with the `resumeSessionId` and no
   message.
+- **Message-less lifecycle:** both create-only factories construct the process
+  as idle before the provider emits anything. Passive provider initialization
+  does not wake it; the first accepted user/provider-work message transitions
+  it to `in-turn`. The normal idle-reaping timer starts immediately, subject to
+  the same explicit retention rules as every other idle process.
+- **Recovered patient queue:** restoring a patient entry onto a message-less
+  reactivation observes `verified-idle`, waits the entry's patience window, and
+  then promotes it. It cannot be blocked forever by a synthetic `in-turn`
+  state when no provider turn was actually submitted.
 - **`POST /api/projects/:projectId/sessions/:sessionId/reactivate`** — resolves
   provider/model/executor from the persisted YA launch record
   (`SessionMetadata.requestedModel`/`provider`, populated by `persistLaunchMetadata`),
@@ -71,8 +80,9 @@ resume:
   note becomes an Activate button (`onActivate`); `SessionPage` calls reactivate
   and flips `status` to `{ owner: "self", processId }`, after which the existing
   `processId`-keyed effect loads models and the full options replace the note.
-- Coverage: `supervisor.test.ts` asserts message-less resume + ownership +
-  idempotency.
+- Coverage: `supervisor.test.ts` asserts message-less resume, immediate idle
+  liveness, ownership, idempotency, first-message wake, ordinary idle reaping,
+  and recovered patient-message promotion.
 
 ## The plan
 
@@ -123,12 +133,9 @@ billed provider call, the button must surface it per the economics rule.
 
 ## Open questions
 
-- Endpoint shape: new `reactivate` route vs `warmOnly` flag on resume.
 - Should reactivate optionally **apply pending config** (the model the user just
   picked) at spawn, or strictly spawn-then-configure via the normal model-switch
   path?
-- Idle-process lifecycle: reaping timer parity with post-turn idle processes;
-  what happens if the user reactivates then walks away.
 - Sibling concern (task029): requested-model persistence may let a model choice
   take effect on the *next* natural turn without reactivating at all —
   reactivation is for users who want the process live *now*. Keep both; they
@@ -137,9 +144,13 @@ billed provider call, the button must surface it per the economics rule.
 ## Coordination (resolved)
 
 Built after task029 landed and the kzahel merge settled, so the supervisor was
-stable and uncontended. The implementation did not need `Process.ts` changes —
-it reused the existing `createProviderSession` resume path — so the earlier
-concern about editing under task029 did not materialize.
+stable and uncontended. The initial implementation reused the existing
+`createProviderSession` resume path. A 2026-07-31 restart exposed that the
+shared `Process` constructor still defaulted every process to `in-turn`: a
+message-less Claude process emits no result boundary until it receives a turn,
+so recovered patient work could wait forever. The follow-up added explicit
+idle construction for both message-less factories while preserving the
+`in-turn` default for turn-bearing starts.
 
 ## See also
 

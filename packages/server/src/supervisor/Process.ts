@@ -960,6 +960,10 @@ export class Process {
     this.projectPath = options.projectPath;
     this.projectId = options.projectId;
     this.startedAt = new Date();
+    this._state =
+      options.initialState === "idle"
+        ? { type: "idle", since: this.startedAt }
+        : { type: "in-turn" };
     this.idleTimeoutMs = options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
 
     // Real SDK provides these, mock SDK doesn't
@@ -1022,7 +1026,7 @@ export class Process {
       options.helperSideModel ?? HELPER_SIDE_MODEL_CHEAPEST;
     this._lastMessageTime = new Date();
     this._lastProviderMessageTime = null;
-    this._lastStateChangeTime = new Date();
+    this._lastStateChangeTime = this.startedAt;
 
     // Exit promise resolves when the CLI process fully terminates
     this._exitPromise = new Promise((resolve) => {
@@ -1031,6 +1035,13 @@ export class Process {
 
     // Start bucket swap timer for bounded message history
     this.startBucketSwapTimer();
+
+    // A process created without a user turn is genuinely idle from birth. It
+    // must share the ordinary idle lifecycle so Activate/recovery cannot pin a
+    // provider child forever merely because no result event will ever arrive.
+    if (this._state.type === "idle") {
+      this.startIdleTimer();
+    }
 
     // Start processing messages from the SDK
     this.processMessages();

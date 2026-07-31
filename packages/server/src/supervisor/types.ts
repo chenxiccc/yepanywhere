@@ -336,6 +336,11 @@ export interface ProcessOptions {
   projectPath: string;
   projectId: UrlProjectId;
   sessionId: string;
+  /**
+   * Lifecycle state before the provider emits anything. Message-less create
+   * and reactivate flows start idle; turn-bearing flows keep the default.
+   */
+  initialState?: "in-turn" | "idle";
   idleTimeoutMs?: number; // default 60 minutes
   permissionMode?: PermissionMode;
   provider: ProviderName; // which provider is running this process

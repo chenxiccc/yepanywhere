@@ -1138,6 +1138,7 @@ describe("Supervisor", () => {
       const startSession = vi.fn(
         async (options: Parameters<AgentProvider["startSession"]>[0]) => {
           const queue = new MessageQueue();
+          let aborted = false;
           async function* iterator() {
             yield {
               type: "system",
@@ -1145,13 +1146,17 @@ describe("Supervisor", () => {
               session_id: options.resumeSessionId ?? "new-session",
             };
             for await (const sdkMessage of queue) {
+              if (aborted) return;
               void sdkMessage; // idle until a message is pushed
             }
           }
           return {
             iterator: iterator(),
             queue,
-            abort: () => queue.push({ text: "__abort__" }),
+            abort: () => {
+              aborted = true;
+              queue.push({ text: "__abort__" });
+            },
             supportedCommands: async () => [],
           };
         },
@@ -1189,6 +1194,10 @@ describe("Supervisor", () => {
       expect(startSession.mock.calls[0]?.[0].initialMessage).toBeUndefined();
       // Now owned by this live process.
       expect(supervisor.getProcessForSession("claude-old")).toBe(process);
+      expect(process.state.type).toBe("idle");
+      expect(process.getLivenessSnapshot().derivedStatus).toBe(
+        "verified-idle",
+      );
 
       // Idempotent: a second call returns the existing process, no re-spawn.
       const again = await supervisor.reactivateSession(
@@ -1199,6 +1208,182 @@ describe("Supervisor", () => {
       );
       expect(again).toBe(process);
       expect(startSession).toHaveBeenCalledTimes(1);
+
+      const queued = process.queueMessage({ text: "first real turn" });
+      expect(queued.success).toBe(true);
+      expect(process.state.type).toBe("in-turn");
+
+      await expect(supervisor.abortProcess(process.id)).resolves.toBe(true);
+    });
+
+    it("reaps a message-less reactivation that receives no turn", async () => {
+      vi.useFakeTimers();
+      let aborted = false;
+
+      try {
+        const startSession = vi.fn(
+          async (options: Parameters<AgentProvider["startSession"]>[0]) => {
+            const queue = new MessageQueue();
+            async function* iterator() {
+              yield {
+                type: "system" as const,
+                subtype: "init" as const,
+                session_id: options.resumeSessionId ?? "new-session",
+              };
+              for await (const sdkMessage of queue) {
+                if (aborted) return;
+                void sdkMessage;
+              }
+            }
+            return {
+              iterator: iterator(),
+              queue,
+              abort: () => {
+                aborted = true;
+                queue.push({ text: "__abort__" });
+              },
+              isProcessAlive: () => !aborted,
+            };
+          },
+        );
+        const provider: AgentProvider = {
+          name: "claude",
+          displayName: "Claude",
+          supportsPermissionMode: true,
+          supportsThinkingToggle: true,
+          supportsSlashCommands: true,
+          supportsSteering: false,
+          isInstalled: async () => true,
+          isAuthenticated: async () => true,
+          getAuthStatus: async () => ({
+            installed: true,
+            authenticated: true,
+            enabled: true,
+          }),
+          getAvailableModels: async () => [],
+          startSession,
+        };
+        const supervisorWithProvider = new Supervisor({
+          provider,
+          idleTimeoutMs: 100,
+        });
+
+        const process = await supervisorWithProvider.reactivateSession(
+          "/tmp/test",
+          "claude-reap",
+          undefined,
+          { providerName: "claude" },
+        );
+
+        expect(process.state.type).toBe("idle");
+        await vi.advanceTimersByTimeAsync(150);
+
+        expect(
+          supervisorWithProvider.getProcessForSession("claude-reap"),
+        ).toBeUndefined();
+        expect(aborted).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("promotes recovered patient work after message-less reactivation", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-07-31T10:11:23.000Z"));
+      const delivered: string[] = [];
+      let aborted = false;
+
+      try {
+        const startSession = vi.fn(
+          async (options: Parameters<AgentProvider["startSession"]>[0]) => {
+            const queue = new MessageQueue();
+            async function* iterator() {
+              yield {
+                type: "system" as const,
+                subtype: "init" as const,
+                session_id: options.resumeSessionId ?? "new-session",
+              };
+              for await (const sdkMessage of queue) {
+                if (aborted) return;
+                const content = sdkMessage.message.content;
+                delivered.push(typeof content === "string" ? content : "");
+                yield {
+                  type: "result" as const,
+                  session_id: options.resumeSessionId ?? "new-session",
+                };
+              }
+            }
+            return {
+              iterator: iterator(),
+              queue,
+              abort: () => {
+                aborted = true;
+                queue.push({ text: "__abort__" });
+              },
+              isProcessAlive: () => !aborted,
+            };
+          },
+        );
+        const provider: AgentProvider = {
+          name: "claude",
+          displayName: "Claude",
+          supportsPermissionMode: true,
+          supportsThinkingToggle: true,
+          supportsSlashCommands: true,
+          supportsSteering: false,
+          isInstalled: async () => true,
+          isAuthenticated: async () => true,
+          getAuthStatus: async () => ({
+            installed: true,
+            authenticated: true,
+            enabled: true,
+          }),
+          getAvailableModels: async () => [],
+          startSession,
+        };
+        const supervisorWithProvider = new Supervisor({
+          provider,
+          idleTimeoutMs: 60_000,
+        });
+
+        const process = await supervisorWithProvider.reactivateSession(
+          "/tmp/test",
+          "claude-patient-recovery",
+          undefined,
+          { providerName: "claude" },
+        );
+        expect(process.state.type).toBe("idle");
+
+        const deferred = process.deferMessage(
+          {
+            text: "recovered patient turn",
+            tempId: "temp-recovered-patient",
+            metadata: {
+              deliveryIntent: "patient",
+              patienceSeconds: 2,
+            },
+          },
+          {
+            promoteIfReady: true,
+            persistedQueueId: "persisted-patient-row",
+          },
+        );
+        expect(deferred).toMatchObject({ success: true, deferred: true });
+
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(delivered).toEqual([]);
+        expect(process.getDeferredQueueSummary()).toHaveLength(1);
+
+        await vi.advanceTimersByTimeAsync(1_500);
+        expect(delivered).toEqual(["recovered patient turn"]);
+        expect(process.getDeferredQueueSummary()).toEqual([]);
+
+        await expect(
+          supervisorWithProvider.abortProcess(process.id),
+        ).resolves.toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("queues a concurrent resume through an in-flight reactivation", async () => {

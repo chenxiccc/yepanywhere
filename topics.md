@@ -222,3 +222,5 @@
 - css-architecture - Chapter 11 containment for legacy global stylesheets:
   CSS Modules by default, frozen line-count ceilings, and opportunistic
   extraction with a downward-only ratchet.
+- session-reactivation - Message-less provider resume lifecycle, idle reaping,
+  and recovered patient-queue delivery.
