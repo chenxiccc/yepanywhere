@@ -31,8 +31,19 @@ export interface InvocationCompletionQuery {
   leading: boolean;
 }
 
+/**
+ * The provider's canonical spelling, trimmed and stripped of any authored
+ * sigil but with case preserved. Providers such as Codex recognize exact
+ * skill names, so this is what belongs in emitted tokens and identity/dedup
+ * paths. Use {@link normalizeInvocationName} only for permissive user-facing
+ * matching.
+ */
+export function canonicalInvocationName(name: string): string {
+  return name.trim().replace(/^[/\\$]+/, "");
+}
+
 export function normalizeInvocationName(name: string): string {
-  return name.trim().replace(/^[/\\$]+/, "").toLowerCase();
+  return canonicalInvocationName(name).toLowerCase();
 }
 
 export function hasInvocationCandidate(text: string): boolean {
@@ -40,9 +51,18 @@ export function hasInvocationCandidate(text: string): boolean {
 }
 
 export function getCanonicalInvocationToken(command: SlashCommand): string {
-  return `${command.invocation?.prefix ?? "/"}${normalizeInvocationName(command.name)}`;
+  return `${command.invocation?.prefix ?? "/"}${canonicalInvocationName(command.name)}`;
 }
 
+/** Case-preserving canonical name + aliases (for exact provider matching). */
+export function getCanonicalInvocationNames(command: SlashCommand): string[] {
+  return [
+    canonicalInvocationName(command.name),
+    ...(command.invocation?.aliases ?? []).map(canonicalInvocationName),
+  ].filter((name, index, names) => !!name && names.indexOf(name) === index);
+}
+
+/** Lowercased name + aliases (for permissive user-facing matching). */
 export function getInvocationNames(command: SlashCommand): string[] {
   return [
     normalizeInvocationName(command.name),
@@ -52,14 +72,29 @@ export function getInvocationNames(command: SlashCommand): string[] {
 
 function findSkillCommand(
   commands: readonly SlashCommand[],
-  normalizedName: string,
+  authoredName: string,
 ): SlashCommand | undefined {
-  return commands.find(
+  const skillCommands = commands.filter(
     (command) =>
       command.invocation?.kind === "skill" &&
-      command.invocation.inventoryState !== "stale" &&
-      getInvocationNames(command).includes(normalizedName),
+      command.invocation.inventoryState !== "stale",
   );
+  // An exact (case-sensitive) spelling always wins so a live skill named
+  // `BuildDocs` resolves to itself even when a distinct `builddocs` also
+  // exists.
+  const canonicalName = canonicalInvocationName(authoredName);
+  const exact = skillCommands.find((command) =>
+    getCanonicalInvocationNames(command).includes(canonicalName),
+  );
+  if (exact) return exact;
+  // Permissive case-insensitive fallback, but only when it is unambiguous:
+  // a case-collision with no exact spelling is left for the user to resolve
+  // rather than silently selecting one of the colliding skills.
+  const normalizedName = normalizeInvocationName(authoredName);
+  const normalizedMatches = skillCommands.filter((command) =>
+    getInvocationNames(command).includes(normalizedName),
+  );
+  return normalizedMatches.length === 1 ? normalizedMatches[0] : undefined;
 }
 
 function leadingSlashIsNative(
@@ -111,7 +146,7 @@ export function findSkillInvocations(
       continue;
     }
 
-    const command = findSkillCommand(commands, normalizedName);
+    const command = findSkillCommand(commands, candidate.name);
     if (!command) continue;
     matches.push({
       command,

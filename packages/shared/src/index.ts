@@ -158,11 +158,13 @@ export type {
   PermissionRules,
 } from "./types.js";
 export {
+  canonicalInvocationName,
   canonicalizeSkillInvocations,
   commandMatchesInvocationQuery,
   findInvocationCandidates,
   findSkillInvocations,
   findUnrecognizedInvocations,
+  getCanonicalInvocationNames,
   getCanonicalInvocationToken,
   getInvocationCompletionQuery,
   getInvocationNames,

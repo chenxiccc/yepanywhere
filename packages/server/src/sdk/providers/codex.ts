@@ -9,6 +9,7 @@ import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { homedir } from "node:os";
 import {
   CODEX_TOOL_CORRELATION_FIELD,
+  canonicalInvocationName,
   canonicalizeSkillInvocations,
   createCodexToolCorrelation,
   hasInvocationCandidate,
@@ -2433,19 +2434,20 @@ export class CodexProvider implements AgentProvider {
     inventoryState: "current" | "stale" = "current",
   ): SlashCommand[] {
     const commands: SlashCommand[] = [...CODEX_BUILTIN_COMMANDS];
+    // Dedup on the exact spelling: Codex recognizes case-distinct skill names
+    // as distinct, so `Foo` and `foo` must both surface rather than collapse.
     const seenSkills = new Set<string>();
     for (const skill of skills) {
       const name = skill.name.trim();
-      const normalized = name.toLowerCase();
       if (
         !skill.enabled ||
         name === CODEX_DESKTOP_BROWSER_SKILL_NAME ||
         !name ||
-        seenSkills.has(normalized)
+        seenSkills.has(name)
       ) {
         continue;
       }
-      seenSkills.add(normalized);
+      seenSkills.add(name);
       commands.push({
         name,
         description:
@@ -2495,19 +2497,23 @@ export class CodexProvider implements AgentProvider {
       text,
       this.createCodexSlashCommands(skills, inventoryState),
     );
-    const skillByName = new Map(
-      skills
-        .filter(
-          (skill) =>
-            skill.enabled &&
-            skill.name !== CODEX_DESKTOP_BROWSER_SKILL_NAME,
-        )
-        .map((skill) => [skill.name.toLowerCase(), skill]),
-    );
+    // Key by exact spelling; the canonical token now preserves provider case,
+    // so a case-distinct skill resolves to its own path rather than whichever
+    // case-folded entry happened to land in the map first.
+    const skillByName = new Map<string, SkillMetadata>();
+    for (const skill of skills) {
+      if (!skill.enabled || skill.name === CODEX_DESKTOP_BROWSER_SKILL_NAME) {
+        continue;
+      }
+      const name = canonicalInvocationName(skill.name);
+      if (name && !skillByName.has(name)) {
+        skillByName.set(name, skill);
+      }
+    }
     const structuredSkills: UserInput[] = [];
     const seenPaths = new Set<string>();
     for (const match of canonical.matches) {
-      const skill = skillByName.get(match.command.name.toLowerCase());
+      const skill = skillByName.get(canonicalInvocationName(match.command.name));
       if (!skill || seenPaths.has(skill.path)) continue;
       seenPaths.add(skill.path);
       structuredSkills.push({
