@@ -40,13 +40,30 @@ Before launch, the controller records:
 - inventory evidence and every known ownership edge;
 - allowed ordinary files and conditional tool-repair files;
 - focused tests and required repository checks;
-- a deterministic browser route/state when rendered UI changes; and
+- a controller-proven visual fixture packet when rendered UI changes; and
 - stop conditions, including the maximum batch size.
 
-For visual work, find the route before launching the worker. Confirm through
-the normalized session-detail API that the target tool or component is present
-in the loaded transcript. Do not hand a worker a vague instruction to search
-historical sessions until something happens to render.
+### Prove the visual fixture before launch
+
+For visual work, the controller prepares a fixture packet containing:
+
+- the exact URL, using the YA session id when the route is session-backed;
+- normalized API evidence that the target data is present;
+- reveal steps that work from a clean page load, expressed as accessible roles,
+  names, or other selectors that are not being migrated;
+- a stable target locator and the text or state expected inside it;
+- the required desktop and phone viewports; and
+- baseline captures at both viewports, inspected by the controller.
+
+Replay the steps from a clean page load at both viewports before launching the
+worker. If either replay fails, the candidate is not ready for a worker. Pick a
+different fixture or stop the slice; do not turn fixture discovery into worker
+scope.
+
+Give the complete packet and baseline paths to the worker. The worker replays
+that exact fixture after implementation and may not browse historical sessions
+for a substitute. This makes before/after comparison the normal path rather
+than a recovery step.
 
 ## 2. Build a bounded worker prompt
 
@@ -64,7 +81,8 @@ The prompt should contain these sections in this order:
 5. **Mechanical rule:** move behavior before cleanup; no redesign, adjacent
    refactor, broad `className` normalization, or replacement candidate.
 6. **Verification:** exact focused tests, ratchets, lint/typecheck, console
-   scan, desktop/mobile visual states, and `git diff --check`.
+   scan, the controller-proven visual fixture packet and baseline paths, and
+   `git diff --check`.
 7. **Commit rule:** one commit only after every required check succeeds.
 8. **Final report:** status, commit, files, before/after metrics, edges, checks,
    captures, scope pressure, and recommendation.
@@ -135,9 +153,10 @@ Use the process state, not transcript-file growth, as the turn boundary:
 
 Use a wall-clock deadline as well as liveness. Progress evidence permits a
 long-running check; it does not permit unlimited research outside the work
-order. Keep a separate, short discovery budget for visual state. One normal
-Playwright attempt plus one route-specific correction is usually enough; after
-that, stop and report the missing deterministic state.
+order. The visual state should require no discovery: replay the supplied
+fixture from a clean load. One route-specific correction is the limit for
+ordinary app-state drift; after that, stop and report which fixture assertion
+failed.
 
 ## 5. Read output and steer a wandering worker
 
@@ -187,8 +206,10 @@ After the process reaches verified idle:
 5. For CSS work, independently run `css:check`, `css:unused`, lint, typecheck,
    console scan, and the relevant tests. Record an advisory `css:unused` exit
    separately from a regression.
-6. Inspect desktop and phone captures yourself. Computed widths are useful
-   supporting evidence but do not replace looking at the images.
+6. Replay the supplied fixture from a clean load, confirm its stable locator
+   and expected content, and compare the new desktop and phone captures with
+   the controller's baselines. Inspect all four images yourself. Computed
+   widths are useful supporting evidence but do not replace looking at them.
 7. Accept and commit only when the controller's evidence is complete.
 
 If the worker committed before audit, acceptance is still a separate decision.
@@ -224,8 +245,8 @@ steering, and stopped-report paths. It also exposed two useful controller
 requirements:
 
 - the mutation header must be part of every POST helper; and
-- the controller should supply a small, confirmed visual route instead of
-  making the worker discover one after implementation.
+- the controller must supply a replayed visual fixture packet and inspected
+  baselines instead of making the worker discover a route after implementation.
 
 The stopped worker preserved a bounded staged diff. The controller then found
 a ten-message session whose normalized detail contained two Grep calls,
