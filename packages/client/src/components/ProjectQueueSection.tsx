@@ -9,8 +9,27 @@ import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useI18n } from "../i18n";
 import type { Project } from "../types";
+import styles from "./ProjectQueueSection.module.css";
 
 type Translate = ReturnType<typeof useI18n>["t"];
+
+type ItemStatus = ProjectQueueItemSummary["status"];
+
+const ITEM_STATUS_CLASS: Record<ItemStatus, string | undefined> = {
+  queued: "",
+  dispatching: styles.itemDispatching,
+  failed: styles.itemFailed,
+};
+
+const ITEM_STATUS_BADGE_CLASS: Record<ItemStatus, string | undefined> = {
+  queued: "",
+  dispatching: styles.itemStatusDispatching,
+  failed: styles.itemStatusFailed,
+};
+
+function cx(...classNames: (string | false | undefined)[]): string {
+  return classNames.filter(Boolean).join(" ");
+}
 
 interface ProjectQueueSectionProps {
   projects: Project[];
@@ -404,17 +423,17 @@ export function ProjectQueueSection({
 
   return (
     <section
-      className="project-queue-section"
+      className={styles.section}
       aria-labelledby="project-queue-title"
     >
-      <div className="project-queue-section__header">
+      <div className={styles.header}>
         <div>
           <h2 id="project-queue-title">{t("projectQueueTitle")}</h2>
           <p>{description}</p>
         </div>
-        <div className="project-queue-section__header-actions">
+        <div className={styles.headerActions}>
           {hasProjectQueueItems && (
-            <span className="project-queue-section__count">
+            <span className={styles.count}>
               {loading
                 ? t("projectQueueRefreshing")
                 : t("projectQueueCount", { count: items.length })}
@@ -423,7 +442,7 @@ export function ProjectQueueSection({
           {hasProjectQueueItems && (
             <button
               type="button"
-              className="project-queue-section__dispatch-button"
+              className={styles.dispatchButton}
               onClick={pausedState ? onResumeDispatch : onPauseDispatch}
               disabled={mutatingDispatchState}
             >
@@ -434,26 +453,26 @@ export function ProjectQueueSection({
       </div>
 
       {pausedState && hasProjectQueueItems && (
-        <div className="project-queue-section__notice">
+        <div className={styles.notice}>
           {pausedNotice(pausedState, items, projectStatusesByProject, t)}
         </div>
       )}
 
       {error && (
-        <div className="project-queue-section__error">
+        <div className={styles.sectionError}>
           {t("projectQueueLoadError", { message: error.message })}
         </div>
       )}
 
       {recoveredGroups.length > 0 && (
-        <div className="project-queue-recovered">
-          <div className="project-queue-recovered__header">
+        <div className={styles.recovered}>
+          <div className={styles.recoveredHeader}>
             <h3>{t("projectQueueRecoveredTitle")}</h3>
-            <span className="project-queue-recovered__count">
+            <span className={styles.recoveredCount}>
               {t("projectQueueRecoveredCount", { count: recoveredCount })}
             </span>
           </div>
-          <ul className="project-queue-recovered__groups">
+          <ul className={styles.recoveredGroups}>
             {recoveredGroups.map((group) => {
               const project = projectById.get(group.projectId);
               const firstItem = group.items[0];
@@ -463,31 +482,31 @@ export function ProjectQueueSection({
                     sessionId: group.sessionId.slice(0, 8),
                   });
               return (
-                <li className="project-queue-recovered__group" key={group.key}>
-                  <div className="project-queue-recovered__group-header">
-                    <span className="project-queue-recovered__project">
+                <li className={styles.recoveredGroup} key={group.key}>
+                  <div className={styles.recoveredGroupHeader}>
+                    <span className={styles.recoveredProject}>
                       {project?.name ?? t("projectQueueUnknownProject")}
                     </span>
                     <Link
-                      className="project-queue-recovered__session"
+                      className={styles.recoveredSession}
                       to={`${basePath}/projects/${group.projectId}/sessions/${group.sessionId}`}
                     >
                       {label}
                     </Link>
-                    <span className="project-queue-recovered__status">
+                    <span className={styles.recoveredStatus}>
                       {t("sessionRecoveredQueuedPaused")}
                     </span>
                   </div>
-                  <ul className="project-queue-recovered__messages">
+                  <ul className={styles.recoveredMessages}>
                     {group.items.map((item) => (
                       <li
-                        className="project-queue-recovered__message"
+                        className={styles.recoveredMessage}
                         key={item.id}
                       >
-                        <span className="project-queue-recovered__preview">
+                        <span className={styles.recoveredPreview}>
                           {item.content || t("projectQueueAttachmentOnly")}
                         </span>
-                        <span className="project-queue-recovered__age">
+                        <span className={styles.recoveredAge}>
                           {formatRelativeTime(
                             item.queuedAt ?? item.timestamp,
                             t,
@@ -504,13 +523,13 @@ export function ProjectQueueSection({
       )}
 
       {hasProjectQueueItems && (
-        <ul className="project-queue-groups">
+        <ul className={styles.groups}>
           {itemGroups.map((group) => (
-            <li className="project-queue-group" key={group.projectId}>
-              <h3 className="project-queue-group__title">
+            <li className={styles.group} key={group.projectId}>
+              <h3 className={styles.groupTitle}>
                 {group.projectName}
               </h3>
-              <ul className="project-queue-list">
+              <ul className={styles.list}>
                 {group.items.map((item) => {
                   const isMutating = mutatingItemId === item.id;
                   const isPromoting = mutatingPromoteItemId === item.id;
@@ -556,14 +575,16 @@ export function ProjectQueueSection({
                     <li
                       key={item.id}
                       ref={isHighlighted ? highlightedItemRef : undefined}
-                      className={`project-queue-item project-queue-item--${item.status}${
-                        isHighlighted ? " project-queue-item--highlighted" : ""
-                      }`}
+                      className={cx(
+                        styles.item,
+                        ITEM_STATUS_CLASS[item.status],
+                        isHighlighted && styles.itemHighlighted,
+                      )}
                       data-project-queue-item-id={item.id}
                     >
-                      <div className="project-queue-item__main">
-                        <div className="project-queue-item__meta">
-                          <span className="project-queue-item__target">
+                      <div className={styles.itemMain}>
+                        <div className={styles.itemMeta}>
+                          <span className={styles.itemTarget}>
                             {item.target.type === "existing-session" ? (
                               <Link
                                 to={`${basePath}/projects/${item.projectId}/sessions/${item.target.sessionId}`}
@@ -574,13 +595,13 @@ export function ProjectQueueSection({
                               targetLabel(item, t)
                             )}
                           </span>
-                          <span className="project-queue-item__age">
+                          <span className={styles.itemAge}>
                             {formatRelativeTime(item.createdAt, t)}
                           </span>
                         </div>
                         {isEditing ? (
                           <form
-                            className="project-queue-item__edit"
+                            className={styles.itemEdit}
                             onSubmit={handleEditSubmit}
                           >
                             <textarea
@@ -592,7 +613,7 @@ export function ProjectQueueSection({
                               disabled={isMutating}
                               rows={3}
                             />
-                            <div className="project-queue-item__edit-actions">
+                            <div className={styles.itemEditActions}>
                               <button
                                 type="submit"
                                 disabled={!canSaveEdit}
@@ -613,30 +634,33 @@ export function ProjectQueueSection({
                             </div>
                           </form>
                         ) : (
-                          <div className="project-queue-item__preview">
+                          <div className={styles.itemPreview}>
                             {item.messagePreview ||
                               t("projectQueueAttachmentOnly")}
                           </div>
                         )}
                         {item.lastError && (
-                          <div className="project-queue-item__error">
+                          <div className={styles.itemError}>
                             {item.lastError}
                           </div>
                         )}
                         {readiness && (
-                          <div className="project-queue-item__readiness">
+                          <div className={styles.itemReadiness}>
                             {readiness}
                           </div>
                         )}
                       </div>
 
-                      <div className="project-queue-item__side">
+                      <div className={styles.itemSide}>
                         <span
-                          className={`project-queue-item__status project-queue-item__status--${item.status}`}
+                          className={cx(
+                            styles.itemStatus,
+                            ITEM_STATUS_BADGE_CLASS[item.status],
+                          )}
                         >
                           {statusLabel(item.status, t)}
                         </span>
-                        <div className="project-queue-item__actions">
+                        <div className={styles.itemActions}>
                           {pausedState && !isEditing && (
                             <button
                               type="button"
@@ -650,9 +674,7 @@ export function ProjectQueueSection({
                             <button
                               type="button"
                               className={
-                                forceStart
-                                  ? "project-queue-item__force-start"
-                                  : undefined
+                                forceStart ? styles.forceStart : undefined
                               }
                               onClick={() =>
                                 onPromoteNow(item.projectId, item.id, {

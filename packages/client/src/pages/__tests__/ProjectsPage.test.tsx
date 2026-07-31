@@ -5,6 +5,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import queueStyles from "../../components/ProjectQueueSection.module.css";
 import { I18nProvider } from "../../i18n";
 import { PROJECT_QUEUE_CAPABILITY } from "../../lib/projectQueueVisibility";
 import { ProjectsPage } from "../ProjectsPage";
@@ -166,9 +167,7 @@ describe("ProjectsPage", () => {
     const highlighted = document.querySelector(
       '[data-project-queue-item-id="queue-1"]',
     );
-    expect(
-      highlighted?.classList.contains("project-queue-item--highlighted"),
-    ).toBe(true);
+    expect(highlighted?.className).toContain(queueStyles.itemHighlighted);
   });
 
   it("hides project queue UI without the server capability", () => {

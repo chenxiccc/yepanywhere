@@ -18,6 +18,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import type { Project } from "../../types";
 import { ProjectQueueSection } from "../ProjectQueueSection";
+import styles from "../ProjectQueueSection.module.css";
 
 const PROJECT_ID = "project-1" as ProjectQueueItemSummary["projectId"];
 const OTHER_PROJECT_ID = "project-2" as ProjectQueueItemSummary["projectId"];
@@ -394,9 +395,7 @@ describe("ProjectQueueSection", () => {
     const highlighted = document.querySelector(
       '[data-project-queue-item-id="2"]',
     );
-    expect(
-      highlighted?.classList.contains("project-queue-item--highlighted"),
-    ).toBe(true);
+    expect(highlighted?.className).toContain(styles.itemHighlighted);
   });
 
   it("edits queued item text", async () => {
