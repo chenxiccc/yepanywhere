@@ -3,6 +3,7 @@ import type { ZodError } from "zod";
 import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
 import { validateToolResult } from "../../../lib/validateToolResult";
 import { SchemaWarning } from "../../SchemaWarning";
+import styles from "./AskUserQuestionRenderer.module.css";
 import type {
   AskUserQuestionInput,
   AskUserQuestionResult,
@@ -31,20 +32,20 @@ function QuestionDisplay({
   );
 
   return (
-    <div className="question-item">
-      <div className="question-header">
+    <div className={styles.item}>
+      <div className={styles.header}>
         <span className="badge">{question.header}</span>
-        <span className="question-text">{question.question}</span>
+        <span className={styles.text}>{question.question}</span>
       </div>
-      <ul className="question-options">
+      <ul className={styles.options}>
         {question.options.map((option) => {
           const isSelected = selectedAnswers.includes(option.label);
           return (
             <li
               key={option.label}
-              className={`question-option ${isSelected ? "question-option-selected" : ""}`}
+              className={`${styles.option} ${isSelected ? styles.optionSelected : ""}`}
             >
-              <span className="question-option-indicator">
+              <span className={styles.optionIndicator}>
                 {question.multiSelect
                   ? isSelected
                     ? "☑"
@@ -53,10 +54,10 @@ function QuestionDisplay({
                     ? "●"
                     : "○"}
               </span>
-              <div className="question-option-content">
-                <span className="question-option-label">{option.label}</span>
+              <div className={styles.optionContent}>
+                <span className={styles.optionLabel}>{option.label}</span>
                 {option.description && (
-                  <span className="question-option-desc">
+                  <span className={styles.optionDesc}>
                     {option.description}
                   </span>
                 )}
@@ -67,14 +68,14 @@ function QuestionDisplay({
         {customAnswers.map((answer) => (
           <li
             key={`other-${answer}`}
-            className="question-option question-option-selected"
+            className={`${styles.option} ${styles.optionSelected}`}
           >
-            <span className="question-option-indicator">
+            <span className={styles.optionIndicator}>
               {question.multiSelect ? "☑" : "●"}
             </span>
-            <div className="question-option-content">
-              <span className="question-option-label">Other</span>
-              <span className="question-option-desc">{answer}</span>
+            <div className={styles.optionContent}>
+              <span className={styles.optionLabel}>Other</span>
+              <span className={styles.optionDesc}>{answer}</span>
             </div>
           </li>
         ))}
@@ -88,7 +89,7 @@ function QuestionDisplay({
  */
 function AskUserQuestionToolUse({ input }: { input: AskUserQuestionInput }) {
   return (
-    <div className="question-tool-use">
+    <div className={styles.toolUse}>
       {input.questions.map((q, i) => (
         <QuestionDisplay key={`${q.header}-${i}`} question={q} />
       ))}
@@ -130,7 +131,7 @@ function AskUserQuestionToolResult({
   if (isError) {
     const errorResult = result as unknown as { content?: unknown } | undefined;
     return (
-      <div className="question-error">
+      <div className={styles.error}>
         {showValidationWarning && validationErrors && (
           <SchemaWarning toolName="AskUserQuestion" errors={validationErrors} />
         )}
@@ -143,7 +144,7 @@ function AskUserQuestionToolResult({
 
   if (!result?.questions) {
     return (
-      <div className="question-empty">
+      <div className={styles.empty}>
         {showValidationWarning && validationErrors && (
           <SchemaWarning toolName="AskUserQuestion" errors={validationErrors} />
         )}
@@ -153,7 +154,7 @@ function AskUserQuestionToolResult({
   }
 
   return (
-    <div className="question-result">
+    <div className={styles.result}>
       {showValidationWarning && validationErrors && (
         <SchemaWarning toolName="AskUserQuestion" errors={validationErrors} />
       )}
