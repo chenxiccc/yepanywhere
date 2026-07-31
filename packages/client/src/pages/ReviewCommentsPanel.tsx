@@ -3,6 +3,7 @@ import { useState } from "react";
 import { api } from "../api/client";
 import { notifyReviewCommentsChanged } from "../lib/reviewCommentsBus";
 import type { TranslationFn } from "../i18n";
+import styles from "./ReviewCommentsPanel.module.css";
 
 /**
  * The pending-review list (topic: source-review-to-session, stage 2): every
@@ -52,38 +53,36 @@ export function ReviewCommentsPanel({
 
   if (pending.length === 0) {
     return (
-      <section className="review-comments-panel">
-        <div className="review-comments-empty">
+      <section className={styles.panel}>
+        <div className={styles.empty}>
           <div>{t("sourceReviewNoPending")}</div>
-          <div className="review-comments-hint">
-            {t("sourceReviewCommentsHint")}
-          </div>
+          <div className={styles.hint}>{t("sourceReviewCommentsHint")}</div>
         </div>
       </section>
     );
   }
 
   return (
-    <section className="review-comments-panel">
+    <section className={styles.panel}>
       {error && <div className="review-submit-error">{error}</div>}
-      <ul className="review-comments-list">
+      <ul className={styles.list}>
         {pending.map((comment) => (
-          <li key={comment.id} className="review-comments-row">
-            <div className="review-comments-row-head">
+          <li key={comment.id} className={styles.row}>
+            <div className={styles.rowHead}>
               <button
                 type="button"
-                className="review-comments-loc"
+                className={styles.location}
                 title={t("sourceReviewOpenInFiles")}
                 onClick={() => onOpenFile(comment.anchor.path)}
               >
                 {commentLocation(comment)}
               </button>
-              <span className="review-comments-rev">
+              <span className={styles.revision}>
                 {revisionLabel(comment, t)}
               </span>
               <button
                 type="button"
-                className="review-comments-delete"
+                className={styles.delete}
                 disabled={busyId === comment.id}
                 onClick={() => void handleDelete(comment.id)}
               >
@@ -92,11 +91,11 @@ export function ReviewCommentsPanel({
                   : t("sourceReviewDelete")}
               </button>
             </div>
-            <div className="review-comments-text">{comment.text}</div>
+            <div className={styles.text}>{comment.text}</div>
           </li>
         ))}
       </ul>
-      <div className="review-comments-actions">
+      <div className={styles.actions}>
         <button type="button" className="review-submit-go" onClick={onSubmit}>
           {t("sourceReviewOpenSubmit")}
         </button>
