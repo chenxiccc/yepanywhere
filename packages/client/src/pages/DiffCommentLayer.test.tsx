@@ -268,10 +268,8 @@ describe("DiffCommentLayer", () => {
       "sourceReviewSubmitToDefault",
     );
     expect(submitToDefault.getAttribute("title")).toBeNull();
-    const hoverTarget = submitToDefault.closest(
-      ".review-comment-window-default-session-target",
-    );
-    expect(hoverTarget).toBeTruthy();
+    const hoverTarget = submitToDefault.parentElement;
+    expect(hoverTarget?.tagName).toBe("SPAN");
     fireEvent.pointerEnter(hoverTarget!, {
       pointerType: "mouse",
       clientX: 20,

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { SessionHoverCardTarget } from "../components/SessionHoverCardTarget";
 import type { SourceReviewDefaultSession } from "../contexts/SourceReviewDefaultSessionContext";
 import type { TranslationFn } from "../i18n";
+import styles from "./ReviewCommentWindow.module.css";
 
 /**
  * The in-place comment popover shared by the diff and blame comment surfaces
@@ -40,11 +41,11 @@ export function ReviewCommentWindow({
   const canSubmit = text.trim().length > 0 && !busy;
 
   return (
-    <div className="review-comment-window" style={{ top }}>
-      <div className="review-comment-window-anchor">{anchorLabel}</div>
-      <pre className="review-comment-window-snippet">{snippet}</pre>
+    <div className={styles.window} style={{ top }}>
+      <div className={styles.anchor}>{anchorLabel}</div>
+      <pre className={styles.snippet}>{snippet}</pre>
       <textarea
-        className="review-comment-window-input"
+        className={styles.input}
         // biome-ignore lint/a11y/noAutofocus: the window opens on an explicit click
         autoFocus
         rows={3}
@@ -52,8 +53,10 @@ export function ReviewCommentWindow({
         placeholder={t("sourceReviewCommentPlaceholder")}
         onChange={(event) => setText(event.target.value)}
       />
-      {error && <div className="review-comment-window-error">{error}</div>}
-      <div className="review-comment-window-actions">
+      {error && <div className={styles.error}>{error}</div>}
+      <div className={styles.actions}>
+        {/* review-comment-window-cancel and -add stay literal: no stylesheet
+            declares them, so they are DOM hooks this module does not own. */}
         <button
           type="button"
           className="review-comment-window-cancel"
@@ -70,7 +73,7 @@ export function ReviewCommentWindow({
         >
           {t("sourceReviewAddToReview")}
         </button>
-        <div className="review-comment-window-submit-actions">
+        <div className={styles.submitActions}>
           {defaultSession && onSubmitToDefault && (
             <SessionHoverCardTarget
               sessionId={defaultSession.id}
@@ -80,11 +83,11 @@ export function ReviewCommentWindow({
                 provider: defaultSession.newSession.provider,
                 model: defaultSession.newSession.model,
               }}
-              className="review-comment-window-default-session-target"
+              className={styles.defaultSessionTarget}
             >
               <button
                 type="button"
-                className="review-comment-window-submit"
+                className={styles.submit}
                 onClick={() => onSubmitToDefault(text)}
                 disabled={!canSubmit}
               >
@@ -94,7 +97,7 @@ export function ReviewCommentWindow({
           )}
           <button
             type="button"
-            className="review-comment-window-submit"
+            className={styles.submit}
             onClick={() => onSubmitToNew(text)}
             disabled={!canSubmit}
           >
