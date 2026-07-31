@@ -484,8 +484,9 @@ state never displace the three repository actions.
 Source Control lands on Changes; an absent or unknown `?tab=` value resolves
 there until the approval-gated Commits default above is accepted. Pull, Push,
 and Check retain constant visible labels and a reserved state-indicator slot,
-so progress and brief results remain visible on the initiating button without
-changing its width. Full feedback appears below the action row.
+whose idle action glyph changes in place, so progress and brief results remain
+visible on the initiating button without changing its width. Full feedback
+appears below the action row.
 Review with no pending comments opens Comments and its "click a line" guidance;
 with drafts it opens submit preview directly, so a first-time explorer can
 discover the complete comment → review-session path from the header.

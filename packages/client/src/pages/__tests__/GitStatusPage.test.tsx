@@ -451,13 +451,14 @@ describe("GitStatusPage source header", () => {
       name: "gitStatusCheckRemote",
     });
     expect(check.textContent).toBe("gitStatusCheckRemote");
-    expect(check.querySelector(".git-status-action-indicator")).not.toBeNull();
+    expect(check.querySelector(".git-status-action-glyph")).not.toBeNull();
     fireEvent.click(check);
 
     const checking = await screen.findByRole("button", {
       name: "gitStatusCheckRemote: gitStatusCheckingRemote",
     });
     expect(checking.textContent).toBe("gitStatusCheckRemote");
+    expect(checking.querySelector(".git-status-action-glyph")).toBeNull();
     expect(checking.classList.contains("git-status-action-running")).toBe(true);
 
     resolveCheck?.({
@@ -468,7 +469,7 @@ describe("GitStatusPage source header", () => {
       name: /gitStatusCheckRemote: gitStatusRemoteCheckSuccess/,
     });
     await waitFor(() =>
-      expect(completed.textContent).toBe("gitStatusCheckRemote✓"),
+      expect(completed.textContent).toBe("✓gitStatusCheckRemote"),
     );
     expect(screen.getByRole("status").textContent).toBe(
       "gitStatusRemoteCheckSuccess",

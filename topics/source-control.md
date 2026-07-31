@@ -57,9 +57,11 @@ Pull, Push, and Check remote form a second, left-anchored action row in that
 fixed order at every viewport width. Review remains independently anchored at
 the trailing edge. Branch names, upstream names, count badges, action progress,
 and action outcomes must not move the Pull/Push/Check group. Their visible
-labels stay constant while a permanently reserved indicator slot presents
+labels stay constant while a leading action glyph changes in place to present
 progress and brief success/warning state. Full action feedback remains visible
-below the action row.
+below the action row. The project selector retains its intrinsic width, up to
+its desktop cap, before branch and upstream text yield space; ordinary short
+project names must not truncate while unused header space remains.
 
 ## Workbench geometry
 

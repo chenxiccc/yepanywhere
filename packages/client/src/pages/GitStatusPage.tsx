@@ -158,6 +158,7 @@ function SourceHeaderControls({
     <div className="repo-status-action-group">
       {gitActions.supportsPull && (
         <SourceActionButton
+          action="pull"
           label={t("gitStatusPull")}
           runningLabel={t("gitStatusPulling")}
           running={gitActions.isPulling}
@@ -169,6 +170,7 @@ function SourceHeaderControls({
       )}
       {gitActions.supportsPush && (
         <SourceActionButton
+          action="push"
           label={t("gitStatusPush")}
           runningLabel={t("gitStatusPushing")}
           running={gitActions.isPushing}
@@ -180,6 +182,7 @@ function SourceHeaderControls({
       )}
       {gitActions.supportsRemoteCheck && (
         <SourceActionButton
+          action="check"
           label={t("gitStatusCheckRemote")}
           runningLabel={t("gitStatusCheckingRemote")}
           running={gitActions.isCheckingRemote}
@@ -211,6 +214,7 @@ function SourceHeaderControls({
 }
 
 function SourceActionButton({
+  action,
   label,
   runningLabel,
   running,
@@ -221,6 +225,7 @@ function SourceActionButton({
   onClick,
   disabled,
 }: {
+  action: "pull" | "push" | "check";
   label: string;
   runningLabel: string;
   running: boolean;
@@ -247,7 +252,6 @@ function SourceActionButton({
     return () => clearTimeout(timer);
   }, [tone, feedback]);
   const showOutcome = recent && tone !== null && feedback !== "";
-  const showIndicator = running || showOutcome;
   return (
     <button
       type="button"
@@ -265,16 +269,67 @@ function SourceActionButton({
       onClick={onClick}
       disabled={disabled}
     >
-      <span>{label}</span>
       <span
-        className={`git-status-action-indicator ${
-          showIndicator ? "is-visible" : ""
-        }`}
+        className="git-status-action-indicator"
         aria-hidden="true"
       >
-        {running ? "" : showOutcome ? (tone === "success" ? "✓" : "!") : ""}
+        {running ? null : showOutcome ? (
+          tone === "success" ? (
+            "✓"
+          ) : (
+            "!"
+          )
+        ) : (
+          <SourceActionGlyph action={action} />
+        )}
       </span>
+      <span className="git-status-action-label">{label}</span>
     </button>
+  );
+}
+
+function SourceActionGlyph({
+  action,
+}: {
+  action: "pull" | "push" | "check";
+}) {
+  if (action === "check") {
+    return (
+      <svg
+        className="git-status-action-glyph"
+        aria-hidden="true"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M13 5V2.5L11.4 4A5.5 5.5 0 1 0 13.1 10" />
+      </svg>
+    );
+  }
+
+  const isPull = action === "pull";
+  return (
+    <svg
+      className="git-status-action-glyph"
+      aria-hidden="true"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path
+        d={
+          isPull
+            ? "M8 2v10M4.5 8.5 8 12l3.5-3.5"
+            : "M8 14V4M4.5 7.5 8 4l3.5 3.5"
+        }
+      />
+    </svg>
   );
 }
 

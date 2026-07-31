@@ -2070,12 +2070,12 @@ textarea {
 .source-header-identity .project-selector-container {
   min-width: 0;
   max-width: min(16rem, 30vw);
-  flex-shrink: 1;
+  flex: 0 0 auto;
 }
 
 .source-header-identity .project-selector-button {
   min-width: 0;
-  max-width: 100%;
+  max-width: calc(100% + 2 * var(--space-2));
 }
 
 .source-header-identity .project-selector-text {
@@ -20402,14 +20402,16 @@ body:has(.session-page)
   flex: 0 0 0.75rem;
   align-items: center;
   justify-content: center;
-  visibility: hidden;
+  color: var(--text-secondary);
   font-size: 0.72rem;
   font-weight: 800;
   line-height: 1;
 }
 
-.git-status-action-indicator.is-visible {
-  visibility: visible;
+.git-status-action-glyph {
+  width: 0.75rem;
+  height: 0.75rem;
+  display: block;
 }
 
 .git-status-action-running .git-status-action-indicator::after {

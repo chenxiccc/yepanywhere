@@ -142,11 +142,25 @@ describe("Source Control workbench layout CSS contract", () => {
       ".git-status-action-indicator",
       "width",
     );
+    const projectSelector = getRuleDeclarationsContaining(
+      indexCss,
+      ".source-header-identity .project-selector-container",
+      "flex",
+    );
+    const projectSelectorButton = getRuleDeclarationsContaining(
+      indexCss,
+      ".source-header-identity .project-selector-button",
+      "max-width",
+    );
 
     expect(actionGroup).toMatch(/width:\s*100%\s*;/);
     expect(review).toMatch(/margin-left:\s*auto\s*;/);
     expect(indicator).toMatch(/width:\s*0\.75rem\s*;/);
     expect(indicator).toMatch(/flex:\s*0\s+0\s+0\.75rem\s*;/);
+    expect(projectSelector).toMatch(/flex:\s*0\s+0\s+auto\s*;/);
+    expect(projectSelectorButton).toMatch(
+      /max-width:\s*calc\(100%\s*\+\s*2\s*\*\s*var\(--space-2\)\)\s*;/,
+    );
   });
 
   it("prioritizes the filename and uses compact diff controls", async () => {
