@@ -61,6 +61,9 @@ For visual work, the work order defines a fixture packet containing:
 
 - the exact URL, using the YA session id when the route is session-backed;
 - normalized API evidence that the target data is present;
+- rendered-DOM evidence that the exact target locator exists after the stated
+  reveal steps; an API or transcript record is not proof that the owning
+  component renders that record;
 - reveal steps that work from a clean page load, expressed as accessible roles,
   names, or other selectors that are not being migrated;
 - a stable target locator and the text or state expected inside it;
@@ -74,7 +77,10 @@ baselines before launch. In trusted campaign mode, the worker may prepare the
 packet from the clean base before editing, with a strict discovery limit. If a
 stable target and both baselines are not available promptly, it stops the slice
 without editing instead of browsing unrelated sessions or substituting a new
-candidate.
+candidate. Do not promote normalized session data into a fixture assertion
+until the same record is observed through the intended rendered component;
+projection, grouping, and collapsed history may make stored records absent from
+that surface.
 
 Give any controller-known fixture details and baseline paths to the worker. The
 worker replays that exact fixture after implementation and may not browse for a
