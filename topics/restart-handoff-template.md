@@ -66,6 +66,7 @@ constants (40k total); slimming frees room within the same caps.
 - Project path: <path>
 - Provider: <provider>
 - Model: <model>
+- Full transcript (read or grep for detail …): <path>   (omitted if unknown)
 ```
 
 - **URL replaces the internal process id.** The client passes
@@ -74,24 +75,34 @@ constants (40k total); slimming frees room within the same caps.
   single `http(s)` token (`formatRestartSourceUrl`) and renders it verbatim. It
   is self-documenting and clickable/resumable, unlike `Previous YA process:
   <uuid>`.
+- **Transcript pointer** (see below) is emitted here as a `- Full transcript
+  (read or grep for detail beyond this summary): <path>` line.
 - **Dropped:** the `- Provider-native compact: …` status line (the compaction
   *attempt* still runs for its boundary effect — `tryRestartCompact` — its
   status is just no longer echoed) and the `- Restart reason:` line (always
   "Manual restart from Yep Anywhere" — no signal).
 
-## Provider hint to source jsonl (proposed, near-term)
+## Provider transcript pointer (implemented)
 
-**Not yet implemented.** Add an optional `AgentProvider` method
-(`packages/server/src/sdk/providers/types.ts`) returning a one-line pointer to
-the source session's on-disk transcript so the successor can grep/read for full
-detail beyond the summary. Provider-owned because storage layout differs:
-- Claude: `{CLAUDE_CONFIG_DIR}/projects/<encoded-path>/<session-id>.jsonl`
-- Codex: `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`
-- Pi: `~/.pi/agent/sessions/--<cwd>--/<ISO-ts>_<uuid>.jsonl`
+The provider's **reader** — not the runtime `AgentProvider` — owns transcript
+storage, so the pointer comes from `ISessionReader.getSessionFilePath(sessionId)`
+(`packages/server/src/sessions/types.ts`), the same optional method already used
+for cloning. It returns the source session's on-disk `.jsonl` (or `null`).
+Layouts differ per provider, which is why it's reader-owned:
+- Claude: `<sessionDir>/<sessionId>.jsonl` (added to `ClaudeSessionReader` in
+  `reader.ts` — the one reader that lacked it; probes every `allSessionDirs`
+  candidate and stats for existence).
+- Codex: `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` (scan by id).
+- Pi: `~/.pi/agent/sessions/--<cwd>--/<ISO-ts>_<uuid>.jsonl` (scan by id).
+- opencode: DB-backed → returns `null` → no line.
 
-Readers already encode these paths (`codex-reader.ts`, `pi-reader.ts`, …). The
-hint references the **source** session and is a plain file read, so it works
-even when the fresh session switches provider. Default `undefined` → no line.
+Wiring: the restart route resolves the source reader via `resolveSessionReader`
+(the renamed general resolver, formerly `…ForAgentContent`), calls
+`getSessionFilePath(sessionId)`, and threads the result to `buildRestartHandoff`
+as `sourceTranscriptPath` (rendered by `formatRestartTranscriptPath`).
+
+The pointer references the **source** session and is a plain host file read, so
+it works even when the fresh session switches provider. Absent/`null` → no line.
 This is what *licenses* the aggressive slimming above: full fidelity stays one
 grep away.
 
@@ -123,6 +134,11 @@ grep away.
 ## Tests
 
 `packages/server/test/routes/sessions-metadata.test.ts` — "summarizes fallback
-activity and appends queued turns last" asserts the slim format (URL line, `$`
-bash command kept, prose kept; timestamps / non-bash tool_use / tool_result /
-thinking dropped) and is the guard for this contract.
+activity and appends queued turns last" asserts the slim format (URL line,
+transcript-pointer line, `$` bash command kept, prose kept; timestamps /
+non-bash tool_use / tool_result / thinking dropped) and is the guard for this
+contract.
+
+`packages/server/test/session-sandbox.test.ts` — "reconstructs a private
+transcript reader after metadata reload" covers `ClaudeSessionReader
+.getSessionFilePath` (found in an additional dir; `null` for a missing id).

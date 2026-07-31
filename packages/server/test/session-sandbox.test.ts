@@ -564,6 +564,12 @@ describe("session sandbox", () => {
         title: "Replay after restart",
       }),
     ]);
+    // getSessionFilePath probes every candidate dir (here, an additionalDir)
+    // and returns null when no on-disk file matches.
+    expect(await reader.getSessionFilePath("replayable-session")).toBe(
+      join(privateSessionDir, "replayable-session.jsonl"),
+    );
+    expect(await reader.getSessionFilePath("missing-session")).toBeNull();
     await reader.close();
   });
 });

@@ -265,7 +265,7 @@ function isApprovalAuditLogEnabled(deps: SessionsDeps): boolean {
   );
 }
 
-async function resolveSessionReaderForAgentContent({
+async function resolveSessionReader({
   deps,
   project,
   sessionId,
@@ -1227,6 +1227,7 @@ function buildRestartHandoff(params: {
   sourceModel?: string;
   sourceProcess?: Process;
   sourceUrl?: string;
+  sourceTranscriptPath?: string;
   projectPath: string;
   omittedCount: number;
   transcript: string;
@@ -1238,11 +1239,13 @@ function buildRestartHandoff(params: {
     sourceModel,
     sourceProcess,
     sourceUrl,
+    sourceTranscriptPath,
     projectPath,
     omittedCount,
     transcript,
   } = params;
   const urlLine = formatRestartSourceUrl(sourceUrl);
+  const transcriptPathLine = formatRestartTranscriptPath(sourceTranscriptPath);
   const transcriptBlock = [
     omittedCount > 0
       ? `_${omittedCount} older rendered messages were omitted to keep this handoff bounded._`
@@ -1276,6 +1279,7 @@ function buildRestartHandoff(params: {
     `- Project path: ${projectPath}`,
     `- Provider: ${sourceProvider ?? sourceSession.provider}`,
     `- Model: ${sourceModel ?? sourceSession.model ?? "unknown"}`,
+    transcriptPathLine,
     "",
     transcriptBlock,
     queuedSection,
@@ -1293,6 +1297,22 @@ function formatRestartSourceUrl(url: string | undefined): string | undefined {
     return undefined;
   }
   return `- URL: ${compactRestartLine(trimmed, 400)}`;
+}
+
+// Absolute path to the source session's provider transcript, resolved by that
+// provider's reader. The successor runs on the same host, so it can read/grep
+// this file for any detail the bounded summary dropped.
+function formatRestartTranscriptPath(
+  path: string | undefined,
+): string | undefined {
+  const trimmed = (path ?? "").trim().split(/[\r\n]/)[0] ?? "";
+  if (!trimmed) {
+    return undefined;
+  }
+  return `- Full transcript (read or grep for detail beyond this summary): ${compactRestartLine(
+    trimmed,
+    400,
+  )}`;
 }
 
 function isRestartReplacementActivity(message: SDKMessage): boolean {
@@ -1979,7 +1999,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({ error: routing.error }, routing.status);
     }
 
-    const reader = await resolveSessionReaderForAgentContent({
+    const reader = await resolveSessionReader({
       deps,
       project: routing.transcriptProject,
       sessionId: c.req.param("sessionId"),
@@ -2022,7 +2042,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         return c.json({ error: routing.error }, routing.status);
       }
 
-      const reader = await resolveSessionReaderForAgentContent({
+      const reader = await resolveSessionReader({
         deps,
         project: routing.transcriptProject,
         sessionId: c.req.param("sessionId"),
@@ -4290,6 +4310,17 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const { transcript, omittedCount } = buildRestartTranscript(
       sourceSession.messages,
     );
+    // The provider's reader knows where the source session's transcript lives
+    // on disk; surface it so the successor can grep/read for any detail the
+    // bounded summary above dropped. Best-effort — omitted when unavailable.
+    const sourceReader = await resolveSessionReader({
+      deps,
+      project,
+      sessionId,
+      projectId,
+    });
+    const sourceTranscriptPath =
+      (await sourceReader.getSessionFilePath?.(sessionId)) ?? undefined;
     const handoff = buildRestartHandoff({
       handoffTitle,
       sourceSession,
@@ -4297,6 +4328,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       sourceModel: oldProcess?.resolvedModel ?? sourceSession.model,
       sourceProcess: oldProcess,
       sourceUrl: body.sourceUrl,
+      sourceTranscriptPath,
       projectPath: restartProjectPath,
       omittedCount,
       transcript,

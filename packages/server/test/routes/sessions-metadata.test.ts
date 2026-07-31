@@ -1805,6 +1805,10 @@ describe("Sessions metadata route", () => {
         () =>
           ({
             getSessionSummary: vi.fn(async () => null),
+            getSessionFilePath: vi.fn(
+              async () =>
+                "/home/user/.claude/projects/enc/sess-1.jsonl",
+            ),
           }) as unknown as ISessionReader,
       ),
       sessionMetadataService: {
@@ -2238,6 +2242,10 @@ describe("Sessions metadata route", () => {
         () =>
           ({
             getSessionSummary: vi.fn(async () => null),
+            getSessionFilePath: vi.fn(
+              async () =>
+                "/home/user/.claude/projects/enc/sess-1.jsonl",
+            ),
           }) as unknown as ISessionReader,
       ),
       sessionMetadataService: {
@@ -2391,6 +2399,10 @@ describe("Sessions metadata route", () => {
         () =>
           ({
             getSessionSummary: vi.fn(async () => null),
+            getSessionFilePath: vi.fn(
+              async () =>
+                "/home/user/.claude/projects/enc/sess-1.jsonl",
+            ),
           }) as unknown as ISessionReader,
       ),
       sessionMetadataService: {
@@ -3638,6 +3650,10 @@ describe("Sessions metadata route", () => {
         () =>
           ({
             getSessionSummary: vi.fn(async () => null),
+            getSessionFilePath: vi.fn(
+              async () =>
+                "/home/user/.claude/projects/enc/sess-1.jsonl",
+            ),
           }) as unknown as ISessionReader,
       ),
       sessionMetadataService: {
@@ -3872,6 +3888,10 @@ describe("Sessions metadata route", () => {
         () =>
           ({
             getSessionSummary: vi.fn(async () => null),
+            getSessionFilePath: vi.fn(
+              async () =>
+                "/home/user/.claude/projects/enc/sess-1.jsonl",
+            ),
           }) as unknown as ISessionReader,
       ),
       sessionMetadataService: {
@@ -3990,6 +4010,10 @@ describe("Sessions metadata route", () => {
         () =>
           ({
             getSessionSummary: vi.fn(async () => null),
+            getSessionFilePath: vi.fn(
+              async () =>
+                "/home/user/.claude/projects/enc/sess-1.jsonl",
+            ),
           }) as unknown as ISessionReader,
       ),
       sessionMetadataService: {
@@ -4150,6 +4174,10 @@ describe("Sessions metadata route", () => {
         () =>
           ({
             getSessionSummary: vi.fn(async () => null),
+            getSessionFilePath: vi.fn(
+              async () =>
+                "/home/user/.claude/projects/enc/sess-1.jsonl",
+            ),
           }) as unknown as ISessionReader,
       ),
       sessionMetadataService: {
@@ -4188,6 +4216,10 @@ describe("Sessions metadata route", () => {
     expect(handoffText).not.toContain("Previous YA process");
     expect(handoffText).not.toContain("Restart reason");
     expect(handoffText).not.toContain("Provider-native compact:");
+    // Provider reader points the successor at the on-disk transcript for grep.
+    expect(handoffText).toContain(
+      "- Full transcript (read or grep for detail beyond this summary): /home/user/.claude/projects/enc/sess-1.jsonl",
+    );
     // The real compact summary section still renders.
     expect(handoffText).toContain("## Provider-Native Compact Summary");
     expect(handoffText).toContain("Existing compact summary");
@@ -4259,6 +4291,10 @@ describe("Sessions metadata route", () => {
         () =>
           ({
             getSessionSummary: vi.fn(async () => null),
+            getSessionFilePath: vi.fn(
+              async () =>
+                "/home/user/.claude/projects/enc/sess-1.jsonl",
+            ),
           }) as unknown as ISessionReader,
       ),
       sessionMetadataService: {
