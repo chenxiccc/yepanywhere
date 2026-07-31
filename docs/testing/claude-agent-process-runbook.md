@@ -70,6 +70,15 @@ the worker must also prove the live target contains the supplied post-change
 marker, such as the new module class, and no longer contains its removed legacy
 class.
 
+Visual equivalence does not mean byte-for-byte image equality. Relative times,
+background activity, animation phase, font rasterization, and content outside
+the migrated target can change between captures. Inspect the target captures
+and the supplied behavioral and DOM markers first. After one clean replay, a
+small unexplained pixel delta should be reported with its location; it is not a
+license to stash or revert the shared checkout to manufacture a new control.
+Only perform a base-tree control replay when the controller explicitly asks for
+one after reviewing the delta.
+
 ## 2. Build a bounded worker prompt
 
 The prompt should contain these sections in this order:
