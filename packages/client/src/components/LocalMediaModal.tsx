@@ -54,6 +54,14 @@ interface LocalMediaModalProps {
   onClose: () => void;
 }
 
+interface DisplayedLocalMedia {
+  fileName: string;
+  imageNavigation?: Pick<ImageViewerNavigation, "count" | "current">;
+  mediaType: LocalResourceMediaType;
+  path: string;
+  url: string;
+}
+
 interface LocalFileModalProps {
   resource: LocalResourceRef;
   onClose: () => void;
@@ -262,6 +270,28 @@ export async function fetchLocalMediaBlob(
     : fetchMediaBlob(apiPath, transport);
 }
 
+async function decodeImageUrl(url: string): Promise<void> {
+  const image = new Image();
+  image.src = url;
+
+  if (typeof image.decode === "function") {
+    await image.decode();
+    return;
+  }
+
+  if (image.complete) {
+    if (image.naturalWidth > 0) {
+      return;
+    }
+    throw new Error("Failed to decode image");
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    image.onload = () => resolve();
+    image.onerror = () => reject(new Error("Failed to decode image"));
+  });
+}
+
 async function fetchLocalResourceBlob(
   apiPath: string,
   transport: SourceTransport,
@@ -380,31 +410,54 @@ export function LocalMediaModal({
 }: LocalMediaModalProps) {
   const { t } = useI18n();
   const transport = useCurrentSourceRuntime().transport;
-  const [url, setUrl] = useState<string | null>(null);
+  const [displayedMedia, setDisplayedMedia] =
+    useState<DisplayedLocalMedia | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [keyboardNavigationSequence, setKeyboardNavigationSequence] =
     useState(0);
+  const displayedMediaRef = useRef(displayedMedia);
+  displayedMediaRef.current = displayedMedia;
   const imageNavigationInputRef =
     useRef<ImageViewerNavigationInput>("controls");
   const imageNavigationRef = useRef(imageNavigation);
   imageNavigationRef.current = imageNavigation;
   const hasImageNavigation = Boolean(imageNavigation);
-  const fileName = getFileName(path);
+  const requestedImageCount = imageNavigation?.count;
+  const requestedImageCurrent = imageNavigation?.current;
+  const requestedFileName = getFileName(path);
   const openImageInNewTabLabel = t("fileViewerOpenImageNewTab" as never);
 
   useEffect(() => {
     let cancelled = false;
-    let objectUrl: string | null = null;
+    let pendingObjectUrl: string | null = null;
+    let transferredObjectUrl = false;
     setLoading(true);
     setError(null);
-    setUrl(null);
 
     void fetchLocalMediaBlob(path, mediaSource, "modal", transport)
-      .then((blob) => {
+      .then(async (blob) => {
         if (cancelled) return;
-        objectUrl = URL.createObjectURL(blob);
-        setUrl(objectUrl);
+        pendingObjectUrl = URL.createObjectURL(blob);
+        if (mediaType === "image" && displayedMediaRef.current) {
+          await decodeImageUrl(pendingObjectUrl);
+        }
+        if (cancelled) return;
+        setDisplayedMedia({
+          fileName: requestedFileName,
+          imageNavigation:
+            requestedImageCount !== undefined &&
+            requestedImageCurrent !== undefined
+            ? {
+                count: requestedImageCount,
+                current: requestedImageCurrent,
+              }
+            : undefined,
+          mediaType,
+          path,
+          url: pendingObjectUrl,
+        });
+        transferredObjectUrl = true;
         setLoading(false);
       })
       .catch((err) => {
@@ -415,11 +468,29 @@ export function LocalMediaModal({
 
     return () => {
       cancelled = true;
-      if (objectUrl) {
-        URL.revokeObjectURL(objectUrl);
+      if (pendingObjectUrl && !transferredObjectUrl) {
+        URL.revokeObjectURL(pendingObjectUrl);
       }
     };
-  }, [mediaSource, path, transport]);
+  }, [
+    mediaSource,
+    mediaType,
+    path,
+    requestedFileName,
+    requestedImageCount,
+    requestedImageCurrent,
+    transport,
+  ]);
+
+  const displayedUrl = displayedMedia?.url ?? null;
+  useEffect(
+    () => () => {
+      if (displayedUrl) {
+        URL.revokeObjectURL(displayedUrl);
+      }
+    },
+    [displayedUrl],
+  );
 
   useEffect(() => {
     if (mediaType !== "image" || !hasImageNavigation) {
@@ -447,46 +518,79 @@ export function LocalMediaModal({
     return () => document.removeEventListener("keydown", handleKeyDown, true);
   }, [hasImageNavigation, mediaType]);
 
+  const displayedImage =
+    displayedMedia?.mediaType === "image" ? displayedMedia : null;
+  const displayedNavigation =
+    displayedImage?.imageNavigation && hasImageNavigation
+      ? {
+          ...displayedImage.imageNavigation,
+          onNext: () => imageNavigationRef.current?.onNext(),
+          onPrevious: () => imageNavigationRef.current?.onPrevious(),
+        }
+      : undefined;
+  const imageModalActive =
+    mediaType === "image" || displayedMedia?.mediaType === "image";
+
   return (
     <Modal
       title={
-        url && mediaType === "image" ? (
+        displayedImage ? (
           <a
             className="local-media-title-link"
-            href={url}
+            href={displayedImage.url}
             target="_blank"
             rel="noopener noreferrer"
             title={openImageInNewTabLabel}
           >
-            {fileName}
+            {displayedImage.fileName}
           </a>
         ) : (
-          fileName
+          (displayedMedia?.fileName ?? requestedFileName)
         )
       }
       onClose={onClose}
+      variant={imageModalActive ? "image-viewer" : undefined}
     >
-      {url && mediaType === "image" ? (
-        <ImageViewer
-          fileName={fileName}
-          initialNavigationChrome={
-            imageNavigationInputRef.current === "keyboard" ? "position" : "all"
-          }
-          keyboardNavigationSequence={keyboardNavigationSequence}
-          navigation={imageNavigation}
-          onNavigationInput={(input) => {
-            imageNavigationInputRef.current = input;
-          }}
-          onClose={onClose}
-          url={url}
-        />
+      {displayedImage ? (
+        <div className="local-media-image-frame" aria-busy={loading}>
+          <ImageViewer
+            key={`${displayedImage.path}\0${displayedImage.url}`}
+            fileName={displayedImage.fileName}
+            initialNavigationChrome={
+              imageNavigationInputRef.current === "keyboard"
+                ? "position"
+                : "all"
+            }
+            keyboardNavigationSequence={keyboardNavigationSequence}
+            navigation={displayedNavigation}
+            onNavigationInput={(input) => {
+              imageNavigationInputRef.current = input;
+            }}
+            onClose={onClose}
+            url={displayedImage.url}
+          />
+          {error ? (
+            <div className="local-media-image-load-error" role="alert">
+              {error}
+            </div>
+          ) : null}
+        </div>
       ) : (
-        <div className="local-media-modal-content">
+        <div
+          className={`local-media-modal-content${
+            imageModalActive ? " local-media-image-placeholder" : ""
+          }`}
+        >
           {loading && <div className="local-media-loading">Loading...</div>}
           {error && <div className="local-media-error">{error}</div>}
-          {url && mediaType === "video" ? (
+          {displayedMedia?.mediaType === "video" ? (
             // biome-ignore lint/a11y/useMediaCaption: user-generated local files, no captions available
-            <video controls autoPlay className="local-media-player" src={url} />
+            <video
+              controls
+              autoPlay
+              className="local-media-player"
+              src={displayedMedia.url}
+            />
           ) : null}
         </div>
       )}

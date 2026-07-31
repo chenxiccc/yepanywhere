@@ -28,6 +28,7 @@ interface ModalProps {
   children: ReactNode;
   onClose: () => void;
   anchorRect?: ModalAnchorRect | null;
+  variant?: "image-viewer";
   /**
    * When true, opening pushes a history entry so a browser "back" — the mobile
    * OS back-swipe — dismisses the modal, keeping history balanced. Used by the
@@ -120,6 +121,7 @@ export function Modal({
   onClose,
   anchorRect,
   closeOnBackGesture,
+  variant,
 }: ModalProps) {
   const { t } = useI18n();
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -232,7 +234,9 @@ export function Modal({
     // biome-ignore lint/a11y/noStaticElementInteractions: backdrop click dismisses the modal; Escape is handled globally
     // biome-ignore lint/a11y/useKeyWithClickEvents: Escape key handled globally, click is for overlay dismiss
     <div
-      className={`modal-overlay${isAnchored ? " modal-overlay--anchored" : ""}`}
+      className={`modal-overlay${isAnchored ? " modal-overlay--anchored" : ""}${
+        variant ? ` modal-overlay--${variant}` : ""
+      }`}
       onClick={handleOverlayClick}
       onMouseDown={(e) => {
         overlayPointerStartedOnOverlayRef.current =
@@ -243,7 +247,9 @@ export function Modal({
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: click only stops propagation, keyboard handled globally */}
       <div
         ref={modalRef}
-        className={`modal${isAnchored ? " modal--anchored" : ""}`}
+        className={`modal${isAnchored ? " modal--anchored" : ""}${
+          variant ? ` modal--${variant}` : ""
+        }`}
         {...QUOTE_SELECTION_ROOT_ATTRIBUTES}
         role="dialog"
         aria-modal="true"

@@ -21,6 +21,20 @@ const originalRevokeObjectUrlDescriptor = Object.getOwnPropertyDescriptor(
   URL,
   "revokeObjectURL",
 );
+const originalImageDecodeDescriptor = Object.getOwnPropertyDescriptor(
+  HTMLImageElement.prototype,
+  "decode",
+);
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, reject, resolve };
+}
 
 function restoreObjectProperty(
   target: object,
@@ -34,7 +48,7 @@ function restoreObjectProperty(
   }
 }
 
-describe("LocalFileModal", () => {
+describe("LocalMediaModal loading transitions", () => {
   afterEach(() => {
     cleanup();
     vi.useRealTimers();
@@ -49,6 +63,235 @@ describe("LocalFileModal", () => {
       "revokeObjectURL",
       originalRevokeObjectUrlDescriptor,
     );
+    restoreObjectProperty(
+      HTMLImageElement.prototype,
+      "decode",
+      originalImageDecodeDescriptor,
+    );
+  });
+
+  it("keeps its fullscreen modal identity while the first image loads", async () => {
+    const imageBlob = deferred<Blob>();
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob:first-image"),
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn(),
+    });
+
+    render(
+      <I18nProvider>
+        <LocalMediaModal
+          path="/tmp/first.png"
+          mediaType="image"
+          mediaSource={{ fetchBlob: () => imageBlob.promise }}
+          onClose={() => {}}
+        />
+      </I18nProvider>,
+    );
+
+    expect(
+      document.querySelector(".modal-overlay--image-viewer"),
+    ).toBeTruthy();
+    expect(screen.getByRole("dialog").classList).toContain(
+      "modal--image-viewer",
+    );
+    expect(
+      screen.getByRole("dialog").querySelector(".local-media-image-placeholder"),
+    ).toBeTruthy();
+
+    imageBlob.resolve(new Blob(["png"], { type: "image/png" }));
+    expect(
+      await screen.findByRole("img", { name: "first.png" }),
+    ).toBeTruthy();
+  });
+
+  it("keeps the decoded image visible until its replacement is ready", async () => {
+    const nextImageDecoded = deferred<void>();
+    const createObjectUrl = vi
+      .fn()
+      .mockReturnValueOnce("blob:first-image")
+      .mockReturnValueOnce("blob:second-image");
+    const revokeObjectUrl = vi.fn();
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: createObjectUrl,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: revokeObjectUrl,
+    });
+    const decode = vi.fn(() => nextImageDecoded.promise);
+    Object.defineProperty(HTMLImageElement.prototype, "decode", {
+      configurable: true,
+      value: decode,
+    });
+    const mediaSource = {
+      fetchBlob: async (path: string) =>
+        new Blob([path], { type: "image/png" }),
+    };
+    const renderModal = (path: string, current: number) => (
+      <I18nProvider>
+        <LocalMediaModal
+          path={path}
+          mediaType="image"
+          mediaSource={mediaSource}
+          imageNavigation={{
+            count: 2,
+            current,
+            onNext: () => {},
+            onPrevious: () => {},
+          }}
+          onClose={() => {}}
+        />
+      </I18nProvider>
+    );
+    const { rerender } = render(renderModal("/tmp/first.png", 1));
+
+    const firstImage = await screen.findByRole("img", { name: "first.png" });
+    expect(firstImage.getAttribute("src")).toBe("blob:first-image");
+    rerender(renderModal("/tmp/second.png", 2));
+
+    await waitFor(() => expect(decode).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("img", { name: "first.png" })).toBe(firstImage);
+    expect(screen.getByRole("link", { name: "first.png" })).toBeTruthy();
+    expect(screen.getByText("1 of 2")).toBeTruthy();
+    expect(screen.getByRole("dialog").classList).toContain(
+      "modal--image-viewer",
+    );
+    expect(revokeObjectUrl).not.toHaveBeenCalledWith("blob:first-image");
+
+    nextImageDecoded.resolve();
+    const secondImage = await screen.findByRole("img", {
+      name: "second.png",
+    });
+    expect(secondImage.getAttribute("src")).toBe("blob:second-image");
+    expect(screen.getByRole("link", { name: "second.png" })).toBeTruthy();
+    expect(screen.getByText("2 of 2")).toBeTruthy();
+    await waitFor(() =>
+      expect(revokeObjectUrl).toHaveBeenCalledWith("blob:first-image"),
+    );
+  });
+
+  it("keeps the displayed image when a replacement fails", async () => {
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob:first-image"),
+    });
+    const revokeObjectUrl = vi.fn();
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: revokeObjectUrl,
+    });
+    const mediaSource = {
+      fetchBlob: async (path: string) => {
+        if (path.endsWith("second.png")) {
+          throw new Error("Replacement failed");
+        }
+        return new Blob([path], { type: "image/png" });
+      },
+    };
+    const renderModal = (path: string, current: number) => (
+      <I18nProvider>
+        <LocalMediaModal
+          path={path}
+          mediaType="image"
+          mediaSource={mediaSource}
+          imageNavigation={{
+            count: 2,
+            current,
+            onNext: () => {},
+            onPrevious: () => {},
+          }}
+          onClose={() => {}}
+        />
+      </I18nProvider>
+    );
+    const { rerender } = render(renderModal("/tmp/first.png", 1));
+    const firstImage = await screen.findByRole("img", { name: "first.png" });
+
+    rerender(renderModal("/tmp/second.png", 2));
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Replacement failed",
+    );
+    expect(screen.getByRole("img", { name: "first.png" })).toBe(firstImage);
+    expect(screen.getByText("1 of 2")).toBeTruthy();
+    expect(revokeObjectUrl).not.toHaveBeenCalledWith("blob:first-image");
+  });
+
+  it("ignores a decoded replacement after newer navigation supersedes it", async () => {
+    const decodedByUrl = new Map<string, ReturnType<typeof deferred<void>>>();
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi
+        .fn()
+        .mockReturnValueOnce("blob:first-image")
+        .mockReturnValueOnce("blob:second-image")
+        .mockReturnValueOnce("blob:third-image"),
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn(),
+    });
+    Object.defineProperty(HTMLImageElement.prototype, "decode", {
+      configurable: true,
+      value: vi.fn(function (this: HTMLImageElement) {
+        const pendingDecode = deferred<void>();
+        decodedByUrl.set(this.src, pendingDecode);
+        return pendingDecode.promise;
+      }),
+    });
+    const mediaSource = {
+      fetchBlob: async (path: string) =>
+        new Blob([path], { type: "image/png" }),
+    };
+    const renderModal = (path: string, current: number) => (
+      <I18nProvider>
+        <LocalMediaModal
+          path={path}
+          mediaType="image"
+          mediaSource={mediaSource}
+          imageNavigation={{
+            count: 3,
+            current,
+            onNext: () => {},
+            onPrevious: () => {},
+          }}
+          onClose={() => {}}
+        />
+      </I18nProvider>
+    );
+    const { rerender } = render(renderModal("/tmp/first.png", 1));
+    await screen.findByRole("img", { name: "first.png" });
+
+    rerender(renderModal("/tmp/second.png", 2));
+    await waitFor(() =>
+      expect(decodedByUrl.has("blob:second-image")).toBe(true),
+    );
+    rerender(renderModal("/tmp/third.png", 3));
+    await waitFor(() =>
+      expect(decodedByUrl.has("blob:third-image")).toBe(true),
+    );
+
+    decodedByUrl.get("blob:second-image")?.resolve();
+    await act(async () => {});
+    expect(screen.getByRole("img", { name: "first.png" })).toBeTruthy();
+
+    decodedByUrl.get("blob:third-image")?.resolve();
+    expect(
+      await screen.findByRole("img", { name: "third.png" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("img", { name: "second.png" })).toBeNull();
+    expect(screen.getByText("3 of 3")).toBeTruthy();
+  });
+});
+
+describe("LocalFileModal project paths", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
   });
 
   it("shows project-relative metadata while fetching the raw local path", async () => {
@@ -109,6 +352,11 @@ describe("LocalMediaModal", () => {
       URL,
       "revokeObjectURL",
       originalRevokeObjectUrlDescriptor,
+    );
+    restoreObjectProperty(
+      HTMLImageElement.prototype,
+      "decode",
+      originalImageDecodeDescriptor,
     );
   });
 

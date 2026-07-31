@@ -233,6 +233,15 @@ on the unzoomed or stationary image stage reveals the full chrome briefly
 instead of closing the viewer. Touch movement used for pan or pinch does not
 count as a tap.
 
+The full-screen modal shell remains mounted and maximized throughout image
+loading, decoding, navigation, and load failures; its geometry does not depend
+on whether the image viewer child is currently ready. During gallery
+navigation, the last decoded image, linked filename, and source-order position
+remain visible until the requested replacement has decoded, then change
+together. A superseded load must never replace a newer selection. If a
+replacement fails, the current image stays visible with the error reported
+over it rather than exposing or reflowing the transcript behind the modal.
+
 Fit, 1:1, and stepped zoom are explicit inspection controls within that one
 state, not further expansion levels. A 1:1 or otherwise zoomed image remains
 scrollable and pannable instead of being clipped; trackpad pinch/wheel zoom
