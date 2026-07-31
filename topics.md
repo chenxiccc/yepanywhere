@@ -217,3 +217,6 @@
 - android-fcm-push - Native Android device push subscriptions through a
   hosted FCM broker, with SRP-first enrollment, generic/descriptive privacy
   modes, and registration-lifecycle details deferred to implementation.
+- css-architecture - Chapter 11 containment for legacy global stylesheets:
+  CSS Modules by default, frozen line-count ceilings, and opportunistic
+  extraction with a downward-only ratchet.

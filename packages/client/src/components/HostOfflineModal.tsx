@@ -10,6 +10,7 @@ import type {
   AutoResumeErrorReason,
 } from "../contexts/RemoteConnectionContext";
 import { useI18n } from "../i18n";
+import styles from "./HostOfflineModal.module.css";
 import { Modal } from "./ui/Modal";
 
 type Translate = ReturnType<typeof useI18n>["t"];
@@ -87,22 +88,22 @@ export function HostOfflineModal({
 
   return (
     <Modal title={title} onClose={onDismiss}>
-      <div className="host-offline-modal-content">
-        <p className="host-offline-message">{message}</p>
+      <div className={styles.content}>
+        <p className={styles.message}>{message}</p>
 
         {error.relayUsername && (
-          <p className="host-offline-detail">
+          <p className={styles.detail}>
             <strong>{t("relayLoginUsername")}:</strong> {error.relayUsername}
           </p>
         )}
 
         {error.serverUrl && (
-          <p className="host-offline-detail">
+          <p className={styles.detail}>
             <strong>{t("relayLoginCustomRelayUrl")}:</strong> {error.serverUrl}
           </p>
         )}
 
-        <p className="host-offline-hint">
+        <p className={styles.hint}>
           {error.reason === "resume_incompatible"
             ? t("hostOfflineHintResumeIncompatible")
             : error.mode === "relay"
@@ -110,7 +111,7 @@ export function HostOfflineModal({
               : t("hostOfflineHintDirect")}
         </p>
 
-        <div className="host-offline-actions">
+        <div className={styles.actions}>
           <button type="button" className="btn-secondary" onClick={onGoToLogin}>
             {t("hostOfflineGoToLogin")}
           </button>

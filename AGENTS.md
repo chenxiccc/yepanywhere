@@ -45,6 +45,21 @@ runtime-safety benefit. Run the project lint wrapper for diagnostics, but do not
 turn a one-line import or export addition into a broad reorder solely to satisfy
 organize-imports advice.
 
+## Client CSS Architecture
+
+Before adding or changing client styles, read `topics/css-architecture.md`.
+Component-owned styles use co-located `*.module.css` files. The existing global
+client stylesheets are frozen at ratcheting line-count ceilings: feature work
+must extract enough legacy CSS to offset any unavoidable addition and must
+never raise a ceiling as routine development.
+
+Run `pnpm css:check` for client style changes. When an extraction lowers a
+legacy file's line count, run `pnpm css:check --record` in the same change.
+New non-module client stylesheets require an explicit documented exception in
+the CSS architecture baseline; generated markdown/provider markup may keep its
+narrow global vocabulary, but surrounding React-owned UI still belongs in a
+module.
+
 ## Vanilla Defaults
 
 `topics/vanilla-defaults.md` is the overarching UX theory governing every new

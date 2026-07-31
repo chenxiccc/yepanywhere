@@ -87,6 +87,28 @@ pnpm i18n:missing -- --markdown --limit all > reports/i18n-missing-$(date +%F).m
 always treats missing translations as advisory. Use this for daily or weekly
 translation planning rather than as a blocking lint rule.
 
+## Client CSS
+
+Use co-located CSS Modules (`Component.module.css`) for component-owned client
+styles. The legacy global stylesheets are frozen at ratcheting line-count
+ceilings, enforced by:
+
+```bash
+pnpm css:check
+```
+
+When moving rules out of a legacy global file lowers its line count, record the
+new lower ceiling in the same change:
+
+```bash
+pnpm css:check --record
+```
+
+Do not raise a ceiling to land a feature. Generated HTML vocabularies, themes,
+tokens, and document-level rules may remain global under the narrow exceptions
+in [`topics/css-architecture.md`](topics/css-architecture.md); ordinary React
+component layout and states belong in modules.
+
 ## Contribution Ethos: Minimalist Runtime
 
 Running code — everything outside test/build tooling — is hand-built and lean on

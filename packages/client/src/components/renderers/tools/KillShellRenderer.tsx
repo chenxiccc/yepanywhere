@@ -3,6 +3,7 @@ import type { ZodError } from "zod";
 import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
 import { validateToolResult } from "../../../lib/validateToolResult";
 import { SchemaWarning } from "../../SchemaWarning";
+import styles from "./KillShellRenderer.module.css";
 import type { KillShellInput, KillShellResult, ToolRenderer } from "./types";
 
 /**
@@ -10,9 +11,9 @@ import type { KillShellInput, KillShellResult, ToolRenderer } from "./types";
  */
 function KillShellToolUse({ input }: { input: KillShellInput }) {
   return (
-    <div className="killshell-tool-use">
-      <span className="killshell-label">Killing shell</span>
-      <code className="killshell-id">{input.shell_id}</code>
+    <div className={styles.toolUse}>
+      <span className={styles.label}>Killing shell</span>
+      <code className={styles.shellId}>{input.shell_id}</code>
     </div>
   );
 }
@@ -51,7 +52,7 @@ function KillShellToolResult({
   if (isError) {
     const errorResult = result as unknown as { content?: unknown } | undefined;
     return (
-      <div className="killshell-error">
+      <div className={styles.error}>
         {showValidationWarning && validationErrors && (
           <SchemaWarning toolName="KillShell" errors={validationErrors} />
         )}
@@ -63,17 +64,17 @@ function KillShellToolResult({
   }
 
   if (!result) {
-    return <div className="killshell-empty">No result</div>;
+    return <div className={styles.empty}>No result</div>;
   }
 
   return (
-    <div className="killshell-result">
+    <div className={styles.result}>
       {showValidationWarning && validationErrors && (
         <SchemaWarning toolName="KillShell" errors={validationErrors} />
       )}
-      <span className="killshell-message">{result.message}</span>
+      <span className={styles.message}>{result.message}</span>
       {result.shell_id && (
-        <code className="killshell-id">{result.shell_id}</code>
+        <code className={styles.shellId}>{result.shell_id}</code>
       )}
     </div>
   );

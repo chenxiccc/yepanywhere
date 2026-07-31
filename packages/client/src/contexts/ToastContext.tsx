@@ -25,8 +25,8 @@ interface ToastProviderProps {
   children: ReactNode;
 }
 
-// Keep in sync with the --toast-fade-duration values in Toast.tsx and the
-// .toast animation fallback in styles/index.css.
+// Keep in sync with the --toast-fade-duration values and animation fallback
+// owned by Toast.tsx / Toast.module.css.
 const TOAST_TIMEOUT_MS = 4500;
 const ACTION_TOAST_TIMEOUT_MS = 7000;
 
