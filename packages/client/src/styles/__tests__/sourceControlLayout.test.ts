@@ -124,6 +124,31 @@ describe("Source Control workbench layout CSS contract", () => {
     expect(diff).toMatch(/--diff-gutter-content-gap:\s*0\.375rem\s*;/);
   });
 
+  it("keeps frequent repository actions left-anchored and width-stable", async () => {
+    const [indexCss, rendererCss] = await Promise.all([
+      readFile(indexStylesheetUrl, "utf8"),
+      readFile(rendererStylesheetUrl, "utf8"),
+    ]);
+    const actionGroup = getLastRuleDeclarations(
+      rendererCss,
+      ".source-control-action-row .repo-status-action-group",
+    );
+    const review = getLastRuleDeclarations(
+      rendererCss,
+      ".source-control-action-row .review-tray-button",
+    );
+    const indicator = getRuleDeclarationsContaining(
+      indexCss,
+      ".git-status-action-indicator",
+      "width",
+    );
+
+    expect(actionGroup).toMatch(/width:\s*100%\s*;/);
+    expect(review).toMatch(/margin-left:\s*auto\s*;/);
+    expect(indicator).toMatch(/width:\s*0\.75rem\s*;/);
+    expect(indicator).toMatch(/flex:\s*0\s+0\s+0\.75rem\s*;/);
+  });
+
   it("prioritizes the filename and uses compact diff controls", async () => {
     const css = await readFile(rendererStylesheetUrl, "utf8");
     const identity = getRuleDeclarationsContaining(

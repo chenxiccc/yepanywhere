@@ -6739,7 +6739,9 @@ pre.code-highlighter-plain,
 }
 
 .repo-status-bar.inline {
-  width: 100%;
+  width: auto;
+  min-width: 0;
+  flex: 1 1 auto;
   flex-wrap: nowrap;
   gap: 6px;
   padding: 0;
@@ -6755,6 +6757,16 @@ pre.code-highlighter-plain,
   color: var(--warning-color);
 }
 
+.repo-status-bar .copy-button {
+  padding: 2px;
+  background: transparent;
+  border: 0;
+}
+
+.repo-status-bar .copy-button:hover {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.06));
+}
+
 .repo-status-name {
   font-weight: 600;
   color: var(--text-primary, #e6edf3);
@@ -6762,14 +6774,20 @@ pre.code-highlighter-plain,
 
 .repo-status-branch {
   display: inline-flex;
+  min-width: 0;
+  flex: 0 1 auto;
   align-items: center;
   gap: 4px;
   color: var(--text-secondary, #8b949e);
 }
 
 .repo-status-branch-name {
+  min-width: 0;
+  overflow: hidden;
   color: var(--text-primary, #e6edf3);
   font-family: var(--font-mono, monospace);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .repo-status-upstream,
@@ -6779,6 +6797,7 @@ pre.code-highlighter-plain,
 }
 
 .repo-status-upstream {
+  flex: 0 1 auto;
   max-width: 9rem;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -6794,15 +6813,7 @@ pre.code-highlighter-plain,
 
 .repo-status-bar.inline .repo-status-badge {
   margin-left: 0;
-}
-
-.repo-status-bar.inline .source-mode-tabs {
-  margin-left: auto;
   flex-shrink: 0;
-}
-
-.repo-status-bar.inline .source-mode-tab {
-  padding-inline: 9px;
 }
 
 .repo-status-action-group {
@@ -6812,8 +6823,28 @@ pre.code-highlighter-plain,
   flex-shrink: 0;
 }
 
+.source-control-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.source-control-action-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.source-control-action-row .repo-status-action-group {
+  width: 100%;
+}
+
+.source-control-action-row .review-tray-button {
+  margin-left: auto;
+}
+
 @media (max-width: 759px) {
-  .repo-status-bar:not(.inline) .source-mode-tabs {
+  .source-control-mobile-tabs .source-mode-tabs {
     display: grid;
     grid-template-columns: repeat(4, auto);
     justify-content: space-between;
@@ -6821,23 +6852,23 @@ pre.code-highlighter-plain,
     width: 100%;
   }
 
-  .repo-status-bar:not(.inline) .source-mode-tab {
+  .source-control-mobile-tabs .source-mode-tab {
     min-width: 0;
     padding-inline: 4px;
     font-size: 0.8rem;
   }
 
-  .repo-status-bar:not(.inline) .source-mode-tab-count {
+  .source-control-mobile-tabs .source-mode-tab-count {
     padding-inline: 4px;
   }
 
-  .repo-status-bar:not(.inline) .repo-status-action-group {
+  .source-control-action-row .repo-status-action-group {
     display: grid;
     grid-template-columns: auto auto minmax(0, 1fr) auto;
     width: 100%;
   }
 
-  .repo-status-bar:not(.inline) .repo-status-action-group > button {
+  .source-control-action-row .repo-status-action-group > button {
     min-width: 0;
     padding-inline: 8px;
     white-space: nowrap;
@@ -6886,7 +6917,7 @@ pre.code-highlighter-plain,
   color: var(--success-color);
 }
 
-/* Mode tabs (rendered inside the repo status bar's leading slot). */
+/* Source Control mode tabs: top-right in a wide header, full-width on phones. */
 .source-mode-tabs {
   display: inline-flex;
   gap: 2px;

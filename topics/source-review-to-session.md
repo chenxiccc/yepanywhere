@@ -472,26 +472,29 @@ that would crush a multi-column layout. The diff/blame column is the one that
 otherwise grows unbounded; leftover width stays as gutter
 (`justify-content: start`), never stretched tracks. — Done (8c9be031).
 
-### One discoverable source header; phone rows scroll
+### Identity header, mode tabs, and stable action row
 
-When the row fits (including tablet widths), project identity, repo/branch
-state, Changes/Commits/Files/Comments, and an always-visible Review action
-compose into one page-header row. There is no second persistent repo toolbar.
+Project identity, repo/branch state, and Clean/Dirty status form the Source
+Control identity header. Changes/Commits/Files/Comments use the top-right space
+on wide layouts and a separate full-width row when constrained. Pull, Push, and
+Check occupy a second, left-anchored action row in fixed order; Review anchors
+independently at its trailing edge. Dynamic branch/status content and Review
+state never displace the three repository actions.
+
 Source Control lands on Changes; an absent or unknown `?tab=` value resolves
 there until the approval-gated Commits default above is accepted. Pull, Push,
-and Check report their result on the control that initiated them; in
-particular, a successful remote check is visible on the Check button instead
-of creating a separate status row.
+and Check retain constant visible labels and a reserved state-indicator slot,
+so progress and brief results remain visible on the initiating button without
+changing its width. Full feedback appears below the action row.
 Review with no pending comments opens Comments and its "click a line" guidance;
 with drafts it opens submit preview directly, so a first-time explorer can
 discover the complete comment → review-session path from the header.
 
-Phone widths keep only the small project header fixed. Repo status, tabs, and
-Review may use additional rows in the page body, but those rows are ordinary
-scrolling content and disappear while reading. Both placements drive the same
-`?tab=` URL state (`useSourceTab`). The tab meanings do not change by viewport;
-only simultaneous desktop panes become focused mobile navigation. — Revised
-2026-07-27; see
+Phone widths retain project/branch status in the identity header while tabs
+and actions use ordinary scrolling rows in the page body. Both tab placements
+drive the same `?tab=` URL state (`useSourceTab`). The tab meanings do not
+change by viewport; only simultaneous desktop panes become focused mobile
+navigation. — Revised 2026-07-31; see
 [`docs/tactical/064-source-control-responsive-navigation.md`](../docs/tactical/064-source-control-responsive-navigation.md).
 
 ### GitHub Desktop review grammar; operations stay options

@@ -116,52 +116,24 @@ function useSourceTab(): {
   return { tab, setTab };
 }
 
-/**
- * The mode tabs rendered in the page-header row on wide screens, so the
- * selector shares the title/project row instead of stacking a second toolbar
- * beneath it (the mobile stack keeps them in the status bar).
- */
-function SourceHeaderActions({
+/** Source-mode tabs rendered at the top-right when the header can fit them. */
+function SourceHeaderTabs({
   status,
   pendingCount,
-  onOpenReview,
-  gitActions,
   t,
 }: {
   status: GitStatusInfo;
   pendingCount: number;
-  onOpenReview: () => void;
-  gitActions: GitActionState;
   t: TranslationFn;
 }) {
   const { tab, setTab } = useSourceTab();
   const changedFileCount = countChangedPaths(status);
   return (
-    <RepoStatusBar
-      status={status}
-      inline
-      onSelectChanges={() => setTab("changes")}
-      tabs={
-        <SourceModeTabs
-          tab={tab}
-          tabs={SOURCE_TABS}
-          counts={{ changes: changedFileCount, comments: pendingCount }}
-          onSelect={setTab}
-          t={t}
-        />
-      }
-      actions={
-        <SourceHeaderControls
-          gitActions={gitActions}
-          pendingCount={pendingCount}
-          compact
-          onReview={() => {
-            if (pendingCount > 0) onOpenReview();
-            else setTab("comments");
-          }}
-          t={t}
-        />
-      }
+    <SourceModeTabs
+      tab={tab}
+      tabs={SOURCE_TABS}
+      counts={{ changes: changedFileCount, comments: pendingCount }}
+      onSelect={setTab}
       t={t}
     />
   );
@@ -170,13 +142,11 @@ function SourceHeaderActions({
 function SourceHeaderControls({
   gitActions,
   pendingCount,
-  compact = false,
   onReview,
   t,
 }: {
   gitActions: GitActionState;
   pendingCount?: number;
-  compact?: boolean;
   onReview?: () => void;
   t: TranslationFn;
 }) {
@@ -184,20 +154,13 @@ function SourceHeaderControls({
   const remoteTitle = t("gitStatusLastCheckedRemote", {
     time: formatRemoteCheckTime(gitActions.checkedRemoteAt, nowMs, t),
   });
-  const pullLabel = gitActions.isPulling
-    ? t("gitStatusPulling")
-    : t("gitStatusPull");
-  const pushLabel = gitActions.isPushing
-    ? t("gitStatusPushing")
-    : t("gitStatusPush");
-  const checkLabel = gitActions.isCheckingRemote
-    ? t("gitStatusCheckingRemote")
-    : t(compact ? "gitStatusCheckRemoteShort" : "gitStatusCheckRemote");
   return (
     <div className="repo-status-action-group">
       {gitActions.supportsPull && (
         <SourceActionButton
-          label={pullLabel}
+          label={t("gitStatusPull")}
+          runningLabel={t("gitStatusPulling")}
+          running={gitActions.isPulling}
           feedback={gitActions.pullFeedback}
           tone={gitActions.pullFeedbackTone}
           onClick={gitActions.handlePull}
@@ -206,7 +169,9 @@ function SourceHeaderControls({
       )}
       {gitActions.supportsPush && (
         <SourceActionButton
-          label={pushLabel}
+          label={t("gitStatusPush")}
+          runningLabel={t("gitStatusPushing")}
+          running={gitActions.isPushing}
           feedback={gitActions.pushFeedback}
           tone={gitActions.pushFeedbackTone}
           onClick={gitActions.handlePush}
@@ -215,7 +180,9 @@ function SourceHeaderControls({
       )}
       {gitActions.supportsRemoteCheck && (
         <SourceActionButton
-          label={checkLabel}
+          label={t("gitStatusCheckRemote")}
+          runningLabel={t("gitStatusCheckingRemote")}
+          running={gitActions.isCheckingRemote}
           feedback={gitActions.checkFeedback}
           tone={gitActions.checkFeedbackTone}
           title={
@@ -245,6 +212,8 @@ function SourceHeaderControls({
 
 function SourceActionButton({
   label,
+  runningLabel,
+  running,
   feedback,
   tone,
   title,
@@ -253,6 +222,8 @@ function SourceActionButton({
   disabled,
 }: {
   label: string;
+  runningLabel: string;
+  running: boolean;
   feedback: string;
   tone: "success" | "warning" | null;
   title?: string;
@@ -276,23 +247,33 @@ function SourceActionButton({
     return () => clearTimeout(timer);
   }, [tone, feedback]);
   const showOutcome = recent && tone !== null && feedback !== "";
+  const showIndicator = running || showOutcome;
   return (
     <button
       type="button"
       className={`git-status-action-button ${className} ${
         showOutcome ? `git-status-action-${tone}` : ""
-      }`}
+      } ${running ? "git-status-action-running" : ""}`}
       title={feedbackTitle}
-      aria-label={feedback ? `${label}: ${feedback}` : label}
+      aria-label={
+        running
+          ? `${label}: ${runningLabel}`
+          : feedback
+            ? `${label}: ${feedback}`
+            : label
+      }
       onClick={onClick}
       disabled={disabled}
     >
       <span>{label}</span>
-      {showOutcome && (
-        <span className="git-status-action-indicator" aria-hidden="true">
-          {tone === "success" ? "✓" : "!"}
-        </span>
-      )}
+      <span
+        className={`git-status-action-indicator ${
+          showIndicator ? "is-visible" : ""
+        }`}
+        aria-hidden="true"
+      >
+        {running ? "" : showOutcome ? (tone === "success" ? "✓" : "!") : ""}
+      </span>
     </button>
   );
 }
@@ -343,6 +324,7 @@ export function GitStatusPage() {
   const { t } = useI18n();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { setTab: setHeaderTab } = useSourceTab();
   const projectId = searchParams.get("projectId");
   const sourceKey = useClientSummarySourceKey();
   const { openSidebar, isWideScreen, toggleSidebar, isSidebarCollapsed } =
@@ -469,11 +451,24 @@ export function GitStatusPage() {
         title={project?.name ?? t("gitStatusTitle")}
         titleElement={
           effectiveProjectId ? (
-            <ProjectSelector
-              currentProjectId={effectiveProjectId}
-              currentProjectName={project?.name}
-              onProjectChange={(p) => handleProjectChange(p.id)}
-            />
+            <div className="source-header-identity">
+              <ProjectSelector
+                currentProjectId={effectiveProjectId}
+                currentProjectName={project?.name}
+                onProjectChange={(p) => handleProjectChange(p.id)}
+              />
+              {gitStatus?.isGitRepo && (
+                <RepoStatusBar
+                  status={gitStatus}
+                  onSelectChanges={
+                    supportsSourceReview
+                      ? () => setHeaderTab("changes")
+                      : undefined
+                  }
+                  t={t}
+                />
+              )}
+            </div>
           ) : undefined
         }
         onOpenSidebar={openSidebar}
@@ -485,11 +480,9 @@ export function GitStatusPage() {
           supportsSourceReview &&
           effectiveProjectId &&
           gitStatus?.isGitRepo ? (
-            <SourceHeaderActions
+            <SourceHeaderTabs
               status={gitStatus}
               pendingCount={reviewComments.pending.length}
-              onOpenReview={() => setShowReviewModal(true)}
-              gitActions={gitActions}
               t={t}
             />
           ) : undefined
@@ -520,7 +513,6 @@ export function GitStatusPage() {
                 key={`${sourceKey}:${effectiveProjectId}`}
                 status={gitStatus}
                 projectId={effectiveProjectId}
-                projectName={project?.name}
                 isWideScreen={isWideScreen}
                 sourceControlsFitHeader={sourceControlsFitHeader}
                 supportsProjections={supportsSourceReviewProjections}
@@ -535,8 +527,6 @@ export function GitStatusPage() {
           ) : gitStatus && effectiveProjectId ? (
             <GitStatusCompatibilityContent
               key={`${sourceKey}:${effectiveProjectId}:compatibility`}
-              status={gitStatus}
-              projectName={project?.name}
               gitActions={gitActions}
               t={t}
             />
@@ -557,24 +547,17 @@ function GitStatusUpgradeRequired({ t }: { t: TranslationFn }) {
 }
 
 function GitStatusCompatibilityContent({
-  status,
-  projectName,
   gitActions,
   t,
 }: {
-  status: GitStatusInfo;
-  projectName?: string;
   gitActions: GitActionState;
   t: TranslationFn;
 }) {
   return (
     <div className="git-status git-status-compatibility">
-      <RepoStatusBar
-        repoName={projectName}
-        status={status}
-        actions={<SourceHeaderControls gitActions={gitActions} t={t} />}
-        t={t}
-      />
+      <div className="source-control-action-row">
+        <SourceHeaderControls gitActions={gitActions} t={t} />
+      </div>
       <GitActionNotices gitActions={gitActions} t={t} />
       <section className="git-status-compatibility-notice">
         <h2>{t("gitStatusCompatibilityTitle")}</h2>
@@ -587,7 +570,6 @@ function GitStatusCompatibilityContent({
 function GitStatusContent({
   status,
   projectId,
-  projectName,
   isWideScreen,
   sourceControlsFitHeader,
   supportsProjections,
@@ -600,7 +582,6 @@ function GitStatusContent({
 }: {
   status: GitStatusInfo;
   projectId: string;
-  projectName?: string;
   isWideScreen: boolean;
   sourceControlsFitHeader: boolean;
   supportsProjections: boolean;
@@ -684,12 +665,9 @@ function GitStatusContent({
   );
   return (
     <div className="git-status">
-      {!sourceControlsFitHeader && (
-        <RepoStatusBar
-          repoName={projectName}
-          status={status}
-          onSelectChanges={() => setTab("changes")}
-          tabs={
+      <div className="source-control-toolbar">
+        {!sourceControlsFitHeader && (
+          <div className="source-control-mobile-tabs">
             <SourceModeTabs
               tab={tab}
               tabs={SOURCE_TABS}
@@ -700,21 +678,20 @@ function GitStatusContent({
               onSelect={setTab}
               t={t}
             />
-          }
-          actions={
-            <SourceHeaderControls
-              gitActions={gitActions}
-              pendingCount={reviewComments.pending.length}
-              onReview={() => {
-                if (reviewComments.pending.length > 0) onOpenReview();
-                else setTab("comments");
-              }}
-              t={t}
-            />
-          }
-          t={t}
-        />
-      )}
+          </div>
+        )}
+        <div className="source-control-action-row">
+          <SourceHeaderControls
+            gitActions={gitActions}
+            pendingCount={reviewComments.pending.length}
+            onReview={() => {
+              if (reviewComments.pending.length > 0) onOpenReview();
+              else setTab("comments");
+            }}
+            t={t}
+          />
+        </div>
+      </div>
 
       <GitActionNotices gitActions={gitActions} t={t} />
       {projectionNotice &&

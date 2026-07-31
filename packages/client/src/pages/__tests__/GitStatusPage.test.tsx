@@ -287,7 +287,7 @@ beforeEach(() => {
 });
 
 describe("GitStatusPage source header", () => {
-  it("composes status, tabs, and the Review entry into one tablet/desktop row", async () => {
+  it("keeps identity and tabs in the header with actions in their own row", async () => {
     renderPage();
     await screen.findByTestId("working-tree-browser");
     await waitFor(() =>
@@ -297,7 +297,13 @@ describe("GitStatusPage source header", () => {
     const header = document.querySelector(".session-header") as HTMLElement;
     expect(header.querySelectorAll(".repo-status-bar")).toHaveLength(1);
     expect(header.querySelector(".source-mode-tabs")).not.toBeNull();
-    expect(header.querySelector(".review-tray-button")?.textContent).toContain(
+    expect(header.querySelector(".review-tray-button")).toBeNull();
+
+    const actionRow = document.querySelector(
+      ".source-control-action-row",
+    ) as HTMLElement;
+    expect(actionRow).not.toBeNull();
+    expect(actionRow.querySelector(".review-tray-button")?.textContent).toContain(
       "sourceReviewStart",
     );
     expect(document.querySelector(".git-status > .repo-status-bar")).toBeNull();
@@ -428,24 +434,48 @@ describe("GitStatusPage source header", () => {
     );
   });
 
-  it("shows successful remote-check feedback on the Check button", async () => {
+  it("shows remote-check feedback without changing the visible button label", async () => {
+    let resolveCheck:
+      | ((value: {
+          status: "checked";
+          checkedRemoteAt: string;
+        }) => void)
+      | undefined;
+    mocks.checkGitRemote.mockReturnValue(
+      new Promise((resolve) => {
+        resolveCheck = resolve;
+      }),
+    );
     renderPage();
     const check = await screen.findByRole("button", {
-      name: "gitStatusCheckRemoteShort",
+      name: "gitStatusCheckRemote",
     });
+    expect(check.textContent).toBe("gitStatusCheckRemote");
+    expect(check.querySelector(".git-status-action-indicator")).not.toBeNull();
     fireEvent.click(check);
 
-    expect(
-      await screen.findByRole("button", {
-        name: /gitStatusCheckRemoteShort: gitStatusRemoteCheckSuccess/,
-      }),
-    ).toBeDefined();
+    const checking = await screen.findByRole("button", {
+      name: "gitStatusCheckRemote: gitStatusCheckingRemote",
+    });
+    expect(checking.textContent).toBe("gitStatusCheckRemote");
+    expect(checking.classList.contains("git-status-action-running")).toBe(true);
+
+    resolveCheck?.({
+      status: "checked",
+      checkedRemoteAt: "2026-07-26T12:00:00.000Z",
+    });
+    const completed = await screen.findByRole("button", {
+      name: /gitStatusCheckRemote: gitStatusRemoteCheckSuccess/,
+    });
+    await waitFor(() =>
+      expect(completed.textContent).toBe("gitStatusCheckRemote✓"),
+    );
     expect(screen.getByRole("status").textContent).toBe(
       "gitStatusRemoteCheckSuccess",
     );
   });
 
-  it("keeps mobile source controls in scrolling content", async () => {
+  it("keeps mobile identity in the header and stacks tabs with actions", async () => {
     mocks.useMediaQuery.mockReturnValue(false);
     mocks.useNavigationLayout.mockReturnValue({
       openSidebar: vi.fn(),
@@ -459,9 +489,13 @@ describe("GitStatusPage source header", () => {
     );
 
     const header = document.querySelector(".session-header") as HTMLElement;
-    expect(header.querySelector(".repo-status-bar")).toBeNull();
+    expect(header.querySelector(".repo-status-bar")).not.toBeNull();
+    expect(header.querySelector(".source-mode-tabs")).toBeNull();
     expect(
-      document.querySelector(".git-status > .repo-status-bar"),
+      document.querySelector(".source-control-mobile-tabs .source-mode-tabs"),
+    ).not.toBeNull();
+    expect(
+      document.querySelector(".source-control-action-row"),
     ).not.toBeNull();
   });
 });

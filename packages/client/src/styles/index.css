@@ -2045,17 +2045,64 @@ textarea {
   flex-shrink: 0;
 }
 
-/* Source control composes repo state, navigation, and the review entry point
-   into this row at tablet/desktop widths. Let the project identity yield
-   space without forcing the controls into a second persistent row. */
+/* Source Control keeps project/branch state together at the leading edge and
+   uses the remaining wide-header space for mode navigation. Repository
+   operations live in a separate, left-anchored action row below. */
 .source-control-main-content .session-header-left {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .source-control-main-content .session-header-actions {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   min-width: 0;
   justify-content: flex-end;
+}
+
+.source-header-identity {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.source-header-identity .project-selector-container {
+  min-width: 0;
+  max-width: min(16rem, 30vw);
+  flex-shrink: 1;
+}
+
+.source-header-identity .project-selector-button {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.source-header-identity .project-selector-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 480px) {
+  .source-header-identity {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+
+  .source-header-identity .project-selector-container {
+    width: fit-content;
+    max-width: 100%;
+  }
+
+  .source-header-identity .project-selector-text {
+    max-width: calc(100vw - 120px);
+  }
+
+  .source-header-identity .repo-status-bar.inline {
+    width: 100%;
+  }
 }
 
 .session-header::after {
@@ -20349,9 +20396,36 @@ body:has(.session-page)
 }
 
 .git-status-action-indicator {
+  display: inline-flex;
+  width: 0.75rem;
+  height: 0.75rem;
+  flex: 0 0 0.75rem;
+  align-items: center;
+  justify-content: center;
+  visibility: hidden;
   font-size: 0.72rem;
   font-weight: 800;
   line-height: 1;
+}
+
+.git-status-action-indicator.is-visible {
+  visibility: visible;
+}
+
+.git-status-action-running .git-status-action-indicator::after {
+  width: 0.55rem;
+  height: 0.55rem;
+  border: 1.5px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  content: "";
+  animation: git-status-action-spin 0.7s linear infinite;
+}
+
+@keyframes git-status-action-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .git-status-action-success .git-status-action-indicator {

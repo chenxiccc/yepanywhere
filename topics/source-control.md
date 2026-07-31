@@ -44,6 +44,23 @@ back-swipe. Changes remains the default until a separately approved change;
 making its Working tree view available in Commits does not itself authorize a
 default flip.
 
+## Header hierarchy
+
+The Source Control header keeps repository identity and repository operations
+in separate visual bands. Project selection, branch, upstream, ahead/behind
+state, and the Clean/Dirty badge form the identity band. When the available
+header width fits the complete mode selector, Changes/Commits/Files/Comments
+occupies the trailing top-right space without displacing that identity.
+Constrained layouts move the same tabs to their own full-width row.
+
+Pull, Push, and Check remote form a second, left-anchored action row in that
+fixed order at every viewport width. Review remains independently anchored at
+the trailing edge. Branch names, upstream names, count badges, action progress,
+and action outcomes must not move the Pull/Push/Check group. Their visible
+labels stay constant while a permanently reserved indicator slot presents
+progress and brief success/warning state. Full action feedback remains visible
+below the action row.
+
 ## Workbench geometry
 
 Source Control is a workbench, not prose or a transcript. It must use the
