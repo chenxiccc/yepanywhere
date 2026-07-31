@@ -15,6 +15,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useI18n } from "../i18n";
+import styles from "./UserTurnNavigator.module.css";
 
 export interface UserTurnNavAnchor {
   id: string;
@@ -103,6 +104,11 @@ interface PreviewFacsimile {
   lines: PreviewFacsimileLine[];
 }
 
+const MOTION_CUE_CLASS: Record<UserTurnNavMotionCue["direction"], string> = {
+  down: styles.motionDown ?? "",
+  up: styles.motionUp ?? "",
+};
+
 const MIN_NAV_ANCHORS = 2;
 const NAV_VERTICAL_INSET_PX = 8;
 // Per-marker hit/hover target height is sized to the gap to its neighbors (so
@@ -126,7 +132,7 @@ const PREVIEW_EDGE_MARGIN_PX = 1;
 const PREVIEW_VERTICAL_MARGIN_PX = 5;
 const PREVIEW_EDGE_ANCHOR_EPSILON_PX = 0.5;
 // Half the hover preview's max rendered height (CSS max-height: 4.4em on
-// .user-turn-nav-preview). A centered preview reaches this far above/below its
+// .preview in the module). A centered preview reaches this far above/below its
 // marker, so a marker within this distance of an edge must flip to an edge
 // anchor or the box is clipped by the banner before its center reaches the top.
 const PREVIEW_MAX_HALF_HEIGHT_PX = 32;
@@ -248,7 +254,7 @@ function renderHighlightedText(
       parts.push(text.slice(cursor, index));
     }
     parts.push(
-      <mark key={key} className="user-turn-nav-preview-match">
+      <mark key={key} className={styles.previewMatch}>
         {text.slice(index, index + normalizedQuery.length)}
       </mark>,
     );
@@ -345,10 +351,7 @@ function renderFacsimileLine(
   return (
     <span
       key={`${index}:${line.text}`}
-      className={[
-        "user-turn-nav-preview-facsimile-line",
-        line.mono ? "is-mono" : "",
-      ]
+      className={[styles.facsimileLine, line.mono ? styles.mono : ""]
         .filter(Boolean)
         .join(" ")}
     >
@@ -367,13 +370,13 @@ function renderPreviewFacsimile(
 ) {
   const facsimile = splitPreviewFacsimile(label.text);
   return (
-    <span className="user-turn-nav-preview-facsimile">
-      <span className="user-turn-nav-preview-facsimile-rail" aria-hidden />
-      <span className="user-turn-nav-preview-facsimile-content">
+    <span className={styles.facsimile}>
+      <span className={styles.facsimileRail} aria-hidden />
+      <span className={styles.facsimileContent}>
         {facsimile.tags.length > 0 && (
-          <span className="user-turn-nav-preview-facsimile-tags">
+          <span className={styles.facsimileTags}>
             {facsimile.tags.map((tag) => (
-              <span key={tag} className="user-turn-nav-preview-facsimile-tag">
+              <span key={tag} className={styles.facsimileTag}>
                 {renderHighlightedText(
                   tag,
                   searchState.query,
@@ -383,7 +386,7 @@ function renderPreviewFacsimile(
             ))}
           </span>
         )}
-        <span className="user-turn-nav-preview-facsimile-lines">
+        <span className={styles.facsimileLines}>
           {facsimile.lines.map((line, index) =>
             renderFacsimileLine(line, index, searchState),
           )}
@@ -1308,8 +1311,11 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
 
   return (
     <nav
-      className="user-turn-nav"
+      className={styles.root}
       aria-label="Turn navigation"
+      /* Stable hook for deterministic transcript captures, which hide the rail
+         because its markers track live scroll state. */
+      data-turn-rail=""
       style={
         {
           top: `${layout.top}px`,
@@ -1321,9 +1327,9 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
       }
       onMouseLeave={clearPreview}
     >
-      <div className="user-turn-nav-track">
+      <div className={styles.track}>
         <div
-          className="user-turn-nav-thumb"
+          className={styles.thumb}
           style={{
             top: `${layout.thumbTopPct * 100}%`,
             height: `${layout.thumbHeightPct * 100}%`,
@@ -1333,9 +1339,11 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
           <span
             key={activeMotionCue.token}
             className={[
-              "user-turn-nav-motion-cue",
-              `is-${activeMotionCue.direction}`,
-            ].join(" ")}
+              styles.motionCue,
+              MOTION_CUE_CLASS[activeMotionCue.direction],
+            ]
+              .filter(Boolean)
+              .join(" ")}
             style={{ top: `${layout.thumbTopPct * 100}%` }}
           />
         )}
@@ -1344,14 +1352,14 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
             <button
               type="button"
               className={[
-                "user-turn-nav-marker",
-                marker.id === activeMarkerId ? "is-active" : "",
-                marker.id === latestMarkerId ? "is-latest" : "",
+                styles.marker,
+                marker.id === activeMarkerId ? styles.active : "",
+                marker.id === latestMarkerId ? styles.latest : "",
                 hasSearchMatches && searchMatchIds.has(marker.id)
-                  ? "is-search-match"
+                  ? styles.searchMatch
                   : "",
                 hasSearchMatches && !searchMatchIds.has(marker.id)
-                  ? "is-search-nonmatch"
+                  ? styles.searchNonmatch
                   : "",
               ]
                 .filter(Boolean)
@@ -1391,12 +1399,12 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
               onPointerMove={(event) => focusMarkerPreview(marker.id, event)}
               onPointerDown={(event) => focusMarkerPreview(marker.id, event)}
             >
-              <span className="user-turn-nav-marker-line" />
+              <span className={styles.markerLine} />
             </button>
             {onTrimAnchor && (
               <button
                 type="button"
-                className="user-turn-nav-trim-marker"
+                className={styles.trimMarker}
                 style={{
                   top: `${marker.renderTopPct * 100}%`,
                   height: `${marker.hitPx}px`,
@@ -1430,7 +1438,7 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
                 onPointerMove={(event) => focusMarkerPreview(marker.id, event)}
                 onPointerDown={(event) => focusMarkerPreview(marker.id, event)}
               >
-                <span className="user-turn-nav-trim-dot" />
+                <span className={styles.trimDot} />
               </button>
             )}
           </span>
@@ -1444,14 +1452,14 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
             }
             type="button"
             className={[
-              "user-turn-nav-preview",
-              hasSearchMatches ? "is-search-preview" : "",
-              hasSingleSearchMatch ? "is-single-search-match" : "",
-              label.compact ? "is-compact" : "",
-              label.short ? "is-short" : "",
-              label.active ? "is-search-active" : "",
-              label.expanded ? "is-expanded" : "",
-              label.pinned ? "is-pinned-expanded" : "",
+              styles.preview,
+              hasSearchMatches ? styles.searchPreview : "",
+              hasSingleSearchMatch ? styles.singleSearchMatch : "",
+              label.compact ? styles.compact : "",
+              label.short ? styles.short : "",
+              label.active ? styles.searchActive : "",
+              label.expanded ? styles.expanded : "",
+              label.pinned ? styles.pinnedExpanded : "",
             ]
               .filter(Boolean)
               .join(" ")}
@@ -1483,7 +1491,7 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
           <>
             <button
               type="button"
-              className="user-turn-nav-context-overlay"
+              className={styles.contextOverlay}
               aria-label={t("turnNotchDismissMenu")}
               onClick={closeNotchMenu}
               onContextMenu={(event) => {
@@ -1494,7 +1502,7 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
             {/* Notches sit at the right edge, so anchor the menu's right side at
                 the click and open leftward toward screen center. */}
             <div
-              className="user-turn-nav-context-menu"
+              className={styles.contextMenu}
               role="menu"
               style={{
                 top: Math.min(notchMenu.y, window.innerHeight - 180),

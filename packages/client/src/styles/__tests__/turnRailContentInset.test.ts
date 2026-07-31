@@ -5,12 +5,17 @@ import { describe, expect, it } from "vitest";
 
 const stylesheetUrl = new URL("../index.css", import.meta.url);
 const renderersStylesheetUrl = new URL("../renderers.css", import.meta.url);
+const turnRailStylesheetUrl = new URL(
+  "../../components/UserTurnNavigator.module.css",
+  import.meta.url,
+);
 
 describe("turn rail horizontal clearance CSS contract", () => {
   it("grows linearly to measured separation at 1600px without a sidebar step", async () => {
-    const [css, renderersCss] = await Promise.all([
+    const [css, renderersCss, turnRailCss] = await Promise.all([
       readFile(stylesheetUrl, "utf8"),
       readFile(renderersStylesheetUrl, "utf8"),
+      readFile(turnRailStylesheetUrl, "utf8"),
     ]);
 
     expect(css).toMatch(
@@ -43,12 +48,8 @@ describe("turn rail horizontal clearance CSS contract", () => {
     expect(css).toMatch(
       /\.session-input\s*\{\s*padding:\s*0\.5rem 0\.375rem;\s*padding-bottom:\s*calc\(0\.5rem - 1px\);/s,
     );
-    expect(css).toMatch(
-      /\.user-turn-nav-trim-marker\s*\{[^}]*right:\s*1px;/s,
-    );
-    expect(css).toMatch(
-      /\.user-turn-nav-trim-dot\s*\{[^}]*right:\s*1px;/s,
-    );
+    expect(turnRailCss).toMatch(/\.trimMarker\s*\{[^}]*right:\s*1px;/s);
+    expect(turnRailCss).toMatch(/\.trimDot\s*\{[^}]*right:\s*1px;/s);
     expect(renderersCss).toMatch(
       /\.assistant-turn \.text-block-actions\s*\{[^}]*margin-inline-end:\s*var\(--turn-rail-float-inset-inline-end\)\s*;/s,
     );

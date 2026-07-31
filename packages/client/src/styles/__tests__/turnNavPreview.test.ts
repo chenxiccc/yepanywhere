@@ -3,7 +3,10 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
-const stylesheetUrl = new URL("../index.css", import.meta.url);
+const stylesheetUrl = new URL(
+  "../../components/UserTurnNavigator.module.css",
+  import.meta.url,
+);
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -19,7 +22,7 @@ function getRuleDeclarations(css: string, selector: string): string {
   );
   expect(
     match,
-    `${selector} should have a dedicated rule in index.css.`,
+    `${selector} should have a dedicated rule in UserTurnNavigator.module.css.`,
   ).not.toBeNull();
   return match?.[1] ?? "";
 }
@@ -29,11 +32,11 @@ describe("turn navigation preview CSS contract", () => {
     const css = await readStylesheet();
     const declarations = getRuleDeclarations(
       css,
-      ".user-turn-nav-preview.is-search-preview:not(.is-expanded)",
+      ".preview.searchPreview:not(.expanded)",
     );
     const compactDeclarations = getRuleDeclarations(
       css,
-      ".user-turn-nav-preview.is-search-preview.is-compact:not(.is-expanded)",
+      ".preview.searchPreview.compact:not(.expanded)",
     );
 
     for (const rule of [declarations, compactDeclarations]) {
@@ -54,7 +57,7 @@ describe("turn navigation preview CSS contract", () => {
     const css = await readStylesheet();
     const declarations = getRuleDeclarations(
       css,
-      ".user-turn-nav-preview.is-expanded.is-pinned-expanded",
+      ".preview.expanded.pinnedExpanded",
     );
 
     expect(

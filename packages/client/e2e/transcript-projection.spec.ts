@@ -61,7 +61,7 @@ async function attachTranscriptScreenshots(
         caret-color: transparent !important;
         transition-duration: 0s !important;
       }
-      .message-age, .user-turn-nav { visibility: hidden !important; }
+      .message-age, [data-turn-rail] { visibility: hidden !important; }
     `,
   });
   const transcript = page.locator(".session-messages");

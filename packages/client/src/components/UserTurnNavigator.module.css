@@ -1,0 +1,448 @@
+.root {
+  position: fixed;
+  z-index: 55;
+  width: min(380px, calc(100vw - 16px));
+  pointer-events: none;
+}
+
+.track {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.track::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 5px;
+  bottom: 0;
+  width: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--border-color) 72%, transparent);
+}
+
+.thumb {
+  position: absolute;
+  right: 4px;
+  min-height: 18px;
+  width: 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-dimmed) 38%, transparent);
+}
+
+.motionCue {
+  position: absolute;
+  right: -1px;
+  z-index: 2;
+  width: 14px;
+  height: 48px;
+  margin-top: -24px;
+  border-radius: 999px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.motionCue::before {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 10px;
+  width: 4px;
+  height: 28px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary-color) 68%, transparent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--primary-color) 35%, transparent);
+}
+
+.motionCue.motionDown {
+  animation: motion-down 0.68s ease-out both;
+}
+
+.motionCue.motionUp {
+  animation: motion-up 0.68s ease-out both;
+}
+
+@keyframes motion-down {
+  0% {
+    opacity: 0;
+    transform: translateY(-18px);
+  }
+  20% {
+    opacity: 0.72;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+}
+
+@keyframes motion-up {
+  0% {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  20% {
+    opacity: 0.72;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-18px);
+  }
+}
+
+.marker {
+  appearance: none;
+  position: absolute;
+  right: 0;
+  width: 22px;
+  /* height + margin-top are set inline per marker (sized to neighbor gaps so
+     targets tile without overlap); see UserTurnNavigator. */
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: manipulation;
+}
+
+/* Turn-notch context menu (right-click / long-press): fork / copy / hide. */
+.contextOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: default;
+}
+
+.contextMenu {
+  position: fixed;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  min-width: 140px;
+  padding: var(--space-1);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
+}
+
+.contextMenu button {
+  appearance: none;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.6rem;
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.contextMenu button:hover,
+.contextMenu button:focus-visible {
+  background: var(--bg-hover);
+}
+
+.markerLine {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  right: 8px;
+  width: 8px;
+  height: 3px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.68;
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s ease,
+    width 0.12s ease;
+}
+
+.marker:hover .markerLine,
+.marker:focus-visible .markerLine,
+.marker.active .markerLine {
+  width: 15px;
+  opacity: 1;
+}
+
+.marker:focus-visible {
+  outline: none;
+}
+
+.marker:focus-visible .markerLine {
+  box-shadow: 0 0 0 2px var(--focus-border);
+}
+
+.marker.active {
+  color: var(--primary-color);
+}
+
+.marker.latest:not(.active) {
+  color: color-mix(in srgb, var(--primary-color) 55%, var(--text-muted));
+}
+
+.marker.searchMatch {
+  color: var(--primary-color);
+}
+
+.marker.searchNonmatch .markerLine {
+  opacity: 0.18;
+  width: 5px;
+}
+
+.trimMarker {
+  appearance: none;
+  position: absolute;
+  right: 1px;
+  width: 10px;
+  /* height + margin-top set inline per marker (sized to neighbor gaps). */
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--primary-color) 72%, var(--text-muted));
+  cursor: pointer;
+  opacity: 0.64;
+  pointer-events: auto;
+  touch-action: manipulation;
+}
+
+.trimDot {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  right: 1px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  background: color-mix(in srgb, var(--bg-primary) 88%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--bg-primary) 80%, transparent);
+}
+
+.trimMarker:hover,
+.trimMarker:focus-visible {
+  opacity: 1;
+  outline: none;
+}
+
+.trimMarker:hover .trimDot,
+.trimMarker:focus-visible .trimDot {
+  background: currentColor;
+  box-shadow:
+    0 0 0 2px var(--bg-primary),
+    0 0 0 4px color-mix(in srgb, var(--primary-color) 36%, transparent);
+}
+
+.preview {
+  appearance: none;
+  position: absolute;
+  right: 34px;
+  width: var(--user-turn-nav-preview-max-width, min(340px, calc(100vw - 72px)));
+  max-height: 4.4em;
+  margin: 0;
+  padding: 6px 8px;
+  transform: translateY(var(--user-turn-nav-preview-translate-y, -50%));
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--bg-secondary) 96%, transparent);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.28);
+  color: var(--text-primary);
+  cursor: pointer;
+  display: -webkit-box;
+  font: inherit;
+  font-size: var(--font-size-sm);
+  line-height: 1.35;
+  overflow: hidden;
+  pointer-events: auto;
+  text-align: left;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.preview:hover,
+.preview:focus-visible {
+  border-color: var(--focus-border);
+  outline: none;
+}
+
+.preview.searchPreview {
+  box-shadow: 0 6px 22px rgb(0 0 0 / 0.24);
+}
+
+.preview.searchPreview:not(.expanded) {
+  height: var(--user-turn-nav-search-preview-collapsed-height, 15px);
+  max-height: var(--user-turn-nav-search-preview-collapsed-height, 15px);
+  padding: 0 5px;
+  font-size: var(--font-size-xs);
+  line-height: 13px;
+  white-space: nowrap;
+  -webkit-line-clamp: 1;
+}
+
+.preview.searchActive {
+  border-color: var(--primary-color);
+  z-index: 2;
+}
+
+.preview.expanded {
+  display: block;
+  max-height: 10.4em;
+  padding: 8px 9px;
+  border-color: color-mix(
+    in srgb,
+    var(--primary-color) 78%,
+    var(--border-color)
+  );
+  background: color-mix(in srgb, var(--bg-secondary) 98%, var(--bg-input));
+  box-shadow:
+    0 10px 30px rgb(0 0 0 / 0.3),
+    inset 3px 0 0 color-mix(in srgb, var(--primary-color) 68%, transparent);
+  font-size: var(--font-size-xs);
+  line-height: 1.28;
+  white-space: normal;
+  -webkit-line-clamp: unset;
+}
+
+.preview.expanded.pinnedExpanded {
+  z-index: 3;
+}
+
+.preview.expanded.singleSearchMatch {
+  animation: none;
+}
+
+.facsimile {
+  display: grid;
+  grid-template-columns: 3px minmax(0, 1fr);
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.facsimileRail {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary-color) 68%, transparent);
+}
+
+.facsimileContent {
+  display: block;
+  min-width: 0;
+}
+
+.facsimileTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-bottom: 5px;
+}
+
+.facsimileTag {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  padding: 1px 4px;
+  border: 1px solid color-mix(in srgb, var(--border-color) 84%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--bg-input) 78%, transparent);
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.facsimileLines {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.facsimileLine {
+  display: block;
+  min-width: 0;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.facsimileLine.mono {
+  font-family: var(--font-mono);
+  font-size: 0.95em;
+  line-height: 1.22;
+}
+
+.preview.singleSearchMatch {
+  animation: preview-pulse 0.86s ease-out both;
+}
+
+.preview.short:not(.compact):not(.expanded) {
+  width: max-content;
+  max-width: var(
+    --user-turn-nav-preview-max-width,
+    min(340px, calc(100vw - 72px))
+  );
+  white-space: nowrap;
+  -webkit-line-clamp: 1;
+}
+
+@keyframes preview-pulse {
+  0% {
+    box-shadow: 0 0 0 0
+      color-mix(in srgb, var(--primary-color) 46%, transparent);
+  }
+  42% {
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--primary-color) 24%, transparent),
+      0 6px 22px rgb(0 0 0 / 0.24);
+  }
+  100% {
+    box-shadow: 0 6px 22px rgb(0 0 0 / 0.24);
+  }
+}
+
+.previewMatch {
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--primary-color) 32%, transparent);
+  color: inherit;
+  font-weight: 700;
+}
+
+.preview.compact:not(.expanded) {
+  max-height: 2em;
+  padding: 4px 7px;
+  font-size: var(--font-size-xs);
+  line-height: 1.25;
+  -webkit-line-clamp: 1;
+}
+
+.preview.searchPreview.compact:not(.expanded) {
+  height: var(--user-turn-nav-search-preview-collapsed-height, 15px);
+  max-height: var(--user-turn-nav-search-preview-collapsed-height, 15px);
+  padding: 0 5px;
+  font-size: var(--font-size-xs);
+  line-height: 13px;
+}
+
+@media (min-width: 900px) {
+  .preview {
+    width: var(
+      --user-turn-nav-preview-max-width,
+      min(620px, calc(100vw - 120px))
+    );
+  }
+
+  .preview.short:not(.compact) {
+    width: max-content;
+    max-width: var(
+      --user-turn-nav-preview-max-width,
+      min(620px, calc(100vw - 120px))
+    );
+  }
+}

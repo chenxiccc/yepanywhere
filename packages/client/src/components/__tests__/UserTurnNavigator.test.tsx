@@ -10,6 +10,13 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { UserTurnNavigator } from "../UserTurnNavigator";
+import styles from "../UserTurnNavigator.module.css";
+
+/** CSS Module keys are typed optional; a missing one is a broken contract. */
+function cls(name: string | undefined): string {
+  if (!name) throw new Error("UserTurnNavigator.module.css class missing");
+  return name;
+}
 
 vi.mock("../../i18n", () => ({
   useI18n: () => ({
@@ -178,7 +185,7 @@ describe("UserTurnNavigator", () => {
       name: "Jump to turn: Second request with more context",
     });
     expect(
-      document.querySelector<HTMLElement>(".user-turn-nav")?.style.right,
+      document.querySelector<HTMLElement>("[data-turn-rail]")?.style.right,
     ).toBe(`${window.innerWidth - 500 + (380 - 360)}px`);
 
     fireEvent.pointerEnter(secondMarker);
@@ -186,8 +193,8 @@ describe("UserTurnNavigator", () => {
     expect(onPreviewTimestampChange).toHaveBeenLastCalledWith(2000);
     expect(
       document
-        .querySelector(".user-turn-nav-preview")
-        ?.classList.contains("is-short"),
+        .querySelector(`.${cls(styles.preview)}`)
+        ?.classList.contains(cls(styles.short)),
     ).toBe(true);
 
     fireEvent.click(secondMarker);
@@ -198,7 +205,7 @@ describe("UserTurnNavigator", () => {
       });
     });
     expect(
-      document.querySelector(".user-turn-nav-motion-cue.is-down"),
+      document.querySelector(`.${cls(styles.motionCue)}.${cls(styles.motionDown)}`),
     ).toBeTruthy();
   });
 
@@ -328,7 +335,7 @@ describe("UserTurnNavigator", () => {
     expect(screen.getByText("Removed request")).toBeTruthy();
     expect(onPreviewTimestampChange).toHaveBeenLastCalledWith(1000);
     expect(
-      document.querySelector<HTMLElement>(".user-turn-nav-thumb")?.style
+      document.querySelector<HTMLElement>(`.${cls(styles.thumb)}`)?.style
         .height,
     ).toBe("20%");
 
@@ -353,7 +360,7 @@ describe("UserTurnNavigator", () => {
       expect(screen.queryByText("Removed request")).toBeNull();
       expect(onPreviewTimestampChange).toHaveBeenLastCalledWith(null);
       expect(
-        document.querySelector<HTMLElement>(".user-turn-nav-thumb")?.style
+        document.querySelector<HTMLElement>(`.${cls(styles.thumb)}`)?.style
           .height,
       ).toBe("40%");
     });
@@ -550,12 +557,12 @@ describe("UserTurnNavigator", () => {
     );
 
     await waitFor(() => {
-      expect(container.querySelectorAll(".user-turn-nav-preview")).toHaveLength(
+      expect(container.querySelectorAll(`.${cls(styles.preview)}`)).toHaveLength(
         3,
       );
     });
     const previews = Array.from(
-      container.querySelectorAll(".user-turn-nav-preview"),
+      container.querySelectorAll(`.${cls(styles.preview)}`),
     );
     expect(previews.map((preview) => preview.textContent)).toEqual([
       "user match snippet",
@@ -563,13 +570,13 @@ describe("UserTurnNavigator", () => {
       "system match snippet",
     ]);
     expect(
-      container.querySelectorAll(".user-turn-nav-preview-match"),
+      container.querySelectorAll(`.${cls(styles.previewMatch)}`),
     ).toHaveLength(3);
     expect(
-      previews.every((preview) => preview?.classList.contains("is-compact")),
+      previews.every((preview) => preview?.classList.contains(cls(styles.compact))),
     ).toBe(true);
     expect(
-      previews.some((preview) => preview.classList.contains("is-expanded")),
+      previews.some((preview) => preview.classList.contains(cls(styles.expanded))),
     ).toBe(false);
   });
 
@@ -612,11 +619,11 @@ describe("UserTurnNavigator", () => {
     );
 
     await waitFor(() => {
-      expect(container.querySelector(".user-turn-nav-preview")).toBeTruthy();
+      expect(container.querySelector(`.${cls(styles.preview)}`)).toBeTruthy();
     });
-    const preview = container.querySelector(".user-turn-nav-preview");
-    expect(preview?.classList.contains("is-single-search-match")).toBe(true);
-    expect(preview?.classList.contains("is-expanded")).toBe(false);
+    const preview = container.querySelector(`.${cls(styles.preview)}`);
+    expect(preview?.classList.contains(cls(styles.singleSearchMatch))).toBe(true);
+    expect(preview?.classList.contains(cls(styles.expanded))).toBe(false);
     expect(preview?.textContent).toBe("Only matching request");
   });
 
@@ -659,12 +666,12 @@ describe("UserTurnNavigator", () => {
     );
 
     await waitFor(() => {
-      expect(container.querySelector(".user-turn-nav-preview")).toBeTruthy();
+      expect(container.querySelector(`.${cls(styles.preview)}`)).toBeTruthy();
     });
     const preview = container.querySelector<HTMLElement>(
-      ".user-turn-nav-preview",
+      `.${cls(styles.preview)}`,
     );
-    expect(preview?.classList.contains("is-expanded")).toBe(false);
+    expect(preview?.classList.contains(cls(styles.expanded))).toBe(false);
     expect(preview?.style.top).toBe("1px");
     expect(
       preview?.style.getPropertyValue("--user-turn-nav-preview-translate-y"),
@@ -737,7 +744,7 @@ describe("UserTurnNavigator", () => {
     const getPreviewTops = () =>
       new Map(
         Array.from(
-          container.querySelectorAll<HTMLElement>(".user-turn-nav-preview"),
+          container.querySelectorAll<HTMLElement>(`.${cls(styles.preview)}`),
           (preview) => [
             preview.getAttribute("aria-label") ?? "",
             preview.style.top,
@@ -745,14 +752,14 @@ describe("UserTurnNavigator", () => {
         ),
       );
     const initialTops = getPreviewTops();
-    expect(userPreview.classList.contains("is-expanded")).toBe(false);
+    expect(userPreview.classList.contains(cls(styles.expanded))).toBe(false);
 
     fireEvent.pointerEnter(userPreview);
 
     await waitFor(() => {
-      expect(userPreview.classList.contains("is-expanded")).toBe(true);
+      expect(userPreview.classList.contains(cls(styles.expanded))).toBe(true);
     });
-    expect(userPreview.classList.contains("is-pinned-expanded")).toBe(true);
+    expect(userPreview.classList.contains(cls(styles.pinnedExpanded))).toBe(true);
     expect(getPreviewTops()).toEqual(initialTops);
 
     const assistantPreview = container.querySelector<HTMLElement>(
@@ -762,7 +769,7 @@ describe("UserTurnNavigator", () => {
     fireEvent.pointerEnter(assistantPreview!);
 
     await waitFor(() => {
-      expect(assistantPreview?.classList.contains("is-expanded")).toBe(true);
+      expect(assistantPreview?.classList.contains(cls(styles.expanded))).toBe(true);
     });
     expect(getPreviewTops()).toEqual(initialTops);
 
@@ -772,11 +779,11 @@ describe("UserTurnNavigator", () => {
     rerender(renderNavigator("system-1", "system match snippet"));
 
     await waitFor(() => {
-      expect(userPreview.classList.contains("is-expanded")).toBe(false);
+      expect(userPreview.classList.contains(cls(styles.expanded))).toBe(false);
       expect(
         Array.from(
-          container.querySelectorAll(".user-turn-nav-preview"),
-          (preview) => preview.classList.contains("is-expanded"),
+          container.querySelectorAll(`.${cls(styles.preview)}`),
+          (preview) => preview.classList.contains(cls(styles.expanded)),
         ),
       ).toEqual([false, false, false]);
     });
@@ -835,14 +842,14 @@ describe("UserTurnNavigator", () => {
     );
 
     await waitFor(() => {
-      expect(container.querySelectorAll(".user-turn-nav-preview")).toHaveLength(
+      expect(container.querySelectorAll(`.${cls(styles.preview)}`)).toHaveLength(
         2,
       );
     });
     const collapsed = container.querySelector<HTMLElement>(
       '[aria-label^="leading context"]',
     );
-    expect(collapsed?.classList.contains("is-expanded")).toBe(false);
+    expect(collapsed?.classList.contains(cls(styles.expanded))).toBe(false);
     expect(collapsed?.textContent).toContain("needle should appear");
     expect(collapsed?.textContent?.startsWith("leading context")).toBe(false);
     expect(collapsed?.textContent?.startsWith("...")).toBe(true);
@@ -908,12 +915,12 @@ describe("UserTurnNavigator", () => {
     );
 
     await waitFor(() => {
-      expect(container.querySelectorAll(".user-turn-nav-preview")).toHaveLength(
+      expect(container.querySelectorAll(`.${cls(styles.preview)}`)).toHaveLength(
         3,
       );
     });
     const initialTopValues = Array.from(
-      container.querySelectorAll<HTMLElement>(".user-turn-nav-preview"),
+      container.querySelectorAll<HTMLElement>(`.${cls(styles.preview)}`),
       (preview) => Number.parseFloat(preview.style.top),
     );
     expect(initialTopValues.every(Number.isFinite)).toBe(true);
@@ -927,10 +934,10 @@ describe("UserTurnNavigator", () => {
     fireEvent.pointerEnter(userPreview!);
 
     await waitFor(() => {
-      expect(userPreview?.classList.contains("is-expanded")).toBe(true);
+      expect(userPreview?.classList.contains(cls(styles.expanded))).toBe(true);
     });
     const topValues = Array.from(
-      container.querySelectorAll<HTMLElement>(".user-turn-nav-preview"),
+      container.querySelectorAll<HTMLElement>(`.${cls(styles.preview)}`),
       (preview) => Number.parseFloat(preview.style.top),
     );
     expect(topValues.every(Number.isFinite)).toBe(true);
@@ -1003,32 +1010,32 @@ describe("UserTurnNavigator", () => {
       name: "Explored / Grep: pattern: searchNeedle",
     });
 
-    expect(preview.classList.contains("is-expanded")).toBe(false);
+    expect(preview.classList.contains(cls(styles.expanded))).toBe(false);
     fireEvent.pointerEnter(preview);
     await waitFor(() => {
-      expect(preview.classList.contains("is-expanded")).toBe(true);
+      expect(preview.classList.contains(cls(styles.expanded))).toBe(true);
     });
     expect(
       Array.from(
-        container.querySelectorAll(".user-turn-nav-preview-facsimile-tag"),
+        container.querySelectorAll(`.${cls(styles.facsimileTag)}`),
         (tag) => tag.textContent,
       ),
     ).toEqual(["Explored", "Grep"]);
     expect(
-      container.querySelector(".user-turn-nav-preview-facsimile-line")
+      container.querySelector(`.${cls(styles.facsimileLine)}`)
         ?.textContent,
     ).toBe("pattern: searchNeedle");
     expect(
-      container.querySelector(".user-turn-nav-preview")?.textContent,
+      container.querySelector(`.${cls(styles.preview)}`)?.textContent,
     ).toContain("pattern: searchNeedle");
     expect(
-      container.querySelector(".user-turn-nav-preview")?.textContent,
+      container.querySelector(`.${cls(styles.preview)}`)?.textContent,
     ).not.toContain("Explored / Grep");
-    expect(preview.classList.contains("is-expanded")).toBe(true);
+    expect(preview.classList.contains(cls(styles.expanded))).toBe(true);
     expect(
       container
-        .querySelector(".user-turn-nav-preview")
-        ?.classList.contains("is-single-search-match"),
+        .querySelector(`.${cls(styles.preview)}`)
+        ?.classList.contains(cls(styles.singleSearchMatch)),
     ).toBe(true);
     expect(fireEvent.mouseDown(preview)).toBe(false);
     expect(document.activeElement).toBe(searchInput);
@@ -1094,15 +1101,15 @@ describe("UserTurnNavigator", () => {
       name: previewText,
     });
 
-    expect(previewButton.classList.contains("is-expanded")).toBe(false);
+    expect(previewButton.classList.contains(cls(styles.expanded))).toBe(false);
     fireEvent.pointerEnter(previewButton);
     await waitFor(() => {
-      expect(previewButton.classList.contains("is-expanded")).toBe(true);
+      expect(previewButton.classList.contains(cls(styles.expanded))).toBe(true);
     });
 
-    const preview = container.querySelector(".user-turn-nav-preview");
+    const preview = container.querySelector(`.${cls(styles.preview)}`);
     const lines = Array.from(
-      container.querySelectorAll(".user-turn-nav-preview-facsimile-line"),
+      container.querySelectorAll(`.${cls(styles.facsimileLine)}`),
       (line) => line.textContent,
     );
     expect(lines).toEqual([
@@ -1110,7 +1117,7 @@ describe("UserTurnNavigator", () => {
       "packages/client/src/components/UserTurnNavigator.tsx",
     ]);
     expect(
-      container.querySelector(".user-turn-nav-preview-facsimile-line.is-mono")
+      container.querySelector(`.${cls(styles.facsimileLine)}.${cls(styles.mono)}`)
         ?.textContent,
     ).toBe("grep searchNeedle");
     expect(preview?.textContent).not.toContain("\\n");
@@ -1171,21 +1178,21 @@ describe("UserTurnNavigator", () => {
     );
 
     await waitFor(() => {
-      expect(container.querySelectorAll(".user-turn-nav-preview")).toHaveLength(
+      expect(container.querySelectorAll(`.${cls(styles.preview)}`)).toHaveLength(
         3,
       );
     });
     const previews = Array.from(
-      container.querySelectorAll(".user-turn-nav-preview"),
+      container.querySelectorAll(`.${cls(styles.preview)}`),
     );
     expect(
-      previews.some((preview) => preview.classList.contains("is-compact")),
+      previews.some((preview) => preview.classList.contains(cls(styles.compact))),
     ).toBe(false);
     expect(
-      previews.some((preview) => preview.classList.contains("is-short")),
+      previews.some((preview) => preview.classList.contains(cls(styles.short))),
     ).toBe(false);
     expect(
-      previews.some((preview) => preview.classList.contains("is-expanded")),
+      previews.some((preview) => preview.classList.contains(cls(styles.expanded))),
     ).toBe(false);
 
     const activePreview = container.querySelector<HTMLElement>(
@@ -1193,10 +1200,10 @@ describe("UserTurnNavigator", () => {
     );
     fireEvent.pointerEnter(activePreview!);
     await waitFor(() => {
-      expect(activePreview?.classList.contains("is-expanded")).toBe(true);
+      expect(activePreview?.classList.contains(cls(styles.expanded))).toBe(true);
     });
     expect(
-      container.querySelector(".user-turn-nav-preview-facsimile-line")
+      container.querySelector(`.${cls(styles.facsimileLine)}`)
         ?.textContent,
     ).toBe("assistant match snippet with enough surrounding detail");
   });
@@ -1257,12 +1264,12 @@ describe("UserTurnNavigator", () => {
 
     await waitFor(() => {
       expect(
-        container.querySelectorAll(".user-turn-nav-preview").length,
+        container.querySelectorAll(`.${cls(styles.preview)}`).length,
       ).toBeGreaterThan(1);
     });
 
     const previewTexts = Array.from(
-      container.querySelectorAll(".user-turn-nav-preview"),
+      container.querySelectorAll(`.${cls(styles.preview)}`),
       (preview) => preview.textContent,
     );
     expect(previewTexts.length).toBeLessThan(rows.length);
@@ -1270,21 +1277,21 @@ describe("UserTurnNavigator", () => {
     expect(previewTexts).toContain("match snippet 26");
 
     const topPreview = container.querySelector<HTMLElement>(
-      ".user-turn-nav-preview",
+      `.${cls(styles.preview)}`,
     );
     expect(topPreview?.textContent).toBe("match snippet 15");
     const initialPreviewTexts = Array.from(
-      container.querySelectorAll(".user-turn-nav-preview"),
+      container.querySelectorAll(`.${cls(styles.preview)}`),
       (preview) => preview.textContent,
     );
     fireEvent.pointerEnter(topPreview!);
 
     await waitFor(() => {
-      expect(topPreview?.classList.contains("is-expanded")).toBe(true);
+      expect(topPreview?.classList.contains(cls(styles.expanded))).toBe(true);
     });
     expect(
       Array.from(
-        container.querySelectorAll(".user-turn-nav-preview"),
+        container.querySelectorAll(`.${cls(styles.preview)}`),
         (preview) => preview.textContent,
       ),
     ).toEqual(initialPreviewTexts);
@@ -1296,7 +1303,7 @@ describe("UserTurnNavigator", () => {
 
     await waitFor(() => {
       const shiftedPreviewTexts = Array.from(
-        container.querySelectorAll(".user-turn-nav-preview"),
+        container.querySelectorAll(`.${cls(styles.preview)}`),
         (preview) => preview.textContent,
       );
       expect(shiftedPreviewTexts).toContain("match snippet 9");
@@ -1305,7 +1312,7 @@ describe("UserTurnNavigator", () => {
     });
 
     const visibleAfterTopHover = Array.from(
-      container.querySelectorAll<HTMLElement>(".user-turn-nav-preview"),
+      container.querySelectorAll<HTMLElement>(`.${cls(styles.preview)}`),
     );
     const bottomPreview = visibleAfterTopHover[visibleAfterTopHover.length - 1];
     expect(bottomPreview?.textContent).toBe("match snippet 22");
@@ -1316,7 +1323,7 @@ describe("UserTurnNavigator", () => {
 
     await waitFor(() => {
       const shiftedPreviewTexts = Array.from(
-        container.querySelectorAll(".user-turn-nav-preview"),
+        container.querySelectorAll(`.${cls(styles.preview)}`),
         (preview) => preview.textContent,
       );
       expect(shiftedPreviewTexts).toContain("match snippet 28");
@@ -1381,13 +1388,13 @@ describe("UserTurnNavigator", () => {
 
     await waitFor(() => {
       expect(
-        container.querySelectorAll(".user-turn-nav-preview").length,
+        container.querySelectorAll(`.${cls(styles.preview)}`).length,
       ).toBeGreaterThan(1);
     });
 
     const getPreviewTexts = () =>
       Array.from(
-        container.querySelectorAll(".user-turn-nav-preview"),
+        container.querySelectorAll(`.${cls(styles.preview)}`),
         (preview) => preview.textContent,
       );
     const initialPreviewTexts = getPreviewTexts();
@@ -1471,12 +1478,12 @@ describe("UserTurnNavigator", () => {
 
     await waitFor(() => {
       expect(
-        container.querySelectorAll(".user-turn-nav-preview").length,
+        container.querySelectorAll(`.${cls(styles.preview)}`).length,
       ).toBeGreaterThan(10);
     });
 
     const previews = Array.from(
-      container.querySelectorAll<HTMLElement>(".user-turn-nav-preview"),
+      container.querySelectorAll<HTMLElement>(`.${cls(styles.preview)}`),
     );
     const firstTop = Number.parseFloat(previews[0]?.style.top ?? "");
     expect(firstTop).toBeLessThanOrEqual(24);

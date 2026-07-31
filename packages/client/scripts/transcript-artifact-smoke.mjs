@@ -364,7 +364,7 @@ async function installStableCaptureStyle(page) {
       }
       .message-age,
       .reload-banner,
-      .user-turn-nav,
+      [data-turn-rail],
       .selection-quote-button {
         visibility: hidden !important;
       }
@@ -410,7 +410,7 @@ async function collectTranscriptState(page) {
       typeCounts[type] = (typeCounts[type] ?? 0) + 1;
       const clone = row.cloneNode(true);
       for (const dynamic of clone.querySelectorAll(
-        ".message-age, .user-turn-nav, button, [role='status']",
+        ".message-age, [data-turn-rail], button, [role='status']",
       )) {
         dynamic.remove();
       }
