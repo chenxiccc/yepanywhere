@@ -175,11 +175,12 @@ describe("Local file routes", () => {
 
     expect(response.status).toBe(200);
     const html = await response.text();
+    const resolvedFilePath = await realpath(filePath);
     expect(html).toContain(
       'class="markdown-preview-span markdown-preview-span-start" data-line-start="5" data-line-end="5"',
     );
     expect(html).toContain(
-      `class="document-actions__raw" href="/api/local-file?path=${encodeURIComponent(filePath)}&amp;render=0&amp;line=5"`,
+      `class="document-actions__raw" href="/api/local-file?path=${encodeURIComponent(resolvedFilePath)}&amp;render=0&amp;line=5"`,
     );
     expect(html).toContain('class="has-line-target-arrival"');
     expect(html).toContain('querySelector(".markdown-preview-span-start")');
@@ -215,7 +216,7 @@ describe("Local file routes", () => {
       'querySelector(".markdown-preview-span-start")',
     );
     expect(outOfRangeHtml).toContain(
-      `class="document-actions__raw" href="/api/local-file?path=${encodeURIComponent(filePath)}&amp;render=0"`,
+      `class="document-actions__raw" href="/api/local-file?path=${encodeURIComponent(resolvedFilePath)}&amp;render=0"`,
     );
   });
 
