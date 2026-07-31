@@ -154,4 +154,57 @@ describe("RecentSessionsDropdown", () => {
       "Longer complete title text that should be visible in the recent sessions dropdown",
     );
   });
+
+  it("keeps the global /btw hooks the shared index.css rules match on", () => {
+    globalSessionsState.sessions = [
+      session({
+        title: "/btw check the flaky test",
+        fullTitle: "/btw check the flaky test",
+        parentSessionId: "session-parent",
+      }),
+    ];
+
+    render(
+      <MemoryRouter>
+        <RecentSessionsDropdown
+          currentSessionId="session-1"
+          isOpen={true}
+          onClose={vi.fn()}
+          onNavigate={vi.fn()}
+          triggerRef={triggerRef()}
+        />
+      </MemoryRouter>,
+    );
+
+    const row = screen.getByRole("link", { name: /check the flaky test/ });
+    expect(row.classList.contains("recent-session-item")).toBe(true);
+    expect(row.classList.contains("btw-aside-session")).toBe(true);
+
+    const titleRow = row.firstElementChild?.firstElementChild as HTMLElement;
+    expect(titleRow.classList.contains("recent-session-title")).toBe(true);
+
+    const badge = screen.getByText("/btw");
+    expect(badge.classList.contains("recent-sessions-badge")).toBe(true);
+    expect(badge.classList.contains("btw")).toBe(true);
+  });
+
+  it("does not put the /btw interop hooks on ordinary rows", () => {
+    globalSessionsState.sessions = [session()];
+
+    render(
+      <MemoryRouter>
+        <RecentSessionsDropdown
+          currentSessionId="session-1"
+          isOpen={true}
+          onClose={vi.fn()}
+          onNavigate={vi.fn()}
+          triggerRef={triggerRef()}
+        />
+      </MemoryRouter>,
+    );
+
+    const row = screen.getByRole("link");
+    expect(row.classList.contains("recent-session-item")).toBe(false);
+    expect(row.classList.contains("btw-aside-session")).toBe(false);
+  });
 });

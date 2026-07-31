@@ -15,10 +15,24 @@ import { sessionCollectionRecordsToGlobalSessionItems } from "../lib/sessionColl
 import { useSessionCollectionQueryRecords } from "../lib/clientSummaryStore";
 import { ProviderBadge } from "./ProviderBadge";
 import { ThinkingIndicator } from "./ThinkingIndicator";
+import styles from "./RecentSessionsDropdown.module.css";
 
 const MAX_RECENT_SESSIONS = 10;
 const DROPDOWN_MAX_WIDTH_PX = 830;
 const DROPDOWN_MARGIN_PX = 8;
+
+/**
+ * Literal class names kept on `/btw` aside rows and badges purely so the two
+ * global rules in `index.css` that SessionListItem shares still match. They
+ * carry no styling of their own; everything else is module-owned.
+ */
+const BTW_ROW_INTEROP_CLASSES = "recent-session-item btw-aside-session";
+const BTW_TITLE_INTEROP_CLASS = "recent-session-title";
+const BTW_BADGE_INTEROP_CLASSES = "recent-sessions-badge btw";
+
+function classNames(...values: (string | false | null | undefined)[]): string {
+  return values.filter(Boolean).join(" ");
+}
 
 interface RecentSessionsDropdownProps {
   /** Current session ID (will be excluded from list) */
@@ -81,11 +95,13 @@ function StatusIndicator({ session }: { session: GlobalSessionItem }) {
 
   if (session.pendingInputType) {
     const label = session.pendingInputType === "tool-approval" ? "Appr" : "Q";
-    return <span className="recent-sessions-badge needs-input">{label}</span>;
+    return (
+      <span className={`${styles.badge} ${styles.needsInput}`}>{label}</span>
+    );
   }
 
   if (session.ownership.owner === "external") {
-    return <span className="recent-sessions-badge external">Ext</span>;
+    return <span className={`${styles.badge} ${styles.external}`}>Ext</span>;
   }
 
   return null;
@@ -187,12 +203,12 @@ export function RecentSessionsDropdown({
   })();
 
   const dropdown = (
-    <div ref={dropdownRef} className="recent-sessions-dropdown" style={style}>
-      <div className="recent-sessions-header">Recent Sessions</div>
+    <div ref={dropdownRef} className={styles.dropdown} style={style}>
+      <div className={styles.header}>Recent Sessions</div>
       {recentSessions.length === 0 ? (
-        <div className="recent-sessions-empty">No other sessions</div>
+        <div className={styles.empty}>No other sessions</div>
       ) : (
-        <div className="recent-sessions-list">
+        <div className={styles.list}>
           {recentSessions.map((session) => {
             const title = getDisplayTitle(session);
             const titleTooltip = getTitleTooltip(session, title);
@@ -212,9 +228,11 @@ export function RecentSessionsDropdown({
               <Link
                 key={session.id}
                 to={`${basePath}/projects/${session.projectId}/sessions/${session.id}`}
-                className={`recent-session-item${session.hasUnread ? " unread" : ""}${
-                  isBtwAside ? " btw-aside-session" : ""
-                }`}
+                className={classNames(
+                  styles.item,
+                  session.hasUnread && styles.unread,
+                  isBtwAside && BTW_ROW_INTEROP_CLASSES,
+                )}
                 onClick={() => {
                   onNavigate(session.id, session.projectId);
                   onClose();
@@ -240,11 +258,16 @@ export function RecentSessionsDropdown({
                   setElementTextTooltip(event.currentTarget, null);
                 }}
               >
-                <div className="recent-session-content">
-                  <span className="recent-session-title">
+                <div className={styles.content}>
+                  <span
+                    className={classNames(
+                      styles.title,
+                      isBtwAside && BTW_TITLE_INTEROP_CLASS,
+                    )}
+                  >
                     {session.isStarred && (
                       <svg
-                        className="recent-session-star"
+                        className={styles.star}
                         width="10"
                         height="10"
                         viewBox="0 0 24 24"
@@ -259,7 +282,7 @@ export function RecentSessionsDropdown({
                     {isBtwAside && (
                       // biome-ignore lint/a11y/noStaticElementInteractions: clickable variant has link role and keyboard handling; inert variant only shows the badge
                       <span
-                        className="recent-sessions-badge btw"
+                        className={`${styles.badge} ${BTW_BADGE_INTEROP_CLASSES}`}
                         title={
                           parentHref
                             ? "Open parent session with this /btw aside visible"
@@ -301,20 +324,20 @@ export function RecentSessionsDropdown({
                         /btw
                       </span>
                     )}
-                    <span className="recent-session-title-text">
+                    <span className={styles.titleText}>
                       {getVisibleDisplayTitle(title)}
                     </span>
                   </span>
-                  <span className="recent-session-details">
+                  <span className={styles.details}>
                     <ProviderBadge
                       provider={session.provider}
                       model={session.model}
-                      className="recent-session-provider-badge"
+                      className={styles.providerBadge}
                     />
-                    <span className="recent-session-project">
+                    <span className={styles.project}>
                       {session.projectName}
                     </span>
-                    <span className="recent-session-time">
+                    <span className={styles.time}>
                       {formatRelativeTime(session.updatedAt)}
                     </span>
                     <StatusIndicator session={session} />
