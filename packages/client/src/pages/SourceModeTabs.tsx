@@ -3,11 +3,11 @@ import type { MessageKey, TranslationFn } from "../i18n";
 /**
  * The source-control mode selector (topic: source-review-to-session, stage 3):
  * one surface, several navigation modes that all feed the same review
- * accumulator. `changes` owns the current working tree and is the default,
- * `commits` is repository history, `files` the all-files blame browser, and
- * `comments` the pending-review list.
+ * accumulator. `changes` owns both the current working tree and explicitly
+ * opened commit history, `files` is the all-files blame browser, and
+ * `comments` is the pending-review list.
  */
-export type SourceTab = "changes" | "commits" | "files" | "comments";
+export type SourceTab = "changes" | "files" | "comments";
 
 export function SourceModeTabs({
   tab,
@@ -51,8 +51,6 @@ function sourceTabLabelKey(tab: SourceTab): MessageKey {
   switch (tab) {
     case "changes":
       return "sourceTabChanges";
-    case "commits":
-      return "sourceTabCommits";
     case "files":
       return "sourceTabFiles";
     case "comments":

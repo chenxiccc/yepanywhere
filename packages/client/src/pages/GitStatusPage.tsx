@@ -74,7 +74,6 @@ const SOURCE_CONTROL_ROUTE_TTL_MS = 5 * 60 * 1000;
 /** Source-control modes with a built body (topic: source-review-to-session). */
 const SOURCE_TABS: readonly SourceTab[] = [
   "changes",
-  "commits",
   "files",
   "comments",
 ];
@@ -92,13 +91,11 @@ function useSourceTab(): {
   const location = useLocation();
   const tabParam = searchParams.get("tab");
   const tab: SourceTab =
-    tabParam === "commits"
-      ? "commits"
-      : tabParam === "files"
-        ? "files"
-        : tabParam === "comments"
-          ? "comments"
-          : "changes";
+    tabParam === "files"
+      ? "files"
+      : tabParam === "comments"
+        ? "comments"
+        : "changes";
   const setTab = useCallback(
     (next: SourceTab) => {
       setSearchParams(
@@ -106,6 +103,8 @@ function useSourceTab(): {
           const params = new URLSearchParams(prev);
           if (next === "changes") params.delete("tab");
           else params.set("tab", next);
+          params.delete("history");
+          params.delete("rev");
           return params;
         },
         { replace: true, state: location.state },
@@ -656,6 +655,11 @@ function GitStatusContent({
   const blameFile = searchParams.get("bf") ?? undefined;
   const commitSha = searchParams.get("rev") ?? undefined;
   const worktreeFile = searchParams.get("worktreeFile") ?? undefined;
+  const historyOpen =
+    tab === "changes" &&
+    (searchParams.get("history") === "1" ||
+      searchParams.get("tab") === "commits" ||
+      commitSha !== undefined);
   const [ignoreWhitespace, setIgnoreWhitespace] = useState(false);
   const [showProjectionNotice, setShowProjectionNotice] = useState(false);
   const projectionNoticeNeedsPortal = useMediaQuery("(max-width: 600px)");
@@ -709,7 +713,8 @@ function GitStatusContent({
       setSearchParams(
         (prev) => {
           const params = new URLSearchParams(prev);
-          params.set("tab", "commits");
+          params.delete("tab");
+          params.delete("history");
           params.set("rev", sha);
           return params;
         },
@@ -718,6 +723,18 @@ function GitStatusContent({
     },
     [location.state, setSearchParams],
   );
+  const handleBrowseHistory = useCallback(() => {
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev);
+        params.delete("tab");
+        params.delete("rev");
+        params.set("history", "1");
+        return params;
+      },
+      { state: location.state },
+    );
+  }, [location.state, setSearchParams]);
   return (
     <div className="git-status">
       <div className="source-control-toolbar">
@@ -754,19 +771,20 @@ function GitStatusContent({
           ? createPortal(projectionNotice, document.body)
           : projectionNotice)}
 
-      {tab === "changes" ? (
+      {tab === "changes" && !historyOpen ? (
         <WorkingTreeBrowser
           projectId={projectId}
           status={status}
           isWideScreen={isWideScreen}
           initialWorkingTreePath={worktreeFile}
+          onBrowseHistory={handleBrowseHistory}
           onBlameFile={handleBlameFile}
           ignoreWhitespace={activeIgnoreWhitespace}
           onToggleIgnoreWhitespace={handleToggleIgnoreWhitespace}
           onProjectionRequestFailure={handleProjectionUnavailable}
           t={t}
         />
-      ) : tab === "commits" ? (
+      ) : tab === "changes" ? (
         <CommitBrowser
           projectId={projectId}
           status={status}

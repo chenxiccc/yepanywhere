@@ -1,6 +1,5 @@
 import type {
   GitFileChange,
-  GitRecentCommit,
   GitStatusInfo,
   GitUntrackedFolderInfo,
 } from "@yep-anywhere/shared";
@@ -35,6 +34,7 @@ import { handleSourceListKeyDown } from "../hooks/useSourceKeyboard";
 import { useTextTooltipAttributes } from "../hooks/useTooltipAppearance";
 import type { TranslationFn } from "../i18n";
 import { writeClipboardText } from "../lib/clipboard";
+import { CommitHistoryParentLink } from "./CommitHistoryParentLink";
 import {
   GitDiffModal,
   GitDiffPreview,
@@ -62,6 +62,7 @@ export function WorkingTreeBrowser({
   embeddedInHistory = false,
   onBackToRevisions,
   revisionNavigation,
+  onBrowseHistory,
   onBlameFile,
   ignoreWhitespace = false,
   onToggleIgnoreWhitespace,
@@ -79,6 +80,8 @@ export function WorkingTreeBrowser({
   onBackToRevisions?: () => void;
   /** Adjacent-revision controls supplied by the history owner. */
   revisionNavigation?: ReactNode;
+  /** Open commit history while keeping Working tree as the default revision. */
+  onBrowseHistory?: () => void;
   onBlameFile?: (path: string) => void;
   ignoreWhitespace?: boolean;
   onToggleIgnoreWhitespace?: () => void;
@@ -271,14 +274,9 @@ export function WorkingTreeBrowser({
   const rootClassName = `working-tree-browser ${
     embeddedInHistory ? "working-tree-browser-history" : ""
   }`.trim();
-  const backToRevisions = onBackToRevisions ? (
-    <button
-      type="button"
-      className="source-mobile-back"
-      onClick={onBackToRevisions}
-    >
-      ← {t("sourceBackToCommits")}
-    </button>
+  const openHistory = onBackToRevisions ?? onBrowseHistory;
+  const historyParentLink = openHistory ? (
+    <CommitHistoryParentLink onClick={openHistory} t={t} />
   ) : null;
   if (
     (status.isClean || currentFiles.length === 0) &&
@@ -286,17 +284,28 @@ export function WorkingTreeBrowser({
   ) {
     return (
       <div className={rootClassName} data-testid="working-tree-browser">
-        {backToRevisions}
+        {historyParentLink}
         {embeddedInHistory ? (
-          <div className="git-status-empty">
-            {t("gitStatusWorkingTreeClean")}
-          </div>
-        ) : (
-          <div className="working-tree-clean-landing">
+          <div className="working-tree-clean-state working-tree-history-clean">
+            <span className="working-tree-clean-icon" aria-hidden="true">
+              ✓
+            </span>
             <div className="git-status-empty">
               {t("gitStatusWorkingTreeClean")}
             </div>
-            <RecentCommits commits={status.recentCommits ?? []} t={t} />
+            <p>{t("sourceWorkingTreeCleanDescription")}</p>
+          </div>
+        ) : (
+          <div className="working-tree-clean-landing">
+            <div className="working-tree-clean-state">
+              <span className="working-tree-clean-icon" aria-hidden="true">
+                ✓
+              </span>
+              <div className="git-status-empty">
+                {t("gitStatusWorkingTreeClean")}
+              </div>
+              <p>{t("sourceWorkingTreeCleanDescription")}</p>
+            </div>
           </div>
         )}
       </div>
@@ -305,7 +314,7 @@ export function WorkingTreeBrowser({
 
   return (
     <div className={rootClassName} data-testid="working-tree-browser">
-      {backToRevisions}
+      {historyParentLink}
       <ResizableSourceColumns
         layout="files"
         enabled={!embeddedInHistory}
@@ -422,9 +431,6 @@ export function WorkingTreeBrowser({
           {filteredFiles.length === 0 && (
             <div className="git-status-empty">{t("sourceNoMatches")}</div>
           )}
-          {!embeddedInHistory && (
-            <RecentCommits commits={status.recentCommits ?? []} t={t} />
-          )}
         </div>
 
         {isWideScreen && selectedFile && (
@@ -461,46 +467,6 @@ export function WorkingTreeBrowser({
         />
       )}
     </div>
-  );
-}
-
-function RecentCommits({
-  commits,
-  t,
-}: {
-  commits: GitRecentCommit[];
-  t: TranslationFn;
-}) {
-  return (
-    <section
-      className="git-recent-commits"
-      aria-label={t("gitStatusRecentCommits")}
-    >
-      <h3 className="git-recent-title">{t("gitStatusRecentCommits")}</h3>
-      {commits.length === 0 ? (
-        <div className="git-recent-empty">{t("gitStatusNoRecentCommits")}</div>
-      ) : (
-        <ol className="git-recent-list">
-          {commits.map((commit) => (
-            <li key={commit.hash} className="git-recent-item">
-              <span className="git-recent-subject">
-                {commit.subject || t("gitStatusUntitledCommit")}
-              </span>
-              <span className="git-recent-meta">
-                <span className="git-recent-hash">{commit.shortHash}</span>
-                <span className="git-recent-author">{commit.authorName}</span>
-                <time
-                  dateTime={commit.authorDate}
-                  title={formatCommitDateTime(commit.authorDate)}
-                >
-                  {formatCommitDate(commit.authorDate)}
-                </time>
-              </span>
-            </li>
-          ))}
-        </ol>
-      )}
-    </section>
   );
 }
 
@@ -590,22 +556,4 @@ function WorktreeStateMarker({
       {state === "both" ? t("sourceWorktreePartial") : "✓"}
     </span>
   );
-}
-
-function formatCommitDate(value: string): string {
-  const timestamp = Date.parse(value);
-  if (!Number.isFinite(timestamp)) return value;
-  return new Date(timestamp).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-  });
-}
-
-function formatCommitDateTime(value: string): string {
-  const timestamp = Date.parse(value);
-  if (!Number.isFinite(timestamp)) return value;
-  return new Date(timestamp).toLocaleString(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
 }

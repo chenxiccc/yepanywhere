@@ -292,20 +292,14 @@ Pull/Push actions:
   wrap into scrolling rows and must scroll away with content. The surface
   exposes status and the established Check/Pull/Push actions, not the deferred
   manual operations in Non-goals.
-- **Changes-first today; converge without removing the quick check.** Source
-  Control currently lands on **Changes** at every viewport, preserving Kyle's
-  accustomed-to quick-check experience. Changes owns the current
-  HEAD-to-filesystem view: one row per changed path,
+- **Changes-first with deliberate history.** Source Control lands on
+  **Changes** at every viewport, preserving Kyle's accustomed-to quick-check
+  experience. Changes owns one revision-detail model whose permanent default
+  is **Working tree**: one row per changed path,
   staged/unstaged/both/untracked state, and the same diff/comment stack with
-  `uncommitted` anchors. It also keeps a read-only recent-commits list in the
-  quick-check view, including beside a quiet clean state. The intended
-  direction is to make Changes gradually redundant by making a dirty
-  **Working tree** revision in Commits equally immediate and useful, while
-  preserving Changes as the dedicated fast path during that convergence.
-  Changing the default landing to Commits happens only after that dirty-tree
-  path is approved as useful on both mobile and desktop and Kyle gives the
-  go-ahead. Until then, Commits contains actual commits only, and the Dirty
-  status badge returns to Changes.
+  `uncommitted` anchors. A clean Working tree stays selected with no file or
+  recent-commit list. Its **‹ Commit history** parent link explicitly opens
+  commit history without introducing a second top-level mode.
 - Multipane commit/diff navigation: browse recent commit(s), history/log, and a
   commit's diff **without switching branches**.
   The reference layout above is a **3-column** browser (commits · files ·
@@ -323,12 +317,13 @@ Pull/Push actions:
   browser.
 - Copy affordances: file name, absolute path, relative path, branch name, commit
   hash — the non-mutating subset of the #95 context menu.
-- Mobile: Changes shows its file list and opens a selected diff full-screen.
-  Commits is master/detail navigation: commit list → selected commit files →
-  full-screen diff, with explicit and back-swipe navigation restoring the
-  previous level and list position. Selected files never render after the
-  complete history list. The small commit-jump selector remains available in
-  commit detail (the #95 branch showed mobile matters).
+- Mobile: Changes shows its Working tree file list and opens a selected diff
+  full-screen. Explicitly opened history is master/detail navigation: commit
+  list → selected commit files → full-screen diff, with explicit and
+  back-swipe navigation restoring the previous level and list position.
+  Selected files never render after the complete history list. The small
+  commit-jump selector remains available in commit detail (the #95 branch
+  showed mobile matters).
 
 ## Non-goals
 
@@ -475,27 +470,30 @@ otherwise grows unbounded; leftover width stays as gutter
 ### Identity header, mode tabs, and stable action row
 
 Project identity, repo/branch state, and Clean/Dirty status form the Source
-Control identity header. Changes/Commits/Files/Comments use the top-right space
+Control identity header. Changes/Files/Comments use the top-right space
 on wide layouts and a separate full-width row when constrained. Pull, Push, and
 Check occupy a second, left-anchored action row in fixed order; Review anchors
 independently at its trailing edge. Dynamic branch/status content and Review
 state never displace the three repository actions.
 
-Source Control lands on Changes; an absent or unknown `?tab=` value resolves
-there until the approval-gated Commits default above is accepted. Pull, Push,
-and Check retain constant visible labels and a reserved state-indicator slot,
-whose idle action glyph changes in place, so progress and brief results remain
-visible on the initiating button without changing its width. Full feedback
-appears below the action row.
+Source Control lands on Changes with the synthetic Working tree revision
+selected even when its diff is empty. A clean tree stays visually empty and
+never auto-selects HEAD. Commit history opens only through the
+**‹ Commit history** parent link, a commit deep link, or the legacy
+`?tab=commits` compatibility URL. Pull, Push, and Check retain constant
+visible labels and a reserved state-indicator slot, whose idle action glyph
+changes in place, so progress and brief results remain visible on the
+initiating button without changing its width. Full feedback appears below the
+action row.
 Review with no pending comments opens Comments and its "click a line" guidance;
 with drafts it opens submit preview directly, so a first-time explorer can
 discover the complete comment → review-session path from the header.
 
 Phone widths retain project/branch status in the identity header while tabs
 and actions use ordinary scrolling rows in the page body. Both tab placements
-drive the same `?tab=` URL state (`useSourceTab`). The tab meanings do not
-change by viewport; only simultaneous desktop panes become focused mobile
-navigation. — Revised 2026-07-31; see
+drive the same `?tab=` URL state (`useSourceTab`). History uses simultaneous
+desktop panes and focused mobile navigation without changing the meaning of
+Working tree or a selected commit. — Revised 2026-07-31; see
 [`docs/tactical/064-source-control-responsive-navigation.md`](../docs/tactical/064-source-control-responsive-navigation.md).
 
 ### GitHub Desktop review grammar; operations stay options
@@ -535,30 +533,27 @@ materially worse; then specify that operation's preconditions, failure
 feedback, and recovery before approval. Do not import a completeness bundle
 merely because users of a full git client may expect it.
 
-The first convergence slice establishes one **revision-detail model** with two
-entry points:
+The converged revision-detail model now has one Changes entry point:
 
-- **Changes remains the quick check.** It opens the Working tree's file/diff
-  detail immediately and stays the default while the combined route is
-  evaluated. It did not become slower merely to make the two tabs look alike.
-- **Commits has a pinned Working tree revision above actual commits when the
-  tree is dirty.** Selecting it mounts the same `WorkingTreeBrowser` used by
-  Changes, so file merging, staged/unstaged state, diff, comments, and
-  `uncommitted` anchors have one implementation. A clean tree starts with
-  actual commits.
-- **Desktop keeps the existing master-detail progression:** revisions · files
-  · diff. The compact Changes path may keep its direct files · diff form.
+- **Working tree is the permanent default revision.** It opens its file/diff
+  detail immediately when dirty and a reassuring empty state when clean.
+  Empty never substitutes the newest commit.
+- **History is deliberate.** The **‹ Commit history** parent link discloses
+  the searchable revision list. A pinned Working tree row remains available
+  with a zero-file count when clean and behaves like every other revision once
+  history is open.
+- **Desktop keeps the master-detail progression:** revisions · files · diff
+  while history is open, and the compact files · diff form for the default
+  Working tree.
 - **Phone drills in rather than appending detail below history:** revisions →
-  selected revision's files → selected file's diff, with an explicit Back at
-  each transition. The earlier unified experiment failed because Working tree
-  detail appeared after the full commit stream; the repaired commit drill-in
-  is the pattern the shared Working tree revision now reuses.
-- **The default flip remains separately gated.** An evaluation build or
-  default-off option is no longer needed merely to expose the combined route:
-  it lives in the existing Commits tab while Changes remains the landing.
-  Commits becomes the default only after the dirty-tree route is approved as
-  useful on both mobile and desktop and Kyle gives the go-ahead. Changes
-  remains available after a flip.
+  selected revision's files → selected file's diff. Working tree and commit
+  detail use the same **‹ Commit history** parent link, while file detail
+  retains its normal Back behavior. The default Working tree remains outside
+  that history stack, so browser Back from Source Control does not
+  unexpectedly open commits.
+- **Old entry points remain meaningful.** `?tab=commits` opens history inside
+  Changes, while `?rev=<sha>` selects that explicit commit. Neither restores a
+  separate Commits tab.
 
 The first review accelerators are small and read-only. Implemented items remain
 shared where their owning surface is shared; the rest stay proposals:
@@ -622,8 +617,9 @@ and live YA desktop/phone captures (2026-07-27).
 
 ### Released-server fallback and action feedback
 
-The complete Changes/Commits/Files/Comments browser and source-review workflow
-requires the permanent `git-source-review` capability. That capability owns
+The complete Changes/Files/Comments browser, including commit history inside
+Changes, and source-review workflow requires the permanent
+`git-source-review` capability. That capability owns
 the commit browse, search, blame, commit-diff, review-comment, preview, and
 submit routes plus the extended HEAD-to-filesystem diff fields;
 `git-status-enhanced` retains only its previously released status,
@@ -773,14 +769,15 @@ to enlarge the first implementation.
 
 ### Desktop pane splitters
 
-At the desktop three-pane threshold, Commits exposes revision/files and
-files/diff boundaries; Changes and Files expose their one files/detail
-boundary. Each boundary has matching top and bottom separators with the same
-current value. Dragging either handle dynamically reflows the owning CSS grid
-and shows one vertical guide for the duration; keyboard Left/Right adjusts in
-small steps and Home/End reaches the allowed extrema. No splitter markup
-participates in phone layout. Width changes last for the mounted browser;
-they are not a new persisted preference. — Done (2026-07-28).
+At the desktop three-pane threshold, Changes history exposes revision/files
+and files/diff boundaries; the default Working tree and Files expose their one
+files/detail boundary. Each boundary has matching top and bottom separators
+with the same current value. Dragging either handle dynamically reflows the
+owning CSS grid and shows one vertical guide for the duration; keyboard
+Left/Right adjusts in small steps and Home/End reaches the allowed extrema. No
+splitter markup participates in phone layout. Width changes last for the
+mounted browser; they are not a new persisted preference. — Revised
+2026-07-31.
 
 The current file-pane implementation's fixed 500 px maximum is an arbitrary
 implementation bound, not a product contract. A future full-width correction

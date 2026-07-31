@@ -24,6 +24,7 @@ import { handleSourceListKeyDown } from "../hooks/useSourceKeyboard";
 import { writeClipboardText } from "../lib/clipboard";
 import { reflowCommitMessage } from "../lib/reflowCommitMessage";
 import type { TranslationFn } from "../i18n";
+import { CommitHistoryParentLink } from "./CommitHistoryParentLink";
 
 /**
  * Selected revision's files pane. It owns the revision banner, changed-file
@@ -121,15 +122,7 @@ export function CommitFilesPane({
   return (
     <>
       <div className="commit-files-column" ref={columnRef}>
-        {onBack && (
-          <button
-            type="button"
-            className="source-mobile-back"
-            onClick={onBack}
-          >
-            ← {t("sourceBackToCommits")}
-          </button>
-        )}
+        {onBack && <CommitHistoryParentLink onClick={onBack} t={t} />}
         <div className="source-detail-banner">
           {revisionNavigation}
           <span className="source-detail-identity">

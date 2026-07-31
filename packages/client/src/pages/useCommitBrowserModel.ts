@@ -78,8 +78,9 @@ export function useCommitBrowserModel({
     // different recent commit.
     return [detail, ...searchedOrRecentCommits];
   }, [detail, searchedOrRecentCommits, selectedSha]);
-  const hasWorkingTree = status?.isClean === false;
-  const showWorkingTreeRevision = hasWorkingTree || selectedIsWorkingTree;
+  // Working tree is a real selectable revision even when its diff is empty.
+  // A clean tree must never fall through to selecting the newest commit.
+  const showWorkingTreeRevision = status !== undefined;
   const displayedKeys = useMemo(
     () => [
       ...(showWorkingTreeRevision ? [WORKING_TREE_KEY] : []),
@@ -118,8 +119,9 @@ export function useCommitBrowserModel({
     };
   }, [initialSha, projectId, t]);
 
-  // Desktop opens the dirty working tree first, else the newest commit. An
-  // explicit blame-hash selection remains authoritative while its detail loads.
+  // Desktop opens the first available revision. Unified Source Control always
+  // supplies status, so that revision is Working tree even when it is clean.
+  // An explicit blame-hash selection remains authoritative while detail loads.
   useEffect(() => {
     const first = displayedKeys[0];
     if (!isWideScreen || !first) return;

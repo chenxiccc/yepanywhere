@@ -48,6 +48,7 @@ describe("WorkingTreeBrowser", () => {
   });
 
   it("keeps a clean working tree as the Changes landing", async () => {
+    const onBrowseHistory = vi.fn();
     listReviewComments.mockResolvedValue({
       comments: [],
       batches: [],
@@ -77,6 +78,7 @@ describe("WorkingTreeBrowser", () => {
             ],
           }}
           isWideScreen={false}
+          onBrowseHistory={onBrowseHistory}
           t={t}
         />
       </MemoryRouter>,
@@ -85,9 +87,18 @@ describe("WorkingTreeBrowser", () => {
     expect(
       await screen.findByText("gitStatusWorkingTreeClean"),
     ).toBeDefined();
-    expect(screen.getByText("gitStatusRecentCommits")).toBeDefined();
-    expect(screen.getByText("Keep the quick check useful")).toBeDefined();
-    expect(screen.getByText("0123456")).toBeDefined();
+    expect(
+      screen.getByText("sourceWorkingTreeCleanDescription"),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "sourceCommitHistory" }),
+    ).toBeDefined();
+    expect(screen.queryByText("gitStatusRecentCommits")).toBeNull();
+    expect(screen.queryByText("Keep the quick check useful")).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "sourceCommitHistory" }),
+    );
+    expect(onBrowseHistory).toHaveBeenCalledTimes(1);
     await waitFor(() =>
       expect(listReviewComments).toHaveBeenCalledWith("p1"),
     );

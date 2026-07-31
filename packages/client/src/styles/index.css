@@ -20582,84 +20582,51 @@ body:has(.session-page)
   line-height: 1.4;
 }
 
-.git-recent-commits {
-  display: flex;
-  min-width: 0;
-  max-height: 220px;
-  flex-direction: column;
-  padding: var(--space-3);
-  overflow: hidden;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-}
-
 .working-tree-clean-landing {
-  display: grid;
-  max-width: var(--source-files-column-width, 380px);
+  display: flex;
+  min-height: min(24rem, 48vh);
+  flex-direction: column;
   gap: var(--space-3);
 }
 
-.working-tree-files-column > .git-recent-commits {
-  margin-top: var(--space-3);
-}
-
-.git-recent-title {
-  margin: 0 0 var(--space-2);
-  color: var(--text-muted);
-  font-size: 0.78rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.git-recent-empty {
-  color: var(--text-muted);
-  font-size: 0.85rem;
-}
-
-.git-recent-list {
+.working-tree-clean-state {
   display: flex;
+  min-height: 12rem;
+  flex: 1;
   flex-direction: column;
+  align-items: center;
+  justify-content: center;
   gap: var(--space-2);
-  margin: 0;
-  padding: 0 var(--space-1) 0 0;
-  overflow-y: auto;
-  list-style: none;
+  padding: var(--space-6) var(--space-4);
+  text-align: center;
 }
 
-.git-recent-item {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
+.working-tree-clean-icon {
+  display: inline-flex;
+  width: 2rem;
+  height: 2rem;
+  align-items: center;
+  justify-content: center;
+  color: var(--success-color);
+  background: color-mix(in srgb, var(--success-color) 12%, transparent);
+  border: 1px solid
+    color-mix(in srgb, var(--success-color) 30%, transparent);
+  border-radius: 50%;
+  font-size: 1rem;
+  font-weight: 700;
 }
 
-.git-recent-subject {
-  overflow: hidden;
+.working-tree-clean-state .git-status-empty {
+  padding: 0;
   color: var(--text-primary);
-  font-size: 0.86rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-style: normal;
+  font-weight: 600;
 }
 
-.git-recent-meta {
-  display: flex;
-  gap: var(--space-2);
-  min-width: 0;
+.working-tree-clean-state p {
+  margin: 0;
   color: var(--text-muted);
-  font-size: 0.75rem;
-}
-
-.git-recent-hash {
-  color: var(--accent-color);
-  font-family: var(--font-mono, monospace);
-}
-
-.git-recent-author {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 0.82rem;
 }
 
 .git-status-workspace {

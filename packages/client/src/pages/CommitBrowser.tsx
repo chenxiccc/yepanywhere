@@ -304,7 +304,7 @@ export function CommitBrowser({
               <RevisionJump
                 newerKey={newerKey}
                 olderKey={olderKey}
-                onSelect={setSelectedKey}
+                onSelect={openRevision}
                 t={t}
               />
             }
@@ -336,7 +336,7 @@ export function CommitBrowser({
               <RevisionJump
                 newerKey={newerKey}
                 olderKey={olderKey}
-                onSelect={setSelectedKey}
+                onSelect={openRevision}
                 t={t}
               />
             }

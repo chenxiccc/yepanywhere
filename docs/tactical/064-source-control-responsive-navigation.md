@@ -4,6 +4,14 @@ Status: implemented and verified.
 
 Topic: source-review-to-session
 
+> **Superseded navigation detail (2026-07-31):** Changes and Commits were
+> subsequently folded into one Changes mode. Working tree is now an
+> always-present revision and the default even when clean; history opens
+> explicitly from that landing. The current contract is
+> [`topics/source-control.md`](../../topics/source-control.md). The remainder
+> of this document records the earlier responsive repair that supplied the
+> shared history drill-in.
+
 ## Origin
 
 The commit-history redesign removed the established Changes landing and made a

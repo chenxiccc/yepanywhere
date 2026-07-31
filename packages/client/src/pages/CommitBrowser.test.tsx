@@ -79,6 +79,14 @@ function dirtyStatus(): GitStatusInfo {
   };
 }
 
+function cleanStatus(): GitStatusInfo {
+  return {
+    ...dirtyStatus(),
+    isClean: true,
+    files: [],
+  };
+}
+
 function installScrollIntoViewMock() {
   const original = Element.prototype.scrollIntoView;
   const mock = vi.fn();
@@ -445,6 +453,35 @@ describe("CommitBrowser", () => {
     await waitFor(() => expect(getGitCommit).toHaveBeenCalledWith("p1", SHA));
   });
 
+  it("keeps a clean Working tree selectable inside commit history", async () => {
+    primeApis();
+
+    render(
+      <MemoryRouter>
+        <CommitBrowser
+          projectId="p1"
+          status={cleanStatus()}
+          isWideScreen={true}
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByTestId("working-tree-browser")).toBeDefined();
+    const workingTreeRow = document.querySelector(
+      ".commit-list-working-tree .commit-list-item",
+    ) as HTMLButtonElement;
+    expect(workingTreeRow.classList.contains("selected")).toBe(true);
+    expect(getGitCommit).not.toHaveBeenCalled();
+
+    fireEvent.click(await screen.findByText("first commit"));
+    await waitFor(() => expect(getGitCommit).toHaveBeenCalledWith("p1", SHA));
+    fireEvent.click(workingTreeRow);
+    expect(workingTreeRow.classList.contains("selected")).toBe(true);
+    expect(await screen.findByTestId("working-tree-browser")).toBeDefined();
+    expect(screen.getByText("first commit")).toBeDefined();
+  });
+
   it("uses arrow keys to move the focused revision selection", async () => {
     const older = "b".repeat(40);
     primeApis();
@@ -693,11 +730,11 @@ describe("CommitBrowser", () => {
       expect(screen.queryByText("newest commit")).toBeNull();
       expect(screen.queryByText("oldest commit")).toBeNull();
       expect(
-        screen.getByRole("button", { name: /sourceBackToCommits/ }),
+        screen.getByRole("button", { name: "sourceCommitHistory" }),
       ).toBeDefined();
 
       fireEvent.click(
-        screen.getByRole("button", { name: /sourceBackToCommits/ }),
+        screen.getByRole("button", { name: "sourceCommitHistory" }),
       );
       expect(historyBack).toHaveBeenCalled();
       act(() => {

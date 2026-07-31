@@ -163,6 +163,33 @@ describe("Source Control workbench layout CSS contract", () => {
     );
   });
 
+  it("keeps the unified Changes revision control usable at phone width", async () => {
+    const [indexCss, rendererCss] = await Promise.all([
+      readFile(indexStylesheetUrl, "utf8"),
+      readFile(rendererStylesheetUrl, "utf8"),
+    ]);
+    const mobileTabs = getLastRuleDeclarations(
+      rendererCss,
+      ".source-control-mobile-tabs .source-mode-tabs",
+    );
+    const historyParentLink = getLastRuleDeclarations(
+      rendererCss,
+      ".source-history-parent-link",
+    );
+    const cleanLanding = getLastRuleDeclarations(
+      indexCss,
+      ".working-tree-clean-landing",
+    );
+
+    expect(mobileTabs).toMatch(
+      /grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)\s*;/,
+    );
+    expect(historyParentLink).toMatch(/display:\s*flex\s*;/);
+    expect(historyParentLink).toMatch(/width:\s*100%\s*;/);
+    expect(cleanLanding).toMatch(/min-height:\s*min\(24rem,\s*48vh\)\s*;/);
+    expect(cleanLanding).not.toMatch(/max-width:/);
+  });
+
   it("prioritizes the filename and uses compact diff controls", async () => {
     const css = await readFile(rendererStylesheetUrl, "utf8");
     const identity = getRuleDeclarationsContaining(

@@ -79,6 +79,7 @@ vi.mock("../WorkingTreeBrowser", async () => {
       initialWorkingTreePath?: string;
       ignoreWhitespace?: boolean;
       onToggleIgnoreWhitespace?: () => void;
+      onBrowseHistory?: () => void;
     }) => {
       mocks.renderWorkingTreeBrowser({
         ...props,
@@ -89,6 +90,9 @@ vi.mock("../WorkingTreeBrowser", async () => {
           {props.status.isClean ? "clean-changes" : "dirty-changes"}
           <button type="button" onClick={props.onToggleIgnoreWhitespace}>
             gitStatusIgnoreWhitespace
+          </button>
+          <button type="button" onClick={props.onBrowseHistory}>
+            sourceCommitHistory
           </button>
         </div>
       );
@@ -297,6 +301,7 @@ describe("GitStatusPage source header", () => {
     const header = document.querySelector(".session-header") as HTMLElement;
     expect(header.querySelectorAll(".repo-status-bar")).toHaveLength(1);
     expect(header.querySelector(".source-mode-tabs")).not.toBeNull();
+    expect(header.querySelectorAll(".source-mode-tab")).toHaveLength(3);
     expect(header.querySelector(".review-tray-button")).toBeNull();
 
     const actionRow = document.querySelector(
@@ -362,16 +367,32 @@ describe("GitStatusPage source header", () => {
     expect(screen.queryByText("sourceProjectionUpgradeNotice")).toBeNull();
   });
 
-  it("opens commit history deliberately without carrying the working tree", async () => {
+  it("opens history inside Changes and keeps legacy commit URLs working", async () => {
+    renderPage();
+    await screen.findByTestId("working-tree-browser");
+
+    fireEvent.click(screen.getByText("sourceCommitHistory"));
+
+    expect(await screen.findByTestId("commit-browser")).toBeDefined();
+    expect(
+      screen
+        .getByRole("tab", { name: /sourceTabChanges/ })
+        .getAttribute("aria-selected"),
+    ).toBe("true");
+    expect(
+      screen.queryByRole("tab", { name: "sourceTabCommits" }),
+    ).toBeNull();
+  });
+
+  it("maps legacy commit URLs to history inside Changes", async () => {
     renderPage("/git-status?projectId=project-a&tab=commits");
 
     expect(await screen.findByTestId("commit-browser")).toBeDefined();
     expect(
       screen
-        .getByRole("tab", { name: "sourceTabCommits" })
+        .getByRole("tab", { name: /sourceTabChanges/ })
         .getAttribute("aria-selected"),
     ).toBe("true");
-    expect(screen.queryByTestId("working-tree-browser")).toBeNull();
   });
 
   it("opens an asynchronously populated Files hash in commit history", async () => {
@@ -385,13 +406,18 @@ describe("GitStatusPage source header", () => {
     fireEvent.click(screen.getByText("open-blame-commit"));
 
     expect(await screen.findByTestId("commit-browser")).toBeDefined();
+    expect(
+      screen
+        .getByRole("tab", { name: /sourceTabChanges/ })
+        .getAttribute("aria-selected"),
+    ).toBe("true");
     expect(mocks.renderCommitBrowser).toHaveBeenLastCalledWith(
       expect.objectContaining({ initialSha: "b".repeat(40) }),
     );
   });
 
   it("makes the Dirty badge return to Changes", async () => {
-    renderPage("/git-status?projectId=project-a&tab=commits");
+    renderPage("/git-status?projectId=project-a&history=1");
     await screen.findByTestId("commit-browser");
 
     fireEvent.click(screen.getByTitle("sourceOpenChanges"));

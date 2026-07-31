@@ -27,29 +27,40 @@ integration, conflict resolution, and recovery remain agent work unless a
 separate proposal justifies one operation's preconditions, feedback, and
 recovery.
 
-The navigation surface has four modes:
+The navigation surface has three modes:
 
-- **Changes** is the default quick check and presents the current
-  HEAD-to-filesystem changed-file list and diff.
-- **Commits** is revision-first history. A dirty **Working tree** revision is
-  pinned above commits and opens the same working-tree file/diff detail.
+- **Changes** is the default quick check and owns both the current
+  HEAD-to-filesystem state and explicitly opened commit history. **Working
+  tree** is its permanent default revision, including when its diff is empty.
 - **Files** searches tracked paths and opens file content immediately, then
   enriches its blame column asynchronously when provenance becomes available.
 - **Comments** is the integration point for the pending review workflow owned
   by [Source Review → New Session](source-review-to-session.md).
 
-Desktop uses master-detail panes; phone layouts drill from revisions to files
-to a full-screen diff and restore the prior list position on Back or
-back-swipe. Changes remains the default until a separately approved change;
-making its Working tree view available in Commits does not itself authorize a
-default flip.
+Normal Source Control navigation opens Changes with Working tree selected.
+Neither a clean tree nor an empty changed-file list falls through to HEAD or
+another commit. A clean tree renders a quiet confirmation with no recent
+commit card or history list. The detail-level **‹ Commit history** parent link
+is the explicit path into commits and occupies the same position for Working
+tree and narrow-screen commit detail; it names the parent destination without
+claiming that history was necessarily the user's previous view. Legacy
+`?tab=commits` URLs enter that history inside Changes, and a `?rev=<sha>` deep
+link selects its commit.
+
+Desktop uses master-detail panes once history is open; phone layouts drill
+from revisions to files to a full-screen diff and restore the prior list
+position on Back or back-swipe. Once history is open, the pinned Working tree
+behaves like any other revision: desktop keeps it selected beside the history
+list, while phone opens its detail with **‹ Commit history** returning to that
+list. The top-level Changes tab or Clean/Dirty badge restores the standalone
+default working-tree landing.
 
 ## Header hierarchy
 
 The Source Control header keeps repository identity and repository operations
 in separate visual bands. Project selection, branch, upstream, ahead/behind
 state, and the Clean/Dirty badge form the identity band. When the available
-header width fits the complete mode selector, Changes/Commits/Files/Comments
+header width fits the complete mode selector, Changes/Files/Comments
 occupies the trailing top-right space without displacing that identity.
 Constrained layouts move the same tabs to their own full-width row.
 
@@ -79,9 +90,11 @@ using normal page and full-screen-modal scrolling.
 
 ### Pane splitters
 
-Commits exposes revision/files and files/diff boundaries; Changes and Files
-expose their files/detail boundary. Matching top and bottom handles resize the
-same boundary, remain keyboard-operable, and stay absent from phone layout.
+Changes exposes revision/files and files/diff boundaries while history is
+open, and exposes its direct files/detail boundary for the default Working
+tree. Files exposes its files/detail boundary. Matching top and bottom handles
+resize the same boundary, remain keyboard-operable, and stay absent from phone
+layout.
 
 The changed-files pane has no arbitrary fixed maximum such as 500 px. It may
 grow until the inter-pane gap and splitter handles would cease to remain fully
@@ -111,7 +124,8 @@ plus additional unstaged changes, use the explicit short label **partial**
 rather than the opaque `±`; its tooltip says “Partially staged: staged changes
 plus additional unstaged changes.”
 
-Changes, Commits, and Files use one shared file-row/path treatment. A truncated
+Working-tree changes, commit revisions, and Files use one shared file-row/path
+treatment. A truncated
 path exposes its full value from the actual row hover/focus target in both
 Native and Themed tooltip modes; a nested `title` that happens to work in only
 one mode is not sufficient. Touch layouts preserve more path identity in the
@@ -278,7 +292,8 @@ an error keeps corrupt state recoverable without turning palette maintenance
 into a background retry loop.
 
 The permanent `git-source-review` capability currently gates the complete
-Changes/Commits/Files/Comments browser as well as the review endpoints. An
+Changes/Files/Comments browser, including commit history inside Changes, as
+well as the review endpoints. An
 older server with only `git-status-enhanced` receives the basic status,
 working-tree diff, and independently advertised Check/Pull/Push shell; the
 client makes no unsupported browse/review requests. Ignore whitespace and
