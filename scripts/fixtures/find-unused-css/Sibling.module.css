@@ -1,0 +1,11 @@
+.card {
+  padding: 1rem;
+}
+
+/*
+ * Same local name as Widget.module.css `.message`, but a different class.
+ * Widget uses its own; this one is unused.
+ */
+.message {
+  font-size: 1rem;
+}

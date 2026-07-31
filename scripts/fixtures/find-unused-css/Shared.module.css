@@ -1,0 +1,9 @@
+/* Reached only through `composes: shared from "./Shared.module.css"`. */
+.shared {
+  border-radius: 4px;
+}
+
+/* No composer and no importer reference. */
+.shared-stale {
+  border-radius: 8px;
+}

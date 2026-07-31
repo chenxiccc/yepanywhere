@@ -1,0 +1,33 @@
+.root {
+  display: flex;
+}
+
+/* Reached through styles["bracket-access"]. */
+.bracket-access {
+  gap: 0.5rem;
+}
+
+/* Composed by .root's sibling below, not referenced from the component. */
+.tone {
+  color: var(--text-primary);
+}
+
+.badge {
+  composes: tone;
+  composes: shared from "./Shared.module.css";
+  composes: fixture-composed-global from global;
+}
+
+/* Same local name as a class in Sibling.module.css; they are distinct. */
+.message {
+  font-size: 0.875rem;
+}
+
+/* Nothing references this. */
+.stale {
+  opacity: 0.5;
+}
+
+:global(.fixture-modal-shell):has(.root) {
+  padding: 1rem;
+}

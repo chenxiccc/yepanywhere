@@ -2,25 +2,35 @@
 /**
  * Find and optionally remove unused CSS class selectors.
  *
- * Extracts class selectors from CSS files and searches for their usage
- * in source files. Reports classes that appear to be unused.
+ * Two analyses run side by side, because the two kinds of stylesheet have
+ * different namespaces (see topics/css-architecture.md):
+ *
+ * - Global stylesheets share one document-wide class namespace, so a class is
+ *   used when any source file mentions it as a string.
+ * - `*.module.css` selectors are scoped per file and reached only through the
+ *   binding an importer gives them (`styles.foo`, `styles["foo"]`), so usage is
+ *   resolved per module rather than by name. Two modules may both define
+ *   `.error` without being the same class, and a module `.container` is not
+ *   used merely because the word "container" appears somewhere in the client.
  *
  * Usage:
  *   npx tsx scripts/find-unused-css.ts [options]
+ *   pnpm css:unused
  *
  * Options:
  *   --css-dir <dir>  Directory to scan for CSS (default: packages/client/src)
  *   --src-dir <dir>  Directory to scan for source files (default: packages/client/src)
  *   --verbose        Show which files each class was found in
  *   --json           Output as JSON
- *   --remove         Remove unused CSS rules (writes changes to files)
+ *   --remove         Remove unused global CSS rules (writes changes to files)
  *   --dry-run        Show what would be removed without making changes
  */
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 
-interface Options {
+export interface Options {
   cssDir: string;
   srcDir: string;
   verbose: boolean;
@@ -29,15 +39,68 @@ interface Options {
   dryRun: boolean;
 }
 
-interface ClassInfo {
+export interface ClassInfo {
   name: string;
   cssFile: string;
   line: number;
   usedIn: string[];
 }
 
-function parseArgs(): Options {
-  const args = process.argv.slice(2);
+/** Why a module's selectors cannot be judged unused. */
+export type ModuleUnknownReason =
+  | "no-importer"
+  | "side-effect-import"
+  | "computed-access";
+
+export interface ModuleReport {
+  cssFile: string;
+  /** Source files importing this module. */
+  importers: string[];
+  /** Other modules reaching this one through `composes ... from`. */
+  composers: string[];
+  selectors: ClassInfo[];
+  unused: ClassInfo[];
+  /** Global class names this module references through `:global(...)`. */
+  globalRefs: string[];
+  /**
+   * Set when usage cannot be determined statically. Selectors are then
+   * reported as unknown rather than unused.
+   */
+  unknownReasons: ModuleUnknownReason[];
+}
+
+export interface AnalysisResult {
+  globalClasses: ClassInfo[];
+  globalUsed: ClassInfo[];
+  globalUnused: ClassInfo[];
+  modules: ModuleReport[];
+  moduleUnused: ClassInfo[];
+  dynamicPrefixes: string[];
+  cssFileCount: number;
+  moduleFileCount: number;
+  srcFileCount: number;
+}
+
+const USAGE = `
+Find and optionally remove unused CSS class selectors.
+
+Usage:
+  npx tsx scripts/find-unused-css.ts [options]
+
+Options:
+  --css-dir <dir>  Directory to scan for CSS (default: packages/client/src)
+  --src-dir <dir>  Directory to scan for source files (default: packages/client/src)
+  --verbose        Show which files each class was found in
+  --json           Output as JSON
+  --remove         Remove unused global CSS rules (writes changes to files)
+  --dry-run        Show what would be removed without making changes
+  --help           Show this help
+
+CSS Module rules are never removed automatically; module selectors are reported
+so their owning component can delete them deliberately.
+`;
+
+export function parseArgs(argv: string[] = process.argv.slice(2)): Options {
   const options: Options = {
     cssDir: "packages/client/src",
     srcDir: "packages/client/src",
@@ -47,13 +110,13 @@ function parseArgs(): Options {
     dryRun: false,
   };
 
-  for (let i = 0; i < args.length; i++) {
-    switch (args[i]) {
+  for (let i = 0; i < argv.length; i++) {
+    switch (argv[i]) {
       case "--css-dir":
-        options.cssDir = args[++i];
+        options.cssDir = argv[++i];
         break;
       case "--src-dir":
-        options.srcDir = args[++i];
+        options.srcDir = argv[++i];
         break;
       case "--verbose":
         options.verbose = true;
@@ -68,21 +131,7 @@ function parseArgs(): Options {
         options.dryRun = true;
         break;
       case "--help":
-        console.log(`
-Find and optionally remove unused CSS class selectors.
-
-Usage:
-  npx tsx scripts/find-unused-css.ts [options]
-
-Options:
-  --css-dir <dir>  Directory to scan for CSS (default: packages/client/src)
-  --src-dir <dir>  Directory to scan for source files (default: packages/client/src)
-  --verbose        Show which files each class was found in
-  --json           Output as JSON
-  --remove         Remove unused CSS rules (writes changes to files)
-  --dry-run        Show what would be removed without making changes
-  --help           Show this help
-`);
+        console.log(USAGE);
         process.exit(0);
     }
   }
@@ -115,43 +164,56 @@ function findFiles(dir: string, extensions: string[]): string[] {
   return results;
 }
 
-function extractClassSelectors(
+export function isModuleStylesheet(file: string): boolean {
+  return file.endsWith(".module.css");
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+}
+
+/** Match class selectors like .foo, .foo-bar, .foo_bar. */
+const CLASS_REGEX = /\.([a-zA-Z_][a-zA-Z0-9_-]*)/g;
+
+function isLikelySelectorLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (trimmed.startsWith("*") || trimmed.startsWith("/*")) return false;
+  // Declarations (`color: red;`) carry a colon without a brace; selectors with
+  // pseudo-classes keep their brace or trailing comma.
+  if (line.includes(":") && !line.includes("{") && !line.includes(","))
+    return false;
+  return true;
+}
+
+function isLikelyClassName(name: string): boolean {
+  if (name.match(/^[0-9]/)) return false; // .5em etc
+  if (name.length < 2) return false; // Single char classes
+  return true;
+}
+
+export function extractClassSelectors(
   cssContent: string,
   filename: string,
 ): ClassInfo[] {
   const classes: ClassInfo[] = [];
   const lines = cssContent.split("\n");
-
-  // Match class selectors like .foo, .foo-bar, .foo_bar
-  // Handles: .class, .class:hover, .class::before, .class.other, .class > child
-  const classRegex = /\.([a-zA-Z_][a-zA-Z0-9_-]*)/g;
+  const seen = new Set<string>();
 
   for (let lineNum = 0; lineNum < lines.length; lineNum++) {
     const line = lines[lineNum];
+    if (!isLikelySelectorLine(line)) continue;
 
-    // Skip lines that are inside comments or are likely property values
-    if (line.trim().startsWith("*") || line.trim().startsWith("/*")) continue;
-    if (line.includes(":") && !line.includes("{") && !line.includes(","))
-      continue;
-
-    for (const match of line.matchAll(classRegex)) {
+    for (const match of line.matchAll(CLASS_REGEX)) {
       const className = match[1];
-
-      // Skip likely false positives
-      if (className.match(/^[0-9]/)) continue; // .5em etc
-      if (className.length < 2) continue; // Single char classes
-
-      // Check if already added from this file
-      if (
-        !classes.some((c) => c.name === className && c.cssFile === filename)
-      ) {
-        classes.push({
-          name: className,
-          cssFile: filename,
-          line: lineNum + 1,
-          usedIn: [],
-        });
-      }
+      if (!isLikelyClassName(className)) continue;
+      if (seen.has(className)) continue;
+      seen.add(className);
+      classes.push({
+        name: className,
+        cssFile: filename,
+        line: lineNum + 1,
+        usedIn: [],
+      });
     }
   }
 
@@ -159,10 +221,217 @@ function extractClassSelectors(
 }
 
 /**
+ * Split a module line into its module-scoped part and the class names it
+ * references through `:global(...)`.
+ *
+ * `:global(.modal):has(.content)` declares nothing global; it reaches an
+ * existing global class from inside the module. The global names are returned
+ * as references so the global analysis counts them as used, and are removed
+ * from the line so they are not mistaken for module-owned selectors.
+ */
+export function splitGlobalReferences(line: string): {
+  scoped: string;
+  globalRefs: string[];
+} {
+  const globalRefs: string[] = [];
+  let scoped = "";
+  let index = 0;
+
+  while (index < line.length) {
+    const start = line.indexOf(":global(", index);
+    if (start === -1) {
+      scoped += line.slice(index);
+      break;
+    }
+
+    scoped += line.slice(index, start);
+
+    let depth = 0;
+    let end = -1;
+    for (let i = start + ":global".length; i < line.length; i++) {
+      if (line[i] === "(") depth++;
+      else if (line[i] === ")") {
+        depth--;
+        if (depth === 0) {
+          end = i;
+          break;
+        }
+      }
+    }
+
+    if (end === -1) {
+      // Unbalanced (selector continues on the next line); treat the remainder
+      // as global so its classes are not claimed as module-owned.
+      const rest = line.slice(start);
+      for (const match of rest.matchAll(CLASS_REGEX)) {
+        if (isLikelyClassName(match[1])) globalRefs.push(match[1]);
+      }
+      break;
+    }
+
+    const inner = line.slice(start + ":global(".length, end);
+    for (const match of inner.matchAll(CLASS_REGEX)) {
+      if (isLikelyClassName(match[1])) globalRefs.push(match[1]);
+    }
+    index = end + 1;
+  }
+
+  return { scoped, globalRefs };
+}
+
+export interface ComposesReference {
+  /** Local class names this module composes from itself. */
+  local: string[];
+  /** Class names composed from another module, keyed by import specifier. */
+  external: Array<{ specifier: string; names: string[] }>;
+  /** Class names composed from the global namespace. */
+  global: string[];
+}
+
+export function extractComposes(cssContent: string): ComposesReference {
+  const result: ComposesReference = { local: [], external: [], global: [] };
+  const composesRegex = /composes\s*:\s*([^;}]+)/g;
+
+  for (const match of cssContent.matchAll(composesRegex)) {
+    const value = match[1].trim();
+    const fromMatch = /^([\s\S]+?)\s+from\s+(.+)$/.exec(value);
+
+    if (!fromMatch) {
+      result.local.push(...value.split(/\s+/).filter(Boolean));
+      continue;
+    }
+
+    const names = fromMatch[1].split(/\s+/).filter(Boolean);
+    const source = fromMatch[2].trim();
+    if (source === "global") {
+      result.global.push(...names);
+      continue;
+    }
+    const specifier = source.replace(/^["']|["']$/g, "");
+    result.external.push({ specifier, names });
+  }
+
+  return result;
+}
+
+/**
+ * Extract module-scoped selectors from a `*.module.css` file, along with the
+ * global class names it references.
+ */
+export function extractModuleSelectors(
+  cssContent: string,
+  filename: string,
+): { selectors: ClassInfo[]; globalRefs: string[] } {
+  const selectors: ClassInfo[] = [];
+  const globalRefs = new Set<string>();
+  const lines = cssContent.split("\n");
+  const seen = new Set<string>();
+
+  for (let lineNum = 0; lineNum < lines.length; lineNum++) {
+    const line = lines[lineNum];
+    const { scoped, globalRefs: lineGlobals } = splitGlobalReferences(line);
+    for (const name of lineGlobals) globalRefs.add(name);
+
+    if (!isLikelySelectorLine(line)) continue;
+
+    for (const match of scoped.matchAll(CLASS_REGEX)) {
+      const className = match[1];
+      if (!isLikelyClassName(className)) continue;
+      if (seen.has(className)) continue;
+      seen.add(className);
+      selectors.push({
+        name: className,
+        cssFile: filename,
+        line: lineNum + 1,
+        usedIn: [],
+      });
+    }
+  }
+
+  const composes = extractComposes(cssContent);
+  for (const name of composes.global) globalRefs.add(name);
+
+  return { selectors, globalRefs: Array.from(globalRefs) };
+}
+
+export interface ModuleImport {
+  /** Local binding, or null for a side-effect import. */
+  binding: string | null;
+  specifier: string;
+}
+
+const MODULE_IMPORT_REGEX =
+  /import\s+(?:(?:\*\s+as\s+)?([A-Za-z_$][\w$]*)\s+from\s+)?["']([^"']+\.module\.css)["']/g;
+
+export function extractModuleImports(content: string): ModuleImport[] {
+  const imports: ModuleImport[] = [];
+  for (const match of content.matchAll(MODULE_IMPORT_REGEX)) {
+    imports.push({ binding: match[1] ?? null, specifier: match[2] });
+  }
+  return imports;
+}
+
+function stripComments(content: string): string {
+  return content
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+}
+
+export interface BindingUsage {
+  names: Set<string>;
+  /** The binding was used in a way that hides which selectors it reaches. */
+  computed: boolean;
+}
+
+/**
+ * Resolve which module selectors an importer reaches through its binding.
+ *
+ * Recognizes `styles.foo`, `styles?.foo`, and string-literal bracket access.
+ * Any other use of the binding — a computed key, a spread, passing the object
+ * to a helper — makes the module's usage unknown rather than unused.
+ */
+export function extractBindingUsage(
+  content: string,
+  binding: string,
+): BindingUsage {
+  const names = new Set<string>();
+  let computed = false;
+
+  const withoutImports = content.replace(MODULE_IMPORT_REGEX, " ");
+  const scanned = stripComments(withoutImports);
+  const occurrence = new RegExp(
+    `(^|[^\\w$.])${escapeRegExp(binding)}(?![\\w$])`,
+    "g",
+  );
+
+  for (const match of scanned.matchAll(occurrence)) {
+    const rest = scanned.slice(match.index + match[0].length);
+
+    const property = /^\s*\??\.\s*([A-Za-z_$][\w$]*)/.exec(rest);
+    if (property) {
+      names.add(property[1]);
+      continue;
+    }
+
+    const literalKey = /^\s*(?:\?\.)?\[\s*(["'`])([^"'`]*)\1\s*\]/.exec(rest);
+    if (literalKey) {
+      names.add(literalKey[2]);
+      continue;
+    }
+
+    computed = true;
+  }
+
+  return { names, computed };
+}
+
+/**
  * Extract dynamic class prefixes from template literals like `mode-${m}` or `status-${status}`.
  * Returns an array of prefixes found (e.g., ["mode-", "status-"]).
  */
-function extractDynamicPrefixes(srcFiles: Map<string, string>): string[] {
+export function extractDynamicPrefixes(
+  srcFiles: Map<string, string>,
+): string[] {
   const prefixes = new Set<string>();
 
   // Match patterns like: `prefix-${variable}`
@@ -212,20 +481,18 @@ function searchForClass(
   }
 
   // Patterns to search for:
-  // - className="foo" or className="... foo ..."
-  // - className={`foo`} or className={`... foo ...`}
+  // - className="foo" or className={`... foo ...`}
   // - "foo" in ternary like isActive ? "foo" : ""
   // - classList.add("foo")
   // - class="foo" (HTML)
 
-  // Escape special regex chars in class name
-  const escaped = className.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+  const escaped = escapeRegExp(className);
 
   // Match the class name as a whole word in string contexts
   const patterns = [
     new RegExp(`["'\`]${escaped}["'\`]`, "g"), // Exact match in quotes
     new RegExp(`["'\`][^"'\`]*\\b${escaped}\\b[^"'\`]*["'\`]`, "g"), // Part of a string
-    new RegExp(`\\b${escaped}\\b`, "g"), // As identifier (for CSS modules, though we don't use them)
+    new RegExp(`\\b${escaped}\\b`, "g"), // Bare identifier (helper-built names)
   ];
 
   for (const [filename, content] of srcFiles) {
@@ -238,6 +505,178 @@ function searchForClass(
   }
 
   return foundIn;
+}
+
+function resolveSpecifier(fromFile: string, specifier: string): string {
+  return path.resolve(path.dirname(fromFile), specifier);
+}
+
+export function analyze(options: Pick<Options, "cssDir" | "srcDir">): {
+  result: AnalysisResult;
+  srcContents: Map<string, string>;
+} {
+  const cssFiles = findFiles(options.cssDir, [".css"]);
+  const moduleFiles = cssFiles.filter(isModuleStylesheet);
+  const globalCssFiles = cssFiles.filter((file) => !isModuleStylesheet(file));
+
+  const srcFiles = findFiles(options.srcDir, [".tsx", ".ts", ".jsx", ".js"]);
+  const srcContents = new Map<string, string>();
+  for (const file of srcFiles) {
+    srcContents.set(file, fs.readFileSync(file, "utf-8"));
+  }
+
+  // --- Module analysis -----------------------------------------------------
+  // Selectors are resolved per module file, so identically named classes in
+  // different modules stay distinct.
+  const moduleReports = new Map<string, ModuleReport>();
+  const moduleContents = new Map<string, string>();
+  for (const file of moduleFiles) {
+    const content = fs.readFileSync(file, "utf-8");
+    moduleContents.set(path.resolve(file), content);
+    const { selectors, globalRefs } = extractModuleSelectors(content, file);
+    moduleReports.set(path.resolve(file), {
+      cssFile: file,
+      importers: [],
+      composers: [],
+      selectors,
+      unused: [],
+      globalRefs,
+      unknownReasons: [],
+    });
+  }
+
+  // Names reached from source files, plus names composed from other modules.
+  const reachedNames = new Map<string, Map<string, Set<string>>>();
+  const noteReached = (
+    modulePath: string,
+    name: string,
+    origin: string,
+  ): void => {
+    let byName = reachedNames.get(modulePath);
+    if (!byName) {
+      byName = new Map();
+      reachedNames.set(modulePath, byName);
+    }
+    const origins = byName.get(name) ?? new Set<string>();
+    origins.add(origin);
+    byName.set(name, origins);
+  };
+
+  for (const [srcFile, content] of srcContents) {
+    for (const { binding, specifier } of extractModuleImports(content)) {
+      const resolved = resolveSpecifier(srcFile, specifier);
+      const report = moduleReports.get(resolved);
+      if (!report) continue;
+
+      report.importers.push(srcFile);
+
+      if (!binding) {
+        report.unknownReasons.push("side-effect-import");
+        continue;
+      }
+
+      const usage = extractBindingUsage(content, binding);
+      if (usage.computed) report.unknownReasons.push("computed-access");
+      for (const name of usage.names) noteReached(resolved, name, srcFile);
+    }
+  }
+
+  for (const [modulePath, content] of moduleContents) {
+    const composes = extractComposes(content);
+    for (const name of composes.local) {
+      noteReached(modulePath, name, `${path.basename(modulePath)} (composes)`);
+    }
+    for (const { specifier, names } of composes.external) {
+      const resolved = resolveSpecifier(modulePath, specifier);
+      const target = moduleReports.get(resolved);
+      if (!target) continue;
+      target.composers.push(path.relative(process.cwd(), modulePath));
+      for (const name of names) {
+        noteReached(
+          resolved,
+          name,
+          `${path.basename(modulePath)} (composes from)`,
+        );
+      }
+    }
+  }
+
+  const moduleUnused: ClassInfo[] = [];
+  for (const [modulePath, report] of moduleReports) {
+    // A module composed by another module is still reachable, so its
+    // remaining selectors can be judged.
+    if (report.importers.length === 0 && report.composers.length === 0) {
+      report.unknownReasons.push("no-importer");
+    }
+    const byName = reachedNames.get(modulePath);
+    for (const selector of report.selectors) {
+      selector.usedIn = Array.from(byName?.get(selector.name) ?? []);
+    }
+    if (report.unknownReasons.length > 0) continue;
+    report.unused = report.selectors.filter(
+      (selector) => selector.usedIn.length === 0,
+    );
+    moduleUnused.push(...report.unused);
+  }
+
+  // --- Global analysis -----------------------------------------------------
+  // Global stylesheets share one namespace, so classes stay deduplicated by
+  // name across files, as before.
+  const allGlobalClasses: ClassInfo[] = [];
+  for (const cssFile of globalCssFiles) {
+    const content = fs.readFileSync(cssFile, "utf-8");
+    allGlobalClasses.push(...extractClassSelectors(content, cssFile));
+  }
+
+  const uniqueGlobalClasses = new Map<string, ClassInfo>();
+  for (const cls of allGlobalClasses) {
+    if (!uniqueGlobalClasses.has(cls.name)) {
+      uniqueGlobalClasses.set(cls.name, cls);
+    }
+  }
+
+  // A module's `:global(...)` selector is a real consumer of global vocabulary.
+  const globalRefsFromModules = new Map<string, string[]>();
+  for (const report of moduleReports.values()) {
+    for (const name of report.globalRefs) {
+      const files = globalRefsFromModules.get(name) ?? [];
+      files.push(report.cssFile);
+      globalRefsFromModules.set(name, files);
+    }
+  }
+
+  const dynamicPrefixes = extractDynamicPrefixes(srcContents);
+  const globalUsed: ClassInfo[] = [];
+  const globalUnused: ClassInfo[] = [];
+
+  for (const cls of uniqueGlobalClasses.values()) {
+    cls.usedIn = [
+      ...searchForClass(cls.name, srcContents, dynamicPrefixes),
+      ...(globalRefsFromModules.get(cls.name) ?? []),
+    ];
+    if (cls.usedIn.length === 0) {
+      globalUnused.push(cls);
+    } else {
+      globalUsed.push(cls);
+    }
+  }
+
+  return {
+    result: {
+      globalClasses: Array.from(uniqueGlobalClasses.values()),
+      globalUsed,
+      globalUnused,
+      modules: Array.from(moduleReports.values()).sort((a, b) =>
+        a.cssFile.localeCompare(b.cssFile),
+      ),
+      moduleUnused,
+      dynamicPrefixes,
+      cssFileCount: globalCssFiles.length,
+      moduleFileCount: moduleFiles.length,
+      srcFileCount: srcFiles.length,
+    },
+    srcContents,
+  };
 }
 
 interface CssRule {
@@ -367,6 +806,10 @@ interface RemovalResult {
 
 /**
  * Remove unused CSS rules from files.
+ *
+ * Only global stylesheets are eligible. Module rules are left to their owning
+ * component: the line-based parser cannot yet remove a complete module rule
+ * (including `composes` dependents) safely.
  */
 function removeUnusedRules(
   unusedByFile: Map<string, ClassInfo[]>,
@@ -375,6 +818,7 @@ function removeUnusedRules(
   const results: RemovalResult[] = [];
 
   for (const [file, classes] of unusedByFile) {
+    if (isModuleStylesheet(file)) continue;
     const content = fs.readFileSync(file, "utf-8");
     const lines = content.split("\n");
 
@@ -444,92 +888,85 @@ function removeUnusedRules(
   return results;
 }
 
+const UNKNOWN_REASON_TEXT: Record<ModuleUnknownReason, string> = {
+  "no-importer": "no source file imports it",
+  "side-effect-import": "imported for side effects without a binding",
+  "computed-access": "reached through a computed key",
+};
+
+function describeUnknown(report: ModuleReport): string {
+  return Array.from(new Set(report.unknownReasons))
+    .map((reason) => UNKNOWN_REASON_TEXT[reason])
+    .join("; ");
+}
+
 function main() {
   const options = parseArgs();
 
-  // Find CSS files
-  const cssFiles = findFiles(options.cssDir, [".css"]);
-  if (cssFiles.length === 0) {
+  let analysis: ReturnType<typeof analyze>;
+  try {
+    analysis = analyze(options);
+  } catch (error) {
+    console.error((error as Error).message);
+    process.exit(1);
+  }
+  const { result } = analysis;
+
+  if (result.cssFileCount + result.moduleFileCount === 0) {
     console.error(`No CSS files found in: ${options.cssDir}`);
     process.exit(1);
   }
-
-  // Find source files
-  const srcFiles = findFiles(options.srcDir, [".tsx", ".ts", ".jsx", ".js"]);
-  if (srcFiles.length === 0) {
+  if (result.srcFileCount === 0) {
     console.error(`No source files found in: ${options.srcDir}`);
     process.exit(1);
   }
 
-  // Load all source files into memory for faster searching
-  const srcContents = new Map<string, string>();
-  for (const file of srcFiles) {
-    srcContents.set(file, fs.readFileSync(file, "utf-8"));
-  }
+  const unknownModules = result.modules.filter(
+    (report) => report.unknownReasons.length > 0,
+  );
 
-  // Extract all class selectors from CSS
-  const allClasses: ClassInfo[] = [];
-  for (const cssFile of cssFiles) {
-    const content = fs.readFileSync(cssFile, "utf-8");
-    const classes = extractClassSelectors(content, cssFile);
-    allClasses.push(...classes);
-  }
-
-  // Deduplicate by class name (keep first occurrence)
-  const uniqueClasses = new Map<string, ClassInfo>();
-  for (const cls of allClasses) {
-    if (!uniqueClasses.has(cls.name)) {
-      uniqueClasses.set(cls.name, cls);
-    }
-  }
-
-  // Extract dynamic class prefixes from template literals
-  const dynamicPrefixes = extractDynamicPrefixes(srcContents);
-
-  if (!options.json) {
-    console.log(
-      `Found ${uniqueClasses.size} unique class selectors in ${cssFiles.length} CSS files`,
-    );
-    console.log(`Searching ${srcFiles.length} source files...`);
-    if (dynamicPrefixes.length > 0) {
-      console.log(`Detected dynamic prefixes: ${dynamicPrefixes.join(", ")}`);
-    }
-    console.log();
-  }
-
-  // Search for each class
-  const unused: ClassInfo[] = [];
-  const used: ClassInfo[] = [];
-
-  for (const cls of uniqueClasses.values()) {
-    cls.usedIn = searchForClass(cls.name, srcContents, dynamicPrefixes);
-    if (cls.usedIn.length === 0) {
-      unused.push(cls);
-    } else {
-      used.push(cls);
-    }
-  }
-
-  // Output results
   if (options.json) {
     console.log(
       JSON.stringify(
         {
           summary: {
-            totalClasses: uniqueClasses.size,
-            usedClasses: used.length,
-            unusedClasses: unused.length,
-            cssFiles: cssFiles.length,
-            srcFiles: srcFiles.length,
+            totalClasses: result.globalClasses.length,
+            usedClasses: result.globalUsed.length,
+            unusedClasses: result.globalUnused.length,
+            cssFiles: result.cssFileCount,
+            srcFiles: result.srcFileCount,
+            moduleFiles: result.moduleFileCount,
+            moduleSelectors: result.modules.reduce(
+              (total, report) => total + report.selectors.length,
+              0,
+            ),
+            unusedModuleSelectors: result.moduleUnused.length,
+            unknownModules: unknownModules.length,
           },
-          unused: unused.map((c) => ({
+          unused: result.globalUnused.map((c) => ({
             name: c.name,
             file: c.cssFile,
             line: c.line,
           })),
+          modules: result.modules.map((report) => ({
+            file: report.cssFile,
+            importers: report.importers,
+            unknownReasons: Array.from(new Set(report.unknownReasons)),
+            globalRefs: report.globalRefs,
+            unused: report.unused.map((c) => ({ name: c.name, line: c.line })),
+            ...(options.verbose
+              ? {
+                  selectors: report.selectors.map((c) => ({
+                    name: c.name,
+                    line: c.line,
+                    usedIn: c.usedIn,
+                  })),
+                }
+              : {}),
+          })),
           ...(options.verbose
             ? {
-                used: used.map((c) => ({
+                used: result.globalUsed.map((c) => ({
                   name: c.name,
                   file: c.cssFile,
                   line: c.line,
@@ -542,81 +979,141 @@ function main() {
         2,
       ),
     );
-  } else {
-    // Group unused by CSS file
-    const byFile = new Map<string, ClassInfo[]>();
-    for (const cls of unused) {
-      const existing = byFile.get(cls.cssFile) || [];
-      existing.push(cls);
-      byFile.set(cls.cssFile, existing);
-    }
+    process.exit(exitCode(result, options));
+  }
 
-    if (unused.length === 0) {
-      console.log("No unused classes found!");
-    } else {
-      console.log(`Found ${unused.length} potentially unused classes:\n`);
-
-      for (const [file, classes] of byFile) {
-        const relPath = path.relative(process.cwd(), file);
-        console.log(`${relPath} (${classes.length} unused):`);
-        for (const cls of classes.sort((a, b) => a.line - b.line)) {
-          console.log(`  Line ${cls.line}: .${cls.name}`);
-        }
-        console.log();
-      }
-    }
-
-    console.log("---");
+  console.log(
+    `Found ${result.globalClasses.length} unique global class selectors in ${result.cssFileCount} global stylesheets`,
+  );
+  console.log(
+    `Found ${result.modules.reduce((total, r) => total + r.selectors.length, 0)} module selectors in ${result.moduleFileCount} CSS Modules`,
+  );
+  console.log(`Searching ${result.srcFileCount} source files...`);
+  if (result.dynamicPrefixes.length > 0) {
     console.log(
-      `Summary: ${used.length} used, ${unused.length} unused out of ${uniqueClasses.size} total classes`,
+      `Detected dynamic prefixes: ${result.dynamicPrefixes.join(", ")}`,
+    );
+  }
+  console.log();
+
+  // Group unused global classes by CSS file
+  const byFile = new Map<string, ClassInfo[]>();
+  for (const cls of result.globalUnused) {
+    const existing = byFile.get(cls.cssFile) || [];
+    existing.push(cls);
+    byFile.set(cls.cssFile, existing);
+  }
+
+  if (result.globalUnused.length === 0) {
+    console.log("No unused global classes found!");
+  } else {
+    console.log(
+      `Found ${result.globalUnused.length} potentially unused global classes:\n`,
     );
 
-    if (options.verbose && used.length > 0) {
-      console.log("\nUsed classes:");
-      for (const cls of used) {
+    for (const [file, classes] of byFile) {
+      const relPath = path.relative(process.cwd(), file);
+      console.log(`${relPath} (${classes.length} unused):`);
+      for (const cls of classes.sort((a, b) => a.line - b.line)) {
+        console.log(`  Line ${cls.line}: .${cls.name}`);
+      }
+      console.log();
+    }
+  }
+
+  console.log("CSS Modules:");
+  if (result.moduleFileCount === 0) {
+    console.log("  (none)");
+  }
+  for (const report of result.modules) {
+    const relPath = path.relative(process.cwd(), report.cssFile);
+    if (report.unknownReasons.length > 0) {
+      console.log(`  ${relPath}: usage unknown — ${describeUnknown(report)}`);
+      continue;
+    }
+    if (report.unused.length === 0) {
+      if (options.verbose) {
         console.log(
-          `  .${cls.name} -> ${cls.usedIn.map((f) => path.relative(process.cwd(), f)).join(", ")}`,
+          `  ${relPath}: all ${report.selectors.length} selectors used`,
         );
       }
+      continue;
     }
+    console.log(`  ${relPath} (${report.unused.length} unused):`);
+    for (const cls of report.unused.sort((a, b) => a.line - b.line)) {
+      console.log(`    Line ${cls.line}: .${cls.name}`);
+    }
+  }
+  console.log();
 
-    // Handle removal if requested
-    if ((options.remove || options.dryRun) && unused.length > 0) {
+  console.log("---");
+  console.log(
+    `Summary: ${result.globalUsed.length} used, ${result.globalUnused.length} unused out of ${result.globalClasses.length} global classes`,
+  );
+  console.log(
+    `         ${result.moduleUnused.length} unused module selectors; ${unknownModules.length} module${unknownModules.length === 1 ? "" : "s"} with undetermined usage`,
+  );
+
+  if (options.verbose && result.globalUsed.length > 0) {
+    console.log("\nUsed global classes:");
+    for (const cls of result.globalUsed) {
       console.log(
-        options.dryRun
-          ? "\n[DRY RUN] Would remove:"
-          : "\nRemoving unused rules...",
-      );
-
-      const results = removeUnusedRules(byFile, options.dryRun);
-
-      let totalRemoved = 0;
-      let totalSkipped = 0;
-
-      for (const result of results) {
-        const relPath = path.relative(process.cwd(), result.file);
-        if (result.removed > 0 || result.skipped > 0) {
-          console.log(
-            `  ${relPath}: ${result.removed} removed, ${result.skipped} skipped`,
-          );
-          if (result.skippedClasses.length > 0 && options.verbose) {
-            console.log(
-              `    Skipped (grouped selectors): ${result.skippedClasses.join(", ")}`,
-            );
-          }
-        }
-        totalRemoved += result.removed;
-        totalSkipped += result.skipped;
-      }
-
-      console.log(
-        `\n${options.dryRun ? "Would remove" : "Removed"} ${totalRemoved} rules, skipped ${totalSkipped} (grouped selectors)`,
+        `  .${cls.name} -> ${cls.usedIn.map((f) => path.relative(process.cwd(), f)).join(", ")}`,
       );
     }
   }
 
-  // Exit with error code if unused classes found (and not removed)
-  process.exit(unused.length > 0 && !options.remove ? 1 : 0);
+  // Handle removal if requested
+  if (
+    (options.remove || options.dryRun) &&
+    (result.globalUnused.length > 0 || result.moduleUnused.length > 0)
+  ) {
+    console.log(
+      options.dryRun
+        ? "\n[DRY RUN] Would remove:"
+        : "\nRemoving unused rules...",
+    );
+
+    const results = removeUnusedRules(byFile, options.dryRun);
+
+    let totalRemoved = 0;
+    let totalSkipped = 0;
+
+    for (const removal of results) {
+      const relPath = path.relative(process.cwd(), removal.file);
+      if (removal.removed > 0 || removal.skipped > 0) {
+        console.log(
+          `  ${relPath}: ${removal.removed} removed, ${removal.skipped} skipped`,
+        );
+        if (removal.skippedClasses.length > 0 && options.verbose) {
+          console.log(
+            `    Skipped (grouped selectors): ${removal.skippedClasses.join(", ")}`,
+          );
+        }
+      }
+      totalRemoved += removal.removed;
+      totalSkipped += removal.skipped;
+    }
+
+    console.log(
+      `\n${options.dryRun ? "Would remove" : "Removed"} ${totalRemoved} rules, skipped ${totalSkipped} (grouped selectors)`,
+    );
+    if (result.moduleUnused.length > 0) {
+      console.log(
+        `Left ${result.moduleUnused.length} module selector${result.moduleUnused.length === 1 ? "" : "s"} in place; delete module rules in the owning component.`,
+      );
+    }
+  }
+
+  process.exit(exitCode(result, options));
 }
 
-main();
+function exitCode(result: AnalysisResult, options: Options): number {
+  const globalOutstanding = options.remove ? 0 : result.globalUnused.length;
+  return globalOutstanding + result.moduleUnused.length > 0 ? 1 : 0;
+}
+
+const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : "";
+if (invokedPath === fileURLToPath(import.meta.url)) {
+  main();
+}

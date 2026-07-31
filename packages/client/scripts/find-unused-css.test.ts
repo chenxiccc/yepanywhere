@@ -1,0 +1,201 @@
+/**
+ * Coverage for the repo-root CSS analyzer (`scripts/find-unused-css.ts`).
+ *
+ * The analyzer lives at the repo root because it is a CLI, but the client is
+ * the only package with CSS and the only package running vitest over tooling,
+ * so its tests live here. Fixtures are in
+ * `scripts/fixtures/find-unused-css/`.
+ */
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, expect, it } from "vitest";
+import {
+  analyze,
+  extractBindingUsage,
+  extractComposes,
+  extractModuleImports,
+  splitGlobalReferences,
+} from "../../../scripts/find-unused-css.ts";
+
+const fixtureDir = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../../scripts/fixtures/find-unused-css",
+);
+
+function analyzeFixtures() {
+  return analyze({ cssDir: fixtureDir, srcDir: fixtureDir }).result;
+}
+
+function moduleReport(basename: string) {
+  const report = analyzeFixtures().modules.find(
+    (candidate) => path.basename(candidate.cssFile) === basename,
+  );
+  if (!report) throw new Error(`no report for ${basename}`);
+  return report;
+}
+
+function unusedNames(basename: string): string[] {
+  return moduleReport(basename)
+    .unused.map((selector) => selector.name)
+    .sort();
+}
+
+describe("global class analysis", () => {
+  it("reports a global class no source file mentions", () => {
+    const { globalUnused } = analyzeFixtures();
+    expect(globalUnused.map((cls) => cls.name)).toEqual([
+      "fixture-unused-global",
+    ]);
+  });
+
+  it("counts a module's :global(...) selector as global usage", () => {
+    const used = analyzeFixtures().globalUsed.find(
+      (cls) => cls.name === "fixture-modal-shell",
+    );
+    expect(used?.usedIn.map((file) => path.basename(file))).toEqual([
+      "Widget.module.css",
+    ]);
+  });
+
+  it("counts `composes ... from global` as global usage", () => {
+    const used = analyzeFixtures().globalUsed.find(
+      (cls) => cls.name === "fixture-composed-global",
+    );
+    expect(used?.usedIn.map((file) => path.basename(file))).toEqual([
+      "Widget.module.css",
+    ]);
+  });
+
+  it("does not treat module-scoped selectors as global classes", () => {
+    const globalNames = analyzeFixtures().globalClasses.map((cls) => cls.name);
+    expect(globalNames).not.toContain("root");
+    expect(globalNames).not.toContain("stale");
+  });
+});
+
+describe("module selector analysis", () => {
+  it("resolves identically named selectors per module", () => {
+    // Both modules define `.message`; only Sibling's is unused.
+    expect(unusedNames("Widget.module.css")).toEqual(["stale"]);
+    expect(unusedNames("Sibling.module.css")).toEqual(["message"]);
+  });
+
+  it("treats property and string-literal bracket access as usage", () => {
+    const used = moduleReport("Widget.module.css")
+      .selectors.filter((selector) => selector.usedIn.length > 0)
+      .map((selector) => selector.name);
+    expect(used).toContain("root");
+    expect(used).toContain("bracket-access");
+  });
+
+  it("treats composes references as usage", () => {
+    // `.tone` is composed locally; `.shared` is composed across modules.
+    expect(unusedNames("Widget.module.css")).not.toContain("tone");
+    expect(unusedNames("Shared.module.css")).toEqual(["shared-stale"]);
+  });
+
+  it("reports computed access as unknown rather than unused", () => {
+    const report = moduleReport("Dynamic.module.css");
+    expect(report.unknownReasons).toContain("computed-access");
+    expect(report.unused).toEqual([]);
+  });
+
+  it("reports an unimported module as unknown rather than unused", () => {
+    const report = moduleReport("Orphan.module.css");
+    expect(report.unknownReasons).toContain("no-importer");
+    expect(report.unused).toEqual([]);
+  });
+
+  it("judges a module reached only through composes", () => {
+    const report = moduleReport("Shared.module.css");
+    expect(report.importers).toEqual([]);
+    expect(report.composers.map((file) => path.basename(file))).toEqual([
+      "Widget.module.css",
+    ]);
+    expect(report.unknownReasons).toEqual([]);
+  });
+
+  it("attributes module selectors to their owning file", () => {
+    const report = moduleReport("Widget.module.css");
+    for (const selector of report.selectors) {
+      expect(path.basename(selector.cssFile)).toBe("Widget.module.css");
+    }
+  });
+});
+
+describe("parsing helpers", () => {
+  it("separates :global(...) references from module-scoped selectors", () => {
+    expect(splitGlobalReferences(":global(.modal):has(.content) {")).toEqual({
+      scoped: ":has(.content) {",
+      globalRefs: ["modal"],
+    });
+  });
+
+  it("extracts default and namespace module imports", () => {
+    expect(
+      extractModuleImports(
+        [
+          'import styles from "./Widget.module.css";',
+          'import * as other from "./Other.module.css";',
+          'import "./SideEffect.module.css";',
+          'import helper from "./helper.ts";',
+        ].join("\n"),
+      ),
+    ).toEqual([
+      { binding: "styles", specifier: "./Widget.module.css" },
+      { binding: "other", specifier: "./Other.module.css" },
+      { binding: null, specifier: "./SideEffect.module.css" },
+    ]);
+  });
+
+  it("classifies binding access", () => {
+    const usage = extractBindingUsage(
+      [
+        'import styles from "./Widget.module.css";',
+        "const a = styles.root;",
+        "const b = styles?.hover;",
+        'const c = styles["bracket-access"];',
+        "// styles.commented",
+      ].join("\n"),
+      "styles",
+    );
+    expect([...usage.names].sort()).toEqual([
+      "bracket-access",
+      "hover",
+      "root",
+    ]);
+    expect(usage.computed).toBe(false);
+  });
+
+  it("flags a computed key and an opaque pass-through", () => {
+    expect(extractBindingUsage("styles[key]", "styles").computed).toBe(true);
+    expect(extractBindingUsage("classNames(styles)", "styles").computed).toBe(
+      true,
+    );
+  });
+
+  it("does not confuse a similarly named binding", () => {
+    const usage = extractBindingUsage(
+      "const x = other.styles; const y = myStyles.root;",
+      "styles",
+    );
+    expect(usage.names.size).toBe(0);
+    expect(usage.computed).toBe(false);
+  });
+
+  it("parses local, external, and global composes", () => {
+    expect(
+      extractComposes(
+        [
+          ".a { composes: tone strong; }",
+          '.b { composes: shared from "./Shared.module.css"; }',
+          ".c { composes: legacy from global; }",
+        ].join("\n"),
+      ),
+    ).toEqual({
+      local: ["tone", "strong"],
+      external: [{ specifier: "./Shared.module.css", names: ["shared"] }],
+      global: ["legacy"],
+    });
+  });
+});

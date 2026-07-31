@@ -17,6 +17,14 @@ control.
 This is not a big-bang rewrite. The existing cascade remains in place while new
 work stops increasing it and touched features pay down their local part.
 
+## Campaign tracking
+
+[`docs/tactical/070-css-modules-migration.md`](../docs/tactical/070-css-modules-migration.md)
+tracks the finite migration campaign: priority queue, slice status, baseline
+movement, verification evidence, and landing notes. This topic is the binding
+architecture and reusable runbook; the tactical is the worklog. When they
+disagree, this topic wins.
+
 ## Contract
 
 - A React component's new styles belong in a co-located `*.module.css`, imported
@@ -83,20 +91,115 @@ content.
   Modules provide scoping and co-location while retaining static CSS and adding
   no client runtime dependency.
 
-## Migration procedure
+## Migration runbook
 
-1. Choose a feature whose selectors and DOM owner can be identified together.
-2. Search the entire client for every selector, including tests and selectors
-   elsewhere in the legacy cascade.
-3. Move rules into a co-located module. Preserve declarations and responsive
-   behavior before attempting cleanup.
-4. Replace string class names with module references. Use semantic local names;
-   they no longer need globally unique prefixes.
-5. Search again for stale selectors and cross-feature dependencies.
-6. Run focused tests, `pnpm css:check`, `pnpm lint`, `pnpm typecheck`,
-   `pnpm console:scan`, and browser visual verification at the required desktop
-   and phone widths.
-7. Lower the affected legacy ceiling with `pnpm css:check --record`.
+### 1. Establish ownership before moving rules
+
+Choose a feature whose selectors and DOM owner can be identified together.
+Search the entire client before editing:
+
+- every class selector and state suffix;
+- CSS selectors elsewhere in the legacy cascade;
+- `className` strings, template literals, and helper-built names;
+- raw/generated HTML producers;
+- tests, Playwright locators, and DOM-query code; and
+- caller selectors that reach into the component.
+
+Classify each rule as component-owned, caller layout, shared primitive,
+document-level state, generated vocabulary, third-party override, or stale.
+Ambiguous ownership is a reason to pause, not a reason to use broad
+`:global(...)`.
+
+### 2. Move behavior before cleaning it up
+
+Create `Owner.module.css` beside the component and import it as `styles`.
+Preserve declarations, media queries, pseudo states, keyframes, variables, and
+selector ordering before attempting visual cleanup. Semantic local names no
+longer need globally unique feature prefixes.
+
+Basic usage:
+
+```tsx
+import styles from "./StatusChip.module.css";
+
+export function StatusChip({ active }: { active: boolean }) {
+  return (
+    <span className={`${styles.root} ${active ? styles.active : ""}`}>
+      …
+    </span>
+  );
+}
+```
+
+Do not add a runtime class-name dependency for ordinary composition. When
+several optional classes make interpolation unreadable, use a tiny local
+function or an array filtered and joined in the component.
+
+### 3. Make composition explicit
+
+For caller-owned placement, prefer a wrapper or an explicit `className` or
+variant prop:
+
+```tsx
+export function StatusChip({ className }: { className?: string }) {
+  return (
+    <span className={[styles.root, className].filter(Boolean).join(" ")}>
+      …
+    </span>
+  );
+}
+```
+
+A caller may supply its own module class through that prop. It must not guess or
+reach into the child's generated class name. Prefer named variants when several
+callers need the same meaningful presentation; prefer a wrapper for one-off
+layout.
+
+Portals do not require global CSS. A module import emits static CSS, and the
+portal element can use the generated class anywhere in the document. Keep
+overlay, sheet, responsive, and keyframe rules in the owning module.
+
+### 4. Contain unavoidable global vocabulary
+
+Use a narrow global selector only where the module cannot own the other side:
+
+```css
+.root :global(.markdown-rendered) {
+  color: var(--text-primary);
+}
+
+:global(.modal):has(.content) {
+  max-width: 30rem;
+}
+```
+
+The first form scopes generated markup beneath a local root. The second is
+appropriate only when a shared global shell must respond to local content.
+Never translate a whole legacy section into unscoped `:global(...)`; that
+changes its file without changing its architecture.
+
+Keep shared theme values in custom properties. Runtime-dependent dimensions or
+positions may stay in `style` as CSS variables while all static declarations
+move to the module.
+
+### 5. Re-scan and test the boundary
+
+After editing:
+
+1. Search again for stale selectors and old literal class names. `pnpm
+   css:unused` reports global classes by name and module selectors per owning
+   file; it treats a computed key, a side-effect-only import, and an unimported
+   module as undetermined rather than unused, and never rewrites module rules.
+2. Confirm callers no longer depend on removed child selectors.
+3. Run focused component and consumer tests.
+4. Prefer roles, labels, and stable data attributes in tests; module hashes and
+   local class names are not public selectors.
+5. Run `pnpm css:check`, `pnpm lint`, `pnpm typecheck`, and
+   `pnpm console:scan`.
+6. Capture and inspect final browser screenshots at 1920×1080 and 375×812 when
+   the migration affects rendered UI.
+7. Run `pnpm css:check --record` and verify that only the intended legacy
+   ceilings moved downward.
 
 Prefer extraction while a feature is already being changed. Standalone
 mechanical extractions are also welcome when they have a clear owner and can be

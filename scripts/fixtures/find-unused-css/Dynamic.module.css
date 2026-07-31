@@ -1,0 +1,8 @@
+/* Both selectors are reached through a computed key, so usage is unknown. */
+.info {
+  color: var(--text-secondary);
+}
+
+.warning {
+  color: var(--text-warning);
+}

@@ -1,0 +1,19 @@
+/* Legacy-style global stylesheet. */
+
+.fixture-used-global {
+  color: red;
+}
+
+.fixture-unused-global {
+  color: blue;
+}
+
+/* Referenced only from Widget.module.css through :global(...). */
+.fixture-modal-shell {
+  max-width: 30rem;
+}
+
+/* Referenced only through `composes: ... from global`. */
+.fixture-composed-global {
+  font-weight: 600;
+}
