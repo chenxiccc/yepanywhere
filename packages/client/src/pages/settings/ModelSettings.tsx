@@ -972,6 +972,17 @@ export function ModelSettings() {
                       provider: selectedProvider.displayName,
                     })}
                   </p>
+                  {selectedProvider.promptCacheKeepalive
+                    ?.cacheLifetimeMinutes !== undefined && (
+                    <p className="session-default-section-description">
+                      {t("promptCacheKeepaliveCadenceHint", {
+                        provider: selectedProvider.displayName,
+                        lifetime:
+                          selectedProvider.promptCacheKeepalive
+                            .cacheLifetimeMinutes,
+                      })}
+                    </p>
+                  )}
                 </div>
                 <div className="session-default-cache-keepalive-controls">
                   <div className="new-session-helper-options">

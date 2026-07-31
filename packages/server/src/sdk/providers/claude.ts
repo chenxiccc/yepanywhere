@@ -863,6 +863,10 @@ export class ClaudeProvider implements AgentProvider {
     supportsNoContextPollutionNudge: true,
     defaultMode: "auto" as const,
     defaultInactivityMinutes: DEFAULT_PROMPT_CACHE_KEEPALIVE_INACTIVITY_MINUTES,
+    // YA launches Claude with ENABLE_PROMPT_CACHING_1H=1 (see env-filter.ts),
+    // so the retained prefix lasts about an hour rather than the 5-minute
+    // default. An operator who overrides that env var shortens the real window.
+    cacheLifetimeMinutes: 60,
   };
   private cachedModels: ModelInfo[] | null = null;
   private probePromise: Promise<ModelInfo[]> | null = null;
