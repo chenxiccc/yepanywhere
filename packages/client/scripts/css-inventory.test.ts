@@ -42,6 +42,21 @@ describe("CSS migration inventory", () => {
     expect(widget?.coverage).toBeGreaterThan(0.5);
   });
 
+  it("reports a stylesheet-contract test that only uses regex selectors", () => {
+    const result = buildInventory({
+      cssDir: fixtureDir,
+      srcDir: fixtureDir,
+      ownerDir: path.join(fixtureDir, "client"),
+    });
+    const widget = result.owners.find((owner) =>
+      owner.owner.endsWith("client/Widget.tsx"),
+    );
+
+    expect(
+      widget?.testFiles.some((file) => file.endsWith("Widget.contract.test.ts")),
+    ).toBe(true);
+  });
+
   it("reports selector contracts from package Playwright roots", () => {
     const packageRoot = path.join(fixtureDir, "../css-package-roots");
     const result = buildInventory({

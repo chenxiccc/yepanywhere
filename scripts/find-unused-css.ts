@@ -464,7 +464,10 @@ export function extractBindingUsage(
 }
 
 export interface SourceUsageIndex {
-  /** Complete class-like tokens found in source string literals. */
+  /**
+   * Complete class-like tokens found in source string literals, plus the
+   * escaped-dot class selectors spelled out in regular-expression literals.
+   */
   exact: Map<string, Set<string>>;
   /** Template-literal prefixes such as `status-` in `status-${tone}`. */
   dynamic: Map<string, Set<string>>;
@@ -506,6 +509,40 @@ function addDynamicPrefix(
   if (match) addSourceFact(dynamic, match[1], filename);
 }
 
+/**
+ * Record the class selectors a regular-expression literal spells out.
+ *
+ * Stylesheet-contract tests assert against CSS text with patterns such as
+ * `/\.turn-image-gallery-item\s*\{/`, so their whole selector vocabulary can
+ * live in regex literals and in no string literal anywhere. Without this the
+ * class reads as unreferenced by that file.
+ *
+ * The escaped dot is the only anchor that unambiguously means "a class
+ * selector": a bare `.` is the any-character metacharacter, and the rest of a
+ * pattern — alternations, character classes, group names, and the trailing
+ * flags — is punctuation rather than vocabulary. Matching only `\.` followed
+ * by a class token keeps a regex from inventing usage for every word it
+ * happens to contain. `literal` is the full literal text including its
+ * delimiters and flags; a flag letter can never follow `\.`, so it needs no
+ * separate stripping pass.
+ */
+function addRegexClassTokens(
+  exact: Map<string, Set<string>>,
+  literal: string,
+  filename: string,
+): void {
+  for (let index = 0; index < literal.length; index++) {
+    if (literal[index] !== "\\") continue;
+    const escaped = literal[index + 1];
+    // Consume the escaped character so `\\.` reads as an escaped backslash
+    // followed by the any-character metacharacter, not as an escaped dot.
+    index++;
+    if (escaped !== ".") continue;
+    const token = /^[a-zA-Z_][a-zA-Z0-9_-]*/.exec(literal.slice(index + 1));
+    if (token) addSourceFact(exact, token[0], filename);
+  }
+}
+
 /** Build an exact, comment-free source index using the TypeScript parser. */
 export function buildSourceUsageIndex(
   srcFiles: Map<string, string>,
@@ -525,6 +562,11 @@ export function buildSourceUsageIndex(
     function visit(node: ts.Node): void {
       if (ts.isStringLiteralLike(node)) {
         addExactTokens(exact, node.text, filename);
+      }
+      if (ts.isRegularExpressionLiteral(node)) {
+        // Selector-only vocabulary; a regex builds no class, so it never
+        // contributes a dynamic prefix.
+        addRegexClassTokens(exact, node.text, filename);
       }
       if (ts.isTemplateExpression(node)) {
         addExactTokens(exact, node.head.text, filename);

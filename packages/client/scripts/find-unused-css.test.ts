@@ -70,6 +70,23 @@ describe("global class analysis", () => {
     );
   });
 
+  it("sees a class pinned only by a regex-literal selector", () => {
+    const used = analyzeFixtures().globalUsed.find(
+      (cls) => cls.name === "fixture-regex-selector",
+    );
+    expect(used?.usedIn.map((file) => path.basename(file))).toEqual([
+      "stylesheet-contract.test.ts",
+    ]);
+  });
+
+  it("does not read regex punctuation or bare words as selectors", () => {
+    // The same regex file names it twice: once as a plain alternative and once
+    // after `\\.`, an escaped backslash rather than an escaped dot.
+    expect(analyzeFixtures().globalUnused.map((cls) => cls.name)).toContain(
+      "fixture-regex-noise",
+    );
+  });
+
   it("counts a module's :global(...) selector as global usage", () => {
     const used = analyzeFixtures().globalUsed.find(
       (cls) => cls.name === "fixture-modal-shell",

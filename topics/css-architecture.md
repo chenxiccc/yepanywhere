@@ -110,7 +110,8 @@ pnpm css:inventory -- --owner <component-or-path>
 
 The inventory parses legacy CSS with a CSS parser and package source roots plus
 Playwright suites with the TypeScript parser. It distinguishes exact
-string-literal callsites, dynamic template prefixes, test references,
+string-literal and regex-selector callsites, dynamic template prefixes,
+test references,
 non-client/generated producers, and React owners. For each likely owner it
 reports:
 
@@ -295,10 +296,13 @@ After editing:
    file; it treats a computed key, a side-effect-only import, and an unimported
    module as undetermined rather than unused, and never rewrites module rules.
    Its CSS and TypeScript parsers scan every `packages/*/src` producer and
-   match complete class-like string tokens. Dynamic prefixes remain
-   conservative, and a test-only reference can still be an intentional DOM
-   contract, so confirm a verdict against the reported producer before
-   deleting.
+   match complete class-like string tokens, plus the class selectors a
+   regular-expression literal spells out after an escaped dot, so a
+   stylesheet-contract test that asserts on CSS text is a visible producer.
+   Bare words, other regex punctuation, and pattern flags are not vocabulary.
+   Dynamic prefixes remain conservative, and a test-only reference can still be
+   an intentional DOM contract, so confirm a verdict against the reported
+   producer before deleting.
 2. Confirm callers no longer depend on removed child selectors.
 3. Run focused component and consumer tests.
 4. Prefer roles, labels, and stable data attributes in tests; module hashes and

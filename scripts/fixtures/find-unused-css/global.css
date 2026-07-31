@@ -36,3 +36,13 @@
 .fixture-composed-global {
   font-weight: 600;
 }
+
+/* Pinned only by an escaped-dot selector inside a regex literal. */
+.fixture-regex-selector {
+  color: navy;
+}
+
+/* Named inside the same regex file, but never as a selector. */
+.fixture-regex-noise {
+  color: gray;
+}

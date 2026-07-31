@@ -13,6 +13,8 @@ It is deliberately not real product code:
 - `Dynamic.module.css` / `Dynamic.tsx` cover computed access, which must read
   as unknown rather than unused.
 - `Orphan.module.css` has no importer.
+- `stylesheet-contract.test.ts` mentions global classes only inside regex
+  literals: one as an escaped-dot selector, one as regex noise.
 
 `scripts/check-css-architecture.mjs` only scans `packages/client/src`, so these
 stylesheets are outside the frozen legacy baseline.
