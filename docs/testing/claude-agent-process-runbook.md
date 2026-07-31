@@ -16,11 +16,19 @@ entire run.
 
 ## Safety and checkout invariants
 
-- Use one worker at a time in a shared checkout. Do not edit the tree from the
-  controller while the worker is active.
+- Use one campaign worker at a time in a shared checkout. Do not edit the tree
+  from the controller while the worker is active. Unrelated human or separately
+  authorized work may still land; handle it through the attribution rule below.
 - Record a clean base SHA before launch. A dirty tree makes attribution and
   rollback ambiguous, so stop rather than guessing which changes belong to the
   worker.
+- Treat the base SHA as an attribution anchor, not a requirement that no other
+  commit may land. If the worker observes a new clean commit, it must compare
+  that commit's paths with its work order. Disjoint committed work may remain in
+  place: do not rebase, revert, or stop solely because the worker's eventual
+  parent changed. Report the drift and run all checks on the combined tree.
+  Stop on overlapping paths, unattributable dirty files, or a check failure
+  caused by the concurrent change.
 - Give the worker an explicit file boundary and permission to stop. It may not
   substitute another candidate when the approved slice is blocked.
 - `bypassPermissions` is appropriate only for a trusted local checkout and a
@@ -229,8 +237,10 @@ After the process reaches verified idle, always:
 
 1. Confirm the base and inspect `git status`, staged and unstaged diffs, and all
    commits since the base SHA.
-2. Reject files outside the work order unless the worker stopped at the
-   analyzer trust gate and the conditional repair scope explains them.
+2. Attribute files outside the work order to exact intervening commits. Accept
+   clean disjoint commits as concurrent work; reject uncommitted, overlapping,
+   or unexplained files unless the analyzer trust gate and conditional repair
+   scope explain them.
 3. Re-run inventory and compare ownership, coupled, generated, dynamic, and
    unresolved findings.
 4. Read the worker's final check and capture summary and verify that its commit
@@ -265,7 +275,7 @@ End the batch immediately when:
 
 - the analyzer changes materially;
 - a candidate needs an unapproved production boundary;
-- the working tree is not attributable to one worker;
+- the working tree or intervening commits are overlapping or not attributable;
 - required visual state is not deterministic;
 - a warning/check budget regresses; or
 - the controller cannot attach a queued launch to its resulting session.
