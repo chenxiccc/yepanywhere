@@ -1,0 +1,107 @@
+/* Compact-row hover card: a delayed, bounded preview of the opening request
+   plus session status. Portaled to <body> and fixed so it never clips in the
+   scrolling sidebar. It must be pointer-selectable; otherwise drag-copy hits
+   text behind the visual overlay instead of the visible card text. */
+.root {
+  position: fixed;
+  /* A visible tooltip must obscure every ordinary app hit-test surface. */
+  z-index: 2147483647;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  /* Size to the content's longest line so paragraphs/code don't wrap until they
+     have to, up to a soft reading width (>= 600px when the viewport allows).
+     Longer lines wrap via pre-wrap; .wide loosens this when vertically tight. */
+  width: max-content;
+  max-width: min(700px, 92vw);
+  /* max-height is applied inline from MAX_CARD_HEIGHT_PX (SessionHoverCard.tsx);
+     do not set it here too. */
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
+  pointer-events: auto;
+  -webkit-user-select: text;
+  user-select: text;
+  overflow: hidden;
+}
+
+/* Neither below nor above fully fits: trade reading width for fewer lines. */
+.wide {
+  max-width: min(880px, 96vw);
+}
+
+/* The prompt, styled like a fully-expanded user turn, clamped to a line count
+   set inline from the available space (trailing ellipsis marks the elision). */
+.turn {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+  color: var(--text-primary);
+  background: var(--bg-user-message);
+  border-radius: 6px;
+  padding: 0.25rem 0.5rem;
+}
+
+/* Slash-command first turns render as the command itself, not the raw
+   <command-name> wrapper markup. */
+.command {
+  font-family: var(--font-mono-system);
+  font-weight: 600;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.project {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 180px;
+}
+
+.age {
+  color: var(--text-muted);
+}
+
+/* Most recent agent turn, set off below the meta line (deliberate separation,
+   slightly unconventional). The server already trims it to a coherent bounded
+   excerpt; the line-clamp only bounds visual rows when long lines wrap. Shares
+   the card's content width — the opening request drives the width and this
+   wraps within it. */
+.reply {
+  display: flex;
+  gap: 0.375rem;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-color);
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.replyMarker {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.replyText {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

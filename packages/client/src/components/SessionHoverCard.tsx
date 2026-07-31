@@ -10,6 +10,7 @@ import { QUOTE_SELECTION_ROOT_ATTRIBUTES } from "../lib/markdownSelectionCopy";
 import { estimateHoverCardPromptLines } from "./sessionHoverCardLines";
 import { ProviderBadge } from "./ProviderBadge";
 import { SessionStatusBadge } from "./StatusBadge";
+import styles from "./SessionHoverCard.module.css";
 
 const GAP_PX = 4;
 const MARGIN_PX = 8;
@@ -149,9 +150,7 @@ export function SessionHoverCard({
       ref={ref}
       data-session-hovercard-id={hoverCardId}
       {...QUOTE_SELECTION_ROOT_ATTRIBUTES}
-      className={`session-hovercard${
-        placement?.loosened ? " session-hovercard--wide" : ""
-      }`}
+      className={`${styles.root}${placement?.loosened ? ` ${styles.wide}` : ""}`}
       onMouseLeave={onMouseLeave}
       style={
         placement
@@ -167,11 +166,11 @@ export function SessionHoverCard({
       {prompt && (
         <div
           ref={promptRef}
-          className="session-hovercard__turn"
+          className={styles.turn}
           style={maxLines ? { WebkitLineClamp: maxLines } : undefined}
         >
           {command ? (
-            <span className="session-hovercard__command">
+            <span className={styles.command}>
               {command.command}
               {command.args ? ` ${command.args}` : ""}
             </span>
@@ -180,12 +179,10 @@ export function SessionHoverCard({
           )}
         </div>
       )}
-      <div className="session-hovercard__meta">
+      <div className={styles.meta}>
         <ProviderBadge provider={provider} model={model} />
-        {projectName && (
-          <span className="session-hovercard__project">{projectName}</span>
-        )}
-        {ageLabel && <span className="session-hovercard__age">{ageLabel}</span>}
+        {projectName && <span className={styles.project}>{projectName}</span>}
+        {ageLabel && <span className={styles.age}>{ageLabel}</span>}
         {status && (
           <SessionStatusBadge
             status={status}
@@ -196,11 +193,11 @@ export function SessionHoverCard({
         )}
       </div>
       {lastAgentText && (
-        <div ref={replyRef} className="session-hovercard__reply">
-          <span className="session-hovercard__reply-marker" aria-hidden="true">
+        <div ref={replyRef} className={styles.reply}>
+          <span className={styles.replyMarker} aria-hidden="true">
             ↳
           </span>
-          <span className="session-hovercard__reply-text">{lastAgentText}</span>
+          <span className={styles.replyText}>{lastAgentText}</span>
         </div>
       )}
     </div>,

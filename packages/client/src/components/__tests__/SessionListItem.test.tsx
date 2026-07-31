@@ -355,8 +355,11 @@ describe("SessionListItem links", () => {
       vi.advanceTimersByTime(DEFAULT_HOVERCARD_SHOW_DELAY_MS);
     });
 
-    const hoverTurn = document.querySelector(".session-hovercard__turn");
-    expect(hoverTurn?.textContent).toBe("Custom title");
+    // The prompt block is the hover card's first child; assert on the rendered
+    // text rather than a class name the owning module now scopes.
+    const hoverCard = screen.getByRole("tooltip");
+    expect(hoverCard.firstElementChild?.textContent).toBe("Custom title");
+    expect(hoverCard.textContent).not.toContain("Original first turn");
   });
 
   it("delays session hover previews", () => {
@@ -497,7 +500,7 @@ describe("SessionListItem links", () => {
       vi.advanceTimersByTime(DEFAULT_HOVERCARD_SHOW_DELAY_MS);
     });
 
-    const hoverCard = document.querySelector(".session-hovercard");
+    const hoverCard = screen.getByRole("tooltip");
     expect(hoverCard).toBeTruthy();
     expect(screen.getByText("Selectable recap text")).toBeTruthy();
 
@@ -507,7 +510,7 @@ describe("SessionListItem links", () => {
     });
     expect(screen.getByText("Selectable recap text")).toBeTruthy();
 
-    fireEvent.mouseLeave(hoverCard!);
+    fireEvent.mouseLeave(hoverCard);
     expect(screen.queryByText("Selectable recap text")).toBeNull();
   });
 
