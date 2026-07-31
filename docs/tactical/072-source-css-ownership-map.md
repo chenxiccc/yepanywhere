@@ -2,10 +2,10 @@
 
 Topic: css-architecture
 
-Reference map produced by slice C0 of
-[`070-css-modules-migration.md`](070-css-modules-migration.md). Read-only: this
-slice changed no stylesheet and no component. Its output is the ownership record
-that C1, C2, and C3 slice against.
+Reference map produced by the ownership-mapping step (step 4) of
+[`070-css-modules-migration.md`](070-css-modules-migration.md). Read-only: that
+step changed no stylesheet and no component. Its output is the ownership record
+the source-control chrome, review UI, and file viewer steps work against.
 
 The binding rules live in
 [`topics/css-architecture.md`](../../topics/css-architecture.md). This document
@@ -52,15 +52,16 @@ older Git Status Page vocabulary that predates them. `GitStatusPage.tsx`,
 `GitStatusDiffPreview.tsx`, `CommitBrowser.tsx`, `WorkingTreeBrowser.tsx`,
 `CommitFilesPane.tsx`, and `SourceFileRow.tsx` each have rules in both files.
 
-**Consequence for C1:** a slice defined as "extract a range of `renderers.css`"
-would leave the same components half-owned. Slice by component, then take every
-rule that component owns from both stylesheets in the same change.
+**Consequence for every extraction step below:** one defined as "extract a range
+of `renderers.css`" would leave the same components half-owned. Slice by
+component, then take every rule that component owns from both stylesheets in the
+same change.
 
 ## Generated vocabulary — stays global
 
 These classes are emitted outside the owning React component and reach the DOM
 through `dangerouslySetInnerHTML`. They cannot move into a module and are not
-candidates for any Lane C slice.
+candidates for any extraction step.
 
 | Classes | Producer | Client interop boundary |
 |---|---|---|
@@ -164,14 +165,15 @@ split.
 | `<element-or-attr>` | 190 | `pre`/`code`/`[data-*]` typography under scoped parents |
 | `<generated>` | 73 | Shiki, markdown preview spans |
 
-The 190-line bare-element bucket is why C3 stays a candidate rather than a
-scheduled slice: those rules depend on being inside a scoped parent, and each
-needs its parent's ownership settled before it can move.
+The 190-line bare-element bucket is why the file viewer stays a candidate rather
+than a scheduled step: those rules depend on being inside a scoped parent, and
+each needs its parent's ownership settled before it can move.
 
 ## Cross-owner reach-ins
 
-C1 and C2 must convert these to props, wrappers, or shared primitives before the
-target class is hashed. This is the complete list for
+The source-control chrome and review UI steps must convert these to props,
+wrappers, or shared primitives before the target class is hashed. This is the
+complete list for
 `renderers.css` 6254–8331 and `index.css` 19759–20557.
 
 | Line | Selector | Ancestor owner | Target owner |
@@ -195,7 +197,7 @@ target class is hashed. This is the complete list for
 | `index.css` 20545 | `.source-control-main-content .git-diff-preview-pane` | `GitStatusPage` | `CommitBrowser`, `GitStatusDiffPreview` |
 
 Three shapes, three fixes, matching the classification the `FilterDropdown`
-slice established:
+step established:
 
 - **Hover/focus reveal** (7328–7331) — four rules, one need. `SourceContextMenu`
   should own a `revealOnRowInteraction` behavior rather than have four different
@@ -211,8 +213,8 @@ slice established:
 ## Dead rules found
 
 Verified against every producer including dynamic construction and the
-non-client packages. Not removed by this slice; recorded for whichever slice
-touches the owning file.
+non-client packages. Not removed by this step; step 5 of the campaign exists to
+bank them.
 
 **`index.css` — 184 lines, 33 rules.** The pre-Stage-3 working-tree UI, replaced
 by `WorkingTreeBrowser` and `SourceFileRow`:
@@ -240,37 +242,38 @@ Not dead, despite looking dead to a literal search: `git-status-m/a/d/r/u/t/?`
 and `source-pane-splitter-files` (built by `ResizableSourceColumns` from a
 boundary variable), `worktree-file-state-*` (built by `WorkingTreeBrowser`).
 
-## Recommended slice boundaries
+## Recommended step boundaries
 
-C0's conclusion is that the campaign's original slice names are right but their
-boundaries should follow components, not line ranges.
+This map's conclusion is that the campaign's original targets are right but
+their boundaries should follow components, not line ranges. These fed the step
+list in [`070-css-modules-migration.md`](070-css-modules-migration.md#steps);
+that document is where status and order now live.
 
-**C1 — source-control chrome.** `RepoStatusBar` (68 lines, 82-line component),
-`SourceModeTabs` (47), and `SourceContextMenu` (54). All three are small,
-self-contained, and sit behind the three reach-in shapes above, so the slice
-proves each fix once. Fold in the `.copy-button` variant and the
-`source-mode-tab` overrides. Expected ratchet: ~170 lines plus whatever of the
-184-line dead block the same change can honestly claim.
+**Delete the dead git-status rules** (step 5). The 184 + 24 lines above are a
+behavior-free ratchet with no composition work. Worth landing alone, since the
+source-control chrome step below cannot honestly claim most of them.
 
-**C2 — review UI.** `ReviewSubmitModal` (82), `ReviewCommentWindow` (67),
+**Source-control chrome** (step 6). `RepoStatusBar` (68 lines, 82-line
+component), `SourceModeTabs` (47), and `SourceContextMenu` (54). All three are
+small, self-contained, and sit behind the three reach-in shapes above, so the
+step proves each fix once. Fold in the `.copy-button` variant and the
+`source-mode-tab` overrides. Expected ratchet: ~170 lines.
+
+**Review UI** (step 7). `ReviewSubmitModal` (82), `ReviewCommentWindow` (67),
 `ReviewCommentsPanel` (80). The cleanest region: only `review-submit-go` and
 `review-submit-error` are shared, and only between two owners that can share a
 module. Expected ratchet: ~230 lines.
 
-**C1.5 (new, optional) — dead-rule sweep.** The 184 + 24 lines above are a
-behavior-free ratchet with no composition work. Worth landing alone if a
-ratchet is wanted without a review burden.
-
-**C3 — file viewer.** Still a candidate. `FileViewer` owns 215 attributed lines
-but the 190-line bare-element bucket beneath it needs parent ownership resolved
-first, and `FileViewer` is shared by `FilePage`, `PublicShareFilePage`,
-`FilePathLink`'s modal, and two tool renderers.
-
-**Blame** is deliberately unscheduled. `BlameView` is the single largest owner
-(162 lines) and would be an attractive slice, but it is also the target of the
+**Blame view** (step 8). `BlameView` is the single largest owner (162 lines) and
+would otherwise be an attractive early target, but it is also the target of the
 `blame-browser-columns > .blame-view` placement reach-in and shares
-`source-search-*` with `CommitRevisionPane`. Take it after C1 has established
-the placement-prop pattern.
+`source-search-*` with `CommitRevisionPane`. Take it after the source-control
+chrome step has established the placement-prop pattern.
+
+**File viewer** (step 9). Still a candidate. `FileViewer` owns 215 attributed
+lines but the 190-line bare-element bucket beneath it needs parent ownership
+resolved first, and `FileViewer` is shared by `FilePage`,
+`PublicShareFilePage`, `FilePathLink`'s modal, and two tool renderers.
 
 ## Tooling caveats found
 
@@ -286,8 +289,8 @@ region, so they matter before anyone acts on the report.
    as a standalone sweep.
 2. **Bare-word matching over-reports usage.** `\bfile-link\b` matches inside
    `file-link-button`, and `\bcommit-jump\b` matches inside `commit-jump-btn`,
-   so both dead rules are reported as used. This is the same weakness noted in
-   the A1 landing note for `new-session-helper-model`.
+   so both dead rules are reported as used. This is the same weakness noted for
+   `new-session-helper-model` when the analyzer learned about modules.
 
 Fixing (1) is a scope change; fixing (2) needs the word boundary to reject a
-following `-`. Neither blocks C1.
+following `-`. Neither blocks any extraction step; both are tracked as step 10.

@@ -6,7 +6,7 @@
 
 Topic: css-architecture
 
-## Status: Chapter 11 containment
+## Status: frozen, paying down
 
 YA's authored client CSS grew into four globally loaded stylesheets totaling
 more than 31,000 lines. The two largest files mixed unrelated ownership:

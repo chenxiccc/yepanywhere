@@ -102,6 +102,25 @@ testable outcomes and constraints, including deliberate failure or fallback
 behavior, rather than implementation narration. Tests and commit messages are
 evidence and history, not substitutes for the product contract.
 
+## Naming Steps In Tactical Plans
+
+Name every step in a `docs/tactical/*.md` plan for the product surface or the
+work it covers — "source-control chrome", "delete the dead git-status rules",
+"teach the unused-CSS report about modules". Number them in recommended order
+if a handle is useful, matching the house form `### 4 — map source-control CSS
+ownership`.
+
+Do not invent a private code scheme. Lettered lanes with numbered slices
+(`A1`, `C1.5`, `F0`) force every reader — including the maintainer who asked
+for the plan — to hold a lookup table in their head before they can discuss the
+work, and the letters convey nothing on their own. Group related steps under a
+plain heading instead. If a step's name is hard to write, that usually means
+its boundary is not yet decided.
+
+Reusing a scheme that already exists in a document you are editing is fine;
+extending it into a new document is not. When you rename, leave one compact
+mapping table so older commit messages stay traceable.
+
 ## Client/Server Backwards Compatibility
 
 Before making the client depend on a server route, response field, event, or
