@@ -10,6 +10,11 @@ The binding ownership and migration protocol lives in
 [`topics/css-architecture.md`](../../topics/css-architecture.md). This file is
 the campaign closeout and historical index only.
 
+For a supervised implementation loop that launches one bounded Claude worker
+through the local YA API, polls its authoritative process state, stops
+tail-chasing, and independently audits each result, use the
+[`Claude agent process runbook`](../testing/claude-agent-process-runbook.md).
+
 ## Outcome
 
 The campaign established the steady state it set out to reach:
