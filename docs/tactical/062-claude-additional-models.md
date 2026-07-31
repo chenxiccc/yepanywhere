@@ -19,12 +19,13 @@ The maintained registry contains:
 
 | Model id | Label | Why retained |
 |---|---|---|
+| `claude-opus-4-8` | Opus 4.8 | Immediately displaced Opus generation |
 | `claude-opus-4-6` | Opus 4.6 | Meaningfully different pre-4.7 token behavior |
 | `claude-sonnet-4-6` | Sonnet 4.6 | Previous Sonnet generation |
 
-The registry intentionally omits Opus 4.8 now that the stable `opus` alias
-selects Opus 5, along with 4.7, 4.5, and earlier models. Registry membership is
-a maintained product judgment, not a complete historical model archive.
+The registry intentionally omits 4.7, 4.5, and earlier models. Registry
+membership is a maintained product judgment, not a complete historical model
+archive.
 
 ## User-Visible Contract
 

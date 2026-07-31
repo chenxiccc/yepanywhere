@@ -10,6 +10,11 @@ describe("Claude additional model catalog", () => {
   it("offers the maintained registry without enabling it", () => {
     expect(getClaudeAdditionalModelOptions()).toEqual([
       expect.objectContaining({
+        id: "claude-opus-4-8",
+        name: "Opus 4.8",
+        catalogGroup: "additional",
+      }),
+      expect.objectContaining({
         id: "claude-opus-4-6",
         name: "Opus 4.6",
         catalogGroup: "additional",
