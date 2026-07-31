@@ -10,11 +10,6 @@ describe("Claude additional model catalog", () => {
   it("offers the maintained registry without enabling it", () => {
     expect(getClaudeAdditionalModelOptions()).toEqual([
       expect.objectContaining({
-        id: "claude-opus-4-8",
-        name: "Opus 4.8",
-        catalogGroup: "additional",
-      }),
-      expect.objectContaining({
         id: "claude-opus-4-6",
         name: "Opus 4.6",
         catalogGroup: "additional",
@@ -89,13 +84,13 @@ describe("Claude additional model catalog", () => {
   });
 
   it("does not duplicate a primary model", () => {
-    const primary = [{ id: "claude-opus-4-8", name: "SDK Opus 4.8" }];
+    const primary = [{ id: "claude-opus-4-6", name: "SDK Opus 4.6" }];
 
     expect(
       projectClaudeAdditionalModels(primary, [
         {
-          id: "claude-opus-4-8",
-          label: "Opus 4.8",
+          id: "claude-opus-4-6",
+          label: "Opus 4.6",
           origin: "registry",
         },
       ]),

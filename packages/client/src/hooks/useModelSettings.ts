@@ -56,8 +56,8 @@ const MAX_SPEECH_SMART_TURN_TIMEOUT_MS = 10000;
  * Opus and Sonnet are both always 1M now (the picker no longer offers a
  * separate "Opus 1M"/"Sonnet 1M" choice), so remap any previously stored
  * "opus[1m]"/"sonnet[1m]" preference to the base alias rather than dropping it
- * back to "default". Both `[1m]` ids stay valid launch strings (produced by the
- * always-1M normalization); they are just no longer offered as picker entries.
+ * back to "default". Both `[1m]` ids stay valid launch strings; they are just
+ * no longer offered as picker entries.
  */
 function remapLegacyModelChoice(stored: string | null): string | null {
   if (stored === "opus[1m]") return "opus";

@@ -133,10 +133,10 @@ we adopted kzahel's observation-based context windows (a kzahel-merge decision,
 getModelContextWindow`: the real window is learned from the SDK's `modelUsage`
 and persisted, which is more robust than a hardcoded override (it self-corrects
 when an account only gets 200K, the same credits caveat that applies to sonnet).
-Opus still *runs* at 1M because the launch alias maps `opus → opus[1m]`
-(`withExtendedClaudeContext`); the SDK then observes and reports 1M. The lesson:
-prefer observing a real value over hardcoding it in a provider quirk when the
-value is observable.
+Current Opus still runs at 1M without a launch rewrite: SDK 0.3.220 resolves
+bare `opus` to Opus 5 with its native 1M window. The SDK then observes and
+reports the real value. The lesson remains: prefer observing a real value over
+hardcoding it in a provider quirk when the value is observable.
 
 ## Per-model settings keying
 

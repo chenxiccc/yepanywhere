@@ -531,11 +531,6 @@ async function* withCleanup<T>(
 }
 
 /**
- * Opus and Sonnet both run with the 1M-token context window: their 1M is
- * standard-priced (no per-token premium), so bare `opus`/`sonnet` are
- * normalized to the extended-context alias at every launch/setModel chokepoint
- * and surfaced with the 1M window in the exposed model list.
- *
  * Sonnet's 1M was previously credit-gated (launching `sonnet[1m]` errored with
  * "Usage credits required for 1M context"), so it once kept a separate 200K
  * entry. Sonnet 5 lifted that gate: a live probe on this account runs
@@ -543,13 +538,14 @@ async function* withCleanup<T>(
  * standard tier with no error. The "Sonnet 5" label is pinned in the
  * description (the name stays the generic "Sonnet") rather than taken from the
  * SDK, because older `supportedModels()` responses reported the `sonnet` alias
- * as "Sonnet 4.6" even when it routed to Sonnet 5 at runtime. Opus 5 is
- * reported as `opus[1m]`, so mergeClaudeModels() transfers that row's live
- * capability metadata to the visible `opus` alias. See
- * topics/claude-1m-context.md.
+ * as "Sonnet 4.6" even when it routed to Sonnet 5 at runtime.
+ *
+ * Opus deliberately stays bare. SDK 0.3.220 resolves both `opus` and
+ * `opus[1m]` to Opus 5 with the same 1M context window, so rewriting the
+ * stable alias adds no capability and couples launch behavior to a historical
+ * spelling. See topics/claude-1m-context.md.
  */
-const ALWAYS_EXTENDED_CONTEXT_ALIASES: Record<string, string> = {
-  opus: "opus[1m]",
+const CLAUDE_LAUNCH_MODEL_ALIASES: Record<string, string> = {
   sonnet: "sonnet[1m]",
 };
 
@@ -559,11 +555,11 @@ const ALWAYS_EXTENDED_DESCRIPTIONS: Record<string, string> = {
     "Sonnet 5 with the full 1M-token context window · newer tokenizer bills ~30% more tokens",
 };
 
-/** Normalize the opus alias to its always-on 1M variant at launch. */
-export function withExtendedClaudeContext(
+/** Normalize only aliases whose launch spelling still changes behavior. */
+export function normalizeClaudeLaunchModel(
   model: string | undefined,
 ): string | undefined {
-  return (model && ALWAYS_EXTENDED_CONTEXT_ALIASES[model]) || model;
+  return (model && CLAUDE_LAUNCH_MODEL_ALIASES[model]) || model;
 }
 
 /** Static fallback list of Claude models (used if probe fails) */
@@ -738,11 +734,10 @@ export function mergeClaudeModels(models: ModelInfo[]): ModelInfo[] {
     .map((id) => byId.get(id))
     .filter((model): model is ModelInfo => model !== undefined);
 
-  // Opus and Sonnet always use the 1M window (withExtendedClaudeContext), so
-  // drop the redundant "opus[1m]"/"sonnet[1m]" entries and surface the 1M
-  // window + label on the base alias. Transfer live capability metadata from
-  // the extended row first: current Claude Code reports Opus 5 as `opus[1m]`,
-  // while YA deliberately exposes the stable `opus` selection token.
+  // Drop the redundant "opus[1m]"/"sonnet[1m]" rows and surface their live
+  // capability metadata on the stable family aliases. This catalog projection
+  // is independent of launch spelling: bare `opus` already launches Opus 5
+  // with the same 1M window.
   return merged
     .filter((model) => model.id !== "opus[1m]" && model.id !== "sonnet[1m]")
     .map((model) => {
@@ -1584,7 +1579,7 @@ export class ClaudeProvider implements AgentProvider {
           persistSession: false,
           maxTurns: 1,
           maxBudgetUsd: CLAUDE_PROMPT_CACHE_KEEPALIVE_MAX_BUDGET_USD,
-          model: withExtendedClaudeContext(options.model),
+          model: normalizeClaudeLaunchModel(options.model),
           thinking: options.thinking,
           effort: options.effort,
           pathToClaudeCodeExecutable: options.pathToClaudeCodeExecutable,
@@ -1947,7 +1942,7 @@ export class ClaudeProvider implements AgentProvider {
           includePartialMessages: true,
           promptSuggestions: options.promptSuggestions === true,
           // Model, thinking, and effort options
-          model: withExtendedClaudeContext(options.model),
+          model: normalizeClaudeLaunchModel(options.model),
           thinking: options.thinking,
           effort: options.effort,
           pathToClaudeCodeExecutable,
@@ -2035,7 +2030,7 @@ export class ClaudeProvider implements AgentProvider {
         this.refreshPromptCache({
           sessionId,
           cwd: effectiveCwd,
-          model: withExtendedClaudeContext(options.model),
+          model: normalizeClaudeLaunchModel(options.model),
           thinking: options.thinking,
           effort: options.effort,
           globalInstructions: options.globalInstructions,
@@ -2065,7 +2060,7 @@ export class ClaudeProvider implements AgentProvider {
         return withClaudeGoalAlias(commands.map(mapClaudeSlashCommand));
       },
       setModel: (model?: string) =>
-        sdkQuery.setModel(withExtendedClaudeContext(model)),
+        sdkQuery.setModel(normalizeClaudeLaunchModel(model)),
     };
   }
 

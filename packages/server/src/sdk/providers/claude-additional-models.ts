@@ -5,13 +5,6 @@ import type {
 
 const CLAUDE_ADDITIONAL_MODEL_REGISTRY = [
   {
-    id: "claude-opus-4-8",
-    name: "Opus 4.8",
-    description: "Previous Opus generation · full 1M context",
-    contextWindow: 1_000_000,
-    catalogGroup: "additional",
-  },
-  {
     id: "claude-opus-4-6",
     name: "Opus 4.6",
     description: "Previous Opus generation · 200K default context",

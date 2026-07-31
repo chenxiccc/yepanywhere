@@ -176,9 +176,10 @@ the static resolver: canonical `claude-opus-5` (and the already-current
 warm. Older Opus ids retain their historical 200K static fallback unless they
 carry `[1m]` or a real completed turn has recorded a different window.
 
-yepanywhere still sends the stable `opus` selection token through the existing
-`opus[1m]` launch normalization. Because the SDK catalog exposes Opus 5 under
-that extended value, the provider merge copies its live capability fields onto
+yepanywhere passes the stable `opus` selection token through unchanged. A live
+SDK 0.3.220 turn verified that `opus` and `opus[1m]` both select Opus 5 with a
+1M context window, so the historical launch rewrite adds no capability. The
+provider catalog still copies the SDK's extended-row capability fields onto
 the one visible `opus` row before dropping the redundant extended row.
 
 ## How yepanywhere consumes this

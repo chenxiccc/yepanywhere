@@ -459,7 +459,7 @@ export interface ModelSettings {
   /**
    * Effective context window (tokens) for the compaction threshold, resolved
    * by the route. Preferred over `process.contextWindow`, which is often
-   * undefined and ignores always-1M for opus/sonnet.
+   * undefined before the provider reports usage.
    */
   compactAtContextWindow?: number;
   /**

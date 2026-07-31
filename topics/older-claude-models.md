@@ -17,9 +17,9 @@ Status: implementation authorized 2026-07-25. Tactical plan:
 
 - Previous models are individual, default-off choices in Providers > Claude,
   not members of the default curated catalog.
-- The initial server-owned registry contains `claude-opus-4-8`,
-  `claude-opus-4-6`, and `claude-sonnet-4-6`. It intentionally omits 4.7,
-  4.5, and earlier models.
+- The maintained server-owned registry contains `claude-opus-4-6` and
+  `claude-sonnet-4-6`. It intentionally omits Opus 4.8 now that the stable
+  `opus` alias selects Opus 5, as well as 4.7, 4.5, and earlier models.
 - The compact settings row opens a checklist plus an advanced custom exact-id
   input. An empty selection is the off state.
 - Server settings retain the exact id, registry/custom origin, and a label

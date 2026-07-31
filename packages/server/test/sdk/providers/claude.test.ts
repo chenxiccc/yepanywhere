@@ -5,11 +5,21 @@ import {
   formatClaudeLoginCommand,
   getClaudeAutoCompactOverrideEnv,
   mergeClaudeModels,
+  normalizeClaudeLaunchModel,
   probeClaudeControlLiveness,
   resolveClaudeSdkNativeExecutable,
   withClaudeGoalAlias,
 } from "../../../src/sdk/providers/claude.js";
 import type { Query } from "@anthropic-ai/claude-agent-sdk";
+
+describe("normalizeClaudeLaunchModel", () => {
+  it("keeps Opus on the stable alias and retains Sonnet's extended spelling", () => {
+    expect(normalizeClaudeLaunchModel("opus")).toBe("opus");
+    expect(normalizeClaudeLaunchModel("opus[1m]")).toBe("opus[1m]");
+    expect(normalizeClaudeLaunchModel("sonnet")).toBe("sonnet[1m]");
+    expect(normalizeClaudeLaunchModel(undefined)).toBeUndefined();
+  });
+});
 
 describe("ClaudeProvider.yaModelIdForReported", () => {
   it("maps reported ids to the canonical family alias", () => {
@@ -81,8 +91,8 @@ describe("ClaudeProvider model list", () => {
       selected
         ? [
             {
-              id: "claude-opus-4-8",
-              label: "Opus 4.8",
+              id: "claude-opus-4-6",
+              label: "Opus 4.6",
               origin: "registry",
             },
           ]
@@ -96,14 +106,14 @@ describe("ClaudeProvider model list", () => {
 
     expect(
       (await provider.getAvailableModels()).map((model) => model.id),
-    ).not.toContain("claude-opus-4-8");
+    ).not.toContain("claude-opus-4-6");
     selected = true;
     expect(
       (await provider.getAvailableModels()).find(
-        (model) => model.id === "claude-opus-4-8",
+        (model) => model.id === "claude-opus-4-6",
       ),
     ).toMatchObject({
-      name: "Opus 4.8",
+      name: "Opus 4.6",
       catalogGroup: "additional",
     });
   });
