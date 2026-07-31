@@ -34,6 +34,7 @@ import type {
   UserTurnNavAnchor,
   UserTurnNavSearchState,
 } from "../components/UserTurnNavigator";
+import styles from "./useMessageListIsearch.module.css";
 
 const SEARCH_ARROW_REPEAT_DELAY_MS = 150;
 const SEARCH_ARROW_REPEAT_INTERVAL_MS = 42;
@@ -538,7 +539,7 @@ export function useMessageListIsearch({
       : null;
   const searchPanel = userTurnSearch.active ? (
     <div
-      className="user-turn-search-panel"
+      className={styles.panel}
       role="search"
       onBlur={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
@@ -546,13 +547,13 @@ export function useMessageListIsearch({
         }
       }}
     >
-      <div className="user-turn-search-main">
-        <span className="user-turn-search-label">
+      <div className={styles.main}>
+        <span className={styles.label}>
           {searchPanelProjection.scopeLabel}
         </span>
         <input
           ref={searchInputRef}
-          className="user-turn-search-input"
+          className={styles.input}
           value={userTurnSearch.query}
           onChange={(event) => handleQueryChange(event.target.value)}
           placeholder="reverse search"
@@ -561,8 +562,8 @@ export function useMessageListIsearch({
         <button
           type="button"
           className={[
-            "user-turn-search-case-toggle",
-            userTurnSearch.caseSensitive ? "is-active" : "",
+            styles.caseToggle,
+            userTurnSearch.caseSensitive ? styles.active : "",
           ]
             .filter(Boolean)
             .join(" ")}
@@ -578,11 +579,11 @@ export function useMessageListIsearch({
         >
           Aa
         </button>
-        <span className="user-turn-search-count">
+        <span className={styles.count}>
           {searchPanelProjection.countLabel}
         </span>
       </div>
-      <div className="user-turn-search-help">
+      <div className={styles.help}>
         <span>
           {t("sessionSearchHelpNavigate", {
             shortcutKeys: searchPanelProjection.shortcutKeys,
