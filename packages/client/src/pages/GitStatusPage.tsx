@@ -514,6 +514,7 @@ export function GitStatusPage() {
               {gitStatus?.isGitRepo && (
                 <RepoStatusBar
                   status={gitStatus}
+                  className="source-header-repo-status"
                   onSelectChanges={
                     supportsSourceReview
                       ? () => setHeaderTab("changes")
@@ -743,6 +744,7 @@ function GitStatusContent({
             <SourceModeTabs
               tab={tab}
               tabs={SOURCE_TABS}
+              variant="stacked"
               counts={{
                 changes: changedFileCount,
                 comments: reviewComments.pending.length,

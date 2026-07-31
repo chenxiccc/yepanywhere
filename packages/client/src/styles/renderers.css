@@ -6801,100 +6801,6 @@ pre.code-highlighter-plain,
   border-bottom: 1px solid var(--border-color);
 }
 
-/* Persistent repo/branch status header. */
-.repo-status-bar {
-  position: static;
-  z-index: 3;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-2, 8px);
-  padding: var(--space-2, 8px) var(--space-3, 12px);
-  margin-bottom: var(--space-3, 12px);
-  font-size: 0.85rem;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-subtle, #21262d);
-  border-radius: var(--radius-md, 8px);
-}
-
-.repo-status-bar.repo-status-bar-warn {
-  border-color: var(--warning-color);
-  box-shadow: inset 3px 0 0 var(--warning-color);
-}
-
-.repo-status-bar.inline {
-  width: auto;
-  min-width: 0;
-  flex: 1 1 auto;
-  flex-wrap: nowrap;
-  gap: 6px;
-  padding: 0;
-  margin: 0;
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-}
-
-.repo-status-bar.inline.repo-status-bar-warn .repo-status-branch,
-.repo-status-bar.inline.repo-status-bar-warn .repo-status-sync {
-  color: var(--warning-color);
-}
-
-.repo-status-bar .copy-button {
-  padding: 2px;
-  background: transparent;
-  border: 0;
-}
-
-.repo-status-bar .copy-button:hover {
-  background: var(--bg-hover, rgba(255, 255, 255, 0.06));
-}
-
-.repo-status-branch {
-  display: inline-flex;
-  min-width: 0;
-  flex: 0 1 auto;
-  align-items: center;
-  gap: 4px;
-  color: var(--text-secondary, #8b949e);
-}
-
-.repo-status-branch-name {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--text-primary, #e6edf3);
-  font-family: var(--font-mono, monospace);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.repo-status-upstream,
-.repo-status-sync {
-  color: var(--text-secondary, #8b949e);
-  font-family: var(--font-mono, monospace);
-}
-
-.repo-status-upstream {
-  flex: 0 1 auto;
-  max-width: 9rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.repo-status-badge {
-  margin-left: auto;
-  padding: 1px 8px;
-  border-radius: 999px;
-  font-size: 0.75rem;
-}
-
-.repo-status-bar.inline .repo-status-badge {
-  margin-left: 0;
-  flex-shrink: 0;
-}
-
 .repo-status-action-group {
   display: inline-flex;
   align-items: center;
@@ -6923,24 +6829,6 @@ pre.code-highlighter-plain,
 }
 
 @media (max-width: 759px) {
-  .source-control-mobile-tabs .source-mode-tabs {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    justify-content: space-between;
-    box-sizing: border-box;
-    width: 100%;
-  }
-
-  .source-control-mobile-tabs .source-mode-tab {
-    min-width: 0;
-    padding-inline: 4px;
-    font-size: 0.8rem;
-  }
-
-  .source-control-mobile-tabs .source-mode-tab-count {
-    padding-inline: 4px;
-  }
-
   .source-control-action-row .repo-status-action-group > button {
     padding-inline: 6px;
   }
@@ -6952,26 +6840,6 @@ pre.code-highlighter-plain,
     overflow: hidden;
     text-overflow: ellipsis;
   }
-}
-
-.repo-status-badge.clean {
-  color: var(--success-color);
-  background: color-mix(in srgb, var(--success-color) 14%, transparent);
-}
-
-.repo-status-badge.dirty {
-  color: var(--warning-color);
-  background: color-mix(in srgb, var(--warning-color) 16%, transparent);
-}
-
-.repo-status-badge-action {
-  font-family: inherit;
-  border: none;
-  cursor: pointer;
-}
-
-.repo-status-badge-action:hover {
-  background: color-mix(in srgb, var(--warning-color) 24%, transparent);
 }
 
 /* Copy affordance shared by status bar, commit rows, file rows. */
@@ -6994,49 +6862,6 @@ pre.code-highlighter-plain,
 
 .copy-button.copied {
   color: var(--success-color);
-}
-
-/* Source Control mode tabs: top-right in a wide header, full-width on phones. */
-.source-mode-tabs {
-  display: inline-flex;
-  gap: 2px;
-  padding: 2px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-subtle, #21262d);
-  border-radius: var(--radius-md, 8px);
-}
-
-.source-mode-tab {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 4px 12px;
-  font-size: 0.85rem;
-  color: var(--text-secondary, #8b949e);
-  background: transparent;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.source-mode-tab:hover {
-  color: var(--text-primary, #e6edf3);
-}
-
-/* Distinct from bg-elevated: the tabs sit inside the elevated status bar. */
-.source-mode-tab.active {
-  color: var(--text-primary, #e6edf3);
-  background: var(--bg-hover, rgba(255, 255, 255, 0.08));
-}
-
-.source-mode-tab-count {
-  padding: 0 6px;
-  border-radius: 999px;
-  font-size: 0.7rem;
-  color: var(--text-secondary, #8b949e);
-  background: var(--bg-hover, rgba(255, 255, 255, 0.08));
-  font-variant-numeric: tabular-nums;
 }
 
 /* Pending-review list (the comments mode). */
@@ -7305,90 +7130,6 @@ pre.code-highlighter-plain,
   display: flex;
   align-items: center;
   gap: 2px;
-}
-
-.source-row-menu-trigger {
-  flex: 0 0 28px;
-  align-self: stretch;
-  min-height: 28px;
-  padding: 0;
-  color: var(--text-muted);
-  background: transparent;
-  border: 0;
-  border-radius: 6px;
-  cursor: pointer;
-  opacity: 0;
-}
-
-.commit-list-row:hover > .source-row-menu-trigger,
-.commit-file-row:hover > .source-row-menu-trigger,
-.commit-list-row:focus-within > .source-row-menu-trigger,
-.commit-file-row:focus-within > .source-row-menu-trigger,
-.source-row-menu-trigger:focus-visible {
-  opacity: 1;
-}
-
-.source-row-menu-trigger:hover,
-.source-row-menu-trigger:focus-visible {
-  color: var(--text-primary, #e6edf3);
-  background: var(--bg-hover, rgba(255, 255, 255, 0.08));
-  outline: 2px solid var(--focus-ring, var(--accent-color));
-  outline-offset: -2px;
-}
-
-.source-context-menu-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 9998;
-  padding: 0;
-  background: transparent;
-  border: 0;
-  cursor: default;
-}
-
-.source-context-menu {
-  position: fixed;
-  z-index: 9999;
-  display: flex;
-  min-width: 216px;
-  max-width: min(280px, calc(100vw - 16px));
-  flex-direction: column;
-  padding: var(--space-1, 4px);
-  background: var(--bg-surface);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md, 8px);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.34);
-}
-
-.source-context-menu button {
-  min-height: 32px;
-  padding: 0.4rem 0.6rem;
-  color: var(--text-primary);
-  font-size: var(--font-size-sm);
-  text-align: left;
-  background: transparent;
-  border: 0;
-  border-radius: var(--radius-sm, 4px);
-  cursor: pointer;
-}
-
-.source-context-menu button.separator-before {
-  margin-top: 4px;
-  border-top: 1px solid var(--border-subtle, #21262d);
-  border-top-left-radius: 0;
-  border-top-right-radius: 0;
-}
-
-.source-context-menu button:hover:not(:disabled),
-.source-context-menu button:focus-visible {
-  background: var(--bg-hover);
-  outline: none;
-}
-
-.source-context-menu button:disabled {
-  color: var(--text-muted);
-  cursor: default;
-  opacity: 0.5;
 }
 
 /* Primary quick actions stay in the selected item's detail-pane banner; the
@@ -8239,11 +7980,6 @@ pre.code-highlighter-plain,
   .commit-list-row:not(:last-child),
   .commit-file-row:not(:last-child) {
     border-bottom: 1px solid var(--border-subtle, #21262d);
-  }
-
-  .source-row-menu-trigger {
-    flex-basis: 36px;
-    opacity: 1;
   }
 
   .source-search-input {

@@ -1,4 +1,5 @@
 import type { MessageKey, TranslationFn } from "../i18n";
+import styles from "./SourceModeTabs.module.css";
 
 /**
  * The source-control mode selector (topic: source-review-to-session, stage 3):
@@ -14,6 +15,7 @@ export function SourceModeTabs({
   tabs,
   counts,
   onSelect,
+  variant = "header",
   t,
 }: {
   tab: SourceTab;
@@ -21,10 +23,20 @@ export function SourceModeTabs({
   /** Optional per-tab count chip (e.g. pending review comments). */
   counts?: Partial<Record<SourceTab, number>>;
   onSelect: (tab: SourceTab) => void;
+  /**
+   * `header` sits inline at the top-right of a wide page header. `stacked` is
+   * the phone layout, where the strip becomes a full-width row of its own.
+   */
+  variant?: "header" | "stacked";
   t: TranslationFn;
 }) {
   return (
-    <div className="source-mode-tabs" role="tablist">
+    <div
+      className={`${styles.tabs} ${
+        variant === "stacked" ? styles.stacked : ""
+      }`.trimEnd()}
+      role="tablist"
+    >
       {tabs.map((key) => {
         const count = counts?.[key];
         return (
@@ -33,12 +45,12 @@ export function SourceModeTabs({
             type="button"
             role="tab"
             aria-selected={tab === key}
-            className={`source-mode-tab ${tab === key ? "active" : ""}`}
+            className={`${styles.tab} ${tab === key ? styles.active : ""}`.trimEnd()}
             onClick={() => onSelect(key)}
           >
             {t(sourceTabLabelKey(key))}
             {typeof count === "number" && count > 0 && (
-              <span className="source-mode-tab-count">{count}</span>
+              <span className={styles.count}>{count}</span>
             )}
           </button>
         );

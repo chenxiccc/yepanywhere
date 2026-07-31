@@ -1,0 +1,116 @@
+/* Persistent repo/branch status header. */
+.bar {
+  position: static;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  margin-bottom: var(--space-3, 12px);
+  font-size: 0.85rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle, #21262d);
+  border-radius: var(--radius-md, 8px);
+}
+
+.bar.warn {
+  border-color: var(--warning-color);
+  box-shadow: inset 3px 0 0 var(--warning-color);
+}
+
+.bar.inline {
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+  gap: 6px;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.bar.inline.warn .branch,
+.bar.inline.warn .sync {
+  color: var(--warning-color);
+}
+
+/* `.copy-button` is a shared global primitive owned by `CopyButton`, and a
+   later `index.css` rule of the same name restyles it for settings surfaces.
+   Passing this class through `CopyButton`'s `className` prop keeps the compact
+   presentation at the two-class specificity the old descendant rule had. */
+.bar .copyButton {
+  padding: 2px;
+  background: transparent;
+  border: 0;
+}
+
+.bar .copyButton:hover {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.06));
+}
+
+.branch {
+  display: inline-flex;
+  min-width: 0;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-secondary, #8b949e);
+}
+
+.branchName {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary, #e6edf3);
+  font-family: var(--font-mono, monospace);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.upstream,
+.sync {
+  color: var(--text-secondary, #8b949e);
+  font-family: var(--font-mono, monospace);
+}
+
+.upstream {
+  flex: 0 1 auto;
+  max-width: 9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.badge {
+  margin-left: auto;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+}
+
+.bar.inline .badge {
+  margin-left: 0;
+  flex-shrink: 0;
+}
+
+.badge.clean {
+  color: var(--success-color);
+  background: color-mix(in srgb, var(--success-color) 14%, transparent);
+}
+
+.badge.dirty {
+  color: var(--warning-color);
+  background: color-mix(in srgb, var(--warning-color) 16%, transparent);
+}
+
+.badgeAction {
+  font-family: inherit;
+  border: none;
+  cursor: pointer;
+}
+
+.badgeAction:hover {
+  background: color-mix(in srgb, var(--warning-color) 24%, transparent);
+}

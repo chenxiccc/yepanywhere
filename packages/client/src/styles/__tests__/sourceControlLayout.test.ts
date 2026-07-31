@@ -5,6 +5,10 @@ import { describe, expect, it } from "vitest";
 
 const indexStylesheetUrl = new URL("../index.css", import.meta.url);
 const rendererStylesheetUrl = new URL("../renderers.css", import.meta.url);
+const sourceModeTabsStylesheetUrl = new URL(
+  "../../pages/SourceModeTabs.module.css",
+  import.meta.url,
+);
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -164,13 +168,16 @@ describe("Source Control workbench layout CSS contract", () => {
   });
 
   it("keeps the unified Changes revision control usable at phone width", async () => {
-    const [indexCss, rendererCss] = await Promise.all([
+    const [indexCss, rendererCss, sourceModeTabsCss] = await Promise.all([
       readFile(indexStylesheetUrl, "utf8"),
       readFile(rendererStylesheetUrl, "utf8"),
+      readFile(sourceModeTabsStylesheetUrl, "utf8"),
     ]);
+    // `SourceModeTabs` owns the stacked phone layout as a module variant; the
+    // page only chooses it with `variant="stacked"`.
     const mobileTabs = getLastRuleDeclarations(
-      rendererCss,
-      ".source-control-mobile-tabs .source-mode-tabs",
+      sourceModeTabsCss,
+      ".tabs.stacked",
     );
     const historyParentLink = getLastRuleDeclarations(
       rendererCss,

@@ -110,7 +110,7 @@ reach-in at all.
 | `pages/GitStatusDiffPreview.tsx` | 96 | Diff pane toolbar, hunk navigation |
 | `pages/ReviewCommentsPanel.tsx` | 80 | Self-contained `review-comments-*` |
 | `pages/CommitBrowser.tsx` | 74 | Columns, jump controls, message view |
-| `pages/RepoStatusBar.tsx` | 68 | Self-contained except `.copy-button` |
+| `pages/RepoStatusBar.tsx` | 68 | Self-contained except `.copy-button`; `.repo-status-action-group` is `GitStatusPage`'s despite the prefix |
 | `components/ResizableSourceColumns.tsx` | 61 | Splitter; dynamic boundary suffix |
 | `pages/WorkingTreeBrowser.tsx` | 58 | Plus 57 shared with `CommitFilesPane` |
 | `components/SourceContextMenu.tsx` | 54 | Row menu trigger + overlay |
@@ -195,6 +195,13 @@ complete list for
 | 8248 | `.blame-file-item .git-file-path` | `BlameBrowser` | `SourceFileRow` |
 | 8289 | `.source-detail-banner .source-detail-jump` | `WorkingTreeBrowser`, `CommitFilesPane` | `CommitBrowser` |
 | `index.css` 20545 | `.source-control-main-content .git-diff-preview-pane` | `GitStatusPage` | `CommitBrowser`, `GitStatusDiffPreview` |
+| `index.css` 2103 | `.source-header-identity .repo-status-bar.inline` | `GitStatusPage` | `RepoStatusBar` |
+
+`index.css` 2103 was found during step 6, not by this map: it sits in the
+session-header region, far outside the two ranges surveyed here. **A component's
+reach-ins are not bounded by the region its own rules live in.** Before hashing a
+class, search the whole cascade for it rather than trusting a range-scoped table
+— steps 7 to 9 should expect the same.
 
 Three shapes, three fixes, matching the classification the `FilterDropdown`
 step established:
@@ -209,6 +216,20 @@ step established:
 - **Restyling a shared control** (6844/6850 `copy-button`, 6931–6945 tabs,
   8247/8248 `git-file-path`) — a named variant on the child, because more than
   one caller wants the same presentation.
+
+Step 6 qualified the last one. The tabs did want a named variant
+(`SourceModeTabs` gained `variant="stacked"`), but `copy-button` has exactly one
+caller, so `RepoStatusBar` passed its own module class through `CopyButton`'s
+existing `className` prop instead — adding a global variant class to a frozen
+stylesheet, for a component that step was not migrating, would have cost more
+than it bought. Count the callers before choosing.
+
+Those two `copy-button` rules also look redundant and are not: every declaration
+matches `renderers.css`'s own `.copy-button`, but `index.css:17971` declares a
+second, unrelated `.copy-button`, and `renderers.css` is `@import`ed at the top
+of `index.css`, so the `index.css` rule wins for every `CopyButton` in the app.
+The descendant selector was restoring the compact presentation, and its
+replacement needs the same two-class specificity.
 
 ## Dead rules found
 
@@ -255,11 +276,12 @@ attributed lines above were a behavior-free ratchet with no composition work,
 worth landing alone since the source-control chrome step below could not
 honestly claim most of them. Actual removal was 222 + 25 raw lines.
 
-**Source-control chrome** (step 6). `RepoStatusBar` (68 lines, 82-line
-component), `SourceModeTabs` (47), and `SourceContextMenu` (54). All three are
-small, self-contained, and sit behind the three reach-in shapes above, so the
-step proves each fix once. Fold in the `.copy-button` variant and the
-`source-mode-tab` overrides. Expected ratchet: ~170 lines.
+**Source-control chrome** (step 6, landed 2026-07-31). `RepoStatusBar`,
+`SourceModeTabs`, and `SourceContextMenu`, chosen because between them they sit
+behind all three reach-in shapes above, so the step proved each fix once. Actual
+ratchet: 264 raw lines from `renderers.css`, against a ~170 estimate in
+attributed declaration lines. See the landing note in
+[`070`](070-css-modules-migration.md#6--source-control-chrome).
 
 **Review UI** (step 7). `ReviewSubmitModal` (82), `ReviewCommentWindow` (67),
 `ReviewCommentsPanel` (80). The cleanest region: only `review-submit-go` and
@@ -269,8 +291,9 @@ module. Expected ratchet: ~230 lines.
 **Blame view** (step 8). `BlameView` is the single largest owner (162 lines) and
 would otherwise be an attractive early target, but it is also the target of the
 `blame-browser-columns > .blame-view` placement reach-in and shares
-`source-search-*` with `CommitRevisionPane`. Take it after the source-control
-chrome step has established the placement-prop pattern.
+`source-search-*` with `CommitRevisionPane`. Step 6 established the placement
+pass-through it was waiting on. Note that `BlameBrowser`'s file rows now carry
+`sourceRowMenuSurface`, so the reveal contract is already in place there.
 
 **File viewer** (step 9). Still a candidate. `FileViewer` owns 215 attributed
 lines but the 190-line bare-element bucket beneath it needs parent ownership

@@ -186,6 +186,20 @@ recurring need (`fullWidth`), a named variant for a meaningful presentation
 sizing (`triggerClassName`). A pass-through targets one documented element; it
 is not a licence to restyle the subtree.
 
+When the reach-in runs the other way — several ancestors styling a control they
+do not render, as four row lists did to the source row-menu trigger — the child
+module exports an opt-in class for the ancestor to apply to itself, and owns the
+relationship locally (`.rowSurface:hover > .trigger`). The ancestor declares that
+it is the interaction surface; it does not decide what the reveal looks like.
+
+Check what a moved declaration was actually defending against before calling it
+redundant. `.repo-status-bar .copy-button` restated `.copy-button`'s own values
+and looked like dead weight, but a second, unrelated `.copy-button` later in
+`index.css` was winning against it — `renderers.css` is `@import`ed at the top of
+`index.css`, so its rules are the earliest in the cascade, not the latest. A
+module class that replaces a descendant selector needs the same specificity the
+selector had, or the outcome silently becomes stylesheet order.
+
 When a caller rule that survives in a legacy stylesheet used to win through
 descendant specificity, keep it at that specificity — scope it under the
 caller's own wrapper. Otherwise it silently starts depending on stylesheet
@@ -265,7 +279,7 @@ The current legacy ceilings are:
 | Stylesheet | Maximum lines |
 |---|---:|
 | `index.css` | 20,870 |
-| `renderers.css` | 8,306 |
+| `renderers.css` | 8,042 |
 | `tool-rows.css` | 948 |
 | `emulator.css` | 261 |
 

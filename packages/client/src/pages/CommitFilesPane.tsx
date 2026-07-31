@@ -13,6 +13,7 @@ import {
 } from "../components/SourceFileRow";
 import {
   SourceRowMenuTrigger,
+  sourceRowMenuSurface,
   type SourceContextMenuAction,
   useSourceContextMenu,
 } from "../components/SourceContextMenu";
@@ -228,7 +229,10 @@ export function CommitFilesPane({
                 const menuActions = fileMenuActions(file);
                 const displayPath = sourceFileDisplayPath(file);
                 return (
-                  <li key={file.path} className="commit-file-row">
+                  <li
+                    key={file.path}
+                    className={`commit-file-row ${sourceRowMenuSurface}`}
+                  >
                     <SourceFileRowButton
                       path={displayPath}
                       type="button"

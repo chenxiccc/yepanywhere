@@ -1,0 +1,92 @@
+.trigger {
+  flex: 0 0 28px;
+  align-self: stretch;
+  min-height: 28px;
+  padding: 0;
+  color: var(--text-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  opacity: 0;
+}
+
+/* The row supplies the hover/focus surface by opting in with `rowSurface`; the
+   menu owns the reveal. Row owners used to reach in by class name instead, so
+   every new list of rows had to remember to restyle a control it does not own. */
+.rowSurface:hover > .trigger,
+.rowSurface:focus-within > .trigger,
+.trigger:focus-visible {
+  opacity: 1;
+}
+
+.trigger:hover,
+.trigger:focus-visible {
+  color: var(--text-primary, #e6edf3);
+  background: var(--bg-hover, rgba(255, 255, 255, 0.08));
+  outline: 2px solid var(--focus-ring, var(--accent-color));
+  outline-offset: -2px;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  cursor: default;
+}
+
+.menu {
+  position: fixed;
+  z-index: 9999;
+  display: flex;
+  min-width: 216px;
+  max-width: min(280px, calc(100vw - 16px));
+  flex-direction: column;
+  padding: var(--space-1, 4px);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md, 8px);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.34);
+}
+
+.menu button {
+  min-height: 32px;
+  padding: 0.4rem 0.6rem;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+}
+
+.menu button.separatorBefore {
+  margin-top: 4px;
+  border-top: 1px solid var(--border-subtle, #21262d);
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.menu button:hover:not(:disabled),
+.menu button:focus-visible {
+  background: var(--bg-hover);
+  outline: none;
+}
+
+.menu button:disabled {
+  color: var(--text-muted);
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* Touch rows have no hover, so the trigger stays visible and grows its target. */
+@media (max-width: 600px) {
+  .trigger {
+    flex-basis: 36px;
+    opacity: 1;
+  }
+}

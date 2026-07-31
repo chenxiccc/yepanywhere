@@ -1,6 +1,7 @@
 import type { GitStatusInfo } from "@yep-anywhere/shared";
 import { CopyButton } from "../components/CopyButton";
 import type { TranslationFn } from "../i18n";
+import styles from "./RepoStatusBar.module.css";
 
 /**
  * Persistent branch status in the Source Control identity header. Project,
@@ -10,11 +11,14 @@ import type { TranslationFn } from "../i18n";
 export function RepoStatusBar({
   status,
   onSelectChanges,
+  className,
   t,
 }: {
   status: GitStatusInfo;
   /** Make a dirty badge open the working-tree Changes mode. */
   onSelectChanges?: () => void;
+  /** Caller-supplied placement class for the header region that holds the bar. */
+  className?: string;
   t: TranslationFn;
 }) {
   const outOfSync = status.ahead > 0 || status.behind > 0;
@@ -22,11 +26,17 @@ export function RepoStatusBar({
 
   return (
     <div
-      className={`repo-status-bar inline ${
-        warn ? "repo-status-bar-warn" : ""
-      }`}
+      data-testid="repo-status-bar"
+      className={[
+        styles.bar,
+        styles.inline,
+        warn ? styles.warn : "",
+        className ?? "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
     >
-      <span className="repo-status-branch">
+      <span className={styles.branch}>
         <svg
           width="13"
           height="13"
@@ -43,20 +53,24 @@ export function RepoStatusBar({
           <circle cx="6" cy="18" r="3" />
           <path d="M18 9a9 9 0 0 1-9 9" />
         </svg>
-        <span className="repo-status-branch-name">
+        <span className={styles.branchName}>
           {status.branch ?? t("gitStatusDetachedHead")}
         </span>
         {status.branch && (
-          <CopyButton value={status.branch} title={t("sourceCopyBranch")} />
+          <CopyButton
+            value={status.branch}
+            title={t("sourceCopyBranch")}
+            className={styles.copyButton}
+          />
         )}
       </span>
       {status.upstream && (
-        <span className="repo-status-upstream" title={status.upstream}>
+        <span className={styles.upstream} title={status.upstream}>
           → {status.upstream}
         </span>
       )}
       {outOfSync && (
-        <span className="repo-status-sync">
+        <span className={styles.sync}>
           {status.ahead > 0 && ` ↑${status.ahead}`}
           {status.behind > 0 && ` ↓${status.behind}`}
         </span>
@@ -64,7 +78,7 @@ export function RepoStatusBar({
       {!status.isClean && onSelectChanges ? (
         <button
           type="button"
-          className="repo-status-badge dirty repo-status-badge-action"
+          className={`${styles.badge} ${styles.dirty} ${styles.badgeAction}`}
           title={t("sourceOpenChanges")}
           onClick={onSelectChanges}
         >
@@ -72,7 +86,9 @@ export function RepoStatusBar({
         </button>
       ) : (
         <span
-          className={`repo-status-badge ${status.isClean ? "clean" : "dirty"}`}
+          className={`${styles.badge} ${
+            status.isClean ? styles.clean : styles.dirty
+          }`}
         >
           {status.isClean ? t("gitStatusClean") : t("gitStatusDirty")}
         </span>

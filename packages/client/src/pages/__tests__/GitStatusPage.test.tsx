@@ -299,9 +299,11 @@ describe("GitStatusPage source header", () => {
     );
 
     const header = document.querySelector(".session-header") as HTMLElement;
-    expect(header.querySelectorAll(".repo-status-bar")).toHaveLength(1);
-    expect(header.querySelector(".source-mode-tabs")).not.toBeNull();
-    expect(header.querySelectorAll(".source-mode-tab")).toHaveLength(3);
+    expect(
+      header.querySelectorAll('[data-testid="repo-status-bar"]'),
+    ).toHaveLength(1);
+    expect(header.querySelector('[role="tablist"]')).not.toBeNull();
+    expect(header.querySelectorAll('[role="tab"]')).toHaveLength(3);
     expect(header.querySelector(".review-tray-button")).toBeNull();
 
     const actionRow = document.querySelector(
@@ -311,7 +313,9 @@ describe("GitStatusPage source header", () => {
     expect(actionRow.querySelector(".review-tray-button")?.textContent).toContain(
       "sourceReviewStart",
     );
-    expect(document.querySelector(".git-status > .repo-status-bar")).toBeNull();
+    expect(
+      document.querySelector('.git-status > [data-testid="repo-status-bar"]'),
+    ).toBeNull();
   });
 
   it("lands on Changes and keeps its URL as the default", async () => {
@@ -516,10 +520,12 @@ describe("GitStatusPage source header", () => {
     );
 
     const header = document.querySelector(".session-header") as HTMLElement;
-    expect(header.querySelector(".repo-status-bar")).not.toBeNull();
-    expect(header.querySelector(".source-mode-tabs")).toBeNull();
     expect(
-      document.querySelector(".source-control-mobile-tabs .source-mode-tabs"),
+      header.querySelector('[data-testid="repo-status-bar"]'),
+    ).not.toBeNull();
+    expect(header.querySelector('[role="tablist"]')).toBeNull();
+    expect(
+      document.querySelector('.source-control-mobile-tabs [role="tablist"]'),
     ).not.toBeNull();
     expect(
       document.querySelector(".source-control-action-row"),
@@ -549,7 +555,7 @@ describe("GitStatusPage released-server compatibility", () => {
       screen.getByRole("button", { name: "gitStatusCheckRemote" }),
     ).toBeDefined();
     expect(screen.queryByTestId("commit-browser")).toBeNull();
-    expect(document.querySelector(".source-mode-tabs")).toBeNull();
+    expect(document.querySelector('[role="tablist"]')).toBeNull();
     expect(document.querySelector(".review-tray-button")).toBeNull();
     expect(mocks.listReviewComments).not.toHaveBeenCalled();
   });

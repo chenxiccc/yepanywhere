@@ -2,10 +2,12 @@
 
 Topic: css-architecture
 
-Status: the guard is live and four steps have landed — the stylesheets are
+Status: the guard is live and six steps have landed — the stylesheets are
 frozen, the unused-CSS report understands modules, the filter dropdown proved
-the composition patterns, and source-control CSS ownership is mapped. The dead
-git-status rules (step 5) and the source-control chrome (step 6) are next.
+the composition patterns, source-control CSS ownership is mapped, the dead
+git-status rules are gone, and the source-control chrome now owns its CSS. All
+three reach-in shapes have a proven fix, so the review UI (step 7) and the
+blame view (step 8) are unblocked.
 
 ## Contract
 
@@ -53,7 +55,7 @@ Containment landed on 2026-07-31 in `07e40ef1`. Current legacy ceilings:
 | Stylesheet | Maximum lines | Primary remaining ownership |
 |---|---:|---|
 | `index.css` | 20,870 (was 21,441 before step 1) | Tokens/themes/base plus legacy pages and components |
-| `renderers.css` | 8,306 (was 8,377 before step 1) | Generated markup plus legacy renderer/page shells |
+| `renderers.css` | 8,042 (was 8,377 before step 1) | Generated markup plus legacy renderer/page shells |
 | `tool-rows.css` | 948 | Shared tool-row composition and states |
 | `emulator.css` | 261 | Emulator streaming surface and global states |
 
@@ -73,8 +75,8 @@ score — the ordering rationale is in each step.
 | 3 | [Filter dropdown](#3--filter-dropdown) | Landed 2026-07-31, `d800d19e` |
 | 4 | [Map source-control CSS ownership](#4--map-source-control-css-ownership) | Landed 2026-07-31, `5f9fddc7` |
 | 5 | [Delete the dead git-status rules](#5--delete-the-dead-git-status-rules) | Landed 2026-07-31 |
-| 6 | [Source-control chrome](#6--source-control-chrome) | Next |
-| 7 | [Review UI](#7--review-ui) | Planned |
+| 6 | [Source-control chrome](#6--source-control-chrome) | Landed 2026-07-31 |
+| 7 | [Review UI](#7--review-ui) | Next |
 | 8 | [Blame view](#8--blame-view) | Planned |
 | 9 | [File viewer](#9--file-viewer) | Candidate |
 | 10 | [Fix the unused-CSS report's scope](#10--fix-the-unused-css-reports-scope) | Later |
@@ -283,31 +285,86 @@ diff purely about composition.
 
 ### 6 — Source-control chrome
 
-**Next.** `RepoStatusBar` (68 attributed lines, 82-line component),
-`SourceModeTabs` (47), and `SourceContextMenu` (54) into modules.
+**Landed 2026-07-31.** `RepoStatusBar`, `SourceModeTabs`, and
+`SourceContextMenu` into modules. Chosen as the first source-control extraction
+because between them they sit behind all three reach-in shapes, so the step
+proves each fix exactly once. All three now have a worked example.
 
-Chosen as the first source-control extraction because all three are small and
-self-contained, and between them they sit behind all three reach-in shapes, so
-the step proves each fix exactly once:
-
-- **hover/focus reveal** — `SourceContextMenu` should own a
-  `revealOnRowInteraction` behavior rather than have four different row owners
-  reach in. The row supplies the hover surface; the menu supplies the reveal.
-- **shared-control restyle** — `.repo-status-bar .copy-button` becomes a named
-  variant on `CopyButton`; the three `.source-control-mobile-tabs
-  .source-mode-tab*` overrides become a `SourceModeTabs` variant.
-- **layout placement** — a `className` pass-through on the placed child.
-
-Read [the ownership map](072-source-css-ownership-map.md) first: it lists the
-generated vocabulary that must stay global, the owner of every rule in the
-region, and the complete reach-in table. Take every rule these three components
-own from *both* legacy stylesheets in the same change.
-
-Expected ratchet: ~170 lines.
+- **Moved:** the `repo-status-bar` vocabulary — bar, `inline`, warn, branch,
+  branch name, upstream, sync, badge and its clean/dirty/action states — to
+  `pages/RepoStatusBar.module.css`; the `source-mode-tab*` vocabulary plus the
+  phone-width overrides to `pages/SourceModeTabs.module.css`; and
+  `source-row-menu-trigger`, `source-context-menu`, `-overlay`, the menu's
+  button rules, and the ≤600px trigger sizing to
+  `components/SourceContextMenu.module.css`.
+- **Stayed global:** `.copy-button` (a `CopyButton`-owned shared primitive,
+  documented as such in `renderers.css`); `.repo-status-action-group`,
+  `.source-control-toolbar`, `.source-control-action-row`, and
+  `.source-control-mobile-tabs`, which are all rendered by `GitStatusPage`
+  despite the `repo-status-` prefix on the first; and `.commit-list-row` /
+  `.commit-file-row`, owned by the four row lists.
+- **Composition decisions.** *Hover/focus reveal:* the module exports
+  `sourceRowMenuSurface`, an opt-in class the row applies to itself, and owns
+  `.rowSurface:hover > .trigger` / `:focus-within`. Four row-owned rules in
+  `renderers.css` became two module rules plus one class on each of the five
+  `<li>` sites in `CommitRevisionPane`, `CommitFilesPane`, `WorkingTreeBrowser`,
+  and `BlameBrowser`. *Shared-control restyle:* `SourceModeTabs` gained
+  `variant="header" | "stacked"`, so `GitStatusPage` selects the phone layout by
+  prop instead of by wrapper class. *Layout placement:* `RepoStatusBar` gained a
+  `className` pass-through, and the one `index.css` rule that placed it now
+  targets the caller-supplied `.source-header-repo-status`.
+- **Deviated from the ownership map on `copy-button`,** which predicted a named
+  variant on `CopyButton` because "more than one caller wants the same
+  presentation." There is exactly one caller, and `CopyButton` already exposes
+  `className`, so `RepoStatusBar` passes its own module class and the rule
+  became `.bar .copyButton`. A variant would have meant adding a global class to
+  a frozen stylesheet for a component this step does not migrate.
+- **The `copy-button` reach-in was load-bearing, not redundant.** Every
+  declaration in `.repo-status-bar .copy-button` also appears in
+  `renderers.css`'s `.copy-button`, which looks like dead weight until you
+  notice `index.css:17971` declares a *second*, unrelated `.copy-button` —
+  a bordered settings-style button — and `renderers.css` is `@import`ed at the
+  top of `index.css`, so the later one wins for every `CopyButton` in the app.
+  The descendant rule was restoring the compact presentation. Keeping the new
+  rule at two-class specificity (`.bar .copyButton`) preserves that; a bare
+  `.copyButton` would have tied with `.copy-button` and left the outcome to
+  stylesheet order.
+- **One declaration dropped:** `width: auto` on `.repo-status-bar.inline`. It
+  restates the initial value, and nothing but the caller's placement rule sets
+  `width` on that element, so removing it makes the caller rule win on
+  specificity rather than on source order. No computed style changes.
+- **Ratchet:** `renderers.css` 8,306 → 8,042 (−264); `index.css` unchanged at
+  20,870 — its single source-control rule was retargeted, not removed.
+- **Tests:** new `pages/__tests__/SourceControlChrome.test.tsx`, 8 cases over
+  the placement pass-through, the warn variant, the compact copy button, the
+  dirty-badge button, tablist semantics, the count chip, the `stacked` variant,
+  and the reveal-surface contract. `GitStatusPage.test.tsx` moved off the six
+  moved class literals onto `role="tablist"`/`role="tab"` and a new
+  `data-testid="repo-status-bar"`; `sourceControlLayout.test.ts` now reads the
+  stacked grid contract from the module instead of `renderers.css`. Full suite
+  green: 2,788 client, 3,115 server, 465 shared, 126 relay, 44 push-broker; no
+  runtime warnings.
+- **Checks:** `pnpm css:check --record` (renderers.css only, downward),
+  `pnpm lint`, `pnpm typecheck`, `pnpm console:scan` (110/110, +0).
+- **Visual QA:** before/after captures at 1920×1080 and 375×812 over
+  `/git-status`, in three states each — loaded, row hovered, and row menu open.
+  Captured against a repository the change itself was not modifying, because
+  stashing to get the "before" build also cleans the working tree and empties
+  the page under test. Computed geometry and style for the status bar, both
+  copy buttons, the tablist, all three tabs, the revealed trigger, and the open
+  menu with its items are **identical** — 0 differences across 19 properties.
+  Phone captures are pixel-identical in all three states. The desktop frames
+  differ by 11,319 pixels, all of it live content: the target repo's changed
+  file count ticked 24 → 23 between the runs, shifting one file row and the
+  count chip's digit, plus three sidebar session-activity dots.
+- **Follow-up:** the `.inline` variant is applied unconditionally by the only
+  caller, and `.repo-status-bar-warn`'s border and box-shadow are overridden by
+  `.inline` at equal specificity, so they never render. Both were preserved
+  as-is — collapsing them is a visual-cleanup change, not a selector move.
 
 ### 7 — Review UI
 
-**Planned.** `ReviewSubmitModal` (82), `ReviewCommentWindow` (67),
+**Next.** `ReviewSubmitModal` (82), `ReviewCommentWindow` (67),
 `ReviewCommentsPanel` (80). The cleanest region in the campaign: only
 `review-submit-go` and `review-submit-error` are shared, and only between two
 owners that can share a module. Generated diff classes stay global.
@@ -316,7 +373,7 @@ Expected ratchet: ~230 lines.
 
 ### 8 — Blame view
 
-**Planned, deliberately after step 6.** `BlameView` is the single largest owner
+**Planned.** Step 6 established the placement-prop pattern it waited on. `BlameView` is the single largest owner
 in the campaign (162 attributed lines) and is otherwise an attractive target,
 but it is the target of the `.blame-browser-columns > .blame-view` placement
 reach-in and shares `source-search-*` with `CommitRevisionPane`. Take it once

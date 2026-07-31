@@ -2,6 +2,7 @@ import type { GitRecentCommit, GitStatusInfo } from "@yep-anywhere/shared";
 import { type RefObject, useCallback } from "react";
 import {
   SourceRowMenuTrigger,
+  sourceRowMenuSurface,
   type SourceContextMenuAction,
   useSourceContextMenu,
 } from "../components/SourceContextMenu";
@@ -203,7 +204,9 @@ export function CommitRevisionPane({
           <>
             <ol className="commit-list" onKeyDown={handleSourceListKeyDown}>
               {showWorkingTreeRevision && (
-                <li className="commit-list-row commit-list-working-tree">
+                <li
+                  className={`commit-list-row commit-list-working-tree ${sourceRowMenuSurface}`}
+                >
                   <button
                     type="button"
                     className={`commit-list-item working-tree unread ${
@@ -257,7 +260,10 @@ export function CommitRevisionPane({
                 const commentCount = commentCountBySha.get(commit.hash) ?? 0;
                 const menuActions = revisionMenuActions(commit.hash, commit);
                 return (
-                  <li key={commit.hash} className="commit-list-row">
+                  <li
+                  key={commit.hash}
+                  className={`commit-list-row ${sourceRowMenuSurface}`}
+                >
                     <button
                       type="button"
                       className={`commit-list-item ${

@@ -7,6 +7,7 @@ import {
 } from "../components/SourceFileRow";
 import {
   SourceRowMenuTrigger,
+  sourceRowMenuSurface,
   type SourceContextMenuAction,
   useSourceContextMenu,
 } from "../components/SourceContextMenu";
@@ -172,7 +173,7 @@ export function BlameBrowser({
                 const count = pathCommentCount.get(file) ?? 0;
                 const menuActions = fileMenuActions(file);
                 return (
-                  <li key={file} className="commit-file-row">
+                  <li key={file} className={`commit-file-row ${sourceRowMenuSurface}`}>
                     <SourceFileRowButton
                       path={file}
                       type="button"

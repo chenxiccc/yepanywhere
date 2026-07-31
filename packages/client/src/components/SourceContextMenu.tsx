@@ -11,6 +11,14 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import type { TranslationFn } from "../i18n";
+import styles from "./SourceContextMenu.module.css";
+
+/**
+ * Opt-in class for a row that contains a `SourceRowMenuTrigger`. The row is the
+ * hover/focus surface; this menu owns what the reveal looks like, so a row owner
+ * declares the relationship instead of restyling a control it does not render.
+ */
+export const sourceRowMenuSurface: string = styles.rowSurface ?? "";
 
 const LONG_PRESS_MS = 500;
 const LONG_PRESS_MOVE_TOLERANCE_PX = 8;
@@ -309,7 +317,7 @@ export function SourceRowMenuTrigger({
   return (
     <button
       type="button"
-      className="source-row-menu-trigger"
+      className={styles.trigger}
       aria-label={label}
       title={label}
       onClick={(event) => onOpen(event, actions)}
@@ -392,7 +400,7 @@ function SourceContextMenu({
     <>
       <button
         type="button"
-        className="source-context-menu-overlay"
+        className={styles.overlay}
         aria-label={t("sourceDismissActions")}
         onClick={() => {
           onClose();
@@ -406,7 +414,7 @@ function SourceContextMenu({
       />
       <div
         ref={menuRef}
-        className="source-context-menu"
+        className={styles.menu}
         role="menu"
         aria-label={t("sourceActionMenu")}
         style={{
@@ -419,7 +427,9 @@ function SourceContextMenu({
             key={`${action.label}-${index}`}
             type="button"
             role="menuitem"
-            className={action.separatorBefore ? "separator-before" : undefined}
+            className={
+              action.separatorBefore ? styles.separatorBefore : undefined
+            }
             disabled={action.disabled}
             onClick={() => select(action)}
           >

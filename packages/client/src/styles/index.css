@@ -2100,7 +2100,7 @@ textarea {
     max-width: calc(100vw - 120px);
   }
 
-  .source-header-identity .repo-status-bar.inline {
+  .source-header-identity .source-header-repo-status {
     width: 100%;
   }
 }
