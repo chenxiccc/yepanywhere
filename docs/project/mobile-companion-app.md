@@ -81,10 +81,11 @@ path. The normal model is not "each relay owns an FCM project". It is:
 - The app displays a notification or wakes briefly and fetches details from the
   paired YA server.
 
-The push broker can live beside the hosted relay initially, or inside the same
-deployment if that is simpler operationally. Conceptually, it should remain a
-separate responsibility from the relay: the relay is encrypted transport, while
-the broker is a token registry and notification dispatcher.
+The push broker is planned as a separate hosted service at
+`https://push.yepanywhere.com`. It may share physical hosting with the relay,
+but it should not share the relay's process, event loop, database, or delivery
+credentials. The relay is encrypted transport, while the broker is a token
+registry and notification dispatcher.
 
 Payloads should be generic by default. A user may explicitly opt into bounded
 notification text passing in plaintext through the YA push broker and Google
@@ -163,6 +164,12 @@ same form. A future iOS implementation would likely rely on APNs-backed push,
 background refresh where available, and foreground app activity rather than a
 persistent background service.
 
+The initial iOS delivery direction is to use the same hosted push broker through
+FCM's Apple-platform integration, which forwards notifications through APNs.
+This avoids a second public notification service and preserves the same
+YA-server device push subscription model. Direct APNs delivery may later be
+added as a broker-internal adapter without changing that public contract.
+
 To keep that path open, shared backend concepts should be platform-neutral:
 
 - Device registration.
@@ -213,8 +220,6 @@ Revocation must be first-class:
 
 - Should the first app be native Android, Kotlin Multiplatform, React Native, or
   another shared mobile stack?
-- Should the broker live inside the relay service process at first, or as a
-  separate service from the beginning?
 - What is the smallest inbox snapshot API that supports useful aggregation
   without pulling in the full web app session model?
 - Should notification acknowledgement be recorded by the app, the server, the

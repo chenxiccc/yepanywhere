@@ -29,9 +29,25 @@ The push broker is not an account system or application-traffic relay. It
 should know only what it needs to register Android installations, authorize and
 rate-limit notification requests, and dispatch them through FCM.
 
+The planned published service endpoint is `https://push.yepanywhere.com`. The
+public name and protocol should use provider-neutral push terminology even
+though FCM is the first delivery implementation.
+
 Existing browser Web Push/VAPID remains supported independently. Native FCM is
 an additional Android delivery target, not a replacement for self-hosted Web
 Push.
+
+## Service Boundary
+
+The hosted push broker should be a separate runtime service from the relay. The
+two services may share physical hosting, but they should not share a process,
+event loop, database, or delivery credentials.
+
+This preserves the relay's latency-sensitive opaque forwarding path, allows
+broker persistence and outbound provider calls to proceed independently, and
+keeps Firebase credentials outside the relay's otherwise narrow trust boundary.
+Broker deployments and restarts should not disconnect live relay circuits, and
+the public push endpoint should be movable without changing the relay endpoint.
 
 ## Trust Model
 
@@ -175,6 +191,28 @@ offline app/broker recovery, reinstall or cleared-app-data behavior, invalid
 FCM send responses, and eventual stale-record cleanup. That implementation
 work should produce the concrete observable contract.
 
+## Future Apple Delivery
+
+A future YA iOS app should use the same device push subscription and broker
+service rather than introducing another public notification service.
+
+The initial iOS direction is to use Firebase Cloud Messaging's Apple-platform
+integration. The iOS app registers through the FCM SDK, Firebase maps that
+registration to Apple Push Notification service (APNs), and the broker submits
+through the same FCM server interface used for Android. The Firebase project
+must be configured with the YA app's APNs authentication material, but YA
+servers continue to use the same provider-neutral subscription contract.
+
+This keeps the first iOS delivery path small while leaving direct APNs delivery
+as a possible later broker adapter. Adding such an adapter should not require a
+new public hostname or a new YA-server subscription model.
+
+iOS silent/background delivery is opportunistic and subject to platform
+throttling. The dependable initial product path should use visible
+notifications and fetch current details from the authenticated YA server when
+the user opens them. Exact Apple notification behavior must be validated during
+iOS implementation.
+
 ## Self-Hosted And Configured Variants
 
 The mainstream path is:
@@ -196,9 +234,10 @@ default.
 ## Deferred Implementation Decisions
 
 - Exact broker and YA-server HTTP contracts and their compatibility gates.
-- Whether the broker initially shares a deployment with the hosted relay.
 - Concrete FCM/Firebase SDK version and registration target API.
 - Registration refresh, invalidation, offline recovery, and stale cleanup.
 - Default quotas, coalescing, acknowledgement, and delivery-result semantics.
 - App-attestation requirements for official and source-built distributions.
 - Exact generic/descriptive notification settings and disclosure copy.
+- Whether a later iOS release continues through FCM or adds direct APNs as a
+  broker delivery adapter.
