@@ -14,6 +14,21 @@ Google Password Manager does not automatically offer the
 generic Passwords search action. Seamless Google Password Manager sharing
 therefore remains blocked on a public Play release.
 
+## Known Gap: Sideloaded Debug Builds
+
+Google Password Manager does not automatically associate a sideloaded YA debug
+APK with passwords saved for `yepanywhere.com`, even when the debug certificate
+is present in the valid Digital Asset Links statements. The visible result is a
+generic Passwords action that requires the user to search for the website
+manually.
+
+This is an expected debug-distribution limitation, not evidence that the
+production association is malformed. The production acceptance check is a
+public Play install, signed by the certificate published in
+`assetlinks.json`, automatically offering an existing `yepanywhere.com`
+credential on the relay login form. Do not claim production support until that
+check passes on a physical device.
+
 ## Observable Contract
 
 - The website serves

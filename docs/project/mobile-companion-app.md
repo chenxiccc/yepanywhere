@@ -47,6 +47,72 @@ as the hosted Remote Access login. The initial association covers the
 maintainer-signed debug APK for device testing; a public app needs its official
 distribution certificate added before release.
 
+## Transitional Hosted Production UI
+
+A short-term production app may load a fixed YA-hosted client in its foreground
+WebView instead of packaging the client assets into the APK. This is a
+transitional option, not a commitment to make hosted web content the long-term
+mobile home screen.
+
+The official build should use a fixed HTTPS URL such as
+`https://yepanywhere.com/mobile/`. That path may initially serve the same client
+as the hosted Remote Access UI while preserving room for an independent cache
+scope, release policy, headers, and later mobile-specific behavior.
+
+Benefits:
+
+- The login form has a real `yepanywhere.com` web origin, which should give
+  password managers the most direct path to matching website credentials.
+  This remains a physical-device acceptance test rather than an assumption.
+- Client fixes can ship with a website release instead of waiting for a new app
+  store review.
+- The APK does not duplicate the web client assets.
+- Native FCM receipt and notification display remain independent of the
+  WebView. The app does not need to create a WebView while its UI is closed.
+- The full web UI remains an escape hatch while native summary and inbox
+  surfaces are developed incrementally.
+
+The bandwidth cost is bounded but real. When this option was recorded, the
+current core JavaScript and CSS entry assets were approximately 0.83 MiB
+compressed. Hashed assets should normally be reused from the WebView HTTP cache
+until a website release changes them; fonts and locale bundles are loaded as
+needed rather than on every launch. Cache eviction and the first launch after a
+release can still require a network download.
+
+Constraints:
+
+- Hosted JavaScript is part of the login trust boundary. A compromise of the
+  hosted origin could read an SRP password or resume credential before the
+  protocol protects it. This has the weaker trust model described in
+  [`topics/trusted-client-packaging.md`](../../topics/trusted-client-packaging.md).
+- The official app must not accept an arbitrary remote UI URL by default. A
+  source or development build may expose an explicit build-time override.
+- Hosted content must not inherit general Tauri or Android native IPC
+  privileges. Any future web-to-native bridge requires a narrow, explicit
+  capability and its own threat review.
+- An HTTPS page cannot connect directly to an insecure `ws://` YA endpoint
+  without weakening mixed-content protections. Relay or other `wss://`
+  connections work naturally. Do not enable production-wide mixed content to
+  recover insecure direct connections; use a native transport bridge or a
+  source-built bundled client if that use case becomes necessary.
+- A cold launch can fail when the host is unavailable or the cache has been
+  evicted. The app should present an honest retry/offline state.
+- Hosted client releases must preserve the stable-server capability gates and
+  fallbacks documented in
+  [`topics/remote-hosted-compatibility.md`](../../topics/remote-hosted-compatibility.md).
+- The published app must deliver meaningful companion functionality rather
+  than relying on a generic website wrapper. Native notifications, server
+  status, inbox/deep-link handling, and the planned native summary surface are
+  part of that product value.
+
+A conservative rollout keeps the low-memory native notification path, opens
+the fixed hosted client only on demand, and later makes the native summary
+surface the default while retaining the hosted full-session view as an escape
+hatch. Before adopting this path for production, verify on a physical device
+that website credentials are offered, repeat launches reuse cached assets, no
+unintended native IPC is exposed, and background FCM delivery does not start a
+WebView.
+
 ## Product Shape
 
 The app is a lightweight native companion, not a replacement YA client.
