@@ -90,6 +90,7 @@ import { getStaticSlashCommandsForProvider } from "../sdk/providers/staticSlashC
 import type { ExternalSessionTracker } from "../supervisor/ExternalSessionTracker.js";
 import type { Process } from "../supervisor/Process.js";
 import type {
+  ModelSettings,
   QueueFullResponse,
   ResumeMode,
   Supervisor,
@@ -172,17 +173,6 @@ function isQueueFullResponse(
   return "error" in result && result.error === "queue_full";
 }
 
-const AUTO_COMPACT_CONTEXT_PERCENT_THRESHOLD = 85;
-const AUTO_COMPACT_MODEL_PREFIXES = ["gpt-5.3-codex-spark"] as const;
-const AUTO_COMPACT_TARGET_PROVIDERS: ReadonlySet<ProviderName> = new Set([
-  "codex",
-  "codex-oss",
-]);
-
-type AutoCompactQueueResult =
-  | { queued: false; reason: string; command?: undefined }
-  | { queued: true; command: string };
-
 export interface SessionsDeps {
   supervisor: Supervisor;
   scanner: ProjectScanner;
@@ -220,6 +210,53 @@ export interface SessionsDeps {
   toolResultMediaStore?: ToolResultMediaStore;
   /** Data directory for local security/audit logs */
   dataDir?: string;
+}
+
+function resolveCompactModelSettings(
+  deps: SessionsDeps,
+  options: {
+    provider?: ProviderName;
+    yaModelId?: string;
+    modelCandidates?: (string | undefined)[];
+  },
+): Pick<
+  ModelSettings,
+  | "compactAtContextPercent"
+  | "compactAtContextWindow"
+  | "forceYaOrchestratedCompaction"
+  | "claudeAutoCompactPercentOverride"
+> {
+  const defaults =
+    deps.serverSettingsService?.getSetting("clientDefaults");
+  const compactAtContextPercent = resolveCompactPercent(
+    defaults?.compactAtContextPercent,
+    options.yaModelId,
+  );
+  const modelInfoService = deps.modelInfoService;
+  const resolveContextWindow = modelInfoService
+    ? (model: string | undefined, provider?: ProviderName) =>
+        modelInfoService.getContextWindow(model, provider)
+    : getModelContextWindow;
+  const compactAtContextWindow =
+    compactAtContextPercent === undefined
+      ? undefined
+      : resolveCompactWindow(
+          options.provider,
+          options.modelCandidates ?? [options.yaModelId],
+          resolveContextWindow,
+        );
+  return {
+    compactAtContextPercent,
+    compactAtContextWindow,
+    forceYaOrchestratedCompaction:
+      defaults?.forceYaOrchestratedCompaction === true,
+    claudeAutoCompactPercentOverride:
+      options.provider === "claude"
+        ? deps.serverSettingsService?.getSetting(
+            "claudeAutoCompactPercentOverride",
+          )
+        : undefined,
+  };
 }
 
 function isApprovalAuditLogEnabled(deps: SessionsDeps): boolean {
@@ -566,98 +603,6 @@ function isRestartInternalCompactCommand(message: Message): boolean {
   }
   const content = renderRestartContent(messageContent(message)).trim();
   return /^\/(?:compact|compress)\b/i.test(content);
-}
-
-function isAutoCompactModel(model: string | undefined): boolean {
-  if (!model) {
-    return false;
-  }
-  const normalized = model.toLowerCase().trim();
-  return AUTO_COMPACT_MODEL_PREFIXES.some((prefix) =>
-    normalized.startsWith(prefix),
-  );
-}
-
-function isAutoCompactEligibleMessage(message: string): boolean {
-  const trimmed = message.trim();
-  if (!trimmed) {
-    return false;
-  }
-
-  // Avoid surprise when user explicitly invokes slash commands.
-  if (trimmed.startsWith("/")) {
-    return false;
-  }
-
-  return true;
-}
-
-async function tryQueueTargetedAutoCompact(params: {
-  process: Process;
-  model: string | undefined;
-  message: string;
-  resolveContextWindow: (
-    model: string | undefined,
-    provider?: ProviderName,
-  ) => number;
-}): Promise<AutoCompactQueueResult> {
-  if (params.process.state.type !== "idle") {
-    return { queued: false, reason: "process-not-idle" };
-  }
-
-  if (!AUTO_COMPACT_TARGET_PROVIDERS.has(params.process.provider)) {
-    return { queued: false, reason: "provider-not-targeted" };
-  }
-
-  if (!isAutoCompactModel(params.model)) {
-    return { queued: false, reason: "model-not-targeted" };
-  }
-
-  if (!isAutoCompactEligibleMessage(params.message)) {
-    return { queued: false, reason: "non-user-turn" };
-  }
-
-  if (!params.process.supportsDynamicCommands) {
-    return {
-      queued: false,
-      reason: "compact-command-advertising-unavailable",
-    };
-  }
-
-  const contextUsage = extractContextUsageFromSDKMessages(
-    params.process.getMessageHistory(),
-    params.model,
-    params.process.provider,
-    params.resolveContextWindow,
-  );
-  if (!contextUsage?.contextWindow || contextUsage.contextWindow <= 0) {
-    return { queued: false, reason: "context-window-unavailable" };
-  }
-  if (contextUsage.percentage < AUTO_COMPACT_CONTEXT_PERCENT_THRESHOLD) {
-    return { queued: false, reason: "below-threshold" };
-  }
-
-  const commands = await params.process.supportedCommands();
-  if (!commands) {
-    return { queued: false, reason: "compact-command-list-unavailable" };
-  }
-
-  const command =
-    commands.find((candidate) => candidate.name === "compact")?.name ??
-    commands.find((candidate) => candidate.name === "compress")?.name;
-  if (!command) {
-    return { queued: false, reason: "compact-command-unavailable" };
-  }
-
-  const queued = params.process.queueMessage({ text: `/${command}` });
-  if (!queued.success) {
-    return {
-      queued: false,
-      reason: queued.error ?? "compact-not-queued",
-    };
-  }
-
-  return { queued: true, command };
 }
 
 function toolInputSummary(input: unknown): string {
@@ -3080,6 +3025,11 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         recapAfterSeconds: helperSettings.recapAfterSeconds,
         promptSuggestionMode: helperSettings.promptSuggestionMode,
         helperSideModel: helperSettings.helperSideModel,
+        ...resolveCompactModelSettings(deps, {
+          provider: body.provider ?? project.provider,
+          yaModelId: body.model,
+          modelCandidates: [body.model, model],
+        }),
       },
       {
         projectId: project.id,
@@ -3206,6 +3156,11 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         recapAfterSeconds: helperSettings.recapAfterSeconds,
         promptSuggestionMode: helperSettings.promptSuggestionMode,
         helperSideModel: helperSettings.helperSideModel,
+        ...resolveCompactModelSettings(deps, {
+          provider: body.provider,
+          yaModelId: body.model,
+          modelCandidates: [body.model, model],
+        }),
       },
       {
         projectId: project.id,
@@ -3723,6 +3678,15 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           helperSideModel: helperSettings.helperSideModel,
           resumeMode,
           resumeSessionAt,
+          ...resolveCompactModelSettings(deps, {
+            provider: providerName,
+            yaModelId: requestedModel,
+            modelCandidates: [
+              requestedModel,
+              model,
+              previousProcess?.resolvedModel,
+            ],
+          }),
         },
       );
     } catch (error) {
@@ -4224,6 +4188,18 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
             helperSettings.promptSuggestionMode ??
             originalMetadata?.promptSuggestionMode,
           helperSideModel: helperSettings.helperSideModel,
+          ...resolveCompactModelSettings(deps, {
+            provider: sourceProvider,
+            yaModelId:
+              body.model ??
+              deps.sessionMetadataService?.getRequestedModel(sessionId),
+            modelCandidates: [
+              body.model,
+              model,
+              oldProcess?.resolvedModel,
+              sourceSession.model,
+            ],
+          }),
         },
       );
 
@@ -4348,6 +4324,18 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           helperSettings.promptSuggestionMode ??
           originalMetadata?.promptSuggestionMode,
         helperSideModel: helperSettings.helperSideModel,
+        ...resolveCompactModelSettings(deps, {
+          provider: providerName,
+          yaModelId:
+            body.model ??
+            deps.sessionMetadataService?.getRequestedModel(sessionId),
+          modelCandidates: [
+            body.model,
+            model,
+            oldProcess?.resolvedModel,
+            sourceSession.model,
+          ],
+        }),
       },
     );
 
@@ -5035,6 +5023,11 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
               model: requestedModel,
               promptSuggestionMode: originalMetadata?.promptSuggestionMode,
               recapAfterSeconds: originalMetadata?.recapAfterSeconds,
+              ...resolveCompactModelSettings(deps, {
+                provider: providerName,
+                yaModelId: requestedModel,
+                modelCandidates: [requestedModel],
+              }),
             },
           );
           if (isQueueFullResponse(result)) {
@@ -5369,26 +5362,10 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       }
     }
 
-    const resolvedModel =
-      body.model && body.model !== "default"
-        ? body.model
-        : (process.resolvedModel ?? process.model);
-    const modelInfoService = deps.modelInfoService;
-    const resolveContextWindow = modelInfoService
-      ? (model: string | undefined, provider?: ProviderName) =>
-          modelInfoService.getContextWindow(model, provider)
-      : getModelContextWindow;
-
-    let compactQueued = false;
-    if (!body.deferred && !body.thinking && body.model === undefined) {
-      const compactAttempt = await tryQueueTargetedAutoCompact({
-        process,
-        model: resolvedModel,
-        message: body.message,
-        resolveContextWindow,
-      });
-      compactQueued = compactAttempt.queued;
-    }
+    // Retained for response compatibility. YA no longer chooses an implicit
+    // model-specific threshold; only an explicit per-model setting can trigger
+    // early compaction.
+    const compactQueued = false;
 
     // Deferred messages stay server-side until Process reaches a safe delivery
     // boundary. If the process is already idle, Process can accept them now.
@@ -5443,6 +5420,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         ? body.model
         : (process.resolvedModel ?? process.model);
     const serviceTier = normalizeOptionalServiceTier(body.serviceTier);
+    const requestedProvider =
+      metadataProvider ?? body.provider ?? process.provider;
 
     // Per-model preemptive-compaction threshold (task 029). The route holds the
     // settings; the Supervisor stays settings-agnostic. Key strictly by the YA
@@ -5454,24 +5433,14 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       body.model ??
       process.requestedModel ??
       deps.sessionMetadataService?.getRequestedModel(sessionId) ??
-      getProvider(process.provider)?.yaModelIdForReported?.(
+      getProvider(requestedProvider)?.yaModelIdForReported?.(
         process.resolvedModel,
       );
-    const compactAtContextPercent = resolveCompactPercent(
-      deps.serverSettingsService?.getSetting("clientDefaults")
-        ?.compactAtContextPercent,
+    const compactSettings = resolveCompactModelSettings(deps, {
+      provider: requestedProvider,
       yaModelId,
-    );
-    // Resolve the effective window here too — process.contextWindow is
-    // unreliable (often undefined) and the base resolver ignores always-1M.
-    const compactAtContextWindow =
-      compactAtContextPercent === undefined
-        ? undefined
-        : resolveCompactWindow(
-            process.provider,
-            [yaModelId, process.resolvedModel, process.model],
-            resolveContextWindow,
-          );
+      modelCandidates: [yaModelId, process.resolvedModel, process.model],
+    });
 
     // Use queueMessageToSession which handles thinking mode changes
     // If thinking mode changed, it will restart the process automatically
@@ -5486,7 +5455,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         serviceTier,
         thinking,
         effort,
-        providerName: metadataProvider ?? body.provider ?? process.provider,
+        providerName: requestedProvider,
         executor:
           executor ??
           metadataExecutor.executor ??
@@ -5494,8 +5463,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           undefined,
         globalInstructions: queueGlobalInstructions,
         permissions: body.permissions,
-        compactAtContextPercent,
-        compactAtContextWindow,
+        ...compactSettings,
       },
     );
 

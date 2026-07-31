@@ -86,6 +86,7 @@ async function fetchOllamaModelDetails(
 export class ClaudeOllamaProvider extends ClaudeProvider {
   override readonly name = "claude-ollama" as const;
   override readonly displayName = "Claude + Ollama";
+  override readonly supportsLaunchCompactPercentOverride = false;
   override readonly promptCacheKeepalive:
     | PromptCacheKeepaliveProviderInfo
     | undefined = undefined;

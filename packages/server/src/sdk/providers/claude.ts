@@ -94,6 +94,8 @@ const CLAUDE_LIVENESS_PROBE_SOURCE = "claude:control/mcp_status";
 const CLAUDE_PROMPT_CACHE_KEEPALIVE_TIMEOUT_MS = 60_000;
 const CLAUDE_PROMPT_CACHE_KEEPALIVE_MAX_BUDGET_USD = 0.02;
 const DEFAULT_CLAUDE_LOGIN_COMMAND = "claude auth login --claudeai";
+const CLAUDE_AUTOCOMPACT_PCT_OVERRIDE =
+  "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE";
 const CLAUDE_EFFORT_LEVELS: EffortLevel[] = [
   "low",
   "medium",
@@ -103,6 +105,18 @@ const CLAUDE_EFFORT_LEVELS: EffortLevel[] = [
 ];
 const execFileAsync = promisify(execFile);
 const SESSION_ID_PATTERN = /^[0-9a-f-]{36}$/i;
+
+export function getClaudeAutoCompactOverrideEnv(
+  percent: number | undefined,
+): Record<string, string> | undefined {
+  if (percent === undefined) return undefined;
+  if (!Number.isInteger(percent) || percent < 1 || percent > 100) {
+    throw new Error(
+      "Claude auto-compaction percentage must be an integer from 1 to 100",
+    );
+  }
+  return { [CLAUDE_AUTOCOMPACT_PCT_OVERRIDE]: String(percent) };
+}
 
 function createSandboxedClaudeSpawn(
   sessionSandbox: SessionSandboxRuntime,
@@ -849,6 +863,7 @@ export class ClaudeProvider implements AgentProvider {
   // window). Do not re-enable on the basis of seeing CLI recaps in the JSONL.
   readonly supportsNativeRecaps = false;
   readonly supportsNativePromptSuggestions: boolean = true;
+  readonly supportsLaunchCompactPercentOverride: boolean = true;
   readonly promptCacheKeepalive?: PromptCacheKeepaliveProviderInfo = {
     supportsNoContextPollutionNudge: true,
     defaultMode: "auto" as const,
@@ -1642,16 +1657,29 @@ export class ClaudeProvider implements AgentProvider {
     const agentctlSessionEnvBridge = options.executor
       ? null
       : createAgentctlSessionEnvBridge(options.resumeSessionId);
+    const autoCompactOverrideEnv = getClaudeAutoCompactOverrideEnv(
+      options.launchCompactPercentOverride,
+    );
+    const baseClaudeEnv = {
+      ...this.getEnv(options.model),
+      ...autoCompactOverrideEnv,
+    };
     const claudeEnv = agentctlSessionEnvBridge
-      ? agentctlSessionEnvBridge.extendEnv(this.getEnv(options.model))
-      : this.getEnv(options.model);
+      ? agentctlSessionEnvBridge.extendEnv(baseClaudeEnv)
+      : baseClaudeEnv;
+    const configuredRemoteEnv = options.executor
+      ? {
+          ...options.remoteEnv,
+          ...autoCompactOverrideEnv,
+        }
+      : options.remoteEnv;
     const remoteEnv =
       options.executor && options.resumeSessionId
         ? {
-            ...options.remoteEnv,
+            ...configuredRemoteEnv,
             AGENTCTL_SESSION_ID: options.resumeSessionId,
           }
-        : options.remoteEnv;
+        : configuredRemoteEnv;
 
     // Effective cwd for the session (may be translated for remote executors)
     let effectiveCwd = options.cwd;

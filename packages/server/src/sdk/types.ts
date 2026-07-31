@@ -193,6 +193,11 @@ export interface StartSessionOptions {
   thinking?: import("@yep-anywhere/shared").ThinkingConfig;
   /** Effort level for response quality (undefined = SDK default) */
   effort?: import("@yep-anywhere/shared").EffortLevel;
+  /**
+   * Launch-time percentage override for Claude Code's own auto-compaction
+   * window. Omitted leaves its environment/default unchanged.
+   */
+  launchCompactPercentOverride?: number;
   onToolApproval?: CanUseTool;
   /** SSH host for remote execution (undefined = local) */
   executor?: string;

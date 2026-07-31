@@ -154,6 +154,7 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
   override readonly displayName = "Claude Gateway";
   override readonly supportsThinkingToggle = true;
   override readonly supportsNativePromptSuggestions = false;
+  override readonly supportsLaunchCompactPercentOverride = false;
   override readonly promptCacheKeepalive:
     | PromptCacheKeepaliveProviderInfo
     | undefined = undefined;

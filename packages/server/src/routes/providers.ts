@@ -152,6 +152,10 @@ export function createProvidersRoutes(deps: ProviderRouteDeps = {}): Hono {
         supportsNativeRecaps: provider.supportsNativeRecaps,
         supportsNativePromptSuggestions:
           provider.supportsNativePromptSuggestions,
+        supportsNativeCompactThreshold:
+          provider.supportsNativeCompactThreshold,
+        supportsLaunchCompactPercentOverride:
+          provider.supportsLaunchCompactPercentOverride,
         promptCacheKeepalive: provider.promptCacheKeepalive,
         supportsForkSession: typeof provider.forkSession === "function",
       } satisfies ProviderInfo;

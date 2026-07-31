@@ -1763,6 +1763,11 @@ describe("Sessions metadata route", () => {
         setRequestedModel: vi.fn(async () => undefined),
         getExecutor: vi.fn(() => undefined),
       } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+      serverSettingsService: {
+        getSetting: vi.fn((key: string) =>
+          key === "claudeAutoCompactPercentOverride" ? 60 : undefined,
+        ),
+      } as unknown as NonNullable<SessionsDeps["serverSettingsService"]>,
     });
 
     const response = await routes.request(
@@ -2213,6 +2218,68 @@ describe("Sessions metadata route", () => {
         model: "gpt-5.4",
         serviceTier: "priority",
         providerName: "codex",
+        claudeAutoCompactPercentOverride: undefined,
+      }),
+    );
+  });
+
+  it("passes the global Claude compaction override to queued launches", async () => {
+    const project = createProject();
+    const queueMessageToSession = vi.fn(async () => ({
+      success: true as const,
+      restarted: false,
+      process: { id: "proc-1" },
+    }));
+
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => ({
+          projectPath: project.path,
+          isTerminated: false,
+          provider: "claude",
+          model: "sonnet",
+          resolvedModel: "claude-sonnet-4-6",
+          executor: undefined,
+        })),
+        queueMessageToSession,
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(
+        () =>
+          ({
+            getSessionSummary: vi.fn(async () => null),
+          }) as unknown as ISessionReader,
+      ),
+      sessionMetadataService: {
+        getProvider: vi.fn(() => "claude"),
+        getRequestedModel: vi.fn(() => "sonnet"),
+        setRequestedModel: vi.fn(async () => undefined),
+        getExecutor: vi.fn(() => undefined),
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+      serverSettingsService: {
+        getSetting: vi.fn((key: string) =>
+          key === "claudeAutoCompactPercentOverride" ? 60 : undefined,
+        ),
+      } as unknown as NonNullable<SessionsDeps["serverSettingsService"]>,
+    });
+
+    const response = await routes.request("/sessions/sess-1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "continue" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(queueMessageToSession).toHaveBeenCalledWith(
+      "sess-1",
+      project.path,
+      expect.objectContaining({ text: "continue" }),
+      undefined,
+      expect.objectContaining({
+        providerName: "claude",
+        claudeAutoCompactPercentOverride: 60,
       }),
     );
   });

@@ -920,6 +920,7 @@ export class CodexProvider implements AgentProvider {
   readonly supportsSteering = true;
   readonly supportsRecaps = true;
   readonly supportsNativePromptSuggestions = false;
+  readonly supportsNativeCompactThreshold = true;
 
   private readonly config: CodexProviderConfig;
   private modelCache: { models: ModelInfo[]; expiresAt: number } | null = null;
@@ -2384,7 +2385,10 @@ export class CodexProvider implements AgentProvider {
   }
 
   private buildThreadConfigOverrides(
-    options: Pick<StartSessionOptions, "effort" | "thinking" | "model">,
+    options: Pick<
+      StartSessionOptions,
+      "compactAtContextTokenLimit" | "effort" | "thinking" | "model"
+    >,
   ): NonNullable<ThreadStartParams["config"]> {
     // The OpenAI browser plugin controls a desktop-owned browser backend that
     // YA's Codex app-server host does not provide. Suppress the unavailable
@@ -2407,6 +2411,19 @@ export class CodexProvider implements AgentProvider {
     );
     if (reasoningEffort) {
       config.model_reasoning_effort = reasoningEffort;
+    }
+    if (
+      options.compactAtContextTokenLimit !== undefined &&
+      Number.isFinite(options.compactAtContextTokenLimit) &&
+      options.compactAtContextTokenLimit > 0
+    ) {
+      config.model_auto_compact_token_limit = Math.round(
+        options.compactAtContextTokenLimit,
+      );
+      // The YA setting is explicitly a percentage of the full active context.
+      // Pin the scope so a user's Codex config cannot reinterpret it as growth
+      // after the carried compaction prefix.
+      config.model_auto_compact_token_limit_scope = "total";
     }
     return config;
   }

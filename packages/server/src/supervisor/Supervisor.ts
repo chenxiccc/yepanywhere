@@ -14,7 +14,6 @@ import {
   type ThinkingConfig,
   type UrlProjectId,
   type WorkstreamId,
-  isClaudeProviderName,
   truncateSessionTitle,
 } from "@yep-anywhere/shared";
 import type { AgentActivity, PendingInputType } from "@yep-anywhere/shared";
@@ -246,6 +245,69 @@ export function crossesCompactThreshold(
   return inputTokens >= (percent / 100) * contextWindow;
 }
 
+export function resolveNativeCompactTokenLimit(
+  provider:
+    | Pick<AgentProvider, "supportsNativeCompactThreshold">
+    | null
+    | undefined,
+  settings:
+    | Pick<
+        ModelSettings,
+        | "compactAtContextPercent"
+        | "compactAtContextWindow"
+        | "forceYaOrchestratedCompaction"
+      >
+    | undefined,
+): number | undefined {
+  if (
+    provider?.supportsNativeCompactThreshold !== true ||
+    settings?.forceYaOrchestratedCompaction === true
+  ) {
+    return undefined;
+  }
+  const percent = settings?.compactAtContextPercent;
+  const contextWindow = settings?.compactAtContextWindow;
+  if (
+    typeof percent !== "number" ||
+    percent <= 0 ||
+    percent >= 100 ||
+    typeof contextWindow !== "number" ||
+    !Number.isFinite(contextWindow) ||
+    contextWindow <= 0
+  ) {
+    return undefined;
+  }
+  return Math.max(1, Math.round((percent / 100) * contextWindow));
+}
+
+function resolveLaunchCompactPercentOverride(
+  provider:
+    | Pick<AgentProvider, "supportsLaunchCompactPercentOverride">
+    | null
+    | undefined,
+  settings:
+    | Pick<ModelSettings, "claudeAutoCompactPercentOverride">
+    | undefined,
+): number | undefined {
+  if (provider?.supportsLaunchCompactPercentOverride !== true) {
+    return undefined;
+  }
+  return settings?.claudeAutoCompactPercentOverride;
+}
+
+export function shouldYaOrchestrateCompactThreshold(
+  provider:
+    | Pick<AgentProvider, "supportsNativeCompactThreshold">
+    | null
+    | undefined,
+  forceYaOrchestratedCompaction: boolean | undefined,
+): boolean {
+  return (
+    forceYaOrchestratedCompaction === true ||
+    provider?.supportsNativeCompactThreshold !== true
+  );
+}
+
 function getStaleInTurnThresholdMs(provider: ProviderName): number {
   return provider === "codex" || provider === "codex-oss"
     ? CODEX_STALE_IN_TURN_THRESHOLD_MS
@@ -400,6 +462,16 @@ export interface ModelSettings {
    * undefined and ignores always-1M for opus/sonnet.
    */
   compactAtContextWindow?: number;
+  /**
+   * Default-off escape hatch: ignore a provider-native threshold capability
+   * and retain YA's usage check plus manual compact command.
+   */
+  forceYaOrchestratedCompaction?: boolean;
+  /**
+   * Claude Code's launch-time percentage override for its own auto-compaction
+   * window. Undefined leaves Claude's environment/default unchanged.
+   */
+  claudeAutoCompactPercentOverride?: number;
   /** Settled YA host filesystem confinement for this session. */
   sandboxLevel?: SessionSandboxLevel;
   /** Opaque project-private provider-state key restored from session metadata. */
@@ -557,6 +629,12 @@ export class Supervisor {
    * while a process holds patient deferred entries; cleared on unregister.
    */
   private patientCheckTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  /**
+   * Last assistant-output version considered for YA-owned threshold compaction,
+   * keyed by process id. One bounded check per completed assistant turn avoids
+   * retriggering on the idle boundary produced by compaction itself.
+   */
+  private compactThresholdCheckedAssistantVersion = new Map<string, number>();
   private interruptTimeoutMs: number;
   private sessionMetadataService?: SessionMetadataService;
   private sessionQueuePersistenceService?: SessionQueuePersistenceService;
@@ -981,6 +1059,8 @@ export class Supervisor {
       model: modelSettings?.model,
       thinking: modelSettings?.thinking,
       effort: modelSettings?.effort,
+      launchCompactPercentOverride:
+        modelSettings?.claudeAutoCompactPercentOverride,
       clientName: modelSettings?.clientName,
       globalInstructions: modelSettings?.globalInstructions,
       promptSuggestions: promptSuggestionMode === "native",
@@ -1044,6 +1124,12 @@ export class Supervisor {
       permissionMode: effectiveMode,
       provider: "claude", // Real SDK is always Claude
       model: modelSettings?.model,
+      compactAtContextPercent: modelSettings?.compactAtContextPercent,
+      compactAtContextWindow: modelSettings?.compactAtContextWindow,
+      forceYaOrchestratedCompaction:
+        modelSettings?.forceYaOrchestratedCompaction,
+      launchCompactPercentOverride:
+        modelSettings?.claudeAutoCompactPercentOverride,
       serviceTier: modelSettings?.serviceTier,
       thinking: modelSettings?.thinking,
       effort: modelSettings?.effort,
@@ -1081,6 +1167,10 @@ export class Supervisor {
     message: UserMessage,
     options?: { allowSteer?: boolean },
   ): Promise<ReturnType<Process["queueMessage"]>> {
+    // Record delivery intent before slash-command discovery or any other
+    // awaited preparation. Speculative idle work must yield as soon as input
+    // arrives, even while the process still reports `idle`.
+    process.noteInputIntent();
     await process.primeSupportedCommandsForMessage(message);
     return process.queueMessage(message, options);
   }
@@ -1211,15 +1301,20 @@ export class Supervisor {
 
   private async tryResumeCompaction(
     process: Process,
-    options?: { allowNonIdleStart?: boolean },
+    options?: {
+      allowNonIdleStart?: boolean;
+      expectedInputIntentVersion?: number;
+    },
   ): Promise<ResumeCompactionAttempt> {
-    if (!isClaudeProviderName(process.provider)) {
+    if (
+      options?.expectedInputIntentVersion !== undefined &&
+      process.inputIntentVersion !== options.expectedInputIntentVersion
+    ) {
       return {
-        status: "unavailable",
-        reason: `${process.provider} does not support compact-first resume`,
+        status: "skipped",
+        reason: "new input arrived before compaction started",
       };
     }
-
     if (!options?.allowNonIdleStart && process.state.type !== "idle") {
       return {
         status: "skipped",
@@ -1231,8 +1326,36 @@ export class Supervisor {
     if (!command.ok) {
       return command.attempt;
     }
+    if (
+      options?.expectedInputIntentVersion !== undefined &&
+      process.inputIntentVersion !== options.expectedInputIntentVersion
+    ) {
+      return {
+        status: "skipped",
+        reason: "new input arrived before compaction started",
+      };
+    }
+    if (!options?.allowNonIdleStart && process.state.type !== "idle") {
+      return {
+        status: "skipped",
+        reason: `process became ${process.state.type}`,
+      };
+    }
 
     const watcher = this.watchResumeCompaction(process, command.command);
+    const providerResult = await process.runProviderCommand(command.command);
+    if (providerResult.handled) {
+      if (providerResult.error) {
+        watcher.cancel();
+        return {
+          status: "failed",
+          command: command.command,
+          reason: providerResult.error,
+        };
+      }
+      return watcher.promise;
+    }
+
     const queued = process.queueMessage(
       // Hidden: native compaction shows no `/compact` user turn, so neither
       // should YA-initiated compaction (resume-time or threshold-triggered).
@@ -1252,46 +1375,53 @@ export class Supervisor {
   }
 
   /**
-   * Threshold-triggered preemptive compaction (task 029). When the per-model
-   * compact-at-% is set and live context already sits at/over that fraction of
-   * the model's window, run a `/compact` before delivering the next turn — the
-   * same native compaction the harness would eventually auto-fire, just
-   * earlier. Conservative per task 002: claude only, idle process only, only
-   * when usage is known. Best-effort — the turn is delivered regardless of the
-   * compaction outcome, and there is no retry loop. Reuses
-   * `tryResumeCompaction`, so the boundary the client renders is the native
-   * `compact_boundary` and the `/compact` carries no visible user echo.
+   * Threshold-triggered speculative compaction (task 029). At the first idle
+   * boundary after assistant output, check live usage and start the provider's
+   * compact command immediately when the configured YA-owned threshold has
+   * been crossed. This deliberately spends occasional unnecessary provider
+   * compute so a later user request never has to initiate and await compaction.
    *
-   * No double compaction: live usage is re-read and re-tested immediately
-   * before executing (there is no deferral gap between decide and run), so a
-   * prior compaction — the harness's enforced one or a previous voluntary one —
-   * that dropped usage below the threshold makes the next evaluation a no-op.
-   * The voluntary threshold also sits well below the harness's enforced point,
-   * so in steady state the two never fire together.
+   * One assistant-output version is considered once. The compact operation's
+   * own idle boundary therefore cannot recursively trigger another compact,
+   * even if the durable usage summary has not caught up yet.
    */
-  private async maybeCompactBeforeDelivery(
-    process: Process,
-    sessionId: string,
-    modelSettings: ModelSettings | undefined,
-  ): Promise<void> {
-    const percent = modelSettings?.compactAtContextPercent;
+  private async maybeCompactAfterIdle(process: Process): Promise<void> {
+    const percent = process.compactAtContextPercent;
     if (typeof percent !== "number" || percent <= 0 || percent >= 100) return;
-    // Only an idle claude process can be safely compacted before delivery;
-    // tryResumeCompaction also self-guards, but skip the usage read otherwise.
     if (process.state.type !== "idle") return;
-    if (!isClaudeProviderName(process.provider)) {
+    if (process.isRetainingProviderWork()) return;
+    const provider = this.resolveProvider({ providerName: process.provider });
+    if (
+      !shouldYaOrchestrateCompactThreshold(
+        provider,
+        process.forceYaOrchestratedCompaction,
+      )
+    ) {
       return;
     }
-    // Prefer the route-resolved window; process.contextWindow is often
-    // undefined and ignores always-1M for opus/sonnet.
+    const assistantActivityVersion = process.assistantActivityVersion;
+    const inputIntentVersion = process.inputIntentVersion;
+    if (
+      assistantActivityVersion <= 0 ||
+      this.compactThresholdCheckedAssistantVersion.get(process.id) ===
+        assistantActivityVersion
+    ) {
+      return;
+    }
+    this.compactThresholdCheckedAssistantVersion.set(
+      process.id,
+      assistantActivityVersion,
+    );
+
+    // Prefer the route-resolved window; process.contextWindow can be undefined.
     const contextWindow =
-      modelSettings?.compactAtContextWindow ?? process.contextWindow;
+      process.compactAtContextWindow ?? process.contextWindow;
     if (!contextWindow || contextWindow <= 0) return;
 
     let inputTokens: number | undefined;
     try {
       const summary = await this.onSessionSummary?.(
-        sessionId,
+        process.sessionId,
         process.projectId,
       );
       inputTokens = summary?.contextUsage?.inputTokens;
@@ -1299,33 +1429,44 @@ export class Supervisor {
       // Usage unavailable → never block the turn.
       return;
     }
+    // A user turn that arrived while the summary was loading wins immediately;
+    // do not interrupt it or make it wait for speculative work.
+    if (
+      process.state.type !== "idle" ||
+      process.assistantActivityVersion !== assistantActivityVersion ||
+      process.inputIntentVersion !== inputIntentVersion
+    ) {
+      return;
+    }
     if (!crossesCompactThreshold(percent, contextWindow, inputTokens)) return;
 
     try {
-      const attempt = await this.tryResumeCompaction(process);
+      const attempt = await this.tryResumeCompaction(process, {
+        expectedInputIntentVersion: inputIntentVersion,
+      });
       if (attempt.status !== "completed") {
         getLogger().info(
           {
             event: "threshold_compaction_skipped",
-            sessionId,
+            sessionId: process.sessionId,
             processId: process.id,
             status: attempt.status,
             percent,
             inputTokens,
             thresholdTokens: Math.round((percent / 100) * contextWindow),
           },
-          "Threshold compaction did not complete; delivering turn as-is",
+          "Idle threshold compaction did not complete",
         );
       }
     } catch (error) {
       getLogger().warn(
         {
           event: "threshold_compaction_failed",
-          sessionId,
+          sessionId: process.sessionId,
           processId: process.id,
           error: error instanceof Error ? error.message : String(error),
         },
-        "Threshold compaction errored; delivering turn as-is",
+        "Idle threshold compaction errored",
       );
     }
   }
@@ -1468,6 +1609,8 @@ export class Supervisor {
       model: modelSettings?.model,
       thinking: modelSettings?.thinking,
       effort: modelSettings?.effort,
+      launchCompactPercentOverride:
+        modelSettings?.claudeAutoCompactPercentOverride,
       clientName: modelSettings?.clientName,
       executor: modelSettings?.executor,
       remoteEnv: modelSettings?.remoteEnv,
@@ -1534,6 +1677,12 @@ export class Supervisor {
       permissionMode: effectiveMode,
       provider: "claude", // Real SDK is always Claude
       model: modelSettings?.model,
+      compactAtContextPercent: modelSettings?.compactAtContextPercent,
+      compactAtContextWindow: modelSettings?.compactAtContextWindow,
+      forceYaOrchestratedCompaction:
+        modelSettings?.forceYaOrchestratedCompaction,
+      launchCompactPercentOverride:
+        modelSettings?.claudeAutoCompactPercentOverride,
       serviceTier: modelSettings?.serviceTier,
       thinking: modelSettings?.thinking,
       effort: modelSettings?.effort,
@@ -1597,6 +1746,12 @@ export class Supervisor {
       modelSettings?.promptSuggestionMode,
       activeProvider,
     );
+    const compactAtContextTokenLimit = resolveNativeCompactTokenLimit(
+      activeProvider,
+      modelSettings,
+    );
+    const launchCompactPercentOverride =
+      resolveLaunchCompactPercentOverride(activeProvider, modelSettings);
     const tempSessionId = resumeSessionId ?? randomUUID();
     const sessionSandbox = await prepareSessionSandbox({
       level: modelSettings?.sandboxLevel,
@@ -1618,6 +1773,12 @@ export class Supervisor {
       serviceTier: modelSettings?.serviceTier,
       thinking: modelSettings?.thinking,
       effort: modelSettings?.effort,
+      ...(compactAtContextTokenLimit === undefined
+        ? {}
+        : { compactAtContextTokenLimit }),
+      ...(launchCompactPercentOverride === undefined
+        ? {}
+        : { launchCompactPercentOverride }),
       clientName: modelSettings?.clientName,
       executor: modelSettings?.executor,
       remoteEnv: modelSettings?.remoteEnv,
@@ -1692,6 +1853,12 @@ export class Supervisor {
       permissionMode: effectiveMode,
       provider: activeProvider.name,
       model: modelSettings?.model,
+      compactAtContextPercent: modelSettings?.compactAtContextPercent,
+      compactAtContextWindow: modelSettings?.compactAtContextWindow,
+      forceYaOrchestratedCompaction:
+        modelSettings?.forceYaOrchestratedCompaction,
+      compactAtContextTokenLimit,
+      launchCompactPercentOverride,
       serviceTier: modelSettings?.serviceTier,
       thinking: modelSettings?.thinking,
       effort: modelSettings?.effort,
@@ -1750,6 +1917,12 @@ export class Supervisor {
       modelSettings?.promptSuggestionMode,
       activeProvider,
     );
+    const compactAtContextTokenLimit = resolveNativeCompactTokenLimit(
+      activeProvider,
+      modelSettings,
+    );
+    const launchCompactPercentOverride =
+      resolveLaunchCompactPercentOverride(activeProvider, modelSettings);
     const tempSessionId = resumeSessionId ?? randomUUID();
     const sessionSandbox = await prepareSessionSandbox({
       level: modelSettings?.sandboxLevel,
@@ -1772,6 +1945,12 @@ export class Supervisor {
       serviceTier: modelSettings?.serviceTier,
       thinking: modelSettings?.thinking,
       effort: modelSettings?.effort,
+      ...(compactAtContextTokenLimit === undefined
+        ? {}
+        : { compactAtContextTokenLimit }),
+      ...(launchCompactPercentOverride === undefined
+        ? {}
+        : { launchCompactPercentOverride }),
       executor: modelSettings?.executor,
       remoteEnv: modelSettings?.remoteEnv,
       globalInstructions: modelSettings?.globalInstructions,
@@ -1845,6 +2024,12 @@ export class Supervisor {
       permissionMode: effectiveMode,
       provider: activeProvider.name,
       model: modelSettings?.model,
+      compactAtContextPercent: modelSettings?.compactAtContextPercent,
+      compactAtContextWindow: modelSettings?.compactAtContextWindow,
+      forceYaOrchestratedCompaction:
+        modelSettings?.forceYaOrchestratedCompaction,
+      compactAtContextTokenLimit,
+      launchCompactPercentOverride,
       serviceTier: modelSettings?.serviceTier,
       thinking: modelSettings?.thinking,
       effort: modelSettings?.effort,
@@ -1921,6 +2106,10 @@ export class Supervisor {
       idleTimeoutMs: this.idleTimeoutMs,
       permissionMode: effectiveMode,
       provider: "claude", // Legacy mock SDK simulates Claude
+      compactAtContextPercent: modelSettings?.compactAtContextPercent,
+      compactAtContextWindow: modelSettings?.compactAtContextWindow,
+      forceYaOrchestratedCompaction:
+        modelSettings?.forceYaOrchestratedCompaction,
       toolResultMediaStore: this.toolResultMediaStore,
     };
 
@@ -2640,6 +2829,12 @@ export class Supervisor {
       serviceTier: nextServiceTier,
       thinking: nextThinking,
       effort: nextEffort,
+      compactAtContextPercent: process.compactAtContextPercent,
+      compactAtContextWindow: process.compactAtContextWindow,
+      forceYaOrchestratedCompaction:
+        process.forceYaOrchestratedCompaction,
+      claudeAutoCompactPercentOverride:
+        process.launchCompactPercentOverride,
       providerName: process.provider,
       executor: process.executor,
       recapMode: process.recapMode,
@@ -2777,8 +2972,62 @@ export class Supervisor {
     const requestedServiceTier = isActiveSteeringMessage
       ? process.serviceTier
       : (modelSettings?.serviceTier ?? process.serviceTier);
+    const hasExplicitCompactSettings =
+      modelSettings !== undefined &&
+      (Object.hasOwn(modelSettings, "compactAtContextPercent") ||
+        Object.hasOwn(modelSettings, "compactAtContextWindow") ||
+        Object.hasOwn(modelSettings, "forceYaOrchestratedCompaction"));
+    const requestedCompactSettings = isActiveSteeringMessage
+      ? {
+          compactAtContextPercent: process.compactAtContextPercent,
+          compactAtContextWindow: process.compactAtContextWindow,
+          forceYaOrchestratedCompaction:
+            process.forceYaOrchestratedCompaction,
+        }
+      : hasExplicitCompactSettings
+        ? {
+            compactAtContextPercent: modelSettings?.compactAtContextPercent,
+            compactAtContextWindow: modelSettings?.compactAtContextWindow,
+            forceYaOrchestratedCompaction:
+              modelSettings?.forceYaOrchestratedCompaction,
+          }
+        : {
+            compactAtContextPercent: process.compactAtContextPercent,
+            compactAtContextWindow: process.compactAtContextWindow,
+            forceYaOrchestratedCompaction:
+              process.forceYaOrchestratedCompaction,
+          };
+    const effectiveProvider = this.resolveProvider({
+      providerName: process.provider,
+    });
+    const requestedCompactTokenLimit = isActiveSteeringMessage
+      ? process.compactAtContextTokenLimit
+      : resolveNativeCompactTokenLimit(
+          effectiveProvider,
+          requestedCompactSettings,
+        );
+    const compactThresholdChanged =
+      hasExplicitCompactSettings &&
+      !isActiveSteeringMessage &&
+      process.compactAtContextTokenLimit !== requestedCompactTokenLimit;
+    const hasExplicitLaunchCompactPercentOverride =
+      modelSettings !== undefined &&
+      Object.hasOwn(modelSettings, "claudeAutoCompactPercentOverride");
+    const requestedLaunchCompactPercentOverride = isActiveSteeringMessage
+      ? process.launchCompactPercentOverride
+      : hasExplicitLaunchCompactPercentOverride
+        ? resolveLaunchCompactPercentOverride(
+            effectiveProvider,
+            modelSettings,
+          )
+        : process.launchCompactPercentOverride;
+    const launchCompactPercentOverrideChanged =
+      hasExplicitLaunchCompactPercentOverride &&
+      !isActiveSteeringMessage &&
+      process.launchCompactPercentOverride !==
+        requestedLaunchCompactPercentOverride;
 
-    // Check if service tier/thinking/effort settings changed.
+    // Check if service tier/thinking/effort/launch compaction settings changed.
     // Service tier is cost-affecting, so changes require an explicit restart
     // rather than being inferred from a normal prompt.
     const serviceTierChanged = process.serviceTier !== requestedServiceTier;
@@ -2788,9 +3037,17 @@ export class Supervisor {
     );
     const effortChanged = process.effort !== requestedEffort;
 
-    if (serviceTierChanged || thinkingChanged || effortChanged) {
+    if (
+      serviceTierChanged ||
+      thinkingChanged ||
+      effortChanged ||
+      compactThresholdChanged ||
+      launchCompactPercentOverrideChanged
+    ) {
       if (
         !serviceTierChanged &&
+        !compactThresholdChanged &&
+        !launchCompactPercentOverrideChanged &&
         thinkingChanged &&
         !effortChanged &&
         canApplyThinkingConfigDynamically(
@@ -2819,6 +3076,8 @@ export class Supervisor {
         }
       } else if (
         !serviceTierChanged &&
+        !compactThresholdChanged &&
+        !launchCompactPercentOverrideChanged &&
         !thinkingChanged &&
         effortChanged &&
         process.supportsEffortChange
@@ -2828,11 +3087,11 @@ export class Supervisor {
           throw new Error("Provider did not apply the effort change");
         }
       } else {
-        // Effort changed or no dynamic support: restart process
+        // Launch-scoped configuration changed or no dynamic support: restart.
         const log = getLogger();
         log.info(
           {
-            event: "thinking_mode_changed_queue_restart",
+            event: "launch_scoped_settings_changed_queue_restart",
             sessionId,
             processId: process.id,
             oldThinking: process.thinking?.type,
@@ -2841,8 +3100,15 @@ export class Supervisor {
             newThinking: requestedThinking?.type,
             newEffort: requestedEffort,
             newServiceTier: requestedServiceTier,
+            oldCompactAtContextTokenLimit:
+              process.compactAtContextTokenLimit,
+            newCompactAtContextTokenLimit: requestedCompactTokenLimit,
+            oldLaunchCompactPercentOverride:
+              process.launchCompactPercentOverride,
+            newLaunchCompactPercentOverride:
+              requestedLaunchCompactPercentOverride,
           },
-          "Service tier/thinking/effort changed on queue, restarting process",
+          "Launch-scoped session settings changed on queue, restarting process",
         );
 
         await process.abort();
@@ -2850,6 +3116,9 @@ export class Supervisor {
 
         const restartModelSettings: ModelSettings = {
           ...modelSettings,
+          ...requestedCompactSettings,
+          claudeAutoCompactPercentOverride:
+            requestedLaunchCompactPercentOverride,
           serviceTier: requestedServiceTier,
           recapMode: modelSettings?.recapMode ?? process.recapMode,
           recapAfterSeconds:
@@ -2879,11 +3148,12 @@ export class Supervisor {
     if (permissionMode) {
       process.setPermissionMode(permissionMode);
     }
-
-    // Preemptively compact when this turn would push an already-near-threshold
-    // session over its per-model compact-early limit (task 029). No-op unless
-    // the threshold is set and the idle process is over it.
-    await this.maybeCompactBeforeDelivery(process, sessionId, modelSettings);
+    process.updateCompactThresholdSettings({
+      percent: requestedCompactSettings.compactAtContextPercent,
+      contextWindow: requestedCompactSettings.compactAtContextWindow,
+      forceYaOrchestratedCompaction:
+        requestedCompactSettings.forceYaOrchestratedCompaction,
+    });
 
     const result = await this.queueProcessMessage(process, message);
     if (result.success) {
@@ -3886,6 +4156,7 @@ export class Supervisor {
         }
         if (event.state.type === "idle") {
           this.flushPendingForkedRecapRequest(process);
+          void this.maybeCompactAfterIdle(process);
         }
         // Parent started a new turn: cancel any in-flight/deferred forked recap
         // so a returning user's live turn is not shadowed by a stale recap.
@@ -4049,6 +4320,7 @@ export class Supervisor {
 
   private unregisterProcess(process: Process): void {
     this.observedProcessIds.delete(process.id);
+    this.compactThresholdCheckedAssistantVersion.delete(process.id);
     this.cacheMissBillingMonitor.forgetProcess(process.id);
     this.pendingForkedRecapRequests.delete(process.id);
     this.forkedRecapInFlight.get(process.id)?.abort();
@@ -4340,6 +4612,9 @@ export class Supervisor {
         process.projectId,
         process.isRetainingProviderWork() ? "in-turn" : "idle",
       );
+      if (!process.isRetainingProviderWork()) {
+        void this.maybeCompactAfterIdle(process);
+      }
     }
   }
 

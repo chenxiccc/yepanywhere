@@ -5,6 +5,7 @@ import {
 } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useProviderSubscriptionUsage } from "../hooks/useProviderSubscriptionUsage";
+import { useProviders } from "../hooks/useProviders";
 import { useServerSettings } from "../hooks/useServerSettings";
 import { useI18n } from "../i18n";
 import type { ContextUsage } from "../types";
@@ -16,8 +17,8 @@ interface ContextThresholdQuickEditProps {
   usage?: ContextUsage;
   /**
    * YA model id (launch alias, e.g. "opus") — the key the Settings slider and
-   * migration use. The toolbar resolves this from the session's requested model,
-   * not the reported one. See topics/provider-abstraction.md.
+   * server threshold lookup use. The toolbar resolves this from the session's
+   * requested model, not the reported one. See topics/provider-abstraction.md.
    */
   model?: string;
   /** Provider account whose subscription windows apply to this model. */
@@ -66,6 +67,7 @@ export function ContextThresholdQuickEdit({
 }: ContextThresholdQuickEditProps) {
   const { t } = useI18n();
   const { settings, updateSetting } = useServerSettings();
+  const { providers } = useProviders();
   const {
     usage: subscriptionUsage,
     loading: subscriptionUsageLoading,
@@ -82,6 +84,11 @@ export function ContextThresholdQuickEdit({
     model,
   );
   const canInspectUsage = bindingUsageWindow !== null;
+  const supportsNativeCompactThreshold =
+    providers.find((candidate) => candidate.name === provider)
+      ?.supportsNativeCompactThreshold === true;
+  const forceYaOrchestratedCompaction =
+    settings?.clientDefaults?.forceYaOrchestratedCompaction === true;
   const stored =
     (model
       ? settings?.clientDefaults?.compactAtContextPercent?.[model]
@@ -245,6 +252,23 @@ export function ContextThresholdQuickEdit({
                 })
               : t("compactThresholdQuickOff")}
           </div>
+          {supportsNativeCompactThreshold && (
+            <label className="context-threshold-popover-force">
+              <input
+                type="checkbox"
+                checked={forceYaOrchestratedCompaction}
+                onChange={(event) => {
+                  void updateSetting("clientDefaults", {
+                    forceYaOrchestratedCompaction:
+                      event.currentTarget.checked,
+                  }).catch(() => {
+                    // surfaced via the hook's error state
+                  });
+                }}
+              />
+              <span>{t("compactThresholdQuickForceYa")}</span>
+            </label>
+          )}
         </div>
       )}
     </div>

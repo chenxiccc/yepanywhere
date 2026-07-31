@@ -117,6 +117,11 @@ export interface ServerSettings {
   grokBuildUseXaiApiKey?: boolean;
   /** Exact previous/custom Claude model ids opted into provider catalogs. */
   claudeAdditionalModels?: ClaudeAdditionalModelSelection[];
+  /**
+   * Claude Code launch-time override for the percentage of its own
+   * auto-compaction window. Absent leaves Claude's environment unchanged.
+   */
+  claudeAutoCompactPercentOverride?: number;
   /** Whether the device bridge (emulator/device streaming) feature is enabled */
   deviceBridgeEnabled?: boolean;
   /** Defaults applied when opening the new session form */
@@ -285,6 +290,9 @@ function mergeLoadedClientDefaults(
   } else {
     delete merged.compactAtContextPercent;
   }
+  if (typeof merged.forceYaOrchestratedCompaction !== "boolean") {
+    delete merged.forceYaOrchestratedCompaction;
+  }
 
   return Object.keys(merged).length > 0 ? merged : undefined;
 }
@@ -309,6 +317,13 @@ function normalizeLoadedSettings(settings: ServerSettings): ServerSettings {
   normalized.claudeAdditionalModels =
     parseClaudeAdditionalModelSelections(settings.claudeAdditionalModels) ??
     undefined;
+  normalized.claudeAutoCompactPercentOverride =
+    typeof settings.claudeAutoCompactPercentOverride === "number" &&
+    Number.isInteger(settings.claudeAutoCompactPercentOverride) &&
+    settings.claudeAutoCompactPercentOverride >= 1 &&
+    settings.claudeAutoCompactPercentOverride <= 100
+      ? settings.claudeAutoCompactPercentOverride
+      : undefined;
   const gatewayStartCommand = settings.claudeGatewayStartCommand;
   normalized.claudeGatewayStartCommand =
     typeof gatewayStartCommand === "string" &&

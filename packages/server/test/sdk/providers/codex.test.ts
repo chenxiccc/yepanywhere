@@ -3372,6 +3372,67 @@ describe("CodexProvider Event Normalization", () => {
     expect(disabledTurn).toMatchObject({ effort: "none" });
   });
 
+  it("sets a total-context auto-compact limit only when requested", () => {
+    const provider = createTestProvider() as unknown as {
+      createThreadStartParams: (
+        options: {
+          cwd: string;
+          compactAtContextTokenLimit?: number;
+        },
+        policy: {
+          approvalPolicy: string;
+          sandbox: string;
+        },
+      ) => { config?: Record<string, unknown> };
+      createThreadResumeParams: (
+        options: {
+          resumeSessionId: string;
+          cwd: string;
+          compactAtContextTokenLimit?: number;
+        },
+        sessionId: string,
+        policy: {
+          approvalPolicy: string;
+          sandbox: string;
+        },
+      ) => { config?: Record<string, unknown> };
+    };
+    const policy = {
+      approvalPolicy: "on-request",
+      sandbox: "workspace-write",
+    };
+
+    const start = provider.createThreadStartParams(
+      { cwd: "/tmp", compactAtContextTokenLimit: 136_000 },
+      policy,
+    );
+    const resume = provider.createThreadResumeParams(
+      {
+        resumeSessionId: "thread-1",
+        cwd: "/tmp",
+        compactAtContextTokenLimit: 204_000,
+      },
+      "thread-1",
+      policy,
+    );
+    const omitted = provider.createThreadStartParams({ cwd: "/tmp" }, policy);
+
+    expect(start.config).toMatchObject({
+      model_auto_compact_token_limit: 136_000,
+      model_auto_compact_token_limit_scope: "total",
+    });
+    expect(resume.config).toMatchObject({
+      model_auto_compact_token_limit: 204_000,
+      model_auto_compact_token_limit_scope: "total",
+    });
+    expect(omitted.config).not.toHaveProperty(
+      "model_auto_compact_token_limit",
+    );
+    expect(omitted.config).not.toHaveProperty(
+      "model_auto_compact_token_limit_scope",
+    );
+  });
+
   it("passes service tier only when explicitly requested", () => {
     const provider = createTestProvider() as unknown as {
       createThreadStartParams: (

@@ -28,7 +28,6 @@ import {
   getVisibleReloadBanners,
   useReloadNotifications,
 } from "./hooks/useReloadNotifications";
-import { useSeedCompactThreshold } from "./hooks/useSeedCompactThreshold";
 import { I18nProvider } from "./i18n";
 import { useClientSummarySourceKey } from "./lib/clientSummaryStore";
 import { initClientLogCollection } from "./lib/diagnostics";
@@ -69,10 +68,6 @@ function AppContent({ children }: Props) {
 
   // Update tab title with needs-attention badge count (uses InboxContext)
   useNeedsAttentionBadge(hostIdentityIcon ?? undefined);
-
-  // One-time seed of the per-model compact-early threshold for users migrating
-  // from the pre-always-1M 200K window (task 029).
-  useSeedCompactThreshold();
 
   const {
     isManualReloadMode,

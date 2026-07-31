@@ -41,6 +41,7 @@ import {
   normalizeOpenAiCompatibleBaseUrl,
   parseAgentContextHints,
   parseCacheMissBilling,
+  parseClaudeAutoCompactPercentOverride,
   parseClaudeGatewayStartCommand,
   parseClientDefaults,
   parseFileAccess,
@@ -515,6 +516,22 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
         );
       }
       updates.claudeAdditionalModels = parsedSelections;
+    }
+
+    if ("claudeAutoCompactPercentOverride" in body) {
+      const parsedOverride = parseClaudeAutoCompactPercentOverride(
+        body.claudeAutoCompactPercentOverride,
+      );
+      if (parsedOverride === null) {
+        return c.json(
+          {
+            error:
+              "claudeAutoCompactPercentOverride must be an integer from 1 to 100, or 0/null to clear",
+          },
+          400,
+        );
+      }
+      updates.claudeAutoCompactPercentOverride = parsedOverride;
     }
 
     // Handle deviceBridgeEnabled boolean

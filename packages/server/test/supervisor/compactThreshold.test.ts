@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { crossesCompactThreshold } from "../../src/supervisor/Supervisor.js";
+import {
+  crossesCompactThreshold,
+  resolveNativeCompactTokenLimit,
+  shouldYaOrchestrateCompactThreshold,
+} from "../../src/supervisor/Supervisor.js";
 
 describe("crossesCompactThreshold (task 029 per-model compact-early gate)", () => {
   const ONE_M = 1_000_000;
@@ -30,5 +34,47 @@ describe("crossesCompactThreshold (task 029 per-model compact-early gate)", () =
     expect(crossesCompactThreshold(undefined, ONE_M, 500_000)).toBe(false);
     expect(crossesCompactThreshold(20, 0, 500_000)).toBe(false);
     expect(crossesCompactThreshold(20, ONE_M, Number.NaN)).toBe(false);
+  });
+});
+
+describe("native compact-threshold routing", () => {
+  const nativeProvider = { supportsNativeCompactThreshold: true };
+  const emulatedProvider = {};
+
+  it("derives a whole-token limit only for an explicit valid threshold", () => {
+    expect(
+      resolveNativeCompactTokenLimit(nativeProvider, {
+        compactAtContextPercent: 25,
+        compactAtContextWindow: 272_000,
+      }),
+    ).toBe(68_000);
+    expect(resolveNativeCompactTokenLimit(nativeProvider, {})).toBeUndefined();
+    expect(
+      resolveNativeCompactTokenLimit(nativeProvider, {
+        compactAtContextPercent: 25,
+      }),
+    ).toBeUndefined();
+  });
+
+  it("omits the native limit when YA orchestration is forced", () => {
+    expect(
+      resolveNativeCompactTokenLimit(nativeProvider, {
+        compactAtContextPercent: 25,
+        compactAtContextWindow: 272_000,
+        forceYaOrchestratedCompaction: true,
+      }),
+    ).toBeUndefined();
+    expect(
+      shouldYaOrchestrateCompactThreshold(nativeProvider, true),
+    ).toBe(true);
+  });
+
+  it("uses YA orchestration only when native support is absent or bypassed", () => {
+    expect(
+      shouldYaOrchestrateCompactThreshold(nativeProvider, false),
+    ).toBe(false);
+    expect(
+      shouldYaOrchestrateCompactThreshold(emulatedProvider, false),
+    ).toBe(true);
   });
 });

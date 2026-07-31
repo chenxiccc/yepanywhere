@@ -313,8 +313,11 @@ export function ModelSettings() {
   useEffect(() => {
     setCompactPercentDraft(storedCompactPercent);
   }, [storedCompactPercent]);
+  const forceYaOrchestratedCompaction =
+    settings?.clientDefaults?.forceYaOrchestratedCompaction === true;
   const showCompactThreshold =
-    selectedProvider?.name === "claude" &&
+    (selectedProvider?.name.startsWith("claude") === true ||
+      selectedProvider?.supportsNativeCompactThreshold === true) &&
     selectedModelInfo != null &&
     // The live trigger keys by the running process model, which is always a
     // concrete id (e.g. "opus") — never the "default" sentinel. Offering a
@@ -878,6 +881,34 @@ export function ModelSettings() {
                       })
                     : t("modelSettingsCompactThresholdOffHint")}
                 </span>
+                {selectedProvider?.supportsNativeCompactThreshold === true && (
+                  <>
+                    <label className="settings-item">
+                      <div className="settings-item-info">
+                        <strong>
+                          {t("modelSettingsForceYaCompactionLabel")}
+                        </strong>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={forceYaOrchestratedCompaction}
+                        disabled={settingsLoading}
+                        onChange={(event) => {
+                          void updateSetting("clientDefaults", {
+                            forceYaOrchestratedCompaction:
+                              event.currentTarget.checked,
+                          });
+                        }}
+                        aria-label={t(
+                          "modelSettingsForceYaCompactionLabel",
+                        )}
+                      />
+                    </label>
+                    <p className="session-default-section-description">
+                      {t("modelSettingsForceYaCompactionDescription")}
+                    </p>
+                  </>
+                )}
               </div>
             )}
 

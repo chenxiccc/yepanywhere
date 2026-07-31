@@ -932,6 +932,15 @@ export class Process {
   private _requestedModel: string | undefined;
   /** Context window size reported by SDK in result messages' modelUsage */
   private _contextWindow: number | undefined;
+  /** Monotonic marker for assistant output observed by this process. */
+  private _assistantActivityVersion = 0;
+  /** Monotonic marker for delivery intent received before any async priming. */
+  private _inputIntentVersion = 0;
+  private _compactAtContextPercent: number | undefined;
+  private _compactAtContextWindow: number | undefined;
+  private _forceYaOrchestratedCompaction: boolean;
+  readonly compactAtContextTokenLimit: number | undefined;
+  readonly launchCompactPercentOverride: number | undefined;
 
   /** Deferred message queue — messages queued while agent is in-turn, auto-sent when turn ends */
   private deferredQueue: DeferredQueueEntry[] = [];
@@ -971,6 +980,13 @@ export class Process {
       });
     this.model = options.model;
     this._requestedModel = options.model;
+    this._compactAtContextPercent = options.compactAtContextPercent;
+    this._compactAtContextWindow = options.compactAtContextWindow;
+    this._forceYaOrchestratedCompaction =
+      options.forceYaOrchestratedCompaction === true;
+    this.compactAtContextTokenLimit = options.compactAtContextTokenLimit;
+    this.launchCompactPercentOverride =
+      options.launchCompactPercentOverride;
     this.serviceTier = options.serviceTier;
     this.executor = options.executor;
     this.sandboxEnforcement = options.sandboxEnforcement;
@@ -1064,6 +1080,18 @@ export class Process {
   /** Context window size reported by SDK (from result message modelUsage) */
   get contextWindow(): number | undefined {
     return this._contextWindow;
+  }
+
+  get assistantActivityVersion(): number {
+    return this._assistantActivityVersion;
+  }
+
+  get inputIntentVersion(): number {
+    return this._inputIntentVersion;
+  }
+
+  noteInputIntent(): void {
+    this._inputIntentVersion += 1;
   }
 
   get state(): ProcessState {
@@ -1848,6 +1876,29 @@ export class Process {
    */
   get supportsDynamicCommands(): boolean {
     return this.supportedCommandsFn !== null;
+  }
+
+  get compactAtContextPercent(): number | undefined {
+    return this._compactAtContextPercent;
+  }
+
+  get compactAtContextWindow(): number | undefined {
+    return this._compactAtContextWindow;
+  }
+
+  get forceYaOrchestratedCompaction(): boolean {
+    return this._forceYaOrchestratedCompaction;
+  }
+
+  updateCompactThresholdSettings(options: {
+    percent?: number;
+    contextWindow?: number;
+    forceYaOrchestratedCompaction?: boolean;
+  }): void {
+    this._compactAtContextPercent = options.percent;
+    this._compactAtContextWindow = options.contextWindow;
+    this._forceYaOrchestratedCompaction =
+      options.forceYaOrchestratedCompaction === true;
   }
 
   /**
@@ -3872,6 +3923,7 @@ export class Process {
         // Stream_event partials are skipped — we only want completed assistant
         // turns so the recap input is coherent.
         if (message.type === "assistant") {
+          this._assistantActivityVersion += 1;
           const text = extractMessageText(message);
           if (text) {
             this.pushRecentAssistantText(text, receivedAt.getTime());

@@ -305,6 +305,26 @@ describe("Providers Routes", () => {
     ]);
   });
 
+  it("serializes launch-time compact percentage capability", async () => {
+    const provider = createProvider({
+      supportsLaunchCompactPercentOverride: true,
+    });
+    const routes = createProvidersRoutes({
+      providers: [provider],
+      cacheTtlMs: 60_000,
+    });
+
+    const response = await routes.request("/");
+    const json = (await response.json()) as { providers: Array<unknown> };
+
+    expect(json.providers).toEqual([
+      expect.objectContaining({
+        name: "claude",
+        supportsLaunchCompactPercentOverride: true,
+      }),
+    ]);
+  });
+
   it("includes provider login command hints", async () => {
     const provider = createProvider({
       getAuthStatus: vi.fn(async () => ({

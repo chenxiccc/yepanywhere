@@ -1652,6 +1652,11 @@ export interface ServerSettings {
   grokBuildUseXaiApiKey?: boolean;
   /** Exact previous/custom Claude model ids opted into provider catalogs. */
   claudeAdditionalModels?: ClaudeAdditionalModelSelection[];
+  /**
+   * Claude Code launch-time percentage override for its own auto-compaction
+   * window. Absent leaves Claude's environment/default unchanged.
+   */
+  claudeAutoCompactPercentOverride?: number;
   /** Whether the device bridge (emulator/device streaming) feature is enabled */
   deviceBridgeEnabled?: boolean;
   /** Defaults applied when opening the new session form */

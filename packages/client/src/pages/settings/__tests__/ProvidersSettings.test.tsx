@@ -37,6 +37,7 @@ const {
         installed: true,
         authenticated: true,
         enabled: true,
+        supportsLaunchCompactPercentOverride: true,
         models: [{ id: "opus", name: "Opus" }],
         additionalModelOptions: [
           {
@@ -110,6 +111,7 @@ describe("ProvidersSettings additional models", () => {
         installed: true,
         authenticated: true,
         enabled: true,
+        supportsLaunchCompactPercentOverride: true,
         models: [{ id: "opus", name: "Opus" }],
         additionalModelOptions: [
           {
@@ -140,6 +142,63 @@ describe("ProvidersSettings additional models", () => {
     expect(
       screen.queryByText("providersAdditionalModelsTitle"),
     ).toBeNull();
+  });
+
+  it("hides the Claude auto-compaction setting from older servers", () => {
+    hookState.providers = hookState.providers.map((provider) => ({
+      ...provider,
+      supportsLaunchCompactPercentOverride: undefined,
+    }));
+
+    render(<ProvidersSettings />);
+
+    expect(
+      screen.queryByText("providersClaudeAutoCompactTitle"),
+    ).toBeNull();
+  });
+
+  it("saves and clears the global Claude auto-compaction setting", async () => {
+    const { unmount } = render(<ProvidersSettings />);
+    const numberInput = screen
+      .getAllByLabelText("providersClaudeAutoCompactTitle")
+      .find((element) => element.getAttribute("type") === "number");
+    expect(numberInput).toBeDefined();
+
+    fireEvent.change(numberInput!, { target: { value: "60" } });
+    fireEvent.blur(numberInput!);
+
+    await waitFor(() => {
+      expect(mockUpdateSetting).toHaveBeenCalledWith(
+        "claudeAutoCompactPercentOverride",
+        60,
+      );
+    });
+
+    unmount();
+    vi.clearAllMocks();
+    mockUpdateSetting.mockResolvedValue(undefined);
+    hookState.settings = {
+      serviceWorkerEnabled: true,
+      persistRemoteSessionsToDisk: false,
+      claudeAdditionalModels: [],
+      claudeAutoCompactPercentOverride: 60,
+    };
+
+    render(<ProvidersSettings />);
+    const configuredInput = screen
+      .getAllByLabelText("providersClaudeAutoCompactTitle")
+      .find((element) => element.getAttribute("type") === "number");
+    expect(configuredInput).toBeDefined();
+
+    fireEvent.change(configuredInput!, { target: { value: "0" } });
+    fireEvent.blur(configuredInput!);
+
+    await waitFor(() => {
+      expect(mockUpdateSetting).toHaveBeenCalledWith(
+        "claudeAutoCompactPercentOverride",
+        undefined,
+      );
+    });
   });
 
   it("shows a compact empty summary and saves maintained opt-ins", async () => {

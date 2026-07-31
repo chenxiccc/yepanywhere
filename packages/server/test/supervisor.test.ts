@@ -166,6 +166,435 @@ describe("Supervisor", () => {
       await supervisorWithProvider.abortProcess(process2.id);
     });
 
+    it("restarts Codex to apply a changed native compact threshold", async () => {
+      const controllers: ReturnType<typeof createControllableIterator>[] = [];
+      const startSession = vi.fn(
+        async (_options: Parameters<AgentProvider["startSession"]>[0]) => {
+          const controller = createControllableIterator();
+          controllers.push(controller);
+          return {
+            iterator: controller.iterator,
+            queue: new MessageQueue(),
+            abort: () => controller.finish(),
+          };
+        },
+      );
+      const provider: AgentProvider = {
+        name: "codex",
+        displayName: "Codex",
+        supportsPermissionMode: true,
+        supportsThinkingToggle: true,
+        supportsSlashCommands: true,
+        supportsSteering: true,
+        supportsNativeCompactThreshold: true,
+        isInstalled: async () => true,
+        isAuthenticated: async () => true,
+        getAuthStatus: async () => ({
+          installed: true,
+          authenticated: true,
+          enabled: true,
+        }),
+        getAvailableModels: async () => [],
+        startSession,
+      };
+      const supervisorWithProvider = new Supervisor({
+        provider,
+        idleTimeoutMs: 100,
+      });
+
+      const started = await supervisorWithProvider.resumeSession(
+        "compact-threshold-session",
+        "/tmp/test",
+        { text: "first" },
+        undefined,
+        {
+          model: "gpt-5.6",
+          compactAtContextPercent: 25,
+          compactAtContextWindow: 272_000,
+        },
+      );
+      if (!("id" in started)) {
+        throw new Error("expected process");
+      }
+      controllers[0]?.push({
+        type: "system",
+        subtype: "init",
+        session_id: "compact-threshold-session",
+      });
+      controllers[0]?.push({
+        type: "result",
+        session_id: "compact-threshold-session",
+      });
+      await waitFor(() => expect(started.state.type).toBe("idle"));
+
+      const result = await supervisorWithProvider.queueMessageToSession(
+        "compact-threshold-session",
+        "/tmp/test",
+        { text: "second" },
+        undefined,
+        {
+          model: "gpt-5.6",
+          compactAtContextPercent: 50,
+          compactAtContextWindow: 272_000,
+          forceYaOrchestratedCompaction: false,
+        },
+      );
+
+      expect(result).toMatchObject({ success: true, restarted: true });
+      expect(startSession).toHaveBeenCalledTimes(2);
+      expect(
+        startSession.mock.calls[0]?.[0].compactAtContextTokenLimit,
+      ).toBe(68_000);
+      expect(
+        startSession.mock.calls[1]?.[0].compactAtContextTokenLimit,
+      ).toBe(136_000);
+
+      if (result.success) {
+        await supervisorWithProvider.abortProcess(result.process.id);
+      }
+    });
+
+    it("restarts Claude to apply a changed launch compact percentage", async () => {
+      const controllers: ReturnType<typeof createControllableIterator>[] = [];
+      const startSession = vi.fn(
+        async (_options: Parameters<AgentProvider["startSession"]>[0]) => {
+          const controller = createControllableIterator();
+          controllers.push(controller);
+          return {
+            iterator: controller.iterator,
+            queue: new MessageQueue(),
+            abort: () => controller.finish(),
+          };
+        },
+      );
+      const provider: AgentProvider = {
+        name: "claude",
+        displayName: "Claude",
+        supportsPermissionMode: true,
+        supportsThinkingToggle: true,
+        supportsSlashCommands: true,
+        supportsSteering: true,
+        supportsLaunchCompactPercentOverride: true,
+        isInstalled: async () => true,
+        isAuthenticated: async () => true,
+        getAuthStatus: async () => ({
+          installed: true,
+          authenticated: true,
+          enabled: true,
+        }),
+        getAvailableModels: async () => [],
+        startSession,
+      };
+      const supervisorWithProvider = new Supervisor({
+        provider,
+        idleTimeoutMs: 100,
+      });
+
+      const started = await supervisorWithProvider.resumeSession(
+        "claude-compact-override-session",
+        "/tmp/test",
+        { text: "first" },
+        undefined,
+        { claudeAutoCompactPercentOverride: 60 },
+      );
+      if (!("id" in started)) {
+        throw new Error("expected process");
+      }
+      controllers[0]?.push({
+        type: "system",
+        subtype: "init",
+        session_id: "claude-compact-override-session",
+      });
+      controllers[0]?.push({
+        type: "result",
+        session_id: "claude-compact-override-session",
+      });
+      await waitFor(() => expect(started.state.type).toBe("idle"));
+
+      const result = await supervisorWithProvider.queueMessageToSession(
+        "claude-compact-override-session",
+        "/tmp/test",
+        { text: "second" },
+        undefined,
+        { claudeAutoCompactPercentOverride: 50 },
+      );
+
+      expect(result).toMatchObject({ success: true, restarted: true });
+      expect(startSession).toHaveBeenCalledTimes(2);
+      expect(
+        startSession.mock.calls[0]?.[0].launchCompactPercentOverride,
+      ).toBe(60);
+      expect(
+        startSession.mock.calls[1]?.[0].launchCompactPercentOverride,
+      ).toBe(50);
+
+      if (result.success) {
+        await supervisorWithProvider.abortProcess(result.process.id);
+      }
+    });
+
+    it("starts forced Codex compaction at the assistant idle boundary", async () => {
+      const delivered: string[] = [];
+      const runProviderCommand = vi.fn();
+      let compactCompleted = false;
+      const startSession = vi.fn(
+        async (options: Parameters<AgentProvider["startSession"]>[0]) => {
+          const queue = new MessageQueue();
+          let aborted = false;
+
+          async function* iterator() {
+            yield {
+              type: "system" as const,
+              subtype: "init" as const,
+              session_id: options.resumeSessionId ?? "compact-force-session",
+            };
+            for await (const sdkMessage of queue) {
+              if (aborted) return;
+              const content = sdkMessage.message.content;
+              const text =
+                typeof content === "string"
+                  ? content
+                  : ((content[0] as { text?: string } | undefined)?.text ?? "");
+              if (text === "__compact__") {
+                yield {
+                  type: "system" as const,
+                  subtype: "compact_boundary" as const,
+                  session_id:
+                    options.resumeSessionId ?? "compact-force-session",
+                };
+                yield {
+                  type: "result" as const,
+                  session_id:
+                    options.resumeSessionId ?? "compact-force-session",
+                };
+                compactCompleted = true;
+                continue;
+              }
+              delivered.push(text);
+              yield {
+                type: "assistant" as const,
+                message: { content: `reply to ${text}` },
+              };
+              yield {
+                type: "result" as const,
+                session_id:
+                  options.resumeSessionId ?? "compact-force-session",
+              };
+            }
+          }
+
+          runProviderCommand.mockImplementation(async (command: string) => {
+            if (command !== "compact") return { handled: false };
+            queue.push({ text: "__compact__" });
+            return { handled: true };
+          });
+          return {
+            iterator: iterator(),
+            queue,
+            abort: () => {
+              aborted = true;
+              queue.push({ text: "__abort__" });
+            },
+            supportedCommands: async () => [
+              { name: "compact", description: "Compact conversation" },
+            ],
+            runProviderCommand,
+          };
+        },
+      );
+      const provider: AgentProvider = {
+        name: "codex",
+        displayName: "Codex",
+        supportsPermissionMode: true,
+        supportsThinkingToggle: true,
+        supportsSlashCommands: true,
+        supportsSteering: true,
+        supportsNativeCompactThreshold: true,
+        isInstalled: async () => true,
+        isAuthenticated: async () => true,
+        getAuthStatus: async () => ({
+          installed: true,
+          authenticated: true,
+          enabled: true,
+        }),
+        getAvailableModels: async () => [],
+        startSession,
+      };
+      const supervisorWithProvider = new Supervisor({
+        provider,
+        idleTimeoutMs: 100,
+        onSessionSummary: async () =>
+          ({
+            contextUsage: { inputTokens: 150_000, percentage: 75 },
+          }) as SessionSummary,
+      });
+      const compactSettings = {
+        model: "gpt-5.6",
+        compactAtContextPercent: 50,
+        compactAtContextWindow: 200_000,
+        forceYaOrchestratedCompaction: true,
+      };
+
+      const started = await supervisorWithProvider.resumeSession(
+        "compact-force-session",
+        "/tmp/test",
+        { text: "first" },
+        undefined,
+        compactSettings,
+      );
+      if (!("id" in started)) {
+        throw new Error("expected process");
+      }
+      await vi.waitFor(() => {
+        expect(delivered).toEqual(["first"]);
+        expect(runProviderCommand).toHaveBeenCalledWith("compact", undefined);
+        expect(compactCompleted).toBe(true);
+        expect(started.state.type).toBe("idle");
+      });
+
+      expect(startSession.mock.calls[0]?.[0]).not.toHaveProperty(
+        "compactAtContextTokenLimit",
+      );
+      expect(runProviderCommand).toHaveBeenCalledTimes(1);
+      await supervisorWithProvider.abortProcess(started.id);
+    });
+
+    it("lets newly arrived input beat speculative idle compaction", async () => {
+      const delivered: string[] = [];
+      const runProviderCommand = vi.fn(async () => ({
+        handled: true,
+        error: "compaction should not start",
+      }));
+      let resolveSummary!: (summary: SessionSummary) => void;
+      const summary = new Promise<SessionSummary>((resolve) => {
+        resolveSummary = resolve;
+      });
+      let resolveCommands!: (
+        commands: Array<{ name: string; description: string }>,
+      ) => void;
+      const commands = new Promise<
+        Array<{ name: string; description: string }>
+      >((resolve) => {
+        resolveCommands = resolve;
+      });
+      const supportedCommands = vi.fn(async () => commands);
+      const startSession = vi.fn(
+        async (options: Parameters<AgentProvider["startSession"]>[0]) => {
+          const queue = new MessageQueue();
+          let aborted = false;
+
+          async function* iterator() {
+            yield {
+              type: "system" as const,
+              subtype: "init" as const,
+              session_id: options.resumeSessionId ?? "input-wins-session",
+            };
+            for await (const sdkMessage of queue) {
+              if (aborted) return;
+              const content = sdkMessage.message.content;
+              const text =
+                typeof content === "string"
+                  ? content
+                  : ((content[0] as { text?: string } | undefined)?.text ?? "");
+              delivered.push(text);
+              yield {
+                type: "assistant" as const,
+                message: { content: `reply to ${text}` },
+              };
+              yield {
+                type: "result" as const,
+                session_id:
+                  options.resumeSessionId ?? "input-wins-session",
+              };
+            }
+          }
+
+          return {
+            iterator: iterator(),
+            queue,
+            abort: () => {
+              aborted = true;
+              queue.push({ text: "__abort__" });
+            },
+            supportedCommands,
+            runProviderCommand,
+          };
+        },
+      );
+      const provider: AgentProvider = {
+        name: "codex",
+        displayName: "Codex",
+        supportsPermissionMode: true,
+        supportsThinkingToggle: true,
+        supportsSlashCommands: true,
+        supportsSteering: true,
+        supportsNativeCompactThreshold: true,
+        isInstalled: async () => true,
+        isAuthenticated: async () => true,
+        getAuthStatus: async () => ({
+          installed: true,
+          authenticated: true,
+          enabled: true,
+        }),
+        getAvailableModels: async () => [],
+        startSession,
+      };
+      const onSessionSummary = vi.fn(async () => summary);
+      const supervisorWithProvider = new Supervisor({
+        provider,
+        idleTimeoutMs: 100,
+        onSessionSummary,
+      });
+      const compactSettings = {
+        model: "gpt-5.6",
+        compactAtContextPercent: 50,
+        compactAtContextWindow: 200_000,
+        forceYaOrchestratedCompaction: true,
+      };
+
+      const started = await supervisorWithProvider.resumeSession(
+        "input-wins-session",
+        "/tmp/test",
+        { text: "first" },
+        undefined,
+        compactSettings,
+      );
+      if (!("id" in started)) {
+        throw new Error("expected process");
+      }
+      await vi.waitFor(() => {
+        expect(delivered).toEqual(["first"]);
+        expect(onSessionSummary).toHaveBeenCalledTimes(1);
+      });
+
+      const queued = supervisorWithProvider.queueMessageToSession(
+        "input-wins-session",
+        "/tmp/test",
+        { text: "/help" },
+        undefined,
+        compactSettings,
+      );
+      await vi.waitFor(() => {
+        expect(supportedCommands).toHaveBeenCalledTimes(1);
+      });
+
+      resolveSummary({
+        contextUsage: { inputTokens: 150_000, percentage: 75 },
+      } as SessionSummary);
+      await Promise.resolve();
+      expect(runProviderCommand).not.toHaveBeenCalled();
+
+      resolveCommands([
+        { name: "compact", description: "Compact conversation" },
+      ]);
+      expect(await queued).toMatchObject({ success: true, restarted: false });
+      await vi.waitFor(() => {
+        expect(delivered).toEqual(["first", "/help"]);
+      });
+      expect(runProviderCommand).not.toHaveBeenCalled();
+      await supervisorWithProvider.abortProcess(started.id);
+    });
+
     it("applies an effort change without interrupting an active turn", async () => {
       let aborted = false;
       let completeTurn = () => {};
@@ -910,6 +1339,49 @@ describe("Supervisor", () => {
       expect(
         supervisorWithRealSdk.getRecentlyTerminatedProcesses(),
       ).toHaveLength(1);
+    });
+
+    it("passes the global Claude compaction override through the SDK wrapper", async () => {
+      let aborted = false;
+      const startSession = vi.fn<
+        RealClaudeSDKInterface["startSession"]
+      >(async () => {
+        async function* iterator() {
+          yield {
+            type: "system",
+            subtype: "init",
+            session_id: "real-sdk-compact-override",
+          };
+          while (!aborted) {
+            await new Promise((resolve) => setTimeout(resolve, 10));
+          }
+        }
+
+        return {
+          iterator: iterator(),
+          queue: new MessageQueue(),
+          abort: () => {
+            aborted = true;
+          },
+        };
+      });
+      const supervisorWithRealSdk = new Supervisor({
+        realSdk: { startSession },
+        idleTimeoutMs: 100,
+      });
+
+      const process = await supervisorWithRealSdk.startSession(
+        "/tmp/test",
+        { text: "hi" },
+        undefined,
+        { claudeAutoCompactPercentOverride: 60 },
+      );
+
+      expect(startSession).toHaveBeenCalledWith(
+        expect.objectContaining({ launchCompactPercentOverride: 60 }),
+      );
+      expect(process.launchCompactPercentOverride).toBe(60);
+      await supervisorWithRealSdk.abortProcess(process.id);
     });
 
     it("keeps one canonical row when the same session is restarted", async () => {

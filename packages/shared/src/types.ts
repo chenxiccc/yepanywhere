@@ -390,6 +390,17 @@ export interface ProviderInfo {
   supportsNativeRecaps?: boolean;
   /** Whether this provider emits prompt suggestions in its ordinary protocol. */
   supportsNativePromptSuggestions?: boolean;
+  /**
+   * Whether this provider accepts an explicit automatic-compaction threshold.
+   * Absence means YA must orchestrate a configured threshold itself.
+   */
+  supportsNativeCompactThreshold?: boolean;
+  /**
+   * Whether this provider accepts a launch-time percentage override for its
+   * own automatic-compaction window. This is distinct from a percentage of
+   * the model's full context window and cannot be changed in-place.
+   */
+  supportsLaunchCompactPercentOverride?: boolean;
   /** Prompt-cache keepalive capability exposed for provider-economics UI. */
   promptCacheKeepalive?: PromptCacheKeepaliveProviderInfo;
   /**
@@ -605,15 +616,18 @@ export interface ClientDefaults {
   sessionToolbarPresence?: SessionToolbarPresenceClientDefaults;
   /**
    * Preemptive compaction thresholds, keyed by model id, each a percent (1–99)
-   * of that model's context window. When a model's live context reaches its
-   * percent, YA queues the provider `/compact` before delivering the next turn.
-   * A model absent from the map (or a value >= 100) is off — defer to the
-   * provider's own auto-compaction. Tokens are derived from model metadata at
-   * runtime. This is per-model, not a single global setting; the default for a
-   * model migrated off its non-1M variant is seeded to ~20% (≈200K of 1M). See
-   * tasks/029.
+   * of that model's full context window. Native-capable providers receive the
+   * derived token threshold; otherwise YA starts the provider's compact command
+   * when an assistant turn reaches idle above the threshold. A model absent
+   * from the map is off: YA sends no threshold and leaves provider defaults
+   * unchanged.
    */
   compactAtContextPercent?: Record<string, number>;
+  /**
+   * Force YA to watch and trigger configured compaction thresholds even when a
+   * provider can accept the threshold natively. Global and off when absent.
+   */
+  forceYaOrchestratedCompaction?: boolean;
 }
 
 /**

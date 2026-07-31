@@ -3,6 +3,7 @@ import {
   ClaudeProvider,
   claudeProvider,
   formatClaudeLoginCommand,
+  getClaudeAutoCompactOverrideEnv,
   mergeClaudeModels,
   probeClaudeControlLiveness,
   resolveClaudeSdkNativeExecutable,
@@ -43,6 +44,24 @@ describe("ClaudeProvider.yaModelIdForReported", () => {
     ).toBeUndefined();
     expect(claudeProvider.yaModelIdForReported(undefined)).toBeUndefined();
     expect(claudeProvider.yaModelIdForReported("")).toBeUndefined();
+  });
+});
+
+describe("Claude auto-compaction launch environment", () => {
+  it("sets the exact documented environment variable when configured", () => {
+    expect(getClaudeAutoCompactOverrideEnv(50)).toEqual({
+      CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: "50",
+    });
+  });
+
+  it("omits the override when the global setting is off", () => {
+    expect(getClaudeAutoCompactOverrideEnv(undefined)).toBeUndefined();
+  });
+
+  it.each([0, 101, 50.5])("rejects invalid percentage %p", (percent) => {
+    expect(() => getClaudeAutoCompactOverrideEnv(percent)).toThrow(
+      "integer from 1 to 100",
+    );
   });
 });
 

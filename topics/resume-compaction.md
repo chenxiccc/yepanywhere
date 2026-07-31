@@ -46,9 +46,10 @@ As of 2026-06-08, checked evidence supports these starting assumptions:
   a "context too full" style error. That supports treating compaction as
   constrained by provider context limits, not as an unlimited external
   summarization service.
-- OpenAI documents `POST /v1/responses/compact`, and Codex local protocol
-  files expose compaction items, but YA's checked-in Codex adapter observes
-  compaction events rather than initiating a compact RPC.
+- OpenAI documents `POST /v1/responses/compact`. The pinned Codex app-server
+  protocol also exposes `thread/compact/start`; YA uses that provider-native
+  request when it must initiate a manual Codex compact and continues to
+  normalize the resulting compaction item into the shared visible boundary.
 
 Evidence anchors:
 
@@ -174,41 +175,114 @@ cheaper model on the user's behalf.
 
 Distinct from resume-time compact-first above: a **live, in-session**
 preemptive compaction, configured per model as "compact at X% of that model's
-context window" (`clientDefaults.compactAtContextPercent[model]`). It reuses the
-same `Supervisor.tryResumeCompaction` primitive, so it drives the **native
-`compact_boundary`** (same result + render contract) and the injected `/compact`
-carries no user echo (`metadata.hidden`; see
-[injected-message-visibility](injected-message-visibility.md)). The route
-resolves the live model's percent (it holds the settings) and threads it via
-`ModelSettings.compactAtContextPercent`; the Supervisor stays settings-agnostic.
-The pure decision is `crossesCompactThreshold(percent, contextWindow,
-inputTokens)`; the orchestration is `Supervisor.maybeCompactBeforeDelivery`,
-called from `queueMessageToSession` just before delivering a turn.
+full context window" (`clientDefaults.compactAtContextPercent[model]`). The
+percentage is an explicit user hint, not a YA recommendation: performance
+degradation at long context and the quality cost of compacting earlier are both
+task-specific empirical questions. With no value, YA makes no threshold request
+and leaves the provider's automatic behavior unchanged.
 
-Design intent and invariants (user-confirmed 2026-06-16):
+The provider capability determines who owns timing:
+
+- A provider with `supportsNativeCompactThreshold` receives the derived integer
+  token limit. Codex expresses it in `thread/start` or `thread/resume` config as
+  `model_auto_compact_token_limit`, paired with
+  `model_auto_compact_token_limit_scope: "total"`. Both keys are absent when
+  the setting is off. Because Codex's live `thread/settings/update` request does
+  not carry config overrides, a changed or cleared threshold resumes the same
+  thread with the new launch config before delivering the turn.
+- Providers without that capability retain YA orchestration. YA checks live
+  usage at the first idle boundary after assistant output and immediately calls
+  the provider's manual compact command. The same path is forced for any
+  provider by the global, default-off
+  `clientDefaults.forceYaOrchestratedCompaction` setting. Codex dispatches that
+  command out of band as `thread/compact/start`; Claude receives its hidden
+  `/compact` turn.
+
+The YA path reuses `Supervisor.tryResumeCompaction`, so it drives the native
+compaction boundary (same result + render contract), and an injected textual
+`/compact` carries no user echo (`metadata.hidden`; see
+[injected-message-visibility](injected-message-visibility.md)). The pure
+decision is `crossesCompactThreshold(percent, contextWindow, inputTokens)`;
+the orchestration is `Supervisor.maybeCompactAfterIdle`, called once when a
+completed assistant turn makes the process idle.
+
+Design intent and invariants:
 
 - **Voluntary, momentum-preserving.** It is a "do it when the user won't be
-  bothered" compaction, not a needed one. Idle-gated: it returns immediately
-  unless the process is idle, so it never interrupts an active turn.
+  bothered" compaction, not a needed one. It starts speculatively at the first
+  idle boundary after assistant output, so a later user request does not pay
+  compaction latency. Delivery intent is recorded before any asynchronous
+  slash-command discovery; if new input arrives during the usage read or
+  compact-command lookup, that input wins and the speculative compact is
+  skipped even if the process still formally reports `idle`.
 - **Harness-enforced compaction is untouched and remains the backstop.** This
   trigger is purely *earlier and additive*; nothing about the harness's own
-  auto-compaction changed. When the trigger does not fire (off, usage unknown,
-  non-idle, non-claude) the enforced path behaves exactly as before. The
-  voluntary threshold (e.g. opus 28% ≈ 280K of a 1M window) sits well below the
-  harness's enforced point (~800K on 1M), so in steady state the two never fire
-  together — the voluntary one keeps usage from ever reaching the enforced one.
-- **No double compaction.** Live usage is re-read and re-tested *immediately
-  before* executing — there is no deferral gap between deciding and running — so
-  a prior compaction (the harness's enforced one or a previous voluntary one)
-  that dropped usage below the threshold makes the next evaluation a no-op.
-- **Conservative (task 002).** Claude only, idle only, only when usage is known;
-  best-effort — the turn is delivered regardless of the compaction outcome, with
-  no retry loop; failure is logged, never blocks the turn.
+  auto-compaction changed. When the setting is off, provider behavior is
+  exactly the provider default.
+- **No double compaction.** Each assistant-output version is considered once.
+  The compact operation's own idle boundary cannot recursively trigger another
+  compact even if the durable usage summary has not caught up.
+- **Conservative YA fallback (task 002).** Idle only, only when usage is known,
+  and best-effort: the turn is delivered regardless of the compaction outcome,
+  with no retry loop; failure is logged, never blocks the turn.
 
-Scope boundary (v1): only fresh REST turns through `queueMessageToSession`
-evaluate the trigger. Deferred-queue promotions go through `Process.queueMessage`
-directly and bypass it; the next fresh turn re-evaluates. Acceptable because the
-trigger is voluntary and the enforced backstop still covers the deferred path.
+Scope boundary: the trigger belongs to the process idle transition, not a REST
+route. Deferred turns promoted at that same boundary still take precedence:
+`Process` promotes eligible deferred work before publishing idle, so YA never
+starts speculative compaction in front of an already-queued turn.
+
+The idle timing deliberately leaves a theoretical compute saving unimplemented:
+YA does not wait for composer activity or other evidence that another user turn
+is coming. The simpler unconditional idle check minimizes user-facing latency;
+an occasional compact after the user was actually finished is acceptable.
+
+## Claude global automatic threshold override
+
+Claude Code's `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` is a third, distinct facility.
+It is not the per-model percentage of full context above and it does not issue
+an immediate `/compact`. It changes the percentage of **Claude Code's own
+auto-compaction window** at which Claude may compact proactively:
+
+- YA stores one global, optional
+  `claudeAutoCompactPercentOverride` provider setting. There is no per-session
+  or new-session override.
+- Claude advertises `supportsLaunchCompactPercentOverride`; Claude Gateway and
+  Claude + Ollama do not. The Providers UI is hidden when an older server's
+  provider response lacks the capability, so that client makes no unsupported
+  settings write.
+- A value from 1 through 100 is passed to every regular Claude create/resume as
+  the exact decimal environment value
+  `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=<percent>`. Off is canonical omission: YA
+  does not set the variable and preserves any operator-owned ambient
+  environment/default.
+- The override can only lower Claude's default. Values above the effective
+  default have no effect, and the variable only takes effect in the Claude Code
+  cases where proactive auto-compaction is active. YA does not set
+  `CLAUDE_CODE_AUTO_COMPACT_WINDOW`; therefore this option does not redefine
+  Claude's effective window or the status line's full-context
+  `used_percentage`.
+- Anthropic documents manual `/compact`, but no interactive SDK/command setter
+  for the automatic percentage. The percentage is launch-scoped. If the global
+  setting changed while YA still owns a live Claude process, the next ordinary
+  user turn restarts and resumes the same provider session with the new
+  environment before delivery. Active steering never interrupts a turn for
+  this setting; the following ordinary turn performs the comparison.
+
+Anthropic documents that the environment override applies to main
+conversations and subagents. Its applicability is provider behavior, not a YA
+promise that every Claude model/session compacts proactively:
+
+- Claude environment variables:
+  <https://code.claude.com/docs/en/env-vars>
+- Claude Agent SDK slash commands:
+  <https://code.claude.com/docs/en/agent-sdk/slash-commands>
+
+Compatibility corpus checked 2026-07-31 for this optional setting: stable
+server releases `v0.7.0` and `v0.6.2` lack both
+`settings.claudeAutoCompactPercentOverride` and
+`providers[].supportsLaunchCompactPercentOverride`. The absent-capability
+fallback above makes no unsupported request and preserves all existing
+provider-capability meanings.
 
 ## Open Questions
 

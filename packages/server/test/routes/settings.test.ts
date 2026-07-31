@@ -978,6 +978,49 @@ describe("Settings Routes", () => {
       expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
     });
 
+    it("persists the global YA-orchestrated compaction override", async () => {
+      settings = {
+        ...settings,
+        clientDefaults: { compactAtContextPercent: { opus: 20 } },
+      };
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientDefaults: { forceYaOrchestratedCompaction: true },
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
+        clientDefaults: {
+          compactAtContextPercent: { opus: 20 },
+          forceYaOrchestratedCompaction: true,
+        },
+      });
+    });
+
+    it("rejects a non-boolean YA compaction override", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientDefaults: { forceYaOrchestratedCompaction: "yes" },
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
+    });
+
     it("accepts provider-scoped prompt-cache keepalive settings", async () => {
       const routes = createSettingsRoutes({
         serverSettingsService: mockServerSettingsService,
@@ -1202,6 +1245,60 @@ describe("Settings Routes", () => {
       });
       expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
     });
+
+    it("accepts and clears the global Claude auto-compaction override", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const enabled = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ claudeAutoCompactPercentOverride: 60 }),
+      });
+      expect(enabled.status).toBe(200);
+      expect(mockServerSettingsService.updateSettings).toHaveBeenLastCalledWith(
+        {
+          claudeAutoCompactPercentOverride: 60,
+        },
+      );
+
+      const cleared = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ claudeAutoCompactPercentOverride: 0 }),
+      });
+      expect(cleared.status).toBe(200);
+      expect(mockServerSettingsService.updateSettings).toHaveBeenLastCalledWith(
+        {
+          claudeAutoCompactPercentOverride: undefined,
+        },
+      );
+    });
+
+    it.each([101, -1, 50.5, "50"])(
+      "rejects invalid Claude auto-compaction override %p",
+      async (claudeAutoCompactPercentOverride) => {
+        const routes = createSettingsRoutes({
+          serverSettingsService: mockServerSettingsService,
+        });
+
+        const response = await routes.request("/", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ claudeAutoCompactPercentOverride }),
+        });
+
+        expect(response.status).toBe(400);
+        expect(await response.json()).toEqual({
+          error:
+            "claudeAutoCompactPercentOverride must be an integer from 1 to 100, or 0/null to clear",
+        });
+        expect(
+          mockServerSettingsService.updateSettings,
+        ).not.toHaveBeenCalled();
+      },
+    );
 
     it("rejects invalid provider-scoped helper model defaults", async () => {
       const routes = createSettingsRoutes({

@@ -347,6 +347,16 @@ export interface ProcessOptions {
   serviceTier?: string;
   /** Model used for this session (e.g., "claude-opus-4-5-20251101") */
   model?: string;
+  /** Configured per-model compaction threshold percentage, if any. */
+  compactAtContextPercent?: number;
+  /** Effective full context window used to derive the threshold. */
+  compactAtContextWindow?: number;
+  /** Whether YA, rather than a native provider threshold, owns the trigger. */
+  forceYaOrchestratedCompaction?: boolean;
+  /** Provider-native automatic-compaction limit applied at launch. */
+  compactAtContextTokenLimit?: number;
+  /** Provider auto-compaction-window percentage applied at launch. */
+  launchCompactPercentOverride?: number;
   /** SSH host for remote execution (undefined = local) */
   executor?: string;
   /** How this process should answer away-recap requests. */

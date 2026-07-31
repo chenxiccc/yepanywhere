@@ -20,6 +20,7 @@ import {
   serverHasCapability,
 } from "@yep-anywhere/shared";
 import { api, type ServerSettings } from "../../api/client";
+import { CommittedRangeNumberInput } from "../../components/ui/CommittedRangeNumberInput";
 import { Modal, type ModalAnchorRect } from "../../components/ui/Modal";
 import { useToastContext } from "../../contexts/ToastContext";
 import { useCodexUpdateStatus } from "../../hooks/useCodexUpdateStatus";
@@ -962,6 +963,63 @@ function ClaudeLoginCommandPanel({
   );
 }
 
+function ClaudeAutoCompactPercentOverrideSettings({
+  value,
+  updateSetting,
+}: {
+  value: number | undefined;
+  updateSetting: UpdateServerSetting;
+}) {
+  const { t } = useI18n();
+  const { showToast } = useToastContext();
+
+  const save = useCallback(
+    async (percent: number) => {
+      try {
+        await updateSetting(
+          "claudeAutoCompactPercentOverride",
+          percent === 0 ? undefined : percent,
+        );
+        showToast(t("providersClaudeAutoCompactSaved"), "success");
+      } catch (error) {
+        showToast(
+          error instanceof Error
+            ? error.message
+            : t("providersClaudeAutoCompactSaveError"),
+          "error",
+        );
+      }
+    },
+    [showToast, t, updateSetting],
+  );
+
+  return (
+    <SettingsItem
+      id="provider-claude-auto-compact"
+      label={t("providersClaudeAutoCompactTitle")}
+      description={t("providersClaudeAutoCompactDescription")}
+      keywords={["compact", "context", "threshold", "percentage"]}
+      valueText={
+        value === undefined
+          ? t("providersClaudeAutoCompactOff")
+          : `${value}%`
+      }
+      className="settings-item--wide-control"
+    >
+      <CommittedRangeNumberInput
+        id="claude-auto-compact-percent"
+        min={0}
+        max={100}
+        step={1}
+        value={value ?? 0}
+        unit="%"
+        ariaLabel={t("providersClaudeAutoCompactTitle")}
+        onCommit={(percent) => void save(percent)}
+      />
+    </SettingsItem>
+  );
+}
+
 interface ClaudeAdditionalModelsSettingsProps {
   modelOptions: readonly ModelInfo[];
   selections: readonly ClaudeAdditionalModelSelection[];
@@ -1258,6 +1316,8 @@ export function ProvidersSettings() {
         authenticated: serverInfo?.authenticated ?? false,
         loginCommand: serverInfo?.loginCommand,
         additionalModelOptions: serverInfo?.additionalModelOptions,
+        supportsLaunchCompactPercentOverride:
+          serverInfo?.supportsLaunchCompactPercentOverride === true,
       },
     ];
   });
@@ -1359,6 +1419,13 @@ export function ProvidersSettings() {
                 </a>
               )}
             </SettingsItem>
+            {provider.id === "claude" &&
+              provider.supportsLaunchCompactPercentOverride && (
+                <ClaudeAutoCompactPercentOverrideSettings
+                  value={settings?.claudeAutoCompactPercentOverride}
+                  updateSetting={updateSetting}
+                />
+              )}
             {provider.id === "claude" && supportsClaudeGateway && (
               <ClaudeGatewaySettings
                 reloadProviders={reloadProviders}

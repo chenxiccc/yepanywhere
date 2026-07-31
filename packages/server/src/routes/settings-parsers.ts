@@ -86,6 +86,7 @@ const CLIENT_DEFAULT_KEYS = [
   "patientQueueDefault",
   "projectQueueCtrlEnterEnabled",
   "compactAtContextPercent",
+  "forceYaOrchestratedCompaction",
 ] as const;
 const BUSY_COMPOSER_DEFAULT_ACTIONS = [
   "steer",
@@ -191,6 +192,23 @@ export function parseClaudeGatewayStartCommand(
     return null;
   }
   return trimmed;
+}
+
+export function parseClaudeAutoCompactPercentOverride(
+  raw: unknown,
+): number | undefined | null {
+  if (raw === undefined || raw === null || raw === "" || raw === 0) {
+    return undefined;
+  }
+  if (
+    typeof raw !== "number" ||
+    !Number.isInteger(raw) ||
+    raw < 1 ||
+    raw > 100
+  ) {
+    return null;
+  }
+  return raw;
 }
 
 /**
@@ -847,6 +865,19 @@ export function parseClientDefaults(
     if (parsedCompact === null) return null;
     parsed.compactAtContextPercent = parsedCompact;
   }
+  if ("forceYaOrchestratedCompaction" in raw) {
+    if (
+      raw.forceYaOrchestratedCompaction === undefined ||
+      raw.forceYaOrchestratedCompaction === null
+    ) {
+      parsed.forceYaOrchestratedCompaction = undefined;
+    } else if (typeof raw.forceYaOrchestratedCompaction !== "boolean") {
+      return null;
+    } else {
+      parsed.forceYaOrchestratedCompaction =
+        raw.forceYaOrchestratedCompaction;
+    }
+  }
 
   return Object.keys(parsed).length > 0 ? parsed : undefined;
 }
@@ -926,6 +957,14 @@ export function mergeClientDefaults(
       delete merged.compactAtContextPercent;
     } else {
       merged.compactAtContextPercent = update.compactAtContextPercent;
+    }
+  }
+  if ("forceYaOrchestratedCompaction" in update) {
+    if (update.forceYaOrchestratedCompaction === undefined) {
+      delete merged.forceYaOrchestratedCompaction;
+    } else {
+      merged.forceYaOrchestratedCompaction =
+        update.forceYaOrchestratedCompaction;
     }
   }
   return Object.keys(merged).length > 0 ? merged : undefined;

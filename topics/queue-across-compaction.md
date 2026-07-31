@@ -103,11 +103,12 @@ stripping in `handleCustomCommand`/`handleCompactSession`.)
 ### Asymmetry worth noting
 
 The codebase already treats compacting-while-busy as unsafe in the paths it
-controls: auto-compact (`tryQueueTargetedAutoCompact`) refuses unless
-`state === "idle"`, and resume-compaction (`tryResumeCompaction`) refuses
-non-idle starts and wraps the compact in a `watchResumeCompaction` observer that
-detects failure/timeout/termination. The least-guarded path is the one that hurt
-the queue.
+controls: YA-orchestrated threshold compaction (`maybeCompactAfterIdle`)
+refuses unless `state === "idle"`, and
+resume-compaction (`tryResumeCompaction`) refuses non-idle starts and wraps the
+compact in a `watchResumeCompaction` observer that detects
+failure/timeout/termination. The least-guarded path is the one that hurt the
+queue.
 
 ## Fix directions (not yet implemented)
 

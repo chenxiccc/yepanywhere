@@ -87,6 +87,17 @@ export interface StartSessionOptions {
   thinking?: import("@yep-anywhere/shared").ThinkingConfig;
   /** Effort level for response quality (undefined = SDK default) */
   effort?: import("@yep-anywhere/shared").EffortLevel;
+  /**
+   * Explicit automatic-compaction threshold in total active-context tokens.
+   * Omitted means the provider's own default; only providers advertising
+   * supportsNativeCompactThreshold consume this.
+   */
+  compactAtContextTokenLimit?: number;
+  /**
+   * Launch-time percentage override for the provider's own auto-compaction
+   * window. Omitted means the provider's environment/default is unchanged.
+   */
+  launchCompactPercentOverride?: number;
   /** Tool approval callback */
   onToolApproval?: CanUseTool;
   /** SSH host for remote execution (undefined = local) */
@@ -237,6 +248,16 @@ export interface AgentProvider {
    * feature and must not be implied by this flag.
    */
   readonly supportsNativePromptSuggestions?: boolean;
+  /**
+   * Whether this provider accepts a token threshold for automatic compaction.
+   * Optional; absent means YA must orchestrate configured thresholds itself.
+   */
+  readonly supportsNativeCompactThreshold?: boolean;
+  /**
+   * Whether this provider accepts a launch-time percentage override for its
+   * own automatic-compaction window.
+   */
+  readonly supportsLaunchCompactPercentOverride?: boolean;
   /**
    * Prompt-cache keepalive capability. Absence means YA must not show or
    * schedule keepalive for this provider.

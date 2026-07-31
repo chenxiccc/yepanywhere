@@ -14,11 +14,9 @@ surface when you need to gate/render/audit".
 ## Status: NOT yet systematically applied
 
 This is a forward-looking guideline, adopted incrementally. Existing
-provider/model conditionals have **not** all been migrated — e.g. the
-codex-spark targeted auto-compact (`tryQueueTargetedAutoCompact`), the
-claude-only preemptive-compaction trigger (`maybeCompactBeforeDelivery`), and
-the alias↔resolved model-identity canonicalization still live as inline
-branches. `yaModelIdForReported` (below) is the first surface to adopt this seam.
+provider/model conditionals have **not** all been migrated.
+`yaModelIdForReported`, native compact-threshold support, and launch-scoped
+compact-percent support (below) are the first surfaces to adopt this seam.
 Don't treat the presence of remaining inline conditionals as a bug to sweep;
 migrate them when they next hit a trigger below.
 
@@ -34,11 +32,6 @@ migrate them when they next hit a trigger below.
   the latter lets distinct aliases that resolve to the same model *share*
   settings, but "default" is subscription-dependent and resolvable only at
   runtime).
-- **Preemptive-compaction policy.** The claude-only `maybeCompactBeforeDelivery`
-  and the codex-spark-only `tryQueueTargetedAutoCompact` are two inline
-  per-provider blocks that a single `provider.compactionPolicy` (default: none)
-  would own.
-
 ## When to promote to a provider surface
 
 Promote an inline provider/model conditional to an **optional**
@@ -48,7 +41,8 @@ Promote an inline provider/model conditional to an **optional**
    (The reported→alias model-id mapping had spread across the threshold lookup,
    the quick-edit, and enrichment — the tell that drove `yaModelIdForReported`.)
 2. **A generic caller has to know provider internals.** A route should not
-   "know" that Claude opus runs at 1M, or that codex-spark compacts at 85%.
+   "know" that Claude opus runs at 1M or which provider accepts an automatic
+   compaction threshold.
 3. **Adding a new provider would require editing the generic code** rather
    than just implementing the interface.
 
@@ -78,6 +72,57 @@ adopted one surface at a time.
 provider-reported model id back to a YA model id (launch alias), default-no-op
 (returns `undefined`). Used by the per-model-settings keying below; see that
 section for the contract.
+
+## Second instance: native compact threshold
+
+`AgentProvider.supportsNativeCompactThreshold` declares that
+`StartSessionOptions.compactAtContextTokenLimit` is meaningful for that
+provider. Absence preserves the original YA-orchestrated behavior.
+
+The user setting remains provider-neutral: a per-model percentage of the full
+context window. The Supervisor derives an integer token limit only when the
+provider advertises native support. Codex maps that to its app-server thread
+config:
+
+- `model_auto_compact_token_limit: <tokens>`
+- `model_auto_compact_token_limit_scope: "total"`
+
+The explicit scope is load-bearing: the user chose a percentage of the full
+active context, so an unrelated Codex config must not reinterpret the limit as
+only growth after a carried compaction prefix. Codex does not expose these
+fields through `thread/settings/update`; changing or clearing the setting on a
+loaded thread therefore resumes that same thread with new launch config.
+
+Off is canonical omission. With no per-model percentage, YA sends neither
+compaction config key and does not invent a model-specific default. The global,
+default-off `clientDefaults.forceYaOrchestratedCompaction` switch bypasses a
+native capability and runs the same idle-boundary usage check plus manual
+compact-command path used for providers without native threshold support.
+
+## Third instance: launch-scoped compact percentage
+
+`AgentProvider.supportsLaunchCompactPercentOverride` declares that
+`StartSessionOptions.launchCompactPercentOverride` is meaningful at provider
+create/resume time. This capability is deliberately separate from
+`supportsNativeCompactThreshold`:
+
+- the native threshold takes a derived **token count** representing the user's
+  percentage of the model's full context window;
+- the launch override takes a **percentage** whose denominator and
+  applicability belong to the provider.
+
+Claude is the initial and only implementation. YA's single global
+`claudeAutoCompactPercentOverride` setting maps to
+`CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`; the environment key is absent when the
+setting is off. Claude Code documents that this percentage is of its own
+auto-compaction window, can only lower its default, and only takes effect where
+Claude proactively compacts. Claude Gateway and Claude + Ollama explicitly do
+not advertise the capability.
+
+No live setter is assumed. A changed launch-scoped value requires restarting
+and resuming the same provider session before the next ordinary turn. See
+[resume-compaction](resume-compaction.md#claude-global-automatic-threshold-override)
+for the observable contract and compatibility fallback.
 
 ### Removed: `contextWindowFor`
 
