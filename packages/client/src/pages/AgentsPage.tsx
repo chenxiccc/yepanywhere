@@ -17,6 +17,11 @@ import { type ProcessInfo, useProcesses } from "../hooks/useProcesses";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useI18n } from "../i18n";
 import { MainContent, useNavigationLayout } from "../layouts";
+import styles from "./AgentsPage.module.css";
+
+function cx(...classNames: (string | false | undefined)[]): string {
+  return classNames.filter(Boolean).join(" ");
+}
 
 /**
  * Format uptime duration from start time to now.
@@ -77,16 +82,18 @@ function getStateLabel(state: string, t: (key: never) => string): string {
 /**
  * Get CSS class for state badge.
  */
-function getStateBadgeClass(state: string): string {
+function getStateBadgeClass(state: string): string | undefined {
   switch (state) {
+    // "running" never reached a badge: an in-turn card renders
+    // ThinkingIndicator instead, and no badge rule was ever authored for it.
     case "running":
-      return "agent-state-running";
+      return "";
     case "waiting-input":
-      return "agent-state-input";
+      return styles.stateInput;
     case "idle":
-      return "agent-state-idle";
+      return styles.stateIdle;
     case "terminated":
-      return "agent-state-terminated";
+      return styles.stateTerminated;
     default:
       return "";
   }
@@ -127,23 +134,25 @@ function getProviderLabel(
 /**
  * Get CSS class for provider badge.
  */
-function getProviderBadgeClass(provider: string | undefined): string {
+function getProviderBadgeClass(
+  provider: string | undefined,
+): string | undefined {
   switch (provider) {
     case "codex":
-      return "agent-provider-codex";
+      return styles.providerCodex;
     case "gemini":
     case "gemini-acp":
-      return "agent-provider-gemini";
+      return styles.providerGemini;
     case "grok":
-      return "agent-provider-grok";
+      return styles.providerGrok;
     case "opencode":
-      return "agent-provider-opencode";
+      return styles.providerOpencode;
     case "pi":
-      return "agent-provider-pi";
+      return styles.providerPi;
     case "local":
-      return "agent-provider-local";
+      return styles.providerLocal;
     default:
-      return "agent-provider-claude";
+      return styles.providerClaude;
   }
 }
 
@@ -161,15 +170,21 @@ interface KillFeedback {
   message: string;
 }
 
+/** Explicit lookup: the tone set is finite, so no class name is built at runtime. */
+const KILL_FEEDBACK_TONE_CLASS: Record<
+  KillFeedback["tone"],
+  string | undefined
+> = {
+  success: styles.killFeedbackSuccess,
+  error: styles.killFeedbackError,
+};
+
 interface ProcessMetricsProps {
   observation: HostAgentProcessObservation;
   touchSurfaceRef?: RefObject<HTMLElement | null>;
 }
 
-function ProcessMetrics({
-  observation,
-  touchSurfaceRef,
-}: ProcessMetricsProps) {
+function ProcessMetrics({ observation, touchSurfaceRef }: ProcessMetricsProps) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLSpanElement>(null);
@@ -262,12 +277,18 @@ function ProcessMetrics({
 
   return (
     <span
-      className={`agent-metrics-wrap${open ? " agent-metrics-wrap-open" : ""}`}
+      // `agent-metrics-wrap` stays for the global ContextUsageIndicator
+      // sibling rule in styles/index.css.
+      className={cx(
+        "agent-metrics-wrap",
+        styles.metricsWrap,
+        open && styles.metricsWrapOpen,
+      )}
       ref={wrapperRef}
     >
       <button
         type="button"
-        className="agent-metrics"
+        className={styles.metrics}
         title={detail}
         aria-label={detail}
         aria-expanded={open}
@@ -282,7 +303,7 @@ function ProcessMetrics({
         <span>{cpu}</span>
       </button>
       {open && (
-        <span className="agent-metrics-popover" role="status">
+        <span className={styles.metricsPopover} role="status">
           {detail}
         </span>
       )}
@@ -303,15 +324,18 @@ function ProcessCard({
   return (
     <Link
       to={`${basePath}/projects/${process.projectId}/sessions/${process.sessionId}`}
-      className={`agent-card ${isTerminated ? "agent-card-terminated" : ""}`}
+      className={cx(styles.card, isTerminated && styles.cardTerminated)}
     >
-      <div className="agent-card-header">
-        <div className="agent-card-title">
-          <span className="agent-card-session-title">
+      <div className={styles.cardHeader}>
+        <div className={styles.cardTitle}>
+          <span className={styles.cardSessionTitle}>
             {process.sessionTitle || t("agentsUntitled" as never)}
           </span>
           <span
-            className={`agent-provider-badge ${getProviderBadgeClass(process.provider)}`}
+            className={cx(
+              styles.providerBadge,
+              getProviderBadgeClass(process.provider),
+            )}
           >
             {getProviderLabel(process.provider, t)}
           </span>
@@ -322,7 +346,10 @@ function ProcessCard({
             />
           ) : (
             <span
-              className={`agent-state-badge ${getStateBadgeClass(process.state)}`}
+              className={cx(
+                styles.stateBadge,
+                getStateBadgeClass(process.state),
+              )}
             >
               {getStateLabel(process.state, t)}
             </span>
@@ -330,7 +357,7 @@ function ProcessCard({
           {!isTerminated && onKill && (
             <button
               type="button"
-              className="agent-kill-button"
+              className={styles.killButton}
               disabled={killing}
               onClick={(e) => {
                 // The whole card is a Link; keep a kill tap from navigating.
@@ -344,15 +371,17 @@ function ProcessCard({
             </button>
           )}
         </div>
-        <div className="agent-card-meta">
-          <span className="agent-card-project">{process.projectName}</span>
+        {/* `agent-card-meta` stays for the global ContextUsageIndicator
+            descendant rule in styles/index.css. */}
+        <div className={cx("agent-card-meta", styles.cardMeta)}>
+          <span className={styles.cardProject}>{process.projectName}</span>
           {process.pid !== undefined && (
-            <span className="agent-card-pid">
+            <span className={styles.cardPid}>
               {t("agentsPid" as never, { pid: process.pid })}
             </span>
           )}
           {!isTerminated && (
-            <span className="agent-card-uptime">
+            <span className={styles.cardUptime}>
               {formatUptime(process.startedAt)}
             </span>
           )}
@@ -368,31 +397,31 @@ function ProcessCard({
       {(process.permissionMode ||
         process.queueDepth > 0 ||
         process.terminationReason) && (
-        <div className="agent-card-details">
+        <div className={styles.cardDetails}>
           {process.permissionMode && (
-            <div className="agent-detail-row">
-              <span className="agent-detail-label">
+            <div className={styles.detailRow}>
+              <span className={styles.detailLabel}>
                 {t("agentsPermissionMode" as never)}
               </span>
-              <span className="agent-detail-value">
+              <span className={styles.detailValue}>
                 {process.permissionMode}
               </span>
             </div>
           )}
           {process.queueDepth > 0 && (
-            <div className="agent-detail-row">
-              <span className="agent-detail-label">
+            <div className={styles.detailRow}>
+              <span className={styles.detailLabel}>
                 {t("agentsMessagesQueued" as never)}
               </span>
-              <span className="agent-detail-value">{process.queueDepth}</span>
+              <span className={styles.detailValue}>{process.queueDepth}</span>
             </div>
           )}
           {process.terminationReason && (
-            <div className="agent-detail-row">
-              <span className="agent-detail-label">
+            <div className={styles.detailRow}>
+              <span className={styles.detailLabel}>
                 {t("agentsStopReason" as never)}
               </span>
-              <span className="agent-detail-value">
+              <span className={styles.detailValue}>
                 {process.terminationReason}
               </span>
             </div>
@@ -402,7 +431,7 @@ function ProcessCard({
 
       {providerChildren.length > 0 && (
         <div
-          className="agent-provider-children"
+          className={styles.providerChildren}
           role="list"
           aria-label={t(
             (providerChildren.length === 1
@@ -418,18 +447,16 @@ function ProcessCard({
               t("providerChildFallback" as never);
             return (
               <div
-                className="agent-provider-child"
+                className={styles.providerChild}
                 key={child.id}
                 role="listitem"
               >
-                <span className="agent-provider-child-branch" aria-hidden>
+                <span className={styles.providerChildBranch} aria-hidden>
                   ↳
                 </span>
-                <span className="agent-provider-child-title">
-                  {childTitle}
-                </span>
+                <span className={styles.providerChildTitle}>{childTitle}</span>
                 {child.agentType && child.agentType !== childTitle && (
-                  <span className="agent-provider-child-type">
+                  <span className={styles.providerChildType}>
                     {child.agentType}
                   </span>
                 )}
@@ -452,28 +479,33 @@ function ExternalProcessCard({
   const touchSurfaceRef = useRef<HTMLElement>(null);
   return (
     <article
-      className="agent-card agent-card-external"
+      className={cx(styles.card, styles.cardExternal)}
       ref={touchSurfaceRef}
     >
-      <div className="agent-card-header">
-        <div className="agent-card-title">
-          <span className="agent-card-session-title">
+      <div className={styles.cardHeader}>
+        <div className={styles.cardTitle}>
+          <span className={styles.cardSessionTitle}>
             {t("agentsExternalProcessTitle" as never, { provider })}
           </span>
           <span
-            className={`agent-provider-badge ${getProviderBadgeClass(observation.provider)}`}
+            className={cx(
+              styles.providerBadge,
+              getProviderBadgeClass(observation.provider),
+            )}
           >
             {provider}
           </span>
-          <span className="agent-state-badge agent-state-external">
+          <span className={cx(styles.stateBadge, styles.stateExternal)}>
             {t("agentsOutsideYa" as never)}
           </span>
         </div>
-        <div className="agent-card-meta">
-          <span className="agent-card-pid">
+        {/* `agent-card-meta` stays for the global ContextUsageIndicator
+            descendant rule in styles/index.css. */}
+        <div className={cx("agent-card-meta", styles.cardMeta)}>
+          <span className={styles.cardPid}>
             {t("agentsPid" as never, { pid: observation.pid })}
           </span>
-          <span className="agent-card-uptime">
+          <span className={styles.cardUptime}>
             {formatUptime(observation.startedAt)}
           </span>
           <ProcessMetrics
@@ -602,7 +634,10 @@ export function AgentsPage() {
 
           {killFeedback && (
             <p
-              className={`agents-kill-feedback agents-kill-feedback-${killFeedback.tone}`}
+              className={cx(
+                styles.killFeedback,
+                KILL_FEEDBACK_TONE_CLASS[killFeedback.tone],
+              )}
               role={killFeedback.tone === "error" ? "alert" : "status"}
             >
               {killFeedback.message}
@@ -611,14 +646,14 @@ export function AgentsPage() {
 
           {!loading && !error && (
             <>
-              <section className="agents-section">
+              <section className={styles.section}>
                 <h2>{t("agentsSectionActive" as never)}</h2>
                 {activeProcesses.length === 0 ? (
-                  <p className="agents-empty">
+                  <p className={styles.empty}>
                     {t("agentsEmptyActive" as never)}
                   </p>
                 ) : (
-                  <div className="agents-list">
+                  <div className={styles.list}>
                     {activeProcesses.map((process) => (
                       <ProcessCard
                         key={process.id}
@@ -636,26 +671,26 @@ export function AgentsPage() {
               </section>
 
               {hostProcesses.enabled && (
-                <section className="agents-section">
+                <section className={styles.section}>
                   <h2>{t("agentsSectionExternal" as never)}</h2>
                   {hostProcesses.loading ? (
-                    <p className="agents-empty">
+                    <p className={styles.empty}>
                       {t("agentsExternalLoading" as never)}
                     </p>
                   ) : hostProcesses.supported === false ? (
-                    <p className="agents-empty">
+                    <p className={styles.empty}>
                       {t("agentsExternalUnsupported" as never)}
                     </p>
                   ) : hostProcesses.error ? (
-                    <p className="agents-empty">
+                    <p className={styles.empty}>
                       {t("agentsExternalUnavailable" as never)}
                     </p>
                   ) : externalProcesses.length === 0 ? (
-                    <p className="agents-empty">
+                    <p className={styles.empty}>
                       {t("agentsEmptyExternal" as never)}
                     </p>
                   ) : (
-                    <div className="agents-list">
+                    <div className={styles.list}>
                       {externalProcesses.map((observation) => (
                         <ExternalProcessCard
                           key={observation.observationId}
@@ -667,14 +702,14 @@ export function AgentsPage() {
                 </section>
               )}
 
-              <section className="agents-section">
+              <section className={styles.section}>
                 <h2>{t("agentsSectionIdle" as never)}</h2>
                 {idleProcesses.length === 0 ? (
-                  <p className="agents-empty">
+                  <p className={styles.empty}>
                     {t("agentsEmptyIdle" as never)}
                   </p>
                 ) : (
-                  <div className="agents-list">
+                  <div className={styles.list}>
                     {idleProcesses.map((process) => (
                       <ProcessCard
                         key={process.id}
@@ -691,14 +726,14 @@ export function AgentsPage() {
                 )}
               </section>
 
-              <section className="agents-section">
+              <section className={styles.section}>
                 <h2>{t("agentsSectionStopped" as never)}</h2>
                 {terminatedProcesses.length === 0 ? (
-                  <p className="agents-empty">
+                  <p className={styles.empty}>
                     {t("agentsEmptyStopped" as never)}
                   </p>
                 ) : (
-                  <div className="agents-list">
+                  <div className={styles.list}>
                     {terminatedProcesses.map((process) => (
                       <ProcessCard
                         key={process.id}

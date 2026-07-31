@@ -1,0 +1,340 @@
+/*
+ * Agents page: section shells, process cards, provider/state badges, and the
+ * host process metrics popover.
+ *
+ * The two `.context-usage-indicator` composition rules stay in
+ * `styles/index.css`. That class belongs to ContextUsageIndicator, so the
+ * relationship is anchored on the global `agent-card-meta` and
+ * `agent-metrics-wrap` hooks the elements below still carry.
+ */
+
+.section {
+  margin-bottom: var(--space-4);
+}
+
+.section h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0 0 var(--space-3);
+  color: var(--text-primary);
+}
+
+.empty {
+  color: var(--text-muted);
+  font-style: italic;
+  padding: var(--space-3);
+}
+
+.killFeedback {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid currentColor;
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+}
+
+.killFeedbackSuccess {
+  color: var(--success-color);
+}
+
+.killFeedbackError {
+  color: var(--error-color);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s;
+}
+
+@media (hover: hover) {
+  .card:hover {
+    border-color: var(--border-hover);
+  }
+}
+
+.card:has(.metricsWrapOpen) {
+  position: relative;
+  z-index: 40;
+}
+
+.cardTerminated {
+  border-style: dashed;
+  opacity: 0.7;
+}
+
+.cardHeader {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.cardTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.cardSessionTitle {
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardProject {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.stateBadge {
+  font-size: var(--font-size-xs);
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.stateInput {
+  background: var(--status-badge-input-bg);
+  color: var(--status-badge-input-text);
+}
+
+.stateIdle {
+  background: var(--status-badge-idle-bg);
+  color: var(--status-badge-idle-text);
+}
+
+.stateTerminated {
+  background: var(--bg-hover);
+  color: var(--text-muted);
+}
+
+.stateExternal {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+
+/* Provider badges */
+.providerBadge {
+  font-size: var(--font-size-xs);
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.providerClaude {
+  background: linear-gradient(135deg, #d97706 0%, #f59e0b 100%);
+  color: white;
+}
+
+.providerCodex {
+  background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+  color: white;
+}
+
+.providerGemini {
+  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+  color: white;
+}
+
+.providerGrok {
+  background: linear-gradient(135deg, #111827 0%, #374151 100%);
+  color: white;
+}
+
+.providerOpencode {
+  background: linear-gradient(135deg, #7c3aed 0%, #9333ea 100%);
+  color: white;
+}
+
+.providerPi {
+  background: linear-gradient(135deg, #0d9488 0%, #14b8a6 100%);
+  color: white;
+}
+
+.providerLocal {
+  background: linear-gradient(135deg, #6b7280 0%, #9ca3af 100%);
+  color: white;
+}
+
+.killButton {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: var(--font-size-xs);
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.killButton:hover:not(:disabled) {
+  border-color: var(--error-color);
+  color: var(--error-color);
+}
+
+.killButton:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.cardMeta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.cardUptime {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.cardPid {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.metricsWrap {
+  position: relative;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.metricsWrapOpen {
+  z-index: 40;
+}
+
+.metrics {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0.125rem 0.45rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.metrics:hover,
+.metrics:focus-visible,
+.metrics[aria-expanded="true"] {
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+}
+
+.metricsPopover {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  width: max-content;
+  max-width: min(22rem, calc(100vw - 2rem));
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-lg);
+  color: var(--text-primary);
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+  white-space: pre-line;
+}
+
+.cardExternal {
+  cursor: default;
+}
+
+.cardDetails {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.providerChildren {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.providerChild {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  font-size: var(--font-size-sm);
+}
+
+.providerChildBranch,
+.providerChildType {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.providerChildTitle {
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detailRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-1) 0;
+}
+
+.detailLabel {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.detailValue {
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  text-align: right;
+  word-break: break-all;
+}
