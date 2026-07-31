@@ -2,6 +2,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useI18n } from "../i18n";
 import { shortenPath } from "../lib/text";
 import type { Project } from "../types";
+import styles from "./ProjectCard.module.css";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 
 interface ProjectCardProps {
@@ -67,21 +68,22 @@ export function ProjectCard({
   };
 
   return (
-    <li className="project-card">
+    <li className={styles.card}>
       <Link
         to={`${basePath}/sessions?project=${project.id}&source=projects`}
-        className="project-card__link"
+        className={styles.link}
+        data-project-card-link=""
       >
-        <div className="project-card__header">
-          <strong className="project-card__name">
+        <div className={styles.header}>
+          <strong className={styles.name}>
             {needsAttentionCount > 0 && (
-              <span className="project-card__attention-badge">
+              <span className={styles.attentionBadge}>
                 {needsAttentionCount}
               </span>
             )}
             {queueCount > 0 && (
               <span
-                className="project-card__queue-badge"
+                className={styles.queueBadge}
                 title={t("projectCardQueueCount", { count: queueCount })}
               >
                 {queueCount}
@@ -89,10 +91,10 @@ export function ProjectCard({
             )}
             {project.name}
           </strong>
-          <div className="project-card__actions">
+          <div className={styles.actions}>
             <button
               type="button"
-              className="project-card__new-session"
+              className={styles.newSession}
               onClick={handleNewSession}
               title={t("projectCardNewSession")}
               aria-label={t("projectCardNewSession")}
@@ -115,7 +117,7 @@ export function ProjectCard({
             {onDeleteProject && (
               <button
                 type="button"
-                className="project-card__delete"
+                className={styles.delete}
                 onClick={handleDeleteProject}
                 disabled={isDeleting}
                 title={t("projectsDelete")}
@@ -142,25 +144,25 @@ export function ProjectCard({
             )}
           </div>
         </div>
-        <div className="project-card__meta">
-          <span className="project-card__path" title={project.path}>
+        <div className={styles.meta}>
+          <span className={styles.path} title={project.path}>
             {shortenPath(project.path)}
           </span>
-          <span className="project-card__stats">
-            <span className="project-card__sessions">
+          <span className={styles.stats}>
+            <span className={styles.sessions}>
               {project.sessionCount} session
               {project.sessionCount !== 1 ? "s" : ""}
             </span>
             {thinkingCount > 0 && (
-              <span className="project-card__thinking">
+              <span className={styles.thinking}>
                 <ThinkingIndicator />
                 <span>{thinkingCount}</span>
               </span>
             )}
             {project.lastActivity && (
               <>
-                <span className="project-card__separator">·</span>
-                <span className="project-card__time">
+                <span className={styles.separator}>·</span>
+                <span className={styles.time}>
                   {formatRelativeTime(project.lastActivity)}
                 </span>
               </>

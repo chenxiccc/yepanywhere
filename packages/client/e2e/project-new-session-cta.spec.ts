@@ -17,7 +17,7 @@ async function dismissOnboardingIfVisible(
 
 function projectCardForCurrentRun(page: import("@playwright/test").Page) {
   return page.locator(
-    `.project-card__link[href*="project=${projectId}&source=projects"]`,
+    `[data-project-card-link][href*="project=${projectId}&source=projects"]`,
   );
 }
 
