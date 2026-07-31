@@ -40,18 +40,19 @@ prior text block or a short tool label (see Content below).
   Portaled, `position: fixed`, pointer-selectable, self-positioning from the
   row geometry + cursor x (below the row / right of cursor, flipping above when
   it would not fit). A column flexbox:
-  - `.session-hovercard__turn` — the opening request, styled like a user
+  - `styles.turn` — the opening request, styled like a user
     message, `white-space: pre-wrap`, line-clamped via an inline
     `-webkit-line-clamp` (`maxLines`) computed from available vertical space.
-  - `.session-hovercard__meta` — a `flex-wrap` row of chips: provider+model
+  - `styles.meta` — a `flex-wrap` row of chips: provider+model
     badge, project, age (`5m ago (est. 2d)`), status badge.
-- **Width** — `.session-hovercard { width: max-content; max-width: min(700px,
-  92vw) }`, and `.session-hovercard--wide { max-width: min(880px, 96vw) }` when
+- **Width** — `.root { width: max-content; max-width: min(700px, 92vw) }`, and
+  `.wide { max-width: min(880px, 96vw) }` when
   neither below nor above fits and the card trades reading width for fewer
-  lines (`placement.loosened`). CSS at `packages/client/src/styles/index.css`
-  ~13309. **Consequence that drives the layout below:** the card already sizes
-  to its widest child's longest line, i.e. the opening request sets the width;
-  any second block wraps within that same width for free.
+  lines (`placement.loosened`). CSS lives in
+  `packages/client/src/components/SessionHoverCard.module.css`.
+  **Consequence that drives the layout below:** the card already sizes to its
+  widest child's longest line, i.e. the opening request sets the width; any
+  second block wraps within that same width for free.
 - **Body source** — `SessionListItem.tsx`:
   `hoverPrompt = (initialPrompt || fullTitle || displayTitle || "").trim()`
   (the *first* user turn). No agent-turn text reaches the client today.
@@ -74,7 +75,7 @@ prior text block or a short tool label (see Content below).
 |---|---|
 | Content | **Last ~3 lines** of the last regular visible agent turn, light-stripped; **tool-call fallback** label when the turn ends with no trailing prose. Long one-line excerpts clip at the end, never by taking a middle/tail slice with a leading ellipsis. |
 | Source | **Persisted assistant→user text excerpt or provider recap** from the session index. Not hidden thinking and not the live thinking/tool tail (that is phase 2). |
-| Layout slot | A dedicated block **below the badge/meta line** (`__turn` → `__meta` → `__reply`). Deliberate "nice separation"; slightly unconventional vs. putting it directly under the request. |
+| Layout slot | A dedicated block **below the badge/meta line** (`turn` → `meta` → `reply`). Deliberate "nice separation"; slightly unconventional vs. putting it directly under the request. |
 | Width | **Same treatment as the request.** The card is `max-content`; the request already forces the width, the reply wraps in it. `--wide` (880px) applies to both. No special narrowing, no one-line-beside-badges. |
 | Vertical budget | **Equal small caps**, not greedy. Cap the now-greedy opening body (≈4–5 lines) and clamp the reply (≈3 lines); the reply must not exceed the opening request's allocation. |
 | Surfaces | Sidebar (compact) already fires. **Also fire in card mode** so all-sessions + search get it. |
@@ -117,11 +118,11 @@ prior text block or a short tool label (see Content below).
 
 ### Layout slot (where the block sits)
 
-- **Below the badge line** (`__turn` → `__meta` → `__reply`) — *opted*. Clean
+- **Below the badge line** (`turn` → `meta` → `reply`) — *opted*. Clean
   separation between "the request + its metadata" and "the latest reply".
   Slightly unconventional (recent content usually sits adjacent to the title),
   judged defensible for the separation it buys.
-- Between request and badges (`__turn` → `__reply` → `__meta`) — conventional
+- Between request and badges (`turn` → `reply` → `meta`) — conventional
   "reply under the prompt" reading order; rejected for weaker separation.
 - Inline, one line to the right of the badges (next to `(est Xh)`) — rejected:
   prose in the `flex-wrap` chip row wraps among badges, and a single ellipsised
@@ -137,7 +138,7 @@ prior text block or a short tool label (see Content below).
 
 ### Vertical budget
 
-- **Equal small caps** — *opted*. Today `__turn` greedily consumes available
+- **Equal small caps** — *opted*. Today `turn` greedily consumes available
   height (`maxLines` from space). Split the budget: cap the opening body
   (≈4–5 lines) and clamp the reply (≈3 lines), remainder unused so the tooltip
   does not grow tall. The recent block must not exceed the opening request's
@@ -166,9 +167,9 @@ Server:
 Client:
 
 - Pass `lastAgentText` from `SessionListItem` to `SessionHoverCard` as a new
-  optional prop; render `.session-hovercard__reply` below `__meta`.
+  optional prop; render `styles.reply` below `styles.meta`.
 - Apply the tool-call fallback (label the trailing tool when no trailing prose).
-- Split the line budget between `__turn` and `__reply`.
+- Split the line budget between `styles.turn` and `styles.reply`.
 - Drop the `mode === "compact"` gate on `showCompactPreview` (or widen it to
   card mode) so all-sessions + search rows fire the card.
 
