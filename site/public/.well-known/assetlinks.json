@@ -1,10 +1,24 @@
 [
   {
-    "relation": ["delegate_permission/common.handle_all_urls"],
+    "relation": [
+      "delegate_permission/common.get_login_creds"
+    ],
+    "target": {
+      "namespace": "web",
+      "site": "https://yepanywhere.com"
+    }
+  },
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls",
+      "delegate_permission/common.get_login_creds"
+    ],
     "target": {
       "namespace": "android_app",
       "package_name": "com.yepanywhere.mobile",
-      "sha256_cert_fingerprints": []
+      "sha256_cert_fingerprints": [
+        "2C:15:D9:AB:07:33:E6:8D:7B:AE:FE:5B:71:65:FA:AB:2E:10:A1:12:69:43:37:53:CE:C4:BE:4B:EB:A2:F0:5C"
+      ]
     }
   }
 ]

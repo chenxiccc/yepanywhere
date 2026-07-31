@@ -33,6 +33,8 @@
   galleries, and full-image viewer interaction.
 - security - YA trust-boundary contracts for local, authenticated, relay, and public surfaces.
 - trusted-client-packaging - Signed/local client packaging and relay-only transport trust roots.
+- android-credential-sharing - Digital Asset Links association between the
+  packaged Android app and yepanywhere.com login credentials.
 - message-control-steer-queue-btw-later-interrupt - Steer/queue control state, ownership normalization, and metadata contract cleanup.
 - composer-bottom-bar-overflow - Narrow composer bottom-row overflow popup and control priority.
 - ui-architecture - Shared rendering boundaries and anti-DOM-rewrite discipline.

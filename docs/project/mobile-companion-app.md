@@ -7,6 +7,8 @@ mobile companion app. It is not yet an implementation plan.
 
 The Android notification path is specified separately in
 [`topics/android-fcm-push.md`](../../topics/android-fcm-push.md).
+The current packaged app's password-manager association is specified in
+[`topics/android-credential-sharing.md`](../../topics/android-credential-sharing.md).
 
 ## Motivation
 
@@ -37,6 +39,13 @@ easier, but it is not required for the default path.
 
 Source builds and `adb install` should remain possible for advanced users, but
 they are not the product-defining path.
+
+During the transitional packaged-web-UI phase, the Android app declares a
+Digital Asset Links association with `yepanywhere.com`. This lets compatible
+password managers recognize the app's SRP login as the same credential surface
+as the hosted Remote Access login. The initial association covers the
+maintainer-signed debug APK for device testing; a public app needs its official
+distribution certificate added before release.
 
 ## Product Shape
 

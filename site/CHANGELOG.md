@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [site-v1.8.1] - 2026-07-31
+
+### Added
+- Associate the Yep Anywhere Android app with `yepanywhere.com` for compatible
+  password-manager credential sharing and verified `/open` App Links.
+
 ## [site-v1.8.0] - 2026-07-25
 
 ### Added
