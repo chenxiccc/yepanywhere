@@ -1,4 +1,5 @@
 import { useI18n } from "../i18n";
+import styles from "./BulkActionBar.module.css";
 
 interface BulkActionBarProps {
   selectedCount: number;
@@ -59,11 +60,11 @@ export function BulkActionBar({
     }
 
     return (
-      <div className="bulk-action-bar bulk-action-bar--filtered">
-        <div className="bulk-action-bar__actions">
+      <div className={`${styles.bar} ${styles.filtered}`}>
+        <div className={styles.actions}>
           <button
             type="button"
-            className="bulk-action-button bulk-action-button--primary"
+            className={`${styles.actionButton} ${styles.actionButtonPrimary}`}
             onClick={onSelectAllFiltered}
             disabled={isPending}
             title={t("bulkSelectAllFilteredTitle", {
@@ -92,14 +93,14 @@ export function BulkActionBar({
   }
 
   return (
-    <div className="bulk-action-bar">
-      <div className="bulk-action-bar__info">
-        <span className="bulk-action-bar__count">
+    <div className={styles.bar}>
+      <div className={styles.info}>
+        <span className={styles.count}>
           {t("bulkSelectedCount", { count: selectedCount })}
         </span>
         <button
           type="button"
-          className="bulk-action-bar__clear"
+          className={styles.clear}
           onClick={onClearSelection}
           disabled={isPending}
           aria-label={t("bulkClearSelection")}
@@ -121,11 +122,11 @@ export function BulkActionBar({
         </button>
       </div>
 
-      <div className="bulk-action-bar__actions">
+      <div className={styles.actions}>
         {canArchive && (
           <button
             type="button"
-            className="bulk-action-button"
+            className={styles.actionButton}
             onClick={onArchive}
             disabled={isPending}
             title={t("bulkArchiveSelected")}
@@ -152,7 +153,7 @@ export function BulkActionBar({
         {canUnarchive && (
           <button
             type="button"
-            className="bulk-action-button"
+            className={styles.actionButton}
             onClick={onUnarchive}
             disabled={isPending}
             title={t("bulkUnarchiveSelected")}
@@ -180,7 +181,7 @@ export function BulkActionBar({
         {canStar && (
           <button
             type="button"
-            className="bulk-action-button"
+            className={styles.actionButton}
             onClick={onStar}
             disabled={isPending}
             title={t("bulkStarSelected")}
@@ -205,7 +206,7 @@ export function BulkActionBar({
         {canUnstar && (
           <button
             type="button"
-            className="bulk-action-button"
+            className={styles.actionButton}
             onClick={onUnstar}
             disabled={isPending}
             title={t("bulkUnstarSelected")}
@@ -231,7 +232,7 @@ export function BulkActionBar({
         {canMarkRead && (
           <button
             type="button"
-            className="bulk-action-button"
+            className={styles.actionButton}
             onClick={onMarkRead}
             disabled={isPending}
             title={t("bulkMarkReadTitle")}
@@ -257,7 +258,7 @@ export function BulkActionBar({
         {canMarkUnread && (
           <button
             type="button"
-            className="bulk-action-button"
+            className={styles.actionButton}
             onClick={onMarkUnread}
             disabled={isPending}
             title={t("bulkMarkUnreadTitle")}
