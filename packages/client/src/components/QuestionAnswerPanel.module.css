@@ -1,0 +1,386 @@
+/* Question Answer Panel - for AskUserQuestion tool with tabbed UI */
+
+/* Wrapper for the question panel with floating toggle */
+.wrapper {
+  position: relative;
+}
+
+/* Floating toggle button above the panel */
+.toggle {
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
+  width: 32px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-code);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+}
+
+.toggle:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
+.toggle svg {
+  transition: transform 0.2s ease;
+}
+
+/* `chevron-up`/`chevron-down` is shared collapse-affordance vocabulary that
+   MessageInput and ToolApprovalPanel also set on their own toggles, so it
+   stays global and this module only reacts to it. */
+.toggle svg:global(.chevron-up) {
+  transform: rotate(180deg);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--bg-secondary);
+  border: 1px solid var(--primary-color);
+  border-radius: var(--radius-md);
+  /* Mobile: limit height and enable scrolling when keyboard is open */
+  max-height: 50vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.empty {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* Tab bar */
+.tabs {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-code);
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.tab:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--border-input);
+}
+
+.tab.active {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: #000;
+  font-weight: 500;
+}
+
+.tab.answered {
+  border-color: var(--success-color);
+}
+
+.tab.answered:not(.active) {
+  color: var(--success-color);
+}
+
+.tabCheck {
+  color: var(--success-color);
+}
+
+.tab.active .tabCheck {
+  color: #000;
+}
+
+/* Question content */
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.content .text {
+  font-size: var(--font-size-base);
+  color: var(--text-primary);
+  line-height: 1.4;
+  /* Cap the reading measure (~45-75 chars is the readability sweet spot) so
+     prose never runs to 1000px+ lines on a very wide card. Only shrinks —
+     the card still fills the window, and no horizontal scroll is introduced. */
+  max-width: 72ch;
+}
+
+/* Options list */
+.optionsList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  /* Query container so an option's preview can switch between stacked (below)
+     and side-by-side (beside) based on the card's own width, not the viewport. */
+  container-type: inline-size;
+  container-name: qopts;
+}
+
+.option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  column-gap: var(--space-3);
+  row-gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--bg-code);
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-md);
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s;
+  width: 100%;
+}
+
+.option:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--border-input);
+}
+
+.option.selected {
+  border-color: var(--primary-color);
+  /* Softer single-cue selection: tinted fill + colored border, without the
+     extra inset ring that made the card read as garish. */
+  background: rgba(96, 165, 250, 0.1);
+}
+
+.option.selected:hover {
+  border-color: var(--primary-color);
+  background: rgba(96, 165, 250, 0.16);
+}
+
+.optionRadio {
+  color: var(--text-dimmed);
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.option.selected .optionRadio {
+  color: var(--primary-color);
+}
+
+.option.selected .optionLabel {
+  color: var(--primary-color);
+}
+
+.optionText {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  /* Same readable-measure cap as the question prose; min-width:0 lets the
+     text shrink inside its grid cell instead of forcing the row wider. */
+  min-width: 0;
+  max-width: 72ch;
+}
+
+.option .optionLabel {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.option .optionDesc {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+/* Option preview: a neutral, monospaced surface for the option's `preview`
+   content. Stacked full-width below the option by default (spans both grid
+   columns); promoted to a side panel when the card is wide (see @container). */
+.optionPreview {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: var(--space-2);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  line-height: 1.45;
+  white-space: pre;
+  overflow: auto;
+  max-height: 14rem;
+  /* Selectable/copyable even though it lives inside the option button. */
+  cursor: text;
+  user-select: text;
+}
+
+@container qopts (min-width: 460px) {
+  .option.hasPreview {
+    /* Bounded text column keeps the side preview adjacent to the option
+       instead of flung to the far edge on an extremely wide card. */
+    grid-template-columns: auto minmax(0, 40rem) minmax(10rem, 18rem);
+  }
+
+  .option.hasPreview .optionPreview {
+    grid-column: 3;
+    grid-row: 1 / 2;
+    align-self: stretch;
+    max-height: 16rem;
+  }
+}
+
+/* Other option input */
+.otherInput {
+  margin-left: calc(1rem + var(--space-3));
+  margin-top: var(--space-2);
+}
+
+.otherInput input {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: var(--font-size-base);
+}
+
+.otherInput input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+}
+
+.otherInput input::placeholder {
+  color: var(--text-muted);
+}
+
+/* Actions */
+.actions {
+  /* Pin to the bottom of the scrolling panel so Cancel/Submit stay reachable
+     on short/narrow screens without scrolling past the options. */
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
+}
+
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  /* Transparent border on every variant keeps heights aligned whether or not
+     a variant draws a visible border (e.g. the ghost Cancel below). */
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    opacity 0.15s,
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+  min-width: 90px;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Cancel is the secondary action — a quiet ghost button so the single solid
+   Submit reads as the primary CTA instead of two loud filled buttons. */
+.btn.deny {
+  background: transparent;
+  color: var(--text-secondary);
+  border-color: var(--border-input);
+}
+
+.btn.deny:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.btn.next {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.btn.next:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.btn.submit {
+  background: var(--success-color);
+  color: #000;
+}
+
+.btn.submit:hover:not(:disabled) {
+  background: #8fd9a8;
+}
+
+.btn kbd {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  font-weight: 400;
+  padding: 0.1rem 0.3rem;
+  /* Theme-agnostic translucent chip (reads on both the ghost Cancel and the
+     solid Submit), de-emphasized so the shortcut hint stays subordinate. */
+  background: rgba(127, 127, 127, 0.22);
+  border-radius: var(--radius-sm);
+  opacity: 0.75;
+}
+
+/* Mobile adjustments */
+@media (max-width: 600px) {
+  .panel {
+    padding: var(--space-2);
+  }
+
+  .tabs {
+    gap: var(--space-1);
+  }
+
+  .tab {
+    padding: var(--space-1) var(--space-2);
+    font-size: var(--font-size-xs);
+  }
+
+  .option {
+    padding: var(--space-2);
+  }
+
+  .actions {
+    flex-direction: row;
+  }
+
+  .btn {
+    min-width: 70px;
+    flex: 1;
+  }
+}

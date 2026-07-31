@@ -6,8 +6,13 @@ import type {
   AskUserQuestionInput,
   Question,
 } from "./renderers/tools/types";
+import styles from "./QuestionAnswerPanel.module.css";
 
 const OTHER_ANSWER = "__other__";
+
+function cx(...classNames: (string | false | undefined)[]): string {
+  return classNames.filter(Boolean).join(" ");
+}
 type SelectedAnswers = Record<string, string[]>;
 
 function getSelections(
@@ -253,9 +258,9 @@ export function QuestionAnswerPanel({
 
   if (!questions.length) {
     return (
-      <div className="question-panel-wrapper">
-        <div className="question-panel">
-          <div className="question-panel-empty">
+      <div className={styles.wrapper}>
+        <div className={styles.panel}>
+          <div className={styles.empty}>
             {t("questionPanelNoQuestions")}
           </div>
         </div>
@@ -264,11 +269,11 @@ export function QuestionAnswerPanel({
   }
 
   return (
-    <div className="question-panel-wrapper">
+    <div className={styles.wrapper}>
       {/* Floating toggle button */}
       <button
         type="button"
-        className="question-panel-toggle"
+        className={styles.toggle}
         onClick={() => setCollapsed(!collapsed)}
         aria-label={
           collapsed ? t("questionPanelExpand") : t("questionPanelCollapse")
@@ -292,11 +297,11 @@ export function QuestionAnswerPanel({
       </button>
 
       {!collapsed && (
-        <div className="question-panel">
+        <div className={styles.panel}>
           {/* Tab bar — only meaningful with more than one question; a lone
               tab is just noise (and an awkward "active" pill), so hide it. */}
           {questions.length > 1 && (
-            <div className="question-tabs">
+            <div className={styles.tabs}>
               {questions.map((q, idx) => {
                 const isActive = idx === currentTab;
                 const isAnswered = isQuestionAnswered(
@@ -307,11 +312,15 @@ export function QuestionAnswerPanel({
                   <button
                     key={getQuestionKey(q)}
                     type="button"
-                    className={`question-tab ${isActive ? "active" : ""} ${isAnswered ? "answered" : ""}`}
+                    className={cx(
+                      styles.tab,
+                      isActive && styles.active,
+                      isAnswered && styles.answered,
+                    )}
                     onClick={() => setCurrentTab(idx)}
                   >
                     {isAnswered && (
-                      <span className="question-tab-check">✓</span>
+                      <span className={styles.tabCheck}>✓</span>
                     )}
                     {q.header}
                   </button>
@@ -322,31 +331,33 @@ export function QuestionAnswerPanel({
 
           {/* Current question */}
           {currentQuestion && (
-            <div className="question-content">
-              <div className="question-text">{currentQuestion.question}</div>
+            <div className={styles.content}>
+              <div className={styles.text}>{currentQuestion.question}</div>
 
-              <div className="question-options-list">
+              <div className={styles.optionsList}>
                 {currentQuestion.options.map((option) => {
                   const isSelected = currentSelections.includes(option.label);
                   return (
                     <button
                       key={option.label}
                       type="button"
-                      className={`question-option-btn ${isSelected ? "selected" : ""} ${
-                        isSelected && option.preview ? "has-preview" : ""
-                      }`}
+                      className={cx(
+                        styles.option,
+                        isSelected && styles.selected,
+                        isSelected && !!option.preview && styles.hasPreview,
+                      )}
                       aria-pressed={isSelected}
                       onClick={(event) => {
                         if (
                           event.target instanceof HTMLElement &&
-                          event.target.closest(".question-option-preview")
+                          event.target.closest(`.${styles.optionPreview}`)
                         ) {
                           return;
                         }
                         handleSelectOption(option.label);
                       }}
                     >
-                      <span className="question-option-radio">
+                      <span className={styles.optionRadio}>
                         {currentQuestion.multiSelect
                           ? isSelected
                             ? "☑"
@@ -355,19 +366,19 @@ export function QuestionAnswerPanel({
                             ? "●"
                             : "○"}
                       </span>
-                      <div className="question-option-text">
-                        <span className="question-option-label">
+                      <div className={styles.optionText}>
+                        <span className={styles.optionLabel}>
                           {option.label}
                         </span>
                         {option.description && (
-                          <span className="question-option-desc">
+                          <span className={styles.optionDesc}>
                             {option.description}
                           </span>
                         )}
                       </div>
                       {/* Preview is revealed for the focused (selected) option. */}
                       {isSelected && option.preview && (
-                        <div className="question-option-preview">
+                        <div className={styles.optionPreview}>
                           {option.preview}
                         </div>
                       )}
@@ -379,11 +390,15 @@ export function QuestionAnswerPanel({
                 {currentQuestion.isOther !== false && (
                   <button
                     type="button"
-                    className={`question-option-btn other ${isOtherSelected ? "selected" : ""}`}
+                    className={cx(
+                      styles.option,
+                      "other",
+                      isOtherSelected && styles.selected,
+                    )}
                     aria-pressed={isOtherSelected}
                     onClick={() => handleSelectOption(OTHER_ANSWER)}
                   >
-                    <span className="question-option-radio">
+                    <span className={styles.optionRadio}>
                       {currentQuestion.multiSelect
                         ? isOtherSelected
                           ? "☑"
@@ -392,8 +407,8 @@ export function QuestionAnswerPanel({
                           ? "●"
                           : "○"}
                     </span>
-                    <div className="question-option-text">
-                      <span className="question-option-label">
+                    <div className={styles.optionText}>
+                      <span className={styles.optionLabel}>
                         {t("questionPanelOther")}
                       </span>
                     </div>
@@ -402,7 +417,7 @@ export function QuestionAnswerPanel({
 
                 {/* Other text input */}
                 {isOtherSelected && (
-                  <div className="question-other-input">
+                  <div className={styles.otherInput}>
                     <input
                       ref={otherInputRef}
                       type={currentQuestion.isSecret ? "password" : "text"}
@@ -417,10 +432,10 @@ export function QuestionAnswerPanel({
           )}
 
           {/* Actions */}
-          <div className="question-actions">
+          <div className={styles.actions}>
             <button
               type="button"
-              className="question-btn deny"
+              className={cx(styles.btn, styles.deny)}
               onClick={handleDeny}
               disabled={submitting}
             >
@@ -431,7 +446,7 @@ export function QuestionAnswerPanel({
             {isLastQuestion ? (
               <button
                 type="button"
-                className="question-btn submit"
+                className={cx(styles.btn, styles.submit)}
                 onClick={handleSubmit}
                 disabled={!allAnswered || submitting}
               >
@@ -441,7 +456,7 @@ export function QuestionAnswerPanel({
             ) : (
               <button
                 type="button"
-                className="question-btn next"
+                className={cx(styles.btn, styles.next)}
                 onClick={advanceToNext}
                 disabled={!currentQuestionAnswered || submitting}
               >

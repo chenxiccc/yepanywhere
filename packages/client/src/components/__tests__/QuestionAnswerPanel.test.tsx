@@ -75,13 +75,17 @@ describe("QuestionAnswerPanel", () => {
       />,
     );
 
+    // Selection is asserted through the semantic state the panel exposes;
+    // the visual class is a scoped module hash, not a public selector.
     const unit = screen.getByRole("button", { name: /Unit/ });
+    expect(unit.getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(unit);
-    expect(unit.classList.contains("selected")).toBe(true);
+    expect(unit.getAttribute("aria-pressed")).toBe("true");
 
     const other = screen.getByRole("button", { name: /Other/ });
+    expect(other.getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(other);
-    expect(other.classList.contains("selected")).toBe(true);
+    expect(other.getAttribute("aria-pressed")).toBe("true");
 
     fireEvent.change(screen.getByPlaceholderText("Type your answer..."), {
       target: { value: "Manual smoke" },
