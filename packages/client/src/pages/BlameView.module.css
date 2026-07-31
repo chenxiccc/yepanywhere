@@ -1,0 +1,196 @@
+/* Blame view: gutter · line number · highlighted code.
+
+   The root element also keeps the global `blame-view` class: the shared
+   source-code typography rule in `renderers.css` names it alongside the diff
+   and file-viewer roots, and `BlameBrowser` places this pane with
+   `.blame-browser-columns > .blame-view`. Both live outside this module. */
+.root {
+  position: relative;
+  max-height: calc(100vh - 200px);
+  overflow: auto;
+  border: 1px solid var(--border-subtle, #21262d);
+  border-radius: var(--radius-md, 8px);
+}
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-subtle, #21262d);
+}
+
+.pathGroup {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  min-width: 0;
+}
+
+.path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary, #8b949e);
+}
+
+/* Passed through `CopyButton`'s `className`. Single-class, like the selector it
+   replaces, so the later `index.css` `.copy-button` keeps winning the border. */
+.pathCopy {
+  flex-shrink: 0;
+  border-color: transparent;
+}
+
+.lines {
+  --blame-hash-column-width: calc(5ch + 0.75rem);
+
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.run {
+  max-width: 100%;
+  min-width: 100%;
+}
+
+.run.scrollable {
+  overflow-x: auto;
+}
+
+.row {
+  display: grid;
+  grid-template-columns:
+    var(--blame-hash-column-width)
+    var(--blame-line-number-column-width)
+    minmax(max-content, 1fr);
+  gap: 0;
+  align-items: baseline;
+  width: max-content;
+  min-width: 100%;
+  padding: 0;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+
+.row:hover {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.05));
+}
+
+.row.hasReviewComment {
+  background: color-mix(in srgb, var(--success-color) 12%, transparent);
+}
+
+.gutter {
+  align-self: stretch;
+  padding: 0 6px;
+  color: var(--text-muted);
+  font: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.commitLink {
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 2px;
+}
+
+.commitLink.authorColored {
+  color: oklch(
+    var(--blame-author-color-lightness) var(--blame-author-color-chroma)
+      var(--blame-author-hue)
+  );
+}
+
+.commitLink:hover,
+.commitLink:focus-visible {
+  color: var(--link-color, #58a6ff);
+  text-decoration-color: currentColor;
+}
+
+.gutter.uncommitted {
+  color: var(--warning-color);
+}
+
+.gutterLoading {
+  color: var(--text-muted);
+  opacity: 0.55;
+}
+
+.lineNumber {
+  align-self: stretch;
+  min-width: 0;
+  padding: 0 0.4rem 0 0.25rem;
+  color: var(--text-muted);
+  font: inherit;
+  text-align: right;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.lineNumber:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+/* Token spans carry inline colors from the server highlight; the cell only
+   needs pre whitespace and a foreground for un-highlighted text. */
+.code {
+  min-width: max-content;
+  padding-right: 0.5rem;
+  white-space: pre;
+  tab-size: var(--tab-size);
+  color: var(--shiki-foreground, var(--text-primary, #e6edf3));
+  cursor: pointer;
+  user-select: text;
+}
+
+.code:not([role="button"]) {
+  cursor: text;
+}
+
+.code:focus-visible,
+.lineNumber:focus-visible {
+  outline: 1px solid var(--focus-border);
+  outline-offset: -1px;
+}
+
+.truncated {
+  padding: 8px 10px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.provenanceStatus {
+  color: var(--text-muted);
+  font-family: var(--font-sans, sans-serif);
+  font-size: 0.72rem;
+}
+
+.provenanceError,
+.contentError {
+  padding: 6px 10px;
+  color: var(--warning-color);
+  font-family: var(--font-sans, sans-serif);
+  font-size: 0.75rem;
+  background: color-mix(in srgb, var(--warning-color) 8%, transparent);
+  border-bottom: 1px solid var(--border-subtle, #21262d);
+}

@@ -59,18 +59,19 @@ describe("Files blame content-width measurement", () => {
   it("uses rendered scroll widths for tabs and wide characters", () => {
     const container = document.createElement("section");
     container.innerHTML = `
-      <div class="blame-row">
-        <span class="blame-gutter">abcdef0</span>
-        <span class="blame-lineno">1</span>
-        <span class="blame-code">\twide 界</span>
+      <div data-blame-row="">
+        <span data-blame-gutter="commit">abcdef0</span>
+        <span data-blame-lineno="">1</span>
+        <span data-blame-code="">\twide 界</span>
       </div>
-      <div class="blame-row">
-        <span class="blame-gutter">abcdef0</span>
-        <span class="blame-lineno">2</span>
-        <span class="blame-code">short</span>
+      <div data-blame-row="">
+        <span data-blame-gutter="commit">abcdef0</span>
+        <span data-blame-lineno="">2</span>
+        <span data-blame-code="">short</span>
       </div>
     `;
-    const codeCells = container.querySelectorAll<HTMLElement>(".blame-code");
+    const codeCells =
+      container.querySelectorAll<HTMLElement>("[data-blame-code]");
     Object.defineProperty(codeCells[0], "scrollWidth", { value: 510 });
     Object.defineProperty(codeCells[1], "scrollWidth", { value: 80 });
 

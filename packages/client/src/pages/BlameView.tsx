@@ -26,6 +26,7 @@ import { useReviewCommentDraft } from "../hooks/useReviewCommentDraft";
 import type { TranslationFn } from "../i18n";
 import { writeClipboardText } from "../lib/clipboard";
 import { ReviewCommentWindow } from "./ReviewCommentWindow";
+import styles from "./BlameView.module.css";
 import {
   createBlameLineWidthCacheKey,
   getBlameTypographySignature,
@@ -168,7 +169,7 @@ export function BlameView({
     const container = containerRef.current;
     if (!container || contentLoading || !onContentWidthChange) return;
     const typography = getBlameTypographySignature(
-      container.querySelector<HTMLElement>(".blame-code") ?? container,
+      container.querySelector<HTMLElement>("[data-blame-code]") ?? container,
       typographyVersion,
     );
     const presentation = codeLines
@@ -265,51 +266,53 @@ export function BlameView({
 
   if (contentLoading && !blame) {
     return (
-      <section className="blame-view">
+      <section className={`blame-view ${styles.root}`}>
         <div className="git-diff-loading">{t("gitStatusLoading")}</div>
       </section>
     );
   }
   if (contentError && blameError && !blame) {
     return (
-      <section className="blame-view">
+      <section className={`blame-view ${styles.root}`}>
         <div className="git-diff-error">{contentError}</div>
       </section>
     );
   }
 
   return (
-    <section className="blame-view" ref={containerRef}>
-      <div className="blame-view-header">
-        <span className="blame-view-path-group">
-          <span className="blame-view-path" title={path}>
+    <section className={`blame-view ${styles.root}`} ref={containerRef}>
+      <div className={styles.header}>
+        <span className={styles.pathGroup} data-blame-path-group="">
+          <span className={styles.path} title={path}>
             {path}
           </span>
           <CopyButton
             value={path}
             title={t("sourceCopyPath")}
-            className="source-detail-action source-detail-icon-action blame-path-copy"
+            className={`source-detail-action source-detail-icon-action ${styles.pathCopy}`}
             icon="path"
           />
         </span>
         {blameLoading && (
-          <span className="blame-provenance-status" role="status">
+          <span className={styles.provenanceStatus} role="status">
             {t("sourceBlameLoading")}
           </span>
         )}
         <CopyButton
           value={file?.content ?? ""}
           title={t("sourceCopyRawContent")}
-          className="source-detail-action source-detail-icon-action blame-content-copy"
+          className="source-detail-action source-detail-icon-action"
           disabled={file?.content === undefined || !file.metadata.isText}
           icon="content"
         />
       </div>
       {contentError && (
-        <div className="git-diff-error blame-content-error">{contentError}</div>
+        <div className={`git-diff-error ${styles.contentError}`}>
+          {contentError}
+        </div>
       )}
       {blameError && (
-        <div className="blame-provenance-error" role="status">
+        <div className={styles.provenanceError} role="status">
           {t("sourceBlameUnavailable")}
         </div>
       )}
@@ -317,7 +320,7 @@ export function BlameView({
         <div className="git-status-empty">{t("fileViewerBinary")}</div>
       )}
       <div
-        className="blame-lines"
+        className={styles.lines}
         style={
           {
             "--blame-line-number-column-width": lineNumberColumnWidth,
@@ -326,7 +329,9 @@ export function BlameView({
       >
         {renderRuns.map((run) => (
           <div
-            className={`blame-run ${run.rows[0]?.line ? "is-scrollable" : ""}`}
+            className={`${styles.run} ${
+              run.rows[0]?.line ? styles.scrollable : ""
+            }`}
             key={run.key}
           >
             {run.rows.map(({ content, index, line }) => {
@@ -344,13 +349,19 @@ export function BlameView({
               return (
                 <div
                   key={lineNumber}
-                  className={`blame-row ${
-                    commentedLines.has(lineNumber) ? "has-review-comment" : ""
+                  data-blame-row=""
+                  // `has-review-comment` stays literal: it is the shared
+                  // review-comment hook the diff surfaces also carry.
+                  className={`${styles.row} ${
+                    commentedLines.has(lineNumber)
+                      ? `${styles.hasReviewComment} has-review-comment`
+                      : ""
                   }`}
                 >
                   {line?.uncommitted ? (
                     <span
-                      className="blame-gutter uncommitted"
+                      className={`${styles.gutter} ${styles.uncommitted}`}
+                      data-blame-gutter="uncommitted"
                       title={t("sourceBlameNotCommitted")}
                     >
                       ·····
@@ -358,9 +369,10 @@ export function BlameView({
                   ) : line ? (
                     <button
                       type="button"
-                      className={`blame-gutter blame-commit-link ${
-                        authorSlot === undefined ? "" : "has-author-color"
+                      className={`${styles.gutter} ${styles.commitLink} ${
+                        authorSlot === undefined ? "" : styles.authorColored
                       }`}
+                      data-blame-gutter="commit"
                       style={authorStyle}
                       title={blameGutterTitle(line)}
                       {...hashMenu.targetProps(menuActions, () =>
@@ -373,7 +385,8 @@ export function BlameView({
                     </button>
                   ) : (
                     <span
-                      className="blame-gutter blame-gutter-loading"
+                      className={`${styles.gutter} ${styles.gutterLoading}`}
+                      data-blame-gutter="loading"
                       title={t("sourceBlameLoading")}
                     >
                       ·····
@@ -381,7 +394,8 @@ export function BlameView({
                   )}
                   <button
                     type="button"
-                    className="blame-lineno"
+                    className={styles.lineNumber}
+                    data-blame-lineno=""
                     disabled={!line}
                     onClick={(event) => openAt(index, event.currentTarget)}
                   >
@@ -401,7 +415,7 @@ export function BlameView({
       </div>
       {hashMenu.menu}
       {(blame?.truncated || file?.contentTruncated) && (
-        <div className="blame-truncated">{t("sourceBlameTruncated")}</div>
+        <div className={styles.truncated}>{t("sourceBlameTruncated")}</div>
       )}
 
       {open && openLine && blame && (
@@ -463,7 +477,10 @@ function BlameCodeCell({
   onOpen: (element: HTMLElement) => void;
 }) {
   const sharedProps = {
-    className: "blame-code blame-line-target",
+    // `blame-line-target` carries no CSS; it is the DOM contract the blame
+    // tests and line-target navigation address the cell by.
+    className: `${styles.code} blame-line-target`,
+    "data-blame-code": "",
     role: enabled ? ("button" as const) : undefined,
     tabIndex: enabled ? 0 : undefined,
     onClick: (event: MouseEvent<HTMLSpanElement>) => {

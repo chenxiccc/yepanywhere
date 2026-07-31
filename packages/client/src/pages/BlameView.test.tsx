@@ -96,7 +96,7 @@ function primeBlame() {
 
 async function commentOnRow(rowIndex: number, text: string) {
   await waitFor(() =>
-    expect(document.querySelectorAll(".blame-row").length).toBe(2),
+    expect(document.querySelectorAll("[data-blame-row]").length).toBe(2),
   );
   fireEvent.click(document.querySelectorAll(".blame-line-target")[rowIndex]!);
   fireEvent.change(await screen.findByRole("textbox"), {
@@ -176,11 +176,11 @@ describe("BlameView", () => {
     );
 
     await waitFor(() =>
-      expect(document.querySelectorAll(".blame-row").length).toBe(2),
+      expect(document.querySelectorAll("[data-blame-row]").length).toBe(2),
     );
     expect(
       document
-        .querySelector(".blame-row")
+        .querySelector("[data-blame-row]")
         ?.classList.contains("has-review-comment"),
     ).toBe(false);
   });
@@ -226,8 +226,8 @@ describe("BlameView", () => {
     expect(await screen.findByText("const fast = 1;")).toBeTruthy();
     expect(getFile).toHaveBeenCalledWith("p1", "src/x.ts", false);
     expect(onContentWidthChange).toHaveBeenCalledWith("src/x.ts", 320);
-    expect(document.querySelector(".blame-gutter-loading")).toBeTruthy();
-    expect(document.querySelector(".blame-commit-link")).toBeNull();
+    expect(document.querySelector('[data-blame-gutter="loading"]')).toBeTruthy();
+    expect(document.querySelector('[data-blame-gutter="commit"]')).toBeNull();
 
     await act(async () => {
       resolveBlame(blameResult("const fast = 1;"));
@@ -264,8 +264,12 @@ describe("BlameView", () => {
     const contentCopy = screen.getByRole("button", {
       name: "sourceCopyRawContent",
     });
-    expect(pathCopy.closest(".blame-view-path-group")).toBeTruthy();
-    expect(contentCopy.classList.contains("blame-content-copy")).toBe(true);
+    const pathGroup = pathCopy.closest("[data-blame-path-group]");
+    expect(pathGroup).toBeTruthy();
+    // The raw-content action is a header sibling of the path group, not a
+    // second control inside it.
+    expect(contentCopy.closest("[data-blame-path-group]")).toBeNull();
+    expect(contentCopy.parentElement).toBe(pathGroup?.parentElement);
 
     fireEvent.click(pathCopy);
     fireEvent.click(contentCopy);
@@ -286,12 +290,12 @@ describe("BlameView", () => {
     );
 
     await waitFor(() =>
-      expect(document.querySelectorAll(".blame-row").length).toBe(2),
+      expect(document.querySelectorAll("[data-blame-row]").length).toBe(2),
     );
-    const row = document.querySelector(".blame-row")!;
-    expect(row.children[0]?.classList.contains("blame-gutter")).toBe(true);
-    expect(row.children[1]?.classList.contains("blame-lineno")).toBe(true);
-    expect(row.children[2]?.classList.contains("blame-code")).toBe(true);
+    const row = document.querySelector("[data-blame-row]")!;
+    expect(row.children[0]?.hasAttribute("data-blame-gutter")).toBe(true);
+    expect(row.children[1]?.hasAttribute("data-blame-lineno")).toBe(true);
+    expect(row.children[2]?.hasAttribute("data-blame-code")).toBe(true);
 
     const selection = vi.spyOn(window, "getSelection").mockReturnValue({
       isCollapsed: false,

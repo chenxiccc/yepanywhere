@@ -87,8 +87,10 @@ export function measureBlameDetailWidth(
   container: HTMLElement,
   cacheKey: string,
 ): number {
+  // The blame grid is addressed by stable data attributes rather than class
+  // names: `BlameView` styles those elements through a hashed CSS Module.
   const codeCells = Array.from(
-    container.querySelectorAll<HTMLElement>(".blame-code"),
+    container.querySelectorAll<HTMLElement>("[data-blame-code]"),
   );
   const maxLineWidth = getCachedBlameMaxLineWidth(cacheKey, () =>
     codeCells.reduce(
@@ -96,12 +98,12 @@ export function measureBlameDetailWidth(
       0,
     ),
   );
-  const firstRow = container.querySelector<HTMLElement>(".blame-row");
+  const firstRow = container.querySelector<HTMLElement>("[data-blame-row]");
   const gutterWidth =
-    firstRow?.querySelector<HTMLElement>(".blame-gutter")?.offsetWidth ||
+    firstRow?.querySelector<HTMLElement>("[data-blame-gutter]")?.offsetWidth ||
     FALLBACK_BLAME_GUTTER_WIDTH;
   const lineNumberWidth =
-    firstRow?.querySelector<HTMLElement>(".blame-lineno")?.offsetWidth ||
+    firstRow?.querySelector<HTMLElement>("[data-blame-lineno]")?.offsetWidth ||
     FALLBACK_LINE_NUMBER_WIDTH;
   const scrollbarAndBorderWidth =
     container.offsetWidth - container.clientWidth ||

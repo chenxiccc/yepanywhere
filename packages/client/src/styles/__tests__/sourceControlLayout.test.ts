@@ -9,6 +9,10 @@ const sourceModeTabsStylesheetUrl = new URL(
   "../../pages/SourceModeTabs.module.css",
   import.meta.url,
 );
+const blameViewStylesheetUrl = new URL(
+  "../../pages/BlameView.module.css",
+  import.meta.url,
+);
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -239,11 +243,13 @@ describe("Source Control workbench layout CSS contract", () => {
   });
 
   it("uses compact blame columns and one scrollbar per provenance run", async () => {
-    const css = await readFile(rendererStylesheetUrl, "utf8");
-    const row = getLastRuleDeclarations(css, ".blame-row");
-    const lineNumber = getLastRuleDeclarations(css, ".blame-lineno");
-    const code = getLastRuleDeclarations(css, ".blame-code");
-    const scrollRun = getLastRuleDeclarations(css, ".blame-run.is-scrollable");
+    // `BlameView` owns the blame grid as a module; only its placement by
+    // `BlameBrowser` stays in the legacy stylesheet.
+    const css = await readFile(blameViewStylesheetUrl, "utf8");
+    const row = getLastRuleDeclarations(css, ".row");
+    const lineNumber = getLastRuleDeclarations(css, ".lineNumber");
+    const code = getLastRuleDeclarations(css, ".code");
+    const scrollRun = getLastRuleDeclarations(css, ".run.scrollable");
 
     expect(row).toContain("var(--blame-hash-column-width)");
     expect(row).toContain("var(--blame-line-number-column-width)");
