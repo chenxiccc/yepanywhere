@@ -165,13 +165,15 @@ Acceptance:
 
 Build the Tart/macOS analogue of winvm-testbed. Prefer `tart exec` for command
 execution, Tart lifecycle/IP operations for machine state, and host capture
-plus injected input for recovery. Treat macOS Automation and Accessibility
-grants as explicit test-VM bootstrap state.
+plus injected input for recovery. Treat host Screen Recording and input
+consent, and guest Accessibility, as explicit testbed bootstrap state. The
+prototype should not acquire an Automation dependency merely to drive System
+Events.
 
 Acceptance:
 
-- `doctor` distinguishes VM, guest-agent, login-session, Automation, and
-  Accessibility readiness;
+- `doctor` distinguishes VM, guest-agent, login-session, host capture/input,
+  and guest Accessibility readiness;
 - screenshots and guest-coordinate input work without guest accessibility;
 - system commands execute without SSH when the Tart guest agent is healthy;
 - semantic inspection can enumerate applications, windows, and actionable
