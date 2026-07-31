@@ -16,6 +16,7 @@
     "i18n:missing": "node scripts/report-i18n-missing.mjs",
     "i18n:prune": "node scripts/prune-i18n-placeholders.mjs --write",
     "i18n:scan": "node scripts/find-raw-i18n-copy.mjs",
+    "agent:monitor": "node scripts/monitor-agent-process.mjs",
     "css:check": "node scripts/check-css-architecture.mjs",
     "css:inventory": "tsx scripts/css-inventory.ts",
     "css:unused": "tsx scripts/find-unused-css.ts",

@@ -11,8 +11,9 @@ The binding ownership and migration protocol lives in
 the campaign closeout and historical index only.
 
 For a supervised implementation loop that launches one bounded Claude worker
-through the local YA API, polls its authoritative process state, stops
-tail-chasing, and independently audits each result, use the
+through the local YA API, monitors its authoritative process state at
+minute-scale intervals, stops tail-chasing, and supports low-touch trusted
+campaigns after calibration, use the
 [`Claude agent process runbook`](../testing/claude-agent-process-runbook.md).
 
 ## Outcome
@@ -42,6 +43,7 @@ route splitting, CSS-in-JS, a framework migration, or zero global CSS.
 | `pnpm css:inventory` | Advisory owner ranking for migration selection. |
 | `pnpm css:inventory -- --owner <name>` | Shows the owned span, dynamic classes, test references, and composition edges for one likely owner. |
 | `pnpm --silent css:inventory -- --json` | Emits parseable JSON for scripts or offline analysis. |
+| `pnpm agent:monitor -- <session-id>` | Watches only authoritative process state at one-minute intervals and exits on completion or attention. |
 
 The inventory is not a second baseline and does not choose a migration by
 itself. Its ownership inference is conservative: coupled, generated, and

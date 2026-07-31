@@ -7,8 +7,12 @@ audit the result. It describes the local YA API on the default
 deployment contract.
 
 The controller owns selection, scope, acceptance, and batch progress. The
-worker owns only the approved slice. A worker report is evidence, not proof;
-Git state and checks rerun by the controller are authoritative.
+worker owns the approved slice and its normal implementation, verification,
+captures, and commit. During initial calibration, repeat important checks and
+fixture replays independently. After repeated clean runs, use trusted campaign
+mode: monitor process state mechanically, inspect output only on an alert, and
+perform a cursory completed-commit audit instead of duplicating the worker's
+entire run.
 
 ## Safety and checkout invariants
 
@@ -43,9 +47,9 @@ Before launch, the controller records:
 - a controller-proven visual fixture packet when rendered UI changes; and
 - stop conditions, including the maximum batch size.
 
-### Prove the visual fixture before launch
+### Bound the visual fixture before launch
 
-For visual work, the controller prepares a fixture packet containing:
+For visual work, the work order defines a fixture packet containing:
 
 - the exact URL, using the YA session id when the route is session-backed;
 - normalized API evidence that the target data is present;
@@ -55,20 +59,22 @@ For visual work, the controller prepares a fixture packet containing:
 - a change-specific marker that will prove the post-change page is serving the
   current worktree rather than stale built assets;
 - the required desktop and phone viewports; and
-- baseline captures at both viewports, inspected by the controller.
+- baseline captures at both viewports.
 
-Replay the steps from a clean page load at both viewports before launching the
-worker. If either replay fails, the candidate is not ready for a worker. Pick a
-different fixture or stop the slice; do not turn fixture discovery into worker
-scope.
+In calibration mode, the controller replays the steps and inspects both
+baselines before launch. In trusted campaign mode, the worker may prepare the
+packet from the clean base before editing, with a strict discovery limit. If a
+stable target and both baselines are not available promptly, it stops the slice
+without editing instead of browsing unrelated sessions or substituting a new
+candidate.
 
-Give the complete packet and baseline paths to the worker. The worker replays
-that exact fixture after implementation and may not browse historical sessions
-for a substitute. This makes before/after comparison the normal path rather
-than a recovery step. A visually identical result is not sufficient by itself:
-the worker must also prove the live target contains the supplied post-change
-marker, such as the new module class, and no longer contains its removed legacy
-class.
+Give any controller-known fixture details and baseline paths to the worker. The
+worker replays that exact fixture after implementation and may not browse for a
+substitute after editing begins. This makes before/after comparison the normal
+path rather than a recovery step. A visually identical result is not sufficient
+by itself: the worker must also prove the live target contains the supplied
+post-change marker, such as the new module class, and no longer contains its
+removed legacy class.
 
 Visual equivalence does not mean byte-for-byte image equality. Relative times,
 background activity, animation phase, font rasterization, and content outside
@@ -146,24 +152,34 @@ a launch still returns `202`, stop automated progression and surface the queue
 id for manual reconciliation. A durable queued-result handoff is the first API
 improvement to make before relying on this for unattended batches.
 
-## 4. Poll the authoritative process state
+## 4. Monitor the authoritative process state
 
-Poll every three to five seconds:
+Use the read-only monitor. It prints one compact status sample per minute by
+default and exits when the process completes or needs attention:
+
+```bash
+pnpm agent:monitor -- <session-id>
+```
+
+For a one-off manual check, request:
 
 ```text
 GET /api/sessions/<session-id>/process
 ```
 
-Use the process state, not transcript-file growth, as the turn boundary:
+The command reads only `GET /api/sessions/<session-id>/process`; it never reads
+the transcript, sends a message, approves a tool, interrupts a process, or
+retries a launch. Use process state, not transcript-file growth, as the turn
+boundary:
 
 | Observation | Controller action |
 |---|---|
-| `in-turn` and progressing/retrying | Continue polling. |
-| `waiting-input` | Stop and ask the supervisor; never approve automatically. |
-| `providerRuntimeStatus.kind == "terminal"` | Mark failed and inspect the provider error. |
-| `idle`, `queueDepth == 0`, `activeWorkKind == "none"`, and `verified-idle` | Turn completed; fetch the report and begin audit. |
-| `terminated` | Mark failed and inspect `GET /api/processes?includeTerminated=true`. |
-| `process: null` before an observed terminal boundary | Stop; reconcile session detail and recently terminated processes. |
+| `in-turn` and progressing/retrying | Continue minute-scale polling without reading the transcript. |
+| `waiting-input` or `needs-attention` | Monitor exits 3; inspect once and ask the supervisor rather than approving automatically. |
+| `providerRuntimeStatus.kind == "terminal"` | Monitor exits 4; inspect the provider error. |
+| `idle`, `queueDepth == 0`, `activeWorkKind == "none"`, and `verified-idle` | Monitor exits 0; fetch only the final report and begin audit. |
+| `terminated` or an absent process | Monitor exits 4; reconcile recently terminated processes. |
+| three API errors or the wall-clock deadline | Monitor exits 5; inspect server/process health. |
 
 Use a wall-clock deadline as well as liveness. Progress evidence permits a
 long-running check; it does not permit unlimited research outside the work
@@ -172,7 +188,7 @@ fixture from a clean load. One route-specific correction is the limit for
 ordinary app-state drift; after that, stop and report which fixture assertion
 failed.
 
-## 5. Read output and steer a wandering worker
+## 5. Inspect only on completion or an alert
 
 Read the provider-neutral transcript from:
 
@@ -181,8 +197,11 @@ GET /api/projects/<project-id>/sessions/<session-id>
 ```
 
 The final assistant text lives in the normalized `messages[].message.content`
-blocks. Prefer this endpoint to Claude JSONL or Codex rollout files. Raw
-provider files are a debugging fallback, not the orchestration interface.
+blocks. In trusted campaign mode, do not fetch the transcript during ordinary
+progress. Fetch the normalized detail once after verified idle, or after a
+monitor alert that requires diagnosis. Prefer this endpoint to Claude JSONL or
+Codex rollout files. Raw provider files are a debugging fallback, not the
+orchestration interface.
 
 To give a bounded correction while the turn is active:
 
@@ -204,9 +223,9 @@ commit. Treat steering as graceful correction, not instant process
 cancellation; use the explicit interrupt/abort controls only when graceful
 steering is insufficient and the operator has chosen that outcome.
 
-## 6. Audit independently
+## 6. Audit in proportion to trust and risk
 
-After the process reaches verified idle:
+After the process reaches verified idle, always:
 
 1. Confirm the base and inspect `git status`, staged and unstaged diffs, and all
    commits since the base SHA.
@@ -214,18 +233,20 @@ After the process reaches verified idle:
    analyzer trust gate and the conditional repair scope explains them.
 3. Re-run inventory and compare ownership, coupled, generated, dynamic, and
    unresolved findings.
-4. Re-run the focused tests and warning-sensitive checks. Do not infer success
-   from a piped/truncated worker command whose shell exit status may belong to
-   `tail` rather than the check.
-5. For CSS work, independently run `css:check`, `css:unused`, lint, typecheck,
-   console scan, and the relevant tests. Record an advisory `css:unused` exit
-   separately from a regression.
-6. Replay the supplied fixture from a clean load, confirm its stable locator
-   and expected content, prove the live DOM contains the change-specific marker,
-   and compare the new desktop and phone captures with the controller's
-   baselines. Inspect all four images yourself. Computed widths are useful
-   supporting evidence but do not replace looking at them.
-7. Accept and commit only when the controller's evidence is complete.
+4. Read the worker's final check and capture summary and verify that its commit
+   message does not claim a truncated or piped command as evidence.
+
+In calibration mode or after any suspicious result, independently rerun the
+focused tests, warning-sensitive checks, and fixture. For CSS work this includes
+`css:check`, `css:unused`, lint, typecheck, console scan, relevant tests, and
+desktop/phone inspection.
+
+In trusted campaign mode, a clean in-scope commit, plausible inventory and
+ratchet movement, named warning-free checks, and linked desktop/phone artifacts
+are sufficient for the routine cursory audit. Spot-check the diff and captures;
+do not rerun the complete matrix unless the report, diff, artifacts, or metrics
+are missing or surprising. The worker remains responsible for running the
+matrix, not merely reporting expected commands.
 
 If the worker committed before audit, acceptance is still a separate decision.
 Do not start the next session merely because a commit exists.
