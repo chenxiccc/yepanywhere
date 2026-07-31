@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { describe, expect, it, vi } from "vitest";
 import {
+  WINDOWS_HOST_AWAKE_BOOTSTRAP_COMMAND,
   WINDOWS_HOST_AWAKE_HELPER_SOURCE,
   WindowsHostAwakeBackend,
 } from "../../src/services/host-awake/WindowsHostAwakeBackend.js";
@@ -27,7 +28,7 @@ function fakeChild(
 }
 
 describe("WindowsHostAwakeBackend", () => {
-  it("uses stdin PowerShell without execution-policy bypass or script files", async () => {
+  it("parses the complete stdin helper without policy bypass or script files", async () => {
     let helperSource = "";
     const spawnProcess = vi.fn((..._args: unknown[]) => {
       const child = fakeChild((process) => {
@@ -57,12 +58,30 @@ describe("WindowsHostAwakeBackend", () => {
 
     const [executable, args, options] = spawnProcess.mock.calls[0] ?? [];
     expect(executable).toBe("C:\\Windows\\powershell.exe");
-    expect(args).toEqual(["-NoProfile", "-NonInteractive", "-Command", "-"]);
+    expect(args).toEqual([
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      WINDOWS_HOST_AWAKE_BOOTSTRAP_COMMAND,
+    ]);
     expect(args).not.toContain("-ExecutionPolicy");
     expect(args).not.toContain("-File");
     expect(options).toMatchObject({ windowsHide: true });
     expect(helperSource).toBe(WINDOWS_HOST_AWAKE_HELPER_SOURCE);
   });
+
+  it.skipIf(process.platform !== "win32")(
+    "executes the real Windows PowerShell probe",
+    async () => {
+      const snapshot = await new WindowsHostAwakeBackend().probe();
+
+      expect([true, false, "unknown"]).toContain(snapshot.hasInternalBattery);
+      expect(["battery", "external", "unknown"]).toContain(
+        snapshot.powerSource,
+      );
+      expect(snapshot.powerObservedAt).toBeGreaterThan(0);
+    },
+  );
 
   it("owns a PID-bound SystemRequired request and releases its helper", async () => {
     let child: ChildProcessWithoutNullStreams | null = null;

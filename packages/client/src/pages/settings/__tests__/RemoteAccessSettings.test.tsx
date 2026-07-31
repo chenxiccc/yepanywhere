@@ -108,8 +108,11 @@ vi.mock("../../../hooks/useVersion", () => ({
 
 vi.mock("../../../i18n", () => ({
   useI18n: () => ({
-    t: (key: string, values?: { icon?: string }) =>
-      values?.icon ? `${key}:${values.icon}` : key,
+    t: (key: string, values?: { icon?: string; reason?: string }) => {
+      if (values?.icon) return `${key}:${values.icon}`;
+      if (values?.reason) return `${key}:${values.reason}`;
+      return key;
+    },
   }),
 }));
 
@@ -267,6 +270,33 @@ describe("RemoteAccessSettings host identity", () => {
     expect(
       screen.queryByRole("button", { name: "hostAwakeRefresh" }),
     ).toBeNull();
+  });
+
+  it("shows the bounded backend reason when host-awake is unsupported", () => {
+    hostAwakeState.supported = true;
+    hostAwakeState.status = {
+      requestedMode: "off",
+      state: "unsupported",
+      platform: "win32",
+      support: {
+        idleSleepPrevention: false,
+        batteryFloor: false,
+        closedLidOnExternalPower: false,
+      },
+      hasInternalBattery: "unknown",
+      powerSource: "unknown",
+      powerObservedAt: 123,
+      batteryFloorPercent: 10,
+      reason: "Windows application policy blocked the required power APIs",
+    };
+
+    render(<RemoteAccessSettings />);
+
+    expect(
+      screen.getByText(
+        "hostAwakeStatusUnavailableReason:Windows application policy blocked the required power APIs",
+      ),
+    ).toBeTruthy();
   });
 
   it("shows and saves the battery floor only for a detected battery", async () => {

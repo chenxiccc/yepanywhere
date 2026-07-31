@@ -1747,6 +1747,7 @@
   "hostAwakeStatusActive": "Active — preventing automatic sleep.",
   "hostAwakeStatusPaused": "Paused — battery is at or below {percent}%; automatic sleep is allowed.",
   "hostAwakeStatusUnavailable": "Unavailable on this server.",
+  "hostAwakeStatusUnavailableReason": "Unavailable on this server: {reason}",
   "hostAwakeStatusDisabled": "Inactive — normal automatic sleep settings apply.",
   "hostAwakeStatusError": "Could not enable: {reason}",
   "hostAwakeStatusUnknownError": "unknown host error",

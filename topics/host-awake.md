@@ -8,9 +8,9 @@
 Topic: host-awake
 
 Status: implemented for ordinary idle-sleep prevention on macOS and Windows,
-default-off and guarded by the battery-floor policy. Manual hardware validation
-is still required. Stronger macOS closed-lid behavior and Linux support remain
-follow-on work.
+default-off and guarded by the battery-floor policy. Windows desktop validation
+is recorded below; portable Windows and macOS hardware validation remains.
+Stronger macOS closed-lid behavior and Linux support remain follow-on work.
 
 Related topics: [vanilla-defaults](vanilla-defaults.md),
 [architecture-mandates](architecture-mandates.md),
@@ -195,7 +195,7 @@ Show quiet inline status only in the settings group:
 - **Active — preventing automatic sleep**
 - **Active — closed-lid operation on external power requested**
 - **Paused — battery at or below 10%; automatic sleep is allowed**
-- **Unavailable on this server**
+- **Unavailable on this server: `<bounded reason>`**
 - **Could not enable: `<bounded reason>`**
 
 Substitute the effective configured percentage in the paused status. The
@@ -206,6 +206,8 @@ begin.
 Do not add a first-run prompt, global banner, session toolbar control, or
 notification. A backend failure should remain visible when the user visits the
 setting, but it must not make unrelated server health appear failed.
+Unsupported status includes the server's bounded, scrubbed reason so a missing
+runtime or managed-device policy can be distinguished from an unknown platform.
 
 All new copy belongs in `packages/client/src/i18n/en.json` and must be rendered
 through `useI18n().t(...)`.
@@ -456,13 +458,16 @@ command text over stdin rather than as a `.ps1` file, that:
 5. opens a handle to the YA parent process and waits for it to exit;
 6. calls `PowerClearRequest` and closes the request handle in `finally`.
 
-Spawn Windows PowerShell with
-`-NoProfile -NonInteractive -Command -`, write the fixed helper source to its
-stdin, and close stdin after the complete command has been delivered. Do not
-use `-File`, `-ExecutionPolicy Bypass`, mutate the machine's execution policy,
-or interpolate user-controlled input. Reading commands from stdin avoids the
-ordinary `.ps1` execution-policy failure without asking YA users to weaken
-their PowerShell configuration.
+Spawn Windows PowerShell with `-NoProfile -NonInteractive -Command` and a fixed
+bootstrap that reads all of stdin before creating and invoking one script
+block. Write the fixed helper source to stdin and close it after the complete
+command has been delivered. Windows PowerShell 5.1 does not reliably evaluate
+a multiline script supplied directly through `-Command -`; it can exit zero
+without executing the complete helper. Do not use `-File`, `-ExecutionPolicy
+Bypass`, mutate the machine's execution policy, or interpolate user-controlled
+input. Reading the source from stdin avoids the ordinary `.ps1`
+execution-policy failure without asking YA users to weaken their PowerShell
+configuration.
 
 This is not an attempt to bypass stronger application policy. AppLocker or App
 Control may place PowerShell in Constrained Language mode, where `Add-Type`
@@ -616,8 +621,9 @@ generic Linux coverage.
 - a future Linux backend requests only `idle`, never the default broad
   inhibitor set;
 - Windows requests SystemRequired, never DisplayRequired or AwayModeRequired;
-- Windows supplies fixed helper text through `-Command -`, never a `.ps1`
-  `-File` invocation or an execution-policy override;
+- Windows supplies fixed helper text through stdin to a fixed whole-input
+  script-block bootstrap, never a `.ps1` `-File` invocation or an
+  execution-policy override;
 - capability-gated clients hide controls for older servers, while the support
   map controls each current-server affordance without client platform checks;
 - the battery-floor control requires `support.batteryFloor` and a true
@@ -652,6 +658,25 @@ On Windows, additionally test the default Windows 10/11 execution-policy
 configuration, a user configuration that rejects unsigned `.ps1` files, and a
 simulated Constrained Language failure. The first two should work through
 stdin; the last should report `unsupported` without changing policy.
+
+### Recorded Windows desktop validation
+
+On 2026-07-31, a Windows 11 Home 64-bit desktop (build 26200, Gigabyte Z790 UD
+AC, no internal battery) validated the dependency-minimal backend without
+elevation:
+
+- the real Windows PowerShell 5.1 probe reported external power and no internal
+  battery;
+- acquisition reported `active`, which is emitted only after
+  `PowerSetRequest(SystemRequired)` succeeds;
+- `HostAwakeService.shutdown()` terminated the helper; and
+- forced helper termination removed the process and produced one bounded
+  `error` status without a restart loop.
+
+`powercfg /requests` could not independently enumerate the request from the
+ordinary user account because this Windows installation requires elevation for
+that diagnostic. Portable battery-floor, Traditional Sleep/Modern Standby,
+display-timeout, lid, and physical remote-reachability validation remain open.
 
 Additionally test macOS stronger mode with no external display, with and
 without external power, across power transitions, and under a long enough run

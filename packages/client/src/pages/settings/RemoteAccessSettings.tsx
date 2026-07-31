@@ -216,7 +216,9 @@ function HostAwakeSettings({
           percent: status.batteryFloorPercent,
         });
       case "unsupported":
-        return t("hostAwakeStatusUnavailable");
+        return status.reason
+          ? t("hostAwakeStatusUnavailableReason", { reason: status.reason })
+          : t("hostAwakeStatusUnavailable");
       case "error":
         return t("hostAwakeStatusError", {
           reason: status.reason ?? t("hostAwakeStatusUnknownError"),

@@ -20,6 +20,9 @@ const WINDOWS_HELPER_START_TIMEOUT_MS = 8_000;
 const WINDOWS_HELPER_OUTPUT_LIMIT_BYTES = 16 * 1024;
 const WINDOWS_HELPER_RELEASE_TIMEOUT_MS = 2_000;
 
+export const WINDOWS_HOST_AWAKE_BOOTSTRAP_COMMAND =
+  "& ([scriptblock]::Create([Console]::In.ReadToEnd()))";
+
 export const WINDOWS_HOST_AWAKE_HELPER_SOURCE = `
 $ErrorActionPreference = 'Stop'
 
@@ -544,7 +547,12 @@ export class WindowsHostAwakeBackend implements HostAwakeBackend {
   }): ChildProcessWithoutNullStreams {
     const child = this.spawnProcess(
       this.powershellPath,
-      ["-NoProfile", "-NonInteractive", "-Command", "-"],
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        WINDOWS_HOST_AWAKE_BOOTSTRAP_COMMAND,
+      ],
       {
         env: {
           ...process.env,

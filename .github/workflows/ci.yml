@@ -52,6 +52,19 @@ jobs:
       - run: pnpm -F @yep-anywhere/client exec playwright install chromium
       - run: pnpm test
 
+  windows-host-awake-smoke:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20.12
+          cache: "pnpm"
+      - run: pnpm install
+      - run: pnpm --filter @yep-anywhere/shared build
+      - run: pnpm --filter @yep-anywhere/server exec vitest run test/services/WindowsHostAwakeBackend.test.ts
+
   e2e-tests:
     runs-on: ubuntu-latest
     steps:
