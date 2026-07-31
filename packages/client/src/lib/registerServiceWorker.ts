@@ -16,12 +16,23 @@ const hasBrowserSupport =
   typeof window !== "undefined" &&
   "serviceWorker" in navigator;
 
+/** Packaged Tauri assets use a local app origin, not a browser PWA origin. */
+export function isPackagedTauriOrigin(location: {
+  hostname: string;
+  protocol: string;
+}): boolean {
+  return (
+    location.hostname === "tauri.localhost" || location.protocol === "tauri:"
+  );
+}
+
 /**
  * Register Service Worker at application startup.
  * Only registers the SW itself, does not subscribe to push notifications.
  */
 export async function registerServiceWorkerAtStartup(): Promise<void> {
   if (!hasBrowserSupport) return;
+  if (isPackagedTauriOrigin(window.location)) return;
 
   // In dev mode, check server setting (allows runtime toggle via settings UI)
   if (import.meta.env.DEV) {

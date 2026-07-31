@@ -16,6 +16,7 @@ Related:
 
 - [Push broker v1 tactical plan](../docs/tactical/068-push-broker-v1.md)
 - [Android FCM live smoke](../docs/tactical/069-android-fcm-live-smoke.md)
+- [Android wrapper and notification integration](../docs/tactical/071-android-wrapper-notification-integration.md)
 - [Mobile companion app](../docs/project/mobile-companion-app.md)
 - [Relay design](../docs/project/relay-design.md)
 - [Relay client mux](relay-client-mux.md)
@@ -264,6 +265,13 @@ the broker. The eventual enrollment implementation should treat every
 `onRegistered()` callback as an opportunity to replace the broker
 installation's current target without recreating its server-specific
 subscriptions.
+
+The FID and broker installation capability are native installation state. A
+hosted foreground client does not need either value. The narrow bridge seam is
+server-specific push enrollment: native code may create a broker subscription
+and return that subscription's one-time send capability to the already
+authenticated hosted client for installation on the YA server. The FID and
+installation-management secret stay native.
 
 Do not prescribe a retry schedule, offline recovery algorithm,
 stale-registration threshold, or deletion policy here. Those details still

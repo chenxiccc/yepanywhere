@@ -53,7 +53,8 @@ attached Pixel 9 running Android 17:
 3. Confirmed a fresh launch invoked `onRegistered()` with an FID.
 4. Sent `Yep Anywhere test` / `FCM is connected.` from the Firebase Console
    to that FID.
-5. Confirmed the foreground service received one notification message.
+5. Confirmed the Firebase messaging service received one message while the app
+   UI was in the foreground.
 6. Removed the temporary explicit `register()` diagnostic.
 7. Cleared only the dev app's local data and launched again.
 8. Confirmed auto-initialization issued a different FID without activity code.

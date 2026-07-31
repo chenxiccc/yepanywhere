@@ -8,10 +8,12 @@
     "tauri": "tauri",
     "dev:android": "pnpm prepare-frontend && tauri android dev",
     "dev:ios": "pnpm prepare-frontend && tauri ios dev",
-    "build:android": "pnpm prepare-frontend && tauri android build",
+    "build:android:debug": "tauri android build --debug",
+    "build:android:hosted-latest": "tauri android build --config src-tauri/tauri.android.hosted-latest.conf.json",
+    "build:android": "tauri android build",
     "build:ios": "pnpm prepare-frontend && tauri ios build"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2"
+    "@tauri-apps/cli": "^2.11.4"
   }
 }

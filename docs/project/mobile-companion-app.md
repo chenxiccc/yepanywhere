@@ -59,6 +59,16 @@ The official build should use a fixed HTTPS URL such as
 as the hosted Remote Access UI while preserving room for an independent cache
 scope, release policy, headers, and later mobile-specific behavior.
 
+Local Android development and debug APKs bundle the current checkout's client
+assets. They do not depend on a website deployment, so locally edited
+JavaScript can be tested immediately. A separate release-channel build may use
+`https://latest.yepanywhere.com/` for Play internal or closed testing, where
+each successful main-branch push should reach installed test builds without a
+new APK. Selecting that mutable channel for an early public release is a
+deliberate release decision, not a consequence of building in debug or release
+mode. A later stable hosted release uses `yepanywhere.com`, bundled assets, or
+the native UI.
+
 Benefits:
 
 - The login form has a real `yepanywhere.com` web origin, which should give
@@ -112,6 +122,10 @@ hatch. Before adopting this path for production, verify on a physical device
 that website credentials are offered, repeat launches reuse cached assets, no
 unintended native IPC is exposed, and background FCM delivery does not start a
 WebView.
+
+The wrapper/hosted-client boundary, minimal IPC surface, notification lifecycle,
+and foreground-activity staging are planned in
+[`docs/tactical/071-android-wrapper-notification-integration.md`](../tactical/071-android-wrapper-notification-integration.md).
 
 ## Product Shape
 
