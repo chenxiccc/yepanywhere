@@ -83,11 +83,13 @@ path. The normal model is not "each relay owns an FCM project". It is:
   paired YA server.
 
 The credential-free broker service is implemented as a separate package and
-runtime; live Firebase delivery and publication at
-`https://push.yepanywhere.com` remain planned. It may share physical hosting
-with the relay, but it should not share the relay's process, event loop,
-database, or delivery credentials. The relay is encrypted transport, while the
-broker is a token registry and notification dispatcher.
+runtime. A physical Android build has registered through Firebase's current
+FID API and received a direct Firebase Console test message; live delivery
+through the broker and publication at `https://push.yepanywhere.com` remain
+planned. The broker may share physical hosting with the relay, but it should
+not share the relay's process, event loop, database, or delivery credentials.
+The relay is encrypted transport, while the broker is a token registry and
+notification dispatcher.
 
 Payloads should be generic by default. A user may explicitly opt into bounded
 notification text passing in plaintext through the YA push broker and Google
@@ -226,8 +228,8 @@ Revocation must be first-class:
   without pulling in the full web app session model?
 - Should notification acknowledgement be recorded by the app, the server, the
   broker, or all three?
-- What concrete FCM registration refresh and invalidation behavior is required
-  after testing the pinned SDK against a working broker?
+- Beyond the verified clean-install and cleared-app-data FID callbacks, what
+  refresh and invalidation behavior is required against the live broker?
 - How much local page-open/event handoff is worth building before there is a
   concrete use case?
 - What is the minimum source-build story that is acceptable without making it

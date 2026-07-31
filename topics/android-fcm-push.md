@@ -6,14 +6,16 @@
 
 Topic: android-fcm-push
 
-Status: Approved architecture direction. The credential-free broker v1
-service is implemented and tested; Android FCM integration, live Firebase
-delivery, and the YA server subscription protocol are not implemented.
-Registration lifecycle mechanics remain later implementation work.
+Status: Approved architecture direction. The credential-free broker v1 is
+implemented and tested. The Android shell now has a minimal FID registration
+and receive probe, and direct Firebase Console delivery has been verified on a
+physical device. Live broker delivery, Android broker enrollment, and the YA
+server subscription protocol are not implemented.
 
 Related:
 
 - [Push broker v1 tactical plan](../docs/tactical/068-push-broker-v1.md)
+- [Android FCM live smoke](../docs/tactical/069-android-fcm-live-smoke.md)
 - [Mobile companion app](../docs/project/mobile-companion-app.md)
 - [Relay design](../docs/project/relay-design.md)
 - [Relay client mux](relay-client-mux.md)
@@ -250,11 +252,22 @@ installation. The broad ownership rule is simple:
 - ordinary FCM refresh should not require the user to repeat SRP login or
   recreate otherwise-valid server/device relationships.
 
-Do not prescribe the exact callback API, background job, retry schedule,
-offline recovery, stale-registration threshold, or deletion behavior here.
-Firebase is evolving from legacy registration-token APIs toward Firebase
-Installation ID targeting, and these details should be validated against the
-pinned Android SDK and a working broker implementation.
+The first physical-device probe pins Firebase Messaging `25.1.1` through BoM
+`34.16.0`, opts into FID targeting, and receives the current FID through
+`FirebaseMessagingService.onRegistered()`. Firebase auto-initialization
+registered a clean app installation without activity code, a custom background
+job, or a retry loop. Clearing the dev app's data caused a different FID to be
+minted and delivered through the same callback.
+
+The current probe logs that FID only in debug builds. It does not upload it to
+the broker. The eventual enrollment implementation should treat every
+`onRegistered()` callback as an opportunity to replace the broker
+installation's current target without recreating its server-specific
+subscriptions.
+
+Do not prescribe a retry schedule, offline recovery algorithm,
+stale-registration threshold, or deletion policy here. Those details still
+need evidence from the pinned SDK against the live broker.
 
 Before this lifecycle is treated as complete, exercise real target refresh,
 offline app/broker recovery, reinstall or cleared-app-data behavior, invalid
@@ -305,7 +318,7 @@ default.
 
 - YA-server storage/routes, their Android client contract, and their
   compatibility gates.
-- Pinned Android FCM SDK target form and live provider validation.
+- Live broker validation of FID sends and provider failures.
 - Registration refresh, invalidation, offline recovery, and stale cleanup.
 - Durable quotas, coalescing, acknowledgement, and delivery-result semantics.
 - App-attestation requirements for official and source-built distributions.

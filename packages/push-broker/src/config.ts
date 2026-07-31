@@ -4,6 +4,7 @@ import {
   type TrustedProxy,
   parseTrustedProxies,
 } from "./client-ip.js";
+import { hasAsciiControlCharacter } from "./ascii.js";
 
 export type PushProviderMode = "fake" | "fcm";
 
@@ -58,7 +59,10 @@ export function loadConfig(
 
 function parseHost(value: string | undefined): string {
   if (value === undefined || value === "") return "127.0.0.1";
-  if (value.trim() !== value || /[\u0000-\u0020\u007f]/.test(value)) {
+  if (
+    value.trim() !== value ||
+    hasAsciiControlCharacter(value, true)
+  ) {
     throw new Error("PUSH_BROKER_HOST must be a non-empty host name or address");
   }
   return value;

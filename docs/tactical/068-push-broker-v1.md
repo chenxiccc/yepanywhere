@@ -4,6 +4,11 @@ Status: implemented and verified.
 
 Topic: android-fcm-push
 
+Followed by
+[`069-android-fcm-live-smoke.md`](069-android-fcm-live-smoke.md), which proves
+physical-device FID registration and direct Firebase Console delivery without
+changing this milestone's credential-free boundary.
+
 ## Origin
 
 YA needs native mobile notifications without requiring each self-hosted YA

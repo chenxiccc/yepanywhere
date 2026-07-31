@@ -4,6 +4,7 @@ import {
   type PushIntent,
   type PushTarget,
 } from "./types.js";
+import { hasAsciiControlCharacter } from "./ascii.js";
 
 const MAX_TARGET_LENGTH = 4096;
 
@@ -25,7 +26,7 @@ export function parsePushTarget(value: unknown): PushTarget | undefined {
     value.value.length < 1 ||
     value.value.length > MAX_TARGET_LENGTH ||
     value.value.trim() !== value.value ||
-    /[\u0000-\u001f\u007f]/.test(value.value)
+    hasAsciiControlCharacter(value.value)
   ) {
     return undefined;
   }
