@@ -5,11 +5,11 @@
       "reason": "Emulator DOM and streaming surface with shared global state selectors."
     },
     "packages/client/src/styles/index.css": {
-      "maxLines": 21092,
+      "maxLines": 20870,
       "reason": "Legacy application shell plus global tokens, themes, and base rules."
     },
     "packages/client/src/styles/renderers.css": {
-      "maxLines": 8331,
+      "maxLines": 8306,
       "reason": "Legacy generated-content and renderer class vocabulary."
     },
     "packages/client/src/styles/tool-rows.css": {

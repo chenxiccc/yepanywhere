@@ -52,8 +52,8 @@ Containment landed on 2026-07-31 in `07e40ef1`. Current legacy ceilings:
 
 | Stylesheet | Maximum lines | Primary remaining ownership |
 |---|---:|---|
-| `index.css` | 21,092 (was 21,441 before step 1) | Tokens/themes/base plus legacy pages and components |
-| `renderers.css` | 8,331 | Generated markup plus legacy renderer/page shells |
+| `index.css` | 20,870 (was 21,441 before step 1) | Tokens/themes/base plus legacy pages and components |
+| `renderers.css` | 8,306 (was 8,377 before step 1) | Generated markup plus legacy renderer/page shells |
 | `tool-rows.css` | 948 | Shared tool-row composition and states |
 | `emulator.css` | 261 | Emulator streaming surface and global states |
 
@@ -72,7 +72,7 @@ score — the ordering rationale is in each step.
 | 2 | [Teach the unused-CSS report about modules](#2--teach-the-unused-css-report-about-modules) | Landed 2026-07-31, `cb389318` |
 | 3 | [Filter dropdown](#3--filter-dropdown) | Landed 2026-07-31, `d800d19e` |
 | 4 | [Map source-control CSS ownership](#4--map-source-control-css-ownership) | Landed 2026-07-31, `5f9fddc7` |
-| 5 | [Delete the dead git-status rules](#5--delete-the-dead-git-status-rules) | Ready |
+| 5 | [Delete the dead git-status rules](#5--delete-the-dead-git-status-rules) | Landed 2026-07-31 |
 | 6 | [Source-control chrome](#6--source-control-chrome) | Next |
 | 7 | [Review UI](#7--review-ui) | Planned |
 | 8 | [Blame view](#8--blame-view) | Planned |
@@ -235,19 +235,51 @@ changed. Output is
 
 ### 5 — Delete the dead git-status rules
 
-**Ready. No behavior change, no composition work, no visual QA.** Step 4
-verified 184 lines across 33 `index.css` rules plus 4 rules (~24 lines) in
-`renderers.css` as dead, against every producer including dynamic construction
-and the non-client packages. The exact list is in
-[the map's dead-rules section](072-source-css-ownership-map.md#dead-rules-found).
+**Landed 2026-07-31.** The pre-Stage-3 working-tree UI that `WorkingTreeBrowser`
+and `SourceFileRow` replaced, plus four orphans in `renderers.css`. Landed on
+its own rather than folded into step 6: these rules belong to the old Git Status
+Page, not to step 6's three components, so keeping them separate leaves step 6's
+diff purely about composition.
 
-Worth landing on its own rather than folding into step 6: those rules belong to
-the pre-Stage-3 working-tree UI, not to step 6's three components, so step 6
-cannot honestly claim most of the ratchet. Keeping them separate also keeps
-step 6's diff purely about composition, which is the part that needs review
-attention.
-
-Accepted outcome: both ceilings ratchet downward, rendered output identical.
+- **Removed from `index.css`:** the branch header block (`git-status-branch`,
+  `git-branch-icon`, `git-branch-name`, `git-upstream`, `git-ahead-behind`,
+  `git-clean-badge`, `git-clean`, `git-dirty`, `git-remote-check-time`,
+  `git-status-actions`); the three-pane workspace layout
+  (`git-status-workspace`, `git-status-left-pane`, `git-status-file-pane`, and
+  the `git-status-workspace` rule in the `@media (min-width: 1100px)` block);
+  the file-list vocabulary (`git-file-section`, `git-file-section-title`,
+  `git-file-count`, `git-file-list`, `git-file-list-row`, `git-file-item` with
+  its four `-clickable` state rules, `git-file-item-selected`, and the
+  `:last-child` border rule); and the untracked-folder modal
+  (`git-untracked-folder-*` plus its `.modal:has(...)` sizing rule).
+- **Removed from `renderers.css`:** `repo-status-name`, `commit-jump`,
+  `commit-jump-current`, `blame-file-more`.
+- **Re-verified before deleting,** not taken on step 4's word. Every class was
+  searched across all packages including `packages/shared` and
+  `packages/server`, not just `packages/client/src`, and against dynamic
+  construction. The only occurrences remaining anywhere were the rules
+  themselves and compiled bundles under
+  `packages/desktop/src-tauri/target/`.
+- **Near misses left alone:** `git-status-action*` is live and built from a
+  tone variable in `GitStatusPage` (`` `git-status-action-${tone}` ``) — only
+  the plural `git-status-actions` container was dead. `commit-jump-btn`,
+  `-glyph`, and `-touch-label` are live in `CommitBrowser`; only the bare
+  `commit-jump` wrapper and `commit-jump-current` were dead, which is exactly
+  the pair `pnpm css:unused` reports as *used* because of the bare-word
+  matching defect in step 10. `git-untracked-folder` also appears as a server
+  route path (`GET /:projectId/git/untracked-folder`), which is unrelated to
+  the deleted classes.
+- **Ratchet:** `index.css` 21,092 → 20,870 (−222); `renderers.css` 8,331 →
+  8,306 (−25). Larger than step 4's 184 + 24 estimate because those were
+  attributed declaration lines, which exclude blank lines and closing braces.
+- **Tests:** full suite green — 2,780 client, 3,115 server, 465 shared, 126
+  relay, 44 push-broker.
+- **Checks:** `pnpm css:check --record` (both ceilings downward, nothing else
+  moved), `pnpm lint`, `pnpm typecheck`, `pnpm console:scan` (110/110 warnings,
+  +0).
+- **Visual QA:** none, deliberately. Every deleted selector was verified to have
+  no producer, so no element could match it. Nothing rendered changed.
+- **Follow-up:** step 6 is unblocked and its diff is now composition-only.
 
 ### 6 — Source-control chrome
 

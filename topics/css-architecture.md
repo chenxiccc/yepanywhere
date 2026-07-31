@@ -264,8 +264,8 @@ The current legacy ceilings are:
 
 | Stylesheet | Maximum lines |
 |---|---:|
-| `index.css` | 21,092 |
-| `renderers.css` | 8,331 |
+| `index.css` | 20,870 |
+| `renderers.css` | 8,306 |
 | `tool-rows.css` | 948 |
 | `emulator.css` | 261 |
 

@@ -213,8 +213,9 @@ step established:
 ## Dead rules found
 
 Verified against every producer including dynamic construction and the
-non-client packages. Not removed by this step; step 5 of the campaign exists to
-bank them.
+non-client packages. Not removed by this step — step 5 of the campaign removed
+them all on 2026-07-31 after re-verifying each one. Kept here as the record of
+what was deleted and why.
 
 **`index.css` — 184 lines, 33 rules.** The pre-Stage-3 working-tree UI, replaced
 by `WorkingTreeBrowser` and `SourceFileRow`:
@@ -249,9 +250,10 @@ their boundaries should follow components, not line ranges. These fed the step
 list in [`070-css-modules-migration.md`](070-css-modules-migration.md#steps);
 that document is where status and order now live.
 
-**Delete the dead git-status rules** (step 5). The 184 + 24 lines above are a
-behavior-free ratchet with no composition work. Worth landing alone, since the
-source-control chrome step below cannot honestly claim most of them.
+**Delete the dead git-status rules** (step 5, landed 2026-07-31). The 184 + 24
+attributed lines above were a behavior-free ratchet with no composition work,
+worth landing alone since the source-control chrome step below could not
+honestly claim most of them. Actual removal was 222 + 25 raw lines.
 
 **Source-control chrome** (step 6). `RepoStatusBar` (68 lines, 82-line
 component), `SourceModeTabs` (47), and `SourceContextMenu` (54). All three are

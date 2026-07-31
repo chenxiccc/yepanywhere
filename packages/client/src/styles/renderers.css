@@ -6851,11 +6851,6 @@ pre.code-highlighter-plain,
   background: var(--bg-hover, rgba(255, 255, 255, 0.06));
 }
 
-.repo-status-name {
-  font-weight: 600;
-  color: var(--text-primary, #e6edf3);
-}
-
 .repo-status-branch {
   display: inline-flex;
   min-width: 0;
@@ -7717,13 +7712,6 @@ pre.code-highlighter-plain,
   background: var(--bg-hover, rgba(255, 255, 255, 0.05));
 }
 
-.commit-jump {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2, 8px);
-  margin-bottom: var(--space-2, 8px);
-}
-
 .commit-jump-btn {
   display: inline-flex;
   align-items: center;
@@ -7749,13 +7737,6 @@ pre.code-highlighter-plain,
 .commit-jump-btn:disabled {
   opacity: 0.4;
   cursor: default;
-}
-
-.commit-jump-current {
-  margin: 0 auto;
-  font-family: var(--font-mono, monospace);
-  font-size: 0.78rem;
-  color: var(--text-secondary, #8b949e);
 }
 
 /* Compact commit body — likely manual prose wraps are folded in the display
@@ -8014,12 +7995,6 @@ pre.code-highlighter-plain,
 
 .blame-file-item.selected {
   background: var(--bg-selected, rgba(56, 139, 253, 0.15));
-}
-
-.blame-file-more {
-  padding: 6px 8px;
-  font-size: 0.75rem;
-  color: var(--text-muted);
 }
 
 /* Blame view: gutter · line number · highlighted code. */
