@@ -13,7 +13,7 @@
       "reason": "Legacy generated-content and renderer class vocabulary."
     },
     "packages/client/src/styles/tool-rows.css": {
-      "maxLines": 948,
+      "maxLines": 813,
       "reason": "Shared tool-row state and generated renderer composition."
     }
   },

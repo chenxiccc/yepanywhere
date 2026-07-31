@@ -11,6 +11,7 @@ import { useI18n, type MessageKey } from "../../i18n";
 import { toSourceTransportApiPath } from "../../lib/sourceTransportPaths";
 import type { ToolCallItem } from "../../types/renderItems";
 import { LocalMediaModal, type LocalMediaSource } from "../LocalMediaModal";
+import styles from "./ToolResultMediaRows.module.css";
 
 interface ToolResultMediaRowsProps {
   displayName: string;
@@ -43,9 +44,7 @@ export function ToolResultMediaRows({
   status,
 }: ToolResultMediaRowsProps) {
   return (
-    <div
-      className={`tool-row tool-result-media-tool timeline-item status-${status}`}
-    >
+    <div className={`tool-row ${styles.root} timeline-item status-${status}`}>
       {media.map((item, index) => (
         <ToolResultMediaRow
           key={item.state === "stored" ? item.id : `${item.reason}-${index}`}
@@ -74,15 +73,15 @@ function ToolResultMediaRow({
 
   if (media.state === "rejected") {
     return (
-      <div className="tool-result-media-row is-rejected">
+      <div className={`${styles.row} ${styles.rejected}`}>
         <div
-          className="tool-result-media-row-header"
+          className={styles.rowHeader}
           title={t(REJECTION_KEYS[media.reason])}
         >
-          <span className="tool-result-media-toggle-placeholder">+</span>
+          <span className={styles.togglePlaceholder}>+</span>
           <span className="tool-name">{displayName}</span>
-          <span className="tool-result-media-filename">{filename}</span>
-          <span className="tool-result-media-suffix">
+          <span className={styles.filename}>{filename}</span>
+          <span className={styles.suffix}>
             ({t("toolResultMediaUnavailable")})
           </span>
         </div>
@@ -168,11 +167,11 @@ function StoredToolResultMediaRow({
     : t("toolResultMediaExpand");
 
   return (
-    <div className="tool-result-media-row">
-      <div className="tool-result-media-row-header">
+    <div className={styles.row}>
+      <div className={styles.rowHeader}>
         <button
           type="button"
-          className="tool-result-media-toggle"
+          className={styles.toggle}
           onClick={() => setExpanded((current) => !current)}
           aria-label={toggleLabel}
           aria-expanded={expanded}
@@ -183,35 +182,31 @@ function StoredToolResultMediaRow({
         <span className="tool-name">{displayName}</span>
         <button
           type="button"
-          className="tool-result-media-filename"
+          className={styles.filename}
           onClick={() => setModalOpen(true)}
         >
           {filename}
         </button>
-        <span className="tool-result-media-suffix">
-          ({t("toolResultMediaImage")})
-        </span>
-        {dimensions && (
-          <span className="tool-result-media-dimensions">{dimensions}</span>
-        )}
+        <span className={styles.suffix}>({t("toolResultMediaImage")})</span>
+        {dimensions && <span className={styles.dimensions}>{dimensions}</span>}
       </div>
 
       {expanded && (
-        <div className="tool-result-media-preview" style={previewStyle}>
+        <div className={styles.preview} style={previewStyle}>
           {preview.state === "loading" && (
-            <span className="tool-result-media-loading">
+            <span className={styles.loading}>
               {t("toolResultMediaLoading")}
             </span>
           )}
           {preview.state === "error" && (
-            <span className="tool-result-media-error">
+            <span className={styles.error}>
               {t("toolResultMediaLoadFailed")}
             </span>
           )}
           {preview.state === "loaded" && (
             <button
               type="button"
-              className="tool-result-media-image-button"
+              className={styles.imageButton}
               onClick={() => setModalOpen(true)}
               aria-label={t("toolResultMediaOpen", { filename })}
             >
