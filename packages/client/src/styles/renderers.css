@@ -6946,16 +6946,16 @@ pre.code-highlighter-plain,
     padding-inline: 4px;
   }
 
-  .source-control-action-row .repo-status-action-group {
-    display: grid;
-    grid-template-columns: auto auto minmax(0, 1fr) auto;
-    width: 100%;
+  .source-control-action-row .repo-status-action-group > button {
+    padding-inline: 6px;
   }
 
-  .source-control-action-row .repo-status-action-group > button {
+  /* Only the longest label yields when the row is tight. */
+  .source-control-action-row .git-status-check-remote,
+  .source-control-action-row .git-status-check-remote .git-status-action-label {
     min-width: 0;
-    padding-inline: 8px;
-    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }
 

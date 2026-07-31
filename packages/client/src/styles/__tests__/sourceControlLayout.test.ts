@@ -180,10 +180,27 @@ describe("Source Control workbench layout CSS contract", () => {
       indexCss,
       ".working-tree-clean-landing",
     );
+    // The action row keeps every button at its label width; only the longest
+    // label gives up space, so no track may stretch to absorb the slack.
+    const actionGroupRules = [
+      ...rendererCss.matchAll(
+        /\.source-control-action-row \.repo-status-action-group\s*\{([^}]*)\}/g,
+      ),
+    ].map((match) => match[1] ?? "");
+    const checkRemote = getLastRuleDeclarations(
+      rendererCss,
+      ".source-control-action-row .git-status-check-remote .git-status-action-label",
+    );
 
     expect(mobileTabs).toMatch(
       /grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)\s*;/,
     );
+    expect(actionGroupRules.length).toBeGreaterThan(0);
+    for (const rule of actionGroupRules) {
+      expect(rule).not.toMatch(/1fr/);
+    }
+    expect(checkRemote).toMatch(/min-width:\s*0\s*;/);
+    expect(checkRemote).toMatch(/text-overflow:\s*ellipsis\s*;/);
     expect(historyParentLink).toMatch(/display:\s*flex\s*;/);
     expect(historyParentLink).toMatch(/width:\s*100%\s*;/);
     expect(cleanLanding).toMatch(/min-height:\s*min\(24rem,\s*48vh\)\s*;/);
