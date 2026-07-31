@@ -77,15 +77,17 @@ path. The normal model is not "each relay owns an FCM project". It is:
   credentials to the trusted YA server over the encrypted connection.
 - A YA server sends a small push intent to the broker when a subscribed device
   should be notified.
-- The broker sends a high-priority FCM message to the Android device.
+- The broker sends an FCM notification to the Android device. Exact Android
+  priority and wake behavior remain live-device validation work.
 - The app displays a notification or wakes briefly and fetches details from the
   paired YA server.
 
-The push broker is planned as a separate hosted service at
-`https://push.yepanywhere.com`. It may share physical hosting with the relay,
-but it should not share the relay's process, event loop, database, or delivery
-credentials. The relay is encrypted transport, while the broker is a token
-registry and notification dispatcher.
+The credential-free broker service is implemented as a separate package and
+runtime; live Firebase delivery and publication at
+`https://push.yepanywhere.com` remain planned. It may share physical hosting
+with the relay, but it should not share the relay's process, event loop,
+database, or delivery credentials. The relay is encrypted transport, while the
+broker is a token registry and notification dispatcher.
 
 Payloads should be generic by default. A user may explicitly opt into bounded
 notification text passing in plaintext through the YA push broker and Google

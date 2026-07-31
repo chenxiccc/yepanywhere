@@ -35,6 +35,10 @@ linked docs when the details change.
   one-source-at-a-time UI.
 - **Relay** (optional) is a dumb pipe carrying NaCl-encrypted frames between
   client and server when neither has a routable address to the other.
+- **Push broker** (optional, native-app path) is a separate Hono/SQLite service
+  under `packages/push-broker/`. It stores revocable device-delivery
+  capabilities and submits bounded generic notifications through an injected
+  provider. It is not part of provider session routing or the encrypted relay.
 
 Single-user / small-team scale is assumed throughout — see the cleanups
 section below for what would have to change at higher fan-out.
@@ -97,9 +101,9 @@ section below for what would have to change at higher fan-out.
 - [`docs/project/relay-design.md`](docs/project/relay-design.md) — the
   end-to-end-encrypted relay; the "dumb pipe" contract.
 - [`topics/android-fcm-push.md`](topics/android-fcm-push.md) — approved
-  direction for native Android notification subscriptions, the hosted FCM push
-  broker, privacy modes, and deliberately deferred registration-lifecycle
-  details.
+  direction and current credential-free service contract for native Android
+  notification subscriptions, the hosted FCM push broker, privacy modes, and
+  deliberately deferred registration-lifecycle details.
 
 ## Bespoke vs. standard — and what to learn from it
 

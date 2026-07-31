@@ -10,7 +10,9 @@ A mobile-first supervisor for Claude Code agents. Like the VS Code Claude extens
 - **Server-owned processes** — Claude runs on your dev machine; client disconnects don't interrupt work
 - **Multi-session dashboard** — See all projects at a glance, no window cycling
 - **Mobile supervision** — Push notifications for approvals, respond from your lock screen
-- **Zero external dependencies** — No Firebase, no accounts
+- **Self-contained core** — The server/web app needs no hosted account or
+  Firebase dependency; the optional published native app uses its separate
+  hosted push broker for platform notifications
 
 **Architecture:** Hono server manages Claude SDK processes. React client connects via WebSocket for real-time streaming. Sessions persist to jsonl files (handled by SDK).
 
