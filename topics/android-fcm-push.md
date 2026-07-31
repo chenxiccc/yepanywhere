@@ -14,6 +14,7 @@ server subscription protocol are not implemented.
 
 Related:
 
+- [Notifications system overview](notifications.md)
 - [Push broker v1 tactical plan](../docs/tactical/068-push-broker-v1.md)
 - [Android FCM live smoke](../docs/tactical/069-android-fcm-live-smoke.md)
 - [Android wrapper and notification integration](../docs/tactical/071-android-wrapper-notification-integration.md)

@@ -1,5 +1,8 @@
 # Push Notifications Troubleshooting
 
+For the cross-platform architecture, current implementation status, and known
+gaps, see [Notifications](../topics/notifications.md).
+
 Push notifications allow Yep Anywhere to alert you when a session needs attention, even when the app is in the background or your phone is locked.
 
 ## Requirements

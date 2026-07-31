@@ -224,3 +224,5 @@
   extraction with a downward-only ratchet.
 - session-reactivation - Message-less provider resume lifecycle, idle reaping,
   and recovered patient-queue delivery.
+- notifications - Cross-platform event, delivery, and recipient-presentation
+  boundaries for browser Web Push and native app push.
