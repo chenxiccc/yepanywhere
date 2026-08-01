@@ -104,6 +104,14 @@ Before launch, the controller records:
 - a controller-proven visual fixture packet when rendered UI changes; and
 - stop conditions, including the maximum batch size.
 
+The inventory's `testFiles` field reports tests and harnesses that mention the
+legacy selector vocabulary. It does not claim to enumerate every direct test
+of the owning component. After drilling into an owner, perform one bounded
+search for component imports and matching test filenames and record those
+behavior tests separately in the work packet. A zero inventory test count is
+not evidence that no focused tests exist, and this documented distinction is
+not by itself an analyzer trust-gate failure.
+
 ### Bound the visual fixture before launch
 
 For visual work, the work order defines a fixture packet containing:

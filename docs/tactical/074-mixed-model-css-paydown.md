@@ -43,12 +43,12 @@ After compaction or controller restart:
 - Protocol base: `ef2c98ae9b1882d47fc931971881b2f90fba7f08`
 - First worker launch: `2026-08-01T07:46:39+02:00`
 - Wall-clock deadline: `2026-08-01T11:46:39+02:00`
-- Workers launched: 2 / 50
-- Accepted slices: 1
+- Workers launched: 6 / 50
+- Accepted slices: 5
 - Stopped slices: 1
-- Current interval: 1 / 5 accepted
+- Current interval: 0 / 5 accepted after the first audit
 - Current worker: none
-- Current clean base: this component-fixture ledger checkpoint (`HEAD`)
+- Current clean base: this first-interval ledger checkpoint (`HEAD`)
 
 ## Completed slices
 
@@ -56,15 +56,34 @@ After compaction or controller restart:
 |---:|---|---|---|---|---|---|
 | 1 | Thinking indicator | Luna xhigh: shared keyframe boundary | Stopped before edits: phone fixture absent | — | 0 | Main-browser steer; desktop baseline passed; phone failed one retry |
 | 2 | Global tooltip portal | Opus high: local literal move | Accepted | `e5fb8e5b` | 33 legacy lines, 2 owned rules | Alert-only monitoring; controller-proven fixture; no steer |
+| 3 | Thinking indicator | Luna xhigh: shared keyframe boundary | Accepted | `2134543c` | 60 legacy lines, 6 owned rules | One calibration sample; isolated fixture; no steer |
+| 4 | Viewer-count indicator | Opus high: local literal move | Accepted | `ff95c92b` | 42 legacy lines, 5 owned rules | Alert-only monitoring; exact two-viewport captures |
+| 5 | Risk affordance | Opus high: local state move | Accepted | `11da906e` | 56 legacy lines, 6 owned rules | Alert-only monitoring; delayed tooltip fixture; no steer |
+| 6 | Smart Turn controls | Luna xhigh: scattered finite state mapping | Accepted | `68f3adea` | 112 legacy lines, 15 owned rules | One calibration sample; four exact captures; no steer |
+
+The common project id for these workers is
+`L1VzZXJzL2tncmFlaGwvY29kZS95ZXBhbnl3aGVyZQ`. Exact recovery handles and
+prompt digests are retained here even though the prompt and capture packets are
+ignored local artifacts:
+
+| Run | YA session | Process | Base | Prompt SHA-256 |
+|---:|---|---|---|---|
+| 1 | `019fbbdc-38c4-7752-9912-705077d09996` | `b0939f42-bbfd-4168-a925-37ef3ef5a7ff` | `aba659c8` | `f60d5c4c167169bc45594159d0da7e1a5a75cfffbb8f09350740314354ab959b` |
+| 2 | `4978ed76-6877-4183-b798-9e5bffffc8ac` | `efdfb676-d3b6-4cea-b17d-14110c9e88a0` | `511a3fa5` | `b68c109b5c53d748d62dbbbb0cc63652c154760cd8fc51fe17da21a229152a87` |
+| 3 | `019fbbf5-5d2c-7241-bbb9-2510b0189795` | `424f6225-b6d4-4ca5-be44-838046ac5ab9` | `0896e917` | `49f2c1f7ec9648a1e5d3db4502e81fe8b39094141b1ca8eb35bf95d5d51f414b` |
+| 4 | `e6447823-8475-4bd9-9396-cd2aa4cdcb7f` | `5ebb1096-edd9-4ae7-95c9-cdcf6c851171` | `2134543c` | `a08d80682631f0f40e3ad6ab285cfc10d9489a526557eb6068c5a8d9a4b7b4f9` |
+| 5 | `2ab5c2d1-6bc8-463e-a6de-461757d6f2f1` | `24ebd7dc-6314-489f-821f-2fd9de4902eb` | `ff95c92b` | `ecc172bd7b9a4b55b2208e831bdf08334d80b22c3757ff051dda415854433b69` |
+| 6 | `019fbc1e-0159-74b2-b810-3586d1b7d13a` | `5079622a-35e5-4463-8269-d7097641f558` | `f621bd4b` | `165100bd77c56042b8b72a5f5a503485508c7c5607858d5ed89a84612efeec25` |
 
 ## Audit interval notes
 
-No interval has completed yet. Run 1 validated the stop path but exposed a
+Run 1 validated the stop path but exposed a
 harness-routing error: the worker initially opened the maintainer's main browser
 and encountered its localhost certificate warning. The runbook now directs
 local campaign fixtures straight to repository headless Playwright. The supplied
 Agents-page fixture was present at desktop width but absent at phone width, so
-the candidate remains unmigrated and is not reserved as the next slice.
+the candidate was left unmigrated until the isolated component fixture made
+run 3 deterministic.
 
 Run 2 completed without attention or scope events. Opus preserved the portal
 and stacking contracts, passed the full check matrix, and produced a
@@ -78,6 +97,31 @@ render deterministic component exports from JSON props at real browser widths.
 This avoids spending provider sessions manufacturing rare application state.
 It remains unsuitable for caller-layout, portal, generated-markup, or other
 integration boundaries.
+
+The first accepted interval is runs 2-6. It moved 303 legacy lines and 34 owned
+rules into five new modules: legacy lines fell from 24,107 to 23,804 and owned
+rules from 2,183 to 2,149. Coupled rules remained 832, generated rules 50, and
+unresolved selectors 78. Every slice passed the focused and full client tests,
+CSS ratchets, unused-CSS scan, lint, typecheck, console scan, and diff check.
+The component fixture produced exact desktop and phone target pixels for runs
+3-6; run 2's only visual delta was the already-audited one-row fractional crop.
+
+Opus completed all three mechanically routed slices without a steer or audit
+surprise. Luna completed both post-steer slices without a correction; the next
+Luna slice remains in calibration for one bounded scope sample, and a third
+consecutive clean Luna result will earn alert-only supervision. The model
+routing criteria remain unchanged: Opus is the economical default for a proven
+literal packet, while Luna is useful for finite state mapping and diagnosis.
+
+The interval also confirmed that inventory `testFiles` are selector-vocabulary
+contracts rather than all direct component tests. The runbook now requires one
+bounded component-test search after owner drill-down; no analyzer repair was
+needed. A clean disjoint cross-host documentation commit landed between runs 5
+and 6, was attributed before launch, and did not overlap the CSS slice. The
+worker's historical launch base `f621bd4b` and result `7e4faadf` became
+`91509484` and `68f3adea` in the clean checkpoint rebase onto remote main; the
+recovery table intentionally retains the exact launch-time base and prompt
+digest.
 
 At each five-slice checkpoint, append aggregate inventory movement, model
 outcomes, fixture/check evidence, steering events, routing changes, and the
