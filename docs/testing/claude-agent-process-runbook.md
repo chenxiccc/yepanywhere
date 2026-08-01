@@ -31,6 +31,12 @@ entire run.
   caused by the concurrent change.
 - Give the worker an explicit file boundary and permission to stop. It may not
   substitute another candidate when the approved slice is blocked.
+- Capture every required before-state before the first edit. Once editing has
+  started, do not temporarily replace tracked paths with base-commit contents
+  to manufacture a comparison for an advisory report, test, or screenshot,
+  even if the worker intends to restore them byte-for-byte. If required
+  before-state evidence was missed, report the gap; only the controller may
+  request a separately isolated control after reviewing why it is needed.
 - `bypassPermissions` is appropriate only for a trusted local checkout and a
   reviewed, tightly bounded prompt. Choose a supervised permission mode when
   those conditions do not hold.
