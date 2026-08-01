@@ -1,0 +1,7 @@
+{
+  "legacyGlobalStyles": {
+    "scripts/fixtures/find-unused-css/global.css": {
+      "maxLines": 53
+    }
+  }
+}

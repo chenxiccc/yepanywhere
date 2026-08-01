@@ -18,6 +18,7 @@
     "i18n:scan": "node scripts/find-raw-i18n-copy.mjs",
     "agent:monitor": "node scripts/monitor-agent-process.mjs",
     "css:check": "node scripts/check-css-architecture.mjs",
+    "css:health": "tsx scripts/css-health.ts",
     "css:inventory": "tsx scripts/css-inventory.ts",
     "css:modules:check": "tsx scripts/find-unused-css.ts --modules-check",
     "css:touched": "tsx scripts/report-touched-css.ts",

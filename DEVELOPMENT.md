@@ -153,6 +153,18 @@ queue. CSS health is evaluated on demand across containment, ownership,
 module-contract, escape-hatch, dead-code, and shipping-size signals; the global
 line ratchet is one guardrail, not a complete progress score.
 
+For a CSS-focused review or occasional architecture audit, run:
+
+```bash
+pnpm css:health
+```
+
+This composes the existing analyzers into a human-readable summary; `--json`
+is available for a one-off comparison. It reports separate facts rather than a
+score and does not build the client, persist results, or fail on observational
+debt. Continue to use `css:check`, `lint`, and `css:unused` for their own exit
+contracts.
+
 ## Contribution Ethos: Minimalist Runtime
 
 Running code — everything outside test/build tooling — is hand-built and lean on

@@ -273,6 +273,22 @@ The intended consumer is the agent or reviewer already changing CSS and the
 occasional architecture audit. A command-line summary is sufficient; do not
 build a product dashboard or duplicate changing measurements in prose.
 
+`pnpm css:health` is that on-demand summary. It composes the containment
+baseline, ownership inventory, module contract, global-interop analysis, and
+unused-global report into human-readable or `--json` output. It includes total
+authored CSS and the global/module line split but does not build the client to
+obtain shipping bytes. Its escape-hatch row covers reviewed module-to-global
+references; strict module complexity rules such as `!important`, duplicate
+declarations, and excessive selector depth remain visible through the blocking
+Biome lint policy.
+
+The health command is observational and exits 0 after a successful scan even
+when it reports ratchet problems, module issues, or potential dead code; the
+owning checks retain their documented blocking behavior. Invalid arguments or
+an unreadable/unparseable input exits 2. Do not use a saved health JSON file as
+a baseline or add a composite threshold—the current analyzers are the source of
+truth.
+
 ## Migration runbook
 
 ### 1. Establish ownership before moving rules

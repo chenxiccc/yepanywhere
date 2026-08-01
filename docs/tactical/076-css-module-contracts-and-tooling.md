@@ -277,6 +277,18 @@ bundle instead.
 Acceptance is a recorded decision with a named consumer and workflow, not the
 existence of a dashboard.
 
+Decision and implementation evidence (2026-08-01): the command earns its place
+because a CSS-changing agent or reviewer otherwise has to reconcile four
+outputs to distinguish containment from ownership quality and dead code.
+`pnpm css:health` now composes the existing containment, inventory, module, and
+unused analyses into human or JSON output. It reports separate containment,
+ownership, module-contract, global-interop, dead-code, and authored-size facts;
+it does not build, score, persist, schedule, or fail on observational debt. A
+focused fixture verifies all sections. The initial repository snapshot is 59
+authored stylesheets / 31,472 lines: 4 global files / 23,550 lines and 55
+modules / 7,922 lines; module contracts have zero issues, while 35 of 1,939
+unique global selectors remain potentially unused.
+
 ### 8 — ratify the steady-state CSS checks
 
 Update the binding topic and contributor guidance with the enacted command
