@@ -9914,66 +9914,6 @@ div.bang-command-error-message {
   padding: var(--space-1) var(--space-2);
 }
 
-.cache-miss-billing-token-input {
-  width: 7rem;
-}
-
-.cache-miss-billing-events {
-  gap: var(--space-2);
-}
-
-.cache-miss-billing-event-log {
-  container-type: inline-size;
-}
-
-.cache-miss-billing-event-columns {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-3);
-  align-items: start;
-}
-
-.cache-miss-billing-event-column {
-  min-width: 0;
-}
-
-.cache-miss-billing-event-column-title {
-  margin: 0 0 var(--space-2);
-  color: var(--text);
-  font-size: var(--font-size-sm);
-  font-weight: 650;
-}
-
-.cache-miss-billing-event-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-3);
-  width: 100%;
-}
-
-.cache-miss-billing-event-detail {
-  margin: var(--space-2) 0 0;
-  word-break: break-word;
-}
-
-@container (max-width: 48rem) {
-  .cache-miss-billing-event-columns {
-    grid-template-columns: 1fr;
-  }
-}
-
-@container (max-width: 36rem) {
-  .cache-miss-billing-event-header {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .cache-miss-billing-event-header .settings-button {
-    align-self: flex-start;
-  }
-}
-
 .settings-session-defaults-panel {
   display: grid;
   /* Container-driven column count: tracks pack to the panel's own width

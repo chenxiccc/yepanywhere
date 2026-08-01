@@ -1,0 +1,72 @@
+/* Cache-billing pane: the narrow token field plus the two-column event log
+   and its per-event header/detail rows. The shared settings primitives
+   (`settings-group`, `settings-item`, `settings-hint`, `settings-button`,
+   `settings-empty`, ...) stay global — this module only owns the vocabulary
+   the pane itself introduced. */
+
+/* Kept literally from index.css. It has never decided the rendered width:
+   the field always sits inside `.settings-input-unit`, whose
+   `.settings-input-unit .settings-input-small { width: 4rem }` outranks any
+   single class. Left at one-class specificity so that stays true. */
+.tokenInput {
+  width: 7rem;
+}
+
+/* Tighter than the shared group's `gap: var(--space-3)`. Compounded with the
+   global class so the override keeps winning on specificity rather than on
+   where the module's CSS happens to be emitted relative to index.css. */
+.events:global(.settings-group) {
+  gap: var(--space-2);
+}
+
+.eventLog {
+  container-type: inline-size;
+}
+
+.eventColumns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  align-items: start;
+}
+
+.eventColumn {
+  min-width: 0;
+}
+
+.eventColumnTitle {
+  margin: 0 0 var(--space-2);
+  color: var(--text);
+  font-size: var(--font-size-sm);
+  font-weight: 650;
+}
+
+.eventHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+}
+
+.eventDetail {
+  margin: var(--space-2) 0 0;
+  word-break: break-word;
+}
+
+@container (max-width: 48rem) {
+  .eventColumns {
+    grid-template-columns: 1fr;
+  }
+}
+
+@container (max-width: 36rem) {
+  .eventHeader {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .eventHeader :global(.settings-button) {
+    align-self: flex-start;
+  }
+}

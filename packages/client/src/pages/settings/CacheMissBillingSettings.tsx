@@ -7,6 +7,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api/client";
+import styles from "./CacheMissBillingSettings.module.css";
 import { useServerSettings } from "../../hooks/useServerSettings";
 import { useRemoteBasePath } from "../../hooks/useRemoteBasePath";
 import { useI18n } from "../../i18n";
@@ -133,10 +134,10 @@ function CacheMissBillingEventList({
     return <p className="settings-empty">{emptyMessage}</p>;
   }
   return (
-    <div className="settings-group cache-miss-billing-events">
+    <div className={`settings-group ${styles.events}`}>
       {events.map((event) => (
         <div key={event.id} className="settings-item model-settings-item">
-          <div className="cache-miss-billing-event-header">
+          <div className={styles.eventHeader}>
             <div className="settings-item-info">
               <strong>{eventReasonLabel(event, t)}</strong>
               <p>{eventUsageLabel(event, t)}</p>
@@ -148,13 +149,13 @@ function CacheMissBillingEventList({
               {t("cacheMissBillingOpenSession")}
             </Link>
           </div>
-          <p className="settings-hint cache-miss-billing-event-detail">
+          <p className={`settings-hint ${styles.eventDetail}`}>
             {t("cacheMissBillingEventDetail", {
               time: new Date(event.timestamp).toLocaleString(),
               position: eventPositionLabel(event, t),
             })}
           </p>
-          <p className="settings-hint cache-miss-billing-event-detail">
+          <p className={`settings-hint ${styles.eventDetail}`}>
             {eventExpectedCostLabel(event, t)}
           </p>
         </div>
@@ -377,7 +378,7 @@ export function CacheMissBillingSettings() {
                 <input
                   key={`minimum-${effective.minimumInputTokens}`}
                   type="number"
-                  className="settings-input-small cache-miss-billing-token-input"
+                  className={`settings-input-small ${styles.tokenInput}`}
                   min={1}
                   max={5_000_000}
                   step={1000}
@@ -411,10 +412,10 @@ export function CacheMissBillingSettings() {
       <SettingsSection description={t("cacheMissBillingEventsDescription")}>
         {eventsError && <p className="settings-warning">{eventsError}</p>}
         <HideInSettingsSearch>
-          <div className="cache-miss-billing-event-log">
-            <div className="cache-miss-billing-event-columns">
-              <div className="cache-miss-billing-event-column">
-                <h3 className="cache-miss-billing-event-column-title">
+          <div className={styles.eventLog}>
+            <div className={styles.eventColumns}>
+              <div className={styles.eventColumn}>
+                <h3 className={styles.eventColumnTitle}>
                   {t("cacheMissBillingFailuresTitle")}
                 </h3>
                 <CacheMissBillingEventList
@@ -424,8 +425,8 @@ export function CacheMissBillingSettings() {
                   basePath={basePath}
                 />
               </div>
-              <div className="cache-miss-billing-event-column">
-                <h3 className="cache-miss-billing-event-column-title">
+              <div className={styles.eventColumn}>
+                <h3 className={styles.eventColumnTitle}>
                   {t("cacheMissBillingSuccessesTitle")}
                 </h3>
                 <CacheMissBillingEventList
