@@ -1,8 +1,9 @@
 # Session Fork And Clone Unification
 
-Status: product direction approved 2026-08-01; implementation and paid-provider
-validation are paused pending Maintainer review of the execution and
-compatibility plan below. No runtime changes have been made from this tactical.
+Status: product and compatibility direction approved 2026-08-01;
+implementation and paid-provider validation remain paused until the Maintainer
+explicitly says to proceed. No runtime changes have been made from this
+tactical.
 
 Topic: fork-from-turn
 Topic: provider-fork-support
@@ -334,7 +335,7 @@ of the copy operation.
 - Re-open product review only if provider behavior makes one of the approved
   outcomes impossible; do not silently substitute a summary or continuation.
 
-### 3 — review the hosted-client fork contract
+### 3 — record the hosted-client fork contract
 
 Classification: **optional**. Clone/Fork is provider-dependent and can be
 honestly hidden while the rest of session use remains intact.
@@ -352,7 +353,7 @@ Both releases provide
 advertises a server capability for resolving a human-turn intent, and both
 contain the client-side resolver/control failures recorded above.
 
-Proposed compatibility contract:
+Approved compatibility contract:
 
 - Add transitional `/api/version` capability `session-fork-turn-intents`.
 - Add `sessions` as a capability-registry area and record the actual first
@@ -365,9 +366,10 @@ Proposed compatibility contract:
   `sourceMessageId` for the two turn-relative forms.
 - Reject a request that mixes the new intent fields with legacy
   `upToMessageId`.
-- Keep the existing legacy body shape for maintained old clients. Repair its
-  display-id-to-provider-id mapping where possible, but do not reinterpret an
-  inside-turn anchor as a completed turn.
+- Keep parsing the existing legacy body shape so an old client does not fail
+  merely because the route changed. Do not add compatibility code that tries
+  to reproduce or repair its known-broken client-side turn selection; the
+  server still validates the exact legacy anchor and may reject it.
 - Do not broaden provider `supportsForkSession`; it continues to mean only that
   the selected provider implements the primitive.
 - Do not bump `remoteCompatibilityLevel`; this is one narrow optional feature
@@ -377,14 +379,13 @@ New-client/older-server fallback:
 
 - Never send `forkKind` or `sourceMessageId` when
   `session-fork-turn-intents` is absent.
-- When the source is definitively idle and provider
-  `supportsForkSession === true`, show header Clone and use the already-shipped
-  empty-body full `/fork` request. This was verified in both releases above.
-- Hide the new direct per-turn before/after actions when the capability is
-  absent. Do not retain the known-broken client-side boundary scan as a
-  fallback.
-- Hide Clone as well when provider support is absent/unknown, and make no fork
-  request.
+- Hide the entire unified Clone/direct-Fork surface when the capability is
+  absent and make no `/fork` request. Upgrading the server is the fallback; do
+  not emulate the known-broken client-side boundary scan or special-case the
+  older route's full-fork behavior.
+- When the capability is present, still require provider
+  `supportsForkSession === true`. Hide the actions and make no request when
+  provider support is absent or unknown.
 
 Old-client/new-server behavior:
 
@@ -392,19 +393,21 @@ Old-client/new-server behavior:
 - Apply completed-turn safety only to the explicit new
   `clone-latest-complete` intent. This avoids silently changing the legacy
   empty-body meaning for existing clients and internal callers.
+- Do not promise that an old client's broken per-turn affordance becomes
+  usable. Compatibility here prevents protocol misinterpretation; it does not
+  preserve accidental UI behavior.
 - Response fields used by older clients remain unchanged. New diagnostics may
   be additive, but the new client must need only the existing target session
   id/project/provider/title fields to navigate.
 
-Approval prompt for the next step:
+Recorded decision:
 
-> Compatibility review for session fork intents: releases `v0.7.0` and
-> `v0.6.2` lack `forkKind`/`sourceMessageId` and
+> Releases `v0.7.0` and `v0.6.2` lack `forkKind`/`sourceMessageId` and
 > `session-fork-turn-intents`. Add that transitional capability to gate the new
-> server-resolved fields. Without it, the client makes only the already-
-> supported idle full-fork request for header Clone and hides direct per-turn
-> Fork. Existing `supportsForkSession`, legacy request bodies, response fields,
-> and remote compatibility level retain their meanings. Approve?
+> server-resolved fields. Without it, hide unified Clone/direct Fork and make
+> no request. Existing `supportsForkSession`, legacy request bodies, response
+> fields, and remote compatibility level retain their meanings; no effort is
+> spent preserving the known-broken old per-turn UI.
 
 ### 4 — centralize completed-turn boundary resolution
 
@@ -438,15 +441,12 @@ Approval prompt for the next step:
 ### 6 — restore direct Clone in session-header chrome
 
 - Add an optional header-only Clone handler to `SessionMenu`.
-- Gate it on provider `supportsForkSession`. Use the latest-complete intent when
-  the server capability is present; use only the validated idle empty-body
-  fallback described above when it is absent.
+- Gate it on both `session-fork-turn-intents` and provider
+  `supportsForkSession`, and use the latest-complete intent.
 - Show a visible pending state and prevent duplicate activation.
 - On success, navigate to the cold target and preserve parent lineage,
   provider/model/workstream, sandbox state, and title metadata.
-- Title a new-capability target `Clone: <source>` without repeatedly stacking
-  the prefix. An older-server full-fork fallback may retain its existing
-  `Fork:` title rather than requiring a second metadata mutation.
+- Title the target `Clone: <source>` without repeatedly stacking the prefix.
 - On failure, leave the source and its draft untouched and show an actionable
   message.
 - Put new component-owned styles in co-located CSS Modules. Do not grow a
@@ -569,9 +569,9 @@ silently replaced with a fixture result.
 ## Current Approval Gate
 
 This documentation commit authorizes no implementation and no paid-provider
-calls. After the Maintainer reviews it, an explicit **proceed** approves the
-compatibility proposal, implementation direction, bounded real-provider spend,
-and isolated-profile validation above. Any material change to those boundaries
+calls. The product and compatibility decisions are approved; an explicit
+**proceed** authorizes implementation, the bounded real-provider spend, and the
+isolated-profile validation above. Any material change to those boundaries
 returns here for review before code is changed.
 
 ## Acceptance Gates
@@ -588,8 +588,9 @@ returns here for review before code is changed.
   or item id.
 - User-role tool results and injected provider context never count as the next
   human turn.
-- Clone/Fork remains absent when the provider has no true fork primitive and
-  makes no unsupported request against an older server.
+- Clone/Fork remains absent when either the server capability or a true
+  provider fork primitive is missing, and makes no unsupported older-server
+  request.
 - Active-response behavior is explicit and never creates a partial fork.
 - Clone, Fork, Handoff, and Fork with summary have distinct visible copy and
   observable effects.
