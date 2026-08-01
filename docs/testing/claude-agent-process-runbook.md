@@ -130,6 +130,30 @@ or installed extension. A localhost certificate warning in the main browser is
 therefore a harness-routing error, not a fixture failure; abandon that path and
 use headless Playwright without interacting with the warning page.
 
+For a component whose important states are deterministic from props but hidden
+behind rare product or provider state, the client dev server exposes the test-only
+fixture page `packages/client/e2e/css-component-fixture.html`. Supply a component
+module below `/src/components/`, its named export, and JSON props:
+
+```text
+http://localhost:3402/e2e/css-component-fixture.html
+  ?module=/src/components/ThinkingIndicator.tsx
+  &export=ThinkingIndicator
+  &props={"variant":"pill","label":"Running"}
+```
+
+URL-encode the query values in an actual request. A prop whose JSON value is
+`"$noop"` becomes a no-op callback, which permits isolated rendering of a
+controlled component without adding product-only fixture state. Wait for
+`html[data-css-fixture-ready="true"]`, fail on
+`html[data-css-fixture-error="true"]`, and capture the bounded component beneath
+`[data-css-fixture-root="true"]`.
+
+Use this page only when isolated rendering is sufficient to verify the owned
+CSS. A caller-layout edge, portal relationship, generated markup boundary, or
+product-state interaction still needs the real integration surface. The fixture
+does not turn ambiguous ownership into a mechanical slice.
+
 In calibration mode, the controller replays the steps and inspects both
 baselines before launch. In trusted campaign mode, the worker may prepare the
 packet from the clean base before editing, with a strict discovery limit. If a

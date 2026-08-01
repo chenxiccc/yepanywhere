@@ -43,18 +43,19 @@ After compaction or controller restart:
 - Protocol base: `ef2c98ae9b1882d47fc931971881b2f90fba7f08`
 - First worker launch: `2026-08-01T07:46:39+02:00`
 - Wall-clock deadline: `2026-08-01T11:46:39+02:00`
-- Workers launched: 1 / 50
-- Accepted slices: 0
+- Workers launched: 2 / 50
+- Accepted slices: 1
 - Stopped slices: 1
-- Current interval: 0 / 5 accepted
+- Current interval: 1 / 5 accepted
 - Current worker: none
-- Current clean base: this fixture-harness ledger checkpoint (`HEAD`)
+- Current clean base: this component-fixture ledger checkpoint (`HEAD`)
 
 ## Completed slices
 
 | Run | Surface | Route | Result | Commit | Ratchet | Supervision evidence |
 |---:|---|---|---|---|---|---|
 | 1 | Thinking indicator | Luna xhigh: shared keyframe boundary | Stopped before edits: phone fixture absent | — | 0 | Main-browser steer; desktop baseline passed; phone failed one retry |
+| 2 | Global tooltip portal | Opus high: local literal move | Accepted | `e5fb8e5b` | 33 legacy lines, 2 owned rules | Alert-only monitoring; controller-proven fixture; no steer |
 
 ## Audit interval notes
 
@@ -64,6 +65,19 @@ and encountered its localhost certificate warning. The runbook now directs
 local campaign fixtures straight to repository headless Playwright. The supplied
 Agents-page fixture was present at desktop width but absent at phone width, so
 the candidate remains unmigrated and is not reserved as the next slice.
+
+Run 2 completed without attention or scope events. Opus preserved the portal
+and stacking contracts, passed the full check matrix, and produced a
+byte-identical phone target. A one-row desktop element-crop difference was
+localized to fractional screenshot rounding; computed layout and the rendered
+surface were unchanged.
+
+The next tooling checkpoint added
+`packages/client/e2e/css-component-fixture.html`, a test-only Vite page that can
+render deterministic component exports from JSON props at real browser widths.
+This avoids spending provider sessions manufacturing rare application state.
+It remains unsuitable for caller-layout, portal, generated-markup, or other
+integration boundaries.
 
 At each five-slice checkpoint, append aggregate inventory movement, model
 outcomes, fixture/check evidence, steering events, routing changes, and the
