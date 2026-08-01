@@ -400,6 +400,15 @@ describe("GitStatusPage source header", () => {
     ).toBe("true");
   });
 
+  it("keeps Reviews dormant until the new capability and setting land", async () => {
+    renderPage("/git-status?projectId=project-a&tab=reviews");
+
+    expect(await screen.findByTestId("working-tree-browser")).toBeDefined();
+    expect(
+      screen.queryByRole("tab", { name: "sourceTabReviews" }),
+    ).toBeNull();
+  });
+
   it("opens an asynchronously populated Files hash in commit history", async () => {
     renderPage("/git-status?projectId=project-a&tab=files&bf=src%2Fx.ts");
 

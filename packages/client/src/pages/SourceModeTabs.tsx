@@ -6,9 +6,9 @@ import styles from "./SourceModeTabs.module.css";
  * one surface, several navigation modes that all feed the same review
  * accumulator. `changes` owns both the current working tree and explicitly
  * opened commit history, `files` is the all-files blame browser, and
- * `comments` is the pending-review list.
+ * `comments` is the pending-review list, and `reviews` is submitted history.
  */
-export type SourceTab = "changes" | "files" | "comments";
+export type SourceTab = "changes" | "files" | "comments" | "reviews";
 
 export function SourceModeTabs({
   tab,
@@ -67,5 +67,7 @@ function sourceTabLabelKey(tab: SourceTab): MessageKey {
       return "sourceTabFiles";
     case "comments":
       return "sourceTabComments";
+    case "reviews":
+      return "sourceTabReviews";
   }
 }

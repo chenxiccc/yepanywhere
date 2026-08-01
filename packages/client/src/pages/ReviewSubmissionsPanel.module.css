@@ -1,0 +1,132 @@
+.panel {
+  display: grid;
+  grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
+  gap: var(--space-3, 12px);
+  min-width: 0;
+}
+
+.empty {
+  padding: var(--space-3, 12px);
+  color: var(--text-secondary, #8b949e);
+}
+
+.submissionList,
+.commentList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.submissionButton {
+  width: 100%;
+  padding: var(--space-2, 8px);
+  overflow: hidden;
+  color: var(--text-secondary, #8b949e);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle, #21262d);
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+}
+
+.submissionButton:hover,
+.submissionButton.active {
+  color: var(--text-primary, #e6edf3);
+  border-color: var(--accent-color);
+}
+
+.mobileSelector {
+  display: none;
+}
+
+.detail {
+  min-width: 0;
+}
+
+.detailHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2, 8px);
+  margin-bottom: var(--space-3, 12px);
+}
+
+.detailHeader h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.sessionLink {
+  color: var(--link-color);
+  font-size: 0.85rem;
+}
+
+.comment {
+  padding: var(--space-3, 12px);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle, #21262d);
+  border-radius: var(--radius-md, 8px);
+}
+
+.commentHead {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+  color: var(--text-muted);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.75rem;
+}
+
+.location {
+  color: var(--link-color);
+}
+
+.text {
+  margin-top: var(--space-2, 8px);
+  color: var(--text-primary, #e6edf3);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.snippet {
+  max-height: 12rem;
+  margin: var(--space-2, 8px) 0 0;
+  overflow: auto;
+  padding: var(--space-2, 8px);
+  color: var(--text-secondary, #8b949e);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm, 4px);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8rem;
+  white-space: pre;
+}
+
+.captureMissing {
+  margin-top: var(--space-2, 8px);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+@media (max-width: 759px) {
+  .panel {
+    display: block;
+  }
+
+  .submissionList {
+    display: none;
+  }
+
+  .mobileSelector {
+    display: grid;
+    gap: 2px;
+    margin-bottom: var(--space-3, 12px);
+    color: var(--text-secondary, #8b949e);
+    font-size: 0.8rem;
+  }
+}

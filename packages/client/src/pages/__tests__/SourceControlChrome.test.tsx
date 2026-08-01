@@ -125,6 +125,23 @@ describe("SourceModeTabs", () => {
     expect(counts[0]?.textContent).toBe("3");
   });
 
+  it("supports a fourth Reviews mode without changing the tab contract", () => {
+    const onSelect = vi.fn();
+    render(
+      <SourceModeTabs
+        tab="reviews"
+        tabs={[...TABS, "reviews"]}
+        onSelect={onSelect}
+        t={t}
+      />,
+    );
+
+    const reviews = screen.getByRole("tab", { name: "sourceTabReviews" });
+    expect(reviews.getAttribute("aria-selected")).toBe("true");
+    fireEvent.click(screen.getByRole("tab", { name: "sourceTabComments" }));
+    expect(onSelect).toHaveBeenCalledWith("comments");
+  });
+
   it("selects the stacked phone layout by variant rather than by caller CSS", () => {
     const { rerender } = render(
       <SourceModeTabs tab="changes" tabs={TABS} onSelect={vi.fn()} t={t} />,

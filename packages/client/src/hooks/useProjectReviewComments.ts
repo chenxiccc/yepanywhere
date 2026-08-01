@@ -10,6 +10,7 @@ import { subscribeReviewComments } from "../lib/reviewCommentsBus";
  */
 export interface ProjectReviewComments {
   pending: ReviewComment[];
+  archived: ReviewComment[];
   batches: ReviewBatch[];
   /** Target of the most recent submitted batch — the default follow-up. */
   recentReviewSessionId: string | null;
@@ -47,6 +48,7 @@ export function useProjectReviewComments(
 
   return {
     pending: comments.filter((comment) => comment.status === "pending"),
+    archived: comments.filter((comment) => comment.status === "archived"),
     batches,
     recentReviewSessionId:
       batches.length > 0

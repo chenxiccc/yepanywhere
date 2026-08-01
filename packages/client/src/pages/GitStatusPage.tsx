@@ -43,6 +43,7 @@ import { BlameBrowser } from "./BlameBrowser";
 import { CommitBrowser } from "./CommitBrowser";
 import { RepoStatusBar } from "./RepoStatusBar";
 import { ReviewCommentsPanel } from "./ReviewCommentsPanel";
+import { ReviewSubmissionsPanel } from "./ReviewSubmissionsPanel";
 import styles from "./GitStatusPage.module.css";
 import { type SourceTab, SourceModeTabs } from "./SourceModeTabs";
 import { WorkingTreeBrowser } from "./WorkingTreeBrowser";
@@ -78,13 +79,17 @@ const SOURCE_TABS: readonly SourceTab[] = [
   "files",
   "comments",
 ];
+const SOURCE_TABS_WITH_REVIEWS: readonly SourceTab[] = [
+  ...SOURCE_TABS,
+  "reviews",
+];
 
 /**
  * Source-mode tab state, derived from the `?tab=` URL param. Shared by the
  * title-row header actions (wide screens) and the status bar (mobile), so both
  * drive the same URL state.
  */
-function useSourceTab(): {
+function useSourceTab(reviewsEnabled = false): {
   tab: SourceTab;
   setTab: (next: SourceTab) => void;
 } {
@@ -96,6 +101,8 @@ function useSourceTab(): {
       ? "files"
       : tabParam === "comments"
         ? "comments"
+        : tabParam === "reviews" && reviewsEnabled
+          ? "reviews"
         : "changes";
   const setTab = useCallback(
     (next: SourceTab) => {
@@ -124,18 +131,20 @@ function useSourceTab(): {
 function SourceHeaderTabs({
   status,
   pendingCount,
+  reviewsEnabled,
   t,
 }: {
   status: GitStatusInfo;
   pendingCount: number;
+  reviewsEnabled: boolean;
   t: TranslationFn;
 }) {
-  const { tab, setTab } = useSourceTab();
+  const { tab, setTab } = useSourceTab(reviewsEnabled);
   const changedFileCount = countChangedPaths(status);
   return (
     <SourceModeTabs
       tab={tab}
-      tabs={SOURCE_TABS}
+      tabs={reviewsEnabled ? SOURCE_TABS_WITH_REVIEWS : SOURCE_TABS}
       variant="stacked"
       counts={{ changes: changedFileCount, comments: pendingCount }}
       onSelect={setTab}
@@ -384,7 +393,10 @@ export function GitStatusPage() {
   const { t } = useI18n();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { setTab: setHeaderTab } = useSourceTab();
+  // P3a is intentionally dormant until P4 supplies both the permanent server
+  // capability and the default-off persisted user setting.
+  const reviewsEnabled = false;
+  const { setTab: setHeaderTab } = useSourceTab(reviewsEnabled);
   const projectId = searchParams.get("projectId");
   const sourceKey = useClientSummarySourceKey();
   const { openSidebar, isWideScreen, toggleSidebar, isSidebarCollapsed } =
@@ -539,6 +551,7 @@ export function GitStatusPage() {
             <SourceHeaderTabs
               status={gitStatus}
               pendingCount={reviewComments.pending.length}
+              reviewsEnabled={reviewsEnabled}
               t={t}
             />
           ) : undefined
@@ -573,6 +586,7 @@ export function GitStatusPage() {
                 supportsProjections={supportsSourceReviewProjections}
                 gitActions={gitActions}
                 reviewComments={reviewComments}
+                reviewsEnabled={reviewsEnabled}
                 showReviewModal={showReviewModal}
                 onOpenReview={() => setShowReviewModal(true)}
                 onCloseReview={() => setShowReviewModal(false)}
@@ -629,6 +643,7 @@ function GitStatusContent({
   supportsProjections,
   gitActions,
   reviewComments,
+  reviewsEnabled,
   showReviewModal,
   onOpenReview,
   onCloseReview,
@@ -640,6 +655,7 @@ function GitStatusContent({
   supportsProjections: boolean;
   gitActions: GitActionState;
   reviewComments: ReturnType<typeof useProjectReviewComments>;
+  reviewsEnabled: boolean;
   showReviewModal: boolean;
   onOpenReview: () => void;
   onCloseReview: () => void;
@@ -649,7 +665,7 @@ function GitStatusContent({
   const location = useLocation();
   const basePath = useRemoteBasePath();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { tab, setTab } = useSourceTab();
+  const { tab, setTab } = useSourceTab(reviewsEnabled);
   const blameFile = searchParams.get("bf") ?? undefined;
   const commitSha = searchParams.get("rev") ?? undefined;
   const worktreeFile = searchParams.get("worktreeFile") ?? undefined;
@@ -787,6 +803,15 @@ function GitStatusContent({
           pending={reviewComments.pending}
           onOpenFile={handleBlameFile}
           onSubmit={onOpenReview}
+          t={t}
+        />
+      ) : tab === "reviews" ? (
+        <ReviewSubmissionsPanel
+          batches={reviewComments.batches}
+          archived={reviewComments.archived}
+          sessionHref={(sessionId) =>
+            `${basePath}/projects/${projectId}/sessions/${sessionId}`
+          }
           t={t}
         />
       ) : tab === "files" ? (
