@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [site-v1.9.0] - 2026-08-01
+
 ### Fixed
 - Keep ordered-list markers inside the documentation article measure instead
   of hanging into the outer gutter.
