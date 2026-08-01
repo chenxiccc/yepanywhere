@@ -43,6 +43,7 @@ import { FilePage } from "./pages/FilePage";
 import { GitStatusPage } from "./pages/GitStatusPage";
 import { GlobalSessionsPage } from "./pages/GlobalSessionsPage";
 import { HostPickerPage } from "./pages/HostPickerPage";
+import { HostsPage } from "./pages/HostsPage";
 import { InboxPage } from "./pages/InboxPage";
 import { MultiHostMonitorPage } from "./pages/MultiHostMonitorPage";
 import { NewSessionPage } from "./pages/NewSessionPage";
@@ -112,6 +113,7 @@ const APP_ROUTES = (
       <Route path="sessions" element={<GlobalSessionsPage />} />
       <Route path="agents" element={<AgentsPage />} />
       <Route path="inbox" element={<InboxPage />} />
+      <Route path="-/hosts" element={<HostsPage />} />
       <Route path="git-status" element={<GitStatusPage />} />
       <Route path="devices" element={<EmulatorPage />} />
       <Route path="devices/:deviceId" element={<EmulatorPage />} />

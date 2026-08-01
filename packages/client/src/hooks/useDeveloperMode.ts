@@ -2,6 +2,8 @@ import { useCallback, useSyncExternalStore } from "react";
 import { UI_KEYS } from "../lib/storageKeys";
 
 interface DeveloperModeSettings {
+  /** Expose the experimental server-scoped YA Hosts preview */
+  crossHostDelegationEnabled: boolean;
   /** Expose the experimental all-hosts monitor link */
   multiHostMonitorEnabled: boolean;
   /** Log relay requests/responses to console for debugging */
@@ -13,6 +15,7 @@ interface DeveloperModeSettings {
 }
 
 const DEFAULT_SETTINGS: DeveloperModeSettings = {
+  crossHostDelegationEnabled: false,
   multiHostMonitorEnabled: false,
   relayDebugEnabled: false,
   remoteLogCollectionEnabled: false,
@@ -34,6 +37,9 @@ function normalizeSettings(raw: unknown): DeveloperModeSettings {
   }
   const parsed = raw as Partial<DeveloperModeSettings>;
   return {
+    crossHostDelegationEnabled:
+      parsed.crossHostDelegationEnabled ??
+      DEFAULT_SETTINGS.crossHostDelegationEnabled,
     multiHostMonitorEnabled:
       parsed.multiHostMonitorEnabled ??
       DEFAULT_SETTINGS.multiHostMonitorEnabled,
@@ -109,6 +115,10 @@ export function __resetDeveloperModeForTest(): void {
 export function useDeveloperMode() {
   const settings = useSyncExternalStore(subscribe, getSnapshot);
 
+  const setCrossHostDelegationEnabled = useCallback((enabled: boolean) => {
+    updateSettings({ ...currentSettings, crossHostDelegationEnabled: enabled });
+  }, []);
+
   const setMultiHostMonitorEnabled = useCallback((enabled: boolean) => {
     updateSettings({ ...currentSettings, multiHostMonitorEnabled: enabled });
   }, []);
@@ -127,6 +137,8 @@ export function useDeveloperMode() {
   }, []);
 
   return {
+    crossHostDelegationEnabled: settings.crossHostDelegationEnabled,
+    setCrossHostDelegationEnabled,
     multiHostMonitorEnabled: settings.multiHostMonitorEnabled,
     setMultiHostMonitorEnabled,
     relayDebugEnabled: settings.relayDebugEnabled,

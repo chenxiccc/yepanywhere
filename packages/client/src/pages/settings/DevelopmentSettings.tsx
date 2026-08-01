@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useSchemaValidationContext } from "../../contexts/SchemaValidationContext";
 import { useDeveloperMode } from "../../hooks/useDeveloperMode";
 import { useReloadNotifications } from "../../hooks/useReloadNotifications";
+import { useRemoteBasePath } from "../../hooks/useRemoteBasePath";
 import { useSchemaValidation } from "../../hooks/useSchemaValidation";
 import { useServerSettings } from "../../hooks/useServerSettings";
 import { useSessionPerformanceSettings } from "../../hooks/useSessionPerformanceSettings";
@@ -51,6 +53,7 @@ const sessionScrollMemoryModeLabelKeys: Record<
 
 export function DevelopmentSettings() {
   const { t } = useI18n();
+  const basePath = useRemoteBasePath();
   useSettingsPaneTitle(t("developmentSectionTitle"));
   const {
     isManualReloadMode,
@@ -63,6 +66,8 @@ export function DevelopmentSettings() {
   const { settings: validationSettings, setEnabled: setValidationEnabled } =
     useSchemaValidation();
   const {
+    crossHostDelegationEnabled,
+    setCrossHostDelegationEnabled,
     multiHostMonitorEnabled,
     setMultiHostMonitorEnabled,
     relayDebugEnabled,
@@ -81,6 +86,7 @@ export function DevelopmentSettings() {
       serverSettings
         ? {
             validationEnabled: validationSettings.enabled,
+            crossHostDelegationEnabled,
             multiHostMonitorEnabled,
             relayDebugEnabled,
             remoteLogCollectionEnabled,
@@ -91,6 +97,7 @@ export function DevelopmentSettings() {
         : null,
     [
       validationSettings.enabled,
+      crossHostDelegationEnabled,
       multiHostMonitorEnabled,
       relayDebugEnabled,
       remoteLogCollectionEnabled,
@@ -101,6 +108,7 @@ export function DevelopmentSettings() {
   const restoreUndoState = useCallback(
     (snapshot: NonNullable<typeof undoState>) => {
       setValidationEnabled(snapshot.validationEnabled);
+      setCrossHostDelegationEnabled(snapshot.crossHostDelegationEnabled);
       setMultiHostMonitorEnabled(snapshot.multiHostMonitorEnabled);
       setRelayDebugEnabled(snapshot.relayDebugEnabled);
       setRemoteLogCollectionEnabled(snapshot.remoteLogCollectionEnabled);
@@ -116,6 +124,7 @@ export function DevelopmentSettings() {
     },
     [
       setValidationEnabled,
+      setCrossHostDelegationEnabled,
       setMultiHostMonitorEnabled,
       setRelayDebugEnabled,
       setRemoteLogCollectionEnabled,
@@ -184,6 +193,35 @@ export function DevelopmentSettings() {
             >
               {t("developmentClearIgnored")}
             </button>
+          </SettingsItem>
+        )}
+        <SettingsItem
+          label={t("developmentCrossHostDelegationTitle")}
+          description={t("developmentCrossHostDelegationDescription")}
+        >
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              aria-label={t("developmentCrossHostDelegationTitle")}
+              checked={crossHostDelegationEnabled}
+              onChange={(event) =>
+                setCrossHostDelegationEnabled(event.target.checked)
+              }
+            />
+            <span className="toggle-slider" />
+          </label>
+        </SettingsItem>
+        {crossHostDelegationEnabled && (
+          <SettingsItem
+            label={t("developmentHostsPreviewTitle")}
+            description={t("developmentHostsPreviewDescription")}
+          >
+            <Link
+              className="settings-button settings-button-secondary"
+              to={`${basePath}/-/hosts`}
+            >
+              {t("developmentHostsPreviewOpen")}
+            </Link>
           </SettingsItem>
         )}
         <SettingsItem

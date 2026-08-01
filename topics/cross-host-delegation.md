@@ -81,37 +81,35 @@ rely on the easily reversed nouns "delegator" and "delegatee":
 
 ## Product Surface Direction
 
-Host switching belongs in the main product surface rather than a growing
-collection of Settings panes. The existing sidebar **Switch Host** action is
-the natural entry point.
+One YA server is commonly viewed through more than one access path: locally
+from the machine itself and through the relay from another device. Delegation
+is server-owned, so those views must agree. The route or browser origin used to
+reach a server must not create a second apparent host identity or a different
+grant topology.
 
-The first version should reuse the current developer-mode exposure for the
-experimental all-hosts monitor:
+The first UI slice therefore uses a dedicated experimental YA Hosts route
+rather than changing the existing host switcher:
 
-- with the experiment disabled, Switch Host retains today's familiar host
-  picker behavior;
-- with it enabled, Switch Host opens an expanded multi-host surface based on
-  `/-/monitor`;
-- saved browser hosts and switching remain the prominent, first section; and
-- delegation appears below as an explicitly experimental, initially collapsed
-  section.
+- the local client exposes `/-/hosts` and the relay client exposes the same
+  page inside the current host route, such as `/:relayUsername/-/hosts`;
+- both render one shared component representing the currently connected YA
+  server;
+- the page is linked only from an opt-in control in Developer settings;
+- the sidebar **Switch Host** action, host picker, and `/-/monitor` retain
+  their existing behavior; and
+- browser-saved hosts do not appear on the new page because they are
+  browser-origin state rather than server-owned delegation state.
 
-The host surface should keep the current host available until the user chooses
-another host rather than disconnecting as the first step. Saved-host cards can
-show bounded connection/authentication state and small activity summaries,
-with **Switch**, **Sign in**, and **Add host** as the primary actions.
+The initial page is intentionally a non-functional preview. It identifies the
+current server without naming its access path, shows the two directional grant
+sections, and renders explicit unavailable states. It does not call an
+unreleased delegation endpoint, pair hosts, create grants, or imply that an
+empty server response was observed.
 
-The expanded delegation section is scoped to the currently selected YA server:
+The eventual server-scoped surface may look like:
 
 ```text
-Your YA Hosts
-
-Saved on this device
-  Mac Studio        Current
-  Windows VM        Connected                 [Switch]
-  Ubuntu VM         Sign-in required           [Sign in]
-
-Delegation                                      Experimental
+YA Hosts                                        Experimental
   Current server: Mac Studio
 
   This server can delegate to
@@ -122,17 +120,13 @@ Delegation                                      Experimental
     MacBook         Authorized
 ```
 
-The existing relay mux and per-source runtime work are useful for observing
-and authenticating the browser's saved hosts. They do not establish
-server-to-server trust. Settings may retain the developer toggle and later
-hold advanced policy or diagnostics if those needs become concrete, but host
-discovery, switching, pairing, arming, and revocation should be iterated in
-this product surface.
-
-If the experiment matures, the host surface may become the normal Switch Host
-destination and the delegation section may become discoverable while remaining
-collapsed. Discoverability does not authorize behavior: pairing and arming
-remain explicit user actions.
+The existing relay mux and per-source runtime work remain useful for observing
+and authenticating the browser's saved hosts, but they do not establish
+server-to-server trust. Whether the server-scoped YA Hosts page and the
+browser-scoped switcher eventually converge is deliberately deferred. Any
+future convergence must preserve the distinction between browser connection
+records and server delegation grants. Discoverability does not authorize
+behavior: pairing and arming remain explicit user actions.
 
 ## How YA Hosts Know About One Another
 

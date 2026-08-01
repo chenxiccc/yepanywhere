@@ -1,0 +1,161 @@
+.content {
+  display: grid;
+  gap: var(--space-4);
+  max-width: 780px;
+  margin: 0 auto;
+}
+
+.badge,
+.currentBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: var(--font-size-xs);
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.badge {
+  color: color-mix(in srgb, var(--warning-color) 85%, var(--text-primary));
+  background: color-mix(in srgb, var(--warning-color) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warning-color) 38%, transparent);
+}
+
+.lede,
+.sectionDescription,
+.currentIdentity p,
+.accessNote p,
+.unavailable p {
+  margin: 0;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.lede {
+  font-size: var(--font-size-sm);
+}
+
+.section {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.section h2,
+.accessNote h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+.currentCard,
+.unavailable,
+.accessNote {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+}
+
+.currentCard {
+  padding: var(--space-4);
+}
+
+.currentHeader {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-3);
+}
+
+.serverGlyph {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  font-size: 1.35rem;
+}
+
+.serverGlyph svg {
+  width: 23px;
+  height: 23px;
+}
+
+.currentIdentity {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.currentIdentity h3 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+.currentBadge {
+  color: var(--success-color);
+  background: color-mix(in srgb, var(--success-color) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--success-color) 32%, transparent);
+}
+
+.accessNote {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: color-mix(in srgb, var(--primary-color) 7%, var(--bg-secondary));
+  border-color: color-mix(in srgb, var(--primary-color) 25%, var(--border-color));
+}
+
+.relationshipGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.sectionDescription {
+  min-height: 3em;
+  font-size: var(--font-size-sm);
+}
+
+.unavailable {
+  display: grid;
+  gap: var(--space-1);
+  min-height: 112px;
+  padding: var(--space-4);
+  border-style: dashed;
+}
+
+.unavailable strong {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.unavailable p {
+  font-size: var(--font-size-sm);
+}
+
+@media (max-width: 640px) {
+  .currentHeader {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .currentBadge {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .relationshipGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sectionDescription {
+    min-height: 0;
+  }
+}

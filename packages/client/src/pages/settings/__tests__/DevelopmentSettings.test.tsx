@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __resetDeveloperModeForTest,
@@ -49,6 +50,13 @@ vi.mock("../../../i18n", () => ({
           developmentSectionTitle: "Development",
           developmentSchemaTitle: "Schema Validation",
           developmentSchemaDescription: "Validate tool results",
+          developmentCrossHostDelegationTitle: "YA Hosts Preview",
+          developmentCrossHostDelegationDescription:
+            "Expose the experimental host preview",
+          developmentHostsPreviewTitle: "YA Hosts",
+          developmentHostsPreviewDescription:
+            "Review this server's delegation relationships",
+          developmentHostsPreviewOpen: "Open YA Hosts",
           developmentMultiHostMonitorTitle: "All Hosts Monitor",
           developmentMultiHostMonitorDescription:
             "Show the experimental all-hosts monitor link",
@@ -93,6 +101,13 @@ vi.mock("../SettingsUndoContext", () => ({
 }));
 
 describe("DevelopmentSettings", () => {
+  const renderSettings = () =>
+    render(
+      <MemoryRouter>
+        <DevelopmentSettings />
+      </MemoryRouter>,
+    );
+
   beforeEach(() => {
     window.localStorage.clear();
     __resetDeveloperModeForTest();
@@ -105,9 +120,10 @@ describe("DevelopmentSettings", () => {
   });
 
   it("shows the remaining development settings", () => {
-    render(<DevelopmentSettings />);
+    renderSettings();
 
     expect(screen.getByText("Schema Validation")).toBeTruthy();
+    expect(screen.getByText("YA Hosts Preview")).toBeTruthy();
     expect(screen.getByText("All Hosts Monitor")).toBeTruthy();
     expect(screen.getByText("Relay Debug Logging")).toBeTruthy();
     expect(screen.getByText("Browser Diagnostics")).toBeTruthy();
@@ -118,7 +134,7 @@ describe("DevelopmentSettings", () => {
   });
 
   it("exposes the session cursor behavior debug setting", () => {
-    render(<DevelopmentSettings />);
+    renderSettings();
 
     const select = screen.getByLabelText("Restore mode") as HTMLSelectElement;
     expect(select.value).toBe("live-tail");
@@ -133,7 +149,7 @@ describe("DevelopmentSettings", () => {
   });
 
   it("toggles relay debug logging from development settings", () => {
-    render(<DevelopmentSettings />);
+    renderSettings();
 
     const toggle = screen.getByRole("checkbox", {
       name: "Relay Debug Logging",
@@ -153,7 +169,7 @@ describe("DevelopmentSettings", () => {
   });
 
   it("toggles the all-hosts monitor link from development settings", () => {
-    render(<DevelopmentSettings />);
+    renderSettings();
 
     const toggle = screen.getByRole("checkbox", {
       name: "All Hosts Monitor",
@@ -167,6 +183,26 @@ describe("DevelopmentSettings", () => {
       JSON.parse(localStorage.getItem(UI_KEYS.developerMode) ?? "{}"),
     ).toMatchObject({
       multiHostMonitorEnabled: true,
+    });
+  });
+
+  it("reveals the server-scoped hosts route behind its toggle", () => {
+    renderSettings();
+
+    expect(
+      screen.queryByRole("link", { name: "Open YA Hosts" }),
+    ).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "YA Hosts Preview" }),
+    );
+
+    const link = screen.getByRole("link", { name: "Open YA Hosts" });
+    expect(link.getAttribute("href")).toBe("/-/hosts");
+    expect(
+      JSON.parse(localStorage.getItem(UI_KEYS.developerMode) ?? "{}"),
+    ).toMatchObject({
+      crossHostDelegationEnabled: true,
     });
   });
 });

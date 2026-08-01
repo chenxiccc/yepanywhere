@@ -23,6 +23,7 @@ import { EmulatorPage } from "./pages/EmulatorPage";
 import { FilePage } from "./pages/FilePage";
 import { GitStatusPage } from "./pages/GitStatusPage";
 import { GlobalSessionsPage } from "./pages/GlobalSessionsPage";
+import { HostsPage } from "./pages/HostsPage";
 import { InboxPage } from "./pages/InboxPage";
 import { LoginPage } from "./pages/LoginPage";
 import { NewSessionPage } from "./pages/NewSessionPage";
@@ -191,6 +192,7 @@ if (import.meta.env.DEV && window.location.port === String(__VITE_DEV_PORT__)) {
                 <Route path="/sessions" element={<GlobalSessionsPage />} />
                 <Route path="/agents" element={<AgentsPage />} />
                 <Route path="/inbox" element={<InboxPage />} />
+                <Route path="/-/hosts" element={<HostsPage />} />
                 <Route path="/settings" element={<SettingsLayout />} />
                 <Route path="/settings/:category" element={<SettingsLayout />} />
                 {/* Project-scoped pages */}
