@@ -1218,6 +1218,8 @@
   "sourceReviewOpenDirtyFile": "Review",
   "sourceReviewSubmitToDefault": "Submit to current session",
   "sourceReviewSubmitToNew": "Submit to new session",
+  "sourceReviewSubmitComment": "Submit comment",
+  "sourceReviewCurrentSuffix": "current session",
   "sourceReviewCommentPlaceholder": "Comment on this line…",
   "sourceReviewSubmitQueued": "Queued — the server is busy; the comment is still pending.",
   "sourceReviewReview": "Review ({count})",

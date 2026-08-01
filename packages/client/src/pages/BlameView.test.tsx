@@ -23,6 +23,7 @@ const getGitBlame = vi.fn();
 const getFile = vi.fn();
 const listReviewComments = vi.fn();
 const addReviewComment = vi.fn();
+const getGlobalSessions = vi.fn();
 const writeClipboardText = vi.fn();
 vi.mock("../api/client", () => ({
   api: {
@@ -30,6 +31,7 @@ vi.mock("../api/client", () => ({
     getGitBlame: (...args: unknown[]) => getGitBlame(...args),
     listReviewComments: (...args: unknown[]) => listReviewComments(...args),
     addReviewComment: (...args: unknown[]) => addReviewComment(...args),
+    getGlobalSessions: (...args: unknown[]) => getGlobalSessions(...args),
   },
 }));
 vi.mock("../lib/clipboard", () => ({
@@ -42,6 +44,7 @@ const COMMITTED_SHA = "b".repeat(40);
 const t = (key: string) => key;
 
 function primeBlame() {
+  getGlobalSessions.mockResolvedValue({ sessions: [], hasMore: false });
   getFile.mockResolvedValue({
     metadata: {
       path: "src/x.ts",

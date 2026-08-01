@@ -13,6 +13,7 @@ import {
   useProviders,
 } from "../hooks/useProviders";
 import { notifyReviewCommentsChanged } from "../lib/reviewCommentsBus";
+import { loadProjectSessions, reviewSessionLabel } from "../lib/reviewSessions";
 import type { TranslationFn } from "../i18n";
 
 /**
@@ -224,7 +225,7 @@ export function ReviewSubmitModal({
                   )}
                 {sessions?.map((session) => (
                   <option key={session.id} value={session.id}>
-                    {sessionLabel(
+                    {reviewSessionLabel(
                       session,
                       session.id === recentReviewSessionId
                         ? t("sourceReviewRecentSuffix")
@@ -298,35 +299,6 @@ export function ReviewSubmitModal({
       </div>
     </Modal>
   );
-}
-
-async function loadProjectSessions(
-  projectId: string,
-): Promise<GlobalSessionItem[]> {
-  const sessions: GlobalSessionItem[] = [];
-  let after: string | undefined;
-  for (;;) {
-    const page = await api.getGlobalSessions({
-      project: projectId,
-      limit: 500,
-      after,
-    });
-    sessions.push(...page.sessions);
-    if (!page.hasMore) return sessions;
-    const nextAfter = page.sessions[page.sessions.length - 1]?.updatedAt;
-    if (!nextAfter || nextAfter === after) {
-      throw new Error("Existing-session list did not advance");
-    }
-    after = nextAfter;
-  }
-}
-
-function sessionLabel(session: GlobalSessionItem, suffix?: string): string {
-  const title = session.customTitle || session.title || session.id.slice(0, 8);
-  const runtime = session.model
-    ? `${session.provider}/${session.model}`
-    : session.provider;
-  return suffix ? `${title} · ${runtime} · ${suffix}` : `${title} · ${runtime}`;
 }
 
 function ReviewPreviewRow({

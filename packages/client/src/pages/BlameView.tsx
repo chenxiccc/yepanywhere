@@ -352,6 +352,7 @@ export function BlameView({
     open && openLine && blame ? (
       <ReviewCommentWindow
         key={open.index}
+        projectId={projectId}
         anchorLabel={`${path}:${openLine.line}`}
         snippet={buildBlameSnippet(blame.lines, open.index).snippet}
         busy={busy}
@@ -362,30 +363,15 @@ export function BlameView({
           if (anchor && (await addToReview(anchor, text))) setOpen(null);
         }}
         defaultSession={defaultSession}
-        onSubmitToDefault={
-          defaultSession
-            ? async (text) => {
-                const anchor = submitAnchor(open.index);
-                if (!anchor) return;
-                const outcome = await submitNow(
-                  anchor,
-                  text,
-                  defaultSession.id,
-                  t("sourceReviewSubmitQueued"),
-                );
-                if (outcome === "navigated") setOpen(null);
-              }
-            : null
-        }
-        onSubmitToNew={async (text) => {
+        onSubmit={async (text, target) => {
           const anchor = submitAnchor(open.index);
           if (!anchor) return;
           const outcome = await submitNow(
             anchor,
             text,
-            "new",
+            target,
             t("sourceReviewSubmitQueued"),
-            defaultSession?.newSession,
+            target === "new" ? defaultSession?.newSession : undefined,
           );
           if (outcome === "navigated") setOpen(null);
         }}

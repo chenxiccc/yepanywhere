@@ -113,6 +113,7 @@ export function DiffCommentController({
   const editor = openComment ? (
     <ReviewCommentWindow
       key={`${openComment.anchor.side}:${openComment.flatIndex}`}
+      projectId={projectId}
       anchorLabel={`${filePath}:${
         openComment.anchor.newLine ?? openComment.anchor.oldLine ?? "?"
       }`}
@@ -122,11 +123,12 @@ export function DiffCommentController({
       onCancel={() => setOpenComment(null)}
       onAddToReview={handleAddToReview}
       defaultSession={defaultSession}
-      onSubmitToDefault={
-        defaultSession ? (text) => handleSubmit(text, defaultSession.id) : null
-      }
-      onSubmitToNew={(text) =>
-        handleSubmit(text, "new", defaultSession?.newSession)
+      onSubmit={(text, target) =>
+        handleSubmit(
+          text,
+          target,
+          target === "new" ? defaultSession?.newSession : undefined,
+        )
       }
       t={t}
     />

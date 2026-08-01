@@ -10,7 +10,7 @@ import {
 } from "@testing-library/react";
 import { useState } from "react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type SourceReviewDefaultSession,
   SourceReviewDefaultSessionContext,
@@ -30,11 +30,13 @@ vi.mock("../hooks/useRemoteBasePath", () => ({
 const listReviewComments = vi.fn();
 const addReviewComment = vi.fn();
 const submitReview = vi.fn();
+const getGlobalSessions = vi.fn();
 vi.mock("../api/client", () => ({
   api: {
     listReviewComments: (...args: unknown[]) => listReviewComments(...args),
     addReviewComment: (...args: unknown[]) => addReviewComment(...args),
     submitReview: (...args: unknown[]) => submitReview(...args),
+    getGlobalSessions: (...args: unknown[]) => getGlobalSessions(...args),
   },
 }));
 
@@ -117,6 +119,10 @@ function renderHarness(
 }
 
 describe("DiffCommentLayer", () => {
+  beforeEach(() => {
+    getGlobalSessions.mockResolvedValue({ sessions: [], hasMore: false });
+  });
+
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
@@ -238,7 +244,10 @@ describe("DiffCommentLayer", () => {
     fireEvent.change(screen.getByRole("textbox"), {
       target: { value: "removed why?" },
     });
-    fireEvent.click(screen.getByText("sourceReviewSubmitToNew"));
+    fireEvent.change(screen.getByLabelText("sourceReviewTargetLegend"), {
+      target: { value: "new" },
+    });
+    fireEvent.click(screen.getByText("sourceReviewSubmitComment"));
 
     await waitFor(() =>
       expect(submitReview).toHaveBeenCalledWith("proj1", ["c1"], "new", {
@@ -277,8 +286,12 @@ describe("DiffCommentLayer", () => {
     fireEvent.change(screen.getByRole("textbox"), {
       target: { value: "follow up here" },
     });
+    const target = screen.getByLabelText(
+      "sourceReviewTargetLegend",
+    ) as HTMLSelectElement;
+    expect(target.value).toBe("sess-default");
     const submitToDefault = await screen.findByText(
-      "sourceReviewSubmitToDefault",
+      "sourceReviewSubmitComment",
     );
     expect(submitToDefault.getAttribute("title")).toBeNull();
     const hoverTarget = submitToDefault.parentElement;
@@ -303,6 +316,59 @@ describe("DiffCommentLayer", () => {
     );
     expect(navigateSpy).toHaveBeenCalledWith(
       "/projects/proj1/sessions/sess-default",
+    );
+  });
+
+  it("defaults immediate submit to the most recently active project session", async () => {
+    listReviewComments.mockResolvedValue({
+      comments: [],
+      batches: [],
+      pendingCount: 0,
+    });
+    getGlobalSessions.mockResolvedValue({
+      sessions: [
+        {
+          id: "sess-recent",
+          title: "Recent implementation",
+          customTitle: null,
+          provider: "codex",
+          model: "gpt-5.4",
+          projectId: "proj1",
+        },
+        {
+          id: "sess-older",
+          title: "Older implementation",
+          customTitle: null,
+          provider: "claude",
+          model: "sonnet",
+          projectId: "proj1",
+        },
+      ],
+      hasMore: false,
+    });
+    addReviewComment.mockResolvedValue({
+      comment: { id: "c3", status: "pending", anchor: {}, text: "x" },
+    });
+    submitReview.mockResolvedValue({
+      sessionId: "sess-recent",
+      consumed: ["c3"],
+    });
+    renderHarness();
+
+    fireEvent.click(document.querySelector('[data-diff-line="2"]')!);
+    await waitFor(() =>
+      expect(
+        (screen.getByLabelText("sourceReviewTargetLegend") as HTMLSelectElement)
+          .value,
+      ).toBe("sess-recent"),
+    );
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "send to the recent session" },
+    });
+    fireEvent.click(screen.getByText("sourceReviewSubmitComment"));
+
+    await waitFor(() =>
+      expect(submitReview).toHaveBeenCalledWith("proj1", ["c3"], "sess-recent"),
     );
   });
 

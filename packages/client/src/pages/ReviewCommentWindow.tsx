@@ -1,18 +1,21 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { GlobalSessionItem } from "../api/client";
 import { SessionHoverCardTarget } from "../components/SessionHoverCardTarget";
 import type { SourceReviewDefaultSession } from "../contexts/SourceReviewDefaultSessionContext";
 import type { TranslationFn } from "../i18n";
+import { loadProjectSessions, reviewSessionLabel } from "../lib/reviewSessions";
 import styles from "./ReviewCommentWindow.module.css";
 
 /**
  * The in-place comment popover shared by the diff and blame comment surfaces
  * (topic: source-review-to-session). It renders the clicked line's anchor
  * label + snippet and offers "Add to review" (persist a pending draft) and
- * explicit default-session and new-session submit actions (drain that one
- * comment immediately). It is presentation only — the caller supplies the
- * anchor and owns the review-draft actions (see `useReviewCommentDraft`).
+ * a recent-session destination picker (drain that one comment immediately).
+ * The caller supplies the anchor and owns the review-draft actions (see
+ * `useReviewCommentDraft`).
  */
 export function ReviewCommentWindow({
+  projectId,
   anchorLabel,
   snippet,
   busy,
@@ -20,10 +23,10 @@ export function ReviewCommentWindow({
   onCancel,
   onAddToReview,
   defaultSession,
-  onSubmitToDefault,
-  onSubmitToNew,
+  onSubmit,
   t,
 }: {
+  projectId: string;
   anchorLabel: string;
   snippet: string;
   busy: boolean;
@@ -31,12 +34,48 @@ export function ReviewCommentWindow({
   onCancel: () => void;
   onAddToReview: (text: string) => void;
   defaultSession: SourceReviewDefaultSession | null;
-  onSubmitToDefault: ((text: string) => void) | null;
-  onSubmitToNew: (text: string) => void;
+  onSubmit: (text: string, target: "new" | string) => void;
   t: TranslationFn;
 }) {
   const [text, setText] = useState("");
+  const [sessions, setSessions] = useState<GlobalSessionItem[] | null>(null);
+  const [sessionsError, setSessionsError] = useState(false);
+  const [targetSessionId, setTargetSessionId] = useState(
+    defaultSession?.id ?? "new",
+  );
+  const targetTouchedRef = useRef(false);
   const canSubmit = text.trim().length > 0 && !busy;
+
+  useEffect(() => {
+    let cancelled = false;
+    loadProjectSessions(projectId)
+      .then((result) => {
+        if (cancelled) return;
+        setSessions(result);
+        if (!defaultSession && !targetTouchedRef.current) {
+          setTargetSessionId(result[0]?.id ?? "new");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setSessionsError(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [defaultSession, projectId]);
+
+  const selectedSession =
+    sessions?.find((session) => session.id === targetSessionId) ?? null;
+  const submitButton = (
+    <button
+      type="button"
+      className={styles.submit}
+      onClick={() => onSubmit(text, targetSessionId)}
+      disabled={!canSubmit}
+    >
+      {t("sourceReviewSubmitComment")}
+    </button>
+  );
 
   return (
     <div className={styles.window}>
@@ -72,7 +111,47 @@ export function ReviewCommentWindow({
           {t("sourceReviewAddToReview")}
         </button>
         <div className={styles.submitActions}>
-          {defaultSession && onSubmitToDefault && (
+          <label className={styles.destination}>
+            <span>{t("sourceReviewTargetLegend")}</span>
+            <select
+              value={targetSessionId}
+              onChange={(event) => {
+                targetTouchedRef.current = true;
+                setTargetSessionId(event.target.value);
+              }}
+            >
+              <option value="new">{t("sourceReviewTargetNew")}</option>
+              {defaultSession &&
+                !sessions?.some(
+                  (session) => session.id === defaultSession.id,
+                ) && (
+                  <option value={defaultSession.id}>
+                    {defaultSession.title} ·{" "}
+                    {defaultSession.newSession.provider}
+                    {defaultSession.newSession.model
+                      ? `/${defaultSession.newSession.model}`
+                      : ""}{" "}
+                    · {t("sourceReviewCurrentSuffix")}
+                  </option>
+                )}
+              {sessions?.map((session) => (
+                <option key={session.id} value={session.id}>
+                  {reviewSessionLabel(
+                    session,
+                    session.id === defaultSession?.id
+                      ? t("sourceReviewCurrentSuffix")
+                      : undefined,
+                  )}
+                </option>
+              ))}
+            </select>
+          </label>
+          {sessionsError && (
+            <span className={styles.destinationError}>
+              {t("sourceReviewSessionsUnavailable")}
+            </span>
+          )}
+          {defaultSession && targetSessionId === defaultSession.id ? (
             <SessionHoverCardTarget
               sessionId={defaultSession.id}
               fallback={{
@@ -83,24 +162,27 @@ export function ReviewCommentWindow({
               }}
               className={styles.defaultSessionTarget}
             >
-              <button
-                type="button"
-                className={styles.submit}
-                onClick={() => onSubmitToDefault(text)}
-                disabled={!canSubmit}
-              >
-                {t("sourceReviewSubmitToDefault")}
-              </button>
+              {submitButton}
             </SessionHoverCardTarget>
+          ) : selectedSession ? (
+            <SessionHoverCardTarget
+              sessionId={selectedSession.id}
+              fallback={{
+                projectId: selectedSession.projectId,
+                title:
+                  selectedSession.customTitle ||
+                  selectedSession.title ||
+                  selectedSession.id.slice(0, 8),
+                provider: selectedSession.provider,
+                model: selectedSession.model,
+              }}
+              className={styles.defaultSessionTarget}
+            >
+              {submitButton}
+            </SessionHoverCardTarget>
+          ) : (
+            submitButton
           )}
-          <button
-            type="button"
-            className={styles.submit}
-            onClick={() => onSubmitToNew(text)}
-            disabled={!canSubmit}
-          >
-            {t("sourceReviewSubmitToNew")}
-          </button>
         </div>
       </div>
     </div>

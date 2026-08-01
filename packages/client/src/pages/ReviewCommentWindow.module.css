@@ -52,7 +52,31 @@
 
 .submitActions {
   display: flex;
+  flex: 1 1 280px;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: flex-end;
   gap: var(--space-2, 8px);
+}
+
+.destination {
+  display: grid;
+  flex: 1 1 220px;
+  gap: 2px;
+  min-width: 0;
+  color: var(--text-secondary, #8b949e);
+  font-size: var(--font-size-sm, 0.85em);
+}
+
+.destination select {
+  min-width: 0;
+  width: 100%;
+}
+
+.destinationError {
+  align-self: center;
+  color: var(--color-error, #f85149);
+  font-size: var(--font-size-sm, 0.85em);
 }
 
 .defaultSessionTarget {
@@ -60,6 +84,7 @@
 }
 
 .submit {
+  min-height: 32px;
   background: var(--accent-color, #3fb950);
   color: var(--accent-contrast, #06120a);
   border: none;
