@@ -17,6 +17,24 @@ different control, history, approval, and model primitives.
 Authenticate with each provider's official CLI. Yep Anywhere uses the official
 provider harness or protocol and does not intercept OAuth tokens.
 
+## Use your subscription plan
+
+Yep Anywhere does not require a separate metered API account for Claude Code or
+Codex. It launches and resumes the official provider process using the account
+that process already has. Sign Claude Code into an eligible Claude plan or
+Codex into an eligible ChatGPT plan, and Yep Anywhere uses that provider-managed
+access.
+
+When Claude Code or Codex exposes subscription limits, Yep Anywhere shows the
+applicable usage windows and reset times in the model controls. The provider
+still owns plan eligibility, limits, credits, and billing. If the provider is
+configured with an API key or pay-as-you-go account, it may bill that route
+instead; Yep Anywhere does not choose or change the billing method.
+
+See the providers' current guidance for
+[Claude Code subscription access](https://support.claude.com/en/articles/11145838-use-claude-code-with-your-pro-or-max-plan)
+and [Codex access through a ChatGPT plan](https://help.openai.com/en/articles/11369540-using-codex-with-your-chatgpt-plan).
+
 ## Experimental providers
 
 | Provider | Current shape |

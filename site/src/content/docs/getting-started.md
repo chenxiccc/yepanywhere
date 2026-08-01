@@ -15,6 +15,12 @@ installs work too.
 
 Yep Anywhere's desktop app does not install or sign in to a provider for you.
 
+Subscription plans are supported. Sign the official provider tool into an
+eligible Claude or ChatGPT plan and Yep Anywhere uses that provider-managed
+access without adding a separate usage bill. API-key and pay-as-you-go
+configurations remain billed by the provider; see [Providers](/docs/providers#use-your-subscription-plan)
+for details.
+
 ## Choose an installation
 
 | Installation | Best for | Status |

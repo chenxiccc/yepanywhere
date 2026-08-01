@@ -18,6 +18,10 @@ A durable, browser-based interface for Claude Code and Codex. Supervise agents
 from another computer, a tablet, or a phone while they run on the machines you
 control.
 
+Use an eligible Claude or ChatGPT plan through the account already signed in to
+the official provider tool. Yep Anywhere adds no separate usage bill, and can
+show current subscription limits when the provider exposes them.
+
 ## Features
 
 - **Persistent, interoperable sessions** — View and resume compatible work from

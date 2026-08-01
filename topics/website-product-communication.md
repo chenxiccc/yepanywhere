@@ -22,6 +22,12 @@ Related:
   workflows from every device through the browser. Server-owned persistence is
   supporting proof, not the headline outcome, and the remote experience must
   not be framed as a cut-down phone companion.
+- The first viewport identifies subscription-plan support as a primary benefit.
+  Yep Anywhere launches the official Claude Code or Codex process and uses its
+  active provider-managed authentication; it does not add a separate usage
+  bill. Public copy must not imply that Yep Anywhere grants plan eligibility,
+  bypasses provider limits, or prevents an API-key or pay-as-you-go
+  configuration from incurring provider charges.
 - The default workflow should feel familiar to people who already use Claude
   Code or Codex in a CLI or desktop app. Advanced coordination, review,
   sharing, voice, and device-control capabilities are product depth, not new
@@ -82,6 +88,12 @@ Pi is a shipped experimental provider. Public copy names its headless RPC
 sessions, durable history, tools, models, thinking, compaction, and fork support
 while stating that its tools currently run without a Yep Anywhere approval
 bridge.
+
+Subscription-plan access is a stable Claude Code and Codex capability. The
+feature registry and provider guide state that the official provider process
+owns authentication and billing. Yep Anywhere may show normalized usage windows
+when the provider exposes them, but missing usage data does not mean the plan is
+unsupported and displayed limits are never presented as Yep Anywhere quotas.
 
 Planned features are excluded from the feature catalog. A development-only
 distribution may appear in an explicit platform-availability comparison so a

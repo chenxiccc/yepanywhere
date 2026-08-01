@@ -402,6 +402,11 @@ optional depth rather than prerequisites. Mention that the application UI is
 available in six languages without implying that the public website is already
 localized.
 
+Make existing subscription-plan access a first-viewport benefit. State that Yep
+Anywhere uses the account already authenticated in the official Claude Code or
+Codex process and adds no separate usage bill. Keep plan eligibility, limits,
+credits, and API-key or pay-as-you-go charges explicitly provider-controlled.
+
 Follow the hero with a prominent “Why Yep Anywhere?” section. Explain that the
 surveyed alternatives may forward an agent chat, while Yep Anywhere combines
 multi-agent workflow breadth, a full client on every device, complete session
@@ -429,7 +434,7 @@ app or imply that it is needed for mobile supervision.
 Acceptance:
 
 - a first viewport identifies the product, supported primary providers, local
-  execution boundary, and primary next action;
+  execution boundary, subscription-plan support, and primary next action;
 - the headline leads with full cross-device agent access rather than the generic
   fact that agents continue running;
 - the first viewport presents a familiar default workflow, optional advanced
@@ -533,6 +538,8 @@ Write and review these guides before calling the public docs launch useful:
 4. npm/source installation, first launch, provider detection, and updating.
 5. Choosing direct, public-relay, or self-hosted remote access.
 6. The supported-provider matrix with stable/experimental distinctions.
+   Include official Claude and ChatGPT subscription access, normalized usage
+   visibility where exposed, and the provider-owned billing caveat.
 7. Sessions, approvals, permission modes, steering, and queued follow-ups.
 8. Project Queue.
 9. Notifications and voice input.
@@ -747,11 +754,11 @@ Acceptance:
 | ---: | --- | --- | --- |
 | 1 | Public product-communication contract | Complete | `topics/website-product-communication.md` owns the rendered boundary and release claims. |
 | 2 | Typed feature registry | Complete | `site/src/data/` validates feature, provider, distribution, and docs relationships at build time. |
-| 3 | Complete feature catalog | Complete | `/features` renders 27 shipped stable/experimental capabilities plus provider and distribution status. |
-| 4 | Concise homepage narrative | Complete | The homepage uses registry-selected proof, cross-device and first-party positioning, trust, install choices, and a compact FAQ. |
+| 3 | Complete feature catalog | Complete | `/features` renders the shipped stable/experimental catalog plus provider and distribution status. |
+| 4 | Concise homepage narrative | Complete | The homepage uses registry-selected proof, subscription-plan access, cross-device and first-party positioning, trust, install choices, and a compact FAQ. |
 | 5 | Desktop downloads and platform status | Complete | macOS and Windows link to GitHub Releases as Beta; Android is development-only with no download URL and its native-value release gate explained. |
 | 6 | Public docs shell | Complete | Astro content pages provide hierarchical desktop/mobile navigation, anchors, TOC, pagination, and copyable code. |
-| 7 | Minimum complete user journey | Complete | Twelve guides cover install, updates, access, providers, sessions, queueing, notifications, files, security, and recovery. |
+| 7 | Minimum complete user journey | Complete | Twelve guides cover install, updates, subscription access, providers, sessions, queueing, notifications, files, security, and recovery. |
 | 8 | Public claim alignment | Complete | README, FAQ, provider guide, current CTAs, spring recap, public relay history, and device-control CTA now point to current catalog/docs facts, including experimental pi support. |
 | 9 | Privacy and analytics ownership | Complete | Privacy discloses Cloudflare Web Analytics and current relay/share boundaries; `/remote/` stays outside the beacon. |
 | 10 | Measurement baseline | Release prerequisite | Read-only dashboard access was checked on 2026-08-01, but the available browser was signed out. Record the largest pre-release range before tagging. |

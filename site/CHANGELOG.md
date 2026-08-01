@@ -24,6 +24,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   maintainers.
 
 ### Changed
+- Make existing Claude and ChatGPT subscription-plan support a first-viewport
+  benefit, with provider-owned billing caveats in the public guide.
 - Remove the arbitrary capability, provider, and connection counts from the
   feature-catalog hero.
 - Reframe the homepage hero around full access to all supported agents from
