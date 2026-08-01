@@ -43,12 +43,12 @@ After compaction or controller restart:
 - Protocol base: `ef2c98ae9b1882d47fc931971881b2f90fba7f08`
 - First worker launch: `2026-08-01T07:46:39+02:00`
 - Wall-clock deadline: `2026-08-01T11:46:39+02:00`
-- Workers launched: 6 / 50
-- Accepted slices: 5
+- Workers launched: 7 / 50
+- Accepted slices: 6
 - Stopped slices: 1
-- Current interval: 0 / 5 accepted after the first audit
+- Current interval: 1 / 5 accepted after the first audit
 - Current worker: none
-- Current clean base: this first-interval ledger checkpoint (`HEAD`)
+- Current clean base: this Luna-promotion ledger checkpoint (`HEAD`)
 
 ## Completed slices
 
@@ -60,6 +60,7 @@ After compaction or controller restart:
 | 4 | Viewer-count indicator | Opus high: local literal move | Accepted | `ff95c92b` | 42 legacy lines, 5 owned rules | Alert-only monitoring; exact two-viewport captures |
 | 5 | Risk affordance | Opus high: local state move | Accepted | `11da906e` | 56 legacy lines, 6 owned rules | Alert-only monitoring; delayed tooltip fixture; no steer |
 | 6 | Smart Turn controls | Luna xhigh: scattered finite state mapping | Accepted | `68f3adea` | 112 legacy lines, 15 owned rules | One calibration sample; four exact captures; no steer |
+| 7 | Remote compatibility notice | Luna xhigh: finite placement, severity, and child state | Accepted | `e272731d` | 176 legacy lines, 24 owned rules | Final calibration sample; four exact captures; no steer |
 
 The common project id for these workers is
 `L1VzZXJzL2tncmFlaGwvY29kZS95ZXBhbnl3aGVyZQ`. Exact recovery handles and
@@ -74,6 +75,7 @@ ignored local artifacts:
 | 4 | `e6447823-8475-4bd9-9396-cd2aa4cdcb7f` | `5ebb1096-edd9-4ae7-95c9-cdcf6c851171` | `2134543c` | `a08d80682631f0f40e3ad6ab285cfc10d9489a526557eb6068c5a8d9a4b7b4f9` |
 | 5 | `2ab5c2d1-6bc8-463e-a6de-461757d6f2f1` | `24ebd7dc-6314-489f-821f-2fd9de4902eb` | `ff95c92b` | `ecc172bd7b9a4b55b2208e831bdf08334d80b22c3757ff051dda415854433b69` |
 | 6 | `019fbc1e-0159-74b2-b810-3586d1b7d13a` | `5079622a-35e5-4463-8269-d7097641f558` | `f621bd4b` | `165100bd77c56042b8b72a5f5a503485508c7c5607858d5ed89a84612efeec25` |
+| 7 | `019fbc31-792d-7b83-98f8-652a2e305171` | `8334f7d4-1329-49de-9eee-14b0a847ff05` | `dfaf3cc9` | `b05d000806d48abbb7417a7efc91c8a03cd247d84f1946aecf97759ebe289c9d` |
 
 ## Audit interval notes
 
@@ -122,6 +124,15 @@ worker's historical launch base `f621bd4b` and result `7e4faadf` became
 `91509484` and `68f3adea` in the clean checkpoint rebase onto remote main; the
 recovery table intentionally retains the exact launch-time base and prompt
 digest.
+
+Run 7 opens the second interval with another finite-state Luna slice. It moved
+176 legacy lines and 24 owned rules with all friction counts unchanged, passed
+the full check matrix, and produced exact pixels for floating-security and
+inline-info cards at both viewports. This is Luna's third consecutive clean
+post-steer result, so subsequent Luna slices now use the same one-minute,
+alert-only supervision as Opus. Any later trust-gate event, scope steer,
+unexplained verification failure, or out-of-order commit resets calibration as
+specified by the runbook.
 
 At each five-slice checkpoint, append aggregate inventory movement, model
 outcomes, fixture/check evidence, steering events, routing changes, and the
