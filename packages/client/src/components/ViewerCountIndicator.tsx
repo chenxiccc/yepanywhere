@@ -1,4 +1,5 @@
 import type { MouseEvent } from "react";
+import styles from "./ViewerCountIndicator.module.css";
 
 interface ViewerCountIndicatorProps {
   className?: string;
@@ -15,11 +16,7 @@ export function ViewerCountIndicator({
 }: ViewerCountIndicatorProps) {
   const content = (
     <>
-      <svg
-        viewBox="0 0 24 24"
-        aria-hidden="true"
-        className="viewer-count-indicator-icon"
-      >
+      <svg viewBox="0 0 24 24" aria-hidden="true" className={styles.icon}>
         <path d="M4 10a8 8 0 0 1 16 0" />
         <path d="M8 10a4 4 0 0 1 8 0" />
         <path d="M12 10v8" />
@@ -28,7 +25,9 @@ export function ViewerCountIndicator({
       {typeof count === "number" && <span>{count}</span>}
     </>
   );
-  const classes = `viewer-count-indicator${onClick ? " viewer-count-indicator-button" : ""}${className ? ` ${className}` : ""}`;
+  const classes = [styles.root, onClick ? styles.button : null, className]
+    .filter(Boolean)
+    .join(" ");
 
   if (onClick) {
     return (
