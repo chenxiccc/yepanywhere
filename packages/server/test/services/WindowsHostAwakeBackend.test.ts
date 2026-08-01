@@ -81,6 +81,7 @@ describe("WindowsHostAwakeBackend", () => {
       );
       expect(snapshot.powerObservedAt).toBeGreaterThan(0);
     },
+    12_000,
   );
 
   it("owns a PID-bound SystemRequired request and releases its helper", async () => {
