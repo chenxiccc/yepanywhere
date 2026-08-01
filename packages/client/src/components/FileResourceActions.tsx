@@ -5,6 +5,7 @@ import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useI18n } from "../i18n";
 import { useClientSummarySourceKey } from "../lib/clientSummaryStore";
 import { setNewSessionPrefill } from "../lib/newSessionPrefill";
+import styles from "./FileResourceActions.module.css";
 
 interface FilePathContextMenuProps {
   x: number;
@@ -98,7 +99,7 @@ export function FilePathContextMenu({
     <>
       <button
         type="button"
-        className="file-path-context-overlay"
+        className={styles.overlay}
         aria-label={t("fileLinkDismissMenu" as never)}
         onClick={onClose}
         onContextMenu={(event) => {
@@ -107,7 +108,7 @@ export function FilePathContextMenu({
         }}
       />
       <div
-        className="file-path-context-menu"
+        className={styles.menu}
         role="menu"
         style={{
           left: Math.max(8, Math.min(x, window.innerWidth - 190)),
