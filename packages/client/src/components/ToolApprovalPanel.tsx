@@ -10,6 +10,7 @@ import { toolRegistry } from "./renderers/tools";
 import type { RenderContext } from "./renderers/types";
 import { getToolSummary } from "./tools/summaries";
 import { Modal } from "./ui/Modal";
+import styles from "./ToolApprovalPanel.module.css";
 
 // Tools that can be auto-approved with "accept edits" mode
 const EDIT_TOOLS = ["Edit", "Write", "NotebookEdit"];
@@ -229,11 +230,11 @@ export function ToolApprovalPanel({
   );
 
   return (
-    <div className="tool-approval-wrapper">
+    <div className={styles.root}>
       {/* Floating toggle button */}
       <button
         type="button"
-        className={`tool-approval-toggle ${collapsed ? "has-pending" : ""}`}
+        className={`${styles.toggle} ${collapsed ? styles.hasPending : ""}`}
         onClick={() => onCollapsedChange?.(!collapsed)}
         aria-label={
           collapsed ? t("toolApprovalExpand") : t("toolApprovalCollapse")
@@ -249,7 +250,7 @@ export function ToolApprovalPanel({
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
-          className={collapsed ? "chevron-up" : "chevron-down"}
+          className={collapsed ? styles.chevronUp : ""}
           aria-hidden="true"
         >
           <polyline points="6 9 12 15 18 9" />
@@ -257,21 +258,21 @@ export function ToolApprovalPanel({
       </button>
 
       {!collapsed && (
-        <div className="tool-approval-panel">
-          <div className="tool-approval-header">
+        <div className={styles.panel}>
+          <div className={styles.header}>
             {isExitPlanMode(request.toolName) ? (
               <>
-                <span className="tool-approval-title">
+                <span className={styles.title}>
                   {t("toolApprovalPlanTitle")}
                 </span>
-                <span className="tool-approval-subtitle">
+                <span className={styles.subtitle}>
                   {t("toolApprovalPlanSubtitle")}
                 </span>
               </>
             ) : (
               <>
-                <div className="tool-approval-question-row">
-                  <span className="tool-approval-question">
+                <div className={styles.questionRow}>
+                  <span className={styles.question}>
                     {t("toolApprovalAllow", {
                       tool: displayToolName ?? "",
                       summary: displaySummary ?? "",
@@ -280,7 +281,7 @@ export function ToolApprovalPanel({
                   {showViewDetails && (
                     <button
                       type="button"
-                      className="tool-approval-view-details"
+                      className={styles.viewDetails}
                       onClick={() => setShowPreviewModal(true)}
                     >
                       {t("toolApprovalViewDetails")}
@@ -307,12 +308,12 @@ export function ToolApprovalPanel({
             )}
           </div>
 
-          <div className="tool-approval-options">
+          <div className={styles.options}>
             {isExitPlanMode(request.toolName) ? (
               <>
                 <button
                   type="button"
-                  className="tool-approval-option primary"
+                  className={`${styles.option} ${styles.primary}`}
                   onClick={handleApproveAcceptEdits}
                   disabled={!armed || submitting || !onApproveAcceptEdits}
                 >
@@ -321,7 +322,7 @@ export function ToolApprovalPanel({
                 </button>
                 <button
                   type="button"
-                  className="tool-approval-option"
+                  className={styles.option}
                   onClick={handleApprove}
                   disabled={!armed || submitting}
                 >
@@ -330,7 +331,7 @@ export function ToolApprovalPanel({
                 </button>
                 <button
                   type="button"
-                  className="tool-approval-option"
+                  className={styles.option}
                   onClick={handleDeny}
                   disabled={!armed || submitting}
                 >
@@ -342,7 +343,7 @@ export function ToolApprovalPanel({
               <>
                 <button
                   type="button"
-                  className="tool-approval-option primary"
+                  className={`${styles.option} ${styles.primary}`}
                   onClick={handleApprove}
                   disabled={!armed || submitting}
                 >
@@ -353,7 +354,7 @@ export function ToolApprovalPanel({
                 {isEditTool && onApproveAcceptEdits && (
                   <button
                     type="button"
-                    className="tool-approval-option"
+                    className={styles.option}
                     onClick={handleApproveAcceptEdits}
                     disabled={!armed || submitting}
                   >
@@ -364,7 +365,7 @@ export function ToolApprovalPanel({
 
                 <button
                   type="button"
-                  className="tool-approval-option"
+                  className={styles.option}
                   onClick={handleDeny}
                   disabled={!armed || submitting}
                 >
@@ -377,7 +378,7 @@ export function ToolApprovalPanel({
             {onDenyWithFeedback && !showFeedback && (
               <button
                 type="button"
-                className="tool-approval-option feedback-toggle"
+                className={`${styles.option} ${styles.feedbackToggle}`}
                 onClick={() => setShowFeedback(true)}
                 disabled={!armed || submitting}
               >
@@ -386,7 +387,7 @@ export function ToolApprovalPanel({
             )}
 
             {onDenyWithFeedback && showFeedback && (
-              <div className="tool-approval-feedback">
+              <div className={styles.feedback}>
                 <input
                   ref={feedbackInputRef}
                   type="text"
@@ -394,11 +395,11 @@ export function ToolApprovalPanel({
                   value={feedback}
                   onChange={(e) => setFeedback(e.target.value)}
                   disabled={!armed || submitting}
-                  className="tool-approval-feedback-input"
+                  className={styles.feedbackInput}
                 />
                 <button
                   type="button"
-                  className="tool-approval-feedback-submit"
+                  className={styles.feedbackSubmit}
                   onClick={handleDenyWithFeedback}
                   disabled={!armed || submitting || !feedback.trim()}
                 >
