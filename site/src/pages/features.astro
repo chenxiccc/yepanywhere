@@ -32,11 +32,6 @@ const providerNames = new Map(providers.map((provider) => [provider.id, provider
           <a class="btn btn-primary" href="/docs/getting-started">Get started</a>
           <a class="btn btn-secondary" href="/docs/providers">Compare providers</a>
         </div>
-        <div class="catalog-summary" aria-label="Feature catalog summary">
-          <span><strong>{publicFeatures.length}</strong> shipped capabilities</span>
-          <span><strong>{providers.filter((provider) => provider.status === "stable").length}</strong> first-class providers</span>
-          <span><strong>3</strong> ways to connect</span>
-        </div>
       </div>
     </section>
 
@@ -193,22 +188,6 @@ const providerNames = new Map(providers.map((provider) => [provider.id, provider
     flex-wrap: wrap;
     gap: 12px;
     margin-top: 32px;
-  }
-
-  .catalog-summary {
-    border-top: 1px solid var(--border);
-    color: var(--text-secondary);
-    display: flex;
-    flex-wrap: wrap;
-    gap: 14px 34px;
-    margin-top: 54px;
-    padding-top: 24px;
-  }
-
-  .catalog-summary strong {
-    color: var(--text-primary);
-    font-size: 20px;
-    margin-right: 5px;
   }
 
   .category-nav {

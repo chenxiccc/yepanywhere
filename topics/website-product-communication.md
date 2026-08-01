@@ -151,6 +151,19 @@ and `/docs/getting-started`, so aggregate path traffic can answer navigation
 questions without custom event tracking. Page views are not proof that an
 installation or workflow succeeded.
 
+## Security and maintainer statements
+
+- Public security copy distinguishes architectural controls from maintenance
+  practice. It may state that runtime dependencies are deliberately minimized
+  and that maintainers regularly audit security-sensitive surfaces, but must
+  call those reviews maintainer-led rather than implying independent
+  certification.
+- The public core maintainer set is Jonathan Graehl (`@graehl`) and Kyle Graehl
+  (`@kzahel`). Link identities to their public GitHub profiles. Link additional
+  professional profiles only when the exact URL has been verified.
+- The homepage points readers to the public security guide and `SECURITY.md`
+  remains the operator-facing vulnerability-reporting source of truth.
+
 ## Public-share privacy boundary
 
 Public session sharing is opt-in because the current relay transport for shares

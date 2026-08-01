@@ -65,6 +65,20 @@ This document describes security features that are present in upstream
 - Production static HTML responses include a `frame-ancestors` Content Security
   Policy for the web app and supported desktop origins.
 
+## Maintenance Practice
+
+- Runtime dependencies are kept deliberately small. Additions must justify
+  their long-term update and audit cost; established cryptography,
+  authentication, frameworks, and official provider SDKs are preferred where
+  hand-rolled code would create more risk.
+- The maintainers regularly audit authentication, transport and relay
+  boundaries, rendered content, local file access, dependencies, packaging,
+  and provider integrations as those surfaces change. These are
+  maintainer-led reviews, not independent security certification.
+- The two core maintainers are
+  [Jonathan Graehl (@graehl)](https://github.com/graehl) and
+  [Kyle Graehl (@kzahel)](https://github.com/kzahel).
+
 ## Reporting
 
 For suspected vulnerabilities, avoid public issues that include exploit details

@@ -19,8 +19,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   providers, workflows, security, and troubleshooting.
 - Add build-time checks for catalog relationships, public internal links,
   canonical metadata, and the marketing analytics boundary.
+- Add a homepage security-maintenance section covering minimal runtime
+  dependencies, regular maintainer-led audits, and the two public core
+  maintainers.
 
 ### Changed
+- Remove the arbitrary capability, provider, and connection counts from the
+  feature-catalog hero.
 - Reframe the homepage hero around full access to all supported agents from
   every device, and reduce the headline scale.
 - Replace implementation-oriented persistence proof with a familiar-by-default

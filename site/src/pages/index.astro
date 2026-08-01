@@ -142,6 +142,39 @@ const experimentalProviderNames = formatProviderNames(
           <figcaption>Choose the access model that fits each host.</figcaption>
         </figure>
       </div>
+
+      <div class="site-container security-practice" id="security-practice">
+        <header class="section-heading centered">
+          <p class="eyebrow">Security is ongoing work</p>
+          <h2>Small surface. Accountable maintainers.</h2>
+          <p>Security comes from understandable architecture and continued review—not a blanket promise.</p>
+        </header>
+
+        <div class="promise-grid">
+          <article>
+            <h3>Minimal dependencies</h3>
+            <p>Runtime dependencies are kept deliberately small. New ones must justify their long-term update, payload, and audit cost; security and cryptography use established implementations.</p>
+          </article>
+          <article>
+            <h3>Regular maintainer-led audits</h3>
+            <p>Authentication, relay boundaries, content rendering, local file access, dependencies, and provider integrations are repeatedly reviewed as the product changes. <a href="/docs/security-and-privacy">Read the security guide</a>.</p>
+          </article>
+          <article>
+            <h3>Two core maintainers</h3>
+            <p>The people responsible for the project are public and the core maintainer set is intentionally small.</p>
+            <ul class="maintainer-list">
+              <li>
+                <strong>Jonathan Graehl <span>@graehl</span></strong>
+                <span><a href="https://github.com/graehl">GitHub</a> · <a href="https://graehl.org">Website</a></span>
+              </li>
+              <li>
+                <strong>Kyle Graehl <span>@kzahel</span></strong>
+                <span><a href="https://github.com/kzahel">GitHub</a> · <a href="https://www.linkedin.com/in/kylegraehl">LinkedIn</a></span>
+              </li>
+            </ul>
+          </article>
+        </div>
+      </div>
     </section>
 
     <section class="install-section">
@@ -582,6 +615,39 @@ const experimentalProviderNames = formatProviderNames(
     color: var(--text-primary);
   }
 
+  .security-practice {
+    border-top: 1px solid var(--border);
+    margin-top: 90px;
+    padding-top: 90px;
+  }
+
+  .security-practice a,
+  .maintainer-list a {
+    color: var(--accent-hover);
+    font-weight: 650;
+    text-decoration: none;
+  }
+
+  .maintainer-list {
+    display: grid;
+    gap: 12px;
+    list-style: none;
+    margin-top: 18px;
+  }
+
+  .maintainer-list li,
+  .maintainer-list strong {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .maintainer-list li > span,
+  .maintainer-list strong span {
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+  }
+
   .workflow-shot {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
@@ -880,6 +946,11 @@ const experimentalProviderNames = formatProviderNames(
 
     .workflow-shot {
       order: -1;
+    }
+
+    .security-practice {
+      margin-top: 58px;
+      padding-top: 58px;
     }
 
     .install-card {

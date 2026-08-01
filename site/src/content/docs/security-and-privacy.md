@@ -54,6 +54,27 @@ Remote file routes use explicit allowed roots. A linked path is not sufficient
 authority by itself. Public-share file views are further limited to content
 made visible by the share boundary.
 
+## Dependency and review practice
+
+The shipped runtime is intentionally lean. New runtime dependencies must
+justify their continuing update, payload, and audit cost; cryptography,
+authentication, frameworks, and provider SDKs use established implementations
+rather than project-specific replacements.
+
+The core maintainers regularly audit authentication, relay boundaries,
+rendered content, local file access, dependencies, packaging, and provider
+integrations as those surfaces change. These are maintainer-led reviews, not a
+claim of independent certification. The public
+[security policy](https://github.com/kzahel/yepanywhere/blob/main/SECURITY.md)
+documents the implemented controls and vulnerability-reporting guidance.
+
+Yep Anywhere has two core maintainers:
+
+- [Jonathan Graehl (@graehl)](https://github.com/graehl) —
+  [personal site](https://graehl.org)
+- [Kyle Graehl (@kzahel)](https://github.com/kzahel) —
+  [LinkedIn](https://www.linkedin.com/in/kylegraehl)
+
 ## Website analytics
 
 The public marketing, news, and documentation pages use Cloudflare Web

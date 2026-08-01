@@ -415,6 +415,12 @@ differences—provider-neutral browser access, host choice, session management,
 and self-hosting—not a blanket claim that first-party control is always
 phone-only.
 
+Add concrete security-maintenance proof near the trust story: the deliberately
+small runtime dependency surface, regular maintainer-led audits, and the two
+public core maintainers, Jonathan Graehl (`@graehl`) and Kyle Graehl
+(`@kzahel`). Link verified public profiles and do not imply independent security
+certification.
+
 The installation preview should offer the beta desktop path and the
 stable npm path without turning the hero into a download matrix. Make clear
 that the phone experience works in the browser; do not advertise the Android
@@ -433,6 +439,8 @@ Acceptance:
   capability, security, and privacy advantage;
 - the Why section distinguishes full transcript and tool-call visibility from
   the optional condensed, less-verbose presentation;
+- the trust section names minimal dependencies, maintainer-led audits, and both
+  core maintainers with verified public identity links;
 - Features and Docs are reachable from desktop and mobile navigation;
 - exactly one primary Get started action points to
   `/docs/getting-started`;
