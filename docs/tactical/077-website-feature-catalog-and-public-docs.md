@@ -385,7 +385,12 @@ visual proof and a smaller optional remainder gallery.
 Keep the current strong core promise — agents run on the user's machine and
 survive browser disconnects — while broadening the proof beyond approvals.
 Treat the Remote Control comparison as supporting discovery content rather
-than the organizing principle of the homepage.
+than the organizing principle of the homepage. Make the cross-device advantage
+explicit: a browser on another computer is as valid a controller as a phone.
+Compare against Claude and Codex first-party Remote Control through durable
+differences—provider-neutral browser access, host choice, session management,
+and self-hosting—not a blanket claim that first-party control is always
+phone-only.
 
 The installation preview should offer the beta desktop path and the
 stable npm path without turning the hero into a download matrix. Make clear
@@ -400,6 +405,8 @@ Acceptance:
 - exactly one primary Get started action points to
   `/docs/getting-started`;
 - featured copy comes from the registry; and
+- the first-party comparison explains computer-to-computer control without
+  making a stale absolute claim about provider device support; and
 - the phone page no longer requires traversing a long screenshot column before
   reaching feature breadth or installation guidance.
 
@@ -429,6 +436,11 @@ State Android only where platform availability is being clarified:
 "Android app in development — not yet published." Do not offer an APK, store
 badge, waitlist, or installation instructions in this slice. Do not confuse
 remote Android device control with the Android client app.
+
+Explain why no native mobile app is published yet: the browser already exposes
+the complete workflow, while a native companion must earn its install through
+more reliable background notifications, deep links, trusted packaging, and
+multi-server triage rather than shipping as a thin wrapper.
 
 Acceptance:
 
@@ -655,9 +667,9 @@ surfaces, and the analytics/privacy boundary is both accurate and verified.
 | ---: | --- | --- | --- |
 | 1 | Public product-communication contract | Complete | `topics/website-product-communication.md` owns the rendered boundary and release claims. |
 | 2 | Typed feature registry | Complete | `site/src/data/` validates feature, provider, distribution, and docs relationships at build time. |
-| 3 | Complete feature catalog | Complete | `/features` renders 25 shipped stable/experimental capabilities plus provider and distribution status. |
-| 4 | Concise homepage narrative | Complete | The homepage uses registry-selected proof, one product composition, trust, install choices, and a compact FAQ. |
-| 5 | Desktop downloads and platform status | Complete | macOS and Windows link to GitHub Releases as Beta; Android is development-only with no download URL. |
+| 3 | Complete feature catalog | Complete | `/features` renders 26 shipped stable/experimental capabilities plus provider and distribution status. |
+| 4 | Concise homepage narrative | Complete | The homepage uses registry-selected proof, cross-device and first-party positioning, trust, install choices, and a compact FAQ. |
+| 5 | Desktop downloads and platform status | Complete | macOS and Windows link to GitHub Releases as Beta; Android is development-only with no download URL and its native-value release gate explained. |
 | 6 | Public docs shell | Complete | Astro content pages provide hierarchical desktop/mobile navigation, anchors, TOC, pagination, and copyable code. |
 | 7 | Minimum complete user journey | Complete | Twelve guides cover install, updates, access, providers, sessions, queueing, notifications, files, security, and recovery. |
 | 8 | Public claim alignment | Complete | README, current CTAs, spring recap, public relay history, and device-control CTA now point to current catalog/docs facts. |

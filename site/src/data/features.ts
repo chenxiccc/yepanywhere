@@ -32,9 +32,9 @@ export interface PublicFeature {
 export const featureCategories: FeatureCategory[] = [
   {
     id: "supervise",
-    title: "Supervise from anywhere",
+    title: "Supervise from any screen",
     eyebrow: "Stay in the loop",
-    description: "Keep agents moving from a phone without moving the work off your machine.",
+    description: "Keep agents moving from another computer, a tablet, or a phone without moving the work off the host.",
   },
   {
     id: "coordinate",
@@ -63,6 +63,16 @@ export const featureCategories: FeatureCategory[] = [
 ];
 
 export const features = [
+  {
+    id: "cross-device-control",
+    title: "Any browser, any host",
+    summary: "Use a desktop, laptop, Chromebook, tablet, or phone to supervise sessions running on another computer.",
+    category: "supervise",
+    status: "stable",
+    docsPath: "/docs/remote-access",
+    featured: true,
+    sourceRefs: ["README.md", "site/src/content/docs/remote-access.md"],
+  },
   {
     id: "mobile-approvals",
     title: "Mobile approvals",

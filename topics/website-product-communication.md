@@ -68,6 +68,22 @@ instructions.
 - Remote Android device control is a separate capability and must not be
   described as the Android client app.
 
+## Cross-device and first-party positioning
+
+- Yep Anywhere is not a phone-only companion. A modern browser on another
+  desktop, laptop, Chromebook, tablet, or phone can supervise an agent host.
+- The durable comparison with Claude Remote Control and Codex Remote Control is
+  that Yep Anywhere is a provider-neutral, browser-first supervisor across the
+  machines the user controls. It must not depend on a native controller app or
+  a particular controller operating system.
+- Do not claim that every current first-party Remote Control experience is
+  universally phone-only. Provider device support and rollouts can change; use
+  the positive browser, host, provider, session-management, and self-hosting
+  distinctions that Yep Anywhere owns.
+- The native Android app should be described as a companion that must add
+  dependable native value—background notifications, deep links, trusted
+  packaging, and multi-server triage—not as a prerequisite for mobile use.
+
 ## Navigation and fallback behavior
 
 The primary public navigation exposes Features, Docs, News, GitHub, Log In, and

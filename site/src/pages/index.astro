@@ -31,7 +31,7 @@ const desktopDistributions = (distributions as readonly PublicDistribution[]).fi
       <div class="site-container hero-copy">
         <p class="eyebrow">Your agents. Your machines. Any screen.</p>
         <h1>Walk away.<br><span>Your agents keep shipping.</span></h1>
-        <p class="lede">Yep Anywhere gives Claude Code and Codex a durable, mobile-ready control surface. Start at your desk, supervise from your phone, and return without losing the thread.</p>
+        <p class="lede">Yep Anywhere gives Claude Code and Codex a durable control surface in any browser. Run agents on one computer, supervise them from another, check in from your phone, and return without losing the thread.</p>
         <div class="hero-actions">
           <a class="btn btn-primary" href="/docs/getting-started">Get started</a>
           <a class="btn btn-secondary" href="/features">Explore features</a>
@@ -68,23 +68,23 @@ const desktopDistributions = (distributions as readonly PublicDistribution[]).fi
     <section class="promise-section">
       <div class="site-container">
         <header class="section-heading centered">
-          <p class="eyebrow">A calmer way to run agents</p>
-          <h2>Stay available without staying at your desk.</h2>
-          <p>The server owns the work. Every browser becomes a window into it.</p>
+          <p class="eyebrow">Beyond first-party remote control</p>
+          <h2>Computer to computer. Phone to computer. Any browser to any host.</h2>
+          <p>Claude and Codex Remote Control are useful inside their own products. Yep Anywhere gives both agents one browser-based supervisor, without making the phone the only remote screen.</p>
         </header>
 
         <div class="promise-grid">
           <article>
-            <h3>Start where the code lives</h3>
-            <p>Launch sessions on your workstation, dev server, or SSH host. Yep Anywhere discovers existing compatible sessions too.</p>
+            <h3>Control from the screen you have</h3>
+            <p>Use a second desktop, laptop, Chromebook, tablet, or phone. The controller only needs a modern browser.</p>
           </article>
           <article>
-            <h3>Leave without interrupting</h3>
-            <p>Agent processes keep running when a client disconnects. Reconnect from another browser with the conversation intact.</p>
+            <h3>Run on the machine with the code</h3>
+            <p>Keep each agent on its workstation, laptop, or server. Connect directly or through the encrypted relay, then switch screens without interrupting work.</p>
           </article>
           <article>
-            <h3>Return only when needed</h3>
-            <p>Use notifications and the attention inbox to find approvals, questions, and completed work instead of polling every session.</p>
+            <h3>Supervise Claude and Codex together</h3>
+            <p>Start, resume, steer, review, and organize both providers from one interface instead of using a separate remote-control surface for each.</p>
           </article>
         </div>
       </div>
@@ -166,7 +166,11 @@ const desktopDistributions = (distributions as readonly PublicDistribution[]).fi
           </article>
         </div>
 
-        <p class="mobile-status"><strong>On your phone:</strong> use the responsive browser client today. The Android app is in development and is not published.</p>
+        <aside class="mobile-status">
+          <h3>Why no native mobile app yet?</h3>
+          <p>The responsive browser already provides the complete Yep Anywhere workflow on phones and tablets: approvals, diffs, uploads, voice input, and notifications.</p>
+          <p>We do not want to publish a thin app-store wrapper. The Android app is in development around native advantages such as more reliable background notifications, deep links, trusted packaged client code, and a multi-server inbox. Until those are release-ready, the browser is the supported mobile experience.</p>
+        </aside>
       </div>
     </section>
 
@@ -192,7 +196,7 @@ const desktopDistributions = (distributions as readonly PublicDistribution[]).fi
           </details>
           <details>
             <summary>Is there a mobile app?</summary>
-            <p>The published phone experience is the mobile browser client. An Android app is under active development but is not published.</p>
+            <p>Not yet. The full product works in a mobile browser today. Android is in development and will be published when it adds dependable native value beyond wrapping the website.</p>
           </details>
         </div>
       </div>
@@ -672,14 +676,22 @@ const desktopDistributions = (distributions as readonly PublicDistribution[]).fi
   }
 
   .mobile-status {
+    border-top: 1px solid var(--border);
     color: var(--text-secondary);
-    font-size: 13px;
-    margin-top: 24px;
+    margin: 48px auto 0;
+    max-width: 820px;
+    padding-top: 30px;
     text-align: center;
   }
 
-  .mobile-status strong {
+  .mobile-status h3 {
     color: var(--text-primary);
+    font-size: 21px;
+  }
+
+  .mobile-status p {
+    font-size: 14px;
+    margin-top: 12px;
   }
 
   .faq-grid {

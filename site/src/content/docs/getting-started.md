@@ -23,9 +23,9 @@ Yep Anywhere's desktop app does not install or sign in to a provider for you.
 | [npm install](/docs/install-npm) | Linux, servers, terminals, and full configuration control | Available |
 | Source checkout | Contributors and people who want to follow `main` | Available, development-oriented |
 
-There is no published Android app yet. Use the mobile browser interface from
-your phone; it is the normal mobile experience and does not require an app-store
-install.
+There is no published Android app yet. The complete client works in a mobile
+browser and does not require an app-store install. See
+[why the browser is the supported mobile experience](/docs/remote-access#why-no-native-mobile-app-yet).
 
 ## Open Yep Anywhere
 
@@ -61,11 +61,12 @@ The ordinary workflow is intentionally familiar:
 Continue with [Sessions and approvals](/docs/sessions-and-approvals), or set up
 [remote access](/docs/remote-access) before leaving the host computer.
 
-## Phone access
+## Access from another device
 
-For a quick same-network check, open the server from a trusted LAN or private
-network. For access over the internet without port forwarding, configure the
-public relay in **Settings → Remote Access**, then use
+The controller can be another desktop or laptop, a Chromebook, a tablet, or a
+phone. For a quick same-network check, open the server from a trusted LAN or
+private network. For access over the internet without port forwarding,
+configure the public relay in **Settings → Remote Access**, then use
 [yepanywhere.com/remote](https://yepanywhere.com/remote).
 
 Do not expose an unauthenticated local server directly to the public internet.

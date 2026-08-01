@@ -16,6 +16,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 - Rebuild the homepage around persistent mobile agent supervision, catalog-
   backed feature proof, local-data trust, and distinct installation paths.
+- Make cross-device control explicit: any browser can supervise another
+  computer, not only a phone, with Claude Code and Codex in one interface.
+- Explain why the browser remains the supported mobile experience while the
+  Android companion develops native notification and multi-server value.
 - Expose beta macOS and Windows downloads from GitHub Releases while
   stating that the unpublished Android app remains in development.
 - Make Features and Docs first-class desktop and mobile navigation items, and

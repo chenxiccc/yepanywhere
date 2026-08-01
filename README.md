@@ -14,8 +14,9 @@
   <a href="https://yepanywhere.com">yepanywhere.com</a>
 </p>
 
-A durable, mobile-ready interface for Claude Code and Codex. Supervise agents
-from your phone while they run on the machines you control.
+A durable, browser-based interface for Claude Code and Codex. Supervise agents
+from another computer, a tablet, or a phone while they run on the machines you
+control.
 
 ## Features
 
@@ -31,7 +32,8 @@ from your phone while they run on the machines you control.
 - **Remote device control** — Stream Android devices and Apple Simulators over
   peer-to-peer WebRTC with touch controls and adaptive quality.
 - **Flexible remote access** — Connect directly, through your own HTTPS setup,
-  or through the optional end-to-end encrypted public relay.
+  or through the optional end-to-end encrypted public relay from any modern
+  browser.
 
 See the [complete feature catalog](https://yepanywhere.com/features) and
 [public documentation](https://yepanywhere.com/docs) for availability and setup.
@@ -93,8 +95,10 @@ pnpm start
 
 Open http://localhost:3400 in your browser. The app auto-detects installed CLI agents.
 
-The published phone experience is the responsive browser client. The Android
-app is in development and is not published. Follow the
+The complete phone and tablet experience is the responsive browser client. A
+native app should add more than an app-store wrapper, so Android remains in
+development around reliable background notifications, deep links, trusted
+packaging, and a multi-server inbox. It is not published. Follow the
 [getting-started guide](https://yepanywhere.com/docs/getting-started) for the
 current platform choices.
 
