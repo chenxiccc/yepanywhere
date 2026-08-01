@@ -1,0 +1,247 @@
+/*
+ * Reload notice: the fixed bottom-right stack, the banner itself, its
+ * message and warning text, and the reload / safe-restart / dismiss
+ * buttons. Rules move here in their original cascade order, since the
+ * button variants share a specificity and rely on source order.
+ *
+ * Two literals stay on the elements alongside these module classes:
+ *
+ * - `reload-banner` on the banner root is an interop hook. The global
+ *   `body.session-transcript-selection-active` rule in `styles/index.css`
+ *   names it to suppress text selection behind the transcript-selection
+ *   shield, and `scripts/transcript-artifact-smoke.mjs` hides it to keep
+ *   transcript captures stable. That rule stays global and unchanged.
+ *
+ * - `reload-banner-stack` on the stack is a geometry hook.
+ *   `ReloadBannerStack` measures the stack against `.session-input` and
+ *   `.fab-container`, and the focused test stubs those rects by class.
+ *
+ * `--reload-banner-stack-lift` is an inline custom property written by
+ * that placement effect; custom properties are not scoped by CSS Modules,
+ * so the name is shared with the component verbatim.
+ */
+
+.stack {
+  position: fixed;
+  right: max(12px, env(safe-area-inset-right, 0px));
+  bottom: calc(
+    max(12px, env(safe-area-inset-bottom, 0px)) +
+    var(--reload-banner-stack-lift, 0px)
+  );
+  z-index: 200;
+  display: flex;
+  max-width: min(720px, calc(100vw - 24px));
+  align-items: flex-end;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.banner {
+  position: relative;
+  display: flex;
+  width: max-content;
+  max-width: 100%;
+  min-height: 40px;
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  color: #000;
+  background: var(--warning-color);
+  border: 1px solid rgba(0, 0, 0, 0.24);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+}
+
+.content,
+.actions {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.content {
+  flex: 1 1 auto;
+  gap: var(--space-2);
+}
+
+.actions {
+  gap: var(--space-1);
+  flex: 0 0 auto;
+}
+
+.message {
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.warningText {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.warningDetail {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  border: 0;
+  clip-path: inset(50%);
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  height: 36px;
+  min-height: 36px;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid rgba(0, 0, 0, 0.3);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.2);
+  color: #000;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.button:hover {
+  background: rgba(255, 255, 255, 0.4);
+}
+
+.buttonLabel {
+  display: inline-block;
+  transform: translateY(1px);
+}
+
+.button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.buttonPrimary {
+  background: #000;
+  color: var(--warning-color);
+  border-color: transparent;
+}
+
+.buttonPrimary:hover {
+  background: #222;
+}
+
+/* Warning state for unsafe restart */
+.warning {
+  background: var(--error-color);
+}
+
+.warning .buttonPrimary {
+  color: var(--error-color);
+}
+
+.buttonSafe {
+  background: rgba(255, 255, 255, 0.32);
+}
+
+.buttonDanger {
+  background: #000;
+  border-color: transparent;
+}
+
+.buttonDanger:hover {
+  background: #222;
+}
+
+.dismiss {
+  width: 36px;
+  padding: 0;
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.dismiss > span {
+  display: inline-flex;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Mobile adjustments */
+@media (max-width: 600px) {
+  .stack {
+    top: max(8px, env(safe-area-inset-top, 0px));
+    right: 8px;
+    bottom: auto;
+    left: 8px;
+    max-width: none;
+    align-items: stretch;
+  }
+
+  .banner {
+    align-items: stretch;
+    justify-content: center;
+    flex-direction: column;
+    gap: var(--space-1);
+    width: 100%;
+    max-width: none;
+    min-height: 0;
+    padding: var(--space-1) var(--space-2);
+  }
+
+  .content,
+  .actions {
+    width: 100%;
+  }
+
+  .content {
+    justify-content: flex-start;
+    min-height: 26px;
+  }
+
+  .actions {
+    justify-content: flex-end;
+    gap: var(--space-1);
+    min-height: 30px;
+  }
+
+  .content {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .message {
+    flex-shrink: 0;
+  }
+
+  .warningText {
+    flex: 1 1 auto;
+  }
+
+  .button {
+    min-width: 56px;
+    padding: var(--space-1) var(--space-2);
+  }
+
+  .buttonPrimary {
+    min-width: 62px;
+  }
+
+  .buttonSafe {
+    min-width: 78px;
+  }
+
+  .dismiss {
+    min-width: 36px;
+  }
+}

@@ -4,6 +4,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import { ReloadBanner, ReloadBannerStack } from "../ReloadBanner";
+import styles from "../ReloadBanner.module.css";
 
 function rect(
   left: number,
@@ -192,6 +193,43 @@ describe("ReloadBanner", () => {
     fireEvent.click(dismiss);
 
     expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the global selection and geometry hooks beside module classes", () => {
+    render(
+      <I18nProvider>
+        <ReloadBannerStack>
+          <ReloadBanner
+            target="backend"
+            onReload={vi.fn()}
+            onDismiss={vi.fn()}
+            onRestartWhenSafe={vi.fn()}
+            unsafeToRestart
+            interruptibleSessionCount={1}
+          />
+        </ReloadBannerStack>
+      </I18nProvider>,
+    );
+
+    // `reload-banner` is named by the global transcript-selection rule and
+    // the transcript artifact smoke script; `reload-banner-stack` is the
+    // geometry hook the placement effect measures.
+    const banner = screen.getByRole("status");
+    expect(banner.classList.contains("reload-banner")).toBe(true);
+    expect(banner.className).toContain(styles.banner);
+    expect(banner.className).toContain(styles.warning);
+
+    const stack = document.querySelector(".reload-banner-stack");
+    expect(stack?.className).toContain(styles.stack);
+
+    // The rest of the vocabulary now lives only in the module.
+    for (const retired of [
+      "reload-banner-warning",
+      "reload-banner-content",
+      "reload-banner-button",
+    ]) {
+      expect(document.getElementsByClassName(retired)).toHaveLength(0);
+    }
   });
 
   it("lifts above a session composer when the corner would cover a control", () => {

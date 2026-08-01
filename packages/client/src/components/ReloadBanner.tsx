@@ -9,6 +9,7 @@ import {
   useRef,
 } from "react";
 import { useI18n } from "../i18n";
+import styles from "./ReloadBanner.module.css";
 
 const RELOAD_BANNER_CONTROL_GAP = 4;
 const RELOAD_BANNER_COMPOSER_GAP = 8;
@@ -173,7 +174,9 @@ export function ReloadBannerStack({
   }, [avoidSessionComposer]);
 
   return (
-    <div ref={stackRef} className="reload-banner-stack">
+    // `reload-banner-stack` stays literal: the placement effect above and
+    // the focused test both find this element by class to stub geometry.
+    <div ref={stackRef} className={`reload-banner-stack ${styles.stack}`}>
       {children}
     </div>
   );
@@ -335,17 +338,21 @@ export function ReloadBanner({
   };
 
   return (
+    // `reload-banner` stays literal: the global transcript-selection rule in
+    // styles/index.css and the transcript artifact smoke script name it.
     <div
-      className={`reload-banner ${showWarning ? "reload-banner-warning" : ""}`}
+      className={`reload-banner ${styles.banner} ${
+        showWarning ? styles.warning : ""
+      }`}
       role="status"
     >
-      <span className="reload-banner-content">
-        <span className="reload-banner-message">
+      <span className={styles.content}>
+        <span className={styles.message}>
           {t("reloadBannerCodeChangedCompact", { target: label })}
         </span>
         {showWarning && (
           <span
-            className="reload-banner-warning-text"
+            className={styles.warningText}
             aria-hidden="true"
             title={warningDetail}
           >
@@ -354,33 +361,33 @@ export function ReloadBanner({
           </span>
         )}
         {showWarning && (
-          <span className="reload-banner-warning-detail">{warningDetail}</span>
+          <span className={styles.warningDetail}>{warningDetail}</span>
         )}
       </span>
-      <span className="reload-banner-actions">
+      <span className={styles.actions}>
         <button
           type="button"
-          className={`reload-banner-button reload-banner-button-primary ${
-            showWarning ? "reload-banner-button-danger" : ""
+          className={`${styles.button} ${styles.buttonPrimary} ${
+            showWarning ? styles.buttonDanger : ""
           }`}
           onClick={handleImmediateReloadClick}
           aria-label={primaryReloadLabel}
           title={primaryReloadLabel}
         >
-          <span className="reload-banner-button-label">
+          <span className={styles.buttonLabel}>
             {t("reloadBannerReloadTargetCompact")}
           </span>
         </button>
         {canScheduleSafeRestart && (
           <button
             type="button"
-            className="reload-banner-button reload-banner-button-safe"
+            className={`${styles.button} ${styles.buttonSafe}`}
             onClick={handleRestartWhenSafeClick}
             disabled={safeRestartMutating}
             aria-label={t("reloadBannerRestartWhenSafe")}
             title={t("reloadBannerRestartWhenSafe")}
           >
-            <span className="reload-banner-button-label">
+            <span className={styles.buttonLabel}>
               {t("reloadBannerRestartWhenSafeCompact")}
             </span>
           </button>
@@ -388,20 +395,20 @@ export function ReloadBanner({
         {hasScheduledRestart && onCancelSafeRestart && (
           <button
             type="button"
-            className="reload-banner-button"
+            className={styles.button}
             onClick={handleCancelSafeRestartClick}
             disabled={safeRestartMutating}
             aria-label={t("reloadBannerCancelSafeRestart")}
             title={t("reloadBannerCancelSafeRestart")}
           >
-            <span className="reload-banner-button-label">
+            <span className={styles.buttonLabel}>
               {t("reloadBannerCancelSafeRestartCompact")}
             </span>
           </button>
         )}
         <button
           type="button"
-          className="reload-banner-button reload-banner-dismiss"
+          className={`${styles.button} ${styles.dismiss}`}
           onClick={handleDismissClick}
           aria-label={t("reloadBannerDismiss")}
           title={t("reloadBannerDismiss")}
