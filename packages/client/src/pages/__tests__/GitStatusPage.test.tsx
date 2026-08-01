@@ -12,6 +12,7 @@ import {
   GIT_STATUS_PUSH_CAPABILITY,
   GIT_STATUS_REMOTE_CHECK_CAPABILITY,
 } from "@yep-anywhere/shared";
+import selectorStyles from "../../components/ProjectSelector.module.css";
 import { resetRouteRetentionForTests } from "../../lib/routeRetention";
 import type { Project } from "../../types";
 import { GitStatusPage } from "../GitStatusPage";
@@ -531,6 +532,49 @@ describe("GitStatusPage source header", () => {
     expect(
       document.querySelector(".source-control-action-row"),
     ).not.toBeNull();
+  });
+
+  it("keeps the source-header hooks on a modular project selector", async () => {
+    mocks.useProjects.mockReturnValue({
+      projects: [project(), { ...project(), id: "project-b", name: "B" }],
+      loading: false,
+    });
+    renderPage();
+    await waitFor(() =>
+      expect(mocks.listReviewComments).toHaveBeenCalledWith("project-a"),
+    );
+
+    const container = document.querySelector(
+      ".project-selector-container",
+    ) as HTMLElement;
+    const trigger = container.querySelector("button") as HTMLElement;
+    const text = trigger.querySelector("span") as HTMLElement;
+
+    // The `.source-header-identity` rules in styles/index.css still reach
+    // in by these literals, so each element carries both vocabularies.
+    expect(container.className).toContain(selectorStyles.container);
+    expect(trigger.className).toContain("project-selector-button");
+    expect(trigger.className).toContain(selectorStyles.button);
+    expect(text.className).toContain("project-selector-text");
+    expect(text.className).toContain(selectorStyles.text);
+
+    fireEvent.click(trigger);
+    const dropdown = (await screen.findByRole("dialog", {
+      name: "projectSelectorSelectProject",
+    })) as HTMLElement;
+    expect(dropdown.className).toContain(selectorStyles.dropdown);
+
+    // The retired vocabulary is gone everywhere it was not an interop hook.
+    for (const retired of [
+      "project-selector-dropdown",
+      "project-selector-options",
+      "project-selector-option",
+      "project-selector-name",
+      "project-selector-meta",
+      "project-selector-chevron",
+    ]) {
+      expect(document.querySelector(`.${retired}`)).toBeNull();
+    }
   });
 });
 

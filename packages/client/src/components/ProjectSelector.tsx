@@ -5,6 +5,7 @@ import { useProjects } from "../hooks/useProjects";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useI18n } from "../i18n";
 import type { Project } from "../types";
+import styles from "./ProjectSelector.module.css";
 
 const DESKTOP_BREAKPOINT = 769;
 
@@ -138,18 +139,18 @@ export function ProjectSelector({
   }
 
   const optionsContent = (
-    <div className="project-selector-options">
+    <div className={styles.options}>
       {projects.map((project) => {
         const isSelected = project.id === currentProjectId;
         return (
           <button
             key={project.id}
             type="button"
-            className={`project-selector-option ${isSelected ? "selected" : ""}`}
+            className={`${styles.option} ${isSelected ? styles.selected : ""}`}
             onClick={() => handleProjectSelect(project)}
           >
-            <span className="project-selector-name">{project.name}</span>
-            <span className="project-selector-meta">
+            <span className={styles.name}>{project.name}</span>
+            <span className={styles.meta}>
               {t("projectSelectorSessionsCount", {
                 count: project.sessionCount,
               })}
@@ -166,19 +167,19 @@ export function ProjectSelector({
           // biome-ignore lint/a11y/noStaticElementInteractions: backdrop click closes the sheet; Escape is handled globally
           // biome-ignore lint/a11y/useKeyWithClickEvents: Escape key handled globally
           <div
-            className="project-selector-overlay"
+            className={styles.overlay}
             onClick={handleOverlayClick}
             onMouseDown={(e) => e.stopPropagation()}
           >
             <div
               ref={sheetRef}
-              className="project-selector-sheet"
+              className={styles.sheet}
               role="dialog"
               tabIndex={-1}
               aria-label={t("projectSelectorSelectProject")}
             >
-              <div className="project-selector-header">
-                <span className="project-selector-title">
+              <div className={styles.header}>
+                <span className={styles.title}>
                   {t("projectSelectorSelectProject")}
                 </span>
               </div>
@@ -193,7 +194,7 @@ export function ProjectSelector({
     isOpen && isDesktop ? (
       <div
         ref={sheetRef}
-        className="project-selector-dropdown"
+        className={styles.dropdown}
         role="dialog"
         tabIndex={-1}
         aria-label={t("projectSelectorSelectProject")}
@@ -203,19 +204,25 @@ export function ProjectSelector({
     ) : null;
 
   return (
-    <div className="project-selector-container">
+    // `project-selector-container`, `project-selector-button`, and
+    // `project-selector-text` stay literal: the `.source-header-identity`
+    // rules in styles/index.css reach in by those names to constrain and
+    // truncate the identity row, and a focused style test asserts them.
+    <div className={`project-selector-container ${styles.container}`}>
       <button
         ref={buttonRef}
         type="button"
-        className="project-selector-button"
+        className={`project-selector-button ${styles.button}`}
         onClick={handleButtonClick}
         title={t("projectSelectorChangeProject")}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
       >
-        <span className="project-selector-text">{displayName}</span>
+        <span className={`project-selector-text ${styles.text}`}>
+          {displayName}
+        </span>
         <svg
-          className="project-selector-chevron"
+          className={styles.chevron}
           width="14"
           height="14"
           viewBox="0 0 24 24"
