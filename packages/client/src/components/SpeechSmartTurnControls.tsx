@@ -5,6 +5,7 @@ import {
   type SpeechSmartTurnSettings,
 } from "../lib/speechProviders/SpeechProvider";
 import { CommittedRangeInput } from "./ui/CommittedRangeInput";
+import styles from "./SpeechSmartTurnControls.module.css";
 
 const MAX_SMART_TURN_TIMEOUT_MS = 10000;
 
@@ -66,8 +67,8 @@ export function SpeechSmartTurnControls({
     update({ enabled: true, timeoutMs });
   };
   const body = (
-    <div className="speech-smart-turn-body">
-      <label className="speech-smart-turn-toggle">
+    <div className={styles.body}>
+      <label className={styles.toggle}>
         <input
           type="checkbox"
           checked={clean.enabled}
@@ -76,7 +77,7 @@ export function SpeechSmartTurnControls({
         />
         <span>Smart Turn</span>
       </label>
-      <div className="speech-smart-turn-row">
+      <div className={styles.row}>
         <label htmlFor={thresholdId}>Threshold</label>
         <CommittedRangeInput
           id={thresholdId}
@@ -102,11 +103,11 @@ export function SpeechSmartTurnControls({
           aria-describedby={thresholdHintId}
           aria-label="Smart Turn threshold"
         />
-        <span id={thresholdHintId} className="speech-smart-turn-hint">
+        <span id={thresholdHintId} className={styles.hint}>
           {t("speechSmartTurnThresholdHint")}
         </span>
       </div>
-      <div className="speech-smart-turn-row">
+      <div className={styles.row}>
         <label htmlFor={timeoutId}>Timeout</label>
         <CommittedRangeInput
           id={timeoutId}
@@ -133,7 +134,7 @@ export function SpeechSmartTurnControls({
         />
       </div>
       {clean.enabled && (
-        <p className="speech-smart-turn-caption">
+        <p className={styles.caption}>
           {t("speechSmartTurnCaption")}
         </p>
       )}
@@ -142,12 +143,14 @@ export function SpeechSmartTurnControls({
 
   if (compact) {
     return (
-      <details className="speech-smart-turn speech-smart-turn--compact">
-        <summary title="Grok STT Smart Turn controls">Turn</summary>
-        <div className="speech-smart-turn-popover">{body}</div>
+      <details className={`${styles.root} ${styles.compact}`}>
+        <summary className={styles.summary} title="Grok STT Smart Turn controls">
+          Turn
+        </summary>
+        <div className={styles.popover}>{body}</div>
       </details>
     );
   }
 
-  return <div className="speech-smart-turn">{body}</div>;
+  return <div className={styles.root}>{body}</div>;
 }
