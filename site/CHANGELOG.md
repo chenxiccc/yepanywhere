@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- Keep ordered-list markers inside the documentation article measure instead
+  of hanging into the outer gutter.
+
 ### Added
 - Add a typed public feature, provider, and distribution registry; a complete
   feature catalog; and public guides for installation, remote access,

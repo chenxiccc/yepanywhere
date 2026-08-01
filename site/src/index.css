@@ -159,7 +159,8 @@ h3:hover .heading-anchor,
   color: var(--text-primary);
 }
 
-.article-content ul {
+.article-content ul,
+.article-content ol {
   color: var(--text-secondary);
   font-size: 15px;
   margin-bottom: 16px;

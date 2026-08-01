@@ -146,6 +146,8 @@ Before a website communication change is complete:
 - homepage, feature catalog, docs, navigation, and privacy are inspected at
   1920 x 1080 and 375 x 812 in a real browser;
 - light and dark themes remain readable;
+- ordered and unordered docs lists keep their markers inside the article
+  measure with a readable text inset;
 - keyboard focus, mobile touch targets, code overflow, and long-doc navigation
   remain operable; and
 - the site changelog describes externally visible changes.
