@@ -9,15 +9,11 @@ the server keeps active agent processes and session history on the host.
 
 ## Before you install
 
-You need a supported computer with at least one agent installed:
+You need Claude or Codex installed and signed in on the same computer. The
+easiest path is the provider's desktop app; existing Claude Code or Codex CLI
+installs work too.
 
-- **Claude Code** for the primary Claude workflow.
-- **Codex CLI** for the primary Codex workflow.
-- An experimental provider only if you are comfortable with a narrower feature
-  set.
-
-The desktop apps bundle Yep Anywhere itself, but they do not install or sign in
-to Claude Code or Codex for you.
+Yep Anywhere's desktop app does not install or sign in to a provider for you.
 
 ## Choose an installation
 

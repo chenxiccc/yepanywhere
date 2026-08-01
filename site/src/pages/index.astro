@@ -75,17 +75,14 @@ const desktopDistributions = (distributions as readonly PublicDistribution[]).fi
 
         <div class="promise-grid">
           <article>
-            <span class="step">01</span>
             <h3>Start where the code lives</h3>
             <p>Launch sessions on your workstation, dev server, or SSH host. Yep Anywhere discovers existing compatible sessions too.</p>
           </article>
           <article>
-            <span class="step">02</span>
             <h3>Leave without interrupting</h3>
             <p>Agent processes keep running when a client disconnects. Reconnect from another browser with the conversation intact.</p>
           </article>
           <article>
-            <span class="step">03</span>
             <h3>Return only when needed</h3>
             <p>Use notifications and the attention inbox to find approvals, questions, and completed work instead of polling every session.</p>
           </article>
@@ -106,7 +103,6 @@ const desktopDistributions = (distributions as readonly PublicDistribution[]).fi
         <div class="feature-grid">
           {featuredFeatures.map((feature, index) => (
             <article class:list={["feature-card", { spotlight: index === 0 }]}>
-              <span class="feature-number">{String(index + 1).padStart(2, "0")}</span>
               <h3>{feature.title}</h3>
               <p>{feature.summary}</p>
               <a href={feature.docsPath}>Read the guide <span aria-hidden="true">→</span></a>
@@ -487,20 +483,13 @@ const desktopDistributions = (distributions as readonly PublicDistribution[]).fi
     padding: 28px;
   }
 
-  .step,
-  .feature-number {
-    color: var(--accent);
-    font-family: monospace;
-    font-size: 12px;
-  }
-
   .promise-grid h3,
   .feature-card h3,
   .install-card h3 {
     font-size: 21px;
     letter-spacing: -0.02em;
     line-height: 1.25;
-    margin-top: 46px;
+    margin-top: 0;
   }
 
   .promise-grid p,
@@ -527,10 +516,6 @@ const desktopDistributions = (distributions as readonly PublicDistribution[]).fi
 
   .feature-card.spotlight {
     grid-column: span 2;
-  }
-
-  .feature-card h3 {
-    margin-top: 34px;
   }
 
   .feature-card a {
