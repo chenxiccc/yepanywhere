@@ -17,7 +17,10 @@ import type {
  * into an anchor from `structuredPatch` alone — never from the DOM.
  */
 
+/** Compatibility shape returned by the established comments endpoint. */
 export const REVIEW_COMMENTS_FILE_VERSION = 1 as const;
+/** Canonical on-disk site/entry/submission store. */
+export const REVIEW_STORE_FILE_VERSION = 2 as const;
 
 /** Bounds — the file is user-visible on disk and must reject hostile shapes. */
 export const MAX_REVIEW_COMMENTS = 2000;
@@ -45,6 +48,25 @@ export type ReviewCommentSide = "old" | "new";
 export type ReviewCommentRevision =
   | { kind: "sha"; sha: string }
   | { kind: "uncommitted"; savedAt: string };
+
+/** Exact source projection rendered when a reviewer entry is created. */
+export type ReviewSourceProjection =
+  | {
+      kind: "worktree";
+      path: string;
+      side: ReviewCommentSide;
+    }
+  | {
+      kind: "index";
+      path: string;
+      side: ReviewCommentSide;
+    }
+  | {
+      kind: "revision";
+      revision: string;
+      path: string;
+      side: ReviewCommentSide;
+    };
 
 export interface ReviewCommentAnchor {
   /** Repo-relative path of the file the commented line lives in. */
@@ -75,6 +97,11 @@ export interface ReviewCommentAnchor {
    * backward compatibility; consumers treat a missing value as 0.
    */
   snippetAnchorOffset?: number;
+  /**
+   * Exact rendered source projection. Older clients omit it; new servers then
+   * retain version-1 behavior and mark the entry's capture unavailable.
+   */
+  projection?: ReviewSourceProjection;
 }
 
 export type ReviewCommentStatus = "pending" | "archived";
@@ -125,6 +152,85 @@ export interface ReviewCommentsFile {
   batches: ReviewBatch[];
 }
 
+export type ReviewCapture =
+  | {
+      status: "captured";
+      captureBlobId: string;
+      projection: ReviewSourceProjection;
+    }
+  | { status: "legacy-missing" };
+
+export interface ReviewEntryRef {
+  siteId: string;
+  entryId: string;
+}
+
+export interface ReviewReviewerEntry {
+  id: string;
+  text: string;
+  anchor: ReviewCommentAnchor;
+  capture: ReviewCapture;
+  createdAt: string;
+  submittedAt?: string;
+  submissionId?: string;
+}
+
+export type ReviewOutcomeDisposition = "done" | "wont_fix" | "question";
+
+export interface ReviewOutcome {
+  submissionId: string;
+  entryId: string;
+  disposition: ReviewOutcomeDisposition;
+  text: string;
+  observedAt: string;
+  responseHash: string;
+  sessionId?: string;
+}
+
+export interface ReviewSite {
+  id: string;
+  path: string;
+  createdAt: string;
+  entries: ReviewReviewerEntry[];
+  outcomes: ReviewOutcome[];
+  resolvedAt?: string;
+}
+
+/** Active, editable entry reference. Submitted history never lives here. */
+export interface ReviewDraft extends ReviewEntryRef {}
+
+export type ReviewSubmissionStatus = "legacy" | "prepared" | "accepted";
+
+export interface ReviewSubmissionSummary {
+  id: string;
+  name?: string;
+  submittedAt: string;
+  requestedTarget: "new" | string;
+  targetSessionId?: string;
+  entryRefs: ReviewEntryRef[];
+  status: ReviewSubmissionStatus;
+  /** Monotonic valid response revision, zero until one is ingested. */
+  responseRevision: number;
+  /** Highest response revision the reviewer explicitly opened. */
+  acknowledgedRevision: number;
+}
+
+export interface ReviewStoreFile {
+  version: typeof REVIEW_STORE_FILE_VERSION;
+  sites: ReviewSite[];
+  drafts: ReviewDraft[];
+  submissions: ReviewSubmissionSummary[];
+}
+
+export function emptyReviewStoreFile(): ReviewStoreFile {
+  return {
+    version: REVIEW_STORE_FILE_VERSION,
+    sites: [],
+    drafts: [],
+    submissions: [],
+  };
+}
+
 export function emptyReviewCommentsFile(): ReviewCommentsFile {
   return {
     version: REVIEW_COMMENTS_FILE_VERSION,
@@ -148,6 +254,37 @@ function parseRevision(value: unknown): ReviewCommentRevision | null {
   if (record.kind === "uncommitted") {
     if (!isIsoLikeString(record.savedAt)) return null;
     return { kind: "uncommitted", savedAt: record.savedAt };
+  }
+  return null;
+}
+
+export function parseReviewSourceProjection(
+  value: unknown,
+): ReviewSourceProjection | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (
+    typeof record.path !== "string" ||
+    record.path.length === 0 ||
+    record.path.length > MAX_REVIEW_PATH_LENGTH ||
+    (record.side !== "old" && record.side !== "new")
+  ) {
+    return null;
+  }
+  if (record.kind === "worktree" || record.kind === "index") {
+    return { kind: record.kind, path: record.path, side: record.side };
+  }
+  if (
+    record.kind === "revision" &&
+    typeof record.revision === "string" &&
+    /^[0-9a-f]{7,64}$/iu.test(record.revision)
+  ) {
+    return {
+      kind: "revision",
+      revision: record.revision,
+      path: record.path,
+      side: record.side,
+    };
   }
   return null;
 }
@@ -212,6 +349,11 @@ export function parseReviewCommentAnchor(
       return null;
     }
     anchor.snippetAnchorOffset = record.snippetAnchorOffset;
+  }
+  if (record.projection !== undefined) {
+    const projection = parseReviewSourceProjection(record.projection);
+    if (!projection) return null;
+    anchor.projection = projection;
   }
   return anchor;
 }
@@ -319,6 +461,364 @@ export function parseReviewCommentsFile(value: unknown): ReviewCommentsFile {
     }
   }
 
+  return { version: REVIEW_COMMENTS_FILE_VERSION, comments, batches };
+}
+
+function parseEntryRef(value: unknown): ReviewEntryRef | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (
+    typeof record.siteId !== "string" ||
+    record.siteId.length === 0 ||
+    typeof record.entryId !== "string" ||
+    record.entryId.length === 0
+  ) {
+    return null;
+  }
+  return { siteId: record.siteId, entryId: record.entryId };
+}
+
+function parseCapture(value: unknown): ReviewCapture | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (record.status === "legacy-missing") return { status: "legacy-missing" };
+  if (
+    record.status !== "captured" ||
+    typeof record.captureBlobId !== "string" ||
+    !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/iu.test(record.captureBlobId)
+  ) {
+    return null;
+  }
+  const projection = parseReviewSourceProjection(record.projection);
+  return projection
+    ? { status: "captured", captureBlobId: record.captureBlobId, projection }
+    : null;
+}
+
+function parseReviewerEntry(value: unknown): ReviewReviewerEntry | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (typeof record.id !== "string" || record.id.length === 0) return null;
+  if (
+    typeof record.text !== "string" ||
+    record.text.length > MAX_REVIEW_COMMENT_TEXT_LENGTH
+  ) {
+    return null;
+  }
+  const anchor = parseReviewCommentAnchor(record.anchor);
+  const capture = parseCapture(record.capture);
+  if (!anchor || !capture || !isIsoLikeString(record.createdAt)) return null;
+  const entry: ReviewReviewerEntry = {
+    id: record.id,
+    text: record.text,
+    anchor,
+    capture,
+    createdAt: record.createdAt,
+  };
+  if (record.submittedAt !== undefined) {
+    if (!isIsoLikeString(record.submittedAt)) return null;
+    entry.submittedAt = record.submittedAt;
+  }
+  if (record.submissionId !== undefined) {
+    if (typeof record.submissionId !== "string") return null;
+    entry.submissionId = record.submissionId;
+  }
+  return entry;
+}
+
+function parseOutcome(value: unknown): ReviewOutcome | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (
+    typeof record.submissionId !== "string" ||
+    typeof record.entryId !== "string" ||
+    (record.disposition !== "done" &&
+      record.disposition !== "wont_fix" &&
+      record.disposition !== "question") ||
+    typeof record.text !== "string" ||
+    record.text.length > MAX_REVIEW_COMMENT_TEXT_LENGTH ||
+    !isIsoLikeString(record.observedAt) ||
+    typeof record.responseHash !== "string" ||
+    !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/iu.test(record.responseHash)
+  ) {
+    return null;
+  }
+  return {
+    submissionId: record.submissionId,
+    entryId: record.entryId,
+    disposition: record.disposition,
+    text: record.text,
+    observedAt: record.observedAt,
+    responseHash: record.responseHash,
+    ...(typeof record.sessionId === "string"
+      ? { sessionId: record.sessionId }
+      : {}),
+  };
+}
+
+function parseSite(value: unknown): ReviewSite | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (
+    typeof record.id !== "string" ||
+    record.id.length === 0 ||
+    typeof record.path !== "string" ||
+    record.path.length === 0 ||
+    record.path.length > MAX_REVIEW_PATH_LENGTH ||
+    !isIsoLikeString(record.createdAt) ||
+    !Array.isArray(record.entries) ||
+    !Array.isArray(record.outcomes)
+  ) {
+    return null;
+  }
+  const entries: ReviewReviewerEntry[] = [];
+  const seenEntries = new Set<string>();
+  for (const raw of record.entries) {
+    const entry = parseReviewerEntry(raw);
+    if (entry && !seenEntries.has(entry.id)) {
+      seenEntries.add(entry.id);
+      entries.push(entry);
+    }
+  }
+  const outcomes = record.outcomes.flatMap((raw) => {
+    const outcome = parseOutcome(raw);
+    return outcome ? [outcome] : [];
+  });
+  const site: ReviewSite = {
+    id: record.id,
+    path: record.path,
+    createdAt: record.createdAt,
+    entries,
+    outcomes,
+  };
+  if (record.resolvedAt !== undefined) {
+    if (!isIsoLikeString(record.resolvedAt)) return null;
+    site.resolvedAt = record.resolvedAt;
+  }
+  return site;
+}
+
+function parseSubmission(value: unknown): ReviewSubmissionSummary | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (
+    typeof record.id !== "string" ||
+    record.id.length === 0 ||
+    !isIsoLikeString(record.submittedAt) ||
+    typeof record.requestedTarget !== "string" ||
+    record.requestedTarget.length === 0 ||
+    (record.status !== "legacy" &&
+      record.status !== "prepared" &&
+      record.status !== "accepted") ||
+    !Array.isArray(record.entryRefs) ||
+    typeof record.responseRevision !== "number" ||
+    !Number.isInteger(record.responseRevision) ||
+    record.responseRevision < 0 ||
+    typeof record.acknowledgedRevision !== "number" ||
+    !Number.isInteger(record.acknowledgedRevision) ||
+    record.acknowledgedRevision < 0
+  ) {
+    return null;
+  }
+  const entryRefs = record.entryRefs.flatMap((raw) => {
+    const ref = parseEntryRef(raw);
+    return ref ? [ref] : [];
+  });
+  return {
+    id: record.id,
+    submittedAt: record.submittedAt,
+    requestedTarget: record.requestedTarget,
+    entryRefs,
+    status: record.status,
+    responseRevision: record.responseRevision,
+    acknowledgedRevision: Math.min(
+      record.acknowledgedRevision,
+      record.responseRevision,
+    ),
+    ...(typeof record.name === "string" && record.name.length > 0
+      ? { name: record.name }
+      : {}),
+    ...(typeof record.targetSessionId === "string"
+      ? { targetSessionId: record.targetSessionId }
+      : {}),
+  };
+}
+
+/**
+ * Convert every valid version-1 comment and batch into canonical entities.
+ * No capture is invented: the old format did not record the rendered source.
+ */
+export function migrateLegacyReviewCommentsFile(
+  legacy: ReviewCommentsFile,
+): ReviewStoreFile {
+  const batchesById = new Map(legacy.batches.map((batch) => [batch.id, batch]));
+  const refsByComment = new Map<string, ReviewEntryRef>();
+  const sites = legacy.comments.map((comment) => {
+    const siteId = `legacy-site-${comment.id}`;
+    const batch = comment.batchId
+      ? batchesById.get(comment.batchId)
+      : undefined;
+    const entry: ReviewReviewerEntry = {
+      id: comment.id,
+      text: comment.text,
+      anchor: comment.anchor,
+      capture: { status: "legacy-missing" },
+      createdAt: comment.createdAt,
+      ...(comment.status === "archived"
+        ? {
+            submittedAt:
+              comment.archivedAt ?? batch?.submittedAt ?? comment.createdAt,
+            ...(comment.batchId ? { submissionId: comment.batchId } : {}),
+          }
+        : {}),
+    };
+    refsByComment.set(comment.id, { siteId, entryId: comment.id });
+    return {
+      id: siteId,
+      path: comment.anchor.path,
+      createdAt: comment.createdAt,
+      entries: [entry],
+      outcomes: [],
+    } satisfies ReviewSite;
+  });
+  const drafts = legacy.comments.flatMap((comment) => {
+    const ref = refsByComment.get(comment.id);
+    return comment.status === "pending" && ref ? [ref] : [];
+  });
+  const submissions = legacy.batches.map((batch) => ({
+    id: batch.id,
+    submittedAt: batch.submittedAt,
+    requestedTarget: batch.targetSessionId,
+    targetSessionId: batch.targetSessionId,
+    entryRefs: batch.commentIds.flatMap((id) => {
+      const ref = refsByComment.get(id);
+      return ref ? [ref] : [];
+    }),
+    status: "legacy" as const,
+    responseRevision: 0,
+    acknowledgedRevision: 0,
+  }));
+  return {
+    version: REVIEW_STORE_FILE_VERSION,
+    sites,
+    drafts,
+    submissions,
+  };
+}
+
+/** Parse the canonical store, migrating version 1 before any later writes. */
+export function parseReviewStoreFile(value: unknown): ReviewStoreFile {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return emptyReviewStoreFile();
+  }
+  const record = value as Record<string, unknown>;
+  if (record.version === REVIEW_COMMENTS_FILE_VERSION) {
+    return migrateLegacyReviewCommentsFile(parseReviewCommentsFile(record));
+  }
+  if (
+    record.version !== REVIEW_STORE_FILE_VERSION ||
+    !Array.isArray(record.sites) ||
+    !Array.isArray(record.drafts) ||
+    !Array.isArray(record.submissions)
+  ) {
+    return emptyReviewStoreFile();
+  }
+
+  const sites: ReviewSite[] = [];
+  const seenSites = new Set<string>();
+  for (const raw of record.sites) {
+    const site = parseSite(raw);
+    if (site && !seenSites.has(site.id)) {
+      seenSites.add(site.id);
+      sites.push(site);
+    }
+  }
+  const validRefs = new Set(
+    sites.flatMap((site) =>
+      site.entries.map((entry) => `${site.id}\0${entry.id}`),
+    ),
+  );
+  const activeRefs = new Set(
+    sites.flatMap((site) =>
+      site.entries.flatMap((entry) =>
+        entry.submittedAt === undefined && entry.submissionId === undefined
+          ? [`${site.id}\0${entry.id}`]
+          : [],
+      ),
+    ),
+  );
+  const drafts: ReviewDraft[] = [];
+  const seenDrafts = new Set<string>();
+  for (const raw of record.drafts) {
+    const ref = parseEntryRef(raw);
+    if (!ref) continue;
+    const key = `${ref.siteId}\0${ref.entryId}`;
+    if (activeRefs.has(key) && !seenDrafts.has(key)) {
+      seenDrafts.add(key);
+      drafts.push(ref);
+    }
+  }
+  const submissions: ReviewSubmissionSummary[] = [];
+  const seenSubmissions = new Set<string>();
+  for (const raw of record.submissions) {
+    const submission = parseSubmission(raw);
+    if (submission && !seenSubmissions.has(submission.id)) {
+      seenSubmissions.add(submission.id);
+      submission.entryRefs = submission.entryRefs.filter((ref) =>
+        validRefs.has(`${ref.siteId}\0${ref.entryId}`),
+      );
+      submissions.push(submission);
+    }
+  }
+  return { version: REVIEW_STORE_FILE_VERSION, sites, drafts, submissions };
+}
+
+/** Project canonical state back to the stable version-1 comments response. */
+export function projectLegacyReviewComments(
+  store: ReviewStoreFile,
+): ReviewCommentsFile {
+  const draftKeys = new Set(
+    store.drafts.map((ref) => `${ref.siteId}\0${ref.entryId}`),
+  );
+  const submissions = new Map(store.submissions.map((item) => [item.id, item]));
+  const comments = store.sites.flatMap((site) =>
+    site.entries.map((entry): ReviewComment => {
+      const pending = draftKeys.has(`${site.id}\0${entry.id}`);
+      const submission = entry.submissionId
+        ? submissions.get(entry.submissionId)
+        : undefined;
+      return {
+        id: entry.id,
+        anchor: entry.anchor,
+        text: entry.text,
+        status: pending ? "pending" : "archived",
+        createdAt: entry.createdAt,
+        ...(!pending
+          ? {
+              archivedAt: entry.submittedAt,
+              batchId: entry.submissionId,
+              targetSessionId:
+                submission?.targetSessionId ??
+                (submission?.requestedTarget !== "new"
+                  ? submission?.requestedTarget
+                  : undefined),
+            }
+          : {}),
+      };
+    }),
+  );
+  const batches = store.submissions.map(
+    (submission): ReviewBatch => ({
+      id: submission.id,
+      submittedAt: submission.submittedAt,
+      targetSessionId:
+        submission.targetSessionId ??
+        (submission.requestedTarget === "new"
+          ? ""
+          : submission.requestedTarget),
+      commentIds: submission.entryRefs.map((ref) => ref.entryId),
+    }),
+  );
   return { version: REVIEW_COMMENTS_FILE_VERSION, comments, batches };
 }
 

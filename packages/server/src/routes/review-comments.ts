@@ -27,6 +27,7 @@ import {
 } from "../review/relocateAnchors.js";
 import { structuredErrorHandler } from "../middleware/error-handler.js";
 import type { ReviewSessionLauncher } from "../review/reviewSessionLauncher.js";
+import { repositoryRelativePath } from "../review/repositoryPath.js";
 import { resolveProjectPath } from "./projectParam.js";
 
 /** Repo-relative path of the drafts file the seeded turn references. */
@@ -69,6 +70,9 @@ export function createReviewCommentsRoutes(deps: ReviewCommentsDeps): Hono {
 
     const anchor = parseReviewCommentAnchor(body.anchor);
     if (!anchor) return c.json({ error: "Invalid comment anchor" }, 400);
+    if (!validateAnchorPaths(anchor)) {
+      return c.json({ error: "Invalid comment anchor path" }, 400);
+    }
 
     const textError = validateText(body.text, { required: true });
     if (textError) return c.json({ error: textError }, 400);
@@ -100,6 +104,9 @@ export function createReviewCommentsRoutes(deps: ReviewCommentsDeps): Hono {
     if (body.anchor !== undefined) {
       const anchor = parseReviewCommentAnchor(body.anchor);
       if (!anchor) return c.json({ error: "Invalid comment anchor" }, 400);
+      if (!validateAnchorPaths(anchor)) {
+        return c.json({ error: "Invalid comment anchor path" }, 400);
+      }
       patch.anchor = anchor;
     }
 
@@ -387,4 +394,17 @@ function validateText(
     return "Comment text is too long";
   }
   return null;
+}
+
+function validateAnchorPaths(anchor: {
+  path: string;
+  projection?: { path: string };
+}): boolean {
+  try {
+    repositoryRelativePath(anchor.path);
+    if (anchor.projection) repositoryRelativePath(anchor.projection.path);
+    return true;
+  } catch {
+    return false;
+  }
 }

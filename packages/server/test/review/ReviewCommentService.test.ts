@@ -7,7 +7,7 @@ import {
   MAX_REVIEW_COMMENTS,
   type ReviewCommentAnchor,
 } from "@yep-anywhere/shared";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ReviewCommentService,
   type ReviewCommentServiceOptions,
@@ -67,6 +67,42 @@ describe("ReviewCommentService", () => {
     expect(pending[0]?.id).toBe("id-1");
   });
 
+  it("stores an exact capture at creation and refreshes it with an anchor edit", async () => {
+    let captured = 0;
+    const svc = makeService({
+      captureWriter: {
+        async capture(_projectPath, projection) {
+          captured++;
+          return {
+            status: "captured",
+            captureBlobId: String(captured).padStart(40, "a"),
+            projection,
+          };
+        },
+      },
+    });
+    const projected = anchor({
+      projection: { kind: "worktree", path: "src/a.ts", side: "new" },
+    });
+    const created = await svc.addComment(dir, {
+      anchor: projected,
+      text: "captured",
+    });
+    await svc.updateComment(dir, created.id, {
+      anchor: {
+        ...projected,
+        projection: { kind: "index", path: "src/a.ts", side: "new" },
+      },
+    });
+
+    const entry = (await svc.getStoreFile(dir)).sites[0]?.entries[0];
+    expect(captured).toBe(2);
+    expect(entry?.capture).toMatchObject({
+      status: "captured",
+      projection: { kind: "index" },
+    });
+  });
+
   it("writes to {projectPath}/.yep/review-comments.json", async () => {
     const svc = makeService();
     await svc.addComment(dir, { anchor: anchor(), text: "x" });
@@ -75,8 +111,9 @@ describe("ReviewCommentService", () => {
       "utf-8",
     );
     const parsed = JSON.parse(raw);
-    expect(parsed.version).toBe(1);
-    expect(parsed.comments).toHaveLength(1);
+    expect(parsed.version).toBe(2);
+    expect(parsed.sites).toHaveLength(1);
+    expect(parsed.drafts).toHaveLength(1);
   });
 
   it("keeps two projects' drafts isolated", async () => {
@@ -178,7 +215,83 @@ describe("ReviewCommentService", () => {
     expect((await restarted.getFile(dir)).batches).toHaveLength(1);
   });
 
+  it("migrates version-1 state before persisting another edit", async () => {
+    await mkdir(join(dir, ".yep"), { recursive: true });
+    await writeFile(
+      join(dir, ".yep", "review-comments.json"),
+      JSON.stringify({
+        version: 1,
+        comments: [
+          {
+            id: "old-draft",
+            anchor: anchor(),
+            text: "old pending",
+            status: "pending",
+            createdAt: "2026-07-25T00:00:00Z",
+          },
+          {
+            id: "old-history",
+            anchor: anchor(),
+            text: "old archived",
+            status: "archived",
+            createdAt: "2026-07-24T00:00:00Z",
+            archivedAt: "2026-07-25T00:00:00Z",
+            batchId: "old-batch",
+            targetSessionId: "old-session",
+          },
+        ],
+        batches: [
+          {
+            id: "old-batch",
+            submittedAt: "2026-07-25T00:00:00Z",
+            targetSessionId: "old-session",
+            commentIds: ["old-history"],
+          },
+        ],
+      }),
+    );
+
+    const svc = makeService();
+    expect(await svc.listComments(dir)).toHaveLength(2);
+    const canonical = await svc.getStoreFile(dir);
+    expect(canonical.version).toBe(2);
+    expect(canonical.sites).toHaveLength(2);
+    expect(canonical.submissions).toHaveLength(1);
+    expect(canonical.sites[1]?.entries[0]?.capture).toEqual({
+      status: "legacy-missing",
+    });
+
+    const persisted = JSON.parse(
+      await readFile(join(dir, ".yep", "review-comments.json"), "utf-8"),
+    );
+    expect(persisted.version).toBe(2);
+    expect(persisted.comments).toBeUndefined();
+  });
+
+  it("caps active drafts without counting archived history", async () => {
+    const comments = Array.from({ length: MAX_REVIEW_COMMENTS }, (_, index) => ({
+      id: `archived-${index}`,
+      anchor: anchor(),
+      text: `history-${index}`,
+      status: "archived",
+      createdAt: "2026-07-25T00:00:00Z",
+      archivedAt: "2026-07-26T00:00:00Z",
+    }));
+    await mkdir(join(dir, ".yep"), { recursive: true });
+    await writeFile(
+      join(dir, ".yep", "review-comments.json"),
+      JSON.stringify({ version: 1, comments, batches: [] }),
+    );
+    const svc = makeService();
+    await svc.addComment(dir, { anchor: anchor(), text: "new" });
+    expect(await svc.listPending(dir)).toHaveLength(1);
+    expect((await svc.getStoreFile(dir)).sites).toHaveLength(
+      MAX_REVIEW_COMMENTS + 1,
+    );
+  });
+
   it("degrades a corrupt drafts file to an empty store", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     await mkdir(join(dir, ".yep"), { recursive: true });
     await writeFile(
       join(dir, ".yep", "review-comments.json"),
@@ -187,9 +300,11 @@ describe("ReviewCommentService", () => {
     );
     const svc = makeService();
     expect(await svc.listComments(dir)).toEqual([]);
+    expect(warn).toHaveBeenCalledOnce();
     // and it can recover by writing fresh state
     await svc.addComment(dir, { anchor: anchor(), text: "fresh" });
     expect(await svc.listComments(dir)).toHaveLength(1);
+    warn.mockRestore();
   });
 
   describe("git exclude on first visit", () => {

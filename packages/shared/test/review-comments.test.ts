@@ -4,7 +4,9 @@ import {
   type ReviewCommentsFile,
   anchorFromPatch,
   emptyReviewCommentsFile,
+  migrateLegacyReviewCommentsFile,
   parseReviewCommentsFile,
+  parseReviewStoreFile,
   patchLineCount,
 } from "../src/review-comments.js";
 
@@ -240,5 +242,86 @@ describe("parseReviewCommentsFile", () => {
     expect(
       parseReviewCommentsFile({ version: 1, comments: [{ id: "x" }] }).comments,
     ).toHaveLength(0);
+  });
+});
+
+describe("review store migration", () => {
+  it("preserves every legacy draft, archived comment, and batch", () => {
+    const legacy = parseReviewCommentsFile({
+      version: 1,
+      comments: [
+        {
+          id: "draft-1",
+          anchor: {
+            path: "src/a.ts",
+            revision: { kind: "uncommitted", savedAt: "2026-08-01T00:00:00Z" },
+            side: "new",
+            oldLine: null,
+            newLine: 4,
+            snippet: "draft",
+          },
+          text: "pending",
+          status: "pending",
+          createdAt: "2026-08-01T00:00:00Z",
+        },
+        {
+          id: "archived-1",
+          anchor: {
+            path: "src/b.ts",
+            revision: { kind: "sha", sha: "abcdef1" },
+            side: "old",
+            oldLine: 8,
+            newLine: null,
+            snippet: "gone",
+          },
+          text: "history",
+          status: "archived",
+          createdAt: "2026-07-31T00:00:00Z",
+          archivedAt: "2026-08-01T01:00:00Z",
+          batchId: "batch-1",
+          targetSessionId: "session-1",
+        },
+      ],
+      batches: [
+        {
+          id: "batch-1",
+          submittedAt: "2026-08-01T01:00:00Z",
+          targetSessionId: "session-1",
+          commentIds: ["archived-1"],
+        },
+        {
+          id: "empty-batch",
+          submittedAt: "2026-08-01T02:00:00Z",
+          targetSessionId: "session-2",
+          commentIds: [],
+        },
+      ],
+    });
+
+    const migrated = migrateLegacyReviewCommentsFile(legacy);
+    expect(migrated.version).toBe(2);
+    expect(migrated.sites).toHaveLength(2);
+    expect(migrated.drafts).toEqual([
+      { siteId: "legacy-site-draft-1", entryId: "draft-1" },
+    ]);
+    expect(migrated.submissions).toHaveLength(2);
+    expect(migrated.sites[1]?.entries[0]?.capture).toEqual({
+      status: "legacy-missing",
+    });
+    expect(migrated.submissions[0]?.entryRefs).toEqual([
+      { siteId: "legacy-site-archived-1", entryId: "archived-1" },
+    ]);
+  });
+
+  it("parses version 1 by migrating and round-trips canonical version 2", () => {
+    const migrated = parseReviewStoreFile({
+      version: 1,
+      comments: [],
+      batches: [],
+    });
+    expect(migrated.version).toBe(2);
+    expect(parseReviewStoreFile(JSON.parse(JSON.stringify(migrated)))).toEqual(
+      migrated,
+    );
   });
 });

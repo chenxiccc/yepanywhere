@@ -1,16 +1,10 @@
 /**
- * ReviewCommentService — server-owned source-review draft comments.
+ * ReviewCommentService — canonical source-review sites, entries, and drafts.
  *
- * The single authority for pending/archived review comments (topic:
- * source-review-to-session). Drafts persist per project in
- * `{projectPath}/.yep/review-comments.json` so a review started on one device
- * continues on another with the same pending set and archive. Keyed by the
- * project path itself, two repos' drafts can never mix.
- *
- * Persistence: typed state, load once per project, atomic writes coalesced
- * per project through the shared saver. The file is user-visible on disk and
- * outlives bundle versions, so every load runs through the shared defensive
- * parser and a corrupt/truncated file degrades to an empty store.
+ * Disk state is version 2 even though the established comments endpoint still
+ * receives a version-1 projection. Version-1 files migrate before any later
+ * write, preserving all comments and batches while marking their unavailable
+ * comment-time source captures honestly.
  */
 
 import { randomUUID } from "node:crypto";
@@ -18,12 +12,20 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
   MAX_REVIEW_COMMENTS,
+  REVIEW_COMMENTS_FILE_VERSION,
   type ReviewBatch,
+  type ReviewCapture,
   type ReviewComment,
   type ReviewCommentAnchor,
   type ReviewCommentsFile,
-  emptyReviewCommentsFile,
-  parseReviewCommentsFile,
+  type ReviewEntryRef,
+  type ReviewReviewerEntry,
+  type ReviewSourceProjection,
+  type ReviewStoreFile,
+  type ReviewSubmissionSummary,
+  emptyReviewStoreFile,
+  parseReviewStoreFile,
+  projectLegacyReviewComments,
 } from "@yep-anywhere/shared";
 import { createCoalescingSaver } from "../lib/coalescingSaver.js";
 import { HttpError } from "../middleware/error-handler.js";
@@ -33,11 +35,18 @@ const YEP_DIR = ".yep";
 const REVIEW_COMMENTS_FILENAME = "review-comments.json";
 
 interface ProjectStore {
-  state: ReviewCommentsFile;
+  state: ReviewStoreFile;
   loadPromise: Promise<void> | null;
   loaded: boolean;
   dirEnsured: boolean;
   save: () => Promise<void>;
+}
+
+export interface ReviewCaptureWriter {
+  capture(
+    projectPath: string,
+    projection: ReviewSourceProjection,
+  ): Promise<ReviewCapture>;
 }
 
 export interface AddReviewCommentInput {
@@ -57,47 +66,52 @@ export interface ArchiveReviewCommentsInput {
   submittedAt?: string;
 }
 
-/** Deps let tests stub the clock and id source for stable assertions. */
+/** Deps let tests stub the clock, ids, and git capture boundary. */
 export interface ReviewCommentServiceOptions {
   now?: () => string;
   newId?: () => string;
+  captureWriter?: ReviewCaptureWriter;
 }
 
 export class ReviewCommentService {
   private stores = new Map<string, ProjectStore>();
   private now: () => string;
   private newId: () => string;
+  private captureWriter?: ReviewCaptureWriter;
 
   constructor(options: ReviewCommentServiceOptions = {}) {
     this.now = options.now ?? (() => new Date().toISOString());
     this.newId = options.newId ?? (() => randomUUID());
+    this.captureWriter = options.captureWriter;
   }
 
-  /** The whole persisted store (comments + batches) for a project. */
+  /** Stable version-1 projection for established clients. */
   async getFile(projectPath: string): Promise<ReviewCommentsFile> {
     const store = await this.getStore(projectPath);
-    return cloneFile(store.state);
+    return cloneLegacyFile(projectLegacyReviewComments(store.state));
+  }
+
+  /** Canonical site/entry/submission state for new routes. */
+  async getStoreFile(projectPath: string): Promise<ReviewStoreFile> {
+    const store = await this.getStore(projectPath);
+    return cloneStoreFile(store.state);
   }
 
   async listComments(projectPath: string): Promise<ReviewComment[]> {
-    const store = await this.getStore(projectPath);
-    return store.state.comments.map(cloneComment);
+    return (await this.getFile(projectPath)).comments;
   }
 
   async listPending(projectPath: string): Promise<ReviewComment[]> {
-    const store = await this.getStore(projectPath);
-    return store.state.comments
-      .filter((c) => c.status === "pending")
-      .map(cloneComment);
+    return (await this.listComments(projectPath)).filter(
+      (comment) => comment.status === "pending",
+    );
   }
 
   async getComment(
     projectPath: string,
     id: string,
   ): Promise<ReviewComment | null> {
-    const store = await this.getStore(projectPath);
-    const found = store.state.comments.find((c) => c.id === id);
-    return found ? cloneComment(found) : null;
+    return (await this.listComments(projectPath)).find((item) => item.id === id) ?? null;
   }
 
   async addComment(
@@ -105,58 +119,78 @@ export class ReviewCommentService {
     input: AddReviewCommentInput,
   ): Promise<ReviewComment> {
     const store = await this.getStore(projectPath);
-    // The load parser silently drops entries past this bound, so exceeding it
-    // here would persist comments that vanish on the next restart.
-    if (store.state.comments.length >= MAX_REVIEW_COMMENTS) {
+    if (store.state.drafts.length >= MAX_REVIEW_COMMENTS) {
       throw new HttpError(
         413,
         `Review comment limit reached (${MAX_REVIEW_COMMENTS}); submit or delete drafts first.`,
       );
     }
-    const comment: ReviewComment = {
-      id: this.newId(),
-      anchor: input.anchor,
+    const entryId = this.newId();
+    const siteId = `site-${entryId}`;
+    const createdAt = this.now();
+    const entry: ReviewReviewerEntry = {
+      id: entryId,
+      anchor: cloneAnchor(input.anchor),
       text: input.text,
-      status: "pending",
-      createdAt: this.now(),
+      capture: await this.capture(projectPath, input.anchor),
+      createdAt,
     };
-    store.state.comments.push(comment);
+    store.state.sites.push({
+      id: siteId,
+      path: input.anchor.path,
+      createdAt,
+      entries: [entry],
+      outcomes: [],
+    });
+    store.state.drafts.push({ siteId, entryId });
     await store.save();
-    return cloneComment(comment);
+    return canonicalEntryToComment(entry, true);
   }
 
-  /** Edit a pending comment's text and/or anchor. Archived comments are frozen. */
+  /** Edit an active draft. Submitted reviewer entries are immutable. */
   async updateComment(
     projectPath: string,
     id: string,
     patch: UpdateReviewCommentInput,
   ): Promise<ReviewComment | null> {
     const store = await this.getStore(projectPath);
-    const comment = store.state.comments.find((c) => c.id === id);
-    if (comment?.status !== "pending") return null;
-    if (patch.text !== undefined) comment.text = patch.text;
-    if (patch.anchor !== undefined) comment.anchor = patch.anchor;
+    const found = findDraftEntry(store.state, id);
+    if (!found) return null;
+    const nextCapture = patch.anchor
+      ? await this.capture(projectPath, patch.anchor)
+      : undefined;
+    if (patch.text !== undefined) found.entry.text = patch.text;
+    if (patch.anchor !== undefined && nextCapture) {
+      found.entry.anchor = cloneAnchor(patch.anchor);
+      found.entry.capture = nextCapture;
+      found.site.path = patch.anchor.path;
+    }
     await store.save();
-    return cloneComment(comment);
+    return canonicalEntryToComment(found.entry, true);
   }
 
-  /** Discard a pending comment. Archived comments are kept for history. */
+  /** Discard an active draft. Historical submitted entries are retained. */
   async deleteComment(projectPath: string, id: string): Promise<boolean> {
     const store = await this.getStore(projectPath);
-    const idx = store.state.comments.findIndex(
-      (c) => c.id === id && c.status === "pending",
-    );
-    if (idx === -1) return false;
-    store.state.comments.splice(idx, 1);
+    const draftIndex = store.state.drafts.findIndex((ref) => ref.entryId === id);
+    if (draftIndex === -1) return false;
+    const [draft] = store.state.drafts.splice(draftIndex, 1);
+    const site = store.state.sites.find((item) => item.id === draft?.siteId);
+    if (site) {
+      site.entries = site.entries.filter((entry) => entry.id !== id);
+      if (site.entries.length === 0 && site.outcomes.length === 0) {
+        store.state.sites = store.state.sites.filter(
+          (item) => item.id !== site.id,
+        );
+      }
+    }
     await store.save();
     return true;
   }
 
   /**
-   * Consume the named pending comments into a batch: mark them archived,
-   * stamp the batch + target session, and record the batch. Only currently
-   * pending comments are consumed; unknown or already-archived ids are
-   * ignored. Returns the recorded batch.
+   * Compatibility archive path. New transactional acceptance builds the same
+   * canonical summary with a client-supplied id in the next stage.
    */
   async archiveComments(
     projectPath: string,
@@ -167,43 +201,62 @@ export class ReviewCommentService {
     const batchId = this.newId();
     const requested = new Set(input.commentIds);
     const consumed: string[] = [];
+    const entryRefs: ReviewEntryRef[] = [];
 
-    for (const comment of store.state.comments) {
-      if (comment.status === "pending" && requested.has(comment.id)) {
-        comment.status = "archived";
-        comment.archivedAt = submittedAt;
-        comment.batchId = batchId;
-        comment.targetSessionId = input.targetSessionId;
-        consumed.push(comment.id);
-      }
+    for (let index = store.state.drafts.length - 1; index >= 0; index--) {
+      const ref = store.state.drafts[index];
+      if (!ref || !requested.has(ref.entryId)) continue;
+      const found = findEntry(store.state, ref);
+      if (!found) continue;
+      found.entry.submittedAt = submittedAt;
+      found.entry.submissionId = batchId;
+      consumed.unshift(ref.entryId);
+      entryRefs.unshift({ ...ref });
+      store.state.drafts.splice(index, 1);
     }
 
-    const batch: ReviewBatch = {
+    const summary: ReviewSubmissionSummary = {
+      id: batchId,
+      submittedAt,
+      requestedTarget: input.targetSessionId,
+      targetSessionId: input.targetSessionId,
+      entryRefs,
+      status: "legacy",
+      responseRevision: 0,
+      acknowledgedRevision: 0,
+    };
+    store.state.submissions.push(summary);
+    await store.save();
+    return {
       id: batchId,
       submittedAt,
       targetSessionId: input.targetSessionId,
       commentIds: consumed,
     };
-    store.state.batches.push(batch);
-    await store.save();
-    return { ...batch, commentIds: [...batch.commentIds] };
   }
 
-  /** The on-disk path of a project's drafts file (for tests/diagnostics). */
   filePathFor(projectPath: string): string {
     return path.join(projectPath, YEP_DIR, REVIEW_COMMENTS_FILENAME);
   }
 
-  /** Drop cached state (tests: simulate a fresh service / server restart). */
   reset(): void {
     this.stores.clear();
+  }
+
+  private async capture(
+    projectPath: string,
+    anchor: ReviewCommentAnchor,
+  ): Promise<ReviewCapture> {
+    return anchor.projection && this.captureWriter
+      ? this.captureWriter.capture(projectPath, anchor.projection)
+      : { status: "legacy-missing" };
   }
 
   private async getStore(projectPath: string): Promise<ProjectStore> {
     let store = this.stores.get(projectPath);
     if (!store) {
       const created: ProjectStore = {
-        state: emptyReviewCommentsFile(),
+        state: emptyReviewStoreFile(),
         loadPromise: null,
         loaded: false,
         dirEnsured: false,
@@ -216,30 +269,30 @@ export class ReviewCommentService {
       store = created;
     }
     if (!store.loaded) {
-      if (!store.loadPromise) {
-        store.loadPromise = this.load(projectPath, store);
-      }
+      if (!store.loadPromise) store.loadPromise = this.load(projectPath, store);
       await store.loadPromise;
     }
     return store;
   }
 
   private async load(projectPath: string, store: ProjectStore): Promise<void> {
+    let migrated = false;
     try {
       const content = await fs.readFile(this.filePathFor(projectPath), "utf-8");
-      store.state = parseReviewCommentsFile(JSON.parse(content));
+      const parsed = JSON.parse(content) as { version?: unknown };
+      migrated = parsed.version === REVIEW_COMMENTS_FILE_VERSION;
+      store.state = parseReviewStoreFile(parsed);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-        // Corrupt/unreadable file: degrade to an empty store rather than
-        // wedging the review surface. A JSON.parse throw lands here too.
         console.warn(
           `[ReviewCommentService] Failed to load drafts for ${projectPath}, starting fresh:`,
           error,
         );
       }
-      store.state = emptyReviewCommentsFile();
+      store.state = emptyReviewStoreFile();
     }
     store.loaded = true;
+    if (migrated) await store.save();
   }
 
   private async doSave(
@@ -247,7 +300,6 @@ export class ReviewCommentService {
     store: ProjectStore,
   ): Promise<void> {
     if (!store.dirEnsured) {
-      // Creates `.yep/`, git-excluding it by default on first creation.
       await ensureManagedProjectDir(projectPath, YEP_DIR);
       store.dirEnsured = true;
     }
@@ -259,14 +311,78 @@ export class ReviewCommentService {
   }
 }
 
-function cloneComment(comment: ReviewComment): ReviewComment {
-  return { ...comment, anchor: { ...comment.anchor } };
+function findEntry(store: ReviewStoreFile, ref: ReviewEntryRef) {
+  const site = store.sites.find((item) => item.id === ref.siteId);
+  const entry = site?.entries.find((item) => item.id === ref.entryId);
+  return site && entry ? { site, entry } : null;
 }
 
-function cloneFile(file: ReviewCommentsFile): ReviewCommentsFile {
+function findDraftEntry(store: ReviewStoreFile, entryId: string) {
+  const ref = store.drafts.find((item) => item.entryId === entryId);
+  return ref ? findEntry(store, ref) : null;
+}
+
+function cloneAnchor(anchor: ReviewCommentAnchor): ReviewCommentAnchor {
+  return {
+    ...anchor,
+    revision: { ...anchor.revision },
+    ...(anchor.projection ? { projection: { ...anchor.projection } } : {}),
+  };
+}
+
+function canonicalEntryToComment(
+  entry: ReviewReviewerEntry,
+  pending: boolean,
+): ReviewComment {
+  return {
+    id: entry.id,
+    anchor: cloneAnchor(entry.anchor),
+    text: entry.text,
+    status: pending ? "pending" : "archived",
+    createdAt: entry.createdAt,
+    ...(!pending && entry.submittedAt
+      ? { archivedAt: entry.submittedAt }
+      : {}),
+    ...(!pending && entry.submissionId ? { batchId: entry.submissionId } : {}),
+  };
+}
+
+function cloneLegacyFile(file: ReviewCommentsFile): ReviewCommentsFile {
   return {
     version: file.version,
-    comments: file.comments.map(cloneComment),
-    batches: file.batches.map((b) => ({ ...b, commentIds: [...b.commentIds] })),
+    comments: file.comments.map((comment) => ({
+      ...comment,
+      anchor: cloneAnchor(comment.anchor),
+    })),
+    batches: file.batches.map((batch) => ({
+      ...batch,
+      commentIds: [...batch.commentIds],
+    })),
+  };
+}
+
+function cloneStoreFile(file: ReviewStoreFile): ReviewStoreFile {
+  return {
+    version: file.version,
+    sites: file.sites.map((site) => ({
+      ...site,
+      entries: site.entries.map((entry) => ({
+        ...entry,
+        anchor: cloneAnchor(entry.anchor),
+        capture:
+          entry.capture.status === "captured"
+            ? {
+                ...entry.capture,
+                projection: { ...entry.capture.projection },
+              }
+            : { status: "legacy-missing" },
+      })),
+      outcomes: site.outcomes.map((outcome) => ({ ...outcome })),
+    })),
+    drafts: file.drafts.map((draft) => ({ ...draft })),
+    submissions: file.submissions.map((submission) => ({
+      ...submission,
+      entryRefs: submission.entryRefs.map((ref) => ({ ...ref })),
+    })),
   };
 }

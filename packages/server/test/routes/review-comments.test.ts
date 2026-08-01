@@ -137,6 +137,10 @@ describe("review-comments routes", () => {
 
   it("rejects an invalid anchor and empty text", async () => {
     expect((await post({ anchor: { path: "" }, text: "x" })).status).toBe(400);
+    expect(
+      (await post({ anchor: anchor({ path: "../outside.ts" }), text: "x" }))
+        .status,
+    ).toBe(400);
     expect((await post({ anchor: anchor(), text: "   " })).status).toBe(400);
     expect((await post({ anchor: anchor() })).status).toBe(400);
   });

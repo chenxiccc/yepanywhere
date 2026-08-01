@@ -7,6 +7,14 @@ Topic: backward-compat
 
 ## Decisions
 
+2026-08-01 `.yep/review-comments.json` version 2 — migrate every valid
+version-1 draft, archived comment, and batch into canonical sites, reviewer
+entries, active-draft references, and submission summaries before persisting
+new submission manifests. Migrated entries use `legacy-missing` rather than a
+fabricated current-file capture. The established review-comments endpoint
+continues returning its version-1 comments/batches projection for older
+clients; only active drafts count toward the 2,000-comment creation limit.
+
 2026-07-31 Source Control action commit counts — add optional
 `commitsAdvanced` fields to the existing Pull and Push responses without a new
 capability. Released capable servers `v0.6.0`, `v0.6.1`, `v0.6.2`, and
