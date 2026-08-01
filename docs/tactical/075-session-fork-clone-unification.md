@@ -1,7 +1,8 @@
 # Session Fork And Clone Unification
 
-Status: confirmed failure inventory and proposed implementation plan; no runtime
-changes have been made from this tactical.
+Status: product direction approved 2026-08-01; implementation and paid-provider
+validation are paused pending Maintainer review of the execution and
+compatibility plan below. No runtime changes have been made from this tactical.
 
 Topic: fork-from-turn
 Topic: provider-fork-support
@@ -13,8 +14,9 @@ Related topics:
 [provider-fork-support](../../topics/provider-fork-support.md),
 [turn-rail-marker-layout](../../topics/turn-rail-marker-layout.md),
 [provider-context-economics](../../topics/provider-context-economics.md),
-[codex-user-turn-provenance](../../topics/codex-user-turn-provenance.md), and
-[server-capabilities](../../topics/server-capabilities.md).
+[codex-user-turn-provenance](../../topics/codex-user-turn-provenance.md),
+[server-capabilities](../../topics/server-capabilities.md), and
+[vanilla-defaults](../../topics/vanilla-defaults.md).
 
 ## Objective
 
@@ -28,9 +30,9 @@ The existing provider `forkSession` primitive remains the foundation. The work
 is to give it one trustworthy server-owned boundary model and a small, honest
 set of user actions.
 
-## Recommended Product Model
+## Approved Product Model
 
-Use three distinct words for three distinct outcomes:
+The Maintainer approved using three distinct words for three distinct outcomes:
 
 | Action | Meaning | Source session | New session |
 | --- | --- | --- | --- |
@@ -41,6 +43,26 @@ Use three distinct words for three distinct outcomes:
 Generated-summary fork is an explicit advanced form of **Fork after**, not the
 default meaning of Clone and not an implicit interpretation of whatever text
 happens to be in the composer.
+
+The implementation decisions fixed by that approval are:
+
+- Clone is a direct session-header action, not a doorway into Fork with summary
+  or Handoff.
+- Clone navigates in the same tab to a cold target titled `Clone: <source>`,
+  with an empty composer. The source and its draft remain untouched.
+- A normal per-turn Fork is message-less. Fork with summary remains an explicit
+  secondary action.
+- Clone and Fork after are disabled while the selected/latest turn is active;
+  the first implementation does not wait implicitly.
+- The first implementation adds Clone to the session header, not every session
+  list row.
+- The target keeps the source provider, model, project/workstream, sandbox
+  settings, and YA parent lineage.
+
+This approval is also the deliberate default-on product decision required by
+`topics/vanilla-defaults.md`: Clone is a familiar, explicitly invoked copy
+action, creates no provider turn, and does no background work before the user
+selects it.
 
 ### Clone should be direct, not a doorway into the current fork UI
 
@@ -225,9 +247,10 @@ type SessionForkIntent =
   | { kind: "after-user-turn"; sourceMessageId: string };
 ```
 
-This is a conceptual contract, not an approved wire shape. Before editing the
-request contract, complete the compatibility review required by
-`topics/server-capabilities.md` and the repository instructions.
+This is the approved domain model. The proposed wire spelling is
+`forkKind` plus `sourceMessageId`; it remains behind the compatibility approval
+gate below and can be renamed during implementation without changing the three
+meanings.
 
 The server resolves the selected normalized user message through the owning
 reader's real-user-turn provenance, finds the requested completed boundary,
@@ -242,6 +265,32 @@ and passes a provider-native fork boundary to the adapter:
 YA render ids, React keys, positional normalized ids, provider item ids, and
 provider turn ids remain separate typed concepts. A conversion must be explicit
 and tested; a plain `string` passed across all layers recreates this incident.
+
+### Preserve provider boundary identity on the server
+
+Extract the existing route-local `resolveForkAfterBoundary` logic into one
+server-owned completed-turn resolver and extend it for before-turn and latest-
+complete intents. The resolver returns both the YA display boundary used for
+placement/diagnostics and a typed provider boundary used for the write:
+
+```ts
+type ProviderForkBoundary =
+  | { kind: "full" }
+  | { kind: "message"; provider: "claude"; messageId: string }
+  | { kind: "turn"; provider: "codex"; turnId: string }
+  | { kind: "entry"; provider: "pi"; entryId: string };
+```
+
+This is also conceptual rather than a required public type name. The important
+constraint is that provider ids stay server-side and cannot be substituted for
+YA session ids or renderer ids.
+
+For Codex, build a reader-owned association between each paired human user turn
+and its completed provider turn id. Use persisted user-turn provenance plus the
+turn lifecycle/response metadata, then confirm the selected id against
+app-server `thread/read`. Pass the resulting turn id to the Codex adapter so it
+can calculate whole-turn rollback directly. Do not send provider ids through
+the browser, match prompts by text, or infer a human turn from a user-role row.
 
 ### Keep one orchestration result
 
@@ -276,34 +325,86 @@ of the copy operation.
   tracked issue/archive; tests should assert behavior, not the accidental raw
   error copy.
 
-### 2 — approve the Clone, Fork, and Handoff product contract
+### 2 — record the approved Clone, Fork, and Handoff contract
 
-- Confirm direct header Clone, same-tab navigation by default, source session
-  untouched, no generated message, and empty target composer.
-- Confirm that normal per-turn Fork defaults to no summary and that generated
-  summary is an explicit secondary action.
-- Confirm active-turn behavior: disabled-until-complete is the recommended
-  first implementation; a cancellable wait may follow if needed.
-- Decide the target title prefix (`Clone:` versus the existing `Fork:`) without
-  letting title wording block the correctness work.
-- Keep session-list row Clone out of the first slice unless the header action
-  proves insufficient.
+- Treat the approved product decisions above as fixed for the first
+  implementation.
+- Keep the existing words and effects of Restart/Handoff separate even when it
+  reuses the same provider primitive internally.
+- Re-open product review only if provider behavior makes one of the approved
+  outcomes impossible; do not silently substitute a summary or continuation.
 
 ### 3 — review the hosted-client fork contract
 
-Before client/server contract edits:
+Classification: **optional**. Clone/Fork is provider-dependent and can be
+honestly hidden while the rest of session use remains intact.
 
-- identify whether repaired per-turn fork is core or optional;
-- inspect the required stable release corpus;
-- define a new capability/request semantic rather than broadening an existing
-  advertised meaning;
-- state the exact older-server fallback; and
-- obtain maintainer approval.
+Required corpus on 2026-08-01:
 
-Recommended fallback: a hosted client may show direct full Clone only when the
-older server's provider response already proves the existing full `/fork`
-route. The new server-resolved before/after actions remain hidden when their
-new capability is absent. Never send new intent fields speculatively.
+| Stable release | Released | Receipt |
+| --- | --- | --- |
+| `v0.7.0` (`c40735b8`) | 2026-07-25 | Latest stable; inside the preceding 14 days |
+| `v0.6.2` (`a9af64ee`) | 2026-07-11 | Second-latest stable; included even though older than 14 days |
+
+Both releases provide
+`POST /api/projects/:projectId/sessions/:sessionId/fork` with optional
+`upToMessageId`, and both expose provider-level `supportsForkSession`. Neither
+advertises a server capability for resolving a human-turn intent, and both
+contain the client-side resolver/control failures recorded above.
+
+Proposed compatibility contract:
+
+- Add transitional `/api/version` capability `session-fork-turn-intents`.
+- Add `sessions` as a capability-registry area and record the actual first
+  release containing the contract when that release is chosen. Set
+  `reviewAfter` to 2026-09-01; remove the client gate only after the optional
+  support corpus contains no server without it and the Maintainer approves.
+  Keep server advertisement until no maintained client branches on it.
+- Under that capability, the existing `/fork` route accepts `forkKind` with
+  `clone-latest-complete`, `before-user-turn`, or `after-user-turn`, plus
+  `sourceMessageId` for the two turn-relative forms.
+- Reject a request that mixes the new intent fields with legacy
+  `upToMessageId`.
+- Keep the existing legacy body shape for maintained old clients. Repair its
+  display-id-to-provider-id mapping where possible, but do not reinterpret an
+  inside-turn anchor as a completed turn.
+- Do not broaden provider `supportsForkSession`; it continues to mean only that
+  the selected provider implements the primitive.
+- Do not bump `remoteCompatibilityLevel`; this is one narrow optional feature
+  with an exact capability.
+
+New-client/older-server fallback:
+
+- Never send `forkKind` or `sourceMessageId` when
+  `session-fork-turn-intents` is absent.
+- When the source is definitively idle and provider
+  `supportsForkSession === true`, show header Clone and use the already-shipped
+  empty-body full `/fork` request. This was verified in both releases above.
+- Hide the new direct per-turn before/after actions when the capability is
+  absent. Do not retain the known-broken client-side boundary scan as a
+  fallback.
+- Hide Clone as well when provider support is absent/unknown, and make no fork
+  request.
+
+Old-client/new-server behavior:
+
+- Preserve empty-body and `{ upToMessageId }` request handling.
+- Apply completed-turn safety only to the explicit new
+  `clone-latest-complete` intent. This avoids silently changing the legacy
+  empty-body meaning for existing clients and internal callers.
+- Response fields used by older clients remain unchanged. New diagnostics may
+  be additive, but the new client must need only the existing target session
+  id/project/provider/title fields to navigate.
+
+Approval prompt for the next step:
+
+> Compatibility review for session fork intents: releases `v0.7.0` and
+> `v0.6.2` lack `forkKind`/`sourceMessageId` and
+> `session-fork-turn-intents`. Add that transitional capability to gate the new
+> server-resolved fields. Without it, the client makes only the already-
+> supported idle full-fork request for header Clone and hides direct per-turn
+> Fork. Existing `supportsForkSession`, legacy request bodies, response fields,
+> and remote compatibility level retain their meanings. Approve?
 
 ### 4 — centralize completed-turn boundary resolution
 
@@ -321,6 +422,10 @@ new capability is absent. Never send new intent fields speculatively.
 
 - Sync/verify the pinned Codex reference before source changes and inspect the
   matching app-server `thread/read`, `thread/fork`, and rollback identities.
+- The 2026-08-01 preflight found the optional local checkout at
+  `rust-v0.144.1` while `package.json` expects `rust-v0.145.0`; run
+  `pnpm references:sync` only after the Maintainer says to proceed, then require
+  `pnpm references:check` to pass before relying on upstream source receipts.
 - Preserve provider item/turn identity alongside normalized messages or resolve
   it from the durable rollout on the server; do not replace render UUIDs.
 - Prefer Codex's direct completed-turn id as the boundary. Use rollback count
@@ -333,25 +438,33 @@ new capability is absent. Never send new intent fields speculatively.
 ### 6 — restore direct Clone in session-header chrome
 
 - Add an optional header-only Clone handler to `SessionMenu`.
-- Gate it with `supportsForkSession` and the approved server capability.
-- Invoke the full latest-complete fork intent, show a visible pending state,
-  and prevent duplicate activation.
+- Gate it on provider `supportsForkSession`. Use the latest-complete intent when
+  the server capability is present; use only the validated idle empty-body
+  fallback described above when it is absent.
+- Show a visible pending state and prevent duplicate activation.
 - On success, navigate to the cold target and preserve parent lineage,
   provider/model/workstream, sandbox state, and title metadata.
+- Title a new-capability target `Clone: <source>` without repeatedly stacking
+  the prefix. An older-server full-fork fallback may retain its existing
+  `Fork:` title rather than requiring a second metadata mutation.
 - On failure, leave the source and its draft untouched and show an actionable
   message.
+- Put new component-owned styles in co-located CSS Modules. Do not grow a
+  frozen global stylesheet to add the menu or pending state.
 
 ### 7 — make per-turn Fork operable without the turn rail
 
-- Replace the unlabeled fork-before-only prompt action with an explicit Fork
-  menu or sheet available from the prompt's normal action surface.
+- Replace the unlabeled fork-before-only prompt action with one **Fork from this
+  turn** button that opens an explicit menu/sheet from the prompt's normal
+  action surface.
 - Offer only valid choices for that turn: after on a completed first turn;
   before/after on later completed turns.
 - Keep the turn-notch menu as a shortcut backed by the same handlers.
 - Make touch targets and labels usable at 375 px; long-pressing a tiny rail
   notch cannot be the only mobile path.
-- Separate **Fork without summary** from **Fork with summary...** before any
-  composer state is consumed.
+- Use **Before this turn**, **After this turn**, and **After with summary...**
+  labels. The first two are message-less; the last is visually secondary and
+  enters the existing summary flow before any composer state is consumed.
 
 ### 8 — converge internal clone and replacement consumers
 
@@ -378,6 +491,88 @@ new capability is absent. Never send new intent fields speculatively.
   375x812, including a one-turn session and a visible recoverable failure.
 - Update the owning topics from "known broken" to the verified contract only
   after provider-level proof passes.
+
+## Isolated Real-Provider Validation
+
+Real validation is required after all deterministic tests pass. It must not use
+the Maintainer's running server, current YA data directory, or an existing
+project/session as a source.
+
+### Temporary YA server profile
+
+- Create one explicit `mktemp -d` root and a separate empty project directory
+  within it.
+- Start the source checkout on a free three-port block with
+  `HOST=127.0.0.1`, `YEP_DATA_DIR=<temp-root>/ya`,
+  `ENABLED_PROVIDERS=claude,codex`,
+  `VOICE_INPUT=false`, `AUTH_DISABLED=true`, `OPEN_BROWSER=false`, and file
+  logging enabled. Do not use port 3400.
+- Do not override `CLAUDE_CONFIG_DIR` or `CODEX_HOME`: the real CLIs need their
+  existing authentication. The unique temporary cwd keeps the smoke sessions
+  scoped to one disposable project even though provider-native transcripts are
+  written to the normal authenticated stores.
+- Never inspect, fork, modify, archive, or delete unrelated provider sessions.
+  Record every created YA/provider id. Retain provider transcripts for review;
+  do not delete them as automatic cleanup.
+- Archive server logs, API assertion output, and browser captures under
+  `.artifacts/ui-testing/2026-08-01-fork-clone/` before removing only the
+  validated temporary YA data/project directories. Validate the exact
+  `mktemp` root before any cleanup operation.
+
+### Bounded model and prompt budget
+
+- Claude: `haiku`. If the live catalog does not offer Haiku, stop the Claude
+  smoke rather than silently selecting Sonnet/Opus.
+- Codex: `gpt-5.6-luna` with low reasoning. If unavailable, use
+  `gpt-5.4-mini` with low reasoning; if neither is available, stop the Codex
+  smoke rather than selecting Sol or another frontier model.
+- Use a tiny marker file and short deterministic prompts. The first source turn
+  must read the file, producing a real tool call/result; the second source turn
+  is text-only.
+- Budget at most three successful model turns per provider: two on the source
+  and one continuation from a cold fork. Permit at most one retry per provider
+  for a clearly transient transport/capacity failure. Fork/Clone operations
+  themselves send no model turn.
+- Do not run Fork with summary in the paid-provider smoke. Its resolver and UI
+  integration are covered deterministically; summary generation is unchanged
+  and would add unrelated model turns.
+
+### End-to-end matrix for both Claude and Codex
+
+1. Start a real source session in the temporary project with the tool-forcing
+   marker prompt and wait for a completed response.
+2. From the first prompt's browser action, verify **After this turn** is
+   available and **Before this turn** is absent. Create the cold fork.
+3. Assert through session/process APIs and rendered history that the target has
+   a distinct canonical YA id, no live process, no synthetic continuation,
+   the complete tool call/result/final response, and no source draft mutation.
+4. Resume that cold target with one short context question and verify the real
+   provider retained the marker context.
+5. Return to the untouched source, send the second short turn, then exercise
+   **Before this turn** and **After this turn**. Verify their retained prefixes
+   exactly; in particular, the before-second and after-first boundaries match.
+6. Use header **Clone** after the second response. Verify both turns are
+   retained, the new composer is empty, no process starts, parent lineage and
+   settings persist, and the source remains byte-for-byte unchanged at the
+   provider transcript level.
+7. Capture and inspect the header and prompt menus at 1920x1080 and 375x812.
+   Include the one-turn state, later-turn before/after state, pending/disabled
+   state, and a recoverable failure toast.
+8. Review browser/toast output for raw provider-id leakage. Review server logs
+   for unexpected requests, warnings, duplicate forks, or background processes
+   left alive; typed provider ids are appropriate in structured diagnostics.
+
+The real smoke passes only when both providers complete the same matrix. A
+provider/auth/catalog failure is reported as an environmental block, not
+silently replaced with a fixture result.
+
+## Current Approval Gate
+
+This documentation commit authorizes no implementation and no paid-provider
+calls. After the Maintainer reviews it, an explicit **proceed** approves the
+compatibility proposal, implementation direction, bounded real-provider spend,
+and isolated-profile validation above. Any material change to those boundaries
+returns here for review before code is changed.
 
 ## Acceptance Gates
 
