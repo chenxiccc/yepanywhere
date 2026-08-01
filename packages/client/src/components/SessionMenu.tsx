@@ -2,6 +2,7 @@ import type { PromptSuggestionMode } from "@yep-anywhere/shared";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useI18n } from "../i18n";
+import styles from "./SessionMenu.module.css";
 
 export interface SessionMenuProps {
   sessionId: string;
@@ -241,6 +242,7 @@ export function SessionMenu({
   };
 
   const wrapperClasses = [
+    styles.wrapper,
     "session-menu-wrapper",
     className,
     isOpen && "is-open",
@@ -263,7 +265,7 @@ export function SessionMenu({
   const dropdownContent = (
     <div
       ref={dropdownRef}
-      className="session-menu-dropdown"
+      className={styles.dropdown}
       style={dropdownStyle}
     >
       <button type="button" onClick={() => handleAction(onToggleStar)}>
@@ -550,7 +552,7 @@ export function SessionMenu({
           type="button"
           onClick={handleTerminate}
           disabled={isTerminating}
-          className="terminate-button"
+          className={styles.terminateButton}
         >
           <svg
             width="14"
@@ -610,7 +612,7 @@ export function SessionMenu({
       <button
         ref={triggerRef}
         type="button"
-        className="session-menu-trigger"
+        className={[styles.trigger, "session-menu-trigger"].join(" ")}
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
