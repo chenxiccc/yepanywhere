@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, type EnvSettingEntry } from "../../api/client";
 import { useI18n } from "../../i18n";
+import styles from "./EnvironmentSettings.module.css";
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
 import { HideInSettingsSearch } from "./SettingsSearchContext";
 import { SettingsSection } from "./SettingsSection";
@@ -61,8 +62,8 @@ export function EnvironmentSettings() {
         {!error && entries === null && <p>{t("environmentLoading")}</p>}
 
         {groups.map((group) => (
-          <div key={group.group} className="settings-group env-var-group">
-            <h3 className="env-var-group-title">{group.group}</h3>
+          <div key={group.group} className={`settings-group ${styles.group}`}>
+            <h3 className={styles.groupTitle}>{group.group}</h3>
             {group.entries.map((entry) => (
               <EnvVarRow key={entry.name} entry={entry} />
             ))}
@@ -76,18 +77,18 @@ export function EnvironmentSettings() {
 function EnvVarRow({ entry }: { entry: EnvSettingEntry }) {
   const { t } = useI18n();
   return (
-    <div className={`env-var-row ${entry.set ? "" : "env-var-unset"}`}>
-      <div className="env-var-head">
-        <code className="env-var-name">{entry.name}</code>
+    <div className={`${styles.row} ${entry.set ? "" : styles.unset}`}>
+      <div className={styles.head}>
+        <code className={styles.name}>{entry.name}</code>
         {entry.secret && (
-          <span className="env-var-secret-badge">
+          <span className={styles.secretBadge}>
             {t("environmentSecretBadge")}
           </span>
         )}
         <EnvVarValue entry={entry} />
       </div>
-      <p className="env-var-description">{entry.description}</p>
-      {entry.note && <p className="env-var-note">{entry.note}</p>}
+      <p className={styles.description}>{entry.description}</p>
+      {entry.note && <p className={styles.note}>{entry.note}</p>}
     </div>
   );
 }
@@ -96,17 +97,17 @@ function EnvVarValue({ entry }: { entry: EnvSettingEntry }) {
   const { t } = useI18n();
   if (!entry.set) {
     return (
-      <span className="env-var-value env-var-value-unset">
+      <span className={`${styles.value} ${styles.valueUnset}`}>
         {t("environmentValueNotSet")}
       </span>
     );
   }
   if (entry.value === "") {
     return (
-      <span className="env-var-value env-var-value-unset">
+      <span className={`${styles.value} ${styles.valueUnset}`}>
         {t("environmentValueEmpty")}
       </span>
     );
   }
-  return <code className="env-var-value">{entry.value}</code>;
+  return <code className={styles.value}>{entry.value}</code>;
 }

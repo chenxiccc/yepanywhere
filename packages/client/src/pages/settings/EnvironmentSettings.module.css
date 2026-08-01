@@ -1,0 +1,78 @@
+/* Environment settings: read-only catalog of documented startup env vars. */
+
+/* Tightens the shared `.settings-group` rhythm for this dense catalog. The
+   global class is compounded so the override does not depend on whether the
+   module or index.css is emitted last. */
+.group:global(.settings-group) {
+  gap: var(--space-2);
+}
+
+.groupTitle {
+  margin: 0 0 var(--space-1);
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.row {
+  padding: var(--space-2);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+
+.unset {
+  opacity: 0.7;
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.name {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.secretBadge {
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 0 var(--space-1);
+}
+
+.value {
+  margin-left: auto;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+.valueUnset {
+  font-family: inherit;
+  color: var(--text-dimmed);
+  font-style: italic;
+}
+
+.description {
+  margin: var(--space-1) 0 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+/* Dynamic, runtime-computed caption (e.g. HOST's active listen addresses). */
+.note {
+  margin: var(--space-1) 0 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
