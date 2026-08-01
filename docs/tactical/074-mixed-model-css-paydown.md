@@ -2,7 +2,7 @@
 
 Topic: css-architecture
 
-Status: active 2026-08-01.
+Status: stopped 2026-08-01 at the Maintainer's request.
 
 This is the durable recovery ledger for the explicitly authorized mixed-model
 CSS paydown campaign. Candidate selection remains data-driven; this file must
@@ -43,12 +43,14 @@ After compaction or controller restart:
 - Protocol base: `ef2c98ae9b1882d47fc931971881b2f90fba7f08`
 - First worker launch: `2026-08-01T07:46:39+02:00`
 - Wall-clock deadline: `2026-08-01T11:46:39+02:00`
-- Workers launched: 7 / 50
-- Accepted slices: 6
-- Stopped slices: 1
-- Current interval: 1 / 5 accepted after the first audit
-- Current worker: none
-- Current clean base: this Luna-promotion ledger checkpoint (`HEAD`)
+- Workers launched: 10 / 50
+- Accepted migration slices: 8
+- Stopped runs: 2
+- Accepted analyzer repairs: 0
+- Final interval: closed early at 3 / 5 accepted migrations
+- Current worker: none; run 10 was interrupted and its edits were discarded
+- Stop reason: explicit Maintainer request before the worker or time limits
+- Current repository checkpoint: the closeout commit containing this ledger
 
 ## Completed slices
 
@@ -61,6 +63,9 @@ After compaction or controller restart:
 | 5 | Risk affordance | Opus high: local state move | Accepted | `11da906e` | 56 legacy lines, 6 owned rules | Alert-only monitoring; delayed tooltip fixture; no steer |
 | 6 | Smart Turn controls | Luna xhigh: scattered finite state mapping | Accepted | `68f3adea` | 112 legacy lines, 15 owned rules | One calibration sample; four exact captures; no steer |
 | 7 | Remote compatibility notice | Luna xhigh: finite placement, severity, and child state | Accepted | `e272731d` | 176 legacy lines, 24 owned rules | Final calibration sample; four exact captures; no steer |
+| 8 | File-path context menu | Opus high: local literal portal move | Accepted | `3de511c1` | 40 legacy lines, 4 owned rules | Alert-only monitoring; two exact captures; no steer |
+| 9 | Emulator navigation buttons | Opus high: local literal state move | Accepted after audit correction | `6d634263` | 32 legacy lines, 4 owned rules | Alert-only monitoring; four exact captures; one bounded post-run correction |
+| 10 | Inventory ownership sinks | Luna xhigh: analyzer trust-gate repair | Stopped; no commit | — | 0 | Alert-only monitoring; manually interrupted at the Maintainer's request |
 
 The common project id for these workers is
 `L1VzZXJzL2tncmFlaGwvY29kZS95ZXBhbnl3aGVyZQ`. Exact recovery handles and
@@ -76,6 +81,9 @@ ignored local artifacts:
 | 5 | `2ab5c2d1-6bc8-463e-a6de-461757d6f2f1` | `24ebd7dc-6314-489f-821f-2fd9de4902eb` | `ff95c92b` | `ecc172bd7b9a4b55b2208e831bdf08334d80b22c3757ff051dda415854433b69` |
 | 6 | `019fbc1e-0159-74b2-b810-3586d1b7d13a` | `5079622a-35e5-4463-8269-d7097641f558` | `f621bd4b` | `165100bd77c56042b8b72a5f5a503485508c7c5607858d5ed89a84612efeec25` |
 | 7 | `019fbc31-792d-7b83-98f8-652a2e305171` | `8334f7d4-1329-49de-9eee-14b0a847ff05` | `dfaf3cc9` | `b05d000806d48abbb7417a7efc91c8a03cd247d84f1946aecf97759ebe289c9d` |
+| 8 | `8aaf107b-bc00-4b8f-bb19-9d4476e03c09` | `594be1dc-658d-47e1-9b5d-dd7fb7b2b05f` | `43343bf5cfa01b24d5ced587662819323c3d81f6` | `d086a7f597061f6bf42ece8f128daea5303de21f9e2380b9555d535cdcde5132` |
+| 9 | `5726beb0-af8a-4da7-b458-85f84307b4eb` | `042a7399-b730-4186-a172-c277c0f7ed90` | `3de511c1c2f5ad583ee8b69fbc2be7575ee2aaf0` | `cec66ead1376176aaa9dac2acaacc1d8e55e89d670f6c633000978847ea79559` |
+| 10 | `019fbc62-0467-7912-8976-cdfb839bd01b` | `e34b7d9a-677b-4220-ad1a-e2c6c347ab05` | `686acf409e16ebc4b7d2a1f36a0516a38b86637a` | `86765a72780384d47d262887369c512945dba547668612d6d60042c46e293fce` |
 
 ## Audit interval notes
 
@@ -133,6 +141,34 @@ post-steer result, so subsequent Luna slices now use the same one-minute,
 alert-only supervision as Opus. Any later trust-gate event, scope steer,
 unexplained verification failure, or out-of-order commit resets calibration as
 specified by the runbook.
+
+Runs 8 and 9 completed the three accepted migrations in the partial second
+interval. Together, runs 7-9 moved 248 legacy lines and 32 owned rules into
+three modules. Across the whole campaign, the eight accepted migrations moved
+551 legacy lines and 66 owned rules into eight modules: legacy lines fell from
+24,107 to 23,556, owned rules from 2,183 to 2,117, and module files rose from
+45 to 53. Coupled rules remained 832, generated rules 50, and unresolved
+selectors 78.
+
+Run 9's first result left a legacy selector contract in an end-to-end test.
+The controller rejected that silent no-op and the same Opus session replaced
+it with a role-and-name locator before the commit was accepted. The runbook
+now requires contract consumers to be checked after a selector moves and no
+longer carries hard-coded ratchet totals that can go stale during concurrent
+work.
+
+Fresh inventory after run 9 exposed a separate analyzer defect: a generic
+status string in `ForkSummaryDisplayObject` was being treated as a class-name
+producer and created false ownership edges. Run 10 attempted to separate
+permissive unused-CSS evidence from conservative React ownership sinks. The
+Maintainer requested an immediate wrap-up before it completed, so the turn was
+interrupted, no commit was made, and all of its assigned edits were discarded.
+The false-positive ownership edge therefore remains a known tooling issue; do
+not use that edge as migration evidence without manual confirmation.
+
+The second interval closed early at three accepted migrations because the
+Maintainer stopped the campaign. No additional worker should be launched from
+this ledger without a new explicit authorization and fresh inventory.
 
 At each five-slice checkpoint, append aggregate inventory movement, model
 outcomes, fixture/check evidence, steering events, routing changes, and the
