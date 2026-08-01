@@ -22,6 +22,9 @@ See also:
   approval/native-sandbox mapping and live turn boundary.
 - [security](security.md) — authenticated, public, and future delegated-access
   trust boundaries.
+- [active-content-security](active-content-security.md) — files written by a
+  confined agent must remain data when inspected and cannot execute with the
+  operator browser's YA authority.
 - [subprocess-environment](subprocess-environment.md) — process-creation
   environment and inheritance boundaries.
 - [agent-working-directory-tracking](agent-working-directory-tracking.md) —

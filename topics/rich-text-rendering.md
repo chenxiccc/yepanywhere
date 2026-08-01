@@ -74,6 +74,12 @@ These run unconditionally and are not user-configurable:
   requested source line about 10% below the viewport top. The raw response is
   not reconstructed as HTML, so browser Save As and native copy/paste retain
   the exact source text. Modified-link gestures keep normal browser behavior.
+  The rendered document is a transitional YA-owned sanitized shell, not a
+  general active-file viewer or precedent for returning project HTML inline.
+  It must carry the per-response protection in
+  [`active-content-security.md`](active-content-security.md) while it remains,
+  and should converge on the shared SPA viewer when that preserves the needed
+  line/copy behavior.
 - **Assistant inline-code project file links** — when authenticated session
   Markdown renders with project context, inline-code filename references such
   as `` `topics/security.md` `` link to the project file viewer only if the

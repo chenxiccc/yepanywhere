@@ -99,6 +99,10 @@ section below for what would have to change at higher fan-out.
 - [`docs/project/ws-auth-state-model.md`](docs/project/ws-auth-state-model.md)
   — admission policy (`local_unrestricted` / `local_cookie_trusted` /
   `srp_required`) and the SRP transport state machine.
+- [`topics/active-content-security.md`](topics/active-content-security.md) —
+  confirmed browser-assisted privilege path from same-origin agent-authored
+  HTML, the source-first active-file contract, and the isolated-origin
+  requirement for executable project applications.
 - [`docs/project/2026-01-05-server-side-rendering.md`](docs/project/2026-01-05-server-side-rendering.md)
   — server-rendered markdown / diff / file-highlight augments that the client
   consumes through the streaming path.

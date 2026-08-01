@@ -129,6 +129,9 @@ bearer-link read-only views, not as relay-operator-private views. See
 
 ## Related Notes
 
+- [`active-content-security.md`](active-content-security.md) records the
+  confirmed same-origin active-document execution path, the source-first file
+  contract, and the isolated-origin requirement for agent-built applications.
 - [`docs/tactical/000-relay-origin-and-share-gating.md`](../docs/tactical/000-relay-origin-and-share-gating.md)
   records the current public-share relay, opt-in, and revocation decisions.
 - [`public-share-content-censorship.md`](public-share-content-censorship.md)

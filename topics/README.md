@@ -8,6 +8,8 @@
 - Public share content censorship
 - Approval and local access security hardening
 - Security trust boundaries
+- Active content security (confirmed same-origin HTML execution, source-first
+  file viewing, and isolated origins for agent-built applications)
 - Trusted client packaging for signed/local app installs
 - Hard development rules for upstream-facing defaults
 - Kzahel-disabled feature decisions

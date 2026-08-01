@@ -228,3 +228,5 @@
   and recovered patient-queue delivery.
 - notifications - Cross-platform event, delivery, and recipient-presentation
   boundaries for browser Web Push and native app push.
+- active-content-security - Source-first active-file viewing and isolated
+  origins for executable agent- or project-authored web content.

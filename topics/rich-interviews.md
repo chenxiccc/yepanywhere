@@ -76,7 +76,9 @@ richer member of the same family, not a separate app.
 - No served bundles, upload routes, or sandboxing — if an interview ever
   needs arbitrary DOM expressiveness, it embeds an [[interactives]] entry;
   that directional reference is the only implementation seam between the two
-  proposals. (Intent-adjacent but separate: the interactives *meta-UI
+  proposals, and that entry must satisfy [[active-content-security]] rather
+  than execute inside the YA document. (Intent-adjacent but separate: the
+  interactives *meta-UI
   protocol* carries freeform in-app comments to the agent; rich interviews
   are the structured, multi-round counterpart.)
 - No YA-side interview authoring UI.
@@ -94,6 +96,8 @@ richer member of the same family, not a separate app.
 ## See also
 
 - [[interactives]] — the split-off app container and the embed seam.
+- [[active-content-security]] — declarative YA-owned forms remain fragments;
+  arbitrary executable DOM requires an isolated untrusted-content origin.
 - [[selection-comment-ui]] — nearest shipped precedent for select/comment.
 - [[attachment-storage]] — candidate result landing.
 - [[vanilla-defaults]] — any interview UI ships self-gated/off by default.

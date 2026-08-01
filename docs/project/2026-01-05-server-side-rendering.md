@@ -24,6 +24,17 @@ Offload expensive computation to the server so the mobile client:
 
 The server will compute "augments" - pre-rendered presentation data - and send them alongside SDK messages. SDK message types stay unchanged; augments are a separate data channel.
 
+### Security boundary
+
+Augment HTML is a sanitized fragment produced by a reviewed YA renderer and
+inserted into an existing trusted client document. It is never arbitrary
+provider/project HTML and never a standalone active document. The fragment
+renderer must reject executable elements, event handlers, unsafe URLs, and
+active embeds before any `dangerouslySetInnerHTML` use. See
+[`active-content-security.md`](../../topics/active-content-security.md) for the
+separate source/download and isolated-origin rules governing HTML files,
+scripted SVG, and executable applications.
+
 ### Augment Types
 
 | Content Type | Augment Data |

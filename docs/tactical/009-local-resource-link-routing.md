@@ -32,6 +32,10 @@ Progress:
   project root into project-file viewer targets at click time. Preserved the
   agent's original Markdown and rendered fallback `href`; this is a contextual
   frontend interpretation, not a message rewrite.
+- [ ] 2026-08-01: Contain direct active-document navigation and converge every
+  open/new-tab/copy target on the source viewer or download. The confirmed
+  same-origin execution path and server-first response requirements are in
+  [`active-content-security.md`](../../topics/active-content-security.md).
 
 ## Context
 
@@ -457,5 +461,7 @@ breaking already-rendered or persisted content.
 - Should `/api/local-file` return binary wrappers over relay for all supported
   file types, or should the client choose `fetch()` vs `fetchBlob()` from file
   extension first?
-- How much standalone HTML compatibility is required for documents served by
-  `/api/local-file?render=1` outside the React app shell?
+- Does the standalone rendered-Markdown document retain enough browser-native
+  value to justify a strict per-response CSP, or should
+  `/api/local-file?render=1` converge entirely on the React viewer? It cannot
+  remain a precedent for serving arbitrary/project-authored HTML.

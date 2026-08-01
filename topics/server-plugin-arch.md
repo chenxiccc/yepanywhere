@@ -35,7 +35,9 @@ project shape, because:
   not a reason to build plugins.
 - [[interactives]] shows the preferred alternative shape for extensibility:
   independent out-of-process apps reached by proxy under a convention, with
-  no code loaded into the YA server and no stable internal API exposed.
+  no code loaded into the YA server and no stable internal API exposed. The
+  browser-facing proxy must still satisfy [[active-content-security]];
+  process separation does not create origin isolation.
 - [[vanilla-defaults]] — a settings-gated plugin toggle would satisfy the
   letter of default-off, but the objection here is the API/maintenance cost,
   which gating does not reduce.

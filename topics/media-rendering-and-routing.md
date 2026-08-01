@@ -8,6 +8,9 @@
 > attachment, or public share).
 
 See also:
+- [`active-content-security.md`](active-content-security.md) — why HTML, SVG,
+  and other active files must remain source/download data or execute only in
+  an isolated origin, regardless of which transport fetched their bytes.
 - [`ui-architecture.md`](ui-architecture.md) — the render-boundary principle
   these surfaces are supposed to share instead of each re-solving fetching.
 - [`rich-text-rendering.md`](rich-text-rendering.md) — how rendered Markdown/HTML
@@ -94,7 +97,9 @@ and the route it pulls from.
 - **Local file modal (rendered-text file links)** — click a non-media local file
   link in rendered text; a modal renders text/JSON/log inline, PDFs from a blob
   URL, and (direct mode) HTML/Markdown in a sandboxed iframe. `LocalFileModal`
-  → `/api/local-file`. Relay-safe.
+  → `/api/local-file`. Relay-safe. The sandboxed modal is the only permitted
+  HTML preview shape; open/new-tab actions must not escape it to an inline raw
+  active response. See [`active-content-security.md`](active-content-security.md).
 
 File-viewer modals own one same-URL browser-history entry: Back dismisses the
 viewer without leaving the underlying session, while opening or React effect
