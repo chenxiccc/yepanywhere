@@ -59,6 +59,11 @@ export interface UpdateReviewCommentInput {
   anchor?: ReviewCommentAnchor;
 }
 
+export interface AddReviewFollowUpInput {
+  anchor: ReviewCommentAnchor;
+  text: string;
+}
+
 export interface ArchiveReviewCommentsInput {
   commentIds: string[];
   targetSessionId: string;
@@ -235,6 +240,63 @@ export class ReviewCommentService {
     };
   }
 
+  /** Create a fresh active entry at an existing discussion site. */
+  async addFollowUp(
+    projectPath: string,
+    siteId: string,
+    input: AddReviewFollowUpInput,
+  ): Promise<ReviewReviewerEntry | null> {
+    const store = await this.getStore(projectPath);
+    if (store.state.drafts.length >= MAX_REVIEW_COMMENTS) {
+      throw new HttpError(
+        413,
+        `Review comment limit reached (${MAX_REVIEW_COMMENTS}); submit or delete drafts first.`,
+      );
+    }
+    const site = store.state.sites.find((item) => item.id === siteId);
+    if (!site) return null;
+    if (store.state.drafts.some((draft) => draft.siteId === siteId)) {
+      throw new HttpError(409, "This review site already has an active draft");
+    }
+    const entryId = this.newId();
+    const entry: ReviewReviewerEntry = {
+      id: entryId,
+      anchor: cloneAnchor(input.anchor),
+      text: input.text,
+      capture: await this.capture(projectPath, input.anchor),
+      createdAt: this.now(),
+    };
+    site.entries.push(entry);
+    site.path = input.anchor.path;
+    delete site.resolvedAt;
+    store.state.drafts.push({ siteId, entryId });
+    await store.save();
+    return cloneReviewerEntry(entry);
+  }
+
+  async resolveSite(projectPath: string, siteId: string): Promise<boolean> {
+    const store = await this.getStore(projectPath);
+    const site = store.state.sites.find((item) => item.id === siteId);
+    if (!site) return false;
+    site.resolvedAt = this.now();
+    await store.save();
+    return true;
+  }
+
+  async acknowledgeSubmission(
+    projectPath: string,
+    submissionId: string,
+  ): Promise<ReviewSubmissionSummary | null> {
+    const store = await this.getStore(projectPath);
+    const submission = store.state.submissions.find(
+      (item) => item.id === submissionId,
+    );
+    if (!submission) return null;
+    submission.acknowledgedRevision = submission.responseRevision;
+    await store.save();
+    return cloneSubmission(submission);
+  }
+
   filePathFor(projectPath: string): string {
     return path.join(projectPath, YEP_DIR, REVIEW_COMMENTS_FILENAME);
   }
@@ -347,6 +409,29 @@ function canonicalEntryToComment(
   };
 }
 
+function cloneReviewerEntry(entry: ReviewReviewerEntry): ReviewReviewerEntry {
+  return {
+    ...entry,
+    anchor: cloneAnchor(entry.anchor),
+    capture:
+      entry.capture.status === "captured"
+        ? {
+            ...entry.capture,
+            projection: { ...entry.capture.projection },
+          }
+        : { status: "legacy-missing" },
+  };
+}
+
+function cloneSubmission(
+  submission: ReviewSubmissionSummary,
+): ReviewSubmissionSummary {
+  return {
+    ...submission,
+    entryRefs: submission.entryRefs.map((ref) => ({ ...ref })),
+  };
+}
+
 function cloneLegacyFile(file: ReviewCommentsFile): ReviewCommentsFile {
   return {
     version: file.version,
@@ -366,23 +451,10 @@ function cloneStoreFile(file: ReviewStoreFile): ReviewStoreFile {
     version: file.version,
     sites: file.sites.map((site) => ({
       ...site,
-      entries: site.entries.map((entry) => ({
-        ...entry,
-        anchor: cloneAnchor(entry.anchor),
-        capture:
-          entry.capture.status === "captured"
-            ? {
-                ...entry.capture,
-                projection: { ...entry.capture.projection },
-              }
-            : { status: "legacy-missing" },
-      })),
+      entries: site.entries.map(cloneReviewerEntry),
       outcomes: site.outcomes.map((outcome) => ({ ...outcome })),
     })),
     drafts: file.drafts.map((draft) => ({ ...draft })),
-    submissions: file.submissions.map((submission) => ({
-      ...submission,
-      entryRefs: submission.entryRefs.map((ref) => ({ ...ref })),
-    })),
+    submissions: file.submissions.map(cloneSubmission),
   };
 }

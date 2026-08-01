@@ -39,6 +39,9 @@ export type { FileAccessSettings };
 const CURRENT_VERSION = 2;
 export const DEFAULT_SPEECH_AUDIO_RETENTION_MAX_AGE_DAYS = 56;
 export const DEFAULT_SPEECH_AUDIO_RETENTION_MAX_BYTES = 400 * 1024 * 1024;
+export const DEFAULT_SOURCE_REVIEW_RESPONSE_TURNS = 8;
+export const MIN_SOURCE_REVIEW_RESPONSE_TURNS = 1;
+export const MAX_SOURCE_REVIEW_RESPONSE_TURNS = 32;
 const DEFAULT_HEARTBEAT_TURN_TEXT = "continue";
 export const MAX_CLAUDE_GATEWAY_START_COMMAND_LENGTH = 10_000;
 const LEGACY_DEFAULT_HEARTBEAT_TURN_TEXTS = new Set([
@@ -70,6 +73,10 @@ export interface ServerSettings {
   publicSharesEnabled: boolean;
   /** Whether experimental workstream surfaces and APIs are enabled */
   workstreamsEnabled?: boolean;
+  /** Whether captured source-review submissions and outcomes are enabled. */
+  sourceReviewSubmissionsEnabled?: boolean;
+  /** Completed assistant turns that may ingest one submission response. */
+  sourceReviewResponseTurns?: number;
   /** Whether Agents may sample same-user provider processes on this host. */
   hostProcessObservabilityEnabled: boolean;
   /** Base URL for the hosted YA client; remote login/share routes are appended */
@@ -182,6 +189,8 @@ export const DEFAULT_SERVER_SETTINGS: ServerSettings = {
   approvalAuditLogEnabled: false,
   publicSharesEnabled: false,
   workstreamsEnabled: false,
+  sourceReviewSubmissionsEnabled: false,
+  sourceReviewResponseTurns: DEFAULT_SOURCE_REVIEW_RESPONSE_TURNS,
   hostProcessObservabilityEnabled: true,
   hostAwakeMode: "off",
   hostAwakeBatteryFloorPercent: DEFAULT_HOST_AWAKE_BATTERY_FLOOR_PERCENT,
@@ -360,6 +369,17 @@ function normalizeLoadedSettings(settings: ServerSettings): ServerSettings {
   normalized.projectQueueQuietSeconds =
     clampProjectQueueQuietSeconds(settings.projectQueueQuietSeconds) ??
     DEFAULT_PROJECT_QUEUE_QUIET_SECONDS;
+  normalized.sourceReviewSubmissionsEnabled =
+    typeof settings.sourceReviewSubmissionsEnabled === "boolean"
+      ? settings.sourceReviewSubmissionsEnabled
+      : DEFAULT_SERVER_SETTINGS.sourceReviewSubmissionsEnabled;
+  normalized.sourceReviewResponseTurns =
+    typeof settings.sourceReviewResponseTurns === "number" &&
+    Number.isInteger(settings.sourceReviewResponseTurns) &&
+    settings.sourceReviewResponseTurns >= MIN_SOURCE_REVIEW_RESPONSE_TURNS &&
+    settings.sourceReviewResponseTurns <= MAX_SOURCE_REVIEW_RESPONSE_TURNS
+      ? settings.sourceReviewResponseTurns
+      : DEFAULT_SOURCE_REVIEW_RESPONSE_TURNS;
   return normalized;
 }
 

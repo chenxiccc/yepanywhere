@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   GIT_SOURCE_REVIEW_CAPABILITY,
   GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,
+  GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY,
   GIT_STATUS_ENHANCED_CAPABILITY,
   GIT_STATUS_INTEGRATION_OPTIONS_CAPABILITY,
   GIT_STATUS_PULL_CAPABILITY,
@@ -29,6 +30,7 @@ const mocks = vi.hoisted(() => ({
   useGitStatus: vi.fn(),
   useNavigationLayout: vi.fn(),
   useMediaQuery: vi.fn(),
+  serverSettings: { sourceReviewSubmissionsEnabled: false },
   renderWorkingTreeBrowser: vi.fn(),
   renderCommitBrowser: vi.fn(),
   renderBlameBrowser: vi.fn(),
@@ -124,6 +126,10 @@ vi.mock("../../hooks/useRelativeNow", () => ({
 
 vi.mock("../../hooks/useVersion", () => ({
   useVersion: mocks.useVersion,
+}));
+
+vi.mock("../../hooks/useServerSettings", () => ({
+  useServerSettings: () => ({ settings: mocks.serverSettings }),
 }));
 
 vi.mock("../../i18n", () => ({
@@ -231,6 +237,7 @@ beforeEach(() => {
     batches: [],
     pendingCount: 0,
   });
+  mocks.serverSettings.sourceReviewSubmissionsEnabled = false;
   mocks.checkGitRemote.mockResolvedValue({
     status: "checked",
     checkedRemoteAt: "2026-07-26T12:00:00.000Z",
@@ -407,6 +414,33 @@ describe("GitStatusPage source header", () => {
     expect(
       screen.queryByRole("tab", { name: "sourceTabReviews" }),
     ).toBeNull();
+  });
+
+  it("shows Reviews only when capability and persisted opt-in are both present", async () => {
+    mocks.serverSettings.sourceReviewSubmissionsEnabled = true;
+    mocks.useVersion.mockReturnValue({
+      version: {
+        capabilities: [
+          GIT_SOURCE_REVIEW_CAPABILITY,
+          GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY,
+          GIT_STATUS_ENHANCED_CAPABILITY,
+        ],
+      },
+      loading: false,
+      error: null,
+    });
+    mocks.listReviewComments.mockResolvedValue({
+      comments: [],
+      batches: [],
+      pendingCount: 0,
+    });
+
+    renderPage("/git-status?projectId=project-a&tab=reviews");
+
+    expect(
+      await screen.findByRole("tab", { name: "sourceTabReviews" }),
+    ).toBeDefined();
+    expect(screen.getByText("sourceReviewNoSubmissions")).toBeDefined();
   });
 
   it("opens an asynchronously populated Files hash in commit history", async () => {

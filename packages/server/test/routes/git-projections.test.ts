@@ -118,6 +118,20 @@ describe("git projection routes", () => {
     const lines = body.structuredPatch.flatMap((hunk) => hunk.lines);
     expect(lines).toContain("-keep");
     expect(lines).toContain("+keep changed");
+    expect(body.reviewProjections).toEqual({
+      old: {
+        kind: "revision",
+        revision: firstSha,
+        path: "app.ts",
+        side: "old",
+      },
+      new: {
+        kind: "revision",
+        revision: headSha,
+        path: "app.ts",
+        side: "new",
+      },
+    });
   });
 
   it("pins HEAD so later commits cannot alter an open comparison", async () => {

@@ -58,12 +58,14 @@ export function BlameView({
   path,
   onOpenCommit,
   onContentWidthChange,
+  captureReviewProjections = false,
   t,
 }: {
   projectId: string;
   path: string;
   onOpenCommit?: (sha: string) => void;
   onContentWidthChange?: (path: string, width: number) => void;
+  captureReviewProjections?: boolean;
   t: TranslationFn;
 }) {
   const [file, setFile] = useState<FileContentResponse | null>(null);
@@ -250,6 +252,15 @@ export function BlameView({
       newLine: line.line,
       snippet,
       snippetAnchorOffset: offset,
+      ...(captureReviewProjections
+        ? {
+            projection: {
+              kind: "worktree" as const,
+              path,
+              side: "new" as const,
+            },
+          }
+        : {}),
     };
   };
 

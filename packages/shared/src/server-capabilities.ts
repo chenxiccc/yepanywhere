@@ -192,6 +192,48 @@ export const SERVER_CAPABILITIES = {
         "Hosted clients can outpace installed servers, while Source Control must retain its released basic status and synchronization path.",
     },
   },
+  gitSourceReviewSubmissions: {
+    name: "git-source-review-submissions",
+    kind: "permanent",
+    area: "gitStatus",
+    introducedIn: "0.7.1",
+    description:
+      "Server supports captured source-review sites, durable submissions, outcomes, and unread review responses.",
+    clientFallback:
+      "Retain the version-1 source-review comments and submit flow; hide Reviews and make no capture, submission, site, response, or acknowledgement request.",
+    serverContract: {
+      routes: [
+        "GET /api/projects/:projectId/review/submissions",
+        "GET /api/projects/:projectId/review/submissions/:submissionId",
+        "POST /api/projects/:projectId/review/submissions/:submissionId/acknowledge",
+        "POST /api/projects/:projectId/review/submissions/:submissionId/refresh-response",
+        "POST /api/projects/:projectId/review/sites/:siteId/follow-ups",
+        "POST /api/projects/:projectId/review/sites/:siteId/resolve",
+        "GET /api/review/inbox",
+      ],
+      routeModules: [
+        "packages/server/src/routes/review-submissions.ts",
+        "packages/server/src/routes/review-inbox.ts",
+      ],
+      requestFields: [
+        "reviewComment.anchor.projection",
+        "reviewSubmit.submissionId",
+        "reviewSubmit.name",
+        "settings.sourceReviewSubmissionsEnabled",
+        "settings.sourceReviewResponseTurns",
+      ],
+      responseFields: [
+        "gitDiff.reviewProjections",
+        "settings.sourceReviewSubmissionsEnabled",
+        "settings.sourceReviewResponseTurns",
+      ],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "The hosted client may outpace servers that expose version-1 source review but cannot preserve captures, submissions, sites, or response state.",
+    },
+  },
   gitSourceReviewProjections: {
     name: "git-source-review-projections",
     kind: "transitional",
@@ -737,6 +779,8 @@ export const GIT_STATUS_INTEGRATION_OPTIONS_CAPABILITY =
   SERVER_CAPABILITIES.gitStatusIntegrationOptions.name;
 export const GIT_SOURCE_REVIEW_CAPABILITY =
   SERVER_CAPABILITIES.gitSourceReview.name;
+export const GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY =
+  SERVER_CAPABILITIES.gitSourceReviewSubmissions.name;
 export const GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY =
   SERVER_CAPABILITIES.gitSourceReviewProjections.name;
 

@@ -1,8 +1,13 @@
+import type {
+  ReviewCommentSide,
+  ReviewSourceProjection,
+} from "./review-comments.js";
 import type { PatchHunk } from "./types.js";
 
 export {
   GIT_SOURCE_REVIEW_CAPABILITY,
   GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,
+  GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY,
   GIT_STATUS_CAPABILITY,
   GIT_STATUS_ENHANCED_CAPABILITY,
   GIT_STATUS_INTEGRATION_OPTIONS_CAPABILITY,
@@ -188,6 +193,10 @@ export interface GitDiffResult {
   markdownHtml?: string;
   /** Bounded omission metadata for previews that are unsafe to render. */
   previewSkipped?: GitDiffPreviewSkipped;
+  /** Exact source object rendered on each clickable diff side. */
+  reviewProjections?: Partial<
+    Record<ReviewCommentSide, ReviewSourceProjection>
+  >;
 }
 
 export interface GitStatusInfo {

@@ -4,9 +4,11 @@ import type {
   GitCommitSearchManifest,
   GitCommitSearchRecord,
   GitCommitSearchRecordsResult,
+  GitDiffResult,
   GitFileListResult,
   GitRecentCommit,
   GitSearchResult,
+  ReviewSourceProjection,
 } from "@yep-anywhere/shared";
 import type { Context } from "hono";
 import { Hono } from "hono";
@@ -220,6 +222,7 @@ export function createGitBrowseRoutes(deps: GitBrowseDeps): Hono {
     }
 
     try {
+      const resolvedSha = await resolveCommit(projectPath, sha);
       if (
         await gitDiffReportsBinary(
           projectPath,
@@ -229,7 +232,7 @@ export function createGitBrowseRoutes(deps: GitBrowseDeps): Hono {
             "--no-commit-id",
             "-r",
             "-M",
-            sha,
+            resolvedSha,
           ],
           path,
         )
@@ -239,21 +242,27 @@ export function createGitBrowseRoutes(deps: GitBrowseDeps): Hono {
 
       const { oldContent, newContent } = await getCommitFileVersions(
         projectPath,
-        sha,
+        resolvedSha,
         path,
         status,
         origPath,
       );
 
-      return c.json(
-        await buildGitDiffResultFromBytes({
+      const result = await buildGitDiffResultFromBytes({
           path,
           oldContent,
           newContent,
           fullContext,
           ignoreWhitespace,
-        }),
+        });
+      result.reviewProjections = await commitReviewProjections(
+        projectPath,
+        resolvedSha,
+        path,
+        status,
+        origPath,
       );
+      return c.json(result);
     } catch (err) {
       return gitError(c, err);
     }
@@ -339,6 +348,43 @@ export function createGitBrowseRoutes(deps: GitBrowseDeps): Hono {
   });
 
   return routes;
+}
+
+async function resolveCommit(cwd: string, rev: string): Promise<string> {
+  const { stdout } = await runGit(cwd, [
+    "rev-parse",
+    "--verify",
+    `${rev}^{commit}`,
+  ]);
+  return stdout.trim();
+}
+
+async function commitReviewProjections(
+  cwd: string,
+  revision: string,
+  path: string,
+  status: string,
+  origPath: string | undefined,
+): Promise<NonNullable<GitDiffResult["reviewProjections"]>> {
+  const projections: NonNullable<GitDiffResult["reviewProjections"]> = {
+    new: revisionProjection(revision, path, "new"),
+  };
+  const parent = await resolveCommit(cwd, `${revision}^1`).catch(() => null);
+  if (parent) {
+    const letter = status[0]?.toUpperCase() ?? "M";
+    const oldPath =
+      (letter === "R" || letter === "C") && origPath ? origPath : path;
+    projections.old = revisionProjection(parent, oldPath, "old");
+  }
+  return projections;
+}
+
+function revisionProjection(
+  revision: string,
+  path: string,
+  side: "old" | "new",
+): ReviewSourceProjection {
+  return { kind: "revision", revision, path, side };
 }
 
 function gitError(c: Context, err: unknown): Response {

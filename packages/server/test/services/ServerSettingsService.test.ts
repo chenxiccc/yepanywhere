@@ -32,6 +32,42 @@ describe("ServerSettingsService", () => {
     expect(service.getSetting("workstreamsEnabled")).toBe(false);
   });
 
+  it("keeps source-review submissions off with an eight-turn response window", async () => {
+    const service = new ServerSettingsService({ dataDir: testDir });
+    await service.initialize();
+
+    expect(service.getSetting("sourceReviewSubmissionsEnabled")).toBe(false);
+    expect(service.getSetting("sourceReviewResponseTurns")).toBe(8);
+
+    await service.updateSettings({
+      sourceReviewSubmissionsEnabled: true,
+      sourceReviewResponseTurns: 12,
+    });
+    const reloaded = new ServerSettingsService({ dataDir: testDir });
+    await reloaded.initialize();
+    expect(reloaded.getSetting("sourceReviewSubmissionsEnabled")).toBe(true);
+    expect(reloaded.getSetting("sourceReviewResponseTurns")).toBe(12);
+  });
+
+  it("normalizes malformed source-review settings to safe defaults", async () => {
+    await fs.writeFile(
+      path.join(testDir, "server-settings.json"),
+      JSON.stringify({
+        version: 2,
+        settings: {
+          sourceReviewSubmissionsEnabled: "yes",
+          sourceReviewResponseTurns: 33,
+        },
+      }),
+      "utf-8",
+    );
+    const service = new ServerSettingsService({ dataDir: testDir });
+    await service.initialize();
+
+    expect(service.getSetting("sourceReviewSubmissionsEnabled")).toBe(false);
+    expect(service.getSetting("sourceReviewResponseTurns")).toBe(8);
+  });
+
   it("enables host process observability by default and persists opt-out", async () => {
     const service = new ServerSettingsService({ dataDir: testDir });
     await service.initialize();

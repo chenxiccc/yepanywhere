@@ -4,6 +4,7 @@ import type {
   ReviewComment,
   ReviewCommentAnchor,
   ReviewNewSessionOptions,
+  ReviewSourceProjection,
 } from "@yep-anywhere/shared";
 import { type ReactNode, useCallback, useLayoutEffect, useState } from "react";
 import {
@@ -40,6 +41,7 @@ export function DiffCommentController({
   filePath,
   structuredPatch,
   revisions,
+  projections,
   container,
   onOpenChange,
   renderSource,
@@ -49,6 +51,7 @@ export function DiffCommentController({
   filePath: string;
   structuredPatch: PatchHunk[];
   revisions?: DiffCommentRevisions;
+  projections?: Partial<Record<"old" | "new", ReviewSourceProjection>>;
   container: HTMLElement;
   onOpenChange?: (open: boolean) => void;
   renderSource: (state: {
@@ -141,6 +144,7 @@ export function DiffCommentController({
         filePath={filePath}
         structuredPatch={structuredPatch}
         revisions={revisions}
+        projections={projections}
         container={container}
         pending={pending}
         onOpenComment={handleOpenComment}
@@ -154,6 +158,7 @@ function DiffCommentLayer({
   filePath,
   structuredPatch,
   revisions,
+  projections,
   container,
   pending,
   onOpenComment,
@@ -163,6 +168,8 @@ function DiffCommentLayer({
   structuredPatch: PatchHunk[];
   /** Revision containing each projection side; omitted means working tree. */
   revisions?: DiffCommentRevisions;
+  /** Exact rendered source object for each projection side. */
+  projections?: Partial<Record<"old" | "new", ReviewSourceProjection>>;
   container: HTMLElement;
   pending: readonly ReviewComment[];
   onOpenComment: (comment: OpenDiffComment) => void;
@@ -191,8 +198,11 @@ function DiffCommentLayer({
       newLine: location.newLine,
       snippet: location.snippet,
       snippetAnchorOffset: location.snippetAnchorOffset,
+      ...(projections?.[location.side]
+        ? { projection: projections[location.side] }
+        : {}),
     }),
-    [filePath, revisions],
+    [filePath, projections, revisions],
   );
 
   const openComment = useCallback(

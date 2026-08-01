@@ -1,6 +1,10 @@
 // @vitest-environment jsdom
 
-import type { PatchHunk, ReviewCommentRevision } from "@yep-anywhere/shared";
+import type {
+  PatchHunk,
+  ReviewCommentRevision,
+  ReviewSourceProjection,
+} from "@yep-anywhere/shared";
 import {
   cleanup,
   fireEvent,
@@ -66,12 +70,14 @@ const t = (key: string) => key;
 function Harness({
   patch = PATCH,
   revisions,
+  projections,
 }: {
   patch?: PatchHunk[];
   revisions?: {
     old?: ReviewCommentRevision;
     new?: ReviewCommentRevision;
   };
+  projections?: Partial<Record<"old" | "new", ReviewSourceProjection>>;
 }) {
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
   return (
@@ -82,6 +88,7 @@ function Harness({
           filePath="src/a.ts"
           structuredPatch={patch}
           revisions={revisions}
+          projections={projections}
           container={container}
           renderSource={({ openComment, editor }) => (
             <UnifiedDiff
@@ -482,6 +489,51 @@ describe("DiffCommentLayer", () => {
     expect(addReviewComment.mock.calls[1]?.[1]).toMatchObject({
       side: "new",
       revision: { kind: "sha", sha: headSha },
+    });
+  });
+
+  it("keeps rendered capture identity distinct from anchor provenance", async () => {
+    listReviewComments.mockResolvedValue({
+      comments: [],
+      batches: [],
+      pendingCount: 0,
+    });
+    addReviewComment.mockResolvedValue({
+      comment: { id: "c1", status: "pending", anchor: {}, text: "x" },
+    });
+    render(
+      <MemoryRouter>
+        <Harness
+          revisions={{
+            old: { kind: "sha", sha: "a".repeat(40) },
+          }}
+          projections={{
+            old: {
+              kind: "revision",
+              revision: "b".repeat(40),
+              path: "src/original.ts",
+              side: "old",
+            },
+          }}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(document.querySelector('[data-diff-line="1"]')!);
+    fireEvent.change(await screen.findByRole("textbox"), {
+      target: { value: "capture this exact side" },
+    });
+    fireEvent.click(screen.getByText("sourceReviewAddToReview"));
+    await waitFor(() => expect(addReviewComment).toHaveBeenCalledTimes(1));
+
+    expect(addReviewComment.mock.calls[0]?.[1]).toMatchObject({
+      revision: { kind: "sha", sha: "a".repeat(40) },
+      projection: {
+        kind: "revision",
+        revision: "b".repeat(40),
+        path: "src/original.ts",
+        side: "old",
+      },
     });
   });
 

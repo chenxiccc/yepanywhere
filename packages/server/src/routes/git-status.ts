@@ -3,6 +3,7 @@ import { readFile, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
   type GitDiffPreviewSkipped,
+  type GitDiffResult,
   type GitFileChange,
   type GitIntegrationOptionReason,
   type GitIntegrationOptionsResult,
@@ -12,6 +13,7 @@ import {
   type GitRecentCommit,
   type GitStatusInfo,
   type GitUntrackedFolderInfo,
+  type ReviewSourceProjection,
   isUrlProjectId,
 } from "@yep-anywhere/shared";
 import { Hono } from "hono";
@@ -493,15 +495,24 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
         origPath,
       );
 
-      return c.json(
-        await buildGitDiffResultFromBytes({
+      const result = await buildGitDiffResultFromBytes({
           path,
           oldContent,
           newContent,
           fullContext,
           ignoreWhitespace,
-        }),
-      );
+        });
+      if (!result.previewSkipped) {
+        result.reviewProjections = await workingTreeReviewProjections(
+          project.path,
+          path,
+          staged,
+          status,
+          againstHead,
+          origPath,
+        );
+      }
+      return c.json(result);
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Failed to compute diff";
@@ -510,6 +521,43 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
   });
 
   return routes;
+}
+
+async function workingTreeReviewProjections(
+  cwd: string,
+  path: string,
+  staged: boolean,
+  status: string,
+  againstHead: boolean | undefined,
+  origPath: string | undefined,
+): Promise<NonNullable<GitDiffResult["reviewProjections"]>> {
+  const projections: NonNullable<GitDiffResult["reviewProjections"]> = {
+    new: {
+      kind: staged && !againstHead ? "index" : "worktree",
+      path,
+      side: "new",
+    },
+  };
+  if (!againstHead && !staged) {
+    projections.old = { kind: "index", path, side: "old" };
+    return projections;
+  }
+
+  const head = await getHeadCommit(cwd);
+  if (head) {
+    const oldPath =
+      (status === "R" || status === "C") && origPath ? origPath : path;
+    projections.old = revisionProjection(head, oldPath, "old");
+  }
+  return projections;
+}
+
+function revisionProjection(
+  revision: string,
+  path: string,
+  side: "old" | "new",
+): ReviewSourceProjection {
+  return { kind: "revision", revision, path, side };
 }
 
 function workingTreeDiffArgs(

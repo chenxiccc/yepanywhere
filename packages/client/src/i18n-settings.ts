@@ -126,6 +126,11 @@ export function getSettingsCategories(
       description: t("settingsMessageDeliveryDescription"),
     },
     {
+      id: "source-control",
+      label: t("settingsSourceControlTitle"),
+      description: t("settingsSourceControlDescription"),
+    },
+    {
       id: "agent-context",
       label: t("settingsAgentContextTitle"),
       description: t("settingsAgentContextDescription"),

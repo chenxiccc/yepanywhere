@@ -67,6 +67,7 @@ interface GitDiffPreviewProps extends GitDiffPreviewRetentionProps {
   retainedScrollTop?: number;
   onRetainScrollTop?: (fileKey: string, scrollTop: number) => void;
   onCommentEditorOpenChange?: (open: boolean) => void;
+  captureReviewProjections?: boolean;
   ignoreWhitespace?: boolean;
   onToggleIgnoreWhitespace?: () => void;
   onProjectionRequestFailure?: () => void;
@@ -189,6 +190,7 @@ export const GitDiffPreview = forwardRef<
     onRetainScrollTop,
     onRetainDiffView,
     onCommentEditorOpenChange,
+    captureReviewProjections = false,
     ignoreWhitespace = false,
     onToggleIgnoreWhitespace,
     onProjectionRequestFailure,
@@ -249,6 +251,7 @@ export const GitDiffPreview = forwardRef<
             }}
             onHunkNavigationChange={handleHunkNavigationChange}
             onCommentEditorOpenChange={onCommentEditorOpenChange}
+            captureReviewProjections={captureReviewProjections}
             ignoreWhitespace={ignoreWhitespace}
             onToggleIgnoreWhitespace={onToggleIgnoreWhitespace}
             onProjectionRequestFailure={onProjectionRequestFailure}
@@ -280,6 +283,7 @@ export function GitDiffModal({
   retainedDiffView,
   onRetainDiffView,
   onCommentEditorOpenChange,
+  captureReviewProjections = false,
   ignoreWhitespace = false,
   onToggleIgnoreWhitespace,
   onProjectionRequestFailure,
@@ -295,6 +299,7 @@ export function GitDiffModal({
   retainedDiffView?: GitDiffViewState;
   onRetainDiffView?: (fileKey: string, view: GitDiffViewState) => void;
   onCommentEditorOpenChange?: (open: boolean) => void;
+  captureReviewProjections?: boolean;
   ignoreWhitespace?: boolean;
   onToggleIgnoreWhitespace?: () => void;
   onProjectionRequestFailure?: () => void;
@@ -314,6 +319,7 @@ export function GitDiffModal({
         retainedDiffView={retainedDiffView}
         onRetainDiffView={onRetainDiffView}
         onCommentEditorOpenChange={onCommentEditorOpenChange}
+        captureReviewProjections={captureReviewProjections}
         ignoreWhitespace={ignoreWhitespace}
         onToggleIgnoreWhitespace={onToggleIgnoreWhitespace}
         onProjectionRequestFailure={onProjectionRequestFailure}
@@ -333,6 +339,7 @@ export function GitDiffBody({
   paneHeader,
   onHunkNavigationChange,
   onCommentEditorOpenChange,
+  captureReviewProjections = false,
   ignoreWhitespace = false,
   onToggleIgnoreWhitespace,
   onProjectionRequestFailure,
@@ -345,6 +352,7 @@ export function GitDiffBody({
   paneHeader?: DiffPaneHeader;
   onHunkNavigationChange?: (handlers: HunkNavigationHandlers | null) => void;
   onCommentEditorOpenChange?: (open: boolean) => void;
+  captureReviewProjections?: boolean;
   ignoreWhitespace?: boolean;
   onToggleIgnoreWhitespace?: () => void;
   onProjectionRequestFailure?: () => void;
@@ -487,6 +495,7 @@ export function GitDiffBody({
             paneHeader={paneHeader}
             onHunkNavigationChange={onHunkNavigationChange}
             onCommentEditorOpenChange={onCommentEditorOpenChange}
+            captureReviewProjections={captureReviewProjections}
             ignoreWhitespace={ignoreWhitespace}
             onToggleIgnoreWhitespace={onToggleIgnoreWhitespace}
             onProjectionRequestFailure={onProjectionRequestFailure}
@@ -509,6 +518,7 @@ function GitDiffContent({
   paneHeader,
   onHunkNavigationChange,
   onCommentEditorOpenChange,
+  captureReviewProjections = false,
   ignoreWhitespace = false,
   onToggleIgnoreWhitespace,
   onProjectionRequestFailure,
@@ -522,6 +532,7 @@ function GitDiffContent({
   paneHeader?: DiffPaneHeader;
   onHunkNavigationChange?: (handlers: HunkNavigationHandlers | null) => void;
   onCommentEditorOpenChange?: (open: boolean) => void;
+  captureReviewProjections?: boolean;
   ignoreWhitespace?: boolean;
   onToggleIgnoreWhitespace?: () => void;
   onProjectionRequestFailure?: () => void;
@@ -1034,6 +1045,11 @@ function GitDiffContent({
             filePath={file.path}
             structuredPatch={displayResult.structuredPatch}
             revisions={commentRevisions}
+            projections={
+              captureReviewProjections
+                ? displayResult.reviewProjections
+                : undefined
+            }
             container={contentElement}
             onOpenChange={onCommentEditorOpenChange}
             renderSource={({ openComment, editor }) =>

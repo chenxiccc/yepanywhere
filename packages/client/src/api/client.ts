@@ -1659,6 +1659,10 @@ export interface ServerSettings {
   publicSharesEnabled?: boolean;
   /** Whether experimental workstream surfaces and APIs are enabled */
   workstreamsEnabled?: boolean;
+  /** Whether captured source-review submissions and outcomes are enabled */
+  sourceReviewSubmissionsEnabled?: boolean;
+  /** Completed assistant turns that may ingest one submission response */
+  sourceReviewResponseTurns?: number;
   /** Whether Agents may sample same-user provider processes on this host. */
   hostProcessObservabilityEnabled?: boolean;
   /** Base URL for the hosted YA client */

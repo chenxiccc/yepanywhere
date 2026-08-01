@@ -135,6 +135,39 @@ describe("review-comments routes", () => {
     expect(afterList.pendingCount).toBe(0);
   });
 
+  it("accepts capture identity only when submissions are enabled", async () => {
+    const projected = anchor({
+      projection: {
+        kind: "worktree",
+        path: "src/a.ts",
+        side: "new",
+      },
+    });
+    const disabledResponse = await post({ anchor: projected, text: "off" });
+    const disabled = (await disabledResponse.json()) as {
+      comment: ReviewComment;
+    };
+    expect(disabled.comment.anchor.projection).toBeUndefined();
+
+    const enabledRoutes = createReviewCommentsRoutes({
+      scanner: scannerFor(project),
+      service,
+      isSubmissionsEnabled: () => true,
+    });
+    const enabledResponse = await enabledRoutes.request(
+      `/${projectId}/review/comments`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ anchor: projected, text: "on" }),
+      },
+    );
+    const enabled = (await enabledResponse.json()) as {
+      comment: ReviewComment;
+    };
+    expect(enabled.comment.anchor.projection).toEqual(projected.projection);
+  });
+
   it("rejects an invalid anchor and empty text", async () => {
     expect((await post({ anchor: { path: "" }, text: "x" })).status).toBe(400);
     expect(

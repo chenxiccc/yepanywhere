@@ -203,6 +203,20 @@ describe("git-browse routes", () => {
     const lines = body.structuredPatch.flatMap((h) => h.lines);
     expect(lines).toContain("+line2 changed");
     expect(lines).toContain("-line2");
+    expect(body.reviewProjections).toEqual({
+      old: {
+        kind: "revision",
+        revision: shas.c1,
+        path: "a.ts",
+        side: "old",
+      },
+      new: {
+        kind: "revision",
+        revision: shas.c2,
+        path: "a.ts",
+        side: "new",
+      },
+    });
 
     // The flat index emitted in diffHtml must invert to the same line via the
     // shared anchor helper (the P1↔P2 contract, now for commit diffs).

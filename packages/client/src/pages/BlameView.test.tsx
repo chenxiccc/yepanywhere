@@ -112,6 +112,7 @@ async function commentOnRow(rowIndex: number, text: string) {
     side: string;
     oldLine: number | null;
     newLine: number | null;
+    projection?: { kind: string; path: string; side: string };
   };
 }
 
@@ -134,6 +135,28 @@ describe("BlameView", () => {
     expect(anchor.side).toBe("new");
     expect(anchor.oldLine).toBeNull();
     expect(anchor.newLine).toBe(1);
+  });
+
+  it("captures the rendered worktree separately from blame provenance", async () => {
+    primeBlame();
+    render(
+      <MemoryRouter>
+        <BlameView
+          projectId="p1"
+          path="src/x.ts"
+          captureReviewProjections
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    const anchor = await commentOnRow(0, "review the rendered line");
+    expect(anchor.revision).toEqual({ kind: "sha", sha: COMMITTED_SHA });
+    expect(anchor.projection).toEqual({
+      kind: "worktree",
+      path: "src/x.ts",
+      side: "new",
+    });
   });
 
   it("splits blame after the selected row", async () => {

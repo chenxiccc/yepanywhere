@@ -13,6 +13,7 @@ import {
   ALL_PROVIDERS,
   MAX_REVIEW_COMMENT_TEXT_LENGTH,
   type EffortLevel,
+  type ReviewCommentAnchor,
   type ReviewNewSessionOptions,
   type ThinkingConfig,
   parseReviewCommentAnchor,
@@ -39,6 +40,8 @@ export interface ReviewCommentsDeps {
   service?: ReviewCommentService;
   /** Launches/continues the review session on submit. Absent → submit 501s. */
   launcher?: ReviewSessionLauncher;
+  /** Gates the version-2 capture/submission contract; default-off in app. */
+  isSubmissionsEnabled?: () => boolean;
 }
 
 export function createReviewCommentsRoutes(deps: ReviewCommentsDeps): Hono {
@@ -78,7 +81,7 @@ export function createReviewCommentsRoutes(deps: ReviewCommentsDeps): Hono {
     if (textError) return c.json({ error: textError }, 400);
 
     const comment = await service.addComment(projectPath, {
-      anchor,
+      anchor: reviewAnchorForConfiguredWorkflow(anchor, deps),
       text: body.text as string,
     });
     return c.json({ comment }, 201);
@@ -107,7 +110,7 @@ export function createReviewCommentsRoutes(deps: ReviewCommentsDeps): Hono {
       if (!validateAnchorPaths(anchor)) {
         return c.json({ error: "Invalid comment anchor path" }, 400);
       }
-      patch.anchor = anchor;
+      patch.anchor = reviewAnchorForConfiguredWorkflow(anchor, deps);
     }
 
     const comment = await service.updateComment(
@@ -260,6 +263,16 @@ export function createReviewCommentsRoutes(deps: ReviewCommentsDeps): Hono {
   });
 
   return routes;
+}
+
+function reviewAnchorForConfiguredWorkflow(
+  anchor: ReviewCommentAnchor,
+  deps: ReviewCommentsDeps,
+): ReviewCommentAnchor {
+  if (deps.isSubmissionsEnabled?.() && anchor.projection) return anchor;
+  const legacyAnchor = { ...anchor };
+  delete legacyAnchor.projection;
+  return legacyAnchor;
 }
 
 function parseNewSessionOptions(

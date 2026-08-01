@@ -33,6 +33,7 @@ export function BlameBrowser({
   isWideScreen,
   initialPath,
   onOpenCommit,
+  captureReviewProjections = false,
   t,
 }: {
   projectId: string;
@@ -41,6 +42,7 @@ export function BlameBrowser({
   initialPath?: string;
   /** Open a populated blame hash in the commit browser. */
   onOpenCommit?: (sha: string) => void;
+  captureReviewProjections?: boolean;
   t: TranslationFn;
 }) {
   const [files, setFiles] = useState<string[]>([]);
@@ -215,6 +217,7 @@ export function BlameBrowser({
             projectId={projectId}
             path={selectedPath}
             onOpenCommit={onOpenCommit}
+            captureReviewProjections={captureReviewProjections}
             onContentWidthChange={handleContentWidthChange}
             t={t}
           />
@@ -232,6 +235,7 @@ export function BlameBrowser({
             projectId={projectId}
             path={selectedPath}
             onOpenCommit={onOpenCommit}
+            captureReviewProjections={captureReviewProjections}
             t={t}
           />
         </Modal>

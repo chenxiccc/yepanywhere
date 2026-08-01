@@ -39,6 +39,7 @@ export function CommitBrowser({
   isWideScreen,
   initialSha,
   onBlameFile,
+  captureReviewProjections = false,
   supportsProjections = false,
   ignoreWhitespace = false,
   onToggleIgnoreWhitespace = NOOP,
@@ -53,6 +54,7 @@ export function CommitBrowser({
   initialSha?: string;
   /** Bridge a commit file to its blame-at-HEAD view (the files tab). */
   onBlameFile?: (path: string) => void;
+  captureReviewProjections?: boolean;
   supportsProjections?: boolean;
   ignoreWhitespace?: boolean;
   onToggleIgnoreWhitespace?: () => void;
@@ -309,6 +311,7 @@ export function CommitBrowser({
               />
             }
             onBlameFile={onBlameFile}
+            captureReviewProjections={captureReviewProjections}
             ignoreWhitespace={ignoreWhitespace}
             onToggleIgnoreWhitespace={onToggleIgnoreWhitespace}
             onProjectionRequestFailure={handleProjectionRequestFailure}
@@ -379,6 +382,7 @@ export function CommitBrowser({
               fileKey={diffFileKey}
               projectId={projectId}
               source={source}
+              captureReviewProjections={captureReviewProjections}
               headerActions={fileActions}
               ignoreWhitespace={ignoreWhitespace}
               onToggleIgnoreWhitespace={onToggleIgnoreWhitespace}
@@ -408,6 +412,7 @@ export function CommitBrowser({
             fileKey={diffFileKey}
             projectId={projectId}
             source={source}
+            captureReviewProjections={captureReviewProjections}
             headerActions={fileActions}
             ignoreWhitespace={ignoreWhitespace}
             onToggleIgnoreWhitespace={onToggleIgnoreWhitespace}

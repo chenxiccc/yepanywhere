@@ -3,6 +3,7 @@ import {
   DEVICE_BRIDGE_CAPABILITY,
   DEVICE_BRIDGE_DOWNLOAD_CAPABILITY,
   BROWSER_SETTINGS_BACKUP_CAPABILITY,
+  GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY,
   serverHasCapability,
 } from "@yep-anywhere/shared";
 import {
@@ -60,6 +61,7 @@ import {
   useSettingsUndoRegistration,
 } from "./SettingsUndoContext";
 import { SpeechSettings } from "./SpeechSettings";
+import { SourceControlSettings } from "./SourceControlSettings";
 import { ToolbarSettings } from "./ToolbarSettings";
 import type { SettingsCategory } from "./types";
 
@@ -71,6 +73,7 @@ const CATEGORY_COMPONENTS: Record<string, React.ComponentType> = {
   model: ModelSettings,
   "cache-miss-billing": CacheMissBillingSettings,
   "message-delivery": MessageDeliverySettings,
+  "source-control": SourceControlSettings,
   "agent-context": AgentContextSettings,
   notifications: NotificationsSettings,
   webhooks: LifecycleWebhooksSettings,
@@ -215,6 +218,17 @@ export function SettingsLayout() {
   const categories: SettingsCategory[] = [
     ...getSettingsCategories((key) => t(key as never)),
   ];
+  if (
+    !serverHasCapability(
+      versionInfo,
+      GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY,
+    )
+  ) {
+    const sourceControlIndex = categories.findIndex(
+      (item) => item.id === "source-control",
+    );
+    if (sourceControlIndex >= 0) categories.splice(sourceControlIndex, 1);
+  }
   if (
     serverHasCapability(versionInfo, DEVICE_BRIDGE_CAPABILITY) ||
     serverHasCapability(versionInfo, DEVICE_BRIDGE_DOWNLOAD_CAPABILITY) ||

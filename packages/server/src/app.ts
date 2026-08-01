@@ -84,6 +84,8 @@ import { createGitProjectionRoutes } from "./routes/git-projections.js";
 import { createGitStatusRoutes } from "./routes/git-status.js";
 import { createGlobalSessionsRoutes } from "./routes/global-sessions.js";
 import { createReviewCommentsRoutes } from "./routes/review-comments.js";
+import { createReviewInboxRoutes } from "./routes/review-inbox.js";
+import { createReviewSubmissionsRoutes } from "./routes/review-submissions.js";
 import { ReviewCaptureService } from "./review/ReviewCaptureService.js";
 import { ReviewCommentService } from "./review/ReviewCommentService.js";
 import { createSupervisorReviewLauncher } from "./review/reviewSessionLauncher.js";
@@ -1590,12 +1592,33 @@ export function createApp(options: AppOptions): AppResult {
   const reviewCommentService = new ReviewCommentService({
     captureWriter: new ReviewCaptureService(),
   });
+  const sourceReviewSubmissionsEnabled = () =>
+    options.serverSettingsService?.getSetting(
+      "sourceReviewSubmissionsEnabled",
+    ) ?? false;
   app.route(
     "/api/projects",
     createReviewCommentsRoutes({
       scanner,
       service: reviewCommentService,
       launcher: createSupervisorReviewLauncher(supervisor),
+      isSubmissionsEnabled: sourceReviewSubmissionsEnabled,
+    }),
+  );
+  app.route(
+    "/api/projects",
+    createReviewSubmissionsRoutes({
+      scanner,
+      service: reviewCommentService,
+      isEnabled: sourceReviewSubmissionsEnabled,
+    }),
+  );
+  app.route(
+    "/api",
+    createReviewInboxRoutes({
+      scanner,
+      service: reviewCommentService,
+      isEnabled: sourceReviewSubmissionsEnabled,
     }),
   );
 

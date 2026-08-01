@@ -65,6 +65,7 @@ export function WorkingTreeBrowser({
   revisionNavigation,
   onBrowseHistory,
   onBlameFile,
+  captureReviewProjections = false,
   ignoreWhitespace = false,
   onToggleIgnoreWhitespace,
   onProjectionRequestFailure,
@@ -84,6 +85,7 @@ export function WorkingTreeBrowser({
   /** Open commit history while keeping Working tree as the default revision. */
   onBrowseHistory?: () => void;
   onBlameFile?: (path: string) => void;
+  captureReviewProjections?: boolean;
   ignoreWhitespace?: boolean;
   onToggleIgnoreWhitespace?: () => void;
   onProjectionRequestFailure?: () => void;
@@ -446,6 +448,7 @@ export function WorkingTreeBrowser({
             source={WORKING_TREE_SOURCE}
             headerActions={fileActions}
             onCommentEditorOpenChange={setCommentEditorOpen}
+            captureReviewProjections={captureReviewProjections}
             ignoreWhitespace={ignoreWhitespace}
             onToggleIgnoreWhitespace={onToggleIgnoreWhitespace}
             onProjectionRequestFailure={onProjectionRequestFailure}
@@ -463,6 +466,7 @@ export function WorkingTreeBrowser({
           source={WORKING_TREE_SOURCE}
           headerActions={fileActions}
           onCommentEditorOpenChange={setCommentEditorOpen}
+          captureReviewProjections={captureReviewProjections}
           ignoreWhitespace={ignoreWhitespace}
           onToggleIgnoreWhitespace={onToggleIgnoreWhitespace}
           onProjectionRequestFailure={onProjectionRequestFailure}

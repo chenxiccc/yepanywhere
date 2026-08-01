@@ -6,6 +6,7 @@ import type {
 import {
   GIT_SOURCE_REVIEW_CAPABILITY,
   GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,
+  GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY,
   GIT_STATUS_ENHANCED_CAPABILITY,
   GIT_STATUS_INTEGRATION_OPTIONS_CAPABILITY,
   GIT_STATUS_PULL_CAPABILITY,
@@ -39,6 +40,7 @@ import { useProject, useProjects } from "../hooks/useProjects";
 import { useProjectReviewComments } from "../hooks/useProjectReviewComments";
 import { useRelativeNow } from "../hooks/useRelativeNow";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
+import { useServerSettings } from "../hooks/useServerSettings";
 import { BlameBrowser } from "./BlameBrowser";
 import { CommitBrowser } from "./CommitBrowser";
 import { RepoStatusBar } from "./RepoStatusBar";
@@ -393,10 +395,6 @@ export function GitStatusPage() {
   const { t } = useI18n();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  // P3a is intentionally dormant until P4 supplies both the permanent server
-  // capability and the default-off persisted user setting.
-  const reviewsEnabled = false;
-  const { setTab: setHeaderTab } = useSourceTab(reviewsEnabled);
   const projectId = searchParams.get("projectId");
   const sourceKey = useClientSummarySourceKey();
   const { openSidebar, isWideScreen, toggleSidebar, isSidebarCollapsed } =
@@ -412,6 +410,13 @@ export function GitStatusPage() {
     loading: versionLoading,
     error: versionError,
   } = useVersion();
+  const { settings: serverSettings } = useServerSettings();
+  const reviewsEnabled =
+    serverHasCapability(
+      version,
+      GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY,
+    ) && (serverSettings?.sourceReviewSubmissionsEnabled ?? false);
+  const { setTab: setHeaderTab } = useSourceTab(reviewsEnabled);
   const supportsEnhancedGitStatus = serverHasCapability(
     version,
     GIT_STATUS_ENHANCED_CAPABILITY,
@@ -779,6 +784,7 @@ function GitStatusContent({
           initialWorkingTreePath={worktreeFile}
           onBrowseHistory={handleBrowseHistory}
           onBlameFile={handleBlameFile}
+          captureReviewProjections={reviewsEnabled}
           ignoreWhitespace={activeIgnoreWhitespace}
           onToggleIgnoreWhitespace={handleToggleIgnoreWhitespace}
           onProjectionRequestFailure={handleProjectionUnavailable}
@@ -791,6 +797,7 @@ function GitStatusContent({
           isWideScreen={isWideScreen}
           initialSha={commitSha}
           onBlameFile={handleBlameFile}
+          captureReviewProjections={reviewsEnabled}
           supportsProjections={supportsProjections}
           ignoreWhitespace={activeIgnoreWhitespace}
           onToggleIgnoreWhitespace={handleToggleIgnoreWhitespace}
@@ -820,6 +827,7 @@ function GitStatusContent({
           isWideScreen={isWideScreen}
           initialPath={blameFile}
           onOpenCommit={handleOpenCommit}
+          captureReviewProjections={reviewsEnabled}
           t={t}
         />
       ) : null}

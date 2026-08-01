@@ -1,4 +1,7 @@
-import type { GitRevisionComparison } from "@yep-anywhere/shared";
+import type {
+  GitRevisionComparison,
+  ReviewSourceProjection,
+} from "@yep-anywhere/shared";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { gitDiffReportsBinary } from "../git/binaryDiff.js";
@@ -123,21 +126,45 @@ export function createGitProjectionRoutes(deps: GitProjectionDeps): Hono {
         body.status,
         body.origPath,
       );
-      return c.json(
-        await buildGitDiffResultFromBytes({
+      const result = await buildGitDiffResultFromBytes({
           path: body.path,
           oldContent,
           newContent,
           fullContext: body.fullContext,
           ignoreWhitespace: body.ignoreWhitespace,
-        }),
-      );
+        });
+      result.reviewProjections = {
+        old: revisionProjection(
+          baseSha,
+          reviewOldPath(body.path, body.status, body.origPath),
+          "old",
+        ),
+        new: revisionProjection(headSha, body.path, "new"),
+      };
+      return c.json(result);
     } catch (err) {
       return gitError(c, err);
     }
   });
 
   return routes;
+}
+
+function reviewOldPath(
+  path: string,
+  status: string,
+  origPath: string | undefined,
+): string {
+  const letter = status[0]?.toUpperCase();
+  return (letter === "R" || letter === "C") && origPath ? origPath : path;
+}
+
+function revisionProjection(
+  revision: string,
+  path: string,
+  side: "old" | "new",
+): ReviewSourceProjection {
+  return { kind: "revision", revision, path, side };
 }
 
 async function compareFiles(

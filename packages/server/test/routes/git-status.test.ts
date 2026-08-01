@@ -397,6 +397,10 @@ describe("git-status routes", () => {
     expect(body.structuredPatch[0]?.newStart).toBeGreaterThan(5_990);
     expect(body.diffHtml).toContain("line-inserted");
     expect(body.diffHtml).toContain("edited");
+    expect(body.reviewProjections).toEqual({
+      old: { kind: "index", path: "big.json", side: "old" },
+      new: { kind: "worktree", path: "big.json", side: "new" },
+    });
     // Only the hunk is rendered, not the file it came from.
     expect(body.diffHtml.length).toBeLessThan(20_000);
   });

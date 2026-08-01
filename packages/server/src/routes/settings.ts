@@ -28,6 +28,8 @@ import type {
 import {
   CODEX_UPDATE_POLICIES,
   DEFAULT_SERVER_SETTINGS,
+  MAX_SOURCE_REVIEW_RESPONSE_TURNS,
+  MIN_SOURCE_REVIEW_RESPONSE_TURNS,
 } from "../services/ServerSettingsService.js";
 import {
   isValidSshHostAlias,
@@ -171,6 +173,32 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
     }
     if (typeof body.workstreamsEnabled === "boolean") {
       updates.workstreamsEnabled = body.workstreamsEnabled;
+    }
+    if ("sourceReviewSubmissionsEnabled" in body) {
+      if (typeof body.sourceReviewSubmissionsEnabled !== "boolean") {
+        return c.json(
+          { error: "sourceReviewSubmissionsEnabled must be a boolean" },
+          400,
+        );
+      }
+      updates.sourceReviewSubmissionsEnabled =
+        body.sourceReviewSubmissionsEnabled;
+    }
+    if ("sourceReviewResponseTurns" in body) {
+      if (
+        typeof body.sourceReviewResponseTurns !== "number" ||
+        !Number.isInteger(body.sourceReviewResponseTurns) ||
+        body.sourceReviewResponseTurns < MIN_SOURCE_REVIEW_RESPONSE_TURNS ||
+        body.sourceReviewResponseTurns > MAX_SOURCE_REVIEW_RESPONSE_TURNS
+      ) {
+        return c.json(
+          {
+            error: `sourceReviewResponseTurns must be an integer from ${MIN_SOURCE_REVIEW_RESPONSE_TURNS} through ${MAX_SOURCE_REVIEW_RESPONSE_TURNS}`,
+          },
+          400,
+        );
+      }
+      updates.sourceReviewResponseTurns = body.sourceReviewResponseTurns;
     }
     if ("hostProcessObservabilityEnabled" in body) {
       if (typeof body.hostProcessObservabilityEnabled !== "boolean") {

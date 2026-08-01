@@ -479,6 +479,45 @@ describe("Settings Routes", () => {
       });
     });
 
+    it("accepts the source-review opt-in and bounded response turns", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceReviewSubmissionsEnabled: true,
+          sourceReviewResponseTurns: 16,
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
+        sourceReviewSubmissionsEnabled: true,
+        sourceReviewResponseTurns: 16,
+      });
+    });
+
+    it.each([
+      { sourceReviewSubmissionsEnabled: "yes" },
+      { sourceReviewResponseTurns: 0 },
+      { sourceReviewResponseTurns: 33 },
+      { sourceReviewResponseTurns: 1.5 },
+    ])("rejects invalid source-review settings %j", async (body) => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      expect(response.status).toBe(400);
+      expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
+    });
+
     it("accepts Project Queue quiet-window settings", async () => {
       const routes = createSettingsRoutes({
         serverSettingsService: mockServerSettingsService,
