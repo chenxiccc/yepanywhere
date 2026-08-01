@@ -109,6 +109,13 @@ tokens, and document-level rules may remain global under the narrow exceptions
 in [`topics/css-architecture.md`](topics/css-architecture.md); ordinary React
 component layout and states belong in modules.
 
+The dedicated migration campaign is complete. Ongoing paydown is
+opportunistic: when a task changes a component that still emits legacy global
+classes, inspect its current ownership and move a bounded, locally verifiable
+slice with the feature change. Zero global CSS is not a target, and a feature
+task should not grow into generated-markup, dynamic-class, or cross-owner
+composition work merely to reduce a line count.
+
 For standalone paydown work, select a bounded owner from the parser-backed
 inventory instead of maintaining a speculative migration queue:
 
@@ -120,6 +127,12 @@ pnpm css:inventory -- --owner <component-or-path>
 The inventory is advisory. Inspect its coupled, generated, unresolved, dynamic,
 and test-reference findings before defining a slice. The full selection and
 verification protocol lives in the CSS architecture topic.
+
+If the touched component is not a safe extraction candidate, record the
+specific reason in the change handoff rather than adding it to a migration
+queue. CSS health is evaluated on demand across containment, ownership,
+module-contract, escape-hatch, dead-code, and shipping-size signals; the global
+line ratchet is one guardrail, not a complete progress score.
 
 ## Contribution Ethos: Minimalist Runtime
 

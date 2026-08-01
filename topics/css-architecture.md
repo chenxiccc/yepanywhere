@@ -6,7 +6,7 @@
 
 Topic: css-architecture
 
-## Status: guarded, data-driven paydown
+## Status: contained steady state; opportunistic paydown
 
 YA's authored client CSS grew into four globally loaded stylesheets totaling
 more than 31,000 lines. The two largest files mixed unrelated ownership:
@@ -14,8 +14,15 @@ more than 31,000 lines. The two largest files mixed unrelated ownership:
 held generated content, tool renderers, file viewing, source review, and source
 control.
 
-This is not a big-bang rewrite. The existing cascade remains in place while new
-work stops increasing it and touched features pay down their local part.
+The dedicated migration campaigns are complete. The existing cascade remains
+in place while new work stops increasing it and touched features pay down their
+local part. Zero global CSS is not the goal: generated markup, document-level
+state, themes, tokens, and reviewed shared primitives remain global by design.
+
+"Good enough" means the direction is enforced without requiring a continuous
+cleanup campaign: new component CSS is modular, the legacy files cannot grow,
+and a feature change extracts its clearly owned legacy CSS when that work is a
+bounded part of the same verification surface.
 
 ## Migration tracking
 
@@ -29,6 +36,16 @@ records the ownership evidence for the file viewer, source review, source
 control, and blame regions: which classes are generated and stay global, which
 component owns each rule, every cross-owner reach-in a slice must convert, and
 the rules verified dead. It is reference data, not policy.
+
+[`docs/tactical/074-mixed-model-css-paydown.md`](../docs/tactical/074-mixed-model-css-paydown.md)
+is the stopped bounded-campaign ledger. It records the final campaign counts,
+verification evidence, and the known ownership-sink false positive left for
+tooling follow-up.
+
+[Tactical 076](../docs/tactical/076-css-module-contracts-and-tooling.md) tracks
+the remaining tooling work: the Biome upgrade, stricter module linting, module
+usage contracts, touched-component guidance, and an on-demand health summary.
+It is an implementation plan, not a renewed migration queue.
 
 ## Contract
 
@@ -52,6 +69,11 @@ the rules verified dead. It is reference data, not policy.
   states, and theme behavior unless an owning product topic explicitly changes
   them. Hashed module class names are implementation details; tests and browser
   automation should prefer roles, labels, and stable data attributes.
+- A task that changes a React owner still using legacy global classes performs a
+  bounded ownership check. It extracts a clear, locally verifiable slice when
+  that work stays inside the task's product surface; it reports why extraction
+  was deferred when generated vocabulary, dynamic construction, composition,
+  or verification would materially expand the task.
 
 ## Ownership boundaries
 
@@ -152,6 +174,70 @@ Automation may rewrite an already reviewed, unambiguous slice, but it must not
 choose ownership, silently resolve composition, or delete coupled/generated
 rules. Add a conversion tool only after repeated completed slices demonstrate
 a stable mechanical transformation.
+
+## Opportunistic extraction during feature work
+
+Run the ownership check when either of these is true:
+
+- a changed React component still emits classes defined in a legacy global
+  stylesheet; or
+- the change edits a legacy global stylesheet.
+
+Begin with `pnpm css:inventory -- --owner <component>`, then search the complete
+repository for the involved selectors. Extract in the same change when the
+owner is clear, the selectors describe the same product surface, important
+states can be verified with the task's existing test or browser setup, and the
+move does not require a substantial new cross-component styling API.
+
+Small touched slices are worthwhile even when they would not rank highly for a
+standalone paydown campaign. Locality and verification overlap matter more than
+raw line count. Conversely, a large inferred owner is not an invitation to
+expand a feature task across scattered rules.
+
+Defer the extraction when it crosses generated markup, an open-ended dynamic
+class family, unresolved ownership, broad caller/child composition, or a visual
+state the current task cannot exercise reliably. State the concrete reason in
+the handoff, for example:
+
+```text
+CSS ownership: deferred — the changed control participates in 14 coupled rules
+across MessageInputToolbar and ModeSelector.
+```
+
+Do not create a future-candidate queue from these deferrals. Fresh inventory is
+the source of truth when the component is touched again. An unrelated deletion
+that merely makes the global line ceiling pass does not establish that newly
+added component CSS belongs in the global file.
+
+## Health interpretation
+
+The legacy line ratchet measures containment of the global monoliths. It does
+not measure total CSS reduction or, by itself, module quality. CSS health should
+be inspected on demand across separate dimensions rather than collapsed into a
+single score or maintained as a standing dashboard:
+
+- **containment** — legacy lines per file and reviewed global exceptions;
+- **ownership** — owned, coupled, generated, unresolved, and low-confidence
+  rules or lines;
+- **module contracts** — unused or undeclared selectors, test-only usage,
+  missing production importers, and analysis made unknown by computed access or
+  side-effect imports;
+- **escape hatches and complexity** — `:global(...)`, `!important`, duplicate
+  declarations, descending specificity, and excessive selector depth;
+- **dead code** — potentially unused legacy classes and safely removable rules;
+  and
+- **shipping context** — total authored CSS and built CSS bytes, so moving
+  ownership is not mistaken for reducing delivered code.
+
+Treat new global files or growth, broken module contracts, and strict module
+lint failures as hard gates. Ratchet reviewed escape hatches and known unknown
+modules without accepting regressions. Keep ownership mix, coupled rules,
+candidate counts, total authored CSS, and bundle size observational: correct
+classification or ordinary feature work may move them in either direction.
+
+The intended consumer is the agent or reviewer already changing CSS and the
+occasional architecture audit. A command-line summary is sufficient; do not
+build a product dashboard or duplicate changing measurements in prose.
 
 ## Migration runbook
 
