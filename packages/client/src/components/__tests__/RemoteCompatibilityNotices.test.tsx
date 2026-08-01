@@ -14,8 +14,15 @@ import {
   REMOTE_COMPATIBILITY_REMINDER_SNOOZE_MS,
   restoreRemoteCompatibilityNoticeDismissals,
 } from "../../hooks/useRemoteCompatibilityNoticeDismissals";
-import { getRemoteCompatibilityNotices } from "../../lib/remoteCompatibilityNotices";
-import { RemoteCompatibilityNotices } from "../RemoteCompatibilityNotices";
+import {
+  type RemoteCompatibilityNotice,
+  getRemoteCompatibilityNotices,
+} from "../../lib/remoteCompatibilityNotices";
+import styles from "../RemoteCompatibilityNotices.module.css";
+import {
+  RemoteCompatibilityNoticeCard,
+  RemoteCompatibilityNotices,
+} from "../RemoteCompatibilityNotices";
 
 function version(overrides: Partial<VersionInfo> = {}): VersionInfo {
   return {
@@ -27,6 +34,35 @@ function version(overrides: Partial<VersionInfo> = {}): VersionInfo {
     capabilities: [],
     ...overrides,
   };
+}
+
+function notice(
+  overrides: Partial<RemoteCompatibilityNotice> = {},
+): RemoteCompatibilityNotice {
+  return {
+    id: "test-notice",
+    severity: "security",
+    title: "Server update required soon",
+    body: "Remote login still works during the compatibility window.",
+    guidance: "Update the local server before the next hosted release.",
+    versionSummary: "Server v0.5.0; recommended v0.5.1",
+    dismissKey: "test-notice-key",
+    ...overrides,
+  };
+}
+
+function expectNoLegacyNoticeClasses(container: HTMLElement) {
+  const classNames = Array.from(
+    container.querySelectorAll<HTMLElement>("[class]"),
+  ).flatMap((element) => Array.from(element.classList));
+
+  expect(
+    classNames.some(
+      (className) =>
+        className.startsWith("remote-compatibility-notice") ||
+        className === "is-copied",
+    ),
+  ).toBe(false);
 }
 
 describe("RemoteCompatibilityNotices", () => {
@@ -46,6 +82,121 @@ describe("RemoteCompatibilityNotices", () => {
     vi.restoreAllMocks();
     vi.useRealTimers();
     window.localStorage.clear();
+  });
+
+  it.each([
+    ["floating", "security", "alert", styles.floating!, styles.critical!],
+    ["floating", "blocking", "alert", styles.floating!, styles.critical!],
+    ["floating", "recommended", "status", styles.floating!, undefined],
+    ["floating", "info", "status", styles.floating!, undefined],
+    ["inline", "security", "alert", styles.inline!, styles.critical!],
+    ["inline", "blocking", "alert", styles.inline!, styles.critical!],
+    ["inline", "recommended", "status", styles.inline!, undefined],
+    ["inline", "info", "status", styles.inline!, undefined],
+  ] as const)("maps %s %s notices to the expected module classes and %s role", (placement, severity, role, placementClass, severityClass) => {
+    const { container } = render(
+      <RemoteCompatibilityNoticeCard
+        notice={notice({ severity })}
+        placement={placement}
+      />,
+    );
+
+    const root = screen.getByTestId("remote-compatibility-notice");
+    expect(root.getAttribute("role")).toBe(role);
+    expect(root.classList.contains(styles.root!)).toBe(true);
+    expect(root.classList.contains(placementClass)).toBe(true);
+    expect(severityClass ? root.classList.contains(severityClass) : true).toBe(
+      true,
+    );
+    expect(root.querySelector(`.${styles.content!}`)).toBeTruthy();
+    expect(root.querySelector(`.${styles.actions!}`)).toBeTruthy();
+    expectNoLegacyNoticeClasses(container);
+  });
+
+  it("preserves the multiline command, copied state, structure, and callbacks", async () => {
+    const onDismiss = vi.fn();
+    const onSnooze = vi.fn();
+    const command = "git fetch origin\ngit merge origin/main";
+    const { container } = render(
+      <RemoteCompatibilityNoticeCard
+        notice={notice({
+          action: { label: "Copy source steps", command },
+        })}
+        noticeCount={2}
+        placement="floating"
+        onDismiss={onDismiss}
+        onSnooze={onSnooze}
+      />,
+    );
+
+    const root = screen.getByTestId("remote-compatibility-notice");
+    const textarea = screen.getByLabelText(
+      "Copy source steps text",
+    ) as HTMLTextAreaElement;
+    const copyButton = screen.getByRole("button", {
+      name: "Copy source steps",
+    });
+
+    expect(root.querySelector(`.${styles.headline!}`)).toBeTruthy();
+    expect(root.querySelector(`.${styles.title!}`)).toBeTruthy();
+    expect(root.querySelector(`.${styles.meta!}`)).toBeTruthy();
+    expect(root.querySelector(`.${styles.count!}`)?.textContent).toBe(
+      "2 notices",
+    );
+    expect(root.querySelector(`.${styles.body!}`)).toBeTruthy();
+    expect(root.querySelector(`.${styles.guidance!}`)).toBeTruthy();
+    expect(root.querySelector(`.${styles.commandField!}`)).toBeTruthy();
+    expect(textarea.classList.contains(styles.commandInput!)).toBe(true);
+    expect(textarea.classList.contains(styles.commandInputMulti!)).toBe(true);
+    expect(textarea.value).toBe(command);
+    expect(copyButton.classList.contains(styles.copyButton!)).toBe(true);
+    expect(copyButton.classList.contains(styles.copied!)).toBe(false);
+
+    fireEvent.click(copyButton);
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(command));
+    expect(copyButton.classList.contains(styles.copied!)).toBe(true);
+    expect(screen.getByRole("button", { name: "Copied" })).toBe(copyButton);
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remind me later" }));
+    expect(onDismiss).toHaveBeenCalledOnce();
+    expect(onSnooze).toHaveBeenCalledOnce();
+    expectNoLegacyNoticeClasses(container);
+  });
+
+  it("keeps inline info links and restore actions in the same structure", () => {
+    const onRestore = vi.fn();
+    const { container } = render(
+      <RemoteCompatibilityNoticeCard
+        notice={notice({
+          severity: "info",
+          title: "Remote compatibility ready",
+          action: {
+            label: "Read release notes",
+            href: "https://example.invalid/release-notes",
+          },
+        })}
+        placement="inline"
+        onRestore={onRestore}
+      />,
+    );
+
+    const link = screen.getByRole("link", { name: "Read release notes" });
+    const restoreButton = screen.getByRole("button", {
+      name: "Show reminder",
+    });
+
+    expect(link.classList.contains(styles.button!)).toBe(true);
+    expect(link.classList.contains(styles.buttonPrimary!)).toBe(true);
+    expect(restoreButton.classList.contains(styles.button!)).toBe(true);
+    expect(restoreButton.classList.contains(styles.buttonPrimary!)).toBe(true);
+    expect(
+      screen.queryByRole("button", { name: "Remind me later" }),
+    ).toBeNull();
+
+    fireEvent.click(restoreButton);
+    expect(onRestore).toHaveBeenCalledOnce();
+    expectNoLegacyNoticeClasses(container);
   });
 
   it("renders and dismisses the protocol 2 relay resume warning for this page view", () => {
@@ -246,10 +397,7 @@ describe("RemoteCompatibilityNotices", () => {
 
   it("stays hidden while server version data is still loading", () => {
     render(
-      <RemoteCompatibilityNotices
-        relayUsername="dev-box"
-        versionInfo={null}
-      />,
+      <RemoteCompatibilityNotices relayUsername="dev-box" versionInfo={null} />,
     );
 
     expect(screen.queryByTestId("remote-compatibility-notice")).toBeNull();
@@ -273,8 +421,6 @@ describe("RemoteCompatibilityNotices", () => {
     expect(
       screen.getByText("Compatibility level 0; recommended 10"),
     ).toBeTruthy();
-    expect(
-      screen.getByText(/newer than your local YA server/i),
-    ).toBeTruthy();
+    expect(screen.getByText(/newer than your local YA server/i)).toBeTruthy();
   });
 });

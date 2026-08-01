@@ -3,9 +3,26 @@ import type { VersionInfo } from "../api/client";
 import { useRemoteCompatibilityNoticeDismissals } from "../hooks/useRemoteCompatibilityNoticeDismissals";
 import {
   type RemoteCompatibilityNotice,
+  type RemoteNoticeSeverity,
   getRemoteCompatibilityNotices,
 } from "../lib/remoteCompatibilityNotices";
 import { CopyTextButton } from "./ui/CopyTextButton";
+import styles from "./RemoteCompatibilityNotices.module.css";
+
+const placementClassNames: Record<
+  RemoteCompatibilityNoticeCardProps["placement"],
+  string
+> = {
+  floating: styles.floating!,
+  inline: styles.inline!,
+};
+
+const severityClassNames: Record<RemoteNoticeSeverity, string | undefined> = {
+  info: undefined,
+  recommended: undefined,
+  security: styles.critical!,
+  blocking: styles.critical!,
+};
 
 interface RemoteCompatibilityNoticesProps {
   versionInfo: VersionInfo | null;
@@ -18,24 +35,21 @@ export function RemoteCompatibilityNotices({
   relayUsername,
   installId,
 }: RemoteCompatibilityNoticesProps) {
-  const notices = useMemo(
-    () => {
-      if (!versionInfo) return [];
+  const notices = useMemo(() => {
+    if (!versionInfo) return [];
 
-      return getRemoteCompatibilityNotices({
-        currentVersion: versionInfo?.current ?? null,
-        latestVersion: versionInfo?.latest ?? null,
-        updateAvailable: versionInfo?.updateAvailable ?? false,
-        installSource: versionInfo?.installSource,
-        resumeProtocolVersion: versionInfo?.resumeProtocolVersion,
-        remoteCompatibilityLevel: versionInfo?.remoteCompatibilityLevel,
-        capabilities: versionInfo?.capabilities,
-        relayUsername,
-        installId,
-      });
-    },
-    [installId, relayUsername, versionInfo],
-  );
+    return getRemoteCompatibilityNotices({
+      currentVersion: versionInfo?.current ?? null,
+      latestVersion: versionInfo?.latest ?? null,
+      updateAvailable: versionInfo?.updateAvailable ?? false,
+      installSource: versionInfo?.installSource,
+      resumeProtocolVersion: versionInfo?.resumeProtocolVersion,
+      remoteCompatibilityLevel: versionInfo?.remoteCompatibilityLevel,
+      capabilities: versionInfo?.capabilities,
+      relayUsername,
+      installId,
+    });
+  }, [installId, relayUsername, versionInfo]);
   const { dismissNotice, snoozeNotice, visibleNotices } =
     useRemoteCompatibilityNoticeDismissals(notices);
 
@@ -81,7 +95,13 @@ export function RemoteCompatibilityNoticeCard({
 
   return (
     <section
-      className={`remote-compatibility-notice remote-compatibility-notice--${placement} remote-compatibility-notice--${notice.severity}`}
+      className={[
+        styles.root!,
+        placementClassNames[placement],
+        severityClassNames[notice.severity],
+      ]
+        .filter(Boolean)
+        .join(" ")}
       role={
         notice.severity === "security" || notice.severity === "blocking"
           ? "alert"
@@ -89,33 +109,25 @@ export function RemoteCompatibilityNoticeCard({
       }
       data-testid="remote-compatibility-notice"
     >
-      <div className="remote-compatibility-notice__content">
-        <div className="remote-compatibility-notice__headline">
-          <strong className="remote-compatibility-notice__title">
-            {notice.title}
-          </strong>
+      <div className={styles.content!}>
+        <div className={styles.headline!}>
+          <strong className={styles.title!}>{notice.title}</strong>
           {notice.versionSummary && (
-            <span className="remote-compatibility-notice__meta">
-              {notice.versionSummary}
-            </span>
+            <span className={styles.meta!}>{notice.versionSummary}</span>
           )}
           {noticeCount > 1 && (
-            <span className="remote-compatibility-notice__count">
-              {noticeCount} notices
-            </span>
+            <span className={styles.count!}>{noticeCount} notices</span>
           )}
         </div>
-        <span className="remote-compatibility-notice__body">{notice.body}</span>
+        <span className={styles.body!}>{notice.body}</span>
         {notice.guidance && (
-          <span className="remote-compatibility-notice__guidance">
-            {notice.guidance}
-          </span>
+          <span className={styles.guidance!}>{notice.guidance}</span>
         )}
         {commandField && (
-          <div className="remote-compatibility-notice__command-field">
+          <div className={styles.commandField!}>
             {commandField.lines > 1 ? (
               <textarea
-                className="remote-compatibility-notice__command-input remote-compatibility-notice__command-input--multi"
+                className={`${styles.commandInput!} ${styles.commandInputMulti!}`}
                 value={commandField.command}
                 readOnly
                 rows={Math.min(commandField.lines, 4)}
@@ -124,7 +136,7 @@ export function RemoteCompatibilityNoticeCard({
               />
             ) : (
               <input
-                className="remote-compatibility-notice__command-input"
+                className={styles.commandInput!}
                 value={commandField.command}
                 readOnly
                 aria-label={`${commandField.label} text`}
@@ -135,16 +147,16 @@ export function RemoteCompatibilityNoticeCard({
               text={commandField.command}
               label={commandField.label}
               copiedLabel="Copied"
-              className="remote-compatibility-notice__copy-button"
-              copiedClassName="is-copied"
+              className={styles.copyButton!}
+              copiedClassName={styles.copied!}
             />
           </div>
         )}
       </div>
-      <div className="remote-compatibility-notice__actions">
+      <div className={styles.actions!}>
         {notice.action?.href && (
           <a
-            className="remote-compatibility-notice__button remote-compatibility-notice__button-primary"
+            className={`${styles.button!} ${styles.buttonPrimary!}`}
             href={notice.action.href}
           >
             {notice.action.label}
@@ -153,27 +165,19 @@ export function RemoteCompatibilityNoticeCard({
         {onRestore && (
           <button
             type="button"
-            className="remote-compatibility-notice__button remote-compatibility-notice__button-primary"
+            className={`${styles.button!} ${styles.buttonPrimary!}`}
             onClick={onRestore}
           >
             Show reminder
           </button>
         )}
         {onDismiss && (
-          <button
-            type="button"
-            className="remote-compatibility-notice__button"
-            onClick={onDismiss}
-          >
+          <button type="button" className={styles.button!} onClick={onDismiss}>
             Dismiss
           </button>
         )}
         {onSnooze && notice.severity !== "info" && (
-          <button
-            type="button"
-            className="remote-compatibility-notice__button"
-            onClick={onSnooze}
-          >
+          <button type="button" className={styles.button!} onClick={onSnooze}>
             Remind me later
           </button>
         )}
