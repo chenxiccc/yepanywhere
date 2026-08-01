@@ -83,7 +83,7 @@ export const features = [
     providers: ["claude", "codex"],
     image: { src: "/screenshots/mobile-approve-edit.png", alt: "A file edit approval shown on a phone" },
     featured: true,
-    sourceRefs: ["README.md", "packages/client/src/components/ApprovalPrompt.tsx"],
+    sourceRefs: ["README.md", "packages/client/src/components/ToolApprovalPanel.tsx"],
   },
   {
     id: "full-fidelity-transcripts",
@@ -121,7 +121,7 @@ export const features = [
     category: "supervise",
     status: "stable",
     docsPath: "/docs/sessions-and-approvals",
-    sourceRefs: ["README.md", "topics/draft-attachment-staging.md"],
+    sourceRefs: ["README.md", "topics/attachment-storage.md"],
   },
   {
     id: "voice-input",

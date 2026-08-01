@@ -75,8 +75,9 @@ hosted-client compatibility checks.
 
 Every registry entry has a stable id, concise public copy, an owning docs path,
 and repository source references for review. A build fails on duplicate ids,
-unknown relationships, missing docs destinations, or an invalid status. A
-development-only distribution must not have a download URL.
+unknown relationships, missing docs destinations, nonexistent repository
+source references, or an invalid status. A development-only distribution must
+not have a download URL.
 
 Every server runtime provider id must map to one public provider entry, including
 runtime aliases grouped under a single public integration. This build-time
