@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { useTextTooltipAttributes } from "../../hooks/useTooltipAppearance";
 import { useI18n } from "../../i18n";
 import { UI_KEYS } from "../../lib/storageKeys";
+import styles from "./SettingsSearchBar.module.css";
 
 /**
  * Browser-local, default-off preference: settings search also matches each
@@ -43,11 +44,11 @@ export function SettingsSearchBar({
   );
   const searching = query.trim() !== "";
   return (
-    <div className="settings-search-bar">
-      <div className="settings-search-input-wrap">
+    <div className={styles.bar}>
+      <div className={styles.inputWrap}>
         <input
           type="search"
-          className="settings-input settings-search-input"
+          className={`settings-input ${styles.input}`}
           placeholder={t("settingsSearchPlaceholder")}
           aria-label={t("settingsSearchPlaceholder")}
           value={query}
@@ -62,7 +63,7 @@ export function SettingsSearchBar({
         {query !== "" && (
           <button
             type="button"
-            className="settings-search-clear"
+            className={styles.clear}
             aria-label={t("settingsSearchClear")}
             onClick={() => onQueryChange("")}
           >
@@ -71,10 +72,7 @@ export function SettingsSearchBar({
         )}
       </div>
       {searching && (
-        <label
-          className="settings-search-values-toggle"
-          {...matchValuesTooltip}
-        >
+        <label className={styles.valuesToggle} {...matchValuesTooltip}>
           <input
             type="checkbox"
             checked={matchValues}

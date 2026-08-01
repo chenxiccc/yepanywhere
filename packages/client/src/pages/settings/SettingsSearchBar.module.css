@@ -1,0 +1,59 @@
+/* Settings search field plus the adjacent match-values toggle that appears
+   only while a query is active (contract: topics/settings-search.md). The
+   result-pane visibility vocabulary stays global in index.css: it styles rows
+   the search results mount from every other settings pane. */
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.inputWrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Reserves room for the absolutely positioned clear button. The shared
+   `settings-input` primitive sets `padding` as a shorthand, so this override
+   used to win only by sitting later in the same file. Across two files that
+   would silently become emit order, so the global class is compounded. */
+.input:global(.settings-input) {
+  width: 100%;
+  padding-right: calc(var(--space-4) + var(--space-2));
+  box-sizing: border-box;
+}
+
+.input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.clear {
+  position: absolute;
+  top: 50%;
+  right: var(--space-1);
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-size-lg);
+  line-height: 1;
+  padding: var(--space-1);
+  cursor: pointer;
+}
+
+.clear:hover {
+  color: var(--text-primary);
+}
+
+.valuesToggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
