@@ -1254,6 +1254,12 @@ export function useSession(
           ...(event.parentSessionId !== undefined && {
             parentSessionId: event.parentSessionId ?? undefined,
           }),
+          ...(event.parentSessionKind !== undefined && {
+            parentSessionKind: event.parentSessionKind ?? undefined,
+          }),
+          ...(event.forkedFromSessionId !== undefined && {
+            forkedFromSessionId: event.forkedFromSessionId ?? undefined,
+          }),
           ...(event.heartbeatTurnsEnabled !== undefined && {
             heartbeatTurnsEnabled: event.heartbeatTurnsEnabled,
           }),

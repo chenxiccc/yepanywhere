@@ -120,7 +120,7 @@ describe("CacheMissBillingMonitor", () => {
         freshWindowMinutes: 60,
       }),
       sessionMetadataService: {
-        getMetadata: () => ({ parentSessionId: "parent-1" }),
+        getMetadata: () => ({ forkedFromSessionId: "parent-1" }),
         addCacheMissBillingEvent,
       } as unknown as SessionMetadataService,
       eventBus: { emit } as unknown as EventBus,
@@ -139,7 +139,7 @@ describe("CacheMissBillingMonitor", () => {
     expect(record).toMatchObject({
       provider: "claude",
       sessionId: "session-1",
-      parentSessionId: "parent-1",
+      forkedFromSessionId: "parent-1",
       reason: "fork-prefix-cache-miss",
       outcome: "unexpected-recompute",
       messageId: "assistant-1",

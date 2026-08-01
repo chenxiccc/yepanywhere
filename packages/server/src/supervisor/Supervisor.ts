@@ -2456,7 +2456,7 @@ export class Supervisor {
 
   private async archiveHelperFork(
     childSessionId: string,
-    parentSessionId: string,
+    sourceSessionId: string,
     title: string,
     providerName: ProviderName,
     process: Process,
@@ -2467,7 +2467,7 @@ export class Supervisor {
     await this.sessionMetadataService.updateMetadata(childSessionId, {
       title,
       archived: true,
-      parentSessionId,
+      forkedFromSessionId: sourceSessionId,
     });
     await this.sessionMetadataService.setProvider(childSessionId, providerName);
     await this.sessionMetadataService.setExecutor(

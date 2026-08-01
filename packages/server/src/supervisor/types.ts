@@ -101,8 +101,12 @@ export interface SessionSummary {
   isArchived?: boolean;
   /** Whether the session is starred/favorited */
   isStarred?: boolean;
-  /** Parent session when this session is a YA-owned fork/aside. */
+  /** Interactive Mother session for a YA-owned `/btw` aside. */
   parentSessionId?: string;
+  /** Explicit meaning of parentSessionId; absent on legacy records. */
+  parentSessionKind?: "btw-aside";
+  /** Source session whose provider transcript was cloned or forked. */
+  forkedFromSessionId?: string;
   /** Initial prompt text accepted by YA for new-session recovery/copy. */
   initialPrompt?: string;
   /** Whether this session is opted in to heartbeat turns */

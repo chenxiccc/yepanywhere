@@ -238,7 +238,10 @@ export interface CacheMissBillingRecord {
   sessionId: string;
   projectId: UrlProjectId;
   sessionPath: string;
+  /** Interactive Mother session when the observed fork is a `/btw` aside. */
   parentSessionId?: string;
+  /** Source session for an ordinary Clone/Fork/helper lineage. */
+  forkedFromSessionId?: string;
   reason: CacheMissBillingReason;
   outcome: CacheMissBillingOutcome;
   messageId?: string;

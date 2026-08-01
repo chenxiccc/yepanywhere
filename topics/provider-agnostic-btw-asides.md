@@ -30,6 +30,18 @@ silent helper queries and lightweight fallback side-query envelopes.
   separate delivery intents.
 - A child aside must persist a parent link, and parent views must be able to
   hydrate visible child-aside state after reload.
+- `parentSessionId` is the interactive Mother link, and new records pair it
+  with `parentSessionKind: "btw-aside"`. Ordinary Clone/Fork/helper provenance
+  is stored separately as `forkedFromSessionId`; a bare fork relationship must
+  never activate the `/btw` badge, Mother navigation, or aside toolbar.
+- Clients accept a generated custom title beginning with `/btw` as the legacy
+  positive signal when connected to an older server. A bare legacy
+  `parentSessionId` is not sufficient because older YA releases also used that
+  field for ordinary Clone and Fork lineage.
+- A pre-v3 aside whose generated `/btw` title was manually replaced is
+  indistinguishable from an ordinary record with the overloaded parent field.
+  Migration fails closed by treating it as fork provenance; new typed asides
+  remain identifiable after retitling.
 - UI affordances should show routing state before submission. If the composer
   is focused on an aside, the user should not have to infer that from a
   truncated title or hidden URL parameter.
@@ -54,6 +66,8 @@ silent helper queries and lightweight fallback side-query envelopes.
 - Parent-result injection requires an explicit user action.
 - Reloading the parent session restores visible linked aside state.
 - Deferred queue and `/btw` launch paths remain distinct.
+- Clone/Fork rows with fork provenance do not render `/btw` UI, while a renamed
+  aside with explicit `parentSessionKind` still does.
 
 ## Next Step: Normal Turn Renderer Adapter
 

@@ -1533,7 +1533,7 @@ export class CodexSessionReader implements ISessionReader {
       title: null,
       fullTitle: null,
     };
-    const parentSessionId =
+    const forkedFromSessionId =
       typeof metaEntry.payload.forked_from_id === "string"
         ? metaEntry.payload.forked_from_id
         : undefined;
@@ -1550,7 +1550,7 @@ export class CodexSessionReader implements ISessionReader {
       contextUsage,
       provider,
       model,
-      parentSessionId,
+      forkedFromSessionId,
       originator: metaEntry.payload.originator,
       cliVersion: metaEntry.payload.cli_version,
       source: codexSessionSourceLabel(metaEntry.payload.source),
@@ -1612,7 +1612,7 @@ export class CodexSessionReader implements ISessionReader {
     const provider = this.determineProvider(metaEntry, model);
     const turnContext = this.extractTurnContext(entries);
     const contextUsage = this.extractContextUsage(entries, model, provider);
-    const parentSessionId =
+    const forkedFromSessionId =
       typeof metaEntry.payload.forked_from_id === "string"
         ? metaEntry.payload.forked_from_id
         : undefined;
@@ -1631,7 +1631,7 @@ export class CodexSessionReader implements ISessionReader {
       contextUsage,
       provider,
       model,
-      parentSessionId,
+      forkedFromSessionId,
       originator: metaEntry.payload.originator,
       cliVersion: metaEntry.payload.cli_version,
       source: codexSessionSourceLabel(metaEntry.payload.source),

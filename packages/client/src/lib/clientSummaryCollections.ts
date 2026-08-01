@@ -53,6 +53,8 @@ export interface SessionCollectionRecord {
   isStarred?: boolean;
   activeStartedAt?: number;
   parentSessionId?: string;
+  parentSessionKind?: "btw-aside";
+  forkedFromSessionId?: string;
   initialPrompt?: string;
   executor?: string;
   lastAgentText?: string;

@@ -124,6 +124,10 @@ The client requires both provider `supportsForkSession` and server capability
 `session-fork-turn-intents`. Without either, it hides the complete unified
 Clone/direct-Fork surface and sends no request. The server resolves real human
 turns; user-role tool results and injected/synthetic rows are not boundaries.
+Successful Clone/Fork/helper copies expose their source through
+`forkedFromSessionId`. `parentSessionId` is reserved for the interactive Mother
+relationship of a typed `/btw` aside, so ordinary copies never inherit `/btw`
+badge or toolbar behavior.
 The exact UI, completed-turn, draft, and failure contracts are in
 [fork-from-turn](fork-from-turn.md); the original 2026-08-01 failures and repair
 receipts are in

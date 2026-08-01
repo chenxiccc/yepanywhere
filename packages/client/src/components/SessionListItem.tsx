@@ -11,7 +11,7 @@ import { formatBriefAge, formatSessionHoverAge } from "../lib/sessionAge";
 import {
   buildBtwAsideParentHref,
   getBtwAsideSessionDisplayTitle,
-  isBtwAsideSessionTitle,
+  isBtwAsideSession,
 } from "../lib/btwAsideSessions";
 import type {
   ContextUsage,
@@ -55,6 +55,7 @@ interface SessionListItemProps {
   executor?: string;
   /** Parent session when this item is a YA-owned /btw aside. */
   parentSessionId?: string;
+  parentSessionKind?: "btw-aside";
   /** Provider-native child work attached to this canonical YA session. */
   providerChildren?: ProviderChildSessionSummary[];
 
@@ -155,6 +156,7 @@ export function SessionListItem({
   model,
   executor,
   parentSessionId,
+  parentSessionKind,
   providerChildren = [],
   // Feature toggles
   mode,
@@ -235,11 +237,12 @@ export function SessionListItem({
   const displayTitle =
     localTitle ?? title ?? (isNewSession ? "New session" : "Untitled session");
   const hasEffectiveCustomTitle = !!localTitle || hasCustomTitle;
-  const isBtwAsideSession =
-    !!parentSessionId ||
-    isBtwAsideSessionTitle(displayTitle) ||
-    isBtwAsideSessionTitle(fullTitle);
-  const visibleTitle = isBtwAsideSession
+  const isBtwAside = isBtwAsideSession({
+    parentSessionKind,
+    title: displayTitle,
+    fullTitle,
+  });
+  const visibleTitle = isBtwAside
     ? getBtwAsideSessionDisplayTitle(displayTitle)
     : displayTitle;
   const copyPromptText = (initialPrompt ?? fullTitle ?? "").trim();
@@ -514,7 +517,7 @@ export function SessionListItem({
     mode === "card" ? "session-list-item--card" : "session-list-item--compact",
     isCurrent && "current",
     hasUnread && "unread",
-    isBtwAsideSession && "btw-aside-session",
+    isBtwAside && "btw-aside-session",
     isSelected && "selected",
     isArchived && "archived",
   ]
@@ -523,7 +526,7 @@ export function SessionListItem({
 
   const sessionHref = `${basePath}/projects/${projectId}/sessions/${sessionId}`;
   const parentHref =
-    parentSessionId && isBtwAsideSession
+    parentSessionId && isBtwAside
       ? buildBtwAsideParentHref(basePath, projectId, parentSessionId, sessionId)
       : null;
 
@@ -669,7 +672,7 @@ export function SessionListItem({
               <strong className="session-list-item__title">
                 {isStarred && <StarIcon filled size={12} />}
                 {showCardThinkingIndicator && <ThinkingIndicator />}
-                {isBtwAsideSession && (
+                {isBtwAside && (
                   // biome-ignore lint/a11y/noStaticElementInteractions: clickable variant has link role and keyboard handling; inert variant only shows the badge
                   <span
                     className="session-badge session-badge-btw"
@@ -797,7 +800,7 @@ export function SessionListItem({
                 {isStarred && <StarIcon filled />}
                 <span className="session-list-item__title-text">
                   {isNewSession && <ThinkingIndicator />}
-                  {isBtwAsideSession && (
+                  {isBtwAside && (
                     // biome-ignore lint/a11y/noStaticElementInteractions: clickable variant has link role and keyboard handling; inert variant only shows the badge
                     <span
                       className="session-badge session-badge-btw"

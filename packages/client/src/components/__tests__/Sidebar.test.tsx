@@ -804,7 +804,7 @@ describe("Sidebar collapsed toggle", () => {
         title: sharedTitle,
         fullTitle: sharedTitle,
         messageCount: 81,
-        parentSessionId: "parent",
+        forkedFromSessionId: "parent",
       }),
     ];
 
@@ -873,7 +873,7 @@ describe("Sidebar collapsed toggle", () => {
         title: sharedTitle,
         fullTitle: sharedTitle,
         messageCount: 12,
-        parentSessionId: "source",
+        forkedFromSessionId: "source",
       }),
     ];
 

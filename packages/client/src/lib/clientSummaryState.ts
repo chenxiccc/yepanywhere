@@ -119,10 +119,15 @@ function putRecord(
   const parentSessionId = record.parentSessionId
     ? resolveSessionCollectionId(state, record.parentSessionId)
     : record.parentSessionId;
+  const forkedFromSessionId = record.forkedFromSessionId
+    ? resolveSessionCollectionId(state, record.forkedFromSessionId)
+    : record.forkedFromSessionId;
   const normalizedRecord =
-    id === record.id && parentSessionId === record.parentSessionId
+    id === record.id &&
+    parentSessionId === record.parentSessionId &&
+    forkedFromSessionId === record.forkedFromSessionId
       ? record
-      : { ...record, id, parentSessionId };
+      : { ...record, id, parentSessionId, forkedFromSessionId };
   const entities = new Map(state.sessions.entities);
   entities.set(id, normalizedRecord);
   return {
@@ -169,6 +174,8 @@ const REMAP_MERGE_GROUPS = {
     "isArchived",
     "isStarred",
     "parentSessionId",
+    "parentSessionKind",
+    "forkedFromSessionId",
     "executor",
   ],
   projectObservedAt: ["projectId", "projectName"],
@@ -1208,7 +1215,9 @@ function withMetadataFields(
     customTitle?: string;
     isArchived?: boolean;
     isStarred?: boolean;
-    parentSessionId?: string;
+    parentSessionId?: string | null;
+    parentSessionKind?: "btw-aside" | null;
+    forkedFromSessionId?: string | null;
     executor?: string;
   },
   observation: SessionCollectionObservation,
@@ -1229,13 +1238,39 @@ function withMetadataFields(
     ...(canApplyObservedField(record.isStarred, fields.isStarred, isFresh)
       ? { isStarred: fields.isStarred }
       : {}),
-    ...(canApplyObservedField(
-      record.parentSessionId,
-      fields.parentSessionId,
-      isFresh,
-    )
-      ? { parentSessionId: fields.parentSessionId }
-      : {}),
+    ...(fields.parentSessionId === null
+      ? isFresh
+        ? { parentSessionId: undefined }
+        : {}
+      : canApplyObservedField(
+            record.parentSessionId,
+            fields.parentSessionId,
+            isFresh,
+          )
+        ? { parentSessionId: fields.parentSessionId }
+        : {}),
+    ...(fields.parentSessionKind === null
+      ? isFresh
+        ? { parentSessionKind: undefined }
+        : {}
+      : canApplyObservedField(
+            record.parentSessionKind,
+            fields.parentSessionKind,
+            isFresh,
+          )
+        ? { parentSessionKind: fields.parentSessionKind }
+        : {}),
+    ...(fields.forkedFromSessionId === null
+      ? isFresh
+        ? { forkedFromSessionId: undefined }
+        : {}
+      : canApplyObservedField(
+            record.forkedFromSessionId,
+            fields.forkedFromSessionId,
+            isFresh,
+          )
+        ? { forkedFromSessionId: fields.forkedFromSessionId }
+        : {}),
     ...(canApplyObservedField(record.executor, fields.executor, isFresh)
       ? { executor: fields.executor }
       : {}),
@@ -1390,6 +1425,8 @@ function upsertSnapshotRecord(
       isArchived: row.isArchived,
       isStarred: row.isStarred,
       parentSessionId: row.parentSessionId,
+      parentSessionKind: row.parentSessionKind,
+      forkedFromSessionId: row.forkedFromSessionId,
       executor: row.executor,
     },
     observation,
@@ -1677,13 +1714,21 @@ export function applySessionCollectionIdRemapped(
     entities.set(newSessionId, mergedRecord);
   }
   for (const [sessionId, record] of entities) {
-    if (!record.parentSessionId) continue;
-    const parentSessionId = resolveSessionCollectionId(
-      next,
-      record.parentSessionId,
-    );
-    if (parentSessionId !== record.parentSessionId) {
-      entities.set(sessionId, { ...record, parentSessionId });
+    const parentSessionId = record.parentSessionId
+      ? resolveSessionCollectionId(next, record.parentSessionId)
+      : undefined;
+    const forkedFromSessionId = record.forkedFromSessionId
+      ? resolveSessionCollectionId(next, record.forkedFromSessionId)
+      : undefined;
+    if (
+      parentSessionId !== record.parentSessionId ||
+      forkedFromSessionId !== record.forkedFromSessionId
+    ) {
+      entities.set(sessionId, {
+        ...record,
+        parentSessionId,
+        forkedFromSessionId,
+      });
     }
   }
 
@@ -1883,6 +1928,8 @@ export function applySessionCollectionCreated(
       isArchived: session.isArchived,
       isStarred: session.isStarred,
       parentSessionId: session.parentSessionId,
+      parentSessionKind: session.parentSessionKind,
+      forkedFromSessionId: session.forkedFromSessionId,
     },
     observation,
   );
@@ -1955,7 +2002,9 @@ export function applySessionCollectionMetadataChanged(
       customTitle: event.title,
       isArchived: event.archived,
       isStarred: event.starred,
-      parentSessionId: event.parentSessionId ?? undefined,
+      parentSessionId: event.parentSessionId,
+      parentSessionKind: event.parentSessionKind,
+      forkedFromSessionId: event.forkedFromSessionId,
     },
     observation,
   );

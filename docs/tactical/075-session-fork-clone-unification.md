@@ -58,7 +58,7 @@ The implementation decisions fixed by that approval are:
 - The first implementation adds Clone to the session header, not every session
   list row.
 - The target keeps the source provider, model, project/workstream, sandbox
-  settings, and YA parent lineage.
+  settings, and YA fork provenance.
 
 This approval is also the deliberate default-on product decision required by
 `topics/vanilla-defaults.md`: Clone is a familiar, explicitly invoked copy
@@ -461,7 +461,7 @@ Recorded decision:
 - Gate it on both `session-fork-turn-intents` and provider
   `supportsForkSession`, and use the latest-complete intent.
 - Show a visible pending state and prevent duplicate activation.
-- On success, navigate to the cold target and preserve parent lineage,
+- On success, navigate to the cold target and preserve fork provenance,
   provider/model/workstream, sandbox state, and title metadata.
 - Title the target `Clone: <source>` without repeatedly stacking the prefix.
 - On failure, leave the source and its draft untouched and show an actionable
@@ -579,7 +579,7 @@ project/session as a source.
    **Before this turn** and **After this turn**. Verify their retained prefixes
    exactly; in particular, the before-second and after-first boundaries match.
 6. Use header **Clone** after the second response. Verify both turns are
-   retained, the new composer is empty, no process starts, parent lineage and
+   retained, the new composer is empty, no process starts, fork provenance and
    settings persist, and the source remains byte-for-byte unchanged at the
    provider transcript level.
 7. Capture and inspect the header and prompt menus at 1920x1080 and 375x812.
@@ -643,6 +643,77 @@ Deterministic closeout:
   advisory i18n scan retained its three pre-existing Vite-entry warnings and
   reported none in the changed UI copy.
 
+## Follow-up repair — separate fork provenance from `/btw` parentage
+
+After the unified surface shipped, an ordinary header Clone rendered with a
+`/btw` badge and Mother-navigation controls. The copy itself was valid; the UI
+misclassified it because `parentSessionId` carried two meanings at once:
+ordinary provider-copy provenance and the interactive Mother relationship of a
+YA `/btw` aside. Session rows and `useBtwAsides` treated field presence as proof
+of the latter.
+
+The repair makes those relationships explicit:
+
+- `forkedFromSessionId` records the source of ordinary Clone, direct Fork,
+  fork-summary generator/target, helper, and provider-native Codex copies.
+- `parentSessionId` is reserved for an interactive `/btw` Mother link and is
+  paired on new records with `parentSessionKind: "btw-aside"`.
+- A new client recognizes `/btw` only from the explicit kind or, for an older
+  server, the established generated custom title beginning with `/btw`. A bare
+  `parentSessionId` is deliberately inconclusive.
+- Metadata schema version 3 migrates older overloaded records. A record whose
+  custom title begins with `/btw` keeps its parent and gains the explicit kind;
+  every other legacy parent moves to `forkedFromSessionId` and clears the
+  Mother link. This repairs existing ordinary Clone/Fork rows on server start.
+  A pre-v3 aside whose generated title was manually replaced is not
+  distinguishable from an ordinary legacy fork, so it deliberately migrates
+  as fork provenance. New typed asides remain identifiable after retitling.
+- Session detail, project/global list routes, collection state, id remapping,
+  index-cache round trips, metadata events, and cache-miss billing preserve the
+  appropriate relationship. Duplicate-title protection accepts either lineage
+  field without using either as `/btw` identity.
+- A previously written session-index entry with a bare `parentSessionId` is
+  normalized to fork provenance as it loads. Provider summaries never owned
+  the interactive Mother relationship, so this closes the one path where an
+  old Codex cache could leak the overloaded field after metadata migration.
+
+Compatibility review: stable `v0.7.0` and `v0.6.2` expose none of the new
+fields. They remain additive response/event metadata, so no new endpoint call,
+capability meaning, or remote compatibility level is introduced. A new client
+with either older server falls back to the `/btw` title and does not misclassify
+ordinary `Clone:`/`Fork:` titles. An old client with the new server sees no
+`parentSessionId` on an ordinary copy and therefore cannot add the erroneous
+badge; new `/btw` records continue to expose the legacy parent field. The
+existing `session-fork-turn-intents` gate and unsupported-server behavior are
+unchanged.
+
+Validation requires all four identity cases: new ordinary Clone/Fork, migrated
+ordinary Clone/Fork, explicitly typed `/btw` after retitle, and legacy-title
+`/btw` from an older server. The isolated browser receipt must show an ordinary
+Clone without the badge at desktop and phone widths while a real `/btw` row
+still carries the badge and Mother navigation.
+
+Follow-up validation receipt — 2026-08-01:
+
+- Restarting the prior real-provider profile
+  `/tmp/ya-fork-clone-MAo1rS/ya` migrated metadata version 2 to 3. Existing
+  Claude Clone `dcad21dd-c6d4-4636-a468-36ec11339d5d` moved its source
+  `f9f3b16c-9474-4be0-b40a-10bf7d738189` from `parentSessionId` to
+  `forkedFromSessionId`; both the persisted JSON and detail API omitted the
+  Mother fields.
+- The legacy storage-copy route created real Claude aside
+  `e02e1332-0682-4c6e-999f-a09041b2180f` without a model turn. Its persisted
+  and API projections carried the Mother id, `parentSessionKind: "btw-aside"`,
+  and the same source as fork provenance.
+- Browser assertions at 1920×1080 and 375×812 found zero `/btw` badges on the
+  migrated Clone and exactly one on the typed aside. Clicking the desktop badge
+  navigated to Mother with `?btw=e02e1332-0682-4c6e-999f-a09041b2180f`.
+  Browser console warnings/errors were empty.
+- Inspected captures are retained at
+  `.artifacts/ui-testing/2026-08-01-session-lineage/lineage-desktop.png` and
+  `lineage-phone.png`. The validation reused the earlier real Haiku transcript
+  and spent no additional provider turn.
+
 ## Approval Receipt
 
 The Maintainer explicitly said **proceed** on 2026-08-01, authorizing the
@@ -673,6 +744,9 @@ request.
   observable effects.
 - Failures confirm that the source is unchanged and do not expose raw provider
   ids as the primary explanation.
+- Ordinary Clone/Fork/helper targets retain `forkedFromSessionId` but never
+  render a `/btw` badge or Mother controls; typed and legacy-title `/btw`
+  asides retain those controls.
 
 ## Non-goals
 

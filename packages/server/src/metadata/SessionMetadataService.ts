@@ -29,8 +29,12 @@ export interface SessionMetadata {
   isArchived?: boolean;
   /** Whether the session is starred/favorited */
   isStarred?: boolean;
-  /** Parent session when this session is a YA-owned fork/aside. */
+  /** Interactive Mother session for a YA-owned `/btw` aside. */
   parentSessionId?: string;
+  /** Explicit meaning of parentSessionId; absent on legacy records. */
+  parentSessionKind?: "btw-aside";
+  /** Source session whose provider transcript was cloned or forked. */
+  forkedFromSessionId?: string;
   /** Saved viewer-only objects placed in the transcript. */
   transcriptDisplayObjects?: TranscriptDisplayObject[];
   /** Durable YA-owned recap rows merged into the transcript view only. */
@@ -92,7 +96,7 @@ export interface SessionMetadataState {
   version: number;
 }
 
-const CURRENT_VERSION = 2;
+const CURRENT_VERSION = 3;
 const MAX_RECAP_MESSAGES_PER_SESSION = 200;
 const MAX_CACHE_MISS_BILLING_EVENTS_PER_SESSION = 100;
 
@@ -141,8 +145,19 @@ export class SessionMetadataService {
         version: CURRENT_VERSION,
       };
 
+      const migrateLegacyLineage = (parsed.version ?? 0) < 3;
       let changed = parsed.version !== CURRENT_VERSION;
       for (const metadata of Object.values(this.state.sessions)) {
+        if (migrateLegacyLineage && metadata.parentSessionId) {
+          if (/^\/btw(?:\s+|$)/i.test(metadata.customTitle?.trimStart() ?? "")) {
+            metadata.parentSessionKind = "btw-aside";
+          } else {
+            metadata.forkedFromSessionId ??= metadata.parentSessionId;
+            metadata.parentSessionId = undefined;
+            metadata.parentSessionKind = undefined;
+          }
+          changed = true;
+        }
         if (!metadata.transcriptDisplayObjects) {
           continue;
         }
@@ -597,6 +612,8 @@ export class SessionMetadataService {
       archived?: boolean;
       starred?: boolean;
       parentSessionId?: string | null;
+      parentSessionKind?: "btw-aside" | null;
+      forkedFromSessionId?: string | null;
       heartbeatTurnsEnabled?: boolean;
       autoResumeDisabled?: boolean;
       heartbeatTurnsAfterMinutes?: number | null;
@@ -628,6 +645,19 @@ export class SessionMetadataService {
 
       if (updates.parentSessionId !== undefined) {
         result.parentSessionId = updates.parentSessionId?.trim() || undefined;
+        result.parentSessionKind = result.parentSessionId
+          ? (updates.parentSessionKind ?? "btw-aside")
+          : undefined;
+      } else if (updates.parentSessionKind !== undefined) {
+        result.parentSessionKind =
+          result.parentSessionId && updates.parentSessionKind === "btw-aside"
+            ? "btw-aside"
+            : undefined;
+      }
+
+      if (updates.forkedFromSessionId !== undefined) {
+        result.forkedFromSessionId =
+          updates.forkedFromSessionId?.trim() || undefined;
       }
 
       if (updates.heartbeatTurnsEnabled !== undefined) {
@@ -699,6 +729,12 @@ export class SessionMetadataService {
     if (updated.isStarred) cleaned.isStarred = updated.isStarred;
     if (updated.parentSessionId)
       cleaned.parentSessionId = updated.parentSessionId;
+    if (updated.parentSessionId && updated.parentSessionKind) {
+      cleaned.parentSessionKind = updated.parentSessionKind;
+    }
+    if (updated.forkedFromSessionId) {
+      cleaned.forkedFromSessionId = updated.forkedFromSessionId;
+    }
     if (updated.transcriptDisplayObjects?.length) {
       cleaned.transcriptDisplayObjects = updated.transcriptDisplayObjects;
     }

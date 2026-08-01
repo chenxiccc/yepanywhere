@@ -56,8 +56,11 @@ export interface CachedSessionSummary {
   provider: ProviderName;
   /** Model used for this session (e.g. "gemini-2.5-pro") */
   model?: string;
-  /** Parent session when this session is a YA-owned/provider fork. */
+  /** Interactive Mother session for a YA-owned `/btw` aside. */
   parentSessionId?: string;
+  parentSessionKind?: "btw-aside";
+  /** Source session whose provider transcript was cloned or forked. */
+  forkedFromSessionId?: string;
   /** Capped excerpt of the most recent visible agent turn or provider recap. */
   lastAgentText?: string;
 }
@@ -96,6 +99,16 @@ function needsClaudeTitleRefresh(summary: CachedSessionSummary): boolean {
       CLAUDE_LOCAL_COMMAND_CAVEAT_TITLE_PREFIX,
     ) ?? false
   );
+}
+
+function migrateCachedForkLineage(summary: CachedSessionSummary): void {
+  if (!summary.parentSessionId || summary.parentSessionKind) {
+    return;
+  }
+  // Provider summaries never owned the interactive `/btw` Mother link. Before
+  // the lineage split, Codex `forked_from_id` was cached in parentSessionId.
+  summary.forkedFromSessionId ??= summary.parentSessionId;
+  delete summary.parentSessionId;
 }
 
 interface SessionIndexLargestCacheMiss {
@@ -411,6 +424,7 @@ export class SessionIndexService implements ISessionIndexService {
         for (const [sessionId, summary] of Object.entries(
           compatible.sessions,
         )) {
+          migrateCachedForkLineage(summary);
           if (needsClaudeTitleRefresh(summary)) {
             delete compatible.sessions[sessionId];
             this.markSessionDirtyByScopeKey(scopeKey, sessionId);
@@ -744,6 +758,8 @@ export class SessionIndexService implements ISessionIndexService {
       provider: cached.provider ?? DEFAULT_PROVIDER,
       model: cached.model,
       parentSessionId: cached.parentSessionId,
+      parentSessionKind: cached.parentSessionKind,
+      forkedFromSessionId: cached.forkedFromSessionId,
       lastAgentText: cached.lastAgentText,
     };
   }
@@ -765,6 +781,8 @@ export class SessionIndexService implements ISessionIndexService {
       provider: summary.provider,
       model: summary.model,
       parentSessionId: summary.parentSessionId,
+      parentSessionKind: summary.parentSessionKind,
+      forkedFromSessionId: summary.forkedFromSessionId,
       lastAgentText: summary.lastAgentText,
     };
   }

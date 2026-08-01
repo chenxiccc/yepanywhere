@@ -2787,7 +2787,7 @@ describe("Sessions metadata route", () => {
     });
     expect(updateMetadata).toHaveBeenCalledWith("sess-fork", {
       title: "Fork: Refactor session",
-      parentSessionId: "sess-1",
+      forkedFromSessionId: "sess-1",
     });
   });
 
@@ -2795,6 +2795,7 @@ describe("Sessions metadata route", () => {
     const project = createProject();
     const forkSession = vi.fn(async () => ({ sessionId: "sess-clone" }));
     const resumeSession = vi.fn();
+    const updateMetadata = vi.fn(async () => undefined);
     const routes = createSessionsRoutes({
       supervisor: {
         getProcessForSession: vi.fn(() => ({
@@ -2822,7 +2823,7 @@ describe("Sessions metadata route", () => {
         getExecutor: vi.fn(() => undefined),
         getRequestedModel: vi.fn(() => undefined),
         getMetadata: vi.fn(() => ({ customTitle: "Short session" })),
-        updateMetadata: vi.fn(async () => undefined),
+        updateMetadata,
       } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
     });
 
@@ -2852,6 +2853,10 @@ describe("Sessions metadata route", () => {
     expect(forkSession.mock.calls[0]?.[0]).toMatchObject({
       boundary: undefined,
       upToMessageId: undefined,
+    });
+    expect(updateMetadata).toHaveBeenCalledWith("sess-clone", {
+      title: "Clone: Short session",
+      forkedFromSessionId: "sess-1",
     });
     expect(resumeSession).not.toHaveBeenCalled();
   });
@@ -3318,7 +3323,7 @@ describe("Sessions metadata route", () => {
     expect(updateMetadata).toHaveBeenCalledWith("sess-retitle-generator", {
       title: "Retitle generator",
       archived: true,
-      parentSessionId: "sess-1",
+      forkedFromSessionId: "sess-1",
     });
     expect(updateMetadata).not.toHaveBeenCalledWith(
       "sess-1",
@@ -3639,17 +3644,17 @@ describe("Sessions metadata route", () => {
     expect(updateMetadata).toHaveBeenCalledWith("sess-generator", {
       title: "Fork summary generator",
       archived: true,
-      parentSessionId: "sess-1",
+      forkedFromSessionId: "sess-1",
     });
     expect(updateMetadata).toHaveBeenCalledWith("sess-target", {
       title: "Refactor continuation",
       archived: true,
-      parentSessionId: "sess-1",
+      forkedFromSessionId: "sess-1",
     });
     expect(updateMetadata).toHaveBeenCalledWith("sess-target", {
       title: "Refactor continuation",
       archived: false,
-      parentSessionId: "sess-1",
+      forkedFromSessionId: "sess-1",
     });
     expect(setProvider).toHaveBeenCalledWith("sess-target", "claude");
     expect(setProvider).toHaveBeenCalledWith("sess-generator", "claude");
@@ -3665,14 +3670,14 @@ describe("Sessions metadata route", () => {
       expect.objectContaining({
         sessionId: "sess-generator",
         archived: true,
-        parentSessionId: "sess-1",
+        forkedFromSessionId: "sess-1",
       }),
     );
     expect(emit).toHaveBeenCalledWith(
       expect.objectContaining({
         sessionId: "sess-target",
         archived: true,
-        parentSessionId: "sess-1",
+        forkedFromSessionId: "sess-1",
       }),
     );
   });

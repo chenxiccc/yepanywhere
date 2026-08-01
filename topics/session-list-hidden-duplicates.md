@@ -27,7 +27,8 @@ Evidence from live local state:
 
 - `019f050c...` is a Codex fork whose rollout file starts with
   `forked_from_id: 019f04f2-e32b-7070-9115-2421798c6794`.
-- The direct session metadata route reports that parent:
+- The direct session metadata route then reported that source through the
+  overloaded parent field:
   `/api/projects/.../sessions/019f050c.../metadata` includes
   `parentSessionId: 019f04f2...`.
 - The project/global list routes did not include `parentSessionId` for either
@@ -57,8 +58,9 @@ list data, and `messageCount` is not a safe proxy for "main session".
   idle. `ownership.owner === "self"` is live supervision state even when
   `activity` is neither `in-turn` nor `waiting-input`.
 - Provider or YA fork lineage is display data. List APIs, collection-store
-  records, and cache entries must preserve `parentSessionId`/fork ancestry so
-  duplicate grouping can distinguish parent, child, and helper rows.
+  records, and cache entries must preserve `forkedFromSessionId`; they must
+  separately preserve a `/btw` aside's typed `parentSessionId` Mother link so
+  duplicate grouping can distinguish source, child, and helper rows.
 - YA-created helper sessions are not representative sessions. Retitle
   generators, recap generators, fork-summary generators, and future temporary
   "summarize this" workers must be demoted below their source session and below
@@ -78,18 +80,18 @@ list data, and `messageCount` is not a safe proxy for "main session".
 ## Fix Plan
 
 1. Preserve fork lineage through the list cache.
-   - Add `parentSessionId` to `CachedSessionSummary`, `toCachedSummary()`, and
+   - Add lineage fields to `CachedSessionSummary`, `toCachedSummary()`, and
      `buildSummariesFromIndex()`.
    - Bump the session-index schema version so old cache files missing lineage
      are rebuilt. The current local cache has no `parentSessionId` for
      `019f050c...` even though the direct reader can extract it.
-   - Add index tests proving a cached Codex fork keeps `parentSessionId` across
-     the fast path and after restart.
+   - Add index tests proving a cached Codex fork keeps its source relationship
+     across the fast path and after restart.
 
 2. Keep session-list projections lineage-complete.
    - Confirm project list, global list, session collection store ingestion,
      `SessionCollectionRecord`, and `sessionCollectionRecordsToGlobalSessionItems`
-     all preserve `parentSessionId`.
+     all preserve the typed Mother link and ordinary fork provenance.
    - Add route/store coverage for a list response where a Codex fork's lineage
      is visible without opening the detail route.
 
@@ -122,12 +124,19 @@ list data, and `messageCount` is not a safe proxy for "main session".
      source session.
    - Sidebar: rows that only share truncated `title` but differ in `fullTitle`
      are not grouped.
-   - Session index: cached Codex fork summaries preserve `parentSessionId`.
+   - Session index: cached Codex fork summaries preserve
+     `forkedFromSessionId`.
 
 ## Implementation Notes
 
-The immediate fix preserves `parentSessionId` in session-index cache entries
-and bumps the cache schema so existing lineage-less cache files rebuild.
+The immediate fix originally preserved the then-overloaded `parentSessionId`
+in session-index cache entries and bumped the cache schema so existing
+lineage-less cache files rebuilt. The 2026-08-01 lineage split now preserves
+`forkedFromSessionId` for ordinary Fork/Clone/helper copies and keeps
+`parentSessionId` plus `parentSessionKind` for `/btw` Mother relationships.
+Existing summary-index entries normalize their legacy bare parent link into
+fork provenance on load; provider summaries never stored the interactive
+Mother relationship.
 Sidebar duplicate grouping now keys by the effective full title and fails open
 for current, self-owned, or lineage-related rows. That intentionally leaves a
 same-title parent/fork pair visible until YA has explicit helper-purpose

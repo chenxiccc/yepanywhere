@@ -36,7 +36,7 @@ describe("SessionMetadataService", () => {
         "utf-8",
       );
       const state = JSON.parse(content);
-      expect(state.version).toBe(2);
+      expect(state.version).toBe(3);
       expect(state.sessions["session-1"]).toBeDefined();
       expect(state.sessions["session-1"].customTitle).toBe("My Custom Title");
     });
@@ -65,6 +65,41 @@ describe("SessionMetadataService", () => {
         customTitle: "Archived One",
         isArchived: true,
       });
+    });
+
+    it("migrates legacy parent links into /btw or fork lineage", async () => {
+      await writeFile(
+        join(testDir, "session-metadata.json"),
+        JSON.stringify({
+          version: 2,
+          sessions: {
+            aside: {
+              customTitle: "/btw check the side path",
+              parentSessionId: "mother-session",
+            },
+            clone: {
+              customTitle: "Clone: main session",
+              parentSessionId: "source-session",
+            },
+          },
+        }),
+      );
+
+      await service.initialize();
+
+      expect(service.getMetadata("aside")).toEqual({
+        customTitle: "/btw check the side path",
+        parentSessionId: "mother-session",
+        parentSessionKind: "btw-aside",
+      });
+      expect(service.getMetadata("clone")).toEqual({
+        customTitle: "Clone: main session",
+        forkedFromSessionId: "source-session",
+      });
+      const persisted = JSON.parse(
+        await readFile(join(testDir, "session-metadata.json"), "utf-8"),
+      );
+      expect(persisted.version).toBe(3);
     });
 
     it("migrates display objects and marks interrupted jobs as errors", async () => {
@@ -103,7 +138,7 @@ describe("SessionMetadataService", () => {
       const persisted = JSON.parse(
         await readFile(join(testDir, "session-metadata.json"), "utf-8"),
       );
-      expect(persisted.version).toBe(2);
+      expect(persisted.version).toBe(3);
     });
 
     it("handles corrupted JSON gracefully", async () => {
@@ -413,7 +448,7 @@ describe("SessionMetadataService", () => {
       });
     });
 
-    it("stores and clears a parent session link", async () => {
+    it("stores and clears a /btw parent session link", async () => {
       await service.initialize();
 
       await service.updateMetadata("session-1", {
@@ -422,6 +457,7 @@ describe("SessionMetadataService", () => {
 
       expect(service.getMetadata("session-1")).toEqual({
         parentSessionId: "parent-session",
+        parentSessionKind: "btw-aside",
       });
 
       await service.updateMetadata("session-1", {
@@ -429,6 +465,18 @@ describe("SessionMetadataService", () => {
       });
 
       expect(service.getMetadata("session-1")).toBeUndefined();
+    });
+
+    it("stores ordinary fork provenance separately from /btw parentage", async () => {
+      await service.initialize();
+
+      await service.updateMetadata("session-1", {
+        forkedFromSessionId: "  source-session  ",
+      });
+
+      expect(service.getMetadata("session-1")).toEqual({
+        forkedFromSessionId: "source-session",
+      });
     });
 
     it("stores an explicit 'off' prompt-suggestion preference", async () => {

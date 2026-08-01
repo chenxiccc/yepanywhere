@@ -349,6 +349,10 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
       const isStarred = metadata?.isStarred;
       const parentSessionId =
         metadata?.parentSessionId ?? overlaidSession.parentSessionId;
+      const parentSessionKind =
+        metadata?.parentSessionKind ?? overlaidSession.parentSessionKind;
+      const forkedFromSessionId =
+        metadata?.forkedFromSessionId ?? overlaidSession.forkedFromSessionId;
       const effectiveProjectId =
         metadata?.workingProjectId ?? overlaidSession.projectId;
 
@@ -364,6 +368,8 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
         isArchived,
         isStarred,
         parentSessionId,
+        parentSessionKind,
+        forkedFromSessionId,
         workstreamId: metadata?.workstreamId,
       };
     });

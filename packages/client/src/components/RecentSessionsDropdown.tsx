@@ -8,6 +8,7 @@ import { setElementTextTooltip } from "../hooks/useTooltipAppearance";
 import {
   buildBtwAsideParentHref,
   getBtwAsideSessionDisplayTitle,
+  isBtwAsideSession,
   isBtwAsideSessionTitle,
 } from "../lib/btwAsideSessions";
 import { toBrowserAppHref } from "../lib/appHref";
@@ -212,8 +213,11 @@ export function RecentSessionsDropdown({
           {recentSessions.map((session) => {
             const title = getDisplayTitle(session);
             const titleTooltip = getTitleTooltip(session, title);
-            const isBtwAside =
-              !!session.parentSessionId || isBtwAsideSessionTitle(title);
+            const isBtwAside = isBtwAsideSession({
+              parentSessionKind: session.parentSessionKind,
+              title,
+              fullTitle: session.fullTitle,
+            });
             const parentSessionId = session.parentSessionId;
             const parentHref =
               parentSessionId && isBtwAside

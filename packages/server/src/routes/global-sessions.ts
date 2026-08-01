@@ -95,8 +95,11 @@ export interface GlobalSessionItem {
   customTitle?: string;
   isArchived?: boolean;
   isStarred?: boolean;
-  /** Parent session when this item is a YA-owned /btw aside. */
+  /** Interactive Mother session for a YA-owned `/btw` aside. */
   parentSessionId?: string;
+  parentSessionKind?: "btw-aside";
+  /** Source session whose provider transcript was cloned or forked. */
+  forkedFromSessionId?: string;
   /** YA workstream lane for this session. Missing means the implicit main lane. */
   workstreamId?: WorkstreamId;
   /** Initial prompt text accepted by YA for new-session recovery/copy. */
@@ -388,6 +391,11 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
           metadata?.customTitle ?? overlaidSession.customTitle;
         const parentSessionId =
           metadata?.parentSessionId ?? overlaidSession.parentSessionId;
+        const parentSessionKind =
+          metadata?.parentSessionKind ?? overlaidSession.parentSessionKind;
+        const forkedFromSessionId =
+          metadata?.forkedFromSessionId ??
+          overlaidSession.forkedFromSessionId;
         const initialPrompt =
           metadata?.initialPrompt ?? overlaidSession.fullTitle;
         const executor = metadata?.executor;
@@ -487,6 +495,8 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
           isArchived,
           isStarred,
           parentSessionId,
+          parentSessionKind,
+          forkedFromSessionId,
           workstreamId: metadata?.workstreamId,
           initialPrompt: initialPrompt ?? undefined,
           executor,

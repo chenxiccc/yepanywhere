@@ -82,6 +82,7 @@ describe("Codex clone route", () => {
     const codexScanner = {
       invalidateCache: vi.fn(),
     };
+    const updateMetadata = vi.fn(async () => {});
 
     const routes = createSessionsRoutes({
       supervisor: {} as SessionsDeps["supervisor"],
@@ -91,6 +92,10 @@ describe("Codex clone route", () => {
       readerFactory: vi.fn(() => reader),
       codexReaderFactory: vi.fn(() => reader),
       codexScanner: codexScanner as SessionsDeps["codexScanner"],
+      sessionMetadataService: {
+        getMetadata: vi.fn(() => undefined),
+        updateMetadata,
+      } as unknown as SessionsDeps["sessionMetadataService"],
     });
 
     const response = await routes.request(
@@ -115,6 +120,12 @@ describe("Codex clone route", () => {
     expect(clonedSummary).not.toBeNull();
     expect(clonedSummary?.id).toBe(body.sessionId);
     expect(codexScanner.invalidateCache).toHaveBeenCalledTimes(1);
+    expect(updateMetadata).toHaveBeenCalledWith(body.sessionId, {
+      title: "Prime the cache [cloned]",
+      parentSessionId: undefined,
+      parentSessionKind: undefined,
+      forkedFromSessionId: "source-session",
+    });
   });
 
   it("stores parent metadata for /btw clones", async () => {
@@ -151,6 +162,8 @@ describe("Codex clone route", () => {
     expect(updateMetadata).toHaveBeenCalledWith(body.sessionId, {
       title: "/btw inspect this side path",
       parentSessionId: "parent-session",
+      parentSessionKind: "btw-aside",
+      forkedFromSessionId: "source-session",
     });
   });
 

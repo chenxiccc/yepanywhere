@@ -207,4 +207,30 @@ describe("RecentSessionsDropdown", () => {
     expect(row.classList.contains("recent-session-item")).toBe(false);
     expect(row.classList.contains("btw-aside-session")).toBe(false);
   });
+
+  it("does not label an ordinary parent-linked Clone as /btw", () => {
+    globalSessionsState.sessions = [
+      session({
+        title: "Clone: investigate the cache",
+        fullTitle: "Clone: investigate the cache",
+        parentSessionId: "source-session",
+      }),
+    ];
+
+    render(
+      <MemoryRouter>
+        <RecentSessionsDropdown
+          currentSessionId="session-1"
+          isOpen={true}
+          onClose={vi.fn()}
+          onNavigate={vi.fn()}
+          triggerRef={triggerRef()}
+        />
+      </MemoryRouter>,
+    );
+
+    const row = screen.getByRole("link", { name: /Clone: investigate/ });
+    expect(row.classList.contains("btw-aside-session")).toBe(false);
+    expect(screen.queryByText("/btw")).toBeNull();
+  });
 });

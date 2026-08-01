@@ -166,8 +166,10 @@ export class CacheMissBillingMonitor {
     const metadata = this.options.sessionMetadataService?.getMetadata(
       process.sessionId,
     );
+    const forkedFromSessionId =
+      metadata?.forkedFromSessionId ?? metadata?.parentSessionId;
     const forkExpected =
-      assistantUsageCountBefore === 0 && !!metadata?.parentSessionId;
+      assistantUsageCountBefore === 0 && !!forkedFromSessionId;
     const providerFreshWindowMinutes = getCacheMissBillingFreshWindowMinutes(
       settings,
       process.provider,
@@ -219,6 +221,9 @@ export class CacheMissBillingMonitor {
       sessionPath: `/projects/${process.projectId}/sessions/${process.sessionId}`,
       ...(metadata?.parentSessionId
         ? { parentSessionId: metadata.parentSessionId }
+        : {}),
+      ...(metadata?.forkedFromSessionId
+        ? { forkedFromSessionId: metadata.forkedFromSessionId }
         : {}),
       reason: forkExpected
         ? outcome === "expected-cache-hit"

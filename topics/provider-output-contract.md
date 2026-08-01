@@ -250,9 +250,12 @@ separate:
 - **Entry-level parent links** (a message forest inside one transcript):
   Claude `parentUuid` (single-parent branching forest — see the
   `packages/shared/src/dag.ts` module header), Pi v3 `id`/`parentId`.
-- **Session-level parent links** (lineage between session ids): Codex
-  `forked_from_id` → `parentSessionId` (codex reader), OpenCode session
-  `parentID`, and YA's own fork metadata `parentSessionId`.
+- **Session-level source links** (lineage between session ids): Codex
+  `forked_from_id`, OpenCode session `parentID`, and YA-created transcript
+  copies. YA surfaces ordinary copy provenance as `forkedFromSessionId`.
+  `parentSessionId` is a different, interactive relationship reserved for a
+  YA `/btw` aside's Mother and is explicit through
+  `parentSessionKind: "btw-aside"`.
 
 Distinguish **harness-native data model** from **what YA currently
 surfaces**. Capability flags describe the latter only: Pi natively maintains

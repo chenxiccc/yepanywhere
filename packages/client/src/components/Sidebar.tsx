@@ -789,20 +789,21 @@ export function Sidebar({
         if (arr.length <= 1) continue;
 
         const groupSessionIds = new Set(arr.map((session) => session.id));
-        const parentIdsInGroup = new Set(
-          arr
-            .map((session) => session.parentSessionId)
-            .filter(
+        const sourceIdsInGroup = new Set(
+          arr.flatMap((session) =>
+            [session.parentSessionId, session.forkedFromSessionId].filter(
               (id): id is string =>
                 typeof id === "string" && groupSessionIds.has(id),
             ),
+          ),
         );
         const protectedRows = arr.filter(
           (session) =>
             session.id === currentSessionId ||
             session.ownership?.owner === "self" ||
             Boolean(session.parentSessionId) ||
-            parentIdsInGroup.has(session.id),
+            Boolean(session.forkedFromSessionId) ||
+            sourceIdsInGroup.has(session.id),
         );
         for (const session of protectedRows) {
           visibleIds.add(session.id);
@@ -897,6 +898,7 @@ export function Sidebar({
         createdAt={session.createdAt}
         updatedAt={session.updatedAt}
         parentSessionId={session.parentSessionId}
+        parentSessionKind={session.parentSessionKind}
         providerChildren={providerChildrenBySessionId.get(session.id)}
         status={session.ownership}
         pendingInputType={session.pendingInputType}

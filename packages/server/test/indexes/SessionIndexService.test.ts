@@ -443,6 +443,45 @@ describe("SessionIndexService", () => {
       expect(sessions[0]?.title).toBe("Pre-release cached title");
       expect(getSessionSummary).not.toHaveBeenCalled();
     });
+
+    it("normalizes legacy cached parent links into fork provenance", async () => {
+      await createSession("session-1", "Content that should not be reparsed");
+      const fileStats = await stat(join(sessionDir, "session-1.jsonl"));
+      const getSessionSummary = vi.spyOn(reader, "getSessionSummary");
+
+      await writeFile(
+        service.getIndexPath(sessionDir),
+        JSON.stringify({
+          version: 3,
+          projectId,
+          sessions: {
+            "session-1": {
+              title: "Legacy cached fork",
+              fullTitle: "Legacy cached fork",
+              createdAt: new Date(fileStats.mtimeMs).toISOString(),
+              updatedAt: new Date(fileStats.mtimeMs).toISOString(),
+              messageCount: 1,
+              indexedBytes: fileStats.size,
+              fileMtime: fileStats.mtimeMs,
+              provider: "codex",
+              parentSessionId: "source-session",
+            },
+          },
+        }),
+      );
+
+      const sessions = await service.getSessionsWithCache(
+        sessionDir,
+        projectId,
+        reader,
+      );
+
+      expect(sessions[0]).toMatchObject({
+        forkedFromSessionId: "source-session",
+      });
+      expect(sessions[0]?.parentSessionId).toBeUndefined();
+      expect(getSessionSummary).not.toHaveBeenCalled();
+    });
   });
 
   describe("index file location", () => {
@@ -1465,7 +1504,7 @@ describe("SessionIndexService", () => {
       expect(sessions[0]?.title).toBe("Persistent session");
     });
 
-    it("preserves parentSessionId on fast path and after restart", async () => {
+    it("preserves forkedFromSessionId on fast path and after restart", async () => {
       const lineageService = new SessionIndexService({
         dataDir,
         projectsDir,
@@ -1497,7 +1536,7 @@ describe("SessionIndexService", () => {
             messageCount: 2,
             ownership: { owner: "none" },
             provider: "codex",
-            parentSessionId: "source-session",
+            forkedFromSessionId: "source-session",
           };
         },
         getSession: async () => null,
@@ -1511,7 +1550,7 @@ describe("SessionIndexService", () => {
         projectId,
         lineageReader,
       );
-      expect(first[0]?.parentSessionId).toBe("source-session");
+      expect(first[0]?.forkedFromSessionId).toBe("source-session");
       expect(parseCount).toBe(1);
 
       const fastPath = await lineageService.getSessionsWithCache(
@@ -1519,7 +1558,7 @@ describe("SessionIndexService", () => {
         projectId,
         lineageReader,
       );
-      expect(fastPath[0]?.parentSessionId).toBe("source-session");
+      expect(fastPath[0]?.forkedFromSessionId).toBe("source-session");
       expect(parseCount).toBe(1);
 
       const restartedService = new SessionIndexService({
@@ -1533,7 +1572,7 @@ describe("SessionIndexService", () => {
         projectId,
         lineageReader,
       );
-      expect(afterRestart[0]?.parentSessionId).toBe("source-session");
+      expect(afterRestart[0]?.forkedFromSessionId).toBe("source-session");
       expect(parseCount).toBe(1);
     });
 

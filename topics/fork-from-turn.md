@@ -41,9 +41,11 @@ window the trim dot controls).
   server advertises `session-fork-turn-intents` and the selected provider
   advertises `supportsForkSession`.
 - Clone copies through the latest completed response, titles the target
-  `Clone: <source>`, records the source as its YA parent, navigates in the same
-  tab, and opens cold with an empty target composer. It does not submit or move
-  the source draft.
+  `Clone: <source>`, records the source in `forkedFromSessionId`, navigates in
+  the same tab, and opens cold with an empty target composer. It does not
+  submit or move the source draft. Ordinary Clone/Fork targets do not set the
+  `/btw` Mother link (`parentSessionId` plus `parentSessionKind`) and therefore
+  never render `/btw` badges or parent-navigation controls.
 - Every real user prompt has an inline **Fork from this turn** menu independent
   of the right-side turn rail. The first loaded real turn offers **After this
   turn**; later turns offer **Before this turn** and **After this turn**.
@@ -68,6 +70,11 @@ window the trim dot controls).
 - Older servers without `session-fork-turn-intents` expose none of this unified
   surface and receive no fork request. The server continues to parse legacy
   empty and `{ upToMessageId }` bodies for older clients.
+- The lineage response fields are additive and self-gating. A new client
+  recognizes an older server's `/btw` aside only from its generated `/btw`
+  title, never from a bare `parentSessionId`; an old client receiving new
+  ordinary Clone/Fork metadata sees no parent link and therefore cannot
+  mislabel it as an aside.
 
 ## Historical first pass (superseded where noted)
 

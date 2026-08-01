@@ -128,6 +128,49 @@ describe("SessionListItem links", () => {
     expect(screen.getByText("check the side path")).toBeTruthy();
   });
 
+  it("does not label an ordinary parent-linked Clone as /btw", () => {
+    render(
+      <I18nProvider>
+        <MemoryRouter>
+          <ul>
+            <SessionListItem
+              sessionId="clone-1"
+              projectId="project-1"
+              title="Clone: Main session"
+              parentSessionId="source-1"
+              mode="compact"
+            />
+          </ul>
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    expect(screen.queryByText("/btw")).toBeNull();
+    expect(screen.getByText("Clone: Main session")).toBeTruthy();
+  });
+
+  it("keeps an explicitly typed /btw aside recognizable after rename", () => {
+    render(
+      <I18nProvider>
+        <MemoryRouter>
+          <ul>
+            <SessionListItem
+              sessionId="aside-1"
+              projectId="project-1"
+              title="Renamed side investigation"
+              parentSessionId="parent-1"
+              parentSessionKind="btw-aside"
+              mode="compact"
+            />
+          </ul>
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    expect(screen.getByText("/btw")).toBeTruthy();
+    expect(screen.getByText("Renamed side investigation")).toBeTruthy();
+  });
+
   it("opens the parent /btw view when the aside badge is clicked", () => {
     const onNavigate = vi.fn();
 

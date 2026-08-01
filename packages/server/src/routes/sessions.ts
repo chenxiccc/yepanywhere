@@ -1657,21 +1657,21 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
   };
   const updateForkSummaryChildMetadata = async (
     childSessionId: string,
-    parentSessionId: string,
+    sourceSessionId: string,
     title: string,
     archived: boolean,
   ): Promise<void> => {
     await deps.sessionMetadataService?.updateMetadata(childSessionId, {
       title,
       archived,
-      parentSessionId,
+      forkedFromSessionId: sourceSessionId,
     });
     deps.eventBus?.emit({
       type: "session-metadata-changed",
       sessionId: childSessionId,
       title,
       archived,
-      parentSessionId,
+      forkedFromSessionId: sourceSessionId,
       timestamp: new Date().toISOString(),
     });
   };
@@ -2323,6 +2323,11 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         isStarred: metadata?.isStarred,
         parentSessionId:
           metadata?.parentSessionId ?? sessionSummary?.parentSessionId,
+        parentSessionKind:
+          metadata?.parentSessionKind ?? sessionSummary?.parentSessionKind,
+        forkedFromSessionId:
+          metadata?.forkedFromSessionId ??
+          sessionSummary?.forkedFromSessionId,
         initialPrompt:
           metadata?.initialPrompt ?? sessionSummary?.fullTitle ?? undefined,
         heartbeatTurnsEnabled: metadata?.heartbeatTurnsEnabled,
@@ -2758,6 +2763,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
             isArchived: metadata?.isArchived,
             isStarred: metadata?.isStarred,
             parentSessionId: metadata?.parentSessionId,
+            parentSessionKind: metadata?.parentSessionKind,
+            forkedFromSessionId: metadata?.forkedFromSessionId,
             initialPrompt: metadata?.initialPrompt,
             heartbeatTurnsEnabled: metadata?.heartbeatTurnsEnabled,
             heartbeatTurnsAfterMinutes: metadata?.heartbeatTurnsAfterMinutes,
@@ -3033,6 +3040,10 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         isArchived: metadata?.isArchived,
         isStarred: metadata?.isStarred,
         parentSessionId: metadata?.parentSessionId ?? session.parentSessionId,
+        parentSessionKind:
+          metadata?.parentSessionKind ?? session.parentSessionKind,
+        forkedFromSessionId:
+          metadata?.forkedFromSessionId ?? session.forkedFromSessionId,
         initialPrompt: metadata?.initialPrompt ?? session.fullTitle,
         heartbeatTurnsEnabled: metadata?.heartbeatTurnsEnabled,
         heartbeatTurnsAfterMinutes: metadata?.heartbeatTurnsAfterMinutes,
@@ -4911,13 +4922,13 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     if (deps.sessionMetadataService) {
       await deps.sessionMetadataService.updateMetadata(fork.sessionId, {
         title: forkTitle,
-        parentSessionId: sessionId,
+        forkedFromSessionId: sessionId,
       });
       deps.eventBus?.emit({
         type: "session-metadata-changed",
         sessionId: fork.sessionId,
         title: forkTitle,
-        parentSessionId: sessionId,
+        forkedFromSessionId: sessionId,
         timestamp: new Date().toISOString(),
       });
     }
@@ -6376,6 +6387,12 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         archived: patch.archived,
         starred: patch.starred,
         parentSessionId: patch.parentSessionId,
+        parentSessionKind:
+          patch.parentSessionId === undefined
+            ? undefined
+            : patch.parentSessionId
+              ? "btw-aside"
+              : null,
         heartbeatTurnsEnabled: patch.heartbeatTurnsEnabled,
         heartbeatTurnsAfterMinutes: patch.heartbeatTurnsAfterMinutes,
         heartbeatTurnText: patch.heartbeatTurnText,
@@ -6500,10 +6517,12 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
 
       // Set clone metadata. /btw asides pass parentSessionId so the child
       // can jump back into the parent viewport.
-      if ((cloneTitle || parentSessionId) && deps.sessionMetadataService) {
+      if (deps.sessionMetadataService) {
         await deps.sessionMetadataService.updateMetadata(result.newSessionId, {
           title: cloneTitle,
           parentSessionId,
+          parentSessionKind: parentSessionId ? "btw-aside" : undefined,
+          forkedFromSessionId: sessionId,
         });
       }
 

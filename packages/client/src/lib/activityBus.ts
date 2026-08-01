@@ -103,6 +103,8 @@ export interface SessionMetadataChangedEvent {
   archived?: boolean;
   starred?: boolean;
   parentSessionId?: string | null;
+  parentSessionKind?: "btw-aside" | null;
+  forkedFromSessionId?: string | null;
   heartbeatTurnsEnabled?: boolean;
   heartbeatTurnsAfterMinutes?: number | null;
   heartbeatTurnText?: string | null;

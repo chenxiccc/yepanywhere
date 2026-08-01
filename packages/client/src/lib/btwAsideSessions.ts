@@ -6,6 +6,23 @@ export function isBtwAsideSessionTitle(
   return BTW_TITLE_PREFIX.test(title?.trimStart() ?? "");
 }
 
+/**
+ * Positive `/btw` identity. New servers persist parentSessionKind; older
+ * servers fall back to the established generated title instead of treating
+ * every provider fork lineage as an aside.
+ */
+export function isBtwAsideSession(options: {
+  parentSessionKind?: "btw-aside" | null;
+  title?: string | null;
+  fullTitle?: string | null;
+}): boolean {
+  return (
+    options.parentSessionKind === "btw-aside" ||
+    isBtwAsideSessionTitle(options.title) ||
+    isBtwAsideSessionTitle(options.fullTitle)
+  );
+}
+
 export function getBtwAsideSessionDisplayTitle(title: string): string {
   const withoutPrefix = title.trimStart().replace(BTW_TITLE_PREFIX, "").trim();
   return withoutPrefix || "Aside";

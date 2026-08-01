@@ -186,6 +186,8 @@ function sessionCreatedEventToGlobalSessionItem(
     isArchived: event.session.isArchived,
     isStarred: event.session.isStarred,
     parentSessionId: event.session.parentSessionId,
+    parentSessionKind: event.session.parentSessionKind,
+    forkedFromSessionId: event.session.forkedFromSessionId,
     initialPrompt: event.session.initialPrompt,
     executor: event.session.executor,
     lastAgentText: event.session.lastAgentText,

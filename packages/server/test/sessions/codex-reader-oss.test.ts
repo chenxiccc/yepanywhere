@@ -313,7 +313,7 @@ describe("CodexSessionReader - OSS Support", () => {
       messageCount: 2,
       provider: "codex-oss",
       model: "qwen2.5-coder",
-      parentSessionId: "parent-session",
+      forkedFromSessionId: "parent-session",
       originator: "yep-anywhere",
       cliVersion: "1.2.3",
       source: "exec",
@@ -360,7 +360,7 @@ describe("CodexSessionReader - OSS Support", () => {
       messageCount: summary?.messageCount,
       provider: summary?.provider,
       model: summary?.model,
-      parentSessionId: summary?.parentSessionId,
+      forkedFromSessionId: summary?.forkedFromSessionId,
       contextUsage: summary?.contextUsage,
     });
   });

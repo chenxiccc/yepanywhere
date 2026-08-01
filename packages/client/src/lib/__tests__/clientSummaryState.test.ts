@@ -235,6 +235,9 @@ describe("clientSummaryState", () => {
           globalSession("child-session", {
             parentSessionId: temporaryId,
           }),
+          globalSession("fork-session", {
+            forkedFromSessionId: temporaryId,
+          }),
         ],
         hasMore: false,
       },
@@ -302,7 +305,7 @@ describe("clientSummaryState", () => {
         scope: "global-sessions",
         limit: 50,
       }).map((record) => record.id),
-    ).toEqual([canonicalId, "child-session"]);
+    ).toEqual([canonicalId, "child-session", "fork-session"]);
     expect(selectInboxResponse(state).needsAttention).toEqual([]);
     expect(selectInboxResponse(state).active[0]?.sessionId).toBe(canonicalId);
     expect([...selectDraftSessionIds(state)]).toEqual([canonicalId]);
@@ -318,6 +321,28 @@ describe("clientSummaryState", () => {
     );
     expect(
       selectSessionCollectionRecord(state, "child-session")?.parentSessionId,
+    ).toBe(canonicalId);
+    expect(
+      selectSessionCollectionRecord(state, "fork-session")
+        ?.forkedFromSessionId,
+    ).toBe(canonicalId);
+
+    state = applyGlobalSessionsCollectionSnapshot(
+      state,
+      {
+        query: { scope: "global-sessions", limit: 50 },
+        sessions: [
+          globalSession("late-fork-session", {
+            forkedFromSessionId: temporaryId,
+          }),
+        ],
+        hasMore: false,
+      },
+      295,
+    );
+    expect(
+      selectSessionCollectionRecord(state, "late-fork-session")
+        ?.forkedFromSessionId,
     ).toBe(canonicalId);
 
     state = applySessionCollectionUpdated(
@@ -627,6 +652,43 @@ describe("clientSummaryState", () => {
     expect(selectStarredSessionRecords(state).map((s) => s.id)).toEqual([
       "session-1",
     ]);
+  });
+
+  it("clears typed lineage from explicit metadata events", () => {
+    let state = applyGlobalSessionsCollectionSnapshot(
+      createEmptyClientSummaryState(),
+      {
+        query: { scope: "global-sessions", limit: 50 },
+        sessions: [
+          globalSession("session-1", {
+            parentSessionId: "mother-1",
+            parentSessionKind: "btw-aside",
+            forkedFromSessionId: "source-1",
+          }),
+        ],
+        hasMore: false,
+      },
+      100,
+    );
+
+    state = applySessionCollectionMetadataChanged(
+      state,
+      {
+        type: "session-metadata-changed",
+        sessionId: "session-1",
+        parentSessionId: null,
+        parentSessionKind: null,
+        forkedFromSessionId: null,
+        timestamp: "2026-06-27T12:00:01.000Z",
+      },
+      200,
+    );
+
+    expect(selectSessionCollectionRecord(state, "session-1")).toMatchObject({
+      parentSessionId: undefined,
+      parentSessionKind: undefined,
+      forkedFromSessionId: undefined,
+    });
   });
 
   it("projects sidebar sections from explicit query memberships", () => {

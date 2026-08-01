@@ -498,8 +498,12 @@ export interface AppSessionSummary {
   customTitle?: string;
   isArchived?: boolean;
   isStarred?: boolean;
-  /** Parent session when this session is a YA-owned fork/aside. */
+  /** Interactive Mother session for a YA-owned `/btw` aside. */
   parentSessionId?: string;
+  /** Explicit meaning of parentSessionId; absent on legacy records. */
+  parentSessionKind?: "btw-aside";
+  /** Source session whose provider transcript was cloned or forked. */
+  forkedFromSessionId?: string;
   /** Saved viewer-only objects placed in the transcript, never provider context. */
   transcriptDisplayObjects?: TranscriptDisplayObject[];
   /** Initial prompt text accepted by YA for new-session recovery/copy. */

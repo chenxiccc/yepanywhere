@@ -1030,6 +1030,7 @@ export function GlobalSessionsPage() {
                       provider={session.provider}
                       model={session.model}
                       parentSessionId={session.parentSessionId}
+                      parentSessionKind={session.parentSessionKind}
                       providerChildren={providerChildrenBySessionId.get(
                         session.id,
                       )}
@@ -1114,6 +1115,7 @@ export function GlobalSessionsPage() {
                             provider={session.provider}
                             model={session.model}
                             parentSessionId={session.parentSessionId}
+                            parentSessionKind={session.parentSessionKind}
                             providerChildren={providerChildrenBySessionId.get(
                               session.id,
                             )}

@@ -182,6 +182,7 @@ import {
 } from "../lib/sessionNavigationState";
 import { getPublicShareInitialPrompt } from "../lib/sessionPublicSharePrompt";
 import { supportsUnifiedSessionFork } from "../lib/sessionForkAvailability";
+import { isBtwAsideSession } from "../lib/btwAsideSessions";
 import {
   composeGeneratedRetitle,
   createSessionRetitleSubmittedTurnText,
@@ -704,7 +705,13 @@ function SessionPageContent({
     liveModel: liveModelConfig?.model,
     sessionModel: session?.model,
     sessionExecutor: session?.executor,
-    parentSessionId: session?.parentSessionId,
+    parentSessionId: isBtwAsideSession({
+      parentSessionKind: session?.parentSessionKind,
+      title: session?.customTitle ?? session?.title,
+      fullTitle: session?.fullTitle,
+    })
+      ? session?.parentSessionId
+      : undefined,
     showToast,
     onNavigateToParentAside: navigate,
   });
