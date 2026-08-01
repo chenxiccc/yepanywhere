@@ -360,6 +360,76 @@ describe("InboxContent", () => {
     );
   });
 
+  it("maps the closed queue status union to explicit module classes", () => {
+    const queued = makeProjectQueueItem("queue-queued", "project-1", "Queued");
+    const dispatching = makeProjectQueueItem(
+      "queue-dispatching",
+      "project-1",
+      "Dispatching",
+    );
+    dispatching.status = "dispatching";
+    const failed = makeProjectQueueItem("queue-failed", "project-1", "Failed");
+    failed.status = "failed";
+    projectQueueItems.push(queued, dispatching, failed);
+
+    const { container } = renderInbox(
+      <InboxContent projects={[makeProject("project-1")]} />,
+    );
+
+    const itemFor = (id: string) => {
+      const el = container.querySelector(
+        `[data-inbox-project-queue-item-id="${id}"]`,
+      );
+      if (!el) throw new Error(`missing queue item ${id}`);
+      return el;
+    };
+    const statusOf = (id: string) => {
+      const el = itemFor(id).querySelector(
+        "a > span:last-of-type > span:last-child",
+      );
+      if (!el) throw new Error(`missing status pill for ${id}`);
+      return el;
+    };
+
+    // Every rendered class must resolve; a missing module key would leave
+    // "undefined" in the class list.
+    for (const id of ["queue-queued", "queue-dispatching", "queue-failed"]) {
+      expect(itemFor(id).className).not.toContain("undefined");
+      expect(statusOf(id).className).not.toContain("undefined");
+    }
+
+    const tokens = (el: Element) =>
+      el.className.split(/\s+/).filter(Boolean).length;
+
+    // Only `failed` carries an item modifier; `queued` and `dispatching`
+    // have no item-level rule in the stylesheet.
+    expect(tokens(itemFor("queue-failed"))).toBe(
+      tokens(itemFor("queue-queued")) + 1,
+    );
+    expect(tokens(itemFor("queue-dispatching"))).toBe(
+      tokens(itemFor("queue-queued")),
+    );
+
+    // The status pill has a modifier for `failed` and `dispatching` only.
+    expect(tokens(statusOf("queue-failed"))).toBe(
+      tokens(statusOf("queue-queued")) + 1,
+    );
+    expect(tokens(statusOf("queue-dispatching"))).toBe(
+      tokens(statusOf("queue-queued")) + 1,
+    );
+    expect(statusOf("queue-failed").className).not.toBe(
+      statusOf("queue-dispatching").className,
+    );
+
+    // No legacy global inbox vocabulary survives on migrated nodes.
+    for (const id of ["queue-queued", "queue-dispatching", "queue-failed"]) {
+      expect(itemFor(id).className).not.toMatch(/\binbox-project-queue-item\b/);
+      expect(statusOf(id).className).not.toMatch(
+        /\binbox-project-queue-item__status\b/,
+      );
+    }
+  });
+
   it("hides project queue rows and decorations without the server capability", () => {
     versionState.version = { capabilities: [] };
     inboxState.needsAttention = [makeInboxItem("queued-session", "project-1")];

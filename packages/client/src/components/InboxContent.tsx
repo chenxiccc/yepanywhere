@@ -1,4 +1,7 @@
-import type { ProjectQueueItemSummary } from "@yep-anywhere/shared";
+import type {
+  ProjectQueueItemStatus,
+  ProjectQueueItemSummary,
+} from "@yep-anywhere/shared";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { type InboxItem, useInboxContext } from "../contexts/InboxContext";
@@ -16,6 +19,7 @@ import { serverSupportsProjectQueue } from "../lib/projectQueueVisibility";
 import type { Project } from "../types";
 import { getSessionDisplayTitle } from "../utils";
 import { FilterDropdown, type FilterOption } from "./FilterDropdown";
+import styles from "./InboxContent.module.css";
 import { SessionListItem } from "./SessionListItem";
 
 const EMPTY_PROJECT_QUEUE_PROJECT_IDS: readonly string[] = [];
@@ -35,18 +39,18 @@ const TIER_CONFIGS: TierConfig[] = [
   {
     key: "needsAttention",
     titleKey: "inboxTierNeedsAttention",
-    colorClass: "inbox-tier-attention",
+    colorClass: styles.tierAttention ?? "",
     getBadge: (item) => {
       if (item.pendingInputType === "tool-approval") {
         return {
           label: "inboxBadgeApproval",
-          className: "inbox-badge-approval",
+          className: styles.badgeApproval ?? "",
         };
       }
       if (item.pendingInputType === "user-question") {
         return {
           label: "inboxBadgeQuestion",
-          className: "inbox-badge-question",
+          className: styles.badgeQuestion ?? "",
         };
       }
       return null;
@@ -55,25 +59,42 @@ const TIER_CONFIGS: TierConfig[] = [
   {
     key: "active",
     titleKey: "inboxTierActive",
-    colorClass: "inbox-tier-active",
+    colorClass: styles.tierActive ?? "",
     // Active items show a pulsing dot instead of a text badge
   },
   {
     key: "recentActivity",
     titleKey: "inboxTierRecentActivity",
-    colorClass: "inbox-tier-recent",
+    colorClass: styles.tierRecent ?? "",
   },
   {
     key: "unread8h",
     titleKey: "inboxTierUnread8h",
-    colorClass: "inbox-tier-unread8h",
+    colorClass: styles.tierUnread8h ?? "",
   },
   {
     key: "unread24h",
     titleKey: "inboxTierUnread24h",
-    colorClass: "inbox-tier-unread24h",
+    colorClass: styles.tierUnread24h ?? "",
   },
 ];
+
+/**
+ * Explicit module classes for the closed Project Queue status union.
+ * Only the statuses with a rule get a class; `queued` styles the base
+ * item and status pill alone, matching the legacy stylesheet.
+ */
+const QUEUE_ITEM_STATUS_CLASSES: Record<ProjectQueueItemStatus, string> = {
+  queued: "",
+  dispatching: "",
+  failed: styles.queueItemFailed ?? "",
+};
+
+const QUEUE_STATUS_CLASSES: Record<ProjectQueueItemStatus, string> = {
+  queued: "",
+  dispatching: styles.queueItemStatusDispatching ?? "",
+  failed: styles.queueItemStatusFailed ?? "",
+};
 
 type Translate = ReturnType<typeof useI18n>["t"];
 
@@ -161,12 +182,12 @@ function InboxProjectQueueItem({
 
   return (
     <li
-      className={`inbox-project-queue-item inbox-project-queue-item--${item.status}`}
+      className={`${styles.queueItem} ${QUEUE_ITEM_STATUS_CLASSES[item.status]}`}
       data-inbox-project-queue-item-id={item.id}
     >
-      <Link className="inbox-project-queue-item__link" to={href}>
-        <span className="inbox-project-queue-item__title-row">
-          <strong className="inbox-project-queue-item__title">{title}</strong>
+      <Link className={styles.queueItemLink} to={href}>
+        <span className={styles.queueItemTitleRow}>
+          <strong className={styles.queueItemTitle}>{title}</strong>
           <span
             className="session-project-queue-badge"
             title={t("projectQueueSidebarBadge")}
@@ -175,18 +196,16 @@ function InboxProjectQueueItem({
           </span>
         </span>
         {showPromptPreview && (
-          <span className="inbox-project-queue-item__preview">{prompt}</span>
+          <span className={styles.queueItemPreview}>{prompt}</span>
         )}
-        <span className="inbox-project-queue-item__meta">
+        <span className={styles.queueItemMeta}>
           {!hideProjectName && (
-            <span className="inbox-project-queue-item__project">
-              {projectName}
-            </span>
+            <span className={styles.queueItemProject}>{projectName}</span>
           )}
           <span>{t("projectQueueTargetNewSession")}</span>
           {age && <span>{age}</span>}
           <span
-            className={`inbox-project-queue-item__status inbox-project-queue-item__status--${item.status}`}
+            className={`${styles.queueItemStatus} ${QUEUE_STATUS_CLASSES[item.status]}`}
           >
             {projectQueueStatusLabel(item.status, t)}
           </span>
@@ -223,14 +242,14 @@ function InboxSection({
 
   return (
     <section
-      className={`inbox-section ${config.colorClass} ${isEmpty ? "inbox-section-empty" : ""}`}
+      className={`${styles.section} ${config.colorClass} ${isEmpty ? styles.sectionEmpty : ""}`}
     >
-      <h2 className="inbox-section-header">
+      <h2 className={styles.sectionHeader}>
         {t(config.titleKey as never)}
-        <span className="inbox-section-count">{sectionCount}</span>
+        <span className={styles.sectionCount}>{sectionCount}</span>
       </h2>
       {isEmpty ? (
-        <p className="inbox-section-empty-message">{t("inboxNoSessions")}</p>
+        <p className={styles.sectionEmptyMessage}>{t("inboxNoSessions")}</p>
       ) : (
         <ul className="sessions-list">
           {projectQueueItems.map((item) => (
@@ -465,7 +484,7 @@ export function InboxContent({
 
   return (
     <main className="page-scroll-container">
-      <div className="page-content-inner inbox-content">
+      <div className={`page-content-inner ${styles.root}`}>
         {/* Toolbar with project filter and refresh button */}
         <div className="inbox-toolbar">
           {projects && projects.length > 0 && (
@@ -486,7 +505,7 @@ export function InboxContent({
             title={t("inboxRefreshTitle")}
           >
             <svg
-              className={refreshing ? "spinning" : ""}
+              className={refreshing ? styles.refreshSpinner : ""}
               width="16"
               height="16"
               viewBox="0 0 24 24"
@@ -537,7 +556,7 @@ export function InboxContent({
         )}
 
         {!pageLoading && !error && !isEmpty && (
-          <div className="inbox-tiers">
+          <div className={styles.tiers}>
             {TIER_CONFIGS.map((config) => (
               <InboxSection
                 key={config.key}
