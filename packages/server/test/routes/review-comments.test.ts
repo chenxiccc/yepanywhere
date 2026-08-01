@@ -73,11 +73,16 @@ describe("review-comments routes", () => {
   });
 
   /** Routes sharing this test's service, plus a submit launcher stub. */
-  function routesWithLauncher(launcher: ReviewSessionLauncher) {
+  function routesWithLauncher(
+    launcher: ReviewSessionLauncher,
+    submissionsEnabled = false,
+  ) {
     return createReviewCommentsRoutes({
       scanner: scannerFor(project),
       service,
       launcher,
+      isSubmissionsEnabled: () => submissionsEnabled,
+      getResponseTurnLimit: () => 6,
     });
   }
 
@@ -453,6 +458,91 @@ describe("review-comments routes", () => {
     );
     expect(res.status).toBe(202);
     expect(await service.listPending(dir)).toHaveLength(1);
+  });
+
+  it("accepts a queued keyed submission once and archives immediately", async () => {
+    let launches = 0;
+    const queuedLauncher: ReviewSessionLauncher = {
+      async startReviewSession(_projectPath, turn, _options, submissionId) {
+        launches++;
+        expect(turn).toContain(
+          `.yep/source-review/${submissionId}/request.json`,
+        );
+        expect(turn).not.toContain("review-comments.json");
+        return { status: "queued" };
+      },
+      async deliverFollowUp() {
+        return { status: "delivered" };
+      },
+    };
+    const comment = await service.addComment(dir, {
+      anchor: anchor({ path: "src/missing.ts" }),
+      text: "please check this",
+    });
+    const enabled = routesWithLauncher(queuedLauncher, true);
+    const payload = {
+      include: [comment.id],
+      target: "new",
+      submissionId: "submission-queued",
+      name: "Queue-safe review",
+    };
+
+    const first = await enabled.request(`/${projectId}/review/submit`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    expect(first.status).toBe(202);
+    expect(await first.json()).toMatchObject({
+      submissionId: "submission-queued",
+      batchId: "submission-queued",
+      status: "queued",
+      consumed: [comment.id],
+    });
+    expect(await service.listPending(dir)).toHaveLength(0);
+    expect((await service.getStoreFile(dir)).submissions[0]).toMatchObject({
+      status: "accepted",
+      deliveryStatus: "queued",
+      responseTurnLimit: 6,
+    });
+
+    const retry = await enabled.request(`/${projectId}/review/submit`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    expect(retry.status).toBe(202);
+    expect(launches).toBe(1);
+  });
+
+  it("releases a keyed reservation when the launcher rejects", async () => {
+    const fullLauncher: ReviewSessionLauncher = {
+      async startReviewSession() {
+        return { status: "queue-full", maxQueueSize: 1 };
+      },
+      async deliverFollowUp() {
+        return { status: "delivered" };
+      },
+    };
+    const comment = await service.addComment(dir, {
+      anchor: anchor({ path: "src/missing.ts" }),
+      text: "retry later",
+    });
+    const response = await routesWithLauncher(fullLauncher, true).request(
+      `/${projectId}/review/submit`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          include: [comment.id],
+          target: "new",
+          submissionId: "submission-full",
+        }),
+      },
+    );
+    expect(response.status).toBe(503);
+    expect(await service.listPending(dir)).toHaveLength(1);
+    expect((await service.getStoreFile(dir)).submissions).toHaveLength(0);
   });
 
   it("submit validates include and target, and 501s without a launcher", async () => {

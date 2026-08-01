@@ -12,7 +12,9 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
   MAX_REVIEW_COMMENTS,
+  MAX_REVIEW_SUBMISSION_NAME_LENGTH,
   REVIEW_COMMENTS_FILE_VERSION,
+  REVIEW_SUBMISSION_REQUEST_VERSION,
   type ReviewBatch,
   type ReviewCapture,
   type ReviewComment,
@@ -22,9 +24,12 @@ import {
   type ReviewReviewerEntry,
   type ReviewSourceProjection,
   type ReviewStoreFile,
+  type ReviewSubmissionRelocation,
+  type ReviewSubmissionRequest,
   type ReviewSubmissionSummary,
   emptyReviewStoreFile,
   parseReviewStoreFile,
+  parseReviewSubmissionRequest,
   projectLegacyReviewComments,
 } from "@yep-anywhere/shared";
 import { createCoalescingSaver } from "../lib/coalescingSaver.js";
@@ -33,6 +38,8 @@ import { ensureManagedProjectDir } from "../projects/managedProjectDir.js";
 
 const YEP_DIR = ".yep";
 const REVIEW_COMMENTS_FILENAME = "review-comments.json";
+const SOURCE_REVIEW_DIR = "source-review";
+const REQUEST_FILENAME = "request.json";
 
 interface ProjectStore {
   state: ReviewStoreFile;
@@ -40,6 +47,7 @@ interface ProjectStore {
   loaded: boolean;
   dirEnsured: boolean;
   save: () => Promise<void>;
+  mutationTail: Promise<void>;
 }
 
 export interface ReviewCaptureWriter {
@@ -69,6 +77,21 @@ export interface ArchiveReviewCommentsInput {
   targetSessionId: string;
   /** Defaults to now; injectable for deterministic tests. */
   submittedAt?: string;
+}
+
+export interface PrepareReviewSubmissionInput {
+  submissionId: string;
+  name?: string;
+  commentIds: string[];
+  requestedTarget: "new" | string;
+  relocations: Map<string, ReviewSubmissionRelocation>;
+}
+
+export interface AcceptReviewSubmissionInput {
+  submissionId: string;
+  targetSessionId?: string;
+  responseTurnLimit: number;
+  deliveryStatus: "queued" | "delivered";
 }
 
 /** Deps let tests stub the clock, ids, and git capture boundary. */
@@ -116,7 +139,10 @@ export class ReviewCommentService {
     projectPath: string,
     id: string,
   ): Promise<ReviewComment | null> {
-    return (await this.listComments(projectPath)).find((item) => item.id === id) ?? null;
+    return (
+      (await this.listComments(projectPath)).find((item) => item.id === id) ??
+      null
+    );
   }
 
   async addComment(
@@ -177,7 +203,9 @@ export class ReviewCommentService {
   /** Discard an active draft. Historical submitted entries are retained. */
   async deleteComment(projectPath: string, id: string): Promise<boolean> {
     const store = await this.getStore(projectPath);
-    const draftIndex = store.state.drafts.findIndex((ref) => ref.entryId === id);
+    const draftIndex = store.state.drafts.findIndex(
+      (ref) => ref.entryId === id,
+    );
     if (draftIndex === -1) return false;
     const [draft] = store.state.drafts.splice(draftIndex, 1);
     const site = store.state.sites.find((item) => item.id === draft?.siteId);
@@ -238,6 +266,191 @@ export class ReviewCommentService {
       targetSessionId: input.targetSessionId,
       commentIds: consumed,
     };
+  }
+
+  /**
+   * Reserve draft entries and freeze their immutable request manifest. Existing
+   * manifests bind an id to the same request, so a retry cannot retarget it.
+   */
+  async prepareSubmission(
+    projectPath: string,
+    input: PrepareReviewSubmissionInput,
+  ): Promise<ReviewSubmissionRequest> {
+    validateSubmissionInput(input);
+    return this.withMutation(projectPath, async (store) => {
+      const existingRequest = await this.readSubmissionRequest(
+        projectPath,
+        input.submissionId,
+      );
+      const existingSummary = store.state.submissions.find(
+        (item) => item.id === input.submissionId,
+      );
+
+      if (existingRequest) {
+        assertSameSubmissionRequest(existingRequest, input);
+        if (!existingSummary) {
+          this.reserveRequestEntries(store.state, existingRequest);
+          store.state.submissions.push(summaryFromRequest(existingRequest));
+          await store.save();
+        }
+        return cloneSubmissionRequest(existingRequest);
+      }
+      if (existingSummary) {
+        // Startup recovery rolls back this incomplete durable reservation. The
+        // caller can immediately prepare the same id again from still-live drafts.
+        store.state.submissions = store.state.submissions.filter(
+          (item) => item.id !== input.submissionId,
+        );
+        await store.save();
+      }
+
+      const requested = new Set(input.commentIds);
+      const reservedElsewhere = new Set(
+        store.state.submissions
+          .filter((item) => item.status === "prepared")
+          .flatMap((item) => item.entryRefs.map((ref) => entryRefKey(ref))),
+      );
+      const refs = store.state.drafts.filter(
+        (ref) =>
+          requested.has(ref.entryId) &&
+          !reservedElsewhere.has(entryRefKey(ref)),
+      );
+      if (refs.length !== requested.size) {
+        throw new HttpError(
+          409,
+          "One or more review comments are no longer pending or are being submitted",
+        );
+      }
+      const submittedAt = this.now();
+      const request: ReviewSubmissionRequest = {
+        version: REVIEW_SUBMISSION_REQUEST_VERSION,
+        submissionId: input.submissionId,
+        submittedAt,
+        requestedTarget: input.requestedTarget,
+        entries: refs.map((ref) => {
+          const found = findEntry(store.state, ref);
+          const relocation = input.relocations.get(ref.entryId);
+          if (!found || !relocation) {
+            throw new HttpError(
+              409,
+              "Review comment changed before submission",
+            );
+          }
+          return {
+            ...ref,
+            text: found.entry.text,
+            anchor: cloneAnchor(found.entry.anchor),
+            capture: cloneCapture(found.entry.capture),
+            relocation: cloneRelocation(relocation),
+          };
+        }),
+        ...(input.name ? { name: input.name } : {}),
+      };
+      store.state.submissions.push(summaryFromRequest(request));
+      await store.save();
+      try {
+        await this.writeSubmissionRequest(projectPath, request);
+      } catch (error) {
+        store.state.submissions = store.state.submissions.filter(
+          (item) => item.id !== input.submissionId,
+        );
+        await store.save();
+        throw error;
+      }
+      return cloneSubmissionRequest(request);
+    });
+  }
+
+  /** Archive a prepared submission after the launcher accepted its keyed turn. */
+  async acceptSubmission(
+    projectPath: string,
+    input: AcceptReviewSubmissionInput,
+  ): Promise<ReviewSubmissionSummary | null> {
+    return this.withMutation(projectPath, async (store) => {
+      const summary = store.state.submissions.find(
+        (item) => item.id === input.submissionId,
+      );
+      if (!summary) return null;
+      if (summary.status === "accepted") {
+        let changed = false;
+        if (
+          input.deliveryStatus === "delivered" &&
+          summary.deliveryStatus !== "delivered"
+        ) {
+          summary.deliveryStatus = "delivered";
+          changed = true;
+        }
+        if (
+          input.targetSessionId &&
+          summary.targetSessionId !== input.targetSessionId
+        ) {
+          summary.targetSessionId = input.targetSessionId;
+          changed = true;
+        }
+        if (changed) await store.save();
+        return cloneSubmission(summary);
+      }
+      const request = await this.readSubmissionRequest(
+        projectPath,
+        input.submissionId,
+      );
+      if (!request) {
+        throw new HttpError(409, "Submission request manifest is missing");
+      }
+      summary.status = "accepted";
+      summary.deliveryStatus = input.deliveryStatus;
+      summary.responseTurnsObserved = 0;
+      summary.responseTurnLimit = input.responseTurnLimit;
+      if (input.targetSessionId)
+        summary.targetSessionId = input.targetSessionId;
+      const acceptedKeys = new Set(summary.entryRefs.map(entryRefKey));
+      store.state.drafts = store.state.drafts.filter(
+        (ref) => !acceptedKeys.has(entryRefKey(ref)),
+      );
+      for (const ref of summary.entryRefs) {
+        const found = findEntry(store.state, ref);
+        if (!found) continue;
+        found.entry.submittedAt = summary.submittedAt;
+        found.entry.submissionId = summary.id;
+      }
+      await store.save();
+      return cloneSubmission(summary);
+    });
+  }
+
+  /** Release a reservation after the launcher rejects before acceptance. */
+  async releaseSubmission(
+    projectPath: string,
+    submissionId: string,
+  ): Promise<boolean> {
+    return this.withMutation(projectPath, async (store) => {
+      const summary = store.state.submissions.find(
+        (item) => item.id === submissionId,
+      );
+      if (summary?.status !== "prepared") return false;
+      store.state.submissions = store.state.submissions.filter(
+        (item) => item.id !== submissionId,
+      );
+      await store.save();
+      return true;
+    });
+  }
+
+  /** Attach the eventual canonical YA id to a previously queued submission. */
+  async associateSubmissionSession(
+    projectPath: string,
+    submissionId: string,
+    sessionId: string,
+  ): Promise<ReviewSubmissionSummary | null> {
+    return this.withMutation(projectPath, async (store) => {
+      const summary = store.state.submissions.find(
+        (item) => item.id === submissionId,
+      );
+      if (!summary || summary.status === "legacy") return null;
+      summary.targetSessionId = sessionId;
+      await store.save();
+      return cloneSubmission(summary);
+    });
   }
 
   /** Create a fresh active entry at an existing discussion site. */
@@ -301,6 +514,18 @@ export class ReviewCommentService {
     return path.join(projectPath, YEP_DIR, REVIEW_COMMENTS_FILENAME);
   }
 
+  submissionDirectoryFor(projectPath: string, submissionId: string): string {
+    validateSubmissionId(submissionId);
+    return path.join(projectPath, YEP_DIR, SOURCE_REVIEW_DIR, submissionId);
+  }
+
+  requestPathFor(projectPath: string, submissionId: string): string {
+    return path.join(
+      this.submissionDirectoryFor(projectPath, submissionId),
+      REQUEST_FILENAME,
+    );
+  }
+
   reset(): void {
     this.stores.clear();
   }
@@ -314,6 +539,66 @@ export class ReviewCommentService {
       : { status: "legacy-missing" };
   }
 
+  private reserveRequestEntries(
+    state: ReviewStoreFile,
+    request: ReviewSubmissionRequest,
+  ): void {
+    const draftKeys = new Set(state.drafts.map(entryRefKey));
+    for (const entry of request.entries) {
+      if (!draftKeys.has(entryRefKey(entry))) {
+        throw new HttpError(409, "Submission entries are no longer pending");
+      }
+    }
+  }
+
+  private async readSubmissionRequest(
+    projectPath: string,
+    submissionId: string,
+  ): Promise<ReviewSubmissionRequest | null> {
+    try {
+      const raw = await fs.readFile(
+        this.requestPathFor(projectPath, submissionId),
+        "utf-8",
+      );
+      const parsed = parseReviewSubmissionRequest(JSON.parse(raw));
+      if (!parsed || parsed.submissionId !== submissionId) {
+        throw new HttpError(409, "Submission request manifest is invalid");
+      }
+      return parsed;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error;
+    }
+  }
+
+  private async writeSubmissionRequest(
+    projectPath: string,
+    request: ReviewSubmissionRequest,
+  ): Promise<void> {
+    await ensureManagedProjectDir(projectPath, YEP_DIR);
+    const directory = this.submissionDirectoryFor(
+      projectPath,
+      request.submissionId,
+    );
+    await fs.mkdir(directory, { recursive: true });
+    const file = await fs.open(
+      this.requestPathFor(projectPath, request.submissionId),
+      "wx",
+    );
+    try {
+      await file.writeFile(`${JSON.stringify(request, null, 2)}\n`, "utf-8");
+      await file.sync();
+    } finally {
+      await file.close();
+    }
+    const directoryHandle = await fs.open(directory, "r");
+    try {
+      await directoryHandle.sync();
+    } finally {
+      await directoryHandle.close();
+    }
+  }
+
   private async getStore(projectPath: string): Promise<ProjectStore> {
     let store = this.stores.get(projectPath);
     if (!store) {
@@ -323,6 +608,7 @@ export class ReviewCommentService {
         loaded: false,
         dirEnsured: false,
         save: () => Promise.resolve(),
+        mutationTail: Promise.resolve(),
       };
       created.save = createCoalescingSaver(() =>
         this.doSave(projectPath, created),
@@ -337,13 +623,44 @@ export class ReviewCommentService {
     return store;
   }
 
+  private async withMutation<T>(
+    projectPath: string,
+    mutate: (store: ProjectStore) => Promise<T>,
+  ): Promise<T> {
+    const store = await this.getStore(projectPath);
+    const run = store.mutationTail.then(
+      () => mutate(store),
+      () => mutate(store),
+    );
+    store.mutationTail = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
   private async load(projectPath: string, store: ProjectStore): Promise<void> {
-    let migrated = false;
+    let needsSave = false;
     try {
       const content = await fs.readFile(this.filePathFor(projectPath), "utf-8");
       const parsed = JSON.parse(content) as { version?: unknown };
-      migrated = parsed.version === REVIEW_COMMENTS_FILE_VERSION;
+      needsSave = parsed.version === REVIEW_COMMENTS_FILE_VERSION;
       store.state = parseReviewStoreFile(parsed);
+      const recovered: ReviewSubmissionSummary[] = [];
+      for (const submission of store.state.submissions) {
+        if (submission.status !== "prepared") {
+          recovered.push(submission);
+          continue;
+        }
+        try {
+          await fs.access(this.requestPathFor(projectPath, submission.id));
+          recovered.push(submission);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+          needsSave = true;
+        }
+      }
+      store.state.submissions = recovered;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
         console.warn(
@@ -354,7 +671,7 @@ export class ReviewCommentService {
       store.state = emptyReviewStoreFile();
     }
     store.loaded = true;
-    if (migrated) await store.save();
+    if (needsSave) await store.save();
   }
 
   private async doSave(
@@ -368,8 +685,20 @@ export class ReviewCommentService {
     const filePath = this.filePathFor(projectPath);
     const tmpPath = `${filePath}.${randomUUID()}.tmp`;
     const content = JSON.stringify(store.state, null, 2);
-    await fs.writeFile(tmpPath, content, "utf-8");
+    const file = await fs.open(tmpPath, "wx");
+    try {
+      await file.writeFile(content, "utf-8");
+      await file.sync();
+    } finally {
+      await file.close();
+    }
     await fs.rename(tmpPath, filePath);
+    const directory = await fs.open(path.dirname(filePath), "r");
+    try {
+      await directory.sync();
+    } finally {
+      await directory.close();
+    }
   }
 }
 
@@ -377,6 +706,93 @@ function findEntry(store: ReviewStoreFile, ref: ReviewEntryRef) {
   const site = store.sites.find((item) => item.id === ref.siteId);
   const entry = site?.entries.find((item) => item.id === ref.entryId);
   return site && entry ? { site, entry } : null;
+}
+
+function validateSubmissionId(submissionId: string): void {
+  if (
+    submissionId.length === 0 ||
+    submissionId.length > 128 ||
+    !/^[A-Za-z0-9][A-Za-z0-9_-]*$/u.test(submissionId)
+  ) {
+    throw new HttpError(400, "Invalid review submission id");
+  }
+}
+
+function validateSubmissionInput(input: PrepareReviewSubmissionInput): void {
+  validateSubmissionId(input.submissionId);
+  if (
+    input.name !== undefined &&
+    (input.name.trim().length === 0 ||
+      input.name.length > MAX_REVIEW_SUBMISSION_NAME_LENGTH)
+  ) {
+    throw new HttpError(400, "Invalid review submission name");
+  }
+}
+
+function entryRefKey(ref: ReviewEntryRef): string {
+  return `${ref.siteId}\0${ref.entryId}`;
+}
+
+function summaryFromRequest(
+  request: ReviewSubmissionRequest,
+): ReviewSubmissionSummary {
+  return {
+    id: request.submissionId,
+    submittedAt: request.submittedAt,
+    requestedTarget: request.requestedTarget,
+    entryRefs: request.entries.map(({ siteId, entryId }) => ({
+      siteId,
+      entryId,
+    })),
+    status: "prepared",
+    responseRevision: 0,
+    acknowledgedRevision: 0,
+    ...(request.name ? { name: request.name } : {}),
+  };
+}
+
+function assertSameSubmissionRequest(
+  request: ReviewSubmissionRequest,
+  input: PrepareReviewSubmissionInput,
+): void {
+  const requestedIds = [...new Set(input.commentIds)].sort();
+  const frozenIds = request.entries.map((entry) => entry.entryId).sort();
+  if (
+    request.requestedTarget !== input.requestedTarget ||
+    (request.name ?? "") !== (input.name ?? "") ||
+    JSON.stringify(requestedIds) !== JSON.stringify(frozenIds)
+  ) {
+    throw new HttpError(
+      409,
+      "Submission id is already bound to another request",
+    );
+  }
+}
+
+function cloneCapture(capture: ReviewCapture): ReviewCapture {
+  return capture.status === "captured"
+    ? { ...capture, projection: { ...capture.projection } }
+    : { status: "legacy-missing" };
+}
+
+function cloneRelocation(
+  relocation: ReviewSubmissionRelocation,
+): ReviewSubmissionRelocation {
+  return { ...relocation };
+}
+
+function cloneSubmissionRequest(
+  request: ReviewSubmissionRequest,
+): ReviewSubmissionRequest {
+  return {
+    ...request,
+    entries: request.entries.map((entry) => ({
+      ...entry,
+      anchor: cloneAnchor(entry.anchor),
+      capture: cloneCapture(entry.capture),
+      relocation: cloneRelocation(entry.relocation),
+    })),
+  };
 }
 
 function findDraftEntry(store: ReviewStoreFile, entryId: string) {
@@ -402,9 +818,7 @@ function canonicalEntryToComment(
     text: entry.text,
     status: pending ? "pending" : "archived",
     createdAt: entry.createdAt,
-    ...(!pending && entry.submittedAt
-      ? { archivedAt: entry.submittedAt }
-      : {}),
+    ...(!pending && entry.submittedAt ? { archivedAt: entry.submittedAt } : {}),
     ...(!pending && entry.submissionId ? { batchId: entry.submissionId } : {}),
   };
 }

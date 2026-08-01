@@ -85,7 +85,7 @@ export function BlameView({
     error: draftError,
     addToReview,
     submitNow,
-  } = useReviewCommentDraft(projectId, path);
+  } = useReviewCommentDraft(projectId, path, captureReviewProjections);
 
   useEffect(() => {
     let cancelled = false;

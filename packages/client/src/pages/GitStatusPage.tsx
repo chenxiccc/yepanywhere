@@ -836,6 +836,7 @@ function GitStatusContent({
         <ReviewSubmitModal
           projectId={projectId}
           recentReviewSessionId={reviewComments.recentReviewSessionId}
+          submissionsEnabled={reviewsEnabled}
           onClose={onCloseReview}
           onNavigateSession={(sessionId) =>
             navigate(`${basePath}/projects/${projectId}/sessions/${sessionId}`)

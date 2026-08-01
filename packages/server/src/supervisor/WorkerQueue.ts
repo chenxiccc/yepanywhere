@@ -24,6 +24,8 @@ export interface QueuedRequest {
   permissionMode?: PermissionMode;
   modelSettings?: ModelSettings;
   queuedAt: Date;
+  /** One-shot association hook after a queued launch receives its YA id. */
+  onStarted?: (sessionId: string) => void | Promise<void>;
   /** Resolver to call when request is processed or cancelled */
   resolve: (result: QueuedRequestResult) => void;
 }
@@ -95,6 +97,7 @@ export class WorkerQueue {
     message: UserMessage;
     permissionMode?: PermissionMode;
     modelSettings?: ModelSettings;
+    onStarted?: (sessionId: string) => void | Promise<void>;
   }): EnqueueResult {
     // Check queue size limit
     if (this.maxQueueSize > 0 && this.queue.length >= this.maxQueueSize) {
@@ -119,6 +122,7 @@ export class WorkerQueue {
       message: params.message,
       permissionMode: params.permissionMode,
       modelSettings: params.modelSettings,
+      onStarted: params.onStarted,
       queuedAt: new Date(),
       resolve: resolvePromise,
     };

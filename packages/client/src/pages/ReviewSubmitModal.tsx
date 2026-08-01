@@ -2,6 +2,7 @@ import type {
   ProviderName,
   ReviewNewSessionOptions,
 } from "@yep-anywhere/shared";
+import { deriveReviewSubmissionName } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 import type { GlobalSessionItem } from "../api/client";
@@ -15,6 +16,7 @@ import {
 import { notifyReviewCommentsChanged } from "../lib/reviewCommentsBus";
 import { loadProjectSessions, reviewSessionLabel } from "../lib/reviewSessions";
 import type { TranslationFn } from "../i18n";
+import styles from "./ReviewSubmitModal.module.css";
 
 /**
  * The accumulating-review submit flow (topic: source-review-to-session, phase
@@ -28,12 +30,14 @@ import type { TranslationFn } from "../i18n";
 export function ReviewSubmitModal({
   projectId,
   recentReviewSessionId,
+  submissionsEnabled = false,
   onClose,
   onNavigateSession,
   t,
 }: {
   projectId: string;
   recentReviewSessionId: string | null;
+  submissionsEnabled?: boolean;
   onClose: () => void;
   onNavigateSession: (sessionId: string) => void;
   t: TranslationFn;
@@ -48,6 +52,11 @@ export function ReviewSubmitModal({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [queued, setQueued] = useState(false);
+  const [name, setName] = useState("");
+  const submissionIdRef = useRef<string | null>(null);
+  if (submissionsEnabled && !submissionIdRef.current) {
+    submissionIdRef.current = crypto.randomUUID();
+  }
   const [sessions, setSessions] = useState<GlobalSessionItem[] | null>(null);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
   const { providers, loading: providersLoading } = useProviders();
@@ -59,6 +68,10 @@ export function ReviewSubmitModal({
   const [model, setModel] = useState("");
   const selectedProvider = availableProviders.find(
     (provider) => provider.name === providerName,
+  );
+  const firstIncluded = items?.find((item) => included.has(item.comment.id));
+  const derivedName = deriveReviewSubmissionName(
+    firstIncluded?.comment.text ?? "",
   );
 
   useEffect(() => {
@@ -143,22 +156,39 @@ export function ReviewSubmitModal({
               model: model || undefined,
             }
           : undefined;
-      const result = await api.submitReview(
-        projectId,
-        include,
-        targetSessionId,
-        newSession,
-      );
+      const result =
+        submissionsEnabled && submissionIdRef.current
+          ? await api.submitReview(
+              projectId,
+              include,
+              targetSessionId,
+              newSession,
+              {
+                id: submissionIdRef.current,
+                name: name.trim() || undefined,
+              },
+            )
+          : await api.submitReview(
+              projectId,
+              include,
+              targetSessionId,
+              newSession,
+            );
       notifyReviewCommentsChanged(projectId);
       if (result.sessionId) {
         onNavigateSession(result.sessionId);
         onClose();
         return;
       }
-      // Queued (202): the comments are still pending. Lock this modal's submit
-      // so an accidental re-click can't fire a second launch of the same batch
-      // (the reviewer closes and retries deliberately when the queue frees).
-      setNotice(t("sourceReviewSubmitQueued"));
+      // Lock this modal after queue acceptance. Legacy drafts stay pending;
+      // keyed submissions are already archived and safe to inspect in Reviews.
+      setNotice(
+        t(
+          submissionsEnabled
+            ? "sourceReviewSubmissionQueued"
+            : "sourceReviewSubmitQueued",
+        ),
+      );
       setQueued(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to submit");
@@ -174,21 +204,21 @@ export function ReviewSubmitModal({
     onNavigateSession,
     onClose,
     t,
+    submissionsEnabled,
+    name,
   ]);
 
   return (
     <Modal title={t("sourceReviewSubmitTitle")} onClose={onClose}>
-      <div className="review-submit-modal">
-        {error && <div className="review-submit-error">{error}</div>}
-        {notice && <div className="review-submit-notice">{notice}</div>}
+      <div className={styles.modal}>
+        {error && <div className={styles.error}>{error}</div>}
+        {notice && <div role="status">{notice}</div>}
         {items === null ? (
-          <div className="review-submit-loading">{t("loading")}</div>
+          <div>{t("loading")}</div>
         ) : items.length === 0 ? (
-          <div className="review-submit-empty">
-            {t("sourceReviewNoPending")}
-          </div>
+          <div>{t("sourceReviewNoPending")}</div>
         ) : (
-          <ul className="review-submit-list">
+          <ul className={styles.list}>
             {items.map((item) => (
               <ReviewPreviewRow
                 key={item.comment.id}
@@ -202,11 +232,10 @@ export function ReviewSubmitModal({
         )}
 
         {items && items.length > 0 && (
-          <div className="review-submit-destination">
-            <label className="review-submit-field">
+          <div className={styles.destination}>
+            <label className={styles.field}>
               <span>{t("sourceReviewTargetLegend")}</span>
               <select
-                className="review-submit-session-select"
                 value={targetSessionId}
                 onChange={(event) => {
                   targetTouchedRef.current = true;
@@ -237,14 +266,14 @@ export function ReviewSubmitModal({
             </label>
 
             {sessionsError && (
-              <div className="review-submit-target-error">
+              <div className={styles.targetError}>
                 {t("sourceReviewSessionsUnavailable")}: {sessionsError}
               </div>
             )}
 
             {targetSessionId === "new" && (
-              <div className="review-submit-new-session">
-                <label className="review-submit-field">
+              <div className={styles.newSession}>
+                <label className={styles.field}>
                   <span>{t("sourceReviewProvider")}</span>
                   <select
                     value={providerName}
@@ -263,7 +292,7 @@ export function ReviewSubmitModal({
                     ))}
                   </select>
                 </label>
-                <label className="review-submit-field">
+                <label className={styles.field}>
                   <span>{t("sourceReviewModel")}</span>
                   <select
                     value={model}
@@ -283,13 +312,24 @@ export function ReviewSubmitModal({
           </div>
         )}
 
-        <div className="review-submit-actions">
+        <div className={styles.actions}>
+          {submissionsEnabled && (
+            <label className={`${styles.field} ${styles.name}`}>
+              <span>{t("sourceReviewSubmissionName")}</span>
+              <input
+                value={name}
+                maxLength={120}
+                placeholder={derivedName}
+                onChange={(event) => setName(event.target.value)}
+              />
+            </label>
+          )}
           <button type="button" onClick={onClose} disabled={busy}>
             {t("cancel")}
           </button>
           <button
             type="button"
-            className="review-submit-go"
+            className={styles.go}
             onClick={submit}
             disabled={busy || queued || included.size === 0}
           >
@@ -320,22 +360,18 @@ function ReviewPreviewRow({
     : `${item.relocation.path}:${item.relocation.line}`;
 
   return (
-    <li className={`review-submit-row ${gone ? "is-stale" : ""}`}>
-      <label className="review-submit-row-head">
+    <li className={`${styles.row} ${gone ? styles.stale : ""}`}>
+      <label className={styles.rowHead}>
         <input type="checkbox" checked={checked} onChange={onToggle} />
-        <span className="review-submit-row-loc">{location}</span>
+        <span className={styles.location}>{location}</span>
         {gone && (
-          <span className="review-submit-row-stale">
-            {t("sourceReviewStale")}
-          </span>
+          <span className={styles.staleLabel}>{t("sourceReviewStale")}</span>
         )}
         {!gone && item.relocation.moved && (
-          <span className="review-submit-row-moved">
-            {t("sourceReviewMoved")}
-          </span>
+          <span className={styles.movedLabel}>{t("sourceReviewMoved")}</span>
         )}
       </label>
-      <div className="review-submit-row-text">{item.comment.text}</div>
+      <div className={styles.rowText}>{item.comment.text}</div>
     </li>
   );
 }

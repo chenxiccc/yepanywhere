@@ -28,6 +28,11 @@ export const MAX_REVIEW_BATCHES = 2000;
 export const MAX_REVIEW_COMMENT_TEXT_LENGTH = 20000;
 export const MAX_REVIEW_SNIPPET_LENGTH = 8000;
 export const MAX_REVIEW_PATH_LENGTH = 4096;
+export const MAX_REVIEW_SUBMISSION_NAME_LENGTH = 120;
+export const MAX_REVIEW_SUBMISSION_ID_LENGTH = 128;
+export const REVIEW_SUBMISSION_REQUEST_VERSION = 1 as const;
+export const REVIEW_SUBMISSION_RESPONSE_VERSION = 1 as const;
+export const MAX_REVIEW_RESPONSE_FILE_BYTES = 256 * 1024;
 
 /** How many neighbouring diff lines flank the clicked line in the snippet. */
 export const DEFAULT_SNIPPET_CONTEXT_RADIUS = 3;
@@ -209,10 +214,82 @@ export interface ReviewSubmissionSummary {
   targetSessionId?: string;
   entryRefs: ReviewEntryRef[];
   status: ReviewSubmissionStatus;
+  /** Launcher acceptance result, retained so retries return the same shape. */
+  deliveryStatus?: "queued" | "delivered";
   /** Monotonic valid response revision, zero until one is ingested. */
   responseRevision: number;
   /** Highest response revision the reviewer explicitly opened. */
   acknowledgedRevision: number;
+  /** Completed assistant turns whose response file was checked. */
+  responseTurnsObserved?: number;
+  /** Frozen observation bound for this delivery. */
+  responseTurnLimit?: number;
+  /** Last complete response snapshot incorporated into outcome history. */
+  lastResponseHash?: string;
+}
+
+export type ReviewSubmissionRelocation =
+  | {
+      status: "relocated";
+      path: string;
+      line: number;
+      snippet: string;
+      currentSha: string | null;
+      moved: boolean;
+    }
+  | {
+      status: "gone";
+      path: string;
+      citeSha: string | null;
+      snippet: string;
+    };
+
+export interface ReviewSubmissionRequestEntry extends ReviewEntryRef {
+  text: string;
+  anchor: ReviewCommentAnchor;
+  relocation: ReviewSubmissionRelocation;
+  capture: ReviewCapture;
+}
+
+/** Immutable server-authored request at `.yep/source-review/<id>/request.json`. */
+export interface ReviewSubmissionRequest {
+  version: typeof REVIEW_SUBMISSION_REQUEST_VERSION;
+  submissionId: string;
+  name?: string;
+  submittedAt: string;
+  requestedTarget: "new" | string;
+  entries: ReviewSubmissionRequestEntry[];
+}
+
+export interface ReviewSubmissionResponseOutcome extends ReviewEntryRef {
+  disposition: ReviewOutcomeDisposition;
+  text: string;
+}
+
+/** Agent-authored atomic response snapshot. */
+export interface ReviewSubmissionResponse {
+  version: typeof REVIEW_SUBMISSION_RESPONSE_VERSION;
+  submissionId: string;
+  outcomes: ReviewSubmissionResponseOutcome[];
+  suggestedTitle?: string;
+}
+
+/** First-comment excerpt used both as the name-field prefill and title fallback. */
+export function deriveReviewSubmissionName(text: string): string {
+  const line = text
+    .split(/\r?\n/u)
+    .map((part) => part.trim())
+    .find(Boolean);
+  return (line ?? "Source review").slice(0, MAX_REVIEW_SUBMISSION_NAME_LENGTH);
+}
+
+export function isReviewSubmissionId(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= MAX_REVIEW_SUBMISSION_ID_LENGTH &&
+    /^[A-Za-z0-9][A-Za-z0-9_-]*$/u.test(value)
+  );
 }
 
 export interface ReviewStoreFile {
@@ -495,6 +572,165 @@ function parseCapture(value: unknown): ReviewCapture | null {
     : null;
 }
 
+function parseSubmissionRelocation(
+  value: unknown,
+): ReviewSubmissionRelocation | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (
+    typeof record.path !== "string" ||
+    record.path.length === 0 ||
+    record.path.length > MAX_REVIEW_PATH_LENGTH ||
+    typeof record.snippet !== "string" ||
+    record.snippet.length > MAX_REVIEW_SNIPPET_LENGTH
+  ) {
+    return null;
+  }
+  if (
+    record.status === "relocated" &&
+    typeof record.line === "number" &&
+    Number.isInteger(record.line) &&
+    record.line >= 1 &&
+    (record.currentSha === null || typeof record.currentSha === "string") &&
+    typeof record.moved === "boolean"
+  ) {
+    return {
+      status: "relocated",
+      path: record.path,
+      line: record.line,
+      snippet: record.snippet,
+      currentSha: record.currentSha,
+      moved: record.moved,
+    };
+  }
+  if (
+    record.status === "gone" &&
+    (record.citeSha === null || typeof record.citeSha === "string")
+  ) {
+    return {
+      status: "gone",
+      path: record.path,
+      citeSha: record.citeSha,
+      snippet: record.snippet,
+    };
+  }
+  return null;
+}
+
+/** Defensively parse the immutable server-authored request manifest. */
+export function parseReviewSubmissionRequest(
+  value: unknown,
+): ReviewSubmissionRequest | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (
+    record.version !== REVIEW_SUBMISSION_REQUEST_VERSION ||
+    !isReviewSubmissionId(record.submissionId) ||
+    !isIsoLikeString(record.submittedAt) ||
+    typeof record.requestedTarget !== "string" ||
+    record.requestedTarget.length === 0 ||
+    !Array.isArray(record.entries) ||
+    record.entries.length === 0 ||
+    record.entries.length > MAX_REVIEW_COMMENTS ||
+    (record.name !== undefined &&
+      (typeof record.name !== "string" ||
+        record.name.length === 0 ||
+        record.name.length > MAX_REVIEW_SUBMISSION_NAME_LENGTH))
+  ) {
+    return null;
+  }
+  const entries: ReviewSubmissionRequestEntry[] = [];
+  const seen = new Set<string>();
+  for (const raw of record.entries) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+    const entryRecord = raw as Record<string, unknown>;
+    const ref = parseEntryRef(entryRecord);
+    const anchor = parseReviewCommentAnchor(entryRecord.anchor);
+    const capture = parseCapture(entryRecord.capture);
+    const relocation = parseSubmissionRelocation(entryRecord.relocation);
+    if (
+      !ref ||
+      !anchor ||
+      !capture ||
+      !relocation ||
+      typeof entryRecord.text !== "string" ||
+      entryRecord.text.length > MAX_REVIEW_COMMENT_TEXT_LENGTH
+    ) {
+      return null;
+    }
+    const key = `${ref.siteId}\0${ref.entryId}`;
+    if (seen.has(key)) return null;
+    seen.add(key);
+    entries.push({
+      ...ref,
+      text: entryRecord.text,
+      anchor,
+      capture,
+      relocation,
+    });
+  }
+  return {
+    version: REVIEW_SUBMISSION_REQUEST_VERSION,
+    submissionId: record.submissionId,
+    submittedAt: record.submittedAt,
+    requestedTarget: record.requestedTarget,
+    entries,
+    ...(typeof record.name === "string" ? { name: record.name } : {}),
+  };
+}
+
+/** Parse an agent-authored response shape; completeness is checked by ingestion. */
+export function parseReviewSubmissionResponse(
+  value: unknown,
+): ReviewSubmissionResponse | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (
+    record.version !== REVIEW_SUBMISSION_RESPONSE_VERSION ||
+    !isReviewSubmissionId(record.submissionId) ||
+    !Array.isArray(record.outcomes) ||
+    record.outcomes.length > MAX_REVIEW_COMMENTS ||
+    (record.suggestedTitle !== undefined &&
+      (typeof record.suggestedTitle !== "string" ||
+        record.suggestedTitle.length > MAX_REVIEW_SUBMISSION_NAME_LENGTH))
+  ) {
+    return null;
+  }
+  const outcomes: ReviewSubmissionResponseOutcome[] = [];
+  const seen = new Set<string>();
+  for (const raw of record.outcomes) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+    const outcomeRecord = raw as Record<string, unknown>;
+    const ref = parseEntryRef(outcomeRecord);
+    if (
+      !ref ||
+      (outcomeRecord.disposition !== "done" &&
+        outcomeRecord.disposition !== "wont_fix" &&
+        outcomeRecord.disposition !== "question") ||
+      typeof outcomeRecord.text !== "string" ||
+      outcomeRecord.text.length > MAX_REVIEW_COMMENT_TEXT_LENGTH
+    ) {
+      return null;
+    }
+    const key = `${ref.siteId}\0${ref.entryId}`;
+    if (seen.has(key)) return null;
+    seen.add(key);
+    outcomes.push({
+      ...ref,
+      disposition: outcomeRecord.disposition,
+      text: outcomeRecord.text,
+    });
+  }
+  return {
+    version: REVIEW_SUBMISSION_RESPONSE_VERSION,
+    submissionId: record.submissionId,
+    outcomes,
+    ...(typeof record.suggestedTitle === "string"
+      ? { suggestedTitle: record.suggestedTitle }
+      : {}),
+  };
+}
+
 function parseReviewerEntry(value: unknown): ReviewReviewerEntry | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
@@ -610,6 +846,8 @@ function parseSubmission(value: unknown): ReviewSubmissionSummary | null {
     (record.status !== "legacy" &&
       record.status !== "prepared" &&
       record.status !== "accepted") ||
+    ((record.status === "prepared" || record.status === "accepted") &&
+      !isReviewSubmissionId(record.id)) ||
     !Array.isArray(record.entryRefs) ||
     typeof record.responseRevision !== "number" ||
     !Number.isInteger(record.responseRevision) ||
@@ -624,6 +862,31 @@ function parseSubmission(value: unknown): ReviewSubmissionSummary | null {
     const ref = parseEntryRef(raw);
     return ref ? [ref] : [];
   });
+  const responseTurnsObserved =
+    record.responseTurnsObserved === undefined
+      ? undefined
+      : typeof record.responseTurnsObserved === "number" &&
+          Number.isInteger(record.responseTurnsObserved) &&
+          record.responseTurnsObserved >= 0
+        ? record.responseTurnsObserved
+        : null;
+  const responseTurnLimit =
+    record.responseTurnLimit === undefined
+      ? undefined
+      : typeof record.responseTurnLimit === "number" &&
+          Number.isInteger(record.responseTurnLimit) &&
+          record.responseTurnLimit >= 1 &&
+          record.responseTurnLimit <= 32
+        ? record.responseTurnLimit
+        : null;
+  if (responseTurnsObserved === null || responseTurnLimit === null) return null;
+  if (
+    record.lastResponseHash !== undefined &&
+    (typeof record.lastResponseHash !== "string" ||
+      !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/iu.test(record.lastResponseHash))
+  ) {
+    return null;
+  }
   return {
     id: record.id,
     submittedAt: record.submittedAt,
@@ -640,6 +903,15 @@ function parseSubmission(value: unknown): ReviewSubmissionSummary | null {
       : {}),
     ...(typeof record.targetSessionId === "string"
       ? { targetSessionId: record.targetSessionId }
+      : {}),
+    ...(record.deliveryStatus === "queued" ||
+    record.deliveryStatus === "delivered"
+      ? { deliveryStatus: record.deliveryStatus }
+      : {}),
+    ...(responseTurnsObserved !== undefined ? { responseTurnsObserved } : {}),
+    ...(responseTurnLimit !== undefined ? { responseTurnLimit } : {}),
+    ...(typeof record.lastResponseHash === "string"
+      ? { lastResponseHash: record.lastResponseHash }
       : {}),
   };
 }

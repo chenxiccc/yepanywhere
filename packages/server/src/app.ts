@@ -1601,8 +1601,24 @@ export function createApp(options: AppOptions): AppResult {
     createReviewCommentsRoutes({
       scanner,
       service: reviewCommentService,
-      launcher: createSupervisorReviewLauncher(supervisor),
+      launcher: createSupervisorReviewLauncher(
+        supervisor,
+        async (projectPath, submissionId, acceptance) => {
+          await reviewCommentService.acceptSubmission(projectPath, {
+            submissionId,
+            ...acceptance,
+            responseTurnLimit:
+              options.serverSettingsService?.getSetting(
+                "sourceReviewResponseTurns",
+              ) ?? 8,
+          });
+        },
+      ),
       isSubmissionsEnabled: sourceReviewSubmissionsEnabled,
+      getResponseTurnLimit: () =>
+        options.serverSettingsService?.getSetting(
+          "sourceReviewResponseTurns",
+        ) ?? 8,
     }),
   );
   app.route(

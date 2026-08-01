@@ -178,6 +178,100 @@ describe("ReviewCommentService", () => {
     expect(file.batches).toHaveLength(1);
   });
 
+  it("freezes, fsyncs, and accepts a client-keyed submission", async () => {
+    const svc = makeService();
+    const created = await svc.addComment(dir, {
+      anchor: anchor(),
+      text: "freeze this",
+    });
+    const relocation = {
+      status: "relocated" as const,
+      path: "src/a.ts",
+      line: 12,
+      snippet: "added line",
+      currentSha: null,
+      moved: false,
+    };
+    const request = await svc.prepareSubmission(dir, {
+      submissionId: "submission-1",
+      name: "Naming cleanup",
+      commentIds: [created.id],
+      requestedTarget: "new",
+      relocations: new Map([[created.id, relocation]]),
+    });
+
+    expect(request).toMatchObject({
+      version: 1,
+      submissionId: "submission-1",
+      name: "Naming cleanup",
+      entries: [{ entryId: created.id, relocation }],
+    });
+    expect(await svc.listPending(dir)).toHaveLength(1);
+    expect(
+      JSON.parse(
+        await readFile(
+          join(dir, ".yep", "source-review", "submission-1", "request.json"),
+          "utf-8",
+        ),
+      ),
+    ).toEqual(request);
+
+    const accepted = await svc.acceptSubmission(dir, {
+      submissionId: "submission-1",
+      deliveryStatus: "queued",
+      responseTurnLimit: 8,
+    });
+    expect(accepted).toMatchObject({
+      id: "submission-1",
+      status: "accepted",
+      deliveryStatus: "queued",
+      responseTurnsObserved: 0,
+      responseTurnLimit: 8,
+    });
+    expect(accepted?.targetSessionId).toBeUndefined();
+    expect(await svc.listPending(dir)).toHaveLength(0);
+
+    const delivered = await svc.acceptSubmission(dir, {
+      submissionId: "submission-1",
+      targetSessionId: "session-1",
+      deliveryStatus: "delivered",
+      responseTurnLimit: 8,
+    });
+    expect(delivered).toMatchObject({
+      deliveryStatus: "delivered",
+      targetSessionId: "session-1",
+    });
+  });
+
+  it("recovers a prepared manifest across restart without changing it", async () => {
+    const svc = makeService();
+    const created = await svc.addComment(dir, {
+      anchor: anchor(),
+      text: "retry once",
+    });
+    const input = {
+      submissionId: "submission-retry",
+      commentIds: [created.id],
+      requestedTarget: "session-1" as const,
+      relocations: new Map([
+        [
+          created.id,
+          {
+            status: "gone" as const,
+            path: "src/a.ts",
+            citeSha: null,
+            snippet: "added line",
+          },
+        ],
+      ]),
+    };
+    const first = await svc.prepareSubmission(dir, input);
+    const restarted = makeService();
+    const retry = await restarted.prepareSubmission(dir, input);
+    expect(retry).toEqual(first);
+    expect((await restarted.getStoreFile(dir)).submissions).toHaveLength(1);
+  });
+
   it("archive consumes only currently-pending ids", async () => {
     const svc = makeService();
     const c1 = await svc.addComment(dir, { anchor: anchor(), text: "one" });
@@ -269,14 +363,17 @@ describe("ReviewCommentService", () => {
   });
 
   it("caps active drafts without counting archived history", async () => {
-    const comments = Array.from({ length: MAX_REVIEW_COMMENTS }, (_, index) => ({
-      id: `archived-${index}`,
-      anchor: anchor(),
-      text: `history-${index}`,
-      status: "archived",
-      createdAt: "2026-07-25T00:00:00Z",
-      archivedAt: "2026-07-26T00:00:00Z",
-    }));
+    const comments = Array.from(
+      { length: MAX_REVIEW_COMMENTS },
+      (_, index) => ({
+        id: `archived-${index}`,
+        anchor: anchor(),
+        text: `history-${index}`,
+        status: "archived",
+        createdAt: "2026-07-25T00:00:00Z",
+        archivedAt: "2026-07-26T00:00:00Z",
+      }),
+    );
     await mkdir(join(dir, ".yep"), { recursive: true });
     await writeFile(
       join(dir, ".yep", "review-comments.json"),

@@ -14,7 +14,12 @@
  * provenance. Pure string composition — no I/O.
  */
 
-import type { ReviewComment } from "@yep-anywhere/shared";
+import {
+  deriveReviewSubmissionName,
+  type ReviewComment,
+  type ReviewSubmissionRequest,
+  type ReviewSubmissionRequestEntry,
+} from "@yep-anywhere/shared";
 import type { AnchorRelocation } from "./relocateAnchors.js";
 
 export interface ComposeReviewTurnInput {
@@ -31,6 +36,47 @@ export const READ_CURRENT_STATE_INSTRUCTION =
   "Read the current file state for each referenced line rather than trusting " +
   "the quoted snippets — the tree may have changed since these comments were " +
   "written.";
+
+export interface ComposeSubmissionReviewTurnInput {
+  request: ReviewSubmissionRequest;
+  /** Repo-relative submission directory, never the private draft store. */
+  submissionDirectoryRelPath: string;
+  followUp?: boolean;
+}
+
+/** Compose the frozen-manifest workflow without exposing mutable draft state. */
+export function composeSubmissionReviewTurn(
+  input: ComposeSubmissionReviewTurnInput,
+): string {
+  const { request, submissionDirectoryRelPath, followUp } = input;
+  const title =
+    request.name ?? deriveReviewSubmissionName(request.entries[0]?.text ?? "");
+  const out: string[] = [
+    `# ${title}`,
+    "",
+    `${followUp ? "Follow-up source review" : "Source review"}; the frozen request is in \`${submissionDirectoryRelPath}/request.json\`.`,
+    READ_CURRENT_STATE_INSTRUCTION,
+    "",
+  ];
+
+  const byPath = new Map<string, ReviewSubmissionRequestEntry[]>();
+  for (const entry of request.entries) {
+    const group = byPath.get(entry.anchor.path) ?? [];
+    group.push(entry);
+    byPath.set(entry.anchor.path, group);
+  }
+  for (const [path, entries] of byPath) {
+    out.push(`## ${path}`, "");
+    for (const entry of entries) {
+      out.push(renderSubmissionEntry(entry), "");
+    }
+  }
+  out.push(
+    "Record one outcome for every request entry in `response.json` in that directory. " +
+      "Use version 1, this submissionId, and disposition `done`, `wont_fix`, or `question` with bounded explanatory text; replace the file atomically.",
+  );
+  return `${out.join("\n").trimEnd()}\n`;
+}
 
 export function composeReviewTurn(input: ComposeReviewTurnInput): string {
   const { comments, relocations, reviewFileRelPath, followUp } = input;
@@ -108,13 +154,28 @@ function renderComment(
   return lines.join("\n");
 }
 
+function renderSubmissionEntry(entry: ReviewSubmissionRequestEntry): string {
+  const comment: ReviewComment = {
+    id: entry.entryId,
+    anchor: entry.anchor,
+    text: entry.text,
+    status: "pending",
+    createdAt: "",
+  };
+  const rendered = renderComment(comment, entry.relocation);
+  const capture =
+    entry.capture.status === "captured"
+      ? entry.capture.captureBlobId
+      : "legacy-missing";
+  return `${rendered}\n  - Entry: \`${entry.siteId}/${entry.entryId}\`; capture: \`${capture}\``;
+}
+
 function fence(snippet: string): string {
   // A fence one backtick longer than any run inside keeps embedded ``` (e.g.
   // reviewed markdown with its own fenced code) from ending the block early.
   const longestRun =
-    snippet
-      .match(/`+/g)
-      ?.reduce((max, run) => Math.max(max, run.length), 0) ?? 0;
+    snippet.match(/`+/g)?.reduce((max, run) => Math.max(max, run.length), 0) ??
+    0;
   const marker = "`".repeat(Math.max(3, longestRun + 1));
   return `${marker}\n${snippet}\n${marker}`;
 }

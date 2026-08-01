@@ -484,6 +484,8 @@ export interface SessionLaunchOptions {
   projectId?: UrlProjectId;
   /** YA workstream lane to persist once a queued launch starts. */
   workstreamId?: WorkstreamId;
+  /** One-shot callback once an immediate or queued launch has a canonical YA id. */
+  onStarted?: (sessionId: string) => void | Promise<void>;
 }
 
 /** Error response when queue is full */
@@ -809,6 +811,7 @@ export class Supervisor {
           message,
           permissionMode,
           modelSettings,
+          onStarted: launchOptions?.onStarted,
         });
         if (isQueueFullError(result)) {
           return result;
@@ -824,8 +827,9 @@ export class Supervisor {
     const provider = this.resolveProvider(modelSettings);
 
     // Use provider if available (preferred)
+    let process: Process;
     if (provider) {
-      return this.startProviderSession(
+      process = await this.startProviderSession(
         projectPath,
         projectId,
         message,
@@ -834,11 +838,19 @@ export class Supervisor {
         modelSettings,
         provider,
       );
-    }
-
-    // Use real SDK if available
-    if (this.realSdk) {
-      return this.startRealSession(
+    } else if (this.realSdk) {
+      // Use real SDK if available
+      process = await this.startRealSession(
+        projectPath,
+        projectId,
+        message,
+        undefined,
+        permissionMode,
+        modelSettings,
+      );
+    } else {
+      // Fall back to legacy mock SDK
+      process = await this.startLegacySession(
         projectPath,
         projectId,
         message,
@@ -847,16 +859,20 @@ export class Supervisor {
         modelSettings,
       );
     }
-
-    // Fall back to legacy mock SDK
-    return this.startLegacySession(
-      projectPath,
-      projectId,
-      message,
-      undefined,
-      permissionMode,
-      modelSettings,
-    );
+    try {
+      await launchOptions?.onStarted?.(process.sessionId);
+    } catch (error) {
+      getLogger().warn(
+        {
+          event: "session_started_callback_failed",
+          sessionId: process.sessionId,
+          projectId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Session started but its one-shot association callback failed",
+      );
+    }
+    return process;
   }
 
   /**
@@ -4875,6 +4891,21 @@ export class Supervisor {
         });
 
         request.resolve({ status: "started", processId: process.id });
+        try {
+          await request.onStarted?.(process.sessionId);
+        } catch (error) {
+          getLogger().warn(
+            {
+              event: "queued_session_started_callback_failed",
+              sessionId: process.sessionId,
+              processId: process.id,
+              projectId: request.projectId,
+              queueId: request.id,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            "Queued session started but its association callback failed",
+          );
+        }
       } catch (error) {
         // On error, resolve with cancelled status
         request.resolve({

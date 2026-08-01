@@ -1222,6 +1222,8 @@
   "sourceReviewCurrentSuffix": "current session",
   "sourceReviewCommentPlaceholder": "Comment on this line…",
   "sourceReviewSubmitQueued": "Queued — the server is busy; the comment is still pending.",
+  "sourceReviewSubmissionQueued": "Queued — the review was accepted and will receive a session when capacity is available.",
+  "sourceReviewSubmissionName": "Name",
   "sourceReviewReview": "Review ({count})",
   "sourceReviewStart": "Review",
   "sourceReviewSubmitTitle": "Submit review",

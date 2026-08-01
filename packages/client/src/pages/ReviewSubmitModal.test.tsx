@@ -77,7 +77,10 @@ const PREVIEW = {
   ],
 };
 
-function renderModal(recentReviewSessionId: string | null) {
+function renderModal(
+  recentReviewSessionId: string | null,
+  submissionsEnabled = false,
+) {
   const onClose = vi.fn();
   const onNavigateSession = vi.fn();
   render(
@@ -85,6 +88,7 @@ function renderModal(recentReviewSessionId: string | null) {
       <ReviewSubmitModal
         projectId="proj1"
         recentReviewSessionId={recentReviewSessionId}
+        submissionsEnabled={submissionsEnabled}
         onClose={onClose}
         onNavigateSession={onNavigateSession}
         t={t}
@@ -261,5 +265,32 @@ describe("ReviewSubmitModal", () => {
         model: "opus",
       }),
     );
+  });
+
+  it("sends one stable submission id and the optional name", async () => {
+    previewReview.mockResolvedValue(PREVIEW);
+    submitReview.mockResolvedValue({ status: "queued" });
+    renderModal(null, true);
+
+    await screen.findByText("live one");
+    const name = screen.getByLabelText(
+      "sourceReviewSubmissionName",
+    ) as HTMLInputElement;
+    expect(name.placeholder).toBe("live one");
+    fireEvent.change(name, { target: { value: "Parser follow-up" } });
+    fireEvent.click(screen.getByText("sourceReviewSubmitReview"));
+
+    await waitFor(() =>
+      expect(submitReview).toHaveBeenCalledWith(
+        "proj1",
+        ["live1"],
+        "new",
+        { provider: "claude", model: undefined },
+        { id: expect.any(String), name: "Parser follow-up" },
+      ),
+    );
+    expect(
+      await screen.findByText("sourceReviewSubmissionQueued"),
+    ).toBeTruthy();
   });
 });

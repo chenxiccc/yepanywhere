@@ -69,7 +69,7 @@ export function DiffCommentController({
     setError,
     addToReview,
     submitNow,
-  } = useReviewCommentDraft(projectId, filePath);
+  } = useReviewCommentDraft(projectId, filePath, projections !== undefined);
 
   useLayoutEffect(() => {
     onOpenChange?.(openComment !== null);

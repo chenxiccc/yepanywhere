@@ -1,6 +1,9 @@
 import type { ReviewComment, ReviewCommentAnchor } from "@yep-anywhere/shared";
 import { describe, expect, it } from "vitest";
-import { composeReviewTurn } from "../../src/review/composeReviewTurn.js";
+import {
+  composeReviewTurn,
+  composeSubmissionReviewTurn,
+} from "../../src/review/composeReviewTurn.js";
 import type { AnchorRelocation } from "../../src/review/relocateAnchors.js";
 
 function comment(
@@ -45,6 +48,42 @@ const gone = (citeSha: string | null): AnchorRelocation => ({
 const REVIEW_FILE = ".yep/review-comments.json";
 
 describe("composeReviewTurn", () => {
+  it("leads with the submission name and points only at its frozen directory", () => {
+    const prompt = composeSubmissionReviewTurn({
+      request: {
+        version: 1,
+        submissionId: "submission-1",
+        name: "Tighten the parser",
+        submittedAt: "2026-08-01T00:00:00Z",
+        requestedTarget: "new",
+        entries: [
+          {
+            siteId: "site-1",
+            entryId: "entry-1",
+            text: "Why is this permissive?",
+            anchor: comment("entry-1", "x", {}).anchor,
+            relocation: relocated(10),
+            capture: {
+              status: "captured",
+              captureBlobId: "a".repeat(40),
+              projection: {
+                kind: "worktree",
+                path: "src/a.ts",
+                side: "new",
+              },
+            },
+          },
+        ],
+      },
+      submissionDirectoryRelPath: ".yep/source-review/submission-1",
+    });
+
+    expect(prompt.startsWith("# Tighten the parser\n")).toBe(true);
+    expect(prompt).toContain(".yep/source-review/submission-1/request.json");
+    expect(prompt).not.toContain("review-comments.json");
+    expect(prompt).toContain("site-1/entry-1");
+    expect(prompt).toContain("response.json");
+  });
   it("includes the read-current-state instruction and review-file reference", () => {
     const prompt = composeReviewTurn({
       comments: [comment("c1", "why?", {})],
@@ -83,9 +122,7 @@ describe("composeReviewTurn", () => {
     expect(prompt).not.toContain("abc1234def"); // currentSha never cited
     // gone comment cites its sha
     expect(prompt).toContain("deadbeef1");
-    expect(prompt).toContain(
-      "```\ncaptured before the file changed\n```",
-    );
+    expect(prompt).toContain("```\ncaptured before the file changed\n```");
   });
 
   it("always cites the sha for a removed (minus-side) comment", () => {

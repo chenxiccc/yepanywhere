@@ -3,7 +3,7 @@ import type {
   ReviewCommentAnchor,
   ReviewNewSessionOptions,
 } from "@yep-anywhere/shared";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { useSourceReviewDefaultSession } from "../contexts/SourceReviewDefaultSessionContext";
@@ -24,13 +24,22 @@ export type SubmitNowOutcome = "navigated" | "queued" | "error";
  * add/submit/navigate logic — the anchor is the only thing each surface builds
  * differently.
  */
-export function useReviewCommentDraft(projectId: string, filePath: string) {
+export function useReviewCommentDraft(
+  projectId: string,
+  filePath: string,
+  submissionsEnabled = false,
+) {
   const navigate = useNavigate();
   const basePath = useRemoteBasePath();
   const defaultSession = useSourceReviewDefaultSession();
   const [pending, setPending] = useState<ReviewComment[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const immediateAttemptRef = useRef<{
+    key: string;
+    commentId: string;
+    submissionId: string;
+  } | null>(null);
 
   const refreshPending = useCallback(async () => {
     try {
@@ -85,24 +94,45 @@ export function useReviewCommentDraft(projectId: string, filePath: string) {
       setBusy(true);
       setError(null);
       try {
-        const { comment } = await api.addReviewComment(projectId, anchor, text);
-        const result =
-          target === "new" && newSession
-            ? await api.submitReview(
-                projectId,
-                [comment.id],
-                target,
-                newSession,
-              )
-            : await api.submitReview(projectId, [comment.id], target);
+        const attemptKey = JSON.stringify({ anchor, text, target });
+        const prior =
+          submissionsEnabled && immediateAttemptRef.current?.key === attemptKey
+            ? immediateAttemptRef.current
+            : null;
+        const commentId = prior
+          ? prior.commentId
+          : (await api.addReviewComment(projectId, anchor, text)).comment.id;
+        const submissionId = prior?.submissionId ?? crypto.randomUUID();
+        if (submissionsEnabled && !prior) {
+          immediateAttemptRef.current = {
+            key: attemptKey,
+            commentId,
+            submissionId,
+          };
+        }
+        const submission = submissionsEnabled
+          ? { id: submissionId }
+          : undefined;
+        const result = submission
+          ? await api.submitReview(
+              projectId,
+              [commentId],
+              target,
+              target === "new" ? newSession : undefined,
+              submission,
+            )
+          : target === "new" && newSession
+            ? await api.submitReview(projectId, [commentId], target, newSession)
+            : await api.submitReview(projectId, [commentId], target);
         notifyReviewCommentsChanged(projectId);
         if (result.sessionId) {
+          immediateAttemptRef.current = null;
           navigate(
             `${basePath}/projects/${projectId}/sessions/${result.sessionId}`,
           );
           return "navigated";
         }
-        // Queued at capacity: the comment stays pending for a retry.
+        if (submissionsEnabled) immediateAttemptRef.current = null;
         setError(queuedMessage);
         void refreshPending();
         return "queued";
@@ -113,7 +143,7 @@ export function useReviewCommentDraft(projectId: string, filePath: string) {
         setBusy(false);
       }
     },
-    [projectId, navigate, basePath, refreshPending],
+    [projectId, navigate, basePath, refreshPending, submissionsEnabled],
   );
 
   return {

@@ -51,6 +51,7 @@ export interface ReviewSubmitResult {
   consumed?: string[];
   /** "queued" (HTTP 202) when the supervisor was at capacity. */
   status?: "queued";
+  submissionId?: string;
 }
 
 export const reviewApi = {
@@ -93,9 +94,17 @@ export const reviewApi = {
     include: string[],
     target: "new" | string,
     newSession?: ReviewNewSessionOptions,
+    submission?: { id: string; name?: string },
   ) =>
     fetchJSON<ReviewSubmitResult>(`/projects/${projectId}/review/submit`, {
       method: "POST",
-      body: JSON.stringify({ include, target, newSession }),
+      body: JSON.stringify({
+        include,
+        target,
+        newSession,
+        ...(submission
+          ? { submissionId: submission.id, name: submission.name }
+          : {}),
+      }),
     }),
 };

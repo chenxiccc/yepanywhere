@@ -97,6 +97,8 @@ export interface UserMessageSpeechMetadata {
 }
 
 export interface UserMessageMetadata {
+  /** Stable idempotency key for a source-review submission turn. */
+  sourceReviewSubmissionId?: string;
   deliveryIntent?: UserMessageDeliveryIntent;
   /**
    * Quiet seconds after verified idle that a patient queued item waits for

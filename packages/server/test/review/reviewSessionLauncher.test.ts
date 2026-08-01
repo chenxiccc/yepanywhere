@@ -29,6 +29,55 @@ describe("createSupervisorReviewLauncher.startReviewSession", () => {
       },
     );
   });
+
+  it("deduplicates a keyed launch and carries the key into the input queue", async () => {
+    const startSession = vi.fn(async () => ({ sessionId: "new-session" }));
+    const supervisor = { startSession } as unknown as Supervisor;
+    const launcher = createSupervisorReviewLauncher(supervisor);
+
+    const first = await launcher.startReviewSession(
+      "/repo",
+      "turn",
+      undefined,
+      "019fbf42-1c00-76d0-9ec1-9ab2c56146b7",
+    );
+    const retry = await launcher.startReviewSession(
+      "/repo",
+      "turn",
+      undefined,
+      "019fbf42-1c00-76d0-9ec1-9ab2c56146b7",
+    );
+
+    expect(retry).toEqual(first);
+    expect(startSession).toHaveBeenCalledOnce();
+    expect(startSession.mock.calls[0]?.[1]).toMatchObject({
+      uuid: "019fbf42-1c00-76d0-9ec1-9ab2c56146b7",
+      tempId: "source-review-019fbf42-1c00-76d0-9ec1-9ab2c56146b7",
+      metadata: {
+        sourceReviewSubmissionId: "019fbf42-1c00-76d0-9ec1-9ab2c56146b7",
+      },
+    });
+  });
+
+  it("records queue acceptance before returning a keyed queued launch", async () => {
+    const startSession = vi.fn(async () => ({
+      queued: true as const,
+      queueId: "queue-1",
+      position: 1,
+    }));
+    const accepted = vi.fn();
+    const supervisor = { startSession } as unknown as Supervisor;
+
+    const result = await createSupervisorReviewLauncher(
+      supervisor,
+      accepted,
+    ).startReviewSession("/repo", "turn", undefined, "submission-1");
+
+    expect(result).toEqual({ status: "queued" });
+    expect(accepted).toHaveBeenCalledWith("/repo", "submission-1", {
+      deliveryStatus: "queued",
+    });
+  });
 });
 
 describe("createSupervisorReviewLauncher.deliverFollowUp", () => {
@@ -47,6 +96,26 @@ describe("createSupervisorReviewLauncher.deliverFollowUp", () => {
     expect(result).toEqual({ status: "delivered" });
     expect(queueMessage).toHaveBeenCalledWith({ text: "turn" });
     expect(resumeSession).not.toHaveBeenCalled();
+  });
+
+  it("records keyed live follow-up acceptance after queueing", async () => {
+    const queueMessage = vi.fn();
+    const accepted = vi.fn();
+    const supervisor = {
+      getProcessForSession: () => ({ queueMessage }),
+      resumeSession: vi.fn(),
+    } as unknown as Supervisor;
+
+    const result = await createSupervisorReviewLauncher(
+      supervisor,
+      accepted,
+    ).deliverFollowUp("/repo", "sess", "turn", "submission-1");
+
+    expect(result).toEqual({ status: "delivered" });
+    expect(accepted).toHaveBeenCalledWith("/repo", "submission-1", {
+      deliveryStatus: "delivered",
+      targetSessionId: "sess",
+    });
   });
 
   it("resumes a reaped session (no live process) and delivers the turn", async () => {
