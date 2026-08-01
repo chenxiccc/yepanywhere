@@ -1,9 +1,10 @@
 /* ==========================================================================
    Device Stream Component Styles
 
-   Only the vocabulary produced by EmulatorStream and EmulatorNavButtons
-   remains global here. EmulatorPage owns its rules in
-   `pages/EmulatorPage.module.css`.
+   Only the vocabulary produced by EmulatorStream remains global here.
+   EmulatorPage owns its rules in `pages/EmulatorPage.module.css` and
+   EmulatorNavButtons owns its rules in
+   `components/EmulatorNavButtons.module.css`.
    ========================================================================== */
 
 .emulator-video {
@@ -13,37 +14,4 @@
   touch-action: none;
   -webkit-user-select: none;
   user-select: none;
-}
-
-/* Navigation buttons */
-.emulator-nav-buttons {
-  display: flex;
-  justify-content: center;
-  gap: 24px;
-  padding: 12px;
-  border-top: 1px solid var(--app-border);
-  background: var(--app-bg-secondary);
-}
-
-.emulator-nav-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 48px;
-  height: 48px;
-  border: 1px solid var(--app-border);
-  border-radius: 50%;
-  background: var(--app-bg-primary);
-  color: var(--app-text-primary);
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.emulator-nav-btn:hover:not(:disabled) {
-  background: var(--app-bg-tertiary);
-}
-
-.emulator-nav-btn:disabled {
-  opacity: 0.4;
-  cursor: default;
 }

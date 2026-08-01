@@ -217,8 +217,14 @@ async function captureStreamHealth(page: Page): Promise<StreamHealthSnapshot> {
   });
 }
 
+// Locate the device navigation controls by accessible name rather than by
+// class: EmulatorNavButtons styles itself through a CSS Module, so its class
+// names are build-generated hashes. "Back", "Home", and "Recents" are the
+// component's stable accessible names and are unique in the app.
 async function nudgeDeviceNavigation(page: Page, idx: number) {
-  const buttons = page.locator(".emulator-nav-btn");
+  const buttons = page.getByRole("button", {
+    name: /^(Back|Home|Recents)$/,
+  });
   const count = await buttons.count();
   if (count === 0) return;
   const target = buttons.nth(idx % count);

@@ -1,4 +1,5 @@
 import type { DeviceType } from "@yep-anywhere/shared";
+import styles from "./EmulatorNavButtons.module.css";
 
 interface EmulatorNavButtonsProps {
   /** WebRTC DataChannel for sending key events */
@@ -29,11 +30,11 @@ export function EmulatorNavButtons({
   const disabled = dataChannel?.readyState !== "open";
 
   return (
-    <div className="emulator-nav-buttons">
+    <div className={styles.root}>
       {showAndroidNav && (
         <button
           type="button"
-          className="emulator-nav-btn"
+          className={styles.button}
           onClick={() => sendKey("GoBack")}
           disabled={disabled}
           title="Back"
@@ -56,7 +57,7 @@ export function EmulatorNavButtons({
       )}
       <button
         type="button"
-        className="emulator-nav-btn"
+        className={styles.button}
         onClick={() => sendKey("GoHome")}
         disabled={disabled}
         title="Home"
@@ -79,7 +80,7 @@ export function EmulatorNavButtons({
       {showAndroidNav && (
         <button
           type="button"
-          className="emulator-nav-btn"
+          className={styles.button}
           onClick={() => sendKey("AppSwitch")}
           disabled={disabled}
           title="Recents"
