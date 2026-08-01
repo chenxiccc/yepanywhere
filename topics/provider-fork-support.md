@@ -103,6 +103,17 @@ Implementation:
    end of its turn; silently retaining later items would violate the inclusive
    prefix contract.
 
+**Known addressability failure (2026-08-01):** the capability is advertised,
+but the shipped per-turn client can pass a synthesized normalized id such as
+`codex-112-<timestamp>` into this lookup. That id is a YA display identity, not
+an app-server turn/item id, so `findCodexForkAnchor` reports it missing. The
+client Fork after resolver can separately stop at a user-role `tool_result` and
+choose an inside-turn tool call. Provider method presence therefore does not
+currently make Codex sliced fork usable end to end. The typed identity repair,
+server-owned completed-turn resolver, and direct full Clone surface are planned
+in
+[`docs/tactical/075-session-fork-clone-unification.md`](../docs/tactical/075-session-fork-clone-unification.md).
+
 Why not copy the rollout file like Claude does: `session-context-actions.md`
 already flags Codex multi-writer behavior as open and calls a rollout-file copy
 "plausible but unverified." A hand-copied file also misses the `sessionId` /
@@ -168,5 +179,5 @@ the two docs in sync: a provider gains `canForkAtNode` only after landing
 | Provider | Native primitive exists | Wired in YA | Blocking gap |
 |----------|-------------------------|-------------|--------------|
 | Claude   | yes (SDK `forkSession`) | **yes**     | — |
-| Codex    | yes (`thread/fork`)     | **yes**     | sliced forks are turn-boundary only |
+| Codex    | yes (`thread/fork`)     | **broken from current per-turn UI** | display ids do not address app-server turns; slices remain whole-turn only |
 | Pi       | yes (JSONL tree file)   | **yes**     | `/tree` UI / active-path switching remain separate |

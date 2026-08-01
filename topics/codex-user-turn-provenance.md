@@ -15,6 +15,13 @@ Related topics: [injected-message-visibility](injected-message-visibility.md),
 [stream-persisted-render-parity](stream-persisted-render-parity.md), and
 [provider-refresh](provider-refresh.md).
 
+Follow-on consumer defect (2026-08-01): `SessionPage`'s Fork after resolver
+still scans normalized `type: "user"` rows directly, so a user-role tool result
+can terminate the range even though it is not a human turn. This does not
+reopen the provenance work below; it records a fork consumer that must adopt
+the established boundary. See the
+[session fork and clone unification plan](../docs/tactical/075-session-fork-clone-unification.md).
+
 ## Invariant
 
 YA must not infer user authorship from a Codex response-message role alone.

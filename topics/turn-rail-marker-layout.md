@@ -11,6 +11,12 @@ Topic: turn-rail-marker-layout
 See also: [fork-from-turn](fork-from-turn.md) (the notch context menu these
 markers carry), [scrollback-view-stability](scrollback-view-stability.md).
 
+The normal rail intentionally requires two anchors. It therefore cannot be the
+only owner of Fork after: a one-turn session has no rail even though its first
+completed response is a valid fork boundary. The discoverability and repair
+plan is
+[`docs/tactical/075-session-fork-clone-unification.md`](../docs/tactical/075-session-fork-clone-unification.md).
+
 ## The bug (root cause)
 
 Each marker's hit/hover target was a **fixed 22px box** (`height:22px;

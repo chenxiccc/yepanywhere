@@ -14,6 +14,16 @@ fork whose later history is replaced by an LLM-generated summary. That summary
 is produced by the generalized recap/summary facility (see [recaps](recaps.md)),
 not pasted-together turns.
 
+**Known broken state (2026-08-01):** the shipped direct fork controls are not
+end-to-end reliable. A one-turn session exposes only Fork before, which cannot
+have an earlier anchor, while the turn rail that owns Fork after is hidden
+below two anchors. Codex sliced fork also passes synthesized normalized display
+ids to app-server and can mistake user-role tool results for new human turns.
+See the focused failure inventory and repair plan:
+[`docs/tactical/075-session-fork-clone-unification.md`](../docs/tactical/075-session-fork-clone-unification.md).
+Do not treat the first-pass status above as evidence that short-session or Codex
+fork is currently usable.
+
 See also:
 [session-context-actions](session-context-actions.md) (fork-capability ground
 truth, the per-turn "fork from here" decision this elaborates, and the handoff

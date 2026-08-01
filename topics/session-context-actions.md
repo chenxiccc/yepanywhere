@@ -117,6 +117,14 @@ state provider-side with no exposed branch surface. A YA fork action should stay
 provider-capability-gated (`supportsForkSession`), not become an unconditional
 generic session action.
 
+Capability presence is not current end-to-end proof. The 2026-08-01 short-
+session/Codex investigation found that the visible first-turn action has no
+valid before-boundary, the rail-only after action is absent until two turns,
+and Codex receives normalized display ids that app-server cannot address. The
+repair must also restore a direct, message-less full Clone action without
+conflating it with restart/handoff. See
+[`docs/tactical/075-session-fork-clone-unification.md`](../docs/tactical/075-session-fork-clone-unification.md).
+
 ## Handoff and synthetic-turn replay
 
 Current validated mechanism: the scripted template handoff
