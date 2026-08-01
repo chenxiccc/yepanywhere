@@ -1,10 +1,10 @@
-# Driving a Claude Agent Process Through the Local API
+# Driving a Bounded Agent Process Through the Local API
 
 Use this runbook when one supervising agent needs to give a bounded repository
-slice to a fresh Claude worker, wait for that worker to finish, and independently
-audit the result. It describes the local YA API on the default
-`https://localhost:3400` server. It is not a remote automation or unattended
-deployment contract.
+slice to a fresh Claude Opus or Codex Luna worker, wait for that worker to
+finish, and independently audit the result. It describes the local YA API on
+the default `https://localhost:3400` server. It is not a remote automation or
+unattended deployment contract.
 
 The controller owns selection, scope, acceptance, and batch progress. The
 worker owns the approved slice and its normal implementation, verification,
@@ -48,6 +48,49 @@ entire run.
 For CSS migrations, choose and drill into the owner with
 `pnpm css:inventory` before starting this runbook. The binding migration rules
 remain in [`topics/css-architecture.md`](../../topics/css-architecture.md).
+
+## Route the task shape to a worker
+
+Choose the worker from current evidence after freezing the candidate and its
+fixture. Do not alternate models mechanically and do not let a worker choose a
+different candidate to suit itself.
+
+Use Claude Opus at high effort as the campaign default for a mechanical slice
+when all of these are true:
+
+- ownership is concentrated and the inventory has no unresolved or generated
+  vocabulary;
+- dynamic classes are absent or already proven to be a small closed union;
+- composition edges are absent or have an explicit keep-global or prop boundary;
+- focused tests and a deterministic browser fixture already exist or can be
+  replayed without discovery; and
+- the work is primarily moving declarations and literal callsites, not deciding
+  product or analyzer semantics.
+
+Use Codex Luna at xhigh effort when the slice benefits from diagnosis or
+recovery, especially when it has one or more of these shapes:
+
+- finite state-class mapping whose exhaustiveness must be proved;
+- coupled selectors, shared keyframes, generated markup, or caller reach-ins
+  whose ownership needs careful classification;
+- a possible CSS/TypeScript analyzer trust-gate defect;
+- a visual fixture with timing, projection, responsive, portal, or overlay
+  behavior that may require causal investigation; or
+- a bounded refactor needed to expose an honest component boundary before the
+  mechanical extraction.
+
+Size alone does not select Luna. A large but local literal move can still suit
+Opus; a small ambiguous selector can justify Luna. When the task shape changes
+after launch, do not switch provider inside the session. Before edits, the
+worker may return a stopped report recommending the other worker. After edits,
+it must finish or stop safely within its work order; the controller audits the
+tree before deciding whether a fresh session should resume from a clean base.
+
+Record the routing decision in the work packet and final campaign ledger:
+worker, effort, candidate metrics, decisive routing signals, fixture kind,
+elapsed time, attention events, steers, audit findings, and acceptance result.
+Revisit the criteria after each five-slice audit interval. Routing is an
+evidence loop, not a permanent ranking of providers.
 
 ## 1. Freeze the work order
 
@@ -157,6 +200,21 @@ curl -ksS \
 assuming its resolved provider name; the pilot resolved it to
 `claude-opus-5` with effort `high`.
 
+For a Luna-routed slice, change only the provider/model/thinking fields:
+
+```json
+{
+  "provider": "codex",
+  "model": "gpt-5.6-luna",
+  "thinking": "on:xhigh"
+}
+```
+
+Verify that the live process reports provider `codex`, requested and resolved
+model `gpt-5.6-luna`, and effort `xhigh`. These launch identifiers are observed
+campaign defaults, not assumptions about future catalogs; revalidate them when
+the server or provider catalog changes.
+
 A successful immediate launch returns `200` with `sessionId`, `processId`, and
 `projectId`. Persist all three with the base SHA and prompt digest.
 
@@ -207,6 +265,16 @@ order. The visual state should require no discovery: replay the supplied
 fixture from a clean load. One route-specific correction is the limit for
 ordinary app-state drift; after that, stop and report which fixture assertion
 failed.
+
+One minute is the normal status cadence for both workers. A check-in means the
+authoritative process sample above, not a transcript read. In trusted campaign
+mode, Opus gets no mid-turn transcript inspection without an alert. During Luna
+calibration, the controller may add one bounded scope sample at the first
+visible edit or after four minutes without an edit. After three consecutive
+Luna slices finish without a steer, scope correction, or surprising audit,
+reduce Luna to the same alert-only cadence. Any Luna trust-gate event, scope
+steer, unexplained verification failure, or out-of-order commit resets the next
+two Luna slices to the extra bounded sample.
 
 ## 5. Inspect only on completion or an alert
 
@@ -273,15 +341,23 @@ matrix, not merely reporting expected commands.
 If the worker committed before audit, acceptance is still a separate decision.
 Do not start the next session merely because a commit exists.
 
-## 7. Run a batch of at most five
+## 7. Run campaigns with five-slice audit intervals
 
 For each accepted slice:
 
 1. record its commit and new clean base;
 2. regenerate the inventory;
 3. select the next candidate from the new data;
-4. launch a fresh Claude session with a new frozen prompt; and
-5. stop after five accepted slices and return the batch report.
+4. route and launch a fresh worker with a new frozen prompt; and
+5. perform the batch audit after five accepted slices.
+
+Without an explicit larger campaign authorization, stop after that five-slice
+audit and return the report. When the originating instruction supplies a larger
+run or wall-clock cap, the controller may continue after each clean audit
+interval until the first terminal cap. Every launch counts toward a run cap,
+including a worker that stops without editing. A larger cap never relaxes the
+one-worker checkout invariant, trust gate, fixture requirements, or stop
+conditions.
 
 End the batch immediately when:
 
@@ -295,6 +371,13 @@ End the batch immediately when:
 The batch report includes accepted/stopped sessions, commits, ratchet movement,
 before/after inventory, verification evidence, steering or input events, and a
 fresh top-candidate list. It does not silently begin the next batch.
+
+For an explicitly continuous campaign, append that report to the durable
+campaign ledger and then continue from the newly audited clean base. Push at
+the audit interval and before any planned pause so the remote is a recoverable
+checkpoint. Stop at the authorized run count, wall-clock deadline, provider
+credit exhaustion, or the first condition that makes further automatic
+selection unsafe.
 
 ## Pilot observations
 
@@ -317,3 +400,19 @@ without discovery or steering, then confirmed the live DOM carried the new CSS
 Module class and retained the intended shared global classes. That last check
 prevents an unchanged screenshot from falsely passing when a server happens to
 serve stale client assets.
+
+## Mixed-model calibration observations
+
+The initial comparison found equivalent implementation quality with different
+operating biases. Opus was more economical once given a proven mechanical
+packet and is the better default for high-throughput literal slices. Luna was
+more persistent when verification required diagnosis: it recovered from
+click-protection timing and an unrelated overlay to obtain bounded visual
+evidence. Luna also spent longer in pre-edit investigation and needed a scope
+correction when it included an attractive dead-rule cleanup outside the frozen
+owned set.
+
+These observations justify the routing criteria above; they do not establish a
+permanent winner. Continue recording corrections and audit surprises. Change
+the routing policy when campaign evidence changes rather than prompting either
+worker around a stale reputation.

@@ -10,11 +10,44 @@ The binding ownership and migration protocol lives in
 [`topics/css-architecture.md`](../../topics/css-architecture.md). This file is
 the campaign closeout and historical index only.
 
-For a supervised implementation loop that launches one bounded Claude worker
-through the local YA API, monitors its authoritative process state at
-minute-scale intervals, stops tail-chasing, and supports low-touch trusted
-campaigns after calibration, use the
-[`Claude agent process runbook`](../testing/claude-agent-process-runbook.md).
+For a supervised implementation loop that routes one bounded slice to Claude
+Opus or Codex Luna through the local YA API, monitors authoritative process
+state at minute-scale intervals, stops tail-chasing, and supports low-touch
+trusted campaigns after calibration, use the
+[`bounded agent process runbook`](../testing/claude-agent-process-runbook.md).
+
+## Mixed-model paydown protocol
+
+Long paydown campaigns do not reopen this tactical as a priority queue. Each
+slice still begins with fresh `css:inventory` data, a named product surface,
+reviewed ownership edges, and a deterministic verification packet. The process
+runbook is the durable outer loop and owns the detailed launch, supervision,
+audit, checkpoint, and stop rules.
+
+Route mechanically local, fixture-proven slices with no unresolved ownership
+to Opus at high effort. Route slices with state-union reasoning, composition or
+generated-markup boundaries, analyzer trust questions, or verification that
+may need causal diagnosis to Luna at xhigh effort. Size is supporting evidence,
+not the routing rule. Never switch models mid-slice or let a worker substitute a
+friendlier candidate.
+
+Both workers use one-minute authoritative status checks. Opus is transcript-free
+during healthy progress. Luna initially receives one additional bounded scope
+sample at its first edit or after four pre-edit minutes; three clean Luna slices
+earn the same alert-only cadence, while a steer or surprising audit resets a
+two-slice calibration window.
+
+Five accepted slices is an audit interval. At each interval, record worker and
+effort, candidate metrics, routing signals, elapsed time, alerts and steers,
+commit, ratchet movement, verification, and audit outcome. Regenerate the
+inventory, push the clean checkpoint, and adjust routing or tooling only from
+the accumulated evidence. An explicitly authorized larger campaign may continue
+after that checkpoint until its run, time, credit, or safety cap; every launched
+worker counts toward the run cap.
+
+The current bounded campaign and its recovery checkpoint are recorded in
+[`074-mixed-model-css-paydown.md`](074-mixed-model-css-paydown.md). That ledger
+records completed work; it is not a future candidate queue.
 
 ## Outcome
 
