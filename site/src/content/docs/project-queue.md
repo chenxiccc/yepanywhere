@@ -3,9 +3,9 @@ title: Project Queue
 description: Schedule durable follow-up work that starts after every session in a project becomes quiet.
 ---
 
-Project Queue is an experimental, server-owned backlog for work that should
-start only after an entire project becomes quiet. It is different from the
-normal per-session queue.
+Project Queue is an optional, server-owned backlog for work that should start
+only after an entire project becomes quiet. It is different from the normal
+per-session queue.
 
 ## When to use it
 

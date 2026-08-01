@@ -370,6 +370,8 @@ Acceptance:
 
 - every catalog item renders exactly once in the full catalog;
 - status and availability remain legible on phone widths;
+- availability notes distinguish optional exposure from experimental maturity,
+  with Project Queue labeled stable and opt-in;
 - desktop download links and Android development status match the distribution
   registry;
 - each rendered link resolves in the production-style Astro build; and

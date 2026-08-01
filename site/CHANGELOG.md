@@ -24,6 +24,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   is readable by the relay operator, unlike authenticated Remote Access.
 - Document the default npm/source and desktop data directories on macOS,
   Linux, and Windows.
+- Classify Project Queue as a stable, optional capability with opt-in entry
+  controls rather than an experimental feature.
 - Expose beta macOS and Windows downloads from GitHub Releases while
   stating that the unpublished Android app remains in development.
 - Make Features and Docs first-class desktop and mobile navigation items, and

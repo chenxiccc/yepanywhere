@@ -34,7 +34,9 @@ The site has three editorial registries with distinct meanings:
 
 - **Features** describe shipped user capabilities. `stable` means the public
   workflow is supported for its stated availability; `experimental` means it
-  is shipped but may have rough edges, narrower coverage, or opt-in exposure.
+  is shipped but may have rough edges or narrower maturity. Optional or opt-in
+  exposure is an availability note, not an experimental status. Project Queue,
+  for example, is stable and optional.
 - **Providers** describe the integration maturity of agent backends. A stable
   provider is expected to support the primary session, streaming, approval,
   and diff workflow. Experimental provider capabilities vary and must not

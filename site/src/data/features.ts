@@ -168,9 +168,9 @@ export const features = [
     title: "Project Queue",
     summary: "Schedule durable project-level follow-ups that start only after the entire project becomes quiet.",
     category: "coordinate",
-    status: "experimental",
+    status: "stable",
     docsPath: "/docs/project-queue",
-    availability: "Opt-in toolbar controls; capability-gated for hosted clients.",
+    availability: "Optional: entry controls are opt-in and capability-gated for hosted clients.",
     sourceRefs: ["topics/project-queue.md"],
   },
   {
