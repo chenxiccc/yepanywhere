@@ -235,12 +235,18 @@ export const features = [
   {
     id: "experimental-providers",
     title: "Experimental provider integrations",
-    summary: "Explore OpenCode, Grok Build, Claude + Ollama, and Gemini with capability differences shown up front.",
+    summary: "Explore OpenCode, Grok Build, Claude + Ollama, Gemini, and pi with capability differences shown up front.",
     category: "providers",
     status: "experimental",
     docsPath: "/docs/providers",
-    providers: ["opencode", "grok", "ollama", "gemini"],
-    sourceRefs: ["topics/opencode-backend.md", "topics/grok.md", "packages/server/src/sdk/providers/claude-ollama.ts", "packages/server/src/sdk/providers/gemini.ts"],
+    providers: ["opencode", "grok", "ollama", "gemini", "pi"],
+    sourceRefs: [
+      "topics/opencode-backend.md",
+      "topics/grok.md",
+      "packages/server/src/sdk/providers/claude-ollama.ts",
+      "packages/server/src/sdk/providers/gemini.ts",
+      "topics/pi-provider.md",
+    ],
   },
   {
     id: "diffs",

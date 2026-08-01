@@ -1,7 +1,7 @@
 import { distributions } from "./distributions";
 import { publishedDocPaths } from "./docs-navigation";
 import { featureCategories, features, type PublicFeature } from "./features";
-import { providers } from "./providers";
+import { ALL_PROVIDERS, providers } from "./providers";
 import type { PublicDistribution } from "./distributions";
 
 function requireUniqueIds(label: string, entries: readonly { id: string }[]) {
@@ -20,6 +20,18 @@ export function validateCatalog() {
 
   const categoryIds = new Set(featureCategories.map((category) => category.id));
   const providerIds = new Set(providers.map((provider) => provider.id));
+  const coveredRuntimeProviderIds = new Set(providers.flatMap((provider) => provider.runtimeIds));
+
+  for (const runtimeProviderId of ALL_PROVIDERS) {
+    if (!coveredRuntimeProviderIds.has(runtimeProviderId)) {
+      throw new Error(`Runtime provider ${runtimeProviderId} is missing from the public provider registry`);
+    }
+  }
+  for (const runtimeProviderId of coveredRuntimeProviderIds) {
+    if (!ALL_PROVIDERS.includes(runtimeProviderId)) {
+      throw new Error(`Public provider registry references unknown runtime provider ${runtimeProviderId}`);
+    }
+  }
 
   for (const feature of features as readonly PublicFeature[]) {
     if (!categoryIds.has(feature.category)) {

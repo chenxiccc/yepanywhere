@@ -25,6 +25,7 @@ provider harness or protocol and does not intercept OAuth tokens.
 | Grok Build | ACP-based sessions with approvals, suggestions, effort, and steering where upstream supports them |
 | Claude + Ollama | Local Ollama models through a Claude-compatible path; requires Ollama 0.14+ |
 | Gemini CLI | Direct and experimental ACP paths with narrower approval, steering, and history behavior |
+| pi | Headless RPC sessions with streaming, tool rendering, model/thinking controls, compaction, forks, and durable history; tools currently run without a Yep Anywhere approval bridge |
 
 Experimental means the integration ships and can be used, but it may require
 extra setup, expose fewer controls, or change as its upstream protocol evolves.

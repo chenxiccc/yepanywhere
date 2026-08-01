@@ -58,8 +58,9 @@ explain a substantial part of the shipped product, including:
 Public claims already disagree. The homepage comparison names Claude, Codex,
 and Gemini; its FAQ names Claude, Codex, and experimental OpenCode; the README
 support table lists only Claude and Codex; and the spring recap also names
-Grok Build, Ollama, and deeper OpenCode support. This is a content-ownership
-defect, not merely a copywriting gap.
+Grok Build, Ollama, and deeper OpenCode support. All of those surfaces omit the
+already-shipped experimental pi provider. This is a content-ownership defect,
+not merely a copywriting gap.
 
 Installation claims are stale too. Signed macOS and Windows desktop installers
 are available from GitHub Releases, but the website's spring recap still calls
@@ -342,6 +343,8 @@ Acceptance:
 - distribution types prevent a development-only app from acquiring a public
   download CTA;
 - a broken reference or duplicate id fails locally and in CI;
+- a server runtime provider with no public registry mapping fails the site
+  build;
 - the catalog can be rendered without per-page copies of its title, summary,
   status, or availability; and
 - source references let a maintainer re-check each non-obvious claim.
@@ -741,7 +744,7 @@ Acceptance:
 | 5 | Desktop downloads and platform status | Complete | macOS and Windows link to GitHub Releases as Beta; Android is development-only with no download URL and its native-value release gate explained. |
 | 6 | Public docs shell | Complete | Astro content pages provide hierarchical desktop/mobile navigation, anchors, TOC, pagination, and copyable code. |
 | 7 | Minimum complete user journey | Complete | Twelve guides cover install, updates, access, providers, sessions, queueing, notifications, files, security, and recovery. |
-| 8 | Public claim alignment | Complete | README, current CTAs, spring recap, public relay history, and device-control CTA now point to current catalog/docs facts. |
+| 8 | Public claim alignment | Complete | README, FAQ, provider guide, current CTAs, spring recap, public relay history, and device-control CTA now point to current catalog/docs facts, including experimental pi support. |
 | 9 | Privacy and analytics ownership | Complete | Privacy discloses Cloudflare Web Analytics and current relay/share boundaries; `/remote/` stays outside the beacon. |
 | 10 | Measurement baseline | Release prerequisite | Read-only dashboard access was checked on 2026-08-01, but the available browser was signed out. Record the largest pre-release range before tagging. |
 | 11 | Public-site verification | Complete | Warning-free build validator plus inspected Playwright captures at 1,920×1,080 and 375×812, including dark/light, navigation, focus, overflow, and images. |

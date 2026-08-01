@@ -45,8 +45,9 @@ See the [complete feature catalog](https://yepanywhere.com/features) and
 | Claude Code | Full | Yes | Yes | Primary provider, full feature support |
 | Codex | Full | Yes | Yes | Full support including diffs and approvals |
 
-OpenCode, Grok Build, Claude + Ollama, and Gemini integrations are experimental;
-capabilities vary. See the [provider guide](https://yepanywhere.com/docs/providers).
+OpenCode, Grok Build, Claude + Ollama, Gemini, and pi integrations are
+experimental; capabilities vary. See the
+[provider guide](https://yepanywhere.com/docs/providers).
 
 ## Screenshots
 

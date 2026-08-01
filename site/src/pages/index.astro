@@ -1,7 +1,7 @@
 ---
 import Footer from "../components/Footer.astro";
 import Header from "../components/Header.astro";
-import { distributions, features } from "../data/catalog";
+import { distributions, features, providers } from "../data/catalog";
 import type { PublicDistribution } from "../data/distributions";
 import type { PublicFeature } from "../data/features";
 import BaseLayout from "../layouts/BaseLayout.astro";
@@ -9,6 +9,16 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 const featuredFeatures = (features as readonly PublicFeature[]).filter((feature) => feature.featured);
 const desktopDistributions = (distributions as readonly PublicDistribution[]).filter((distribution) =>
   distribution.id.startsWith("desktop-"),
+);
+const formatProviderNames = (names: readonly string[]) => {
+  if (names.length < 3) return names.join(" and ");
+  return `${names.slice(0, -1).join(", ")}, and ${names.at(-1)}`;
+};
+const stableProviderNames = formatProviderNames(
+  providers.filter((provider) => provider.status === "stable").map((provider) => provider.name),
+);
+const experimentalProviderNames = formatProviderNames(
+  providers.filter((provider) => provider.status === "experimental").map((provider) => provider.name),
 );
 ---
 
@@ -184,7 +194,7 @@ const desktopDistributions = (distributions as readonly PublicDistribution[]).fi
         <div class="questions">
           <details open>
             <summary>Which coding agents work?</summary>
-            <p>Claude Code and Codex are first-class providers. OpenCode, Grok Build, Claude + Ollama, and Gemini integrations are experimental.</p>
+            <p>{stableProviderNames} are first-class providers. {experimentalProviderNames} integrations are experimental.</p>
           </details>
           <details>
             <summary>Does the browser have to stay open?</summary>

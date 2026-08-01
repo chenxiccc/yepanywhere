@@ -73,6 +73,16 @@ and repository source references for review. A build fails on duplicate ids,
 unknown relationships, missing docs destinations, or an invalid status. A
 development-only distribution must not have a download URL.
 
+Every server runtime provider id must map to one public provider entry, including
+runtime aliases grouped under a single public integration. This build-time
+coverage check prevents a shipped provider from disappearing from the website;
+it is an editorial completeness check, not runtime capability negotiation.
+
+Pi is a shipped experimental provider. Public copy names its headless RPC
+sessions, durable history, tools, models, thinking, compaction, and fork support
+while stating that its tools currently run without a Yep Anywhere approval
+bridge.
+
 Planned features are excluded from the feature catalog. A development-only
 distribution may appear in an explicit platform-availability comparison so a
 visitor is not misled, but it receives no download action or installation

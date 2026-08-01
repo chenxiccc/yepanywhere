@@ -9,6 +9,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 - Keep ordered-list markers inside the documentation article measure instead
   of hanging into the outer gutter.
+- Add the shipped experimental pi integration to the provider registry, FAQ,
+  feature catalog, README, and provider guide, and validate that every runtime
+  provider maps to a public registry entry.
 
 ### Added
 - Add a typed public feature, provider, and distribution registry; a complete
