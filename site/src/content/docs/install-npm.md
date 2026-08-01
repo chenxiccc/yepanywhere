@@ -25,8 +25,8 @@ history.
 
 ## Install from source
 
-Use a source checkout when contributing or deliberately following unreleased
-work:
+Use a source checkout when contributing, maintaining a fork, customizing the
+code, or deliberately following unreleased work:
 
 ```bash
 git clone https://github.com/kzahel/yepanywhere.git

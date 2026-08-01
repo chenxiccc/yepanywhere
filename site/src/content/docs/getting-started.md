@@ -21,7 +21,7 @@ Yep Anywhere's desktop app does not install or sign in to a provider for you.
 | --- | --- | --- |
 | [Desktop app](/docs/desktop-apps) | A one-click app, tray controls, and bundled updates on macOS or Windows | Beta |
 | [npm install](/docs/install-npm) | Linux, servers, terminals, and full configuration control | Available |
-| Source checkout | Contributors and people who want to follow `main` | Available, development-oriented |
+| Source checkout | Contributors and anyone who wants to fork, customize, or follow `main` | Available, development-oriented |
 
 There is no published Android app yet. The complete client works in a mobile
 browser and does not require an app-store install. See
