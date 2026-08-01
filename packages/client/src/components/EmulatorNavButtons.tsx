@@ -1,4 +1,5 @@
 import type { DeviceType } from "@yep-anywhere/shared";
+import { useI18n } from "../i18n";
 import styles from "./EmulatorNavButtons.module.css";
 
 interface EmulatorNavButtonsProps {
@@ -15,6 +16,7 @@ export function EmulatorNavButtons({
   dataChannel,
   deviceType,
 }: EmulatorNavButtonsProps) {
+  const { t } = useI18n();
   const showAndroidNav = deviceType === "emulator" || deviceType === "android";
   const showIOSHome = deviceType === "ios-simulator";
 
@@ -30,7 +32,11 @@ export function EmulatorNavButtons({
   const disabled = dataChannel?.readyState !== "open";
 
   return (
-    <div className={styles.root}>
+    <div
+      className={styles.root}
+      role="group"
+      aria-label={t("emulatorDeviceNavigation")}
+    >
       {showAndroidNav && (
         <button
           type="button"

@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { I18nProvider } from "../../i18n";
 import { EmulatorNavButtons } from "../EmulatorNavButtons";
 
 function createDataChannel() {
@@ -7,6 +8,20 @@ function createDataChannel() {
     readyState: "open",
     send: vi.fn(),
   } as unknown as RTCDataChannel;
+}
+
+function renderNavigation(
+  dataChannel: RTCDataChannel | null,
+  deviceType: "android" | "chromeos" | "emulator" | "ios-simulator",
+) {
+  return render(
+    <I18nProvider>
+      <EmulatorNavButtons
+        dataChannel={dataChannel}
+        deviceType={deviceType}
+      />
+    </I18nProvider>,
+  );
 }
 
 describe("EmulatorNavButtons", () => {
@@ -17,10 +32,12 @@ describe("EmulatorNavButtons", () => {
   it("renders Android navigation controls for Android devices", () => {
     const dataChannel = createDataChannel();
 
-    render(
-      <EmulatorNavButtons dataChannel={dataChannel} deviceType="android" />,
-    );
+    renderNavigation(dataChannel, "android");
 
+    const navigation = screen.getByRole("group", {
+      name: "Device navigation",
+    });
+    expect(navigation).toBeDefined();
     expect(screen.getByRole("button", { name: "Back" })).toBeDefined();
     expect(screen.getByRole("button", { name: "Home" })).toBeDefined();
     expect(screen.getByRole("button", { name: "Recents" })).toBeDefined();
@@ -29,9 +46,7 @@ describe("EmulatorNavButtons", () => {
   it("sends the Android key message for each navigation button", () => {
     const dataChannel = createDataChannel();
 
-    render(
-      <EmulatorNavButtons dataChannel={dataChannel} deviceType="emulator" />,
-    );
+    renderNavigation(dataChannel, "emulator");
 
     for (const [name, key] of [
       ["Back", "GoBack"],
@@ -51,9 +66,7 @@ describe("EmulatorNavButtons", () => {
       send: vi.fn(),
     } as unknown as RTCDataChannel;
 
-    render(
-      <EmulatorNavButtons dataChannel={dataChannel} deviceType="android" />,
-    );
+    renderNavigation(dataChannel, "android");
 
     const home = screen.getByRole("button", { name: "Home" });
     expect(home.hasAttribute("disabled")).toBe(true);
@@ -63,7 +76,7 @@ describe("EmulatorNavButtons", () => {
   });
 
   it("disables the buttons when there is no data channel", () => {
-    render(<EmulatorNavButtons dataChannel={null} deviceType="ios-simulator" />);
+    renderNavigation(null, "ios-simulator");
 
     expect(
       screen.getByRole("button", { name: "Home" }).hasAttribute("disabled"),
@@ -72,9 +85,7 @@ describe("EmulatorNavButtons", () => {
 
   it("styles the root and buttons from the co-located CSS Module", () => {
     const dataChannel = createDataChannel();
-    const { container } = render(
-      <EmulatorNavButtons dataChannel={dataChannel} deviceType="android" />,
-    );
+    const { container } = renderNavigation(dataChannel, "android");
 
     const root = container.firstElementChild as HTMLElement;
     const buttons = Array.from(root.querySelectorAll("button"));
@@ -94,12 +105,7 @@ describe("EmulatorNavButtons", () => {
   it("renders only Home for iOS simulators and sends GoHome", () => {
     const dataChannel = createDataChannel();
 
-    render(
-      <EmulatorNavButtons
-        dataChannel={dataChannel}
-        deviceType="ios-simulator"
-      />,
-    );
+    renderNavigation(dataChannel, "ios-simulator");
 
     expect(screen.queryByRole("button", { name: "Back" })).toBeNull();
     expect(screen.getByRole("button", { name: "Home" })).toBeDefined();
@@ -113,9 +119,7 @@ describe("EmulatorNavButtons", () => {
 
   it("renders nothing for unsupported device types", () => {
     const dataChannel = createDataChannel();
-    const { container } = render(
-      <EmulatorNavButtons dataChannel={dataChannel} deviceType="chromeos" />,
-    );
+    const { container } = renderNavigation(dataChannel, "chromeos");
 
     expect(container.firstChild).toBeNull();
   });

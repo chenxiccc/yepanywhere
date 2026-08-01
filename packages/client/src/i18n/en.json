@@ -1596,6 +1596,7 @@
   "emulatorBridgeUpdateRequired": "Device streaming needs a bridge runtime update before use.",
   "emulatorBridgeDownloadRequired": "Device streaming requires bridge runtime downloads (sidecar binary + Android server APK).",
   "emulatorPageNoDevices": "No devices detected. Connect an Android emulator/device or add a ChromeOS SSH host alias in Settings.",
+  "emulatorDeviceNavigation": "Device navigation",
   "emulatorStop": "Stop",
   "emulatorStart": "Start",
   "hostOfflineTitleServerOffline": "Host Offline",
