@@ -394,6 +394,13 @@ interface RestartSessionBody extends CreateSessionBody {
    * clickable pointer back to the source session. Validated server-side.
    */
   sourceUrl?: string;
+  /**
+   * The handoff message to seed the successor with, replacing the text this
+   * route would otherwise build. Set when the user edited the draft the
+   * preview route returned. Ignored by "fork", which copies the real
+   * transcript instead of sending a message.
+   */
+  handoffText?: string;
 }
 
 const RESTART_HANDOFF_MAX_CHARS = 40_000;
@@ -4024,6 +4031,130 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     return c.json(result);
   });
 
+  /**
+   * The text a handoff successor would receive. Shared by the preview route
+   * and the restart itself, so the draft a user edits and the message an
+   * unedited handoff sends are built the same way.
+   */
+  const buildHandoffText = async (params: {
+    project: Project;
+    projectId: UrlProjectId;
+    sessionId: string;
+    handoffTitle: string;
+    sourceSession: Session;
+    sourceProvider: ProviderName;
+    oldProcess?: Process;
+    sourceUrl?: string;
+    targetExecutor?: string;
+    projectPath: string;
+  }): Promise<string> => {
+    const { transcript, omittedCount } = buildRestartTranscript(
+      params.sourceSession.messages,
+    );
+    // The provider's reader knows where the source session's transcript lives
+    // on disk; surface it so the successor can grep/read for any detail the
+    // bounded summary above dropped. Best-effort — omitted when unavailable.
+    const sourceReader = await resolveSessionReader({
+      deps,
+      project: params.project,
+      sessionId: params.sessionId,
+      projectId: params.projectId,
+    });
+    const sourceTranscriptPath =
+      (await sourceReader.getSessionFilePath?.(params.sessionId)) ?? undefined;
+    return buildRestartHandoff({
+      handoffTitle: params.handoffTitle,
+      sourceSession: params.sourceSession,
+      sourceProvider: params.sourceProvider,
+      sourceModel:
+        params.oldProcess?.resolvedModel ?? params.sourceSession.model,
+      sourceProcess: params.oldProcess,
+      sourceUrl: params.sourceUrl,
+      sourceTranscriptPath,
+      sourceTranscriptHost: hostname(),
+      targetExecutor: params.targetExecutor,
+      projectPath: params.projectPath,
+      omittedCount,
+      transcript,
+    });
+  };
+
+  // GET /api/projects/:projectId/sessions/:sessionId/restart/handoff
+  // The handoff text as it stands now, so the client can offer it as an
+  // editable draft. Compacts first, exactly as the handoff path does, so the
+  // draft shows the boundary a real handoff would carry. Unlike the restart
+  // itself this never interrupts the source process: previewing is not
+  // starting, and a user who closes the dialog keeps their session running.
+  routes.get(
+    "/projects/:projectId/sessions/:sessionId/restart/handoff",
+    async (c) => {
+      const projectId = c.req.param("projectId");
+      const sessionId = c.req.param("sessionId");
+
+      if (!isUrlProjectId(projectId)) {
+        return c.json({ error: "Invalid project ID format" }, 400);
+      }
+
+      const project = await deps.scanner.getOrCreateProject(projectId);
+      if (!project) {
+        return c.json(
+          { error: "Project not found or path does not exist" },
+          404,
+        );
+      }
+
+      const oldProcess = deps.supervisor.getProcessForSession(sessionId);
+      const metadataProvider = deps.sessionMetadataService?.getProvider(
+        sessionId,
+      ) as ProviderName | undefined;
+      const preferredSourceProvider =
+        metadataProvider ?? oldProcess?.provider ?? project.provider;
+      const compact = await tryRestartCompact(oldProcess);
+      const sourceSession = await loadRestartSourceSession(
+        project,
+        sessionId,
+        projectId,
+        preferredSourceProvider,
+        oldProcess,
+      );
+      if (!sourceSession) {
+        return c.json({ error: "Session not found" }, 404);
+      }
+
+      const originalMetadata =
+        deps.sessionMetadataService?.getMetadata?.(sessionId);
+      const parsedExecutor = parseOptionalExecutor(
+        deps.sessionMetadataService?.getExecutor(sessionId),
+      );
+      if (parsedExecutor.error) {
+        return c.json({ error: parsedExecutor.error }, 400);
+      }
+      const handoffTitle = deriveRestartTitle({
+        preferredTitle: originalMetadata?.customTitle,
+        sourceSession,
+      });
+      const handoff = await buildHandoffText({
+        project,
+        projectId,
+        sessionId,
+        handoffTitle,
+        sourceSession,
+        sourceProvider: sourceSession.provider ?? preferredSourceProvider,
+        oldProcess,
+        sourceUrl: c.req.query("sourceUrl"),
+        targetExecutor: parsedExecutor.executor,
+        projectPath:
+          originalMetadata?.sandboxLevel === "project-write"
+            ? (originalMetadata.sandboxProjectPath ?? project.path)
+            : project.path,
+      });
+
+      // The compact status explains a draft that carries no compact summary
+      // without making the client parse the text for one.
+      return c.json({ handoff, handoffTitle, compactStatus: compact.status });
+    },
+  );
+
   // POST /api/projects/:projectId/sessions/:sessionId/restart
   // Start a fresh session from a bounded handoff, then terminate the old YA-owned process.
   routes.post("/projects/:projectId/sessions/:sessionId/restart", async (c) => {
@@ -4115,8 +4246,10 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       metadataProvider ?? oldProcess?.provider ?? project.provider;
     // Fork copies the transcript as-is. Handoff first asks the provider to
     // compact so the bounded transcript can include that boundary when one is
-    // available.
-    if (restartMode !== "fork") {
+    // available. A supplied draft was already built from a compacted
+    // transcript by the preview route, so compacting again would only spend
+    // tokens to produce a boundary this restart will not read.
+    if (restartMode !== "fork" && body.handoffText === undefined) {
       await tryRestartCompact(oldProcess);
     }
     const oldProcessInterrupted =
@@ -4314,34 +4447,20 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       preferredTitle: originalMetadata?.customTitle,
       sourceSession,
     });
-    const { transcript, omittedCount } = buildRestartTranscript(
-      sourceSession.messages,
-    );
-    // The provider's reader knows where the source session's transcript lives
-    // on disk; surface it so the successor can grep/read for any detail the
-    // bounded summary above dropped. Best-effort — omitted when unavailable.
-    const sourceReader = await resolveSessionReader({
-      deps,
-      project,
-      sessionId,
-      projectId,
-    });
-    const sourceTranscriptPath =
-      (await sourceReader.getSessionFilePath?.(sessionId)) ?? undefined;
-    const handoff = buildRestartHandoff({
-      handoffTitle,
-      sourceSession,
-      sourceProvider,
-      sourceModel: oldProcess?.resolvedModel ?? sourceSession.model,
-      sourceProcess: oldProcess,
-      sourceUrl: body.sourceUrl,
-      sourceTranscriptPath,
-      sourceTranscriptHost: hostname(),
-      targetExecutor: executor,
-      projectPath: restartProjectPath,
-      omittedCount,
-      transcript,
-    });
+    const handoff =
+      body.handoffText ??
+      (await buildHandoffText({
+        project,
+        projectId,
+        sessionId,
+        handoffTitle,
+        sourceSession,
+        sourceProvider,
+        oldProcess,
+        sourceUrl: body.sourceUrl,
+        targetExecutor: executor,
+        projectPath: restartProjectPath,
+      }));
 
     const result = await deps.supervisor.startSession(
       restartProjectPath,

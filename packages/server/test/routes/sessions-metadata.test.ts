@@ -4089,6 +4089,159 @@ describe("Sessions metadata route", () => {
     expect(handoffText).not.toContain("### user\n\n/compact");
   });
 
+  /**
+   * A compact-capable source process, shared by the draft tests so they can
+   * assert what the preview and an edited restart each do to it.
+   */
+  const createHandoffDraftRoutes = () => {
+    const project = createProject();
+    const history: unknown[] = [
+      {
+        type: "user",
+        uuid: "u1",
+        timestamp: "2026-04-24T20:00:00.000Z",
+        message: { role: "user", content: "draft this handoff" },
+      },
+    ];
+    let compactListener:
+      | ((event: { type: string; message?: unknown }) => void)
+      | undefined;
+    const queueMessage = vi.fn((message) => {
+      history.push({
+        type: "user",
+        uuid: "compact-command",
+        timestamp: "2026-04-24T20:00:01.000Z",
+        message: { role: "user", content: message.text },
+      });
+      queueMicrotask(() => {
+        const compactMessage = {
+          type: "system",
+          subtype: "compact_boundary",
+          uuid: "compact-1",
+          timestamp: "2026-04-24T20:00:02.000Z",
+          message: { role: "system", content: "Native compact summary text" },
+        };
+        history.push(compactMessage);
+        compactListener?.({ type: "message", message: compactMessage });
+      });
+      return { success: true, position: 1 };
+    });
+    const interruptProcess = vi.fn(async () => ({
+      success: true,
+      supported: true,
+    }));
+    const startSession = vi.fn(async () => ({
+      id: "proc-new",
+      sessionId: "sess-new",
+      projectId: project.id,
+      provider: "codex",
+      model: "gpt-5.4",
+      resolvedModel: "gpt-5.4",
+      permissionMode: "default",
+      modeVersion: 0,
+      subscribe: vi.fn(() => vi.fn()),
+    }));
+
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => ({
+          id: "proc-old",
+          provider: "codex",
+          model: "gpt-5.5",
+          resolvedModel: "gpt-5.5",
+          permissionMode: "default",
+          modeVersion: 0,
+          state: { type: "idle", since: new Date() },
+          supportsDynamicCommands: true,
+          supportedCommands: vi.fn(async () => [
+            { name: "compact", description: "Compact conversation" },
+          ]),
+          queueMessage,
+          subscribe: vi.fn((listener) => {
+            compactListener = listener;
+            return vi.fn();
+          }),
+          getMessageHistory: vi.fn(() => history),
+          getDeferredQueueSummary: vi.fn(() => []),
+        })),
+        startSession,
+        interruptProcess,
+        abortProcess: vi.fn(async () => true),
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(
+        () =>
+          ({
+            getSessionSummary: vi.fn(async () => null),
+            getSessionFilePath: vi.fn(
+              async () => "/home/user/.claude/projects/enc/sess-1.jsonl",
+            ),
+          }) as unknown as ISessionReader,
+      ),
+      sessionMetadataService: {
+        getProvider: vi.fn(() => "codex"),
+        getRequestedModel: vi.fn(() => undefined),
+        setRequestedModel: vi.fn(async () => undefined),
+        getExecutor: vi.fn(() => undefined),
+        getMetadata: vi.fn(() => undefined),
+        setProvider: vi.fn(async () => undefined),
+        updateMetadata: vi.fn(async () => undefined),
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+    });
+
+    return { project, routes, queueMessage, interruptProcess, startSession };
+  };
+
+  it("previews the handoff draft without starting or interrupting", async () => {
+    const { project, routes, queueMessage, interruptProcess, startSession } =
+      createHandoffDraftRoutes();
+
+    const response = await routes.request(
+      `/projects/${project.id}/sessions/sess-1/restart/handoff`,
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.handoff).toContain("draft this handoff");
+    // The draft is the computed content, so it carries the compact boundary a
+    // real handoff would have.
+    expect(queueMessage).toHaveBeenCalledWith({ text: "/compact" });
+    expect(body.handoff).toContain("## Provider-Native Compact Summary");
+    expect(body.compactStatus).toBe("completed");
+    // Previewing is not starting: the source session keeps running.
+    expect(interruptProcess).not.toHaveBeenCalled();
+    expect(startSession).not.toHaveBeenCalled();
+  });
+
+  it("seeds an edited handoff draft verbatim without compacting again", async () => {
+    const { project, routes, queueMessage, interruptProcess, startSession } =
+      createHandoffDraftRoutes();
+
+    const response = await routes.request(
+      `/projects/${project.id}/sessions/sess-1/restart`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: "codex",
+          model: "gpt-5.4",
+          handoffText: "Only what I chose to carry forward.",
+        }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(startSession.mock.calls[0]?.[1].text).toBe(
+      "Only what I chose to carry forward.",
+    );
+    // The preview already compacted; doing it again would only spend tokens.
+    expect(queueMessage).not.toHaveBeenCalled();
+    // Starting still replaces the old process.
+    expect(interruptProcess).toHaveBeenCalled();
+  });
+
   it("summarizes fallback activity and appends queued turns last", async () => {
     const project = createProject();
     const verboseReadOutput = "VERBOSE_READ_OUTPUT".repeat(200);
