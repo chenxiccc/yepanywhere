@@ -38,6 +38,11 @@
   text-overflow: ellipsis;
 }
 
+.chevron {
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+
 /*
  * Chip trigger, used by the below-composer model chip. Declared before :hover
  * and .hasSelection so both still win, matching the previous file order.
@@ -86,11 +91,6 @@
   width: 15px;
   height: 15px;
   flex-shrink: 0;
-}
-
-.chevron {
-  flex-shrink: 0;
-  transition: transform 0.15s ease;
 }
 
 .overlay {

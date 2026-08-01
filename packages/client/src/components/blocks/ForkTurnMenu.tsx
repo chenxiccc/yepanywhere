@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useI18n } from "../../i18n";
 import styles from "./ForkTurnMenu.module.css";
@@ -72,7 +72,12 @@ export function ForkTurnMenu({
       ref={menuRef}
       className={styles.menu}
       role="menu"
-      style={position}
+      style={
+        {
+          "--fork-turn-menu-top": `${position.top}px`,
+          "--fork-turn-menu-right": `${position.right}px`,
+        } as CSSProperties
+      }
       aria-label={t("forkTurnMenuLabel")}
     >
       {onForkBefore && (

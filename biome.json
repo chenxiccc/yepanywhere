@@ -57,6 +57,33 @@
           }
         }
       }
+    },
+    {
+      "includes": ["packages/client/src/**/*.module.css"],
+      "linter": {
+        "rules": {
+          "complexity": {
+            "noImportantStyles": "error"
+          },
+          "nursery": {
+            "noExcessiveSelectorClasses": {
+              "level": "error",
+              "options": { "maxClasses": 4 }
+            }
+          },
+          "style": {
+            "noDescendingSpecificity": "error",
+            "noExcessiveLinesPerFile": {
+              "level": "warn",
+              "options": { "maxLines": 600 }
+            },
+            "noValueAtRule": "error"
+          },
+          "suspicious": {
+            "noDuplicateProperties": "error"
+          }
+        }
+      }
     }
   ],
   "formatter": {

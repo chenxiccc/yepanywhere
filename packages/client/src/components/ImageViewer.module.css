@@ -101,18 +101,6 @@
   transition: opacity 140ms ease;
 }
 
-.navigation.visible {
-  opacity: 1;
-}
-
-.navigation.hidden {
-  opacity: 0;
-}
-
-.navigation.hidden .navigationButton {
-  pointer-events: none;
-}
-
 .navigationButton {
   position: absolute;
   top: 50%;
@@ -132,6 +120,18 @@
   line-height: 1;
   cursor: pointer;
   pointer-events: auto;
+}
+
+.navigation.visible {
+  opacity: 1;
+}
+
+.navigation.hidden {
+  opacity: 0;
+}
+
+.navigation.hidden .navigationButton {
+  pointer-events: none;
 }
 
 .navigationIcon {

@@ -4,6 +4,8 @@
 
 .menu {
   position: fixed;
+  top: var(--fork-turn-menu-top, 0);
+  right: var(--fork-turn-menu-right, 8px);
   z-index: 10000;
   display: grid;
   min-width: 190px;
@@ -44,7 +46,7 @@
 
 @media (max-width: 600px), (pointer: coarse) {
   .menu {
-    right: 8px !important;
+    right: 8px;
     left: 8px;
   }
 

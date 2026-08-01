@@ -32,11 +32,6 @@
   box-shadow: none;
 }
 
-.bar.inline.warn .branch,
-.bar.inline.warn .sync {
-  color: var(--warning-color);
-}
-
 /* `.copy-button` is a shared global primitive owned by `CopyButton`, and a
    later `index.css` rule of the same name restyles it for settings surfaces.
    Passing this class through `CopyButton`'s `className` prop keeps the compact
@@ -73,6 +68,11 @@
 .sync {
   color: var(--text-secondary, #8b949e);
   font-family: var(--font-mono, monospace);
+}
+
+.bar.inline.warn .branch,
+.bar.inline.warn .sync {
+  color: var(--warning-color);
 }
 
 .upstream {
