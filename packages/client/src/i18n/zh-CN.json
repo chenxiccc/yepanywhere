@@ -1380,6 +1380,8 @@
   "sessionRestartStartFork": "开始分叉",
   "sessionRestartForking": "正在开始分叉…",
   "sessionRestartForkKeepsProvider": "分叉后仍使用 {provider}",
+  "sessionRestartForkRateLimited": "Fork is unavailable while this session is over its usage limit — it would replay the whole conversation into the same limit. Handoff sends a summary instead.",
+  "sessionRestartForkRateLimitedUntil": "Fork is unavailable until {time}, while this session is over its usage limit — it would replay the whole conversation into the same limit. Handoff sends a summary instead.",
   "forkFromTurnStarted": "已创建分叉会话",
   "forkFromTurnNoAnchor": "没有已加载的更早轮次可供分叉",
   "forkAfterTurnPending": "请等待代理回复完成，再从此轮次之后分叉。",

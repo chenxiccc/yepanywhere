@@ -265,6 +265,12 @@ export interface NewSessionFormProps {
     /** Start-control wording, for a launch whose verb is not "start session". */
     startLabel?: string;
     startingLabel?: string;
+    /**
+     * Withhold the provider and model pickers. A fork continues an existing
+     * provider transcript, so changing either would not be a fork; offering
+     * the choice would only invite a request the server refuses.
+     */
+    fixedProviderModel?: boolean;
     submit: (request: {
       message: string;
       options: SessionOptions;
@@ -417,6 +423,7 @@ export function NewSessionForm({
   const allowProjectQueue = launch?.allowProjectQueue ?? true;
   const fixedProject = launch?.fixedProject ?? false;
   const showComposer = launch?.showComposer ?? true;
+  const showProviderAndModel = !(launch?.fixedProviderModel ?? false);
 
   // A launch may resolve its seed asynchronously — the handoff draft is
   // fetched — so wait for content rather than seeding an empty composer once
@@ -2826,7 +2833,7 @@ export function NewSessionForm({
             onClick={handleStartSession}
             disabled={isStarting || !canStart}
             className="send-button new-session-submit-button"
-            aria-label={t("newSessionStartAction")}
+            aria-label={launch?.startLabel ?? t("newSessionStartAction")}
           >
             {isStarting ? (
               <span className="send-spinner" />
@@ -3318,9 +3325,15 @@ export function NewSessionForm({
       className="new-session-form new-session-container"
       onKeyDownCapture={handleComposerKeyDown}
     >
-      <div className="new-session-header">
-        <p className="new-session-subtitle">{t("newSessionHeaderSubtitle")}</p>
-      </div>
+      {/* A launch is introduced by its own surface — the handoff dialog has a
+          title — so the new-session prompt would only contradict it. */}
+      {!launch && (
+        <div className="new-session-header">
+          <p className="new-session-subtitle">
+            {t("newSessionHeaderSubtitle")}
+          </p>
+        </div>
+      )}
 
       <div className="new-session-top-layout">
         {showComposer && (
@@ -3348,8 +3361,8 @@ export function NewSessionForm({
             {sandboxSection}
             {permissionSection}
             {showThinkingSection}
-            {providerSection}
-            {modelSection}
+            {showProviderAndModel && providerSection}
+            {showProviderAndModel && modelSection}
             {thinkingSection}
             {helperSideModelSection}
           </div>

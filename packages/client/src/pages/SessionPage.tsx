@@ -4978,8 +4978,9 @@ function SessionPageContent({
           currentModel={liveBadgeModel}
           mode={permissionMode}
           thinking={getThinkingSetting()}
-          promptSuggestionMode={liveModelConfig?.promptSuggestionMode}
           executor={session?.executor}
+          project={projects.find((candidate) => candidate.id === projectId)}
+          providerRuntimeStatus={providerRuntimeStatus}
           onRestarted={(result, options) => {
             setShowHandoffModal(false);
             showToast(t("sessionHandoffStarted"), "success");

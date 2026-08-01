@@ -1400,6 +1400,8 @@
   "sessionRestartStartFork": "Start fork",
   "sessionRestartForking": "Starting fork...",
   "sessionRestartForkKeepsProvider": "Fork keeps the conversation on {provider}",
+  "sessionRestartForkRateLimited": "Fork is unavailable while this session is over its usage limit — it would replay the whole conversation into the same limit. Handoff sends a summary instead.",
+  "sessionRestartForkRateLimitedUntil": "Fork is unavailable until {time}, while this session is over its usage limit — it would replay the whole conversation into the same limit. Handoff sends a summary instead.",
   "forkFromTurnStarted": "Forked session created",
   "forkFromTurnNoAnchor": "No earlier loaded turn to fork from",
   "forkAfterTurnPending": "Wait for the agent response to finish before forking after this turn.",

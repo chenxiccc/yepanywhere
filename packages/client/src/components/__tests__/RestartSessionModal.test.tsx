@@ -1,84 +1,81 @@
 // @vitest-environment jsdom
 
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ProviderInfo } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RestartSessionModal } from "../RestartSessionModal";
 
-const { mockRestartSession, serverSettingsState } = vi.hoisted(() => ({
-  mockRestartSession: vi.fn(),
-  serverSettingsState: {
-    settings: null as {
-      newSessionDefaults?: {
-        provider?: "claude" | "codex";
-        model?: string;
-        permissionMode?: "default";
-        recapMode?: "off" | "native" | "side-session" | "fork";
-        recapAfterSeconds?: number;
-        promptSuggestionMode?: "off" | "native";
-        providers?: Partial<
-          Record<
-            "claude" | "codex",
-            {
-              model?: string;
-              thinkingMode?: "off" | "auto" | "on";
-              effortLevel?: "low" | "medium" | "high" | "xhigh" | "max";
-              helperSideModel?: string;
-            }
-          >
-        >;
-      };
-    } | null,
-    isLoading: false,
+/**
+ * `NewSessionForm` is stubbed here on purpose. Its selection behavior has its
+ * own suite; what this dialog owns is the draft it seeds, the launch options
+ * it passes, and the restart it sends.
+ */
+const { mockRestartSession, mockGetRestartHandoff, formProps } = vi.hoisted(
+  () => ({
+    mockRestartSession: vi.fn(),
+    mockGetRestartHandoff: vi.fn(),
+    formProps: { current: null as Record<string, unknown> | null },
+  }),
+);
+
+type LaunchStub = {
+  initialMessage: string;
+  showComposer?: boolean;
+  startLabel?: string;
+  submit: (request: {
+    message: string;
+    options: Record<string, unknown>;
+    clientTimestamp: number;
+  }) => Promise<void>;
+};
+
+vi.mock("../NewSessionForm", () => ({
+  NewSessionForm: (props: Record<string, unknown>) => {
+    formProps.current = props;
+    const launch = props.launch as LaunchStub;
+    return (
+      <div data-testid="new-session-form">
+        <span data-testid="seeded-message">{launch.initialMessage}</span>
+        <span data-testid="show-composer">{String(launch.showComposer)}</span>
+        <button
+          type="button"
+          onClick={() => {
+            void launch
+              .submit({
+                // The real form sends the composer's current text; an unedited
+                // handoff sends exactly what was seeded.
+                message: launch.initialMessage,
+                options: { provider: "codex", model: "gpt-5.5" },
+                clientTimestamp: 1,
+              })
+              .catch(() => {});
+          }}
+        >
+          {launch.startLabel}
+        </button>
+      </div>
+    );
   },
 }));
 
 vi.mock("../../api/client", () => ({
   api: {
     restartSession: mockRestartSession,
+    getRestartHandoff: mockGetRestartHandoff,
   },
-}));
-
-vi.mock("../../hooks/useModelSettings", () => ({
-  getModelSetting: () => "default",
-}));
-
-vi.mock("../../hooks/useServerSettings", () => ({
-  useServerSettings: () => ({
-    settings: serverSettingsState.settings,
-    isLoading: serverSettingsState.isLoading,
-    error: null,
-    updateSettings: vi.fn(),
-    updateSetting: vi.fn(),
-    refetch: vi.fn(),
-  }),
-}));
-
-vi.mock("../../hooks/useProviderSubscriptionUsage", () => ({
-  useProviderSubscriptionUsage: () => ({
-    usage: null,
-    loading: false,
-    supported: false,
-    refresh: vi.fn(),
-  }),
 }));
 
 vi.mock("../../i18n", () => ({
   useI18n: () => ({
     t: (key: string, params?: Record<string, string>) =>
-      params?.level ? `${key}:${params.level}` : key,
+      params ? `${key}:${Object.values(params).join(",")}` : key,
   }),
 }));
 
 const providerInfo = (
   provider: "claude" | "codex",
   models: ProviderInfo["models"],
+  extra?: Partial<ProviderInfo>,
 ): ProviderInfo => ({
   name: provider,
   displayName: provider === "claude" ? "Claude" : "Codex",
@@ -86,24 +83,46 @@ const providerInfo = (
   authenticated: true,
   enabled: true,
   models,
-  supportsThinkingToggle: true,
-  supportsNativePromptSuggestions: provider === "claude",
+  ...extra,
 });
+
+const forkableProviders = [
+  providerInfo("claude", [{ id: "sonnet", name: "Sonnet" }], {
+    supportsForkSession: true,
+  }),
+];
+
+function renderModal(overrides?: Record<string, unknown>) {
+  return render(
+    <RestartSessionModal
+      projectId="proj-1"
+      sessionId="sess-1"
+      provider="claude"
+      providerDisplayName="Claude"
+      providers={[providerInfo("claude", [{ id: "sonnet", name: "Sonnet" }])]}
+      currentModel="sonnet"
+      mode="default"
+      thinking="off"
+      onRestarted={vi.fn()}
+      onClose={vi.fn()}
+      {...overrides}
+    />,
+  );
+}
 
 describe("RestartSessionModal", () => {
   beforeEach(() => {
-    serverSettingsState.settings = {
-      newSessionDefaults: {
-        provider: "codex",
-        model: "gpt-5.5",
-        permissionMode: "default",
-      },
-    };
-    serverSettingsState.isLoading = false;
+    formProps.current = null;
+    mockGetRestartHandoff.mockResolvedValue({
+      handoff: "# Handoff\n\nwhat the successor needs",
+      handoffTitle: "Handoff: something",
+      compactStatus: "completed",
+    });
     mockRestartSession.mockResolvedValue({
       sessionId: "sess-new",
       processId: "proc-new",
-      model: "gpt-5.5",
+      permissionMode: "default",
+      modeVersion: 0,
       oldProcessAborted: false,
     });
   });
@@ -113,349 +132,78 @@ describe("RestartSessionModal", () => {
     vi.clearAllMocks();
   });
 
-  it("uses saved new-session model defaults for handoff", async () => {
-    render(
-      <RestartSessionModal
-        projectId="proj-1"
-        sessionId="sess-1"
-        provider="codex"
-        models={[
-          { id: "gpt-5.4", name: "GPT-5.4" },
-          { id: "gpt-5.5", name: "GPT-5.5" },
-        ]}
-        currentModel="gpt-5.4"
-        mode="default"
-        thinking="off"
-        onRestarted={vi.fn()}
-        onClose={vi.fn()}
-      />,
+  it("offers the computed handoff as an editable draft", async () => {
+    renderModal();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("seeded-message").textContent).toBe(
+        "# Handoff\n\nwhat the successor needs",
+      );
+    });
+    expect(screen.getByTestId("show-composer").textContent).toBe("true");
+    expect(mockGetRestartHandoff).toHaveBeenCalledWith("proj-1", "sess-1", {
+      sourceUrl: expect.any(String),
+    });
+  });
+
+  it("sends the draft as the handoff text", async () => {
+    renderModal();
+    // The draft arrives asynchronously; starting before it lands would send an
+    // empty handoff.
+    await waitFor(() =>
+      expect(screen.getByTestId("seeded-message").textContent).toBeTruthy(),
     );
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "sessionRestartStart" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "sessionRestartStart" }));
 
     await waitFor(() => {
       expect(mockRestartSession).toHaveBeenCalledWith(
         "proj-1",
         "sess-1",
         expect.objectContaining({
-          provider: "codex",
-          model: "gpt-5.5",
-          recapMode: "off",
-          recapAfterSeconds: 300,
-          promptSuggestionMode: "off",
-          helperSideModel: "cheapest",
+          handoffText: "# Handoff\n\nwhat the successor needs",
+          restartMode: undefined,
+          reason: "Manual restart from Yep Anywhere",
         }),
       );
     });
   });
 
-  it("groups additional models and preserves an unlisted saved default", async () => {
-    serverSettingsState.settings = {
-      newSessionDefaults: {
-        provider: "claude",
-        permissionMode: "default",
-        providers: {
-          claude: {
-            model: "removed-default",
-          },
-        },
-      },
-    };
-
-    render(
-      <RestartSessionModal
-        projectId="proj-1"
-        sessionId="sess-1"
-        provider="claude"
-        models={[
-          { id: "latest", name: "Latest" },
-          {
-            id: "previous",
-            name: "Previous",
-            catalogGroup: "additional",
-          },
-        ]}
-        currentModel="latest"
-        mode="default"
-        thinking="off"
-        onRestarted={vi.fn()}
-        onClose={vi.fn()}
-      />,
-    );
-
-    expect(screen.getAllByText("previousModelsGroup")).toHaveLength(1);
-    expect(screen.getAllByText("removed-default").length).toBeGreaterThan(0);
-    expect(screen.getByText("modelSelectionUnavailable")).toBeTruthy();
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "sessionRestartStart" }),
-    );
-    await waitFor(() => {
-      expect(mockRestartSession).toHaveBeenCalledWith(
-        "proj-1",
-        "sess-1",
-        expect.objectContaining({ model: "removed-default" }),
-      );
+  it("carries the source session's settings into the form", async () => {
+    renderModal({
+      thinking: "on:xhigh",
+      mode: "plan",
+      executor: "build-host",
+      currentModel: "opus",
     });
-  });
 
-  it("uses provider-scoped model and thinking defaults for handoff", async () => {
-    serverSettingsState.settings = {
-      newSessionDefaults: {
-        provider: "codex",
-        permissionMode: "default",
-        providers: {
-          codex: {
-            model: "gpt-5.5",
-            thinkingMode: "auto",
-            effortLevel: "xhigh",
-          },
-        },
-      },
-    };
-
-    render(
-      <RestartSessionModal
-        projectId="proj-1"
-        sessionId="sess-1"
-        provider="codex"
-        models={[
-          { id: "gpt-5.4", name: "GPT-5.4" },
-          { id: "gpt-5.5", name: "GPT-5.5" },
-        ]}
-        currentModel="gpt-5.4"
-        mode="default"
-        thinking="off"
-        onRestarted={vi.fn()}
-        onClose={vi.fn()}
-      />,
-    );
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "sessionRestartStart" }),
-    );
-
-    await waitFor(() => {
-      expect(mockRestartSession).toHaveBeenCalledWith(
-        "proj-1",
-        "sess-1",
-        expect.objectContaining({
-          provider: "codex",
-          model: "gpt-5.5",
-          thinking: "auto",
-        }),
-      );
+    await waitFor(() => expect(formProps.current).not.toBeNull());
+    expect(formProps.current).toMatchObject({
+      preferredProvider: "claude",
+      preferredModel: "opus",
+      preferredThinking: "on:xhigh",
+      preferredPermissionMode: "plan",
+      preferredExecutor: "build-host",
     });
-  });
-
-  it("can hand off to a different provider", async () => {
-    serverSettingsState.settings = {
-      newSessionDefaults: {
-        provider: "claude",
-        model: "sonnet",
-        permissionMode: "default",
-      },
+    const launch = formProps.current?.launch as LaunchStub & {
+      fixedProject?: boolean;
+      allowAttachments?: boolean;
     };
-
-    render(
-      <RestartSessionModal
-        projectId="proj-1"
-        sessionId="sess-1"
-        provider="claude"
-        providerDisplayName="Claude"
-        providers={[
-          providerInfo("claude", [{ id: "sonnet", name: "Sonnet" }]),
-          providerInfo("codex", [{ id: "gpt-5.5", name: "GPT-5.5" }]),
-        ]}
-        currentModel="sonnet"
-        mode="default"
-        thinking="off"
-        onRestarted={vi.fn()}
-        onClose={vi.fn()}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: /Codex/ }));
-    fireEvent.click(
-      screen.getByRole("button", { name: "sessionRestartStart" }),
-    );
-
-    await waitFor(() => {
-      expect(mockRestartSession).toHaveBeenCalledWith(
-        "proj-1",
-        "sess-1",
-        expect.objectContaining({
-          provider: "codex",
-          model: "gpt-5.5",
-        }),
-      );
-    });
+    expect(launch.fixedProject).toBe(true);
+    expect(launch.allowAttachments).toBe(false);
   });
 
-  it("sends handoff recap helper selections", async () => {
-    serverSettingsState.settings = {
-      newSessionDefaults: {
-        provider: "claude",
-        model: "sonnet",
-        permissionMode: "default",
-        recapMode: "side-session",
-        providers: {
-          claude: {
-            helperSideModel: "haiku",
-          },
-        },
-      },
-    };
+  it("hides the composer for fork and sends no handoff text", async () => {
+    renderModal({ providers: forkableProviders });
+    await screen.findByTestId("new-session-form");
 
-    render(
-      <RestartSessionModal
-        projectId="proj-1"
-        sessionId="sess-1"
-        provider="claude"
-        providers={[
-          {
-            ...providerInfo("claude", [
-              { id: "sonnet", name: "Sonnet" },
-              { id: "haiku", name: "Haiku" },
-            ]),
-            supportsRecaps: true,
-          },
-        ]}
-        currentModel="sonnet"
-        mode="default"
-        thinking="off"
-        onRestarted={vi.fn()}
-        onClose={vi.fn()}
-      />,
-    );
-
-    expect(
-      screen
-        .getAllByRole("button", { name: /Haiku/ })
-        .some((button) => button.className.includes("active")),
-    ).toBe(true);
-    fireEvent.click(
-      screen.getByRole("button", { name: "sessionRestartStart" }),
-    );
-
-    await waitFor(() => {
-      expect(mockRestartSession).toHaveBeenCalledWith(
-        "proj-1",
-        "sess-1",
-        expect.objectContaining({
-          recapMode: "side-session",
-          promptSuggestionMode: "off",
-          helperSideModel: "haiku",
-        }),
-      );
-    });
-  });
-
-  it("carries a disabled prompt suggestion mode through handoff", async () => {
-    serverSettingsState.settings = {
-      newSessionDefaults: {
-        provider: "claude",
-        model: "sonnet",
-        permissionMode: "default",
-        promptSuggestionMode: "native",
-      },
-    };
-
-    render(
-      <RestartSessionModal
-        projectId="proj-1"
-        sessionId="sess-1"
-        provider="claude"
-        providers={[providerInfo("claude", [{ id: "sonnet", name: "Sonnet" }])]}
-        currentModel="sonnet"
-        mode="default"
-        thinking="off"
-        promptSuggestionMode="off"
-        onRestarted={vi.fn()}
-        onClose={vi.fn()}
-      />,
-    );
-
-    expect(
-      screen
-        .getAllByRole("button", { name: /promptSuggestionModeOff/ })
-        .some((button) => button.className.includes("active")),
-    ).toBe(true);
-    fireEvent.click(
-      screen.getByRole("button", { name: "sessionRestartStart" }),
-    );
-
-    await waitFor(() => {
-      expect(mockRestartSession).toHaveBeenCalledWith(
-        "proj-1",
-        "sess-1",
-        expect.objectContaining({
-          provider: "claude",
-          promptSuggestionMode: "off",
-        }),
-      );
-    });
-  });
-
-  it("offers fork mode only when the source provider supports it", () => {
-    render(
-      <RestartSessionModal
-        projectId="proj-1"
-        sessionId="sess-1"
-        provider="codex"
-        providers={[
-          providerInfo("codex", [{ id: "gpt-5.5", name: "GPT-5.5" }]),
-        ]}
-        currentModel="gpt-5.5"
-        mode="default"
-        thinking="off"
-        onRestarted={vi.fn()}
-        onClose={vi.fn()}
-      />,
-    );
-
-    expect(
-      screen.queryByRole("button", { name: "sessionRestartModeFork" }),
-    ).toBeNull();
-  });
-
-  it("sends a fork restart pinned to the source provider", async () => {
-    serverSettingsState.settings = {
-      newSessionDefaults: {
-        provider: "claude",
-        model: "sonnet",
-        permissionMode: "default",
-      },
-    };
-
-    render(
-      <RestartSessionModal
-        projectId="proj-1"
-        sessionId="sess-1"
-        provider="claude"
-        providerDisplayName="Claude"
-        providers={[
-          {
-            ...providerInfo("claude", [{ id: "sonnet", name: "Sonnet" }]),
-            supportsForkSession: true,
-          },
-          providerInfo("codex", [{ id: "gpt-5.5", name: "GPT-5.5" }]),
-        ]}
-        currentModel="sonnet"
-        mode="default"
-        thinking="off"
-        onRestarted={vi.fn()}
-        onClose={vi.fn()}
-      />,
-    );
-
-    // Even after picking another provider, choosing fork pins back to source
-    fireEvent.click(screen.getByRole("button", { name: /Codex/ }));
     fireEvent.click(
       screen.getByRole("button", { name: "sessionRestartModeFork" }),
     );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("show-composer").textContent).toBe("false");
+    });
     fireEvent.click(
       screen.getByRole("button", { name: "sessionRestartStartFork" }),
     );
@@ -465,11 +213,71 @@ describe("RestartSessionModal", () => {
         "proj-1",
         "sess-1",
         expect.objectContaining({
+          // A fork copies the real transcript, so it pins to the source
+          // provider and sends no message of its own.
           provider: "claude",
           restartMode: "fork",
+          handoffText: undefined,
           reason: undefined,
+          sourceUrl: undefined,
         }),
       );
     });
+  });
+
+  it("offers fork only when the source provider supports it", async () => {
+    renderModal();
+    await screen.findByTestId("new-session-form");
+
+    expect(
+      screen.queryByRole("button", { name: "sessionRestartModeFork" }),
+    ).toBeNull();
+  });
+
+  it("withholds fork while the source session is over its usage limit", async () => {
+    renderModal({
+      providers: forkableProviders,
+      providerRuntimeStatus: {
+        kind: "retrying",
+        provider: "claude",
+        reason: "rate_limit",
+        startedAt: "2026-08-01T00:00:00.000Z",
+        lastSeenAt: "2026-08-01T00:00:00.000Z",
+        retryAt: "2026-08-01T03:00:00.000Z",
+        eventCount: 1,
+        source: "test",
+      },
+    });
+    await screen.findByTestId("new-session-form");
+
+    // Forking replays the whole transcript into the same limit, so the option
+    // is withheld rather than offered and failed.
+    expect(
+      screen.queryByRole("button", { name: "sessionRestartModeFork" }),
+    ).toBeNull();
+    expect(
+      screen.getByText(/sessionRestartForkRateLimitedUntil/),
+    ).toBeTruthy();
+    // Handoff remains available: its bounded summary is the way out.
+    expect(screen.getByTestId("show-composer").textContent).toBe("true");
+  });
+
+  it("surfaces a draft that could not be loaded", async () => {
+    mockGetRestartHandoff.mockRejectedValue(new Error("no transcript"));
+    renderModal();
+
+    expect(await screen.findByText("no transcript")).toBeTruthy();
+  });
+
+  it("reports a failed restart without closing", async () => {
+    mockRestartSession.mockRejectedValue(new Error("supervisor is busy"));
+    const onRestarted = vi.fn();
+    renderModal({ onRestarted });
+    await screen.findByText("sessionRestartStart");
+
+    fireEvent.click(screen.getByRole("button", { name: "sessionRestartStart" }));
+
+    expect(await screen.findByText("supervisor is busy")).toBeTruthy();
+    expect(onRestarted).not.toHaveBeenCalled();
   });
 });
