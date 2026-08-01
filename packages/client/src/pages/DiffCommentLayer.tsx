@@ -1,17 +1,19 @@
 import type {
   PatchHunk,
   PatchLineLocation,
+  ReviewComment,
   ReviewCommentAnchor,
   ReviewNewSessionOptions,
 } from "@yep-anywhere/shared";
-import { useCallback, useLayoutEffect, useState } from "react";
+import { type ReactNode, useCallback, useLayoutEffect, useState } from "react";
 import {
   type SourceContextMenuAction,
   useSourceContextMenu,
 } from "../components/SourceContextMenu";
-import { useReviewCommentDraft } from "../hooks/useReviewCommentDraft";
 import { writeClipboardText } from "../lib/clipboard";
+import { useReviewCommentDraft } from "../hooks/useReviewCommentDraft";
 import { ReviewCommentWindow } from "./ReviewCommentWindow";
+import styles from "./DiffCommentLayer.module.css";
 import {
   type DiffCommentRevisions,
   type DiffLineTarget,
@@ -24,48 +26,38 @@ import type { TranslationFn } from "../i18n";
  * Source-review commenting over a rendered diff (topic:
  * source-review-to-session). A single delegated listener on the diff container
  * maps a click on a server-emitted `[data-diff-line]` node to an anchor via
- * `anchorFromPatch` — never from the DOM's text — and opens a comment window.
- * The add/submit/pending logic is shared with the blame surface via
- * {@link useReviewCommentDraft}; this layer only builds the diff-line anchor.
- * Lines that already carry a draft comment get a tint.
+ * `anchorFromPatch` — never from the DOM's text — and hands it to the render
+ * controller. This layer owns only line interaction and pending-comment tint.
  */
 
-interface OpenComment {
-  /** Immutable click-time anchor; live diff refreshes never rewrite it. */
+export interface OpenDiffComment {
   anchor: ReviewCommentAnchor;
-  /** Offset from the container's top, to place the window below the line. */
-  top: number;
+  flatIndex: number;
 }
 
-export function DiffCommentLayer({
+export function DiffCommentController({
   projectId,
   filePath,
   structuredPatch,
   revisions,
   container,
   onOpenChange,
+  renderSource,
   t,
 }: {
   projectId: string;
   filePath: string;
   structuredPatch: PatchHunk[];
-  /** Revision containing each projection side; omitted means working tree. */
   revisions?: DiffCommentRevisions;
   container: HTMLElement;
-  /** Keeps the owning source view alive while the user owns this editor. */
   onOpenChange?: (open: boolean) => void;
+  renderSource: (state: {
+    openComment: OpenDiffComment | null;
+    editor: ReactNode;
+  }) => ReactNode;
   t: TranslationFn;
 }) {
-  const [open, setOpen] = useState<OpenComment | null>(null);
-  const {
-    menu: lineMenu,
-    openAt: openLineMenuAt,
-    openFromButton: openLineMenuFromButton,
-    beginLongPressAt: beginLineLongPressAt,
-    moveLongPressAt: moveLineLongPressAt,
-    endLongPress: endLineLongPress,
-    consumeLongPressClick,
-  } = useSourceContextMenu(t);
+  const [openComment, setOpenComment] = useState<OpenDiffComment | null>(null);
   const {
     pending,
     defaultSession,
@@ -76,6 +68,113 @@ export function DiffCommentLayer({
     submitNow,
   } = useReviewCommentDraft(projectId, filePath);
 
+  useLayoutEffect(() => {
+    onOpenChange?.(openComment !== null);
+    return () => {
+      if (openComment) onOpenChange?.(false);
+    };
+  }, [onOpenChange, openComment]);
+
+  const handleOpenComment = useCallback(
+    (comment: OpenDiffComment) => {
+      setError(null);
+      setOpenComment(comment);
+    },
+    [setError],
+  );
+
+  const handleAddToReview = useCallback(
+    async (text: string) => {
+      if (!openComment) return;
+      if (await addToReview(openComment.anchor, text)) setOpenComment(null);
+    },
+    [addToReview, openComment],
+  );
+
+  const handleSubmit = useCallback(
+    async (
+      text: string,
+      target: "new" | string,
+      newSession?: ReviewNewSessionOptions,
+    ) => {
+      if (!openComment) return;
+      const outcome = await submitNow(
+        openComment.anchor,
+        text,
+        target,
+        t("sourceReviewSubmitQueued"),
+        newSession,
+      );
+      if (outcome === "navigated") setOpenComment(null);
+    },
+    [openComment, submitNow, t],
+  );
+
+  const editor = openComment ? (
+    <ReviewCommentWindow
+      key={`${openComment.anchor.side}:${openComment.flatIndex}`}
+      anchorLabel={`${filePath}:${
+        openComment.anchor.newLine ?? openComment.anchor.oldLine ?? "?"
+      }`}
+      snippet={openComment.anchor.snippet}
+      busy={busy}
+      error={error}
+      onCancel={() => setOpenComment(null)}
+      onAddToReview={handleAddToReview}
+      defaultSession={defaultSession}
+      onSubmitToDefault={
+        defaultSession ? (text) => handleSubmit(text, defaultSession.id) : null
+      }
+      onSubmitToNew={(text) =>
+        handleSubmit(text, "new", defaultSession?.newSession)
+      }
+      t={t}
+    />
+  ) : null;
+
+  return (
+    <>
+      {renderSource({ openComment, editor })}
+      <DiffCommentLayer
+        filePath={filePath}
+        structuredPatch={structuredPatch}
+        revisions={revisions}
+        container={container}
+        pending={pending}
+        onOpenComment={handleOpenComment}
+        t={t}
+      />
+    </>
+  );
+}
+
+function DiffCommentLayer({
+  filePath,
+  structuredPatch,
+  revisions,
+  container,
+  pending,
+  onOpenComment,
+  t,
+}: {
+  filePath: string;
+  structuredPatch: PatchHunk[];
+  /** Revision containing each projection side; omitted means working tree. */
+  revisions?: DiffCommentRevisions;
+  container: HTMLElement;
+  pending: readonly ReviewComment[];
+  onOpenComment: (comment: OpenDiffComment) => void;
+  t: TranslationFn;
+}) {
+  const {
+    menu: lineMenu,
+    openAt: openLineMenuAt,
+    openFromButton: openLineMenuFromButton,
+    beginLongPressAt: beginLineLongPressAt,
+    moveLongPressAt: moveLineLongPressAt,
+    endLongPress: endLineLongPress,
+    consumeLongPressClick,
+  } = useSourceContextMenu(t);
   const buildAnchor = useCallback(
     (location: PatchLineLocation): ReviewCommentAnchor => ({
       path: filePath,
@@ -95,16 +194,13 @@ export function DiffCommentLayer({
   );
 
   const openComment = useCallback(
-    ({ location, node }: ResolvedDiffLineTarget) => {
-      const nodeRect = node.getBoundingClientRect();
-      const containerRect = container.getBoundingClientRect();
-      setError(null);
-      setOpen({
+    ({ location, target }: ResolvedDiffLineTarget) => {
+      onOpenComment({
         anchor: buildAnchor(location),
-        top: nodeRect.bottom - containerRect.top + container.scrollTop,
+        flatIndex: target.flatIndex,
       });
     },
-    [buildAnchor, container, setError],
+    [buildAnchor, onOpenComment],
   );
 
   const lineMenuActions = useCallback(
@@ -142,37 +238,23 @@ export function DiffCommentLayer({
   );
 
   const openLineMenu = useCallback(
-    (
-      resolved: ResolvedDiffLineTarget,
-      point: { x: number; y: number },
-    ) => {
+    (resolved: ResolvedDiffLineTarget, point: { x: number; y: number }) => {
       openLineMenuAt(
         point.x,
         point.y,
         resolved.node,
-        lineMenuActions(
-          resolved.target,
-          resolved.location,
-          resolved.node,
-        ),
+        lineMenuActions(resolved.target, resolved.location, resolved.node),
       );
     },
     [lineMenuActions, openLineMenuAt],
   );
 
   const beginLineLongPress = useCallback(
-    (
-      resolved: ResolvedDiffLineTarget,
-      event: globalThis.PointerEvent,
-    ) => {
+    (resolved: ResolvedDiffLineTarget, event: globalThis.PointerEvent) => {
       beginLineLongPressAt(
         event,
         resolved.node,
-        lineMenuActions(
-          resolved.target,
-          resolved.location,
-          resolved.node,
-        ),
+        lineMenuActions(resolved.target, resolved.location, resolved.node),
       );
     },
     [beginLineLongPressAt, lineMenuActions],
@@ -192,46 +274,12 @@ export function DiffCommentLayer({
     t,
   });
 
-  useLayoutEffect(() => {
-    onOpenChange?.(open !== null);
-    return () => {
-      if (open) onOpenChange?.(false);
-    };
-  }, [onOpenChange, open]);
-
-  const onAddToReview = useCallback(
-    async (text: string) => {
-      if (!open) return;
-      if (await addToReview(open.anchor, text)) setOpen(null);
-    },
-    [open, addToReview],
-  );
-
-  const onSubmit = useCallback(
-    async (
-      text: string,
-      target: "new" | string,
-      newSession?: ReviewNewSessionOptions,
-    ) => {
-      if (!open) return;
-      const outcome = await submitNow(
-        open.anchor,
-        text,
-        target,
-        t("sourceReviewSubmitQueued"),
-        newSession,
-      );
-      if (outcome === "navigated") setOpen(null);
-    },
-    [open, submitNow, t],
-  );
-
   return (
     <>
       {activeLine && (
         <button
           type="button"
-          className="source-diff-line-menu-trigger"
+          className={styles.menuTrigger}
           style={{ top: activeLine.top }}
           aria-label={t("sourceMoreActions")}
           title={t("sourceMoreActions")}
@@ -252,31 +300,6 @@ export function DiffCommentLayer({
         </button>
       )}
       {lineMenu}
-      {open &&
-        (() => {
-          const lineNumber = open.anchor.newLine ?? open.anchor.oldLine;
-          return (
-            <ReviewCommentWindow
-              anchorLabel={`${filePath}:${lineNumber ?? "?"}`}
-              snippet={open.anchor.snippet}
-              top={open.top}
-              busy={busy}
-              error={error}
-              onCancel={() => setOpen(null)}
-              onAddToReview={onAddToReview}
-              defaultSession={defaultSession}
-              onSubmitToDefault={
-                defaultSession
-                  ? (text) => onSubmit(text, defaultSession.id)
-                  : null
-              }
-              onSubmitToNew={(text) =>
-                onSubmit(text, "new", defaultSession?.newSession)
-              }
-              t={t}
-            />
-          );
-        })()}
     </>
   );
 }

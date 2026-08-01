@@ -26,6 +26,7 @@ import { useReviewCommentDraft } from "../hooks/useReviewCommentDraft";
 import type { TranslationFn } from "../i18n";
 import { writeClipboardText } from "../lib/clipboard";
 import { ReviewCommentWindow } from "./ReviewCommentWindow";
+import { ReviewCommentSplitLayout } from "./ReviewCommentSplitLayout";
 import styles from "./BlameView.module.css";
 import {
   createBlameLineWidthCacheKey,
@@ -42,7 +43,6 @@ import {
 interface OpenBlameComment {
   /** Index into `blame.lines` of the clicked line. */
   index: number;
-  top: number;
 }
 
 /**
@@ -233,16 +233,7 @@ export function BlameView({
     [onOpenCommit, t],
   );
 
-  const openAt = (index: number, rowEl: HTMLElement) => {
-    const container = containerRef.current;
-    if (!container) return;
-    const rowRect = rowEl.getBoundingClientRect();
-    const containerRect = container.getBoundingClientRect();
-    setOpen({
-      index,
-      top: rowRect.bottom - containerRect.top + container.scrollTop,
-    });
-  };
+  const openAt = (index: number) => setOpen({ index });
 
   const submitAnchor = (index: number): ReviewCommentAnchor | null => {
     if (!blame) return null;
@@ -263,6 +254,144 @@ export function BlameView({
   };
 
   const openLine = open && blame ? blame.lines[open.index] : null;
+
+  const renderBlameRuns = (part: "all" | "before" | "after") =>
+    renderRuns.map((run) => {
+      const rows = run.rows.filter(({ index }) =>
+        part === "all"
+          ? true
+          : part === "before"
+            ? open !== null && index <= open.index
+            : open !== null && index > open.index,
+      );
+      if (rows.length === 0) return null;
+      return (
+        <div
+          className={`${styles.run} ${rows[0]?.line ? styles.scrollable : ""}`}
+          key={`${run.key}:${part}`}
+        >
+          {rows.map(({ content, index, line }) => {
+            const lineNumber = index + 1;
+            const menuActions = line ? hashMenuActions(line) : [];
+            const authorSlot = line
+              ? authorColorSlots.get(getBlameAuthorKey(line))
+              : undefined;
+            const authorStyle =
+              authorSlot === undefined
+                ? undefined
+                : ({
+                    "--blame-author-hue": `${blameAuthorHue(authorSlot)}deg`,
+                  } as CSSProperties);
+            return (
+              <div
+                key={lineNumber}
+                data-blame-row=""
+                className={`${styles.row} ${
+                  commentedLines.has(lineNumber)
+                    ? `${styles.hasReviewComment} has-review-comment`
+                    : ""
+                }`}
+              >
+                {line?.uncommitted ? (
+                  <span
+                    className={`${styles.gutter} ${styles.uncommitted}`}
+                    data-blame-gutter="uncommitted"
+                    title={t("sourceBlameNotCommitted")}
+                  >
+                    ·····
+                  </span>
+                ) : line ? (
+                  <button
+                    type="button"
+                    className={`${styles.gutter} ${styles.commitLink} ${
+                      authorSlot === undefined ? "" : styles.authorColored
+                    }`}
+                    data-blame-gutter="commit"
+                    style={authorStyle}
+                    title={blameGutterTitle(line)}
+                    {...hashMenu.targetProps(menuActions, () =>
+                      onOpenCommit
+                        ? onOpenCommit(line.sha)
+                        : void writeClipboardText(line.sha),
+                    )}
+                  >
+                    {line.shortSha.slice(0, 5)}
+                  </button>
+                ) : (
+                  <span
+                    className={`${styles.gutter} ${styles.gutterLoading}`}
+                    data-blame-gutter="loading"
+                    title={t("sourceBlameLoading")}
+                  >
+                    ·····
+                  </span>
+                )}
+                <button
+                  type="button"
+                  className={styles.lineNumber}
+                  data-blame-lineno=""
+                  disabled={!line}
+                  onClick={() => openAt(index)}
+                >
+                  {lineNumber}
+                </button>
+                <BlameCodeCell
+                  content={content}
+                  highlightedHtml={codeLines?.[index]}
+                  enabled={Boolean(line)}
+                  onOpen={() => openAt(index)}
+                />
+              </div>
+            );
+          })}
+        </div>
+      );
+    });
+
+  const commentEditor =
+    open && openLine && blame ? (
+      <ReviewCommentWindow
+        key={open.index}
+        anchorLabel={`${path}:${openLine.line}`}
+        snippet={buildBlameSnippet(blame.lines, open.index).snippet}
+        busy={busy}
+        error={draftError}
+        onCancel={() => setOpen(null)}
+        onAddToReview={async (text) => {
+          const anchor = submitAnchor(open.index);
+          if (anchor && (await addToReview(anchor, text))) setOpen(null);
+        }}
+        defaultSession={defaultSession}
+        onSubmitToDefault={
+          defaultSession
+            ? async (text) => {
+                const anchor = submitAnchor(open.index);
+                if (!anchor) return;
+                const outcome = await submitNow(
+                  anchor,
+                  text,
+                  defaultSession.id,
+                  t("sourceReviewSubmitQueued"),
+                );
+                if (outcome === "navigated") setOpen(null);
+              }
+            : null
+        }
+        onSubmitToNew={async (text) => {
+          const anchor = submitAnchor(open.index);
+          if (!anchor) return;
+          const outcome = await submitNow(
+            anchor,
+            text,
+            "new",
+            t("sourceReviewSubmitQueued"),
+            defaultSession?.newSession,
+          );
+          if (outcome === "navigated") setOpen(null);
+        }}
+        t={t}
+      />
+    ) : null;
 
   if (contentLoading && !blame) {
     return (
@@ -327,139 +456,15 @@ export function BlameView({
           } as CSSProperties
         }
       >
-        {renderRuns.map((run) => (
-          <div
-            className={`${styles.run} ${
-              run.rows[0]?.line ? styles.scrollable : ""
-            }`}
-            key={run.key}
-          >
-            {run.rows.map(({ content, index, line }) => {
-              const lineNumber = index + 1;
-              const menuActions = line ? hashMenuActions(line) : [];
-              const authorSlot = line
-                ? authorColorSlots.get(getBlameAuthorKey(line))
-                : undefined;
-              const authorStyle =
-                authorSlot === undefined
-                  ? undefined
-                  : ({
-                      "--blame-author-hue": `${blameAuthorHue(authorSlot)}deg`,
-                    } as CSSProperties);
-              return (
-                <div
-                  key={lineNumber}
-                  data-blame-row=""
-                  // `has-review-comment` stays literal: it is the shared
-                  // review-comment hook the diff surfaces also carry.
-                  className={`${styles.row} ${
-                    commentedLines.has(lineNumber)
-                      ? `${styles.hasReviewComment} has-review-comment`
-                      : ""
-                  }`}
-                >
-                  {line?.uncommitted ? (
-                    <span
-                      className={`${styles.gutter} ${styles.uncommitted}`}
-                      data-blame-gutter="uncommitted"
-                      title={t("sourceBlameNotCommitted")}
-                    >
-                      ·····
-                    </span>
-                  ) : line ? (
-                    <button
-                      type="button"
-                      className={`${styles.gutter} ${styles.commitLink} ${
-                        authorSlot === undefined ? "" : styles.authorColored
-                      }`}
-                      data-blame-gutter="commit"
-                      style={authorStyle}
-                      title={blameGutterTitle(line)}
-                      {...hashMenu.targetProps(menuActions, () =>
-                        onOpenCommit
-                          ? onOpenCommit(line.sha)
-                          : void writeClipboardText(line.sha),
-                      )}
-                    >
-                      {line.shortSha.slice(0, 5)}
-                    </button>
-                  ) : (
-                    <span
-                      className={`${styles.gutter} ${styles.gutterLoading}`}
-                      data-blame-gutter="loading"
-                      title={t("sourceBlameLoading")}
-                    >
-                      ·····
-                    </span>
-                  )}
-                  <button
-                    type="button"
-                    className={styles.lineNumber}
-                    data-blame-lineno=""
-                    disabled={!line}
-                    onClick={(event) => openAt(index, event.currentTarget)}
-                  >
-                    {lineNumber}
-                  </button>
-                  <BlameCodeCell
-                    content={content}
-                    highlightedHtml={codeLines?.[index]}
-                    enabled={Boolean(line)}
-                    onOpen={(element) => openAt(index, element)}
-                  />
-                </div>
-              );
-            })}
-          </div>
-        ))}
+        <ReviewCommentSplitLayout
+          before={renderBlameRuns(open ? "before" : "all")}
+          editor={commentEditor}
+          after={open ? renderBlameRuns("after") : null}
+        />
       </div>
       {hashMenu.menu}
       {(blame?.truncated || file?.contentTruncated) && (
         <div className={styles.truncated}>{t("sourceBlameTruncated")}</div>
-      )}
-
-      {open && openLine && blame && (
-        <ReviewCommentWindow
-          anchorLabel={`${path}:${openLine.line}`}
-          snippet={buildBlameSnippet(blame.lines, open.index).snippet}
-          top={open.top}
-          busy={busy}
-          error={draftError}
-          onCancel={() => setOpen(null)}
-          onAddToReview={async (text) => {
-            const anchor = submitAnchor(open.index);
-            if (anchor && (await addToReview(anchor, text))) setOpen(null);
-          }}
-          defaultSession={defaultSession}
-          onSubmitToDefault={
-            defaultSession
-              ? async (text) => {
-                  const anchor = submitAnchor(open.index);
-                  if (!anchor) return;
-                  const outcome = await submitNow(
-                    anchor,
-                    text,
-                    defaultSession.id,
-                    t("sourceReviewSubmitQueued"),
-                  );
-                  if (outcome === "navigated") setOpen(null);
-                }
-              : null
-          }
-          onSubmitToNew={async (text) => {
-            const anchor = submitAnchor(open.index);
-            if (!anchor) return;
-            const outcome = await submitNow(
-              anchor,
-              text,
-              "new",
-              t("sourceReviewSubmitQueued"),
-              defaultSession?.newSession,
-            );
-            if (outcome === "navigated") setOpen(null);
-          }}
-          t={t}
-        />
       )}
     </section>
   );

@@ -15,7 +15,6 @@ import styles from "./ReviewCommentWindow.module.css";
 export function ReviewCommentWindow({
   anchorLabel,
   snippet,
-  top,
   busy,
   error,
   onCancel,
@@ -27,7 +26,6 @@ export function ReviewCommentWindow({
 }: {
   anchorLabel: string;
   snippet: string;
-  top: number;
   busy: boolean;
   error: string | null;
   onCancel: () => void;
@@ -41,7 +39,7 @@ export function ReviewCommentWindow({
   const canSubmit = text.trim().length > 0 && !busy;
 
   return (
-    <div className={styles.window} style={{ top }}>
+    <div className={styles.window}>
       <div className={styles.anchor}>{anchorLabel}</div>
       <pre className={styles.snippet}>{snippet}</pre>
       <textarea

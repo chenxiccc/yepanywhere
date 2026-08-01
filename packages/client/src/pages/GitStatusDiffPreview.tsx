@@ -7,7 +7,6 @@ import type {
 } from "@yep-anywhere/shared";
 import {
   forwardRef,
-  memo,
   type ReactNode,
   useCallback,
   useEffect,
@@ -23,8 +22,9 @@ import { Modal } from "../components/ui/Modal";
 import { useDiffViewMode } from "../hooks/useDiffViewMode";
 import { isEditableKeyboardTarget } from "../hooks/useSourceKeyboard";
 import { type DiffViewMode, resolveDiffViewMode } from "../lib/diffSideBySide";
-import { DiffCommentLayer } from "./DiffCommentLayer";
+import { DiffCommentController } from "./DiffCommentLayer";
 import { SideBySideDiff } from "./SideBySideDiff";
+import { UnifiedDiff } from "./UnifiedDiff";
 import type { MessageKey, TranslationFn } from "../i18n";
 
 const GIT_DIFF_MAX_RENDERED_HTML_CHARS = 1_000_000;
@@ -591,7 +591,6 @@ function GitDiffContent({
       ),
     [sourceBaseSha, sourceHeadSha, sourceKind],
   );
-
   // Measure the diff pane (content width, not viewport) so `auto` can pick
   // side-by-side only when two readable code columns fit.
   useEffect(() => {
@@ -966,6 +965,40 @@ function GitDiffContent({
     </>
   );
 
+  const renderDiffProjection = (
+    splitAfterLine: number | undefined,
+    editor: ReactNode,
+  ) =>
+    displayResult.structuredPatch.length === 0 ? (
+      <div className="git-diff-empty-projection">
+        {ignoreWhitespace
+          ? t("gitStatusWhitespaceChangesHidden")
+          : t("gitStatusNoContentChanges")}
+      </div>
+    ) : displayResult.diffHtml &&
+      resolveDiffViewMode(viewMode, paneWidth) === "side-by-side" ? (
+      <SideBySideDiff
+        diffHtml={displayResult.diffHtml}
+        structuredPatch={displayResult.structuredPatch}
+        splitAfterLine={splitAfterLine}
+        editor={editor}
+      />
+    ) : displayResult.diffHtml ? (
+      <UnifiedDiff
+        diffHtml={displayResult.diffHtml}
+        structuredPatch={displayResult.structuredPatch}
+        splitAfterLine={splitAfterLine}
+        editor={editor}
+      />
+    ) : (
+      <UnifiedDiff
+        diffHtml=""
+        structuredPatch={displayResult.structuredPatch}
+        splitAfterLine={splitAfterLine}
+        editor={editor}
+      />
+    );
+
   return (
     <>
       {paneHeader ? (
@@ -995,37 +1028,21 @@ function GitDiffContent({
             previewSkipped={previewSkipped}
             t={t}
           />
+        ) : contentElement ? (
+          <DiffCommentController
+            projectId={projectId}
+            filePath={file.path}
+            structuredPatch={displayResult.structuredPatch}
+            revisions={commentRevisions}
+            container={contentElement}
+            onOpenChange={onCommentEditorOpenChange}
+            renderSource={({ openComment, editor }) =>
+              renderDiffProjection(openComment?.flatIndex, editor)
+            }
+            t={t}
+          />
         ) : (
-          <>
-            {displayResult.structuredPatch.length === 0 ? (
-              <div className="git-diff-empty-projection">
-                {ignoreWhitespace
-                  ? t("gitStatusWhitespaceChangesHidden")
-                  : t("gitStatusNoContentChanges")}
-              </div>
-            ) : displayResult.diffHtml &&
-              resolveDiffViewMode(viewMode, paneWidth) === "side-by-side" ? (
-              <SideBySideDiff
-                diffHtml={displayResult.diffHtml}
-                structuredPatch={displayResult.structuredPatch}
-              />
-            ) : displayResult.diffHtml ? (
-              <HighlightedDiff diffHtml={displayResult.diffHtml} />
-            ) : (
-              <DiffLines hunks={displayResult.structuredPatch} />
-            )}
-            {contentElement && (
-              <DiffCommentLayer
-                projectId={projectId}
-                filePath={file.path}
-                structuredPatch={displayResult.structuredPatch}
-                revisions={commentRevisions}
-                container={contentElement}
-                onOpenChange={onCommentEditorOpenChange}
-                t={t}
-              />
-            )}
-          </>
+          renderDiffProjection(undefined, null)
         )}
       </div>
     </>
@@ -1148,9 +1165,7 @@ function DiffViewModeIcon({ mode }: { mode: DiffViewMode }) {
       ) : (
         <>
           <path d="M4 7h16M4 12h16M4 17h16" />
-          {mode === "auto" && (
-            <path d="M5 4h4M5 4v3M19 20h-4M19 20v-3" />
-          )}
+          {mode === "auto" && <path d="M5 4h4M5 4v3M19 20h-4M19 20v-3" />}
         </>
       )}
     </svg>
@@ -1293,57 +1308,3 @@ function formatBytes(bytes: number): string {
 function formatFraction(value: number): string {
   return value >= 10 ? value.toFixed(0) : value.toFixed(1);
 }
-
-/** Render syntax-highlighted diff HTML from server */
-const HighlightedDiff = memo(function HighlightedDiff({
-  diffHtml,
-}: {
-  diffHtml: string;
-}) {
-  return (
-    <div
-      className="highlighted-diff"
-      // biome-ignore lint/security/noDangerouslySetInnerHtml: shiki output is safe
-      dangerouslySetInnerHTML={{ __html: diffHtml }}
-    />
-  );
-});
-
-/** Fallback plain-text diff renderer */
-const DiffLines = memo(function DiffLines({ hunks }: { hunks: PatchHunk[] }) {
-  const rows: ReactNode[] = [];
-  let flatIndex = 0;
-  for (const [hunkIndex, hunk] of hunks.entries()) {
-    rows.push(
-      <div
-        key={`hunk-${hunkIndex}`}
-        className="line line-hunk"
-      >{`@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`}</div>,
-    );
-    for (const line of hunk.lines) {
-      const prefix = line[0];
-      const className =
-        prefix === "-"
-          ? "diff-removed"
-          : prefix === "+"
-            ? "diff-added"
-            : "diff-context";
-      const rowIndex = flatIndex++;
-      rows.push(
-        <div
-          key={`${rowIndex}-${line.slice(0, 50)}`}
-          className={className}
-          data-diff-line={rowIndex}
-        >
-          <span className="diff-prefix">{prefix}</span>
-          {line.slice(1)}
-        </div>,
-      );
-    }
-  }
-  return (
-    <div className="diff-hunk">
-      <pre className="diff-content">{rows}</pre>
-    </div>
-  );
-});

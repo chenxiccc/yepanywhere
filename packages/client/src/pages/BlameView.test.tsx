@@ -133,6 +133,28 @@ describe("BlameView", () => {
     expect(anchor.newLine).toBe(1);
   });
 
+  it("splits blame after the selected row", async () => {
+    primeBlame();
+    render(
+      <MemoryRouter>
+        <BlameView projectId="p1" path="src/x.ts" t={t} />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() =>
+      expect(document.querySelectorAll("[data-blame-row]").length).toBe(2),
+    );
+    fireEvent.click(document.querySelectorAll(".blame-line-target")[0]!);
+    await screen.findByRole("textbox");
+
+    const before = document.querySelector("[data-review-comment-before]");
+    const after = document.querySelector("[data-review-comment-after]");
+    expect(before?.querySelectorAll("[data-blame-row]")).toHaveLength(1);
+    expect(after?.querySelectorAll("[data-blame-row]")).toHaveLength(1);
+    expect(before?.textContent).toContain("const a = 1;");
+    expect(after?.textContent).toContain("const b = 2;");
+  });
+
   it("anchors a not-yet-committed blame line as uncommitted", async () => {
     primeBlame();
     render(
@@ -226,7 +248,9 @@ describe("BlameView", () => {
     expect(await screen.findByText("const fast = 1;")).toBeTruthy();
     expect(getFile).toHaveBeenCalledWith("p1", "src/x.ts", false);
     expect(onContentWidthChange).toHaveBeenCalledWith("src/x.ts", 320);
-    expect(document.querySelector('[data-blame-gutter="loading"]')).toBeTruthy();
+    expect(
+      document.querySelector('[data-blame-gutter="loading"]'),
+    ).toBeTruthy();
     expect(document.querySelector('[data-blame-gutter="commit"]')).toBeNull();
 
     await act(async () => {

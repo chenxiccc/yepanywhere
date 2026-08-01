@@ -1,9 +1,6 @@
 // @vitest-environment jsdom
 
-import type {
-  PatchHunk,
-  ReviewCommentRevision,
-} from "@yep-anywhere/shared";
+import type { PatchHunk, ReviewCommentRevision } from "@yep-anywhere/shared";
 import {
   cleanup,
   fireEvent,
@@ -41,7 +38,8 @@ vi.mock("../api/client", () => ({
   },
 }));
 
-import { DiffCommentLayer } from "./DiffCommentLayer";
+import { DiffCommentController } from "./DiffCommentLayer";
+import { UnifiedDiff } from "./UnifiedDiff";
 
 // context " a" (old1/new1) · removed "-b" (old2) · added "+c" (new2)
 const PATCH: PatchHunk[] = [
@@ -76,19 +74,28 @@ function Harness({
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
   return (
     <div className="diff-modal-content" ref={setContainer}>
-      <div
-        className="highlighted-diff"
-        // biome-ignore lint/security/noDangerouslySetInnerHtml: test fixture
-        dangerouslySetInnerHTML={{ __html: DIFF_HTML }}
-      />
-      {container && (
-        <DiffCommentLayer
+      {container ? (
+        <DiffCommentController
           projectId="proj1"
           filePath="src/a.ts"
           structuredPatch={patch}
           revisions={revisions}
           container={container}
+          renderSource={({ openComment, editor }) => (
+            <UnifiedDiff
+              diffHtml={DIFF_HTML}
+              structuredPatch={patch}
+              splitAfterLine={openComment?.flatIndex}
+              editor={editor}
+            />
+          )}
           t={t}
+        />
+      ) : (
+        <div
+          className="highlighted-diff"
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: test fixture
+          dangerouslySetInnerHTML={{ __html: DIFF_HTML }}
         />
       )}
     </div>
@@ -130,6 +137,12 @@ describe("DiffCommentLayer", () => {
     // Anchor label shows the current (new) line number.
     await screen.findByText("src/a.ts:2");
     expect(screen.getByRole("textbox")).toBeTruthy();
+    expect(document.querySelector("[data-review-comment-split]")).toBeTruthy();
+    expect(
+      document
+        .querySelector("[data-review-comment-before]")
+        ?.querySelector('[data-diff-line="2"]'),
+    ).toBeTruthy();
   });
 
   it("exposes one line-action menu through pointer and keyboard paths", async () => {
@@ -307,19 +320,30 @@ describe("DiffCommentLayer", () => {
       const [container, setContainer] = useState<HTMLDivElement | null>(null);
       return (
         <div ref={setContainer}>
-          <div data-diff-col="old">
-            <span className="line line-context" data-diff-line="0">
-              {" a"}
-            </span>
-          </div>
-          {container && (
-            <DiffCommentLayer
+          {container ? (
+            <DiffCommentController
               projectId="proj1"
               filePath="src/a.ts"
               structuredPatch={PATCH}
               container={container}
+              renderSource={({ editor }) => (
+                <>
+                  <div data-diff-col="old">
+                    <span className="line line-context" data-diff-line="0">
+                      {" a"}
+                    </span>
+                  </div>
+                  {editor}
+                </>
+              )}
               t={t}
             />
+          ) : (
+            <div data-diff-col="old">
+              <span className="line line-context" data-diff-line="0">
+                {" a"}
+              </span>
+            </div>
           )}
         </div>
       );

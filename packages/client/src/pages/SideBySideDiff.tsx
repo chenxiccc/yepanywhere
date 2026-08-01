@@ -1,9 +1,10 @@
 import type { PatchHunk } from "@yep-anywhere/shared";
-import { memo, useMemo } from "react";
+import { memo, type ReactNode, useMemo } from "react";
 import {
   buildSideBySideRows,
   parseDiffLineFragments,
 } from "../lib/diffSideBySide";
+import { ReviewCommentSplitLayout } from "./ReviewCommentSplitLayout";
 
 /**
  * Side-by-side diff (topic: source-review-to-session, P8). The server already
@@ -17,9 +18,13 @@ import {
 export const SideBySideDiff = memo(function SideBySideDiff({
   diffHtml,
   structuredPatch,
+  splitAfterLine,
+  editor = null,
 }: {
   diffHtml: string;
   structuredPatch: PatchHunk[];
+  splitAfterLine?: number;
+  editor?: ReactNode;
 }) {
   const fragments = useMemo(() => parseDiffLineFragments(diffHtml), [diffHtml]);
   const rows = useMemo(
@@ -27,6 +32,45 @@ export const SideBySideDiff = memo(function SideBySideDiff({
     [structuredPatch],
   );
 
+  const splitIndex =
+    splitAfterLine === undefined
+      ? -1
+      : rows.findIndex(
+          (row) =>
+            row.type === "line" &&
+            (row.left === splitAfterLine || row.right === splitAfterLine),
+        );
+
+  if (splitIndex < 0 || !editor) {
+    return <SideBySideRows rows={rows} fragments={fragments} />;
+  }
+
+  return (
+    <ReviewCommentSplitLayout
+      before={
+        <SideBySideRows
+          rows={rows.slice(0, splitIndex + 1)}
+          fragments={fragments}
+        />
+      }
+      editor={editor}
+      after={
+        <SideBySideRows
+          rows={rows.slice(splitIndex + 1)}
+          fragments={fragments}
+        />
+      }
+    />
+  );
+});
+
+function SideBySideRows({
+  rows,
+  fragments,
+}: {
+  rows: ReturnType<typeof buildSideBySideRows>;
+  fragments: Map<number, string>;
+}) {
   return (
     <div className="side-by-side-diff">
       {rows.map((row, index) => {
@@ -53,7 +97,7 @@ export const SideBySideDiff = memo(function SideBySideDiff({
       })}
     </div>
   );
-});
+}
 
 function cellHtml(
   fragments: Map<number, string>,
