@@ -66,7 +66,12 @@ try {
     /* @vite-ignore */ modulePath
   );
   const Candidate = loaded[exportName];
-  if (typeof Candidate !== "function") {
+  const isReactComponent =
+    typeof Candidate === "function" ||
+    (Candidate !== null &&
+      typeof Candidate === "object" &&
+      "$$typeof" in Candidate);
+  if (!isReactComponent) {
     throw new Error(`Module does not export component ${exportName}`);
   }
 

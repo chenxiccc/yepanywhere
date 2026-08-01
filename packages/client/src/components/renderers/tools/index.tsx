@@ -206,6 +206,11 @@ import { codeModeExecRenderer } from "./CodeModeExecRenderer";
 import { editRenderer } from "./EditRenderer";
 import { exitPlanModeRenderer } from "./ExitPlanModeRenderer";
 import { globRenderer } from "./GlobRenderer";
+import {
+  createGoalToolRenderer,
+  getGoalToolRenderer,
+  updateGoalToolRenderer,
+} from "./GoalRenderer";
 import { grepRenderer } from "./GrepRenderer";
 import { killShellRenderer } from "./KillShellRenderer";
 import { readRenderer } from "./ReadRenderer";
@@ -244,6 +249,9 @@ toolRegistry.register(updatePlanRenderer);
 toolRegistry.register(writeStdinRenderer);
 
 // Codex-specific tools
+toolRegistry.register(createGoalToolRenderer);
+toolRegistry.register(getGoalToolRenderer);
+toolRegistry.register(updateGoalToolRenderer);
 toolRegistry.register(viewImageRenderer);
 toolRegistry.register(spawnAgentRenderer);
 toolRegistry.register(codeModeExecRenderer);

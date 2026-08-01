@@ -1,0 +1,187 @@
+.card,
+.empty {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border-color, #333);
+  border-left: 3px solid var(--text-muted, #888);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--bg-code, #1f1f1f) 72%, transparent);
+  cursor: default;
+}
+
+.card {
+  padding: 0.7rem 0.8rem 0.65rem;
+}
+
+.empty {
+  padding: 0.65rem 0.8rem;
+  color: var(--text-muted, #888);
+  font-family: var(--output-prose-font-family);
+  font-size: var(--output-prose-font-size);
+  line-height: 1.4;
+}
+
+.statusActive {
+  border-left-color: var(--timeline-dot-working, #4aa3ff);
+}
+
+.statusPaused,
+.statusLimited {
+  border-left-color: var(--timeline-dot-warning, #d7ba7d);
+}
+
+.statusBlocked,
+.error {
+  border-left-color: var(--timeline-dot-error, #f85149);
+}
+
+.statusComplete {
+  border-left-color: var(--app-yep-green, #059669);
+}
+
+.statusUnknown {
+  border-left-color: var(--text-muted, #888);
+}
+
+.topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.35rem;
+}
+
+.objectiveLabel {
+  color: var(--text-muted, #888);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.statusBadge {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  max-width: 100%;
+  padding: 0.1rem 0.45rem;
+  border: 1px solid color-mix(in srgb, currentColor 32%, transparent);
+  border-radius: 999px;
+  color: var(--text-secondary, #aaa);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  font-weight: 650;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.statusActive .statusBadge {
+  color: var(--timeline-dot-working, #4aa3ff);
+}
+
+.statusPaused .statusBadge,
+.statusLimited .statusBadge {
+  color: var(--timeline-dot-warning, #d7ba7d);
+}
+
+.statusBlocked .statusBadge,
+.error {
+  color: var(--timeline-dot-error, #f85149);
+}
+
+.statusComplete .statusBadge {
+  color: var(--app-yep-green, #059669);
+}
+
+.objective {
+  margin: 0;
+  color: var(--text-primary, #ccc);
+  font-family: var(--output-prose-font-family);
+  font-optical-sizing: var(--output-prose-font-optical-sizing);
+  font-variation-settings: var(--output-prose-font-variation-settings);
+  font-size: var(--output-prose-font-size);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.metrics {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.75rem;
+  margin-top: 0.6rem;
+  color: var(--text-muted, #888);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  line-height: 1.35;
+}
+
+.metric {
+  color: var(--text-secondary, #aaa);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.metricSecondary {
+  font-variant-numeric: tabular-nums;
+}
+
+.progress {
+  display: block;
+  width: 100%;
+  height: 4px;
+  margin-top: 0.45rem;
+  overflow: hidden;
+  border: 0;
+  border-radius: 999px;
+  background: var(--border-color, #333);
+  accent-color: var(--timeline-dot-working, #4aa3ff);
+}
+
+.progress::-webkit-progress-bar {
+  border-radius: 999px;
+  background: var(--border-color, #333);
+}
+
+.progress::-webkit-progress-value {
+  border-radius: 999px;
+  background: var(--timeline-dot-working, #4aa3ff);
+}
+
+.progress::-moz-progress-bar {
+  border-radius: 999px;
+  background: var(--timeline-dot-working, #4aa3ff);
+}
+
+.error {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.errorMessage {
+  color: var(--text-primary, #ccc);
+  font-family: var(--output-prose-font-family);
+  font-size: var(--output-prose-font-size);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 600px) {
+  .card {
+    padding: 0.65rem 0.7rem 0.6rem;
+  }
+
+  .topline {
+    gap: 0.5rem;
+  }
+
+  .metrics {
+    gap: 0.15rem 0.55rem;
+  }
+}

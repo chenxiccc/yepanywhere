@@ -19,6 +19,29 @@ and the rationale for each choice.
 | **Edit diff** | `EditCollapsedPreview` → `DiffMathView` | unified-diff string |
 | **Diff nested in Bash output** | `BashCollapsedPreview` → `FixedFontMathToggle` | detected via `looksLikeUnifiedDiff` |
 
+## Codex goal tool rows
+
+Codex exposes three model-facing goal tools in persisted thread transcripts:
+`create_goal`, `get_goal`, and `update_goal`. They share a dedicated renderer
+rather than the generic JSON fallback. A known goal response shows the complete,
+pre-wrapped objective, its lifecycle status, token use and budget when present,
+remaining tokens, elapsed goal time, and a budget progress indicator. Long
+objectives must wrap at phone width without horizontal scrolling.
+
+The renderer accepts the current camel-case response fields and snake-case
+equivalents retained by older or partially normalized transcripts. Provider
+bookkeeping that does not help supervise the goal — thread ids, timestamps, and
+the model-only completion-report instruction — stays out of the visual summary.
+An empty `get_goal` response says that no goal is set, pending calls state the
+operation in progress, and failures show the provider error rather than a
+serialized response object.
+
+The separate Codex app-server `thread/goal/set`, `thread/goal/get`, and
+`thread/goal/clear` methods, plus updated/cleared notifications, are control
+protocol operations rather than additional model tool rows. This renderer does
+not make the YA client depend on those routes or add persistent goal chrome
+outside the transcript.
+
 ## Thinking block formatting
 
 Thinking blocks are user-visible model reasoning summaries, not normal assistant
