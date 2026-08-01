@@ -771,6 +771,12 @@ export const api = {
       forkUpToMessageId?: string;
       /** Client URL the user was on; shown in the handoff Source Session block. */
       sourceUrl?: string;
+      /**
+       * Seed the successor with this message instead of the text the server
+       * would build, set when the user edited the handoff draft. Ignored by
+       * "fork", which copies the real transcript.
+       */
+      handoffText?: string;
     },
   ) =>
     fetchJSON<{
@@ -809,8 +815,31 @@ export const api = {
         restartMode: options?.restartMode,
         forkUpToMessageId: options?.forkUpToMessageId,
         sourceUrl: options?.sourceUrl,
+        handoffText: options?.handoffText,
       }),
     }),
+
+  /**
+   * The handoff message as it stands now, for the Handoff Session dialog to
+   * offer as an editable draft. Compacts first, like the handoff itself, but
+   * leaves the source session running.
+   */
+  getRestartHandoff: (
+    projectId: string,
+    sessionId: string,
+    options?: { sourceUrl?: string },
+  ) =>
+    fetchJSON<{
+      handoff: string;
+      handoffTitle: string;
+      compactStatus: string;
+    }>(
+      `/projects/${projectId}/sessions/${sessionId}/restart/handoff${
+        options?.sourceUrl
+          ? `?sourceUrl=${encodeURIComponent(options.sourceUrl)}`
+          : ""
+      }`,
+    ),
 
   /**
    * Fork the provider transcript into a new session without starting a

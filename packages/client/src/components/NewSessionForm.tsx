@@ -262,6 +262,9 @@ export interface NewSessionFormProps {
      * hides the composer, and `initialMessage` goes unused.
      */
     showComposer?: boolean;
+    /** Start-control wording, for a launch whose verb is not "start session". */
+    startLabel?: string;
+    startingLabel?: string;
     submit: (request: {
       message: string;
       options: SessionOptions;
@@ -415,11 +418,16 @@ export function NewSessionForm({
   const fixedProject = launch?.fixedProject ?? false;
   const showComposer = launch?.showComposer ?? true;
 
+  // A launch may resolve its seed asynchronously — the handoff draft is
+  // fetched — so wait for content rather than seeding an empty composer once
+  // and never again. A restored draft is the user's own earlier edit of this
+  // same launch, so it wins over re-seeding.
   useLayoutEffect(() => {
     if (!launch || hasSeededMessageRef.current) return;
+    if (!launch.initialMessage) return;
     hasSeededMessageRef.current = true;
-    setMessage(launch.initialMessage);
-  }, [launch, setMessage]);
+    if (!message) setMessage(launch.initialMessage);
+  }, [launch, message, setMessage]);
 
   const writeDraftAttachmentState = useCallback(
     (nextFiles: readonly PendingFile[]) => {
@@ -3388,6 +3396,23 @@ export function NewSessionForm({
               </button>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* The ordinary start control lives in the composer toolbar, so a launch
+          that hides the composer needs its own. */}
+      {launch && !showComposer && (
+        <div className="new-session-launch-actions">
+          <button
+            type="button"
+            className="settings-button"
+            onClick={handleStartSession}
+            disabled={isStarting || !canStart}
+          >
+            {(isStarting ? launch.startingLabel : undefined) ??
+              launch.startLabel ??
+              t("newSessionStartAction")}
+          </button>
         </div>
       )}
     </div>
