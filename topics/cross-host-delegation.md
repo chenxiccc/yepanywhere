@@ -97,6 +97,8 @@ rather than changing the existing host switcher:
 - both render one shared component representing the currently connected YA
   server;
 - the page is linked only from an opt-in control in Developer settings;
+- while that option is off, direct navigation to either local or relay form
+  redirects to the current host's Projects page without rendering the preview;
 - when enabled, the Open action stays inside that setting's card rather than
   appearing as a separate option;
 - the sidebar **Switch Host** action, host picker, and `/-/monitor` retain

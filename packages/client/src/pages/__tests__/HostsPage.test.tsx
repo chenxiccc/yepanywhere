@@ -2,10 +2,25 @@
 
 import { cleanup, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
-import { HostsPage } from "../HostsPage";
+import { HostsPage, HostsRoute } from "../HostsPage";
+
+const routeState = vi.hoisted(() => ({
+  basePath: "",
+  enabled: false,
+}));
+
+vi.mock("../../hooks/useDeveloperMode", () => ({
+  useDeveloperMode: () => ({
+    crossHostDelegationEnabled: routeState.enabled,
+  }),
+}));
+
+vi.mock("../../hooks/useRemoteBasePath", () => ({
+  useRemoteBasePath: () => routeState.basePath,
+}));
 
 vi.mock("../../layouts", () => ({
   MainContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
@@ -33,6 +48,11 @@ vi.mock("../../components/PageHeader", () => ({
 }));
 
 describe("HostsPage", () => {
+  beforeEach(() => {
+    routeState.basePath = "";
+    routeState.enabled = false;
+  });
+
   afterEach(() => cleanup());
 
   it("renders a connection-independent server preview", () => {
@@ -53,5 +73,45 @@ describe("HostsPage", () => {
     expect(
       screen.getAllByText("Not available in this preview"),
     ).toHaveLength(2);
+  });
+
+  it.each([
+    { basePath: "", hostsPath: "/-/hosts", projectsPath: "/projects" },
+    {
+      basePath: "/relay-user",
+      hostsPath: "/relay-user/-/hosts",
+      projectsPath: "/relay-user/projects",
+    },
+  ])(
+    "redirects a disabled direct route at $hostsPath",
+    ({ basePath, hostsPath, projectsPath }) => {
+      routeState.basePath = basePath;
+      render(
+        <MemoryRouter initialEntries={[hostsPath]}>
+          <Routes>
+            <Route path={hostsPath} element={<HostsRoute />} />
+            <Route path={projectsPath} element={<p>Projects destination</p>} />
+          </Routes>
+        </MemoryRouter>,
+      );
+
+      expect(screen.getByText("Projects destination")).toBeTruthy();
+      expect(screen.queryByTestId("hosts-page")).toBeNull();
+    },
+  );
+
+  it("renders the direct route when the preview is enabled", () => {
+    routeState.enabled = true;
+    render(
+      <I18nProvider>
+        <MemoryRouter initialEntries={["/-/hosts"]}>
+          <Routes>
+            <Route path="/-/hosts" element={<HostsRoute />} />
+          </Routes>
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    expect(screen.getByTestId("hosts-page")).toBeTruthy();
   });
 });

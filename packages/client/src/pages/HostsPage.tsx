@@ -1,5 +1,8 @@
+import { Navigate } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { useHostIdentity } from "../contexts/HostIdentityContext";
+import { useDeveloperMode } from "../hooks/useDeveloperMode";
+import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useI18n } from "../i18n";
 import { MainContent, useNavigationLayout } from "../layouts";
 import styles from "./HostsPage.module.css";
@@ -111,4 +114,15 @@ export function HostsPage() {
       </main>
     </MainContent>
   );
+}
+
+export function HostsRoute() {
+  const { crossHostDelegationEnabled } = useDeveloperMode();
+  const basePath = useRemoteBasePath();
+
+  if (!crossHostDelegationEnabled) {
+    return <Navigate to={`${basePath}/projects`} replace />;
+  }
+
+  return <HostsPage />;
 }
