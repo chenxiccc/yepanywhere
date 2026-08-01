@@ -8,6 +8,7 @@ import type { BangCommandTranscriptDisplayObject } from "@yep-anywhere/shared";
 import { useEffect, useRef, useState } from "react";
 import { useI18n } from "../i18n";
 import { MarkdownPreview } from "./MarkdownPreview";
+import styles from "./BangCommandDisplayObject.module.css";
 
 export interface BangCommandOutput {
   stdout: string;
@@ -33,6 +34,16 @@ function formatDuration(ms: number): string {
   const s = total % 60;
   return m > 0 ? `${m}m${String(s).padStart(2, "0")}s` : `${s}s`;
 }
+
+const statusModifierByStatus: Record<
+  BangCommandTranscriptDisplayObject["status"],
+  string | undefined
+> = {
+  running: undefined,
+  done: undefined,
+  error: styles.error,
+  killed: styles.killed,
+};
 
 export function BangCommandDisplayObject({
   object,
@@ -117,33 +128,37 @@ export function BangCommandDisplayObject({
 
   return (
     <div
-      className={`bang-command-display-object bang-command-${object.status}`}
+      className={[styles.root, statusModifierByStatus[object.status]]
+        .filter(Boolean)
+        .join(" ")}
       role="group"
       aria-label={t("bangBlockAriaLabel")}
     >
-      <div className="bang-command-header">
-        <span className="bang-command-glyph" aria-hidden="true">
+      <div className={styles.header}>
+        <span className={styles.glyph} aria-hidden="true">
           !!
         </span>
-        <code className="bang-command-line" title={object.cwd}>
+        <code className={styles.line} title={object.cwd}>
           {object.command}
         </code>
-        <span className="bang-command-meta">
+        <span className={styles.meta}>
           {object.status === "running" && (
-            <span className="bang-command-running">
-              <span className="bang-command-spinner" aria-hidden="true" />
+            <span className={styles.running}>
+              <span className={styles.spinner} aria-hidden="true" />
               {t("bangRunning")}
             </span>
           )}
           {exitLabel && (
             <span
-              className={`bang-command-exit${object.exitCode === 0 ? "" : " bang-command-exit-nonzero"}`}
+              className={
+                object.exitCode === 0 ? undefined : styles.exitNonzero
+              }
             >
               {exitLabel}
             </span>
           )}
           {object.durationMs !== undefined && (
-            <span className="bang-command-duration">
+            <span>
               {formatDuration(object.durationMs)}
             </span>
           )}
@@ -151,14 +166,14 @@ export function BangCommandDisplayObject({
       </div>
 
       {object.error && (
-        <div className="bang-command-error" role="alert">
+        <div className={styles.error} role="alert">
           {object.error}
         </div>
       )}
 
       {object.status === "running" ? (
         (object.stdoutPreview || object.stderrPreview) && (
-          <pre className="bang-command-preview">
+          <pre className={styles.preview}>
             {[object.stdoutPreview, object.stderrPreview]
               .filter(Boolean)
               .join("\n")}
@@ -166,30 +181,30 @@ export function BangCommandDisplayObject({
         )
       ) : renderedHtml && !showRaw ? (
         <MarkdownPreview
-          className="bang-command-output"
+          className={styles.output}
           html={renderedHtml}
           ariaLabel={t("bangOutputAriaLabel")}
         />
       ) : rawStdout ? (
-        <pre className="bang-command-preview">{rawStdout}</pre>
+        <pre className={styles.preview}>{rawStdout}</pre>
       ) : null}
 
       {finished && stderrText.trim() && (
-        <details className="bang-command-stderr">
+        <details className={styles.stderr}>
           <summary>{t("bangStderrLabel")}</summary>
-          <pre className="bang-command-preview">{stderrText}</pre>
+          <pre className={styles.preview}>{stderrText}</pre>
         </details>
       )}
 
       {(object.stdoutTruncated || output?.responseTruncated) && (
-        <div className="bang-command-truncated">{t("bangTruncatedNote")}</div>
+        <div className={styles.truncated}>{t("bangTruncatedNote")}</div>
       )}
 
-      <div className="bang-command-actions">
+      <div className={styles.actions}>
         {object.status === "running" && handlers?.onKill && (
           <button
             type="button"
-            className="bang-command-action"
+            className={styles.action}
             onClick={() => handlers.onKill?.(object.id)}
           >
             {t("bangCancel")}
@@ -198,7 +213,7 @@ export function BangCommandDisplayObject({
         {finished && renderedHtml && (
           <button
             type="button"
-            className="bang-command-action"
+            className={styles.action}
             onClick={() => setShowRaw((value) => !value)}
           >
             {showRaw ? t("bangRendered") : t("bangRaw")}
@@ -207,7 +222,7 @@ export function BangCommandDisplayObject({
         {finished && fetchOutput && (
           <button
             type="button"
-            className="bang-command-action"
+            className={styles.action}
             disabled={outputLoading}
             onClick={() => {
               if (outputLoadFailed) {
@@ -230,7 +245,7 @@ export function BangCommandDisplayObject({
         {handlers?.onRecall && (
           <button
             type="button"
-            className="bang-command-action"
+            className={styles.action}
             onClick={() => handlers.onRecall?.(object.command)}
             title={t("bangRecallTitle")}
           >
@@ -240,7 +255,7 @@ export function BangCommandDisplayObject({
         {finished && handlers?.onRerun && (
           <button
             type="button"
-            className="bang-command-action"
+            className={styles.action}
             onClick={() => handlers.onRerun?.(object.command)}
           >
             {t("bangRerun")}
@@ -249,7 +264,7 @@ export function BangCommandDisplayObject({
         {finished && handlers?.onEcho && (
           <button
             type="button"
-            className="bang-command-action"
+            className={styles.action}
             onClick={() => handlers.onEcho?.(object)}
             title={t("bangEchoTitle")}
           >
@@ -259,7 +274,7 @@ export function BangCommandDisplayObject({
         {finished && handlers?.onDelete && (
           <button
             type="button"
-            className="bang-command-action bang-command-action-delete"
+            className={[styles.action, styles.actionDelete].join(" ")}
             onClick={() => handlers.onDelete?.(object.id)}
           >
             {t("bangDelete")}
