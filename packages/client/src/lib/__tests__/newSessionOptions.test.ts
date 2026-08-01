@@ -8,6 +8,7 @@ import {
   getDefaultHelperSideModel,
   getPreferredPromptSuggestionMode,
   getPreferredRecapMode,
+  parseThinkingOption,
   providerSupportsPromptSuggestionMode,
   providerSupportsRecapMode,
   resolvePromptSuggestionMode,
@@ -31,6 +32,22 @@ describe("new session option defaults", () => {
     expect(toThinkingOption("off", "high")).toBe("off");
     expect(toThinkingOption("auto", "high")).toBe("auto");
     expect(toThinkingOption("on", "medium")).toBe("on:medium");
+    expect(parseThinkingOption("off")).toEqual({
+      mode: "off",
+      effort: "high",
+    });
+    expect(parseThinkingOption("auto")).toEqual({
+      mode: "auto",
+      effort: "high",
+    });
+    expect(parseThinkingOption("on:max")).toEqual({
+      mode: "on",
+      effort: "max",
+    });
+    expect(parseThinkingOption("xhigh")).toEqual({
+      mode: "on",
+      effort: "xhigh",
+    });
   });
 
   it("keeps saved recap defaults only when the mode is offered", () => {

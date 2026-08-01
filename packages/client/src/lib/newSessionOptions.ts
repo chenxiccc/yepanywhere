@@ -9,6 +9,7 @@ import {
   type ThinkingMode,
   type ThinkingOption,
 } from "@yep-anywhere/shared";
+import { isEffortLevel } from "./effortLevels";
 
 export const RECAP_MODE_ORDER: readonly RecapMode[] = [
   "off",
@@ -26,6 +27,19 @@ export function toThinkingOption(
   if (mode === "off") return "off";
   if (mode === "auto") return "auto";
   return `on:${effort}`;
+}
+
+export function parseThinkingOption(option: ThinkingOption): {
+  mode: ThinkingMode;
+  effort: EffortLevel;
+} {
+  if (option === "off") return { mode: "off", effort: "high" };
+  if (option === "auto") return { mode: "auto", effort: "high" };
+  const effort = option.startsWith("on:") ? option.slice(3) : option;
+  return {
+    mode: "on",
+    effort: isEffortLevel(effort) ? effort : "high",
+  };
 }
 
 export function providerSupportsRecapMode(

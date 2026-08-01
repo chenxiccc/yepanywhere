@@ -6,6 +6,7 @@ import type {
   ProviderInfo,
   ProviderName,
   RecapMode,
+  ThinkingMode,
   ThinkingOption,
 } from "@yep-anywhere/shared";
 import {
@@ -39,7 +40,6 @@ import {
   getEffortLevelLabel,
   getEffortLevelOptions,
   getThinkingModeOptions,
-  isEffortLevel,
   resolveSupportedEffortLevel,
   resolveSupportedThinkingMode,
 } from "../lib/effortLevels";
@@ -48,48 +48,20 @@ import {
   getProviderSessionDefaults,
 } from "../lib/newSessionDefaults";
 import {
+  PROMPT_SUGGESTION_MODE_ORDER,
+  RECAP_MODE_ORDER,
+  getDefaultHelperSideModel,
+  parseThinkingOption,
+  providerSupportsPromptSuggestionMode,
+  providerSupportsRecapMode,
+  toThinkingOption,
+} from "../lib/newSessionOptions";
+import {
   startsAdditionalModelGroup,
   withVisibleModelSelection,
 } from "../lib/modelCatalog";
 import { Modal } from "./ui/Modal";
 import { ModelSubscriptionUsage } from "./ModelSubscriptionUsage";
-
-type ThinkingMode = "off" | "auto" | "on";
-
-const RECAP_MODE_ORDER: RecapMode[] = ["off", "side-session", "fork"];
-const PROMPT_SUGGESTION_MODE_ORDER: PromptSuggestionMode[] = ["off", "native"];
-
-function parseThinkingOption(option: ThinkingOption | undefined): {
-  mode: ThinkingMode;
-  effort: EffortLevel;
-} {
-  if (!option || option === "off") {
-    return { mode: "off", effort: "high" };
-  }
-  if (option === "auto") {
-    return { mode: "auto", effort: "high" };
-  }
-  if (option.startsWith("on:")) {
-    const effort = option.slice(3);
-    return {
-      mode: "on",
-      effort: isEffortLevel(effort) ? effort : "high",
-    };
-  }
-  return {
-    mode: "on",
-    effort: isEffortLevel(option) ? option : "high",
-  };
-}
-
-function toThinkingOption(
-  mode: ThinkingMode,
-  effort: EffortLevel,
-): ThinkingOption {
-  if (mode === "off") return "off";
-  if (mode === "auto") return "auto";
-  return `on:${effort}`;
-}
 
 function getRestartDefaultModel(params: {
   provider: ProviderName;
@@ -122,7 +94,7 @@ function getRestartDefaultThinking(params: {
   defaults?: NewSessionDefaults | null;
   currentThinking?: ThinkingOption;
 }): { mode: ThinkingMode; effort: EffortLevel } {
-  const current = parseThinkingOption(params.currentThinking);
+  const current = parseThinkingOption(params.currentThinking ?? "off");
   const providerDefaults = getProviderSessionDefaults(
     params.defaults,
     params.provider,
@@ -172,18 +144,6 @@ function getProviderModels(
   );
 }
 
-function providerSupportsRecapMode(
-  provider:
-    | Pick<ProviderInfo, "supportsRecaps" | "supportsNativeRecaps">
-    | null
-    | undefined,
-  mode: RecapMode,
-): boolean {
-  if (mode === "off") return true;
-  if (mode === "native") return false;
-  return provider?.supportsRecaps === true;
-}
-
 function getRestartDefaultRecapMode(params: {
   provider: ProviderInfo | null | undefined;
   defaults?: NewSessionDefaults | null;
@@ -195,17 +155,6 @@ function getRestartDefaultRecapMode(params: {
     return params.defaults.recapMode;
   }
   return "off";
-}
-
-function providerSupportsPromptSuggestionMode(
-  provider:
-    | Pick<ProviderInfo, "supportsNativePromptSuggestions">
-    | null
-    | undefined,
-  mode: PromptSuggestionMode,
-): boolean {
-  if (mode === "off") return true;
-  return provider?.supportsNativePromptSuggestions === true;
 }
 
 function getRestartDefaultPromptSuggestionMode(params: {
@@ -236,20 +185,10 @@ function getRestartDefaultHelperSideModel(params: {
   models: ModelInfo[];
   defaults?: NewSessionDefaults | null;
 }): string {
-  const providerDefaults = getProviderSessionDefaults(
-    params.defaults,
-    params.provider,
+  return getDefaultHelperSideModel(
+    params.models,
+    getProviderSessionDefaults(params.defaults, params.provider),
   );
-  const defaultModel = providerDefaults.helperSideModel;
-  if (
-    defaultModel &&
-    (defaultModel === HELPER_SIDE_MODEL_CHEAPEST ||
-      defaultModel === HELPER_SIDE_MODEL_SAME_AS_MAIN ||
-      params.models.some((model) => model.id === defaultModel))
-  ) {
-    return defaultModel;
-  }
-  return HELPER_SIDE_MODEL_CHEAPEST;
 }
 
 interface RestartSessionModalProps {
