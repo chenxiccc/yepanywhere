@@ -286,7 +286,7 @@ export function RestartSessionModal({
               fixedProject: true,
               allowAttachments: false,
               allowProjectQueue: false,
-              showComposer: !isFork,
+              composer: isFork ? "muted" : "editable",
               fixedProviderModel: isFork,
               startLabel: isFork
                 ? t("sessionRestartStartFork")

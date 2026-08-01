@@ -1,0 +1,11 @@
+/* A muted composer holds a draft the launch will not send — a fork copies the
+   provider transcript instead. It stays readable so it can still inform the
+   choice, but reads as inert and gives its height back to the options below. */
+.mutedComposer textarea {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.mutedComposer textarea:focus {
+  outline: none;
+}

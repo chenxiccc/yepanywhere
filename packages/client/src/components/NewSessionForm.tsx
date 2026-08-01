@@ -35,6 +35,7 @@ import {
   api,
 } from "../api/client";
 import { ENTER_SENDS_MESSAGE } from "../constants";
+import styles from "./NewSessionForm.module.css";
 import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import { useToastContext } from "../contexts/ToastContext";
 import { useBrowserXaiSttApiKey } from "../hooks/useBrowserXaiSttApiKey";
@@ -257,11 +258,12 @@ export interface NewSessionFormProps {
     allowAttachments?: boolean;
     allowProjectQueue?: boolean;
     /**
-     * Whether the seeded message is offered as an editable draft. A launch
-     * that composes its own first turn (fork copies the real transcript)
-     * hides the composer, and `initialMessage` goes unused.
+     * How the seeded message is offered. `editable` is an ordinary draft.
+     * `muted` shows it dimmed, compact, and read-only: the launch composes
+     * its own first turn — a fork copies the real transcript — so the draft
+     * is context for the choice rather than something being sent.
      */
-    showComposer?: boolean;
+    composer?: "editable" | "muted";
     /** Start-control wording, for a launch whose verb is not "start session". */
     startLabel?: string;
     startingLabel?: string;
@@ -422,7 +424,7 @@ export function NewSessionForm({
   const allowAttachments = launch?.allowAttachments ?? true;
   const allowProjectQueue = launch?.allowProjectQueue ?? true;
   const fixedProject = launch?.fixedProject ?? false;
-  const showComposer = launch?.showComposer ?? true;
+  const composerMuted = launch?.composer === "muted";
   const showProviderAndModel = !(launch?.fixedProviderModel ?? false);
 
   // A launch may resolve its seed asynchronously — the handoff draft is
@@ -1797,10 +1799,10 @@ export function NewSessionForm({
       }
 
       const hasContent = finalMessage.trim() || pendingFiles.length > 0;
-      // A launch that hides the composer composes its own first turn, so an
-      // empty message is not a reason to refuse the start.
+      // A muted composer composes its own first turn, so an empty message is
+      // not a reason to refuse the start.
       if (
-        (!hasContent && showComposer) ||
+        (!hasContent && !composerMuted) ||
         isStarting ||
         !hasSelectedProviderModel
       )
@@ -2106,7 +2108,7 @@ export function NewSessionForm({
       isStarting,
       launch,
       message,
-      showComposer,
+      composerMuted,
       navigate,
       pendingFiles,
       projectInput,
@@ -2574,7 +2576,7 @@ export function NewSessionForm({
 
   const hasContent = message.trim() || pendingFiles.length > 0;
   const canStart = Boolean(
-    (hasContent || !showComposer) && hasSelectedProviderModel,
+    (hasContent || composerMuted) && hasSelectedProviderModel,
   );
   const hasProjectQueueTargetProject = Boolean(projectQueueTargetProjectId);
   const pendingFilesReadyForProjectQueue =
@@ -2712,7 +2714,10 @@ export function NewSessionForm({
             }}
             placeholder={resolvedPlaceholder}
             disabled={isStarting}
-            rows={rows}
+            // Read-only rather than disabled: the draft stays selectable and
+            // scrollable so it can still be read, just not sent.
+            readOnly={composerMuted}
+            rows={composerMuted ? Math.min(rows, 3) : rows}
             className="new-session-form-textarea"
           />
         </div>
@@ -3336,11 +3341,15 @@ export function NewSessionForm({
       )}
 
       <div className="new-session-top-layout">
-        {showComposer && (
-          <div className="new-session-main-stack">
-            <div className="new-session-input-area">{inputArea}</div>
+        <div className="new-session-main-stack">
+          <div
+            className={`new-session-input-area${
+              composerMuted ? ` ${styles.mutedComposer}` : ""
+            }`}
+          >
+            {inputArea}
           </div>
-        )}
+        </div>
         {!fixedProject && (
           <aside className="new-session-project-slot">
             {projectChooser}
@@ -3412,22 +3421,6 @@ export function NewSessionForm({
         </div>
       )}
 
-      {/* The ordinary start control lives in the composer toolbar, so a launch
-          that hides the composer needs its own. */}
-      {launch && !showComposer && (
-        <div className="new-session-launch-actions">
-          <button
-            type="button"
-            className="settings-button"
-            onClick={handleStartSession}
-            disabled={isStarting || !canStart}
-          >
-            {(isStarting ? launch.startingLabel : undefined) ??
-              launch.startLabel ??
-              t("newSessionStartAction")}
-          </button>
-        </div>
-      )}
     </div>
   );
 }

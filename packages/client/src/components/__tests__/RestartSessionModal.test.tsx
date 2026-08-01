@@ -20,7 +20,7 @@ const { mockRestartSession, mockGetRestartHandoff, formProps } = vi.hoisted(
 
 type LaunchStub = {
   initialMessage: string;
-  showComposer?: boolean;
+  composer?: "editable" | "muted";
   startLabel?: string;
   submit: (request: {
     message: string;
@@ -36,7 +36,7 @@ vi.mock("../NewSessionForm", () => ({
     return (
       <div data-testid="new-session-form">
         <span data-testid="seeded-message">{launch.initialMessage}</span>
-        <span data-testid="show-composer">{String(launch.showComposer)}</span>
+        <span data-testid="composer-mode">{String(launch.composer)}</span>
         <button
           type="button"
           onClick={() => {
@@ -140,7 +140,7 @@ describe("RestartSessionModal", () => {
         "# Handoff\n\nwhat the successor needs",
       );
     });
-    expect(screen.getByTestId("show-composer").textContent).toBe("true");
+    expect(screen.getByTestId("composer-mode").textContent).toBe("editable");
     expect(mockGetRestartHandoff).toHaveBeenCalledWith("proj-1", "sess-1", {
       sourceUrl: expect.any(String),
     });
@@ -193,7 +193,7 @@ describe("RestartSessionModal", () => {
     expect(launch.allowAttachments).toBe(false);
   });
 
-  it("hides the composer for fork and sends no handoff text", async () => {
+  it("mutes the composer for fork and sends no handoff text", async () => {
     renderModal({ providers: forkableProviders });
     await screen.findByTestId("new-session-form");
 
@@ -202,7 +202,9 @@ describe("RestartSessionModal", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByTestId("show-composer").textContent).toBe("false");
+      // The draft stays readable but reads as inert: a fork copies the real
+      // transcript rather than sending it.
+      expect(screen.getByTestId("composer-mode").textContent).toBe("muted");
     });
     fireEvent.click(
       screen.getByRole("button", { name: "sessionRestartStartFork" }),
@@ -259,7 +261,7 @@ describe("RestartSessionModal", () => {
       screen.getByText(/sessionRestartForkRateLimitedUntil/),
     ).toBeTruthy();
     // Handoff remains available: its bounded summary is the way out.
-    expect(screen.getByTestId("show-composer").textContent).toBe("true");
+    expect(screen.getByTestId("composer-mode").textContent).toBe("editable");
   });
 
   it("surfaces a draft that could not be loaded", async () => {
