@@ -158,6 +158,8 @@
   renderers.
 - provider-child-sessions - Provider-launched delegated work discovered from
   provider persistence and nested beneath its canonical YA parent session.
+- cross-host-delegation - Directed YA-host grants and the product surface for
+  creating and supervising separate native worker sessions on another host.
 - older-claude-models - Default-off server registry and grandfathered custom
   selections for previous provider model versions.
 - host-awake - Server-owned, process-lifetime idle-sleep inhibition with an

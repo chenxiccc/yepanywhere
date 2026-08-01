@@ -59,6 +59,10 @@ section below for what would have to change at higher fan-out.
   — proposal for one canonical, single-writer YA session that can transfer a
   provider-specific portable bundle and active ownership between trusted YA
   peers while the client follows the same session identity.
+- [`topics/cross-host-delegation.md`](topics/cross-host-delegation.md) — broad
+  product direction for browser-known hosts, directed server-to-server grants,
+  and separate native worker sessions as a useful step before session
+  migration.
 - [`topics/session-id-remap.md`](topics/session-id-remap.md) — problem
   statement for startup-time temporary session IDs that later canonicalize,
   including the activity event and client summary-store merge shape needed to

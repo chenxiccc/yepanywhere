@@ -14,6 +14,7 @@ must be proven in focused experiments before implementation.
 
 Related:
 [super-session testbed appliance](../docs/tactical/073-super-session-testbed-appliance.md),
+[cross-host delegation](cross-host-delegation.md),
 [remote executors](../docs/project/remote-executors.md),
 [client source runtime topology](client-source-runtime-topology.md),
 [source transport](source-transport.md),
