@@ -34,12 +34,14 @@ The navigation surface has these modes:
   tree** is its permanent default revision, including when its diff is empty.
 - **Files** searches tracked paths and opens file content immediately, then
   enriches its blame column asynchronously when provenance becomes available.
-- **Comments** is the integration point for the pending review workflow owned
-  by [Source Review → New Session](source-review-to-session.md). Per that
-  topic's 2026-08-01 contract it splits into **Pending Comments** (the
-  unsubmitted accumulator) and **Reviews** (historical submissions), which
-  navigate alike. That adds a mode-selector entry, so the wrapping rule in
-  *Header hierarchy* below must be re-verified at phone width rather than
+- **Pending Comments** is the unsubmitted accumulator owned by
+  [Source Review → New Session](source-review-to-session.md). Its stable URL
+  key remains `comments`, preserving existing `?tab=comments` links.
+- **Reviews** is the submission and comment-site browser owned by that topic.
+  Its URL key is `reviews`; it shows frozen reviewer entries, captured source,
+  target sessions, outcomes, and open/addressed/resolved state as those
+  contracts become available. The added fourth mode means the wrapping rule
+  in *Header hierarchy* below must be re-verified at phone width rather than
   assumed to still fit.
 
 Normal Source Control navigation opens Changes with Working tree selected.
@@ -65,8 +67,9 @@ default working-tree landing.
 The Source Control header keeps repository identity and repository operations
 in separate visual bands. Project selection, branch, upstream, ahead/behind
 state, and the Clean/Dirty badge form the identity band. When the available
-header width fits the complete mode selector, Changes/Files/Comments
-occupies the trailing top-right space without displacing that identity.
+header width fits the complete mode selector, Changes/Files/Pending
+Comments/Reviews occupies the trailing top-right space without displacing that
+identity.
 Constrained layouts move the same tabs to their own full-width row.
 One selector serves every viewport: the placement is browser-computed from the
 rendered intrinsic widths of a wrapping header row, not chosen by a
