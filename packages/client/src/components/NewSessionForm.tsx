@@ -10,6 +10,7 @@ import {
   type RecapMode,
   type SessionSandboxLevel,
   type ThinkingMode,
+  type ThinkingOption,
   type Workstream,
   type WorkstreamId,
   normalizeRecapAfterSeconds,
@@ -28,7 +29,11 @@ import {
   useState,
 } from "react";
 import { useNavigate } from "react-router-dom";
-import { type UploadedFile, api } from "../api/client";
+import {
+  type SessionOptions,
+  type UploadedFile,
+  api,
+} from "../api/client";
 import { ENTER_SENDS_MESSAGE } from "../constants";
 import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import { useToastContext } from "../contexts/ToastContext";
@@ -91,6 +96,7 @@ import {
   getDefaultHelperSideModel,
   getPreferredPromptSuggestionMode,
   getPreferredRecapMode,
+  parseThinkingOption,
   resolvePromptSuggestionMode,
   resolveRecapMode,
   toThinkingOption,
@@ -234,6 +240,34 @@ export interface NewSessionFormProps {
   preferredProvider?: ProviderName;
   /** Seed the model selection; applied when preferredProvider matches. */
   preferredModel?: string;
+  /** Seed thinking and effort from an existing session. */
+  preferredThinking?: ThinkingOption;
+  /** Seed approval behavior from an existing session. */
+  preferredPermissionMode?: PermissionMode;
+  /** Seed the execution host from an existing session. */
+  preferredExecutor?: string;
+  /**
+   * Reuse the New Session composer and launch controls for a specialized
+   * session start such as handoff.
+   */
+  launch?: {
+    draftKey: string;
+    initialMessage: string;
+    fixedProject?: boolean;
+    allowAttachments?: boolean;
+    allowProjectQueue?: boolean;
+    /**
+     * Whether the seeded message is offered as an editable draft. A launch
+     * that composes its own first turn (fork copies the real transcript)
+     * hides the composer, and `initialMessage` goes unused.
+     */
+    showComposer?: boolean;
+    submit: (request: {
+      message: string;
+      options: SessionOptions;
+      clientTimestamp: number;
+    }) => Promise<void>;
+  };
 }
 
 export function NewSessionForm({
@@ -249,6 +283,10 @@ export function NewSessionForm({
   compact = false,
   preferredProvider,
   preferredModel,
+  preferredThinking,
+  preferredPermissionMode,
+  preferredExecutor,
+  launch,
 }: NewSessionFormProps) {
   const { t } = useI18n();
   const navigate = useNavigate();
@@ -258,8 +296,8 @@ export function NewSessionForm({
   const sourceSummary = sourceRuntime.summary;
   const sourceTransport = sourceRuntime.transport;
   const newSessionDraftKey = useMemo(
-    () => createNewSessionDraftKey(clientSummarySourceKey),
-    [clientSummarySourceKey],
+    () => launch?.draftKey ?? createNewSessionDraftKey(clientSummarySourceKey),
+    [clientSummarySourceKey, launch?.draftKey],
   );
   const [message, setMessage, draftControls] =
     useDraftPersistence(newSessionDraftKey);
@@ -337,6 +375,7 @@ export function NewSessionForm({
   const hasInitializedDefaultsRef = useRef(false);
   const hasUserCustomizedDefaultsRef = useRef(false);
   const lastSyncedProjectIdRef = useRef<string | null>(null);
+  const hasSeededMessageRef = useRef(false);
 
   // Thinking toggle state
   const {
@@ -371,6 +410,16 @@ export function NewSessionForm({
 
   // Toast for error messages
   const { showToast } = useToastContext();
+  const allowAttachments = launch?.allowAttachments ?? true;
+  const allowProjectQueue = launch?.allowProjectQueue ?? true;
+  const fixedProject = launch?.fixedProject ?? false;
+  const showComposer = launch?.showComposer ?? true;
+
+  useLayoutEffect(() => {
+    if (!launch || hasSeededMessageRef.current) return;
+    hasSeededMessageRef.current = true;
+    setMessage(launch.initialMessage);
+  }, [launch, setMessage]);
 
   const writeDraftAttachmentState = useCallback(
     (nextFiles: readonly PendingFile[]) => {
@@ -1189,8 +1238,19 @@ export function NewSessionForm({
           initialProviderDefaults.model,
         ),
     );
-    setSelectedThinkingMode(initialProviderDefaults.thinkingMode ?? "off");
-    setSelectedEffortLevel(initialProviderDefaults.effortLevel ?? "high");
+    const preferredThinkingSelection = preferredThinking
+      ? parseThinkingOption(preferredThinking)
+      : null;
+    setSelectedThinkingMode(
+      preferredThinkingSelection?.mode ??
+        initialProviderDefaults.thinkingMode ??
+        "off",
+    );
+    setSelectedEffortLevel(
+      preferredThinkingSelection?.effort ??
+        initialProviderDefaults.effortLevel ??
+        "high",
+    );
     const savedSandboxLevel =
       supportsSessionSandboxing &&
       savedDefaults?.sandboxLevel === "project-write"
@@ -1215,7 +1275,12 @@ export function NewSessionForm({
     setHelperSideModel(
       getDefaultHelperSideModel(initialModels, initialProviderDefaults),
     );
-    setMode(savedDefaults?.permissionMode ?? "default");
+    setMode(
+      preferredPermissionMode ??
+        savedDefaults?.permissionMode ??
+        "default",
+    );
+    setSelectedExecutor(preferredExecutor ?? null);
   }, [
     availableProviders,
     providers,
@@ -1227,6 +1292,9 @@ export function NewSessionForm({
     getLegacyProviderDefaultSeed,
     preferredProvider,
     preferredModel,
+    preferredThinking,
+    preferredPermissionMode,
+    preferredExecutor,
   ]);
 
   useEffect(() => {
@@ -1288,8 +1356,19 @@ export function NewSessionForm({
     } else {
       setSelectedModel(null);
     }
-    setSelectedThinkingMode(providerDefaults.thinkingMode ?? "off");
-    setSelectedEffortLevel(providerDefaults.effortLevel ?? "high");
+    const preferredThinkingSelection = preferredThinking
+      ? parseThinkingOption(preferredThinking)
+      : null;
+    setSelectedThinkingMode(
+      preferredThinkingSelection?.mode ??
+        providerDefaults.thinkingMode ??
+        "off",
+    );
+    setSelectedEffortLevel(
+      preferredThinkingSelection?.effort ??
+        providerDefaults.effortLevel ??
+        "high",
+    );
     setHelperSideModel(
       getDefaultHelperSideModel(providerModels, providerDefaults),
     );
@@ -1703,7 +1782,14 @@ export function NewSessionForm({
       }
 
       const hasContent = finalMessage.trim() || pendingFiles.length > 0;
-      if (!hasContent || isStarting || !hasSelectedProviderModel) return;
+      // A launch that hides the composer composes its own first turn, so an
+      // empty message is not a reason to refuse the start.
+      if (
+        (!hasContent && showComposer) ||
+        isStarting ||
+        !hasSelectedProviderModel
+      )
+        return;
 
       const trimmedMessage = finalMessage.trim();
       const trimmedProjectInput = normalizeProjectInput(projectInput);
@@ -1777,6 +1863,20 @@ export function NewSessionForm({
           clientTimestamp,
           serverOffsetMs: getEstimatedServerOffsetMs(),
         });
+
+        if (launch) {
+          if (pendingFiles.length > 0) {
+            throw new Error("This session launch does not accept attachments");
+          }
+          await launch.submit({
+            message: trimmedMessage,
+            options: sessionOptions,
+            clientTimestamp,
+          });
+          draftControls.clearDraft();
+          setIsStarting(false);
+          return;
+        }
 
         if (pendingFiles.length > 0) {
           // Two-phase flow: create session first, then upload to real session folder
@@ -1989,7 +2089,9 @@ export function NewSessionForm({
       helperSideModel,
       hasSelectedProviderModel,
       isStarting,
+      launch,
       message,
+      showComposer,
       navigate,
       pendingFiles,
       projectInput,
@@ -2456,7 +2558,9 @@ export function NewSessionForm({
   );
 
   const hasContent = message.trim() || pendingFiles.length > 0;
-  const canStart = Boolean(hasContent && hasSelectedProviderModel);
+  const canStart = Boolean(
+    (hasContent || !showComposer) && hasSelectedProviderModel,
+  );
   const hasProjectQueueTargetProject = Boolean(projectQueueTargetProjectId);
   const pendingFilesReadyForProjectQueue =
     pendingFiles.every(isPendingStagedFile);
@@ -2472,6 +2576,7 @@ export function NewSessionForm({
   });
   useAttachmentNavigationGuard(attachmentNavigationGuardActive);
   const canQueueProjectSession = Boolean(
+    allowProjectQueue &&
     showProjectQueueAction &&
       message.trim() &&
       pendingFilesReadyForProjectQueue &&
@@ -2586,7 +2691,9 @@ export function NewSessionForm({
             onCopy={clearSpeechSelectionTarget}
             onPaste={(event) => {
               clearSpeechSelectionTarget();
-              handlePaste(event);
+              if (allowAttachments) {
+                handlePaste(event);
+              }
             }}
             placeholder={resolvedPlaceholder}
             disabled={isStarting}
@@ -2607,32 +2714,36 @@ export function NewSessionForm({
       </div>
       <div className="new-session-form-toolbar">
         <div className="new-session-form-toolbar-left">
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            style={{ display: "none" }}
-            onChange={handleFileSelect}
-          />
-          <button
-            type="button"
-            className="toolbar-button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isStarting}
-            aria-label={t("newSessionAttachFiles")}
-          >
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              aria-hidden="true"
-            >
-              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-            </svg>
-          </button>
+          {allowAttachments && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                style={{ display: "none" }}
+                onChange={handleFileSelect}
+              />
+              <button
+                type="button"
+                className="toolbar-button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isStarting}
+                aria-label={t("newSessionAttachFiles")}
+              >
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  aria-hidden="true"
+                >
+                  <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                </svg>
+              </button>
+            </>
+          )}
           <SpeechControlMenu
             showMethodSelector={showSpeechMethodSelector}
             methodOptions={speechMethodOptions}
@@ -3204,13 +3315,17 @@ export function NewSessionForm({
       </div>
 
       <div className="new-session-top-layout">
-        <div className="new-session-main-stack">
-          <div className="new-session-input-area">{inputArea}</div>
-        </div>
-        <aside className="new-session-project-slot">
-          {projectChooser}
-          {workstreamChooser}
-        </aside>
+        {showComposer && (
+          <div className="new-session-main-stack">
+            <div className="new-session-input-area">{inputArea}</div>
+          </div>
+        )}
+        {!fixedProject && (
+          <aside className="new-session-project-slot">
+            {projectChooser}
+            {workstreamChooser}
+          </aside>
+        )}
         {(providerSection ||
           modelSection ||
           thinkingSection ||

@@ -904,6 +904,98 @@ describe("NewSessionForm", () => {
     });
   });
 
+  it("reuses new-session selection semantics for a seeded launch", async () => {
+    const submit = vi.fn(async () => {});
+    const codexProvider = providersState.providers.find(
+      (candidate) => candidate.name === "codex",
+    );
+    const seededCodexModel = codexProvider?.models?.find(
+      (model) => model.id === "gpt-5.3-codex",
+    );
+    if (!seededCodexModel) throw new Error("expected Codex model fixture");
+    seededCodexModel.supportsAdaptiveThinking = true;
+    seededCodexModel.supportsEffort = true;
+    seededCodexModel.supportedEffortLevels = ["low", "high", "xhigh"];
+    serverSettingsState.settings = {
+      newSessionDefaults: {
+        provider: "claude",
+        permissionMode: "default",
+        providers: {
+          claude: {
+            model: "default",
+            thinkingMode: "off",
+            effortLevel: "low",
+          },
+          codex: {
+            model: "gpt-5.3-codex",
+            thinkingMode: "auto",
+            effortLevel: "xhigh",
+          },
+        },
+      },
+    };
+    serverSettingsState.isLoading = false;
+
+    render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        preferredProvider="claude"
+        preferredModel="opus"
+        preferredThinking="on:xhigh"
+        preferredPermissionMode="plan"
+        preferredExecutor="build-host"
+        launch={{
+          draftKey: "draft-handoff:session-1",
+          initialMessage: "Prepared handoff",
+          fixedProject: true,
+          allowAttachments: false,
+          allowProjectQueue: false,
+          submit,
+        }}
+      />,
+    );
+
+    const composer = await screen.findByDisplayValue("Prepared handoff");
+    expect(draftKeys).toContain("draft-handoff:session-1");
+    expect(screen.queryByLabelText("newSessionAttachFiles")).toBeNull();
+    expect(screen.queryByText("Alpha")).toBeNull();
+    expect(screen.getAllByTestId("filter-selected")[0]!.textContent).toBe(
+      "opus",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Codex" }));
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("filter-selected")[0]!.textContent).toBe(
+        "gpt-5.3-codex",
+      );
+      expect(
+        screen.getByRole("radio", { name: "Extra High" }).className,
+      ).toContain("active");
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "newSessionStartAction" }),
+    );
+
+    await waitFor(() => {
+      expect(submit).toHaveBeenCalledWith({
+        message: "Prepared handoff",
+        options: expect.objectContaining({
+          mode: "plan",
+          model: "gpt-5.3-codex",
+          thinking: "on:xhigh",
+          provider: "codex",
+          executor: "build-host",
+        }),
+        clientTimestamp: expect.any(Number),
+      });
+    });
+    expect(mockStartSession).not.toHaveBeenCalled();
+    expect((composer as HTMLTextAreaElement).value).toBe("");
+  });
+
   it("groups previous models and keeps an unlisted saved default selected", async () => {
     const claudeProvider = providersState.providers[0];
     if (!claudeProvider) throw new Error("expected Claude provider fixture");
