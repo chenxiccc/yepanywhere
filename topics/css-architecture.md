@@ -119,7 +119,9 @@ reports:
 - **span and coverage** — how concentrated those rules are between the first
   and last owned rule in each stylesheet;
 - **stylesheets** — whether the component is split across legacy files;
-- **edges** — coupled or unresolved rules that need explicit review;
+- **edges** — coupled or unresolved rules that need explicit review; a coupled
+  rule is shown under every React owner it touches even when none of its
+  classes provides a single-owner anchor;
 - **dynamic classes** — template-built families that require a finite/open
   construction decision; and
 - **tests** — files that mention the selector vocabulary and may rely on it.

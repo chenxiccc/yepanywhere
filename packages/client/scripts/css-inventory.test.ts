@@ -17,7 +17,7 @@ describe("CSS migration inventory", () => {
     });
     expect(result.ruleCounts).toEqual({
       owned: 4,
-      coupled: 1,
+      coupled: 2,
       generated: 1,
       unresolved: 2,
     });
@@ -37,9 +37,32 @@ describe("CSS migration inventory", () => {
     expect(
       widget?.testFiles.some((file) => file.endsWith("Widget.test.tsx")),
     ).toBe(true);
-    expect(widget?.coupledRules).toHaveLength(1);
+    expect(widget?.coupledRules).toHaveLength(2);
     expect(widget?.unresolvedRules).toHaveLength(1);
     expect(widget?.coverage).toBeGreaterThan(0.5);
+  });
+
+  it("surfaces anchorless coupled rules under every involved owner", () => {
+    const result = buildInventory({
+      cssDir: fixtureDir,
+      srcDir: fixtureDir,
+      ownerDir: path.join(fixtureDir, "client"),
+    });
+    const widget = result.owners.find((owner) =>
+      owner.owner.endsWith("client/Widget.tsx"),
+    );
+    const other = result.owners.find((owner) =>
+      owner.owner.endsWith("client/Other.tsx"),
+    );
+
+    for (const owner of [widget, other]) {
+      const sharedRule = owner?.coupledRules.find((rule) =>
+        rule.classes.includes("shared-surface"),
+      );
+      expect(sharedRule).toBeDefined();
+      expect(sharedRule?.anchorOwners).toHaveLength(0);
+      expect(sharedRule?.involvedOwners).toHaveLength(2);
+    }
   });
 
   it("reports a stylesheet-contract test that only uses regex selectors", () => {

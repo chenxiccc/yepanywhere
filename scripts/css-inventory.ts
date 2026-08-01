@@ -388,7 +388,15 @@ export function buildInventory(
       ownerRules.set(rule.owner, owned);
       continue;
     }
-    for (const owner of rule.anchorOwners) {
+    // A coupled rule can consist entirely of classes shared by several
+    // producers, leaving it without a single-owner anchor. Surface that rule
+    // under every React owner it touches so an owner drill-down cannot report
+    // a falsely clean boundary. Unresolved rules remain tied to their unique
+    // anchors; assigning those to every possible producer would turn an
+    // ambiguity report into a guessed ownership claim.
+    const frictionOwners =
+      rule.kind === "coupled" ? rule.involvedOwners : rule.anchorOwners;
+    for (const owner of frictionOwners) {
       const friction = frictionRules.get(owner) ?? [];
       friction.push(rule);
       frictionRules.set(owner, friction);
@@ -396,7 +404,12 @@ export function buildInventory(
   }
 
   const owners: OwnerInventory[] = [];
-  for (const [owner, ownedRules] of ownerRules) {
+  const reportedOwners = new Set([
+    ...ownerRules.keys(),
+    ...frictionRules.keys(),
+  ]);
+  for (const owner of reportedOwners) {
+    const ownedRules = ownerRules.get(owner) ?? [];
     const locations = new Map<string, { min: number; max: number }>();
     const classes = new Set<string>();
     const dynamicClasses = new Set<string>();
