@@ -6,7 +6,7 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 
 <BaseLayout
   title="Privacy Policy - Yep Anywhere"
-  description="Privacy policy for Yep Anywhere. We collect no telemetry by default."
+  description="Privacy policy for Yep Anywhere application data, optional network services, and public website analytics."
 >
   <Header activePage="privacy" />
 
@@ -15,18 +15,19 @@ import BaseLayout from "../layouts/BaseLayout.astro";
       <h1>Privacy Policy</h1>
 
       <div class="highlight">
-        <p>We collect no telemetry by default.</p>
+        <p>The app sends no session telemetry by default. The public website uses privacy-first, aggregate Cloudflare Web Analytics.</p>
       </div>
 
-      <p>Yep Anywhere runs entirely on your own machine. There are no accounts, no cloud services, and no databases. Your sessions and data stay local.</p>
+      <p>Yep Anywhere is self-hosted software. There is no hosted product account or hosted transcript database. Your server state and provider sessions stay on the machines you control, except when you deliberately use an optional network service described below.</p>
 
       <h2>Network Requests</h2>
       <p>The application makes minimal network requests:</p>
       <ul>
         <li><strong>Yep Anywhere update service</strong> — The app periodically checks <code>updates.yepanywhere.com</code> for version information, and opening Settings → About or using the manual update check triggers a fresh check. These requests include the running app version and an installation identifier so we can maintain relay compatibility, monitor rollout reliability, and support backwards compatibility.</li>
         <li><strong>Your AI provider</strong> — When you run sessions, requests go directly to your configured AI provider (Anthropic, OpenAI, etc.) using your own API keys.</li>
+        <li><strong>Optional remote-access and notification services</strong> — Enabling the public relay or browser push creates the connections needed for those features. They are not required for local use.</li>
       </ul>
-      <p>Aside from update/version checks to <code>updates.yepanywhere.com</code>, app data is not sent to yepanywhere servers. We do not send session contents, prompts, or files to that service.</p>
+      <p>We do not send session contents, prompts, or files to the update service. Cloud AI providers receive the content needed to run their agents under their own terms.</p>
 
       <h2>Local Data Storage</h2>
       <p>All data is stored locally on your machine:</p>
@@ -37,24 +38,28 @@ import BaseLayout from "../layouts/BaseLayout.astro";
         <li>Optional password hash if you enable authentication</li>
       </ul>
 
-      <h2>Public Relay (Future)</h2>
-      <p>We're building an optional public relay service to enable secure remote access without requiring Tailscale or port forwarding. If you choose to use the public relay:</p>
+      <h2>Authenticated Public Relay</h2>
+      <p>The optional public relay enables remote access without requiring a VPN or port forwarding. If you enable it:</p>
       <ul>
-        <li>Connection metadata (timestamps, bandwidth usage) will be logged to prevent abuse</li>
-        <li>Message content is end-to-end encrypted — the relay cannot read your conversations</li>
-        <li>This is entirely opt-in; local-only usage will always be available</li>
-        <li>You can also self-host your own relay server</li>
+        <li>Authenticated application messages are end-to-end encrypted; the relay cannot read their contents or your password.</li>
+        <li>The relay can observe connection metadata such as the username, timing, and traffic sizes.</li>
+        <li>The feature is opt-in. You can continue locally, use another direct-access method, or self-host the relay.</li>
       </ul>
 
+      <h2>Public Session Shares</h2>
+      <p>A public share is a deliberate read-only link. Anyone with the secret link can read the shared content until access is revoked or the live share ends. The current public-share relay path is not private from a relay operator, so review session content before sharing.</p>
+
       <h2>This Website</h2>
-      <p>This website (yepanywhere.com) loads fonts from Google Fonts, which means Google receives requests when you view these pages. We don't use any other analytics or tracking services on the website.</p>
+      <p>The public marketing, news, and documentation pages use <a href="https://developers.cloudflare.com/web-analytics/about/">Cloudflare Web Analytics</a> to understand aggregate page traffic and page-load performance. The beacon receives page and referrer information, browser and device categories, approximate geography, and performance measurements. Cloudflare states that Web Analytics does not collect or use visitors' personal data and does not use cookies or local storage for usage metrics.</p>
+      <p>The hosted <code>/remote/</code> application does not include the marketing analytics beacon. Prompts, files, approvals, session contents, and product actions are not sent as marketing analytics events.</p>
+      <p>The website also loads Inter from Google Fonts, so a page view makes font requests to Google.</p>
 
       <h2>Open Source</h2>
       <p>Yep Anywhere is 100% open source under the MIT license. You can <a href="https://github.com/kzahel/yepanywhere">inspect the code</a> to verify these claims.</p>
 
       <p>We publish to npm using <a href="https://docs.npmjs.com/generating-provenance-statements">trusted publishing</a> with provenance attestation directly from GitHub Actions. Every published package links back to the exact source commit and CI workflow run, so you can verify that the code on npm matches the code on GitHub.</p>
 
-      <p style="margin-top: 40px; color: var(--text-secondary); font-size: 14px;">Last updated: January 2026</p>
+      <p style="margin-top: 40px; color: var(--text-secondary); font-size: 14px;">Last updated: August 1, 2026</p>
     </div>
   </main>
 

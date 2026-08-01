@@ -22,7 +22,7 @@ const pathname = (canonicalPath || Astro.url.pathname).replace(/\.html$/, "");
 const canonicalURL = new URL(pathname, Astro.site);
 const ogImageURL = ogImage
   ? new URL(ogImage, Astro.site)
-  : new URL("/branding/og-image.png", Astro.site);
+  : new URL("/branding/og-product-v2.png", Astro.site);
 ---
 
 <!doctype html>
@@ -66,6 +66,8 @@ const ogImageURL = ogImage
   <body>
     <slot />
     <script is:inline>
+    var mainContent = document.querySelector('main');
+    if (mainContent && !mainContent.id) mainContent.id = 'main-content';
     document.querySelectorAll('.article-content h2, .article-content h3, .article-body h2').forEach(function(h) {
       if (h.id) return;
       var slug = h.textContent.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');

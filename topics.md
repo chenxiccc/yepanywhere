@@ -230,3 +230,6 @@
   boundaries for browser Web Push and native app push.
 - active-content-security - Source-first active-file viewing and isolated
   origins for executable agent- or project-authored web content.
+- website-product-communication - Canonical public feature/provider/
+  distribution claims, public docs ownership, and the marketing analytics
+  boundary.

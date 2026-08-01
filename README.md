@@ -14,23 +14,27 @@
   <a href="https://yepanywhere.com">yepanywhere.com</a>
 </p>
 
-A better remote interface for Claude Code and Codex. Self-hosted, no cloud accounts. Supervise your agents from your phone while they run on your dev machines.
+A durable, mobile-ready interface for Claude Code and Codex. Supervise agents
+from your phone while they run on the machines you control.
 
 ## Features
 
-- **Interop** — View and resume sessions started in CLI, VS Code, or other tools. No new database — piggybacks on CLI persistence
-- **File uploads** — Share screenshots, photos, PDFs, and code files directly from your phone's camera roll
-- **Push notifications** — Get alerted when approval is needed, respond from your lock screen
-- **E2E encrypted remote access** — Connect from anywhere via our free relay. We can't see your data (SRP-6a + TweetNaCl)
-- **Fork/clone conversations** — Branch from any message point to explore alternatives
-- **Tiered inbox** — Needs Attention → Active → Recent → Unread. Stop cycling through terminal tabs
-- **Global activity stream** — See what all your agents are doing across sessions
-- **Remote device control** — Stream Android emulators and devices to your phone over WebRTC. Touch input, nav buttons, adaptive quality
-- **Server-owned processes** — Client disconnects don't interrupt work
-- **Voice input** — Talk to your agents via browser speech API
-- **Fast on mobile** — Syntax highlighting and markdown rendering happen server-side
+- **Persistent, interoperable sessions** — View and resume compatible work from
+  CLIs, VS Code, and first-party desktop apps. Client disconnects do not stop
+  server-owned processes.
+- **Mobile supervision** — Approve tools, answer questions, upload files and
+  photos, use voice input, and receive attention notifications.
+- **Multi-agent coordination** — Use the tiered inbox, global activity view,
+  mid-turn steering, follow-up queues, search, recaps, forks, and clones.
+- **Review and source control** — Inspect files, diffs, Git status, and
+  read-only session shares without returning to the host machine.
+- **Remote device control** — Stream Android devices and Apple Simulators over
+  peer-to-peer WebRTC with touch controls and adaptive quality.
+- **Flexible remote access** — Connect directly, through your own HTTPS setup,
+  or through the optional end-to-end encrypted public relay.
 
-No database, no cloud, no accounts. 100% open source (MIT).
+See the [complete feature catalog](https://yepanywhere.com/features) and
+[public documentation](https://yepanywhere.com/docs) for availability and setup.
 
 ## Supported Providers
 
@@ -38,6 +42,9 @@ No database, no cloud, no accounts. 100% open source (MIT).
 |----------|-------|-----------|-----------|-------|
 | Claude Code | Full | Yes | Yes | Primary provider, full feature support |
 | Codex | Full | Yes | Yes | Full support including diffs and approvals |
+
+OpenCode, Grok Build, Claude + Ollama, and Gemini integrations are experimental;
+capabilities vary. See the [provider guide](https://yepanywhere.com/docs/providers).
 
 ## Screenshots
 
@@ -64,6 +71,12 @@ No database, no cloud, no accounts. 100% open source (MIT).
 
 If you can install Claude Code or Codex, you can install this. Minimal dependencies.
 
+**Desktop apps (experimental):** Signed macOS and Windows installers are
+available on [GitHub Releases](https://github.com/kzahel/yepanywhere/releases).
+They are nearing release readiness but still carry an experimental label.
+
+**npm (established path):**
+
 ```
 npm i -g yepanywhere
 yepanywhere
@@ -79,6 +92,11 @@ pnpm start
 ```
 
 Open http://localhost:3400 in your browser. The app auto-detects installed CLI agents.
+
+The published phone experience is the responsive browser client. The Android
+app is in development and is not published. Follow the
+[getting-started guide](https://yepanywhere.com/docs/getting-started) for the
+current platform choices.
 
 ## Updating
 

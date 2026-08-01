@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- Add a typed public feature, provider, and distribution registry; a complete
+  feature catalog; and public guides for installation, remote access,
+  providers, workflows, security, and troubleshooting.
+- Add build-time checks for catalog relationships, public internal links,
+  canonical metadata, and the marketing analytics boundary.
+
+### Changed
+- Rebuild the homepage around persistent mobile agent supervision, catalog-
+  backed feature proof, local-data trust, and distinct installation paths.
+- Expose experimental macOS and Windows downloads from GitHub Releases while
+  stating that the unpublished Android app remains in development.
+- Make Features and Docs first-class desktop and mobile navigation items, and
+  correct website analytics and public-relay disclosures in the privacy page.
+
 ## [site-v1.8.3] - 2026-07-31
 
 ### Fixed

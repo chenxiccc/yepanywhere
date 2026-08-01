@@ -1,0 +1,187 @@
+---
+import Footer from "../../components/Footer.astro";
+import Header from "../../components/Header.astro";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { docsNavigation } from "../../data/docs-navigation";
+---
+
+<BaseLayout
+  title="Yep Anywhere Documentation"
+  description="Install, connect, configure, and use Yep Anywhere with Claude Code, Codex, and experimental agent providers."
+>
+  <Header activePage="docs" />
+  <main>
+    <section class="docs-hero">
+      <div class="site-container">
+        <p class="eyebrow">Documentation</p>
+        <h1>From first launch to many-agent workflows.</h1>
+        <p class="lede">Choose an installation, connect securely, and learn the workflows that keep agents moving when you leave your desk.</p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="/docs/getting-started">Get started</a>
+          <a class="btn btn-secondary" href="/docs/remote-access">Connect from a phone</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="docs-directory">
+      <div class="site-container directory-grid">
+        {docsNavigation.map((section) => (
+          <section class="directory-section">
+            <h2>{section.title}</h2>
+            <div class="directory-links">
+              {section.items.map((item) => (
+                <a href={item.path}>
+                  <strong>{item.title}</strong>
+                  <span>{item.description}</span>
+                </a>
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
+    </section>
+
+    <section class="docs-help">
+      <div class="site-container help-card">
+        <div>
+          <p class="eyebrow">Need a hand?</p>
+          <h2>Bring the evidence with you.</h2>
+          <p>The troubleshooting guide shows where logs live and what to include in an issue.</p>
+        </div>
+        <a class="btn btn-secondary" href="/docs/troubleshooting">Troubleshoot a problem</a>
+      </div>
+    </section>
+  </main>
+  <Footer />
+</BaseLayout>
+
+<style>
+  .docs-hero {
+    border-bottom: 1px solid var(--border);
+    padding: 88px 0 76px;
+  }
+
+  .eyebrow {
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.11em;
+    margin-bottom: 14px;
+    text-transform: uppercase;
+  }
+
+  h1 {
+    font-size: clamp(40px, 7vw, 68px);
+    letter-spacing: -0.05em;
+    line-height: 0.98;
+    max-width: 850px;
+  }
+
+  .lede {
+    color: var(--text-secondary);
+    font-size: 19px;
+    margin-top: 22px;
+    max-width: 690px;
+  }
+
+  .hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 30px;
+  }
+
+  .docs-directory {
+    padding: 72px 0;
+  }
+
+  .directory-grid {
+    display: grid;
+    gap: 56px 44px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .directory-section h2 {
+    font-size: 22px;
+    margin-bottom: 16px;
+  }
+
+  .directory-links {
+    display: grid;
+    gap: 10px;
+  }
+
+  .directory-links a {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text-primary);
+    padding: 17px 18px;
+    text-decoration: none;
+    transition: border-color 0.15s, transform 0.15s;
+  }
+
+  .directory-links a:hover {
+    border-color: var(--accent);
+    transform: translateY(-1px);
+  }
+
+  .directory-links strong,
+  .directory-links span {
+    display: block;
+  }
+
+  .directory-links strong {
+    font-size: 15px;
+  }
+
+  .directory-links span {
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.5;
+    margin-top: 4px;
+  }
+
+  .docs-help {
+    border-top: 1px solid var(--border);
+    padding: 64px 0 80px;
+  }
+
+  .help-card {
+    align-items: center;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    display: flex;
+    justify-content: space-between;
+    padding: 30px 32px;
+  }
+
+  .help-card h2 {
+    font-size: 24px;
+  }
+
+  .help-card p:last-child {
+    color: var(--text-secondary);
+    margin-top: 6px;
+  }
+
+  @media (max-width: 700px) {
+    .docs-hero {
+      padding: 58px 0 52px;
+    }
+
+    h1 {
+      font-size: 42px;
+    }
+
+    .directory-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .help-card {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 22px;
+    }
+  }
+</style>

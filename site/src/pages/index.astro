@@ -1,251 +1,217 @@
 ---
 import Footer from "../components/Footer.astro";
 import Header from "../components/Header.astro";
+import { distributions, features } from "../data/catalog";
+import type { PublicDistribution } from "../data/distributions";
+import type { PublicFeature } from "../data/features";
 import BaseLayout from "../layouts/BaseLayout.astro";
+
+const featuredFeatures = (features as readonly PublicFeature[]).filter((feature) => feature.featured);
+const desktopDistributions = (distributions as readonly PublicDistribution[]).filter((distribution) =>
+  distribution.id.startsWith("desktop-"),
+);
 ---
 
 <BaseLayout
-  title="Yep Anywhere - Mobile supervision for Claude Code and Codex agents"
-  description="A polished web interface for managing Claude Code and Codex agents. Works great on mobile and desktop."
+  title="Yep Anywhere — Supervise coding agents from anywhere"
+  description="Keep Claude Code and Codex running on your machines. Supervise sessions, approve tools, review diffs, and reconnect from any browser."
 >
   <Header activePage="home" />
 
   <div class="announcement">
-    <div class="announcement-content">
-      <span class="announcement-badge">New</span>
-      <p>Early-summer release &mdash; Project Queue, safer source control, Codex parity, and more. <a href="/spring-2026">Read the recap</a></p>
+    <div class="site-container announcement-content">
+      <span>Experimental</span>
+      <p>Desktop apps for macOS and Windows are now on GitHub Releases.</p>
+      <a href="/docs/desktop-apps">See what is ready <span aria-hidden="true">→</span></a>
     </div>
   </div>
 
   <main>
     <section class="hero">
-      <div class="container">
-        <h1>Walk away. Your agents keep shipping.</h1>
-        <p>Claude Code and Codex run on your machine. Approve, supervise, and unblock them from your phone — sessions never stop, even if you close the browser.</p>
-        <div class="cta-buttons">
-          <a href="#install" class="btn btn-primary">Get Started</a>
-          <a href="/remote" class="btn btn-secondary">Log In to Your Server</a>
-          <a href="https://github.com/kzahel/yepanywhere" class="btn btn-secondary">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
-            View on GitHub
-          </a>
+      <div class="site-container hero-copy">
+        <p class="eyebrow">Your agents. Your machines. Any screen.</p>
+        <h1>Walk away.<br><span>Your agents keep shipping.</span></h1>
+        <p class="lede">Yep Anywhere gives Claude Code and Codex a durable, mobile-ready control surface. Start at your desk, supervise from your phone, and return without losing the thread.</p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="/docs/getting-started">Get started</a>
+          <a class="btn btn-secondary" href="/features">Explore features</a>
+          <a class="text-link" href="/remote">Log in to your server <span aria-hidden="true">→</span></a>
         </div>
-        <div class="hero-showcase">
-          <div class="hero-showcase-item">
-            <img src="/screenshots/mobile-approve-edit.png" alt="Approving a file edit from phone">
-            <p>Approve edits from your phone</p>
-          </div>
-          <div class="hero-showcase-item">
-            <img src="/screenshots/mobile-completed-session.png" alt="Completed coding session on phone">
-            <p>Fix issues from anywhere</p>
-          </div>
+        <p class="hero-note">Open source · self-hosted · no account required</p>
+      </div>
+
+      <div class="site-container product-stage" aria-label="Yep Anywhere on desktop and mobile">
+        <figure class="desktop-frame">
+          <div class="window-bar" aria-hidden="true"><i></i><i></i><i></i><span>localhost:3400</span></div>
+          <img src="/screenshots/desktop.png" alt="Yep Anywhere showing several coding agent sessions on desktop">
+        </figure>
+        <figure class="phone-frame phone-primary">
+          <span class="phone-speaker" aria-hidden="true"></span>
+          <img src="/screenshots/mobile-approve-edit.png" alt="Approving a coding agent file edit from a phone">
+        </figure>
+        <figure class="phone-frame phone-secondary">
+          <span class="phone-speaker" aria-hidden="true"></span>
+          <img src="/screenshots/mobile-completed-session.png" alt="Reviewing a completed coding session from a phone">
+        </figure>
+      </div>
+    </section>
+
+    <section class="proof-strip" aria-label="Product highlights">
+      <div class="site-container">
+        <p><strong>Sessions persist</strong><span>Close the tab, not the work</span></p>
+        <p><strong>Two first-class agents</strong><span>Claude Code + Codex</span></p>
+        <p><strong>Remote by choice</strong><span>Direct or encrypted relay</span></p>
+        <p><strong>MIT licensed</strong><span>Inspect and self-host it</span></p>
+      </div>
+    </section>
+
+    <section class="promise-section">
+      <div class="site-container">
+        <header class="section-heading centered">
+          <p class="eyebrow">A calmer way to run agents</p>
+          <h2>Stay available without staying at your desk.</h2>
+          <p>The server owns the work. Every browser becomes a window into it.</p>
+        </header>
+
+        <div class="promise-grid">
+          <article>
+            <span class="step">01</span>
+            <h3>Start where the code lives</h3>
+            <p>Launch sessions on your workstation, dev server, or SSH host. Yep Anywhere discovers existing compatible sessions too.</p>
+          </article>
+          <article>
+            <span class="step">02</span>
+            <h3>Leave without interrupting</h3>
+            <p>Agent processes keep running when a client disconnects. Reconnect from another browser with the conversation intact.</p>
+          </article>
+          <article>
+            <span class="step">03</span>
+            <h3>Return only when needed</h3>
+            <p>Use notifications and the attention inbox to find approvals, questions, and completed work instead of polling every session.</p>
+          </article>
         </div>
       </div>
     </section>
 
-    <section class="value-props">
-      <div class="container">
-        <div class="value-prop-grid">
-          <div class="value-prop">
-            <h3>Seamless handoff</h3>
-            <p>Use Claude Code or Codex however you prefer on desktop. Yep Anywhere sees all your existing sessions — pick up from your phone with full context.</p>
+    <section class="catalog-preview">
+      <div class="site-container">
+        <header class="section-heading split">
+          <div>
+            <p class="eyebrow">Built for real agent workflows</p>
+            <h2>More than a remote terminal.</h2>
           </div>
-          <div class="value-prop">
-            <h3>Sessions survive disconnects</h3>
-            <p>Agents run on your computer. Leave it on, walk away, and access everything from your phone or another machine. Works on a dev server too.</p>
-          </div>
-          <div class="value-prop">
-            <h3>Approve from your lock screen</h3>
-            <p>Push notifications when agents need you. Tap to approve, type a response — unblock in seconds instead of waiting hours until you're back at your desk.</p>
-          </div>
-          <div class="value-prop">
-            <h3>All sessions, one dashboard</h3>
-            <p>See every project at a glance. Star the important ones, archive the finished ones. Context-switch without losing context.</p>
-          </div>
-          <div class="value-prop">
-            <h3>Access from anywhere, no VPN needed</h3>
-            <p>Connect through our free relay — no Tailscale, no port forwarding, nothing technical. Just log in from the web. End-to-end encrypted so everything stays private.</p>
-          </div>
-        </div>
-      </div>
-    </section>
+          <p>Coordinate sessions, steer active work, inspect changes, and control how each machine is exposed.</p>
+        </header>
 
-    <section class="beyond-rc">
-      <div class="container">
-        <h2>Beyond Claude Code's Remote Control</h2>
-        <p class="beyond-rc-subtitle">Claude Code's Remote Control lets you interact with a running CLI session. Yep Anywhere is a full remote desktop into all your agent sessions &mdash; create, resume, and control everything.</p>
-        <div class="beyond-rc-list">
-          <ul>
-            <li>Create new sessions from your phone</li>
-            <li>Multi-session dashboard across all projects</li>
-            <li>Resume VS Code and Claude Desktop sessions</li>
-            <li>Bypass mode &mdash; no manual approvals needed</li>
-            <li>Works with Claude, Codex, Gemini, and API keys</li>
-          </ul>
-        </div>
-        <p class="beyond-rc-cta">
-          <a href="/claude-code-remote-control">Full comparison with feature table &rarr;</a>
-        </p>
-      </div>
-    </section>
-
-    <section id="screenshots" class="screenshots">
-      <div class="container">
-        <h2>Screenshots</h2>
-        <div class="screenshot-grid">
-          <div class="screenshot-item">
-            <img src="/screenshots/new-session.png" alt="New session screen with provider selection">
-            <p>Start a new session</p>
-          </div>
-          <div class="screenshot-item">
-            <img src="/screenshots/conversation.png" alt="Conversation view with file attachments">
-            <p>Chat with file uploads</p>
-          </div>
-          <div class="screenshot-item">
-            <img src="/screenshots/session-view.png" alt="Session view showing agent response">
-            <p>Watch agents work</p>
-          </div>
-          <div class="screenshot-item">
-            <img src="/screenshots/approval.png" alt="Tool approval request">
-            <p>Approve tool requests</p>
-          </div>
-          <div class="screenshot-item">
-            <img src="/screenshots/navigation.png" alt="Navigation drawer with sessions">
-            <p>Multi-session dashboard</p>
-          </div>
-          <div class="screenshot-item">
-            <img src="/screenshots/mobile-diff.png" alt="Mobile diff view with todo list">
-            <p>Diffs and todo tracking</p>
-          </div>
-          <div class="screenshot-item">
-            <img src="/screenshots/device-stream.png" alt="Live Android device stream with touch controls">
-            <p>Remote device control</p>
-          </div>
-        </div>
-        <h3 class="desktop-heading">Works great on desktop too!</h3>
-        <div class="desktop-screenshots">
-          <img src="/screenshots/desktop.png" alt="Desktop view">
-          <img src="/screenshots/desktop-diff.png" alt="Desktop diff view">
-          <img src="/screenshots/desktop-remote-access.png" alt="Remote access settings with relay configuration">
-        </div>
-      </div>
-    </section>
-
-    <section id="features" class="features">
-      <div class="container">
-        <h2>Features</h2>
         <div class="feature-grid">
-          <div class="feature-card">
-            <h3>Mobile-first with file uploads</h3>
-            <p>Approve tool requests, upload files, and share screenshots directly from your phone's camera roll. Works great on desktop too.</p>
-          </div>
-          <div class="feature-card">
-            <h3>Multi-session dashboard</h3>
-            <p>See all your agents at a glance. Star important sessions, archive old ones, easily multitask.</p>
-          </div>
-          <div class="feature-card">
-            <h3>Server-owned processes</h3>
-            <p>Agents run on your dev machine. Client disconnects don't interrupt work. Pick up where you left off.</p>
-          </div>
-          <div class="feature-card">
-            <h3>Push notifications</h3>
-            <p>Get notified when approval is needed. Uses VAPID with no third-party server required.</p>
-          </div>
-          <div class="feature-card">
-            <h3>Claude Code + Codex</h3>
-            <p>Full support for both Claude Code and Codex CLI. Start sessions, approve tools, and view diffs — same workflow for both providers.</p>
-          </div>
-          <div class="feature-card">
-            <h3>Remote device control</h3>
-            <p>Stream Android emulators and devices to your phone over WebRTC. Touch input, nav buttons, adaptive quality. Spot-check builds without walking to your desk. <a href="/remote-device-control">Learn more</a>.</p>
-          </div>
-          <div class="feature-card">
-            <h3>Voice input</h3>
-            <p>Talk to your agents via browser speech API. Great for Linux where SuperWhisper isn't available.</p>
-          </div>
-          <div class="feature-card">
-            <h3>Free remote relay</h3>
-            <p>Access your server from any browser — no Tailscale, no VPN, no port forwarding. Just set a password and log in. End-to-end encrypted with NaCl so not even the relay can see your data.</p>
-          </div>
-          <div class="feature-card">
-            <h3>Session interop</h3>
-            <p>View sessions started in the CLI or VS Code in real time, or resume them from your phone. Works for both Claude Code and Codex.</p>
-          </div>
-          <div class="feature-card">
-            <h3>TOS compliant</h3>
-            <p>Uses the official <a href="https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk">Agent SDK</a> — no header spoofing, no OAuth interception, no pricing circumvention. You authenticate via your own CLI. <a href="/tos-compliance">Learn more</a>.</p>
-          </div>
+          {featuredFeatures.map((feature, index) => (
+            <article class:list={["feature-card", { spotlight: index === 0 }]}>
+              <span class="feature-number">{String(index + 1).padStart(2, "0")}</span>
+              <h3>{feature.title}</h3>
+              <p>{feature.summary}</p>
+              <a href={feature.docsPath}>Read the guide <span aria-hidden="true">→</span></a>
+            </article>
+          ))}
+        </div>
+
+        <p class="catalog-link"><a class="btn btn-secondary" href="/features">See the complete feature catalog</a></p>
+      </div>
+    </section>
+
+    <section class="workflow-section">
+      <div class="site-container workflow-grid">
+        <div class="workflow-copy">
+          <p class="eyebrow">Remote without surrendering control</p>
+          <h2>Your machine stays the source of truth.</h2>
+          <p>Use a local network, your own HTTPS setup, an SSH tunnel, or the free end-to-end encrypted public relay. Your provider credentials and session history remain on the host.</p>
+          <ul>
+            <li><strong>No hosted product account.</strong> Authenticate to the server you control.</li>
+            <li><strong>No provider proxy.</strong> Agents run against your locally configured CLIs.</li>
+            <li><strong>No lock-in.</strong> The app and relay are open source under MIT.</li>
+          </ul>
+          <a class="text-link" href="/docs/remote-access">Compare connection options <span aria-hidden="true">→</span></a>
+        </div>
+        <figure class="workflow-shot">
+          <img src="/screenshots/desktop-remote-access.png" alt="Remote access settings in Yep Anywhere">
+          <figcaption>Choose the access model that fits each host.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="install-section">
+      <div class="site-container">
+        <header class="section-heading centered">
+          <p class="eyebrow">Choose your starting point</p>
+          <h2>Install it where your agents run.</h2>
+          <p>Desktop packaging is nearing release readiness. The npm install remains the established path for full configuration access.</p>
+        </header>
+
+        <div class="install-grid">
+          <article class="install-card desktop-card">
+            <div class="install-label"><span>Desktop apps</span><em>Experimental</em></div>
+            <h3>macOS and Windows</h3>
+            <p>Signed installers bundle the server and web client for a guided local setup.</p>
+            <div class="platform-list">
+              {desktopDistributions.map((distribution) => (
+                <a href={distribution.downloadUrl}>{distribution.name.replace("Desktop for ", "")} <span aria-hidden="true">↗</span></a>
+              ))}
+            </div>
+            <a class="text-link" href="/docs/desktop-apps">Desktop installation guide <span aria-hidden="true">→</span></a>
+          </article>
+
+          <article class="install-card terminal-card">
+            <div class="install-label"><span>Command line</span><em class="stable">Available</em></div>
+            <h3>npm on macOS, Windows, and Linux</h3>
+            <div class="command-block" aria-label="Installation commands">
+              <code><span>$</span> npm i -g yepanywhere</code>
+              <code><span>$</span> yepanywhere</code>
+            </div>
+            <a class="text-link" href="/docs/install-npm">npm installation guide <span aria-hidden="true">→</span></a>
+          </article>
+        </div>
+
+        <p class="mobile-status"><strong>On your phone:</strong> use the responsive browser client today. The Android app is in development and is not published.</p>
+      </div>
+    </section>
+
+    <section class="faq-section">
+      <div class="site-container faq-grid">
+        <header>
+          <p class="eyebrow">The short version</p>
+          <h2>Questions before you install?</h2>
+          <a href="/docs">Browse all documentation <span aria-hidden="true">→</span></a>
+        </header>
+        <div class="questions">
+          <details open>
+            <summary>Which coding agents work?</summary>
+            <p>Claude Code and Codex are first-class providers. OpenCode, Grok Build, Claude + Ollama, and Gemini integrations are experimental.</p>
+          </details>
+          <details>
+            <summary>Does the browser have to stay open?</summary>
+            <p>No. The server owns agent processes, so active work continues across browser disconnects. The host machine does need to stay running.</p>
+          </details>
+          <details>
+            <summary>Is there a hosted version?</summary>
+            <p>No hosted Yep Anywhere workspace or product account is required. Run the server yourself, then connect directly or through the optional relay.</p>
+          </details>
+          <details>
+            <summary>Is there a mobile app?</summary>
+            <p>The published phone experience is the mobile browser client. An Android app is under active development but is not published.</p>
+          </details>
         </div>
       </div>
     </section>
 
-    <section id="install" class="install">
-      <div class="container">
-        <h2>Installation</h2>
-        <div class="install-option">
-          <h3>Install from npm</h3>
-          <div class="code-block">
-            <code>npm i -g yepanywhere</code><br>
-            <code>yepanywhere</code>
-          </div>
+    <section class="final-cta">
+      <div class="site-container cta-panel">
+        <div>
+          <p class="eyebrow">One install. Every screen.</p>
+          <h2>Give your agents room to run.</h2>
+          <p>Start locally in minutes, then decide how—and where—you want to reconnect.</p>
         </div>
-        <div class="install-option">
-          <h3>Or run from source</h3>
-          <div class="code-block">
-            <code>git clone https://github.com/kzahel/yepanywhere.git</code><br>
-            <code>cd yepanywhere</code><br>
-            <code>pnpm install</code><br>
-            <code>pnpm start</code>
-          </div>
-        </div>
-        <p class="install-note">
-          Then open <strong>http://localhost:3400</strong> in your browser. Yep Anywhere auto-detects Claude Code and Codex.
-        </p>
-      </div>
-    </section>
-
-    <section id="faq" class="faq">
-      <div class="container">
-        <h2>FAQ</h2>
-
-        <div class="faq-item">
-          <h3>What is this?</h3>
-          <p>A web interface for Claude Code and Codex. Like the VS Code extension, but accessible from any device and designed for multi-session workflows.</p>
-        </div>
-
-        <div class="faq-item">
-          <h3>Which agents do I need?</h3>
-          <p>Install Claude Code, Codex CLI, or both. Yep Anywhere auto-detects installed agents and provides a unified interface for managing them.</p>
-        </div>
-
-        <div class="faq-item">
-          <h3>How do I access it from my phone?</h3>
-          <p>Use our free public relay at <strong>relay.yepanywhere.com</strong> — just enable it in Settings. All traffic is end-to-end encrypted (SRP-6a + TweetNaCl) and we can't see your data. No accounts required. You can also <a href="https://github.com/kzahel/yepanywhere/blob/main/docs/project/remote-access.md">run your own relay</a> if you prefer.</p>
-        </div>
-
-        <div class="faq-item">
-          <h3>Is there a hosted version?</h3>
-          <p>No. This runs entirely on your own machine. No accounts, no cloud, no database. Your sessions stay local.</p>
-        </div>
-
-        <div class="faq-item">
-          <h3>Can I see sessions started in the terminal?</h3>
-          <p>Yes! Yep Anywhere shows all Claude Code and Codex sessions on your machine, including those started from the CLI or VS Code. You can view them in real-time or resume them.</p>
-        </div>
-
-        <div class="faq-item">
-          <h3>Can I manage agents on multiple machines?</h3>
-          <p>Yes! Add SSH host aliases in Settings to run agents on VMs, containers, or remote servers. Sessions sync back via rsync so you get unified history across all your dev environments — filter by machine, see everything in one dashboard. This feature is experimental.</p>
-        </div>
-
-        <div class="faq-item">
-          <h3>What providers are supported?</h3>
-          <p>Claude Code (full support), Codex CLI (full support), and OpenCode (experimental). See the <a href="https://github.com/kzahel/yepanywhere#supported-providers">README</a> for details.</p>
-        </div>
-
-        <div class="faq-item">
-          <h3>Is it open source?</h3>
-          <p>Yes, 100% open source under the MIT license. <a href="https://github.com/kzahel/yepanywhere">View on GitHub</a>.</p>
+        <div class="cta-actions">
+          <a class="btn btn-primary" href="/docs/getting-started">Get started</a>
+          <a class="btn btn-secondary" href="https://github.com/kzahel/yepanywhere">View on GitHub</a>
         </div>
       </div>
     </section>
@@ -255,360 +221,703 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 </BaseLayout>
 
 <style>
-  /* Hero */
-  .hero {
-    padding: 80px 0 60px;
-    text-align: center;
+  .announcement {
+    background: color-mix(in srgb, var(--accent) 12%, var(--bg-primary));
+    border-bottom: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border));
   }
 
-  .hero h1 {
-    font-size: clamp(32px, 5vw, 48px);
-    font-weight: 700;
-    margin-bottom: 20px;
-    line-height: 1.2;
-  }
-
-  .hero p {
-    font-size: 18px;
-    color: var(--text-secondary);
-    max-width: 600px;
-    margin: 0 auto 32px;
-  }
-
-  .cta-buttons {
+  .announcement-content {
+    align-items: center;
     display: flex;
-    gap: 16px;
+    font-size: 13px;
+    gap: 12px;
     justify-content: center;
-    flex-wrap: wrap;
+    min-height: 42px;
   }
 
-  .hero-showcase {
-    padding: 48px 0 0;
-    display: flex;
-    gap: 24px;
-    justify-content: center;
-    flex-wrap: wrap;
+  .announcement-content > span {
+    background: var(--accent);
+    border-radius: 999px;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    padding: 3px 8px;
+    text-transform: uppercase;
   }
 
-  .hero-showcase-item {
-    text-align: center;
-  }
-
-  .hero-showcase-item img {
-    width: 220px;
-    border-radius: 16px;
-    border: 1px solid var(--border);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  }
-
-  .hero-showcase-item p {
-    margin-top: 12px;
-    font-size: 14px;
-    color: var(--text-secondary);
-  }
-
-  /* Value Props */
-  .value-props {
-    padding: 60px 0;
-    border-top: 1px solid var(--border);
-  }
-
-  .value-prop-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 32px;
-  }
-
-  .value-prop {
-    text-align: center;
-  }
-
-  .value-prop h3 {
-    font-size: 20px;
-    font-weight: 600;
-    margin-bottom: 12px;
-    color: var(--text-primary);
-  }
-
-  .value-prop p {
-    color: var(--text-secondary);
-    font-size: 15px;
-    line-height: 1.7;
-  }
-
-  /* Beyond Remote Control */
-  .beyond-rc {
-    padding: 60px 0;
-    border-top: 1px solid var(--border);
-  }
-
-  .beyond-rc h2 {
-    font-size: 28px;
-    margin-bottom: 16px;
-    text-align: center;
-  }
-
-  .beyond-rc-subtitle {
-    color: var(--text-secondary);
-    text-align: center;
-    max-width: 600px;
-    margin: 0 auto 32px;
-    font-size: 15px;
-  }
-
-  .beyond-rc-list {
-    max-width: 480px;
-    margin: 0 auto;
-  }
-
-  .beyond-rc-list ul {
-    color: var(--text-secondary);
-    font-size: 15px;
-    line-height: 2;
-  }
-
-  .beyond-rc-cta {
-    text-align: center;
-    margin-top: 24px;
-  }
-
-  .beyond-rc-cta a {
-    color: var(--accent);
-    font-weight: 600;
-    font-size: 16px;
+  .announcement-content a,
+  .text-link,
+  .faq-grid header a {
+    color: var(--accent-hover);
+    font-weight: 650;
     text-decoration: none;
   }
 
-  /* Screenshots */
-  .screenshots {
-    padding: 60px 0;
+  .hero {
+    overflow: hidden;
+    padding: 94px 0 110px;
+  }
+
+  .hero-copy {
+    text-align: center;
+  }
+
+  .eyebrow {
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .hero h1 {
+    font-size: clamp(54px, 8.5vw, 102px);
+    letter-spacing: -0.065em;
+    line-height: 0.9;
+    margin: 24px auto 0;
+    max-width: 1050px;
+  }
+
+  .hero h1 span {
+    color: var(--text-secondary);
+  }
+
+  .lede {
+    color: var(--text-secondary);
+    font-size: clamp(18px, 2.2vw, 22px);
+    line-height: 1.55;
+    margin: 30px auto 0;
+    max-width: 780px;
+  }
+
+  .hero-actions {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 13px;
+    justify-content: center;
+    margin-top: 34px;
+  }
+
+  .hero-actions .text-link {
+    margin-left: 8px;
+  }
+
+  .hero-note {
+    color: var(--text-secondary);
+    font-size: 12px;
+    letter-spacing: 0.025em;
+    margin-top: 20px;
+  }
+
+  .product-stage {
+    margin-top: 72px;
+    min-height: 550px;
+    position: relative;
+  }
+
+  .desktop-frame {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 15px;
+    box-shadow: 0 35px 100px #0008;
+    margin: 0 auto;
+    max-width: 1010px;
+    overflow: hidden;
+  }
+
+  .window-bar {
+    align-items: center;
+    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 7px;
+    height: 38px;
+    padding: 0 14px;
+  }
+
+  .window-bar i {
+    background: var(--text-secondary);
+    border-radius: 50%;
+    height: 8px;
+    opacity: 0.45;
+    width: 8px;
+  }
+
+  .window-bar span {
+    color: var(--text-secondary);
+    font-family: monospace;
+    font-size: 10px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .desktop-frame img,
+  .phone-frame img,
+  .workflow-shot img {
+    display: block;
+    height: auto;
+    width: 100%;
+  }
+
+  .phone-frame {
+    background: #080808;
+    border: 5px solid #0a0a0a;
+    border-radius: 28px;
+    box-shadow: 0 25px 70px #000a;
+    overflow: hidden;
+    position: absolute;
+    width: min(225px, 21vw);
+  }
+
+  .phone-primary {
+    bottom: -18px;
+    left: 0;
+    transform: rotate(-3deg);
+  }
+
+  .phone-secondary {
+    bottom: -46px;
+    right: 0;
+    transform: rotate(3deg);
+  }
+
+  .phone-speaker {
+    background: #272727;
+    border-radius: 99px;
+    height: 5px;
+    left: 41%;
+    position: absolute;
+    top: 8px;
+    width: 18%;
+    z-index: 2;
+  }
+
+  .proof-strip {
+    border-bottom: 1px solid var(--border);
     border-top: 1px solid var(--border);
   }
 
-  .screenshots h2 {
-    font-size: 28px;
-    margin-bottom: 40px;
-    text-align: center;
-  }
-
-  .screenshot-grid {
+  .proof-strip .site-container {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 24px;
-    justify-items: center;
+    grid-template-columns: repeat(4, 1fr);
   }
 
-  .screenshot-item {
-    text-align: center;
+  .proof-strip p {
+    display: flex;
+    flex-direction: column;
+    padding: 28px 24px;
   }
 
-  .screenshot-item img {
-    width: 100%;
-    max-width: 280px;
-    border-radius: 16px;
-    border: 1px solid var(--border);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-    transition: transform 0.2s, box-shadow 0.2s;
+  .proof-strip p + p {
+    border-left: 1px solid var(--border);
   }
 
-  .screenshot-item img:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5);
-  }
-
-  .screenshot-item p {
-    margin-top: 12px;
-    color: var(--text-secondary);
+  .proof-strip strong {
     font-size: 14px;
   }
 
-  .desktop-heading {
+  .proof-strip span {
+    color: var(--text-secondary);
+    font-size: 12px;
+  }
+
+  .promise-section,
+  .catalog-preview,
+  .workflow-section,
+  .install-section,
+  .faq-section,
+  .final-cta {
+    padding: 112px 0;
+  }
+
+  .catalog-preview,
+  .install-section {
+    background: var(--bg-secondary);
+  }
+
+  .section-heading h2,
+  .workflow-copy h2,
+  .faq-grid h2,
+  .cta-panel h2 {
+    font-size: clamp(36px, 5vw, 58px);
+    letter-spacing: -0.045em;
+    line-height: 1.03;
+    margin-top: 13px;
+  }
+
+  .section-heading > p,
+  .split > p,
+  .workflow-copy > p,
+  .cta-panel > div > p:last-child {
+    color: var(--text-secondary);
+    font-size: 17px;
+  }
+
+  .section-heading.centered {
+    margin: 0 auto 52px;
+    max-width: 820px;
     text-align: center;
-    margin-top: 48px;
-    margin-bottom: 24px;
-    color: var(--text-primary);
   }
 
-  .desktop-screenshots {
-    display: flex;
-    gap: 24px;
-    justify-content: center;
-    flex-wrap: wrap;
+  .section-heading.centered > p:last-child {
+    margin: 20px auto 0;
+    max-width: 670px;
   }
 
-  .desktop-screenshots img {
-    max-width: 100%;
-    width: 400px;
-    border-radius: 16px;
+  .section-heading.split {
+    align-items: end;
+    display: grid;
+    gap: 60px;
+    grid-template-columns: 1.3fr 0.7fr;
+    margin-bottom: 52px;
+  }
+
+  .promise-grid {
+    display: grid;
+    gap: 18px;
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .promise-grid article {
     border: 1px solid var(--border);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    border-radius: 14px;
+    min-height: 270px;
+    padding: 28px;
   }
 
-  /* Features */
-  .features {
-    padding: 60px 0;
-    border-top: 1px solid var(--border);
+  .step,
+  .feature-number {
+    color: var(--accent);
+    font-family: monospace;
+    font-size: 12px;
   }
 
-  .features h2 {
-    font-size: 28px;
-    margin-bottom: 40px;
-    text-align: center;
+  .promise-grid h3,
+  .feature-card h3,
+  .install-card h3 {
+    font-size: 21px;
+    letter-spacing: -0.02em;
+    line-height: 1.25;
+    margin-top: 46px;
+  }
+
+  .promise-grid p,
+  .feature-card p,
+  .install-card > p {
+    color: var(--text-secondary);
+    font-size: 14px;
+    margin-top: 13px;
   }
 
   .feature-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 24px;
+    gap: 1px;
+    grid-template-columns: repeat(3, 1fr);
+    overflow: hidden;
   }
 
   .feature-card {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 24px;
+    background: var(--bg-primary);
+    min-height: 286px;
+    padding: 30px;
+    position: relative;
+  }
+
+  .feature-card.spotlight {
+    grid-column: span 2;
   }
 
   .feature-card h3 {
-    font-size: 16px;
-    margin-bottom: 8px;
-    color: var(--accent);
-  }
-
-  .feature-card p {
-    color: var(--text-secondary);
-    font-size: 14px;
+    margin-top: 34px;
   }
 
   .feature-card a {
-    color: var(--accent-hover);
-    text-decoration: underline;
-  }
-
-  /* Install */
-  .install {
-    padding: 60px 0;
-    border-top: 1px solid var(--border);
-  }
-
-  .install h2 {
-    font-size: 28px;
-    margin-bottom: 24px;
-    text-align: center;
-  }
-
-  .install-option {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 24px;
-    margin-bottom: 16px;
-  }
-
-  .install-option h3 {
-    font-size: 16px;
-    margin-bottom: 12px;
-  }
-
-  .install-note {
-    color: var(--text-secondary);
-    margin-top: 16px;
-    text-align: center;
-  }
-
-  /* FAQ */
-  .faq {
-    padding: 60px 0;
-    border-top: 1px solid var(--border);
-  }
-
-  .faq h2 {
-    font-size: 28px;
-    margin-bottom: 32px;
-    text-align: center;
-  }
-
-  .faq-item {
-    border-bottom: 1px solid var(--border);
-    padding: 20px 0;
-  }
-
-  .faq-item:first-of-type {
-    border-top: 1px solid var(--border);
-  }
-
-  .faq-item h3 {
-    font-size: 16px;
-    margin-bottom: 8px;
-    font-weight: 600;
-  }
-
-  .faq-item p {
-    color: var(--text-secondary);
-    font-size: 14px;
-  }
-
-  .faq-item a {
-    color: var(--accent);
-  }
-
-  /* Announcement Banner */
-  .announcement {
-    background: linear-gradient(90deg, var(--accent) 0%, var(--accent-hover) 100%);
-    padding: 12px 24px;
-    text-align: center;
-  }
-
-  .announcement-content {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    flex-wrap: wrap;
-  }
-
-  .announcement-badge {
-    background: rgba(255, 255, 255, 0.2);
-    color: white;
-    padding: 4px 10px;
-    border-radius: 4px;
-    font-size: 12px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-
-  .announcement p {
-    color: white;
-    font-size: 15px;
-    font-weight: 500;
-  }
-
-  .announcement a {
-    color: white;
-    text-decoration: underline;
-    font-weight: 600;
-  }
-
-  .announcement a:hover {
+    bottom: 28px;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 650;
+    position: absolute;
     text-decoration: none;
   }
 
-  /* Mobile */
-  @media (max-width: 600px) {
+  .catalog-link {
+    margin-top: 30px;
+    text-align: center;
+  }
+
+  .workflow-grid {
+    align-items: center;
+    display: grid;
+    gap: 70px;
+    grid-template-columns: 0.82fr 1.18fr;
+  }
+
+  .workflow-copy > p {
+    margin-top: 22px;
+  }
+
+  .workflow-copy ul {
+    display: grid;
+    gap: 16px;
+    list-style: none;
+    margin: 30px 0;
+  }
+
+  .workflow-copy li {
+    color: var(--text-secondary);
+    font-size: 14px;
+    padding-left: 22px;
+    position: relative;
+  }
+
+  .workflow-copy li::before {
+    color: var(--accent);
+    content: "✓";
+    left: 0;
+    position: absolute;
+  }
+
+  .workflow-copy strong {
+    color: var(--text-primary);
+  }
+
+  .workflow-shot {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    box-shadow: 0 25px 70px #0007;
+    overflow: hidden;
+  }
+
+  .workflow-shot figcaption {
+    color: var(--text-secondary);
+    font-size: 12px;
+    padding: 12px 16px;
+  }
+
+  .install-grid {
+    display: grid;
+    gap: 18px;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .install-card {
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    display: flex;
+    flex-direction: column;
+    min-height: 375px;
+    padding: 30px;
+  }
+
+  .install-label {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .install-label > span {
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .install-label em {
+    background: #d977061c;
+    border: 1px solid #d9770655;
+    border-radius: 99px;
+    color: #f59e0b;
+    font-size: 10px;
+    font-style: normal;
+    padding: 3px 8px;
+  }
+
+  .install-label em.stable {
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+    color: var(--accent-hover);
+  }
+
+  .install-card h3 {
+    font-size: 25px;
+    margin-top: 48px;
+  }
+
+  .install-card .text-link {
+    margin-top: auto;
+  }
+
+  .platform-list {
+    display: flex;
+    gap: 10px;
+    margin: 28px 0;
+  }
+
+  .platform-list a {
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    color: var(--text-primary);
+    font-size: 13px;
+    padding: 9px 12px;
+    text-decoration: none;
+  }
+
+  .command-block {
+    background: #080808;
+    border: 1px solid #292929;
+    border-radius: 9px;
+    display: grid;
+    gap: 8px;
+    margin: 26px 0;
+    padding: 18px;
+  }
+
+  .command-block code {
+    color: #e5e5e5;
+    font-size: 13px;
+  }
+
+  .command-block span {
+    color: #22c55e;
+  }
+
+  .mobile-status {
+    color: var(--text-secondary);
+    font-size: 13px;
+    margin-top: 24px;
+    text-align: center;
+  }
+
+  .mobile-status strong {
+    color: var(--text-primary);
+  }
+
+  .faq-grid {
+    display: grid;
+    gap: 90px;
+    grid-template-columns: 0.72fr 1.28fr;
+  }
+
+  .faq-grid header a {
+    display: inline-block;
+    margin-top: 25px;
+  }
+
+  .questions details {
+    border-top: 1px solid var(--border);
+    padding: 24px 0;
+  }
+
+  .questions details:last-child {
+    border-bottom: 1px solid var(--border);
+  }
+
+  .questions summary {
+    cursor: pointer;
+    font-size: 17px;
+    font-weight: 650;
+  }
+
+  .questions p {
+    color: var(--text-secondary);
+    font-size: 14px;
+    margin-top: 13px;
+    max-width: 650px;
+  }
+
+  .final-cta {
+    padding-top: 0;
+  }
+
+  .cta-panel {
+    align-items: end;
+    background: color-mix(in srgb, var(--accent) 12%, var(--bg-secondary));
+    border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--border));
+    border-radius: 18px;
+    display: flex;
+    gap: 40px;
+    justify-content: space-between;
+    padding: 52px;
+  }
+
+  .cta-panel > div:first-child {
+    max-width: 690px;
+  }
+
+  .cta-panel > div > p:last-child {
+    margin-top: 17px;
+  }
+
+  .cta-actions {
+    display: flex;
+    flex-shrink: 0;
+    gap: 10px;
+  }
+
+  @media (max-width: 800px) {
+    .announcement-content {
+      align-items: flex-start;
+      flex-wrap: wrap;
+      gap: 5px 8px;
+      justify-content: flex-start;
+      padding-bottom: 10px;
+      padding-top: 10px;
+    }
+
+    .announcement-content p {
+      width: calc(100% - 86px);
+    }
+
+    .announcement-content a {
+      margin-left: 84px;
+    }
+
     .hero {
-      padding: 48px 0 40px;
+      padding: 70px 0 74px;
     }
 
-    .cta-buttons {
-      flex-direction: column;
-      align-items: center;
+    .hero h1 {
+      font-size: clamp(49px, 15vw, 70px);
     }
 
-    .cta-buttons .btn {
+    .hero-actions .text-link {
+      margin: 8px 0 0;
       width: 100%;
-      max-width: 280px;
-      justify-content: center;
+    }
+
+    .product-stage {
+      margin-top: 50px;
+      min-height: 390px;
+      padding-left: 16px;
+      padding-right: 16px;
+    }
+
+    .desktop-frame {
+      width: 720px;
+    }
+
+    .phone-frame {
+      border-radius: 22px;
+      width: 145px;
+    }
+
+    .phone-primary {
+      bottom: -12px;
+      left: 25px;
+    }
+
+    .phone-secondary {
+      bottom: -25px;
+      right: 22px;
+    }
+
+    .proof-strip .site-container {
+      grid-template-columns: 1fr 1fr;
+      padding: 0;
+    }
+
+    .proof-strip p {
+      padding: 20px;
+    }
+
+    .proof-strip p + p {
+      border-left: 0;
+    }
+
+    .proof-strip p:nth-child(even) {
+      border-left: 1px solid var(--border);
+    }
+
+    .proof-strip p:nth-child(n + 3) {
+      border-top: 1px solid var(--border);
+    }
+
+    .promise-section,
+    .catalog-preview,
+    .workflow-section,
+    .install-section,
+    .faq-section,
+    .final-cta {
+      padding: 78px 0;
+    }
+
+    .section-heading.split,
+    .workflow-grid,
+    .faq-grid {
+      gap: 32px;
+      grid-template-columns: 1fr;
+    }
+
+    .promise-grid,
+    .feature-grid,
+    .install-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .promise-grid article {
+      min-height: 225px;
+    }
+
+    .feature-card.spotlight {
+      grid-column: auto;
+    }
+
+    .feature-card {
+      min-height: 260px;
+    }
+
+    .workflow-shot {
+      order: -1;
+    }
+
+    .install-card {
+      min-height: 350px;
+    }
+
+    .faq-grid {
+      gap: 42px;
+    }
+
+    .cta-panel {
+      align-items: flex-start;
+      flex-direction: column;
+      padding: 35px 26px;
+    }
+
+    .cta-actions {
+      flex-direction: column;
+      width: 100%;
+    }
+
+    .cta-actions .btn {
+      text-align: center;
+    }
+  }
+
+  @media (max-width: 420px) {
+    .desktop-frame {
+      margin-left: -105px;
+    }
+
+    .product-stage {
+      min-height: 365px;
+    }
+
+    .phone-primary {
+      left: 14px;
+    }
+
+    .phone-secondary {
+      right: 14px;
+    }
+
+    .platform-list {
+      flex-direction: column;
     }
   }
 </style>
