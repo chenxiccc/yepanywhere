@@ -21,7 +21,7 @@ export const docsNavigation: DocsNavSection[] = [
       {
         path: "/docs/desktop-apps",
         title: "Desktop apps",
-        description: "Install the experimental macOS or Windows desktop release.",
+        description: "Install the beta macOS or Windows desktop release.",
       },
       {
         path: "/docs/install-npm",

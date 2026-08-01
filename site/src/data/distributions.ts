@@ -1,4 +1,4 @@
-export type DistributionStatus = "available" | "experimental" | "development";
+export type DistributionStatus = "available" | "beta" | "development";
 
 export interface PublicDistribution {
   id: string;
@@ -17,7 +17,7 @@ export const distributions = [
     id: "desktop-macos",
     name: "Desktop for macOS",
     platform: "Apple Silicon and Intel",
-    status: "experimental",
+    status: "beta",
     summary: "A signed and notarized desktop app with Yep Anywhere bundled inside.",
     docsPath: "/docs/desktop-apps",
     downloadUrl: "https://github.com/kzahel/yepanywhere/releases",
@@ -28,7 +28,7 @@ export const distributions = [
     id: "desktop-windows",
     name: "Desktop for Windows",
     platform: "Windows x64",
-    status: "experimental",
+    status: "beta",
     summary: "A signed installer with the server, client, and private runtime bundled.",
     docsPath: "/docs/desktop-apps",
     downloadUrl: "https://github.com/kzahel/yepanywhere/releases",

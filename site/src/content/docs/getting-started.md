@@ -19,7 +19,7 @@ Yep Anywhere's desktop app does not install or sign in to a provider for you.
 
 | Installation | Best for | Status |
 | --- | --- | --- |
-| [Desktop app](/docs/desktop-apps) | A one-click app, tray controls, and bundled updates on macOS or Windows | Experimental |
+| [Desktop app](/docs/desktop-apps) | A one-click app, tray controls, and bundled updates on macOS or Windows | Beta |
 | [npm install](/docs/install-npm) | Linux, servers, terminals, and full configuration control | Available |
 | Source checkout | Contributors and people who want to follow `main` | Available, development-oriented |
 

@@ -63,9 +63,9 @@ defect, not merely a copywriting gap.
 
 Installation claims are stale too. Signed macOS and Windows desktop installers
 are available from GitHub Releases, but the website's spring recap still calls
-the desktop app "coming soon." The desktop apps remain experimental while they
-approach release readiness and must be presented that way rather than hidden or
-promoted to stable. The Android app is in development and is not published. It
+the desktop app "coming soon." The desktop apps are beta while they approach
+release readiness and must be presented that way rather than hidden or promoted
+to stable. The Android app is in development and is not published. It
 must not receive a download or installation CTA until an explicit publication
 gate is met. The mobile browser interface remains the currently available
 phone experience.
@@ -103,7 +103,7 @@ tracking provider.
 - **The catalog contains only shipped features.** A status distinguishes
   stable from experimental behavior. Planned work stays in roadmaps and
   release communication, not in the public feature registry.
-- **Desktop downloads are discoverable and honestly experimental.** Link the
+- **Desktop downloads are discoverable and honestly beta.** Link the
   macOS and Windows installers on GitHub Releases from Getting Started and the
   relevant homepage installation choice. Do not call them generally available
   until a separate release-readiness decision promotes them.
@@ -160,7 +160,7 @@ Docs rather than hiding the product-discovery links.
 4. Six catalog-backed feature highlights with links for deeper exploration.
 5. Connectivity and trust: direct access, public relay, self-hosted relay,
    end-to-end encryption, and local session storage.
-6. Installation choice: experimental desktop downloads or the stable npm
+6. Installation choice: beta desktop downloads or the stable npm
    path, continuing into Getting Started.
 7. A final Get started / Explore features decision.
 
@@ -191,14 +191,14 @@ feature catalog:
 | Distribution | Public state | Public action |
 | --- | --- | --- |
 | npm/server install | Available | Show supported install and update commands |
-| macOS desktop app | Experimental | Link signed/notarized GitHub Release downloads |
-| Windows desktop app | Experimental | Link signed GitHub Release installers |
+| macOS desktop app | Beta | Link signed/notarized GitHub Release downloads |
+| Windows desktop app | Beta | Link signed GitHub Release installers |
 | Mobile browser client | Available | Explain that no native app is required |
 | Android app | In development, not published | No download CTA; state status only where needed |
 
 Do not label the desktop apps stable merely because their internal desktop
 README calls the shell stable. The public release-stage wording follows the
-Maintainer's explicit experimental classification until it is promoted. Do
+Maintainer's explicit beta classification until it is promoted. Do
 not present the Android device-control companion as the end-user Android app;
 they are different products.
 
@@ -210,7 +210,7 @@ Docs
 │   ├── What Yep Anywhere is
 │   ├── Requirements
 │   ├── Choose an installation method
-│   ├── Desktop apps (experimental)
+│   ├── Desktop apps (beta)
 │   ├── Install from npm
 │   └── Updating
 ├── Connect remotely
@@ -312,7 +312,7 @@ cards:
 ```ts
 type PublicDistributionStatus =
   | "available"
-  | "experimental"
+  | "beta"
   | "development";
 
 interface PublicDistribution {
@@ -326,7 +326,7 @@ interface PublicDistribution {
 ```
 
 Validation must reject a `development` distribution with a download URL. The
-macOS and Windows entries use `experimental` and link to the canonical GitHub
+macOS and Windows entries use `beta` and link to the canonical GitHub
 Releases surface rather than embedding versioned asset URLs throughout page
 copy. The Android entry uses `development` and has no download URL.
 
@@ -358,7 +358,7 @@ notes. The page should answer three questions without requiring a news post:
 
 Include a compact platform/installability section sourced from the distribution
 registry, but do not mix desktop installers into the capability-card grid. It
-must make the experimental macOS and Windows apps discoverable and distinguish
+must make the beta macOS and Windows apps discoverable and distinguish
 the available mobile browser experience from the unpublished Android app.
 
 Add appropriate title, description, canonical URL, Open Graph metadata, and
@@ -387,7 +387,7 @@ survive browser disconnects — while broadening the proof beyond approvals.
 Treat the Remote Control comparison as supporting discovery content rather
 than the organizing principle of the homepage.
 
-The installation preview should offer the experimental desktop path and the
+The installation preview should offer the beta desktop path and the
 stable npm path without turning the hero into a download matrix. Make clear
 that the phone experience works in the browser; do not advertise the Android
 app or imply that it is needed for mobile supervision.
@@ -408,9 +408,9 @@ Acceptance:
 Add a focused installation chooser within Getting Started, with a concise
 homepage entry point. Present the current options in this order:
 
-1. macOS desktop app — experimental GitHub Release download, with Apple
+1. macOS desktop app — beta GitHub Release download, with Apple
    Silicon and Intel choices;
-2. Windows desktop app — experimental GitHub Release installer;
+2. Windows desktop app — beta GitHub Release installer;
 3. npm/server install — supported command-line path and source-checkout
    alternative; and
 4. mobile access — use the browser/PWA against an existing server.
@@ -423,7 +423,7 @@ desktop README rather than copying them into user docs.
 
 Remove or qualify current website copy that calls the desktop app "coming
 soon." Dated news prose can remain historically accurate if it is visibly
-dated, but its current CTA should lead to the experimental downloads or docs.
+dated, but its current CTA should lead to the beta downloads or docs.
 
 State Android only where platform availability is being clarified:
 "Android app in development — not yet published." Do not offer an APK, store
@@ -434,7 +434,7 @@ Acceptance:
 
 - current macOS and Windows GitHub Release downloads are reachable from public
   Getting Started documentation;
-- both desktop platforms are visibly labeled experimental;
+- both desktop platforms are visibly labeled beta;
 - architecture/installer choices are understandable without opening the
   workflow YAML or developer README;
 - Android has no public download action and is never described as available;
@@ -476,7 +476,7 @@ Acceptance:
 Write and review these guides before calling the public docs launch useful:
 
 1. What Yep Anywhere is and what remains on the user's machine.
-2. Choosing an installation method: experimental desktop app or npm/server.
+2. Choosing an installation method: beta desktop app or npm/server.
 3. Desktop first launch, provider detection, and update/reinstall recovery.
 4. npm/source installation, first launch, provider detection, and updating.
 5. Choosing direct, public-relay, or self-hosted remote access.
@@ -640,7 +640,7 @@ surfaces, and the analytics/privacy boundary is both accurate and verified.
 - Advertising planned features as if they have shipped.
 - Adding account, session, prompt, or product-interaction analytics.
 - Adding a new analytics vendor merely to count CTA clicks.
-- Promoting the desktop apps from experimental to stable without a separate
+- Promoting the desktop apps from beta to stable without a separate
   release-readiness decision.
 - Publishing or linking an Android build before the Android app has an
   approved public distribution.
@@ -657,7 +657,7 @@ surfaces, and the analytics/privacy boundary is both accurate and verified.
 | 2 | Typed feature registry | Complete | `site/src/data/` validates feature, provider, distribution, and docs relationships at build time. |
 | 3 | Complete feature catalog | Complete | `/features` renders 25 shipped stable/experimental capabilities plus provider and distribution status. |
 | 4 | Concise homepage narrative | Complete | The homepage uses registry-selected proof, one product composition, trust, install choices, and a compact FAQ. |
-| 5 | Desktop downloads and platform status | Complete | macOS and Windows link to GitHub Releases as Experimental; Android is development-only with no download URL. |
+| 5 | Desktop downloads and platform status | Complete | macOS and Windows link to GitHub Releases as Beta; Android is development-only with no download URL. |
 | 6 | Public docs shell | Complete | Astro content pages provide hierarchical desktop/mobile navigation, anchors, TOC, pagination, and copyable code. |
 | 7 | Minimum complete user journey | Complete | Twelve guides cover install, updates, access, providers, sessions, queueing, notifications, files, security, and recovery. |
 | 8 | Public claim alignment | Complete | README, current CTAs, spring recap, public relay history, and device-control CTA now point to current catalog/docs facts. |

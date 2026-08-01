@@ -40,7 +40,7 @@ The site has three editorial registries with distinct meanings:
   and diff workflow. Experimental provider capabilities vary and must not
   inherit blanket parity claims.
 - **Distributions** describe ways to install or access Yep Anywhere. Their
-  states are `available`, `experimental`, and `development`.
+  states are `available`, `beta`, and `development`.
 
 These registries are editorial release claims, not runtime negotiation. They
 must not replace server capability gates, provider adapter contracts, or
@@ -60,8 +60,8 @@ instructions.
 
 - The npm/server install and browser client are available.
 - Signed macOS and Windows desktop installers are published through GitHub
-  Releases. They remain publicly labeled **Experimental** until the Maintainer
-  makes a separate release-readiness decision.
+  Releases and are publicly labeled **Beta** while release-readiness work
+  continues.
 - The Android app is in development and is not published. The normal phone
   experience is the browser client. The website must not expose an Android
   download, store badge, or installation procedure.

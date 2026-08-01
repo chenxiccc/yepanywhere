@@ -1,6 +1,6 @@
 ---
 title: Updating
-description: Update npm, source-checkout, and experimental desktop installations without losing local sessions or settings.
+description: Update npm, source-checkout, and beta desktop installations without losing local sessions or settings.
 ---
 
 ## npm installations
@@ -34,7 +34,7 @@ Yep Anywhere build as one unit while preserving the desktop data directory.
 
 Automatic downgrade is not supported. Keep the installer for a version you
 may need to restore manually, and read its release notes before moving between
-experimental builds.
+beta builds.
 
 ## Hosted remote compatibility
 

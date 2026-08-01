@@ -71,9 +71,9 @@ capabilities vary. See the [provider guide](https://yepanywhere.com/docs/provide
 
 If you can install Claude Code or Codex, you can install this. Minimal dependencies.
 
-**Desktop apps (experimental):** Signed macOS and Windows installers are
+**Desktop apps (beta):** Signed macOS and Windows installers are
 available on [GitHub Releases](https://github.com/kzahel/yepanywhere/releases).
-They are nearing release readiness but still carry an experimental label.
+They are available now while release-readiness work continues.
 
 **npm (established path):**
 

@@ -16,7 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 - Rebuild the homepage around persistent mobile agent supervision, catalog-
   backed feature proof, local-data trust, and distinct installation paths.
-- Expose experimental macOS and Windows downloads from GitHub Releases while
+- Expose beta macOS and Windows downloads from GitHub Releases while
   stating that the unpublished Android app remains in development.
 - Make Features and Docs first-class desktop and mobile navigation items, and
   correct website analytics and public-relay disclosures in the privacy page.

@@ -1,11 +1,10 @@
 ---
 title: Desktop apps
-description: Install the experimental signed macOS or Windows app from GitHub Releases and understand its bundled runtime.
+description: Install the beta signed macOS or Windows app from GitHub Releases and understand its bundled runtime.
 ---
 
-Yep Anywhere publishes experimental desktop installers for macOS and Windows.
-They are close to release-ready, but the public status remains **Experimental**
-until a separate release-readiness decision promotes them.
+Yep Anywhere publishes beta desktop installers for macOS and Windows.
+They are available now while release-readiness work continues.
 
 [Open Yep Anywhere releases](https://github.com/kzahel/yepanywhere/releases)
 
