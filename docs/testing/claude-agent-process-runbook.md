@@ -121,6 +121,15 @@ For visual work, the work order defines a fixture packet containing:
 - the required desktop and phone viewports; and
 - baseline captures at both viewports.
 
+For local campaign fixtures, use the repository-installed headless Playwright
+directly with a fresh context, `ignoreHTTPSErrors: true`, and service workers
+blocked when stale assets are possible. Do not open or control the maintainer's
+main browser for these fixtures. Browser control is reserved for a work order
+that explicitly depends on existing browser state such as a logged-in account
+or installed extension. A localhost certificate warning in the main browser is
+therefore a harness-routing error, not a fixture failure; abandon that path and
+use headless Playwright without interacting with the warning page.
+
 In calibration mode, the controller replays the steps and inspects both
 baselines before launch. In trusted campaign mode, the worker may prepare the
 packet from the clean base before editing, with a strict discovery limit. If a

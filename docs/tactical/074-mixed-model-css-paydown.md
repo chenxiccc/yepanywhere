@@ -41,23 +41,30 @@ After compaction or controller restart:
 ## Campaign checkpoint
 
 - Protocol base: `ef2c98ae9b1882d47fc931971881b2f90fba7f08`
-- First worker launch: pending
-- Wall-clock deadline: pending first launch
-- Workers launched: 0 / 50
+- First worker launch: `2026-08-01T07:46:39+02:00`
+- Wall-clock deadline: `2026-08-01T11:46:39+02:00`
+- Workers launched: 1 / 50
 - Accepted slices: 0
-- Stopped slices: 0
+- Stopped slices: 1
 - Current interval: 0 / 5 accepted
 - Current worker: none
-- Current clean base: protocol commit pending
+- Current clean base: this fixture-harness ledger checkpoint (`HEAD`)
 
 ## Completed slices
 
 | Run | Surface | Route | Result | Commit | Ratchet | Supervision evidence |
 |---:|---|---|---|---|---|---|
-| — | No campaign slice launched yet | — | — | — | — | — |
+| 1 | Thinking indicator | Luna xhigh: shared keyframe boundary | Stopped before edits: phone fixture absent | — | 0 | Main-browser steer; desktop baseline passed; phone failed one retry |
 
 ## Audit interval notes
 
-No interval has completed yet. At each five-slice checkpoint, replace this note
-or append a dated section with aggregate inventory movement, model outcomes,
-fixture/check evidence, steering events, routing changes, and the pushed base.
+No interval has completed yet. Run 1 validated the stop path but exposed a
+harness-routing error: the worker initially opened the maintainer's main browser
+and encountered its localhost certificate warning. The runbook now directs
+local campaign fixtures straight to repository headless Playwright. The supplied
+Agents-page fixture was present at desktop width but absent at phone width, so
+the candidate remains unmigrated and is not reserved as the next slice.
+
+At each five-slice checkpoint, append aggregate inventory movement, model
+outcomes, fixture/check evidence, steering events, routing changes, and the
+pushed base.
