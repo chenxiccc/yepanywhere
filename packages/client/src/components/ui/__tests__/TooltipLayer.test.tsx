@@ -724,6 +724,7 @@ describe("TooltipLayer", () => {
     render(
       <>
         <TooltipLayer />
+        {/* biome-ignore lint/a11y/noAmbiguousAnchorText: Generic link text exercises browser-owned context-menu behavior. */}
         <a href="/elsewhere" title="Link destination">
           Link
         </a>
