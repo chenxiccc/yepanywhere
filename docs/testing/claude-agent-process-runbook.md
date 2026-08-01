@@ -112,6 +112,13 @@ behavior tests separately in the work packet. A zero inventory test count is
 not evidence that no focused tests exist, and this documented distinction is
 not by itself an analyzer trust-gate failure.
 
+A reported selector-contract test or harness that names vocabulary being moved
+is ordinary migration scope. Allow the narrow file in the work packet and
+replace the class locator with an existing accessible or structural contract
+when possible. Do not delete the global token while freezing its reported
+consumer read-only: a tolerant best-effort helper may otherwise become a
+silent no-op even though the normal test matrix stays green.
+
 ### Bound the visual fixture before launch
 
 For visual work, the work order defines a fixture packet containing:

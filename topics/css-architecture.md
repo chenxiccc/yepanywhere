@@ -337,14 +337,8 @@ ownership examples:
 mobile sheet, a desktop panel, and five caller sites whose overrides became
 props. It is the reference for the composition rules above.
 
-The current legacy ceilings are:
-
-| Stylesheet | Maximum lines |
-|---|---:|
-| `index.css` | 20,870 |
-| `renderers.css` | 8,042 |
-| `tool-rows.css` | 948 |
-| `emulator.css` | 261 |
-
-These numbers are ceilings, not targets. Every successful extraction should
-make the relevant number smaller.
+The authoritative current legacy ceilings live in
+`scripts/css-architecture-baseline.json`; `pnpm css:check` prints them. Do not
+copy the changing numbers into this topic: every successful extraction records
+a smaller ceiling, so a duplicate table becomes misleading quickly. The
+baseline values are ceilings, not targets.
