@@ -95,3 +95,8 @@ hardened runtime. Bun uses JavaScriptCore, so the final Bun signature must
 retain `com.apple.security.cs.allow-jit=true`. Release CI smokes the Bun and
 server resources from the final signed `.app` before the release action uploads
 artifacts.
+
+## Release QA history
+
+End-to-end checks against published installers and updater feeds are recorded
+in the [desktop release QA log](../../docs/testing/desktop-release-qa-log.md).
