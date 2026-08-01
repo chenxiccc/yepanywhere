@@ -60,6 +60,7 @@ credentials or session contents.
 
 ## Mobile app status
 
-The Android app is in development and is not published. It is not part of the
-desktop download and no public APK or store listing is currently offered. Use
-the [mobile browser connection](/docs/remote-access) today.
+The Android app is in development and iOS is planned afterward. Neither app is
+published or part of the desktop download, and no public APK or store listing
+is currently offered. Use the [mobile browser connection](/docs/remote-access)
+today.

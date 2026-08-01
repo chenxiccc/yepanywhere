@@ -66,7 +66,7 @@ export const features = [
   {
     id: "cross-device-control",
     title: "Any browser, any host",
-    summary: "Use a desktop, laptop, Chromebook, tablet, or phone to supervise sessions running on another computer.",
+    summary: "Use any modern web browser—on another computer, a tablet, or a phone—to supervise sessions running on another host.",
     category: "supervise",
     status: "stable",
     docsPath: "/docs/remote-access",
@@ -111,7 +111,7 @@ export const features = [
     category: "supervise",
     status: "stable",
     docsPath: "/docs/notifications-and-voice",
-    availability: "Browser Web Push; native Android delivery is still in development.",
+    availability: "Browser Web Push; native Android delivery is in development, with iOS planned later.",
     sourceRefs: ["topics/notifications.md"],
   },
   {
@@ -285,8 +285,8 @@ export const features = [
   },
   {
     id: "source-control",
-    title: "Guarded source control",
-    summary: "Inspect working-tree changes and recent commits, then explicitly check, fast-forward pull, or push.",
+    title: "Source control UI",
+    summary: "Browse changes, diffs, repository files, blame, and recent commits, with explicit check-remote, fast-forward pull, and push actions.",
     category: "review",
     status: "experimental",
     docsPath: "/docs/files-and-source-control",
@@ -315,8 +315,8 @@ export const features = [
   },
   {
     id: "encrypted-relay",
-    title: "End-to-end encrypted public relay",
-    summary: "Reach an authenticated server without a VPN while the relay sees encrypted application traffic, not session contents.",
+    title: "Remote access without pairing",
+    summary: "Enable the end-to-end encrypted public relay, set a password, and connect from any browser—no device pairing, VPN, or port forwarding.",
     category: "connect",
     status: "stable",
     docsPath: "/docs/remote-access",

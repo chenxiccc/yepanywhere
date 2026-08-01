@@ -24,10 +24,9 @@ Related:
   not be framed as a cut-down phone companion.
 - The first viewport identifies subscription-plan support as a primary benefit.
   Yep Anywhere launches the official Claude Code or Codex process and uses its
-  active provider-managed authentication; it does not add a separate usage
-  bill. Public copy must not imply that Yep Anywhere grants plan eligibility,
-  bypasses provider limits, or prevents an API-key or pay-as-you-go
-  configuration from incurring provider charges.
+  active provider-managed authentication. Public copy must not imply that Yep
+  Anywhere grants plan eligibility, bypasses provider limits, or prevents an
+  API-key or pay-as-you-go configuration from incurring provider charges.
 - The default workflow should feel familiar to people who already use Claude
   Code or Codex in a CLI or desktop app. Advanced coordination, review,
   sharing, voice, and device-control capabilities are product depth, not new
@@ -41,7 +40,7 @@ Related:
   the product apart: multi-agent workflow breadth, a full browser client on
   every device, complete session and tool-call visibility with an optional
   condensed conversation view, local data ownership, direct and self-hosted
-  access, and an end-to-end encrypted authenticated relay. Phrase landscape
+  access, and an end-to-end encrypted relay. Phrase landscape
   claims as what the project survey found, not as an unprovable guarantee that
   no competitor can ever match an individual feature.
 - `/features` is the canonical public catalog of shipped capabilities. A
@@ -106,11 +105,12 @@ instructions.
 - Signed macOS and Windows desktop installers are published through GitHub
   Releases and are publicly labeled **Beta** while release-readiness work
   continues.
-- The Android app is in development and is not published. The normal phone
-  experience is the browser client. The website must not expose an Android
-  download, store badge, or installation procedure.
+- The Android app is in development and iOS is planned afterward. Neither is
+  published. The normal phone experience is the browser client. The website
+  must not expose an Android or iOS download, store badge, or installation
+  procedure.
 - Remote Android device control is a separate capability and must not be
-  described as the Android client app.
+  described as either native mobile client app.
 
 ## Local data path statements
 
@@ -123,19 +123,34 @@ instructions.
 
 ## Cross-device and first-party positioning
 
-- Yep Anywhere is not a phone-only companion. A modern browser on another
-  desktop, laptop, Chromebook, tablet, or phone can supervise an agent host.
+- Yep Anywhere is not a phone-only companion. Anything with a modern web
+  browser can supervise an agent host; examples such as another computer, a
+  tablet, or a phone are illustrative rather than an exhaustive device list.
+- The easiest public-relay path requires no manual device pairing, VPN, or port
+  forwarding. Public copy describes the actual setup rather than claiming that
+  nothing must be configured: install Yep Anywhere, choose Remote Access
+  credentials, enable the relay, then sign in from any browser.
 - The durable comparison with Claude Remote Control and Codex Remote Control is
   that Yep Anywhere is a provider-neutral, browser-first supervisor across the
   machines the user controls. It must not depend on a native controller app or
   a particular controller operating system.
+- The homepage Why section acknowledges Claude Code and ChatGPT's useful
+  first-party remote experiences by name, then states Yep Anywhere's positive
+  distinction: the complete multi-provider workspace works in any browser
+  across the user's connected hosts, not only on a phone.
+- The homepage FAQ asks directly why a visitor would choose Yep Anywhere over
+  the first-party remote apps. Its answer acknowledges those products
+  positively, then names the durable difference: Claude Code and Codex share
+  one complete browser workspace across hosts, without limiting the controller
+  to one provider or a phone app.
 - Do not claim that every current first-party Remote Control experience is
   universally phone-only. Provider device support and rollouts can change; use
   the positive browser, host, provider, session-management, and self-hosting
   distinctions that Yep Anywhere owns.
-- The native Android app should be described as a companion that must add
-  dependable native value—background notifications, deep links, trusted
-  packaging, and multi-server triage—not as a prerequisite for mobile use.
+- The native Android and iOS apps should be described as companions that must
+  add dependable native value—background notifications, deep links, trusted
+  packaging, and multi-server triage—not as prerequisites for mobile use.
+  Android is in development first; iOS is planned later.
 
 ## Navigation and fallback behavior
 
@@ -166,15 +181,19 @@ installation or workflow succeeded.
 ## Security and maintainer statements
 
 - Public security copy distinguishes architectural controls from maintenance
-  practice. It may state that runtime dependencies are deliberately minimized
-  and that maintainers regularly audit security-sensitive surfaces, but must
-  call those reviews maintainer-led rather than implying independent
+  practice. It may state that the runtime dependency surface is deliberately
+  narrow and that maintainers regularly audit security-sensitive surfaces, but
+  must call those reviews maintainer-led rather than implying independent
   certification.
 - The public core maintainer set is Jonathan Graehl (`@graehl`) and Kyle Graehl
   (`@kzahel`). Link identities to their public GitHub profiles. Link additional
   professional profiles only when the exact URL has been verified.
 - The homepage points readers to the public security guide and `SECURITY.md`
   remains the operator-facing vulnerability-reporting source of truth.
+- The public security guide provides `graehlarts@gmail.com` as the private
+  vulnerability-disclosure address and directs non-sensitive reports to GitHub
+  Issues. It must warn against publishing exploit details, credentials, or
+  other sensitive evidence in a public issue.
 
 ## Public-share privacy boundary
 
@@ -185,11 +204,11 @@ content while the share remains active, and a relay operator who inspects or
 modifies the relay can see the request path, bearer secret, and response
 contents.
 
-Public copy must distinguish this path from authenticated Remote Access, whose
-application messages are end-to-end encrypted. Do not use blanket statements
-such as “all relay traffic is private” or “the relay cannot read your data.”
-Tell users to review content before enabling a share and revoke the share when
-it is no longer needed.
+Public copy must distinguish this path from end-to-end encrypted Remote Access,
+whose application messages are end-to-end encrypted. Do not use blanket
+statements such as “all relay traffic is private” or “the relay cannot read your
+data.” Tell users to review content before enabling a share and revoke the share
+when it is no longer needed.
 
 ## Verification contract
 

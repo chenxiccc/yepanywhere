@@ -41,7 +41,7 @@ export const docsNavigation: DocsNavSection[] = [
       {
         path: "/docs/remote-access",
         title: "Remote access",
-        description: "Control any host from another computer, tablet, or phone.",
+        description: "Control any host from anything with a modern web browser.",
       },
       {
         path: "/docs/security-and-privacy",

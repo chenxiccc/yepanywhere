@@ -19,11 +19,10 @@ provider harness or protocol and does not intercept OAuth tokens.
 
 ## Use your subscription plan
 
-Yep Anywhere does not require a separate metered API account for Claude Code or
-Codex. It launches and resumes the official provider process using the account
-that process already has. Sign Claude Code into an eligible Claude plan or
-Codex into an eligible ChatGPT plan, and Yep Anywhere uses that provider-managed
-access.
+Yep Anywhere supports subscription-plan access through Claude Code and Codex.
+It launches and resumes the official provider process using the account that
+process already has. Sign Claude Code into an eligible Claude plan or Codex into
+an eligible ChatGPT plan, and Yep Anywhere uses that provider-managed access.
 
 When Claude Code or Codex exposes subscription limits, Yep Anywhere shows the
 applicable usage windows and reset times in the model controls. The provider

@@ -66,10 +66,10 @@ Installation claims are stale too. Signed macOS and Windows desktop installers
 are available from GitHub Releases, but the website's spring recap still calls
 the desktop app "coming soon." The desktop apps are beta while they approach
 release readiness and must be presented that way rather than hidden or promoted
-to stable. The Android app is in development and is not published. It
-must not receive a download or installation CTA until an explicit publication
-gate is met. The mobile browser interface remains the currently available
-phone experience.
+to stable. The Android app is in development and iOS is planned afterward;
+neither is published. They must not receive a download or installation CTA
+until an explicit publication gate is met. The mobile browser interface remains
+the currently available phone experience.
 
 The repository's existing `docs/project/` tree is not a ready-made public docs
 site. It mixes architecture, implementation plans, historical proposals, and
@@ -108,10 +108,10 @@ tracking provider.
   macOS and Windows installers on GitHub Releases from Getting Started and the
   relevant homepage installation choice. Do not call them generally available
   until a separate release-readiness decision promotes them.
-- **Android remains development-only.** It may appear in a platform-availability
-  explanation as "in development — not published," but it must never render a
-  download link, installation command, or implication that a public APK/store
-  release exists. Do not infer an iOS release from the shared mobile package.
+- **Native mobile apps remain unpublished.** Android may appear in a platform-
+  availability explanation as "in development," with iOS explicitly planned
+  afterward. Neither may render a download link, installation command, or
+  implication that a public APK/store release exists.
 - **Availability is explicit.** Provider-, platform-, connection-, or
   configuration-specific features say so. A feature that is experimental for
   one provider must not inherit a blanket stable claim from another.
@@ -195,13 +195,13 @@ feature catalog:
 | macOS desktop app | Beta | Link signed/notarized GitHub Release downloads |
 | Windows desktop app | Beta | Link signed GitHub Release installers |
 | Mobile browser client | Available | Explain that no native app is required |
-| Android app | In development, not published | No download CTA; state status only where needed |
+| Android and iOS apps | Android in development; iOS planned afterward; neither published | No download CTA; state status only where needed |
 
 Do not label the desktop apps stable merely because their internal desktop
 README calls the shell stable. The public release-stage wording follows the
 Maintainer's explicit beta classification until it is promoted. Do
-not present the Android device-control companion as the end-user Android app;
-they are different products.
+not present Android device control as either end-user native mobile app; they
+are different products.
 
 ### Initial public docs tree
 
@@ -329,7 +329,8 @@ interface PublicDistribution {
 Validation must reject a `development` distribution with a download URL. The
 macOS and Windows entries use `beta` and link to the canonical GitHub
 Releases surface rather than embedding versioned asset URLs throughout page
-copy. The Android entry uses `development` and has no download URL.
+copy. The combined Android/iOS entry uses `development`, states that Android is
+first and iOS follows, and has no download URL.
 
 Add a catalog validation command that fails on duplicate ids, unknown
 categories/providers, invalid status values, missing featured media, and docs
@@ -361,8 +362,8 @@ notes. The page should answer three questions without requiring a news post:
 
 Include a compact platform/installability section sourced from the distribution
 registry, but do not mix desktop installers into the capability-card grid. It
-must make the beta macOS and Windows apps discoverable and distinguish
-the available mobile browser experience from the unpublished Android app.
+must make the beta macOS and Windows apps discoverable and distinguish the
+available mobile browser experience from the unpublished Android and iOS apps.
 
 Add appropriate title, description, canonical URL, Open Graph metadata, and
 structured data only where the schema truthfully fits. Feature links without a
@@ -375,8 +376,8 @@ Acceptance:
 - status and availability remain legible on phone widths;
 - availability notes distinguish optional exposure from experimental maturity,
   with Project Queue labeled stable and opt-in;
-- desktop download links and Android development status match the distribution
-  registry;
+- desktop download links and Android/iOS development status match the
+  distribution registry;
 - each rendered link resolves in the production-style Astro build; and
 - the catalog remains useful with images disabled and to assistive technology.
 
@@ -404,24 +405,31 @@ localized.
 
 Make existing subscription-plan access a first-viewport benefit. State that Yep
 Anywhere uses the account already authenticated in the official Claude Code or
-Codex process and adds no separate usage bill. Keep plan eligibility, limits,
-credits, and API-key or pay-as-you-go charges explicitly provider-controlled.
+Codex process. Keep plan eligibility, limits, credits, and API-key or
+pay-as-you-go charges explicitly provider-controlled.
+
+Make the easiest Remote Access path equally concrete: install Yep Anywhere,
+choose a password, and sign in from any browser through the end-to-end encrypted
+public relay. State that it requires no manual device pairing, VPN, or port
+forwarding. Call this “no network setup,” not literally “no setup,” because the
+user still installs the product and configures Remote Access credentials.
 
 Follow the hero with a prominent “Why Yep Anywhere?” section. Explain that the
 surveyed alternatives may forward an agent chat, while Yep Anywhere combines
 multi-agent workflow breadth, a full client on every device, complete session
 and tool-call visibility, local ownership, direct/self-hosted access, and an
-end-to-end encrypted authenticated relay. Explain that full-fidelity transcripts
+end-to-end encrypted relay. Explain that full-fidelity transcripts
 can be shown as a calmer condensed conversation or with routine activity
 collapsed. Keep the opt-in public-share privacy exception explicit and phrase
 the survey as what the project found rather than an eternal universal claim.
-Compare against Claude and Codex first-party Remote Control through durable
-differences—provider-neutral browser access, host choice, session management,
-and self-hosting—not a blanket claim that first-party control is always
-phone-only.
+Acknowledge Claude Code and ChatGPT's useful first-party remote experiences,
+then compare through durable differences—provider-neutral browser access, host
+choice, session management, and self-hosting. State positively that Yep
+Anywhere's complete workspace works in any browser, not only on a phone; do not
+make a blanket claim that first-party control is always phone-only.
 
 Add concrete security-maintenance proof near the trust story: the deliberately
-small runtime dependency surface, regular maintainer-led audits, and the two
+narrow runtime dependency surface, regular maintainer-led audits, and the two
 public core maintainers, Jonathan Graehl (`@graehl`) and Kyle Graehl
 (`@kzahel`). Link verified public profiles and do not imply independent security
 certification.
@@ -434,7 +442,8 @@ app or imply that it is needed for mobile supervision.
 Acceptance:
 
 - a first viewport identifies the product, supported primary providers, local
-  execution boundary, subscription-plan support, and primary next action;
+  execution boundary, subscription-plan support, no-pairing access, and primary
+  next action;
 - the headline leads with full cross-device agent access rather than the generic
   fact that agents continue running;
 - the first viewport presents a familiar default workflow, optional advanced
@@ -444,7 +453,7 @@ Acceptance:
   capability, security, and privacy advantage;
 - the Why section distinguishes full transcript and tool-call visibility from
   the optional condensed, less-verbose presentation;
-- the trust section names minimal dependencies, maintainer-led audits, and both
+- the trust section names a narrow dependency surface, maintainer-led audits, and both
   core maintainers with verified public identity links;
 - Features and Docs are reachable from desktop and mobile navigation;
 - exactly one primary Get started action points to
@@ -452,6 +461,9 @@ Acceptance:
 - featured copy comes from the registry; and
 - the first-party comparison explains computer-to-computer control without
   making a stale absolute claim about provider device support; and
+- the FAQ directly answers why a visitor would choose Yep Anywhere over the
+  first-party remote apps, leading with one multi-provider browser workspace
+  across hosts rather than a single-provider phone workflow; and
 - the phone page no longer requires traversing a long screenshot column before
   reaching feature breadth or installation guidance.
 
@@ -477,10 +489,10 @@ Remove or qualify current website copy that calls the desktop app "coming
 soon." Dated news prose can remain historically accurate if it is visibly
 dated, but its current CTA should lead to the beta downloads or docs.
 
-State Android only where platform availability is being clarified:
-"Android app in development — not yet published." Do not offer an APK, store
-badge, waitlist, or installation instructions in this slice. Do not confuse
-remote Android device control with the Android client app.
+State native mobile plans only where platform availability is being clarified:
+"Android app in development; iOS planned afterward; neither published." Do not
+offer an APK, store badge, waitlist, or installation instructions in this
+slice. Do not confuse remote Android device control with either client app.
 
 Explain why no native mobile app is published yet: the browser already exposes
 the complete workflow, while a native companion must earn its install through
@@ -494,7 +506,8 @@ Acceptance:
 - both desktop platforms are visibly labeled beta;
 - architecture/installer choices are understandable without opening the
   workflow YAML or developer README;
-- Android has no public download action and is never described as available;
+- Android and iOS have no public download action and are never described as
+  available;
 - browser-based mobile supervision remains the default documented phone path;
   and
 - stale current-context "coming soon" desktop copy is removed or qualified.
@@ -544,7 +557,10 @@ Write and review these guides before calling the public docs launch useful:
 8. Project Queue.
 9. Notifications and voice input.
 10. File access and source-control safety boundaries.
-11. A troubleshooting index with logs, connection recovery, and issue-report
+11. Security and privacy boundaries, including a private vulnerability-
+    disclosure email and the rule that sensitive evidence stays out of public
+    issues.
+12. A troubleshooting index with logs, connection recovery, and issue-report
     evidence.
 
 Derive procedures from current code and binding topics. Do not copy historical
@@ -557,6 +573,8 @@ Acceptance:
 - a new user can install, open, connect remotely, and start or resume a session
   using only public docs;
 - an existing user can update and diagnose the common failure paths;
+- a security reporter can find a private disclosure address without opening a
+  public issue;
 - every documented default agrees with the owning runtime contract; and
 - storage documentation names the macOS/Linux and Windows defaults and keeps
   desktop data separate from npm/source data; and
@@ -580,7 +598,7 @@ Acceptance:
 - homepage, feature catalog, FAQ, and README no longer disagree about primary
   provider support;
 - current pages no longer describe released desktop artifacts as merely
-  forthcoming or imply that the Android app is published;
+  forthcoming or imply that either native mobile app is published;
 - public navigation contains no link into internal architecture as the sole
   user guide;
 - old URLs retain useful content or redirect safely; and
@@ -596,10 +614,10 @@ the self-hosted app, optional update checks, relay metadata, and `/remote/`.
 Update the public-relay section from future tense to current behavior after
 checking it against the relay privacy contract.
 
-Make the public-share exception explicit wherever authenticated relay privacy
-is summarized. Public sharing is opt-in because the current share path is
-readable by the relay operator; a deliberate share link must never inherit the
-end-to-end-encryption claim made for authenticated Remote Access.
+Make the public-share exception explicit wherever encrypted Remote Access
+privacy is summarized. Public sharing is opt-in because the current share path
+is readable by the relay operator; a deliberate share link must never inherit
+the end-to-end-encryption claim made for Remote Access.
 
 Keep the beacon in one shared marketing/docs layout. Add a narrow regression
 check that the marketing homepage and docs include the expected beacon while
@@ -739,8 +757,8 @@ Acceptance:
 - Adding a new analytics vendor merely to count CTA clicks.
 - Promoting the desktop apps from beta to stable without a separate
   release-readiness decision.
-- Publishing or linking an Android build before the Android app has an
-  approved public distribution.
+- Publishing or linking an Android or iOS build before that app has an approved
+  public distribution.
 - Building client-side docs search before the corpus demonstrates a need.
 - Adding a public-site language switcher before the localized route and
   translation-freshness contracts are ready.
@@ -756,7 +774,7 @@ Acceptance:
 | 2 | Typed feature registry | Complete | `site/src/data/` validates feature, provider, distribution, and docs relationships at build time. |
 | 3 | Complete feature catalog | Complete | `/features` renders the shipped stable/experimental catalog plus provider and distribution status. |
 | 4 | Concise homepage narrative | Complete | The homepage uses registry-selected proof, subscription-plan access, cross-device and first-party positioning, trust, install choices, and a compact FAQ. |
-| 5 | Desktop downloads and platform status | Complete | macOS and Windows link to GitHub Releases as Beta; Android is development-only with no download URL and its native-value release gate explained. |
+| 5 | Desktop downloads and platform status | Complete | macOS and Windows link to GitHub Releases as Beta; Android is in development, iOS is planned afterward, neither has a download URL, and the native-value release gate is explained. |
 | 6 | Public docs shell | Complete | Astro content pages provide hierarchical desktop/mobile navigation, anchors, TOC, pagination, and copyable code. |
 | 7 | Minimum complete user journey | Complete | Twelve guides cover install, updates, subscription access, providers, sessions, queueing, notifications, files, security, and recovery. |
 | 8 | Public claim alignment | Complete | README, FAQ, provider guide, current CTAs, spring recap, public relay history, and device-control CTA now point to current catalog/docs facts, including experimental pi support. |

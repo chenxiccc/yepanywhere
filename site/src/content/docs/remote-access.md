@@ -9,10 +9,9 @@ storage into a hosted account.
 
 ## Any controller, any host
 
-The controlling device does not have to be a phone. Use one computer to
-supervise agents running on another, or reconnect from a laptop, Chromebook,
-tablet, or phone. Any modern browser can be the control surface while the host
-computer keeps the code, provider credentials, sessions, and agent processes.
+Anything with a modern web browser can be the control surface—for example,
+another computer, a tablet, or a phone. The host computer keeps the code,
+provider credentials, sessions, and agent processes.
 
 Claude Remote Control and Codex Remote Control provide useful first-party
 paths inside their respective products. Yep Anywhere is provider-neutral and
@@ -25,10 +24,14 @@ controller operating system.
 | Method | Best for | Trade-off |
 | --- | --- | --- |
 | Direct LAN/private network | Trusted local networks or an existing Tailscale setup | You manage reachability |
-| Public relay | Fast access from any browser without port forwarding | Connection metadata reaches the relay; authenticated application traffic is end-to-end encrypted |
+| Public relay | Fast access from any browser without port forwarding | Connection metadata reaches the relay; application traffic is end-to-end encrypted |
 | Self-hosted relay/reverse proxy | Operators who want full infrastructure control | More deployment and security responsibility |
 
 ## Public relay
+
+This is the no-network-setup path. There is no manual device pairing, VPN, or
+port forwarding: install Yep Anywhere, choose a username and strong password,
+enable the relay, then sign in from any browser.
 
 In **Settings → Remote Access**, choose a username and a strong password, then
 enable the relay. For a headless setup:
@@ -40,12 +43,12 @@ yepanywhere --setup-remote-access --username myserver --password "use-a-long-uni
 Connect at [yepanywhere.com/remote](https://yepanywhere.com/remote). The browser
 and server authenticate with SRP and encrypt application messages before they
 cross the relay. The relay sees connection metadata and encrypted traffic, not
-the authenticated session contents or password.
+the session contents or password.
 
 Public read-only sharing is opt-in because it uses a different trust boundary.
 The current public-share relay path is readable by a relay operator and must not
-be described as equivalent to an authenticated end-to-end encrypted relay
-session. See [Security and privacy](/docs/security-and-privacy).
+be described as equivalent to an end-to-end encrypted Remote Access session.
+See [Security and privacy](/docs/security-and-privacy).
 
 ## Direct access
 
@@ -74,11 +77,11 @@ input, notifications, session history, and new sessions. Shipping a native app
 that only wraps this interface would add another installation and release path
 without adding enough user value.
 
-The Android app is in development as a real companion: more reliable
-background notifications, deep links, trusted packaged client code, and a
-multi-server inbox are the intended native advantages. It is not published
-until those capabilities and the release path are ready. Use the browser client
-today; no public APK or app-store listing is available.
+The Android app is in development as a real companion, with iOS planned
+afterward. More reliable background notifications, deep links, trusted packaged
+client code, and a multi-server inbox are the intended native advantages.
+Neither app is published. Use the browser client today; no public APK or
+app-store listing is available.
 
 ## Connection troubleshooting
 

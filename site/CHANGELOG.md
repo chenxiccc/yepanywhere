@@ -19,13 +19,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   providers, workflows, security, and troubleshooting.
 - Add build-time checks for catalog relationships, public internal links,
   canonical metadata, and the marketing analytics boundary.
-- Add a homepage security-maintenance section covering minimal runtime
-  dependencies, regular maintainer-led audits, and the two public core
+- Add a homepage security-maintenance section covering the narrow runtime
+  dependency surface, regular maintainer-led audits, and the two public core
   maintainers.
 
 ### Changed
 - Make existing Claude and ChatGPT subscription-plan support a first-viewport
   benefit, with provider-owned billing caveats in the public guide.
+- Replace the vague “Familiar by default” proof-strip fragment with the concrete
+  fact that the official Claude Code and Codex tools run on the user's host.
+- Name Claude Code and ChatGPT's first-party remote experiences in the Why
+  section, then distinguish Yep Anywhere through complete access from any
+  browser rather than only a phone.
+- Clarify that the relay option is end-to-end encrypted so the proof strip does
+  not imply that an unencrypted relay mode exists.
+- Describe relay application traffic as end-to-end encrypted, keeping server
+  authentication as a separate concept instead of calling the traffic itself
+  authenticated.
+- Rename the vague “Guarded source control” highlight to “Source control UI”
+  and describe the repository workbench directly.
+- Highlight the no-network-setup Remote Access path: install, set credentials,
+  and connect from any browser without device pairing, a VPN, or port
+  forwarding.
+- Replace the generic pre-install FAQ heading with a direct first-party remote
+  app comparison centered on one multi-provider browser workspace across hosts.
+- Pair every future Android client mention with the later iOS plan: Android is
+  in development, iOS follows, neither is published, and the complete mobile
+  browser remains available today.
+- Lead cross-device copy with “anything with a modern web browser” and use
+  computers, tablets, and phones as examples instead of an exhaustive device
+  list.
+- Add a private vulnerability-disclosure email to the public security guide
+  and reserve GitHub Issues for non-sensitive reports.
 - Remove the arbitrary capability, provider, and connection counts from the
   feature-catalog hero.
 - Reframe the homepage hero around full access to all supported agents from
@@ -51,7 +76,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Describe source checkouts as suitable for forks and customization as well as
   contribution and following unreleased work.
 - Expose beta macOS and Windows downloads from GitHub Releases while
-  stating that the unpublished Android app remains in development.
+  stating that Android is in development, iOS is planned later, and neither
+  native app is published.
 - Make Features and Docs first-class desktop and mobile navigation items, and
   correct website analytics and public-relay disclosures in the privacy page.
 

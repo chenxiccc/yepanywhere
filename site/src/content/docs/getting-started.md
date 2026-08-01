@@ -17,9 +17,8 @@ Yep Anywhere's desktop app does not install or sign in to a provider for you.
 
 Subscription plans are supported. Sign the official provider tool into an
 eligible Claude or ChatGPT plan and Yep Anywhere uses that provider-managed
-access without adding a separate usage bill. API-key and pay-as-you-go
-configurations remain billed by the provider; see [Providers](/docs/providers#use-your-subscription-plan)
-for details.
+access. API-key and pay-as-you-go configurations remain billed by the provider;
+see [Providers](/docs/providers#use-your-subscription-plan) for details.
 
 ## Choose an installation
 
@@ -29,8 +28,9 @@ for details.
 | [npm install](/docs/install-npm) | Linux, servers, terminals, and full configuration control | Available |
 | Source checkout | Contributors and anyone who wants to fork, customize, or follow `main` | Available, development-oriented |
 
-There is no published Android app yet. The complete client works in a mobile
-browser and does not require an app-store install. See
+There is no published Android or iOS app yet. Android is in development and iOS
+is planned afterward. The complete client works in a mobile browser and does
+not require an app-store install. See
 [why the browser is the supported mobile experience](/docs/remote-access#why-no-native-mobile-app-yet).
 
 ## Open Yep Anywhere
@@ -69,10 +69,14 @@ Continue with [Sessions and approvals](/docs/sessions-and-approvals), or set up
 
 ## Access from another device
 
-The controller can be another desktop or laptop, a Chromebook, a tablet, or a
-phone. For a quick same-network check, open the server from a trusted LAN or
-private network. For access over the internet without port forwarding,
-configure the public relay in **Settings → Remote Access**, then use
+Anything with a modern web browser can be the controller—for example, another
+computer, a tablet, or a phone. For a quick same-network check, open the server
+from a trusted LAN or private network. For access over the internet without
+port forwarding, configure the public relay in **Settings → Remote Access**, then use
 [yepanywhere.com/remote](https://yepanywhere.com/remote).
+
+The public-relay path requires no manual device pairing or VPN. Install Yep
+Anywhere, set the Remote Access username and password once, then sign in from
+any browser.
 
 Do not expose an unauthenticated local server directly to the public internet.

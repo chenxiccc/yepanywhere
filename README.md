@@ -19,8 +19,8 @@ from another computer, a tablet, or a phone while they run on the machines you
 control.
 
 Use an eligible Claude or ChatGPT plan through the account already signed in to
-the official provider tool. Yep Anywhere adds no separate usage bill, and can
-show current subscription limits when the provider exposes them.
+the official provider tool. Yep Anywhere can also show current subscription
+limits when the provider exposes them.
 
 ## Features
 
@@ -35,9 +35,9 @@ show current subscription limits when the provider exposes them.
   read-only session shares without returning to the host machine.
 - **Remote device control** — Stream Android devices and Apple Simulators over
   peer-to-peer WebRTC with touch controls and adaptive quality.
-- **Flexible remote access** — Connect directly, through your own HTTPS setup,
-  or through the optional end-to-end encrypted public relay from any modern
-  browser.
+- **Flexible remote access** — Connect directly or enable the end-to-end
+  encrypted public relay and sign in from any modern browser without device
+  pairing, a VPN, or port forwarding.
 
 See the [complete feature catalog](https://yepanywhere.com/features) and
 [public documentation](https://yepanywhere.com/docs) for availability and setup.
@@ -76,7 +76,8 @@ experimental; capabilities vary. See the
 
 ## Getting Started
 
-If you can install Claude Code or Codex, you can install this. Minimal dependencies.
+If you can install Claude Code or Codex, you can install this. The runtime has a
+narrow dependency surface.
 
 **Desktop apps (beta):** Signed macOS and Windows installers are
 available on [GitHub Releases](https://github.com/kzahel/yepanywhere/releases).
@@ -101,9 +102,10 @@ pnpm start
 Open http://localhost:3400 in your browser. The app auto-detects installed CLI agents.
 
 The complete phone and tablet experience is the responsive browser client. A
-native app should add more than an app-store wrapper, so Android remains in
+native app should add more than an app-store wrapper, so Android is in
 development around reliable background notifications, deep links, trusted
-packaging, and a multi-server inbox. It is not published. Follow the
+packaging, and a multi-server inbox, with iOS planned afterward. Neither is
+published. Follow the
 [getting-started guide](https://yepanywhere.com/docs/getting-started) for the
 current platform choices.
 
@@ -183,7 +185,7 @@ yepanywhere --setup-remote-access --username myserver --password "secretpass123"
 
 Then connect from anywhere at [yepanywhere.com/remote](https://yepanywhere.com/remote).
 
-Authenticated Remote Access traffic is end-to-end encrypted, so the relay
+Remote Access application traffic is end-to-end encrypted, so the relay
 cannot read session contents. Public session shares are a separate opt-in path:
 the current relay operator can read shared content. No accounts are required.
 

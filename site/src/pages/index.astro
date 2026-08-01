@@ -24,7 +24,7 @@ const experimentalProviderNames = formatProviderNames(
 
 <BaseLayout
   title="Yep Anywhere — All your coding agents on every device"
-  description="Access Claude Code and Codex on your machines from any browser. Use your existing provider subscription with no separate Yep Anywhere usage bill."
+  description="Access Claude Code and Codex on your machines from any browser while using your existing Claude or ChatGPT subscription plan."
 >
   <Header activePage="home" />
 
@@ -47,7 +47,7 @@ const experimentalProviderNames = formatProviderNames(
           <a class="btn btn-secondary" href="/features">Explore features</a>
           <a class="text-link" href="/remote">Log in to your server <span aria-hidden="true">→</span></a>
         </div>
-        <p class="hero-note">Subscription plans supported · no separate Yep Anywhere billing</p>
+        <p class="hero-note">Use your existing Claude or ChatGPT subscription</p>
       </div>
 
       <div class="site-container product-stage" aria-label="Yep Anywhere on desktop and mobile">
@@ -69,9 +69,9 @@ const experimentalProviderNames = formatProviderNames(
     <section class="proof-strip" aria-label="Product highlights">
       <div class="site-container">
         <p><strong>Use existing subscriptions</strong><span>Claude + ChatGPT plans</span></p>
-        <p><strong>Full workflow</strong><span>Every browser, every device</span></p>
-        <p><strong>Familiar by default</strong><span>Claude Code + Codex</span></p>
-        <p><strong>Private by architecture</strong><span>Direct or encrypted relay</span></p>
+        <p><strong>No network setup</strong><span>Install, set a password, open anywhere</span></p>
+        <p><strong>Uses the official tools</strong><span>Claude Code + Codex run on your host</span></p>
+        <p><strong>Private by architecture</strong><span>Direct connection or end-to-end encrypted relay</span></p>
       </div>
     </section>
 
@@ -80,7 +80,7 @@ const experimentalProviderNames = formatProviderNames(
         <header class="section-heading centered">
           <p class="eyebrow">Not just another remote control</p>
           <h2>Why Yep Anywhere?</h2>
-          <p>We surveyed the remote-agent landscape. Plenty of projects forward an agent chat to another screen. We did not find another that combines this much agent control with every-device access, local data ownership, direct connections, and an end-to-end encrypted authenticated relay.</p>
+          <p>We surveyed the remote-agent landscape. Plenty of projects forward an agent chat to another screen. We did not find another that combines this much agent control with every-device access, local data ownership, direct connections, and an end-to-end encrypted relay.</p>
         </header>
 
         <div class="promise-grid">
@@ -89,12 +89,12 @@ const experimentalProviderNames = formatProviderNames(
             <p>The complete session transcript, every tool call, and available thinking stay within reach. Switch to Conversation view or collapse routine activity whenever you want a calmer, less verbose read.</p>
           </article>
           <article>
-            <h3>Every screen gets the full product</h3>
-            <p>Use another desktop, laptop, Chromebook, tablet, or phone. The responsive browser client keeps the full workflow instead of switching to a limited companion mode.</p>
+            <h3>Every browser—not only your phone</h3>
+            <p>Claude Code and ChatGPT now offer useful first-party remote experiences. Yep Anywhere gives the complete multi-provider workspace to anything with a modern web browser, across all your connected hosts.</p>
           </article>
           <article>
             <h3>Private by architecture</h3>
-            <p>Agents, credentials, and history stay on your machines. Connect directly, self-host the infrastructure, or use authenticated relay traffic the relay cannot read. Public shares are separate and opt-in.</p>
+            <p>Agents, credentials, and history stay on your machines. Connect directly, self-host the infrastructure, or use end-to-end encrypted relay traffic the relay cannot read. Public shares are separate and opt-in.</p>
           </article>
         </div>
       </div>
@@ -129,8 +129,9 @@ const experimentalProviderNames = formatProviderNames(
         <div class="workflow-copy">
           <p class="eyebrow">Remote without surrendering control</p>
           <h2>Your machine stays the source of truth.</h2>
-          <p>Use a local network, your own HTTPS setup, an SSH tunnel, or the free end-to-end encrypted public relay. Your provider credentials and session history remain on the host.</p>
+          <p>For the easiest path, enable the free end-to-end encrypted public relay, set a password, and open Yep Anywhere from any browser. No device pairing, VPN, or port forwarding. Your provider credentials and session history remain on the host.</p>
           <ul>
+            <li><strong>No device pairing.</strong> Sign in from any modern web browser.</li>
             <li><strong>No hosted product account.</strong> Authenticate to the server you control.</li>
             <li><strong>No provider proxy.</strong> Agents run against your locally configured CLIs.</li>
             <li><strong>No lock-in.</strong> The app and relay are open source under MIT.</li>
@@ -152,8 +153,8 @@ const experimentalProviderNames = formatProviderNames(
 
         <div class="promise-grid">
           <article>
-            <h3>Minimal dependencies</h3>
-            <p>Runtime dependencies are kept deliberately small. New ones must justify their long-term update, payload, and audit cost; security and cryptography use established implementations.</p>
+            <h3>Narrow dependency surface</h3>
+            <p>The runtime dependency surface is kept deliberately narrow. New dependencies must justify their long-term update, payload, and audit cost; security and cryptography use established implementations.</p>
           </article>
           <article>
             <h3>Regular maintainer-led audits</h3>
@@ -210,9 +211,9 @@ const experimentalProviderNames = formatProviderNames(
         </div>
 
         <aside class="mobile-status">
-          <h3>Why no native mobile app yet?</h3>
+          <h3>Why no native mobile apps yet?</h3>
           <p>The responsive browser already provides the complete Yep Anywhere workflow on phones and tablets: approvals, diffs, uploads, voice input, and notifications.</p>
-          <p>We do not want to publish a thin app-store wrapper. The Android app is in development around native advantages such as more reliable background notifications, deep links, trusted packaged client code, and a multi-server inbox. Until those are release-ready, the browser is the supported mobile experience.</p>
+          <p>We do not want to publish thin app-store wrappers. The Android app is in development around native advantages such as more reliable background notifications, deep links, trusted packaged client code, and a multi-server inbox; iOS is planned afterward. Neither app is published. Until the native value is release-ready, the browser is the supported mobile experience.</p>
         </aside>
       </div>
     </section>
@@ -220,12 +221,16 @@ const experimentalProviderNames = formatProviderNames(
     <section class="faq-section">
       <div class="site-container faq-grid">
         <header>
-          <p class="eyebrow">The short version</p>
-          <h2>Questions before you install?</h2>
+          <p class="eyebrow">The practical difference</p>
+          <h2>Why not use the first-party remote apps?</h2>
           <a href="/docs">Browse all documentation <span aria-hidden="true">→</span></a>
         </header>
         <div class="questions">
           <details open>
+            <summary>What does Yep Anywhere add?</summary>
+            <p>Claude Code Remote Control and Codex in the ChatGPT mobile app are useful first-party options. Yep Anywhere puts Claude Code and Codex together in one complete browser workspace across all your connected hosts. You are not limited to one provider or a phone app.</p>
+          </details>
+          <details>
             <summary>Which coding agents work?</summary>
             <p>{stableProviderNames} are first-class providers. {experimentalProviderNames} integrations are experimental.</p>
           </details>
@@ -239,7 +244,7 @@ const experimentalProviderNames = formatProviderNames(
           </details>
           <details>
             <summary>Is there a mobile app?</summary>
-            <p>Not yet. The full product works in a mobile browser today. Android is in development and will be published when it adds dependable native value beyond wrapping the website.</p>
+            <p>Not yet. The full product works in a mobile browser today. Android is in development and iOS is planned afterward; neither app is published.</p>
           </details>
         </div>
       </div>

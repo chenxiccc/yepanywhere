@@ -24,12 +24,12 @@ Agent requests still go to the provider you configure. Local models keep that
 provider path local; cloud providers receive prompts and tool context according
 to their own product and privacy terms.
 
-## Authenticated public relay
+## End-to-end encrypted public relay
 
-Normal remote access uses SRP authentication and end-to-end encrypted
-application messages. The relay can observe connection metadata such as the
-username, timing, and traffic sizes, but not authenticated session contents or
-the password.
+Normal Remote Access authenticates the browser and server with SRP, then uses
+end-to-end encrypted application messages. The relay can observe connection
+metadata such as the username, timing, and traffic sizes, but not session
+contents or the password.
 
 Use a long, unique remote-access password. Anyone who can authenticate receives
 the authority exposed by your Yep Anywhere server.
@@ -37,7 +37,7 @@ the authority exposed by your Yep Anywhere server.
 ## Public session shares
 
 Public sharing is opt-in because it is not the same trust boundary as
-authenticated relay access. No session is shared until its owner deliberately
+end-to-end encrypted Remote Access. No session is shared until its owner deliberately
 creates a read-only link. A viewer with the secret link can read the shared
 content until the share is revoked or live access ends. The current relay path
 for public shares is not private from a relay operator: an operator who inspects
@@ -56,10 +56,10 @@ made visible by the share boundary.
 
 ## Dependency and review practice
 
-The shipped runtime is intentionally lean. New runtime dependencies must
-justify their continuing update, payload, and audit cost; cryptography,
-authentication, frameworks, and provider SDKs use established implementations
-rather than project-specific replacements.
+The shipped runtime has a deliberately narrow dependency surface. New runtime
+dependencies must justify their continuing update, payload, and audit cost;
+cryptography, authentication, frameworks, and provider SDKs use established
+implementations rather than project-specific replacements.
 
 The core maintainers regularly audit authentication, relay boundaries,
 rendered content, local file access, dependencies, packaging, and provider
@@ -74,6 +74,14 @@ Yep Anywhere has two core maintainers:
   [personal site](https://graehl.org)
 - [Kyle Graehl (@kzahel)](https://github.com/kzahel) —
   [LinkedIn](https://www.linkedin.com/in/kylegraehl)
+
+## Report a vulnerability
+
+Email [graehlarts@gmail.com](mailto:graehlarts@gmail.com) for private security
+disclosure. Do not open a public issue containing exploit details, credentials,
+or other sensitive evidence. Use
+[GitHub Issues](https://github.com/kzahel/yepanywhere/issues) for non-sensitive
+bugs and support requests.
 
 ## Website analytics
 

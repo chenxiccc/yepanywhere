@@ -24,8 +24,9 @@ If notifications do not arrive:
 3. Send a test notification from Settings.
 4. Check that the service worker is active and the server has VAPID keys.
 
-Native Android push is still in development. Browser Web Push remains the
-published phone-notification path.
+Native Android push is in development, with iOS planned afterward. Browser Web
+Push remains the published phone-notification path; neither native mobile app
+is published.
 
 ## Browser voice input
 
