@@ -27,7 +27,7 @@ integration, conflict resolution, and recovery remain agent work unless a
 separate proposal justifies one operation's preconditions, feedback, and
 recovery.
 
-The navigation surface has three modes:
+The navigation surface has these modes:
 
 - **Changes** is the default quick check and owns both the current
   HEAD-to-filesystem state and explicitly opened commit history. **Working
@@ -35,7 +35,12 @@ The navigation surface has three modes:
 - **Files** searches tracked paths and opens file content immediately, then
   enriches its blame column asynchronously when provenance becomes available.
 - **Comments** is the integration point for the pending review workflow owned
-  by [Source Review → New Session](source-review-to-session.md).
+  by [Source Review → New Session](source-review-to-session.md). Per that
+  topic's 2026-08-01 contract it splits into **Pending Comments** (the
+  unsubmitted accumulator) and **Reviews** (historical submissions), which
+  navigate alike. That adds a mode-selector entry, so the wrapping rule in
+  *Header hierarchy* below must be re-verified at phone width rather than
+  assumed to still fit.
 
 Normal Source Control navigation opens Changes with Working tree selected.
 Neither a clean tree nor an empty changed-file list falls through to HEAD or
