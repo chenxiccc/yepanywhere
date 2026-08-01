@@ -7,9 +7,11 @@
 
 Topic: cross-host-delegation
 
-Status: product direction. The user need, trust shape, and broad UI direction
-are clear enough to record. Peer identity, pairing, the delegation API, project
-mapping, and the worker-session presentation remain intentionally open.
+Status: product direction with a provisional API shape. The user need, trust
+shape, broad UI direction, provider-neutral coordination boundary, and agent
+exposure model are clear enough to guide experiments. Peer identity, pairing,
+grant fields, project mapping, exact wire schemas, and the worker-session
+presentation remain intentionally open.
 
 Related:
 [client source runtime topology](client-source-runtime-topology.md),
@@ -158,10 +160,32 @@ browser's password or saved resume secret should not become the server's
 long-lived peer credential, and the browser should not remain the runtime
 bridge after pairing.
 
+The relay is the default transport and design center. A controller must be able
+to reach a worker through an encrypted relay circuit with no direct addressing
+or network configuration, just as an authenticated client reaches a YA server.
+The relay remains an opaque forwarder and does not become the peer registry,
+authorization service, or plaintext API proxy. Pairing establishes a distinct
+peer-scoped authorization and resumable secure session (using the existing
+SRP/resume family or a closely related grant flow), separate from the browser's
+saved SRP session.
+
+This is relay-first, not relay-only. A future installation may prefer an
+explicitly configured direct LAN or Tailscale path, but that is an optional
+transport choice or optimization. It must preserve the same peer identity,
+grants, encryption/authentication expectations, coordination semantics, and
+failure model. No required delegation feature may depend on direct host
+reachability, and adding a direct route must not create a second trust
+relationship for the same peer.
+
 Grants should be explicit, inspectable, and revocable from the server that
 enforces them. Likely scope includes which projects and providers may be used,
 a permission ceiling, concurrency bounds, and which session-control actions
 are permitted. Exact fields are not decided.
+
+Effective authority can only narrow as a request crosses layers: it is the
+intersection of the agent/session enablement, the controller's outgoing grant,
+the worker's incoming grant and local policy, and the target provider's actual
+capabilities. A controller cannot request its way around a target-side ceiling.
 
 Pairing and arming are also distinct ideas. A paired host may be available only
 for an explicit user-initiated delegation, or it may be **armed for agents** so
@@ -191,48 +215,176 @@ not silently merge the transcripts or present delegation as a super-session
 jump. Provider-native subagents inside the worker remain a separate, nested
 provider concept.
 
-## Delegation And Local Control API Direction
+## Provisional Coordination API Direction
 
-The recent CSS refactoring campaign is useful evidence that YA already has
-much of a provider-neutral control surface. The
+The provisional direction is one **provider-neutral YA coordination service**,
+not separate local-control and remote-delegation products. Starting and
+supervising a session on the current YA server and doing so through an
+authorized peer should use the same normalized operations where their
+semantics are truly the same:
+
+```text
+Claude adapter ----\
+Codex adapter ------+--> YA coordination service --> local YA runtime
+REST/CLI client ----/                         \-----> authorized YA peer
+```
+
+This is a product boundary rather than a frozen route or schema. The exact URL
+namespace, field names, and streaming transport will be decided by an
+implementation proposal and compatibility review.
+
+### A target-aware boundary, not an arbitrary REST proxy
+
+The existing `/api/*` routes continue to mean resources owned by the YA server
+receiving the request. Delegation should not be implemented by adding a
+`?host=` query parameter to every existing route or by granting a controller
+an arbitrary remote REST proxy. That would blur local resource ownership,
+expand the delegated authority unnecessarily, and mix peer transport failures
+with ordinary project/session errors.
+
+Instead, a focused coordination namespace or service accepts an explicit
+target at the operation boundary. The conceptual selector is:
+
+```ts
+type CoordinationTarget =
+  | { kind: "local" }
+  | { kind: "peer"; peerId: string };
+```
+
+`peerId` is a stable YA server identity, never a display name, relay username,
+URL, or browser-saved route. A create request uses an opaque target-local
+project reference selected from the projects that the worker grant allows the
+controller to inspect. A controller does not send an arbitrary target
+filesystem path, and the first implementation does not require YA to maintain
+one canonical cross-host project mapping.
+
+YA should expose enough read-only project facts for the controlling agent or
+user to resolve the target before creating work. Useful evidence includes the
+project name, target-local path and project id, Git root/history-root commits,
+normalized remotes when present, current branch and HEAD, dirty state, and
+whether several clones or worktrees are candidates. A shared root commit plus
+project name is a strong hint that two checkouts share history, but not a
+unique identity: forks, clones, and worktrees share roots, shallow clones may
+not contain one, and rewritten/imported histories may differ.
+
+YA reports this evidence and performs mechanical preflight; it does not decide
+the repository semantics for the agent. The agent may select an unambiguous
+candidate, request more inspection, ask the user, or deliberately prepare a
+different checkout. If candidates remain ambiguous or requested expectations
+such as branch, commit, or cleanliness do not hold, the operation should fail
+with structured facts rather than silently guess or mutate the checkout. A
+remembered user-approved mapping may later make repeated use convenient, but
+it is not the only valid resolution mechanism.
+
+The initial operation vocabulary should cover:
+
+- list authorized targets and their relevant capabilities;
+- describe the supported coordination operations and schemas;
+- inspect authorized target-project candidates and readiness facts;
+- create a normal YA session on a selected target;
+- observe status, progress, messages, attention, and bounded results;
+- wait for a meaningful state transition without chatty polling;
+- send a message, steer, or answer requested input where the provider/session
+  state permits it; and
+- interrupt, abort, and release supervision resources deterministically.
+
+Creating remote work returns a durable **delegation handle** which records the
+controller, worker peer, worker YA session, authorization context, and current
+state. Later operations address that handle rather than repeatedly passing a
+host selector. The worker session remains a normal target-owned YA session
+with its own YA id and provider transcript; the delegation handle is the
+controller's supervision relationship, not a replacement public session id.
+
+The local target should traverse the same coordination application service as
+the peer target. Authentication, grant enforcement, transport, and remote
+failure handling remain peer-only layers, but normalized session-control
+semantics should not fork merely because the target is local.
+
+### One API, several agent and human adapters
+
+The coordination service is the product. REST, a CLI, provider-native tools,
+MCP, and eventual skills are adapters over it; they must not independently
+implement orchestration policy or define incompatible operation vocabularies.
+Direct clients should be able to use the full supported coordination surface
+without an agent harness.
+
+Claude and Codex are both first-class consumers. The shared capability cannot
+depend on a Codex-only tool lifecycle, nor should Claude receive a reduced
+control model. Each provider adapter may attach and discover tools differently,
+but it exposes equivalent YA operations and reports provider-specific
+capability gaps honestly. Other providers can adopt the same adapter contract
+later.
+
+The initial agent-facing surface should stay small and searchable rather than
+expose dozens of raw REST routes. A likely shape is a few structured operations
+covering targets, start, observe/wait, and control. Whether those are four MCP
+tools, a slightly different grouping, or native provider tools remains open;
+their underlying coordination requests and results do not.
+
+### Discovery without standing context injection
+
+Tool discovery and target discovery are separate:
+
+1. The user explicitly enables YA coordination for the session or applicable
+   agent policy. When disabled, YA adds no tools, prompt text, or autonomous
+   delegation behavior.
+2. The enabled provider adapter exposes compact searchable tool metadata.
+3. The agent asks YA for currently authorized and armed targets when it needs
+   them. Host topology, credentials, and grant secrets are never copied into
+   the provider prompt.
+
+For provider-attached tools, YA binds the controlling YA session and acting
+user/server authority when it creates the adapter. The model does not establish
+that authority by supplying a session id, prompt token, environment variable,
+or peer credential. An operation may echo the bound controller identity for
+audit and self-delegation checks, but it cannot use a model-chosen identity to
+impersonate another session. Direct REST/CLI clients use their authenticated
+caller identity instead.
+
+The normal path should rely on structured tool discovery. YA may optionally
+add one short capability hint when the user enables the feature, using the same
+broad product pattern as other explicit agent-context hints, but it should not
+inject a standing host list or API tutorial. A skill may teach higher-level
+workflow and judgment, but it is optional guidance above deterministic tools,
+not the source of authority, peer credentials, or protocol semantics.
+
+Lazy tool-definition loading is an optimization available in current Claude
+and Codex integrations, not a cross-provider correctness requirement. The
+surface should remain compact enough to be acceptable when a provider loads
+its definitions eagerly. Enabling tools in an already-running provider session
+may also have provider-specific lifecycle constraints; initial implementation
+may attach the adapter at session launch while preserving the same API.
+
+### Inspectable without a source checkout
+
+The CSS refactoring campaign is useful evidence that YA already has much of a
+provider-neutral control surface. The
 [`monitor-agent-process.mjs`](../scripts/monitor-agent-process.mjs) helper and
 the accompanying
 [`Claude agent process runbook`](../docs/testing/claude-agent-process-runbook.md)
 use the local YA API to create a bounded worker session, observe authoritative
 process state, steer on an alert, read normalized output, and audit the result.
-This demonstrated a practical form of one agent supervising another YA
+That demonstrated a practical form of one agent supervising another YA
 session, even though the first campaign used one host and one provider.
 
-That experiment is inspiration, not the delegation API contract. The monitor
-is intentionally read-only, polling is only one possible observation method,
-and the runbook contains campaign-specific policy that should not become a
-general API by accident.
+That experiment was especially usable because an agent in the YA source tree
+could inspect route implementations and surrounding examples. A supported
+external coordination API must preserve that discoverability for an agent that
+does not have the YA repository. It should provide machine-readable operation
+schemas, capability descriptions, stable structured errors, and concise
+examples through an OpenAPI-like document, a `describe` operation, generated
+CLI help, or an equivalent mechanism. The exact documentation format remains
+open; source-code access must not be required.
 
-We have not decided:
+The experiment remains inspiration, not the delegation API contract. The
+monitor is intentionally read-only, polling is only one possible observation
+method, and the runbook contains campaign-specific policy that should not
+become a general API by accident.
 
-- whether the reusable interface is primarily a CLI, library, MCP/tool server,
-  skill-backed workflow, REST/stream client, or a combination;
-- which object represents a delegated job versus its underlying YA session;
-- the exact create, wait, result, message, steer, interrupt, abort, and cleanup
-  vocabulary;
-- how an agent discovers its own controlling session and avoids accidentally
-  managing itself;
-- how remote progress and attention should be delivered without chatty
-  polling; or
-- how much of the interface belongs in YA's existing public API versus a
-  narrower delegation capability.
-
-The desired design pressure is to avoid inventing unrelated local and remote
-control models. Starting and supervising a session on the current YA server
-and doing so through an authorized peer should share concepts where their
-semantics are truly the same. Transport, authentication, grant enforcement,
-and failure modes will still differ. The
-[core service API](core-service-api.md) remains the adjacent proposal for
-making YA's local provider/session runtime deliberately controllable.
-
-An eventual agent skill can teach agents how and when to use this surface, but
-the skill should sit above deterministic YA operations rather than carry peer
-credentials or define the distributed protocol itself.
+The [core service API](core-service-api.md) remains the adjacent proposal for
+making YA's local provider/session runtime deliberately controllable. The
+coordination service may reuse that runtime seam, but cross-host grants and
+delegation records remain a higher-level product boundary.
 
 ## Relationship To Existing Directions
 
@@ -257,20 +409,89 @@ provider-specific or deferred.
 target provider already supplies. A broader guest-native computer-use tool is
 complementary and not a prerequisite.
 
-## Open Questions
+## Known Open Questions
+
+This is the explicit decision backlog, not a reopening of the settled baseline.
+The relay is the required zero-configuration/default transport, while optional
+direct LAN or Tailscale routes may carry the same peer protocol later.
+Likewise, YA supplies target project discovery, mechanical facts, assertions,
+and structured blockers; the agent or user owns branch, checkpoint,
+cleanliness, worktree, and other repository semantics.
+
+Before a first working delegation slice, an implementation proposal must
+resolve at least:
+
+1. stable peer identity plus the peer-scoped SRP/grant/resume record;
+2. the minimum incoming/outgoing grant scopes and revocation behavior;
+3. the target-project fact schema, opaque project reference, and preflight;
+4. the delegation state machine, idempotency, ownership, and cleanup rules;
+5. observation/wait, reconnect/catch-up, result, and error semantics; and
+6. equivalent Claude and Codex tool schemas plus their attachment lifecycle.
+
+The remaining questions below may be answered incrementally where the first
+experiment does not depend on them.
+
+### Identity, connectivity, and grants
 
 - Which existing installation identity, if any, should become the stable peer
-  identity shown across browser and server records?
+  identity shown across browser and server records, and how are its keys
+  rotated or recovered?
 - What is the smallest pairing and revocation experience that remains clear
   when one or both hosts are temporarily offline?
-- How are logical projects selected and mapped without allowing a controller
-  to invent arbitrary target paths?
+- What exact peer-scoped SRP/grant record is established during pairing, how is
+  its resumable relay session stored and expired, and which side owns reconnect
+  while delegated work is active?
+- When an optional direct LAN or Tailscale route is configured, what route
+  preference and failover policy preserves one peer identity and one resumable
+  delegation rather than creating transport-specific relationships?
+- Does revoking a grant block only new work, also block further control of
+  existing workers, or abort active workers under an explicit policy?
+- Which grant scopes, concurrency/resource budgets, and audit facts are
+  necessary for the first real delegation experiment?
 - What status should the host surface show from relay presence, browser SRP
   authentication, outgoing peer authorization, and last-seen inbound use?
-- Which grant scopes are necessary for the first real delegation experiment?
-- What is the right common seam between local agent orchestration and remote
-  delegation?
+
+### Project and launch policy
+
+- What is the minimum normalized project/repository fact schema, and when does
+  an explicit user choice become a remembered convenience mapping?
+- Which launch fields may a controller choose—provider, model, effort,
+  permission mode, environment/tool profile, initial prompt, and attachments—
+  and which are selected or capped by the target?
+- Which branch/commit/cleanliness expectations can an agent ask YA to verify
+  mechanically, and how are artifacts returned when checkouts differ?
+- At what scope is agent coordination enabled: server, project, session,
+  provider launch, or some layered combination?
+
+### Delegation lifecycle and observation
+
+- What is the exact delegation-record lifecycle, retention period, idempotency
+  key, and cleanup behavior after completion, controller loss, or worker
+  restart?
+- What exactly marks successful completion and distinguishes a bounded result,
+  a transcript excerpt, an approval/input request, and an incomplete but idle
+  worker?
+- Which observation transport supplies state transitions and bounded output,
+  and what reconnect/catch-up guarantees does it provide?
+- Which normalized errors distinguish authorization, target reachability,
+  target capability, project mapping, provider failure, and stale delegation
+  state?
+- Which protocol/capability version gates the coordination namespace and peer
+  operations across mixed YA releases?
+
+### Agent and user experience
+
+- How does an agent reliably identify its controlling YA session and avoid
+  recursively delegating to itself or forming an unintended delegation loop?
 - How should a controlling session display several concurrent workers without
   conflating them with provider-native child sessions?
+- How does a user open the native worker transcript when the browser is not
+  already authenticated to or aware of the worker peer?
+- Which worker attention states trigger controller messages, UI attention, or
+  notifications, and who is allowed to answer them?
+- Which small agent-facing tool grouping is clearest across both Claude and
+  Codex, and which provider versions can attach it after session launch?
+- What is the fallback when coordination is enabled after a provider session
+  has started but that provider cannot attach tools dynamically?
 - When does the YA-host path cover enough real use to begin retiring Remote
   Executors?

@@ -65,6 +65,12 @@ paths, SDKs, build tools, and provider tools are local to that guest. Each peer
 uses a native checkout; shared folders may transfer explicit artifacts but do
 not replace platform-native Git state.
 
+Before provider-session migration is proven, the same peers can participate in
+cross-host delegation: a controlling session stays on its source peer while a
+separate, normal YA worker session runs natively in the target guest. That
+provider-neutral supervision path is an independently useful milestone, not a
+simulation of a super-session jump.
+
 ### Testbeds own machine control
 
 The host-side testbed layer is deliberately independent of the provider and
@@ -209,7 +215,29 @@ Acceptance:
 - headless operation does not fabricate a desktop control surface; and
 - ARM versus x86 evidence remains explicit.
 
-### 5 — prove provider portability inside the appliance
+### 5 — prove provider-neutral guest delegation
+
+Use the provisional coordination boundary from
+[`topics/cross-host-delegation.md`](../../topics/cross-host-delegation.md) to
+start and supervise a normal YA worker inside one guest. Exercise the same
+target-aware service against the local server so local and peer behavior do
+not fork. Keep raw peer credentials and host topology out of provider context;
+the agent discovers only authorized, armed targets through its enabled tools.
+
+Acceptance:
+
+- direct REST/CLI use and provider-native agent tools invoke the same
+  coordination operations;
+- a delegation handle remains distinct from the target-owned worker session;
+- target project discovery returns repository/readiness facts, requires an
+  authorized target-local project reference, and fails on ambiguity rather
+  than silently choosing a guest path;
+- observe/wait, message/steer, interrupt, abort, and deterministic cleanup work
+  without chatty polling or orphaned provider processes; and
+- Claude and Codex adapters expose equivalent normalized operations while
+  reporting provider-specific capability differences honestly.
+
+### 6 — prove provider portability inside the appliance
 
 Run the provider bundle gates from the super-session topic between local VM
 peers before building broad federation. Claude remains the first candidate.
@@ -220,19 +248,20 @@ Acceptance is the Gate 1 and Gate 2 evidence in the parent topic, including
 complete bundle contents, correct resume, stable transcript lineage, and
 measured rather than assumed prompt-cache behavior.
 
-### 6 — prove one local terminal jump
+### 7 — prove one local terminal jump
 
 Implement the smallest two-peer, direct-transfer experiment on the lab host:
-one logical project mapping, one canonical YA id, one ownership generation,
-one provider, and one automatic target continuation. VM readiness belongs in
-target preflight; repository checkpoints remain agent-prepared and explicit.
+one explicitly resolved target project, one canonical YA id, one ownership
+generation, one provider, and one automatic target continuation. VM readiness
+belongs in target preflight; repository checkpoints remain agent-prepared and
+explicit.
 
 Acceptance is the parent topic's terminal-boundary and native cross-platform
 proof: no source work after accepted jump, no unresolved tool call, one user
 message delivery, one eligible provider writer, exact Git checkpoint, and the
 same visible YA conversation.
 
-### 7 — widen from appliance to federation
+### 8 — widen from appliance to federation
 
 Only after the local proof passes, add peer registration, authenticated
 bundle transfer, remote routing, client rebinding, and crash-injection across

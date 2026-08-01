@@ -26,6 +26,11 @@ Status: **proposal / not yet built.** The initial shaping decisions are
 resolved (see *Decisions*); one (the OpenAI-adapter session mapping) remains
 open and only matters if D6 comes into scope.
 
+This topic owns the local runtime and direct-service seam. It does not turn the
+existing local REST routes into an arbitrary cross-host proxy. The provisional
+target-aware layer for authorized peer work lives in
+[`cross-host-delegation.md`](cross-host-delegation.md).
+
 ## The core realization: the API mostly already exists
 
 Two facts from the current code make this much smaller than a "big refactor"
@@ -64,6 +69,36 @@ event-subscription model, VAPID, device bridge — and there is no supported,
 documented, minimal way to stand up "just the runtime + routes" or to `import`
 the runtime as a package. This topic is about *drawing that seam deliberately*
 rather than leaving it implicit.
+
+## Relationship To The Coordination API
+
+Cross-host delegation adds a higher-level consumer of this runtime rather than
+a second provider harness abstraction. Its provisional coordination service
+normalizes target discovery, session creation, observation, messaging,
+interruption, and teardown across a local target and an authorized peer.
+
+The layers remain distinct:
+
+- the core service owns local provider/session execution;
+- the coordination service owns explicit local/peer targeting and delegation
+  records;
+- the peer layer owns server identity, authentication, directional grants,
+  authorized project inventory/resolution, and remote failure semantics; and
+- REST, CLI, Claude tools, Codex tools, MCP, and skills are consumers or
+  adapters rather than independent orchestration implementations.
+
+Existing `/api/*` routes retain their current-server meaning. A coordination
+implementation should call the same local application service used for a
+remote target where semantics match, but it should not add a universal
+`?host=` parameter to existing resource routes or proxy arbitrary remote YA
+requests. After remote creation, a delegation handle identifies the
+supervision relationship while the worker keeps its own target-owned YA
+session id.
+
+This layering lets the direct API remain rich and inspectable while giving
+delegated agents only the bounded operations authorized by their grants. The
+coordination contract must also be discoverable without a YA source checkout
+through machine-readable schemas/capabilities and stable structured errors.
 
 ## Two directions (ordered)
 
@@ -384,7 +419,10 @@ opinionated and the least load-bearing for the primary (experiment) use case.
 - **Backward compatibility** (`backward-compat.md`): the existing `/api/*` REST
   surface is already consumed by the shipped web client. Extraction must not
   change those routes' observable contract; the headless host reuses them
-  as-is. Any new surface (`/api/experiments`, `/v1/*`) is additive.
+  as-is. Any new surface (`/api/experiments`, `/v1/*`) is additive. Cross-host
+  coordination likewise uses an additive, capability-gated namespace rather
+  than changing an existing route to mean either local or remote depending on
+  a host parameter.
 - **Auth / trust boundary** (`trusted-client-packaging.md`, relay/SRP docs): the
   default server is localhost-first with auth **off**, so the direct `/api/*`
   path is *already* unauthenticated — an external localhost client sends no

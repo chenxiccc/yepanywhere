@@ -88,6 +88,14 @@ ownership generation 4
 An inactive replica is not a fork. It is a recoverable copy that must refuse
 provider writes while another peer owns a later generation.
 
+The provider-neutral coordination API in
+[cross-host delegation](cross-host-delegation.md) is the intended earlier
+layer for proving peer targets, grants, project mapping, native worker launch,
+and supervision. A delegation creates a separate target-owned worker session;
+a jump later reuses some of that infrastructure but transfers the canonical
+session and provider ownership. The two operations must not be presented as
+aliases.
+
 ## Distinction From Existing Remote Executors
 
 Remote Executors keep one YA server authoritative while that server launches
@@ -132,9 +140,11 @@ When enabled for a session:
 - **Automatic continuation.** After import succeeds, the target resumes without
   requiring a fresh user message. The agent receives enough target facts to
   verify its environment and continue the interrupted plan.
-- **Mapped project identity.** A stable logical project key resolves to a
-  peer-local path. Different home directories, path separators, drive letters,
-  and checkout layouts do not require rewriting historical transcript text.
+- **Resolved target project.** Before a jump is accepted, the agent or user
+  selects an authorized target-local project after inspecting target facts or
+  using an explicit remembered mapping. Different home directories, path
+  separators, drive letters, and checkout layouts do not require rewriting
+  historical transcript text.
 - **No silent repository mutation.** YA does not invent commits, push branches,
   discard changes, overwrite a dirty checkout, or force-update a remote ref.
   The aware agent prepares the checkpoint under the configured policy; YA may
@@ -168,7 +178,11 @@ interface FederatedSuperSessionManifest {
   sessionId: string; // canonical YA-visible id
   provider: ProviderName;
   providerResumeId: string;
-  projectKey: string;
+  projects: Array<{
+    serverId: string;
+    projectId: string;
+    lastKnownPath: string;
+  }>;
   ownerServerId: string;
   generation: number;
   state:
@@ -215,68 +229,83 @@ Registration should establish:
 
 - a stable server id and display name;
 - authenticated keys for server-to-server requests;
-- reachable transports or relay routes;
+- a usable default relay route, plus any explicitly configured optional direct
+  route;
 - allowed incoming and outgoing session-transfer policy;
 - target capabilities such as OS, architecture, provider availability, and
   portable-bundle protocol versions; and
-- logical-project-to-local-path mappings.
+- authorized target-project inventory and optional remembered resolutions.
 
 Session transcripts can contain source code, tool output, credentials, and
 other sensitive material. A bundle must have authenticated encryption in
 transit and integrity protection independent of the transport. The existing
-relay is a dumb E2E pipe, not automatically a peer registry or distributed
-ownership service; reuse its cryptographic/transport primitives only if the
-peer protocol keeps those boundaries honest.
+relay is the default peer transport and remains a dumb E2E pipe, not a peer
+registry or distributed ownership service. Pairing establishes a separate
+peer-scoped authorization and resumable secure session over that relay rather
+than handing the server a browser resume secret. A future direct LAN or
+Tailscale route may carry the same peer protocol when explicitly configured,
+but relay-only reachability remains the required baseline and design center.
+The exact peer SRP/grant record remains to be designed.
 
 Agent-initiated jumps are limited to the session's user-approved peer
 allowlist. Peer registration alone does not authorize every agent to send
 every session or repository to that machine.
 
-## Logical Projects And Path Mapping
+## Project Discovery And Target Resolution
 
-Literal cwd strings are not portable identities. Federation needs a logical
-project key with a path mapping on each eligible peer:
+Literal cwd strings are not portable identities, but federation does not need
+to make a globally configured logical project key the only way forward. Before
+a jump, the target can expose the authorized project candidates and read-only
+facts the source agent needs to choose among them:
 
-```text
-projectKey: yepanywhere
+- target-local project id and path;
+- project/directory name;
+- Git history-root commit or roots and normalized remotes when available;
+- current branch and HEAD;
+- clean/dirty state; and
+- clone/worktree facts that explain why several candidates look related.
 
-mac:
-  /Users/kyle/code/yepanywhere
-linux:
-  /home/kyle/code/yepanywhere
-windows:
-  C:\Users\kyle\code\yepanywhere
-```
+A matching history-root commit plus project name is useful evidence that two
+checkouts share history, not a globally unique repository identity. Forks,
+clones, and worktrees share roots; shallow clones may not expose one; rewritten
+or imported histories may differ. Remote URLs are also hints rather than
+canonical identity because names, protocols, forks, and credentials vary.
 
-The mapping has three jobs:
+The agent can interrogate the target, choose an unambiguous target-local
+project, request more inspection, or ask the user. An optional user-approved
+mapping may remember that resolution for later jumps. When several candidates
+remain plausible, YA returns a structured ambiguity instead of guessing. Once
+resolved, the selected target project has three jobs:
 
 1. choose the target provider cwd;
 2. choose the provider-specific transcript storage directory when that storage
    is derived from cwd; and
 3. give the resumed agent an explicit old-root/new-root fact.
 
-It must not globally search-and-replace old paths inside provider history.
-Historical tool inputs and output should remain an accurate record of where
-they ran. Future turns use the new root.
-
-Project identity discovery by Git remote URL can be a convenience, but it
-cannot be the canonical rule: repositories may have no remote, use different
-remote names/URLs per host, or contain several checkouts. The user-approved
-mapping is authoritative.
+The final selected target-local project reference is authoritative for that
+jump. YA must not globally search-and-replace old paths inside provider
+history. Historical tool inputs and output remain an accurate record of where
+they ran; future turns use the new root.
 
 ## Repository State Contract
 
 Provider transcript migration and working-tree migration are separate.
 
-For the motivating Git workflow, the agent's durable instructions should say:
+For the motivating Git workflow, a common agent-chosen sequence is:
 
 1. before jumping, stop or settle platform-local commands;
 2. inspect status and identify work that must move;
 3. run appropriate source-host checks;
-4. commit and push a reproducible checkpoint when changes exist;
+4. choose a reproducible checkpoint strategy, such as an existing shared
+   commit or an explicit commit/push when changes need to move;
 5. call `jump` with the target and expected branch/commit; and
 6. after resume, verify the target checkout and fetch/check out the expected
    commit before further edits or tests.
+
+This is workflow guidance, not a universal clean-worktree or branch rule. An
+agent may choose another safe strategy when the task and available tools
+justify it; YA's role is to expose target facts, verify caller-supplied
+expectations, and return a blocker rather than guess.
 
 The jump request may carry:
 
@@ -290,8 +319,11 @@ interface JumpRequest {
 ```
 
 YA can mechanically verify that a supplied commit exists locally, that the
-target path is mapped, and later that the target reports the expected commit.
-It should not silently perform semantic Git operations on the agent's behalf.
+target project reference is authorized, and later that the target reports the
+expected commit, branch, or requested cleanliness state. It should not silently
+perform semantic Git operations on the agent's behalf. Cleanliness, branch,
+worktree choice, fetch, and checkpoint policy belong to the agent/user workflow;
+the federation layer supplies facts, assertions, and structured failures.
 
 A first prototype may require a clean, pushed Git checkpoint because that is
 the narrowest recoverable cross-platform workflow. Later policies may support
@@ -369,6 +401,13 @@ enough.
 The agent should understand that `jump` is the last operation performed by the
 source incarnation. A normal MCP tool that returns and lets the model keep
 sampling is insufficient.
+
+Ordinary cross-host delegation can be exposed through the shared Claude/Codex
+coordination adapters because the controlling turn remains alive while it
+supervises a separate worker. This terminal restriction is specific to jump:
+adding `jump` beside ordinary start/observe/control tools is not valid until
+each provider proves how sampling stops on the source and resumes on the
+target.
 
 The provider-specific implementation must prove one safe shape:
 
@@ -706,7 +745,7 @@ If the gates pass, the smallest useful product slice is:
 
 - Claude only;
 - two explicitly paired YA peers;
-- one logical project with manually configured paths;
+- one explicitly resolved target project per peer;
 - exact compatible Claude CLI/Agent SDK versions;
 - explicit/default-off super-session creation;
 - Git projects with an agent-prepared pushed checkpoint;
@@ -719,6 +758,12 @@ If the gates pass, the smallest useful product slice is:
 It excludes peer discovery, automatic path inference, cross-provider moves,
 non-Git workspace transfer, merged multi-host dashboards, automatic conflict
 resolution, lease stealing, and generalized distributed consensus.
+
+"Claude only" here applies to the provider-bundle portability and terminal
+jump experiment. The preceding cross-host delegation API remains
+provider-neutral and must expose equivalent supervision operations through
+both Claude and Codex adapters; it does not inherit this MVP's portability
+restriction.
 
 ## Open Questions
 
@@ -739,7 +784,5 @@ resolution, lease stealing, and generalized distributed consensus.
   lost without allowing accidental split brain?
 - Which target-specific tools can load after the cached prefix, and which tool
   changes necessarily make the first target turn cold?
-- Should super sessions always use dedicated per-peer worktrees, or may a path
-  mapping point at an existing user checkout after a cleanliness preflight?
 - How are bundle/media retention and peer removal handled without leaving
   sensitive replicas indefinitely?
