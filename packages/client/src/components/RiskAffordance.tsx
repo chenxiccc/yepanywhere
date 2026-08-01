@@ -1,5 +1,6 @@
 import { type ReactNode, useState } from "react";
 import { useTooltipTrigger } from "../hooks/useTooltipTrigger";
+import styles from "./RiskAffordance.module.css";
 import { Modal } from "./ui/Modal";
 
 /**
@@ -28,8 +29,8 @@ export function RiskAffordance({
   });
   return (
     <span
-      className={`external-session-risk${
-        showTooltip ? " external-session-risk--tooltip-visible" : ""
+      className={`${styles.root}${
+        showTooltip ? ` ${styles.tooltipVisible}` : ""
       }`}
       onPointerEnter={tooltipTrigger.onPointerEnter}
       onPointerMove={tooltipTrigger.onPointerMove}
@@ -37,7 +38,7 @@ export function RiskAffordance({
     >
       <button
         type="button"
-        className={`external-session-risk-link${
+        className={`${styles.link}${
           labelClassName ? ` ${labelClassName}` : ""
         }`}
         aria-haspopup="dialog"
@@ -51,7 +52,7 @@ export function RiskAffordance({
         {label}
       </button>
       {showTooltip && (
-        <div className="external-session-risk-tooltip" role="tooltip">
+        <div className={styles.tooltip} role="tooltip">
           {explanation}
         </div>
       )}
