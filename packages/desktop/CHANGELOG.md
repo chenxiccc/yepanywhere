@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-08-01
+
 ### Fixed
 - Update results now foreground the trusted desktop updater window instead of appearing behind the active macOS application.
 - Settings → About now distinguishes the desktop release from the exact bundled YepAnywhere build instead of reporting the packaged server as an unknown source checkout.
