@@ -9,7 +9,7 @@
       "reason": "Legacy application shell plus global tokens, themes, and base rules."
     },
     "packages/client/src/styles/renderers.css": {
-      "maxLines": 6501,
+      "maxLines": 6417,
       "reason": "Legacy generated-content and renderer class vocabulary."
     },
     "packages/client/src/styles/tool-rows.css": {
@@ -17,6 +17,6 @@
       "reason": "Shared tool-row state and generated renderer composition."
     }
   },
-  "updated": "2026-07-31",
+  "updated": "2026-08-01",
   "note": "Chapter 11 containment baseline for authored non-module CSS under packages/client/src. Limits may only ratchet downward. New client stylesheets must be CSS Modules unless a reviewed generated-content or truly global exception is added here with a reason."
 }

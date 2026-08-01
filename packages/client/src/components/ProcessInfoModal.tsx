@@ -12,6 +12,7 @@ import type { ProcessState } from "../hooks/useSession";
 import { useI18n } from "../i18n";
 import { getProviderRuntimeReasonLabel } from "../lib/providerRuntimeStatus";
 import type { SessionStatus } from "../types";
+import styles from "./ProcessInfoModal.module.css";
 import { Modal } from "./ui/Modal";
 
 interface ProcessInfo {
@@ -181,9 +182,9 @@ function InfoRow({
 }) {
   if (value === undefined || value === null) return null;
   return (
-    <div className="process-info-row">
-      <span className="process-info-label">{label}</span>
-      <span className={`process-info-value ${mono ? "mono" : ""}`}>
+    <div className={styles.row}>
+      <span className={styles.label}>{label}</span>
+      <span className={`${styles.value} ${mono ? styles.mono : ""}`}>
         {value}
       </span>
     </div>
@@ -198,8 +199,8 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <div className="process-info-section">
-      <h3 className="process-info-section-title">{title}</h3>
+    <div className={styles.section}>
+      <h3 className={styles.sectionTitle}>{title}</h3>
       {children}
     </div>
   );
@@ -299,7 +300,7 @@ export function ProcessInfoBody({
   };
 
   return (
-    <div className="process-info-content">
+    <div className={styles.content}>
       {/* Session Info - always available */}
       <Section title={t("processInfoSectionSession")}>
         <InfoRow
@@ -554,11 +555,9 @@ export function ProcessInfoBody({
         {status.owner === "self" ? (
           <>
             {loading && (
-              <div className="process-info-loading">
-                {t("newSessionLoading")}
-              </div>
+              <div className={styles.loading}>{t("newSessionLoading")}</div>
             )}
-            {error && <div className="process-info-error">{error}</div>}
+            {error && <div className={styles.error}>{error}</div>}
             {processInfo && (
               <>
                 <InfoRow
@@ -595,19 +594,15 @@ export function ProcessInfoBody({
               </>
             )}
             {!loading && !processInfo && !error && (
-              <div className="process-info-loading">
+              <div className={styles.loading}>
                 {t("processInfoNoProcessData")}
               </div>
             )}
           </>
         ) : status.owner === "external" ? (
-          <div className="process-info-muted">
-            {t("processInfoExternalProcess")}
-          </div>
+          <div className={styles.muted}>{t("processInfoExternalProcess")}</div>
         ) : (
-          <div className="process-info-muted">
-            {t("processInfoNoActiveProcess")}
-          </div>
+          <div className={styles.muted}>{t("processInfoNoActiveProcess")}</div>
         )}
       </Section>
 
