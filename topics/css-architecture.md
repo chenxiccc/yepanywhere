@@ -42,10 +42,10 @@ is the stopped bounded-campaign ledger. It records the final campaign counts,
 verification evidence, and the known ownership-sink false positive left for
 tooling follow-up.
 
-[Tactical 076](../docs/tactical/076-css-module-contracts-and-tooling.md) tracks
-the remaining tooling work: the Biome upgrade, stricter module linting, module
-usage contracts, touched-component guidance, and an on-demand health summary.
-It is an implementation plan, not a renewed migration queue.
+[Tactical 076](../docs/tactical/076-css-module-contracts-and-tooling.md) is the
+closed tooling-hardening record for the Biome upgrade, module lint and usage
+contracts, touched-component guidance, and on-demand health summary. It does
+not carry a migration queue.
 
 ## Contract
 
@@ -101,6 +101,18 @@ It is an implementation plan, not a renewed migration queue.
   known legacy findings may make that command exit nonzero without breaking
   ordinary lint. `--remove` remains limited to global rules; module rules are
   deleted deliberately with their owner.
+
+## Command roles and exit behavior
+
+| Command | Role | Exit/write contract |
+|---|---|---|
+| `pnpm css:check` | Hard containment gate | Exits 1 for global growth, an unreviewed global file, or a stale/invalid baseline entry. `--record` is the only write mode and only lowers current ceilings. |
+| `pnpm css:modules:check` | Hard module usage/global-interop gate | Exits 1 for any module contract issue or an unusable scan; otherwise 0. It never edits CSS. |
+| `pnpm lint` | Combined repository gate | Runs containment, module contracts, and Biome; any child failure fails lint. |
+| `pnpm css:touched` | Advisory feature-diff prompt | Exits 0 for opportunity, deferral, or no matching owner; exits 2 for invalid arguments or a failed git comparison. It never edits files. |
+| `pnpm css:inventory` | Advisory ownership drill-down | A valid report exits 0 and never edits files; invalid arguments exit 2. |
+| `pnpm css:unused` | Advisory dead-code investigation | Exits 1 while potential global dead code or a module contract issue remains. `--dry-run` previews; explicit `--remove` may delete only reviewed global rules, never module selectors. |
+| `pnpm css:health` | Observational cross-signal summary | A successful scan exits 0 regardless of reported debt; invalid arguments or unreadable/unparseable input exit 2. It never builds or writes. |
 
 ## Ownership boundaries
 

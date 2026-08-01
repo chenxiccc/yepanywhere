@@ -1,9 +1,14 @@
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { buildInventory } from "../../../scripts/css-inventory.ts";
 import { buildTouchedReport } from "../../../scripts/report-touched-css.ts";
 
-const fixtureDir = path.resolve("scripts/fixtures/css-touched");
+const repoRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../..",
+);
+const fixtureDir = path.join(repoRoot, "scripts/fixtures/css-touched");
 const inventory = buildInventory({
   cssDir: fixtureDir,
   srcDir: fixtureDir,
@@ -12,6 +17,10 @@ const inventory = buildInventory({
 
 function fixture(name: string): string {
   return path.join(fixtureDir, name);
+}
+
+function normalizedFixture(name: string): string {
+  return path.relative(process.cwd(), fixture(name)).split(path.sep).join("/");
 }
 
 describe("touched CSS ownership report", () => {
@@ -24,7 +33,7 @@ describe("touched CSS ownership report", () => {
       reasons: [],
       owner: {
         ownedLines: 6,
-        stylesheets: ["scripts/fixtures/css-touched/global.css"],
+        stylesheets: [normalizedFixture("global.css")],
         dynamicClasses: [],
       },
     });
@@ -79,7 +88,7 @@ describe("touched CSS ownership report", () => {
     );
 
     expect(report.changedLegacyStylesheets).toEqual([
-      "scripts/fixtures/css-touched/global.css",
+      normalizedFixture("global.css"),
     ]);
   });
 });

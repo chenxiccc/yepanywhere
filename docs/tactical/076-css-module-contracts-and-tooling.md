@@ -2,7 +2,8 @@
 
 Topic: css-architecture
 
-Status: direction approved 2026-08-01; implementation has not begun.
+Status: complete 2026-08-01. The steady-state checks are enacted; there is no
+active worker, migration queue, or scheduled follow-up.
 
 Related records:
 [`070-css-modules-migration.md`](070-css-modules-migration.md),
@@ -252,8 +253,9 @@ explicit ref's merge base. It prints the requested ownership facts, calls out
 legacy stylesheet edits, stays quiet at the owner level for clean/module-only
 components, and always exits successfully for both `OPPORTUNITY` and `DEFER`.
 Focused fixtures cover local, scattered, coupled, generated/unresolved,
-module-only, and legacy-stylesheet cases. Contributor and agent guidance use the command
-as the opportunistic trigger and reserve owner inventory for drill-down.
+module-only, and legacy-stylesheet cases. Contributor and agent guidance use
+the command as the opportunistic trigger and reserve owner inventory for
+drill-down.
 
 ### 7 — decide the smallest useful CSS health surface
 
@@ -310,18 +312,47 @@ Acceptance:
   verification; and
 - the tactical is marked complete with no active worker or follow-up queue.
 
-## Suggested commit series
+Completion evidence (2026-08-01): the binding topic and contributor guidance
+now name each hard gate, advisory report, write mode, and exit contract. Runtime
+class composition changed only in `Toast`, whose focused test and inspected
+1920×1080 / 375×812 captures cover all three variants; the module-lint menu
+variable change received the same two-viewport verification. Final verification
+is recorded below. Future feature work uses `css:touched`; standalone paydown
+requires fresh authorization and inventory rather than an item in this plan.
 
-Keep upgrade mechanics, lint policy, analyzer behavior, and agent workflow
-separable. Suggested subjects in recommended order:
+## Final evidence
 
-1. `Repair CSS ownership evidence`
-2. `Upgrade Biome to 2.5`
-3. `Enforce CSS Module lint rules`
-4. `Make CSS Module contracts blocking`
-5. `Guard CSS Module global escapes`
+| Signal | Starting state | Completion state |
+|---|---:|---:|
+| Biome | 2.4.16 | 2.5.6 |
+| Legacy global CSS | 4 files / 23,556 lines | 4 files / 23,550 lines |
+| CSS Modules | 53 files / 7,669 lines | 55 files / 7,922 lines |
+| Module selectors | 705 | 726 |
+| Module usage unknowns | 1 | 0 |
+| Module contract issues | not blocking | 0, blocking in `pnpm lint` |
+| Reviewed module/global references | 14 unclassified occurrences | 14 valid references in 10 files |
+| Potentially unused global classes | 35 | 35, deliberately advisory |
+| Authored CSS total | not tracked together | 59 files / 31,472 lines |
+
+The ownership correction changed the rule mix from 2,116 owned / 832 coupled /
+50 generated / 78 unresolved to 2,078 / 820 / 52 / 126. That is a confidence
+repair, not migration regression: generic strings no longer create ownership,
+and ambiguous evidence is now visible instead of being assigned optimistically.
+The final inventory reports 271 rules with additional low-confidence string
+matches outside class-producing syntax.
+
+## Landed logical series
+
+Upgrade mechanics, lint policy, analyzer behavior, and agent workflow landed as
+separate review boundaries:
+
+1. `Define steady-state CSS ownership`
+2. `Repair CSS ownership evidence`
+3. `Upgrade Biome to 2.5.6`
+4. `Enforce CSS Module lint rules`
+5. `Make CSS Module contracts blocking` (including global escape contracts)
 6. `Surface touched CSS ownership`
-7. `Summarize CSS health on demand` — only if step 7 earns implementation
+7. `Summarize CSS health on demand`
 8. `Close CSS tooling hardening`
 
 Each non-trivial commit should carry the originating direction and acceptance
@@ -349,6 +380,21 @@ or parser changes may affect files outside CSS. Tooling-only changes do not need
 browser captures. Any edit to runtime component class composition follows the
 normal focused-test and two-viewport visual-verification contract.
 
+Final verification (2026-08-01):
+
+- `pnpm test` passed across all workspace packages; the client result was 350
+  files / 2,873 tests;
+- the focused CSS tooling, `Toast`, and `ForkTurnMenu` tests passed from both
+  repository-root and package-local execution where applicable;
+- `pnpm lint`, `pnpm css:check`, `pnpm css:modules:check`, and
+  `pnpm typecheck` passed with no diagnostics;
+- `pnpm css:inventory` and `pnpm css:health` reproduced the completion counts
+  above, and `pnpm css:touched` correctly found no changed legacy React owner in
+  the closure diff;
+- `pnpm css:unused` exited 1 for exactly the known 35 advisory global findings,
+  with zero production-unused or unknown module selectors; and
+- `pnpm console:scan` matched its 110/110 warning budget with no increase.
+
 ## Definition of done
 
 - Biome is on an audited stable 2.5 release.
@@ -361,3 +407,6 @@ normal focused-test and two-viewport visual-verification contract.
 - The smallest useful health workflow is decided and documented without a
   dashboard or composite score.
 - The steady-state contract is reflected in the topic and contributor guidance.
+
+All definition-of-done conditions are satisfied. This document remains the
+implementation record, not an active plan.

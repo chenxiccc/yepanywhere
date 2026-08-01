@@ -1,4 +1,5 @@
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { buildInventory } from "../../../scripts/css-inventory.ts";
 import {
@@ -7,8 +8,15 @@ import {
 } from "../../../scripts/css-health.ts";
 import { analyze } from "../../../scripts/find-unused-css.ts";
 
-const fixtureDir = path.resolve("scripts/fixtures/find-unused-css");
-const baseline = path.resolve("scripts/fixtures/css-health-baseline.json");
+const repoRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../..",
+);
+const fixtureDir = path.join(repoRoot, "scripts/fixtures/find-unused-css");
+const baseline = path.join(
+  repoRoot,
+  "scripts/fixtures/css-health-baseline.json",
+);
 
 describe("CSS health summary", () => {
   it("composes containment, ownership, module, escape, and dead-code facts", () => {

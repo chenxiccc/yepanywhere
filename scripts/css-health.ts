@@ -19,6 +19,11 @@ import {
   type AnalysisResult,
 } from "./find-unused-css.ts";
 
+const repoRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
+
 interface Options {
   json: boolean;
   cssDir: string;
@@ -144,10 +149,7 @@ function parseArgs(argv: string[] = process.argv.slice(2)): Options {
 }
 
 function normalize(file: string): string {
-  return path
-    .relative(process.cwd(), path.resolve(file))
-    .split(path.sep)
-    .join("/");
+  return path.relative(repoRoot, path.resolve(file)).split(path.sep).join("/");
 }
 
 function lineCount(file: string): number {
