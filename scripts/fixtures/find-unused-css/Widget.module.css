@@ -30,6 +30,11 @@
   opacity: 0.5;
 }
 
+/* Imported only from the stylesheet-contract test. */
+.test-contract {
+  outline: 0;
+}
+
 :global(.fixture-modal-shell):has(.root) {
   padding: 1rem;
 }

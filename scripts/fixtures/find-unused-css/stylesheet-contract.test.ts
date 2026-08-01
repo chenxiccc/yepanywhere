@@ -1,3 +1,7 @@
+import styles from "./Widget.module.css";
+
+export const testOnlyModuleClass = styles["test-contract"];
+
 /**
  * A stylesheet-contract test whose selector vocabulary exists only inside
  * regular-expression literals, like

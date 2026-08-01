@@ -95,7 +95,14 @@ ceilings, enforced by:
 
 ```bash
 pnpm css:check
+pnpm css:modules:check
 ```
+
+`css:modules:check` is also part of `pnpm lint`. It blocks undeclared,
+production-unused, test-only, unimported, computed, and side-effect module
+usage, plus `:global(...)` references that are missing or lack a local anchor.
+Use `pnpm css:unused` for the broader investigative report; its known legacy
+findings are advisory and do not make ordinary lint fail.
 
 When moving rules out of a legacy global file lowers its line count, record the
 new lower ceiling in the same change:

@@ -17,6 +17,7 @@ import {
   extractComposes,
   extractModuleImports,
   findSourceFiles,
+  moduleContractIssues,
   parseArgs,
   splitGlobalReferences,
 } from "../../../scripts/find-unused-css.ts";
@@ -168,10 +169,38 @@ describe("module selector analysis", () => {
     expect(report.unused).toEqual([]);
   });
 
-  it("reports an unimported module as unknown rather than unused", () => {
+  it("reports an unimported module as production-unreachable", () => {
     const report = moduleReport("Orphan.module.css");
-    expect(report.unknownReasons).toContain("no-importer");
-    expect(report.unused).toEqual([]);
+    expect(report.unknownReasons).toEqual([]);
+    expect(report.productionReachable).toBe(false);
+    expect(report.productionUnused.map((selector) => selector.name)).toEqual([
+      "orphan",
+    ]);
+  });
+
+  it("distinguishes test-only and undeclared selector access", () => {
+    const report = moduleReport("Widget.module.css");
+
+    expect(report.testOnly.map((selector) => selector.name)).toEqual([
+      "test-contract",
+    ]);
+    expect(report.productionUnused.map((selector) => selector.name)).toEqual([
+      "stale",
+      "test-contract",
+    ]);
+    expect(report.undeclared).toEqual([
+      {
+        name: "notDeclared",
+        productionUsedIn: [expect.stringMatching(/Widget\.ts:\d+$/)],
+        testUsedIn: [],
+      },
+    ]);
+  });
+
+  it("reports a side-effect import as unknown", () => {
+    const report = moduleReport("SideEffect.module.css");
+    expect(report.unknownReasons).toEqual(["side-effect-import"]);
+    expect(report.unknownUsage[0]?.file).toMatch(/SideEffect\.ts$/);
   });
 
   it("judges a module reached only through composes", () => {
@@ -181,6 +210,7 @@ describe("module selector analysis", () => {
       "Widget.module.css",
     ]);
     expect(report.unknownReasons).toEqual([]);
+    expect(report.productionReachable).toBe(true);
   });
 
   it("attributes module selectors to their owning file", () => {
@@ -195,11 +225,55 @@ describe("module selector analysis", () => {
       moduleReport("Widget.module.css").selectors.map((item) => item.name),
     ).not.toContain("css");
   });
+
+  it("requires global interop to exist and have a local anchor", () => {
+    const valid = moduleReport("Widget.module.css");
+    const invalid = moduleReport("InvalidGlobal.module.css");
+
+    expect(valid.globalUses).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "fixture-modal-shell",
+          localAnchors: ["root"],
+          kind: "selector",
+        }),
+        expect.objectContaining({
+          name: "fixture-composed-global",
+          localAnchors: ["badge"],
+          kind: "composes",
+        }),
+      ]),
+    );
+    expect(valid.globalIssues).toEqual([]);
+    expect(invalid.globalIssues.map((issue) => issue.issue).sort()).toEqual([
+      "missing-global",
+      "unanchored-global",
+    ]);
+  });
+
+  it("turns every module contract category into a blocking issue", () => {
+    const issues = moduleContractIssues(analyzeFixtures());
+    const kinds = new Set(issues.map((issue) => issue.kind));
+
+    expect(kinds).toEqual(
+      new Set([
+        "computed-access",
+        "missing-global",
+        "no-production-importer",
+        "production-unused-selector",
+        "side-effect-import",
+        "test-only-selector",
+        "unanchored-global",
+        "undeclared-selector",
+      ]),
+    );
+  });
 });
 
 describe("parsing helpers", () => {
   it("scans every package for generated vocabulary by default", () => {
     expect(parseArgs([]).srcDir).toBe("packages");
+    expect(parseArgs(["--modules-check"]).modulesCheck).toBe(true);
   });
 
   it("scans package Playwright and script roots with package source", () => {

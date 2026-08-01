@@ -6,6 +6,7 @@ export function widgetClassNames(): string[] {
     styles["bracket-access"],
     styles.badge,
     styles.message,
+    styles.notDeclared,
     "fixture-used-global",
     "fixture-prefix-button",
   ];

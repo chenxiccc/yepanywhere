@@ -24,6 +24,7 @@
  *   --json           Output as JSON
  *   --remove         Remove unused global CSS rules (writes changes to files)
  *   --dry-run        Show what would be removed without making changes
+ *   --modules-check  Check only blocking CSS Module contracts
  */
 
 import * as fs from "node:fs";
@@ -39,6 +40,7 @@ export interface Options {
   json: boolean;
   remove: boolean;
   dryRun: boolean;
+  modulesCheck: boolean;
 }
 
 export interface ClassInfo {
@@ -49,26 +51,69 @@ export interface ClassInfo {
 }
 
 /** Why a module's selectors cannot be judged unused. */
-export type ModuleUnknownReason =
-  | "no-importer"
-  | "side-effect-import"
-  | "computed-access";
+export type ModuleUnknownReason = "side-effect-import" | "computed-access";
+
+export interface ModuleSelectorInfo extends ClassInfo {
+  productionUsedIn: string[];
+  testUsedIn: string[];
+}
+
+export interface ModuleUndeclaredAccess {
+  name: string;
+  productionUsedIn: string[];
+  testUsedIn: string[];
+}
+
+export interface ModuleUnknownUsage {
+  reason: ModuleUnknownReason;
+  file: string;
+}
+
+export interface ModuleGlobalUse {
+  name: string;
+  line: number;
+  selector: string;
+  localAnchors: string[];
+  kind: "selector" | "composes";
+}
+
+export type ModuleGlobalIssueKind = "missing-global" | "unanchored-global";
+
+export interface ModuleGlobalIssue extends ModuleGlobalUse {
+  issue: ModuleGlobalIssueKind;
+}
 
 export interface ModuleReport {
   cssFile: string;
   /** Source files importing this module. */
   importers: string[];
+  /** Non-test source files importing this module directly. */
+  productionImporters: string[];
+  /** Tests, Playwright fixtures, and package scripts importing this module. */
+  testImporters: string[];
+  /** Directly imported or reached through a production module's composes. */
+  productionReachable: boolean;
   /** Other modules reaching this one through `composes ... from`. */
   composers: string[];
-  selectors: ClassInfo[];
-  unused: ClassInfo[];
+  selectors: ModuleSelectorInfo[];
+  /** Selectors reached by neither production nor tests. */
+  unused: ModuleSelectorInfo[];
+  /** Selectors with no statically known production reach. */
+  productionUnused: ModuleSelectorInfo[];
+  /** Selectors reached by tests but not by production. */
+  testOnly: ModuleSelectorInfo[];
+  /** Binding accesses that do not name a selector declared by this module. */
+  undeclared: ModuleUndeclaredAccess[];
   /** Global class names this module references through `:global(...)`. */
   globalRefs: string[];
+  globalUses: ModuleGlobalUse[];
+  globalIssues: ModuleGlobalIssue[];
   /**
    * Set when usage cannot be determined statically. Selectors are then
    * reported as unknown rather than unused.
    */
   unknownReasons: ModuleUnknownReason[];
+  unknownUsage: ModuleUnknownUsage[];
 }
 
 export interface AnalysisResult {
@@ -77,6 +122,7 @@ export interface AnalysisResult {
   globalUnused: ClassInfo[];
   modules: ModuleReport[];
   moduleUnused: ClassInfo[];
+  moduleProductionUnused: ModuleSelectorInfo[];
   dynamicPrefixes: string[];
   cssFileCount: number;
   moduleFileCount: number;
@@ -96,6 +142,7 @@ Options:
   --json           Output as JSON
   --remove         Remove unused global CSS rules (writes changes to files)
   --dry-run        Show what would be removed without making changes
+  --modules-check  Check only blocking CSS Module contracts; ignore legacy debt
   --help           Show this help
 
 CSS Module rules are never removed automatically; module selectors are reported
@@ -110,6 +157,7 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): Options {
     json: false,
     remove: false,
     dryRun: false,
+    modulesCheck: false,
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -132,6 +180,9 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): Options {
         break;
       case "--dry-run":
         options.dryRun = true;
+        break;
+      case "--modules-check":
+        options.modulesCheck = true;
         break;
       case "--help":
         console.log(USAGE);
@@ -197,6 +248,15 @@ export function findSourceFiles(dir: string, extensions: string[]): string[] {
     }
   }
   return results;
+}
+
+export function isTestSourceFile(file: string): boolean {
+  const normalized = file.split(path.sep).join("/");
+  return (
+    /(^|\/)(__tests__|tests?|e2e)(\/|\.|$)/.test(normalized) ||
+    /(^|\/)packages\/[^/]+\/scripts\//.test(normalized) ||
+    /\.(test|spec)\.[cm]?[jt]sx?$/.test(normalized)
+  );
 }
 
 export function isModuleStylesheet(file: string): boolean {
@@ -336,16 +396,34 @@ export function extractComposes(cssContent: string): ComposesReference {
 export function extractModuleSelectors(
   cssContent: string,
   filename: string,
-): { selectors: ClassInfo[]; globalRefs: string[] } {
-  const selectors: ClassInfo[] = [];
+): {
+  selectors: ModuleSelectorInfo[];
+  globalRefs: string[];
+  globalUses: ModuleGlobalUse[];
+} {
+  const selectors: ModuleSelectorInfo[] = [];
   const globalRefs = new Set<string>();
+  const globalUses: ModuleGlobalUse[] = [];
   const seen = new Set<string>();
 
-  postcss.parse(cssContent, { from: filename }).walkRules((rule) => {
+  const root = postcss.parse(cssContent, { from: filename });
+  root.walkRules((rule) => {
     const { scoped, globalRefs: lineGlobals } = splitGlobalReferences(
       rule.selector,
     );
-    for (const name of lineGlobals) globalRefs.add(name);
+    const localAnchors = Array.from(
+      new Set(Array.from(scoped.matchAll(CLASS_REGEX), (match) => match[1])),
+    ).filter(isLikelyClassName);
+    for (const name of lineGlobals) {
+      globalRefs.add(name);
+      globalUses.push({
+        name,
+        line: rule.source?.start?.line ?? 1,
+        selector: rule.selector,
+        localAnchors,
+        kind: "selector",
+      });
+    }
 
     for (const match of scoped.matchAll(CLASS_REGEX)) {
       const className = match[1];
@@ -357,14 +435,38 @@ export function extractModuleSelectors(
         cssFile: filename,
         line: rule.source?.start?.line ?? 1,
         usedIn: [],
+        productionUsedIn: [],
+        testUsedIn: [],
       });
     }
   });
 
-  const composes = extractComposes(cssContent);
-  for (const name of composes.global) globalRefs.add(name);
+  root.walkDecls("composes", (declaration) => {
+    const match = /^([\s\S]+?)\s+from\s+global$/.exec(declaration.value.trim());
+    if (!match) return;
+    const rule = declaration.parent;
+    const selector = rule?.type === "rule" ? rule.selector : "<declaration>";
+    const { scoped } = splitGlobalReferences(selector);
+    const localAnchors = Array.from(
+      new Set(Array.from(scoped.matchAll(CLASS_REGEX), (item) => item[1])),
+    ).filter(isLikelyClassName);
+    for (const name of match[1].split(/\s+/).filter(Boolean)) {
+      globalRefs.add(name);
+      globalUses.push({
+        name,
+        line: declaration.source?.start?.line ?? 1,
+        selector,
+        localAnchors,
+        kind: "composes",
+      });
+    }
+  });
 
-  return { selectors, globalRefs: Array.from(globalRefs) };
+  return {
+    selectors,
+    globalRefs: Array.from(globalRefs),
+    globalUses,
+  };
 }
 
 export interface ModuleImport {
@@ -408,6 +510,7 @@ export function extractModuleImports(
 
 export interface BindingUsage {
   names: Set<string>;
+  accesses: Array<{ name: string; line: number }>;
   /** The binding was used in a way that hides which selectors it reaches. */
   computed: boolean;
 }
@@ -422,11 +525,13 @@ export interface BindingUsage {
 export function extractBindingUsage(
   content: string,
   binding: string,
+  filename = "source.tsx",
 ): BindingUsage {
   const names = new Set<string>();
+  const accesses: Array<{ name: string; line: number }> = [];
   let computed = false;
   const sourceFile = ts.createSourceFile(
-    "source.tsx",
+    filename,
     content,
     ts.ScriptTarget.Latest,
     true,
@@ -439,12 +544,24 @@ export function extractBindingUsage(
       const parent = node.parent;
       if (ts.isPropertyAccessExpression(parent) && parent.expression === node) {
         names.add(parent.name.text);
+        accesses.push({
+          name: parent.name.text,
+          line:
+            sourceFile.getLineAndCharacterOfPosition(parent.name.getStart())
+              .line + 1,
+        });
         return;
       }
       if (ts.isElementAccessExpression(parent) && parent.expression === node) {
         const argument = parent.argumentExpression;
         if (argument && ts.isStringLiteralLike(argument)) {
           names.add(argument.text);
+          accesses.push({
+            name: argument.text,
+            line:
+              sourceFile.getLineAndCharacterOfPosition(argument.getStart())
+                .line + 1,
+          });
         } else {
           computed = true;
         }
@@ -460,7 +577,7 @@ export function extractBindingUsage(
 
   visit(sourceFile);
 
-  return { names, computed };
+  return { names, accesses, computed };
 }
 
 export interface SourceUsageIndex {
@@ -810,33 +927,69 @@ export function analyze(options: Pick<Options, "cssDir" | "srcDir">): {
   for (const file of moduleFiles) {
     const content = fs.readFileSync(file, "utf-8");
     moduleContents.set(path.resolve(file), content);
-    const { selectors, globalRefs } = extractModuleSelectors(content, file);
+    const { selectors, globalRefs, globalUses } = extractModuleSelectors(
+      content,
+      file,
+    );
     moduleReports.set(path.resolve(file), {
       cssFile: file,
       importers: [],
+      productionImporters: [],
+      testImporters: [],
+      productionReachable: false,
       composers: [],
       selectors,
       unused: [],
+      productionUnused: [],
+      testOnly: [],
+      undeclared: [],
       globalRefs,
+      globalUses,
+      globalIssues: [],
       unknownReasons: [],
+      unknownUsage: [],
     });
   }
 
   // Names reached from source files, plus names composed from other modules.
-  const reachedNames = new Map<string, Map<string, Set<string>>>();
+  const productionReachedNames = new Map<string, Map<string, Set<string>>>();
+  const testReachedNames = new Map<string, Map<string, Set<string>>>();
   const noteReached = (
+    index: Map<string, Map<string, Set<string>>>,
     modulePath: string,
     name: string,
     origin: string,
   ): void => {
-    let byName = reachedNames.get(modulePath);
+    let byName = index.get(modulePath);
     if (!byName) {
       byName = new Map();
-      reachedNames.set(modulePath, byName);
+      index.set(modulePath, byName);
     }
     const origins = byName.get(name) ?? new Set<string>();
     origins.add(origin);
     byName.set(name, origins);
+  };
+  const undeclared = new Map<
+    string,
+    Map<string, { productionUsedIn: Set<string>; testUsedIn: Set<string> }>
+  >();
+  const noteUndeclared = (
+    modulePath: string,
+    name: string,
+    origin: string,
+    test: boolean,
+  ): void => {
+    let byName = undeclared.get(modulePath);
+    if (!byName) {
+      byName = new Map();
+      undeclared.set(modulePath, byName);
+    }
+    const usage = byName.get(name) ?? {
+      productionUsedIn: new Set<string>(),
+      testUsedIn: new Set<string>(),
+    };
+    (test ? usage.testUsedIn : usage.productionUsedIn).add(origin);
+    byName.set(name, usage);
   };
 
   for (const [srcFile, content] of srcContents) {
@@ -849,54 +1002,183 @@ export function analyze(options: Pick<Options, "cssDir" | "srcDir">): {
       if (!report) continue;
 
       report.importers.push(srcFile);
+      const test = isTestSourceFile(srcFile);
+      (test ? report.testImporters : report.productionImporters).push(srcFile);
 
       if (!binding) {
         report.unknownReasons.push("side-effect-import");
+        report.unknownUsage.push({
+          reason: "side-effect-import",
+          file: srcFile,
+        });
         continue;
       }
 
-      const usage = extractBindingUsage(content, binding);
-      if (usage.computed) report.unknownReasons.push("computed-access");
-      for (const name of usage.names) noteReached(resolved, name, srcFile);
-    }
-  }
-
-  for (const [modulePath, content] of moduleContents) {
-    const composes = extractComposes(content);
-    for (const name of composes.local) {
-      noteReached(modulePath, name, `${path.basename(modulePath)} (composes)`);
-    }
-    for (const { specifier, names } of composes.external) {
-      const resolved = resolveSpecifier(modulePath, specifier);
-      const target = moduleReports.get(resolved);
-      if (!target) continue;
-      target.composers.push(path.relative(process.cwd(), modulePath));
-      for (const name of names) {
+      const usage = extractBindingUsage(content, binding, srcFile);
+      if (usage.computed) {
+        report.unknownReasons.push("computed-access");
+        report.unknownUsage.push({ reason: "computed-access", file: srcFile });
+      }
+      const declared = new Set(
+        report.selectors.map((selector) => selector.name),
+      );
+      for (const access of usage.accesses) {
+        const origin = `${srcFile}:${access.line}`;
+        if (!declared.has(access.name)) {
+          noteUndeclared(resolved, access.name, origin, test);
+          continue;
+        }
         noteReached(
+          test ? testReachedNames : productionReachedNames,
           resolved,
-          name,
-          `${path.basename(modulePath)} (composes from)`,
+          access.name,
+          srcFile,
         );
       }
     }
   }
 
+  const localComposes = new Map<string, string[]>();
+  const externalComposes: Array<{
+    source: string;
+    target: string;
+    names: string[];
+  }> = [];
+  for (const [modulePath, content] of moduleContents) {
+    const composes = extractComposes(content);
+    localComposes.set(modulePath, composes.local);
+    for (const { specifier, names } of composes.external) {
+      const resolved = resolveSpecifier(modulePath, specifier);
+      const target = moduleReports.get(resolved);
+      if (!target) continue;
+      target.composers.push(path.relative(process.cwd(), modulePath));
+      externalComposes.push({ source: modulePath, target: resolved, names });
+    }
+  }
+
+  const productionReachable = new Set(
+    Array.from(moduleReports.entries())
+      .filter(([, report]) => report.productionImporters.length > 0)
+      .map(([modulePath]) => modulePath),
+  );
+  const testReachable = new Set(
+    Array.from(moduleReports.entries())
+      .filter(([, report]) => report.testImporters.length > 0)
+      .map(([modulePath]) => modulePath),
+  );
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const edge of externalComposes) {
+      if (
+        productionReachable.has(edge.source) &&
+        !productionReachable.has(edge.target)
+      ) {
+        productionReachable.add(edge.target);
+        changed = true;
+      }
+      if (testReachable.has(edge.source) && !testReachable.has(edge.target)) {
+        testReachable.add(edge.target);
+        changed = true;
+      }
+    }
+  }
+
+  for (const [modulePath, names] of localComposes) {
+    const declared = new Set(
+      moduleReports.get(modulePath)?.selectors.map((selector) => selector.name),
+    );
+    for (const name of names) {
+      const origin = `${path.basename(modulePath)} (composes)`;
+      if (!declared.has(name)) {
+        if (productionReachable.has(modulePath)) {
+          noteUndeclared(modulePath, name, origin, false);
+        }
+        if (testReachable.has(modulePath)) {
+          noteUndeclared(modulePath, name, origin, true);
+        }
+        continue;
+      }
+      if (productionReachable.has(modulePath)) {
+        noteReached(productionReachedNames, modulePath, name, origin);
+      }
+      if (testReachable.has(modulePath)) {
+        noteReached(testReachedNames, modulePath, name, origin);
+      }
+    }
+  }
+
+  for (const edge of externalComposes) {
+    const declared = new Set(
+      moduleReports
+        .get(edge.target)
+        ?.selectors.map((selector) => selector.name),
+    );
+    for (const name of edge.names) {
+      const origin = `${path.basename(edge.source)} (composes from)`;
+      if (!declared.has(name)) {
+        if (productionReachable.has(edge.source)) {
+          noteUndeclared(edge.target, name, origin, false);
+        }
+        if (testReachable.has(edge.source)) {
+          noteUndeclared(edge.target, name, origin, true);
+        }
+        continue;
+      }
+      if (productionReachable.has(edge.source)) {
+        noteReached(productionReachedNames, edge.target, name, origin);
+      }
+      if (testReachable.has(edge.source)) {
+        noteReached(testReachedNames, edge.target, name, origin);
+      }
+    }
+  }
+
   const moduleUnused: ClassInfo[] = [];
+  const moduleProductionUnused: ModuleSelectorInfo[] = [];
   for (const [modulePath, report] of moduleReports) {
-    // A module composed by another module is still reachable, so its
-    // remaining selectors can be judged.
-    if (report.importers.length === 0 && report.composers.length === 0) {
-      report.unknownReasons.push("no-importer");
-    }
-    const byName = reachedNames.get(modulePath);
+    report.productionReachable = productionReachable.has(modulePath);
+    report.unknownReasons = Array.from(new Set(report.unknownReasons));
+    report.unknownUsage = report.unknownUsage.filter(
+      (usage, index, all) =>
+        all.findIndex(
+          (candidate) =>
+            candidate.reason === usage.reason && candidate.file === usage.file,
+        ) === index,
+    );
+    const productionByName = productionReachedNames.get(modulePath);
+    const testByName = testReachedNames.get(modulePath);
     for (const selector of report.selectors) {
-      selector.usedIn = Array.from(byName?.get(selector.name) ?? []);
+      selector.productionUsedIn = Array.from(
+        productionByName?.get(selector.name) ?? [],
+      );
+      selector.testUsedIn = Array.from(testByName?.get(selector.name) ?? []);
+      selector.usedIn = Array.from(
+        new Set([...selector.productionUsedIn, ...selector.testUsedIn]),
+      );
     }
-    if (report.unknownReasons.length > 0) continue;
+    report.undeclared = Array.from(
+      undeclared.get(modulePath)?.entries() ?? [],
+      ([name, usage]) => ({
+        name,
+        productionUsedIn: Array.from(usage.productionUsedIn),
+        testUsedIn: Array.from(usage.testUsedIn),
+      }),
+    ).sort((a, b) => a.name.localeCompare(b.name));
+    if (report.unknownReasons.length > 0) {
+      continue;
+    }
     report.unused = report.selectors.filter(
       (selector) => selector.usedIn.length === 0,
     );
+    report.productionUnused = report.selectors.filter(
+      (selector) => selector.productionUsedIn.length === 0,
+    );
+    report.testOnly = report.productionUnused.filter(
+      (selector) => selector.testUsedIn.length > 0,
+    );
     moduleUnused.push(...report.unused);
+    moduleProductionUnused.push(...report.productionUnused);
   }
 
   // --- Global analysis -----------------------------------------------------
@@ -913,6 +1195,19 @@ export function analyze(options: Pick<Options, "cssDir" | "srcDir">): {
     if (!uniqueGlobalClasses.has(cls.name)) {
       uniqueGlobalClasses.set(cls.name, cls);
     }
+  }
+
+  for (const report of moduleReports.values()) {
+    report.globalIssues = report.globalUses.flatMap((use) => {
+      const issues: ModuleGlobalIssue[] = [];
+      if (use.localAnchors.length === 0) {
+        issues.push({ ...use, issue: "unanchored-global" });
+      }
+      if (!uniqueGlobalClasses.has(use.name)) {
+        issues.push({ ...use, issue: "missing-global" });
+      }
+      return issues;
+    });
   }
 
   // A module's `:global(...)` selector is a real consumer of global vocabulary.
@@ -951,6 +1246,7 @@ export function analyze(options: Pick<Options, "cssDir" | "srcDir">): {
         a.cssFile.localeCompare(b.cssFile),
       ),
       moduleUnused,
+      moduleProductionUnused,
       dynamicPrefixes,
       cssFileCount: globalCssFiles.length,
       moduleFileCount: moduleFiles.length,
@@ -1170,15 +1466,129 @@ function removeUnusedRules(
 }
 
 const UNKNOWN_REASON_TEXT: Record<ModuleUnknownReason, string> = {
-  "no-importer": "no source file imports it",
   "side-effect-import": "imported for side effects without a binding",
   "computed-access": "reached through a computed key",
 };
+
+export type ModuleContractIssueKind =
+  | "computed-access"
+  | "missing-global"
+  | "no-production-importer"
+  | "production-unused-selector"
+  | "side-effect-import"
+  | "test-only-selector"
+  | "unanchored-global"
+  | "undeclared-selector";
+
+export interface ModuleContractIssue {
+  kind: ModuleContractIssueKind;
+  file: string;
+  name?: string;
+  line?: number;
+  detail: string;
+}
+
+export function moduleContractIssues(
+  result: AnalysisResult,
+): ModuleContractIssue[] {
+  const issues: ModuleContractIssue[] = [];
+  for (const report of result.modules) {
+    if (!report.productionReachable) {
+      issues.push({
+        kind: "no-production-importer",
+        file: report.cssFile,
+        detail: "no production source imports or composes this module",
+      });
+    }
+    for (const usage of report.unknownUsage) {
+      issues.push({
+        kind: usage.reason,
+        file: report.cssFile,
+        detail: `${UNKNOWN_REASON_TEXT[usage.reason]} in ${usage.file}`,
+      });
+    }
+    for (const access of report.undeclared) {
+      const origins = [...access.productionUsedIn, ...access.testUsedIn].join(
+        ", ",
+      );
+      issues.push({
+        kind: "undeclared-selector",
+        file: report.cssFile,
+        name: access.name,
+        detail: `styles.${access.name} has no local selector (${origins})`,
+      });
+    }
+    const testOnlyNames = new Set(
+      report.testOnly.map((selector) => selector.name),
+    );
+    for (const selector of report.productionUnused) {
+      const testOnly = testOnlyNames.has(selector.name);
+      issues.push({
+        kind: testOnly ? "test-only-selector" : "production-unused-selector",
+        file: report.cssFile,
+        name: selector.name,
+        line: selector.line,
+        detail: testOnly
+          ? `.${selector.name} is reached only by tests`
+          : `.${selector.name} has no production usage`,
+      });
+    }
+    for (const issue of report.globalIssues) {
+      issues.push({
+        kind: issue.issue,
+        file: report.cssFile,
+        name: issue.name,
+        line: issue.line,
+        detail:
+          issue.issue === "missing-global"
+            ? `:global(.${issue.name}) does not exist in an authored global stylesheet`
+            : `:global(.${issue.name}) has no module-local class anchor`,
+      });
+    }
+  }
+  return issues;
+}
 
 function describeUnknown(report: ModuleReport): string {
   return Array.from(new Set(report.unknownReasons))
     .map((reason) => UNKNOWN_REASON_TEXT[reason])
     .join("; ");
+}
+
+function moduleJson(report: ModuleReport): Record<string, unknown> {
+  return {
+    file: report.cssFile,
+    importers: report.importers,
+    productionImporters: report.productionImporters,
+    testImporters: report.testImporters,
+    productionReachable: report.productionReachable,
+    composers: report.composers,
+    unknownReasons: report.unknownReasons,
+    unknownUsage: report.unknownUsage,
+    undeclared: report.undeclared,
+    globalRefs: report.globalRefs,
+    globalUses: report.globalUses,
+    globalIssues: report.globalIssues,
+    unused: report.unused.map((selector) => ({
+      name: selector.name,
+      line: selector.line,
+    })),
+    productionUnused: report.productionUnused.map((selector) => ({
+      name: selector.name,
+      line: selector.line,
+    })),
+    testOnly: report.testOnly.map((selector) => ({
+      name: selector.name,
+      line: selector.line,
+      testUsedIn: selector.testUsedIn,
+    })),
+    selectors: report.selectors.map((selector) => ({
+      name: selector.name,
+      line: selector.line,
+      productionUsedIn: selector.productionUsedIn,
+      testUsedIn: selector.testUsedIn,
+    })),
+  };
 }
 
 function main() {
@@ -1206,6 +1616,54 @@ function main() {
     (report) => report.unknownReasons.length > 0,
   );
 
+  if (options.modulesCheck) {
+    const issues = moduleContractIssues(result);
+    if (options.json) {
+      console.log(
+        JSON.stringify(
+          {
+            summary: {
+              modules: result.moduleFileCount,
+              selectors: result.modules.reduce(
+                (total, report) => total + report.selectors.length,
+                0,
+              ),
+              globalInterop: result.modules.reduce(
+                (total, report) => total + report.globalUses.length,
+                0,
+              ),
+              issues: issues.length,
+            },
+            issues,
+            modules: result.modules.map(moduleJson),
+          },
+          null,
+          2,
+        ),
+      );
+    } else if (issues.length === 0) {
+      const selectorCount = result.modules.reduce(
+        (total, report) => total + report.selectors.length,
+        0,
+      );
+      const globalInterop = result.modules.reduce(
+        (total, report) => total + report.globalUses.length,
+        0,
+      );
+      console.log(
+        `CSS Module contracts: ${result.moduleFileCount} modules, ${selectorCount} selectors, ${globalInterop} reviewed global interop references; no issues`,
+      );
+    } else {
+      console.error(`CSS Module contract issues (${issues.length}):`);
+      for (const issue of issues) {
+        const location = `${issue.file}${issue.line ? `:${issue.line}` : ""}`;
+        console.error(`  ${location} [${issue.kind}] ${issue.detail}`);
+      }
+    }
+    process.exitCode = issues.length > 0 ? 1 : 0;
+    return;
+  }
+
   if (options.json) {
     console.log(
       JSON.stringify(
@@ -1222,7 +1680,10 @@ function main() {
               0,
             ),
             unusedModuleSelectors: result.moduleUnused.length,
+            productionUnusedModuleSelectors:
+              result.moduleProductionUnused.length,
             unknownModules: unknownModules.length,
+            moduleContractIssues: moduleContractIssues(result).length,
           },
           unused: result.globalUnused.map((c) => ({
             name: c.name,
@@ -1230,20 +1691,8 @@ function main() {
             line: c.line,
           })),
           modules: result.modules.map((report) => ({
-            file: report.cssFile,
-            importers: report.importers,
-            unknownReasons: Array.from(new Set(report.unknownReasons)),
-            globalRefs: report.globalRefs,
-            unused: report.unused.map((c) => ({ name: c.name, line: c.line })),
-            ...(options.verbose
-              ? {
-                  selectors: report.selectors.map((c) => ({
-                    name: c.name,
-                    line: c.line,
-                    usedIn: c.usedIn,
-                  })),
-                }
-              : {}),
+            ...moduleJson(report),
+            ...(!options.verbose ? { selectors: undefined } : {}),
           })),
           ...(options.verbose
             ? {
@@ -1260,7 +1709,8 @@ function main() {
         2,
       ),
     );
-    process.exit(exitCode(result, options));
+    process.exitCode = exitCode(result, options);
+    return;
   }
 
   console.log(
@@ -1312,17 +1762,22 @@ function main() {
       console.log(`  ${relPath}: usage unknown — ${describeUnknown(report)}`);
       continue;
     }
-    if (report.unused.length === 0) {
+    if (report.productionUnused.length === 0) {
       if (options.verbose) {
         console.log(
-          `  ${relPath}: all ${report.selectors.length} selectors used`,
+          `  ${relPath}: all ${report.selectors.length} selectors used by production`,
         );
       }
       continue;
     }
-    console.log(`  ${relPath} (${report.unused.length} unused):`);
-    for (const cls of report.unused.sort((a, b) => a.line - b.line)) {
-      console.log(`    Line ${cls.line}: .${cls.name}`);
+    console.log(
+      `  ${relPath} (${report.productionUnused.length} production-unused):`,
+    );
+    const testOnly = new Set(report.testOnly.map((selector) => selector.name));
+    for (const cls of report.productionUnused.sort((a, b) => a.line - b.line)) {
+      console.log(
+        `    Line ${cls.line}: .${cls.name}${testOnly.has(cls.name) ? " (test only)" : ""}`,
+      );
     }
   }
   console.log();
@@ -1332,7 +1787,7 @@ function main() {
     `Summary: ${result.globalUsed.length} used, ${result.globalUnused.length} unused out of ${result.globalClasses.length} global classes`,
   );
   console.log(
-    `         ${result.moduleUnused.length} unused module selectors; ${unknownModules.length} module${unknownModules.length === 1 ? "" : "s"} with undetermined usage`,
+    `         ${result.moduleProductionUnused.length} production-unused module selectors; ${unknownModules.length} module${unknownModules.length === 1 ? "" : "s"} with undetermined usage`,
   );
 
   if (options.verbose && result.globalUsed.length > 0) {
@@ -1347,7 +1802,7 @@ function main() {
   // Handle removal if requested
   if (
     (options.remove || options.dryRun) &&
-    (result.globalUnused.length > 0 || result.moduleUnused.length > 0)
+    (result.globalUnused.length > 0 || result.moduleProductionUnused.length > 0)
   ) {
     console.log(
       options.dryRun
@@ -1379,9 +1834,9 @@ function main() {
     console.log(
       `\n${options.dryRun ? "Would remove" : "Removed"} ${totalRemoved} rules, skipped ${totalSkipped} (grouped selectors)`,
     );
-    if (result.moduleUnused.length > 0) {
+    if (result.moduleProductionUnused.length > 0) {
       console.log(
-        `Left ${result.moduleUnused.length} module selector${result.moduleUnused.length === 1 ? "" : "s"} in place; delete module rules in the owning component.`,
+        `Left ${result.moduleProductionUnused.length} module selector${result.moduleProductionUnused.length === 1 ? "" : "s"} in place; delete module rules in the owning component.`,
       );
     }
   }
@@ -1391,7 +1846,7 @@ function main() {
 
 function exitCode(result: AnalysisResult, options: Options): number {
   const globalOutstanding = options.remove ? 0 : result.globalUnused.length;
-  return globalOutstanding + result.moduleUnused.length > 0 ? 1 : 0;
+  return globalOutstanding + moduleContractIssues(result).length > 0 ? 1 : 0;
 }
 
 const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : "";

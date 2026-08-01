@@ -1,0 +1,11 @@
+.root {
+  display: block;
+}
+
+:global(.fixture-missing-shell):has(.root) {
+  padding: 1rem;
+}
+
+:global(.fixture-unanchored-shell) {
+  margin: 0;
+}

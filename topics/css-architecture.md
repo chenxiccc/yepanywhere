@@ -74,6 +74,23 @@ It is an implementation plan, not a renewed migration queue.
   that work stays inside the task's product surface; it reports why extraction
   was deferred when generated vocabulary, dynamic construction, composition,
   or verification would materially expand the task.
+- `pnpm lint` runs `pnpm css:modules:check` before Biome. The module check is a
+  blocking, parser-backed contract: every module needs production reach; every
+  declared selector needs a statically known production use; every
+  `styles.foo`/`styles["foo"]` access must name a local selector; and computed
+  or side-effect access fails instead of making the whole module silently live.
+- Test and package-script imports are tracked separately. A selector reached
+  only by a test is reported as test-only and fails the production contract;
+  tests may pin behavior, but they do not prove shipped code uses a selector.
+- Each `:global(...)` or `composes ... from global` use in a module must name a
+  class present in an authored global stylesheet and carry a module-local class
+  anchor in the same selector. The shared-shell form
+  `:global(.modal):has(.localContent)` is valid because `.localContent` makes
+  ownership and scope explicit.
+- `pnpm css:unused` remains the investigative global-and-module report. Its
+  known legacy findings may make that command exit nonzero without breaking
+  ordinary lint. `--remove` remains limited to global rules; module rules are
+  deleted deliberately with their owner.
 
 ## Ownership boundaries
 
@@ -103,6 +120,11 @@ module cannot own. The global selector should be evident beside the local
 selector it affects. `HostOfflineModal.module.css`, for example, uses the
 shared global `.modal` shell only to size the modal containing its local
 content.
+
+The module contract reports the count of reviewed global references as
+context, but does not impose a numeric ceiling. A new interop reference is
+acceptable when it is local, existent, and intentional; an unanchored or
+missing reference is not.
 
 ## Component composition
 

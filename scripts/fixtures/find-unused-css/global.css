@@ -32,6 +32,11 @@
   max-width: 30rem;
 }
 
+/* Exists, but InvalidGlobal.module.css reaches it without a local anchor. */
+.fixture-unanchored-shell {
+  max-width: 20rem;
+}
+
 /* Referenced only through `composes: ... from global`. */
 .fixture-composed-global {
   font-weight: 600;

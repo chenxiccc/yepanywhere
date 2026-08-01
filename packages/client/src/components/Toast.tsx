@@ -7,6 +7,12 @@ interface Props {
   onDismiss: (id: string) => void;
 }
 
+const TOAST_TYPE_CLASS = {
+  error: styles.error!,
+  success: styles.success!,
+  info: styles.info!,
+} satisfies Record<ToastType["type"], string>;
+
 export function ToastContainer({ toasts, onDismiss }: Props) {
   if (toasts.length === 0) return null;
 
@@ -15,7 +21,7 @@ export function ToastContainer({ toasts, onDismiss }: Props) {
       {toasts.map((toast) => (
         <div
           key={toast.id}
-          className={`${styles.toast} ${styles[toast.type]}`}
+          className={`${styles.toast} ${TOAST_TYPE_CLASS[toast.type]}`}
           style={
             {
               "--toast-fade-duration": toast.action ? "7s" : "4.5s",

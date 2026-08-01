@@ -11,7 +11,7 @@ const repoRoot = path.resolve(
 const fixture = path.join(
   repoRoot,
   "packages/client/src",
-  `.biome-module-contract-${process.pid}.module.css`,
+  [".biome-module-contract-", String(process.pid), ".module.css"].join(""),
 );
 
 afterEach(() => fs.rmSync(fixture, { force: true }));

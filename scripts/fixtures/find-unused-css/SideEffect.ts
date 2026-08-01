@@ -1,0 +1,1 @@
+import "./SideEffect.module.css";

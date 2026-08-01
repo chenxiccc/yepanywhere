@@ -209,6 +209,23 @@ Acceptance:
 - a missing global reference is reported; and
 - the sanctioned generated-markup and shared-modal fixtures remain valid.
 
+Implementation evidence (2026-08-01): `pnpm css:modules:check` now joins
+`pnpm lint` and passes at 55 modules, 726 selectors, 14 locally anchored global
+references, and zero contract issues. Fixtures cover every blocking category.
+`Toast` uses an explicit exhaustive type-to-class map, removing the sole
+computed-access unknown. The broader `css:unused` command still reports 35
+legacy classes and exits nonzero, while ordinary lint remains clean.
+
+Biome 2.5.6's project-domain `noUnusedClasses` and `noUndeclaredClasses` rules
+remain observational. Trials against both the full tracked corpus and
+`packages/client/src` produced no diagnostic output after more than three
+minutes and were terminated; the custom check completes in roughly three
+seconds. Their published matching model also checks literal JSX/HTML class
+attributes against imported CSS, not CSS Module binding keys, and deliberately
+skips unresolved dynamic names. It does not provide YA's production/test/script
+split, computed-access unknowns, `composes` graph, or global-interop contract.
+They therefore do not replace or join the blocking command in this tactical.
+
 ### 6 — surface touched-component CSS ownership
 
 Add an advisory, diff-aware command such as `pnpm css:touched`. Given an
