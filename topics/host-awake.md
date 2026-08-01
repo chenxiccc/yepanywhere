@@ -469,6 +469,11 @@ input. Reading the source from stdin avoids the ordinary `.ps1`
 execution-policy failure without asking YA users to weaken their PowerShell
 configuration.
 
+Allow up to 20 seconds for a cold PowerShell process and `Add-Type` compilation
+to produce the first complete snapshot or status payload. If that startup bound
+expires, terminate the helper and report the probe or acquisition failure. This
+is one bounded startup allowance, not an acquisition-retry loop.
+
 This is not an attempt to bypass stronger application policy. AppLocker or App
 Control may place PowerShell in Constrained Language mode, where `Add-Type`
 cannot load arbitrary Win32 declarations, and managed policy may block

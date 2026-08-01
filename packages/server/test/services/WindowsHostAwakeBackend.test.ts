@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { describe, expect, it, vi } from "vitest";
 import {
+  WINDOWS_HELPER_START_TIMEOUT_MS,
   WINDOWS_HOST_AWAKE_BOOTSTRAP_COMMAND,
   WINDOWS_HOST_AWAKE_HELPER_SOURCE,
   WindowsHostAwakeBackend,
@@ -81,7 +82,7 @@ describe("WindowsHostAwakeBackend", () => {
       );
       expect(snapshot.powerObservedAt).toBeGreaterThan(0);
     },
-    12_000,
+    WINDOWS_HELPER_START_TIMEOUT_MS + 5_000,
   );
 
   it("owns a PID-bound SystemRequired request and releases its helper", async () => {

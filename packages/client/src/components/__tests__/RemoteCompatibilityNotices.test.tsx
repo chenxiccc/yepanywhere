@@ -74,6 +74,7 @@ describe("RemoteCompatibilityNotices", () => {
       configurable: true,
       value: { writeText },
     });
+    writeText.mockReset();
     writeText.mockResolvedValue(undefined);
   });
 
@@ -153,9 +154,12 @@ describe("RemoteCompatibilityNotices", () => {
     expect(copyButton.classList.contains(styles.copied!)).toBe(false);
 
     fireEvent.click(copyButton);
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith(command));
+
+    expect(await screen.findByRole("button", { name: "Copied" })).toBe(
+      copyButton,
+    );
+    expect(writeText).toHaveBeenCalledWith(command);
     expect(copyButton.classList.contains(styles.copied!)).toBe(true);
-    expect(screen.getByRole("button", { name: "Copied" })).toBe(copyButton);
 
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
     fireEvent.click(screen.getByRole("button", { name: "Remind me later" }));
@@ -262,10 +266,12 @@ describe("RemoteCompatibilityNotices", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Copy npm command" }));
 
-    await waitFor(() =>
-      expect(writeText).toHaveBeenCalledWith("npm update -g yepanywhere"),
+    expect(
+      await screen.findByRole("button", { name: "Copied" }),
+    ).toBeTruthy();
+    expect(writeText).toHaveBeenCalledWith(
+      "npm update -g yepanywhere",
     );
-    expect(screen.getByRole("button", { name: "Copied" })).toBeTruthy();
   });
 
   it("exposes source checkout steps for git-describe versions", async () => {

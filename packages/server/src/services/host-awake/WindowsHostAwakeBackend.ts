@@ -16,7 +16,7 @@ import {
   HostAwakeUnsupportedError,
 } from "./HostAwakeBackend.js";
 
-const WINDOWS_HELPER_START_TIMEOUT_MS = 8_000;
+export const WINDOWS_HELPER_START_TIMEOUT_MS = 20_000;
 const WINDOWS_HELPER_OUTPUT_LIMIT_BYTES = 16 * 1024;
 const WINDOWS_HELPER_RELEASE_TIMEOUT_MS = 2_000;
 
