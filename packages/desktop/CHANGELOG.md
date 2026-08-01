@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-08-01
+
+### Fixed
+- Ordinary cloned and forked sessions no longer inherit `/btw` Mother badges or navigation; legacy session metadata is repaired when it loads.
+
 ## [0.1.2] - 2026-08-01
 
 ### Fixed
