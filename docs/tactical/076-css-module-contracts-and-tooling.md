@@ -246,6 +246,15 @@ Acceptance:
 - clean or module-owned touched components produce no noise; and
 - `AGENTS.md` and `DEVELOPMENT.md` name the final command and semantics.
 
+Implementation evidence (2026-08-01): `pnpm css:touched` composes the current
+parser-backed inventory with either `HEAD` versus the working tree or an
+explicit ref's merge base. It prints the requested ownership facts, calls out
+legacy stylesheet edits, stays quiet at the owner level for clean/module-only
+components, and always exits successfully for both `OPPORTUNITY` and `DEFER`.
+Focused fixtures cover local, scattered, coupled, generated/unresolved,
+module-only, and legacy-stylesheet cases. Contributor and agent guidance use the command
+as the opportunistic trigger and reserve owner inventory for drill-down.
+
 ### 7 — decide the smallest useful CSS health surface
 
 After the analyzer and module contracts are stable, decide whether one

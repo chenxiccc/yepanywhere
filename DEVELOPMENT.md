@@ -123,6 +123,18 @@ slice with the feature change. Zero global CSS is not a target, and a feature
 task should not grow into generated-markup, dynamic-class, or cross-owner
 composition work merely to reduce a line count.
 
+Before finishing such a change, run:
+
+```bash
+pnpm css:touched
+```
+
+The command compares the working tree with `HEAD`; pass `--base <ref>` to
+include committed branch work from that ref's merge base. It prints concise
+ownership facts for changed React owners, labels bounded slices as
+opportunities, and labels coupled, scattered, dynamic, or unresolved evidence
+for deferral. The report is advisory and always succeeds for either outcome.
+
 For standalone paydown work, select a bounded owner from the parser-backed
 inventory instead of maintaining a speculative migration queue:
 

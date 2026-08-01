@@ -20,6 +20,7 @@
     "css:check": "node scripts/check-css-architecture.mjs",
     "css:inventory": "tsx scripts/css-inventory.ts",
     "css:modules:check": "tsx scripts/find-unused-css.ts --modules-check",
+    "css:touched": "tsx scripts/report-touched-css.ts",
     "css:unused": "tsx scripts/find-unused-css.ts",
     "capabilities:audit": "tsx scripts/audit-server-capabilities.ts",
     "console:scan": "node scripts/find-console-chatter.mjs",

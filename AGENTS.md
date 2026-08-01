@@ -61,12 +61,14 @@ narrow global vocabulary, but surrounding React-owned UI still belongs in a
 module.
 
 When changing a React component that still emits legacy global classes, or
-when editing a legacy stylesheet, run
-`pnpm css:inventory -- --owner <component>` before finishing. Opportunistically
-extract a clearly owned slice
-when it stays within the task's product surface and can use the task's existing
-verification setup. Do not expand the task through generated markup,
-open-ended dynamic classes, broad composition, or unprovable visual states;
+when editing a legacy stylesheet, run `pnpm css:touched` before finishing. It
+uses the current diff to distinguish bounded opportunities from coupled,
+scattered, dynamic, or unresolved ownership. Drill into a reported owner with
+`pnpm css:inventory -- --owner <component>`. Opportunistically extract a
+clearly owned slice when it stays within the task's product surface and can use
+the task's existing verification setup. Do not expand the task through
+generated markup, open-ended dynamic classes, broad composition, or unprovable
+visual states;
 state the concrete deferral reason in the final handoff instead. Fresh
 inventory, not a standing migration queue, decides whether a later extraction
 is worthwhile.

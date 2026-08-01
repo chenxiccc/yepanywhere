@@ -1,0 +1,15 @@
+.touched-local {
+  display: block;
+}
+
+.touched-local .touched-local-item {
+  color: green;
+}
+
+.touched-coupled {
+  color: orange;
+}
+
+.touched-generated-shell .touched-generated-local {
+  color: purple;
+}

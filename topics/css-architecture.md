@@ -74,6 +74,16 @@ It is an implementation plan, not a renewed migration queue.
   that work stays inside the task's product surface; it reports why extraction
   was deferred when generated vocabulary, dynamic construction, composition,
   or verification would materially expand the task.
+- `pnpm css:touched` is the diff-aware trigger for that check. By default it
+  compares `HEAD` with the working tree, including untracked files;
+  `--base <ref>` compares the ref's merge base with `HEAD` through the current
+  working tree. It reports only changed React owners with current legacy
+  ownership evidence and separately calls out changed legacy stylesheets.
+- The touched report labels an owner `OPPORTUNITY` only when its owned rules are
+  concentrated in at most two stylesheets and have no coupled, unresolved, or
+  dynamic evidence. All other owners are labeled `DEFER` with concrete reasons.
+  Either result, and a clean/module-only diff, exits successfully because the
+  command is advisory. Invalid arguments or a failed git comparison exit 2.
 - `pnpm lint` runs `pnpm css:modules:check` before Biome. The module check is a
   blocking, parser-backed contract: every module needs production reach; every
   declared selector needs a statically known production use; every
@@ -148,6 +158,7 @@ features that looked attractive during an earlier inspection.
 Start with:
 
 ```bash
+pnpm css:touched
 pnpm css:inventory
 pnpm css:inventory -- --owner <component-or-path>
 ```
@@ -205,11 +216,12 @@ Run the ownership check when either of these is true:
   stylesheet; or
 - the change edits a legacy global stylesheet.
 
-Begin with `pnpm css:inventory -- --owner <component>`, then search the complete
-repository for the involved selectors. Extract in the same change when the
-owner is clear, the selectors describe the same product surface, important
-states can be verified with the task's existing test or browser setup, and the
-move does not require a substantial new cross-component styling API.
+Begin with `pnpm css:touched`, then drill into a reported owner with
+`pnpm css:inventory -- --owner <component>` and search the complete repository
+for the involved selectors. Extract in the same change when the owner is clear,
+the selectors describe the same product surface, important states can be
+verified with the task's existing test or browser setup, and the move does not
+require a substantial new cross-component styling API.
 
 Small touched slices are worthwhile even when they would not rank highly for a
 standalone paydown campaign. Locality and verification overlap matter more than
