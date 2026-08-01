@@ -18,6 +18,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   canonical metadata, and the marketing analytics boundary.
 
 ### Changed
+- Reframe the homepage hero around full access to all supported agents from
+  every device, and reduce the headline scale.
+- Replace implementation-oriented persistence proof with a familiar-by-default
+  workflow, optional product depth, and the application's six-language UI.
+- Add a prominent “Why Yep Anywhere?” section covering the combined capability,
+  privacy, and security advantages found in the project landscape survey.
+- Highlight full transcript and tool-call visibility alongside the optional
+  condensed conversation presentation.
 - Rebuild the homepage around persistent mobile agent supervision, catalog-
   backed feature proof, local-data trust, and distinct installation paths.
 - Make cross-device control explicit: any browser can supervise another

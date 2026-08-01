@@ -18,6 +18,26 @@ Related:
 - The homepage is selective. It states the primary outcome, local execution
   boundary, trust model, and next steps, then renders a small set of registry-
   selected feature highlights.
+- The homepage's primary promise is full access to supported agents and
+  workflows from every device through the browser. Server-owned persistence is
+  supporting proof, not the headline outcome, and the remote experience must
+  not be framed as a cut-down phone companion.
+- The default workflow should feel familiar to people who already use Claude
+  Code or Codex in a CLI or desktop app. Advanced coordination, review,
+  sharing, voice, and device-control capabilities are product depth, not new
+  concepts a first-time user must learn before starting.
+- The application interface is available in English, Chinese, Spanish, French,
+  German, and Japanese. The public website remains English-only until its
+  dedicated localization roadmap includes translated routes, navigation,
+  metadata, and an accessible language switcher; do not imply that the website
+  is already localized.
+- A prominent “Why Yep Anywhere?” section explains the combination that sets
+  the product apart: multi-agent workflow breadth, a full browser client on
+  every device, complete session and tool-call visibility with an optional
+  condensed conversation view, local data ownership, direct and self-hosted
+  access, and an end-to-end encrypted authenticated relay. Phrase landscape
+  claims as what the project survey found, not as an unprovable guarantee that
+  no competitor can ever match an individual feature.
 - `/features` is the canonical public catalog of shipped capabilities. A
   capability is included once and rendered from the feature registry.
 - `/docs` is the canonical user guide. Internal topics, architecture notes,

@@ -17,6 +17,16 @@ The inbox groups sessions by attention and activity so a waiting approval does
 not disappear among recent but idle work. Star or archive sessions to keep the
 working set useful.
 
+## Choose the transcript detail
+
+The full activity transcript preserves the conversation, every tool call, and
+thinking when the provider makes it available. Expand individual tool and
+thinking blocks when you need their detail.
+
+Use **Conversation view** to condense routine activity into a calmer reading
+flow. Collapsing a block or switching views changes only the presentation; the
+underlying session detail remains available in the full activity transcript.
+
 ## Approvals and permission modes
 
 When a provider asks to use a guarded tool, the session shows the proposed

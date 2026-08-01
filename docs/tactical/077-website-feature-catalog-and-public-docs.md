@@ -384,11 +384,29 @@ Render its feature highlights by selecting `featured` catalog entries rather
 than recreating cards. Replace the standalone screenshot wall with contextual
 visual proof and a smaller optional remainder gallery.
 
-Keep the current strong core promise — agents run on the user's machine and
-survive browser disconnects — while broadening the proof beyond approvals.
-Treat the Remote Control comparison as supporting discovery content rather
-than the organizing principle of the homepage. Make the cross-device advantage
-explicit: a browser on another computer is as valid a controller as a phone.
+Lead with the core product promise: full access to supported agents and
+workflows from every device, without dropping into a cut-down remote mode.
+Local execution and server-owned persistence support that outcome rather than
+replacing it as the headline. Treat the Remote Control comparison as supporting
+discovery content rather than the organizing principle of the homepage. Make
+the cross-device advantage explicit: a browser on another computer is as valid
+a controller as a phone.
+
+Present the product as intentionally familiar and simple by default for people
+who already know Claude Code or Codex through a CLI or desktop app. Surface the
+deeper coordination, review, sharing, voice, and device-control capabilities as
+optional depth rather than prerequisites. Mention that the application UI is
+available in six languages without implying that the public website is already
+localized.
+
+Follow the hero with a prominent “Why Yep Anywhere?” section. Explain that the
+surveyed alternatives may forward an agent chat, while Yep Anywhere combines
+multi-agent workflow breadth, a full client on every device, complete session
+and tool-call visibility, local ownership, direct/self-hosted access, and an
+end-to-end encrypted authenticated relay. Explain that full-fidelity transcripts
+can be shown as a calmer condensed conversation or with routine activity
+collapsed. Keep the opt-in public-share privacy exception explicit and phrase
+the survey as what the project found rather than an eternal universal claim.
 Compare against Claude and Codex first-party Remote Control through durable
 differences—provider-neutral browser access, host choice, session management,
 and self-hosting—not a blanket claim that first-party control is always
@@ -403,6 +421,15 @@ Acceptance:
 
 - a first viewport identifies the product, supported primary providers, local
   execution boundary, and primary next action;
+- the headline leads with full cross-device agent access rather than the generic
+  fact that agents continue running;
+- the first viewport presents a familiar default workflow, optional advanced
+  depth, and the application's six-language UI without claiming the website is
+  localized;
+- the first major section answers why the product exists and names the combined
+  capability, security, and privacy advantage;
+- the Why section distinguishes full transcript and tool-call visibility from
+  the optional condensed, less-verbose presentation;
 - Features and Docs are reachable from desktop and mobile navigation;
 - exactly one primary Get started action points to
   `/docs/getting-started`;
@@ -656,6 +683,35 @@ The tactical closes when the canonical public feature catalog and the minimum
 complete docs journey are live, their claims are aligned across public
 surfaces, and the analytics/privacy boundary is both accurate and verified.
 
+### 13 — localize the public website
+
+Status: roadmap follow-up, not part of the current English-language release.
+
+Extend the localized application experience to the marketing and documentation
+site through locale-specific static routes and an accessible language switcher
+in desktop and mobile navigation. Start with the six application languages:
+English, Chinese, Spanish, French, German, and Japanese.
+
+Define one source-language workflow, translation ownership, fallback behavior,
+and a freshness check before publishing partial locales. Translate the core
+journey as a coherent unit: global navigation, homepage, feature catalog,
+Getting Started, remote-access and privacy guides, metadata, and error pages.
+Add locale-aware canonical URLs and `hreflang` relationships without making
+JavaScript a requirement for navigation.
+
+Acceptance:
+
+- desktop and mobile navigation expose a keyboard- and screen-reader-usable
+  language switcher;
+- each published locale has stable URLs, localized metadata, canonical and
+  `hreflang` relationships, and an explicit English fallback;
+- the homepage, catalog, minimum onboarding path, security/privacy boundaries,
+  and shared navigation launch together for a locale rather than as a
+  misleading mixed-language shell;
+- registry and internal-link validation run for every published locale; and
+- translation freshness has a named owner and a check that detects source-copy
+  changes requiring review.
+
 ## Explicit non-goals
 
 - Publishing the internal `topics/` or `docs/project/` trees as-is.
@@ -668,6 +724,8 @@ surfaces, and the analytics/privacy boundary is both accurate and verified.
 - Publishing or linking an Android build before the Android app has an
   approved public distribution.
 - Building client-side docs search before the corpus demonstrates a need.
+- Adding a public-site language switcher before the localized route and
+  translation-freshness contracts are ready.
 - Turning the homepage into a complete reference manual.
 - Rewriting dated news articles to erase historical product state.
 - Deploying the website before the Maintainer asks for a release.
@@ -678,7 +736,7 @@ surfaces, and the analytics/privacy boundary is both accurate and verified.
 | ---: | --- | --- | --- |
 | 1 | Public product-communication contract | Complete | `topics/website-product-communication.md` owns the rendered boundary and release claims. |
 | 2 | Typed feature registry | Complete | `site/src/data/` validates feature, provider, distribution, and docs relationships at build time. |
-| 3 | Complete feature catalog | Complete | `/features` renders 26 shipped stable/experimental capabilities plus provider and distribution status. |
+| 3 | Complete feature catalog | Complete | `/features` renders 27 shipped stable/experimental capabilities plus provider and distribution status. |
 | 4 | Concise homepage narrative | Complete | The homepage uses registry-selected proof, cross-device and first-party positioning, trust, install choices, and a compact FAQ. |
 | 5 | Desktop downloads and platform status | Complete | macOS and Windows link to GitHub Releases as Beta; Android is development-only with no download URL and its native-value release gate explained. |
 | 6 | Public docs shell | Complete | Astro content pages provide hierarchical desktop/mobile navigation, anchors, TOC, pagination, and copyable code. |
@@ -688,3 +746,4 @@ surfaces, and the analytics/privacy boundary is both accurate and verified.
 | 10 | Measurement baseline | Release prerequisite | Read-only dashboard access was checked on 2026-08-01, but the available browser was signed out. Record the largest pre-release range before tagging. |
 | 11 | Public-site verification | Complete | Warning-free build validator plus inspected Playwright captures at 1,920×1,080 and 375×812, including dark/light, navigation, focus, overflow, and images. |
 | 12 | Release and closeout | Awaiting release | Deliberately not deployed: release only through the Maintainer-authorized `site-v*` workflow, then run the listed production smoke. |
+| 13 | Public website localization | Roadmap | The app supports six languages; translated website routes and a language switcher are intentionally deferred to a dedicated follow-up. |

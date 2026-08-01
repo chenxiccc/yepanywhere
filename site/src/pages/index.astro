@@ -13,8 +13,8 @@ const desktopDistributions = (distributions as readonly PublicDistribution[]).fi
 ---
 
 <BaseLayout
-  title="Yep Anywhere — Supervise coding agents from anywhere"
-  description="Keep Claude Code and Codex running on your machines. Supervise sessions, approve tools, review diffs, and reconnect from any browser."
+  title="Yep Anywhere — All your coding agents on every device"
+  description="Access Claude Code and Codex on your machines from any browser. Start, steer, approve, review, and resume across computers, tablets, and phones."
 >
   <Header activePage="home" />
 
@@ -29,9 +29,9 @@ const desktopDistributions = (distributions as readonly PublicDistribution[]).fi
   <main>
     <section class="hero">
       <div class="site-container hero-copy">
-        <p class="eyebrow">Your agents. Your machines. Any screen.</p>
-        <h1>Walk away.<br><span>Your agents keep shipping.</span></h1>
-        <p class="lede">Yep Anywhere gives Claude Code and Codex a durable control surface in any browser. Run agents on one computer, supervise them from another, check in from your phone, and return without losing the thread.</p>
+        <p class="eyebrow">The full agent workspace, everywhere</p>
+        <h1>All your agents.<br><span>Every device.</span></h1>
+        <p class="lede">Access all your Claude Code and Codex agents from any browser—on any computer, tablet, or phone—with the full workflow intact.</p>
         <div class="hero-actions">
           <a class="btn btn-primary" href="/docs/getting-started">Get started</a>
           <a class="btn btn-secondary" href="/features">Explore features</a>
@@ -58,33 +58,33 @@ const desktopDistributions = (distributions as readonly PublicDistribution[]).fi
 
     <section class="proof-strip" aria-label="Product highlights">
       <div class="site-container">
-        <p><strong>Sessions persist</strong><span>Close the tab, not the work</span></p>
-        <p><strong>Two first-class agents</strong><span>Claude Code + Codex</span></p>
-        <p><strong>Remote by choice</strong><span>Direct or encrypted relay</span></p>
-        <p><strong>MIT licensed</strong><span>Inspect and self-host it</span></p>
+        <p><strong>Familiar by default</strong><span>Claude Code + Codex</span></p>
+        <p><strong>Full workflow</strong><span>Every browser, every device</span></p>
+        <p><strong>Six-language app</strong><span>EN · 中文 · ES · FR · DE · 日本語</span></p>
+        <p><strong>Private by architecture</strong><span>Direct or encrypted relay</span></p>
       </div>
     </section>
 
-    <section class="promise-section">
+    <section class="promise-section" id="why-yep-anywhere">
       <div class="site-container">
         <header class="section-heading centered">
-          <p class="eyebrow">Beyond first-party remote control</p>
-          <h2>Computer to computer. Phone to computer. Any browser to any host.</h2>
-          <p>Claude and Codex Remote Control are useful inside their own products. Yep Anywhere gives both agents one browser-based supervisor, without making the phone the only remote screen.</p>
+          <p class="eyebrow">Not just another remote control</p>
+          <h2>Why Yep Anywhere?</h2>
+          <p>We surveyed the remote-agent landscape. Plenty of projects forward an agent chat to another screen. We did not find another that combines this much agent control with every-device access, local data ownership, direct connections, and an end-to-end encrypted authenticated relay.</p>
         </header>
 
         <div class="promise-grid">
           <article>
-            <h3>Control from the screen you have</h3>
-            <p>Use a second desktop, laptop, Chromebook, tablet, or phone. The controller only needs a modern browser.</p>
+            <h3>Full detail, without the noise</h3>
+            <p>The complete session transcript, every tool call, and available thinking stay within reach. Switch to Conversation view or collapse routine activity whenever you want a calmer, less verbose read.</p>
           </article>
           <article>
-            <h3>Run on the machine with the code</h3>
-            <p>Keep each agent on its workstation, laptop, or server. Connect directly or through the encrypted relay, then switch screens without interrupting work.</p>
+            <h3>Every screen gets the full product</h3>
+            <p>Use another desktop, laptop, Chromebook, tablet, or phone. The responsive browser client keeps the full workflow instead of switching to a limited companion mode.</p>
           </article>
           <article>
-            <h3>Supervise Claude and Codex together</h3>
-            <p>Start, resume, steer, review, and organize both providers from one interface instead of using a separate remote-control surface for each.</p>
+            <h3>Private by architecture</h3>
+            <p>Agents, credentials, and history stay on your machines. Connect directly, self-host the infrastructure, or use authenticated relay traffic the relay cannot read. Public shares are separate and opt-in.</p>
           </article>
         </div>
       </div>
@@ -272,11 +272,11 @@ const desktopDistributions = (distributions as readonly PublicDistribution[]).fi
   }
 
   .hero h1 {
-    font-size: clamp(54px, 8.5vw, 102px);
-    letter-spacing: -0.065em;
-    line-height: 0.9;
+    font-size: clamp(46px, 6vw, 76px);
+    letter-spacing: -0.055em;
+    line-height: 0.96;
     margin: 24px auto 0;
-    max-width: 1050px;
+    max-width: 880px;
   }
 
   .hero h1 span {
@@ -779,7 +779,7 @@ const desktopDistributions = (distributions as readonly PublicDistribution[]).fi
     }
 
     .hero h1 {
-      font-size: clamp(49px, 15vw, 70px);
+      font-size: clamp(42px, 12vw, 58px);
     }
 
     .hero-actions .text-link {

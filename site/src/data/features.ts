@@ -86,13 +86,22 @@ export const features = [
     sourceRefs: ["README.md", "packages/client/src/components/ApprovalPrompt.tsx"],
   },
   {
+    id: "full-fidelity-transcripts",
+    title: "Full-fidelity transcripts",
+    summary: "See the complete conversation, every tool call, and available thinking—or condense routine activity when you want a quieter view.",
+    category: "supervise",
+    status: "stable",
+    docsPath: "/docs/sessions-and-approvals",
+    featured: true,
+    sourceRefs: ["packages/client/src/components/MessageList.tsx", "packages/client/src/i18n/en.json"],
+  },
+  {
     id: "persistent-sessions",
     title: "Sessions survive disconnects",
     summary: "Agent processes belong to the server, so closing a tab or changing devices does not interrupt active work.",
     category: "supervise",
     status: "stable",
     docsPath: "/docs/sessions-and-approvals",
-    featured: true,
     sourceRefs: ["CLAUDE.md", "topics/session-reactivation.md"],
   },
   {
