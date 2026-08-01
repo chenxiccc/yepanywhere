@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -53,9 +59,6 @@ vi.mock("../../../i18n", () => ({
           developmentCrossHostDelegationTitle: "YA Hosts Preview",
           developmentCrossHostDelegationDescription:
             "Expose the experimental host preview",
-          developmentHostsPreviewTitle: "YA Hosts",
-          developmentHostsPreviewDescription:
-            "Review this server's delegation relationships",
           developmentHostsPreviewOpen: "Open YA Hosts",
           developmentMultiHostMonitorTitle: "All Hosts Monitor",
           developmentMultiHostMonitorDescription:
@@ -197,7 +200,13 @@ describe("DevelopmentSettings", () => {
       screen.getByRole("checkbox", { name: "YA Hosts Preview" }),
     );
 
-    const link = screen.getByRole("link", { name: "Open YA Hosts" });
+    const previewRow = screen
+      .getByText("YA Hosts Preview")
+      .closest("[data-settings-item]");
+    expect(previewRow).not.toBeNull();
+    const link = within(previewRow as HTMLElement).getByRole("link", {
+      name: "Open YA Hosts",
+    });
     expect(link.getAttribute("href")).toBe("/-/hosts");
     expect(
       JSON.parse(localStorage.getItem(UI_KEYS.developerMode) ?? "{}"),

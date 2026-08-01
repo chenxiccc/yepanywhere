@@ -1935,8 +1935,6 @@
   "developmentClearIgnored": "Clear Ignored",
   "developmentCrossHostDelegationTitle": "YA Hosts Preview",
   "developmentCrossHostDelegationDescription": "Expose the experimental server-scoped host delegation preview.",
-  "developmentHostsPreviewTitle": "YA Hosts",
-  "developmentHostsPreviewDescription": "Review the planned delegation relationships for the current YA server.",
   "developmentHostsPreviewOpen": "Open YA Hosts",
   "developmentMultiHostMonitorTitle": "All Hosts Monitor",
   "developmentMultiHostMonitorDescription": "Show the experimental all-hosts monitor link in Remote Access settings. The hidden /-/monitor route remains directly accessible.",

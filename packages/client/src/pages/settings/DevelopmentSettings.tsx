@@ -198,32 +198,30 @@ export function DevelopmentSettings() {
         <SettingsItem
           label={t("developmentCrossHostDelegationTitle")}
           description={t("developmentCrossHostDelegationDescription")}
+          className="settings-item--wide-control"
         >
-          <label className="toggle-switch">
-            <input
-              type="checkbox"
-              aria-label={t("developmentCrossHostDelegationTitle")}
-              checked={crossHostDelegationEnabled}
-              onChange={(event) =>
-                setCrossHostDelegationEnabled(event.target.checked)
-              }
-            />
-            <span className="toggle-slider" />
-          </label>
+          <div className="settings-item-actions">
+            {crossHostDelegationEnabled && (
+              <Link
+                className="settings-button settings-button-secondary"
+                to={`${basePath}/-/hosts`}
+              >
+                {t("developmentHostsPreviewOpen")}
+              </Link>
+            )}
+            <label className="toggle-switch">
+              <input
+                type="checkbox"
+                aria-label={t("developmentCrossHostDelegationTitle")}
+                checked={crossHostDelegationEnabled}
+                onChange={(event) =>
+                  setCrossHostDelegationEnabled(event.target.checked)
+                }
+              />
+              <span className="toggle-slider" />
+            </label>
+          </div>
         </SettingsItem>
-        {crossHostDelegationEnabled && (
-          <SettingsItem
-            label={t("developmentHostsPreviewTitle")}
-            description={t("developmentHostsPreviewDescription")}
-          >
-            <Link
-              className="settings-button settings-button-secondary"
-              to={`${basePath}/-/hosts`}
-            >
-              {t("developmentHostsPreviewOpen")}
-            </Link>
-          </SettingsItem>
-        )}
         <SettingsItem
           label={t("developmentMultiHostMonitorTitle")}
           description={t("developmentMultiHostMonitorDescription")}

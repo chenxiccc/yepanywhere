@@ -95,6 +95,8 @@ rather than changing the existing host switcher:
 - both render one shared component representing the currently connected YA
   server;
 - the page is linked only from an opt-in control in Developer settings;
+- when enabled, the Open action stays inside that setting's card rather than
+  appearing as a separate option;
 - the sidebar **Switch Host** action, host picker, and `/-/monitor` retain
   their existing behavior; and
 - browser-saved hosts do not appear on the new page because they are
