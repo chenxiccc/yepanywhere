@@ -4,8 +4,13 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 const stylesheetUrl = new URL("../index.css", import.meta.url);
-// The session hover card owns its own module; the frontmost-surface contract
-// follows it there rather than staying pinned to the legacy stylesheet.
+// The themed tooltip and the session hover card each own their module; the
+// frontmost-surface contract follows them there rather than staying pinned to
+// the legacy stylesheet.
+const tooltipModuleUrl = new URL(
+  "../../components/ui/TooltipLayer.module.css",
+  import.meta.url,
+);
 const hovercardModuleUrl = new URL(
   "../../components/SessionHoverCard.module.css",
   import.meta.url,
@@ -14,8 +19,9 @@ const hovercardModuleUrl = new URL(
 describe("themed tooltip CSS contract", () => {
   it("is the frontmost selectable pointer surface", async () => {
     const css = await readFile(stylesheetUrl, "utf8");
+    const tooltipCss = await readFile(tooltipModuleUrl, "utf8");
     const hovercardCss = await readFile(hovercardModuleUrl, "utf8");
-    const declarations = /\.ya-tooltip\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+    const declarations = /\.root\s*\{([^}]*)\}/.exec(tooltipCss)?.[1] ?? "";
     const richRootDeclarations =
       /\.external-session-risk--tooltip-visible\s*\{([^}]*)\}/.exec(css)?.[1] ??
       "";

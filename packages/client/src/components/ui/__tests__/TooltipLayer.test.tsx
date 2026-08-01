@@ -16,6 +16,7 @@ import {
 import { UI_KEYS } from "../../../lib/storageKeys";
 import "../../../../test/pointerEventShim";
 import { TooltipLayer } from "../TooltipLayer";
+import styles from "../TooltipLayer.module.css";
 
 const originalClipboard = navigator.clipboard;
 
@@ -643,9 +644,7 @@ describe("TooltipLayer", () => {
     fireEvent.contextMenu(screen.getByRole("tooltip"));
 
     expect(writeText).toHaveBeenCalledWith("Copy this tail");
-    expect(screen.getByRole("tooltip").classList).toContain(
-      "ya-tooltip--enlarged",
-    );
+    expect(screen.getByRole("tooltip").classList).toContain(styles.enlarged);
   });
 
   it("preserves the browser menu for selected tooltip text", () => {
@@ -678,7 +677,7 @@ describe("TooltipLayer", () => {
 
     expect(writeText).not.toHaveBeenCalled();
     expect(screen.getByRole("tooltip").classList).not.toContain(
-      "ya-tooltip--enlarged",
+      styles.enlarged,
     );
   });
 
@@ -712,7 +711,7 @@ describe("TooltipLayer", () => {
 
     expect(writeText).not.toHaveBeenCalled();
     expect(screen.getByRole("tooltip").classList).not.toContain(
-      "ya-tooltip--enlarged",
+      styles.enlarged,
     );
   });
 
@@ -742,7 +741,7 @@ describe("TooltipLayer", () => {
 
     expect(writeText).not.toHaveBeenCalled();
     expect(screen.getByRole("tooltip").classList).not.toContain(
-      "ya-tooltip--enlarged",
+      styles.enlarged,
     );
   });
 

@@ -5382,39 +5382,6 @@ a.linkified-url:hover {
   opacity: 0.55;
 }
 
-.ya-tooltip {
-  position: fixed;
-  /* Keep the visible tooltip as the frontmost app hit-test surface. */
-  z-index: 2147483647;
-  box-sizing: border-box;
-  width: max-content;
-  max-width: min(520px, calc(100vw - 16px));
-  max-height: min(50vh, 420px);
-  overflow: hidden;
-  padding: 5px 7px;
-  border: 1px solid var(--tooltip-border);
-  border-radius: 4px;
-  background: var(--tooltip-background);
-  color: var(--tooltip-foreground);
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.28);
-  font-family: var(--font-ui);
-  font-size: calc(var(--font-size-xs) + 1px);
-  font-weight: 400;
-  line-height: 1.25;
-  text-align: left;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  pointer-events: auto;
-  user-select: text;
-  cursor: text;
-}
-
-.ya-tooltip--enlarged {
-  max-width: min(680px, calc(100vw - 16px));
-  padding: 7px 9px;
-  font-size: var(--font-size-sm);
-}
-
 .send-button:disabled {
   opacity: 0.4;
   background: var(--bg-tertiary);

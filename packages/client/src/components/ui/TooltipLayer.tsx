@@ -21,6 +21,7 @@ import {
 } from "../../hooks/useTooltipAppearance";
 import { writeClipboardText } from "../../lib/clipboard";
 import { isElementFullyScrollVisible } from "../../lib/tooltipVisibility";
+import styles from "./TooltipLayer.module.css";
 
 const TOOLTIP_ID = "ya-global-tooltip";
 const VIEWPORT_MARGIN_PX = 8;
@@ -730,7 +731,7 @@ export function TooltipLayer() {
     <div
       ref={tooltipRef}
       id={TOOLTIP_ID}
-      className={`ya-tooltip${enlarged ? " ya-tooltip--enlarged" : ""}`}
+      className={`${styles.root}${enlarged ? ` ${styles.enlarged}` : ""}`}
       role="tooltip"
       style={{ left: position.left, top: position.top }}
     >
