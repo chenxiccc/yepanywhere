@@ -1377,20 +1377,7 @@ textarea {
   flex-shrink: 0;
 }
 
-/* Source Control keeps project/branch state together at the leading edge and
-   uses the remaining wide-header space for mode navigation. Repository
-   operations live in a separate, left-anchored action row below. */
-.source-control-main-content .session-header-left {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.source-control-main-content .session-header-actions {
-  flex: 0 0 auto;
-  min-width: 0;
-  justify-content: flex-end;
-}
-
+/* Source Control's header composition lives in `GitStatusPage.module.css`. */
 .source-header-identity {
   display: flex;
   min-width: 0;

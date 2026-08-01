@@ -63,6 +63,10 @@ state, and the Clean/Dirty badge form the identity band. When the available
 header width fits the complete mode selector, Changes/Files/Comments
 occupies the trailing top-right space without displacing that identity.
 Constrained layouts move the same tabs to their own full-width row.
+One selector serves every viewport: the placement is browser-computed from the
+rendered intrinsic widths of a wrapping header row, not chosen by a
+viewport-width threshold. A narrow-screen rule only compacts the tab styling
+once the row has wrapped.
 
 Pull, Push, and Check remote form a second, left-anchored action row in that
 fixed order at every viewport width. Review remains independently anchored at

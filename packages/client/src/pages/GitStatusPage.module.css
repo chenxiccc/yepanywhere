@@ -1,0 +1,25 @@
+/* Source Control keeps project/branch state together at the leading edge and
+   wraps mode navigation to its own row only when rendered content does not
+   fit. Repository operations live in a separate action row below.
+
+   `PageHeader` creates these elements; this page only decides how they share
+   the row it lets wrap, so the reach-in stays scoped under one local root. */
+.sourceHeader :global(.session-header-inner) {
+  flex-wrap: wrap;
+  column-gap: var(--space-2);
+  row-gap: var(--space-1);
+}
+
+.sourceHeader :global(.session-header-left) {
+  flex: 1 1 max-content;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.sourceHeader :global(.session-header-actions) {
+  flex: 1 0 max-content;
+  min-width: 0;
+  max-width: 100%;
+  margin-left: auto;
+  justify-content: flex-end;
+}

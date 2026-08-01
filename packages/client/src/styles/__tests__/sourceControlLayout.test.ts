@@ -13,6 +13,10 @@ const blameViewStylesheetUrl = new URL(
   "../../pages/BlameView.module.css",
   import.meta.url,
 );
+const gitStatusPageStylesheetUrl = new URL(
+  "../../pages/GitStatusPage.module.css",
+  import.meta.url,
+);
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -169,6 +173,29 @@ describe("Source Control workbench layout CSS contract", () => {
     expect(projectSelectorButton).toMatch(
       /max-width:\s*calc\(100%\s*\+\s*2\s*\*\s*var\(--space-2\)\)\s*;/,
     );
+  });
+
+  it("wraps header navigation from intrinsic content demand", async () => {
+    const css = await readFile(gitStatusPageStylesheetUrl, "utf8");
+    // Placement follows rendered width, so no viewport threshold decides
+    // whether identity and mode navigation share the header row.
+    const header = getLastRuleDeclarations(
+      css,
+      ".sourceHeader :global(.session-header-inner)",
+    );
+    const identity = getLastRuleDeclarations(
+      css,
+      ".sourceHeader :global(.session-header-left)",
+    );
+    const actions = getLastRuleDeclarations(
+      css,
+      ".sourceHeader :global(.session-header-actions)",
+    );
+
+    expect(header).toMatch(/flex-wrap:\s*wrap\s*;/);
+    expect(identity).toMatch(/flex:\s*1\s+1\s+max-content\s*;/);
+    expect(actions).toMatch(/flex:\s*1\s+0\s+max-content\s*;/);
+    expect(actions).toMatch(/max-width:\s*100%\s*;/);
   });
 
   it("keeps the unified Changes revision control usable at phone width", async () => {

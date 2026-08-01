@@ -43,6 +43,7 @@ import { BlameBrowser } from "./BlameBrowser";
 import { CommitBrowser } from "./CommitBrowser";
 import { RepoStatusBar } from "./RepoStatusBar";
 import { ReviewCommentsPanel } from "./ReviewCommentsPanel";
+import styles from "./GitStatusPage.module.css";
 import { type SourceTab, SourceModeTabs } from "./SourceModeTabs";
 import { WorkingTreeBrowser } from "./WorkingTreeBrowser";
 import { ReviewSubmitModal } from "./ReviewSubmitModal";
@@ -115,7 +116,11 @@ function useSourceTab(): {
   return { tab, setTab };
 }
 
-/** Source-mode tabs rendered at the top-right when the header can fit them. */
+/**
+ * The single source-mode selector. It rides the wrapping header row, so the
+ * browser decides whether it shares a line with project identity or takes one
+ * of its own; `stacked` then lets it fill that row at phone widths.
+ */
 function SourceHeaderTabs({
   status,
   pendingCount,
@@ -131,6 +136,7 @@ function SourceHeaderTabs({
     <SourceModeTabs
       tab={tab}
       tabs={SOURCE_TABS}
+      variant="stacked"
       counts={{ changes: changedFileCount, comments: pendingCount }}
       onSelect={setTab}
       t={t}
@@ -383,10 +389,6 @@ export function GitStatusPage() {
   const sourceKey = useClientSummarySourceKey();
   const { openSidebar, isWideScreen, toggleSidebar, isSidebarCollapsed } =
     useNavigationLayout();
-  // Header composition is independent from the 1100px multipane breakpoint:
-  // tablet widths can fit one compact banner even though their content panes
-  // still use the mobile drill-in flow.
-  const sourceControlsFitHeader = useMediaQuery("(min-width: 760px)");
   const pageScrollRef = useRef<HTMLElement | null>(null);
 
   const { projects, loading: projectsLoading } = useProjects();
@@ -499,7 +501,7 @@ export function GitStatusPage() {
   return (
     <MainContent
       isWideScreen={isWideScreen}
-      innerClassName="source-control-main-content"
+      innerClassName={`source-control-main-content ${styles.sourceHeader}`}
     >
       <PageHeader
         title={project?.name ?? t("gitStatusTitle")}
@@ -531,7 +533,6 @@ export function GitStatusPage() {
         isWideScreen={isWideScreen}
         isSidebarCollapsed={isSidebarCollapsed}
         actions={
-          sourceControlsFitHeader &&
           supportsSourceReview &&
           effectiveProjectId &&
           gitStatus?.isGitRepo ? (
@@ -569,7 +570,6 @@ export function GitStatusPage() {
                 status={gitStatus}
                 projectId={effectiveProjectId}
                 isWideScreen={isWideScreen}
-                sourceControlsFitHeader={sourceControlsFitHeader}
                 supportsProjections={supportsSourceReviewProjections}
                 gitActions={gitActions}
                 reviewComments={reviewComments}
@@ -626,7 +626,6 @@ function GitStatusContent({
   status,
   projectId,
   isWideScreen,
-  sourceControlsFitHeader,
   supportsProjections,
   gitActions,
   reviewComments,
@@ -638,7 +637,6 @@ function GitStatusContent({
   status: GitStatusInfo;
   projectId: string;
   isWideScreen: boolean;
-  sourceControlsFitHeader: boolean;
   supportsProjections: boolean;
   gitActions: GitActionState;
   reviewComments: ReturnType<typeof useProjectReviewComments>;
@@ -652,7 +650,6 @@ function GitStatusContent({
   const basePath = useRemoteBasePath();
   const [searchParams, setSearchParams] = useSearchParams();
   const { tab, setTab } = useSourceTab();
-  const changedFileCount = countChangedPaths(status);
   const blameFile = searchParams.get("bf") ?? undefined;
   const commitSha = searchParams.get("rev") ?? undefined;
   const worktreeFile = searchParams.get("worktreeFile") ?? undefined;
@@ -739,21 +736,6 @@ function GitStatusContent({
   return (
     <div className="git-status">
       <div className="source-control-toolbar">
-        {!sourceControlsFitHeader && (
-          <div className="source-control-mobile-tabs">
-            <SourceModeTabs
-              tab={tab}
-              tabs={SOURCE_TABS}
-              variant="stacked"
-              counts={{
-                changes: changedFileCount,
-                comments: reviewComments.pending.length,
-              }}
-              onSelect={setTab}
-              t={t}
-            />
-          </div>
-        )}
         <div className="source-control-action-row">
           <SourceHeaderControls
             gitActions={gitActions}

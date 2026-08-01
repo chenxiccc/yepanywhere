@@ -506,7 +506,7 @@ describe("GitStatusPage source header", () => {
     );
   });
 
-  it("keeps mobile identity in the header and stacks tabs with actions", async () => {
+  it("keeps one tab selector in the header at mobile width", async () => {
     mocks.useMediaQuery.mockReturnValue(false);
     mocks.useNavigationLayout.mockReturnValue({
       openSidebar: vi.fn(),
@@ -519,14 +519,15 @@ describe("GitStatusPage source header", () => {
       expect(mocks.listReviewComments).toHaveBeenCalledWith("project-a"),
     );
 
+    // Placement is the wrapping header row's decision, so a narrow viewport
+    // keeps the same single selector rather than growing a second one.
     const header = document.querySelector(".session-header") as HTMLElement;
     expect(
       header.querySelector('[data-testid="repo-status-bar"]'),
     ).not.toBeNull();
-    expect(header.querySelector('[role="tablist"]')).toBeNull();
-    expect(
-      document.querySelector('.source-control-mobile-tabs [role="tablist"]'),
-    ).not.toBeNull();
+    expect(header.querySelector('[role="tablist"]')).not.toBeNull();
+    expect(document.querySelectorAll('[role="tablist"]')).toHaveLength(1);
+    expect(document.querySelector(".source-control-mobile-tabs")).toBeNull();
     expect(
       document.querySelector(".source-control-action-row"),
     ).not.toBeNull();
