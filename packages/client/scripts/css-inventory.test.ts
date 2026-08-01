@@ -19,8 +19,29 @@ describe("CSS migration inventory", () => {
       owned: 4,
       coupled: 2,
       generated: 1,
-      unresolved: 2,
+      unresolved: 3,
     });
+  });
+
+  it("does not infer ownership from a generic component string", () => {
+    const result = buildInventory({
+      cssDir: fixtureDir,
+      srcDir: fixtureDir,
+      ownerDir: path.join(fixtureDir, "client"),
+    });
+    const widget = result.owners.find((owner) =>
+      owner.owner.endsWith("client/Widget.tsx"),
+    );
+
+    expect(result.lowConfidenceRules).toBe(1);
+    expect(
+      widget?.ownedRules.some((rule) => rule.classes.includes("status")),
+    ).toBe(false);
+    expect(
+      widget?.lowConfidenceRules.some((rule) =>
+        rule.classes.includes("status"),
+      ),
+    ).toBe(true);
   });
 
   it("reports dynamic classes, test contracts, and composition edges", () => {
@@ -76,7 +97,9 @@ describe("CSS migration inventory", () => {
     );
 
     expect(
-      widget?.testFiles.some((file) => file.endsWith("Widget.contract.test.ts")),
+      widget?.testFiles.some((file) =>
+        file.endsWith("Widget.contract.test.ts"),
+      ),
     ).toBe(true);
   });
 

@@ -11,6 +11,8 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   analyze,
+  buildClassProducerUsageIndex,
+  buildSourceUsageIndex,
   extractBindingUsage,
   extractComposes,
   extractModuleImports,
@@ -41,6 +43,33 @@ function unusedNames(basename: string): string[] {
     .unused.map((selector) => selector.name)
     .sort();
 }
+
+describe("class-production evidence", () => {
+  it("separates class-producing syntax from generic source strings", () => {
+    const source = new Map([
+      [
+        "Owner.tsx",
+        `
+          const status = "status";
+          const finiteClass = active ? "card-active" : "card-idle";
+          element.classList.add("card-mounted");
+          export const view = (
+            <div className={finiteClass} data-status={status} />
+          );
+        `,
+      ],
+    ]);
+
+    const permissive = buildSourceUsageIndex(source);
+    const producers = buildClassProducerUsageIndex(source);
+
+    expect(permissive.exact.get("status")).toBeDefined();
+    expect(producers.exact.get("status")).toBeUndefined();
+    expect(producers.exact.get("card-active")).toBeDefined();
+    expect(producers.exact.get("card-idle")).toBeDefined();
+    expect(producers.exact.get("card-mounted")).toBeDefined();
+  });
+});
 
 describe("global class analysis", () => {
   it("reports a global class no source file mentions", () => {

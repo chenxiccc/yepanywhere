@@ -34,3 +34,7 @@ button {
 .orphan-rule {
   display: none;
 }
+
+.status {
+  opacity: 0.5;
+}

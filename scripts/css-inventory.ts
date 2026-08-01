@@ -13,6 +13,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import postcss from "postcss";
 import {
+  buildClassProducerUsageIndex,
   buildSourceUsageIndex,
   CLASS_REGEX,
   findDynamicUsage,
@@ -34,6 +35,7 @@ type RuleKind = "owned" | "coupled" | "generated" | "unresolved";
 
 interface ClassUsage {
   owners: Set<string>;
+  lowConfidenceOwners: Set<string>;
   tests: Set<string>;
   support: Set<string>;
   external: Set<string>;
@@ -55,6 +57,8 @@ interface RuleRecord {
   unresolvedClasses: Set<string>;
   externalClasses: Set<string>;
   testFiles: Set<string>;
+  lowConfidenceOwners: Set<string>;
+  lowConfidenceClasses: Set<string>;
 }
 
 export interface OwnerInventory {
@@ -66,6 +70,8 @@ export interface OwnerInventory {
   ownedRules: RuleRecord[];
   coupledRules: RuleRecord[];
   unresolvedRules: RuleRecord[];
+  /** Broad string matches that did not occur in class-producing syntax. */
+  lowConfidenceRules: RuleRecord[];
   classes: string[];
   dynamicClasses: string[];
   testFiles: string[];
@@ -76,6 +82,7 @@ export interface InventoryResult {
   legacyLines: number;
   sourceFiles: number;
   ruleCounts: Record<RuleKind, number>;
+  lowConfidenceRules: number;
   owners: OwnerInventory[];
 }
 
@@ -192,6 +199,7 @@ function intersect(sets: Set<string>[]): Set<string> {
 function classUsage(
   className: string,
   sourceIndex: SourceUsageIndex,
+  classProducerIndex: SourceUsageIndex,
   ownerDir: string,
 ): ClassUsage {
   const exact = sourceIndex.exact.get(className) ?? new Set<string>();
@@ -200,7 +208,15 @@ function classUsage(
       ? new Set(findDynamicUsage(className, sourceIndex))
       : new Set<string>();
   const allFiles = new Set([...exact, ...dynamic]);
+  const producerExact =
+    classProducerIndex.exact.get(className) ?? new Set<string>();
+  const producerDynamic =
+    producerExact.size === 0
+      ? new Set(findDynamicUsage(className, classProducerIndex))
+      : new Set<string>();
+  const producerFiles = new Set([...producerExact, ...producerDynamic]);
   const owners = new Set<string>();
+  const lowConfidenceOwners = new Set<string>();
   const tests = new Set<string>();
   const support = new Set<string>();
   const external = new Set<string>();
@@ -211,8 +227,12 @@ function classUsage(
       tests.add(normalize(file));
     } else if (isReactOwner(file, ownerDir)) {
       const owner = normalize(file);
-      owners.add(owner);
-      if (dynamic.has(file)) dynamicOwners.add(owner);
+      if (producerFiles.has(file)) {
+        owners.add(owner);
+        if (producerDynamic.has(file)) dynamicOwners.add(owner);
+      } else {
+        lowConfidenceOwners.add(owner);
+      }
     } else if (isWithin(file, ownerDir)) {
       support.add(normalize(file));
     } else {
@@ -220,7 +240,14 @@ function classUsage(
     }
   }
 
-  return { owners, tests, support, external, dynamicOwners };
+  return {
+    owners,
+    lowConfidenceOwners,
+    tests,
+    support,
+    external,
+    dynamicOwners,
+  };
 }
 
 function classifyRule(
@@ -237,6 +264,8 @@ function classifyRule(
   const unresolvedClasses = new Set<string>();
   const externalClasses = new Set<string>();
   const testFiles = new Set<string>();
+  const lowConfidenceOwners = new Set<string>();
+  const lowConfidenceClasses = new Set<string>();
   const branchOwners: string[] = [];
   let coupled = false;
 
@@ -252,6 +281,10 @@ function classifyRule(
       const usage = usageFor(className);
       branchUsages.push({ className, usage });
       for (const owner of usage.owners) involvedOwners.add(owner);
+      for (const owner of usage.lowConfidenceOwners) {
+        lowConfidenceOwners.add(owner);
+        lowConfidenceClasses.add(className);
+      }
       if (usage.owners.size === 1) {
         anchorOwners.add(Array.from(usage.owners)[0]);
         for (const test of usage.tests) testFiles.add(test);
@@ -330,6 +363,8 @@ function classifyRule(
     unresolvedClasses,
     externalClasses,
     testFiles,
+    lowConfidenceOwners,
+    lowConfidenceClasses,
   };
 }
 
@@ -351,11 +386,17 @@ export function buildInventory(
     sourceFiles.map((file) => [file, fs.readFileSync(file, "utf8")]),
   );
   const sourceIndex = buildSourceUsageIndex(sourceContents);
+  const classProducerIndex = buildClassProducerUsageIndex(sourceContents);
   const usageCache = new Map<string, ClassUsage>();
   const usageFor = (className: string): ClassUsage => {
     let usage = usageCache.get(className);
     if (!usage) {
-      usage = classUsage(className, sourceIndex, options.ownerDir);
+      usage = classUsage(
+        className,
+        sourceIndex,
+        classProducerIndex,
+        options.ownerDir,
+      );
       usageCache.set(className, usage);
     }
     return usage;
@@ -381,7 +422,13 @@ export function buildInventory(
 
   const ownerRules = new Map<string, RuleRecord[]>();
   const frictionRules = new Map<string, RuleRecord[]>();
+  const lowConfidenceRules = new Map<string, RuleRecord[]>();
   for (const rule of rules) {
+    for (const owner of rule.lowConfidenceOwners) {
+      const weak = lowConfidenceRules.get(owner) ?? [];
+      weak.push(rule);
+      lowConfidenceRules.set(owner, weak);
+    }
     if (rule.kind === "owned" && rule.owner) {
       const owned = ownerRules.get(rule.owner) ?? [];
       owned.push(rule);
@@ -431,6 +478,7 @@ export function buildInventory(
     const unresolvedRules = friction.filter(
       (rule) => rule.kind === "unresolved",
     );
+    const weakRules = lowConfidenceRules.get(owner) ?? [];
     const ownedLines = ownedRules.reduce(
       (total, rule) => total + rule.lines,
       0,
@@ -450,6 +498,7 @@ export function buildInventory(
       ),
       coupledRules,
       unresolvedRules,
+      lowConfidenceRules: weakRules,
       classes: Array.from(classes).sort(),
       dynamicClasses: Array.from(dynamicClasses).sort(),
       testFiles: Array.from(testFiles).sort(),
@@ -472,6 +521,9 @@ export function buildInventory(
     legacyLines,
     sourceFiles: sourceFiles.length,
     ruleCounts,
+    lowConfidenceRules: rules.filter(
+      (rule) => rule.lowConfidenceClasses.size > 0,
+    ).length,
     owners,
   };
 }
@@ -485,6 +537,7 @@ function jsonResult(result: InventoryResult): unknown {
       ownedRules: owner.ownedRules.map(jsonRule),
       coupledRules: owner.coupledRules.map(jsonRule),
       unresolvedRules: owner.unresolvedRules.map(jsonRule),
+      lowConfidenceRules: owner.lowConfidenceRules.map(jsonRule),
     })),
   };
 }
@@ -505,6 +558,8 @@ function jsonRule(rule: RuleRecord): unknown {
     unresolvedClasses: Array.from(rule.unresolvedClasses).sort(),
     externalClasses: Array.from(rule.externalClasses).sort(),
     testFiles: Array.from(rule.testFiles).sort(),
+    lowConfidenceOwners: Array.from(rule.lowConfidenceOwners).sort(),
+    lowConfidenceClasses: Array.from(rule.lowConfidenceClasses).sort(),
   };
 }
 
@@ -518,10 +573,10 @@ function printTable(
   limit: number,
 ): void {
   console.log(title);
-  console.log(" owned  span  cover  files  edges  dyn  tests  owner");
+  console.log(" owned  span  cover  files  edges  weak  dyn  tests  owner");
   for (const owner of owners.slice(0, limit)) {
     console.log(
-      `${String(owner.ownedLines).padStart(6)}  ${String(owner.spanLines).padStart(4)}  ${percent(owner.coverage).padStart(5)}  ${String(owner.stylesheets.length).padStart(5)}  ${String(owner.coupledRules.length + owner.unresolvedRules.length).padStart(5)}  ${String(owner.dynamicClasses.length).padStart(3)}  ${String(owner.testFiles.length).padStart(5)}  ${owner.owner}`,
+      `${String(owner.ownedLines).padStart(6)}  ${String(owner.spanLines).padStart(4)}  ${percent(owner.coverage).padStart(5)}  ${String(owner.stylesheets.length).padStart(5)}  ${String(owner.coupledRules.length + owner.unresolvedRules.length).padStart(5)}  ${String(owner.lowConfidenceRules.length).padStart(4)}  ${String(owner.dynamicClasses.length).padStart(3)}  ${String(owner.testFiles.length).padStart(5)}  ${owner.owner}`,
     );
   }
   console.log();
@@ -533,7 +588,7 @@ function printOwner(owner: OwnerInventory): void {
     `  ${owner.ownedLines} owned rule lines across a ${owner.spanLines}-line span (${percent(owner.coverage)} coverage)`,
   );
   console.log(
-    `  ${owner.stylesheets.length} stylesheet(s), ${owner.coupledRules.length} coupled rule(s), ${owner.unresolvedRules.length} unresolved rule(s), ${owner.dynamicClasses.length} dynamic class(es)`,
+    `  ${owner.stylesheets.length} stylesheet(s), ${owner.coupledRules.length} coupled rule(s), ${owner.unresolvedRules.length} unresolved rule(s), ${owner.lowConfidenceRules.length} low-confidence string match(es), ${owner.dynamicClasses.length} dynamic class(es)`,
   );
   for (const file of owner.stylesheets) {
     const fileRules = owner.ownedRules.filter((rule) => rule.file === file);
@@ -560,9 +615,17 @@ function printOwner(owner: OwnerInventory): void {
       rule.unresolvedClasses.size > 0
         ? `unresolved: ${Array.from(rule.unresolvedClasses).join(", ")}`
         : "",
+      rule.lowConfidenceClasses.size > 0
+        ? `low confidence: ${Array.from(rule.lowConfidenceClasses).join(", ")}`
+        : "",
     ].filter(Boolean);
     console.log(
       `  ${rule.kind}: ${rule.file}:${rule.start} ${rule.selector}${details.length > 0 ? ` (${details.join("; ")})` : ""}`,
+    );
+  }
+  for (const rule of owner.lowConfidenceRules.slice(0, 25)) {
+    console.log(
+      `  low confidence: ${rule.file}:${rule.start} ${rule.selector} (${Array.from(rule.lowConfidenceClasses).join(", ")})`,
     );
   }
 }
@@ -588,6 +651,9 @@ function main(): void {
   );
   console.log(
     `Rules: ${result.ruleCounts.owned} owned, ${result.ruleCounts.coupled} coupled, ${result.ruleCounts.generated} generated, ${result.ruleCounts.unresolved} unresolved`,
+  );
+  console.log(
+    `Confidence: ${result.lowConfidenceRules} rule(s) have broad-string evidence that is not class-producing syntax`,
   );
   console.log(
     "Advisory only; inspect an owner before defining a migration slice.\n",

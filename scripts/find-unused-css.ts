@@ -473,6 +473,11 @@ export interface SourceUsageIndex {
   dynamic: Map<string, Set<string>>;
 }
 
+function propertyNameText(name: ts.PropertyName): string | undefined {
+  if (ts.isIdentifier(name) || ts.isStringLiteralLike(name)) return name.text;
+  return undefined;
+}
+
 function scriptKind(filename: string): ts.ScriptKind {
   if (filename.endsWith(".tsx")) return ts.ScriptKind.TSX;
   if (filename.endsWith(".jsx")) return ts.ScriptKind.JSX;
@@ -579,6 +584,156 @@ export function buildSourceUsageIndex(
           }
         }
       }
+      ts.forEachChild(node, visit);
+    }
+
+    visit(sourceFile);
+  }
+
+  return { exact, dynamic };
+}
+
+/**
+ * Build the narrower source index used to infer React ownership.
+ *
+ * The unused-CSS scan intentionally treats every source string as possible
+ * runtime vocabulary. Ownership needs stronger evidence: a generic state,
+ * role, or protocol string must not make its containing component the owner of
+ * a same-named global selector. This index follows values that flow directly
+ * into class-producing syntax while leaving the permissive index unchanged.
+ */
+export function buildClassProducerUsageIndex(
+  srcFiles: Map<string, string>,
+): SourceUsageIndex {
+  const exact = new Map<string, Set<string>>();
+  const dynamic = new Map<string, Set<string>>();
+
+  for (const [filename, content] of srcFiles) {
+    const sourceFile = ts.createSourceFile(
+      filename,
+      content,
+      ts.ScriptTarget.Latest,
+      true,
+      scriptKind(filename),
+    );
+    const declarations = new Map<string, ts.Expression>();
+
+    function collectDeclarations(node: ts.Node): void {
+      if (
+        ts.isVariableDeclaration(node) &&
+        ts.isIdentifier(node.name) &&
+        node.initializer
+      ) {
+        declarations.set(node.name.text, node.initializer);
+      }
+      ts.forEachChild(node, collectDeclarations);
+    }
+
+    collectDeclarations(sourceFile);
+
+    function collectClassExpression(
+      node: ts.Node,
+      seenDeclarations = new Set<string>(),
+    ): void {
+      if (ts.isTemplateExpression(node)) {
+        addExactTokens(exact, node.head.text, filename);
+        addDynamicPrefix(dynamic, node.head.text, filename);
+        for (let index = 0; index < node.templateSpans.length; index++) {
+          const literal = node.templateSpans[index].literal.text;
+          addExactTokens(exact, literal, filename);
+          if (index < node.templateSpans.length - 1) {
+            addDynamicPrefix(dynamic, literal, filename);
+          }
+          collectClassExpression(
+            node.templateSpans[index].expression,
+            seenDeclarations,
+          );
+        }
+        return;
+      }
+      if (ts.isStringLiteralLike(node)) {
+        addExactTokens(exact, node.text, filename);
+        return;
+      }
+      if (ts.isIdentifier(node)) {
+        const initializer = declarations.get(node.text);
+        if (initializer && !seenDeclarations.has(node.text)) {
+          const nextSeen = new Set(seenDeclarations);
+          nextSeen.add(node.text);
+          collectClassExpression(initializer, nextSeen);
+        }
+        return;
+      }
+      if (ts.isPropertyAssignment(node)) {
+        const name = propertyNameText(node.name);
+        if (name) addExactTokens(exact, name, filename);
+        collectClassExpression(node.initializer, seenDeclarations);
+        return;
+      }
+      if (ts.isShorthandPropertyAssignment(node)) {
+        addExactTokens(exact, node.name.text, filename);
+        collectClassExpression(node.name, seenDeclarations);
+        return;
+      }
+      ts.forEachChild(node, (child) =>
+        collectClassExpression(child, seenDeclarations),
+      );
+    }
+
+    function visit(node: ts.Node): void {
+      if (ts.isJsxAttribute(node)) {
+        const name = node.name.getText(sourceFile);
+        if ((name === "className" || name === "class") && node.initializer) {
+          if (ts.isJsxExpression(node.initializer)) {
+            if (node.initializer.expression) {
+              collectClassExpression(node.initializer.expression);
+            }
+          } else {
+            collectClassExpression(node.initializer);
+          }
+        }
+      }
+
+      if (ts.isPropertyAssignment(node)) {
+        const name = propertyNameText(node.name);
+        if (name === "className" || name === "class") {
+          collectClassExpression(node.initializer);
+        }
+      }
+
+      if (
+        ts.isBinaryExpression(node) &&
+        ts.isPropertyAccessExpression(node.left) &&
+        (node.left.name.text === "className" || node.left.name.text === "class")
+      ) {
+        collectClassExpression(node.right);
+      }
+
+      if (
+        ts.isCallExpression(node) &&
+        ts.isPropertyAccessExpression(node.expression)
+      ) {
+        const method = node.expression.name.text;
+        const receiver = node.expression.expression;
+        if (
+          ts.isPropertyAccessExpression(receiver) &&
+          receiver.name.text === "classList" &&
+          ["add", "contains", "remove", "replace", "toggle"].includes(method)
+        ) {
+          for (const argument of node.arguments) {
+            collectClassExpression(argument);
+          }
+        }
+        if (
+          method === "setAttribute" &&
+          node.arguments.length >= 2 &&
+          ts.isStringLiteralLike(node.arguments[0]) &&
+          ["class", "className"].includes(node.arguments[0].text)
+        ) {
+          collectClassExpression(node.arguments[1]);
+        }
+      }
+
       ts.forEachChild(node, visit);
     }
 
