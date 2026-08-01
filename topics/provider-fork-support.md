@@ -42,6 +42,7 @@ forkSession?: (options: {
   sessionId: string;       // source provider session id
   cwd: string;             // project working dir the session belongs to
   upToMessageId?: string;  // inclusive prefix slice; omit for full copy
+  boundary?: ProviderForkBoundary; // typed server-resolved identity
   title?: string;          // title for the new session
 }) => Promise<{ sessionId: string }>;
 ```
@@ -57,6 +58,10 @@ Contract obligations, not just the shape:
   use a real fork instead of a serialized replay — [recaps](recaps.md),
   [fork-from-turn](fork-from-turn.md)).
 - **Inclusive slice.** `upToMessageId` keeps up to *and including* that id.
+- **Typed intent path.** New server-owned turn intents pass a provider-specific
+  message, turn, or entry boundary. `upToMessageId` remains only for legacy
+  clients and internal callers. Browser display ids never substitute for a
+  typed provider identity.
 - **Never emulated when absent.** Absence means the capability does not exist;
   YA must not ship a fork-labeled button backed by replay/forgery on a provider
   that cannot truly fork (`session-context-actions.md` § Fork; `types.ts:291`).
@@ -95,23 +100,20 @@ Implementation:
 1. For a full fork, YA calls `thread/fork` with the source `threadId`, `cwd`,
    and the normal default Codex permission policy. The native response's
    `thread.id` becomes `{ sessionId }`.
-2. For a sliced fork, YA first calls `thread/read` with `includeTurns: true`,
-   maps `upToMessageId` back to a Codex turn/item id, calls `thread/fork`, then
-   calls `thread/rollback` on the forked thread to drop trailing turns.
-3. Codex can roll back whole turns, not arbitrary items inside a turn. YA
-   therefore fails clearly if `upToMessageId` resolves to an item before the
-   end of its turn; silently retaining later items would violate the inclusive
-   prefix contract.
+2. For a new sliced fork, durable response normalization preserves Codex's
+   `internal_chat_message_metadata_passthrough.turn_id` as non-enumerable,
+   server-only metadata. The route resolves the completed human turn and passes
+   `{ kind: "turn", provider: "codex", turnId }` to the adapter.
+3. The adapter sends that id directly as inclusive
+   `thread/fork.lastTurnId`. This is the stable boundary in the pinned Codex
+   `0.145.0` protocol and requires neither `thread/read` nor rollback.
+4. Legacy `{ upToMessageId }` requests retain the old `thread/read` mapping and
+   whole-turn rollback implementation. Codex still rejects an item anchor
+   inside a turn rather than silently retaining later items.
 
-**Known addressability failure (2026-08-01):** the capability is advertised,
-but the shipped per-turn client can pass a synthesized normalized id such as
-`codex-112-<timestamp>` into this lookup. That id is a YA display identity, not
-an app-server turn/item id, so `findCodexForkAnchor` reports it missing. The
-client Fork after resolver can separately stop at a user-role `tool_result` and
-choose an inside-turn tool call. Provider method presence therefore does not
-currently make Codex sliced fork usable end to end. The typed identity repair,
-server-owned completed-turn resolver, and direct full Clone surface are planned
-in
+The 2026-08-01 addressability repair deliberately preserves synthesized
+`codex-N-<timestamp>` ids as renderer identities. They no longer cross the
+provider control boundary. See the incident and verification record in
 [`docs/tactical/075-session-fork-clone-unification.md`](../docs/tactical/075-session-fork-clone-unification.md).
 
 Why not copy the rollout file like Claude does: `session-context-actions.md`
@@ -164,9 +166,9 @@ runtime), `canSwitchActivePath`, `canForkAtNode`. `forkSession` here is the
 - Pi: has the richest readable tree (native `id`/`parentId`, `/tree`) and now
   implements `forkSession` by writing a new top-level session file. Active-path
   switching/tree UI is still separate work.
-- Codex: models a thread tree (`sessionId`/`forkedFromId`) and now implements
-  `forkSession` through native app-server fork/rollback. Tree UI is still
-  separate work.
+- Codex: models a thread tree (`sessionId`/`forkedFromId`) and implements new
+  typed boundaries through native `thread/fork.lastTurnId`; rollback remains a
+  legacy-anchor compatibility path. Tree UI is still separate work.
 
 The tree doc's `canForkAtNode` should be defined as "the provider implements
 `forkSession` anchored at a tree node id" — i.e. it is satisfied exactly when
@@ -179,5 +181,5 @@ the two docs in sync: a provider gains `canForkAtNode` only after landing
 | Provider | Native primitive exists | Wired in YA | Blocking gap |
 |----------|-------------------------|-------------|--------------|
 | Claude   | yes (SDK `forkSession`) | **yes**     | — |
-| Codex    | yes (`thread/fork`)     | **broken from current per-turn UI** | display ids do not address app-server turns; slices remain whole-turn only |
+| Codex    | yes (`thread/fork`)     | **yes**     | slices remain whole-turn only |
 | Pi       | yes (JSONL tree file)   | **yes**     | `/tree` UI / active-path switching remain separate |

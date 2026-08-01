@@ -11,6 +11,7 @@ import {
   HOST_IDENTITY_CAPABILITY,
   SESSION_SANDBOXING_CAPABILITY,
   SESSION_SANDBOXING_STATUS_CAPABILITY,
+  SESSION_FORK_TURN_INTENTS_CAPABILITY,
 } from "@yep-anywhere/shared";
 import { getServerCapabilities } from "../../src/routes/version.js";
 
@@ -74,5 +75,11 @@ describe("Version Routes", () => {
         },
       }),
     ).toContain(SESSION_SANDBOXING_CAPABILITY);
+  });
+
+  it("advertises server-resolved session fork intents", () => {
+    expect(getServerCapabilities()).toContain(
+      SESSION_FORK_TURN_INTENTS_CAPABILITY,
+    );
   });
 });

@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import { SessionMenu, type SessionMenuProps } from "../SessionMenu";
@@ -71,5 +77,36 @@ describe("SessionMenu CSS module contracts", () => {
       terminateButton.classList.contains(styles.terminateButton ?? ""),
     ).toBe(true);
     expect(terminateButton.classList.contains("terminate-button")).toBe(false);
+  });
+
+  it("exposes direct Clone with pending and disabled states", async () => {
+    const onClone = vi.fn(async () => undefined);
+    const { rerender } = renderMenu({ onClone });
+    fireEvent.click(screen.getByRole("button", { name: "Session options" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Clone" }));
+    });
+    expect(onClone).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <I18nProvider>
+        <SessionMenu
+          sessionId="session-1"
+          projectId="project-1"
+          isStarred={false}
+          isArchived={false}
+          onToggleStar={vi.fn()}
+          onToggleArchive={vi.fn()}
+          onRename={vi.fn()}
+          onClone={onClone}
+          cloneDisabled
+        />
+      </I18nProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Session options" }));
+    expect(
+      (screen.getByRole("button", { name: "Clone" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
   });
 });

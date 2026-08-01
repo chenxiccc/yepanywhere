@@ -30,6 +30,7 @@ import { CacheMissBillingMonitor } from "../services/CacheMissBillingMonitor.js"
 import type { SessionQueuePersistenceService } from "../services/SessionQueuePersistenceService.js";
 import type {
   AgentProvider,
+  ProviderForkBoundary,
   SummaryGenerationRequest,
   SummaryGenerationResult,
 } from "../sdk/providers/types.js";
@@ -2397,6 +2398,7 @@ export class Supervisor {
     projectPath: string;
     providerName?: ProviderName;
     upToMessageId?: string;
+    boundary?: ProviderForkBoundary;
     title?: string;
     sandboxLevel?: SessionSandboxLevel;
     sandboxStateKey?: string;
@@ -2425,6 +2427,7 @@ export class Supervisor {
       sessionId: options.sessionId,
       cwd: options.projectPath,
       upToMessageId: options.upToMessageId,
+      boundary: options.boundary,
       title: options.title,
       sessionSandbox,
     });

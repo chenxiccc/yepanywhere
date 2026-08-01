@@ -58,6 +58,9 @@ interface Props {
   onCancelUnconfirmedUserPrompt?: (tempId: string) => void;
   onTrimBeforeUserPrompt?: () => void;
   onForkBeforeUserPrompt?: () => void;
+  onForkAfterUserPrompt?: () => void;
+  onForkAfterSummaryUserPrompt?: () => void;
+  forkAfterUserPromptDisabled?: boolean;
   onQuoteTextBlock?: (anchor: CommentAnchor) => void;
   alwaysShowQuoteCircle?: boolean;
   paragraphQuoteCirclesEnabled?: boolean;
@@ -622,6 +625,9 @@ export const RenderItemComponent = memo(function RenderItemComponent({
   onCancelUnconfirmedUserPrompt,
   onTrimBeforeUserPrompt,
   onForkBeforeUserPrompt,
+  onForkAfterUserPrompt,
+  onForkAfterSummaryUserPrompt,
+  forkAfterUserPromptDisabled,
   onQuoteTextBlock,
   alwaysShowQuoteCircle,
   paragraphQuoteCirclesEnabled,
@@ -743,6 +749,9 @@ export const RenderItemComponent = memo(function RenderItemComponent({
             }
             onTrimBefore={onTrimBeforeUserPrompt}
             onForkBefore={onForkBeforeUserPrompt}
+            onForkAfter={onForkAfterUserPrompt}
+            onForkAfterSummary={onForkAfterSummaryUserPrompt}
+            forkAfterDisabled={forkAfterUserPromptDisabled}
             deliveryState={deliveryState}
           />
         );

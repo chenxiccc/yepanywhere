@@ -1,4 +1,10 @@
-import { memo, type ReactNode, useState } from "react";
+import {
+  Children,
+  memo,
+  type CSSProperties,
+  type ReactNode,
+  useState,
+} from "react";
 import { useI18n } from "../../i18n";
 import { useQuoteableTextSource } from "../../hooks/useQuoteableTextSource";
 import type { UserPromptDeliveryState } from "../../lib/deliveryState";
@@ -11,6 +17,7 @@ import type { ContentBlock } from "../../types";
 import { AttachmentChip } from "../AttachmentChip";
 import { CopyTextButton } from "../ui/CopyTextButton";
 import { LinkifiedText } from "../ui/LinkifiedText";
+import { ForkTurnMenu } from "./ForkTurnMenu";
 
 const MAX_LINES = 12;
 const MAX_CHARS = MAX_LINES * 100;
@@ -23,6 +30,12 @@ interface Props {
   onTrimBefore?: () => void;
   /** Fork the session from just before this turn (real prefix fork only). */
   onForkBefore?: () => void;
+  /** Fork the session through this completed turn. */
+  onForkAfter?: () => void;
+  /** Enter the explicit fork-after-with-summary workflow. */
+  onForkAfterSummary?: () => void;
+  /** The selected turn is still active and cannot be retained yet. */
+  forkAfterDisabled?: boolean;
   extraActions?: ReactNode;
   /**
    * "sent" while the turn exists only as the optimistic echo (not yet proven
@@ -338,6 +351,9 @@ function UserPromptActionButtons({
   onCancelUnconfirmed,
   onTrimBefore,
   onForkBefore,
+  onForkAfter,
+  onForkAfterSummary,
+  forkAfterDisabled,
   copyText,
   extraActions,
 }: {
@@ -345,6 +361,9 @@ function UserPromptActionButtons({
   onCancelUnconfirmed?: () => void;
   onTrimBefore?: () => void;
   onForkBefore?: () => void;
+  onForkAfter?: () => void;
+  onForkAfterSummary?: () => void;
+  forkAfterDisabled?: boolean;
   copyText?: string;
   extraActions?: ReactNode;
 }) {
@@ -354,7 +373,7 @@ function UserPromptActionButtons({
     !onCorrect &&
     !onCancelUnconfirmed &&
     !onTrimBefore &&
-    !onForkBefore &&
+    !onForkAfter &&
     !copyText &&
     !extraActions
   )
@@ -418,32 +437,13 @@ function UserPromptActionButtons({
           </svg>
         </button>
       )}
-      {onForkBefore && (
-        <button
-          type="button"
-          className="user-prompt-action user-prompt-action-fork-before"
-          onClick={onForkBefore}
-          aria-label={t("forkBeforeTurnLabel")}
-          title={t("forkBeforeTurnTooltip")}
-        >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <circle cx="6" cy="6" r="3" />
-            <circle cx="6" cy="18" r="3" />
-            <circle cx="18" cy="12" r="3" />
-            <path d="M6 9v6" />
-            <path d="M8.5 7.5 15 11" />
-          </svg>
-        </button>
+      {onForkAfter && onForkAfterSummary && (
+        <ForkTurnMenu
+          onForkBefore={onForkBefore}
+          onForkAfter={onForkAfter}
+          onForkAfterSummary={onForkAfterSummary}
+          afterDisabled={forkAfterDisabled}
+        />
       )}
       {onTrimBefore && (
         <button
@@ -542,6 +542,9 @@ export const UserPromptBlock = memo(function UserPromptBlock({
   onCancelUnconfirmed,
   onTrimBefore,
   onForkBefore,
+  onForkAfter,
+  onForkAfterSummary,
+  forkAfterDisabled,
   extraActions,
   deliveryState,
 }: Props) {
@@ -550,6 +553,15 @@ export const UserPromptBlock = memo(function UserPromptBlock({
   const actionClass = onCancelUnconfirmed
     ? " has-cancel-unconfirmed-action"
     : "";
+  const actionStyle = {
+    "--user-prompt-action-count":
+      Number(Boolean(content)) +
+      Number(Boolean(onCorrect)) +
+      Number(Boolean(onCancelUnconfirmed)) +
+      Number(Boolean(onForkAfter && onForkAfterSummary)) +
+      Number(Boolean(onTrimBefore)) +
+      Children.count(extraActions),
+  } as CSSProperties;
   if (typeof content === "string") {
     const { text, openedFiles, uploadedFiles } = parseUserPrompt(content);
 
@@ -567,6 +579,7 @@ export const UserPromptBlock = memo(function UserPromptBlock({
     return (
       <div
         className={`user-prompt-container${actionClass} ${shouldStackUserPromptActions(text) ? "has-stacked-actions" : ""}`}
+        style={actionStyle}
       >
         <div
           className={`message message-user-prompt ${onCorrect ? "user-prompt-correctable" : ""}${unconfirmedClass}`}
@@ -582,6 +595,9 @@ export const UserPromptBlock = memo(function UserPromptBlock({
           onCancelUnconfirmed={onCancelUnconfirmed}
           onTrimBefore={onTrimBefore}
           onForkBefore={onForkBefore}
+          onForkAfter={onForkAfter}
+          onForkAfterSummary={onForkAfterSummary}
+          forkAfterDisabled={forkAfterDisabled}
           copyText={getUserPromptCopyText(text)}
           extraActions={extraActions}
         />
@@ -624,6 +640,7 @@ export const UserPromptBlock = memo(function UserPromptBlock({
   return (
     <div
       className={`user-prompt-container${actionClass} ${shouldStackUserPromptActions(text) ? "has-stacked-actions" : ""}`}
+      style={actionStyle}
     >
       <div
         className={`message message-user-prompt ${onCorrect ? "user-prompt-correctable" : ""}${unconfirmedClass}`}
@@ -639,6 +656,9 @@ export const UserPromptBlock = memo(function UserPromptBlock({
         onCancelUnconfirmed={onCancelUnconfirmed}
         onTrimBefore={onTrimBefore}
         onForkBefore={onForkBefore}
+        onForkAfter={onForkAfter}
+        onForkAfterSummary={onForkAfterSummary}
+        forkAfterDisabled={forkAfterDisabled}
         copyText={getUserPromptCopyText(text)}
         extraActions={extraActions}
       />

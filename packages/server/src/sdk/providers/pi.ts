@@ -44,6 +44,7 @@ import type {
   AgentProvider,
   AgentSession,
   AuthStatus,
+  ProviderForkBoundary,
   StartSessionOptions,
 } from "./types.js";
 
@@ -417,8 +418,12 @@ export class PiProvider implements AgentProvider {
     sessionId: string;
     cwd: string;
     upToMessageId?: string;
+    boundary?: ProviderForkBoundary;
     title?: string;
   }): Promise<{ sessionId: string }> {
+    if (options.boundary && options.boundary.kind !== "entry") {
+      throw new Error("Pi fork requires an entry boundary");
+    }
     const reader = new PiSessionReader({
       sessionsDir: this.sessionsDir,
       projectPath: options.cwd,
@@ -430,7 +435,10 @@ export class PiProvider implements AgentProvider {
     const fork = await forkPiSessionFile({
       sourcePath,
       cwd: options.cwd,
-      upToMessageId: options.upToMessageId,
+      upToMessageId:
+        options.boundary?.kind === "entry"
+          ? options.boundary.entryId
+          : options.upToMessageId,
     });
     return { sessionId: fork.sessionId };
   }

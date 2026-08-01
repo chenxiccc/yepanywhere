@@ -1208,6 +1208,46 @@ describe("CodexProvider app-server lifecycle", () => {
       rmSync(tempDir, { recursive: true, force: true });
     }
   });
+
+  it("forks directly through a typed Codex turn without legacy rollback", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "codex-provider-turn-fork-"));
+    const logPath = join(tempDir, "fake-codex-requests.jsonl");
+    const codexPath = createFakeCodexCommand(
+      tempDir,
+      "fake-codex-turn-fork",
+      buildFakeCodexAppServerForFork(logPath),
+    );
+
+    try {
+      const testProvider = new CodexProvider({ codexPath });
+      const fork = await testProvider.forkSession({
+        sessionId: "source-thread",
+        cwd: tempDir,
+        boundary: {
+          kind: "turn",
+          provider: "codex",
+          turnId: "turn-2",
+        },
+      });
+
+      expect(fork).toEqual({ sessionId: "fork-thread" });
+      const requests = readFakeCodexRequests(logPath);
+      expect(
+        requests.find((request) => request.method === "thread/fork")?.params,
+      ).toMatchObject({
+        threadId: "source-thread",
+        lastTurnId: "turn-2",
+      });
+      expect(requests.some((request) => request.method === "thread/read")).toBe(
+        false,
+      );
+      expect(
+        requests.some((request) => request.method === "thread/rollback"),
+      ).toBe(false);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
 });
 
 const describeRealCodexContract =

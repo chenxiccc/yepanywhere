@@ -26,6 +26,7 @@ export interface ServerCapabilityDefinition {
     | "projectQueue"
     | "providers"
     | "remoteAccess"
+    | "sessions"
     | "settings"
     | "speech";
   description: string;
@@ -691,6 +692,28 @@ export const SERVER_CAPABILITIES = {
         "Update availability is dynamic state advertised for older clients that branch on capability strings.",
     },
   },
+  sessionForkTurnIntents: {
+    name: "session-fork-turn-intents",
+    kind: "transitional",
+    area: "sessions",
+    introducedIn: "0.7.1",
+    description:
+      "Server resolves Clone and direct Fork requests at real completed user-turn boundaries.",
+    clientFallback:
+      "Hide unified Clone and direct Fork actions and make no fork request.",
+    serverContract: {
+      routes: ["POST /api/projects/:projectId/sessions/:sessionId/fork"],
+      requestFields: ["forkKind", "sourceMessageId"],
+    },
+    lifecycle: {
+      kind: "transitional",
+      reviewAfter: "2026-09-01",
+      removeClientGateWhen:
+        "The optional hosted-client support corpus contains no server without server-resolved fork intents and the Maintainer approves removal.",
+      removeServerAdvertisementWhen:
+        "No maintained client still branches on session-fork-turn-intents.",
+    },
+  },
 } as const satisfies Record<string, ServerCapabilityDefinition>;
 
 export type ServerCapabilityKey = keyof typeof SERVER_CAPABILITIES;
@@ -749,6 +772,9 @@ export const SESSION_SANDBOXING_CAPABILITY =
 
 export const SESSION_SANDBOXING_STATUS_CAPABILITY =
   SERVER_CAPABILITIES.sessionSandboxingStatus.name;
+
+export const SESSION_FORK_TURN_INTENTS_CAPABILITY =
+  SERVER_CAPABILITIES.sessionForkTurnIntents.name;
 
 export const VOICE_INPUT_CAPABILITY = SERVER_CAPABILITIES.voiceInput.name;
 

@@ -30,6 +30,14 @@ local host currently has a usable enforcement backend. Clients require both
 and an `available` status before showing or sending the optional launch field;
 the launch path still rechecks and fails closed.
 
+For session copying, `session-fork-turn-intents` advertises the additive
+`forkKind` / `sourceMessageId` contract on the existing project-session fork
+route. The client requires it together with provider `supportsForkSession`
+before rendering header Clone or direct per-turn Fork. When absent, the whole
+unified surface is hidden and no fork request is made; legacy server parsing is
+not treated as a client fallback. This transitional gate was introduced in
+`0.7.1` and is reviewed after 2026-09-01.
+
 ## Capability Classes
 
 Use `kind: "permanent"` for capabilities that may vary indefinitely across

@@ -15,12 +15,13 @@ Related topics: [injected-message-visibility](injected-message-visibility.md),
 [stream-persisted-render-parity](stream-persisted-render-parity.md), and
 [provider-refresh](provider-refresh.md).
 
-Follow-on consumer defect (2026-08-01): `SessionPage`'s Fork after resolver
-still scans normalized `type: "user"` rows directly, so a user-role tool result
-can terminate the range even though it is not a human turn. This does not
-reopen the provenance work below; it records a fork consumer that must adopt
-the established boundary. See the
-[session fork and clone unification plan](../docs/tactical/075-session-fork-clone-unification.md).
+Follow-on consumer repair (2026-08-01): Fork boundary resolution moved from
+`SessionPage`'s normalized-role scan to the server's real-user predicate. A
+user-role tool result no longer terminates a turn. Durable normalization also
+preserves Codex's provider turn id as non-enumerable server metadata so a
+renderer id never reaches `thread/fork`. This does not reopen the provenance
+work below; it records a consumer that now follows the established boundary.
+See the [session fork and clone unification record](../docs/tactical/075-session-fork-clone-unification.md).
 
 ## Invariant
 

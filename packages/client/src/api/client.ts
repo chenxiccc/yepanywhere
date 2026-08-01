@@ -849,7 +849,15 @@ export const api = {
   forkSession: (
     projectId: string,
     sessionId: string,
-    options?: { upToMessageId?: string },
+    options?:
+      | { upToMessageId?: string }
+      | {
+          forkKind: "clone-latest-complete";
+        }
+      | {
+          forkKind: "before-user-turn" | "after-user-turn";
+          sourceMessageId: string;
+        },
   ) =>
     fetchJSON<{
       sessionId: string;
@@ -858,9 +866,15 @@ export const api = {
       title?: string;
       forkedFrom: string;
       upToMessageId?: string;
+      forkKind?:
+        | "clone-latest-complete"
+        | "before-user-turn"
+        | "after-user-turn";
+      sourceMessageId?: string;
+      retainedThroughMessageId?: string;
     }>(`/projects/${projectId}/sessions/${sessionId}/fork`, {
       method: "POST",
-      body: JSON.stringify({ upToMessageId: options?.upToMessageId }),
+      body: JSON.stringify(options ?? {}),
     }),
 
   forkSessionWithSummary: (

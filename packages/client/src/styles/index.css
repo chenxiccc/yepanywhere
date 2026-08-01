@@ -3046,6 +3046,10 @@ a.linkified-url:hover {
     var(--space-1) +
     var(--turn-rail-float-inset-inline-end)
   );
+  min-height: calc(
+    (var(--user-prompt-action-size) * var(--user-prompt-action-count)) +
+    (var(--space-1) * (var(--user-prompt-action-count) - 1))
+  );
 }
 
 .user-prompt-container.has-cancel-unconfirmed-action {
@@ -3076,7 +3080,6 @@ a.linkified-url:hover {
   align-items: center;
   gap: var(--space-1);
   opacity: 0;
-  pointer-events: none;
   z-index: 3;
   transition: opacity 0.12s ease;
 }
@@ -3088,7 +3091,6 @@ a.linkified-url:hover {
 .user-prompt-container:hover .user-prompt-actions,
 .user-prompt-container:focus-within .user-prompt-actions {
   opacity: 1;
-  pointer-events: auto;
 }
 
 .user-prompt-action {
@@ -3173,14 +3175,6 @@ a.linkified-url:hover {
     --user-prompt-actions-space: calc(
       (var(--user-prompt-action-size) * 5) +
       (var(--space-1) * 5) +
-      var(--turn-rail-float-inset-inline-end)
-    );
-  }
-
-  .user-prompt-container.has-stacked-actions.has-cancel-unconfirmed-action {
-    --user-prompt-actions-space: calc(
-      var(--user-prompt-action-size) +
-      var(--space-1) +
       var(--turn-rail-float-inset-inline-end)
     );
   }

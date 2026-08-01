@@ -48,10 +48,14 @@ interface Props {
   onSearchMatchSelect?: (id: string, targetId: string) => void;
   /** "Show from": load the client transcript from this turn (drop earlier). */
   onTrimAnchor?: (id: string) => void;
-  /** Fork the session before this turn (seeds the new composer with the turn). */
+  /** Fork the session before this turn. */
   onForkBeforeAnchor?: (id: string) => void;
-  /** Fork after this completed turn, optionally with a generated summary. */
+  /** Whether a before-turn boundary exists for a particular anchor. */
+  canForkBeforeAnchor?: (id: string) => boolean;
+  /** Fork after this completed turn. */
   onForkAfterAnchor?: (id: string) => void;
+  /** Disable after-turn actions while the selected/latest response is active. */
+  forkAfterDisabled?: boolean;
   /** Copy this turn's text to the clipboard. */
   onCopyAnchor?: (id: string) => void;
   /** Reports the timestamp for a hovered/focused turn marker, if any. */
@@ -753,7 +757,9 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
   onSearchMatchSelect,
   onTrimAnchor,
   onForkBeforeAnchor,
+  canForkBeforeAnchor,
   onForkAfterAnchor,
+  forkAfterDisabled = false,
   onCopyAnchor,
   onPreviewTimestampChange,
   searchState,
@@ -1519,22 +1525,27 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
               >
                 {t("turnNotchJump")}
               </button>
-              {onForkBeforeAnchor && (
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    onForkBeforeAnchor(notchMenu.id);
-                    closeNotchMenu();
-                  }}
-                >
-                  {t("turnNotchForkBefore")}
-                </button>
-              )}
+              {onForkBeforeAnchor &&
+                (canForkBeforeAnchor?.(notchMenu.id) ?? true) && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      onForkBeforeAnchor(notchMenu.id);
+                      closeNotchMenu();
+                    }}
+                  >
+                    {t("turnNotchForkBefore")}
+                  </button>
+                )}
               {onForkAfterAnchor && (
                 <button
                   type="button"
                   role="menuitem"
+                  disabled={forkAfterDisabled}
+                  title={
+                    forkAfterDisabled ? t("forkTurnAfterDisabled") : undefined
+                  }
                   onClick={() => {
                     onForkAfterAnchor(notchMenu.id);
                     closeNotchMenu();

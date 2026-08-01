@@ -56,7 +56,10 @@ import type { GeminiSessionReader } from "../sessions/gemini-reader.js";
 import { GrokSessionReader } from "../sessions/grok-reader.js";
 import type { PiSessionReader } from "../sessions/pi-reader.js";
 import { extractLastAgentExcerpt } from "../sessions/agent-excerpt.js";
-import { normalizeSession } from "../sessions/normalization.js";
+import {
+  getCodexProviderForkTurnId,
+  normalizeSession,
+} from "../sessions/normalization.js";
 import {
   applyRecapOverlayToSession,
   applyRecapOverlayToSummary,
@@ -89,6 +92,7 @@ import type { ISessionReader, LoadedSession } from "../sessions/types.js";
 import { getProvider } from "../sdk/providers/index.js";
 import { getStaticSlashCommandsForProvider } from "../sdk/providers/staticSlashCommands.js";
 import type { ExternalSessionTracker } from "../supervisor/ExternalSessionTracker.js";
+import type { ProviderForkBoundary } from "../sdk/providers/types.js";
 import type { Process } from "../supervisor/Process.js";
 import type {
   ModelSettings,
@@ -1029,15 +1033,50 @@ function isUserAuthoredRequest(message: Message): boolean {
   );
 }
 
+type SessionForkKind =
+  | "clone-latest-complete"
+  | "before-user-turn"
+  | "after-user-turn";
+
+function providerForkBoundaryForMessage(
+  providerName: ProviderName,
+  message: Message,
+): ProviderForkBoundary | null {
+  const retainedThroughMessageId = messageId(message);
+  if (!retainedThroughMessageId) return null;
+
+  if (isClaudeSdkProviderName(providerName)) {
+    return {
+      kind: "message",
+      provider: providerName,
+      messageId: retainedThroughMessageId,
+    };
+  }
+  if (isCodexProviderName(providerName)) {
+    const turnId = getCodexProviderForkTurnId(message);
+    return turnId ? { kind: "turn", provider: providerName, turnId } : null;
+  }
+  if (providerName === "pi") {
+    return {
+      kind: "entry",
+      provider: "pi",
+      entryId: retainedThroughMessageId,
+    };
+  }
+  return null;
+}
+
 function resolveForkAfterBoundary(
   messages: Message[],
   sourceMessageId: string,
   sourceIsBusy: boolean,
+  providerName?: ProviderName,
 ):
   | {
       placementAfterMessageId: string;
       retainedThroughMessageId: string;
       retainedThroughContext?: string;
+      providerBoundary?: ProviderForkBoundary;
     }
   | { error: string; status: 400 | 404 | 409 } {
   const sourceIndex = messages.findIndex(
@@ -1108,12 +1147,67 @@ function resolveForkAfterBoundary(
     [...messages].reverse().map(messageId).find(Boolean) ??
     retainedThroughMessageId;
   const rendered = renderRestartContent(messageContent(boundary)).trim();
+  const providerBoundary = providerName
+    ? providerForkBoundaryForMessage(providerName, boundary)
+    : undefined;
+  if (
+    providerName &&
+    (isClaudeSdkProviderName(providerName) ||
+      isCodexProviderName(providerName) ||
+      providerName === "pi") &&
+    !providerBoundary
+  ) {
+    return {
+      error:
+        "The selected completed turn cannot be addressed safely. No new session was created and the source is unchanged.",
+      status: 409,
+    };
+  }
   return {
     placementAfterMessageId,
     retainedThroughMessageId,
     retainedThroughContext: rendered
       ? truncateForRestart(rendered, 1200)
       : undefined,
+    ...(providerBoundary ? { providerBoundary } : {}),
+  };
+}
+
+function resolveForkBeforeBoundary(
+  messages: Message[],
+  sourceMessageId: string,
+  providerName: ProviderName,
+): ReturnType<typeof resolveForkAfterBoundary> {
+  const sourceIndex = messages.findIndex(
+    (message) => messageId(message) === sourceMessageId,
+  );
+  const sourceMessage = messages[sourceIndex];
+  if (sourceIndex < 0 || !sourceMessage) {
+    return { error: "Selected source message was not found", status: 404 };
+  }
+  if (!isUserAuthoredRequest(sourceMessage)) {
+    return {
+      error: "sourceMessageId must identify a user-authored request",
+      status: 400,
+    };
+  }
+
+  for (let index = sourceIndex - 1; index >= 0; index -= 1) {
+    const candidate = messages[index];
+    const candidateId = candidate ? messageId(candidate) : undefined;
+    if (candidate && candidateId && isUserAuthoredRequest(candidate)) {
+      return resolveForkAfterBoundary(
+        messages,
+        candidateId,
+        false,
+        providerName,
+      );
+    }
+  }
+
+  return {
+    error: "There is no completed turn before the selected request",
+    status: 409,
   };
 }
 
@@ -4591,11 +4685,55 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({ error: "Project not found or path does not exist" }, 404);
     }
 
-    let body: { upToMessageId?: string } = {};
+    let body: {
+      forkKind?: unknown;
+      sourceMessageId?: unknown;
+      upToMessageId?: unknown;
+    } = {};
     try {
-      body = await c.req.json<{ upToMessageId?: string }>();
+      const parsed = await c.req.json<unknown>();
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return c.json({ error: "Invalid JSON body" }, 400);
+      }
+      body = parsed as typeof body;
     } catch {
       // Body is optional; full-transcript fork.
+    }
+    const hasIntentFields =
+      body.forkKind !== undefined || body.sourceMessageId !== undefined;
+    if (hasIntentFields && body.upToMessageId !== undefined) {
+      return c.json(
+        {
+          error:
+            "forkKind/sourceMessageId cannot be combined with upToMessageId",
+        },
+        400,
+      );
+    }
+    const forkKind =
+      body.forkKind === "clone-latest-complete" ||
+      body.forkKind === "before-user-turn" ||
+      body.forkKind === "after-user-turn"
+        ? (body.forkKind as SessionForkKind)
+        : undefined;
+    if (hasIntentFields && !forkKind) {
+      return c.json({ error: "Invalid forkKind" }, 400);
+    }
+    const sourceMessageId =
+      typeof body.sourceMessageId === "string" && body.sourceMessageId.trim()
+        ? body.sourceMessageId.trim()
+        : undefined;
+    if (
+      (forkKind === "before-user-turn" || forkKind === "after-user-turn") &&
+      !sourceMessageId
+    ) {
+      return c.json({ error: "sourceMessageId is required" }, 400);
+    }
+    if (forkKind === "clone-latest-complete" && sourceMessageId) {
+      return c.json(
+        { error: "clone-latest-complete does not accept sourceMessageId" },
+        400,
+      );
     }
     const upToMessageId =
       typeof body.upToMessageId === "string" && body.upToMessageId
@@ -4626,6 +4764,62 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       );
     }
 
+    const sourceIsBusy = Boolean(
+      deps.externalTracker?.isExternal(sessionId) ||
+        sourceProcess?.state.type === "in-turn" ||
+        sourceProcess?.state.type === "waiting-input",
+    );
+    let providerBoundary: ProviderForkBoundary | undefined;
+    let retainedThroughMessageId: string | undefined;
+    if (forkKind === "clone-latest-complete" && sourceIsBusy) {
+      return c.json(
+        {
+          error:
+            "Clone is available after the current response completes. No new session was created and the source is unchanged.",
+        },
+        409,
+      );
+    }
+    if (
+      (forkKind === "before-user-turn" || forkKind === "after-user-turn") &&
+      sourceMessageId
+    ) {
+      const sourceSession = await loadRestartSourceSession(
+        project,
+        sessionId,
+        projectId,
+        providerName,
+        sourceProcess,
+      );
+      if (!sourceSession) {
+        return c.json({ error: "Source session not found" }, 404);
+      }
+      const boundary =
+        forkKind === "before-user-turn"
+          ? resolveForkBeforeBoundary(
+              sourceSession.messages,
+              sourceMessageId,
+              providerName,
+            )
+          : resolveForkAfterBoundary(
+              sourceSession.messages,
+              sourceMessageId,
+              sourceIsBusy,
+              providerName,
+            );
+      if ("error" in boundary) {
+        return c.json({ error: boundary.error }, boundary.status);
+      }
+      if (!boundary.providerBoundary) {
+        return c.json(
+          { error: "Completed turn provider boundary is unavailable" },
+          409,
+        );
+      }
+      providerBoundary = boundary.providerBoundary;
+      retainedThroughMessageId = boundary.retainedThroughMessageId;
+    }
+
     const originalMetadata =
       deps.sessionMetadataService?.getMetadata?.(sessionId);
     const forkProjectPath =
@@ -4638,9 +4832,12 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     if (!baseTitle) {
       baseTitle = normalizeRestartTitleCandidate(sessionSummary?.title);
     }
+    const titlePrefix = forkKind === "clone-latest-complete" ? "Clone" : "Fork";
     const forkTitle = baseTitle
       ? truncateSessionTitle(
-          /^Fork:/i.test(baseTitle) ? baseTitle : `Fork: ${baseTitle}`,
+          new RegExp(`^${titlePrefix}:`, "i").test(baseTitle)
+            ? baseTitle
+            : `${titlePrefix}: ${baseTitle}`,
         )
       : undefined;
 
@@ -4651,6 +4848,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         projectPath: forkProjectPath,
         providerName,
         upToMessageId,
+        boundary: providerBoundary,
         title: forkTitle,
         sandboxLevel: originalMetadata?.sandboxLevel,
         sandboxStateKey: originalMetadata?.sandboxStateKey,
@@ -4662,16 +4860,30 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           sessionId,
           projectId,
           providerName,
+          forkKind: forkKind ?? null,
+          sourceMessageId: sourceMessageId ?? null,
+          retainedThroughMessageId: retainedThroughMessageId ?? null,
           upToMessageId,
           error: error instanceof Error ? error.message : String(error),
         },
         "Transcript fork failed",
       );
       return c.json(
-        {
-          error:
-            error instanceof Error ? error.message : "Transcript fork failed",
-        },
+        hasIntentFields
+          ? {
+              error:
+                "No new session was created. The source session is unchanged. Try again after the selected response completes.",
+              detail:
+                error instanceof Error
+                  ? error.message
+                  : "Transcript fork failed",
+            }
+          : {
+              error:
+                error instanceof Error
+                  ? error.message
+                  : "Transcript fork failed",
+            },
         500,
       );
     }
@@ -4717,6 +4929,9 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       title: forkTitle,
       forkedFrom: sessionId,
       upToMessageId,
+      ...(forkKind ? { forkKind } : {}),
+      ...(sourceMessageId ? { sourceMessageId } : {}),
+      ...(retainedThroughMessageId ? { retainedThroughMessageId } : {}),
     });
   });
 
@@ -5003,18 +5218,13 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         );
       }
 
-      const sourceSession = sourceProcess
-        ? ({
-            messages: sdkMessagesToClientMessages(
-              sourceProcess.getMessageHistory(),
-            ),
-          } as Session)
-        : await loadRestartSourceSession(
-            project,
-            sessionId,
-            projectId,
-            providerName,
-          );
+      const sourceSession = await loadRestartSourceSession(
+        project,
+        sessionId,
+        projectId,
+        providerName,
+        sourceProcess,
+      );
       if (!sourceSession) {
         return c.json({ error: "Source session not found" }, 404);
       }
@@ -5023,6 +5233,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         sourceMessageId,
         sourceProcess?.state.type === "in-turn" ||
           sourceProcess?.state.type === "waiting-input",
+        providerName,
       );
       if ("error" in boundary) {
         return c.json({ error: boundary.error }, boundary.status);
@@ -5138,7 +5349,9 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
             sessionId,
             projectPath: sourceProjectPath,
             providerName,
-            upToMessageId: boundary.retainedThroughMessageId,
+            ...(boundary.providerBoundary
+              ? { boundary: boundary.providerBoundary }
+              : { upToMessageId: boundary.retainedThroughMessageId }),
             title,
             sandboxLevel: originalMetadata?.sandboxLevel,
             sandboxStateKey: originalMetadata?.sandboxStateKey,

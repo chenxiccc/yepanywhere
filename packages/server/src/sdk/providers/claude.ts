@@ -71,6 +71,7 @@ import type {
   AuthStatus,
   PromptCacheRefreshResult,
   ProviderName,
+  ProviderForkBoundary,
   StartSessionOptions,
   SummaryGenerationRequest,
   SummaryGenerationResult,
@@ -1618,13 +1619,21 @@ export class ClaudeProvider implements AgentProvider {
     sessionId: string;
     cwd: string;
     upToMessageId?: string;
+    boundary?: ProviderForkBoundary;
     title?: string;
     sessionSandbox?: SessionSandboxRuntime;
   }): Promise<{ sessionId: string }> {
+    if (options.boundary && options.boundary.kind !== "message") {
+      throw new Error("Claude fork requires a message boundary");
+    }
+    const upToMessageId =
+      options.boundary?.kind === "message"
+        ? options.boundary.messageId
+        : options.upToMessageId;
     if (!options.sessionSandbox) {
       return sdkForkSession(options.sessionId, {
         dir: options.cwd,
-        upToMessageId: options.upToMessageId,
+        upToMessageId,
         title: options.title,
       });
     }
@@ -1633,7 +1642,7 @@ export class ClaudeProvider implements AgentProvider {
     try {
       return await sdkForkSession(options.sessionId, {
         dir: options.cwd,
-        upToMessageId: options.upToMessageId,
+        upToMessageId,
         title: options.title,
         sessionStore: createClaudeForkStore(transcriptDirectory),
       });

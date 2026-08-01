@@ -2791,6 +2791,452 @@ describe("Sessions metadata route", () => {
     });
   });
 
+  it("clones the latest completed transcript cold with Clone lineage", async () => {
+    const project = createProject();
+    const forkSession = vi.fn(async () => ({ sessionId: "sess-clone" }));
+    const resumeSession = vi.fn();
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => ({
+          provider: "claude",
+          state: { type: "idle", since: new Date() },
+          getMessageHistory: vi.fn(() => []),
+        })),
+        supportsForkSession: vi.fn(() => true),
+        forkSession,
+        resumeSession,
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(
+        () =>
+          ({
+            getSessionSummary: vi.fn(async () => null),
+            getSession: vi.fn(async () => null),
+          }) as unknown as ISessionReader,
+      ),
+      sessionMetadataService: {
+        getProvider: vi.fn(() => "claude"),
+        setProvider: vi.fn(async () => undefined),
+        getExecutor: vi.fn(() => undefined),
+        getRequestedModel: vi.fn(() => undefined),
+        getMetadata: vi.fn(() => ({ customTitle: "Short session" })),
+        updateMetadata: vi.fn(async () => undefined),
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+    });
+
+    const response = await routes.request(
+      `/projects/${project.id}/sessions/sess-1/fork`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ forkKind: "clone-latest-complete" }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      sessionId: "sess-clone",
+      title: "Clone: Short session",
+      forkKind: "clone-latest-complete",
+      forkedFrom: "sess-1",
+    });
+    expect(forkSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "sess-1",
+        providerName: "claude",
+        title: "Clone: Short session",
+      }),
+    );
+    expect(forkSession.mock.calls[0]?.[0]).toMatchObject({
+      boundary: undefined,
+      upToMessageId: undefined,
+    });
+    expect(resumeSession).not.toHaveBeenCalled();
+  });
+
+  it("rejects explicit Clone while the current response is active", async () => {
+    const project = createProject();
+    const forkSession = vi.fn();
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => ({
+          provider: "claude",
+          state: { type: "in-turn", since: new Date() },
+        })),
+        supportsForkSession: vi.fn(() => true),
+        forkSession,
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(
+        () =>
+          ({
+            getSessionSummary: vi.fn(async () => null),
+          }) as unknown as ISessionReader,
+      ),
+      sessionMetadataService: {
+        getProvider: vi.fn(() => "claude"),
+        setProvider: vi.fn(async () => undefined),
+        getRequestedModel: vi.fn(() => undefined),
+        getMetadata: vi.fn(() => ({})),
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+    });
+
+    const response = await routes.request(
+      `/projects/${project.id}/sessions/sess-1/fork`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ forkKind: "clone-latest-complete" }),
+      },
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error: expect.stringContaining("source is unchanged"),
+    });
+    expect(forkSession).not.toHaveBeenCalled();
+  });
+
+  it("resolves before and after intents across tool-result user rows", async () => {
+    const project = createProject();
+    const messages: Message[] = [
+      {
+        type: "user",
+        uuid: "user-1",
+        parentUuid: null,
+        message: { role: "user", content: "First request" },
+      },
+      {
+        type: "assistant",
+        uuid: "tool-call-1",
+        parentUuid: "user-1",
+        message: {
+          role: "assistant",
+          content: [
+            { type: "tool_use", id: "tool-1", name: "Read", input: {} },
+          ],
+        },
+      },
+      {
+        type: "user",
+        uuid: "tool-result-1",
+        parentUuid: "tool-call-1",
+        message: {
+          role: "user",
+          content: [
+            { type: "tool_result", tool_use_id: "tool-1", content: "ok" },
+          ],
+        },
+      },
+      {
+        type: "assistant",
+        uuid: "assistant-1-final",
+        parentUuid: "tool-result-1",
+        message: { role: "assistant", content: "First response" },
+      },
+      {
+        type: "user",
+        uuid: "user-2",
+        parentUuid: "assistant-1-final",
+        message: { role: "user", content: "Second request" },
+      },
+      {
+        type: "assistant",
+        uuid: "assistant-2-final",
+        parentUuid: "user-2",
+        message: { role: "assistant", content: "Second response" },
+      },
+    ];
+    const forkSession = vi
+      .fn()
+      .mockResolvedValueOnce({ sessionId: "sess-after" })
+      .mockResolvedValueOnce({ sessionId: "sess-before" });
+    const summary: SessionSummary = {
+      ...createSummary(),
+      provider: "claude",
+      model: "sonnet",
+    };
+    const durableReader = {
+      getSessionSummary: vi.fn(async () => summary),
+      getSession: vi.fn(async () => ({
+        summary,
+        data: { provider: "claude", session: { messages } },
+      })),
+    } as unknown as ISessionReader;
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => ({
+          provider: "claude",
+          state: { type: "idle", since: new Date() },
+          getMessageHistory: vi.fn(() => [
+            {
+              type: "user",
+              uuid: "sdk-history-user-1",
+              message: { role: "user", content: "First request" },
+            },
+          ]),
+        })),
+        supportsForkSession: vi.fn(() => true),
+        forkSession,
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(() => durableReader),
+      sessionMetadataService: {
+        getProvider: vi.fn(() => "claude"),
+        setProvider: vi.fn(async () => undefined),
+        getExecutor: vi.fn(() => undefined),
+        getRequestedModel: vi.fn(() => undefined),
+        getMetadata: vi.fn(() => ({ customTitle: "Tool turn" })),
+        updateMetadata: vi.fn(async () => undefined),
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+    });
+
+    for (const request of [
+      { forkKind: "after-user-turn", sourceMessageId: "user-1" },
+      { forkKind: "before-user-turn", sourceMessageId: "user-2" },
+    ]) {
+      const response = await routes.request(
+        `/projects/${project.id}/sessions/sess-1/fork`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(request),
+        },
+      );
+      expect(response.status).toBe(200);
+    }
+
+    for (const call of forkSession.mock.calls) {
+      expect(call[0]).toMatchObject({
+        boundary: {
+          kind: "message",
+          provider: "claude",
+          messageId: "assistant-1-final",
+        },
+      });
+    }
+    expect(durableReader.getSession).toHaveBeenCalledTimes(2);
+  });
+
+  it("maps a positional Codex display id to its persisted provider turn", async () => {
+    const project = createProject();
+    const summary = createSummary();
+    const timestamp = "2026-08-01T07:38:02.999Z";
+    const loaded: LoadedSession = {
+      summary,
+      data: {
+        provider: "codex",
+        session: {
+          entries: [
+            {
+              timestamp,
+              type: "response_item",
+              payload: {
+                type: "message",
+                role: "user",
+                content: [{ type: "input_text", text: "Use a tool" }],
+                internal_chat_message_metadata_passthrough: {
+                  turn_id: "turn-provider-1",
+                },
+              },
+            },
+            {
+              timestamp: "2026-08-01T07:38:03.000Z",
+              type: "response_item",
+              payload: {
+                type: "function_call",
+                name: "read_file",
+                arguments: "{}",
+                call_id: "call-provider-1",
+                internal_chat_message_metadata_passthrough: {
+                  turn_id: "turn-provider-1",
+                },
+              },
+            },
+            {
+              timestamp: "2026-08-01T07:38:03.100Z",
+              type: "response_item",
+              payload: {
+                type: "function_call_output",
+                call_id: "call-provider-1",
+                output: "file contents",
+                internal_chat_message_metadata_passthrough: {
+                  turn_id: "turn-provider-1",
+                },
+              },
+            },
+            {
+              timestamp: "2026-08-01T07:38:04.000Z",
+              type: "response_item",
+              payload: {
+                type: "message",
+                role: "assistant",
+                content: [{ type: "output_text", text: "Tool turn done" }],
+                internal_chat_message_metadata_passthrough: {
+                  turn_id: "turn-provider-1",
+                },
+              },
+            },
+            {
+              timestamp: "2026-08-01T07:39:00.000Z",
+              type: "response_item",
+              payload: {
+                type: "message",
+                role: "user",
+                content: [{ type: "input_text", text: "Next turn" }],
+                internal_chat_message_metadata_passthrough: {
+                  turn_id: "turn-provider-2",
+                },
+              },
+            },
+          ],
+        },
+      },
+    };
+    const codexReader = {
+      getSessionSummary: vi.fn(async () => summary),
+      getSession: vi.fn(async () => loaded),
+    } as unknown as CodexSessionReader;
+    const forkSession = vi.fn(async () => ({ sessionId: "codex-fork" }));
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => undefined),
+        supportsForkSession: vi.fn(() => true),
+        forkSession,
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(
+        () =>
+          ({
+            getSessionSummary: vi.fn(async () => null),
+          }) as unknown as ISessionReader,
+      ),
+      codexSessionsDir: "/tmp/codex-sessions",
+      codexReaderFactory: vi.fn(() => codexReader),
+      sessionMetadataService: {
+        getProvider: vi.fn(() => "codex"),
+        setProvider: vi.fn(async () => undefined),
+        getExecutor: vi.fn(() => undefined),
+        getRequestedModel: vi.fn(() => undefined),
+        getMetadata: vi.fn(() => ({ customTitle: "Codex tools" })),
+        updateMetadata: vi.fn(async () => undefined),
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+    });
+
+    const response = await routes.request(
+      `/projects/${project.id}/sessions/sess-1/fork`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          forkKind: "after-user-turn",
+          sourceMessageId: `codex-0-${timestamp}`,
+        }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(forkSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerName: "codex",
+        boundary: {
+          kind: "turn",
+          provider: "codex",
+          turnId: "turn-provider-1",
+        },
+      }),
+    );
+    expect(forkSession.mock.calls[0]?.[0].upToMessageId).toBeUndefined();
+  });
+
+  it("rejects impossible or mixed turn-intent request shapes", async () => {
+    const project = createProject();
+    const forkSession = vi.fn();
+    const messages: Message[] = [
+      {
+        type: "user",
+        uuid: "user-1",
+        parentUuid: null,
+        message: { role: "user", content: "Only request" },
+      },
+      {
+        type: "assistant",
+        uuid: "assistant-1",
+        parentUuid: "user-1",
+        message: { role: "assistant", content: "Only response" },
+      },
+    ];
+    const summary: SessionSummary = {
+      ...createSummary(),
+      provider: "claude",
+      model: "sonnet",
+    };
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => ({
+          provider: "claude",
+          state: { type: "idle", since: new Date() },
+          getMessageHistory: vi.fn(() => []),
+        })),
+        supportsForkSession: vi.fn(() => true),
+        forkSession,
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(
+        () =>
+          ({
+            getSessionSummary: vi.fn(async () => summary),
+            getSession: vi.fn(async () => ({
+              summary,
+              data: { provider: "claude", session: { messages } },
+            })),
+          }) as unknown as ISessionReader,
+      ),
+      sessionMetadataService: {
+        getProvider: vi.fn(() => "claude"),
+        getMetadata: vi.fn(() => ({})),
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+    });
+
+    const mixed = await routes.request(
+      `/projects/${project.id}/sessions/sess-1/fork`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          forkKind: "after-user-turn",
+          sourceMessageId: "user-1",
+          upToMessageId: "assistant-1",
+        }),
+      },
+    );
+    expect(mixed.status).toBe(400);
+
+    const beforeFirst = await routes.request(
+      `/projects/${project.id}/sessions/sess-1/fork`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          forkKind: "before-user-turn",
+          sourceMessageId: "user-1",
+        }),
+      },
+    );
+    expect(beforeFirst.status).toBe(409);
+    expect(forkSession).not.toHaveBeenCalled();
+  });
+
   it("generates a retitle proposal without updating source metadata", async () => {
     const project = createProject();
     const forkSession = vi.fn(async () => ({
@@ -3150,7 +3596,11 @@ describe("Sessions metadata route", () => {
       sessionId: "sess-1",
       projectPath: project.path,
       providerName: "claude",
-      upToMessageId: "msg-after-initial-turn",
+      boundary: {
+        kind: "message",
+        provider: "claude",
+        messageId: "msg-after-initial-turn",
+      },
       title: "Refactor continuation",
       sandboxLevel: "project-write",
       sandboxStateKey: "project-sandbox",
@@ -3313,6 +3763,12 @@ describe("Sessions metadata route", () => {
       scanner: {
         getOrCreateProject: vi.fn(async () => project),
       } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(
+        () =>
+          ({
+            getSessionSummary: vi.fn(async () => null),
+          }) as unknown as ISessionReader,
+      ),
       sessionMetadataService: {
         getProvider: vi.fn(() => "claude"),
         getRequestedModel: vi.fn(() => "sonnet"),
@@ -3350,7 +3806,11 @@ describe("Sessions metadata route", () => {
     expect(forkSession).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
-        upToMessageId: "compact-summary",
+        boundary: {
+          kind: "message",
+          provider: "claude",
+          messageId: "compact-summary",
+        },
       }),
     );
   });
@@ -3385,6 +3845,12 @@ describe("Sessions metadata route", () => {
       scanner: {
         getOrCreateProject: vi.fn(async () => project),
       } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(
+        () =>
+          ({
+            getSessionSummary: vi.fn(async () => null),
+          }) as unknown as ISessionReader,
+      ),
       sessionMetadataService: {
         getProvider: vi.fn(() => "claude"),
         getTranscriptDisplayObjects: vi.fn(() => []),
@@ -3437,6 +3903,12 @@ describe("Sessions metadata route", () => {
       scanner: {
         getOrCreateProject: vi.fn(async () => project),
       } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(
+        () =>
+          ({
+            getSessionSummary: vi.fn(async () => null),
+          }) as unknown as ISessionReader,
+      ),
       sessionMetadataService: {
         getProvider: vi.fn(() => "codex"),
         getTranscriptDisplayObjects: vi.fn(() => []),
@@ -3496,6 +3968,12 @@ describe("Sessions metadata route", () => {
       scanner: {
         getOrCreateProject: vi.fn(async () => project),
       } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(
+        () =>
+          ({
+            getSessionSummary: vi.fn(async () => null),
+          }) as unknown as ISessionReader,
+      ),
       sessionMetadataService: {
         getProvider: vi.fn(() => "claude"),
         getTranscriptDisplayObjects: vi.fn(() => []),
@@ -3545,6 +4023,12 @@ describe("Sessions metadata route", () => {
       scanner: {
         getOrCreateProject: vi.fn(async () => project),
       } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(
+        () =>
+          ({
+            getSessionSummary: vi.fn(async () => null),
+          }) as unknown as ISessionReader,
+      ),
       sessionMetadataService: {
         getProvider: vi.fn(() => "claude"),
         getTranscriptDisplayObjects: vi.fn(() => []),

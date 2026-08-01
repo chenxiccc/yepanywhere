@@ -167,6 +167,13 @@ feature in Typography settings — both since landed.
 
 ### User-turn action packing
 
+Status: containment repaired 2026-08-01; geometry-based shape selection remains
+a layout-quality follow-up. The stacked rail now reserves the full block size
+of its actual action count and its hover path is pointer-addressable, so later
+assistant rows cannot cover or intercept its controls. The source-character
+packing heuristic below still makes suboptimal wide/stacked choices and remains
+the reason to implement the measured shape ladder.
+
 A 774 px-wide capture exposed the same fixed-metric mistake in user turns.
 `shouldStackUserPromptActions` in `UserPromptBlock.tsx` chooses a horizontal
 row or vertical rail from source character count (`80`) and explicit newlines,

@@ -110,10 +110,19 @@ export const CodexInputImageContentSchema = z
   })
   .passthrough();
 
+const CodexResponseItemIdentityShape = {
+  id: z.string().optional(),
+  internal_chat_message_metadata_passthrough: z
+    .object({ turn_id: z.string().optional() })
+    .passthrough()
+    .optional(),
+};
+
 /**
  * User or assistant message payload.
  */
 export const CodexMessagePayloadSchema = z.object({
+  ...CodexResponseItemIdentityShape,
   type: z.literal("message"),
   role: z.enum(["user", "assistant", "developer"]),
   content: z.array(
@@ -139,6 +148,7 @@ export const CodexSummaryTextSchema = z.object({
  * Reasoning payload (chain-of-thought, may be encrypted).
  */
 export const CodexReasoningPayloadSchema = z.object({
+  ...CodexResponseItemIdentityShape,
   type: z.literal("reasoning"),
   summary: z.array(CodexSummaryTextSchema).optional(),
   content: z.unknown().nullable().optional(), // Raw content if available
@@ -164,6 +174,7 @@ export type CodexAgentMessagePayload = z.infer<
  * Function call payload.
  */
 export const CodexFunctionCallPayloadSchema = z.object({
+  ...CodexResponseItemIdentityShape,
   type: z.literal("function_call"),
   name: z.string(),
   arguments: z.string(), // JSON string
@@ -187,6 +198,7 @@ export type CodexFunctionCallOutputContentItem = z.infer<
  * Function call output payload.
  */
 export const CodexFunctionCallOutputPayloadSchema = z.object({
+  ...CodexResponseItemIdentityShape,
   type: z.literal("function_call_output"),
   call_id: z.string(),
   output: z.union([

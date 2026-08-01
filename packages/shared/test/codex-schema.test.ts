@@ -50,4 +50,29 @@ describe("CodexSessionEntrySchema", () => {
   ])("accepts a current persisted %# entry", (entry) => {
     expect(CodexSessionEntrySchema.safeParse(entry).success).toBe(true);
   });
+
+  it("preserves response item and turn identity used by server fork resolution", () => {
+    const parsed = CodexSessionEntrySchema.parse({
+      timestamp: "2026-08-01T07:38:02.999Z",
+      type: "response_item",
+      payload: {
+        id: "msg-provider-1",
+        type: "message",
+        role: "assistant",
+        content: [{ type: "output_text", text: "done" }],
+        internal_chat_message_metadata_passthrough: {
+          turn_id: "turn-provider-1",
+        },
+      },
+    });
+
+    expect(parsed.type).toBe("response_item");
+    if (parsed.type !== "response_item") return;
+    expect(parsed.payload).toMatchObject({
+      id: "msg-provider-1",
+      internal_chat_message_metadata_passthrough: {
+        turn_id: "turn-provider-1",
+      },
+    });
+  });
 });

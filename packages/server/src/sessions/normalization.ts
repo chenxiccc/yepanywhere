@@ -64,6 +64,31 @@ interface CodexToolUseConversion {
 }
 
 const CODEX_CONTEXT_COMPACTED_DEDUPE_WINDOW_MS = 5000;
+const CODEX_PROVIDER_FORK_TURN_ID = Symbol("codexProviderForkTurnId");
+
+type MessageWithCodexForkTurnId = Message & {
+  [CODEX_PROVIDER_FORK_TURN_ID]?: string;
+};
+
+/** Read server-only Codex turn identity retained during rollout normalization. */
+export function getCodexProviderForkTurnId(message: Message): string | null {
+  return (
+    (message as MessageWithCodexForkTurnId)[CODEX_PROVIDER_FORK_TURN_ID] ?? null
+  );
+}
+
+function attachCodexProviderForkTurnId(
+  message: Message,
+  turnId: string | null,
+): void {
+  if (!turnId) return;
+  Object.defineProperty(message, CODEX_PROVIDER_FORK_TURN_ID, {
+    configurable: false,
+    enumerable: false,
+    value: turnId,
+    writable: false,
+  });
+}
 const codexMessageCache = new WeakMap<
   CodexSessionEntry[],
   {
@@ -277,6 +302,10 @@ function convertCodexEntries(
           : undefined,
       );
       if (msg) {
+        attachCodexProviderForkTurnId(
+          msg,
+          getCodexResponseItemTurnId(entry.payload),
+        );
         if (isCodexCorrelationDebugEnabled()) {
           logCodexCorrelationDebug({
             sessionId,

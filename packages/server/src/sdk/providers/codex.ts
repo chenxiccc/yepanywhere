@@ -126,6 +126,7 @@ import type {
   AgentProvider,
   AgentSession,
   AuthStatus,
+  ProviderForkBoundary,
   StartSessionOptions,
   SummaryGenerationRequest,
   SummaryGenerationResult,
@@ -1511,9 +1512,13 @@ export class CodexProvider implements AgentProvider {
     sessionId: string;
     cwd: string;
     upToMessageId?: string;
+    boundary?: ProviderForkBoundary;
     title?: string;
     sessionSandbox?: SessionSandboxRuntime;
   }): Promise<{ sessionId: string }> {
+    if (options.boundary && options.boundary.kind !== "turn") {
+      throw new Error("Codex fork requires a turn boundary");
+    }
     const codexCommand = await this.resolveCodexCommand();
     const appServer = new CodexAppServerClient(
       codexCommand,
@@ -1531,13 +1536,15 @@ export class CodexProvider implements AgentProvider {
       const experimentalApiEnabled = await this.initializeAppServer(appServer);
       appServer.notify("initialized");
 
-      const rollbackCount = options.upToMessageId
-        ? await this.resolveCodexForkRollbackCount(
-            appServer,
-            options.sessionId,
-            options.upToMessageId,
-          )
-        : 0;
+      const rollbackCount = options.boundary
+        ? 0
+        : options.upToMessageId
+          ? await this.resolveCodexForkRollbackCount(
+              appServer,
+              options.sessionId,
+              options.upToMessageId,
+            )
+          : 0;
       const policy = this.mapPermissionModeToThreadPolicy(undefined);
       const fork = await appServer.request<ThreadForkResponse>(
         "thread/fork",
@@ -1559,6 +1566,8 @@ export class CodexProvider implements AgentProvider {
         {
           sourceSessionId: options.sessionId,
           forkSessionId,
+          boundaryTurnId:
+            options.boundary?.kind === "turn" ? options.boundary.turnId : null,
           upToMessageId: options.upToMessageId ?? null,
           rollbackCount,
         },
@@ -2271,12 +2280,16 @@ export class CodexProvider implements AgentProvider {
     options: {
       sessionId: string;
       cwd: string;
+      boundary?: ProviderForkBoundary;
     },
     policy: CodexThreadPolicy,
     experimentalApiEnabled = false,
   ): CodexThreadForkParamsForRequest {
     const params: CodexThreadForkParamsForRequest = {
       threadId: options.sessionId,
+      ...(options.boundary?.kind === "turn"
+        ? { lastTurnId: options.boundary.turnId }
+        : {}),
       cwd: options.cwd,
       ...this.buildThreadPermissionParams(policy),
       config: this.buildThreadConfigOverrides({}),

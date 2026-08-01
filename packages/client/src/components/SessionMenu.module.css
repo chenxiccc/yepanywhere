@@ -63,6 +63,15 @@
   background: var(--bg-hover);
 }
 
+.dropdown button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.dropdown button:disabled:hover {
+  background: transparent;
+}
+
 .dropdown button svg {
   flex-shrink: 0;
   color: var(--text-muted);

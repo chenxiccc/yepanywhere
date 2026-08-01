@@ -1,28 +1,15 @@
-# Turn-notch actions (fork / copy / trim)
+# Session Clone and turn-relative Fork
 
-> Fork-from-turn already exists in the session view. This topic covers
-> exposing it (plus copy and the existing scrollback-trim) from the
-> scrollbar-aligned turn notches via a context menu, and making fork seed the
-> new tab's compose box with the turn it forked before.
+> Clone copies the latest completed session. Fork before/after copies a
+> completed prefix at a selected real user turn. Both create a cold session
+> without sending a message; Fork with summary remains a separate advanced
+> workflow.
 
 Topic: fork-from-turn
 
-Status: built for the first UI/backend pass. The turn-notch context menu now
-uses explicit **Fork before…** and **Fork after…** actions. **Fork after…** can
-use the composer as summary instructions and create a *fork-after-summary*: a
-fork whose later history is replaced by an LLM-generated summary. That summary
-is produced by the generalized recap/summary facility (see [recaps](recaps.md)),
-not pasted-together turns.
-
-**Known broken state (2026-08-01):** the shipped direct fork controls are not
-end-to-end reliable. A one-turn session exposes only Fork before, which cannot
-have an earlier anchor, while the turn rail that owns Fork after is hidden
-below two anchors. Codex sliced fork also passes synthesized normalized display
-ids to app-server and can mistake user-role tool results for new human turns.
-See the focused failure inventory and repair plan:
+Status: repaired and unified 2026-08-01. The focused incident record and
+implementation receipts are in
 [`docs/tactical/075-session-fork-clone-unification.md`](../docs/tactical/075-session-fork-clone-unification.md).
-Do not treat the first-pass status above as evidence that short-session or Codex
-fork is currently usable.
 
 See also:
 [session-context-actions](session-context-actions.md) (fork-capability ground
@@ -48,7 +35,41 @@ pseudo-turn used for fork-send progress and follow state),
 [scrollback-view-stability](scrollback-view-stability.md) (the client transcript
 window the trim dot controls).
 
-## What already exists (do not rebuild)
+## Observable contract
+
+- The session-header overflow menu exposes **Clone** only when the connected
+  server advertises `session-fork-turn-intents` and the selected provider
+  advertises `supportsForkSession`.
+- Clone copies through the latest completed response, titles the target
+  `Clone: <source>`, records the source as its YA parent, navigates in the same
+  tab, and opens cold with an empty target composer. It does not submit or move
+  the source draft.
+- Every real user prompt has an inline **Fork from this turn** menu independent
+  of the right-side turn rail. The first loaded real turn offers **After this
+  turn**; later turns offer **Before this turn** and **After this turn**.
+  **After with summary…** is an explicit secondary action.
+- A stacked prompt-action rail reserves its complete action-count height and
+  remains pointer-addressable while hidden for hover. The following assistant
+  turn must never cover or intercept a visible Fork control.
+- Before/After create cold, message-less targets. Before retains the completed
+  prefix preceding the selected human request; After retains that request and
+  its complete assistant/tool response. Tool-result user rows, compact rows,
+  injected context, and synthetic rows never count as human boundaries.
+- Clone and After are disabled while the selected/latest response is active.
+  YA does not wait implicitly and never substitutes a partial or before-turn
+  boundary.
+- The browser sends only a YA `sourceMessageId` plus the user intent. The server
+  resolves provider-native message/turn/entry identity. Provider ids remain
+  server-only and YA-visible session ids remain canonical.
+- A failed explicit intent creates no target and leaves the source unchanged.
+  The primary error describes that outcome; provider detail is diagnostic.
+- The turn rail remains a desktop accelerator backed by the same handlers. Its
+  normal two-anchor threshold is not a feature-availability gate.
+- Older servers without `session-fork-turn-intents` expose none of this unified
+  surface and receive no fork request. The server continues to parse legacy
+  empty and `{ upToMessageId }` bodies for older clients.
+
+## Historical first pass (superseded where noted)
 
 - **Fork from a turn.** `SessionPage.forkBeforeUserMessage(messageId)` forks the
   session from just *before* a user message: it finds the prior user/assistant
@@ -64,7 +85,13 @@ window the trim dot controls).
   (SessionPage builds that key; `useDraftPersistence(key)` reads it directly —
   no install-id indirection for the session composer).
 
-## Proposal: fork before / fork after / fork-after-summary
+## Historical fork-summary design
+
+The remainder of this section records the design that produced the first
+fork-summary implementation. Its assumptions that ordinary Fork consumes the
+composer, seeds a retry draft, or requires the rail are superseded by the
+observable contract above. The generated-summary job remains an explicit
+**After with summary…** action.
 
 Replace the current notch-menu **Fork from here** entry; no legacy label needs
 to be preserved. The right-scroll turn marker context menu should stay narrow:
@@ -438,7 +465,7 @@ the documented shortcut.
   GLOSSARY term) understates it; recap becomes a preset of the summary
   facility.
 
-## Implemented
+## Implemented surfaces
 
 1. **Context menu on the notches.** `UserTurnNavigator` markers take
    `onContextMenu` (desktop right-click) and a ~450ms long-press (touch) that
@@ -449,31 +476,33 @@ the documented shortcut.
    (`onTrimAnchor`). Plain click still jumps; the trim dot still trims. Dismiss:
    transparent overlay click, Escape, or selecting an item. New props are
    optional, so items render only when wired.
-2. **Fork seeds the new composer.** `SessionPage.forkBeforeUserMessage` writes
-   the selected turn's text to `localStorage["draft-message-" + newSessionId]`
-   before navigating; the composer reads that key via `useDraftPersistence`.
-   "Branch and retry this turn." `turnContentText()` extracts the text (shared
-   with copy).
+2. **Inline turn menu.** `ForkTurnMenu` is available from every real user
+   prompt on pointer and touch layouts. `SessionPage` sends
+   `before-user-turn` or `after-user-turn` to the server and navigates to the
+   cold target without reading, clearing, submitting, or seeding composer text.
 3. **Fork-after-summary.** `generateRecap` is refactored to provider
    `generateSummary` with side-session recap and fork strategies. Claude's fork
    strategy creates a throwaway full-source generator fork, submits the summary
    prompt there, then `/fork-summary` creates the target fork at the completed
    turn anchor and submits the generated summary as an ordinary user turn. The
    client exposes `api.forkSessionWithSummary`.
-4. **Composer fork mode.** `SessionPage` invokes fork-after immediately when the
-   composer already has summary instructions. If the composer is empty, it puts
-   `MessageInput` into a temporary fork-summary mode: the placeholder/caption
-   explain the action, the send icon changes, `Ctrl+Alt+Enter` defaults to the
-   first completed user turn, and empty submit means the default summary
-   template. Cancel exits the mode without discarding typed text.
+4. **Explicit composer fork mode.** Only **After with summary…** enters the
+   temporary fork-summary mode. Existing composer text is not implicitly
+   consumed by opening that action. Cancel exits without discarding text; the
+   no-summary path delegates to the same server-owned After intent.
 5. **Copy** uses the full turn text, resolved in `SessionPage` (`copyUserMessage`
    → `onCopyUserMessage` → `onCopyAnchor`), not the truncated `marker.preview`.
    Silent (matches the existing copy-prompt action; no toast / i18n key added).
+6. **Header Clone.** The header-only `SessionMenu` handler sends
+   `clone-latest-complete`, shows pending/disabled state, and navigates in the
+   same tab. Session-list menus do not receive the handler, so Clone has one
+   deliberate discovery surface rather than appearing on every row.
 
 ## Follow-up UI spec: inline turn actions and fork-after no-summary
 
-Status: specified 2026-06-23. These are three independent UI changes that
-should land cleanly without changing ordinary send behavior.
+Status: partly superseded by the 2026-08-01 observable contract. Inline access
+and no-summary cold forks landed through the unified turn menu; range selection
+remains a separate unimplemented proposal.
 
 ### 1. Reserve a lane for inline turn actions
 

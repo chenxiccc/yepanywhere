@@ -11,10 +11,10 @@ Topic: turn-rail-marker-layout
 See also: [fork-from-turn](fork-from-turn.md) (the notch context menu these
 markers carry), [scrollback-view-stability](scrollback-view-stability.md).
 
-The normal rail intentionally requires two anchors. It therefore cannot be the
-only owner of Fork after: a one-turn session has no rail even though its first
-completed response is a valid fork boundary. The discoverability and repair
-plan is
+The normal rail intentionally requires two anchors. It is therefore only a
+desktop accelerator for Fork: every real user prompt owns an inline
+**Fork from this turn** menu, including the single turn in a short session. The
+2026-08-01 discoverability repair is recorded in
 [`docs/tactical/075-session-fork-clone-unification.md`](../docs/tactical/075-session-fork-clone-unification.md).
 
 ## The bug (root cause)

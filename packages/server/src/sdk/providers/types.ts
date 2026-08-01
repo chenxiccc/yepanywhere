@@ -38,6 +38,23 @@ export type ProviderName =
   | "pi";
 
 /**
+ * Provider-native address of a completed transcript prefix. These identities
+ * stay on the server; browser-facing message and session ids remain YA ids.
+ */
+export type ProviderForkBoundary =
+  | {
+      kind: "message";
+      provider: "claude" | "claude-gateway" | "claude-ollama";
+      messageId: string;
+    }
+  | {
+      kind: "turn";
+      provider: "codex" | "codex-oss";
+      turnId: string;
+    }
+  | { kind: "entry"; provider: "pi"; entryId: string };
+
+/**
  * Authentication status for a provider.
  */
 export interface AuthStatus {
@@ -354,6 +371,8 @@ export interface AgentProvider {
     cwd: string;
     /** Slice transcript up to this message UUID (inclusive); omit for full copy. */
     upToMessageId?: string;
+    /** Typed provider boundary used by server-resolved fork intents. */
+    boundary?: ProviderForkBoundary;
     /** Title for the forked session. */
     title?: string;
     /** Project-private provider state and process confinement inherited by the fork. */

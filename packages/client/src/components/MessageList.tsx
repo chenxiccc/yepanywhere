@@ -543,6 +543,10 @@ interface Props {
   onForkBeforeUserMessage?: (messageId: string) => void;
   /** Fork after the completed turn for this user message, optionally with a summary. */
   onForkAfterUserMessage?: (messageId: string) => void;
+  /** Enter the explicit fork-after-with-summary workflow for this user turn. */
+  onForkAfterSummaryUserMessage?: (messageId: string) => void;
+  /** The latest response is active, so after-turn boundaries are disabled. */
+  forkAfterUserMessageDisabled?: boolean;
   /** Copy the given user turn's text (turn-notch context menu). */
   onCopyUserMessage?: (messageId: string) => void;
   /** Pre-rendered markdown HTML from server (keyed by message ID) */
@@ -898,6 +902,8 @@ export const MessageList = memo(function MessageList({
   onTrimBeforeUserMessage,
   onForkBeforeUserMessage,
   onForkAfterUserMessage,
+  onForkAfterSummaryUserMessage,
+  forkAfterUserMessageDisabled = false,
   onCopyUserMessage,
   markdownAugments,
   activeToolApproval,
@@ -1673,6 +1679,33 @@ export const MessageList = memo(function MessageList({
       latestCorrectablePrompt?.id,
       latestVisibleTimestampMs,
       nowMs,
+    ],
+  );
+  const firstPromptActionId = useMemo(() => {
+    for (const row of timelineEntryRows) {
+      if (row.kind === "user" && row.allowsPromptActions) {
+        return row.item.id;
+      }
+      if (row.kind !== "assistant") continue;
+      const prompt = row.rows.find(
+        (candidate) =>
+          candidate.kind === "item" && candidate.allowsPromptActions,
+      );
+      if (prompt?.kind === "item") return prompt.item.id;
+    }
+    return null;
+  }, [timelineEntryRows]);
+  const canForkBeforePrompt = useCallback(
+    (messageId: string) =>
+      messageId !== firstPromptActionId ||
+      hasOlderMessages ||
+      clientTailActive ||
+      conversationWindow.hiddenTurnCount > 0,
+    [
+      clientTailActive,
+      conversationWindow.hiddenTurnCount,
+      firstPromptActionId,
+      hasOlderMessages,
     ],
   );
   useEffect(() => {
@@ -2775,6 +2808,8 @@ export const MessageList = memo(function MessageList({
         onTrimAnchor={onTrimBeforeUserMessage}
         onForkBeforeAnchor={onForkBeforeUserMessage}
         onForkAfterAnchor={onForkAfterUserMessage}
+        canForkBeforeAnchor={canForkBeforePrompt}
+        forkAfterDisabled={forkAfterUserMessageDisabled}
         onCopyAnchor={onCopyUserMessage}
         onPreviewTimestampChange={setHoveredMarkerTimestampMs}
         searchState={userTurnNavSearchState}
@@ -2935,10 +2970,24 @@ export const MessageList = memo(function MessageList({
                     : undefined
                 }
                 onForkBeforeUserPrompt={
-                  onForkBeforeUserMessage && timelineRow.allowsPromptActions
+                  onForkBeforeUserMessage &&
+                  timelineRow.allowsPromptActions &&
+                  canForkBeforePrompt(item.id)
                     ? () => onForkBeforeUserMessage(item.id)
                     : undefined
                 }
+                onForkAfterUserPrompt={
+                  onForkAfterUserMessage && timelineRow.allowsPromptActions
+                    ? () => onForkAfterUserMessage(item.id)
+                    : undefined
+                }
+                onForkAfterSummaryUserPrompt={
+                  onForkAfterSummaryUserMessage &&
+                  timelineRow.allowsPromptActions
+                    ? () => onForkAfterSummaryUserMessage(item.id)
+                    : undefined
+                }
+                forkAfterUserPromptDisabled={forkAfterUserMessageDisabled}
                 staleNowMs={timelineRow.staleNowMs}
                 latestVisibleTimestampMs={latestVisibleTimestampMs}
               />
@@ -2985,10 +3034,23 @@ export const MessageList = memo(function MessageList({
                     }
                     onForkBeforeUserPrompt={
                       onForkBeforeUserMessage &&
-                      assistantRow.allowsPromptActions
+                      assistantRow.allowsPromptActions &&
+                      canForkBeforePrompt(item.id)
                         ? () => onForkBeforeUserMessage(item.id)
                         : undefined
                     }
+                    onForkAfterUserPrompt={
+                      onForkAfterUserMessage && assistantRow.allowsPromptActions
+                        ? () => onForkAfterUserMessage(item.id)
+                        : undefined
+                    }
+                    onForkAfterSummaryUserPrompt={
+                      onForkAfterSummaryUserMessage &&
+                      assistantRow.allowsPromptActions
+                        ? () => onForkAfterSummaryUserMessage(item.id)
+                        : undefined
+                    }
+                    forkAfterUserPromptDisabled={forkAfterUserMessageDisabled}
                     onQuoteTextBlock={
                       assistantRow.allowsTextQuote
                         ? handleQuoteTextBlock

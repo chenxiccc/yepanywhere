@@ -91,10 +91,15 @@ session-UI controls before; see
 `topics/kzahel-disabled.md`. Implementation is provider-neutral: create
 a new session with the same project/provider/model and navigate to it.
 
-## Fork
+## Clone and Fork
 
-Claude is the only provider with a first-class fork surface today.
-Verified in SDK 0.3.170 `sdk.d.ts` (none of these are used by YA yet):
+YA exposes one provider-native copy family for Claude, Codex, and Pi. A direct
+**Clone** keeps the latest completed response; **Fork before/after** keeps a
+server-resolved prefix at a real user-turn boundary. Both create a cold session
+with no new provider turn and leave the source unchanged. **Handoff** remains a
+separate replacement/continuation workflow.
+
+Claude's underlying SDK 0.3.170 surface is:
 
 - `forkSession(sessionId, { upToMessageId?, title? })` — copies the
   transcript into a new session file with remapped UUIDs and a
@@ -109,20 +114,19 @@ Verified in SDK 0.3.170 `sdk.d.ts` (none of these are used by YA yet):
   up to a given message; the branch-from-a-point primitive without
   creating a separate file first.
 
-Other providers: Codex implements `forkSession` through native app-server
-`thread/fork` plus `thread/rollback` for trailing completed turns; Pi
-implements `forkSession` by writing a new Pi-format JSONL file containing the
+Codex uses native app-server `thread/fork`; new typed turn boundaries map
+directly to inclusive `lastTurnId`, while legacy item anchors retain the old
+read-and-rollback path. Pi writes a new Pi-format JSONL file containing the
 retained branch. ACP providers (gemini-acp, grok-acp) and opencode hold session
-state provider-side with no exposed branch surface. A YA fork action should stay
-provider-capability-gated (`supportsForkSession`), not become an unconditional
-generic session action.
+state provider-side with no exposed branch surface.
 
-Capability presence is not current end-to-end proof. The 2026-08-01 short-
-session/Codex investigation found that the visible first-turn action has no
-valid before-boundary, the rail-only after action is absent until two turns,
-and Codex receives normalized display ids that app-server cannot address. The
-repair must also restore a direct, message-less full Clone action without
-conflating it with restart/handoff. See
+The client requires both provider `supportsForkSession` and server capability
+`session-fork-turn-intents`. Without either, it hides the complete unified
+Clone/direct-Fork surface and sends no request. The server resolves real human
+turns; user-role tool results and injected/synthetic rows are not boundaries.
+The exact UI, completed-turn, draft, and failure contracts are in
+[fork-from-turn](fork-from-turn.md); the original 2026-08-01 failures and repair
+receipts are in
 [`docs/tactical/075-session-fork-clone-unification.md`](../docs/tactical/075-session-fork-clone-unification.md).
 
 ## Handoff and synthetic-turn replay
@@ -164,8 +168,9 @@ one user message — splits by provider:
   assistant turns are ordinary and fine, but a *trailing* assistant
   prefill 400s on current models, so a forged transcript must end on a
   user/tool turn.
-- **Codex**: rollout files are similarly on disk; same in-principle
-  forgery, same unverified/fragile status, no fork primitive.
+- **Codex**: rollout files are similarly on disk; same in-principle forgery and
+  fragility for arbitrary synthetic transcripts. Prefix fork is supported
+  separately through native app-server `thread/fork`.
 - **ACP providers and opencode**: no injection surface — context can
   only enter as real user messages, so the template handoff is the
   ceiling there.
@@ -207,7 +212,7 @@ compact command on an idle process, show the `Compacting` busy state
 per [provider-state-machine](provider-state-machine.md), and surface
 failure without retry loops.
 
-## Proposed action set (design sketch, not yet built)
+## Action set
 
 Session kebab menu, capability-gated per provider, hidden or
 configurable per [session-ui-customization](session-ui-customization.md):
@@ -215,14 +220,15 @@ configurable per [session-ui-customization](session-ui-customization.md):
 | Action | Mechanism | Providers |
 |---|---|---|
 | Clear | New session, same project/provider/model; navigate | all |
-| Fork | `forkSession` / `resumeSessionAt` at a chosen message | claude |
+| Clone | Provider-native full fork through latest complete turn | claude, codex, pi |
+| Fork | Provider-native prefix fork at a real user-turn boundary | claude, codex, pi |
 | Handoff to agent | Existing restart-handoff with provider/model picker | all |
 | Compact now | Queue advertised compact command; busy state | claude, codex |
 
-Open questions: where fork's "choose a point" lives in the transcript
-UI; whether clear should offer "keep a recap" (see
-[recaps](recaps.md)); whether compact-now belongs in the same menu or
-near the context-usage indicator.
+The fork point lives in the inline menu on each real user prompt; the right-side
+turn rail is an accelerator for the same actions. Remaining questions are
+whether clear should offer "keep a recap" (see [recaps](recaps.md)) and whether
+compact-now belongs in the same menu or near the context-usage indicator.
 
 Decision (2026-06-12): do not make the context-usage indicator itself
 send `/compact`. Accidental clicks can mutate an existing session, and

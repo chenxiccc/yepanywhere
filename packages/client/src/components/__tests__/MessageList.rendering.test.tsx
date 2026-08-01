@@ -24,6 +24,38 @@ describe("MessageList rendering", () => {
   const galleryMediaHtml = (label: string, path: string) =>
     `<span class="local-media-link-group"><button type="button" class="local-media-inline-toggle" data-media-path="${path}" data-media-type="image" data-expanded="false" aria-label="Expand image" aria-expanded="false">+</button><a href="/api/local-image?path=${encodeURIComponent(path)}" class="local-media-link" data-media-type="image" data-ya-path="${path}" data-ya-media-type="image">${label}<span class="local-media-type">(image)</span></a></span><span class="local-media-inline-preview" data-media-path="${path}" data-media-type="image" data-expanded="false"></span>`;
 
+  it("offers a real after fork on the first turn and before on later turns", () => {
+    const onForkBefore = vi.fn();
+    const onForkAfter = vi.fn();
+    render(
+      <MessageList
+        messages={[
+          userMessage("user-1", "First request"),
+          assistantMessage("assistant-1", "First response"),
+          userMessage("user-2", "Second request"),
+          assistantMessage("assistant-2", "Second response"),
+        ]}
+        onForkBeforeUserMessage={onForkBefore}
+        onForkAfterUserMessage={onForkAfter}
+        onForkAfterSummaryUserMessage={vi.fn()}
+      />,
+    );
+
+    const triggers = screen.getAllByRole("button", {
+      name: "Fork from this turn",
+    });
+    fireEvent.click(triggers[0]!);
+    expect(
+      screen.queryByRole("menuitem", { name: "Before this turn" }),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole("menuitem", { name: "After this turn" }));
+    expect(onForkAfter).toHaveBeenCalledWith("user-1");
+
+    fireEvent.click(triggers[1]!);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Before this turn" }));
+    expect(onForkBefore).toHaveBeenCalledWith("user-2");
+  });
+
   it("groups turn images while preserving bidirectional text-link navigation", () => {
     window.localStorage.setItem(UI_KEYS.inlineMediaExpandedByDefault, "true");
     invalidateLocalStorageValues();

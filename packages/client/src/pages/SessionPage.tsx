@@ -163,10 +163,7 @@ import {
   serverSupportsProjectQueue,
   shouldShowProjectQueueAffordance,
 } from "../lib/projectQueueVisibility";
-import {
-  createSessionDraftStorageKey,
-  saveSessionDraft,
-} from "../lib/sessionDraftStorage";
+import { createSessionDraftStorageKey } from "../lib/sessionDraftStorage";
 import {
   type ComposerTurnRecallCache,
   createComposerTurnRecallCache,
@@ -184,6 +181,7 @@ import {
   parseSessionNavigationState,
 } from "../lib/sessionNavigationState";
 import { getPublicShareInitialPrompt } from "../lib/sessionPublicSharePrompt";
+import { supportsUnifiedSessionFork } from "../lib/sessionForkAvailability";
 import {
   composeGeneratedRetitle,
   createSessionRetitleSubmittedTurnText,
@@ -217,10 +215,6 @@ interface LiveModelConfig {
 
 function messageKey(message: Message | undefined): string | undefined {
   return message?.uuid ?? message?.id;
-}
-
-function isForkAnchorMessage(message: Message | undefined): boolean {
-  return message?.type === "user" || message?.type === "assistant";
 }
 
 function isMissingDeferredQueueEntryError(error: unknown): boolean {
@@ -985,44 +979,16 @@ function SessionPageContent({
     return getThinkingSetting();
   }, [currentProviderInfo, liveModelConfig, status.owner]);
 
-  // "Fork before…": real prefix fork up to the message before this user
-  // turn; the fork opens cold with an empty composer (rewind-and-continue).
-  // Only offered when the provider has a fork primitive (never emulated).
-  const supportsForkFromTurn =
-    currentProviderInfo?.supportsForkSession === true;
-  const resolveForkAfterAnchor = useCallback(
-    (messageId: string): { anchorId?: string; pending?: boolean } => {
-      const index = messages.findIndex((m) => messageKey(m) === messageId);
-      if (index < 0) return {};
-
-      let nextUserIndex = -1;
-      for (let i = index + 1; i < messages.length; i += 1) {
-        if (messages[i]?.type === "user") {
-          nextUserIndex = i;
-          break;
-        }
-      }
-
-      if (
-        nextUserIndex < 0 &&
-        (processState === "in-turn" || processState === "waiting-input")
-      ) {
-        return { pending: true };
-      }
-
-      const searchEnd =
-        nextUserIndex >= 0 ? nextUserIndex - 1 : messages.length - 1;
-      for (let i = searchEnd; i >= index; i -= 1) {
-        const candidate = messages[i];
-        const candidateId = messageKey(candidate);
-        if (candidateId && isForkAnchorMessage(candidate)) {
-          return { anchorId: candidateId };
-        }
-      }
-      return {};
-    },
-    [messages, processState],
+  // Unified Clone/Fork requires both the provider primitive and the server's
+  // real-user-turn intent resolver. Older servers get no unsupported request.
+  const supportsForkFromTurn = supportsUnifiedSessionFork(
+    versionInfo,
+    currentProviderInfo?.supportsForkSession,
   );
+  const forkAfterDisabled =
+    status.owner === "external" ||
+    processState === "in-turn" ||
+    processState === "waiting-input";
   const submitForkAfterSummary = useCallback(
     async (sourceMessageId: string, instructions: string) => {
       const requestSessionId = actualSessionId;
@@ -1084,13 +1050,8 @@ function SessionPageContent({
         showToast(t("forkSummaryAttachmentsUnsupported"), "error");
         return;
       }
-      const resolved = resolveForkAfterAnchor(sourceMessageId);
-      if (resolved.pending) {
+      if (forkAfterDisabled) {
         showToast(t("forkAfterTurnPending"), "error");
-        return;
-      }
-      if (!resolved.anchorId) {
-        showToast(t("forkAfterTurnNoAnchor"), "error");
         return;
       }
 
@@ -1098,7 +1059,8 @@ function SessionPageContent({
       setForkSummaryDraft(null);
       try {
         const result = await api.forkSession(projectId, actualSessionId, {
-          upToMessageId: resolved.anchorId,
+          forkKind: "after-user-turn",
+          sourceMessageId,
         });
         if (nextTurnText.trim()) {
           await api.queueMessage(
@@ -1125,12 +1087,75 @@ function SessionPageContent({
       navigate,
       permissionMode,
       projectId,
-      resolveForkAfterAnchor,
+      forkAfterDisabled,
       showToast,
       t,
       uploadProgress.length,
     ],
   );
+  const createDirectTurnFork = useCallback(
+    async (
+      sourceMessageId: string,
+      forkKind: "before-user-turn" | "after-user-turn",
+    ) => {
+      if (forkKind === "after-user-turn" && forkAfterDisabled) {
+        showToast(t("forkAfterTurnPending"), "error");
+        return;
+      }
+      try {
+        const result = await api.forkSession(projectId, actualSessionId, {
+          forkKind,
+          sourceMessageId,
+        });
+        showToast(t("forkFromTurnStarted"), "success");
+        navigate(
+          `${basePath}/projects/${projectId}/sessions/${result.sessionId}`,
+        );
+      } catch (error) {
+        showToast(
+          error instanceof Error ? error.message : t("sessionRestartFailed"),
+          "error",
+        );
+      }
+    },
+    [
+      actualSessionId,
+      basePath,
+      forkAfterDisabled,
+      navigate,
+      projectId,
+      showToast,
+      t,
+    ],
+  );
+  const cloneSession = useCallback(async () => {
+    if (forkAfterDisabled) {
+      showToast(t("sessionMenuCloneDisabled"), "error");
+      return;
+    }
+    try {
+      const result = await api.forkSession(projectId, actualSessionId, {
+        forkKind: "clone-latest-complete",
+      });
+      showToast(t("sessionCloneCreated"), "success");
+      navigate(
+        `${basePath}/projects/${projectId}/sessions/${result.sessionId}`,
+      );
+    } catch (error) {
+      showToast(
+        error instanceof Error ? error.message : t("sessionCloneFailed"),
+        "error",
+      );
+    }
+  }, [
+    actualSessionId,
+    basePath,
+    forkAfterDisabled,
+    navigate,
+    projectId,
+    showToast,
+    t,
+  ]);
   const cancelForkSummaryJob = useCallback(
     async (objectId: string) => {
       const requestSessionId = actualSessionId;
@@ -1287,21 +1312,9 @@ function SessionPageContent({
         showToast(t("forkSummaryAttachmentsUnsupported"), "error");
         return false;
       }
-      const resolved = resolveForkAfterAnchor(messageId);
-      if (resolved.pending) {
+      if (forkAfterDisabled) {
         showToast(t("forkAfterTurnPending"), "error");
         return false;
-      }
-      if (!resolved.anchorId) {
-        showToast(t("forkAfterTurnNoAnchor"), "error");
-        return false;
-      }
-      const instructions = (
-        draftControlsRef.current?.getDraft() ?? composerDraftSignal.getDraft()
-      ).trim();
-      if (instructions) {
-        void submitForkAfterSummary(messageId, instructions);
-        return true;
       }
       setForkSummaryDraft({
         sourceMessageId: messageId,
@@ -1311,10 +1324,8 @@ function SessionPageContent({
     },
     [
       attachments.length,
-      composerDraftSignal,
-      resolveForkAfterAnchor,
+      forkAfterDisabled,
       showToast,
-      submitForkAfterSummary,
       t,
       uploadProgress.length,
     ],
@@ -1335,13 +1346,8 @@ function SessionPageContent({
         showToast(t("forkAfterTurnNoAnchor"), "error");
         return false;
       }
-      const resolved = resolveForkAfterAnchor(firstUserId);
-      if (resolved.pending) {
+      if (forkAfterDisabled) {
         showToast(t("forkAfterTurnPending"), "error");
-        return false;
-      }
-      if (!resolved.anchorId) {
-        showToast(t("forkAfterTurnNoAnchor"), "error");
         return false;
       }
       if (instructions.trim()) {
@@ -1356,8 +1362,8 @@ function SessionPageContent({
     },
     [
       attachments.length,
+      forkAfterDisabled,
       messages,
-      resolveForkAfterAnchor,
       showToast,
       submitForkAfterSummary,
       t,
@@ -1365,67 +1371,12 @@ function SessionPageContent({
     ],
   );
   const forkBeforeUserMessage = useCallback(
-    async (messageId: string) => {
-      const index = messages.findIndex((m) => (m.uuid ?? m.id) === messageId);
-      let anchorId: string | undefined;
-      for (let i = index - 1; i >= 0; i--) {
-        const candidate = messages[i];
-        const candidateId = candidate?.uuid ?? candidate?.id;
-        if (
-          candidateId &&
-          (candidate?.type === "user" || candidate?.type === "assistant")
-        ) {
-          anchorId = candidateId;
-          break;
-        }
-      }
-      if (index < 0 || !anchorId) {
-        showToast(t("forkFromTurnNoAnchor"), "error");
-        return;
-      }
-      // The fork excludes the selected turn (we fork *before* it), so seed the
-      // new session's composer with that turn's text — "branch and retry this
-      // turn" — instead of dropping it. The composer reads this draft key
-      // directly (useDraftPersistence). See topics/fork-from-turn.md.
-      const prefill = turnContentText(messages[index]?.message?.content);
-      try {
-        const result = await api.forkSession(projectId, actualSessionId, {
-          upToMessageId: anchorId,
-        });
-        if (prefill.trim()) {
-          try {
-            saveSessionDraft(
-              {
-                sourceKey: clientSummarySourceKey,
-                sessionId: result.sessionId,
-              },
-              prefill,
-            );
-          } catch {
-            // localStorage unavailable/full — fork still proceeds, just no seed.
-          }
-        }
-        showToast(t("forkFromTurnStarted"), "success");
-        navigate(
-          `${basePath}/projects/${projectId}/sessions/${result.sessionId}`,
-        );
-      } catch (err) {
-        showToast(
-          err instanceof Error ? err.message : t("sessionRestartFailed"),
-          "error",
-        );
-      }
-    },
-    [
-      messages,
-      projectId,
-      actualSessionId,
-      navigate,
-      basePath,
-      showToast,
-      t,
-      clientSummarySourceKey,
-    ],
+    (messageId: string) => createDirectTurnFork(messageId, "before-user-turn"),
+    [createDirectTurnFork],
+  );
+  const forkAfterUserMessage = useCallback(
+    (messageId: string) => createDirectTurnFork(messageId, "after-user-turn"),
+    [createDirectTurnFork],
   );
   const copyUserMessage = useCallback(
     (messageId: string) => {
@@ -4744,6 +4695,8 @@ function SessionPageContent({
                       ? handleGenerateAndApplyTitle
                       : undefined
                   }
+                  onClone={supportsForkFromTurn ? cloneSession : undefined}
+                  cloneDisabled={forkAfterDisabled}
                   onConfigureHeartbeat={() => setShowHeartbeatModal(true)}
                   onConfigureRecaps={
                     status.owner === "self"
@@ -5112,8 +5065,12 @@ function SessionPageContent({
                     supportsForkFromTurn ? forkBeforeUserMessage : undefined
                   }
                   onForkAfterUserMessage={
+                    supportsForkFromTurn ? forkAfterUserMessage : undefined
+                  }
+                  onForkAfterSummaryUserMessage={
                     supportsForkFromTurn ? beginForkAfterSummary : undefined
                   }
+                  forkAfterUserMessageDisabled={forkAfterDisabled}
                   onCopyUserMessage={copyUserMessage}
                   markdownAugments={markdownAugments}
                   activeToolApproval={activeToolApproval}

@@ -124,6 +124,8 @@ describe("UserPromptBlock", () => {
           content={"Please handle this long user turn. ".repeat(5)}
           onCorrect={vi.fn()}
           onForkBefore={vi.fn()}
+          onForkAfter={vi.fn()}
+          onForkAfterSummary={vi.fn()}
           onTrimBefore={vi.fn()}
         />
       </I18nProvider>,
@@ -131,8 +133,11 @@ describe("UserPromptBlock", () => {
 
     const container = screen
       .getByText(/Please handle this long user turn/)
-      .closest(".user-prompt-container");
+      .closest<HTMLElement>(".user-prompt-container");
     expect(container?.classList.contains("has-stacked-actions")).toBe(true);
+    expect(
+      container?.style.getPropertyValue("--user-prompt-action-count"),
+    ).toBe("4");
 
     const actionLabels = Array.from(
       container?.querySelectorAll(".user-prompt-actions button") ?? [],
@@ -140,9 +145,64 @@ describe("UserPromptBlock", () => {
     expect(actionLabels).toEqual([
       "Copy message text",
       "Edit latest message",
-      "Fork session from before this turn",
+      "Fork from this turn",
       "Show starting here",
     ]);
+  });
+
+  it("offers after but not before for a first-turn fork menu", () => {
+    const onForkAfter = vi.fn();
+    render(
+      <I18nProvider>
+        <UserPromptBlock
+          content="First request"
+          onForkAfter={onForkAfter}
+          onForkAfterSummary={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Fork from this turn" }),
+    );
+    expect(
+      screen.queryByRole("menuitem", { name: "Before this turn" }),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole("menuitem", { name: "After this turn" }));
+    expect(onForkAfter).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps before available while disabling active after actions", () => {
+    render(
+      <I18nProvider>
+        <UserPromptBlock
+          content="Active later request"
+          onForkBefore={vi.fn()}
+          onForkAfter={vi.fn()}
+          onForkAfterSummary={vi.fn()}
+          forkAfterDisabled
+        />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Fork from this turn" }),
+    );
+    expect(
+      (screen.getByRole("menuitem", {
+        name: "Before this turn",
+      }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect(
+      (screen.getByRole("menuitem", {
+        name: "After this turn",
+      }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(
+      (screen.getByRole("menuitem", {
+        name: "After with summary…",
+      }) as HTMLButtonElement).disabled,
+    ).toBe(true);
   });
 
   it("marks an unconfirmed send with a margin tag whose tap explains it", () => {

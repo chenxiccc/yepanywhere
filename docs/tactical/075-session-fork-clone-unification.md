@@ -1,9 +1,9 @@
 # Session Fork And Clone Unification
 
-Status: product and compatibility direction approved 2026-08-01;
-implementation and paid-provider validation remain paused until the Maintainer
-explicitly says to proceed. No runtime changes have been made from this
-tactical.
+Status: complete 2026-08-01. The server-owned boundary contract, provider
+adapters, capability gate, unified client surface, deterministic suite, and
+isolated Claude/Codex verification all passed. This document remains the
+incident, decision, implementation, and validation receipt.
 
 Topic: fork-from-turn
 Topic: provider-fork-support
@@ -234,6 +234,22 @@ source is unchanged, and the user may retry after the response completes or use
 Clone where appropriate. Provider details belong in structured logs and an
 optional diagnostic detail, not the primary toast.
 
+### 8 — a stacked prompt-action rail can be visible but unclickable
+
+The isolated browser smoke reproduced a second UI-level cause of “Fork does
+nothing.” `shouldStackUserPromptActions` classified the 81-character marker
+prompt as a four-button vertical rail. The rail occupied 148 px, but its user-
+turn container reserved only 34 px, so the following assistant turn painted
+over the Fork button and intercepted its pointer event.
+
+The repair reserves the actual rendered action count in the stacked turn's
+block size and keeps the transparent hover rail pointer-addressable so entering
+the button area reveals and activates the button. A normal Playwright pointer
+click now opens the menu at desktop and phone widths; no forced/programmatic
+click is used by the passing smoke. The broader action-shape optimization in
+`topics/responsive-layout-gaps.md` remains separate from this containment and
+operability fix.
+
 ## Architecture Direction
 
 ### Server owns user intent and boundary resolution
@@ -258,8 +274,8 @@ reader's real-user-turn provenance, finds the requested completed boundary,
 and passes a provider-native fork boundary to the adapter:
 
 - Claude: durable transcript UUID accepted by SDK `forkSession`;
-- Codex: app-server turn id plus whole-turn rollback count, with item ids used
-  only when they name a completed turn boundary;
+- Codex: app-server turn id passed directly as `thread/fork.lastTurnId`;
+  legacy item-id callers retain the old read-and-rollback compatibility path;
 - Pi: durable Pi entry id on the retained branch; and
 - full Clone: no slice boundary after the latest-complete safety check.
 
@@ -276,7 +292,6 @@ placement/diagnostics and a typed provider boundary used for the write:
 
 ```ts
 type ProviderForkBoundary =
-  | { kind: "full" }
   | { kind: "message"; provider: "claude"; messageId: string }
   | { kind: "turn"; provider: "codex"; turnId: string }
   | { kind: "entry"; provider: "pi"; entryId: string };
@@ -286,12 +301,13 @@ This is also conceptual rather than a required public type name. The important
 constraint is that provider ids stay server-side and cannot be substituted for
 YA session ids or renderer ids.
 
-For Codex, build a reader-owned association between each paired human user turn
-and its completed provider turn id. Use persisted user-turn provenance plus the
-turn lifecycle/response metadata, then confirm the selected id against
-app-server `thread/read`. Pass the resulting turn id to the Codex adapter so it
-can calculate whole-turn rollback directly. Do not send provider ids through
-the browser, match prompts by text, or infer a human turn from a user-role row.
+For Codex, preserve each response item's persisted
+`internal_chat_message_metadata_passthrough.turn_id` as server-only normalized
+metadata. The completed-turn resolver passes that turn id to the adapter as a
+typed boundary. Codex `0.145.0` accepts it directly as inclusive
+`thread/fork.lastTurnId`, so the intent path needs neither `thread/read` nor
+`thread/rollback`. Do not send provider ids through the browser, match prompts
+by text, or infer a human turn from a user-role row.
 
 ### Keep one orchestration result
 
@@ -355,7 +371,8 @@ contain the client-side resolver/control failures recorded above.
 
 Approved compatibility contract:
 
-- Add transitional `/api/version` capability `session-fork-turn-intents`.
+- Add transitional `/api/version` capability `session-fork-turn-intents`,
+  introduced in `0.7.1`.
 - Add `sessions` as a capability-registry area and record the actual first
   release containing the contract when that release is chosen. Set
   `reviewAfter` to 2026-09-01; remove the client gate only after the optional
@@ -426,9 +443,9 @@ Recorded decision:
 - Sync/verify the pinned Codex reference before source changes and inspect the
   matching app-server `thread/read`, `thread/fork`, and rollback identities.
 - The 2026-08-01 preflight found the optional local checkout at
-  `rust-v0.144.1` while `package.json` expects `rust-v0.145.0`; run
-  `pnpm references:sync` only after the Maintainer says to proceed, then require
-  `pnpm references:check` to pass before relying on upstream source receipts.
+  `rust-v0.144.1` while `package.json` expects `rust-v0.145.0`. After approval,
+  `pnpm references:sync` aligned it to `rust-v0.145.0` and
+  `pnpm references:check` passed before source changes relied on that receipt.
 - Preserve provider item/turn identity alongside normalized messages or resolve
   it from the durable rollout on the server; do not replace render UUIDs.
 - Prefer Codex's direct completed-turn id as the boundary. Use rollback count
@@ -465,13 +482,23 @@ Recorded decision:
 - Use **Before this turn**, **After this turn**, and **After with summary...**
   labels. The first two are message-less; the last is visually secondary and
   enters the existing summary flow before any composer state is consumed.
+- Reserve the full block size of a stacked prompt-action rail and preserve its
+  hover hit path so a following assistant row cannot cover a visible Fork
+  button. The existing UserPromptBlock global vocabulary has 34 coupled rules
+  across BtwAside and shared controls, so this bounded fix does not attempt a
+  partial CSS-module extraction; it lowers the legacy stylesheet ceiling in
+  the same change.
 
-### 8 — converge internal clone and replacement consumers
+### 8 — keep internal clone and replacement consumers explicit
 
-- Move `/btw` to the canonical full-fork primitive where the provider supports
-  it; document any Codex OSS storage-clone exception explicitly.
-- Keep or deprecate the legacy `/clone` route according to remaining internal
-  consumers, but do not expose it as a second public Clone implementation.
+- Keep `/btw` on the legacy `/clone` route in this pass. It can be invoked
+  against an active source and supports Codex OSS storage cloning, while the
+  new latest-complete intent deliberately rejects active sources and requires
+  the new server capability. Moving `/btw` needs a separate compatibility and
+  active-source contract; silently changing it here would broaden this repair.
+- Keep the legacy `/clone` route only for that internal consumer. Do not expose
+  it as a second public Clone implementation; the session-header action always
+  uses the provider-native `/fork` intent.
 - Make Restart/Handoff copy explicit that Fork starts a continuation and
   retires the source process.
 - Ensure retitle, recap, and fork-summary helpers use the same typed provider
@@ -566,13 +593,63 @@ The real smoke passes only when both providers complete the same matrix. A
 provider/auth/catalog failure is reported as an environmental block, not
 silently replaced with a fixture result.
 
-## Current Approval Gate
+### Validation receipt — 2026-08-01
 
-This documentation commit authorizes no implementation and no paid-provider
-calls. The product and compatibility decisions are approved; an explicit
-**proceed** authorizes implementation, the bounded real-provider spend, and the
-isolated-profile validation above. Any material change to those boundaries
-returns here for review before code is changed.
+The isolated profile ran at `https://127.0.0.1:3480` with data under
+`/tmp/ya-fork-clone-MAo1rS/ya` and project cwd
+`/private/tmp/ya-fork-clone-MAo1rS/project`. The archived local evidence is in
+`.artifacts/ui-testing/2026-08-01-fork-clone/validation.md`, with the complete
+id ledger, screenshots, assertions, source hashes, and compressed server log.
+
+- Claude used `claude-haiku-4-5-20251001`; Codex used `gpt-5.6-luna` with low
+  reasoning. Each provider consumed exactly three successful model turns: two
+  source turns and one cold-fork continuation.
+- Both sources performed a real file-reading tool call and returned
+  `YA_FORK_CLONE_20260801`. Both second turns returned `SECOND_TURN_OK`.
+- A normal browser click created After-first forks for both providers. The
+  Claude browser flow also exercised Before-second, After-second, header Clone,
+  empty target composers, and source-only draft persistence.
+- Direct real-provider assertions exercised Before-second, After-second, and
+  Clone for Codex. Before-second equaled After-first; After-second and Clone
+  retained both turns. All targets were cold, kept provider/model and parent
+  lineage, and used the expected `Fork:`/`Clone:` title.
+- Continuations from the After-first targets recalled the exact marker on both
+  providers. No summary generation was used.
+- Claude's source transcript hash was unchanged across explicit Clone. Codex's
+  source rollout hash was unchanged across Before, After, and Clone.
+- Codex accepted the positional browser id and completed a native turn-boundary
+  fork. Pinned source/reference verification used `rust-v0.145.0`; the real
+  machine ran Codex CLI `0.146.0`, and the expected advisory mismatch is
+  recorded rather than treated as pinned-protocol evidence.
+- Reviewed captures cover one-turn and later-turn menus at 1920×1080 and
+  375×812 plus direct header Clone. Active/disabled and recoverable-failure
+  behavior remained deterministic-test cases so the paid smoke did not exceed
+  its three-turn/provider budget.
+
+Deterministic closeout:
+
+- `pnpm typecheck` passed.
+- Focused client coverage passed 38/38 tests across MessageList, SessionMenu,
+  UserPromptBlock, capability gating, and action-lane CSS contracts.
+- Focused server coverage passed 147 tests with one intentional skip across
+  version capabilities, session routes, and the Codex adapter; shared Codex
+  schema coverage passed 7/7.
+- Full `pnpm test` passed across the workspace; the client total was 2,857
+  tests in 345 files.
+- `pnpm lint`, `pnpm css:check --record`, `pnpm capabilities:audit`, and
+  `pnpm references:check` passed. The CSS ratchet lowered `index.css` to
+  16,343 lines and the Codex reference remained aligned to `rust-v0.145.0`.
+- `pnpm console:scan` stayed at its 110/110 warning baseline with +0. The
+  advisory i18n scan retained its three pre-existing Vite-entry warnings and
+  reported none in the changed UI copy.
+
+## Approval Receipt
+
+The Maintainer explicitly said **proceed** on 2026-08-01, authorizing the
+implementation, bounded real-provider spend, and isolated-profile validation
+above. The approved compatibility decision remains unchanged: new clients hide
+the complete unified surface from older servers and make no unsupported fork
+request.
 
 ## Acceptance Gates
 
