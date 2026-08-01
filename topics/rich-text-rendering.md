@@ -34,7 +34,9 @@ bookkeeping that does not help supervise the goal — thread ids, timestamps, an
 the model-only completion-report instruction — stays out of the visual summary.
 An empty `get_goal` response says that no goal is set, pending calls state the
 operation in progress, and failures show the provider error rather than a
-serialized response object.
+serialized response object. A failed mutation keeps the requested operation in
+its row heading; it must not use the past-tense success heading reserved for a
+completed mutation.
 
 The separate Codex app-server `thread/goal/set`, `thread/goal/get`, and
 `thread/goal/clear` methods, plus updated/cleared notifications, are control

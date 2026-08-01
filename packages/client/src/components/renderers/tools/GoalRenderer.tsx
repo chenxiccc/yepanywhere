@@ -202,6 +202,11 @@ function displayNameForCall(
   }
 
   const requestedStatus = requestedUpdateStatus(input);
+  if (callStatus !== "pending" && callStatus !== "complete") {
+    if (requestedStatus === "complete") return "Complete goal";
+    if (requestedStatus === "blocked") return "Block goal";
+    return "Update goal";
+  }
   if (requestedStatus === "complete") {
     if (callStatus === "pending") return "Completing goal";
     if (callStatus === "complete") return "Goal complete";

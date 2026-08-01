@@ -140,4 +140,20 @@ describe("GoalRenderer", () => {
       ),
     ).toBeTruthy();
   });
+
+  it("does not label a failed update as successfully completed", () => {
+    renderGoalRow({
+      toolName: "update_goal",
+      toolInput: { status: "complete" },
+      toolResult: {
+        content: "the goal is no longer active",
+        isError: true,
+      },
+      status: "error",
+    });
+
+    expect(screen.getByText("Complete goal")).toBeTruthy();
+    expect(screen.queryByText("Updated goal")).toBeNull();
+    expect(screen.getByText("Goal operation failed")).toBeTruthy();
+  });
 });
