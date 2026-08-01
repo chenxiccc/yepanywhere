@@ -2497,9 +2497,9 @@ export class CodexProvider implements AgentProvider {
       text,
       this.createCodexSlashCommands(skills, inventoryState),
     );
-    // Key by exact spelling; the canonical token now preserves provider case,
-    // so a case-distinct skill resolves to its own path rather than whichever
-    // case-folded entry happened to land in the map first.
+    // Keyed by exact spelling: `canonicalInvocationName` preserves case, unlike
+    // its `normalize` sibling, so case-distinct skills keep separate entries and
+    // the first-wins guard below only ever drops a true duplicate.
     const skillByName = new Map<string, SkillMetadata>();
     for (const skill of skills) {
       if (!skill.enabled || skill.name === CODEX_DESKTOP_BROWSER_SKILL_NAME) {
