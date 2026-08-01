@@ -282,7 +282,7 @@ describe("SessionListItem links", () => {
   });
 
   it("shows a card-mode thinking dot when requested for active rows", () => {
-    const { container } = render(
+    render(
       <I18nProvider>
         <MemoryRouter>
           <ul>
@@ -299,11 +299,14 @@ describe("SessionListItem links", () => {
       </I18nProvider>,
     );
 
-    expect(container.querySelector(".thinking-indicator-dot")).toBeTruthy();
+    const title = screen.getByRole("link", { name: "Active row" }).querySelector(
+      "strong",
+    );
+    expect(title?.firstElementChild?.firstElementChild).not.toBeNull();
   });
 
   it("leaves card-mode activity hidden unless requested", () => {
-    const { container } = render(
+    render(
       <I18nProvider>
         <MemoryRouter>
           <ul>
@@ -319,7 +322,10 @@ describe("SessionListItem links", () => {
       </I18nProvider>,
     );
 
-    expect(container.querySelector(".thinking-indicator-dot")).toBeNull();
+    const title = screen.getByRole("link", { name: "Active row" }).querySelector(
+      "strong",
+    );
+    expect(title?.firstElementChild).toBeNull();
   });
 
   it("uses custom titles for session hover previews", () => {

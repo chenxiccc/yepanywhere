@@ -2053,66 +2053,6 @@ a.sidebar-nav-item {
   color: var(--error-color);
 }
 
-/* Sidebar Activity Badges */
-
-/* ==========================================================================
-   Unified Thinking Indicator - Pulsing dot for thinking/running state
-   Use ThinkingIndicator component for all "thinking", "running", "processing" states
-   ========================================================================== */
-
-/* The pulsing dot */
-.thinking-indicator-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--thinking-color);
-  animation: thinking-pulse 1.5s ease-in-out infinite;
-  flex-shrink: 0;
-}
-
-/* Container for standalone dot */
-.thinking-indicator {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* Pill variant - dot + text label */
-.thinking-indicator-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.125rem 0.5rem;
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--thinking-color) 15%, transparent);
-  color: var(--thinking-color);
-  font-size: var(--font-size-xs);
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.thinking-indicator-label {
-  line-height: 1;
-}
-
-.thinking-indicator-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--thinking-color) 12%, transparent);
-  color: var(--thinking-color);
-  flex-shrink: 0;
-}
-
-.thinking-indicator-icon-svg {
-  width: 15px;
-  height: 15px;
-  animation: thinking-pulse 1.5s ease-in-out infinite;
-}
-
 /* Unified pulse animation for thinking/running state */
 @keyframes thinking-pulse {
   0%,

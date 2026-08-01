@@ -20,10 +20,9 @@ describe("SessionStatusBadge", () => {
       />,
     );
 
-    // ThinkingIndicator renders a pill with .thinking-indicator-pill class
-    const badge = container.querySelector(".thinking-indicator-pill");
-    expect(badge).not.toBeNull();
+    const badge = container.querySelector("span");
     expect(badge?.textContent).toBe("Thinking");
+    expect(badge?.firstElementChild).not.toBeNull();
   });
 
   it("shows nothing when owned but not in-turn", () => {
@@ -72,8 +71,7 @@ describe("SessionStatusBadge", () => {
     expect(badge).not.toBeNull();
     expect(badge?.textContent).toBe("Approval Needed");
 
-    const thinkingBadge = container.querySelector(".thinking-indicator-pill");
-    expect(thinkingBadge).toBeNull();
+    expect(container.textContent).not.toContain("Thinking");
   });
 
   it("shows Thinking badge even when hasUnread is true", () => {
@@ -90,10 +88,9 @@ describe("SessionStatusBadge", () => {
       />,
     );
 
-    // ThinkingIndicator renders a pill with .thinking-indicator-pill class
-    const thinkingBadge = container.querySelector(".thinking-indicator-pill");
-    expect(thinkingBadge).not.toBeNull();
-    expect(thinkingBadge?.textContent).toBe("Thinking");
+    const badge = container.querySelector("span");
+    expect(badge?.textContent).toBe("Thinking");
+    expect(badge?.firstElementChild).not.toBeNull();
   });
 
   it("shows nothing for unowned sessions (unread handled via CSS class)", () => {

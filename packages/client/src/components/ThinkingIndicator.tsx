@@ -14,6 +14,8 @@
  *   <ThinkingIndicator variant="icon" />     // Icon-only thinking badge
  */
 
+import styles from "./ThinkingIndicator.module.css";
+
 interface ThinkingIndicatorProps {
   /** Visual variant - "dot" for compact, "pill" for text, "icon" for badge */
   variant?: "dot" | "pill" | "icon";
@@ -28,18 +30,18 @@ export function ThinkingIndicator({
   label = "Thinking",
   className,
 }: ThinkingIndicatorProps) {
-  const dot = <span className="thinking-indicator-dot" />;
+  const dot = <span className={styles.dot} />;
 
   if (variant === "icon") {
     return (
       <span
-        className={`thinking-indicator-icon ${className ?? ""}`}
+        className={`${styles.icon} ${className ?? ""}`}
         title={label}
         aria-label={label}
         role="img"
       >
         <svg
-          className="thinking-indicator-icon-svg"
+          className={styles.iconSvg}
           width="15"
           height="15"
           viewBox="0 0 24 24"
@@ -65,12 +67,12 @@ export function ThinkingIndicator({
 
   if (variant === "pill") {
     return (
-      <span className={`thinking-indicator-pill ${className ?? ""}`}>
+      <span className={`${styles.pill} ${className ?? ""}`}>
         {dot}
-        <span className="thinking-indicator-label">{label}</span>
+        <span className={styles.label}>{label}</span>
       </span>
     );
   }
 
-  return <span className={`thinking-indicator ${className ?? ""}`}>{dot}</span>;
+  return <span className={`${styles.root} ${className ?? ""}`}>{dot}</span>;
 }

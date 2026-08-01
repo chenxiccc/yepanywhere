@@ -56,9 +56,8 @@ describe("ProcessingIndicator", () => {
     expect(cursor).not.toBeNull();
     expect(cursor?.textContent).toBe("|");
 
-    // ThinkingIndicator uses .thinking-indicator-dot class
-    const dot = document.querySelector(".thinking-indicator-dot");
-    expect(dot).not.toBeNull();
+    const dotContainer = document.querySelector(".processing-dot-container");
+    expect(dotContainer?.firstElementChild?.firstElementChild).not.toBeNull();
   });
 
   it("types text progressively over time", async () => {
