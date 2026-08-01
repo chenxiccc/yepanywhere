@@ -20,6 +20,12 @@ direction was revised on 2026-08-01 after the confirmed same-origin execution
 path in [[active-content-security]]; the former main-origin `/apps/...` shape
 is no longer a valid implementation direction.
 
+**Maintainer architectural review (2026-08-01):** the creative, novice-friendly
+motivation is valuable, but executable application hosting is outside YA's
+current core and same-origin execution is a security non-starter. Any future
+experiment belongs behind a separately isolated, optional companion boundary.
+See [`interactives-architectural-review.md`](interactives-architectural-review.md).
+
 ## Motivation
 
 The only reason to couple YA with an environment-for-a-web-app panel is
