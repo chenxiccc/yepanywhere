@@ -16,6 +16,7 @@ import { PageHeader } from "../components/PageHeader";
 import { useI18n } from "../i18n";
 import { MainContent, useNavigationLayout } from "../layouts";
 import { createSessionNavigationState } from "../lib/sessionNavigationState";
+import styles from "./BangCommandsPage.module.css";
 
 interface BangHistoryEntry {
   sessionId: string;
@@ -46,10 +47,10 @@ function BangHistoryEntryActions({
   const navigate = useNavigate();
   const sessionPath = `/projects/${projectId}/sessions/${sessionId}`;
   return (
-    <span className="bang-history-entry-actions">
+    <span className={styles.entryActions}>
       <button
         type="button"
-        className="bang-history-entry-action"
+        className={styles.entryAction}
         aria-label={t("bangHistoryActionEdit")}
         title={t("bangHistoryActionEdit")}
         onClick={() =>
@@ -76,7 +77,7 @@ function BangHistoryEntryActions({
       </button>
       <button
         type="button"
-        className="bang-history-entry-action"
+        className={styles.entryAction}
         aria-label={t("bangHistoryActionNew")}
         title={t("bangHistoryActionNew")}
         onClick={() =>
@@ -101,7 +102,7 @@ function BangHistoryEntryActions({
       </button>
       <button
         type="button"
-        className="bang-history-entry-action"
+        className={styles.entryAction}
         aria-label={t("bangHistoryActionJump")}
         title={t("bangHistoryActionJump")}
         onClick={() =>
@@ -160,15 +161,15 @@ export function BangCommandsPage() {
   return (
     <MainContent isWideScreen={isWideScreen}>
       <PageHeader title={t("bangHistoryTitle")} onOpenSidebar={openSidebar} />
-      <div className="bang-history-page">
+      <div className={styles.page}>
         {entries !== null && entries.length === 0 && (
-          <div className="bang-history-empty">{t("bangHistoryEmpty")}</div>
+          <div className={styles.empty}>{t("bangHistoryEmpty")}</div>
         )}
         {entries?.map((entry) => {
           const entryKey = `${entry.sessionId}-${entry.object.id}`;
           return (
-            <div className="bang-history-entry" key={entryKey}>
-              <div className="bang-history-entry-meta">
+            <div className={styles.entry} key={entryKey}>
+              <div className={styles.entryMeta}>
                 <span className="bang-history-entry-time">
                   {new Date(entry.object.createdAt).toLocaleString()}
                 </span>
@@ -181,7 +182,7 @@ export function BangCommandsPage() {
                 {entry.projectId && (
                   <Link
                     to={`/projects/${entry.projectId}/sessions/${entry.sessionId}`}
-                    className="bang-history-entry-session"
+                    className={styles.entrySession}
                   >
                     {t("bangHistoryOpenSession")}
                   </Link>

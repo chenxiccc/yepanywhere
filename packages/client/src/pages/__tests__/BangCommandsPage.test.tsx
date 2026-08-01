@@ -121,6 +121,14 @@ describe("BangCommandsPage per-entry actions", () => {
     expect(await screen.findByTestId("bang-block-obj-1")).toBeDefined();
     expect(screen.getByTestId("bang-block-obj-2")).toBeDefined();
 
+    // The open-session link shares the meta row with the action icons and is
+    // likewise projectful-only.
+    const sessionLinks = screen.getAllByRole("link", { name: "Open session" });
+    expect(sessionLinks).toHaveLength(1);
+    expect(sessionLinks[0]?.getAttribute("href")).toBe(
+      "/projects/project-1/sessions/session-1",
+    );
+
     expect(
       screen.getAllByLabelText("Edit / re-issue command"),
     ).toHaveLength(1);

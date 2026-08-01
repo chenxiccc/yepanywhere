@@ -1,0 +1,69 @@
+/*
+ * Cross-session `!!` bang-command history page: the page shell, its empty
+ * state, and each entry's meta row (time, cwd, open-session link, and the
+ * three per-entry action buttons).
+ *
+ * The block body inside each entry belongs to BangCommandDisplayObject and
+ * keeps its own `bang-command-*` vocabulary in `styles/index.css`; the
+ * composer's `bang-composer-chip` and `bang-history-item` classes belong to
+ * MessageInput. See topics/bang-commands.md § Top-level history view.
+ *
+ * The meta row's `bang-history-entry-time` and `bang-history-entry-cwd`
+ * literals stay in the component: they are unstyled DOM hooks with no rule in
+ * any stylesheet, so there is nothing here for them to name.
+ */
+
+.page {
+  padding: var(--space-2) var(--space-3);
+  max-width: 900px;
+}
+
+.empty {
+  color: var(--text-muted);
+  padding: var(--space-3);
+}
+
+.entry {
+  margin-bottom: var(--space-3);
+}
+
+.entryMeta {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.entrySession {
+  margin-left: auto;
+  color: var(--accent-primary);
+  text-decoration: none;
+}
+
+.entrySession:hover {
+  text-decoration: underline;
+}
+
+.entryActions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.entryAction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-1);
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.entryAction:hover {
+  color: var(--text-primary);
+  background: var(--bg-code);
+}

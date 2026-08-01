@@ -4116,62 +4116,6 @@ div.bang-command-error-message {
   color: var(--text-muted);
 }
 
-/* Cross-session history page */
-.bang-history-page {
-  padding: var(--space-2) var(--space-3);
-  max-width: 900px;
-}
-
-.bang-history-empty {
-  color: var(--text-muted);
-  padding: var(--space-3);
-}
-
-.bang-history-entry {
-  margin-bottom: var(--space-3);
-}
-
-.bang-history-entry-meta {
-  display: flex;
-  gap: var(--space-2);
-  align-items: baseline;
-  color: var(--text-muted);
-  font-size: var(--font-size-xs);
-}
-
-.bang-history-entry-session {
-  margin-left: auto;
-  color: var(--accent-primary);
-  text-decoration: none;
-}
-
-.bang-history-entry-session:hover {
-  text-decoration: underline;
-}
-
-.bang-history-entry-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-}
-
-.bang-history-entry-action {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-1);
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  border-radius: var(--radius-sm);
-}
-
-.bang-history-entry-action:hover {
-  color: var(--text-primary);
-  background: var(--bg-code);
-}
-
 .fork-summary-display-object {
   display: flex;
   align-items: center;
