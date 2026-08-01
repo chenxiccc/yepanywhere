@@ -110,6 +110,21 @@ and `/docs/getting-started`, so aggregate path traffic can answer navigation
 questions without custom event tracking. Page views are not proof that an
 installation or workflow succeeded.
 
+## Public-share privacy boundary
+
+Public session sharing is opt-in because the current relay transport for shares
+is not private from the relay operator. No public share exists until the owner
+deliberately creates one. Anyone holding the secret link can read the shared
+content while the share remains active, and a relay operator who inspects or
+modifies the relay can see the request path, bearer secret, and response
+contents.
+
+Public copy must distinguish this path from authenticated Remote Access, whose
+application messages are end-to-end encrypted. Do not use blanket statements
+such as “all relay traffic is private” or “the relay cannot read your data.”
+Tell users to review content before enabling a share and revoke the share when
+it is no longer needed.
+
 ## Verification contract
 
 Before a website communication change is complete:

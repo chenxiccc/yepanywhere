@@ -547,6 +547,11 @@ the self-hosted app, optional update checks, relay metadata, and `/remote/`.
 Update the public-relay section from future tense to current behavior after
 checking it against the relay privacy contract.
 
+Make the public-share exception explicit wherever authenticated relay privacy
+is summarized. Public sharing is opt-in because the current share path is
+readable by the relay operator; a deliberate share link must never inherit the
+end-to-end-encryption claim made for authenticated Remote Access.
+
 Keep the beacon in one shared marketing/docs layout. Add a narrow regression
 check that the marketing homepage and docs include the expected beacon while
 the built remote client does not. The public token is configuration, not a
@@ -557,6 +562,8 @@ Acceptance:
 - the rendered privacy page and network behavior agree;
 - `/remote/` remains outside the marketing beacon;
 - all intended marketing/docs pages inherit analytics through one owner; and
+- feature catalog, docs, privacy, README, and relay history state that public
+  sharing is opt-in because the relay operator can read shared content; and
 - no statement implies that the website, update service, public relay, and
   self-hosted application share one collection policy.
 

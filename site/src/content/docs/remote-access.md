@@ -42,9 +42,10 @@ and server authenticate with SRP and encrypt application messages before they
 cross the relay. The relay sees connection metadata and encrypted traffic, not
 the authenticated session contents or password.
 
-Public read-only share links use a different trust boundary and must not be
-described as equivalent to an authenticated end-to-end encrypted relay session.
-See [Security and privacy](/docs/security-and-privacy).
+Public read-only sharing is opt-in because it uses a different trust boundary.
+The current public-share relay path is readable by a relay operator and must not
+be described as equivalent to an authenticated end-to-end encrypted relay
+session. See [Security and privacy](/docs/security-and-privacy).
 
 ## Direct access
 

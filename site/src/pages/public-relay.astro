@@ -120,7 +120,7 @@ import ArticleLayout from "../layouts/ArticleLayout.astro";
 
   <p>We take privacy seriously:</p>
   <ul>
-    <li><strong>End-to-end encryption</strong> &mdash; The relay can't read your data</li>
+    <li><strong>End-to-end encryption</strong> &mdash; The relay can't read authenticated Remote Access traffic</li>
     <li><strong>No accounts</strong> &mdash; No email, no signup, no tracking</li>
     <li><strong>Runs locally</strong> &mdash; All your data stays on your machine</li>
     <li><strong>Open source</strong> &mdash; <a href="https://github.com/kzahel/yepanywhere">100% MIT licensed</a>, audit it yourself</li>
@@ -128,6 +128,8 @@ import ArticleLayout from "../layouts/ArticleLayout.astro";
   </ul>
 
   <p>The only thing we store is the encrypted connection state while you're connected. When you disconnect, it's gone.</p>
+
+  <p><strong>Current sharing note:</strong> public session shares were added after this announcement. They are opt-in because they use a separate path that is not private from the relay operator. Review shared content before creating a link and revoke it when access is no longer needed.</p>
 
   <h2>Where the project went next</h2>
 

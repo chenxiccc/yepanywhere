@@ -29,13 +29,17 @@ the authority exposed by your Yep Anywhere server.
 
 ## Public session shares
 
-Public shares are deliberate read-only links, but they are not the same trust
-boundary as authenticated relay access. A viewer with the secret link can read
-the shared content until the share is revoked or live access ends. The current
-relay path for public shares is not private from a relay operator.
+Public sharing is opt-in because it is not the same trust boundary as
+authenticated relay access. No session is shared until its owner deliberately
+creates a read-only link. A viewer with the secret link can read the shared
+content until the share is revoked or live access ends. The current relay path
+for public shares is not private from a relay operator: an operator who inspects
+or modifies the relay can see the share request, bearer secret, and response
+contents.
 
-Review session contents before sharing. Source Control is never exposed through
-the read-only share namespace.
+Review session contents before enabling a share. Revoke it when access is no
+longer needed. Source Control is never exposed through the read-only share
+namespace.
 
 ## File access
 

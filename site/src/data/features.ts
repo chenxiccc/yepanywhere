@@ -269,7 +269,7 @@ export const features = [
     category: "review",
     status: "experimental",
     docsPath: "/docs/security-and-privacy",
-    availability: "Public shares have a distinct trust boundary from authenticated relay sessions.",
+    availability: "Opt-in: link holders and the current relay operator can read shared content.",
     sourceRefs: ["site/src/pages/spring-2026.astro", "topics/relay-origin-and-share-gating.md"],
   },
   {

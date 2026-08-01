@@ -178,7 +178,9 @@ yepanywhere --setup-remote-access --username myserver --password "secretpass123"
 
 Then connect from anywhere at [yepanywhere.com/remote](https://yepanywhere.com/remote).
 
-All traffic is end-to-end encrypted and we can't see your data. No accounts required.
+Authenticated Remote Access traffic is end-to-end encrypted, so the relay
+cannot read session contents. Public session shares are a separate opt-in path:
+the current relay operator can read shared content. No accounts are required.
 
 **Private network:** If you only need to reach a solo install from your phone,
 a VPN such as Tailscale is usually simpler than deploying your own relay: put
