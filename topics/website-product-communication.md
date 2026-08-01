@@ -68,6 +68,15 @@ instructions.
 - Remote Android device control is a separate capability and must not be
   described as the Android client app.
 
+## Local data path statements
+
+- npm and source installs default to `~/.yep-anywhere/` on macOS and Linux and
+  `%USERPROFILE%\.yep-anywhere\` on Windows.
+- Desktop installs use the separate `~/.yep-anywhere-desktop/` directory on
+  macOS and `%USERPROFILE%\.yep-anywhere-desktop\` on Windows.
+- `YEP_DATA_DIR` overrides the npm/source location. A named `YEP_PROFILE`
+  creates a suffixed directory under the user's home directory.
+
 ## Cross-device and first-party positioning
 
 - Yep Anywhere is not a phone-only companion. A modern browser on another

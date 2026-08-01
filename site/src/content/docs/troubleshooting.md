@@ -13,13 +13,16 @@ Check the terminal output and confirm the configured ports are free. The main
 server defaults to `3400`; the maintenance server uses `3401` and the Vite
 development server uses `3402`.
 
-Server logs live under the active data directory, normally:
+Server logs live in the `logs` folder under the active data directory. The
+defaults are:
 
-```bash
-~/.yep-anywhere/logs/
-```
+- npm/source on macOS or Linux: `~/.yep-anywhere/logs/`
+- npm/source on Windows: `%USERPROFILE%\.yep-anywhere\logs\`
+- desktop app on macOS: `~/.yep-anywhere-desktop/logs/`
+- desktop app on Windows: `%USERPROFILE%\.yep-anywhere-desktop\logs\`
 
-Profiles use a suffixed directory such as `~/.yep-anywhere-dev/`.
+Profiles use a suffixed directory such as `.yep-anywhere-dev` under the user
+home directory. `YEP_DATA_DIR` can override the npm/source location.
 
 ## Provider is missing or cannot start
 

@@ -33,7 +33,7 @@ import BaseLayout from "../layouts/BaseLayout.astro";
       <p>All data is stored locally on your machine:</p>
       <ul>
         <li>Session transcripts (managed by the Claude SDK in <code>~/.claude/projects/</code>)</li>
-        <li>Server state including logs, uploads, and settings (in <code>~/.yep-anywhere/</code>)</li>
+        <li>Server state including logs, uploads, and settings (npm/source: <code>~/.yep-anywhere/</code> on macOS/Linux or <code>%USERPROFILE%\.yep-anywhere\</code> on Windows; desktop app: <code>~/.yep-anywhere-desktop/</code> on macOS or <code>%USERPROFILE%\.yep-anywhere-desktop\</code> on Windows)</li>
         <li>Push notification VAPID keys (generated locally, no third-party service)</li>
         <li>Optional password hash if you enable authentication</li>
       </ul>

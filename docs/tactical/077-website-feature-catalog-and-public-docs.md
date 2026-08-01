@@ -511,6 +511,8 @@ Acceptance:
   using only public docs;
 - an existing user can update and diagnose the common failure paths;
 - every documented default agrees with the owning runtime contract; and
+- storage documentation names the macOS/Linux and Windows defaults and keeps
+  desktop data separate from npm/source data; and
 - each guide has one named owner/source set for later freshness review.
 
 ### 8 — align public claims and retire duplicate inventories

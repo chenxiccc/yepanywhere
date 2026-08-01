@@ -22,6 +22,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Android companion develops native notification and multi-server value.
 - Clarify that public session sharing is opt-in because the current share path
   is readable by the relay operator, unlike authenticated Remote Access.
+- Document the default npm/source and desktop data directories on macOS,
+  Linux, and Windows.
 - Expose beta macOS and Windows downloads from GitHub Releases while
   stating that the unpublished Android app remains in development.
 - Make Features and Docs first-class desktop and mobile navigation items, and

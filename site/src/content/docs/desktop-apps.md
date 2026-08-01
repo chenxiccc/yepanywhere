@@ -44,7 +44,9 @@ default, unloads the hidden web view after five minutes while leaving the tray
 app, server, and active provider sessions running.
 
 Desktop data uses a separate desktop profile so it does not silently overwrite
-an existing command-line installation's state.
+an existing command-line installation's state. The default location is
+`~/.yep-anywhere-desktop/` on macOS and
+`%USERPROFILE%\.yep-anywhere-desktop\` on Windows.
 
 ## Updates and recovery
 

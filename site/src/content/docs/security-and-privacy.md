@@ -13,6 +13,13 @@ server state—settings, logs, uploads, notification subscriptions, and session
 metadata—in its local data directory. There is no hosted Yep Anywhere account
 or hosted transcript database.
 
+For npm and source installs, the default data directory is
+`~/.yep-anywhere/` on macOS and Linux and
+`%USERPROFILE%\.yep-anywhere\` on Windows. The desktop app keeps a separate
+profile at `~/.yep-anywhere-desktop/` on macOS or
+`%USERPROFILE%\.yep-anywhere-desktop\` on Windows. npm and source installs can
+override their location with `YEP_DATA_DIR`.
+
 Agent requests still go to the provider you configure. Local models keep that
 provider path local; cloud providers receive prompts and tool context according
 to their own product and privacy terms.

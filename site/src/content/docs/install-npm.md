@@ -52,6 +52,11 @@ A profile stores state in a separate data directory. Use profiles when a
 development instance must not share settings and uploads with the normal
 installation.
 
+The default data directory is `~/.yep-anywhere/` on macOS and Linux and
+`%USERPROFILE%\.yep-anywhere\` on Windows. Set `YEP_DATA_DIR` to use an
+explicit location. `YEP_PROFILE=dev` uses the suffixed directory
+`.yep-anywhere-dev` under the same user home directory.
+
 ## Provider setup
 
 Authenticate providers using their official CLI. Yep Anywhere does not collect
