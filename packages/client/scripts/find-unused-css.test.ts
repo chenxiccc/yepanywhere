@@ -47,18 +47,26 @@ function unusedNames(basename: string): string[] {
 
 describe("class-production evidence", () => {
   it("separates class-producing syntax from generic source strings", () => {
+    const templateSource = [
+      'const state = "active";',
+      'const templateClass = `card $' +
+        '{state === "active" ? "card-selected" : ""}`;',
+      "export const view = <div className={templateClass} />;",
+    ].join("\n");
     const source = new Map([
       [
         "Owner.tsx",
         `
           const status = "status";
-          const finiteClass = active ? "card-active" : "card-idle";
+          const state = "active";
+          const finiteClass = state === "active" ? "card-active" : "card-idle";
           element.classList.add("card-mounted");
           export const view = (
             <div className={finiteClass} data-status={status} />
           );
         `,
       ],
+      ["TemplateOwner.tsx", templateSource],
     ]);
 
     const permissive = buildSourceUsageIndex(source);
@@ -66,8 +74,10 @@ describe("class-production evidence", () => {
 
     expect(permissive.exact.get("status")).toBeDefined();
     expect(producers.exact.get("status")).toBeUndefined();
+    expect(producers.exact.get("active")).toBeUndefined();
     expect(producers.exact.get("card-active")).toBeDefined();
     expect(producers.exact.get("card-idle")).toBeDefined();
+    expect(producers.exact.get("card-selected")).toBeDefined();
     expect(producers.exact.get("card-mounted")).toBeDefined();
   });
 });

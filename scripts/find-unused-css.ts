@@ -748,23 +748,85 @@ export function buildClassProducerUsageIndex(
 
     collectDeclarations(sourceFile);
 
+    const transparentClassHelpers = new Set(["classNames", "clsx", "cn", "cx"]);
+
+    function resolveObjectLiteral(
+      node: ts.Expression,
+      seenDeclarations: Set<string>,
+    ): ts.ObjectLiteralExpression | undefined {
+      if (ts.isObjectLiteralExpression(node)) return node;
+      if (!ts.isIdentifier(node) || seenDeclarations.has(node.text)) {
+        return undefined;
+      }
+      const initializer = declarations.get(node.text);
+      if (!initializer) return undefined;
+      const nextSeen = new Set(seenDeclarations);
+      nextSeen.add(node.text);
+      return resolveObjectLiteral(initializer, nextSeen);
+    }
+
+    function collectObjectValue(
+      object: ts.ObjectLiteralExpression,
+      propertyName: string | undefined,
+      seenDeclarations: Set<string>,
+    ): void {
+      for (const property of object.properties) {
+        if (ts.isSpreadAssignment(property)) {
+          const spreadObject = resolveObjectLiteral(
+            property.expression,
+            seenDeclarations,
+          );
+          if (spreadObject) {
+            collectObjectValue(spreadObject, propertyName, seenDeclarations);
+          }
+          continue;
+        }
+        if (!ts.isPropertyAssignment(property)) continue;
+        const name = propertyNameText(property.name);
+        if (propertyName === undefined || name === propertyName) {
+          collectClassExpression(property.initializer, seenDeclarations);
+        }
+      }
+    }
+
+    function collectClassHelperArgument(
+      node: ts.Expression,
+      seenDeclarations: Set<string>,
+    ): void {
+      const object = resolveObjectLiteral(node, seenDeclarations);
+      if (object) {
+        for (const property of object.properties) {
+          if (ts.isPropertyAssignment(property)) {
+            const name = propertyNameText(property.name);
+            if (name) addExactTokens(exact, name, filename);
+          } else if (ts.isShorthandPropertyAssignment(property)) {
+            addExactTokens(exact, property.name.text, filename);
+          } else if (ts.isSpreadAssignment(property)) {
+            collectClassHelperArgument(property.expression, seenDeclarations);
+          }
+        }
+        return;
+      }
+      collectClassExpression(node, seenDeclarations);
+    }
+
     function collectClassExpression(
-      node: ts.Node,
+      node: ts.Expression,
       seenDeclarations = new Set<string>(),
     ): void {
       if (ts.isTemplateExpression(node)) {
         addExactTokens(exact, node.head.text, filename);
         addDynamicPrefix(dynamic, node.head.text, filename);
         for (let index = 0; index < node.templateSpans.length; index++) {
+          collectClassExpression(
+            node.templateSpans[index].expression,
+            seenDeclarations,
+          );
           const literal = node.templateSpans[index].literal.text;
           addExactTokens(exact, literal, filename);
           if (index < node.templateSpans.length - 1) {
             addDynamicPrefix(dynamic, literal, filename);
           }
-          collectClassExpression(
-            node.templateSpans[index].expression,
-            seenDeclarations,
-          );
         }
         return;
       }
@@ -781,20 +843,90 @@ export function buildClassProducerUsageIndex(
         }
         return;
       }
-      if (ts.isPropertyAssignment(node)) {
-        const name = propertyNameText(node.name);
-        if (name) addExactTokens(exact, name, filename);
-        collectClassExpression(node.initializer, seenDeclarations);
+      if (ts.isConditionalExpression(node)) {
+        collectClassExpression(node.whenTrue, seenDeclarations);
+        collectClassExpression(node.whenFalse, seenDeclarations);
         return;
       }
-      if (ts.isShorthandPropertyAssignment(node)) {
-        addExactTokens(exact, node.name.text, filename);
-        collectClassExpression(node.name, seenDeclarations);
+      if (ts.isBinaryExpression(node)) {
+        const operator = node.operatorToken.kind;
+        if (operator === ts.SyntaxKind.AmpersandAmpersandToken) {
+          collectClassExpression(node.right, seenDeclarations);
+        } else if (
+          operator === ts.SyntaxKind.BarBarToken ||
+          operator === ts.SyntaxKind.QuestionQuestionToken ||
+          operator === ts.SyntaxKind.PlusToken
+        ) {
+          collectClassExpression(node.left, seenDeclarations);
+          collectClassExpression(node.right, seenDeclarations);
+        } else if (operator === ts.SyntaxKind.CommaToken) {
+          collectClassExpression(node.right, seenDeclarations);
+        }
         return;
       }
-      ts.forEachChild(node, (child) =>
-        collectClassExpression(child, seenDeclarations),
-      );
+      if (ts.isParenthesizedExpression(node)) {
+        collectClassExpression(node.expression, seenDeclarations);
+        return;
+      }
+      if (
+        ts.isAsExpression(node) ||
+        ts.isTypeAssertionExpression(node) ||
+        ts.isNonNullExpression(node) ||
+        ts.isSatisfiesExpression(node) ||
+        ts.isAwaitExpression(node)
+      ) {
+        collectClassExpression(node.expression, seenDeclarations);
+        return;
+      }
+      if (ts.isArrayLiteralExpression(node)) {
+        for (const element of node.elements) {
+          if (ts.isSpreadElement(element)) {
+            collectClassExpression(element.expression, seenDeclarations);
+          } else if (!ts.isOmittedExpression(element)) {
+            collectClassExpression(element, seenDeclarations);
+          }
+        }
+        return;
+      }
+      if (ts.isPropertyAccessExpression(node)) {
+        const object = resolveObjectLiteral(node.expression, seenDeclarations);
+        if (object) {
+          collectObjectValue(object, node.name.text, seenDeclarations);
+        }
+        return;
+      }
+      if (ts.isElementAccessExpression(node)) {
+        const object = resolveObjectLiteral(node.expression, seenDeclarations);
+        if (object) {
+          const propertyName =
+            node.argumentExpression &&
+            ts.isStringLiteralLike(node.argumentExpression)
+              ? node.argumentExpression.text
+              : undefined;
+          collectObjectValue(object, propertyName, seenDeclarations);
+        }
+        return;
+      }
+      if (ts.isCallExpression(node)) {
+        if (
+          ts.isIdentifier(node.expression) &&
+          transparentClassHelpers.has(node.expression.text)
+        ) {
+          for (const argument of node.arguments) {
+            collectClassHelperArgument(argument, seenDeclarations);
+          }
+          return;
+        }
+        if (ts.isPropertyAccessExpression(node.expression)) {
+          const method = node.expression.name.text;
+          if (method === "join" || method === "filter") {
+            collectClassExpression(
+              node.expression.expression,
+              seenDeclarations,
+            );
+          }
+        }
+      }
     }
 
     function visit(node: ts.Node): void {
@@ -805,7 +937,7 @@ export function buildClassProducerUsageIndex(
             if (node.initializer.expression) {
               collectClassExpression(node.initializer.expression);
             }
-          } else {
+          } else if (ts.isStringLiteralLike(node.initializer)) {
             collectClassExpression(node.initializer);
           }
         }

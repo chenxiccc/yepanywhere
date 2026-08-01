@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import { FilePathContextMenu } from "../FileResourceActions";
 
-/** The two global classes this menu used before it owned a CSS Module. */
+/** Global class names forbidden by this component's CSS Module ownership. */
 const REMOVED_LEGACY_CLASSES = [
   "file-path-context-overlay",
   "file-path-context-menu",
