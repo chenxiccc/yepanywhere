@@ -116,6 +116,8 @@ describe("SessionListItem links", () => {
             <SessionListItem
               sessionId="aside-1"
               projectId="project-1"
+              parentSessionId="source-1"
+              parentSessionKind="btw-aside"
               title="/btw check the side path"
               mode="compact"
             />

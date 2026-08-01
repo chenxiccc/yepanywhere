@@ -706,6 +706,7 @@ function SessionPageContent({
     sessionModel: session?.model,
     sessionExecutor: session?.executor,
     parentSessionId: isBtwAsideSession({
+      parentSessionId: session?.parentSessionId,
       parentSessionKind: session?.parentSessionKind,
       title: session?.customTitle ?? session?.title,
       fullTitle: session?.fullTitle,

@@ -214,6 +214,7 @@ export function RecentSessionsDropdown({
             const title = getDisplayTitle(session);
             const titleTooltip = getTitleTooltip(session, title);
             const isBtwAside = isBtwAsideSession({
+              parentSessionId: session.parentSessionId,
               parentSessionKind: session.parentSessionKind,
               title,
               fullTitle: session.fullTitle,

@@ -12,9 +12,16 @@ describe("isBtwAsideSession", () => {
   });
 
   it("falls back to the generated title on older servers", () => {
-    expect(isBtwAsideSession({ title: "/btw inspect the side path" })).toBe(
-      true,
-    );
+    expect(
+      isBtwAsideSession({
+        parentSessionId: "mother-session",
+        title: "/btw inspect the side path",
+      }),
+    ).toBe(true);
+  });
+
+  it("does not infer an aside from an ordinary session's editable title", () => {
+    expect(isBtwAsideSession({ title: "/btw scratch" })).toBe(false);
   });
 
   it("does not infer /btw from ordinary Clone or Fork titles", () => {

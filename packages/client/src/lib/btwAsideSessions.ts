@@ -12,14 +12,16 @@ export function isBtwAsideSessionTitle(
  * every provider fork lineage as an aside.
  */
 export function isBtwAsideSession(options: {
+  parentSessionId?: string | null;
   parentSessionKind?: "btw-aside" | null;
   title?: string | null;
   fullTitle?: string | null;
 }): boolean {
   return (
     options.parentSessionKind === "btw-aside" ||
-    isBtwAsideSessionTitle(options.title) ||
-    isBtwAsideSessionTitle(options.fullTitle)
+    (!!options.parentSessionId &&
+      (isBtwAsideSessionTitle(options.title) ||
+        isBtwAsideSessionTitle(options.fullTitle)))
   );
 }
 

@@ -238,6 +238,7 @@ export function SessionListItem({
     localTitle ?? title ?? (isNewSession ? "New session" : "Untitled session");
   const hasEffectiveCustomTitle = !!localTitle || hasCustomTitle;
   const isBtwAside = isBtwAsideSession({
+    parentSessionId,
     parentSessionKind,
     title: displayTitle,
     fullTitle,
