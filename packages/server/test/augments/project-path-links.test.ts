@@ -95,12 +95,12 @@ describe("linkifyProjectPaths", () => {
     truncated: false,
   };
 
-  it("links a path that is a project file and leaves the rest alone", () => {
+  it("links a path that is a project file and leaves the rest alone", async () => {
     const html =
       '<span class="line">  &quot;path&quot;: ' +
       "&quot;untracked/pii-eval/prod/nl-final20-control.jsonl&quot;,</span>";
 
-    const out = linkifyProjectPaths(html, { projectPath: "/repo", index });
+    const out = await linkifyProjectPaths(html, { projectPath: "/repo", index });
 
     expect(out).toContain('data-ya-resource="local-file"');
     expect(out).toContain(
@@ -110,30 +110,30 @@ describe("linkifyProjectPaths", () => {
     expect(out).toContain("&quot;,</span>");
   });
 
-  it("does not link a string that merely looks like a path", () => {
+  it("does not link a string that merely looks like a path", async () => {
     const html =
       '<span class="line">"media": "application/json", "v": "1.2.3", ' +
       '"missing": "runs/absent.jsonl"</span>';
 
-    expect(linkifyProjectPaths(html, { projectPath: "/repo", index })).toBe(
-      html,
-    );
+    expect(
+      await linkifyProjectPaths(html, { projectPath: "/repo", index }),
+    ).toBe(html);
   });
 
-  it("never rewrites markup, only text between tags", () => {
+  it("never rewrites markup, only text between tags", async () => {
     // A tag attribute happens to contain a real project path.
     const html = '<span class="scripts/run.py">plain</span>';
 
-    expect(linkifyProjectPaths(html, { projectPath: "/repo", index })).toBe(
-      html,
-    );
+    expect(
+      await linkifyProjectPaths(html, { projectPath: "/repo", index }),
+    ).toBe(html);
   });
 
-  it("does not link the file being viewed to itself", () => {
+  it("does not link the file being viewed to itself", async () => {
     const html = '<span class="line">scripts/run.py</span>';
 
     expect(
-      linkifyProjectPaths(html, {
+      await linkifyProjectPaths(html, {
         projectPath: "/repo",
         index,
         selfRelativePath: "scripts/run.py",
@@ -141,12 +141,12 @@ describe("linkifyProjectPaths", () => {
     ).toBe(html);
   });
 
-  it("returns content unchanged when nothing is indexed", () => {
+  it("returns content unchanged when nothing is indexed", async () => {
     const html = '<span class="line">scripts/run.py</span>';
     const empty = { has: () => false, size: 0, truncated: false };
 
-    expect(linkifyProjectPaths(html, { projectPath: "/repo", index: empty })).toBe(
-      html,
-    );
+    expect(
+      await linkifyProjectPaths(html, { projectPath: "/repo", index: empty }),
+    ).toBe(html);
   });
 });
