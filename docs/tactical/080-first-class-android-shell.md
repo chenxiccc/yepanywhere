@@ -111,8 +111,8 @@ step and applicable validation rows below have evidence.
 | --- | --- | --- |
 | Freeze the existing shell evidence | complete | 2026-08-02 build, APK/manifest inventory, and Pixel 7a baseline below |
 | Create the Gradle/Compose shell | complete | Warning-free config-free builds plus Compose launcher smoke on Pixel 7a |
-| Reproduce client asset channels | in progress | Bundled Pixel smoke and both release APK contracts pass; hosted connected smoke remains |
-| Add the native host channel | in progress | Protocol/client tests pass; real WebMessage `host.describe` passes on Pixel 7a; denied-origin/subframe instrumentation remains |
+| Reproduce client asset channels | complete | Bundled Pixel smoke and release contracts pass; hosted AVD smoke has no client assets or Tauri/Rust artifacts |
+| Add the native host channel | complete | Protocol/client tests and real WebMessage `host.describe` pass; denied-origin/subframe instrumentation passes in both channels |
 | Migrate App Links and FCM probe | complete | Exact verified App Link plus direct, broker-foreground, and no-process broker-background Pixel evidence |
 | Remove Tauri Mobile | planned | Dependency/source deletion plus artifact inspection |
 | Add Android CI | planned | Warning-free required workflow and uploaded APK artifacts |
