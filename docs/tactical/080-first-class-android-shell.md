@@ -254,10 +254,11 @@ This plan does not implement:
 - an Android foreground service; or
 - the future SwiftUI iOS application.
 
-Compose onboarding is an intended next consumer of the shell. Passwordless QR
-pairing is a separate security and client/server compatibility project; this
-migration must not pre-commit its wire protocol or grant a generic native
-camera/authentication bridge in anticipation of it.
+Compose onboarding is now the shell's first native product consumer. It uses
+the separately documented Kotlin SRP connection core and existing session API.
+Passwordless QR pairing remains a separate security and client/server
+compatibility project; the shell does not pre-commit its wire protocol or grant
+a generic native camera/authentication bridge in anticipation of it.
 
 Post-completion architecture keeps the bundled WebView permanently rather than
 treating it as migration scaffolding. It does not initially proxy the full web
@@ -293,11 +294,12 @@ packages/android/
         └── res/
 ```
 
-`MainActivity` is the Compose-owned launcher and app-navigation root. During
-the migration it may immediately enter `WebClientActivity`, preserving the
-current foreground experience. Later it can show Compose onboarding, server
-selection, inbox, and Conversation view while `WebClientActivity` stays the
-full-screen **Open full activity** destination.
+`MainActivity` is the Compose-owned launcher and app-navigation root. It now
+shows explicit native server onboarding, profile selection, connection state,
+reauthentication, and compact session summaries without allocating a WebView.
+`WebClientActivity` stays the full-screen **Open full app** destination, and an
+exact App Link continues to hand off there because the native session-detail
+surface is not yet implemented.
 
 A dedicated activity keeps the complex full web client, its back stack, file
 chooser, downloads, and WebView lifecycle out of native screen composition.

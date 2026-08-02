@@ -202,6 +202,9 @@ export interface AppOptions {
   realSdk?: RealClaudeSDKInterface;
   projectsDir?: string; // override for testing
   codexSessionsDir?: string; // override for testing
+  geminiSessionsDir?: string; // override for testing
+  grokSessionsDir?: string; // override for testing
+  piSessionsDir?: string; // override for testing
   idleTimeoutMs?: number;
   defaultPermissionMode?: PermissionMode;
   /** EventBus for file change events */
@@ -408,6 +411,9 @@ export function createApp(options: AppOptions): AppResult {
       ).some((metadata) => metadata.provider === "claude-ollama"),
   });
   const codexSessionsDir = options.codexSessionsDir ?? CODEX_SESSIONS_DIR;
+  const geminiSessionsDir = options.geminiSessionsDir ?? GEMINI_TMP_DIR;
+  const grokSessionsDir = options.grokSessionsDir ?? GROK_SESSIONS_DIR;
+  const piSessionsDir = options.piSessionsDir ?? PI_SESSIONS_DIR;
 
   const app = new Hono<{ Bindings: HttpBindings }>();
   if (options.desktopBootstrapService) {
@@ -517,7 +523,9 @@ export function createApp(options: AppOptions): AppResult {
       ? { sessionsDir: codexSessionsDir, discoveryIndex: codexDiscoveryIndex }
       : { sessionsDir: codexSessionsDir },
   );
-  const geminiScanner = new GeminiSessionScanner();
+  const geminiScanner = new GeminiSessionScanner({
+    sessionsDir: geminiSessionsDir,
+  });
   const projectScanCachePath = options.dataDir
     ? join(options.dataDir, "indexes", "project-scanner-cache.json")
     : undefined;
@@ -525,6 +533,7 @@ export function createApp(options: AppOptions): AppResult {
     projectsDir: options.projectsDir,
     codexScanner,
     geminiScanner,
+    geminiSessionsDir,
     projectScanCachePath,
     projectMetadataService: options.projectMetadataService,
     workstreamService: options.workstreamService,
@@ -547,7 +556,7 @@ export function createApp(options: AppOptions): AppResult {
       provider === "grok"
         ? [
             join(
-              GROK_SESSIONS_DIR,
+              grokSessionsDir,
               encodeURIComponent(projectPath),
               sessionId,
               "images",
@@ -698,10 +707,10 @@ export function createApp(options: AppOptions): AppResult {
       case "gemini":
       case "gemini-acp":
         return getOrCreateReader(
-          `gemini::${GEMINI_TMP_DIR}::${project.path}`,
+          `gemini::${geminiSessionsDir}::${project.path}`,
           () =>
             new GeminiSessionReader({
-              sessionsDir: GEMINI_TMP_DIR,
+              sessionsDir: geminiSessionsDir,
               projectPath: project.path,
               hashToCwd: geminiScanner.getHashToCwd(),
             }),
@@ -762,19 +771,19 @@ export function createApp(options: AppOptions): AppResult {
         );
       case "grok":
         return getOrCreateReader(
-          `grok::${GROK_SESSIONS_DIR}::${project.path}`,
+          `grok::${grokSessionsDir}::${project.path}`,
           () =>
             new GrokSessionReader({
-              sessionsDir: GROK_SESSIONS_DIR,
+              sessionsDir: grokSessionsDir,
               projectPath: project.path,
             }),
         );
       case "pi":
         return getOrCreateReader(
-          `pi::${PI_SESSIONS_DIR}::${project.path}`,
+          `pi::${piSessionsDir}::${project.path}`,
           () =>
             new PiSessionReader({
-              sessionsDir: PI_SESSIONS_DIR,
+              sessionsDir: piSessionsDir,
               projectPath: project.path,
             }),
         );
@@ -795,29 +804,29 @@ export function createApp(options: AppOptions): AppResult {
     );
   const geminiReaderFactory = (projectPath: string): GeminiSessionReader =>
     getOrCreateReader(
-      `gemini-extra::${GEMINI_TMP_DIR}::${projectPath}`,
+      `gemini-extra::${geminiSessionsDir}::${projectPath}`,
       () =>
         new GeminiSessionReader({
-          sessionsDir: GEMINI_TMP_DIR,
+          sessionsDir: geminiSessionsDir,
           projectPath,
           hashToCwd: geminiScanner.getHashToCwd(),
         }),
     );
   const grokReaderFactory = (projectPath: string): GrokSessionReader =>
     getOrCreateReader(
-      `grok-extra::${GROK_SESSIONS_DIR}::${projectPath}`,
+      `grok-extra::${grokSessionsDir}::${projectPath}`,
       () =>
         new GrokSessionReader({
-          sessionsDir: GROK_SESSIONS_DIR,
+          sessionsDir: grokSessionsDir,
           projectPath,
         }),
     );
   const piReaderFactory = (projectPath: string): PiSessionReader =>
     getOrCreateReader(
-      `pi-extra::${PI_SESSIONS_DIR}::${projectPath}`,
+      `pi-extra::${piSessionsDir}::${projectPath}`,
       () =>
         new PiSessionReader({
-          sessionsDir: PI_SESSIONS_DIR,
+          sessionsDir: piSessionsDir,
           projectPath,
         }),
     );
@@ -837,12 +846,12 @@ export function createApp(options: AppOptions): AppResult {
         codexSessionsDir,
         codexReaderFactory,
         codexSummaryParserWorkerMode: options.codexSummaryParserWorkerMode,
-        geminiSessionsDir: GEMINI_TMP_DIR,
+        geminiSessionsDir,
         geminiReaderFactory,
         geminiHashToCwd: geminiScanner.getHashToCwd(),
-        grokSessionsDir: GROK_SESSIONS_DIR,
+        grokSessionsDir,
         grokReaderFactory,
-        piSessionsDir: PI_SESSIONS_DIR,
+        piSessionsDir,
         piReaderFactory,
         claudeSummaryParserWorkerMode: options.claudeSummaryParserWorkerMode,
       },
@@ -871,12 +880,12 @@ export function createApp(options: AppOptions): AppResult {
         codexSessionsDir,
         codexReaderFactory,
         codexSummaryParserWorkerMode: options.codexSummaryParserWorkerMode,
-        geminiSessionsDir: GEMINI_TMP_DIR,
+        geminiSessionsDir,
         geminiReaderFactory,
         geminiHashToCwd: geminiScanner.getHashToCwd(),
-        grokSessionsDir: GROK_SESSIONS_DIR,
+        grokSessionsDir,
         grokReaderFactory,
-        piSessionsDir: PI_SESSIONS_DIR,
+        piSessionsDir,
         piReaderFactory,
         claudeSummaryParserWorkerMode: options.claudeSummaryParserWorkerMode,
       },
@@ -907,12 +916,12 @@ export function createApp(options: AppOptions): AppResult {
       codexSessionsDir,
       codexReaderFactory,
       codexSummaryParserWorkerMode: options.codexSummaryParserWorkerMode,
-      geminiSessionsDir: GEMINI_TMP_DIR,
+      geminiSessionsDir,
       geminiReaderFactory,
       geminiHashToCwd: geminiScanner.getHashToCwd(),
-      grokSessionsDir: GROK_SESSIONS_DIR,
+      grokSessionsDir,
       grokReaderFactory,
-      piSessionsDir: PI_SESSIONS_DIR,
+      piSessionsDir,
       piReaderFactory,
       claudeSummaryParserWorkerMode: options.claudeSummaryParserWorkerMode,
     };
@@ -1333,11 +1342,11 @@ export function createApp(options: AppOptions): AppResult {
       codexSessionsDir,
       codexReaderFactory,
       geminiScanner,
-      geminiSessionsDir: GEMINI_TMP_DIR,
+      geminiSessionsDir,
       geminiReaderFactory,
-      grokSessionsDir: GROK_SESSIONS_DIR,
+      grokSessionsDir,
       grokReaderFactory,
-      piSessionsDir: PI_SESSIONS_DIR,
+      piSessionsDir,
       piReaderFactory,
       sessionAutoArchiveDays: options.sessionAutoArchiveDays,
     }),
@@ -1353,11 +1362,11 @@ export function createApp(options: AppOptions): AppResult {
         sessionIndexService: options.sessionIndexService,
         codexSessionsDir,
         codexReaderFactory,
-        geminiSessionsDir: GEMINI_TMP_DIR,
+        geminiSessionsDir,
         geminiReaderFactory,
-        grokSessionsDir: GROK_SESSIONS_DIR,
+        grokSessionsDir,
         grokReaderFactory,
-        piSessionsDir: PI_SESSIONS_DIR,
+        piSessionsDir,
         piReaderFactory,
         sessionMetadataService: options.sessionMetadataService,
         sessionQueuePersistenceService: options.sessionQueuePersistenceService,
@@ -1373,11 +1382,11 @@ export function createApp(options: AppOptions): AppResult {
         sessionIndexService: options.sessionIndexService,
         codexSessionsDir,
         codexReaderFactory,
-        geminiSessionsDir: GEMINI_TMP_DIR,
+        geminiSessionsDir,
         geminiReaderFactory,
-        grokSessionsDir: GROK_SESSIONS_DIR,
+        grokSessionsDir,
         grokReaderFactory,
-        piSessionsDir: PI_SESSIONS_DIR,
+        piSessionsDir,
         piReaderFactory,
         sessionMetadataService: options.sessionMetadataService,
       }),
@@ -1426,11 +1435,11 @@ export function createApp(options: AppOptions): AppResult {
       codexSessionsDir,
       codexReaderFactory,
       geminiScanner,
-      geminiSessionsDir: GEMINI_TMP_DIR,
+      geminiSessionsDir,
       geminiReaderFactory,
-      grokSessionsDir: GROK_SESSIONS_DIR,
+      grokSessionsDir,
       grokReaderFactory,
-      piSessionsDir: PI_SESSIONS_DIR,
+      piSessionsDir,
       piReaderFactory,
       serverSettingsService: options.serverSettingsService,
       workstreamService: options.workstreamService,
@@ -1470,12 +1479,12 @@ export function createApp(options: AppOptions): AppResult {
           case "gemini-acp":
             return {
               reader: geminiReaderFactory(project.path),
-              sessionDir: GEMINI_TMP_DIR,
+              sessionDir: geminiSessionsDir,
             };
           case "grok":
             return {
               reader: grokReaderFactory(project.path),
-              sessionDir: GROK_SESSIONS_DIR,
+              sessionDir: grokSessionsDir,
             };
           default:
             return {
@@ -1537,11 +1546,11 @@ export function createApp(options: AppOptions): AppResult {
       codexSessionsDir,
       codexReaderFactory,
       geminiScanner,
-      geminiSessionsDir: GEMINI_TMP_DIR,
+      geminiSessionsDir,
       geminiReaderFactory,
-      grokSessionsDir: GROK_SESSIONS_DIR,
+      grokSessionsDir,
       grokReaderFactory,
-      piSessionsDir: PI_SESSIONS_DIR,
+      piSessionsDir,
       piReaderFactory,
       sessionAutoArchiveDays: options.sessionAutoArchiveDays,
     }),
@@ -1562,11 +1571,11 @@ export function createApp(options: AppOptions): AppResult {
       codexSessionsDir,
       codexReaderFactory,
       geminiScanner,
-      geminiSessionsDir: GEMINI_TMP_DIR,
+      geminiSessionsDir,
       geminiReaderFactory,
-      grokSessionsDir: GROK_SESSIONS_DIR,
+      grokSessionsDir,
       grokReaderFactory,
-      piSessionsDir: PI_SESSIONS_DIR,
+      piSessionsDir,
       piReaderFactory,
       eventBus: options.eventBus,
       sessionAutoArchiveDays: options.sessionAutoArchiveDays,
@@ -1729,11 +1738,11 @@ export function createApp(options: AppOptions): AppResult {
         codexSessionsDir,
         codexReaderFactory,
         geminiScanner,
-        geminiSessionsDir: GEMINI_TMP_DIR,
+        geminiSessionsDir,
         geminiReaderFactory,
-        grokSessionsDir: GROK_SESSIONS_DIR,
+        grokSessionsDir,
         grokReaderFactory,
-        piSessionsDir: PI_SESSIONS_DIR,
+        piSessionsDir,
         piReaderFactory,
       }),
     );

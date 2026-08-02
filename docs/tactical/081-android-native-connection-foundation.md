@@ -162,7 +162,7 @@ server-configuration slice rather than a hidden test-driven migration.
 | Turn the probe into a connection manager | complete | Per-profile process runtime, leases, bounded queues/retry, request correlation, subscription restoration, and final-owner teardown are tested |
 | Add the native relay route | complete | Pixel negotiates and requests through an ordinary local legacy relay `/ws`; Android does not probe or require `/mux` |
 | Add explicit direct route selection | complete | Pixel falls back from an unavailable preferred direct candidate to resume-authenticated relay and records the successful route |
-| Bind Compose onboarding and summaries | ready after profiles | Native login/profile UI and a small real session-summary consumer use the connection manager |
+| Bind Compose onboarding and summaries | complete | Native login/profile UI, lifecycle-owned lease, existing session summaries, and permanent full-web handoff pass on Pixel |
 | Add user-enabled foreground ownership | requires later product review | Correct Android foreground-service type/policy, visible start/stop, lease ownership, process recreation, and timeout behavior are validated |
 | Add bounded LAN discovery | ready after route selection | Foreground NSD scan supplies untrusted candidates, attaches automatically only after resume, and stops completely when its owner releases it |
 
@@ -366,6 +366,30 @@ manifests remain HTTPS-only.
   `RelayClientService`. With an unavailable preferred direct candidate first,
   the same manager falls back to relay, authenticates resume, requests session
   summaries, records relay as preferred, and tears down both sides.
-- The disposable server pins Codex scanning to its temporary directory, so the
-  integration test cannot inspect the maintainer's real session history or
-  emit unrelated slow-scan warnings.
+- The disposable server pins Claude, Codex, Gemini, Grok, and pi scanning to
+  temporary directories, so the integration test cannot inspect the
+  maintainer's real session history or emit unrelated slow-scan warnings.
+
+## Initial Compose Consumer Evidence — 2026-08-02
+
+- A normal launcher start shows native onboarding rather than automatically
+  allocating `WebClientActivity`; **Open full app** remains in the top bar, and
+  exact App Links retain their dedicated full-web handoff.
+- The Compose form accepts only an explicit direct route or explicit legacy
+  relay route and clears its password field before handing the one login value
+  to the Kotlin pairing coordinator.
+- A lifecycle-aware ViewModel observes DataStore profiles, holds no password,
+  and owns a manager lease only while `MainActivity` is started. Closing the
+  physical-device Activity returned the manager to idle.
+- The Pixel performed a new native full SRP login, persisted the protected
+  resume credential, resumed through the process connection manager, rendered
+  **Connected**, requested the existing `/api/sessions?limit=50` response,
+  rendered its empty state, and forgot only the disposable profile afterward.
+- A separate host-driven probe force-stopped the instrumentation process and
+  cold-launched the real application process twice. Both launches reopened the
+  DataStore/Keystore credential, resumed, rendered **Connected**, and loaded
+  the empty summary state; the probe then removed its test-owned profile and
+  restored the prior selection.
+- JVM parsing tests cover compact titles, status/detail fields, nullable fields,
+  and malformed session responses. Physical onboarding and resumed-home
+  renderings were inspected at the Pixel's 1080×2400 resolution.

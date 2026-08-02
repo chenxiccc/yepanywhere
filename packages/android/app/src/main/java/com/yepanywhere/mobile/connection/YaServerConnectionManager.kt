@@ -344,7 +344,7 @@ class YaServerConnectionManager(
                     }
                     routed = connector.resume(snapshot.profile, stored.credential)
                     val connectedAt = maxOf(nowEpochMs(), stored.establishedAtEpochMs)
-                    repository.recordSuccessfulResume(
+                    repository.recordSuccessfulAuthentication(
                         profileId = profileId,
                         routeId = routed.route.id,
                         resumeCredential = stored.copy(lastResumedAtEpochMs = connectedAt),

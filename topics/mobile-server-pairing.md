@@ -266,6 +266,38 @@ Compose consumes domain-facing repositories for server state, inbox, sessions,
 notifications, and projections. The raw multiplexed protocol remains internal
 transport plumbing rather than becoming the UI's permanent data model.
 
+### Initial native Compose contract
+
+The Android launcher now opens a native Compose server surface by default; it
+does not allocate a WebView or JavaScript runtime merely because the app is
+opened. An exact `https://yepanywhere.com/open` App Link still hands its typed
+destination to the dedicated full-web activity. **Open full app** remains
+available from every native state and starts the same bundled or hosted client
+channel without routing that web client's traffic through Kotlin.
+
+Native onboarding accepts an explicit label, SRP username/password, and either
+an exact direct WebSocket URL or an exact legacy-relay WebSocket URL plus relay
+target. It does not infer, rewrite, probe, or silently replace the entered
+endpoint. The password is held only in the visible field and full-login attempt,
+cleared from Compose state on submission, and never placed in saved instance
+state, a ViewModel field, DataStore, or the web bridge. A profile is persisted
+only after the authenticated server proof succeeds.
+
+The initial signed-in surface can select or forget local server profiles,
+display connection and reauthentication state, and read up to 50 compact
+session summaries through the existing encrypted `GET /api/sessions` request.
+It is deliberately read-only: opening a full session, tools, settings, and all
+unsupported detail remains the full web client's job. Forgetting a profile
+requires confirmation and removes its protected resume credential. A rejected
+or expired resume keeps the non-secret profile visible and offers explicit full
+SRP reauthentication through its preferred route.
+
+The foreground Compose activity acquires one connection lease only while the
+activity is started. Backgrounding it, replacing it with the full-web activity,
+or destroying it cancels an in-flight summary load and releases that lease; if
+it was the final owner, the socket and retry work return to idle. This behavior
+does not imply or emulate the separately reviewed foreground activity service.
+
 ### Native secure-transport checkpoint
 
 The initial Kotlin connection foundation proved the existing contract without
@@ -446,23 +478,29 @@ web interface remains available.
 1. **Prove Kotlin SRP and secure transport — complete:** checked-in
    cross-language fixtures and the direct physical-device probe establish the
    connection foundation without adding a server contract.
-2. **Store native paired-server profiles:** establish Keystore/DataStore
-   boundaries, forget/reauthentication states, and backup exclusions.
-3. **Own native connection demand:** turn the bounded probe into a
-   lease-controlled request/subscription manager with deterministic teardown.
-4. **Select direct and relay routes:** attach a candidate automatically only
+2. **Store native paired-server profiles — complete:** Keystore/DataStore
+   boundaries, forget/reauthentication states, expiry, and backup exclusions
+   are implemented and tested.
+3. **Own native connection demand — complete:** a lease-controlled
+   request/subscription manager supplies bounded reconnect and deterministic
+   teardown.
+4. **Select direct and relay routes — complete:** attach a candidate automatically only
    after resume proves credential continuity; otherwise require explicit SRP
    reauthentication and profile selection.
-5. **Create paired-device records and revocation:** attach expiring native
+5. **Bind the first Compose consumer — complete:** explicit onboarding,
+   profile selection, reauthentication, connection state, and compact existing
+   session summaries use the native core while the full web client remains an
+   independent escape hatch.
+6. **Create paired-device records and revocation:** attach expiring native
    sessions to the durable server-side relationship without reusing browser
    profile ids.
-6. **Feed native inbox and Conversation view:** add only the separately
+7. **Feed native inbox and Conversation view:** add only the separately
    approved bounded APIs/projections required by useful Compose surfaces.
-7. **Attach native push subscriptions:** make broker subscriptions children of
+8. **Attach native push subscriptions:** make broker subscriptions children of
    the paired device and validate notification presentation/taps end to end.
-8. **Add bounded LAN discovery:** discover candidates in foreground and accept
+9. **Add bounded LAN discovery:** discover candidates in foreground and accept
    them only after expected-server authentication.
-9. **Add optional foreground activity:** let an explicit user action keep the
+10. **Add optional foreground activity:** let an explicit user action keep the
    native core subscribed, with a persistent notification and complete stop.
-10. **Benchmark a native web transport:** consider one only if measurements
+11. **Benchmark a native web transport:** consider one only if measurements
     show that sharing Kotlin connections benefits the permanent full web UI.

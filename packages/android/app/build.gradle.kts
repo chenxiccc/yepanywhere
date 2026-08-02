@@ -194,6 +194,7 @@ dependencies {
     implementation("androidx.datastore:datastore-preferences:1.1.7")
     implementation("androidx.fragment:fragment-ktx:1.8.9")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.2")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.2")
     implementation("androidx.webkit:webkit:1.14.0")
     implementation("com.goterl:lazysodium-android:5.2.0") {
         // The AAR API is Java bytecode. Its POM's Kotlin 2.1 stdlib is used

@@ -175,7 +175,7 @@ class YaDirectSecureSessionInstrumentedTest {
             value = value.copy(resumeCredential = null)
         }
 
-        override suspend fun recordSuccessfulResume(
+        override suspend fun recordSuccessfulAuthentication(
             profileId: String,
             routeId: String,
             resumeCredential: YaStoredResumeCredential,

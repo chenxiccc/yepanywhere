@@ -39,4 +39,42 @@ class YaPairingCoordinator(
             transport.closeAndAwait()
         }
     }
+
+    suspend fun reauthenticate(
+        profileId: String,
+        password: String,
+        routeId: String? = null,
+    ) {
+        val snapshot = checkNotNull(repository.snapshot(profileId)) {
+            "Cannot authenticate a removed paired server"
+        }
+        val route = if (routeId == null) {
+            snapshot.profile.routes.firstOrNull {
+                it.id == snapshot.profile.preferredRouteId
+            } ?: snapshot.profile.routes.first()
+        } else {
+            snapshot.profile.routes.firstOrNull { it.id == routeId }
+                ?: error("Cannot authenticate through an unknown route")
+        }
+        val transport = connector.login(
+            route = route,
+            username = snapshot.profile.username,
+            password = password,
+        )
+        try {
+            val establishedAt = nowEpochMs()
+            repository.recordSuccessfulAuthentication(
+                profileId = profileId,
+                routeId = route.id,
+                resumeCredential = YaStoredResumeCredential(
+                    credential = transport.credential,
+                    establishedAtEpochMs = establishedAt,
+                    lastResumedAtEpochMs = null,
+                ),
+                connectedAtEpochMs = establishedAt,
+            )
+        } finally {
+            transport.closeAndAwait()
+        }
+    }
 }

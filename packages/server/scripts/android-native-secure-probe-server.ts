@@ -35,9 +35,15 @@ if (!Number.isSafeInteger(requestedPort) || requestedPort < 1024 || requestedPor
 const root = await mkdtemp(join(tmpdir(), "ya-android-native-probe-"));
 const projectsDir = join(root, "projects");
 const codexSessionsDir = join(root, "codex-sessions");
+const geminiSessionsDir = join(root, "gemini-sessions");
+const grokSessionsDir = join(root, "grok-sessions");
+const piSessionsDir = join(root, "pi-sessions");
 const dataDir = join(root, "data");
 await mkdir(projectsDir, { recursive: true });
 await mkdir(codexSessionsDir, { recursive: true });
+await mkdir(geminiSessionsDir, { recursive: true });
+await mkdir(grokSessionsDir, { recursive: true });
+await mkdir(piSessionsDir, { recursive: true });
 await mkdir(dataDir, { recursive: true });
 
 const eventBus = new EventBus();
@@ -65,6 +71,9 @@ const { app, supervisor } = createApp({
   sdk: new MockClaudeSDK(),
   projectsDir,
   codexSessionsDir,
+  geminiSessionsDir,
+  grokSessionsDir,
+  piSessionsDir,
   eventBus,
   authService,
   authDisabled: true,

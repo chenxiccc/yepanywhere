@@ -125,7 +125,7 @@ class YaPairedServerStore internal constructor(
         }
     }
 
-    override suspend fun recordSuccessfulResume(
+    override suspend fun recordSuccessfulAuthentication(
         profileId: String,
         routeId: String,
         resumeCredential: YaStoredResumeCredential,

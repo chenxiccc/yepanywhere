@@ -11,7 +11,7 @@ interface YaPairedServerRepository {
 
     suspend fun clearCredential(profileId: String)
 
-    suspend fun recordSuccessfulResume(
+    suspend fun recordSuccessfulAuthentication(
         profileId: String,
         routeId: String,
         resumeCredential: YaStoredResumeCredential,

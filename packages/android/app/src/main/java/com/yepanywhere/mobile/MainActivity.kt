@@ -5,39 +5,42 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
+import androidx.activity.viewModels
 import androidx.core.net.toUri
 import com.yepanywhere.mobile.links.AppLinkDestination
+import com.yepanywhere.mobile.ui.YaNativeHomeScreen
+import com.yepanywhere.mobile.ui.YaNativeHomeViewModel
 import com.yepanywhere.mobile.ui.theme.YepAnywhereTheme
 import com.yepanywhere.mobile.web.WebClientActivity
 import com.yepanywhere.mobile.web.WebClientConfig
 
 class MainActivity : ComponentActivity() {
+    private val homeViewModel by viewModels<YaNativeHomeViewModel>()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             YepAnywhereTheme {
-                LauncherScreen(::openWebClient)
+                YaNativeHomeScreen(
+                    viewModel = homeViewModel,
+                    openWebClient = ::openWebClient,
+                )
             }
         }
+        if (savedInstanceState == null && intent.dataString != null) {
+            openWebClient()
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        homeViewModel.setVisible(true)
+    }
+
+    override fun onStop() {
+        homeViewModel.setVisible(false)
+        super.onStop()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -59,41 +62,5 @@ class MainActivity : ComponentActivity() {
                 }
             },
         )
-    }
-}
-
-@Composable
-private fun LauncherScreen(openWebClient: () -> Unit) {
-    var openedAutomatically by rememberSaveable { mutableStateOf(false) }
-
-    LaunchedEffect(Unit) {
-        if (!openedAutomatically) {
-            openedAutomatically = true
-            openWebClient()
-        }
-    }
-
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Text(
-                text = stringResource(R.string.app_name),
-                style = MaterialTheme.typography.headlineMedium,
-            )
-            Button(
-                modifier = Modifier.padding(top = 20.dp),
-                onClick = openWebClient,
-            ) {
-                Text(stringResource(R.string.open_full_app))
-            }
-        }
     }
 }
