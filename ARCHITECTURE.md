@@ -64,6 +64,10 @@ section below for what would have to change at higher fan-out.
   — proposal for one canonical, single-writer YA session that can transfer a
   provider-specific portable bundle and active ownership between trusted YA
   peers while the client follows the same session identity.
+- [`topics/reload-safe-provider-runtimes.md`](topics/reload-safe-provider-runtimes.md)
+  — Codex-first proposal for moving live provider protocol ownership outside
+  the replaceable development backend so an active turn can survive reload
+  under the same YA session identity.
 - [`topics/cross-host-delegation.md`](topics/cross-host-delegation.md) — broad
   product direction for browser-known hosts, directed server-to-server grants,
   and separate native worker sessions as a useful step before session
@@ -192,6 +196,35 @@ implementation. Each entry should make the trigger explicit so the proposal
 isn't enacted prematurely. Where an entry mentions a possible library, treat
 that as one option among the three above (library / minimal hand-rolled /
 bespoke), not a recommendation.
+
+### Reload-safe provider runtime ownership
+
+**Problem today.** The replaceable Hono server owns each live provider
+connection and the in-memory `Process` state needed to interpret and control
+it. An immediate development reload therefore interrupts an active turn;
+**Reload When Safe** avoids the interruption only by waiting for active work
+and volatile queues to drain.
+
+**Proposal.** Let the stable `scripts/dev.js` wrapper own a small provider
+runtime host. The replacement server reattaches by canonical YA session id,
+control epoch, and event cursor. Start with a Linux-only Codex experiment using
+the pinned app-server's supported Unix-socket transport and running-thread
+rejoin behavior; keep safe restart everywhere the capability is absent. See
+[`topics/reload-safe-provider-runtimes.md`](topics/reload-safe-provider-runtimes.md).
+
+**Cost.** Cross-process discovery, replay, snapshots, approval preservation,
+single-controller fencing, runtime generations, sandbox isolation, and bounded
+idle teardown. Providers without a reconnectable native service require a YA
+worker that owns their SDK object, not merely a detached CLI PID.
+
+**Benefit.** The development backend can load changed code immediately without
+stopping eligible active agent turns, then reconstruct the same visible YA
+session when it returns.
+
+**Trigger.** The narrow Codex experiment is triggered by an observed reload
+interruption and verified upstream rejoin support. A general provider-runtime
+extraction waits for that smoke test and separate provider-specific continuity
+proofs.
 
 ### Outbound buffering / per-listener async dispatch
 

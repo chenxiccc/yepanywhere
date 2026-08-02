@@ -10,6 +10,8 @@ patient queue intent.
 Related topic: [heartbeat ownership and timers](heartbeat.md).
 Related topic: [session ownership and shared-transcript writers](session-ownership.md)
 — who is writing the file, a different axis from whether the turn is progressing.
+Related topic: [reload-safe provider runtimes](reload-safe-provider-runtimes.md)
+— proposed owner continuity across a replaceable development backend.
 
 ## Contracts
 

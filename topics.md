@@ -235,3 +235,6 @@
 - website-product-communication - Canonical public feature/provider/
   distribution claims, public docs ownership, and the marketing analytics
   boundary.
+- reload-safe-provider-runtimes - Wrapper-owned provider protocol runtimes
+  that can keep active turns alive across a development backend reload;
+  Codex-first Linux proposal.
