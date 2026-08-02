@@ -27,6 +27,7 @@ import {
 } from "../session-sandbox.js";
 import { getProvider } from "../sdk/providers/index.js";
 import { CacheMissBillingMonitor } from "../services/CacheMissBillingMonitor.js";
+import type { DirtyFileEditorService } from "../services/DirtyFileEditorService.js";
 import type { SessionQueuePersistenceService } from "../services/SessionQueuePersistenceService.js";
 import type {
   AgentProvider,
@@ -582,6 +583,8 @@ export interface SupervisorOptions {
   sessionQueuePersistenceService?: SessionQueuePersistenceService;
   /** Durable store for image-bearing tool results. */
   toolResultMediaStore?: ToolResultMediaStore;
+  /** Tracks the last YA session to mutate each still-dirty project file. */
+  dirtyFileEditorService?: DirtyFileEditorService;
   /** Root for persistent project-private provider state. */
   sandboxStateRoot?: string;
 }
@@ -642,6 +645,7 @@ export class Supervisor {
   private sessionMetadataService?: SessionMetadataService;
   private sessionQueuePersistenceService?: SessionQueuePersistenceService;
   private toolResultMediaStore?: ToolResultMediaStore;
+  private dirtyFileEditorService?: DirtyFileEditorService;
   private sandboxStateRoot?: string;
   // In-flight forked recaps, keyed by process id. The AbortController cancels
   // the generator-fork helper turn when the parent becomes active again, so a
@@ -682,6 +686,7 @@ export class Supervisor {
     this.sessionQueuePersistenceService =
       options.sessionQueuePersistenceService;
     this.toolResultMediaStore = options.toolResultMediaStore;
+    this.dirtyFileEditorService = options.dirtyFileEditorService;
     this.sandboxStateRoot = options.sandboxStateRoot;
     this.staleCheckTimer = setInterval(
       () => this.terminateStaleProcesses(),
@@ -4013,8 +4018,10 @@ export class Supervisor {
       if (event.type === "idle-reap") {
         this.emitSessionAborted(process.sessionId, process.projectId);
       } else if (event.type === "complete") {
+        this.dirtyFileEditorService?.forgetProcess(process.id);
         this.unregisterProcess(process);
       } else if (event.type === "message") {
+        this.dirtyFileEditorService?.observeMessage(process, event.message);
         if (event.message.type === "user") {
           this.clearTerminalProviderStatus(
             process.sessionId,
@@ -4203,6 +4210,7 @@ export class Supervisor {
         }
         this.emitWorkerActivity();
       } else if (event.type === "terminated") {
+        this.dirtyFileEditorService?.forgetProcess(process.id);
         this.emitProcessTerminated(
           process.sessionId,
           process.projectId,

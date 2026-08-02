@@ -71,6 +71,12 @@ export {
   type SessionQueuePersistenceServiceOptions,
 } from "./SessionQueuePersistenceService.js";
 export {
+  DirtyFileEditorService,
+  type DirtyFileSnapshot,
+  type DirtyFileEditorProcessContext,
+  type DirtyFileEditorServiceOptions,
+} from "./DirtyFileEditorService.js";
+export {
   ProjectQueueScheduler,
   type ProjectIdleStatus,
   type ProjectQueueExternalTracker,

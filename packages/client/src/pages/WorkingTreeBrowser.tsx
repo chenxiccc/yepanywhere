@@ -11,6 +11,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { ChangesetFileFilter } from "../components/ChangesetFileFilter";
 import { ResizableSourceColumns } from "../components/ResizableSourceColumns";
@@ -34,6 +35,7 @@ import {
 import { useProjectReviewComments } from "../hooks/useProjectReviewComments";
 import { handleSourceListKeyDown } from "../hooks/useSourceKeyboard";
 import { useTextTooltipAttributes } from "../hooks/useTooltipAppearance";
+import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import type { TranslationFn } from "../i18n";
 import { writeClipboardText } from "../lib/clipboard";
 import { CommitHistoryParentLink } from "./CommitHistoryParentLink";
@@ -67,6 +69,7 @@ export function WorkingTreeBrowser({
   onBrowseHistory,
   onBlameFile,
   captureReviewProjections = false,
+  supportsLastEditor = false,
   ignoreWhitespace = false,
   onToggleIgnoreWhitespace,
   onProjectionRequestFailure,
@@ -87,6 +90,7 @@ export function WorkingTreeBrowser({
   onBrowseHistory?: () => void;
   onBlameFile?: (path: string) => void;
   captureReviewProjections?: boolean;
+  supportsLastEditor?: boolean;
   ignoreWhitespace?: boolean;
   onToggleIgnoreWhitespace?: () => void;
   onProjectionRequestFailure?: () => void;
@@ -103,6 +107,8 @@ export function WorkingTreeBrowser({
   >(null);
   const retainedFileRef = useRef<WorktreeFileChange | null>(null);
   const diffPreviewRef = useRef<GitDiffPreviewHandle>(null);
+  const navigate = useNavigate();
+  const basePath = useRemoteBasePath();
   const fileMenu = useSourceContextMenu(t);
   const { pending, siteStates } = useProjectReviewComments(
     projectId,
@@ -259,28 +265,47 @@ export function WorkingTreeBrowser({
   );
 
   const fileMenuActions = useCallback(
-    (file: WorktreeFileChange): SourceContextMenuAction[] => [
-      {
-        label: t("sourceCopyPath"),
-        onSelect: () => {
-          void writeClipboardText(file.path);
+    (file: WorktreeFileChange): SourceContextMenuAction[] => {
+      const lastEditorSessionHref =
+        supportsLastEditor && file.lastEditor
+          ? `${basePath}/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(file.lastEditor.sessionId)}`
+          : undefined;
+      return [
+        {
+          label: t("sourceCopyPath"),
+          onSelect: () => {
+            void writeClipboardText(file.path);
+          },
         },
-      },
-      ...(onBlameFile
-        ? [
-            {
-              label: t("sourceBlameAtHead"),
-              onSelect: () => onBlameFile(file.path),
-            },
-          ]
-        : []),
-    ],
-    [onBlameFile, t],
+        ...(lastEditorSessionHref
+          ? [
+              {
+                label: t("sourceOpenLastEditorSession"),
+                onSelect: () => navigate(lastEditorSessionHref),
+              },
+            ]
+          : []),
+        ...(onBlameFile
+          ? [
+              {
+                label: t("sourceBlameAtHead"),
+                onSelect: () => onBlameFile(file.path),
+              },
+            ]
+          : []),
+      ];
+    },
+    [basePath, navigate, onBlameFile, projectId, supportsLastEditor, t],
   );
 
+  const lastEditorSessionHref =
+    supportsLastEditor && selectedFile?.lastEditor
+      ? `${basePath}/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(selectedFile.lastEditor.sessionId)}`
+      : undefined;
   const fileActions = selectedFile ? (
     <SourceFileHeaderActions
       path={selectedFile.path}
+      lastEditorSessionHref={lastEditorSessionHref}
       onBlameFile={onBlameFile}
       t={t}
     />
@@ -504,13 +529,17 @@ function expandUntrackedFolders(
     if (file.status !== "?" || !file.path.endsWith("/") || !folder) {
       return [file];
     }
-    return folder.files.map((path) => ({
-      path,
-      status: "?",
-      staged: false,
-      linesAdded: null,
-      linesDeleted: null,
-    }));
+    return folder.files.map((path) => {
+      const lastEditor = folder.lastEditors?.[path];
+      return {
+        path,
+        status: "?",
+        staged: false,
+        linesAdded: null,
+        linesDeleted: null,
+        ...(lastEditor ? { lastEditor } : {}),
+      };
+    });
   });
 }
 
@@ -543,6 +572,7 @@ function mergeWorkingTreeFiles(files: GitFileChange[]): WorktreeFileChange[] {
           : "unstaged";
     const singleLayer = entries.length === 1;
     const origPath = entries.find((file) => file.origPath)?.origPath;
+    const lastEditor = entries.find((file) => file.lastEditor)?.lastEditor;
     return {
       path: representative.path,
       status: representative.status,
@@ -550,6 +580,7 @@ function mergeWorkingTreeFiles(files: GitFileChange[]): WorktreeFileChange[] {
       linesAdded: singleLayer ? representative.linesAdded : null,
       linesDeleted: singleLayer ? representative.linesDeleted : null,
       ...(origPath ? { origPath } : {}),
+      ...(lastEditor ? { lastEditor } : {}),
       worktreeState,
     };
   });

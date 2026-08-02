@@ -4,6 +4,7 @@ import type {
   GitStatusInfo,
 } from "@yep-anywhere/shared";
 import {
+  GIT_DIRTY_FILE_EDITOR_CAPABILITY,
   GIT_SOURCE_REVIEW_CAPABILITY,
   GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,
   GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY,
@@ -422,6 +423,10 @@ export function GitStatusPage() {
     version,
     GIT_STATUS_ENHANCED_CAPABILITY,
   );
+  const supportsLastEditor = serverHasCapability(
+    version,
+    GIT_DIRTY_FILE_EDITOR_CAPABILITY,
+  );
   const supportsSourceReview = serverHasCapability(
     version,
     GIT_SOURCE_REVIEW_CAPABILITY,
@@ -590,6 +595,7 @@ export function GitStatusPage() {
                 projectId={effectiveProjectId}
                 isWideScreen={isWideScreen}
                 supportsProjections={supportsSourceReviewProjections}
+                supportsLastEditor={supportsLastEditor}
                 gitActions={gitActions}
                 reviewComments={reviewComments}
                 reviewsEnabled={reviewsEnabled}
@@ -647,6 +653,7 @@ function GitStatusContent({
   projectId,
   isWideScreen,
   supportsProjections,
+  supportsLastEditor,
   gitActions,
   reviewComments,
   reviewsEnabled,
@@ -659,6 +666,7 @@ function GitStatusContent({
   projectId: string;
   isWideScreen: boolean;
   supportsProjections: boolean;
+  supportsLastEditor: boolean;
   gitActions: GitActionState;
   reviewComments: ReturnType<typeof useProjectReviewComments>;
   reviewsEnabled: boolean;
@@ -786,6 +794,7 @@ function GitStatusContent({
           onBrowseHistory={handleBrowseHistory}
           onBlameFile={handleBlameFile}
           captureReviewProjections={reviewsEnabled}
+          supportsLastEditor={supportsLastEditor}
           ignoreWhitespace={activeIgnoreWhitespace}
           onToggleIgnoreWhitespace={handleToggleIgnoreWhitespace}
           onProjectionRequestFailure={handleProjectionUnavailable}
@@ -800,6 +809,7 @@ function GitStatusContent({
           onBlameFile={handleBlameFile}
           captureReviewProjections={reviewsEnabled}
           supportsProjections={supportsProjections}
+          supportsLastEditor={supportsLastEditor}
           ignoreWhitespace={activeIgnoreWhitespace}
           onToggleIgnoreWhitespace={handleToggleIgnoreWhitespace}
           onProjectionUnavailable={handleProjectionUnavailable}

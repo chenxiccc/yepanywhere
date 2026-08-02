@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  GIT_DIRTY_FILE_EDITOR_CAPABILITY,
   GIT_SOURCE_REVIEW_CAPABILITY,
   GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,
   GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY,
@@ -81,6 +82,7 @@ vi.mock("../WorkingTreeBrowser", async () => {
       status: GitStatusInfo;
       initialWorkingTreePath?: string;
       ignoreWhitespace?: boolean;
+      supportsLastEditor?: boolean;
       onToggleIgnoreWhitespace?: () => void;
       onBrowseHistory?: () => void;
     }) => {
@@ -275,6 +277,7 @@ beforeEach(() => {
       capabilities: [
         GIT_SOURCE_REVIEW_CAPABILITY,
         GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,
+        GIT_DIRTY_FILE_EDITOR_CAPABILITY,
         GIT_STATUS_ENHANCED_CAPABILITY,
         GIT_STATUS_REMOTE_CHECK_CAPABILITY,
       ],
@@ -361,6 +364,35 @@ describe("GitStatusPage source header", () => {
       expect.objectContaining({ ignoreWhitespace: false }),
     );
     expect(screen.getByTestId("working-tree-browser")).toBeDefined();
+  });
+
+  it("gates dirty-file session links independently", async () => {
+    mocks.useVersion.mockReturnValue({
+      version: {
+        capabilities: [
+          GIT_SOURCE_REVIEW_CAPABILITY,
+          GIT_STATUS_ENHANCED_CAPABILITY,
+        ],
+      },
+      loading: false,
+      error: null,
+    });
+
+    renderPage();
+
+    await screen.findByTestId("working-tree-browser");
+    expect(mocks.renderWorkingTreeBrowser).toHaveBeenLastCalledWith(
+      expect.objectContaining({ supportsLastEditor: false }),
+    );
+  });
+
+  it("enables dirty-file session links when advertised", async () => {
+    renderPage();
+
+    await screen.findByTestId("working-tree-browser");
+    expect(mocks.renderWorkingTreeBrowser).toHaveBeenLastCalledWith(
+      expect.objectContaining({ supportsLastEditor: true }),
+    );
   });
 
   it("enables the whitespace projection when the server advertises it", async () => {

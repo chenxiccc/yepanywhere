@@ -15,6 +15,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ProjectScanner } from "../../src/projects/scanner.js";
 import { createGitStatusRoutes } from "../../src/routes/git-status.js";
+import type { DirtyFileEditorService } from "../../src/services/DirtyFileEditorService.js";
 import type { Project } from "../../src/supervisor/types.js";
 
 const execFileAsync = promisify(execFile);
@@ -23,7 +24,10 @@ async function runGit(cwd: string, args: string[]): Promise<void> {
   await execFileAsync("git", ["-C", cwd, ...args]);
 }
 
-function createRoutesForProject(projectPath: string) {
+function createRoutesForProject(
+  projectPath: string,
+  dirtyFileEditorService?: DirtyFileEditorService,
+) {
   const projectId = toUrlProjectId(projectPath);
   const project: Project = {
     id: projectId,
@@ -45,6 +49,7 @@ function createRoutesForProject(projectPath: string) {
           return id === projectId ? project : null;
         },
       } as unknown as ProjectScanner,
+      dirtyFileEditorService,
     }),
   };
 }
@@ -197,6 +202,38 @@ describe("git-status routes", () => {
     expect(checkedRemoteMs).toBeLessThanOrEqual(afterFetchMs);
   });
 
+  it("decorates dirty files through the editor-attribution service", async () => {
+    const repoDir = await createRepoWithUpstream();
+    await writeFile(join(repoDir, "README.md"), "edited\n");
+    const reconcileGitStatus = (status: GitStatusInfo): GitStatusInfo => ({
+      ...status,
+      files: status.files.map((file) => ({
+        ...file,
+        lastEditor: {
+          sessionId: "session-1",
+          observedAt: "2026-08-02T10:00:00.000Z",
+        },
+      })),
+    });
+    const dirtyFileEditorService = {
+      reconcileGitStatus: (_projectPath: string, status: GitStatusInfo) =>
+        reconcileGitStatus(status),
+    } as DirtyFileEditorService;
+    const { projectId, routes } = createRoutesForProject(
+      repoDir,
+      dirtyFileEditorService,
+    );
+
+    const response = await routes.request(`/${projectId}/git`);
+    const body = (await response.json()) as GitStatusInfo;
+
+    expect(response.status).toBe(200);
+    expect(body.files[0]?.lastEditor).toEqual({
+      sessionId: "session-1",
+      observedAt: "2026-08-02T10:00:00.000Z",
+    });
+  });
+
   it("reports compact untracked folders as dirty entries", async () => {
     const repoDir = await createRepoWithUpstream();
     await mkdir(join(repoDir, "transport", "__tests__"), { recursive: true });
@@ -281,7 +318,18 @@ describe("git-status routes", () => {
       join(repoDir, "transport", "__tests__", "types.test.ts"),
       "export {};\n",
     );
-    const { projectId, routes } = createRoutesForProject(repoDir);
+    const dirtyFileEditorService = {
+      editorsForPaths: () => ({
+        "transport/types.ts": {
+          sessionId: "session-1",
+          observedAt: "2026-08-02T10:00:00.000Z",
+        },
+      }),
+    } as DirtyFileEditorService;
+    const { projectId, routes } = createRoutesForProject(
+      repoDir,
+      dirtyFileEditorService,
+    );
 
     const response = await routes.request(
       `/${projectId}/git/untracked-folder?path=${encodeURIComponent("transport/")}`,
@@ -292,6 +340,12 @@ describe("git-status routes", () => {
     expect(body).toEqual({
       path: "transport/",
       files: ["transport/__tests__/types.test.ts", "transport/types.ts"],
+      lastEditors: {
+        "transport/types.ts": {
+          sessionId: "session-1",
+          observedAt: "2026-08-02T10:00:00.000Z",
+        },
+      },
       truncated: false,
       limit: 500,
     });

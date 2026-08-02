@@ -41,6 +41,7 @@ export function CommitBrowser({
   onBlameFile,
   captureReviewProjections = false,
   supportsProjections = false,
+  supportsLastEditor = false,
   ignoreWhitespace = false,
   onToggleIgnoreWhitespace = NOOP,
   onProjectionUnavailable = NOOP,
@@ -56,6 +57,7 @@ export function CommitBrowser({
   onBlameFile?: (path: string) => void;
   captureReviewProjections?: boolean;
   supportsProjections?: boolean;
+  supportsLastEditor?: boolean;
   ignoreWhitespace?: boolean;
   onToggleIgnoreWhitespace?: () => void;
   onProjectionUnavailable?: () => void;
@@ -324,6 +326,7 @@ export function CommitBrowser({
             }
             onBlameFile={onBlameFile}
             captureReviewProjections={captureReviewProjections}
+            supportsLastEditor={supportsLastEditor}
             ignoreWhitespace={ignoreWhitespace}
             onToggleIgnoreWhitespace={onToggleIgnoreWhitespace}
             onProjectionRequestFailure={handleProjectionRequestFailure}

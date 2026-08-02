@@ -5,6 +5,7 @@ import type {
 import type { PatchHunk } from "./types.js";
 
 export {
+  GIT_DIRTY_FILE_EDITOR_CAPABILITY,
   GIT_SOURCE_REVIEW_CAPABILITY,
   GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,
   GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY,
@@ -15,6 +16,13 @@ export {
   GIT_STATUS_PUSH_CAPABILITY,
   GIT_STATUS_REMOTE_CHECK_CAPABILITY,
 } from "./server-capabilities.js";
+
+/** Last YA session observed successfully mutating a still-dirty file. */
+export interface GitFileEditor {
+  sessionId: string;
+  /** Successful tool-result observation time, as ISO 8601. */
+  observedAt: string;
+}
 
 export interface GitFileChange {
   /** Relative path within the repo. May be a compact untracked directory. */
@@ -29,6 +37,8 @@ export interface GitFileChange {
   linesDeleted: number | null;
   /** Original path (for renames) */
   origPath?: string;
+  /** Last YA session observed successfully mutating this dirty path. */
+  lastEditor?: GitFileEditor;
 }
 
 export interface GitRecentCommit {
@@ -155,6 +165,8 @@ export interface GitUntrackedFolderInfo {
   path: string;
   /** Expanded untracked file paths within the directory */
   files: string[];
+  /** Last-editor attribution for expanded paths that have it. */
+  lastEditors?: Record<string, GitFileEditor>;
   /** Whether the list was capped by the server */
   truncated: boolean;
   /** Maximum number of files returned before truncation */

@@ -5,6 +5,7 @@ import {
   BROWSER_SETTINGS_BACKUP_CAPABILITY,
   CLAUDE_GATEWAY_AUTOSTART_CAPABILITY,
   CLAUDE_GATEWAY_CAPABILITY,
+  GIT_DIRTY_FILE_EDITOR_CAPABILITY,
   GIT_SOURCE_REVIEW_CAPABILITY,
   GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,
   HOST_AWAKE_CONTROL_CAPABILITY,
@@ -50,6 +51,12 @@ describe("Version Routes", () => {
 
   it("advertises the complete source browser and review contract", () => {
     expect(getServerCapabilities()).toContain(GIT_SOURCE_REVIEW_CAPABILITY);
+  });
+
+  it("advertises dirty-file editor attribution", () => {
+    expect(getServerCapabilities()).toContain(
+      GIT_DIRTY_FILE_EDITOR_CAPABILITY,
+    );
   });
 
   it("advertises Source Control diff projections", () => {

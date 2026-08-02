@@ -2850,6 +2850,42 @@ describe("CodexProvider Event Normalization", () => {
     });
   });
 
+  it("marks a declined file change as an error result", () => {
+    const provider = createTestProvider() as unknown as {
+      convertItemToSDKMessages: (
+        item: unknown,
+        sessionId: string,
+        turnId: string,
+        sourceEvent: "item/started" | "item/completed",
+      ) => Array<Record<string, unknown>>;
+    };
+
+    const messages = provider.convertItemToSDKMessages(
+      {
+        id: "file-change-declined",
+        type: "file_change",
+        changes: [{ kind: "update", path: "src/a.ts" }],
+        status: "declined",
+      },
+      "session-1",
+      "turn-2",
+      "item/completed",
+    );
+    const resultMessage = messages[1]?.message as
+      | { content?: unknown[] }
+      | undefined;
+    const resultBlock = (resultMessage?.content ?? [])[0] as Record<
+      string,
+      unknown
+    >;
+
+    expect(resultBlock).toMatchObject({
+      type: "tool_result",
+      tool_use_id: "file-change-declined",
+      is_error: true,
+    });
+  });
+
   it("normalizes no-match ripgrep exit code as non-error Grep result", () => {
     const provider = createTestProvider() as unknown as {
       convertItemToSDKMessages: (

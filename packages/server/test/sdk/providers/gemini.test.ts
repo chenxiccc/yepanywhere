@@ -223,6 +223,31 @@ describe("GeminiProvider Event Normalization", () => {
     expect(typeof provider.getAuthStatus).toBe("function");
     expect(typeof provider.startSession).toBe("function");
   });
+
+  it("marks failed tool results as errors", () => {
+    const provider = createTestProvider() as unknown as {
+      convertEventToSDKMessage: (
+        event: unknown,
+        sessionId: string,
+      ) => { message?: { content?: unknown[] } };
+    };
+
+    const message = provider.convertEventToSDKMessage(
+      {
+        type: "tool_result",
+        tool_id: "edit-1",
+        status: "error",
+        error: "edit failed",
+      },
+      "session-1",
+    );
+
+    expect(message.message?.content?.[0]).toMatchObject({
+      type: "tool_result",
+      tool_use_id: "edit-1",
+      is_error: true,
+    });
+  });
 });
 
 describe("GeminiProvider Configuration", () => {

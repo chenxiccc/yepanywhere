@@ -210,6 +210,127 @@ describe("WorkingTreeBrowser", () => {
     expect(anchor.revision).toMatchObject({ kind: "uncommitted" });
   });
 
+  it("shows the last-editor session link only behind its capability", async () => {
+    getGitDiff.mockResolvedValue({ diffHtml: "", structuredPatch: [] });
+    listReviewComments.mockResolvedValue({
+      comments: [],
+      batches: [],
+      pendingCount: 0,
+    });
+    const status: GitStatusInfo = {
+      isGitRepo: true,
+      branch: "main",
+      upstream: null,
+      ahead: 0,
+      behind: 0,
+      isClean: false,
+      files: [
+        {
+          path: "src/dirty.ts",
+          status: "M",
+          staged: false,
+          linesAdded: 1,
+          linesDeleted: 1,
+          lastEditor: {
+            sessionId: "session-1",
+            observedAt: "2026-08-02T10:00:00.000Z",
+          },
+        },
+      ],
+    };
+
+    const rendered = render(
+      <MemoryRouter>
+        <WorkingTreeBrowser
+          projectId="p1"
+          status={status}
+          isWideScreen={true}
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(getGitDiff).toHaveBeenCalled());
+    expect(
+      screen.queryByRole("link", { name: "sourceOpenLastEditorSession" }),
+    ).toBeNull();
+
+    rendered.rerender(
+      <MemoryRouter>
+        <WorkingTreeBrowser
+          projectId="p1"
+          status={status}
+          isWideScreen={true}
+          supportsLastEditor
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    const link = await screen.findByRole("link", {
+      name: "sourceOpenLastEditorSession",
+    });
+    expect(link.getAttribute("href")).toBe(
+      "/projects/p1/sessions/session-1",
+    );
+  });
+
+  it("keeps last-editor links when an untracked folder expands", async () => {
+    getGitDiff.mockResolvedValue({ diffHtml: "", structuredPatch: [] });
+    getGitUntrackedFolder.mockResolvedValue({
+      path: "generated/",
+      files: ["generated/a.ts"],
+      lastEditors: {
+        "generated/a.ts": {
+          sessionId: "session-untracked",
+          observedAt: "2026-08-02T10:00:00.000Z",
+        },
+      },
+      truncated: false,
+      limit: 500,
+    });
+    listReviewComments.mockResolvedValue({
+      comments: [],
+      batches: [],
+      pendingCount: 0,
+    });
+
+    render(
+      <MemoryRouter>
+        <WorkingTreeBrowser
+          projectId="p1"
+          status={{
+            isGitRepo: true,
+            branch: "main",
+            upstream: null,
+            ahead: 0,
+            behind: 0,
+            isClean: false,
+            files: [
+              {
+                path: "generated/",
+                status: "?",
+                staged: false,
+                linesAdded: null,
+                linesDeleted: null,
+              },
+            ],
+          }}
+          isWideScreen={true}
+          supportsLastEditor
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    const link = await screen.findByRole("link", {
+      name: "sourceOpenLastEditorSession",
+    });
+    expect(link.getAttribute("href")).toBe(
+      "/projects/p1/sessions/session-untracked",
+    );
+  });
+
   it("uses only compact staged and untracked state markers", async () => {
     listReviewComments.mockResolvedValue({
       comments: [],

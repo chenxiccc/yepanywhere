@@ -253,6 +253,7 @@ export type {
   GitDiffPreviewSkipped,
   GitDiffPreviewSkippedReason,
   GitDiffResult,
+  GitFileEditor,
   GitFileChange,
   GitIntegrationOptionReason,
   GitIntegrationOptionsResult,
@@ -279,6 +280,7 @@ export type {
   SafeRestartStatus,
 } from "./safe-restart.js";
 export {
+  GIT_DIRTY_FILE_EDITOR_CAPABILITY,
   GIT_SOURCE_REVIEW_CAPABILITY,
   GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,
   GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY,

@@ -70,6 +70,7 @@ import {
   BrowserProfileService,
   BrowserSettingsBackupService,
   ConnectedBrowsersService,
+  DirtyFileEditorService,
   HostAwakeService,
   InstallService,
   ModelInfoService,
@@ -475,6 +476,9 @@ const attachmentStagingService = new AttachmentStagingService({
   dataDir: config.dataDir,
   maxUploadSizeBytes: config.maxUploadSizeBytes,
 });
+const dirtyFileEditorService = new DirtyFileEditorService({
+  dataDir: config.dataDir,
+});
 
 function startAttachmentStagingCleanup(): void {
   if (attachmentStagingCleanupTimer) return;
@@ -541,6 +545,8 @@ async function startServer() {
   markStartup("projectQueueService initialized");
   await sessionQueuePersistenceService.initialize();
   markStartup("sessionQueuePersistenceService initialized");
+  await dirtyFileEditorService.initialize();
+  markStartup("dirtyFileEditorService initialized");
   await attachmentStagingService.initialize();
   startAttachmentStagingCleanup();
   markStartup("attachmentStagingService initialized");
@@ -758,6 +764,7 @@ async function startServer() {
     projectMetadataService,
     projectQueueService,
     sessionQueuePersistenceService,
+    dirtyFileEditorService,
     sessionIndexService,
     projectScanCacheTtlMs: config.projectScanCacheTtlMs,
     sessionAutoArchiveDays: config.sessionAutoArchiveDays,

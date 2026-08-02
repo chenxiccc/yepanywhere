@@ -1312,6 +1312,7 @@
   "sourceOpenCommit": "Open commit",
   "sourceCopyRevisionLabel": "Copy revision label",
   "sourceCopyPath": "Copy path",
+  "sourceOpenLastEditorSession": "Open the last editing session",
   "sourceCopyRawContent": "Copy raw text",
   "sourceOpenFile": "Open file",
   "sourceCopyLine": "Copy line",

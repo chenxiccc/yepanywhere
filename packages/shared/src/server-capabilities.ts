@@ -154,6 +154,28 @@ export const SERVER_CAPABILITIES = {
         "Integration-option analysis depends on server-side route behavior older servers may not expose.",
     },
   },
+  gitDirtyFileEditor: {
+    name: "git-dirty-file-editor",
+    kind: "permanent",
+    area: "gitStatus",
+    introducedIn: "0.7.1",
+    description:
+      "Server reports the last YA session observed editing each still-dirty Source Control path.",
+    clientFallback:
+      "Hide dirty-file session links and make no additional request.",
+    serverContract: {
+      routes: [
+        "GET /api/projects/:projectId/git",
+        "GET /api/projects/:projectId/git/untracked-folder",
+      ],
+      responseFields: ["files[].lastEditor", "lastEditors"],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Hosted clients can outpace installed servers, and older status responses do not carry editor attribution.",
+    },
+  },
   gitSourceReview: {
     name: "git-source-review",
     kind: "permanent",
@@ -778,6 +800,8 @@ export const GIT_STATUS_PUSH_CAPABILITY =
   SERVER_CAPABILITIES.gitStatusPush.name;
 export const GIT_STATUS_INTEGRATION_OPTIONS_CAPABILITY =
   SERVER_CAPABILITIES.gitStatusIntegrationOptions.name;
+export const GIT_DIRTY_FILE_EDITOR_CAPABILITY =
+  SERVER_CAPABILITIES.gitDirtyFileEditor.name;
 export const GIT_SOURCE_REVIEW_CAPABILITY =
   SERVER_CAPABILITIES.gitSourceReview.name;
 export const GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY =

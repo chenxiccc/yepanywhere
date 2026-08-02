@@ -147,6 +147,7 @@ import type { BrowserProfileService } from "./services/BrowserProfileService.js"
 import type { BrowserSettingsBackupService } from "./services/BrowserSettingsBackupService.js";
 import { CodexUpdateChecker } from "./services/CodexUpdateChecker.js";
 import type { ConnectedBrowsersService } from "./services/ConnectedBrowsersService.js";
+import type { DirtyFileEditorService } from "./services/DirtyFileEditorService.js";
 import type { HostAwakeService } from "./services/host-awake/HostAwakeService.js";
 import type { ModelInfoService } from "./services/ModelInfoService.js";
 import type { NetworkBindingService } from "./services/NetworkBindingService.js";
@@ -217,6 +218,8 @@ export interface AppOptions {
   projectQueueService?: ProjectQueueService;
   /** Durable store for long-lived patient queued messages */
   sessionQueuePersistenceService?: SessionQueuePersistenceService;
+  /** Durable last-editor attribution for dirty Source Control files. */
+  dirtyFileEditorService?: DirtyFileEditorService;
   /** SessionIndexService for caching session summaries */
   sessionIndexService?: SessionIndexService;
   /** Claude summary parser child-process mode. Default off. */
@@ -972,6 +975,7 @@ export function createApp(options: AppOptions): AppResult {
     maxQueueSize: options.maxQueueSize,
     sessionQueuePersistenceService: options.sessionQueuePersistenceService,
     toolResultMediaStore,
+    dirtyFileEditorService: options.dirtyFileEditorService,
     sandboxStateRoot: join(effectiveDataDir, "session-sandboxes"),
     // Save executor for remote sessions to support resume
     onSessionExecutor: options.sessionMetadataService
@@ -1581,7 +1585,13 @@ export function createApp(options: AppOptions): AppResult {
   );
 
   // Git status routes
-  app.route("/api/projects", createGitStatusRoutes({ scanner }));
+  app.route(
+    "/api/projects",
+    createGitStatusRoutes({
+      scanner,
+      dirtyFileEditorService: options.dirtyFileEditorService,
+    }),
+  );
 
   // Read-only git browse routes (commit list/diff, blame, search — stage 3)
   app.route("/api/projects", createGitBrowseRoutes({ scanner }));

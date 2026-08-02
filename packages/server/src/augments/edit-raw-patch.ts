@@ -7,6 +7,7 @@ const FILE_HEADER_PREFIXES = [
   "*** Add File:",
   "*** Delete File:",
 ] as const;
+const MOVE_HEADER_PREFIX = "*** Move to:";
 const HUNK_HEADER_REGEX =
   /^@@(?: -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))?)?(?: @@.*)?$/;
 
@@ -161,6 +162,33 @@ function extractUnifiedFilePath(line: string): string | undefined {
   }
 
   return undefined;
+}
+
+/**
+ * Return every file path named by an apply-patch or unified-diff payload.
+ * Unlike the preview parser's singular `filePath`, attribution needs all
+ * paths in a multi-file patch, including both sides of a move.
+ */
+export function extractRawPatchFilePaths(rawPatch: string): string[] {
+  const paths = new Set<string>();
+  const lines = rawPatch.replace(/\r\n/g, "\n").split("\n");
+
+  for (const line of lines) {
+    const fileHeaderPath = extractFilePath(line);
+    if (fileHeaderPath) {
+      paths.add(fileHeaderPath);
+      continue;
+    }
+    if (line.startsWith(MOVE_HEADER_PREFIX)) {
+      const movedPath = line.slice(MOVE_HEADER_PREFIX.length).trim();
+      if (movedPath) paths.add(movedPath);
+      continue;
+    }
+    const unifiedPath = extractUnifiedFilePath(line);
+    if (unifiedPath) paths.add(unifiedPath);
+  }
+
+  return [...paths];
 }
 
 function isUnifiedFileHeaderStart(lines: string[], index: number): boolean {

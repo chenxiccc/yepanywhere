@@ -20,6 +20,7 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import { getLogger } from "../logging/logger.js";
 import type { ProjectScanner } from "../projects/scanner.js";
+import type { DirtyFileEditorService } from "../services/DirtyFileEditorService.js";
 import {
   GIT_DIFF_PREVIEW_MAX_DIFF_CHARS,
   GIT_DIFF_PREVIEW_MAX_LINE_CHARS,
@@ -32,6 +33,7 @@ import { GIT_DECODE_PATHS_ARGS, runGit, runGitBytes } from "../git/gitExec.js";
 
 export interface GitStatusDeps {
   scanner: ProjectScanner;
+  dirtyFileEditorService?: DirtyFileEditorService;
 }
 
 const NOT_A_GIT_REPO: GitStatusInfo = {
@@ -97,6 +99,16 @@ function recordGitDiffRequestTiming(
 
 export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
   const routes = new Hono();
+  const enrichStatus = (projectPath: string, status: GitStatusInfo) =>
+    deps.dirtyFileEditorService?.reconcileGitStatus(projectPath, status) ??
+    status;
+  const getGitStatusWithRemoteCheckTime = async (projectPath: string) =>
+    enrichStatus(
+      projectPath,
+      await readGitStatusWithRemoteCheckTime(projectPath),
+    );
+  const getGitStatusSnapshot = async (projectPath: string) =>
+    enrichStatus(projectPath, await readGitStatusSnapshot(projectPath));
 
   routes.get("/:projectId/git", async (c) => {
     const projectId = c.req.param("projectId");
@@ -117,7 +129,7 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
       return c.json(result);
     } catch (err) {
       if (isNotGitRepoError(err)) {
-        return c.json(NOT_A_GIT_REPO);
+        return c.json(enrichStatus(project.path, NOT_A_GIT_REPO));
       }
       return c.json({ error: "Failed to get git status" }, 500);
     }
@@ -147,7 +159,16 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
     }
 
     try {
-      return c.json(await getUntrackedFolderInfo(project.path, path));
+      const info = await getUntrackedFolderInfo(project.path, path);
+      const lastEditors =
+        deps.dirtyFileEditorService?.editorsForPaths(
+          project.path,
+          info.files,
+        ) ?? {};
+      return c.json({
+        ...info,
+        ...(Object.keys(lastEditors).length > 0 ? { lastEditors } : {}),
+      });
     } catch (err) {
       if (isNotGitRepoError(err)) {
         return c.json({ error: "Not a git repository" }, 400);
@@ -204,7 +225,7 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
         const result: GitRemoteCheckResult = {
           status: "not-a-git-repo",
           checkedRemoteAt: null,
-          gitStatus: NOT_A_GIT_REPO,
+          gitStatus: enrichStatus(project.path, NOT_A_GIT_REPO),
         };
         return c.json(result);
       }
@@ -270,7 +291,7 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
         const result: GitIntegrationOptionsResult = {
           status: "not-a-git-repo",
           checkedRemoteAt: null,
-          gitStatus: NOT_A_GIT_REPO,
+          gitStatus: enrichStatus(project.path, NOT_A_GIT_REPO),
           canAutoRebase: false,
           canAutoMerge: false,
           reasons: ["not-a-git-repo"],
@@ -356,7 +377,7 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
         const result: GitPullResult = {
           status: "not-a-git-repo",
           checkedRemoteAt: null,
-          gitStatus: NOT_A_GIT_REPO,
+          gitStatus: enrichStatus(project.path, NOT_A_GIT_REPO),
         };
         return c.json(result);
       }
@@ -444,7 +465,7 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
         const result: GitPushResult = {
           status: "not-a-git-repo",
           checkedRemoteAt: null,
-          gitStatus: NOT_A_GIT_REPO,
+          gitStatus: enrichStatus(project.path, NOT_A_GIT_REPO),
         };
         return c.json(result);
       }
@@ -788,17 +809,17 @@ async function getCheckedRemoteAt(projectPath: string): Promise<string | null> {
   );
 }
 
-async function getGitStatusWithRemoteCheckTime(
+async function readGitStatusWithRemoteCheckTime(
   projectPath: string,
 ): Promise<GitStatusInfo> {
   return getGitStatus(projectPath, await getCheckedRemoteAt(projectPath));
 }
 
-async function getGitStatusSnapshot(
+async function readGitStatusSnapshot(
   projectPath: string,
 ): Promise<GitStatusInfo> {
   try {
-    return await getGitStatusWithRemoteCheckTime(projectPath);
+    return await readGitStatusWithRemoteCheckTime(projectPath);
   } catch (err) {
     if (isNotGitRepoError(err)) {
       return NOT_A_GIT_REPO;

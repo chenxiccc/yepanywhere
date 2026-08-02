@@ -523,6 +523,9 @@ export class GeminiProvider implements AgentProvider {
               {
                 type: "tool_result",
                 tool_use_id: toolResult.tool_id,
+                ...(toolResult.status === "error"
+                  ? { is_error: true }
+                  : {}),
                 content:
                   toolResult.status === "error"
                     ? (toolResult.error ?? "Tool error")

@@ -882,6 +882,9 @@ export class CodexOSSProvider implements AgentProvider {
                       {
                         type: "tool_result",
                         tool_use_id: item.id,
+                        ...(item.status !== "completed"
+                          ? { is_error: true }
+                          : {}),
                         content:
                           item.status === "completed"
                             ? `File changes applied:\n${changesSummary}`

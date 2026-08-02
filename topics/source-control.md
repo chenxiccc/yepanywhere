@@ -357,14 +357,14 @@ selected-revision-to-HEAD comparison remain gated by
 [server capabilities](server-capabilities.md) and
 [`063-source-control-hosted-compatibility.md`](../docs/tactical/063-source-control-hosted-compatibility.md).
 
-## Dirty-file last editor — proposal
+## Dirty-file last editor
 
-The selected dirty file should link to the **last YA session observed editing
+The selected dirty file links to the **last YA session observed editing
 it**. This reverses the existing bridge from a session Edit block into the exact
 dirty file without pretending YA can reconstruct complete authorship. In
 Changes, the selected file banner and shared file context menu expose one
 compact session action when attribution exists; it navigates through the
-canonical YA session id and uses the standard session identity/hovercard.
+canonical YA session id. Selecting a file starts no attribution query.
 
 Git records no dirty-file session authorship. The deliberately bounded
 contract is **the last session with a recorded edit**: a successful structured
@@ -373,57 +373,49 @@ provider equivalent—whose normalized project-relative target is this path.
 Do not infer an editor from active sessions, project membership, or file
 mtime.
 
-Shell commands, generators, human edits, external processes, and provider
-activity YA did not observe may remain unattributed. Scripted edit/output
-commands are a best-effort extension only where their touched paths can be
-deduced reliably; gaps are accepted and documented rather than guessed. An
-unobserved writer can also replace or revert the observed session's
-contribution while leaving the path dirty, so stale attribution can remain
-until the file next becomes clean. The UI says "last observed editor", never
-claims exhaustive authorship, and does not imply that session contributed to
-the exact current bytes.
+The server observes every owned provider process at the normalized
+`tool_use`/`tool_result` boundary. It remembers a mutation proposal by tool id,
+then records paths only when the paired result is not an error. `apply_patch`
+parsing covers every Add, Update, Delete, Move, and unified-diff path in a
+multi-file patch. Repeated completion-phase tool-use events do not replace the
+earlier proposal. Provider adapters must mark declined or failed mutations as
+error results; a proposed or failed edit never earns attribution.
 
-Implementation plan:
+One private server-owned JSON store retains a logical row per canonical project
+path and normalized repository-relative file. A row carries only the canonical
+YA session id and successful-result observation time. A later observed edit
+replaces it, while a late completion with an older observation time cannot
+overwrite newer attribution. There is no editor set, event history, tool id,
+content hash, transcript backfill, or before/after lineage. The observer already
+has project and session context, so Source Control must not run provider
+discovery, session inventory, or `agent-mapping` work to construct the link.
 
-1. Characterize each supported provider's structured file-mutation events and
-   success boundary. For `apply_patch`, parse every Add, Update, Delete, and
-   Move header; after a successful multi-file patch, upsert one row for each
-   touched normalized path. Ignore failed or merely proposed mutations.
-2. Persist one logical record per `(source, project, normalized file)`, carrying
-   the canonical YA session id and latest observed edit time. Any later
-   successful edit replaces the prior session and time. Retain no editor set,
-   event history, tool/message ids, content hashes, transcript backfill, or
-   before/after lineage. Store these records in private server-owned state and
-   reload them after process restart; they have no TTL. The mutation observer
-   already has source, project, and canonical session context, so Source Control
-   must not run provider-specific discovery or `agent-mapping` work to construct
-   the link.
-3. Reconcile only from a successful, complete, authoritative Git-status
-   refresh. Whenever such a refresh observes that a tracked path has become not
-   dirty, clear that file's record. A successful commit normally causes
-   this transition, but
-   a commit that leaves further staged or unstaged changes does not: the
-   clearing condition is observed clean file state, not a commit command.
-   Reconciliation may wait until Source Control enters or refreshes that
-   project; restart need not eagerly walk every repository.
-   Temporary source/project disconnect retains rows and does not pretend that
-   files became clean; reconnect reconciles before serving them. Explicit
-   project removal clears that project's rows, and explicit source removal
-   clears all rows owned by that source.
-4. Under a dedicated capability, add the remaining editor session id and
-   observation time as an optional field on each dirty-file record returned by
-   the existing Git-status response. This prepopulates all visible links in one
-   request; selecting a file starts no attribution query. Reuse the existing
-   session hovercard/navigation and file banner/menu. An absent record produces
-   no request-time provider scan and no empty chooser.
-5. Test first attribution, a later session replacing it, repeated edits by the
-   same session updating its time, failed edits being ignored, clean-state
-   clearing, restart persistence and
-   reconciliation, disconnect/reconnect retention, explicit project/source
-   removal, a commit that leaves the file dirty, and accepted missing/stale
-   attribution after unobserved shell or human changes.
+Scripted commands are a deliberately best-effort supplement. For a bounded set
+of recognizable write-shaped shell commands—redirection, common file mutation
+primitives, patch/apply operations, and formatter/package-manager write
+modes—the observer compares Git's dirty paths and filesystem fingerprints just
+before and after a successful command. Only dirty paths whose fingerprint
+changed are attributed. Arbitrary scripts, generators with unrecognized command
+shapes, human edits, external processes, provider activity YA did not observe,
+and fast writes racing the initial snapshot may remain unattributed. Concurrent
+external writes during a recognized command can be misattributed. These gaps
+are preferable to scanning Git around every read-only shell command or guessing
+from active sessions.
 
-**Difficulty:** the UI is low difficulty. Provider mutation hooks, clean-state
-observation, the one-record-per-file store, and its query are low-to-medium
-difficulty.
-Exact lineage and exhaustive attribution are deliberately out of scope.
+A successful complete Git-status refresh is the clearing authority. Any stored
+path absent from dirty status is deleted; a commit that leaves another staged or
+unstaged change does not clear it. Compact untracked-directory rows preserve
+stored child attribution until Git expands or cleans that directory. The
+compact folder itself does not expose a child-session link; its existing
+expansion response includes attribution for the individual files. Reconciliation
+may wait until Source Control enters or refreshes the project; restart does not
+walk all repositories. An unobserved writer can therefore replace or revert
+the recorded session's contribution while leaving the path dirty, so the
+action is worded as the last editing session and never claims exact-byte
+authorship.
+
+The permanent `git-dirty-file-editor` capability adds optional
+`files[].lastEditor = { sessionId, observedAt }` data to the existing
+status response. Servers without it retain the complete released Source Control
+behavior; clients hide the session action and make no additional request.
+Existing `git-status-enhanced` and `git-source-review` meanings do not grow.
