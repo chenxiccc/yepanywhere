@@ -109,7 +109,7 @@ step and applicable validation rows below have evidence.
 
 | Step | State | Completion evidence |
 | --- | --- | --- |
-| Freeze the existing shell evidence | planned | Reproducible commands, artifact inventory, and physical baseline |
+| Freeze the existing shell evidence | complete | 2026-08-02 build, APK/manifest inventory, and Pixel 7a baseline below |
 | Create the Gradle/Compose shell | planned | Config-free build plus launcher JVM/device smoke |
 | Reproduce client asset channels | planned | Bundled and hosted builds plus APK inspection |
 | Add the native host channel | planned | Kotlin/client tests plus origin-bound instrumentation |
@@ -118,6 +118,48 @@ step and applicable validation rows below have evidence.
 | Add Android CI | planned | Warning-free required workflow and uploaded APK artifacts |
 | Prove physical-device equivalence | planned | Recorded connected acceptance matrix |
 | Hand off to notifications/onboarding | planned | Updated downstream plan and no open shell blockers |
+
+### Frozen Tauri baseline — 2026-08-02
+
+The final pre-migration checkout built with:
+
+```text
+pnpm --filter @yep-anywhere/mobile build:android:debug
+```
+
+It produced
+`src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk`
+and the matching AAB. The universal debug APK was 438 MiB because it carried
+Tauri/Rust shared libraries for arm64-v8a, armeabi-v7a, x86, and x86_64. The
+build completed but emitted the existing Vite large-chunk advisory, npm's
+recursive-environment warning from the Tauri Gradle subprocess, and Gradle 9
+deprecation warnings from the generated/Tauri build. The replacement must not
+inherit those Android build warnings.
+
+Frozen package contract:
+
+- application id and namespace: `com.yepanywhere.mobile`;
+- version code/name: `1000` / `0.1.0`;
+- compile/target/min SDK: 36 / 36 / 24;
+- permissions: Internet and notification permission in the source manifest,
+  with Firebase contributing network state, wake lock, and C2DM receive;
+- launcher: exported single-task `.MainActivity` with edge-to-edge enabled;
+- verified-link filter: `yepanywhere.com/open` (the generated manifest also
+  admitted HTTP, which is not part of the HTTPS product contract);
+- Digital Asset Links metadata through `@string/asset_statements`;
+- conditional Google Services plugin with Firebase Messaging BoM `34.16.0`;
+- debug cleartext enabled and release cleartext disabled; and
+- default debug signing identity matching the published development
+  association fingerprint.
+
+The APK was installed by explicit serial on the attached Pixel 7a, Android 17
+/ API 37, user 0. A cold launch and force-stop/relaunch both reached the bundled
+remote connection chooser. Android reported the domain verified, but that
+device user's link-selection state had `yepanywhere.com` disabled, so a shell
+VIEW intent opened Chrome; later replacement testing must explicitly distinguish
+domain verification from user link-selection state. Prior recorded broker/FCM
+receipt remains the notification baseline and no FID or credential was
+captured during this freeze.
 
 ## Scope
 
