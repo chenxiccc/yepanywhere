@@ -1,7 +1,8 @@
 # Notification Delivery Validation And Native Readiness
 
-Status: active. Browser implementation is landed; live browser verification
-and the native-destination readiness review are in progress.
+Status: active. Browser implementation and the three defects found during live
+verification are fixed; bounded failure cases and the native-destination
+readiness review remain in progress.
 
 Topic: notifications
 Topic: android-fcm-push
@@ -15,11 +16,10 @@ browser delivery mechanism, and organized Settings around **This browser**,
 **Events from this server**, and **Devices and delivery**.
 
 Automated contracts cover server audience selection and service-worker
-presentation decisions, but the replacement has not yet been walked end to
-end in a real desktop browser. Native Android enrollment would also extend the
-same Settings surface and server event policy, so its implementation should
-start from a proven browser baseline rather than introduce a second parallel
-notification UI.
+presentation decisions, and the replacement has now been walked end to end in
+a real desktop browser. Native Android enrollment will extend the same Settings
+surface and server event policy from that proven browser baseline rather than
+introduce a second parallel notification UI.
 
 This document is the durable execution ledger for that baseline and the
 handoff into native work. Record observed outcomes here; do not treat a passing
@@ -46,11 +46,13 @@ displayed a notification.
 
 ## Live-System Safety Boundary
 
-The primary manual target is the already-running development server at
-`https://127.0.0.1:3400/` and an existing real browser profile.
+Validation and defect work use a standalone YA data/provider profile on
+separate ports plus a disposable browser profile. The maintainer's live
+`https.localhost` configuration and the already-running server on port 3400
+are immaterial to this checklist and must not be modified for it.
 
-- Do not restart, replace, or reconfigure that server merely to run this
-  checklist; other sessions may be active.
+- Do not restart, replace, reconfigure, or point automation at the live server;
+  other sessions may be active.
 - UI actions, browser enrollment, targeted test sends, and read-only server
   inspection are in scope.
 - Do not use a real provider session merely to manufacture an approval or
@@ -95,6 +97,9 @@ recording private session text, subscription material, or credentials.
 | 2026-08-02 | Same isolated target | Remove and re-enroll truthfulness | Fail | Remove deleted the only server row and disabled event controls, and an off/on cycle restored exactly one subscription row without another permission prompt. However, Remove initially left **Browser notifications** visibly enabled despite zero server subscriptions. |
 | 2026-08-02 | Same isolated target | Device inventory labeling | Fail | The current macOS Chrome subscription is displayed as `Mac (Android/Chrome)` because endpoint-based naming incorrectly treats Chrome's Google push service as Android evidence. |
 | 2026-08-02 | Same isolated target | Closed-tab activity teardown | Fail | Full navigations accumulated four server-tracked activity connections for the one YA tab. Closing that tab left all four registered after 3 seconds and after 40 seconds, spanning the 30-second WebSocket heartbeat. Three disconnected only many minutes later; one remained until isolated-server shutdown. |
+| 2026-08-02 | Standalone Chrome/macOS profile, `http://localhost:3580/` | Removal and device-label fixes | Pass | A real FCM/Web Push enrollment displayed `Mac (Chrome)` with **Browser notifications** enabled. Removing the current row revoked the only server subscription and changed the independently mounted browser toggle to disabled without reload; browser console errors remained zero. |
+| 2026-08-02 | Standalone automated browser profile, separate YA profile on port 3580 | Activity teardown fix | Pass | One loaded document registered one tab. Synthetic `pagehide` reached zero immediately, `pageshow` returned to one, three full reloads stayed at one, and navigation to `about:blank` reached zero within the 50 ms polling cadence. |
+| 2026-08-02 | Same standalone Chrome profile | Final responsive rendering | Pass | The subscribed Notifications surface was captured and inspected at 1920×1080 and 375×812. Both layouts were usable, the browser controls were enabled, and the desktop inventory showed `Mac (Chrome)` rather than Android. |
 
 ### 1 — establish real-browser notification preconditions
 
@@ -137,8 +142,8 @@ changed.
 Observed 2026-08-02: the notification flow had no hidden client/server failure.
 Chrome's Issues panel separately reports two form controls without `id` or
 `name` attributes plus development CSP advisories; these are not delivery
-errors. The inventory does have the independently recorded macOS-as-Android
-labeling defect.
+errors. The initially recorded macOS-as-Android labeling defect was
+subsequently fixed and revalidated in a fresh standalone profile.
 
 ### 3 — prove Web Push delivery and operating-system presentation
 
@@ -165,8 +170,10 @@ after returning to the origin. The user also observed a test notification in
 macOS Notification Center. A separate banner-animation observation remains
 blocked because Computer Use does not capture global overlays. The
 user-confirmed click opened the exact synthetic isolated session URL. Remove
-and re-enroll reached the intended final subscription state, with the
-transient stale-toggle defect recorded separately.
+and re-enroll reached the intended final subscription state. The initially
+stale current-browser toggle was subsequently fixed by using the browser-local
+unsubscribe path and synchronizing hook consumers; a fresh standalone
+enrollment/removal passed without reload.
 
 ### 4 — verify recipient-owned production-event presentation
 
@@ -211,19 +218,26 @@ unless the state change is easily reversible and explicitly chosen.
   degraded according to the browser notification contract.
 - [ ] Reconnection/reload does not create overlapping registration attempts,
   duplicate subscriptions, or repeating server work.
-- [ ] Full navigation and tab close release every activity connection
+- [x] Full navigation and tab close release every activity connection
   registration within the bounded WebSocket teardown window.
 
-Failed 2026-08-02: one subscription remained singular, but repeated full-page
-navigations accumulated four activity connection registrations for the same
-browser profile. Closing the only YA tab did not remove any registration after
-40 seconds, including across the server's 30-second ping boundary. This is not
+Initially failed 2026-08-02: one subscription remained singular, but repeated
+full-page navigations accumulated four activity connection registrations for
+the same browser profile. Closing the only YA tab did not remove any
+registration after 40 seconds, including across the server's 30-second ping
+boundary. This is not
 an ordinary notification provider delay; it violates
 [`architecture-mandates.md`](../../topics/architecture-mandates.md) resource
 quiescence and makes the Settings tab count untruthful. Three delayed
 disconnects arrived many minutes later, while one registration was still
 present when the isolated server stopped; that nuance narrows the defect but
 does not make the tab-close teardown timely or the displayed count truthful.
+
+Resolved and revalidated 2026-08-02: browser-tab registration is now
+socket-scoped rather than activity-subscription-scoped, and the client closes
+retained activity subscriptions on `pagehide`. In a fresh standalone profile,
+`pagehide` and navigation reached zero immediately, `pageshow` restored one,
+and three full reloads never exceeded one registration.
 
 ### 6 — freeze the native-unification seam
 

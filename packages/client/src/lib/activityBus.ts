@@ -263,8 +263,8 @@ type SourceKey = string;
 interface ActivityStreamRecord {
   sourceKey: SourceKey;
   transport: SourceTransport;
-  stream: ManagedStream;
-  unsubscribeStream: () => void;
+  stream: ManagedStream | null;
+  unsubscribeStream: (() => void) | null;
   unsubscribeVisibilityRestored: (() => void) | null;
   retainCount: number;
   connected: boolean;
@@ -296,6 +296,31 @@ class ActivityBus {
   >();
   private streamRecords = new Map<SourceKey, ActivityStreamRecord>();
   private bridgeRetainCounts = new Map<SourceKey, number>();
+  private streamsSuspended = false;
+
+  constructor() {
+    if (typeof window === "undefined") return;
+    window.addEventListener("pagehide", this.handlePageHide);
+    window.addEventListener("pageshow", this.handlePageShow);
+  }
+
+  private handlePageHide = (): void => {
+    if (this.streamsSuspended) return;
+    this.streamsSuspended = true;
+    for (const record of this.streamRecords.values()) {
+      this.detachStream(record);
+    }
+  };
+
+  private handlePageShow = (): void => {
+    if (!this.streamsSuspended) return;
+    this.streamsSuspended = false;
+    for (const record of this.streamRecords.values()) {
+      if (record.retainCount > 0) {
+        this.attachStream(record);
+      }
+    }
+  };
   private get debugEnabled(): boolean {
     return isActivityDebugEnabled();
   }
@@ -391,13 +416,29 @@ class ActivityBus {
       console.log("[ActivityBus] Retaining source activity stream", sourceKey);
     }
 
-    let record: ActivityStreamRecord;
-
-    const stream = createManagedStream(
+    const record: ActivityStreamRecord = {
+      sourceKey,
       transport,
+      stream: null,
+      unsubscribeStream: null,
+      unsubscribeVisibilityRestored: null,
+      retainCount: 0,
+      connected: false,
+      hasConnected: false,
+    };
+    if (!this.streamsSuspended) {
+      this.attachStream(record);
+    }
+    return record;
+  }
+
+  private attachStream(record: ActivityStreamRecord): void {
+    if (record.stream) return;
+    const stream = createManagedStream(
+      record.transport,
       {
-        subscribe: ({ transport, handlers }) =>
-          transport.subscribeActivity(handlers),
+        subscribe: ({ transport: activeTransport, handlers }) =>
+          activeTransport.subscribeActivity(handlers),
         captureEventId: () => undefined,
         onEvent: (event) => this.handleStreamEvent(record, event),
         onOpen: () => this.handleStreamOpen(record),
@@ -406,38 +447,34 @@ class ActivityBus {
       },
       { autoStart: false },
     );
-    record = {
-      sourceKey,
-      transport,
-      stream,
-      unsubscribeStream: () => {},
-      unsubscribeVisibilityRestored: null,
-      retainCount: 0,
-      connected: false,
-      hasConnected: false,
-    };
+    record.stream = stream;
     record.unsubscribeStream = stream.subscribe(() => {
       record.connected = stream.getSnapshot().connected;
     });
     record.unsubscribeVisibilityRestored =
-      transport.status.subscribeVisibilityRestored?.(() => {
+      record.transport.status.subscribeVisibilityRestored?.(() => {
         if (record.connected) {
           this.emitFromSource(record.sourceKey, "refresh", undefined);
         }
       }) ?? null;
     stream.start();
-    return record;
+  }
+
+  private detachStream(record: ActivityStreamRecord): void {
+    record.unsubscribeVisibilityRestored?.();
+    record.unsubscribeVisibilityRestored = null;
+    record.unsubscribeStream?.();
+    record.unsubscribeStream = null;
+    record.stream?.close();
+    record.stream = null;
+    record.connected = false;
   }
 
   private closeStreamRecord(
     sourceKey: SourceKey,
     record: ActivityStreamRecord,
   ): void {
-    record.unsubscribeVisibilityRestored?.();
-    record.unsubscribeVisibilityRestored = null;
-    record.unsubscribeStream();
-    record.stream.close();
-    record.connected = false;
+    this.detachStream(record);
     this.streamRecords.delete(sourceKey);
   }
 
@@ -493,7 +530,8 @@ class ActivityBus {
 
   private handleStreamError(record: ActivityStreamRecord, error: Error): void {
     record.connected = false;
-    const isExpectedReconnectError = error.message === "Connection reconnecting";
+    const isExpectedReconnectError =
+      error.message === "Connection reconnecting";
     if (!isExpectedReconnectError) {
       console.error("[ActivityBus] Connection error:", error);
     } else if (this.debugEnabled) {
@@ -651,6 +689,7 @@ class ActivityBus {
     this.listeners.clear();
     this.sourceListeners.clear();
     this.bridgeRetainCounts.clear();
+    this.streamsSuspended = false;
   }
 }
 

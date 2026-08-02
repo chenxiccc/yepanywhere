@@ -156,6 +156,12 @@ export interface ConnectionState {
   nextOutboundSeq: number;
   /** Last accepted inbound encrypted sequence from the peer */
   lastInboundSeq: number | null;
+  /** One browser-tab registration shared by this socket's activity streams. */
+  browserTabConnection: {
+    browserProfileId: string;
+    connectionId: number;
+    activitySubscriptionCount: number;
+  } | null;
 }
 
 /** Tracks an active upload over WebSocket relay */
@@ -270,6 +276,7 @@ export function createConnectionState(): ConnectionState {
     srpLimiter: createInitialSrpLimiterState(),
     nextOutboundSeq: 0,
     lastInboundSeq: null,
+    browserTabConnection: null,
   };
 }
 
@@ -490,16 +497,17 @@ export function handleActivitySubscribe(
   msg: RelaySubscribe,
   send: SendFn,
   eventBus: EventBus,
+  connState: ConnectionState,
   connectedBrowsers?: ConnectedBrowsersService,
   browserProfileService?: BrowserProfileService,
 ): void {
   const { subscriptionId, browserProfileId, originMetadata } = msg;
 
-  // Track connection if we have the service and a browserProfileId
-  let connectionId: number | undefined;
-  if (connectedBrowsers && browserProfileId) {
-    connectionId = connectedBrowsers.connect(browserProfileId, "ws");
-  }
+  const releaseBrowserTabConnection = retainBrowserTabConnection(
+    connState,
+    browserProfileId,
+    connectedBrowsers,
+  );
 
   // Record origin metadata if available
   if (browserProfileService && browserProfileId && originMetadata) {
@@ -533,12 +541,48 @@ export function handleActivitySubscribe(
 
   subscriptions.set(subscriptionId, () => {
     cleanup();
-    if (connectionId !== undefined && connectedBrowsers) {
-      connectedBrowsers.disconnect(connectionId);
-    }
+    releaseBrowserTabConnection();
   });
 
   getLogger().debug(`[WS Relay] Subscribed to activity (${subscriptionId})`);
+}
+
+function retainBrowserTabConnection(
+  connState: ConnectionState,
+  browserProfileId: string | undefined,
+  connectedBrowsers: ConnectedBrowsersService | undefined,
+): () => void {
+  if (!connectedBrowsers || !browserProfileId) return () => {};
+
+  let registration = connState.browserTabConnection;
+  if (!registration) {
+    registration = {
+      browserProfileId,
+      connectionId: connectedBrowsers.connect(browserProfileId, "ws"),
+      activitySubscriptionCount: 0,
+    };
+    connState.browserTabConnection = registration;
+  } else if (registration.browserProfileId !== browserProfileId) {
+    console.warn(
+      "[WS Relay] Ignoring a second browser profile on one WebSocket connection",
+    );
+    return () => {};
+  }
+
+  registration.activitySubscriptionCount += 1;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    if (connState.browserTabConnection !== registration) return;
+    registration.activitySubscriptionCount = Math.max(
+      0,
+      registration.activitySubscriptionCount - 1,
+    );
+    if (registration.activitySubscriptionCount > 0) return;
+    connectedBrowsers.disconnect(registration.connectionId);
+    connState.browserTabConnection = null;
+  };
 }
 
 /**
@@ -622,6 +666,7 @@ export function handleSubscribe(
   send: SendFn,
   supervisor: Supervisor,
   eventBus: EventBus,
+  connState: ConnectionState,
   focusedSessionWatchManager?: FocusedSessionWatchManager,
   connectedBrowsers?: ConnectedBrowsersService,
   browserProfileService?: BrowserProfileService,
@@ -649,6 +694,7 @@ export function handleSubscribe(
         msg,
         send,
         eventBus,
+        connState,
         connectedBrowsers,
         browserProfileService,
       );
@@ -1207,6 +1253,7 @@ export async function handleMessage(
           send,
           supervisor,
           eventBus,
+          connState,
           deps.focusedSessionWatchManager,
           deps.connectedBrowsers,
           deps.browserProfileService,

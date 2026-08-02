@@ -6,6 +6,7 @@ import {
 } from "../lib/storageKeys";
 import {
   notifyPushSubscriptionChanged,
+  PUSH_SUBSCRIPTION_CHANGED_EVENT,
   type PushDeliveryUrgency,
   type TestNotificationUrgency,
 } from "./useSubscribedDevices";
@@ -132,6 +133,49 @@ export function usePushNotifications() {
 
     init();
   }, [hasBrowserSupport]);
+
+  // Multiple settings components consume this hook independently. Reconcile
+  // each instance when one of them changes the browser-local subscription so
+  // the toggle and device inventory cannot disagree until a reload.
+  useEffect(() => {
+    if (!registration) return;
+
+    let disposed = false;
+    const handleSubscriptionChange = async () => {
+      try {
+        const subscription = await registration.pushManager.getSubscription();
+        if (disposed) return;
+        setState((current) => ({
+          ...current,
+          isSubscribed: !!subscription,
+          isLoading: false,
+          error: null,
+        }));
+      } catch (err) {
+        if (disposed) return;
+        setState((current) => ({
+          ...current,
+          isLoading: false,
+          error:
+            err instanceof Error
+              ? err.message
+              : "Failed to refresh subscription",
+        }));
+      }
+    };
+
+    window.addEventListener(
+      PUSH_SUBSCRIPTION_CHANGED_EVENT,
+      handleSubscriptionChange,
+    );
+    return () => {
+      disposed = true;
+      window.removeEventListener(
+        PUSH_SUBSCRIPTION_CHANGED_EVENT,
+        handleSubscriptionChange,
+      );
+    };
+  }, [registration]);
 
   // Subscribe to push notifications
   const subscribe = useCallback(async () => {

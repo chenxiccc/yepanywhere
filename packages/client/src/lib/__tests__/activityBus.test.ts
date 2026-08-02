@@ -109,7 +109,10 @@ describe("activityBus source streams", () => {
     const onReconnect = vi.fn();
     activityBus.on("reconnect", onReconnect);
 
-    const release = activityBus.retainCurrentSourceStream("source-a", transport);
+    const release = activityBus.retainCurrentSourceStream(
+      "source-a",
+      transport,
+    );
     const first = getOnlyActivitySubscription(transport);
 
     transport.openSubscription(first.id);
@@ -159,7 +162,10 @@ describe("activityBus source streams", () => {
     const onRefresh = vi.fn();
     activityBus.on("refresh", onRefresh);
 
-    const release = activityBus.retainCurrentSourceStream("source-a", transport);
+    const release = activityBus.retainCurrentSourceStream(
+      "source-a",
+      transport,
+    );
     transport.emitVisibilityRestored();
     expect(onRefresh).not.toHaveBeenCalled();
 
@@ -169,5 +175,36 @@ describe("activityBus source streams", () => {
 
     expect(onRefresh).toHaveBeenCalledTimes(1);
     release();
+  });
+
+  it("releases activity work on page exit and resumes a retained page", () => {
+    const transport = new FakeSourceTransport();
+    const release = activityBus.retainCurrentSourceStream(
+      "source-a",
+      transport,
+    );
+    const first = getOnlyActivitySubscription(transport);
+    transport.openSubscription(first.id);
+
+    window.dispatchEvent(new Event("pagehide"));
+
+    expect(transport.getSubscriptions("activity")[0]).toMatchObject({
+      id: first.id,
+      closed: true,
+      closeCalls: 1,
+    });
+    expect(activityBus.connected).toBe(false);
+
+    window.dispatchEvent(new Event("pageshow"));
+
+    const second = transport.getSubscriptions("activity").at(-1);
+    expect(transport.getSubscriptions("activity")).toHaveLength(2);
+    expect(second).toMatchObject({ closed: false, closeCalls: 0 });
+
+    release();
+    expect(transport.getSubscriptions("activity").at(-1)).toMatchObject({
+      closed: true,
+      closeCalls: 1,
+    });
   });
 });

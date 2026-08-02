@@ -405,6 +405,11 @@ Generalizing the 050 product invariant from "the remote app" to any source:
   lease is held. Local gates the lease on auth state (the 401-avoidance in
   `useActivityBusConnection`); the remote shell holds it whenever mounted
   (its gate guarantees auth).
+- A retained document suspends its activity streams on `pagehide`, closing the
+  raw subscriptions before navigation, discard, or browser caching can leave
+  a logical tab registered. If that same document returns through `pageshow`,
+  each still-retained source installs one fresh managed stream. The lease
+  counts survive suspension; the underlying subscriptions do not.
 - `SecureConnection` itself never auto-subscribes to activity (050 non-goal
   stands); the runtime layer owns the invariant.
 - Suspension of non-current sources is expressed by releasing or downgrading
@@ -553,6 +558,9 @@ runtime's transport until callers migrate.
   one runtime must not resubscribe or clear subscriptions in the other.
 - Preserve teardown behavior: closing a tab/component releases the session or
   watch subscription exactly once.
+- Prove `pagehide` closes every retained activity subscription, `pageshow`
+  recreates one per retained source, and repeated reloads never raise the
+  server tab count above the actual document count.
 - Preserve non-retryable subscription-error behavior.
 - Before claiming real coexistence support, run two YA servers with
   independent transports and show that disposing one source does not affect

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NotificationsSettings } from "../NotificationsSettings";
 
@@ -24,10 +24,17 @@ vi.mock("../SettingsUndoContext", () => ({
 
 const hookState = vi.hoisted(() => ({
   subscribed: true,
+  deviceType: "desktop" as "android" | "ios" | "mobile" | "desktop" | "unknown",
+  currentBrowserProfileId: "profile-1",
+  unsubscribe: vi.fn(),
+  removeDevice: vi.fn(),
 }));
 
 vi.mock("../../../hooks/usePushNotifications", () => ({
-  usePushNotifications: () => ({ browserProfileId: "profile-1" }),
+  usePushNotifications: () => ({
+    browserProfileId: hookState.currentBrowserProfileId,
+    unsubscribe: hookState.unsubscribe,
+  }),
 }));
 
 vi.mock("../../../hooks/useSubscribedDevices", () => ({
@@ -39,12 +46,12 @@ vi.mock("../../../hooks/useSubscribedDevices", () => ({
             createdAt: "2026-07-31T12:00:00.000Z",
             deviceName: "Work laptop",
             endpointDomain: "fcm.googleapis.com",
-            deviceType: "desktop",
+            deviceType: hookState.deviceType,
           },
         ]
       : [],
     isLoading: false,
-    removeDevice: vi.fn(),
+    removeDevice: hookState.removeDevice,
     sendTest: vi.fn(),
   }),
 }));
@@ -75,6 +82,8 @@ vi.mock("../../../hooks/useNotificationSettings", () => ({
 describe("NotificationsSettings", () => {
   beforeEach(() => {
     hookState.subscribed = true;
+    hookState.deviceType = "desktop";
+    hookState.currentBrowserProfileId = "profile-1";
   });
 
   afterEach(() => {
@@ -106,6 +115,43 @@ describe("NotificationsSettings", () => {
     const details = summary.closest("details");
     expect(details).not.toBeNull();
     expect(details?.open).toBe(false);
+  });
+
+  it("does not infer Android from Chrome's push service", () => {
+    render(<NotificationsSettings />);
+
+    expect(screen.getByText(/Work laptop \(Chrome\)/)).toBeTruthy();
+    expect(screen.queryByText(/Android\/Chrome/)).toBeNull();
+  });
+
+  it("keeps the Android label when the device evidence is Android", () => {
+    hookState.deviceType = "android";
+    render(<NotificationsSettings />);
+
+    expect(screen.getByText(/Work laptop \(Android\/Chrome\)/)).toBeTruthy();
+  });
+
+  it("removes the current device through the browser-local unsubscribe path", () => {
+    render(<NotificationsSettings />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "notificationsRemove" }),
+    );
+
+    expect(hookState.unsubscribe).toHaveBeenCalledTimes(1);
+    expect(hookState.removeDevice).not.toHaveBeenCalled();
+  });
+
+  it("removes another device through the server inventory path", () => {
+    hookState.currentBrowserProfileId = "profile-2";
+    render(<NotificationsSettings />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "notificationsRemove" }),
+    );
+
+    expect(hookState.removeDevice).toHaveBeenCalledWith("profile-1");
+    expect(hookState.unsubscribe).not.toHaveBeenCalled();
   });
 
   it("gates server event controls when no browser is subscribed", () => {

@@ -50,18 +50,26 @@ interface UnifiedDevice {
 function formatDeviceName(
   deviceName: string | undefined,
   endpointDomain: string | undefined,
+  deviceType: SubscribedDevice["deviceType"],
 ): { displayName: string; browserType: string } {
   const name = deviceName || "Unknown device";
 
-  // Extract push service type from domain
+  // Push-service domains identify the browser family, not the operating
+  // system. Chrome on macOS and Windows uses Google's service too.
   if (endpointDomain?.includes("google")) {
-    return { displayName: name, browserType: "(Android/Chrome)" };
+    return {
+      displayName: name,
+      browserType: deviceType === "android" ? "(Android/Chrome)" : "(Chrome)",
+    };
   }
   if (
     endpointDomain?.includes("apple") ||
     endpointDomain?.includes("push.apple")
   ) {
-    return { displayName: name, browserType: "(iOS/Safari)" };
+    return {
+      displayName: name,
+      browserType: deviceType === "ios" ? "(iOS/Safari)" : "(Safari)",
+    };
   }
   if (
     endpointDomain?.includes("mozilla") ||
@@ -115,6 +123,7 @@ function mergeDevices(
     const { displayName, browserType } = formatDeviceName(
       device.deviceName,
       device.endpointDomain,
+      device.deviceType,
     );
     const connection = connectedDevices.get(device.browserProfileId);
 
@@ -261,7 +270,7 @@ function deliveryPriorityLabelKey(
 export function NotificationsSettings() {
   const { t } = useI18n();
   useSettingsPaneTitle(t("settingsNotificationsTitle"));
-  const { browserProfileId } = usePushNotifications();
+  const { browserProfileId, unsubscribe } = usePushNotifications();
   const {
     devices: subscribedDevices,
     isLoading: devicesLoading,
@@ -439,6 +448,17 @@ export function NotificationsSettings() {
     testDisplayUrgency,
   ]);
 
+  const removeSubscribedDevice = useCallback(
+    async (device: UnifiedDevice) => {
+      if (device.isCurrentDevice) {
+        await unsubscribe();
+        return;
+      }
+      await removeDevice(device.browserProfileId);
+    },
+    [removeDevice, unsubscribe],
+  );
+
   const serverTogglesGated = !hasSubscriptions;
   const gatedTooltip = serverTogglesGated
     ? t("notificationsNoSubscribedDevices")
@@ -568,7 +588,7 @@ export function NotificationsSettings() {
                         <button
                           type="button"
                           className="settings-button settings-button-danger-subtle"
-                          onClick={() => removeDevice(device.browserProfileId)}
+                          onClick={() => removeSubscribedDevice(device)}
                           title={
                             device.isCurrentDevice
                               ? t("notificationsRemoveThisDevice")

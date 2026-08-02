@@ -32,6 +32,12 @@ Two surfaces render "devices", both keyed by `browserProfileId`:
   `mergeDevices`) merges push subscriptions with live connections. Only the
   push-subscribed rows persist and get a Remove button.
 
+Push endpoint domains identify the browser delivery provider, not the device
+operating system. The Notifications inventory combines the endpoint with the
+server-inferred `deviceType`: Google's endpoint is **Chrome** on desktop and
+**Android/Chrome** only with Android evidence; Apple's endpoint is **Safari**
+on desktop and **iOS/Safari** only with iOS evidence.
+
 The persistent pollution is **`browser-profiles.json` only**. The in-memory
 `ConnectedBrowsersService` self-cleans on disconnect, and `push-subscriptions.json`
 would only grow if automation subscribed to push (it doesn't).
@@ -64,6 +70,19 @@ would only grow if automation subscribed to push (it doesn't).
    - At most 20 non-subscribed profiles are retained; oldest excess profiles are
      pruned.
    - Manual "Forget" still calls `deleteProfile` for explicit removal.
+5. One physical WebSocket contributes at most one live tab registration.
+   Overlapping activity streams on that socket share the registration, and
+   the final activity-stream cleanup releases it. On `pagehide`, the client
+   closes retained activity streams before the document is discarded or
+   cached; a retained document that receives `pageshow` installs one fresh
+   stream. Full reloads and tab close therefore do not accumulate logical tab
+   rows while waiting for transport-level dead-peer detection.
+6. Removing the current browser from Notifications uses the local
+   `PushManager.unsubscribe()` path and then revokes the server row. Other
+   device rows use server-only deletion because one browser cannot revoke
+   another browser's local PushManager state. All mounted push controls
+   reconcile from the browser-local subscription-change event, so the row and
+   **Browser notifications** toggle converge without a reload.
 
 **The invariant:** a browser profile should represent a durable device identity
 worth showing the user. Automation gets one stable identity, and unknown clients

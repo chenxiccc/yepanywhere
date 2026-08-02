@@ -150,6 +150,18 @@ mobile, organized as **This browser**, **Events from this server**, and
 **Devices and delivery**. Test-only display and transport priority controls are
 collapsed under **Testing and diagnostics**.
 
+The inventory must remain truthful across its browser/server boundary:
+
+- a push-provider hostname identifies browser family but never supplies
+  Android or iOS evidence on its own;
+- removing **This browser** revokes both its local PushManager subscription and
+  its server row, then every mounted browser-subscription control reflects the
+  disabled state without a reload; and
+- live counts represent browser WebSockets/tabs, not the number of activity
+  subscriptions multiplexed over a socket. Page exit releases the activity
+  lease immediately, while a cached document may establish one new lease on
+  `pageshow`.
+
 Automated contracts cover the complete subscribed server audience and these
 recipient decisions: no focused window displays, an unfocused window displays,
 a focused window suppresses by default, the focused-window opt-in displays for
