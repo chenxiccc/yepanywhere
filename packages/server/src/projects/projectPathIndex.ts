@@ -189,6 +189,8 @@ async function buildIndex(
 export interface ProjectPathIndex {
   /** Whether this exact project-relative path is a file in the project. */
   has(path: string): boolean;
+  /** Existing paths from one content-resolution batch. */
+  findExisting(paths: readonly string[]): Promise<ReadonlySet<string>>;
   /** Indexed path count, for diagnostics. */
   size: number;
   /** True when the project exceeded {@link MAX_INDEXED_PATHS}. */
@@ -238,6 +240,8 @@ export async function getProjectPathIndex(
 function toPublicIndex(entry: ProjectPathIndexEntry): ProjectPathIndex {
   return {
     has: (path: string) => entry.paths.has(path),
+    findExisting: async (paths: readonly string[]) =>
+      new Set(paths.filter((path) => entry.paths.has(path))),
     size: entry.paths.size,
     truncated: entry.truncated,
   };

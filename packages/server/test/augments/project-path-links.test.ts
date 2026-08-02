@@ -91,6 +91,8 @@ describe("linkifyProjectPaths", () => {
     has: (path: string) =>
       path === "untracked/pii-eval/prod/nl-final20-control.jsonl" ||
       path === "scripts/run.py",
+    findExisting: async (paths: readonly string[]) =>
+      new Set(paths.filter((path) => index.has(path))),
     size: 2,
     truncated: false,
   };
@@ -143,7 +145,12 @@ describe("linkifyProjectPaths", () => {
 
   it("returns content unchanged when nothing is indexed", async () => {
     const html = '<span class="line">scripts/run.py</span>';
-    const empty = { has: () => false, size: 0, truncated: false };
+    const empty = {
+      has: () => false,
+      findExisting: async () => new Set<string>(),
+      size: 0,
+      truncated: false,
+    };
 
     expect(
       await linkifyProjectPaths(html, { projectPath: "/repo", index: empty }),
