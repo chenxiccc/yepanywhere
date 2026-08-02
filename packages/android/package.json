@@ -10,6 +10,7 @@
     "build:android": "pnpm prepare-frontend && ./gradlew :app:assembleBundledRelease",
     "build:android:hosted-latest": "./gradlew :app:assembleHostedLatestRelease",
     "test": "./gradlew test",
+    "test:connected": "./gradlew connectedBundledDebugAndroidTest",
     "lint": "./gradlew lint"
   }
 }

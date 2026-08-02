@@ -37,6 +37,7 @@ import com.yepanywhere.mobile.R
 class WebClientActivity : ComponentActivity() {
     private val config by lazy(WebClientConfig::fromBuild)
     private var webView: WebView? = null
+    private var nativeHost: YaNativeMessageHost? = null
     private var fileChooserCallback: ValueCallback<Array<Uri>>? = null
     private var mainFrameFailed = false
 
@@ -139,6 +140,7 @@ class WebClientActivity : ComponentActivity() {
             }
         }
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
+        nativeHost = YaNativeMessageHost.install(view, config)
         webView = view
         return view
     }
@@ -185,6 +187,7 @@ class WebClientActivity : ComponentActivity() {
             ) {
                 mainFrameFailed = false
                 errorView.visibility = View.GONE
+                nativeHost?.onDocumentChanged()
             }
 
             override fun shouldInterceptRequest(
@@ -253,6 +256,8 @@ class WebClientActivity : ComponentActivity() {
                 view: WebView,
                 detail: RenderProcessGoneDetail,
             ): Boolean {
+                nativeHost?.destroy()
+                nativeHost = null
                 webView = null
                 view.destroy()
                 recreate()
@@ -282,6 +287,8 @@ class WebClientActivity : ComponentActivity() {
     override fun onDestroy() {
         fileChooserCallback?.onReceiveValue(null)
         fileChooserCallback = null
+        nativeHost?.destroy()
+        nativeHost = null
         webView?.let { view ->
             (view.parent as? ViewGroup)?.removeView(view)
             view.stopLoading()

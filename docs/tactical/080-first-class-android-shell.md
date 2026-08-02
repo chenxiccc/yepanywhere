@@ -1,6 +1,6 @@
 # First-Class Android Shell
 
-Status: planned. The product decision is to replace the Tauri Mobile wrapper
+Status: executing. The product decision is to replace the Tauri Mobile wrapper
 before implementing Android broker enrollment or native notification
 presentation. The existing Android package identity, Firebase probe, asset
 channels, and full-web fallback remain inputs to the migration rather than
@@ -112,7 +112,7 @@ step and applicable validation rows below have evidence.
 | Freeze the existing shell evidence | complete | 2026-08-02 build, APK/manifest inventory, and Pixel 7a baseline below |
 | Create the Gradle/Compose shell | complete | Warning-free config-free builds plus Compose launcher smoke on Pixel 7a |
 | Reproduce client asset channels | in progress | Bundled Pixel smoke and both release APK contracts pass; hosted connected smoke remains |
-| Add the native host channel | planned | Kotlin/client tests plus origin-bound instrumentation |
+| Add the native host channel | in progress | Protocol/client tests pass; real WebMessage `host.describe` passes on Pixel 7a; denied-origin/subframe instrumentation remains |
 | Migrate App Links and FCM probe | planned | Connected App Link and background-FCM evidence |
 | Remove Tauri Mobile | planned | Dependency/source deletion plus artifact inspection |
 | Add Android CI | planned | Warning-free required workflow and uploaded APK artifacts |
