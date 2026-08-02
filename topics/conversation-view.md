@@ -103,8 +103,10 @@ provider-history rewrite and not deletion.
   may claim more vertical space than the current thinking block requests, and
   the previous preview's height is `min(natural, current)`, growing with the
   current block as it streams. Because the current block thus owns the row
-  height, the previous preview (and the activity names) disappearing at turn
-  completion causes no shrink — and so no main-conversation autofollow flicker.
+  height, the previous preview disappearing at turn completion causes no
+  shrink — and so no main-conversation autofollow flicker. The same cap covers
+  the activity names, which shorten at turn completion as the bound below moves
+  to the newly completed block.
 - Each thinking-preview slot can be collapsed or dismissed independently.
   Streaming updates to the block occupying a slot do not reopen a collapsed
   card. Dismissing the final visible card switches the thinking-transcript
@@ -113,21 +115,35 @@ provider-history rewrite and not deletion.
   follow for that logical block while it grows; when a new block replaces it
   in the same slot, that new block starts at its own live edge. A lone remaining
   card may use the width released by its dismissed peer.
-- While the latest assistant turn is active and at least one thinking preview
-  is expanded, the activity column may show the newest concrete activity kinds
-  below its count. The visible count is decided by layout, not a fixed number:
-  the list is newest-first and fills the height the current thinking block
-  requests, so a short thinking block shows few names and a tall one shows more.
-  The newest row stays whole at the top; when the list overflows, the oldest
-  rows clip at the bottom behind a fade rather than a hard cut. File operations
-  may add a basename and commands may add a bounded
+- When at least one thinking preview is expanded, the activity column may show
+  concrete activity kinds below its count. The visible count is decided by
+  layout, not a fixed number: the list is newest-first and fills the height the
+  current thinking block requests, so a short thinking block shows few names and
+  a tall one shows more. The newest row stays whole at the top; when the list
+  overflows, the oldest rows clip at the bottom behind a fade rather than a hard
+  cut. File operations may add a basename and commands may add a bounded
   description or verb-first command fragment. These previews remain whole single
   lines and may truncate; by default they cannot widen the activity column. The
-  complete ordinary tool summary remains available as a tooltip. The activity
-  names never persist past the active turn: turn completion removes them while
-  preserving the expandable activity summary and latest-thinking preview.
+  complete ordinary tool summary remains available as a tooltip.
   Because the names cap to the current/latest card's rendered height, collapsing
   that card clips them away; they never reserve vertical space.
+- **The last complete thinking block bounds the list.** The names answer "what
+  has happened since the thought I just read", so only activities after that
+  block are named; everything earlier is already accounted for by the thought
+  and stays folded into the count. The bound is deliberately the last
+  *complete* block rather than the last block: while a new one streams the
+  reader is still working out of the previous completed thought, so the
+  activities that thought led to must remain visible rather than vanishing the
+  moment new thinking begins.
+  The bound is global rather than per-turn, so a turn that did no thinking of
+  its own still measures from the thought the reader last saw. With no complete
+  thinking block anywhere, nothing bounds the list and every activity in the
+  turn qualifies; with no thinking at all there is no preview to attach to, so
+  the turn shows only its count.
+  Turn completion does **not** clear the names — an earlier revision hid them
+  at turn end, which discarded exactly the activities the reader had not yet
+  accounted for. Because the names cap to the current/latest card's height, a
+  finished turn keeping them cannot grow the row.
 - **Appearance → Wider activity previews** is a browser-local, default-off
   option included in browser-settings backup. In Conversation view it lets the
   activity column consume otherwise unused inline space and aligns thinking

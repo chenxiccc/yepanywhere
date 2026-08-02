@@ -481,7 +481,7 @@ describe("selectConversationThinkingPreviews", () => {
     expect(items.map((item) => item.id)).toEqual(["previous", "latest"]);
   });
 
-  it("provides the newest concrete activities while the turn is active", () => {
+  it("lists only the activities after the last complete thinking block", () => {
     const projected = projectConversationView(
       [
         tool("read", 1_000, {
@@ -515,12 +515,98 @@ describe("selectConversationThinkingPreviews", () => {
       { active: true, nowMs: 5_000 },
     );
 
+    // Read and Edit ran before the completed thought, so they are already
+    // accounted for by it and stay folded into the count.
     expect(summary(projected).recentActivities).toEqual([
       { label: "Write", detail: "Write: report.md", preview: "report.md" },
       { label: "Run", detail: "Run: pnpm test", preview: "pnpm test" },
-      { label: "Edit", detail: "Edit: app.ts", preview: "app.ts" },
-      { label: "Read", detail: "Read: Reading...", preview: "Reading..." },
     ]);
+  });
+
+  it("keeps the activities after the last thought once the turn ends", () => {
+    const projected = projectConversationView(
+      [
+        tool("early", 1_000, {
+          toolName: "Read",
+          toolInput: { file_path: "/repo/README.md" },
+        }),
+        {
+          type: "thinking",
+          id: "thinking",
+          thinking: "Plan",
+          status: "complete",
+          sourceMessages: [],
+        },
+        tool("run", 2_000, {
+          toolName: "Bash",
+          toolInput: { command: "pnpm test" },
+        }),
+      ],
+      { active: false, nowMs: 5_000 },
+    );
+
+    expect(summary(projected).recentActivities).toEqual([
+      { label: "Run", detail: "Run: pnpm test", preview: "pnpm test" },
+    ]);
+  });
+
+  it("reaches back only to the previous complete thought while streaming", () => {
+    const projected = projectConversationView(
+      [
+        tool("stale", 1_000, {
+          toolName: "Read",
+          toolInput: { file_path: "/repo/old.md" },
+        }),
+        {
+          type: "thinking",
+          id: "previous",
+          thinking: "Earlier",
+          status: "complete",
+          sourceMessages: [],
+        },
+        tool("run", 2_000, {
+          toolName: "Bash",
+          toolInput: { command: "pnpm test" },
+        }),
+        {
+          type: "thinking",
+          id: "current",
+          thinking: "Now",
+          status: "streaming",
+          sourceMessages: [],
+        },
+        tool("write", 3_000, {
+          toolName: "Write",
+          toolInput: { file_path: "/repo/report.md", content: "done" },
+        }),
+      ],
+      { active: true, nowMs: 5_000 },
+    );
+
+    // The streaming block is not the bound — the reader is still working out
+    // of `previous`, so what that thought led to stays visible.
+    expect(
+      summary(projected).recentActivities?.map((activity) => activity.label),
+    ).toEqual(["Write", "Run"]);
+  });
+
+  it("collapses every activity when the turn did no thinking", () => {
+    const projected = projectConversationView(
+      [
+        tool("read", 1_000, {
+          toolName: "Read",
+          toolInput: { file_path: "/repo/README.md" },
+        }),
+        tool("run", 2_000, {
+          toolName: "Bash",
+          toolInput: { command: "pnpm test" },
+        }),
+      ],
+      { active: false, nowMs: 5_000 },
+    );
+
+    expect(summary(projected).recentActivities).toBeUndefined();
+    expect(summary(projected).activityCount).toBe(2);
   });
 
   it("hides recent activity names after completion without removing expansion", () => {
