@@ -400,9 +400,12 @@ export function GitDiffBody({
   useEffect(() => {
     let cancelled = false;
     // A working-tree status poll intentionally refetches the live diff, even
-    // when its summary fields are unchanged. Retain the current result while
-    // that request runs so user-owned state inside GitDiffContent (notably an
-    // open comment editor) remains mounted.
+    // when its summary fields are unchanged, so `file` is a deliberate
+    // dependency: a new snapshot must reload. The owning browser is
+    // responsible for only handing over a new `file` when the snapshot
+    // actually changed. Retain the current result while that request runs so
+    // user-owned state inside GitDiffContent (notably an open comment editor)
+    // remains mounted.
     setLoadState((current) =>
       current.requestKey === requestKey
         ? { ...current, loading: true, error: null }

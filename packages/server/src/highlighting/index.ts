@@ -5,6 +5,7 @@
  * re-rendering. Pre-loads common languages for fast highlighting.
  */
 
+import { createHash } from "node:crypto";
 import {
   type BundledLanguage,
   type Highlighter,
@@ -15,6 +16,17 @@ import { createCssVariablesTheme } from "shiki/core";
 
 /** Maximum lines to highlight (avoid blocking on huge files) */
 const MAX_LINES = 10000;
+
+/**
+ * Retained highlighted output, in bytes of generated HTML.
+ *
+ * Tokenizing is the dominant cost of a Source Control diff — roughly 90µs per
+ * line — and the same two file versions are highlighted again on every diff
+ * refetch, every whitespace/full-context toggle, and every reselection. A
+ * version's content determines its highlighting exactly, so the result is
+ * cacheable without any staleness window.
+ */
+const HIGHLIGHT_CACHE_MAX_BYTES = 32 * 1024 * 1024;
 
 /** Languages to pre-load on startup */
 const PRELOADED_LANGUAGES: BundledLanguage[] = [
@@ -130,6 +142,44 @@ const EXTENSION_TO_LANG: Record<string, BundledLanguage> = {
 let highlighterPromise: Promise<Highlighter> | null = null;
 let loadedLanguages: Set<string> = new Set();
 
+/** Insertion-ordered, so the oldest key is the first `keys()` entry. */
+const highlightCache = new Map<string, HighlightResult>();
+let highlightCacheBytes = 0;
+
+function highlightCacheKey(code: string, lang: BundledLanguage): string {
+  return `${lang}\0${createHash("sha1").update(code).digest("base64")}`;
+}
+
+function readHighlightCache(key: string): HighlightResult | null {
+  const hit = highlightCache.get(key);
+  if (!hit) return null;
+  // Re-insert so eviction sees this as the most recently used entry.
+  highlightCache.delete(key);
+  highlightCache.set(key, hit);
+  return hit;
+}
+
+function writeHighlightCache(key: string, result: HighlightResult): void {
+  const bytes = result.html.length;
+  if (bytes > HIGHLIGHT_CACHE_MAX_BYTES) return;
+
+  // Two requests can miss on the same content and both write. Discount the
+  // entry being replaced, or the running total drifts above the real retained
+  // size and evicts entries that still fit.
+  const replaced = highlightCache.get(key);
+  if (replaced) highlightCacheBytes -= replaced.html.length;
+
+  highlightCache.set(key, result);
+  highlightCacheBytes += bytes;
+  while (highlightCacheBytes > HIGHLIGHT_CACHE_MAX_BYTES) {
+    const oldest = highlightCache.keys().next();
+    if (oldest.done) break;
+    const evicted = highlightCache.get(oldest.value);
+    highlightCache.delete(oldest.value);
+    highlightCacheBytes -= evicted?.html.length ?? 0;
+  }
+}
+
 /**
  * Get or create the singleton highlighter instance.
  */
@@ -203,6 +253,12 @@ export async function highlightCode(
     }
   }
 
+  const cacheKey = highlightCacheKey(code, lang);
+  const cached = readHighlightCache(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
   // Check line count and truncate if needed
   const lines = code.split("\n");
   const truncated = lines.length > MAX_LINES;
@@ -216,12 +272,14 @@ export async function highlightCode(
       theme: "css-variables",
     });
 
-    return {
+    const result: HighlightResult = {
       html,
       language: lang,
       lineCount: lines.length,
       truncated,
     };
+    writeHighlightCache(cacheKey, result);
+    return result;
   } catch {
     return null;
   }
@@ -253,4 +311,10 @@ export async function highlightFile(
 export const __test__ = {
   MAX_LINES,
   EXTENSION_TO_LANG,
+  cacheSize: () => highlightCache.size,
+  cacheBytes: () => highlightCacheBytes,
+  clearCache: () => {
+    highlightCache.clear();
+    highlightCacheBytes = 0;
+  },
 };

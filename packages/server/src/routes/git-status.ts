@@ -565,6 +565,24 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
         return c.json(skippedGitDiffResult(untrackedSizeSkip));
       }
 
+      // The comment-anchor projections only read `HEAD`, so they depend on
+      // nothing this request computes and need not sit on the critical path.
+      // The binary classification deliberately still *gates* the version
+      // reads: it is what keeps a large binary's bytes from being read into
+      // memory at all, so speculating on them in parallel would trade a
+      // bounded skip for an unbounded read.
+      const projectionsPromise = workingTreeReviewProjections(
+        project.path,
+        path,
+        staged,
+        status,
+        againstHead,
+        origPath,
+      );
+      // A skipped preview abandons this; keep its rejection from surfacing as
+      // unhandled while the awaited path still sees it.
+      projectionsPromise.catch(() => {});
+
       const binaryStartedAt = performance.now();
       if (
         status !== "?" &&
@@ -609,14 +627,7 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
       timings.render = performance.now() - renderStartedAt;
       if (!result.previewSkipped) {
         const projectionsStartedAt = performance.now();
-        result.reviewProjections = await workingTreeReviewProjections(
-          project.path,
-          path,
-          staged,
-          status,
-          againstHead,
-          origPath,
-        );
+        result.reviewProjections = await projectionsPromise;
         timings.projections = performance.now() - projectionsStartedAt;
       }
       recordGitDiffRequestTiming(c, {

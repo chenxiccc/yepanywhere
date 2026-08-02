@@ -331,6 +331,80 @@ describe("WorkingTreeBrowser", () => {
     );
   });
 
+  it("expands many untracked folders without refetching the open diff", async () => {
+    const folders = Array.from({ length: 40 }, (_, i) => `gen${i}/`);
+    getGitDiff.mockResolvedValue({ diffHtml: "", structuredPatch: [] });
+    // Stagger arrivals across several coalescing windows, the way a real
+    // repository's folder expansions land: the browser re-merges its rows once
+    // per window while the corpus fills in.
+    let arrival = 0;
+    getGitUntrackedFolder.mockImplementation(
+      (_projectId: string, path: string) =>
+        new Promise((resolve) =>
+          setTimeout(
+            () =>
+              resolve({
+                path,
+                files: [`${path}child.ts`],
+                truncated: false,
+                limit: 500,
+              }),
+            (arrival++ % 4) * 60,
+          ),
+        ),
+    );
+    listReviewComments.mockResolvedValue({
+      comments: [],
+      batches: [],
+      pendingCount: 0,
+    });
+
+    render(
+      <MemoryRouter>
+        <WorkingTreeBrowser
+          projectId="p1"
+          status={{
+            isGitRepo: true,
+            branch: "main",
+            upstream: null,
+            ahead: 0,
+            behind: 0,
+            isClean: false,
+            files: [
+              {
+                path: "src/tracked.ts",
+                status: "M",
+                staged: false,
+                linesAdded: 3,
+                linesDeleted: 1,
+              },
+              ...folders.map((path) => ({
+                path,
+                status: "?",
+                staged: false,
+                linesAdded: null,
+                linesDeleted: null,
+              })),
+            ],
+            recentCommits: [],
+          }}
+          isWideScreen={true}
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() =>
+      expect(getGitUntrackedFolder).toHaveBeenCalledTimes(folders.length),
+    );
+    await waitFor(() =>
+      expect(screen.getByText("gen39/child.ts")).toBeTruthy(),
+    );
+
+    // The selected file never changed, so its diff was requested exactly once.
+    expect(getGitDiff).toHaveBeenCalledTimes(1);
+  });
+
   it("uses only compact staged and untracked state markers", async () => {
     listReviewComments.mockResolvedValue({
       comments: [],

@@ -339,12 +339,59 @@ simple file should spend only ordinary subprocess time in Git preflight/version
 reads, while syntax highlighting or Markdown rendering is visible separately
 as `render`. The file-diff request does not compute or fetch blame.
 
+The comment-anchor projections only read `HEAD`, so they depend on nothing
+else the request computes and run concurrently with it. Their phase is
+therefore an overlapping wall-clock window, and the number is the time that
+read was awaited rather than its exclusive share.
+
+The binary classification stays strictly *before* the version reads, and a
+later latency change must not parallelize the two. That ordering is what keeps
+a binary file's bytes from being read into memory at all: the size-based
+preview skip only covers untracked paths, so for a tracked binary the
+classification is the sole guard, and speculating on the version reads
+alongside it would trade a bounded skip for an unbounded read. The cost of
+holding the order is one subprocess latency. Note that a response-level test
+cannot catch a regression here — the classification still wins the race and
+still returns the skip — so the guard is the ordering itself.
+
+Syntax highlighting dominates the remaining cost — roughly 90µs per tokenized
+line, paid for both file versions. A version's content determines its
+highlighting exactly, so the server retains highlighted output keyed by content
+and language, bounded by total retained bytes. Repeat views of one version — a
+poll refetch, a whitespace or full-context toggle, a reselection, a second
+client — reuse it instead of re-tokenizing. Only a version not yet seen pays
+tokenization. This is a pure function of content, so it needs no invalidation
+window; do not add a time-based expiry that would reintroduce the cost.
+
 Do not add speculative file-diff prewarming as the first remedy for a slow
 selection. Eliminate unrelated project/session scans and measure the remaining
 phases first. Prewarming the likely next file remains an optional latency
 courtesy only if those measurements show a meaningful irreducible renderer
 cost; it cannot become a correctness dependency or retain unbounded file
 content.
+
+### Selection cost is independent of corpus size
+
+Entering Changes and selecting a file must cost what that one file's diff
+costs. Two client-side rules keep it there, both of which a large working tree
+otherwise breaks:
+
+**Background enrichment yields to the foreground.** Compact untracked
+directories expand through one server request each, and each of those is a
+`git status --untracked-files=all` over that directory. A repository with
+hundreds of untracked directories therefore has hundreds of them to run, so the
+sweep is bounded well below the browser's per-host connection budget and its
+arrivals are coalesced into periodic list updates. The status request and the
+selected file's diff must never queue behind it.
+
+**A changed-file row's object identity changes only when its state changes.**
+The diff pane reloads when its `file` prop changes identity — that is how a
+live working-tree refresh reaches an open diff, including when the summary
+fields did not move. Rebuilding every row on each untracked-folder arrival
+therefore recomputed the selected file's diff once per arrival. The merge that
+produces rows reuses the previous object for any path whose state is unchanged,
+and deliberately does not reuse across a new status snapshot, which is the
+live-refresh signal itself.
 
 The permanent `git-source-review` capability currently gates the complete
 Changes/Files/Comments browser, including commit history inside Changes, as

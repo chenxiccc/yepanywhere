@@ -54,6 +54,16 @@ const WORKING_TREE_SOURCE: GitDiffSource = {
 };
 
 /**
+ * Simultaneous untracked-folder expansions. Kept well under the browser's
+ * per-host connection budget so foreground Source Control requests stay
+ * responsive while a large untracked corpus fills in behind them.
+ */
+const UNTRACKED_FOLDER_CONCURRENCY = 4;
+
+/** How long arriving expansions accumulate before one list re-render. */
+const FOLDER_FLUSH_MS = 100;
+
+/**
  * The current HEAD-to-filesystem view shared by Changes and the optional
  * Working tree revision in Commits. Both entry points therefore keep one file
  * merge, diff, comment-anchor, and refresh-survival implementation.
@@ -127,34 +137,89 @@ export function WorkingTreeBrowser({
   useEffect(() => {
     let cancelled = false;
     setExpandedUntrackedFolders({});
-    for (const path of untrackedFolderKey
-      ? untrackedFolderKey.split("\0")
-      : []) {
-      api
-        .getGitUntrackedFolder(projectId, path)
-        .then((info) => {
+    const paths = untrackedFolderKey ? untrackedFolderKey.split("\0") : [];
+    if (paths.length === 0) return undefined;
+
+    // Each expansion is a separate `git status --untracked-files=all` on the
+    // server, and a repository with hundreds of untracked directories has
+    // hundreds of them to run. Bound the fan-out so this background enrichment
+    // never occupies the whole per-host connection budget: the foreground
+    // status and the selected file's diff must not queue behind it.
+    let nextPath = 0;
+    const arrived: Record<string, GitUntrackedFolderInfo> = {};
+    let flushHandle: ReturnType<typeof setTimeout> | null = null;
+
+    // Coalesce arrivals: one state update per folder would re-render the whole
+    // changed-file list once per request.
+    const flush = () => {
+      flushHandle = null;
+      if (cancelled) return;
+      const batch = { ...arrived };
+      for (const key of Object.keys(arrived)) delete arrived[key];
+      setExpandedUntrackedFolders((current) => ({ ...current, ...batch }));
+    };
+    const scheduleFlush = () => {
+      if (flushHandle === null) flushHandle = setTimeout(flush, FOLDER_FLUSH_MS);
+    };
+
+    const runNext = async (): Promise<void> => {
+      while (!cancelled) {
+        const path = paths[nextPath++];
+        if (path === undefined) return;
+        try {
+          const info = await api.getGitUntrackedFolder(projectId, path);
           if (cancelled) return;
-          setExpandedUntrackedFolders((current) => ({
-            ...current,
-            [path]: info,
-          }));
-        })
-        .catch(() => {
+          arrived[path] = info;
+          scheduleFlush();
+        } catch {
           // Keep the compact folder row visible; it stays non-previewable.
-        });
-    }
+        }
+      }
+    };
+
+    const workers = Array.from(
+      { length: Math.min(UNTRACKED_FOLDER_CONCURRENCY, paths.length) },
+      runNext,
+    );
+    void Promise.all(workers);
+
     return () => {
       cancelled = true;
+      if (flushHandle !== null) clearTimeout(flushHandle);
     };
   }, [projectId, untrackedFolderKey]);
 
-  const currentFiles = useMemo(
-    () =>
-      mergeWorkingTreeFiles(
-        expandUntrackedFolders(status.files, expandedUntrackedFolders),
-      ),
-    [expandedUntrackedFolders, status.files],
-  );
+  const previousRowsRef = useRef<{
+    statusFiles: GitFileChange[];
+    byPath: Map<string, WorktreeFileChange>;
+  } | null>(null);
+  const currentFiles = useMemo(() => {
+    const merged = mergeWorkingTreeFiles(
+      expandUntrackedFolders(status.files, expandedUntrackedFolders),
+    );
+    // Untracked-folder expansions arrive in batches and rebuild every row,
+    // including the rows they did not touch. A row's object identity is the
+    // signal the diff pane refetches on, so handing out a fresh-but-equal
+    // object for the selected file recomputed its diff once per arriving
+    // batch. Reuse the previous object whenever the row's state is unchanged.
+    //
+    // A new status snapshot deliberately falls through to fresh objects: that
+    // is exactly the live-refresh signal the diff pane must reload on, whether
+    // or not the summary fields moved.
+    const previous =
+      previousRowsRef.current?.statusFiles === status.files
+        ? previousRowsRef.current.byPath
+        : null;
+    const byPath = new Map<string, WorktreeFileChange>();
+    const rows = merged.map((row) => {
+      const prior = previous?.get(row.path);
+      const kept = prior && sameWorktreeRow(prior, row) ? prior : row;
+      byPath.set(row.path, kept);
+      return kept;
+    });
+    previousRowsRef.current = { statusFiles: status.files, byPath };
+    return rows;
+  }, [expandedUntrackedFolders, status.files]);
   useEffect(() => {
     if (!selectedPath) return;
     const selected = currentFiles.find((file) => file.path === selectedPath);
@@ -541,6 +606,24 @@ function expandUntrackedFolders(
       };
     });
   });
+}
+
+/** Whether two merged rows describe the same working-tree state for a path. */
+function sameWorktreeRow(
+  previous: WorktreeFileChange,
+  next: WorktreeFileChange,
+): boolean {
+  return (
+    previous.path === next.path &&
+    previous.status === next.status &&
+    previous.staged === next.staged &&
+    previous.worktreeState === next.worktreeState &&
+    previous.linesAdded === next.linesAdded &&
+    previous.linesDeleted === next.linesDeleted &&
+    previous.origPath === next.origPath &&
+    previous.lastEditor?.sessionId === next.lastEditor?.sessionId &&
+    previous.lastEditor?.observedAt === next.lastEditor?.observedAt
+  );
 }
 
 /** Collapse index/worktree layers into one HEAD-to-filesystem row per path. */
