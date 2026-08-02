@@ -3,9 +3,8 @@
 Status: implementation complete on 2026-08-02. Android now owns its Gradle,
 Kotlin, Compose, WebView, App Link, and Firebase receive-probe layers directly;
 Tauri Mobile has been removed. Local config-free CI-equivalent validation and
-the physical-device acceptance matrix pass. The dedicated GitHub workflow is
-committed and will receive its first hosted run when this commit series is
-pushed.
+the physical-device acceptance matrix pass. The dedicated GitHub workflow's
+config-free build, inspection, and API 35 emulator matrix pass as well.
 
 Topic: android-native-shell
 Topic: android-fcm-push
@@ -194,6 +193,15 @@ Digital Asset Links manifest boundaries, bundled-versus-hosted asset contents,
 and the absence of Tauri/Rust artifacts and unreviewed native libraries. The
 same config-free bundled APK passed the seven-test connected host, lifecycle,
 and navigation suite on the `jstorrent-dev` AVD (Android API 34).
+
+The first successful hosted `Android App CI` acceptance run was
+[`30750198529`](https://github.com/kzahel/yepanywhere/actions/runs/30750198529)
+at commit `4bad871f`. From a clean checkout with no Firebase configuration, it
+built `@yep-anywhere/shared` and the bundled client, passed the native-host
+adapter tests, Android JVM tests, warning-fatal lint, all three APK channel
+builds, APK contract inspection, and all seven connected tests on an ephemeral
+Android API 35 Google APIs emulator. APKs and machine-readable reports uploaded
+successfully.
 
 On the attached Pixel 7a, Android API 37, user 0, seven bundled connected tests
 passed: approved-main-frame `host.describe`, denied origin, denied subframe,
