@@ -5,6 +5,7 @@ import android.app.Instrumentation.ActivityResult
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
+import android.os.Build
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.lifecycle.Lifecycle
@@ -13,6 +14,10 @@ import androidx.test.espresso.intent.Intents
 import androidx.test.espresso.intent.Intents.intending
 import androidx.test.espresso.intent.matcher.IntentMatchers.hasAction
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.By
+import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.Until
 import com.yepanywhere.mobile.R
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -53,6 +58,99 @@ class WebClientActivityTest {
                 """.trimIndent(),
                 "\"android\"",
             )
+            awaitJavaScript(
+                scenario,
+                """
+                JSON.parse(window.__yaNativeTestResponse).result.features.join(",")
+                """.trimIndent(),
+                "\"notifications.status,notifications.requestPermission\"",
+            )
+        }
+    }
+
+    @Test
+    fun notificationStatusIsBoundedAndPermissionRequiresUserAction() {
+        ActivityScenario.launch(WebClientActivity::class.java).use { scenario ->
+            awaitJavaScript(scenario, "document.readyState", "\"complete\"")
+            requestNativeMethod(scenario, "notification-status", "notifications.status")
+            awaitJavaScript(
+                scenario,
+                """
+                (() => {
+                  const response = JSON.parse(window.__yaNativeTestResponse);
+                  const result = response.result;
+                  return response.ok &&
+                    Object.keys(result).sort().join(",") ===
+                      "channel,firebase,installation,notificationsEnabled,permission" &&
+                    !("installationId" in result) &&
+                    !("installationSecret" in result) &&
+                    !("fid" in result);
+                })()
+                """.trimIndent(),
+                "true",
+            )
+
+            requestNativeMethod(
+                scenario,
+                "permission-without-action",
+                "notifications.requestPermission",
+            )
+            awaitJavaScriptOneOf(
+                scenario,
+                """
+                (() => {
+                  const response = JSON.parse(window.__yaNativeTestResponse);
+                  return response.ok ? response.result.permission : response.error.code;
+                })()
+                """.trimIndent(),
+                setOf("\"granted\"", "\"user_action_required\""),
+            )
+        }
+    }
+
+    @Test
+    fun recentUserActionCanResolveNotificationPermission() {
+        ActivityScenario.launch(WebClientActivity::class.java).use { scenario ->
+            awaitJavaScript(scenario, "document.readyState", "\"complete\"")
+            scenario.onActivity { activity -> activity.onUserInteraction() }
+            postNativeMethod(
+                scenario,
+                "permission-with-action",
+                "notifications.requestPermission",
+            )
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                val device = UiDevice.getInstance(
+                    InstrumentationRegistry.getInstrumentation(),
+                )
+                device.wait(
+                    Until.findObject(
+                        By.res(
+                            "com.android.permissioncontroller:id/permission_allow_button",
+                        ),
+                    ),
+                    5_000,
+                )?.click()
+                awaitJavaScript(
+                    scenario,
+                    """
+                    (() => {
+                      if (window.__yaNativeTestResponse === null) return "pending";
+                      const response = JSON.parse(window.__yaNativeTestResponse);
+                      return response.ok ? response.result.permission : response.error.code;
+                    })()
+                    """.trimIndent(),
+                    "\"granted\"",
+                )
+            } else {
+                awaitJavaScript(
+                    scenario,
+                    """
+                    JSON.parse(window.__yaNativeTestResponse).result.permission
+                    """.trimIndent(),
+                    "\"not_required\"",
+                )
+            }
         }
     }
 
@@ -289,6 +387,43 @@ class WebClientActivityTest {
               : JSON.parse(window.__yaNativeTestResponse).result.platform
             """.trimIndent(),
             "\"android\"",
+        )
+    }
+
+    private fun requestNativeMethod(
+        scenario: ActivityScenario<WebClientActivity>,
+        requestId: String,
+        method: String,
+    ) {
+        postNativeMethod(scenario, requestId, method)
+        awaitJavaScriptOneOf(
+            scenario,
+            "window.__yaNativeTestResponse === null ? 'pending' : 'ready'",
+            setOf("\"ready\""),
+        )
+    }
+
+    private fun postNativeMethod(
+        scenario: ActivityScenario<WebClientActivity>,
+        requestId: String,
+        method: String,
+    ) {
+        evaluateJavaScript(
+            scenario,
+            """
+            window.__yaNativeTestResponse = null;
+            window.yaNative.onmessage = (event) => {
+              window.__yaNativeTestResponse = event.data;
+            };
+            window.yaNative.postMessage(
+              JSON.stringify({
+                protocol: 1,
+                id: ${jsonString(requestId)},
+                method: ${jsonString(method)}
+              })
+            );
+            true;
+            """.trimIndent(),
         )
     }
 

@@ -228,11 +228,12 @@ The credential-free broker service is implemented as a separate package and
 runtime at `https://push.yepanywhere.com`. A physical Android build has
 registered through Firebase's current FID API, received a direct Firebase
 Console test message, and received a temporary generic notification through
-the deployed broker. App-owned broker enrollment and user-visible native
-presentation remain unimplemented. The broker may share physical hosting with
-the relay, but it does not share the relay's process, event loop, database, or
-delivery credentials. The relay is encrypted transport, while the broker is a
-token registry and notification dispatcher.
+the deployed broker. Android now owns a Keystore-backed broker installation
+whose target follows FID replacement. Server-specific subscription enrollment
+and user-visible native presentation remain unimplemented. The broker may
+share physical hosting with the relay, but it does not share the relay's
+process, event loop, database, or delivery credentials. The relay is encrypted
+transport, while the broker is a token registry and notification dispatcher.
 
 Payloads should be generic by default. A user may explicitly opt into bounded
 notification text passing in plaintext through the YA push broker and Google

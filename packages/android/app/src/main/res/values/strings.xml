@@ -3,6 +3,9 @@
     <string name="open_full_app">Open full app</string>
     <string name="retry">Retry</string>
     <string name="web_client_unavailable">Yep Anywhere is unavailable.</string>
+    <string name="notification_channel_activity_id" translatable="false">ya_activity</string>
+    <string name="notification_channel_activity_name">Session activity</string>
+    <string name="notification_channel_activity_description">Approvals, questions, and session updates</string>
     <string name="asset_statements" translatable="false">
         [{
           \"include\": \"https://yepanywhere.com/.well-known/assetlinks.json\"

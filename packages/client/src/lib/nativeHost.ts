@@ -1,6 +1,10 @@
 export const NATIVE_HOST_PROTOCOL = 1 as const;
+export const NATIVE_NOTIFICATION_STATUS_FEATURE = "notifications.status";
+export const NATIVE_NOTIFICATION_PERMISSION_FEATURE =
+  "notifications.requestPermission";
 const MAX_MESSAGE_BYTES = 16 * 1024;
 const DEFAULT_TIMEOUT_MS = 1_500;
+const DEFAULT_PERMISSION_TIMEOUT_MS = 2 * 60_000;
 
 export interface NativeHostDescriptor {
   protocol: typeof NATIVE_HOST_PROTOCOL;
@@ -8,6 +12,18 @@ export interface NativeHostDescriptor {
   appVersion: string;
   buildVersion: number;
   features: string[];
+}
+
+export interface NativeNotificationStatus {
+  firebase: "configured" | "unavailable";
+  permission: "granted" | "not_requested" | "denied" | "not_required";
+  channel: "enabled" | "disabled" | "not_supported";
+  installation:
+    | "ready"
+    | "update_pending"
+    | "not_registered"
+    | "unavailable";
+  notificationsEnabled: boolean;
 }
 
 interface NativeHostRawMessageEvent {
@@ -34,12 +50,14 @@ interface PendingRequest {
 interface NativeHostClientOptions {
   getChannel?: () => NativeHostRawChannel | undefined;
   timeoutMs?: number;
+  permissionTimeoutMs?: number;
   lifecycleTarget?: Pick<Window, "addEventListener" | "removeEventListener">;
 }
 
 export class NativeHostClient {
   private readonly getChannel: () => NativeHostRawChannel | undefined;
   private readonly timeoutMs: number;
+  private readonly permissionTimeoutMs: number;
   private readonly lifecycleTarget?: Pick<
     Window,
     "addEventListener" | "removeEventListener"
@@ -53,6 +71,8 @@ export class NativeHostClient {
     this.getChannel =
       options.getChannel ?? (() => globalThis.window?.yaNative);
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    this.permissionTimeoutMs =
+      options.permissionTimeoutMs ?? DEFAULT_PERMISSION_TIMEOUT_MS;
     this.lifecycleTarget = options.lifecycleTarget ?? globalThis.window;
     this.lifecycleTarget?.addEventListener("pagehide", this.handlePageHide);
   }
@@ -71,6 +91,32 @@ export class NativeHostClient {
     return this.descriptorPromise;
   }
 
+  async notificationStatus(): Promise<NativeNotificationStatus | null> {
+    const descriptor = await this.describe();
+    if (!descriptor?.features.includes(NATIVE_NOTIFICATION_STATUS_FEATURE)) {
+      return null;
+    }
+    return parseNotificationStatus(
+      await this.request(NATIVE_NOTIFICATION_STATUS_FEATURE),
+    );
+  }
+
+  async requestNotificationPermission(): Promise<NativeNotificationStatus | null> {
+    const descriptor = await this.describe();
+    if (
+      !descriptor?.features.includes(NATIVE_NOTIFICATION_PERMISSION_FEATURE)
+    ) {
+      return null;
+    }
+    return parseNotificationStatus(
+      await this.request(
+        NATIVE_NOTIFICATION_PERMISSION_FEATURE,
+        undefined,
+        this.permissionTimeoutMs,
+      ),
+    );
+  }
+
   dispose(): void {
     this.lifecycleTarget?.removeEventListener("pagehide", this.handlePageHide);
     this.cancelPending("Native host document was destroyed");
@@ -81,7 +127,11 @@ export class NativeHostClient {
     this.descriptorPromise = undefined;
   }
 
-  private request(method: string, params?: Record<string, unknown>): Promise<unknown> {
+  private request(
+    method: string,
+    params?: Record<string, unknown>,
+    timeoutMs = this.timeoutMs,
+  ): Promise<unknown> {
     const channel = this.getChannel();
     if (!channel) return Promise.reject(new Error("Native host is unavailable"));
     this.bindChannel(channel);
@@ -102,7 +152,7 @@ export class NativeHostClient {
       const timeout = setTimeout(() => {
         this.pending.delete(id);
         reject(new Error("Native host request timed out"));
-      }, this.timeoutMs);
+      }, timeoutMs);
       this.pending.set(id, { resolve, reject, timeout });
       try {
         channel.postMessage(request);
@@ -193,6 +243,39 @@ function parseDescriptor(value: unknown): NativeHostDescriptor {
   };
 }
 
+function parseNotificationStatus(value: unknown): NativeNotificationStatus {
+  if (
+    !isRecord(value) ||
+    (value.firebase !== "configured" && value.firebase !== "unavailable") ||
+    ![
+      "granted",
+      "not_requested",
+      "denied",
+      "not_required",
+    ].includes(value.permission as string) ||
+    !["enabled", "disabled", "not_supported"].includes(
+      value.channel as string,
+    ) ||
+    ![
+      "ready",
+      "update_pending",
+      "not_registered",
+      "unavailable",
+    ].includes(value.installation as string) ||
+    typeof value.notificationsEnabled !== "boolean"
+  ) {
+    throw new Error("Native notification status is invalid");
+  }
+  return {
+    firebase: value.firebase,
+    permission: value.permission as NativeNotificationStatus["permission"],
+    channel: value.channel as NativeNotificationStatus["channel"],
+    installation:
+      value.installation as NativeNotificationStatus["installation"],
+    notificationsEnabled: value.notificationsEnabled,
+  };
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -202,5 +285,13 @@ const client = typeof window === "undefined" ? null : new NativeHostClient();
 export const nativeHost = {
   describe(): Promise<NativeHostDescriptor | null> {
     return client?.describe() ?? Promise.resolve(null);
+  },
+  notifications: {
+    status(): Promise<NativeNotificationStatus | null> {
+      return client?.notificationStatus() ?? Promise.resolve(null);
+    },
+    requestPermission(): Promise<NativeNotificationStatus | null> {
+      return client?.requestNotificationPermission() ?? Promise.resolve(null);
+    },
   },
 };

@@ -1,6 +1,8 @@
 # Android FCM Live Smoke
 
-Status: implemented and verified.
+Status: original probe implemented and verified; superseded by the
+installation-level native foundation in
+[`071-android-wrapper-notification-integration.md`](071-android-wrapper-notification-integration.md).
 
 Topic: android-fcm-push
 
@@ -16,9 +18,9 @@ This is a registration and delivery probe, not the YA push product. It does
 not connect the Android app to the push broker or add a YA client/server
 contract.
 
-## Android Probe Contract
+## Original Android Probe Contract
 
-The probe now lives in the first-class Android project:
+At completion, the probe moved into the first-class Android project and:
 
 - applies Google Services only when
   `packages/android/app/google-services.json` exists;
@@ -33,13 +35,13 @@ The probe now lives in the first-class Android project:
 - relies on Firebase auto-initialization rather than an activity-owned
   registration call, retry loop, or background job.
 
-The current service is deliberately diagnostic. Debug builds log the FID from
-`onRegistered()` and, when a foreground message arrives, only its sorted data
-key names and whether it contains a notification. It does not log notification
-title/body text. Release builds do not log the FID or received-message
-metadata.
+The original service was deliberately diagnostic. Debug builds logged the FID
+from `onRegistered()` and, when a foreground message arrives, only its sorted
+data key names and whether it contains a notification. It does not log
+notification title/body text. Release builds do not log the FID or
+received-message metadata.
 
-The service does not yet upload the FID, display an app-owned notification,
+That milestone did not upload the FID, display an app-owned notification,
 fetch YA state, or maintain broker installation/subscription capabilities.
 
 ## Live Verification
@@ -76,9 +78,9 @@ then produced one foreground callback and one background system notification;
 the background send began with no YA Activity, WebView, or process alive. The
 test used only temporary broker capabilities and retained no FID or secret.
 
-## Stop Conditions
+## Original Stop Conditions
 
-This milestone stops before:
+This milestone stopped before:
 
 - creating or using Firebase service-account credentials;
 - sending through the live push-broker FCM adapter;
@@ -93,11 +95,10 @@ This milestone stops before:
 
 ## Follow-On
 
-1. Exercise the broker's FCM adapter with Application Default Credentials and
-   a current physical-device FID.
-2. Record observed FCM success, invalid-target, and transient-failure behavior
-   before changing broker retry or cleanup policy.
-3. Present the YA client/server compatibility plan and fallback before adding
-   enrollment or send routes.
-4. Implement Android broker enrollment and FID replacement through the
-   approved contract, keeping SDK lifecycle ownership and no polling loop.
+The public FCM adapter and temporary foreground/background delivery were proven
+in the first-class-shell follow-up recorded above. On 2026-08-02, the native
+foundation then added app-owned installation registration, Keystore-backed
+capability storage, explicit permission/channel operations, and live FID target
+replacement without a polling loop. Server-specific subscription enrollment,
+YA-server compatibility review, and app-owned notification presentation remain
+in the wrapper integration plan.

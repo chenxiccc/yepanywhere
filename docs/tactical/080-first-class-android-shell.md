@@ -218,10 +218,12 @@ explicit exact App Link reached the validated fixed-origin WebView handoff. The
 selection toggle is Android user state rather than application authority and
 must remain visible in future release checks.
 
-The shell advertises an empty `features` list. Notification permission,
-channels, broker-installation storage, enrollment methods, and server
-capability work therefore remain absent rather than being implied by the
-completed container migration.
+At this shell-acceptance checkpoint, `host.describe` advertised an empty
+`features` list so notification authority was not implied by the container
+migration. The follow-up native foundation now advertises the exact
+`notifications.status` and `notifications.requestPermission` methods and owns
+channel, permission, and broker-installation state. YA-server enrollment and
+its compatibility capability remain absent.
 
 ## Scope
 

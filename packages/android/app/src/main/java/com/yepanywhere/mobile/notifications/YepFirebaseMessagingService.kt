@@ -8,19 +8,22 @@ import com.yepanywhere.mobile.BuildConfig
 class YepFirebaseMessagingService : FirebaseMessagingService() {
     override fun onNewToken(token: String) {
         if (BuildConfig.DEBUG) {
-            Log.i(TAG, "FCM registration token refreshed")
+            Log.i(TAG, "Legacy FCM registration token refreshed")
         }
     }
 
     override fun onRegistered(installationId: String) {
+        val outcome = NotificationFoundation
+            .installationCoordinator(applicationContext)
+            .registerTarget(installationId)
         if (BuildConfig.DEBUG) {
-            Log.i(TAG, "FCM registered installation ID: $installationId")
+            Log.i(TAG, "Broker installation registration: ${outcome.name.lowercase()}")
         }
     }
 
     override fun onUnregistered(installationId: String) {
         if (BuildConfig.DEBUG) {
-            Log.i(TAG, "FCM unregistered installation ID: $installationId")
+            Log.i(TAG, "FCM installation unregistered")
         }
     }
 

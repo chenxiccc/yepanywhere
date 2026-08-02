@@ -8,11 +8,11 @@ Topic: android-fcm-push
 
 Status: Approved architecture direction. The credential-free broker v1 is
 implemented, deployed, and proven through FCM to a physical Pixel. The current
-Android shell has a minimal FID registration and receive probe. Android-owned
-broker enrollment, native notification presentation, and the YA server
-subscription protocol are not implemented. The probe now lives in the
-first-class Gradle/Kotlin shell, and the obsolete Tauri Mobile source has been
-removed.
+Android shell now owns notification permission/channel status and a
+Keystore-backed broker installation whose FCM target follows FID replacement.
+Server-specific broker subscriptions, native notification presentation, and
+the YA server subscription protocol are not implemented. The obsolete Tauri
+Mobile source has been removed.
 
 Related:
 
@@ -38,7 +38,7 @@ The push broker is not an account system or application-traffic relay. It
 should know only what it needs to register Android installations, authorize and
 rate-limit notification requests, and dispatch them through FCM.
 
-The planned published service endpoint is `https://push.yepanywhere.com`. The
+The published service endpoint is `https://push.yepanywhere.com`. The
 public name and protocol should use provider-neutral push terminology even
 though FCM is the first delivery implementation.
 
@@ -270,11 +270,10 @@ registered a clean app installation without activity code, a custom background
 job, or a retry loop. Clearing the dev app's data caused a different FID to be
 minted and delivered through the same callback.
 
-The current probe logs that FID only in debug builds. It does not upload it to
-the broker. The eventual enrollment implementation should treat every
-`onRegistered()` callback as an opportunity to replace the broker
-installation's current target without recreating its server-specific
-subscriptions.
+The native foundation treats every `onRegistered()` callback as an opportunity
+to create the broker installation or replace its target without recreating
+future server-specific subscriptions. It does not log or persist the plaintext
+FID.
 
 The FID and broker installation capability are native installation state. A
 hosted foreground client does not need either value. The narrow native-host
@@ -283,17 +282,18 @@ subscription and return that subscription's one-time send capability to the
 already authenticated hosted client for installation on the YA server. The FID
 and installation-management secret stay native.
 
-Do not prescribe a retry schedule, offline recovery algorithm,
-stale-registration threshold, or deletion policy here. Those details still
-need evidence from the pinned SDK against the live broker.
+The first native lifecycle has no timer, polling loop, durable job, or internal
+retry loop. A missing or pending installation asks FCM to re-emit registration
+on the next visible app-process start. Registration callbacks create one broker
+installation or replace its target after a FID digest change. A broker `404`
+causes one bounded fresh-installation attempt; other failures wait for a later
+Firebase/app-start lifecycle trigger.
 
-Before this lifecycle is treated as complete, exercise real target refresh,
-offline app/broker recovery, reinstall or cleared-app-data behavior, and
-eventual stale-record cleanup. Valid and invalid live broker targets are
-already proven; the remaining implementation work should produce the concrete
-observable contract.
+Real target replacement is proven. Offline app/broker recovery, reinstall or
+cleared-app-data behavior, and eventual orphan/stale-record cleanup remain
+unresolved and must be measured before broadening this bounded policy.
 
-## Android Probe Contract
+## Android Foundation Contract
 
 The first-class Android project:
 
@@ -303,15 +303,20 @@ The first-class Android project:
   reporting that Firebase messaging is disabled;
 - registers a non-exported native messaging service and does not require an
   Activity or WebView for receipt;
-- declares notification permission but does not prompt for it;
-- uses Firebase auto-initialization rather than an Activity-owned registration
-  call, polling loop, retry timer, or background job; and
-- does not upload the FID, display an app-owned notification, fetch YA state,
-  or persist broker capabilities.
+- creates an ordinary activity notification channel at process start;
+- exposes coarse status and explicit permission requests only through the
+  exact-origin, main-frame native host;
+- keeps the broker installation capability and last target digest in
+  app-private Android Keystore-backed storage excluded from backup;
+- uses Firebase auto-initialization plus one app-start registration request
+  only while installation work is absent or pending; and
+- does not display an app-owned notification, fetch YA state, or create a
+  server-specific broker subscription.
 
-Debug builds log the FID on `onRegistered()`, a value-free token-refresh
-diagnostic, and only received data-key names plus notification presence.
-Notification title/body, broker capabilities, and token values are never
+The plaintext FID is sent directly to the configured HTTPS broker and is never
+persisted or returned to JavaScript. Debug builds log only coarse registration
+outcomes and received data-key names plus notification presence. FIDs,
+notification title/body, broker capabilities, and token values are never
 logged. Release builds log none of this diagnostic material.
 
 For notification payloads, foreground receipt invokes the diagnostic service.

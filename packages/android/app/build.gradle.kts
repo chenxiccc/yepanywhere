@@ -32,6 +32,26 @@ if (hasFirebaseConfiguration) {
     logger.lifecycle("google-services.json not found; Firebase messaging is disabled")
 }
 
+val pushBrokerUrl = providers.gradleProperty("yaPushBrokerUrl").orNull
+    ?.trim()
+    ?.takeIf(String::isNotEmpty)
+    ?: "https://push.yepanywhere.com/"
+run {
+    val uri = URI(pushBrokerUrl)
+    require(uri.scheme == "https") {
+        "yaPushBrokerUrl must use https"
+    }
+    require(uri.host != null && uri.userInfo == null) {
+        "yaPushBrokerUrl must have a host and no user information"
+    }
+    require(uri.rawQuery == null && uri.rawFragment == null) {
+        "yaPushBrokerUrl must not contain a query or fragment"
+    }
+    require(uri.path.isNullOrEmpty() || uri.path == "/") {
+        "yaPushBrokerUrl must not contain a path"
+    }
+}
+
 android {
     namespace = "com.yepanywhere.mobile"
     compileSdk = 36
@@ -48,6 +68,16 @@ android {
             "String",
             "DEBUG_WEB_CLIENT_URL",
             buildConfigString(debugWebClientUrl.orEmpty()),
+        )
+        buildConfigField(
+            "String",
+            "PUSH_BROKER_URL",
+            buildConfigString(pushBrokerUrl),
+        )
+        buildConfigField(
+            "boolean",
+            "FIREBASE_CONFIGURED",
+            hasFirebaseConfiguration.toString(),
         )
     }
 
@@ -148,6 +178,7 @@ dependencies {
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
     androidTestImplementation("androidx.test.espresso:espresso-intents:3.7.0")
+    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
 }
 
 val verifyBundledWebAssets = tasks.register("verifyBundledWebAssets") {

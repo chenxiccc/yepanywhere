@@ -12,7 +12,7 @@ class NativeHostProtocolTest {
             platform = "android",
             appVersion = "0.1.0",
             buildVersion = 1000,
-            features = emptyList(),
+            features = listOf("notifications.status"),
         ),
     )
 
@@ -28,7 +28,7 @@ class NativeHostProtocolTest {
         assertEquals("android", result.getString("platform"))
         assertEquals("0.1.0", result.getString("appVersion"))
         assertEquals(1000, result.getLong("buildVersion"))
-        assertEquals(0, result.getJSONArray("features").length())
+        assertEquals("notifications.status", result.getJSONArray("features").getString(0))
     }
 
     @Test
@@ -71,6 +71,27 @@ class NativeHostProtocolTest {
     }
 
     @Test
+    fun dispatchesOnlyAdvertisedFeatureMethods() {
+        val dispatch = protocol.handle(
+            """{"protocol":1,"id":"one","method":"notifications.status"}""",
+        )
+
+        assertTrue(dispatch is NativeHostDispatch.Invoke)
+        val invocation = (dispatch as NativeHostDispatch.Invoke).invocation
+        assertEquals("one", invocation.id)
+        assertEquals("notifications.status", invocation.method)
+        assertEquals(0, invocation.params.length())
+        val response = JSONObject(
+            protocol.complete(
+                invocation.id,
+                NativeHostOperationResult.Success(JSONObject().put("permission", "granted")),
+            ),
+        )
+        assertTrue(response.getBoolean("ok"))
+        assertEquals("granted", response.getJSONObject("result").getString("permission"))
+    }
+
+    @Test
     fun rejectsDuplicateIdsUntilTheDocumentChanges() {
         val request = """{"protocol":1,"id":"one","method":"host.describe"}"""
         assertTrue(handle(request).getBoolean("ok"))
@@ -87,6 +108,8 @@ class NativeHostProtocolTest {
     }
 
     private fun handle(request: String?): JSONObject {
-        return JSONObject(protocol.handle(request))
+        val dispatch = protocol.handle(request)
+        assertTrue(dispatch is NativeHostDispatch.Reply)
+        return JSONObject((dispatch as NativeHostDispatch.Reply).message)
     }
 }

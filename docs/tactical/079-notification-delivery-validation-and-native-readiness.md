@@ -243,23 +243,29 @@ and three full reloads never exceeded one registration.
 
 Record the client/server proposal before changing the contract:
 
-- [ ] **Events from this server** remains one server-owned policy shared by
+- [x] **Events from this server** remains one server-owned policy shared by
   every notification transport.
-- [ ] Browser and native recipients use distinct durable identities; an
+- [x] Browser and native recipients use distinct durable identities; an
   Android installation is never represented as a `browserProfileId`.
-- [ ] The Settings view model can merge discriminated browser/native
+- [x] The Settings view model can merge discriminated browser/native
   destinations with common display, status, test, and remove operations while
   retaining transport-specific details.
-- [ ] The first Settings section is context-aware: **This browser** uses Web
+- [x] The first Settings section is context-aware: **This browser** uses Web
   Push; an Android wrapper with the approved bridge uses **This Android app**.
-- [ ] Server event controls are gated by any eligible destination, not by Web
+- [x] Server event controls are gated by any eligible destination, not by Web
   Push subscription count alone.
-- [ ] Existing browser routes and storage remain compatible; native enrollment
+- [x] Existing browser routes and storage remain compatible; native enrollment
   uses a new capability and sends no unsupported request to older servers.
-- [ ] Event observers emit semantic intents; Web Push and native broker
+- [x] Event observers emit semantic intents; Web Push and native broker
   adapters own their different payload privacy and provider behavior.
-- [ ] Browser-only diagnostic options do not masquerade as native options;
+- [x] Browser-only diagnostic options do not masquerade as native options;
   Android permission/channel state remains device-owned.
+
+Recorded 2026-08-02 in the owning notification topics and wrapper plan. The
+native foundation implements only device-owned status, permission, channel,
+and broker-installation lifecycle. The discriminated Settings destination and
+exact YA-server capability/routes remain the next compatibility-reviewed
+implementation rather than being implied by this completed design seam.
 
 ### 7 — approve the native implementation handoff
 

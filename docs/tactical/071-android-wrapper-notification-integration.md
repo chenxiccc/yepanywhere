@@ -1,10 +1,7 @@
 # Android Wrapper And Notification Integration
 
-Status: ready to resume after the completed first-class Android-shell migration
-in [`080-first-class-android-shell.md`](080-first-class-android-shell.md). The
-local-bundled and hosted-`latest` build channels, exact-origin host, and live
-broker delivery are proven. Native-host notification operations, broker
-enrollment, YA server compatibility work, notification presentation, and
+Status: native foundation and live broker installation lifecycle complete on
+2026-08-02. YA server compatibility/enrollment, notification presentation, and
 foreground activity remain future slices.
 
 Topic: android-fcm-push
@@ -162,13 +159,55 @@ the protocol-1 native host, while an ordinary browser sees a quiet absent-host
 fallback. Connected tests prove main-frame/origin authority and document
 lifecycle behavior on Android API 37.
 
-`host.describe` intentionally returns an empty `features` list. The next slice
-must add each notification operation and its exact feature name together; it
-must not infer notification authority merely from `platform: "android"`.
-App-private broker installation storage, FID replacement, permission/channel
-state, and non-secret status reads can be implemented before the YA-server
-contract. Enrollment calls from the client remain behind the compatibility
-review below.
+At the first-class-shell handoff, `host.describe` intentionally returned an
+empty `features` list. The next slice was required to add each notification
+operation and its exact feature name together rather than infer notification
+authority merely from `platform: "android"`. Server-specific enrollment calls
+remain behind the compatibility review below.
+
+### Native notification foundation contract — 2026-08-02
+
+The first native-only slice adds exactly two protocol-1 feature names and
+methods:
+
+- `notifications.status` takes no parameters and returns coarse Firebase
+  availability, notification permission, activity-channel state, combined
+  delivery enablement, and broker-installation readiness; and
+- `notifications.requestPermission` takes no parameters, requires a resumed
+  foreground activity plus a recent user interaction, and returns the same
+  status shape after Android resolves the request. The web adapter allows two
+  minutes for Android's user-controlled prompt, while document teardown still
+  cancels it immediately.
+
+Neither operation returns the FID, broker endpoint, installation id,
+installation-management secret, encrypted storage, or server subscription
+material. Unsupported ordinary browsers retain the quiet absent-host fallback.
+The methods remain useful before a YA server supports native subscriptions and
+therefore do not call or depend on a YA server route.
+
+Android creates the ordinary activity notification channel at process start.
+On Android 13 and later, app notification permission is `not_requested`,
+`granted`, or `denied`; older Android reports `not_required`. Channel state is
+`enabled`, `disabled`, or `not_supported`. Installation state is `ready`,
+`update_pending`, `not_registered`, or `unavailable` when Firebase is absent.
+Combined delivery is enabled only when app permission/settings and the activity
+channel allow presentation.
+
+The official app's broker endpoint defaults to the documented
+`https://push.yepanywhere.com` service. A build-time endpoint override remains
+authoritative and must be HTTPS. FCM registration creates one broker
+installation when none is stored and replaces its target only when the FID
+digest changes. The management capability and last successful target digest
+are encrypted with an app-private Android Keystore AES-GCM key and excluded
+from backup/device transfer. The plaintext FID is never persisted.
+
+Registration work is callback- and app-start-driven, bounded by network
+timeouts, and has no timer, polling loop, durable job, or internal retry loop.
+A transient replacement failure marks the local installation `update_pending`;
+the next visible process start asks FCM to re-emit current registration. A
+broker `404` discards the unusable local capability and makes one bounded fresh
+registration attempt. Other failures retain existing credentials and wait for
+the next lifecycle trigger.
 
 ## Push Enrollment Sequence
 
@@ -294,11 +333,12 @@ remain an approval gate rather than being committed by this plan.
 1. **Asset channels — complete:** local development, debug APKs, and ordinary
    production builds are bundled; the explicit hosted-`latest` channel remains
    available for Play testing.
-2. **Native foundation — next:** add native secure storage,
-   permission/channel state, and versioned notification operations to the
+2. **Native foundation — complete:** native secure storage,
+   permission/channel state, and versioned notification operations use the
    first-class shell's exact-origin host channel.
-3. **Live broker lifecycle:** exercise real broker installation creation and
-   FID replacement before prescribing retry or cleanup behavior.
+3. **Live broker lifecycle — complete:** a physical Pixel created its durable
+   broker installation and replaced the live target after FID rotation without
+   replacing the installation capability.
 4. **Compatibility review and enrollment:** audit stable YA releases, approve
    the optional capability/fallback, then add the narrow server subscription
    contract and hosted-client controls.
@@ -307,6 +347,30 @@ remain an approval gate rather than being committed by this plan.
    behavior on physical devices.
 6. **Foreground activity decision:** measure FCM first; build a headless
    persistent subscriber only if a concrete trigger is met.
+
+### Native foundation acceptance — 2026-08-02
+
+The config-free matrix passed every Android JVM variant, warning-fatal lint,
+bundled debug/release and hosted-`latest` release builds, instrumentation APK
+assembly, and APK contract inspection. The typed web adapter passed eight
+focused tests and makes no notification request when the exact host feature is
+absent. The Android JVM suite covers broker request shape, HTTPS-only endpoint
+selection, redirect rejection, credential parsing, create/replace/`404`/failure
+state transitions, target hashing, and cleanup after storage failure.
+
+On the attached Pixel 7a, API 37, ten instrumentation tests passed. They prove
+the exact feature advertisement, bounded status response, recent-user-action
+permission gate, real Android permission resolution, AES-GCM encrypted
+capability round-trip, untrusted-origin/subframe denial, and the existing
+WebView lifecycle/navigation contracts. Android reports notification permission
+allowed and the `ya_activity` channel enabled.
+
+The configured app created one installation through the public broker without
+printing identifiers or capabilities. A bounded live-only instrumentation
+probe then unregistered and deleted the current Firebase installation, asked
+FCM to register again, and observed the stored target digest change while the
+same broker installation id remained active. The probe source was removed
+after the check; ordinary connected tests do not rotate live Firebase state.
 
 ## Verification
 

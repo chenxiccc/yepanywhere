@@ -34,11 +34,15 @@ import androidx.webkit.WebViewFeature
 import androidx.webkit.WebSettingsCompat
 import com.yepanywhere.mobile.BuildConfig
 import com.yepanywhere.mobile.R
+import com.yepanywhere.mobile.notifications.NotificationFoundation
+import com.yepanywhere.mobile.notifications.NotificationNativeHostOperations
+import com.yepanywhere.mobile.notifications.NotificationStatusReader
 
 class WebClientActivity : ComponentActivity() {
     private val config by lazy(WebClientConfig::fromBuild)
     private var webView: WebView? = null
     private var nativeHost: YaNativeMessageHost? = null
+    private var notificationOperations: NotificationNativeHostOperations? = null
     private var fileChooserCallback: ValueCallback<Array<Uri>>? = null
     private var mainFrameFailed = false
 
@@ -52,8 +56,24 @@ class WebClientActivity : ComponentActivity() {
         )
     }
 
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) {
+        notificationOperations?.onPermissionResult()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        notificationOperations = NotificationNativeHostOperations(
+            activity = this,
+            statusReader = NotificationStatusReader(
+                this,
+                NotificationFoundation.installationStore(this),
+            ),
+            launchPermissionRequest = {
+                notificationPermissionLauncher.launch(POST_NOTIFICATIONS_PERMISSION)
+            },
+        )
         val root = FrameLayout(this).apply {
             setBackgroundColor(Color.rgb(24, 24, 24))
         }
@@ -149,7 +169,11 @@ class WebClientActivity : ComponentActivity() {
             }
         }
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
-        nativeHost = YaNativeMessageHost.install(view, config)
+        nativeHost = YaNativeMessageHost.install(
+            view,
+            config,
+            checkNotNull(notificationOperations),
+        )
         webView = view
         return view
     }
@@ -298,6 +322,8 @@ class WebClientActivity : ComponentActivity() {
         fileChooserCallback = null
         nativeHost?.destroy()
         nativeHost = null
+        notificationOperations?.destroy()
+        notificationOperations = null
         webView?.let { view ->
             (view.parent as? ViewGroup)?.removeView(view)
             view.stopLoading()
@@ -305,5 +331,15 @@ class WebClientActivity : ComponentActivity() {
         }
         webView = null
         super.onDestroy()
+    }
+
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        notificationOperations?.recordUserInteraction()
+    }
+
+    companion object {
+        private const val POST_NOTIFICATIONS_PERMISSION =
+            "android.permission.POST_NOTIFICATIONS"
     }
 }
