@@ -34,6 +34,7 @@ import {
   normalizeCodexToolOutputWithContext,
   parseCodexToolArguments,
 } from "../../codex/normalization.js";
+import { formatCodexSubagentActivity } from "../../codex/subagentActivity.js";
 import { getLogger } from "../../logging/logger.js";
 import { attachToolResultMediaCandidates } from "../../media/inlineImageData.js";
 import { findCodexCliPath, getCodexCliVersion } from "../cli-detection.js";
@@ -4297,7 +4298,7 @@ export class CodexProvider implements AgentProvider {
           kind,
           agentThreadId: this.getOptionalString(itemRecord.agentThreadId) ?? "",
           agentPath,
-          text: this.formatSubagentActivity(kind, agentPath),
+          text: formatCodexSubagentActivity(kind, agentPath),
         };
       }
 
@@ -4344,20 +4345,6 @@ export class CodexProvider implements AgentProvider {
     }
 
     return "";
-  }
-
-  private formatSubagentActivity(kind: string, agentPath: string): string {
-    const target = agentPath ? `: ${agentPath}` : "";
-    switch (kind) {
-      case "started":
-        return `Subagent started${target}`;
-      case "interacted":
-        return `Subagent updated${target}`;
-      case "interrupted":
-        return `Subagent interrupted${target}`;
-      default:
-        return `Subagent ${kind}${target}`;
-    }
   }
 
   private normalizeStatus(status: unknown): string {

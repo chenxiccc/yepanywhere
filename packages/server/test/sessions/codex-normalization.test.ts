@@ -1665,6 +1665,34 @@ describe("Codex Normalization", () => {
     });
   });
 
+  it("emits persisted subagent activity as a visible system entry", () => {
+    const entries: CodexSessionEntry[] = [
+      {
+        type: "event_msg",
+        timestamp: "2026-07-27T00:00:00Z",
+        payload: {
+          type: "sub_agent_activity",
+          event_id: "activity-1",
+          occurred_at_ms: 1_785_000_000_000,
+          agent_thread_id: "thread-subagent-1",
+          agent_path: "Explore",
+          kind: "started",
+        },
+      },
+    ];
+
+    const result = normalizeSession(buildLoadedSession(entries));
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]).toMatchObject({
+      type: "system",
+      subtype: "subagent_activity",
+      content: "Subagent started: Explore",
+      codexSubagentKind: "started",
+      codexSubagentThreadId: "thread-subagent-1",
+      codexSubagentPath: "Explore",
+    });
+  });
+
   it("emits compacted entries as compact boundary system messages", () => {
     const entries: CodexSessionEntry[] = [
       {

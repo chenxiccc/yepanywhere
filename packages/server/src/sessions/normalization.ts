@@ -40,6 +40,7 @@ import {
   normalizeCodexToolOutputWithContext,
   parseCodexToolArguments,
 } from "../codex/normalization.js";
+import { formatCodexSubagentActivity } from "../codex/subagentActivity.js";
 import { attachToolResultMediaCandidates } from "../media/inlineImageData.js";
 import { normalizeGeminiTool } from "../sdk/providers/gemini-tools.js";
 import {
@@ -350,6 +351,8 @@ function convertCodexEntries(
         isCodexUserMessageEventEntry(entry) &&
         !userTurnProvenance.pairedUserEvents.has(entry);
       const shouldIncludeTurnAborted = entry.payload.type === "turn_aborted";
+      const shouldIncludeSubagentActivity =
+        entry.payload.type === "sub_agent_activity";
       const shouldIncludeContextCompacted =
         entry.payload.type === "context_compacted" &&
         !duplicateContextCompacted;
@@ -361,6 +364,7 @@ function convertCodexEntries(
       if (
         shouldIncludeUserMessage ||
         shouldIncludeTurnAborted ||
+        shouldIncludeSubagentActivity ||
         shouldIncludeContextCompacted ||
         shouldIncludeExecCommandEnd
       ) {
@@ -1243,6 +1247,21 @@ function convertCodexEventMsg(
         type: "system",
         subtype: "turn_aborted",
         content: payload.reason ?? payload.message ?? "Turn aborted",
+        timestamp: entry.timestamp,
+      };
+
+    case "sub_agent_activity":
+      return {
+        uuid,
+        type: "system",
+        subtype: "subagent_activity",
+        content: formatCodexSubagentActivity(
+          payload.kind,
+          payload.agent_path,
+        ),
+        codexSubagentKind: payload.kind,
+        codexSubagentThreadId: payload.agent_thread_id,
+        codexSubagentPath: payload.agent_path,
         timestamp: entry.timestamp,
       };
 

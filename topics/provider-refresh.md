@@ -144,6 +144,32 @@ older installs may continue to work when YA does not need newer protocol fields,
 and version-sensitive behavior should be capability- or version-gated where
 possible.
 
+Current source refresh, 2026-08-02:
+
+- Installed Codex and npm `@openai/codex` `latest` are `0.146.0`. The official
+  `rust-v0.146.0` source is commit
+  `e363b08c9175ac1cbe5893615dd2cb9ddf95043b`; root compatibility and expected
+  protocol markers now record `0.146.0`.
+- Regeneration changes three files in YA's checked-in app-server subset:
+  plugin-supplied skills can carry remote icon URLs, threads carry their pinned
+  state, and command-execution items identify a trusted plugin script. These are
+  additive metadata fields that YA does not yet consume, so provider controls
+  and normalizers need no compatibility change.
+- The no-token `model/list` probe returns the same seven-model catalog and
+  consumed metadata as 0.145.0: Sol, Terra, Luna, GPT-5.5, GPT-5.4,
+  GPT-5.4-Mini, and GPT-5.3-Codex-Spark. Sol remains the default; effort,
+  modality, personality, and service-tier metadata still match YA's catalog
+  normalizer and fallbacks.
+- The persisted transcript census found two 0.145-era multi-agent shapes that
+  the prior audit missed. YA now retains `inter_agent_communication_metadata`
+  as non-rendered provider metadata and renders persisted `sub_agent_activity`
+  as the same visible system activity used for live app-server items. All
+  1,362,565 lines across 681 local Codex rollouts validate after the schema
+  refresh.
+
+Status: Codex 0.146.0 app-server and persisted-transcript compatibility is
+refreshed; no model-catalog, permission, or turn-control change is required.
+
 Current source refresh, 2026-07-23:
 
 - Installed Codex and npm `@openai/codex` `latest` are `0.145.0`. The official

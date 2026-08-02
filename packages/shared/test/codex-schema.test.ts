@@ -29,6 +29,23 @@ describe("CodexSessionEntrySchema", () => {
       payload: { type: "thread_rolled_back", num_turns: 1 },
     },
     {
+      timestamp: "2026-07-27T00:00:00Z",
+      type: "event_msg",
+      payload: {
+        type: "sub_agent_activity",
+        event_id: "activity-1",
+        occurred_at_ms: 1_785_000_000_000,
+        agent_thread_id: "thread-1",
+        agent_path: "explore",
+        kind: "started",
+      },
+    },
+    {
+      timestamp: "2026-07-27T00:00:00Z",
+      type: "inter_agent_communication_metadata",
+      payload: { trigger_turn: true },
+    },
+    {
       timestamp: "2026-07-10T00:00:00Z",
       type: "event_msg",
       payload: {

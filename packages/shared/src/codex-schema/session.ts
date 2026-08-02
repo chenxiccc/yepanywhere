@@ -527,6 +527,16 @@ const CodexErrorEventSchema = z
 const CodexViewImageToolCallEventSchema = z
   .object({ type: z.literal("view_image_tool_call") })
   .passthrough();
+const CodexSubAgentActivityEventSchema = z
+  .object({
+    type: z.literal("sub_agent_activity"),
+    event_id: z.string(),
+    occurred_at_ms: z.number().optional(),
+    agent_thread_id: z.string(),
+    agent_path: z.string(),
+    kind: z.enum(["started", "interacted", "interrupted"]),
+  })
+  .passthrough();
 
 /**
  * Union of event message types.
@@ -551,6 +561,7 @@ export const CodexEventMsgPayloadSchema = z.discriminatedUnion("type", [
   CodexThreadRolledBackEventSchema,
   CodexErrorEventSchema,
   CodexViewImageToolCallEventSchema,
+  CodexSubAgentActivityEventSchema,
 ]);
 
 export type CodexEventMsgPayload = z.infer<typeof CodexEventMsgPayloadSchema>;
@@ -638,6 +649,15 @@ export const CodexWorldStateEntrySchema = z
   })
   .passthrough();
 
+/** Local delivery metadata for provider-internal agent communication. */
+export const CodexInterAgentCommunicationMetadataEntrySchema = z
+  .object({
+    timestamp: z.string(),
+    type: z.literal("inter_agent_communication_metadata"),
+    payload: z.object({ trigger_turn: z.boolean() }).passthrough(),
+  })
+  .passthrough();
+
 // =============================================================================
 // Session Entry Union
 // =============================================================================
@@ -653,6 +673,7 @@ export const CodexSessionEntrySchema = z.discriminatedUnion("type", [
   CodexCompactedEntrySchema,
   CodexTurnContextEntrySchema,
   CodexWorldStateEntrySchema,
+  CodexInterAgentCommunicationMetadataEntrySchema,
 ]);
 
 export type CodexSessionEntry = z.infer<typeof CodexSessionEntrySchema>;
