@@ -63,16 +63,47 @@ export interface ProjectPathLinkOptions {
   selfRelativePath?: string;
 }
 
+function collectCandidatePaths(
+  html: string,
+  selfRelativePath: string | undefined,
+): string[] {
+  const candidates = new Set<string>();
+  mapHtmlTextRuns(html, (text) => {
+    PATH_TOKEN.lastIndex = 0;
+    let match: RegExpExecArray | null = PATH_TOKEN.exec(text);
+    while (match !== null) {
+      const trimmed = match[0].replace(TRAILING_NOISE, "");
+      if (trimmed && trimmed !== selfRelativePath) candidates.add(trimmed);
+      match = PATH_TOKEN.exec(text);
+    }
+    return text;
+  });
+  return Array.from(candidates);
+}
+
 /**
  * Link every project-relative path occurring in already-highlighted HTML.
  * Returns the input unchanged when the project has no indexed paths, so an
  * unavailable index degrades to today's plain content rather than an error.
  */
-export function linkifyProjectPaths(
+export async function linkifyProjectPaths(
   html: string,
   { projectPath, index, selfRelativePath }: ProjectPathLinkOptions,
-): string {
-  if (!html || index.size === 0) return html;
+): Promise<string> {
+  if (!html) return html;
+
+  const candidates = collectCandidatePaths(html, selfRelativePath);
+  if (candidates.length === 0) return html;
+
+  let existing: ReadonlySet<string>;
+  try {
+    existing = await index.findExisting(candidates);
+  } catch {
+    // Link discovery is advisory. An unavailable index must not fail the file
+    // view that owns the highlighted source.
+    return html;
+  }
+  if (existing.size === 0) return html;
 
   return mapHtmlTextRuns(html, (text) => {
     if (!text) return text;
@@ -86,7 +117,7 @@ export function linkifyProjectPaths(
       if (
         trimmed &&
         trimmed !== selfRelativePath &&
-        index.has(trimmed)
+        existing.has(trimmed)
       ) {
         const start = match.index;
         out += text.slice(cursor, start);
