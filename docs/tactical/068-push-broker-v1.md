@@ -174,6 +174,10 @@ This milestone stops before:
    fallback before adding enrollment or send routes to installed YA servers.
 4. Deploy the separately operated broker at `https://push.yepanywhere.com`
    only after its live-delivery and operational contracts are approved.
+5. Before unified security-client alerts ship, extend the strict generic
+   allowlist with `security_event`, retain the same fixed-copy/no-content
+   boundary, deploy the broker first, and prove an older/self-hosted broker
+   rejects the new intent without creating a YA retry loop.
 
 ## Implementation Results
 

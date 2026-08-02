@@ -15,6 +15,7 @@ Related:
 - [Notification delivery validation and native readiness](../docs/tactical/079-notification-delivery-validation-and-native-readiness.md)
 - [Android FCM push](android-fcm-push.md)
 - [Mobile server pairing](mobile-server-pairing.md)
+- [Security clients and authentication audit](security-client-audit.md)
 - [Android wrapper and notification integration](../docs/tactical/071-android-wrapper-notification-integration.md)
 - [Mobile companion app](../docs/project/mobile-companion-app.md)
 - [Browser-profile devices](browser-profile-devices.md)
@@ -143,6 +144,29 @@ Event selection and presentation are separate controls:
 - Existing browser Web Push payloads already include descriptive project and
   session details. Aligning browser/native privacy controls remains future
   product work rather than an assumed current guarantee.
+
+## Security-Client Alerts
+
+The unified security-client baseline adds an independently configurable **New
+security clients** event category. It is default-off until the owner opts in.
+A genuinely new key-verified client registration emits one semantic security
+intent to destinations that were already enrolled before that transaction.
+Registration retries, descriptor-only check-ins, owner-label changes, and the
+new client's later push enrollment do not resend it.
+
+Delivery is rate-bounded per destination without a retry timer: the first
+eligible new-client event in a 15-minute window sends immediately, while later
+registrations remain visible in the security ledger and do not schedule a
+deferred alert.
+
+Generic delivery says only that a new client signed in and carries opaque
+routing identity so the recipient can fetch the current audit record from the
+owner's YA server. Browser delivery may show the same bounded fixed copy;
+native delivery uses the provider-neutral `security_event` broker intent.
+Failed SRP and continuity attempts are retained in the bounded security ledger
+but do not generate v1 push alerts, because an unauthenticated attacker could
+otherwise create an alert flood. A broader security-alert policy is follow-up
+work requiring explicit coalescing and presentation UX.
 
 ## Browser Baseline And Manual Checkpoint
 

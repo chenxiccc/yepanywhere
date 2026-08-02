@@ -239,11 +239,14 @@ details from the user's YA server over its normal authenticated connection.
 
 This is the conservative default direction.
 
-The credential-free v1 accepts only four fixed intents: approval required,
-input required, session completed, and session failed. They all produce the
-same bounded visible notification copy. The provider payload contains the
-intent and opaque subscription id so the app can fetch current details from its
-authenticated YA server.
+The credential-free v1 initially accepted four fixed intents: approval
+required, input required, session completed, and session failed. The unified
+security-client baseline adds `security_event` for an owner-enabled new-client
+alert. Deploy that allowlist addition before a YA server submits the new intent;
+an older or self-hosted broker rejects it boundedly and the server does not
+queue or retry it. All intents produce bounded fixed copy. The provider payload
+contains the intent and opaque subscription id so the app can fetch current
+details from its authenticated YA server.
 
 ### Descriptive
 
@@ -405,5 +408,7 @@ default.
 - Durable quotas, coalescing, acknowledgement, and delivery-result semantics.
 - App-attestation requirements for official and source-built distributions.
 - Exact generic/descriptive notification settings and disclosure copy.
+- Push alerts for failed authentication/proof attempts; v1 keeps rate-bounded
+  evidence in the server audit ledger to avoid attacker-controlled alert spam.
 - Whether a later iOS release continues through FCM or adds direct APNs as a
   broker delivery adapter.

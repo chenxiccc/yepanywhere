@@ -160,3 +160,26 @@ and #2 bounds+self-heals every other client that presents fresh UUIDs. **#2 is
 kept deliberately even though #1 prevents most new contamination**: it is the
 only option that cleans old junk over time and survives incognito windows,
 cleared storage, new harnesses, or third-party clients.
+
+## Security-Client Migration Follow-Ups
+
+The unified security-client audit initially projects these browser profiles,
+connections, resume sessions, and Web Push subscriptions without changing
+their ownership. Capable SRP web clients additionally register an
+origin-scoped non-extractable WebCrypto key. IndexedDB/WebCrypto isolation means
+one physical browser reaching the same server through different origins may
+correctly appear as several key-verified web clients.
+
+Later compatibility-reviewed work may:
+
+- move Web Push ownership from the body-supplied `browserProfileId` to the
+  authenticated security-client relationship;
+- remove optional profile/origin metadata from plaintext `srp_hello` after the
+  encrypted check-in is sufficient; and
+- prune stale, session-less, push-less web security clients using the same
+  30-day/oldest-first shape as this service while preserving a compact event in
+  the server-global security ledger.
+
+None of those migrations may invent continuity proof for a legacy profile,
+change old-client behavior without its exact capability gate, or auto-prune a
+key-verified native or push-holding client.

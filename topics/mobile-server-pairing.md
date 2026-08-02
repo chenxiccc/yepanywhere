@@ -139,6 +139,12 @@ possession of the unchanged base key using a one-time server challenge. Both
 sides derive a fresh per-connection transport key from the base key and server
 nonce.
 
+The current implementations discard that transport nonce after derivation.
+Security-client proof requires both server and Android to retain the plaintext
+nonce for the authenticated connection lifetime, then clear it at teardown.
+Freshness rather than secrecy is its property; retaining the literal wire value
+keeps the signed proof transcript independently auditable.
+
 The fresh transport key prevents ciphertext replay across connection
 boundaries. It is not a newly minted short-lived authentication session and it
 has no time TTL; it lives until that WebSocket connection ends. The underlying
@@ -164,7 +170,8 @@ Android should keep one app-private profile per paired YA server. Conceptual
 state includes:
 
 - app-generated local profile id and user-visible server label;
-- opaque server-issued paired-device id;
+- opaque server-issued security-client id, continuity-key alias, and revoked
+  state;
 - SRP username and current native resume credential;
 - explicit relay configuration and direct route candidates;
 - last successful route and connection timestamps;
@@ -195,6 +202,15 @@ Missing keys, malformed ciphertext, profile/credential username mismatch, and
 explicit resume rejection all make the profile require visible SRP
 reauthentication; they do not delete the paired-server metadata. Forgetting a
 profile atomically removes its metadata, encrypted credential, and selection.
+
+The existing paired-server codec is strict schema v1. Security-client
+registration migrates it to schema v2 while continuing to decode v1. V2 adds
+the continuity-key alias, pending idempotent registration request id,
+server-issued client id, and local revoked state. A successful full-SRP
+`pair()` performs initial registration on that still-open authenticated
+connection before closing it and committing the profile, so the dashboard can
+show the phone immediately. A lost registration response reuses the pending
+request id and same key rather than prompting for the password again.
 
 Android uses the current seven-day idle and thirty-day absolute server limits
 as a conservative local eligibility check before resume. The server remains

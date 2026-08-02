@@ -9,12 +9,15 @@
 
 Topic: security-client-audit
 
-Status: Unified v1 contract approved on 2026-08-02. Android is the first
-required continuity-key consumer. Capable web clients use the same API and a
-non-extractable WebCrypto key, while the server projects existing browser
-profile and remote-session state into the audit surface for legacy clients.
-Native push is an optional child capability. Hardware/platform attestation,
-WebAuthn step-up, and native desktop key ownership are recorded future
+Status: Unified v1 contract approved on 2026-08-02 and amended after direct
+source review on 2026-08-02. Android is the first required continuity-key
+consumer. Capable web clients use the same API and a non-extractable WebCrypto
+key, while the server projects existing browser profile and remote-session
+state into the audit surface for legacy clients. A bounded server security
+ledger survives client revocation, and an opt-in security-alert category makes
+new registrations visible without opening the dashboard. Native push is an
+optional child capability. Hardware/platform attestation, WebAuthn step-up,
+cookie continuity proof, and native desktop key ownership are recorded future
 extensions rather than v1 requirements.
 
 Related:
@@ -26,6 +29,7 @@ Related:
 - [Server capabilities](server-capabilities.md)
 - [Remote hosted compatibility](remote-hosted-compatibility.md)
 - [Hard development rules](hard-development-rules.md)
+- [Vanilla defaults](vanilla-defaults.md)
 - [Security-client and native-push implementation](../docs/tactical/082-security-client-registration-and-native-push.md)
 
 ## Product Contract
@@ -39,6 +43,8 @@ The security dashboard must answer, from the user's own YA server:
   earlier?
 - Which resume sessions and push authority belong to it?
 - What will be invalidated if the user revokes it?
+- Which security-relevant events remain visible after a client is revoked or
+  a stale web record is eventually pruned?
 
 Detailed client-reported information is useful even though a deliberately
 malicious client can lie. Password reuse and copied resume material are
@@ -62,9 +68,11 @@ boundary and are unnecessary for server audit or notification submission.
 | Client descriptor | Structured, mutable device/app/environment snapshot | Client-reported |
 | Client continuity key | Per-YA-server P-256 signing key retained by the client | Private key possession |
 | Authentication observation | Bounded historical record of a successful login/check-in | Mixed reported and server-observed facts |
+| Security event ledger | Server-global bounded history that survives client removal | Server-observed event plus bounded reported snapshot |
 | SRP resume session | Expiring bearer-equivalent authentication credential | Existing SRP session key |
 | Native push subscription | One broker send capability belonging to one registered native client | Broker subscription secret |
-| Platform attestation | Optional third-party or hardware evidence about a client key/app/device | Attestation verifier |
+| Client proof | One member of a client-owned proof set; v1 implements a continuity key | Proof-specific verifier |
+| Platform attestation | Optional future third-party or hardware evidence about a client key/app/device | Attestation verifier |
 
 A security-client id and client-reported installation id are not credentials.
 The current SRP or cookie authentication authorizes an audit observation. V1
@@ -103,9 +111,11 @@ YA `0.7.1`. It owns:
 ```text
 POST   /api/security/clients/register
 POST   /api/security/clients/:clientId/check-in
+PATCH  /api/security/clients/:clientId
 GET    /api/security/clients
 GET    /api/security/clients/:clientId
 GET    /api/security/clients/:clientId/events
+GET    /api/security/events
 DELETE /api/security/clients/:clientId
 ```
 
@@ -138,10 +148,13 @@ or recorded without claiming continuity-key assurance.
 
 `requestId` makes registration idempotent if the encrypted response is lost.
 The server generates and returns the opaque `clientId`; it stores the request
-id only for idempotency and never treats it as authentication. Android-native
-registration requires a valid key proof. A capable web client should provide a
-WebCrypto key proof, but failure to use WebCrypto must not block ordinary web
-login or the legacy audit projection.
+id only for idempotency and never treats it as authentication. A repeated
+`requestId` returns the existing result only when the same registered public
+key signs the retry. A key mismatch is an explicit conflict and can neither
+reuse nor replace the existing record. Android-native registration requires a
+valid key proof. A capable web client should provide a WebCrypto key proof, but
+failure to use WebCrypto must not block ordinary web login or the legacy audit
+projection.
 
 `POST /:clientId/check-in` runs once per newly authenticated connection, not
 once per application request. It carries the current descriptor and a fresh
@@ -154,23 +167,50 @@ continuity-key signature. The operation:
 - records a bounded authentication or descriptor-change observation; and
 - returns the server-determined assurance and current public client summary.
 
+Only one proof-bearing registration/check-in identity may attach to a
+connection. An exact idempotent repeat is tolerated; attempting to register or
+attach a different client or mutated proof on the same connection fails and is
+audited.
+
 Android OS/app/security-patch, locale, timezone, network, and other descriptor
 changes never require password login or re-pairing. The existing key signs the
 new snapshot. Full SRP is required only under the existing resume expiry,
 eviction, restart, password-change, or explicit revocation rules. Loss of the
 continuity key creates a new client relationship rather than silently taking
-over an old record.
+over an old record. Check-in for an unknown id returns a stable
+`security_client_unknown` response so an authenticated client may register
+again. Check-in for a tombstoned id returns stable
+`security_client_revoked`; Android retains the local revoked status, discards
+that relationship's continuity key and resume material, and requires an
+explicit password-backed re-pair before creating a new relationship.
 
-The read routes never expose public keys unless a future explicit diagnostic
-contract requires them, and never expose SRP keys, push send secrets, broker
-installation credentials, FCM/FID targets, signature transcripts, or raw
-attestation secrets. They return recognizable summaries, assurance, current
-descriptor, associated session summaries, push status, and bounded events.
+The read routes never expose public-key bytes, and never expose SRP keys, push
+send secrets, broker installation credentials, FCM/FID targets, signature
+transcripts, or raw attestation secrets. They do expose each proof's type,
+status, storage claim, and SHA-256 public-key fingerprint. The Android client
+shows the same full fingerprint in its server-security details so the owner can
+manually compare phone and dashboard. Summaries also return assurance, current
+descriptor, associated sessions, push status, and bounded events.
 
-Deleting a security client responds first, then invalidates every associated
-resume session, closes its active sockets, and removes its push authority.
-Deleting a legacy projected browser entry must use the existing browser-profile
-and remote-session ownership rather than pretending it had a continuity key.
+`PATCH /:clientId` accepts only a bounded server-owner label override or its
+removal. The UI shows this separately from the signed client-reported label,
+and the ledger records changes. The override improves recognition but does not
+raise proof assurance.
+
+`GET /api/security/events` returns the retained ledger newest-first. Coalesced
+failure entries expose their first/last server timestamps and count. A failed
+proof event uses only the target's previously verified descriptor snapshot;
+the attempted body is never promoted into recognizable device metadata.
+
+Deleting a security client means revoke, not erase. The server atomically marks
+and persists the record as revoked and appends the global event before the
+cascade. It then responds to the initiating request before invalidating every
+associated resume session, closing active sockets, and removing push authority.
+The tombstone retains only the display-safe audit record and proof fingerprint;
+an in-flight check-in cannot resurrect it. Deleting a legacy projected browser
+entry must use the existing browser-profile and remote-session ownership rather
+than pretending it had a continuity key, while its global revocation event
+survives that deletion.
 
 ## Continuity-Key Protocol
 
@@ -185,7 +225,11 @@ V1 uses P-256 ECDSA with SHA-256. It needs no new crypto runtime dependency:
   `crypto`.
 
 Keys are per YA-server relationship. The private key never crosses the client
-boundary. The server stores the public key and its SHA-256 fingerprint.
+boundary. The server stores proof records as a set rather than a single
+top-level key. V1 accepts exactly one active `continuity-key` proof containing
+the public key and its SHA-256 fingerprint; the collection shape permits a
+later old-key-authorized rotation or attached attestation without changing the
+security-client identity.
 
 The signature transcript is a versioned, fixed-order, length-prefixed binary
 encoding rather than ambient JSON serialization. It binds:
@@ -201,6 +245,17 @@ Binding the mutable descriptor is essential: a verified signature attributes
 the reported snapshot to the same client key. Binding the transport nonce makes
 an old signature unusable on another connection. The authenticated transport
 context, not client-supplied copies of session id or nonce, is authoritative.
+
+Android's `SHA256withECDSA` returns a DER signature. WebCrypto ECDSA returns
+IEEE P1363 `r || s`, so the web implementation converts that value to strict
+DER before sending it. Cross-runtime vectors cover zero/short coordinates and
+the leading-zero padding required when either integer's high bit is set.
+
+The transcript operation registry reserves `rotate-key` and
+`upgrade-attestation`, but v1 routes reject them. A later exact capability may
+issue a fresh attestation challenge, generate a new key, bind attestation to
+that key, and require the old continuity key to authorize rotation onto the
+same client record.
 
 A continuity proof establishes "the same enrolled key signed this current
 snapshot." It does not independently certify the truth of manufacturer/model,
@@ -242,10 +297,33 @@ check-ins whose descriptor and relevant server-observed facts are unchanged may
 coalesce while still advancing `lastSeenAt`. There is no heartbeat, timer,
 poller, or retry loop solely for audit history.
 
+In addition, the server retains at most 512 security events independently of
+individual client records. There is no route that deletes individual ledger
+entries. Registration and revocation anchors have a 30-day minimum retention;
+if every slot is protected, a new registration fails visibly with an audit
+capacity error rather than silently overwriting an anchor. Other entries evict
+oldest-first within their quotas. The ledger includes client registration,
+owner-label changes, revocation, later pruning, successful full SRP login,
+rate-bounded failed SRP login, failed continuity proof, and associated
+resume-session eviction. Events contain server time, route/auth facts, a client
+id when known, and only the minimum recognizable descriptor snapshot needed
+after a record is gone. They never contain passwords, SRP values, session keys,
+signatures, raw public keys, push secrets, or FCM identifiers.
+
+Failure traffic must not erase useful history by filling the ring. Repeated
+failures coalesce into counted windows by bounded server-observed keys, and
+failure summaries consume at most one quarter of retained ledger entries.
+Failed continuity proofs also add a rate-bounded observation to the addressed
+client when it exists. A malformed or wrong-key request can never update its
+descriptor, last successful check-in, proof set, owner label, session binding,
+or push authority.
+
 The UI presents recognizable device/browser cards with device-class imagery,
 reported model/app/OS information, last activity, current route, session and
-push state, and an explicit proof badge. Detail shows the bounded observation
-history and a prominent revoke action. It must label proof honestly:
+push state, abbreviated key fingerprint, owner override when present, and an
+explicit proof badge. Detail shows the full fingerprint, bounded per-client
+observations, server-wide security history, and a prominent revoke action. It
+must label proof honestly:
 
 ```text
 Authenticated session
@@ -271,10 +349,22 @@ Cookie-only web continuity needs a future one-time challenge route or equivalent
 fresh server value; v1 must not pretend that an unbound client timestamp or
 nonce provides the same proof.
 
+WebCrypto and IndexedDB are origin-scoped. The same browser installation
+reaching one YA server through localhost, a LAN address, a VPN hostname, and a
+hosted remote origin may therefore create distinct key-verified web records.
+That is honest separation between storage/extension contexts, not a failed
+deduplication. The dashboard explains the origin on each web record.
+
 Removing browser profile metadata from plaintext `srp_hello`, changing Web
 Push ownership to the server client id, and deleting legacy browser-profile
 storage are later compatibility-reviewed migrations. The unified server
 service and read model must not require those cleanups to land Android.
+
+Stale, session-less, push-less web records are eventually eligible for the
+same 30-day/oldest-first bounded pruning policy as browser profiles. Automatic
+pruning is deferred from the initial implementation and must never remove a
+key-verified native client or any push-holding client. The server-wide ledger
+retains a compact pruning event after the record disappears.
 
 ## Native Push Child Contract
 
@@ -325,8 +415,19 @@ an old credential to a new broker or silently reroutes delivery.
 There is no durable native-push queue or retry loop. The existing notification
 settings map approval, question, completed, and failed edges to
 `approval_required`, `input_required`, `session_completed`, and
-`session_failed`. A broker `404` disables the invalid subscription; a transient
-failure waits for a later real event or explicit test.
+`session_failed`. V1 also adds an independently configurable `securityEvent`
+category and generic `security_event` transport intent. It is default-off under
+the vanilla-defaults contract. When enabled, registering a genuinely new
+client notifies already-enrolled destinations, never the destination created by
+that same transaction; the generic payload says only that a new client signed
+in and the recipient fetches current details from YA. Retries of an idempotent
+registration do not alert again. Failed attempts remain dashboard evidence in
+v1 rather than push-alert sources, avoiding attacker-controlled alert floods.
+New-client alerts are also rate-bounded per destination: the first eligible
+event in a 15-minute window sends immediately and later events in that window
+remain in the ledger without a deferred timer. A broker `404` disables the
+invalid subscription; a transient failure waits for a later real event or
+explicit test.
 
 ## Compatibility Decision
 
@@ -350,6 +451,11 @@ The approved compatibility behavior is:
 - make capable web registration an additive security enhancement whose absence
   never blocks ordinary web use.
 
+`securityEvent` is an additive notification-settings response member whose UI
+and writes are gated by `security-client-audit-v1`. Older clients ignore it;
+new clients neither show it nor send it to an older server. The existing push
+capability and notification-setting meanings otherwise stay unchanged.
+
 ## Future Assurance And Step-Up
 
 The v1 schema should admit optional proof evidence without advertising or
@@ -364,6 +470,11 @@ Future Android options:
   want Google-backed app/device verdicts; and
 - no default denial for source-built, de-Googled, emulator, or older-device
   clients merely because the optional service is unavailable.
+
+Android Key Attestation cannot be retrofitted to an already-generated v1 key:
+the platform requires a fresh server challenge at key generation. The upgrade
+therefore issues a challenge, generates a new attested key, verifies the
+attestation, and has the old key authorize rotation onto the same record.
 
 Future desktop ownership:
 
@@ -385,7 +496,36 @@ Future web step-up:
   accidentally strand the owner; and
 - an honest distinction between device-bound credentials and synced passkeys.
 
+WebAuthn credentials are RP-ID/origin scoped. YA can reach the same server via
+localhost, LAN IP, VPN name, and the hosted remote client, so step-up must use
+per-origin registrations or explicitly choose which access origins it covers.
+It cannot silently promise one passkey valid across every YA route.
+
 WebAuthn is not the automatic check-in key: its user mediation is useful for
 step-up, while non-extractable WebCrypto provides silent continuity. These
 future mechanisms extend the same security-client record and audit history;
 they do not create parallel device dashboards.
+
+## Deferred Follow-Ups
+
+The initial implementation deliberately leaves these separately reviewable:
+
+1. Add the cookie one-time challenge so `local_cookie_trusted` browsers can
+   prove silent WebCrypto continuity without pretending cookie auth has an SRP
+   nonce. This is the highest-priority post-v1 web assurance improvement.
+2. Add attestation challenge and old-key-authorized `rotate-key` support, then
+   optional Android Key Attestation/Play Integrity and desktop keystore proofs.
+3. Add per-origin WebAuthn registration and configurable, default-off
+   inactivity/sensitive-operation step-up with recovery and grace behavior.
+4. Migrate browser Web Push ownership from body-supplied `browserProfileId` to
+   authenticated security-client ownership. Until then any authenticated
+   client can replace another profile's subscription under the existing
+   mutual-trust model.
+5. Remove optional profile/origin metadata from plaintext `srp_hello` after the
+   required compatibility review.
+6. Implement bounded stale web-record pruning after real dashboard behavior is
+   observed.
+7. Revisit the five-session-per-user cap and in-memory persistence default
+   using Android/native-plus-bundled-web eviction and restart evidence. Session
+   evictions must already be audited; any default change remains an explicit
+   security/deployment decision.
