@@ -41,11 +41,14 @@ linked docs when the details change.
   provider. It is not part of provider session routing or the encrypted relay.
 - **Mobile companions** use native platform shells and notification delivery.
   Android is a first-class Gradle/Kotlin application with Compose as the first
-  native foreground target; its Android-owned WebView keeps the packaged client
-  as an explicit full-fidelity fallback. Tauri Mobile has been removed and is
-  unrelated to the separate desktop Tauri application. iOS follows later with
-  SwiftUI. The versioned projection and native connection core are not
-  implemented yet.
+  native foreground target; its Android-owned WebView keeps the bundled client
+  as a permanent full-fidelity alternative for users and surfaces that prefer
+  the complete web interface. A future Kotlin connection core owns native SRP,
+  direct/relay transport, and foreground-service subscriptions, while the
+  bundled web client may retain its independent TypeScript transport. Tauri
+  Mobile has been removed and is unrelated to the separate desktop Tauri
+  application. iOS follows later with SwiftUI. The versioned projection and
+  native connection core are not implemented yet.
 
 Single-user / small-team scale is assumed throughout — see the cleanups
 section below for what would have to change at higher fan-out.
@@ -98,8 +101,12 @@ section below for what would have to change at higher fan-out.
   failures while summarizing routine per-turn activity; selected as the first
   native session-detail presentation.
 - [`docs/project/mobile-companion-app.md`](docs/project/mobile-companion-app.md)
-  — Android-first native companion product shape, transitional packaged-web
-  fallback, notification/inbox scope, and later SwiftUI iOS counterpart.
+  — Android-first native companion product shape, permanent bundled full-web
+  alternative, notification/inbox scope, and later SwiftUI iOS counterpart.
+- [`topics/mobile-server-pairing.md`](topics/mobile-server-pairing.md) —
+  approved boundary between stable YA server identity, durable paired devices,
+  expiring SRP resume credentials, native Kotlin transport, independent bundled
+  web transport, direct/relay discovery, and push enrollment.
 - [`docs/tactical/080-first-class-android-shell.md`](docs/tactical/080-first-class-android-shell.md)
   — removal of Tauri Mobile, first-class Gradle/Compose ownership, explicit
   bundled/hosted WebView channels, and the exact-origin native-host message

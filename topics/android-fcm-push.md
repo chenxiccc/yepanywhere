@@ -22,6 +22,7 @@ Related:
 - [Android wrapper and notification integration](../docs/tactical/071-android-wrapper-notification-integration.md)
 - [First-class Android shell](../docs/tactical/080-first-class-android-shell.md)
 - [Mobile companion app](../docs/project/mobile-companion-app.md)
+- [Mobile server pairing](mobile-server-pairing.md)
 - [Relay design](../docs/project/relay-design.md)
 - [Relay client mux](relay-client-mux.md)
 - [Web Push notifications](../docs/push-notifications.md)
@@ -66,10 +67,11 @@ the public push endpoint should be movable without changing the relay endpoint.
 
 ## Trust Model
 
-After a successful SRP login, the YA Android app and the user's YA server are
-fully trusted with each other's device-specific push material. The operator is
-responsible for protecting secrets stored by their server, just as they are for
-existing auth state and VAPID keys.
+After an SRP-authorized device pairing, the YA Android app and the user's YA
+server are fully trusted with each other's device-specific push material. The
+operator is responsible for protecting secrets stored by their server, just as
+they are for existing auth state and VAPID keys. Push is an optional child of
+the durable paired-device relationship; it is not device authentication.
 
 The hosted broker has narrower trust:
 
@@ -87,21 +89,25 @@ phone and server.
 
 ## Login And Push Enrollment
 
-The default server-login path is the existing username/password SRP flow over a
-direct or relay connection. Push enrollment happens only after that login:
+The default server-pairing path is the existing username/password SRP flow over
+a direct or relay connection. The native Kotlin core owns that native login and
+its Keystore-backed resume credential. Push enrollment happens only after the
+server records the authenticated paired device:
 
-1. The user logs the YA Android app into a YA server with SRP.
+1. The user logs the native YA Android client into a YA server with SRP and
+   establishes the paired-device relationship.
 2. The user enables native notifications for that server.
 3. The Android app creates a device push subscription through the configured
    broker.
 4. The Android app gives the resulting subscription credentials to the trusted
    YA server over the authenticated, encrypted connection.
-5. The YA server stores those credentials in its data directory and uses them
-   for future notification requests.
+5. The YA server stores those credentials under the paired device and uses
+   them for future notification requests.
 
-A future QR or deep-link flow may make the SRP device login easier. It is an
-optional login shortcut, not a prerequisite for push and not a separate push
-authorization model.
+A discovery-only QR may make the SRP device login easier by carrying public
+server identity and route hints; it does not replace the password. Any future
+passwordless grant requires step-up authorization and its own security and
+compatibility review. Neither QR form is a separate push authorization model.
 
 ## Device Push Subscription
 
@@ -120,7 +126,7 @@ opaque id identifies broker state; the send secret authorizes delivery. The
 broker should store a verifier or hash rather than plaintext when its chosen
 authentication scheme permits that.
 
-One subscription per YA-server/Android-installation relationship permits
+One subscription per paired YA-server/Android-installation relationship permits
 independent attribution, rate limiting, muting, and revocation. It is not a
 chat room, a relay circuit, or an address that another server can discover by
 username.
@@ -276,11 +282,14 @@ future server-specific subscriptions. It does not log or persist the plaintext
 FID.
 
 The FID and broker installation capability are native installation state. A
-hosted foreground client does not need either value. The narrow native-host
-seam is server-specific push enrollment: native code may create a broker
-subscription and return that subscription's one-time send capability to the
-already authenticated hosted client for installation on the YA server. The FID
-and installation-management secret stay native.
+web foreground client does not need either value. The preferred enrollment
+path uses the native paired-server connection to install a server-specific send
+capability. A future bundled app-assets control may initiate the same explicit
+user action or carry the send capability over its own authenticated web
+connection, but that is not required for native enrollment and must resolve the
+same authenticated server identity. Mutable hosted-`latest` content remains a
+separate trust decision. The FID and installation-management secret stay
+native in every case.
 
 The first native lifecycle has no timer, polling loop, durable job, or internal
 retry loop. A missing or pending installation asks FCM to re-emit registration
@@ -385,8 +394,8 @@ default.
 
 ## Deferred Implementation Decisions
 
-- YA-server storage/routes, their Android client contract, and their
-  compatibility gates.
+- Stable server identity, paired-device storage/routes, their Android client
+  contract, and their compatibility gates.
 - Live transient-provider-failure validation.
 - Registration refresh, invalidation, offline recovery, and stale cleanup.
 - Durable quotas, coalescing, acknowledgement, and delivery-result semantics.

@@ -19,8 +19,9 @@ owned enough product behavior to justify its mobile build and runtime layer.
 
 Android is now the first native companion target. Compose will own onboarding,
 server profiles, inbox, and Conversation-view surfaces incrementally. The full
-YA web client remains an explicit fallback for settings, rich activity, and
-unsupported native detail. Android notification receipt, secure storage,
+YA bundled web client remains a permanent full-fidelity alternative for users
+who prefer it and for settings, rich activity, and unsupported native detail.
+Android notification receipt, secure storage,
 channels, taps, and future foreground activity are native responsibilities
 regardless of which library owns the WebView.
 
@@ -31,13 +32,16 @@ change the separate desktop Tauri application.
 ## Related Contracts And Plans
 
 - [Mobile companion app](../project/mobile-companion-app.md) owns the product
-  journey, Compose direction, and full-web fallback.
+  journey, Compose direction, and permanent full-web alternative.
 - [Android wrapper and notification integration](071-android-wrapper-notification-integration.md)
   resumes native enrollment after this shell migration.
 - [Android FCM push](../../topics/android-fcm-push.md) owns broker capabilities,
   registration lifecycle, and notification privacy.
 - [Trusted client packaging](../../topics/trusted-client-packaging.md) owns the
   difference between bundled trusted assets and mutable hosted content.
+- [Mobile server pairing](../../topics/mobile-server-pairing.md) owns the
+  post-shell decision for stable server identity, native Kotlin transport,
+  durable paired devices, and the bundled web client's independent transport.
 - [Android credential sharing](../../topics/android-credential-sharing.md)
   owns the package, certificate, App Link, and password-manager association.
 - [Hard development rules](../../topics/hard-development-rules.md) require
@@ -253,6 +257,13 @@ Compose onboarding is an intended next consumer of the shell. Passwordless QR
 pairing is a separate security and client/server compatibility project; this
 migration must not pre-commit its wire protocol or grant a generic native
 camera/authentication bridge in anticipation of it.
+
+Post-completion architecture keeps the bundled WebView permanently rather than
+treating it as migration scaffolding. It does not initially proxy the full web
+data plane through Kotlin: the bundled client may retain its existing
+TypeScript `SecureConnection`, while Compose and any foreground service use a
+new Kotlin connection core. The exact-origin protocol-1 host remains a small
+operation channel unless later benchmarks justify a native web transport.
 
 ## Target Package Shape
 

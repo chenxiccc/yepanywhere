@@ -226,6 +226,9 @@
 - android-native-shell - First-class Gradle/Kotlin Android ownership, Compose
   app navigation, a full-web fallback, and an origin-scoped native host
   message contract without Tauri Mobile.
+- mobile-server-pairing - Stable YA server identity, durable mobile-device
+  pairing, Kotlin-owned native transport, independent bundled-web transport,
+  direct/relay discovery, and push as a revocable child capability.
 - css-architecture - Containment for legacy global stylesheets: CSS Modules by
   default, frozen line-count ceilings, and opportunistic extraction with a
   downward-only ratchet.

@@ -25,9 +25,15 @@ compromised, but the user has already installed or pinned a trusted client.
   local or extension origin rather than from a mutable hosted origin.
 - A signed-update flow downloads replacement client assets only after verifying
   a manifest and artifact hashes under pinned graehl/kzahel signing keys.
-- A first-run flow may still use full SRP with the Remote Access password, but
-  later reconnects should prefer key-bound resume without asking the hosted page
-  for the password again.
+- A first-run native flow uses full SRP with the Remote Access password; later
+  native reconnects use the Keystore-protected resume credential without
+  asking a hosted page for the password again. The bundled web client may keep
+  its own independent browser session.
+
+The mobile ownership decision is recorded separately in
+[`mobile-server-pairing.md`](mobile-server-pairing.md): native Compose and
+background operation use a native secure connection core, while the bundled
+full web client may retain an independent web-owned SRP session and transport.
 
 ## Current Mobile Packaging Checkpoint
 
@@ -36,20 +42,37 @@ debug and ordinary production builds bundle the current checkout's client
 assets through Android's HTTPS app-assets origin; a separate hosted-`latest`
 release channel loads a fixed YA HTTPS origin for Play internal or closed
 testing. Neither channel accepts an arbitrary runtime UI URL. Its native host
-is exact-origin and main-frame bound, exposes only declared high-level methods,
-and currently grants only `host.describe`.
+is exact-origin and main-frame bound and exposes only declared high-level
+methods. The current methods are `host.describe`, `notifications.status`, and
+the explicitly user-triggered `notifications.requestPermission`; no method
+exports native credentials.
 
-The longer-term foreground choice is also narrower now: Android Compose, and
-later iOS SwiftUI, own the native companion shell and default Conversation-view
-session detail. Packaged web assets remain an explicit full-fidelity fallback
-for rich tools, settings, and unsupported surfaces rather than the permanent
-home screen. Hosted `latest` remains valuable for transitional testing, but it
-does not answer the stronger production trust requirement below.
+The longer-term foreground choice has two permanent presentations. Android
+Compose, and later iOS SwiftUI, own the focused native companion and
+Conversation-view surfaces. The complete bundled web client remains a
+full-fidelity alternative for users who prefer it and for rich tools, settings,
+and unsupported native surfaces. Hosted `latest` remains valuable for
+transitional testing, but it does not answer the stronger production trust
+requirement below.
 
-Still unresolved are the public production fallback's asset update and signing
-policy, the authenticated-context handoff between native and packaged web
-surfaces, and the exact secure storage/rotation model. Native installation and
-push-management secrets must never become part of that handoff.
+Bundled app-assets JavaScript is trusted application code: it is shipped under
+the APK signature, is isolated in the app WebView, and does not load ordinary
+browser extensions. It may legitimately read and modify YA application data.
+The native host still remains exact-origin and method-scoped as inexpensive
+defense in depth.
+
+The bundled client does not initially need a native data-plane adapter. It may
+keep the existing TypeScript `SecureConnection` and browser-local resume
+credential independently of the Kotlin core. This avoids assuming that bridge
+serialization, stream copying, uploads, and binary paths outperform the proven
+web transport. A native-backed web transport is benchmark-gated future work,
+not a prerequisite for native pairing or Compose.
+
+Still unresolved are the stable public asset update/signing policy and the
+exact native secure storage/rotation model. No authenticated-context handoff is
+required for the first native core: native and bundled web may hold separate
+server sessions. Native installation and push-management secrets remain
+app-private and are not web credentials.
 
 ## Deferred Verification Setup
 
@@ -97,12 +120,12 @@ threat requires signed or locally served client packaging.
 
 ## Open Questions
 
-- How are production fallback web assets updated and verified without making
+- How are permanent bundled web assets updated and verified without making
   live hosted JavaScript the credential trust root or waiting indefinitely for
   fixes behind app-store review?
-- How does a native authenticated server profile enter the packaged full-web
-  fallback without exporting native installation secrets or creating a broad
-  native bridge?
+- Do representative full-web workloads ever justify a native-backed web
+  transport despite bridge serialization, streaming, upload, and lifecycle
+  costs?
 - Should graehl and kzahel use independent signing keys, a threshold policy, or
   a primary/backup-key policy with explicit rotation?
 - What is the minimum browser storage model that keeps local-file or

@@ -1,41 +1,66 @@
 # Android Wrapper And Notification Integration
 
 Status: native foundation and live broker installation lifecycle complete on
-2026-08-02. YA server compatibility/enrollment, notification presentation, and
-foreground activity remain future slices.
+2026-08-02. YA server enrollment is now sequenced behind stable server
+identity, durable paired-device records, and a Kotlin native connection core.
+Notification presentation and foreground activity remain future slices.
 
 Topic: android-fcm-push
+Topic: mobile-server-pairing
 
 ## Origin
 
-The first useful Android app should combine the latest hosted YA client with a
-small native notification wrapper. It should not keep a WebView alive merely
-to receive notifications, and hosted JavaScript should receive only the native
-authority needed for an explicit user action.
+The first useful Android app combined the full YA web client with a small
+native notification wrapper. It must not keep a WebView alive merely to receive
+notifications. The complete bundled web client is now a permanent trusted
+presentation alongside Compose rather than merely transitional scaffolding;
+hosted `latest` remains a distinct mutable testing channel.
 
-This plan owns the transitional wrapper, notification, and enrollment path. It
-does not make the foreground WebView the permanent mobile home screen. The
-approved product direction in
+This plan owns the wrapper and notification path. The approved product
+direction in
 [`mobile-companion-app.md`](../project/mobile-companion-app.md) makes a Compose
-Conversation-view session surface the eventual Android default and retains the
-packaged web client as an explicit full-fidelity fallback. Its projection and
-native connection work require a separate compatibility-reviewed plan.
+Conversation-view session surface the focused native option and retains the
+bundled web client as a permanent full-fidelity alternative. Stable server
+identity, pairing, native credentials, direct/relay ownership, and the
+independent bundled-web connection are fixed in
+[`mobile-server-pairing.md`](../../topics/mobile-server-pairing.md); their wire
+contracts still require separate compatibility review.
 
 The browser baseline and the provider-neutral Settings/server seam are verified
 and recorded in
 [`079-notification-delivery-validation-and-native-readiness.md`](079-notification-delivery-validation-and-native-readiness.md)
-before the hosted enrollment contract is implemented.
+before the pairing-first server contract is implemented.
 
 This plan distinguishes three things that are easy to conflate:
 
-- **Foreground UI:** an Android-owned full-screen WebView running the bundled
-  or hosted YA client until native Compose surfaces replace routine routes.
+- **Foreground UI:** a user choice between focused Compose surfaces and an
+  Android-owned full-screen bundled WebView; hosted `latest` is a testing
+  channel, not the permanent web trust root.
 - **Firebase messaging service:** a short-lived native Android component that
   can receive FCM callbacks while the activity and WebView are absent. It is
   not an Android foreground service.
 - **Foreground activity service:** a future, explicitly enabled long-running
   native component with a persistent notification. It is not required for
   ordinary FCM delivery.
+
+## Pairing-First Sequencing Decision — 2026-08-02
+
+Do not design the next YA-server API around push alone. The server must first
+recognize one durable paired mobile device independently of its expiring SRP
+resume sessions and optional broker subscription. The same pairing owns stable
+server identity, native route candidates, revocation, and later push state.
+
+The Android native core, not a hidden WebView, owns native SRP/resume,
+Keystore-backed credentials, encrypted direct/relay connections, and any
+foreground-service subscription. The bundled web client may keep its existing
+TypeScript `SecureConnection` and independent browser resume session. A native
+web transport is benchmark-gated future work because bridge copying, stream
+traffic, uploads, and binary paths may perform worse.
+
+The previous planned narrow hosted-client enrollment API is therefore not the
+next slice. First create and approve the stable-identity/paired-device/native-
+connection tactical plan. Server-specific push enrollment then attaches the
+broker subscription to that relationship.
 
 ## Client Asset Channels
 
@@ -87,9 +112,10 @@ produced no failed browser service-worker registration.
 | Owner | State and responsibility |
 | --- | --- |
 | Firebase SDK/service | Current FID, registration callbacks, and incoming FCM messages |
-| Native Android wrapper | Broker installation capability, notification permission/channels, subscription-to-server routing, notification taps, and any future foreground service |
-| Hosted YA client | SRP login, current authenticated YA connection, user-facing enable/disable controls, and compatibility fallback |
-| User-operated YA server | Server-specific broker subscription and send secret, notification-trigger policy, and revocation state |
+| Native Android app | Paired-server profiles, native SRP/resume, Keystore credentials, direct/relay connection core, broker installation, notification permission/channels, notification routing, and any foreground service |
+| Bundled YA web client | Permanent complete UI with its existing independent TypeScript SRP/transport unless measurements justify a native adapter |
+| Hosted `latest` client | Mutable testing UI with browser-owned auth and only explicitly reviewed native-host methods |
+| User-operated YA server | Stable public server identity, paired-device and revocation state, server-specific broker subscription/send secret, and notification policy |
 | Push broker | FID target mapping, subscription authentication/rate limits, and FCM submission |
 
 The FID is a delivery target, not the user's YA credential. The more powerful
@@ -102,9 +128,9 @@ the installation capability and subscription routing records. The exact
 storage library is an implementation choice. Do not store these values in the
 hosted origin's `localStorage`.
 
-## Minimal Hosted-Client Native Host
+## Minimal Web-Client Native Host
 
-The hosted client feature-detects the Android host in two stages:
+The web client feature-detects the Android host in two stages:
 
 1. test for the exact-origin `window.yaNative` message object; and
 2. invoke the protocol-1 `host.describe` request through the typed client
@@ -114,23 +140,25 @@ A missing message object, rejected request, unknown method, version mismatch,
 or request timeout means "native host unavailable." The normal browser UI
 keeps working and existing Web Push remains available.
 
-The native host should expose high-level operations, not general native
+The implemented native host exposes high-level operations, not general native
 primitives:
 
 - read native-host protocol version and supported feature names;
 - read notification permission/enrollment status without secrets;
-- request notification permission from an explicit user action;
-- prepare or reuse a server-specific broker subscription;
-- confirm or cancel that subscription after the YA server accepts or rejects
-  it; and
-- disable/revoke a server-specific subscription.
+- request notification permission from an explicit user action.
 
-Preparing a subscription may return only the broker endpoint, opaque
-subscription id, and one-time server send secret. The authenticated hosted
-client passes those values directly to the YA server and does not persist the
-secret. The command does not return the FID, broker installation secret,
-Keystore data, arbitrary files, an unrestricted HTTP client, or a generic
-native command channel.
+The earlier plan proposed adding server-specific subscription preparation,
+confirmation, and revocation through this host. That remains possible for the
+trusted bundled web UI, but it is no longer the assumed enrollment path. The
+native paired-server core may perform enrollment directly; hosted `latest`
+requires its own explicit trust decision.
+
+If a future reviewed web operation prepares a subscription, it may return only
+the broker endpoint, opaque subscription id, and one-time server send secret.
+The authenticated hosted or bundled client passes those values directly to the
+YA server and does not persist the secret. The command does not return the FID,
+broker installation secret, Keystore data, arbitrary files, an unrestricted
+HTTP client, or a generic native command channel.
 
 The hosted origin is an important security boundary. Before any notification
 operation is enabled for it:
@@ -214,12 +242,14 @@ the next lifecycle trigger.
 1. Firebase invokes `onRegistered()` with the current FID.
 2. Native code records that target and creates or updates its broker
    installation without involving the WebView.
-3. The user signs into one YA server through the hosted client and explicitly
-   enables native notifications.
-4. The client confirms the native host and notification permission.
-5. Native code creates or reuses one broker subscription for that server.
-6. The native host returns only the server-scoped subscription id/send secret.
-7. The client sends that capability to the authenticated YA server.
+3. Native onboarding completes SRP with one authenticated server identity and
+   creates or resumes its durable paired-device record.
+4. The user explicitly enables native notifications for that paired server and
+   grants Android permission.
+5. Native code creates or reuses one broker subscription for that pairing.
+6. The native connection sends only the server-scoped subscription id/send
+   secret to the authenticated YA server.
+7. The server stores the capability under the paired device.
 8. After server acceptance, native code marks the subscription mapping active.
 9. The YA server can submit bounded notification intents using its send secret.
 
@@ -280,8 +310,8 @@ React state, browser storage, several encrypted source runtimes, and teardown
 semantics; keeping that entire renderer alive would be a useful diagnostic at
 most, not the production background architecture.
 
-A real persistent subscriber needs a headless connection core in native/Rust
-or a deliberately embedded shared runtime. It would need to own:
+A real persistent subscriber uses the approved Kotlin native connection-core
+direction. It needs to own:
 
 - broker-independent relay/direct connection configuration;
 - one independent SRP/resume identity and encrypted transport per YA server;
@@ -290,25 +320,24 @@ or a deliberately embedded shared runtime. It would need to own:
 - coordinated reconnect with no overlapping per-server retry storms; and
 - deterministic teardown of sockets, heartbeats, timers, and credentials.
 
-That is materially larger than native push. Do not begin it until FCM delivery
-measurements show a user problem it would solve or the native summary UI needs
-live state strongly enough to justify the cost.
+That is materially larger than native push, but the selected Compose summary UI
+now supplies an independent product reason for it. Plan and prove the core in
+foreground native UI before allowing a foreground service to own it.
 
 ## Native Session Handoff
 
-The selected later foreground UI is a Compose Conversation-view renderer, not
-an invisible WebView or a native rewrite of the full web application. Its first
-slice consumes saved semantic projection fixtures read-only. It then needs a
-bounded, capability-gated projection and a foreground connection core before it
-can replace the wrapper's normal session route.
+The selected native foreground UI is a Compose Conversation-view renderer, not
+an invisible WebView or a rewrite of the full web application. Its first slice
+consumes saved semantic projection fixtures read-only. It then needs a bounded,
+capability-gated projection and a foreground connection core before it can own
+live native session routes.
 
 Until that work lands, notification taps may continue into the known WebView
-route. Once native session detail is available, routine taps should open native
-Conversation view and expose an explicit full-activity action for rich tool
-inspection. Approvals remain on the full presentation until native provides
-enough command, diff, and provider-specific context for an informed response.
-This handoff does not add native-session implementation slices to the current
-notification plan.
+route. Once native session detail is available, routine taps may open native
+Conversation view and expose the permanent complete-web presentation for rich
+tool inspection or user preference. Approvals remain on the full presentation
+until native provides enough command, diff, and provider-specific context for
+an informed response. This handoff does not make either presentation temporary.
 
 ## Compatibility Boundary
 
@@ -318,8 +347,8 @@ change. Push enrollment does.
 Before implementing YA server enrollment routes or fields, perform the required
 stable-release compatibility review. The intended optional-feature fallback is:
 
-- a new hosted client hides native push enrollment unless both the native host
-  and a new server capability are present;
+- a new native or bundled-web control hides native push enrollment unless the
+  exact paired-device/push capabilities it needs are present;
 - older servers receive no unsupported request;
 - browser Web Push and ordinary remote use remain unchanged; and
 - absence of native enrollment never blocks login, session browsing, or FCM
@@ -339,14 +368,17 @@ remain an approval gate rather than being committed by this plan.
 3. **Live broker lifecycle — complete:** a physical Pixel created its durable
    broker installation and replaced the live target after FID rotation without
    replacing the installation capability.
-4. **Compatibility review and enrollment:** audit stable YA releases, approve
-   the optional capability/fallback, then add the narrow server subscription
-   contract and hosted-client controls.
-5. **Notification presentation:** validate background, foreground, denied
+4. **Pairing and connection tactical:** define stable server identity, durable
+   paired-device state, Kotlin SRP/transport ownership, and the separate
+   compatibility gates before adding enrollment routes.
+5. **Compatibility review and enrollment:** audit stable YA releases, approve
+   the optional capability/fallback, then attach server-specific subscriptions
+   to paired devices.
+6. **Notification presentation:** validate background, foreground, denied
    permission, tap routing, unknown mapping, process death, and cold-start
    behavior on physical devices.
-6. **Foreground activity decision:** measure FCM first; build a headless
-   persistent subscriber only if a concrete trigger is met.
+7. **Foreground activity:** first prove the Kotlin core under visible Compose
+   ownership, then add an explicit persistent subscriber with complete stop.
 
 ### Native foundation acceptance — 2026-08-02
 

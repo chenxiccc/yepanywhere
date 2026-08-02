@@ -118,6 +118,14 @@ a future auth/pairing flow would populate. When present, identity resolves to
 `server:<instanceId>` and survives transport failover; nothing populates it
 yet, so all keys remain route-scoped in practice.
 
+The accepted mobile ownership and authentication requirements for that future
+identity are in
+[`mobile-server-pairing.md`](mobile-server-pairing.md). In particular, it is a
+separate public id authenticated through SRP/full-resume proof, not the relay
+ownership `installId`, a browser profile id, or an SRP session id. Native and
+bundled-web transports may use different credentials and connections while
+still resolving to the same logical source.
+
 ### SourceRuntimeRegistry
 
 The registry owns construction, lookup, and disposal of `YaSourceRuntime`

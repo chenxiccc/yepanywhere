@@ -28,6 +28,8 @@ See also:
   session-detail presentation and its visibility/failure semantics;
 - [mobile-companion-app](../docs/project/mobile-companion-app.md) — Android-first
   native companion product shape and later iOS counterpart;
+- [mobile-server-pairing](mobile-server-pairing.md) — native connection
+  ownership and the independent permanent bundled-web presentation;
 - [hard-development-rules](hard-development-rules.md) — hosted-client protocol
   grace and compatibility policy.
 
@@ -67,10 +69,10 @@ contract, package/runtime target, and compatibility policy.
 
 The real second consumer is now identified: an Android Compose companion whose
 default session detail is the compact Conversation view, followed later by a
-SwiftUI renderer for iOS. The existing packaged web client remains an explicit
-full-fidelity fallback for full activity, rich tool inspection, settings, and
-other surfaces outside the native companion. It is not the permanent native
-home screen.
+SwiftUI renderer for iOS. The existing bundled web client remains a permanent
+full-fidelity alternative for users who prefer it, full activity, rich tool
+inspection, settings, and other surfaces outside the native companion. It does
+not need to become the native home screen or share the Kotlin transport.
 
 The first native slice is a read-only Compose renderer over saved projection
 fixtures. It should cover user prompts, assistant text, status/boundary rows,
@@ -687,9 +689,11 @@ weaken live/durable parity merely to accommodate a compiler discrepancy.
 - Is TypeScript sufficiently small and deterministic across adopted runtimes, or
   do measurements justify a Rust/native implementation later?
 - What is the minimum Conversation-view projection that preserves failures,
-  media, partial coverage, generic tool expansion, and safe full-web fallback?
-- Which shared runtime, if any, should own native SRP/resume, direct/relay
-  transport, reconnect, and secure session state independently of the renderer?
+  media, partial coverage, generic tool expansion, and safe movement into the
+  complete web presentation?
+- What exact Kotlin interfaces and cross-language fixtures prove native
+  SRP/resume, direct/relay transport, reconnect, and secure session state while
+  the bundled web client retains its independent TypeScript transport?
 
 Resolve these through bounded prototypes and fixtures. They are not reasons to
 collapse the layer separation or begin with a whole-session rewrite.

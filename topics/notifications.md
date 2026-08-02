@@ -14,6 +14,7 @@ Related:
 - [Web Push troubleshooting](../docs/push-notifications.md)
 - [Notification delivery validation and native readiness](../docs/tactical/079-notification-delivery-validation-and-native-readiness.md)
 - [Android FCM push](android-fcm-push.md)
+- [Mobile server pairing](mobile-server-pairing.md)
 - [Android wrapper and notification integration](../docs/tactical/071-android-wrapper-notification-integration.md)
 - [Mobile companion app](../docs/project/mobile-companion-app.md)
 - [Browser-profile devices](browser-profile-devices.md)
@@ -56,7 +57,7 @@ decision.
 | Browser Web Push/VAPID | Implemented for any supported desktop or mobile browser profile. The server owns VAPID keys and subscriptions; a push wakes the origin's service worker. | No YA tab is required |
 | Browser service worker | Receives Web Push, renders notifications, handles clicks/dismissal, and already contains focused-window/session suppression logic. It is event-driven and must not own a persistent YA secure connection. | No |
 | Native Android FCM | The broker is deployed. Android now owns notification permission/channel status and a Keystore-backed broker installation whose target follows FID replacement. YA-server subscription storage and user-visible native presentation remain unimplemented. | No WebView is required |
-| Android foreground service | Planned only. It would maintain an explicitly enabled headless summary/activity connection with a persistent status notification. | No visible UI, but a persistent notification is mandatory |
+| Android foreground service | Planned only. It would use the Kotlin native connection core to maintain an explicitly enabled headless summary/activity connection with a persistent status notification. | No visible UI, but a persistent notification is mandatory |
 | Native iOS push | Future adapter through FCM/APNs under the same provider-neutral device-subscription model. | No |
 
 VAPID is not a mobile-only transport. It is application-server identification
