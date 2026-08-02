@@ -10,10 +10,8 @@ import android.webkit.WebViewClient
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.intent.Intents
-import androidx.test.espresso.intent.Intents.intended
 import androidx.test.espresso.intent.Intents.intending
 import androidx.test.espresso.intent.matcher.IntentMatchers.hasAction
-import androidx.test.espresso.intent.matcher.IntentMatchers.hasData
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.yepanywhere.mobile.R
 import java.util.concurrent.CountDownLatch
@@ -61,14 +59,10 @@ class WebClientActivityTest {
     @Test
     fun nativeHostIsAbsentFromAnUnapprovedOrigin() {
         ActivityScenario.launch(WebClientActivity::class.java).use { scenario ->
-            val loaded = CountDownLatch(1)
+            awaitJavaScript(scenario, "document.readyState", "\"complete\"")
             scenario.onActivity { activity ->
                 activity.findViewById<WebView>(R.id.web_client).apply {
-                    webViewClient = object : WebViewClient() {
-                        override fun onPageFinished(view: WebView, url: String) {
-                            loaded.countDown()
-                        }
-                    }
+                    webViewClient = WebViewClient()
                     loadDataWithBaseURL(
                         "https://untrusted.example/",
                         "<html><body>untrusted</body></html>",
@@ -79,9 +73,10 @@ class WebClientActivityTest {
                 }
             }
 
-            assertTrue(
-                "Unapproved-origin document did not load",
-                loaded.await(5, TimeUnit.SECONDS),
+            awaitJavaScript(
+                scenario,
+                "document.body.textContent",
+                "\"untrusted\"",
             )
             assertEquals(
                 "\"undefined\"",
@@ -176,33 +171,35 @@ class WebClientActivityTest {
     fun backNavigatesWebHistoryBeforeFinishingTheActivity() {
         ActivityScenario.launch(WebClientActivity::class.java).use { scenario ->
             awaitJavaScript(scenario, "document.readyState", "\"complete\"")
+            val initialUrl = AtomicReference<String>()
             scenario.onActivity { activity ->
-                activity.findViewById<WebView>(R.id.web_client).loadUrl(
-                    "https://appassets.androidplatform.net/debug-streaming.html",
-                )
+                activity.findViewById<WebView>(R.id.web_client).apply {
+                    initialUrl.set(url)
+                    loadUrl("https://appassets.androidplatform.net/debug-streaming.html")
+                }
             }
             awaitJavaScript(
                 scenario,
                 "window.location.pathname",
                 "\"/debug-streaming.html\"",
             )
-            scenario.onActivity { activity ->
-                assertTrue(activity.findViewById<WebView>(R.id.web_client).canGoBack())
+            awaitWebViewCondition(
+                scenario,
+                "WebView history did not include the second document",
+            ) { view ->
+                view.canGoBack()
             }
 
             scenario.onActivity { activity ->
                 activity.onBackPressedDispatcher.onBackPressed()
             }
 
-            awaitJavaScript(
+            awaitWebViewCondition(
                 scenario,
-                """
-                window.location.pathname === "/debug-streaming.html"
-                  ? "waiting"
-                  : "returned"
-                """.trimIndent(),
-                "\"returned\"",
-            )
+                "WebView did not return to the initial document",
+            ) { view ->
+                view.url == initialUrl.get()
+            }
             assertEquals(Lifecycle.State.RESUMED, scenario.state)
         }
     }
@@ -221,8 +218,7 @@ class WebClientActivityTest {
                     "window.location.href = 'https://example.com/android-contract'; true",
                 )
 
-                intended(hasAction(Intent.ACTION_VIEW))
-                intended(hasData("https://example.com/android-contract"))
+                awaitExternalIntent("https://example.com/android-contract")
                 assertEquals(
                     "\"https://appassets.androidplatform.net\"",
                     evaluateJavaScript(scenario, "window.location.origin"),
@@ -287,6 +283,40 @@ class WebClientActivityTest {
         assertEquals(expected, actual)
     }
 
+    private fun awaitExternalIntent(expectedUrl: String) {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+        var matched = false
+        while (System.nanoTime() < deadline) {
+            matched = Intents.getIntents().any { intent ->
+                intent.action == Intent.ACTION_VIEW && intent.dataString == expectedUrl
+            }
+            if (matched) {
+                return
+            }
+            Thread.sleep(100)
+        }
+        assertTrue("External VIEW intent was not recorded", matched)
+    }
+
+    private fun awaitWebViewCondition(
+        scenario: ActivityScenario<WebClientActivity>,
+        failureMessage: String,
+        condition: (WebView) -> Boolean,
+    ) {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+        var matched = false
+        while (System.nanoTime() < deadline) {
+            scenario.onActivity { activity ->
+                matched = condition(activity.findViewById(R.id.web_client))
+            }
+            if (matched) {
+                return
+            }
+            Thread.sleep(100)
+        }
+        assertTrue(failureMessage, matched)
+    }
+
     private fun awaitJavaScript(
         scenario: ActivityScenario<WebClientActivity>,
         script: String,
@@ -295,7 +325,7 @@ class WebClientActivityTest {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
         var actual = ""
         while (System.nanoTime() < deadline) {
-            actual = evaluateJavaScript(scenario, script)
+            actual = evaluateJavaScriptOrNull(scenario, script, 1) ?: "<no callback>"
             if (actual == expected) {
                 return
             }
@@ -312,7 +342,7 @@ class WebClientActivityTest {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
         var actual = ""
         while (System.nanoTime() < deadline) {
-            actual = evaluateJavaScript(scenario, script)
+            actual = evaluateJavaScriptOrNull(scenario, script, 1) ?: "<no callback>"
             if (actual in expected) {
                 return
             }
@@ -325,6 +355,15 @@ class WebClientActivityTest {
         scenario: ActivityScenario<WebClientActivity>,
         script: String,
     ): String {
+        return evaluateJavaScriptOrNull(scenario, script, 5)
+            ?: throw AssertionError("JavaScript evaluation timed out")
+    }
+
+    private fun evaluateJavaScriptOrNull(
+        scenario: ActivityScenario<WebClientActivity>,
+        script: String,
+        timeoutSeconds: Long,
+    ): String? {
         val result = AtomicReference<String>()
         val completed = CountDownLatch(1)
         scenario.onActivity { activity ->
@@ -333,7 +372,10 @@ class WebClientActivityTest {
                 completed.countDown()
             }
         }
-        assertTrue("JavaScript evaluation timed out", completed.await(5, TimeUnit.SECONDS))
-        return result.get()
+        return if (completed.await(timeoutSeconds, TimeUnit.SECONDS)) {
+            result.get()
+        } else {
+            null
+        }
     }
 }
