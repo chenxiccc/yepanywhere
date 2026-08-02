@@ -190,12 +190,8 @@ class WebClientActivityTest {
             }
             awaitJavaScript(
                 scenario,
-                """
-                window.location.pathname === "/native-back-test"
-                  ? "waiting"
-                  : "returned"
-                """.trimIndent(),
-                "\"returned\"",
+                "window.location.pathname",
+                "\"/debug-streaming.html\"",
             )
             evaluateJavaScript(
                 scenario,
@@ -222,8 +218,12 @@ class WebClientActivityTest {
 
             awaitJavaScript(
                 scenario,
-                "window.location.pathname",
-                "\"/debug-streaming.html\"",
+                """
+                window.location.pathname === "/native-back-test"
+                  ? "waiting"
+                  : "returned"
+                """.trimIndent(),
+                "\"returned\"",
             )
             assertEquals(Lifecycle.State.RESUMED, scenario.state)
         }
