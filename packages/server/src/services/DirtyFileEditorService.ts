@@ -486,7 +486,11 @@ export class DirtyFileEditorService {
     ];
     if (normalizedPaths.length === 0) return;
 
-    const records = (this.state.projects[projectKey] ??= {});
+    let records = this.state.projects[projectKey];
+    if (!records) {
+      records = {};
+      this.state.projects[projectKey] = records;
+    }
     let changed = false;
     for (const filePath of normalizedPaths) {
       const current = records[filePath];
