@@ -190,12 +190,28 @@ class WebClientActivityTest {
             }
             awaitJavaScript(
                 scenario,
+                """
+                window.location.pathname === "/native-back-test"
+                  ? "waiting"
+                  : "returned"
+                """.trimIndent(),
+                "\"returned\"",
+            )
+            evaluateJavaScript(
+                scenario,
+                """
+                history.pushState({}, "", "/native-back-test");
+                window.location.pathname;
+                """.trimIndent(),
+            )
+            awaitJavaScript(
+                scenario,
                 "window.location.pathname",
-                "\"/debug-streaming.html\"",
+                "\"/native-back-test\"",
             )
             awaitWebViewCondition(
                 scenario,
-                "WebView history did not include the second document",
+                "WebView history did not include the pushed state",
             ) { view ->
                 view.canGoBack()
             }
@@ -204,12 +220,11 @@ class WebClientActivityTest {
                 activity.onBackPressedDispatcher.onBackPressed()
             }
 
-            awaitWebViewCondition(
+            awaitJavaScript(
                 scenario,
-                "WebView did not leave the second history document",
-            ) { view ->
-                view.url != null && view.url != historyUrl
-            }
+                "window.location.pathname",
+                "\"/debug-streaming.html\"",
+            )
             assertEquals(Lifecycle.State.RESUMED, scenario.state)
         }
     }
