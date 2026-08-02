@@ -10,7 +10,10 @@ mobile browser when a session needs attention, even when no YA tab is open.
 
 Push notifications require:
 
-1. **HTTPS** - Service workers only work over secure connections (or localhost)
+1. **A browser-trusted secure context** - Service workers work over HTTPS with
+   a trusted certificate, or the browser's localhost development exception.
+   Loading a self-signed HTTPS page after accepting a warning does not make its
+   service-worker script trusted.
 2. **Service Worker Support** - Modern browsers (Chrome, Firefox, Safari 16+, Edge)
 3. **PushManager API** - Not available in all browsers (notably older Safari versions)
 4. **Notification Permission** - User must grant permission when prompted
@@ -23,7 +26,12 @@ This can happen for several reasons:
 
 1. **Development Mode** - Service workers are disabled by default in dev mode to avoid page reload issues. Set `VITE_ENABLE_SW=true` in your environment to enable them.
 
-2. **HTTP Connection** - Service workers require HTTPS. Use a reverse proxy with TLS termination.
+2. **Untrusted connection** - For deployed access, use a reverse proxy with
+   trusted TLS termination. For local testing, prefer
+   `http://localhost:<port>` (the browser's secure-context exception) or install
+   a locally trusted certificate. A self-signed
+   `https://127.0.0.1:<port>` origin may load while Chrome still rejects
+   `sw.js` with an SSL certificate error.
 
 3. **Unsupported Browser** - Some browsers don't support the Push API:
    - Safari < 16 on iOS
@@ -39,6 +47,8 @@ Check the browser console for errors. Common causes:
 - `sw.js` returns a 401/403 (blocked by auth)
 - `sw.js` returns wrong MIME type (must be `application/javascript`)
 - Mixed content (loading HTTP resources from HTTPS page)
+- The page uses untrusted/self-signed HTTPS; Chrome can display the page but
+  reject the service-worker script with `An SSL certificate error occurred`
 
 ## Reverse Proxy Configuration
 

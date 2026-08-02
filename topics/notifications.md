@@ -12,6 +12,7 @@ delivery is only partially implemented.
 Related:
 
 - [Web Push troubleshooting](../docs/push-notifications.md)
+- [Notification delivery validation and native readiness](../docs/tactical/079-notification-delivery-validation-and-native-readiness.md)
 - [Android FCM push](android-fcm-push.md)
 - [Android wrapper and notification integration](../docs/tactical/071-android-wrapper-notification-integration.md)
 - [Mobile companion app](../docs/project/mobile-companion-app.md)
@@ -154,6 +155,8 @@ recipient decisions: no focused window displays, an unfocused window displays,
 a focused window suppresses by default, the focused-window opt-in displays for
 another session, and the session already visible stays suppressed.
 
+The live execution matrix and evidence ledger are maintained in
+[notification delivery validation and native readiness](../docs/tactical/079-notification-delivery-validation-and-native-readiness.md).
 Before release, manually verify a real subscribed desktop browser with no YA
 tab, a background tab, a focused unrelated session, and the notified session
 already visible. Safari and Firefox are useful follow-up spot checks. Mobile

@@ -21,6 +21,11 @@ Conversation-view session surface the eventual Android default and retains the
 packaged web client as an explicit full-fidelity fallback. Its projection and
 native connection work require a separate compatibility-reviewed plan.
 
+The browser baseline and the provider-neutral Settings/server seam are verified
+and recorded in
+[`079-notification-delivery-validation-and-native-readiness.md`](079-notification-delivery-validation-and-native-readiness.md)
+before the hosted enrollment contract is implemented.
+
 This plan distinguishes three things that are easy to conflate:
 
 - **Foreground UI:** the visible Tauri WebView running the hosted YA client.
