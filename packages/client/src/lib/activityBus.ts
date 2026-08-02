@@ -88,6 +88,13 @@ export interface ProcessStateEvent {
   timestamp: string;
 }
 
+export interface ReviewResponseChangedEvent {
+  type: "review-response-changed";
+  projectId: UrlProjectId;
+  submissionIds: string[];
+  timestamp: string;
+}
+
 export interface ProviderRuntimeStatusChangedEvent {
   type: "provider-runtime-status-changed";
   sessionId: string;
@@ -229,6 +236,7 @@ export interface ActivityEventMap {
   "session-updated": SessionUpdatedEvent;
   "session-seen": SessionSeenEvent;
   "process-state-changed": ProcessStateEvent;
+  "review-response-changed": ReviewResponseChangedEvent;
   "provider-runtime-status-changed": ProviderRuntimeStatusChangedEvent;
   "project-queue-changed": ProjectQueueChangedEvent;
   "workstreams-changed": WorkstreamsChangedEvent;
@@ -518,6 +526,7 @@ class ActivityBus {
       "session-updated",
       "session-seen",
       "process-state-changed",
+      "review-response-changed",
       "provider-runtime-status-changed",
       "project-queue-changed",
       "workstreams-changed",

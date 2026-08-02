@@ -115,6 +115,7 @@ function useSourceTab(reviewsEnabled = false): {
           else params.set("tab", next);
           params.delete("history");
           params.delete("rev");
+          if (next !== "reviews") params.delete("submission");
           return params;
         },
         { replace: true, state: location.state },
@@ -815,6 +816,7 @@ function GitStatusContent({
       ) : tab === "reviews" ? (
         <ReviewSubmissionsPanel
           projectId={projectId}
+          initialSubmissionId={searchParams.get("submission") ?? undefined}
           sessionHref={(sessionId) =>
             `${basePath}/projects/${projectId}/sessions/${sessionId}`
           }

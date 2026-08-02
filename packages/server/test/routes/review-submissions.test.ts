@@ -105,12 +105,20 @@ describe("review submission routes", () => {
     });
 
     const list = await routes.request(
-      `/${project.id}/review/submissions?limit=1`,
+      `/${project.id}/review/submissions?limit=1&includeSiteStates=1`,
     );
     expect(list.status).toBe(200);
     expect(await list.json()).toMatchObject({
       submissions: [{ id: batch.id, targetSessionId: "session-1" }],
       nextCursor: null,
+      siteStates: [
+        {
+          siteId: expect.any(String),
+          path: "src/a.ts",
+          state: "open",
+          changeStatus: "unavailable",
+        },
+      ],
     });
 
     const detail = await routes.request(
@@ -171,9 +179,13 @@ describe("review submission routes", () => {
     );
     expect(await detail.json()).toMatchObject({
       capturedSources: [
-        { source: { status: "legacy-missing" } },
+        {
+          changeStatus: "unavailable",
+          source: { status: "legacy-missing" },
+        },
         {
           entryId: store.sites[0]?.entries[1]?.id,
+          changeStatus: "unchanged",
           source: {
             status: "captured",
             content: expect.stringContaining("line"),
@@ -187,6 +199,13 @@ describe("review submission routes", () => {
       { method: "POST" },
     );
     expect(acknowledged.status).toBe(200);
+
+    const refreshed = await routes.request(
+      `/${project.id}/review/submissions/${batch.id}/refresh-response`,
+      { method: "POST" },
+    );
+    expect(refreshed.status).toBe(200);
+    expect(await refreshed.json()).toMatchObject({ responseStatus: "missing" });
   });
 
   it("rejects the new workflow while its server setting is off", async () => {
@@ -206,7 +225,35 @@ describe("review submission routes", () => {
       join(dir, ".yep", "review-comments.json"),
       JSON.stringify({
         version: 2,
-        sites: [],
+        sites: [
+          {
+            id: "site-1",
+            path: "src/a.ts",
+            createdAt: "2026-08-01T09:00:00Z",
+            entries: [
+              {
+                id: "entry-1",
+                text: "Review this",
+                anchor: anchor(),
+                capture: { status: "legacy-missing" },
+                createdAt: "2026-08-01T09:00:00Z",
+                submittedAt: "2026-08-01T10:00:00Z",
+                submissionId: "unread-1",
+              },
+            ],
+            outcomes: [
+              {
+                submissionId: "unread-1",
+                entryId: "entry-1",
+                disposition: "wont_fix",
+                text: "The compatibility contract requires this shape.",
+                observedAt: "2026-08-01T10:05:00Z",
+                responseHash: "a".repeat(64),
+                sessionId: "session-1",
+              },
+            ],
+          },
+        ],
         drafts: [],
         submissions: [
           {
@@ -215,7 +262,7 @@ describe("review submission routes", () => {
             submittedAt: "2026-08-01T10:00:00Z",
             requestedTarget: "session-1",
             targetSessionId: "session-1",
-            entryRefs: [],
+            entryRefs: [{ siteId: "site-1", entryId: "entry-1" }],
             status: "accepted",
             responseRevision: 2,
             acknowledgedRevision: 1,
@@ -238,6 +285,14 @@ describe("review submission routes", () => {
           projectId: project.id,
           submissionId: "unread-1",
           responseRevision: 2,
+          outcomes: [
+            {
+              siteId: "site-1",
+              path: "src/a.ts",
+              disposition: "wont_fix",
+              text: "The compatibility contract requires this shape.",
+            },
+          ],
         },
       ],
     });

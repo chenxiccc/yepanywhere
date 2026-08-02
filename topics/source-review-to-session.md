@@ -9,9 +9,10 @@ Topic: source-review-to-session
 
 Parent topic: [Source Control](source-control.md).
 
-Status: **stages 1–3 implemented** (2026-07-26), including the P8 diff view
-mode. The pending set is browsable as a **Comments mode tab** (list, delete,
-jump-to-blame, submit) beside changes/commits/files. The first GitHub
+Status: **stages 1–7 implemented** (2026-08-01). The original stages 1–3
+landed 2026-07-26, including the P8 diff view mode. The pending set is
+browsable as a **Comments mode tab** (list, delete, jump-to-blame, submit)
+beside changes/commits/files. The first GitHub
 Desktop-inspired review-navigation slice is implemented (2026-07-27): Commits
 includes a shared dirty Working tree revision, source lists support keyboard
 traversal/search, and diff hunk navigation is symmetric. The follow-up
@@ -21,14 +22,13 @@ keyboard-accessible desktop pane splitters. The same refinement now includes
 independent Ignore whitespace and selected-revision-to-HEAD diff projections.
 Design owner: graehl.
 
-Live use of that shipped flow (2026-08-01) found the review half materially
-short of this topic: the archive has no reader, a pending comment cannot be
-edited, the destination is a new session unless you arrived from an Edit-block
-link, the composer covers the line it is about, and the seeded turn points
-every agent at the whole mutable draft store. **[Submissions and comment
-sites](#submissions-and-comment-sites--contract-2026-08-01) is the governing
-contract for all of that** and supersedes the older lifecycle and
-draft-location prose below.
+Live use of that flow (2026-08-01) exposed gaps now closed by the submission
+and comment-site implementation: the archive lacked a reader, pending comments
+could not be edited, destinations and comment composition were too constrained,
+and seeded turns pointed agents at the whole mutable draft store.
+**[Submissions and comment sites](#submissions-and-comment-sites--contract-2026-08-01)
+is the governing contract for the implemented replacement** and supersedes the
+older lifecycle and draft-location prose below.
 
 Related topics: [selection-comment-ui](selection-comment-ui.md) (the
 quote-comment ancestor — but see the gesture difference below),
@@ -407,6 +407,9 @@ submission. A capability-gated `GET /api/review/inbox` supplies unread review
 outcomes to Inbox before Source Control opens, and acknowledging the visible
 submission uses
 `POST /api/projects/:projectId/review/submissions/:submissionId/acknowledge`.
+After a changed complete snapshot is durably ingested, the server emits
+`review-response-changed` on the activity stream so an already-open Inbox can
+refresh the optional feed only after ingestion finishes.
 
 ### Turn composition
 

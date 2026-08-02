@@ -1,9 +1,12 @@
 import type {
   ProjectQueueItemStatus,
   ProjectQueueItemSummary,
+  ReviewInboxItem,
 } from "@yep-anywhere/shared";
-import { useMemo, useState } from "react";
+import { GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY } from "@yep-anywhere/shared";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { api } from "../api/client";
 import { type InboxItem, useInboxContext } from "../contexts/InboxContext";
 import { useProjectQueues } from "../hooks/useProjectQueues";
 import { usePublicShareStatus } from "../hooks/usePublicShareStatus";
@@ -15,6 +18,7 @@ import {
   useDraftSessionIds,
   useProjectQueuedSessionIds,
 } from "../lib/clientSummaryStore";
+import { activityBus } from "../lib/activityBus";
 import { serverSupportsProjectQueue } from "../lib/projectQueueVisibility";
 import type { Project } from "../types";
 import { getSessionDisplayTitle } from "../utils";
@@ -305,6 +309,74 @@ function InboxSection({
   );
 }
 
+function ReviewOutcomeSection({
+  items,
+  basePath,
+  hideProjectName,
+}: {
+  items: ReviewInboxItem[];
+  basePath: string;
+  hideProjectName: boolean;
+}) {
+  const { t } = useI18n();
+  const outcomes = items.flatMap((item) =>
+    item.outcomes.map((outcome) => ({ item, outcome })),
+  );
+  return (
+    <section className={`${styles.section} ${styles.tierReviews}`}>
+      <h2 className={styles.sectionHeader}>
+        {t("inboxTierReviewOutcomes")}
+        <span className={styles.sectionCount}>{outcomes.length}</span>
+      </h2>
+      <ul className={styles.reviewOutcomeList}>
+        {outcomes.map(({ item, outcome }) => {
+          const reviewParams = new URLSearchParams({
+            projectId: item.projectId,
+            tab: "reviews",
+            submission: item.submissionId,
+          });
+          return (
+            <li
+              key={`${item.submissionId}\0${outcome.siteId}\0${outcome.entryId}`}
+              className={styles.reviewOutcomeCard}
+            >
+              <div className={styles.reviewOutcomeHead}>
+                <Link to={`${basePath}/git-status?${reviewParams}`}>
+                  {item.name ?? t("sourceReviewUnreadSubmission")}
+                </Link>
+                <span>{reviewDispositionLabel(outcome.disposition, t)}</span>
+              </div>
+              <div className={styles.reviewOutcomeText}>{outcome.text}</div>
+              <div className={styles.reviewOutcomeMeta}>
+                {!hideProjectName && <span>{item.projectName}</span>}
+                <span>{outcome.path}</span>
+                {outcome.sessionId && (
+                  <Link
+                    to={`${basePath}/projects/${encodeURIComponent(
+                      item.projectId,
+                    )}/sessions/${encodeURIComponent(outcome.sessionId)}`}
+                  >
+                    {t("sourceReviewOutcomeSession")}
+                  </Link>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+function reviewDispositionLabel(
+  disposition: ReviewInboxItem["outcomes"][number]["disposition"],
+  t: Translate,
+): string {
+  if (disposition === "wont_fix") return t("sourceReviewOutcomeWontFix");
+  if (disposition === "question") return t("sourceReviewOutcomeQuestion");
+  return t("sourceReviewOutcomeDone");
+}
+
 export interface InboxContentProps {
   /** Optional projectId to filter inbox to a single project */
   projectId?: string;
@@ -340,6 +412,14 @@ export function InboxContent({
   const { settings: serverSettings } = useServerSettings();
   const { version } = useVersion();
   const supportsProjectQueue = serverSupportsProjectQueue(version);
+  const supportsSourceReviewInbox =
+    (version?.capabilities?.includes(
+      GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY,
+    ) ??
+      false) &&
+    (serverSettings?.sourceReviewSubmissionsEnabled ?? false);
+  const [reviewInbox, setReviewInbox] = useState<ReviewInboxItem[]>([]);
+  const [reviewInboxLoading, setReviewInboxLoading] = useState(false);
   const publicSharesEnabled = serverSettings?.publicSharesEnabled ?? false;
   const { status: publicShareStatus } = usePublicShareStatus({
     poll: publicSharesEnabled,
@@ -372,10 +452,45 @@ export function InboxContent({
 
   const [refreshing, setRefreshing] = useState(false);
 
+  const loadReviewInbox = useCallback(async () => {
+    if (!supportsSourceReviewInbox) {
+      setReviewInbox([]);
+      setReviewInboxLoading(false);
+      return;
+    }
+    setReviewInboxLoading(true);
+    try {
+      const result = await api.listReviewInbox();
+      setReviewInbox(result.items);
+    } finally {
+      setReviewInboxLoading(false);
+    }
+  }, [supportsSourceReviewInbox]);
+
+  useEffect(() => {
+    void loadReviewInbox().catch(() => {
+      // The ordinary Inbox remains usable if the optional feed fails.
+    });
+    if (!supportsSourceReviewInbox) return;
+    return activityBus.on("review-response-changed", () => {
+      void loadReviewInbox().catch(() => {
+        // Preserve the last accepted outcome cards on transient failures.
+      });
+    });
+  }, [loadReviewInbox, supportsSourceReviewInbox]);
+
   const handleRefresh = async () => {
     setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
+    try {
+      await Promise.all([
+        refresh(),
+        loadReviewInbox().catch(() => {
+          // The review feed is optional; retain its last accepted cards.
+        }),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   // Map tier keys to their data
@@ -457,10 +572,23 @@ export function InboxContent({
         : [],
     [projectQueues.items, supportsProjectQueue],
   );
-  const totalItems = totalSessionItems + pendingNewSessionQueueItems.length;
+  const filteredReviewInbox = useMemo(
+    () =>
+      projectId
+        ? reviewInbox.filter((item) => item.projectId === projectId)
+        : reviewInbox,
+    [projectId, reviewInbox],
+  );
+  const reviewOutcomeCount = filteredReviewInbox.reduce(
+    (count, item) => count + item.outcomes.length,
+    0,
+  );
+  const totalItems =
+    totalSessionItems + pendingNewSessionQueueItems.length + reviewOutcomeCount;
 
   const pageLoading =
     loading ||
+    reviewInboxLoading ||
     (totalSessionItems === 0 &&
       pendingNewSessionQueueItems.length === 0 &&
       supportsProjectQueue &&
@@ -557,6 +685,13 @@ export function InboxContent({
 
         {!pageLoading && !error && !isEmpty && (
           <div className={styles.tiers}>
+            {filteredReviewInbox.length > 0 && (
+              <ReviewOutcomeSection
+                items={filteredReviewInbox}
+                basePath={basePath}
+                hideProjectName={!!projectId}
+              />
+            )}
             {TIER_CONFIGS.map((config) => (
               <InboxSection
                 key={config.key}

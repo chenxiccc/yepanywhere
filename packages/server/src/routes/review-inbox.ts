@@ -15,7 +15,10 @@ export function createReviewInboxRoutes(deps: ReviewInboxDeps): Hono {
 
   routes.get("/review/inbox", async (c) => {
     if (!deps.isEnabled()) {
-      return c.json({ error: "Source-review submissions are not enabled" }, 409);
+      return c.json(
+        { error: "Source-review submissions are not enabled" },
+        409,
+      );
     }
     const projects = await deps.scanner.listProjects();
     const items = (
@@ -32,6 +35,17 @@ export function createReviewInboxRoutes(deps: ReviewInboxDeps): Hono {
                     name: submission.name,
                     targetSessionId: submission.targetSessionId,
                     responseRevision: submission.responseRevision,
+                    outcomes: submission.entryRefs.flatMap((ref) => {
+                      const site = store.sites.find(
+                        (item) => item.id === ref.siteId,
+                      );
+                      const outcome = site?.outcomes
+                        .filter((item) => item.entryId === ref.entryId)
+                        .at(-1);
+                      return site && outcome
+                        ? [{ ...outcome, siteId: site.id, path: site.path }]
+                        : [];
+                    }),
                   },
                 ]
               : [],

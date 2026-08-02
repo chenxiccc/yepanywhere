@@ -2,6 +2,7 @@ import type {
   GitCommitDetail,
   GitFileChange,
   GitRecentCommit,
+  ReviewSiteStateSummary,
 } from "@yep-anywhere/shared";
 import { type ReactNode, type RefObject, useEffect, useState } from "react";
 import { ChangesetFileFilter } from "../components/ChangesetFileFilter";
@@ -10,6 +11,7 @@ import {
   SourceFilePath,
   SourceFileRowButton,
   SourceFileStatusBadge,
+  SourceReviewStateBadges,
 } from "../components/SourceFileRow";
 import {
   SourceRowMenuTrigger,
@@ -26,6 +28,8 @@ import { writeClipboardText } from "../lib/clipboard";
 import { reflowCommitMessage } from "../lib/reflowCommitMessage";
 import type { TranslationFn } from "../i18n";
 import { CommitHistoryParentLink } from "./CommitHistoryParentLink";
+
+const EMPTY_REVIEW_STATES = new Map<string, ReviewSiteStateSummary[]>();
 
 /**
  * Selected revision's files pane. It owns the revision banner, changed-file
@@ -44,6 +48,7 @@ export function CommitFilesPane({
   selectedFiles,
   selectedPath,
   fileCommentCount,
+  reviewStatesByPath = EMPTY_REVIEW_STATES,
   revisionNavigation,
   onBack,
   onToggleComparison,
@@ -68,6 +73,7 @@ export function CommitFilesPane({
   selectedFiles: GitFileChange[];
   selectedPath: string | null;
   fileCommentCount: ReadonlyMap<string, number>;
+  reviewStatesByPath?: ReadonlyMap<string, ReviewSiteStateSummary[]>;
   revisionNavigation: ReactNode;
   onBack?: () => void;
   onToggleComparison: () => void;
@@ -273,6 +279,10 @@ export function CommitFilesPane({
                           {count}
                         </span>
                       )}
+                      <SourceReviewStateBadges
+                        states={reviewStatesByPath.get(file.path) ?? []}
+                        t={t}
+                      />
                     </SourceFileRowButton>
                     {!isFolder && (
                       <SourceRowMenuTrigger

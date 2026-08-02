@@ -96,6 +96,26 @@ describe("ReviewCaptureService", () => {
       highlightLine: 1,
     });
 
+    const comparisonAnchor = {
+      path: "src/file.ts",
+      revision: {
+        kind: "uncommitted" as const,
+        savedAt: new Date().toISOString(),
+      },
+      side: "new" as const,
+      oldLine: 1,
+      newLine: 1,
+      snippet: "const dirty = 2;",
+    };
+    await writeFile(join(repo, "src", "file.ts"), "const   dirty=2;\n");
+    await expect(
+      service.compareNeighborhood(repo, dirty, comparisonAnchor),
+    ).resolves.toBe("unchanged");
+    await writeFile(join(repo, "src", "file.ts"), "const dirty = 3;\n");
+    await expect(
+      service.compareNeighborhood(repo, dirty, comparisonAnchor),
+    ).resolves.toBe("changed");
+
     await service.pin(repo, dirty.captureBlobId);
     await execFileAsync("git", ["-C", repo, "gc", "--prune=now"]);
     await expect(

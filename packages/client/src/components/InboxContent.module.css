@@ -84,6 +84,60 @@
   color: var(--text-muted);
 }
 
+.tierReviews .sectionHeader {
+  color: var(--accent-color);
+  border-left-color: var(--accent-color);
+}
+
+.reviewOutcomeList {
+  display: grid;
+  gap: var(--space-2);
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.reviewOutcomeCard {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  border-left: 3px solid var(--accent-color);
+  border-radius: 8px;
+}
+
+.reviewOutcomeHead,
+.reviewOutcomeMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.reviewOutcomeHead {
+  color: var(--accent-color);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.reviewOutcomeHead a,
+.reviewOutcomeMeta a {
+  color: var(--link-color);
+}
+
+.reviewOutcomeText {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.reviewOutcomeMeta {
+  justify-content: flex-start;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
 .sectionCount {
   font-size: var(--font-size-xs);
   font-weight: 500;

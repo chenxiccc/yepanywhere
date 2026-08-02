@@ -1,4 +1,8 @@
-import type { ReviewBatch, ReviewComment } from "@yep-anywhere/shared";
+import type {
+  ReviewBatch,
+  ReviewComment,
+  ReviewSiteStateSummary,
+} from "@yep-anywhere/shared";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
 import { subscribeReviewComments } from "../lib/reviewCommentsBus";
@@ -14,19 +18,23 @@ export interface ProjectReviewComments {
   batches: ReviewBatch[];
   /** Target of the most recent submitted batch — the default follow-up. */
   recentReviewSessionId: string | null;
+  siteStates: ReviewSiteStateSummary[];
   refresh: () => Promise<void>;
 }
 
 export function useProjectReviewComments(
   projectId: string | undefined,
+  includeSiteStates = false,
 ): ProjectReviewComments {
   const [comments, setComments] = useState<ReviewComment[]>([]);
   const [batches, setBatches] = useState<ReviewBatch[]>([]);
+  const [siteStates, setSiteStates] = useState<ReviewSiteStateSummary[]>([]);
 
   const refresh = useCallback(async () => {
     if (!projectId) {
       setComments([]);
       setBatches([]);
+      setSiteStates([]);
       return;
     }
     try {
@@ -36,7 +44,16 @@ export function useProjectReviewComments(
     } catch {
       // Non-fatal: the tray just shows a stale/empty count.
     }
-  }, [projectId]);
+    if (includeSiteStates) {
+      try {
+        setSiteStates(await api.listReviewSiteStates(projectId));
+      } catch {
+        // Capability-gated callers can keep rendering without annotations.
+      }
+    } else {
+      setSiteStates([]);
+    }
+  }, [includeSiteStates, projectId]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -54,6 +71,7 @@ export function useProjectReviewComments(
       batches.length > 0
         ? (batches[batches.length - 1]?.targetSessionId ?? null)
         : null,
+    siteStates,
     refresh,
   };
 }

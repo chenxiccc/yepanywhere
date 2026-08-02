@@ -227,6 +227,7 @@ export const SERVER_CAPABILITIES = {
         "settings.sourceReviewSubmissionsEnabled",
         "settings.sourceReviewResponseTurns",
       ],
+      events: ["review-response-changed"],
     },
     lifecycle: {
       kind: "permanent",

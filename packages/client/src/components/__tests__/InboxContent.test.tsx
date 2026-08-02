@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, screen } from "@testing-library/react";
-import { PROJECT_QUEUE_CAPABILITY } from "@yep-anywhere/shared";
+import {
+  GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY,
+  PROJECT_QUEUE_CAPABILITY,
+} from "@yep-anywhere/shared";
 import type { ReactElement } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -13,9 +16,11 @@ const {
   mockRefresh,
   mockUseProjectQueues,
   mockUseProjectQueuedSessionIds,
+  mockListReviewInbox,
   projectQueueItems,
   queuedSessionIds,
   versionState,
+  serverSettingsState,
 } = vi.hoisted(() => ({
   draftSessionIds: new Set<string>(),
   queuedSessionIds: new Set<string>(),
@@ -23,9 +28,16 @@ const {
   mockRefresh: vi.fn(),
   mockUseProjectQueues: vi.fn(),
   mockUseProjectQueuedSessionIds: vi.fn(),
+  mockListReviewInbox: vi.fn(),
   versionState: {
     version: { capabilities: [] as string[] } as {
       capabilities?: string[];
+    },
+  },
+  serverSettingsState: {
+    settings: {
+      publicSharesEnabled: false,
+      sourceReviewSubmissionsEnabled: false,
     },
   },
   inboxState: {
@@ -37,6 +49,16 @@ const {
     loading: false,
     error: null as Error | null,
   },
+}));
+
+vi.mock("../../api/client", () => ({
+  api: {
+    listReviewInbox: (...args: unknown[]) => mockListReviewInbox(...args),
+  },
+}));
+
+vi.mock("../../lib/activityBus", () => ({
+  activityBus: { on: () => () => {} },
 }));
 
 vi.mock("../../contexts/InboxContext", () => ({
@@ -108,7 +130,7 @@ vi.mock("../../hooks/useRemoteBasePath", () => ({
 
 vi.mock("../../hooks/useServerSettings", () => ({
   useServerSettings: () => ({
-    settings: { publicSharesEnabled: false },
+    settings: serverSettingsState.settings,
   }),
 }));
 
@@ -220,11 +242,17 @@ describe("InboxContent", () => {
     inboxState.error = null;
     projectQueueItems.length = 0;
     versionState.version = { capabilities: [PROJECT_QUEUE_CAPABILITY] };
+    serverSettingsState.settings = {
+      publicSharesEnabled: false,
+      sourceReviewSubmissionsEnabled: false,
+    };
     draftSessionIds.clear();
     queuedSessionIds.clear();
     mockRefresh.mockReset();
     mockUseProjectQueues.mockReset();
     mockUseProjectQueuedSessionIds.mockReset();
+    mockListReviewInbox.mockReset();
+    mockListReviewInbox.mockResolvedValue({ items: [] });
   });
 
   afterEach(() => {
@@ -446,5 +474,59 @@ describe("InboxContent", () => {
       screen.getByTestId("session-queued-session").textContent,
     ).not.toContain("Q");
     expect(screen.queryByText("Build the docs")).toBe(null);
+    expect(mockListReviewInbox).not.toHaveBeenCalled();
+  });
+
+  it("renders capability-gated unread review outcome cards", async () => {
+    versionState.version = {
+      capabilities: [GIT_SOURCE_REVIEW_SUBMISSIONS_CAPABILITY],
+    };
+    serverSettingsState.settings = {
+      publicSharesEnabled: false,
+      sourceReviewSubmissionsEnabled: true,
+    };
+    mockListReviewInbox.mockResolvedValue({
+      items: [
+        {
+          projectId: "project-1",
+          projectName: "Project one",
+          submissionId: "submission-1",
+          name: "Compatibility review",
+          targetSessionId: "session-1",
+          responseRevision: 1,
+          outcomes: [
+            {
+              siteId: "site-1",
+              entryId: "entry-1",
+              path: "src/a.ts",
+              submissionId: "submission-1",
+              disposition: "wont_fix",
+              text: "The stable protocol still needs this field.",
+              observedAt: "2026-08-01T00:00:00Z",
+              responseHash: "a".repeat(64),
+              sessionId: "session-1",
+            },
+          ],
+        },
+      ],
+    });
+
+    renderInbox(<InboxContent projects={[makeProject("project-1")]} />);
+
+    expect(
+      await screen.findByText("The stable protocol still needs this field."),
+    ).toBeTruthy();
+    expect(
+      screen
+        .getByRole("link", { name: "Compatibility review" })
+        .getAttribute("href"),
+    ).toBe(
+      "/git-status?projectId=project-1&tab=reviews&submission=submission-1",
+    );
+    expect(
+      screen
+        .getByRole("link", { name: "sourceReviewOutcomeSession" })
+        .getAttribute("href"),
+    ).toBe("/projects/project-1/sessions/session-1");
   });
 });

@@ -228,6 +228,16 @@ export interface ReviewSubmissionSummary {
   lastResponseHash?: string;
 }
 
+export type ReviewSourceChangeStatus = "changed" | "unchanged" | "unavailable";
+
+/** Current state for one unresolved review site, independent on both axes. */
+export interface ReviewSiteStateSummary {
+  siteId: string;
+  path: string;
+  state: "open" | "addressed";
+  changeStatus: ReviewSourceChangeStatus;
+}
+
 export type ReviewSubmissionRelocation =
   | {
       status: "relocated";
@@ -292,6 +302,8 @@ export type ReviewCapturedSource =
 
 export interface ReviewEntryCapturedSource extends ReviewEntryRef {
   source: ReviewCapturedSource;
+  /** Whitespace-insensitive comparison of this entry's capture to today. */
+  changeStatus: ReviewSourceChangeStatus;
 }
 
 /** Canonical submission detail returned by the capability-gated reader. */
@@ -299,6 +311,22 @@ export interface ReviewSubmissionDetail {
   submission: ReviewSubmissionSummary;
   sites: ReviewSite[];
   capturedSources: ReviewEntryCapturedSource[];
+}
+
+export interface ReviewInboxOutcome extends ReviewOutcome {
+  siteId: string;
+  path: string;
+}
+
+/** One unread response revision surfaced in the global Inbox. */
+export interface ReviewInboxItem {
+  projectId: string;
+  projectName: string;
+  submissionId: string;
+  name?: string;
+  targetSessionId?: string;
+  responseRevision: number;
+  outcomes: ReviewInboxOutcome[];
 }
 
 /** First-comment excerpt used both as the name-field prefill and title fallback. */

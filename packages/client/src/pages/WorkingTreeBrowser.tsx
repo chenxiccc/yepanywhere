@@ -19,6 +19,7 @@ import {
   SourceFilePath,
   SourceFileRowButton,
   SourceFileStatusBadge,
+  SourceReviewStateBadges,
 } from "../components/SourceFileRow";
 import {
   SourceRowMenuTrigger,
@@ -103,7 +104,10 @@ export function WorkingTreeBrowser({
   const retainedFileRef = useRef<WorktreeFileChange | null>(null);
   const diffPreviewRef = useRef<GitDiffPreviewHandle>(null);
   const fileMenu = useSourceContextMenu(t);
-  const { pending } = useProjectReviewComments(projectId);
+  const { pending, siteStates } = useProjectReviewComments(
+    projectId,
+    captureReviewProjections,
+  );
 
   const untrackedFolderKey = useMemo(
     () =>
@@ -229,6 +233,15 @@ export function WorkingTreeBrowser({
     }
     return counts;
   }, [pending]);
+  const reviewStatesByPath = useMemo(() => {
+    const states = new Map<string, typeof siteStates>();
+    for (const state of siteStates) {
+      const current = states.get(state.path);
+      if (current) current.push(state);
+      else states.set(state.path, [state]);
+    }
+    return states;
+  }, [siteStates]);
 
   const handleFileClick = useCallback(
     (file: WorktreeFileChange) => {
@@ -422,6 +435,10 @@ export function WorkingTreeBrowser({
                         {count}
                       </span>
                     )}
+                    <SourceReviewStateBadges
+                      states={reviewStatesByPath.get(file.path) ?? []}
+                      t={t}
+                    />
                   </SourceFileRowButton>
                   {!isFolder && (
                     <SourceRowMenuTrigger

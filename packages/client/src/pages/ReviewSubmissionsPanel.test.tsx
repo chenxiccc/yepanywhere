@@ -19,6 +19,7 @@ const getReviewSubmission = vi.fn();
 const acknowledgeReviewSubmission = vi.fn();
 const addReviewFollowUp = vi.fn();
 const resolveReviewSite = vi.fn();
+const refreshReviewSubmissionResponse = vi.fn();
 vi.mock("../api/client", () => ({
   api: {
     listReviewSubmissions: (...args: unknown[]) =>
@@ -28,6 +29,8 @@ vi.mock("../api/client", () => ({
       acknowledgeReviewSubmission(...args),
     addReviewFollowUp: (...args: unknown[]) => addReviewFollowUp(...args),
     resolveReviewSite: (...args: unknown[]) => resolveReviewSite(...args),
+    refreshReviewSubmissionResponse: (...args: unknown[]) =>
+      refreshReviewSubmissionResponse(...args),
   },
 }));
 
@@ -108,6 +111,7 @@ function detail(
       {
         siteId,
         entryId,
+        changeStatus: captured ? "unchanged" : "unavailable",
         source: captured
           ? {
               status: "captured",
@@ -152,6 +156,8 @@ describe("ReviewSubmissionsPanel", () => {
     renderPanel();
 
     expect(await screen.findByText("newer feedback")).toBeTruthy();
+    expect(screen.getAllByText("src/newer.ts")).toHaveLength(1);
+    expect(screen.getByTitle("src/newer.ts:5").textContent).toBe("5");
     expect(screen.getByText("const reviewed = true;")).toBeTruthy();
     expect(screen.getByText(/sourceReviewCapturedSource/)).toBeTruthy();
     expect(
@@ -159,6 +165,8 @@ describe("ReviewSubmissionsPanel", () => {
         .getByRole("link", { name: "sourceReviewOpenSession" })
         .getAttribute("href"),
     ).toBe("/sessions/session-newer");
+    expect(screen.getByText("sourceReviewStateOpen")).toBeTruthy();
+    expect(screen.getByText("sourceReviewSourceUnchanged")).toBeTruthy();
   });
 
   it("keeps older migrated reviews explicit about missing captures", async () => {
@@ -170,6 +178,29 @@ describe("ReviewSubmissionsPanel", () => {
 
     expect(await screen.findAllByText("older feedback")).toHaveLength(2);
     expect(screen.getByText("sourceReviewLegacyCaptureMissing")).toBeTruthy();
+  });
+
+  it("opens the submission selected by an Inbox deep link", async () => {
+    listReviewSubmissions.mockResolvedValue({
+      submissions: [NEWER],
+      nextCursor: null,
+    });
+    getReviewSubmission.mockImplementation(
+      async (_projectId: string, id: string) =>
+        id === "newer" ? detail(NEWER, true) : detail(OLDER, false),
+    );
+    render(
+      <MemoryRouter>
+        <ReviewSubmissionsPanel
+          projectId="proj1"
+          initialSubmissionId="older"
+          sessionHref={(sessionId) => `/sessions/${sessionId}`}
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findAllByText("older feedback")).toHaveLength(2);
   });
 
   it("adds a fresh follow-up to Pending Comments and resolves explicitly", async () => {
@@ -193,6 +224,92 @@ describe("ReviewSubmissionsPanel", () => {
     fireEvent.click(screen.getByText("sourceReviewResolve"));
     await waitFor(() =>
       expect(resolveReviewSite).toHaveBeenCalledWith("proj1", "site-newer"),
+    );
+  });
+
+  it("keeps addressed state independent from unchanged source", async () => {
+    listReviewSubmissions.mockResolvedValue({
+      submissions: [NEWER],
+      nextCursor: null,
+    });
+    const addressed = detail(NEWER, true);
+    addressed.sites[0]!.outcomes.push({
+      submissionId: NEWER.id,
+      entryId: "entry-newer",
+      disposition: "wont_fix",
+      text: "The compatibility contract requires this shape.",
+      observedAt: "2026-08-01T00:00:00Z",
+      responseHash: "c".repeat(64),
+      sessionId: "session-newer",
+    });
+    getReviewSubmission.mockResolvedValue(addressed);
+    render(
+      <MemoryRouter>
+        <ReviewSubmissionsPanel
+          projectId="proj1"
+          sessionHref={(sessionId) => `/sessions/${sessionId}`}
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("sourceReviewStateAddressed")).toBeTruthy();
+    expect(screen.getByText("sourceReviewSourceUnchanged")).toBeTruthy();
+    expect(
+      screen.getByText("The compatibility contract requires this shape."),
+    ).toBeTruthy();
+  });
+
+  it("refreshes response files explicitly after the automatic window", async () => {
+    refreshReviewSubmissionResponse.mockResolvedValue({
+      ...detail(NEWER, true),
+      responseStatus: "unchanged",
+    });
+    renderPanel();
+    await screen.findByText("newer feedback");
+    fireEvent.click(screen.getByText("sourceReviewRefreshResponse"));
+
+    await waitFor(() =>
+      expect(refreshReviewSubmissionResponse).toHaveBeenCalledWith(
+        "proj1",
+        "newer",
+      ),
+    );
+    expect(
+      await screen.findByText("sourceReviewResponseUnchanged"),
+    ).toBeTruthy();
+  });
+
+  it("acknowledges an unread revision only after its detail renders", async () => {
+    const unread = {
+      ...NEWER,
+      responseRevision: 1,
+      acknowledgedRevision: 0,
+    };
+    listReviewSubmissions.mockResolvedValue({
+      submissions: [unread],
+      nextCursor: null,
+    });
+    getReviewSubmission.mockResolvedValue(detail(unread, true));
+    acknowledgeReviewSubmission.mockResolvedValue({
+      submission: { ...unread, acknowledgedRevision: 1 },
+    });
+    render(
+      <MemoryRouter>
+        <ReviewSubmissionsPanel
+          projectId="proj1"
+          sessionHref={(sessionId) => `/sessions/${sessionId}`}
+          t={t}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("newer feedback")).toBeTruthy();
+    await waitFor(() =>
+      expect(acknowledgeReviewSubmission).toHaveBeenCalledWith(
+        "proj1",
+        "newer",
+      ),
     );
   });
 });

@@ -114,7 +114,10 @@ export function CommitBrowser({
     t,
   });
 
-  const { pending } = useProjectReviewComments(projectId);
+  const { pending, siteStates } = useProjectReviewComments(
+    projectId,
+    captureReviewProjections,
+  );
   const readState = useCommitReadWatermark(projectId);
 
   // Pending review-comment counts for the row badges: per commit sha (commit
@@ -151,6 +154,15 @@ export function CommitBrowser({
     }
     return counts;
   }, [pending, selectedSha]);
+  const reviewStatesByPath = useMemo(() => {
+    const states = new Map<string, typeof siteStates>();
+    for (const state of siteStates) {
+      const current = states.get(state.path);
+      if (current) current.push(state);
+      else states.set(state.path, [state]);
+    }
+    return states;
+  }, [siteStates]);
 
   const openRevision = useCallback(
     (key: string) => {
@@ -335,6 +347,7 @@ export function CommitBrowser({
             selectedFiles={selectedFiles}
             selectedPath={selectedPath}
             fileCommentCount={fileCommentCount}
+            reviewStatesByPath={reviewStatesByPath}
             revisionNavigation={
               <RevisionJump
                 newerKey={newerKey}

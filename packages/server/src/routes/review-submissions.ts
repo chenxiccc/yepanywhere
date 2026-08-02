@@ -5,6 +5,8 @@ import {
   MAX_REVIEW_COMMENT_TEXT_LENGTH,
   type ReviewCapturedSource,
   type ReviewCommentAnchor,
+  type ReviewSiteStateSummary,
+  type ReviewStoreFile,
   type ReviewSubmissionDetail,
 } from "@yep-anywhere/shared";
 import { Hono } from "hono";
@@ -21,7 +23,10 @@ import { resolveProjectPath } from "./projectParam.js";
 export interface ReviewSubmissionsDeps {
   scanner: ProjectScanner;
   service: ReviewCommentService;
-  captureReader?: Pick<ReviewCaptureService, "readExcerpt">;
+  captureReader?: Pick<
+    ReviewCaptureService,
+    "readExcerpt" | "compareNeighborhood"
+  >;
   isEnabled: () => boolean;
 }
 
@@ -47,6 +52,15 @@ export function createReviewSubmissionsRoutes(
     return c.json({
       submissions,
       nextCursor: nextOffset < ordered.length ? String(nextOffset) : null,
+      ...(c.req.query("includeSiteStates") === "1"
+        ? {
+            siteStates: await readSiteStates(
+              store,
+              deps.captureReader,
+              projectPath,
+            ),
+          }
+        : {}),
     });
   });
 
@@ -90,15 +104,23 @@ export function createReviewSubmissionsRoutes(
       if (disabled) return disabled;
       const projectPath = await resolveProjectPath(c, deps.scanner);
       if (typeof projectPath !== "string") return projectPath;
+      const status = await deps.service.refreshSubmissionResponse(
+        projectPath,
+        c.req.param("submissionId"),
+      );
+      if (status === null) {
+        return c.json({ error: "Review submission not found" }, 404);
+      }
       const detail = await submissionDetail(
         deps.service,
         deps.captureReader,
         projectPath,
         c.req.param("submissionId"),
       );
-      return detail
-        ? c.json({ ...detail, refreshed: false })
-        : c.json({ error: "Review submission not found" }, 404);
+      if (!detail) {
+        return c.json({ error: "Review submission not found" }, 404);
+      }
+      return c.json({ ...detail, responseStatus: status });
     },
   );
 
@@ -159,7 +181,9 @@ export function createReviewSubmissionsRoutes(
 
 async function submissionDetail(
   service: ReviewCommentService,
-  captureReader: Pick<ReviewCaptureService, "readExcerpt"> | undefined,
+  captureReader:
+    | Pick<ReviewCaptureService, "readExcerpt" | "compareNeighborhood">
+    | undefined,
   projectPath: string,
   submissionId: string,
 ): Promise<ReviewSubmissionDetail | null> {
@@ -182,7 +206,9 @@ async function submissionDetail(
 
 async function readCapturedSources(
   sites: ReviewSubmissionDetail["sites"],
-  captureReader: Pick<ReviewCaptureService, "readExcerpt"> | undefined,
+  captureReader:
+    | Pick<ReviewCaptureService, "readExcerpt" | "compareNeighborhood">
+    | undefined,
   projectPath: string,
 ): Promise<ReviewSubmissionDetail["capturedSources"]> {
   const entries = sites.flatMap((site) =>
@@ -200,6 +226,13 @@ async function readCapturedSources(
       capturedSources[index] = {
         siteId: item.site.id,
         entryId: item.entry.id,
+        changeStatus: captureReader
+          ? await captureReader.compareNeighborhood(
+              projectPath,
+              item.entry.capture,
+              item.entry.anchor,
+            )
+          : "unavailable",
         source: captureReader
           ? await captureReader.readExcerpt(
               projectPath,
@@ -214,6 +247,50 @@ async function readCapturedSources(
     Array.from({ length: Math.min(4, entries.length) }, worker),
   );
   return capturedSources;
+}
+
+async function readSiteStates(
+  store: ReviewStoreFile,
+  captureReader: Pick<ReviewCaptureService, "compareNeighborhood"> | undefined,
+  projectPath: string,
+): Promise<ReviewSiteStateSummary[]> {
+  const draftKeys = new Set(
+    store.drafts.map((draft) => `${draft.siteId}\0${draft.entryId}`),
+  );
+  const sites = store.sites.filter((site) => !site.resolvedAt);
+  const states: ReviewSiteStateSummary[] = new Array(sites.length);
+  let next = 0;
+  const worker = async () => {
+    for (;;) {
+      const index = next++;
+      const site = sites[index];
+      if (!site) return;
+      const latest = site.entries.at(-1);
+      if (!latest) continue;
+      const changeStatus = captureReader
+        ? await captureReader.compareNeighborhood(
+            projectPath,
+            latest.capture,
+            latest.anchor,
+          )
+        : "unavailable";
+      const pending = draftKeys.has(`${site.id}\0${latest.id}`);
+      const hasOutcome = site.outcomes.some(
+        (outcome) => outcome.entryId === latest.id,
+      );
+      states[index] = {
+        siteId: site.id,
+        path: site.path,
+        state:
+          !pending && (hasOutcome || changeStatus === "changed")
+            ? "addressed"
+            : "open",
+        changeStatus,
+      };
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(4, sites.length) }, worker));
+  return states.filter((state) => state !== undefined);
 }
 
 function missingCapturedSource(

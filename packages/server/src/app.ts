@@ -88,6 +88,7 @@ import { createReviewInboxRoutes } from "./routes/review-inbox.js";
 import { createReviewSubmissionsRoutes } from "./routes/review-submissions.js";
 import { ReviewCaptureService } from "./review/ReviewCaptureService.js";
 import { ReviewCommentService } from "./review/ReviewCommentService.js";
+import { ReviewResponseObserver } from "./review/ReviewResponseObserver.js";
 import { createSupervisorReviewLauncher } from "./review/reviewSessionLauncher.js";
 import { health } from "./routes/health.js";
 import { createInboxRoutes } from "./routes/inbox.js";
@@ -1597,6 +1598,60 @@ export function createApp(options: AppOptions): AppResult {
     options.serverSettingsService?.getSetting(
       "sourceReviewSubmissionsEnabled",
     ) ?? false;
+  const reviewResponseObserver = new ReviewResponseObserver(
+    reviewCommentService,
+  );
+  options.eventBus?.subscribe((event) => {
+    if (event.type === "process-state-changed" && event.activity === "idle") {
+      if (!sourceReviewSubmissionsEnabled()) return;
+      const activeProcess = supervisor.getProcessForSession(event.sessionId);
+      if (activeProcess) {
+        void reviewResponseObserver
+          .observeIdle(activeProcess)
+          .then((results) => {
+            const submissionIds = (results ?? [])
+              .filter((result) => result.status === "ingested")
+              .map((result) => result.submissionId);
+            if (submissionIds.length > 0) {
+              options.eventBus?.emit({
+                type: "review-response-changed",
+                projectId: activeProcess.projectId,
+                submissionIds,
+                timestamp: new Date().toISOString(),
+              });
+            }
+          })
+          .catch((error) => {
+            console.warn(
+              `[sourceReviewResponseTurns] Could not inspect review responses for ${event.sessionId}:`,
+              error,
+            );
+          });
+      }
+      return;
+    }
+    if (event.type === "process-terminated") {
+      reviewResponseObserver.forget(event.processId);
+      return;
+    }
+    if (event.type === "session-id-remapped") {
+      const activeProcess = supervisor.getProcessForSession(event.newSessionId);
+      if (activeProcess) {
+        void reviewCommentService
+          .remapSubmissionSession(
+            activeProcess.projectPath,
+            event.oldSessionId,
+            event.newSessionId,
+          )
+          .catch((error) => {
+            console.warn(
+              `[sourceReviewResponseTurns] Could not remap review submissions from ${event.oldSessionId}:`,
+              error,
+            );
+          });
+      }
+    }
+  });
   app.route(
     "/api/projects",
     createReviewCommentsRoutes({

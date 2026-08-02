@@ -1,7 +1,9 @@
 import {
   deriveReviewSubmissionName,
   type ReviewCapturedSource,
+  type ReviewEntryCapturedSource,
   type ReviewSite,
+  type ReviewSourceChangeStatus,
   type ReviewSubmissionDetail,
   type ReviewSubmissionSummary,
 } from "@yep-anywhere/shared";
@@ -15,10 +17,12 @@ import styles from "./ReviewSubmissionsPanel.module.css";
 /** Canonical submission/site browser for captured source-review history. */
 export function ReviewSubmissionsPanel({
   projectId,
+  initialSubmissionId,
   sessionHref,
   t,
 }: {
   projectId: string;
+  initialSubmissionId?: string;
   sessionHref: (sessionId: string) => string;
   t: TranslationFn;
 }) {
@@ -41,41 +45,64 @@ export function ReviewSubmissionsPanel({
       setNextCursor(result.nextCursor);
       if (!cursor) {
         setSelectedId((current) =>
-          result.submissions.some((item) => item.id === current)
-            ? current
-            : (result.submissions[0]?.id ?? null),
+          initialSubmissionId
+            ? initialSubmissionId
+            : result.submissions.some((item) => item.id === current)
+              ? current
+              : (result.submissions[0]?.id ?? null),
         );
       }
     },
-    [projectId],
+    [initialSubmissionId, projectId],
   );
 
   const loadDetail = useCallback(
     async (submissionId: string) => {
       const result = await api.getReviewSubmission(projectId, submissionId);
       setDetail(result);
-      if (
-        result.submission.responseRevision >
-        result.submission.acknowledgedRevision
-      ) {
-        void api
-          .acknowledgeReviewSubmission(projectId, submissionId)
-          .then(({ submission }) => {
-            setSubmissions((current) =>
-              current.map((item) =>
-                item.id === submission.id ? submission : item,
-              ),
-            );
-            setDetail((current) =>
-              current?.submission.id === submission.id
-                ? { ...current, submission }
-                : current,
-            );
-          });
-      }
+      setSubmissions((current) =>
+        current.some((item) => item.id === result.submission.id)
+          ? current
+          : [result.submission, ...current],
+      );
     },
     [projectId],
   );
+
+  // Effects run only after the selected detail has committed to the visible
+  // tree; list and detail prefetches therefore never acknowledge outcomes.
+  useEffect(() => {
+    if (
+      !detail ||
+      detail.submission.id !== selectedId ||
+      detail.submission.responseRevision <=
+        detail.submission.acknowledgedRevision
+    ) {
+      return;
+    }
+    let cancelled = false;
+    void api
+      .acknowledgeReviewSubmission(projectId, detail.submission.id)
+      .then(({ submission }) => {
+        if (cancelled) return;
+        setSubmissions((current) =>
+          current.map((item) =>
+            item.id === submission.id ? submission : item,
+          ),
+        );
+        setDetail((current) =>
+          current?.submission.id === submission.id
+            ? { ...current, submission }
+            : current,
+        );
+      })
+      .catch(() => {
+        // Keep the outcome unread when acknowledgement cannot be persisted.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [detail, projectId, selectedId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -221,12 +248,14 @@ function SubmissionDetail({
   refresh: () => Promise<void>;
   t: TranslationFn;
 }) {
+  const [refreshingResponse, setRefreshingResponse] = useState(false);
+  const [responseNotice, setResponseNotice] = useState<string | null>(null);
   const sourceByEntry = useMemo(
     () =>
       new Map(
-        detail.capturedSources.map(({ siteId, entryId, source }) => [
-          `${siteId}\0${entryId}`,
-          source,
+        detail.capturedSources.map((captured) => [
+          `${captured.siteId}\0${captured.entryId}`,
+          captured,
         ]),
       ),
     [detail.capturedSources],
@@ -238,6 +267,28 @@ function SubmissionDetail({
     detail.submission.name ??
     deriveReviewSubmissionName(firstEntry?.text ?? "");
 
+  const refreshResponse = async () => {
+    setRefreshingResponse(true);
+    setResponseNotice(null);
+    try {
+      const result = await api.refreshReviewSubmissionResponse(
+        projectId,
+        detail.submission.id,
+      );
+      setResponseNotice(responseStatusLabel(result.responseStatus, t));
+      notifyReviewCommentsChanged(projectId);
+      await refresh();
+    } catch (cause) {
+      setResponseNotice(
+        cause instanceof Error
+          ? cause.message
+          : t("sourceReviewResponseRefreshFailed"),
+      );
+    } finally {
+      setRefreshingResponse(false);
+    }
+  };
+
   return (
     <>
       <header className={styles.detailHeader}>
@@ -247,19 +298,33 @@ function SubmissionDetail({
             {submissionDate(detail.submission)}
           </div>
         </div>
-        {detail.submission.targetSessionId ? (
-          <Link
-            className={styles.sessionLink}
-            to={sessionHref(detail.submission.targetSessionId)}
+        <div className={styles.detailActions}>
+          <button
+            type="button"
+            disabled={refreshingResponse}
+            onClick={() => void refreshResponse()}
           >
-            {t("sourceReviewOpenSession")}
-          </Link>
-        ) : (
-          <span className={styles.awaitingSession}>
-            {t("sourceReviewAwaitingSession")}
-          </span>
-        )}
+            {refreshingResponse
+              ? t("sourceReviewRefreshingResponse")
+              : t("sourceReviewRefreshResponse")}
+          </button>
+          {detail.submission.targetSessionId ? (
+            <Link
+              className={styles.sessionLink}
+              to={sessionHref(detail.submission.targetSessionId)}
+            >
+              {t("sourceReviewOpenSession")}
+            </Link>
+          ) : (
+            <span className={styles.awaitingSession}>
+              {t("sourceReviewAwaitingSession")}
+            </span>
+          )}
+        </div>
       </header>
+      {responseNotice && (
+        <div className={styles.responseNotice}>{responseNotice}</div>
+      )}
       <ul className={styles.siteList}>
         {detail.sites.map((site) => (
           <ReviewSiteCard
@@ -267,7 +332,10 @@ function SubmissionDetail({
             site={site}
             sourceFor={(entryId) =>
               sourceByEntry.get(`${site.id}\0${entryId}`) ?? {
-                status: "legacy-missing",
+                siteId: site.id,
+                entryId,
+                source: { status: "legacy-missing" },
+                changeStatus: "unavailable",
               }
             }
             projectId={projectId}
@@ -290,7 +358,7 @@ function ReviewSiteCard({
   t,
 }: {
   site: ReviewSite;
-  sourceFor: (entryId: string) => ReviewCapturedSource;
+  sourceFor: (entryId: string) => ReviewEntryCapturedSource;
   projectId: string;
   refresh: () => Promise<void>;
   sessionHref: (sessionId: string) => string;
@@ -301,7 +369,8 @@ function ReviewSiteCard({
   const [error, setError] = useState<string | null>(null);
   const latest = site.entries.at(-1);
   const hasPending = latest?.submittedAt === undefined;
-  const state = siteState(site);
+  const latestSource = latest ? sourceFor(latest.id) : null;
+  const state = siteState(site, latestSource?.changeStatus ?? "unavailable");
 
   const addFollowUp = async () => {
     const text = followUp.trim();
@@ -343,8 +412,17 @@ function ReviewSiteCard({
     <li className={styles.site}>
       <header className={styles.siteHeader}>
         <span className={styles.location}>{site.path}</span>
-        <span className={`${styles.state} ${siteStateClass(state)}`}>
-          {siteStateLabel(state, t)}
+        <span className={styles.stateGroup}>
+          <span className={`${styles.state} ${siteStateClass(state)}`}>
+            {siteStateLabel(state, t)}
+          </span>
+          <span
+            className={`${styles.state} ${sourceChangeClass(
+              latestSource?.changeStatus ?? "unavailable",
+            )}`}
+          >
+            {sourceChangeLabel(latestSource?.changeStatus ?? "unavailable", t)}
+          </span>
         </span>
       </header>
       <ol className={styles.entryList}>
@@ -355,15 +433,22 @@ function ReviewSiteCard({
           return (
             <li key={entry.id} className={styles.entry}>
               <div className={styles.entryHead}>
-                <span>{commentLocation(entry.anchor)}</span>
                 <span>
                   {entry.submittedAt
                     ? t("sourceReviewSubmittedEntry")
                     : t("sourceReviewPendingFollowUp")}
                 </span>
               </div>
-              <div className={styles.text}>{entry.text}</div>
-              <CapturedSource source={sourceFor(entry.id)} t={t} />
+              <div className={styles.commentTextRow}>
+                <span
+                  className={styles.commentLine}
+                  title={commentLocation(entry.anchor)}
+                >
+                  {commentLine(entry.anchor)}
+                </span>
+                <div className={styles.text}>{entry.text}</div>
+              </div>
+              <CapturedSource source={sourceFor(entry.id).source} t={t} />
               {outcomes.map((outcome) => (
                 <div key={outcome.responseHash} className={styles.outcome}>
                   <div className={styles.outcomeHead}>
@@ -462,13 +547,18 @@ function CapturedSource({
   );
 }
 
-function siteState(site: ReviewSite): "open" | "addressed" | "resolved" {
+function siteState(
+  site: ReviewSite,
+  changeStatus: ReviewSourceChangeStatus,
+): "open" | "addressed" | "resolved" {
   if (site.resolvedAt) return "resolved";
+  if (site.entries.at(-1)?.submittedAt === undefined) return "open";
   const latestSubmitted = [...site.entries]
     .reverse()
     .find((entry) => entry.submittedAt);
   return latestSubmitted &&
-    site.outcomes.some((outcome) => outcome.entryId === latestSubmitted.id)
+    (site.outcomes.some((outcome) => outcome.entryId === latestSubmitted.id) ||
+      changeStatus === "changed")
     ? "addressed"
     : "open";
 }
@@ -498,6 +588,13 @@ function commentLocation(
   return `${anchor.path}:${line ?? "?"}${oldSide}`;
 }
 
+function commentLine(
+  anchor: ReviewSite["entries"][number]["anchor"],
+): string {
+  const line = anchor.side === "old" ? anchor.oldLine : anchor.newLine;
+  return String(line ?? "?");
+}
+
 function dispositionLabel(
   disposition: ReviewSite["outcomes"][number]["disposition"],
   t: TranslationFn,
@@ -520,6 +617,31 @@ function siteStateClass(state: "open" | "addressed" | "resolved"): string {
   if (state === "addressed") return styles.addressed!;
   if (state === "resolved") return styles.resolved!;
   return styles.open!;
+}
+
+function sourceChangeLabel(
+  status: ReviewSourceChangeStatus,
+  t: TranslationFn,
+): string {
+  if (status === "changed") return t("sourceReviewSourceChanged");
+  if (status === "unchanged") return t("sourceReviewSourceUnchanged");
+  return t("sourceReviewSourceUnavailable");
+}
+
+function sourceChangeClass(status: ReviewSourceChangeStatus): string {
+  if (status === "changed") return styles.changed!;
+  if (status === "unchanged") return styles.unchanged!;
+  return styles.unavailable!;
+}
+
+function responseStatusLabel(
+  status: "missing" | "invalid" | "unchanged" | "ingested",
+  t: TranslationFn,
+): string {
+  if (status === "ingested") return t("sourceReviewResponseIngested");
+  if (status === "unchanged") return t("sourceReviewResponseUnchanged");
+  if (status === "invalid") return t("sourceReviewResponseInvalid");
+  return t("sourceReviewResponseMissing");
 }
 
 function captureUnavailableLabel(

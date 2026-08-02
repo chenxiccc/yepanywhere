@@ -114,6 +114,14 @@ export interface ProcessTerminatedEvent {
   timestamp: string;
 }
 
+/** A complete source-review response snapshot was durably incorporated. */
+export interface ReviewResponseChangedEvent {
+  type: "review-response-changed";
+  projectId: UrlProjectId;
+  submissionIds: string[];
+  timestamp: string;
+}
+
 /** Event emitted when provider runtime retry/failure status changes. */
 export interface ProviderRuntimeStatusChangedEvent {
   type: "provider-runtime-status-changed";
@@ -300,6 +308,7 @@ export type BusEvent =
   | SessionSeenEvent
   | ProcessStateEvent
   | ProcessTerminatedEvent
+  | ReviewResponseChangedEvent
   | ProviderRuntimeStatusChangedEvent
   | QueueRequestAddedEvent
   | QueuePositionChangedEvent

@@ -7,11 +7,12 @@
  * comment-time source captures honestly.
  */
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
   MAX_REVIEW_COMMENTS,
+  MAX_REVIEW_RESPONSE_FILE_BYTES,
   MAX_REVIEW_SUBMISSION_NAME_LENGTH,
   REVIEW_COMMENTS_FILE_VERSION,
   REVIEW_SUBMISSION_REQUEST_VERSION,
@@ -26,10 +27,12 @@ import {
   type ReviewStoreFile,
   type ReviewSubmissionRelocation,
   type ReviewSubmissionRequest,
+  type ReviewSubmissionResponse,
   type ReviewSubmissionSummary,
   emptyReviewStoreFile,
   parseReviewStoreFile,
   parseReviewSubmissionRequest,
+  parseReviewSubmissionResponse,
   projectLegacyReviewComments,
 } from "@yep-anywhere/shared";
 import { createCoalescingSaver } from "../lib/coalescingSaver.js";
@@ -40,6 +43,7 @@ const YEP_DIR = ".yep";
 const REVIEW_COMMENTS_FILENAME = "review-comments.json";
 const SOURCE_REVIEW_DIR = "source-review";
 const REQUEST_FILENAME = "request.json";
+const RESPONSE_FILENAME = "response.json";
 
 interface ProjectStore {
   state: ReviewStoreFile;
@@ -93,6 +97,12 @@ export interface AcceptReviewSubmissionInput {
   responseTurnLimit: number;
   deliveryStatus: "queued" | "delivered";
 }
+
+export type ReviewResponseReadStatus =
+  | "missing"
+  | "invalid"
+  | "unchanged"
+  | "ingested";
 
 /** Deps let tests stub the clock, ids, and git capture boundary. */
 export interface ReviewCommentServiceOptions {
@@ -385,6 +395,11 @@ export class ReviewCommentService {
           summary.targetSessionId !== input.targetSessionId
         ) {
           summary.targetSessionId = input.targetSessionId;
+          setOutcomeSession(
+            store.state,
+            summary.id,
+            input.targetSessionId,
+          );
           changed = true;
         }
         if (changed) await store.save();
@@ -448,8 +463,94 @@ export class ReviewCommentService {
       );
       if (!summary || summary.status === "legacy") return null;
       summary.targetSessionId = sessionId;
+      setOutcomeSession(store.state, submissionId, sessionId);
       await store.save();
       return cloneSubmission(summary);
+    });
+  }
+
+  /** Check every still-bounded submission associated with this YA session. */
+  async observeAssistantTurn(
+    projectPath: string,
+    sessionId: string,
+  ): Promise<
+    Array<{ submissionId: string; status: ReviewResponseReadStatus }>
+  > {
+    return this.withMutation(projectPath, async (store) => {
+      const submissions = store.state.submissions.filter(
+        (submission) =>
+          submission.status === "accepted" &&
+          submission.deliveryStatus === "delivered" &&
+          submission.targetSessionId === sessionId &&
+          submission.responseTurnsObserved !== undefined &&
+          submission.responseTurnLimit !== undefined &&
+          submission.responseTurnsObserved < submission.responseTurnLimit,
+      );
+      const results = [];
+      for (const submission of submissions) {
+        submission.responseTurnsObserved =
+          (submission.responseTurnsObserved ?? 0) + 1;
+        results.push({
+          submissionId: submission.id,
+          status: await this.ingestSubmissionResponse(
+            projectPath,
+            store.state,
+            submission,
+          ),
+        });
+      }
+      if (submissions.length > 0) await store.save();
+      return results;
+    });
+  }
+
+  /** User-triggered response check, including after the automatic window. */
+  async refreshSubmissionResponse(
+    projectPath: string,
+    submissionId: string,
+  ): Promise<ReviewResponseReadStatus | null> {
+    return this.withMutation(projectPath, async (store) => {
+      const submission = store.state.submissions.find(
+        (item) => item.id === submissionId,
+      );
+      if (!submission) return null;
+      const status = await this.ingestSubmissionResponse(
+        projectPath,
+        store.state,
+        submission,
+      );
+      if (status === "ingested") await store.save();
+      return status;
+    });
+  }
+
+  /** Move persisted delivery associations from a provisional YA id. */
+  async remapSubmissionSession(
+    projectPath: string,
+    oldSessionId: string,
+    newSessionId: string,
+  ): Promise<number> {
+    return this.withMutation(projectPath, async (store) => {
+      let changed = 0;
+      const remappedSubmissionIds = new Set<string>();
+      for (const submission of store.state.submissions) {
+        if (submission.targetSessionId !== oldSessionId) continue;
+        submission.targetSessionId = newSessionId;
+        remappedSubmissionIds.add(submission.id);
+        changed++;
+      }
+      for (const site of store.state.sites) {
+        for (const outcome of site.outcomes) {
+          if (
+            outcome.sessionId === oldSessionId &&
+            remappedSubmissionIds.has(outcome.submissionId)
+          ) {
+            outcome.sessionId = newSessionId;
+          }
+        }
+      }
+      if (changed > 0) await store.save();
+      return changed;
     });
   }
 
@@ -532,6 +633,13 @@ export class ReviewCommentService {
     );
   }
 
+  responsePathFor(projectPath: string, submissionId: string): string {
+    return path.join(
+      this.submissionDirectoryFor(projectPath, submissionId),
+      RESPONSE_FILENAME,
+    );
+  }
+
   reset(): void {
     this.stores.clear();
   }
@@ -543,6 +651,91 @@ export class ReviewCommentService {
     return anchor.projection && this.captureWriter
       ? this.captureWriter.capture(projectPath, anchor.projection)
       : { status: "legacy-missing" };
+  }
+
+  private async ingestSubmissionResponse(
+    projectPath: string,
+    state: ReviewStoreFile,
+    submission: ReviewSubmissionSummary,
+  ): Promise<ReviewResponseReadStatus> {
+    let bytes: Buffer;
+    try {
+      const responsePath = this.responsePathFor(projectPath, submission.id);
+      const bounded = await readFileBounded(
+        responsePath,
+        MAX_REVIEW_RESPONSE_FILE_BYTES,
+      );
+      if (!bounded) return "invalid";
+      bytes = bounded;
+    } catch (error) {
+      return (error as NodeJS.ErrnoException).code === "ENOENT"
+        ? "missing"
+        : "invalid";
+    }
+    if (bytes.byteLength > MAX_REVIEW_RESPONSE_FILE_BYTES) return "invalid";
+
+    let response: ReviewSubmissionResponse | null;
+    try {
+      response = parseReviewSubmissionResponse(
+        JSON.parse(bytes.toString("utf-8")),
+      );
+    } catch {
+      return "invalid";
+    }
+    if (!response || response.submissionId !== submission.id) return "invalid";
+    let request: ReviewSubmissionRequest | null;
+    try {
+      request = await this.readSubmissionRequest(projectPath, submission.id);
+    } catch {
+      return "invalid";
+    }
+    if (!request) return "invalid";
+    const expected = new Set(request.entries.map(entryRefKey));
+    if (expected.size !== request.entries.length) return "invalid";
+    const actual = new Set(response.outcomes.map(entryRefKey));
+    if (
+      response.outcomes.length !== expected.size ||
+      actual.size !== expected.size ||
+      [...actual].some((key) => !expected.has(key))
+    ) {
+      return "invalid";
+    }
+
+    const resolved = response.outcomes.map((outcome) => ({
+      outcome,
+      found: findEntry(state, outcome),
+    }));
+    if (resolved.some((item) => !item.found)) return "invalid";
+
+    const responseHash = createHash("sha256").update(bytes).digest("hex");
+    if (responseHash === submission.lastResponseHash) return "unchanged";
+    const observedAt = this.now();
+    for (const { outcome, found } of resolved) {
+      if (!found) continue;
+      const previous = found.site.outcomes
+        .filter((item) => item.entryId === outcome.entryId)
+        .at(-1);
+      if (
+        previous?.disposition === outcome.disposition &&
+        previous.text === outcome.text
+      ) {
+        continue;
+      }
+      found.site.outcomes.push({
+        submissionId: submission.id,
+        entryId: outcome.entryId,
+        disposition: outcome.disposition,
+        text: outcome.text,
+        observedAt,
+        responseHash,
+        ...(submission.targetSessionId
+          ? { sessionId: submission.targetSessionId }
+          : {}),
+      });
+    }
+    submission.lastResponseHash = responseHash;
+    submission.responseRevision += 1;
+    return "ingested";
   }
 
   private reserveRequestEntries(
@@ -708,10 +901,50 @@ export class ReviewCommentService {
   }
 }
 
+async function readFileBounded(
+  filePath: string,
+  maxBytes: number,
+): Promise<Buffer | null> {
+  const handle = await fs.open(filePath, "r");
+  try {
+    const stats = await handle.stat();
+    if (stats.size > maxBytes) return null;
+    const bytes = Buffer.alloc(stats.size);
+    let offset = 0;
+    while (offset < bytes.length) {
+      const result = await handle.read(
+        bytes,
+        offset,
+        bytes.length - offset,
+        offset,
+      );
+      if (result.bytesRead === 0) break;
+      offset += result.bytesRead;
+    }
+    return bytes.subarray(0, offset);
+  } finally {
+    await handle.close();
+  }
+}
+
 function findEntry(store: ReviewStoreFile, ref: ReviewEntryRef) {
   const site = store.sites.find((item) => item.id === ref.siteId);
   const entry = site?.entries.find((item) => item.id === ref.entryId);
   return site && entry ? { site, entry } : null;
+}
+
+function setOutcomeSession(
+  store: ReviewStoreFile,
+  submissionId: string,
+  sessionId: string,
+): void {
+  for (const site of store.sites) {
+    for (const outcome of site.outcomes) {
+      if (outcome.submissionId === submissionId) {
+        outcome.sessionId = sessionId;
+      }
+    }
+  }
 }
 
 function validateSubmissionId(submissionId: string): void {

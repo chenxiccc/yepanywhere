@@ -5,12 +5,16 @@ import type {
   ReviewCapture,
   ReviewCapturedSource,
   ReviewCommentAnchor,
+  ReviewSourceChangeStatus,
   ReviewSourceProjection,
 } from "@yep-anywhere/shared";
+import { DEFAULT_SNIPPET_CONTEXT_RADIUS } from "@yep-anywhere/shared";
+import { open } from "node:fs/promises";
 import { runGit, runGitBytes } from "../git/gitExec.js";
 import { HttpError } from "../middleware/error-handler.js";
 import {
   repositoryFilePath,
+  repositoryFilePathIfExists,
   repositoryRelativePath,
 } from "./repositoryPath.js";
 
@@ -59,33 +63,12 @@ export class ReviewCaptureService {
       return { status: "legacy-missing" };
     }
     const captureBlobId = capture.captureBlobId;
+    const captured = await readCaptureText(projectPath, captureBlobId);
+    if (captured.status === "unavailable") {
+      return { ...captured, captureBlobId };
+    }
     try {
-      const { stdout: sizeText } = await runGit(projectPath, [
-        "cat-file",
-        "-s",
-        captureBlobId,
-      ]);
-      const size = Number(sizeText.trim());
-      if (!Number.isSafeInteger(size) || size < 0) {
-        return { status: "unavailable", captureBlobId, reason: "missing" };
-      }
-      if (size > MAX_CAPTURE_SOURCE_BYTES) {
-        return { status: "unavailable", captureBlobId, reason: "too-large" };
-      }
-      const { stdout } = await runGitBytes(
-        projectPath,
-        ["cat-file", "blob", captureBlobId],
-        { maxBuffer: MAX_CAPTURE_SOURCE_BYTES + 1 },
-      );
-      if (stdout.includes(0)) {
-        return { status: "unavailable", captureBlobId, reason: "binary" };
-      }
-      let text: string;
-      try {
-        text = new TextDecoder("utf-8", { fatal: true }).decode(stdout);
-      } catch {
-        return { status: "unavailable", captureBlobId, reason: "binary" };
-      }
+      const text = captured.text;
       const lines = text.split("\n");
       const requestedLine =
         (anchor.side === "old" ? anchor.oldLine : anchor.newLine) ??
@@ -114,6 +97,57 @@ export class ReviewCaptureService {
     } catch {
       return { status: "unavailable", captureBlobId, reason: "missing" };
     }
+  }
+
+  /** Compare the capture neighborhood with today's worktree, ignoring spaces. */
+  async compareNeighborhood(
+    projectPath: string,
+    capture: ReviewCapture,
+    anchor: ReviewCommentAnchor,
+  ): Promise<ReviewSourceChangeStatus> {
+    if (capture.status === "legacy-missing") return "unavailable";
+    const captured = await readCaptureText(projectPath, capture.captureBlobId);
+    if (captured.status === "unavailable") return "unavailable";
+    if (anchor.newLine === null) return "changed";
+
+    const safePath = repositoryRelativePath(anchor.path);
+    const currentPath = await repositoryFilePathIfExists(projectPath, safePath);
+    if (!currentPath) return "changed";
+    let current: string | null;
+    try {
+      current = await readTextFileBounded(currentPath);
+    } catch {
+      return "unavailable";
+    }
+    if (current === null) return "unavailable";
+
+    const capturedLines = captured.text.split("\n");
+    const capturedLineNumber =
+      (anchor.side === "old" ? anchor.oldLine : anchor.newLine) ??
+      anchor.newLine ??
+      anchor.oldLine;
+    if (!capturedLineNumber) return "unavailable";
+    const target = normalizeWhitespace(
+      capturedLines[capturedLineNumber - 1] ?? "",
+    );
+    const currentLines = current.split("\n");
+    const matches: number[] = [];
+    for (let index = 0; index < currentLines.length; index++) {
+      if (normalizeWhitespace(currentLines[index] ?? "") === target) {
+        matches.push(index + 1);
+      }
+    }
+    if (matches.length === 0) return "changed";
+    const capturedNeighborhood = normalizeWhitespace(
+      sourceNeighborhood(capturedLines, capturedLineNumber),
+    );
+    return matches.some(
+      (line) =>
+        normalizeWhitespace(sourceNeighborhood(currentLines, line)) ===
+        capturedNeighborhood,
+    )
+      ? "unchanged"
+      : "changed";
   }
 
   /** Add a blob to the shared-worktree ref with compare-and-swap retries. */
@@ -145,6 +179,87 @@ export class ReviewCaptureService {
       "Could not update the source-review capture ref after retries",
     );
   }
+}
+
+type CaptureTextResult =
+  | { status: "captured"; text: string }
+  | { status: "unavailable"; reason: "binary" | "too-large" | "missing" };
+
+async function readCaptureText(
+  projectPath: string,
+  captureBlobId: string,
+): Promise<CaptureTextResult> {
+  try {
+    const { stdout: sizeText } = await runGit(projectPath, [
+      "cat-file",
+      "-s",
+      captureBlobId,
+    ]);
+    const size = Number(sizeText.trim());
+    if (!Number.isSafeInteger(size) || size < 0) {
+      return { status: "unavailable", reason: "missing" };
+    }
+    if (size > MAX_CAPTURE_SOURCE_BYTES) {
+      return { status: "unavailable", reason: "too-large" };
+    }
+    const { stdout } = await runGitBytes(
+      projectPath,
+      ["cat-file", "blob", captureBlobId],
+      { maxBuffer: MAX_CAPTURE_SOURCE_BYTES + 1 },
+    );
+    const text = decodeText(stdout);
+    return text === null
+      ? { status: "unavailable", reason: "binary" }
+      : { status: "captured", text };
+  } catch {
+    return { status: "unavailable", reason: "missing" };
+  }
+}
+
+async function readTextFileBounded(filePath: string): Promise<string | null> {
+  const handle = await open(filePath, "r");
+  try {
+    const stats = await handle.stat();
+    if (stats.size > MAX_CAPTURE_SOURCE_BYTES) return null;
+    const bytes = Buffer.alloc(stats.size);
+    let offset = 0;
+    while (offset < bytes.length) {
+      const result = await handle.read(
+        bytes,
+        offset,
+        bytes.length - offset,
+        offset,
+      );
+      if (result.bytesRead === 0) break;
+      offset += result.bytesRead;
+    }
+    return decodeText(bytes.subarray(0, offset));
+  } finally {
+    await handle.close();
+  }
+}
+
+function decodeText(bytes: Uint8Array): string | null {
+  if (bytes.includes(0)) return null;
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return null;
+  }
+}
+
+function normalizeWhitespace(value: string): string {
+  return value.replace(/\s+/gu, "");
+}
+
+function sourceNeighborhood(lines: string[], line: number): string {
+  const index = line - 1;
+  return lines
+    .slice(
+      Math.max(0, index - DEFAULT_SNIPPET_CONTEXT_RADIUS),
+      Math.min(lines.length, index + DEFAULT_SNIPPET_CONTEXT_RADIUS + 1),
+    )
+    .join("\n");
 }
 
 async function resolveProjectionBlob(

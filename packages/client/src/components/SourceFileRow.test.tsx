@@ -7,6 +7,7 @@ import {
   SourceFilePath,
   SourceFileRowButton,
   SourceFileStatusBadge,
+  SourceReviewStateBadges,
 } from "./SourceFileRow";
 
 const t = (key: string) => key;
@@ -48,11 +49,55 @@ describe("SourceFileRow", () => {
     render(<SourceFileStatusBadge status="M" t={t} />);
 
     const badge = screen.getByText("M");
-    expect(badge.getAttribute("title")).toBe(
-      "M — sourceFileStatusModified",
-    );
+    expect(badge.getAttribute("title")).toBe("M — sourceFileStatusModified");
     expect(badge.getAttribute("aria-label")).toBe(
       "M — sourceFileStatusModified",
     );
+  });
+
+  it("keeps review state and source change as separate badges", () => {
+    render(
+      <SourceReviewStateBadges
+        states={[
+          {
+            siteId: "open-site",
+            path: "src/a.ts",
+            state: "open",
+            changeStatus: "changed",
+          },
+          {
+            siteId: "addressed-site",
+            path: "src/a.ts",
+            state: "addressed",
+            changeStatus: "unchanged",
+          },
+        ]}
+        t={t}
+      />,
+    );
+
+    expect(screen.getByText("sourceReviewStateOpen 1")).toBeTruthy();
+    expect(screen.getByText("sourceReviewSourceChanged 1")).toBeTruthy();
+    expect(screen.queryByText("sourceReviewStateAddressed 1")).toBeNull();
+    expect(screen.queryByText("sourceReviewSourceUnchanged 1")).toBeNull();
+  });
+
+  it("shows an unchanged site as addressed when an outcome exists", () => {
+    render(
+      <SourceReviewStateBadges
+        states={[
+          {
+            siteId: "addressed-site",
+            path: "src/a.ts",
+            state: "addressed",
+            changeStatus: "unchanged",
+          },
+        ]}
+        t={t}
+      />,
+    );
+
+    expect(screen.getByText("sourceReviewStateAddressed 1")).toBeTruthy();
+    expect(screen.getByText("sourceReviewSourceUnchanged 1")).toBeTruthy();
   });
 });

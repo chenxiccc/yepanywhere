@@ -2,8 +2,10 @@ import type {
   ReviewBatch,
   ReviewComment,
   ReviewCommentAnchor,
+  ReviewInboxItem,
   ReviewNewSessionOptions,
   ReviewReviewerEntry,
+  ReviewSiteStateSummary,
   ReviewSubmissionDetail,
   ReviewSubmissionSummary,
 } from "@yep-anywhere/shared";
@@ -60,6 +62,7 @@ export interface ReviewSubmitResult {
 export interface ReviewSubmissionPage {
   submissions: ReviewSubmissionSummary[];
   nextCursor: string | null;
+  siteStates?: ReviewSiteStateSummary[];
 }
 
 export const reviewApi = {
@@ -151,4 +154,22 @@ export const reviewApi = {
       `/projects/${projectId}/review/submissions/${encodeURIComponent(submissionId)}/acknowledge`,
       { method: "POST" },
     ),
+
+  refreshReviewSubmissionResponse: (projectId: string, submissionId: string) =>
+    fetchJSON<
+      ReviewSubmissionDetail & {
+        responseStatus: "missing" | "invalid" | "unchanged" | "ingested";
+      }
+    >(
+      `/projects/${projectId}/review/submissions/${encodeURIComponent(submissionId)}/refresh-response`,
+      { method: "POST" },
+    ),
+
+  listReviewSiteStates: (projectId: string) =>
+    fetchJSON<ReviewSubmissionPage>(
+      `/projects/${projectId}/review/submissions?limit=1&includeSiteStates=1`,
+    ).then((page) => page.siteStates ?? []),
+
+  listReviewInbox: () =>
+    fetchJSON<{ items: ReviewInboxItem[] }>("/review/inbox"),
 };
