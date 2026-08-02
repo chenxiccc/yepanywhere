@@ -2,11 +2,11 @@
 
 ## Status
 
-Approved product direction with a first-class Android shell in progress. The
+Approved product direction with the first-class Android shell complete. The
 local-bundled and hosted-`latest` Android asset channels, exact-origin native
 host, App Link, and minimal FCM registration/receive probe exist. The
-Gradle/Kotlin replacement has landed and Tauri Mobile has been removed; final
-shell validation and CI are tracked in
+Gradle/Kotlin replacement has landed and Tauri Mobile has been removed; its
+validation evidence and CI contract are recorded in
 [`080-first-class-android-shell.md`](../tactical/080-first-class-android-shell.md).
 Broker enrollment, native notification presentation, and native foreground UI
 remain later slices.

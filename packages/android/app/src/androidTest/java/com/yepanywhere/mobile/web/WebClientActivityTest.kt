@@ -176,13 +176,16 @@ class WebClientActivityTest {
     fun backNavigatesWebHistoryBeforeFinishingTheActivity() {
         ActivityScenario.launch(WebClientActivity::class.java).use { scenario ->
             awaitJavaScript(scenario, "document.readyState", "\"complete\"")
-            val initialPath = evaluateJavaScript(scenario, "window.location.pathname")
             scenario.onActivity { activity ->
                 activity.findViewById<WebView>(R.id.web_client).loadUrl(
-                    "https://appassets.androidplatform.net/back-contract",
+                    "https://appassets.androidplatform.net/debug-streaming.html",
                 )
             }
-            awaitJavaScript(scenario, "window.location.pathname", "\"/back-contract\"")
+            awaitJavaScript(
+                scenario,
+                "window.location.pathname",
+                "\"/debug-streaming.html\"",
+            )
             scenario.onActivity { activity ->
                 assertTrue(activity.findViewById<WebView>(R.id.web_client).canGoBack())
             }
@@ -191,7 +194,15 @@ class WebClientActivityTest {
                 activity.onBackPressedDispatcher.onBackPressed()
             }
 
-            awaitJavaScript(scenario, "window.location.pathname", initialPath)
+            awaitJavaScript(
+                scenario,
+                """
+                window.location.pathname === "/debug-streaming.html"
+                  ? "waiting"
+                  : "returned"
+                """.trimIndent(),
+                "\"returned\"",
+            )
             assertEquals(Lifecycle.State.RESUMED, scenario.state)
         }
     }

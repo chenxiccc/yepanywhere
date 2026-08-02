@@ -1,11 +1,11 @@
 # Android Wrapper And Notification Integration
 
-Status: planned behind the first-class Android-shell migration in
-[`080-first-class-android-shell.md`](080-first-class-android-shell.md). The
-local-bundled and hosted-`latest` build channels and live broker delivery are
-proven; native-host notification operations, broker enrollment, YA server
-compatibility work, notification presentation, and foreground activity remain
-future slices.
+Status: ready to resume after the completed first-class Android-shell migration
+in [`080-first-class-android-shell.md`](080-first-class-android-shell.md). The
+local-bundled and hosted-`latest` build channels, exact-origin host, and live
+broker delivery are proven. Native-host notification operations, broker
+enrollment, YA server compatibility work, notification presentation, and
+foreground activity remain future slices.
 
 Topic: android-fcm-push
 
@@ -154,6 +154,22 @@ launch-context read is preferable to exposing a generic event or evaluation
 channel. The exact host envelope, origin, lifecycle, and removal sequence live
 in the first-class shell plan.
 
+### First-class shell handoff — 2026-08-02
+
+The Android application now lives at `packages/android` and needs no Tauri,
+Rust, Cargo, or generated host project. Bundled and hosted channels both use
+the protocol-1 native host, while an ordinary browser sees a quiet absent-host
+fallback. Connected tests prove main-frame/origin authority and document
+lifecycle behavior on Android API 37.
+
+`host.describe` intentionally returns an empty `features` list. The next slice
+must add each notification operation and its exact feature name together; it
+must not infer notification authority merely from `platform: "android"`.
+App-private broker installation storage, FID replacement, permission/channel
+state, and non-secret status reads can be implemented before the YA-server
+contract. Enrollment calls from the client remain behind the compatibility
+review below.
+
 ## Push Enrollment Sequence
 
 1. Firebase invokes `onRegistered()` with the current FID.
@@ -263,8 +279,8 @@ change. Push enrollment does.
 Before implementing YA server enrollment routes or fields, perform the required
 stable-release compatibility review. The intended optional-feature fallback is:
 
-- a new hosted client hides native push enrollment unless both the native
-  native host and a new server capability are present;
+- a new hosted client hides native push enrollment unless both the native host
+  and a new server capability are present;
 - older servers receive no unsupported request;
 - browser Web Push and ordinary remote use remain unchanged; and
 - absence of native enrollment never blocks login, session browsing, or FCM
@@ -275,12 +291,12 @@ remain an approval gate rather than being committed by this plan.
 
 ## Implementation Slices
 
-1. **Asset channels:** keep local development, debug APKs, and ordinary
-   production builds bundled; provide an explicit hosted-`latest` release
-   channel for Play testing.
-2. **Native foundation:** add native secure storage, permission/channel state,
-   and versioned notification operations to the first-class shell's
-   exact-origin host channel.
+1. **Asset channels — complete:** local development, debug APKs, and ordinary
+   production builds are bundled; the explicit hosted-`latest` channel remains
+   available for Play testing.
+2. **Native foundation — next:** add native secure storage,
+   permission/channel state, and versioned notification operations to the
+   first-class shell's exact-origin host channel.
 3. **Live broker lifecycle:** exercise real broker installation creation and
    FID replacement before prescribing retry or cleanup behavior.
 4. **Compatibility review and enrollment:** audit stable YA releases, approve

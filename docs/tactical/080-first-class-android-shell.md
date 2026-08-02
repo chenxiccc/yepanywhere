@@ -1,13 +1,11 @@
 # First-Class Android Shell
 
-Status: executing. The product decision is to replace the Tauri Mobile wrapper
-before implementing Android broker enrollment or native notification
-presentation. The existing Android package identity, Firebase probe, asset
-channels, and full-web fallback remain inputs to the migration rather than
-reasons to retain Tauri. Validation is physical-device-first whenever an
-authorized Android device is attached; the existing JSTorrent-named AVDs are
-shared development resources and may be used for YA when no device is
-available or repeatable emulator coverage is more useful.
+Status: implementation complete on 2026-08-02. Android now owns its Gradle,
+Kotlin, Compose, WebView, App Link, and Firebase receive-probe layers directly;
+Tauri Mobile has been removed. Local config-free CI-equivalent validation and
+the physical-device acceptance matrix pass. The dedicated GitHub workflow is
+committed and will receive its first hosted run when this commit series is
+pushed.
 
 Topic: android-native-shell
 Topic: android-fcm-push
@@ -116,8 +114,8 @@ step and applicable validation rows below have evidence.
 | Migrate App Links and FCM probe | complete | Exact verified App Link plus direct, broker-foreground, and no-process broker-background Pixel evidence |
 | Remove Tauri Mobile | complete | Mobile Rust/Tauri workspace, lock entry, commands, and generated-project ownership removed |
 | Add Android CI | complete | Config-free unit/lint/channel build, APK contract inspection, AVD instrumentation, and report uploads are required |
-| Prove physical-device equivalence | planned | Recorded connected acceptance matrix |
-| Hand off to notifications/onboarding | planned | Updated downstream plan and no open shell blockers |
+| Prove physical-device equivalence | complete | Pixel 7a/API 37 cold launch, lifecycle/navigation suite, App Link, hosted channel, and prior live FCM evidence pass |
+| Hand off to notifications/onboarding | complete | Notification plan is unblocked; `host.describe` still advertises no notification operations |
 
 ### Frozen Tauri baseline — 2026-08-02
 
@@ -186,6 +184,36 @@ expected background-notification path. Notification permission was granted by
 ADB for this acceptance check; product permission UI remains out of scope. The
 temporary broker installation was deleted and no FID or capability was printed
 or retained.
+
+### Final replacement acceptance — 2026-08-02
+
+The CI-equivalent config-free command ran Android JVM tests and lint, built
+bundled debug, bundled release, and hosted-`latest` release, and passed the APK
+contract checker. The checker confirms the application id, notification and
+Digital Asset Links manifest boundaries, bundled-versus-hosted asset contents,
+and the absence of Tauri/Rust artifacts and unreviewed native libraries. The
+same config-free bundled APK passed the seven-test connected host, lifecycle,
+and navigation suite on the `jstorrent-dev` AVD (Android API 34).
+
+On the attached Pixel 7a, Android API 37, user 0, seven bundled connected tests
+passed: approved-main-frame `host.describe`, denied origin, denied subframe,
+activity recreation, rotation, WebView back history, and external HTTPS intent
+handoff. A force-stop left no YA process, and a cold launcher start returned to
+`WebClientActivity`. The hosted-`latest` APK loaded the fixed hosted login UI,
+passed a real `host.describe` exchange, contained no client source, and emitted
+no Tauri/Wry initialization or property-redefinition diagnostics.
+
+Android still reports `yepanywhere.com` as verified. Reinstalling the debug APK
+reset this device user's domain selection to disabled, but package resolution
+still matches the exact HTTPS `/open` filter and excludes `/open/extra`; an
+explicit exact App Link reached the validated fixed-origin WebView handoff. The
+selection toggle is Android user state rather than application authority and
+must remain visible in future release checks.
+
+The shell advertises an empty `features` list. Notification permission,
+channels, broker-installation storage, enrollment methods, and server
+capability work therefore remain absent rather than being implied by the
+completed container migration.
 
 ## Scope
 
