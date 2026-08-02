@@ -48,7 +48,7 @@ scripted SVG, and executable applications.
 
 - **diff** (jsdiff): Compute `structuredPatch` for pending edits
 - **shiki**: Syntax highlighting with TextMate grammars (VS Code quality)
-- **TBD**: Markdown rendering (marked, micromark, or remark)
+- **markdown-it**: Markdown rendering with source-line token maps
 
 ### Data Flow
 
@@ -111,7 +111,7 @@ Augments are included in the session response:
 
 ### Phase 3: Markdown Rendering
 
-- Add markdown renderer to augment service (marked or micromark)
+- Add markdown-it renderer to augment service
 - Handle streaming: render complete paragraphs/blocks, buffer incomplete ones
 - Update `TextBlock.tsx` to render pre-rendered HTML
 - Support file path detection server-side

@@ -5,9 +5,10 @@
 
 Topic: `aligned-markdown-diffs`
 
-Status: Proposal. Source Control still replaces a Markdown diff with a
-whole-document preview; none of the aligned projection described here is
-implemented yet.
+Status: Parser foundation implemented. YA now renders Markdown with
+markdown-it 15 and exposes its source-line token maps, but Source Control still
+replaces a Markdown diff with a whole-document preview. The aligned projection
+and shared scroll identity described here remain proposed.
 
 ## Problem and invariant
 
@@ -117,10 +118,14 @@ diff grammar in Source Control.
 
 ### 2. Add source-positioned block completion
 
-`BlockDetector` already supports line/chunk feeding and emits completed blocks
-with absolute `startOffset` and `endOffset`; `renderMarkdownToHtml` already uses
-those blocks before applying the established safe renderer. Extend that
-boundary to retain line spans and feed old and new documents independently.
+`parseMarkdownSourceSpans` now exposes markdown-it's one-based inclusive block
+spans, including GFM table rows, reference definitions, and display math.
+`BlockDetector` separately supports line/chunk feeding and emits completed
+blocks with absolute `startOffset` and `endOffset`; `renderMarkdownToHtml`
+already uses those blocks for streaming before applying the same safe renderer.
+Use the parser maps as the whole-file boundary authority and retain the
+detector as the resumable line-feed boundary. Feed old and new documents
+independently.
 
 The block layer improves multi-line constructs without weakening row identity:
 
@@ -203,32 +208,55 @@ Hunk next/previous continues to operate while Preview is active. A rendered
 block intersecting a hunk exposes the hunk marker on its first source row; it
 does not disappear merely because the code-font projection is unmounted.
 
-## Package options
+## Parser decision and evidence
 
-No standard package is a drop-in solution because YA must preserve its current
-Marked extensions, project-file links, KaTeX rules, Shiki output, and sanitizer.
-The useful candidates are boundary or migration options:
+YA selected markdown-it 15 as the first candidate with acceptable performance
+and replaced Marked rather than maintaining two Markdown grammars. Its public
+`Token.map` supplies `[line_begin, line_end]`; YA converts that to one-based
+inclusive spans. The committed smoke proves exact heading, paragraph, GFM table
+row, forward reference-definition, display-math, CRLF, and Unicode line maps.
+The v15 compatibility rule `strip_references` is disabled so definition tokens
+remain observable after reference resolution.
 
-- [markdown-it](https://markdown-it.github.io/markdown-it/) exposes
-  `Token.map` as `[line_begin, line_end]`, which is directly useful for block
-  alignment. Adopting it as renderer would still require parity work for YA's
-  existing Markdown extensions and safety behavior.
-- [unified/mdast](https://unifiedjs.com/learn/guide/syntax-trees-typescript/)
-  assigns parsed nodes 1-indexed line/column positions; `remark-gfm` adds GFM
-  tables. It offers the richest transform surface but is a larger parser and
-  rendering-pipeline migration.
-- [commonmark.js](https://www.npmjs.com/package/commonmark) can emit block-level
-  `data-sourcepos`, but CommonMark alone does not cover YA's GFM table needs.
-- [Lezer Markdown](https://www.npmjs.com/package/@lezer/markdown) produces
-  compact position trees and can reuse fragments for incremental parsing. It
-  intentionally does not render HTML and relaxes some reference-link
-  validation, so it is best considered as a sidecar boundary index rather than
-  a semantic authority.
+The same renderer retains project-file links, task lists, safe URL rendering,
+escaped raw HTML, table alignment, and sanitization. `@mdit/plugin-katex`
+provides bracket and dollar math delimiters with `trust: false` and
+`maxExpand: 1000`. Package-scoped pnpm overrides make plugin 1.0.2, its helper,
+and its TeX tokenizer use markdown-it 15 and YA's KaTeX 0.16.45. A strict-peer
+fixture proved one shared runtime resolution and accurate math/reference maps.
+The plugin's published declarations still name markdown-it v14-only types; YA's
+normal dependency declaration check is skipped by `skipLibCheck`, while the YA
+call site and full server build remain type-checked. Vendor or patch the plugin
+if a future compiler configuration requires dependency declarations to pass
+standalone strict checking. The package also declares Node 22 or newer, but the
+exact pinned artifact installs without engine warnings and passed the same
+runtime proof under YA's Node 20.12 floor. Repeat that minimum-runtime proof on
+every plugin bump; vendor the tokenizer/adapter if a future release actually
+uses a Node 22-only feature.
 
-The first implementation should add no parser dependency. Reuse the existing
-line renderer, then extend `BlockDetector` source spans. Prototype one of the
-packages only if detector parity tests show that maintaining GFM block
-boundaries locally is becoming a parser project.
+Unified/mdast was evaluated first and passed the same alignment smoke, but was
+rejected on performance: the realistic parse/render/sanitize pipeline was
+roughly 6–8 times slower than the current YA pipeline, and bare parsing was
+about 14 times slower on the 291 KiB corpus. CommonMark and Lezer were cached
+but not evaluated after markdown-it met the stop-on-first-acceptable rule.
+
+Node 24.14.0, 25-sample adaptive benchmark, milliseconds p95:
+
+| Input | Marked parse | markdown-it parse | Marked render | markdown-it render |
+| ---: | ---: | ---: | ---: | ---: |
+| 4 KiB | 0.224 | 0.222 | — | — |
+| 13 KiB | 0.824 | 0.869 | 1.017 | 1.065 |
+| 291 KiB | 18.441 | 20.112 | 18.183 | 20.250 |
+| 1 MiB | 64.097 | 72.341 | 71.632 | 90.457 |
+
+The ordinary safe-Markdown test also measures the full positioned-parse and
+sanitized-render path. Its committed ceilings are deliberately broad
+regression tripwires rather than hardware-portable latency promises:
+
+| Input | Positioned parse p95 | Safe render p95 | Test ceilings |
+| ---: | ---: | ---: | ---: |
+| 16 KiB | 8.24 ms | 17.54 ms | 30 / 120 ms |
+| 256 KiB | 111.74 ms | 148.48 ms | 250 / 1000 ms |
 
 ## Verification matrix
 
@@ -257,13 +285,15 @@ semantic block.
 
 ## Implementation sequence
 
-1. Extract and reuse the session diff-aware renderer with explicit patch-line
+1. **Completed foundation:** replace Marked with markdown-it, retain safe YA
+   rendering behavior, and prove source-line maps plus performance budgets.
+2. Extract and reuse the session diff-aware renderer with explicit patch-line
    identities.
-2. Replace whole-document Markdown Preview in `GitDiffContent`; add logical
+3. Replace whole-document Markdown Preview in `GitDiffContent`; add logical
    scroll-anchor restoration and keep hunk/comment behavior mounted.
-3. Add incremental source spans to `BlockDetector` and the Markdown projection
+4. Add incremental source spans to `BlockDetector` and the Markdown projection
    result, preserving the current safe renderer.
-4. Add aligned tables and other multi-line constructs one kind at a time,
+5. Add aligned tables and other multi-line constructs one kind at a time,
    retaining the line fallback for unsupported or incomplete blocks.
-5. Measure large-document cancellation/resumption before considering a new
-   parser dependency or a new client/server wire shape.
+6. Measure large-document cancellation/resumption before considering a new
+   client/server wire shape.

@@ -1,9 +1,31 @@
+import { realpathSync } from "node:fs";
+import { createRequire } from "node:module";
+import { performance } from "node:perf_hooks";
 import { describe, expect, it } from "vitest";
 import {
   isLocalFilePath,
   localMediaApiUrl,
+  parseMarkdownSourceSpans,
   renderSafeMarkdown,
 } from "../../src/augments/safe-markdown.js";
+
+describe("Markdown plugin dependency resolution", () => {
+  it("uses YA's exact markdown-it and KaTeX runtimes", () => {
+    const serverRequire = createRequire(import.meta.url);
+    const pluginRequire = createRequire(
+      serverRequire.resolve("@mdit/plugin-katex"),
+    );
+
+    expect(serverRequire("markdown-it/package.json").version).toBe("15.0.0");
+    expect(serverRequire("katex/package.json").version).toBe("0.16.45");
+    expect(realpathSync(pluginRequire.resolve("markdown-it"))).toBe(
+      realpathSync(serverRequire.resolve("markdown-it")),
+    );
+    expect(realpathSync(pluginRequire.resolve("katex"))).toBe(
+      realpathSync(serverRequire.resolve("katex")),
+    );
+  });
+});
 
 describe("renderSafeMarkdown — math", () => {
   it("renders inline $…$ through katex", () => {
@@ -37,15 +59,23 @@ e_t(y)=(Wh_t+b)_y
   });
 
   it("keeps escaped, empty, and unclosed bracket delimiters literal", () => {
-    const escaped = renderSafeMarkdown(
-      String.raw`literal \\(x\\) and \\[y\\]`,
-    );
+    const escaped = renderSafeMarkdown(String.raw`literal \\(x\\) and \\[y\\]`);
     const empty = renderSafeMarkdown("\\[\n\n\\]");
     const unclosed = renderSafeMarkdown(String.raw`unclosed \(x`);
 
     expect(escaped).not.toContain('class="katex"');
     expect(empty).not.toContain('class="katex"');
     expect(unclosed).not.toContain('class="katex"');
+  });
+
+  it("keeps unclosed display-math delimiters literal", () => {
+    const dollars = renderSafeMarkdown("$$\nx + y");
+    const brackets = renderSafeMarkdown("\\[\nx + y");
+
+    expect(dollars).not.toContain('class="katex"');
+    expect(dollars).toContain("$$");
+    expect(brackets).not.toContain('class="katex"');
+    expect(brackets).toContain("x + y");
   });
 
   it("does not close bracketed math at escaped closing delimiters", () => {
@@ -175,6 +205,129 @@ x \\] + y
     expect(html).not.toContain("&lt;span class=&quot;katex&quot;");
     expect(html).not.toContain("$x^2$");
   });
+});
+
+describe("parseMarkdownSourceSpans", () => {
+  it("maps headings, table rows, references, and math to exact source lines", () => {
+    const markdown = [
+      "# Heading",
+      "",
+      "paragraph",
+      "",
+      "| a | b |",
+      "| - | - |",
+      "| c | d |",
+      "",
+      "[later][ref]",
+      "",
+      "[ref]: https://example.com",
+      "",
+      "\\[",
+      "x + y",
+      "\\]",
+    ].join("\n");
+
+    const spans = parseMarkdownSourceSpans(markdown);
+    expect(
+      spans
+        .filter((span) =>
+          [
+            "heading_open",
+            "paragraph_open",
+            "table_open",
+            "tr_open",
+            "reference_definition",
+            "math_block",
+          ].includes(span.type),
+        )
+        .map(({ type, startLine, endLine }) => ({ type, startLine, endLine })),
+    ).toEqual([
+      { type: "heading_open", startLine: 1, endLine: 1 },
+      { type: "paragraph_open", startLine: 3, endLine: 3 },
+      { type: "table_open", startLine: 5, endLine: 7 },
+      { type: "tr_open", startLine: 5, endLine: 5 },
+      { type: "tr_open", startLine: 7, endLine: 7 },
+      { type: "paragraph_open", startLine: 9, endLine: 9 },
+      { type: "reference_definition", startLine: 11, endLine: 11 },
+      { type: "math_block", startLine: 13, endLine: 15 },
+    ]);
+  });
+
+  it("keeps one-based line maps accurate across CRLF and Unicode", () => {
+    const spans = parseMarkdownSourceSpans("α heading\r\n\r\nβ paragraph\r\n");
+    const paragraphs = spans.filter((span) => span.type === "paragraph_open");
+
+    expect(paragraphs).toMatchObject([
+      { startLine: 1, endLine: 1 },
+      { startLine: 3, endLine: 3 },
+    ]);
+  });
+});
+
+const MARKDOWN_PERF_CHUNK = [
+  "## Representative heading",
+  "",
+  "A paragraph with **bold**, `code`, and https://example.com/path?q=1.",
+  "",
+  "- first list item",
+  "- second list item",
+  "",
+  "| name | value |",
+  "| --- | ---: |",
+  "| alpha | 123 |",
+  "",
+].join("\n");
+
+function markdownFixture(bytes: number): string {
+  return MARKDOWN_PERF_CHUNK.repeat(
+    Math.ceil(bytes / MARKDOWN_PERF_CHUNK.length),
+  ).slice(0, bytes);
+}
+
+function p95Milliseconds(operation: () => void, samples: number): number {
+  const timings: number[] = [];
+  for (let index = 0; index < samples; index += 1) {
+    const startedAt = performance.now();
+    operation();
+    timings.push(performance.now() - startedAt);
+  }
+  timings.sort((left, right) => left - right);
+  return timings[Math.ceil(timings.length * 0.95) - 1] ?? 0;
+}
+
+describe("Markdown performance smoke", () => {
+  it("keeps positioned parsing and safe rendering within regression budgets", () => {
+    const cases = [
+      { bytes: 16 * 1024, samples: 7, parseBudgetMs: 30, renderBudgetMs: 120 },
+      {
+        bytes: 256 * 1024,
+        samples: 5,
+        parseBudgetMs: 250,
+        renderBudgetMs: 1000,
+      },
+    ];
+
+    for (const testCase of cases) {
+      const markdown = markdownFixture(testCase.bytes);
+      parseMarkdownSourceSpans(markdown);
+      renderSafeMarkdown(markdown);
+
+      const parseP95Ms = p95Milliseconds(
+        () => parseMarkdownSourceSpans(markdown),
+        testCase.samples,
+      );
+      const renderP95Ms = p95Milliseconds(
+        () => renderSafeMarkdown(markdown),
+        testCase.samples,
+      );
+
+      console.info(
+        `MARKDOWN_PERF: bytes=${testCase.bytes} parse_p95_ms=${parseP95Ms.toFixed(2)} render_p95_ms=${renderP95Ms.toFixed(2)}`,
+      );
+      expect(parseP95Ms).toBeLessThan(testCase.parseBudgetMs);
+      expect(renderP95Ms).toBeLessThan(testCase.renderBudgetMs);
+    }
+  }, 15_000);
 });
 
 describe("renderSafeMarkdown — local file links", () => {
@@ -362,12 +515,8 @@ describe("renderSafeMarkdown — local file links", () => {
 
 [artifact]: G:\repo\.artifacts\capture.png`);
 
-    expect(html).toContain(
-      "path=G%3A%2Frepo%2F.artifacts%2Fcapture.png",
-    );
-    expect(html).toContain(
-      'data-ya-path="G:/repo/.artifacts/capture.png"',
-    );
+    expect(html).toContain("path=G%3A%2Frepo%2F.artifacts%2Fcapture.png");
+    expect(html).toContain('data-ya-path="G:/repo/.artifacts/capture.png"');
   });
 
   it("does not rewrite Windows-looking links inside code", () => {

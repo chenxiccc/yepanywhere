@@ -1,7 +1,7 @@
 /**
  * Split plain text into text/url segments so plain-text surfaces (user
  * prompts, queued chips, system messages, thinking text) can render bare
- * URLs as anchors. Assistant markdown already autolinks via marked's GFM
+ * URLs as anchors. Assistant markdown already autolinks via markdown-it
  * mode; this mirrors that behavior closely enough that the same URL reads
  * the same in both surfaces: `https?://` and `www.` matches, trailing
  * punctuation excluded, close-parens kept only while balanced.

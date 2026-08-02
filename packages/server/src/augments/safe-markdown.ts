@@ -1,15 +1,14 @@
 import { statSync } from "node:fs";
 import { isAbsolute, normalize, posix, win32 } from "node:path";
+import { katex as markdownItKatex } from "@mdit/plugin-katex";
 import { parseLineColumn } from "@yep-anywhere/shared";
-import katex from "katex";
-import {
-  Marked,
-  type RendererObject,
-  type RendererThis,
+import MarkdownIt, {
+  type Env,
+  type Renderer,
+  type RendererRule,
+  type StateCore,
   type Token,
-  type Tokens,
-  type TokensList,
-} from "marked";
+} from "markdown-it";
 import sanitizeHtml from "sanitize-html";
 
 const ALLOWED_LINK_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
@@ -215,81 +214,139 @@ function canonicalizeRawWindowsDriveDestination(
   return filePath.replace(/\\+/g, "/");
 }
 
-function walkMarkdownTokenTree(
-  tokens: Token[],
-  visit: (token: Token) => void,
-): void {
-  for (const token of tokens) {
-    visit(token);
+function repairWindowsDriveInlineDestinations(source: string): string {
+  let result = "";
+  let cursor = 0;
 
-    if ("tokens" in token && Array.isArray(token.tokens)) {
-      walkMarkdownTokenTree(token.tokens, visit);
+  while (cursor < source.length) {
+    if (source[cursor] === "`") {
+      let markerEnd = cursor + 1;
+      while (source[markerEnd] === "`") markerEnd += 1;
+      const marker = source.slice(cursor, markerEnd);
+      const closing = source.indexOf(marker, markerEnd);
+      if (closing >= 0) {
+        const end = closing + marker.length;
+        result += source.slice(cursor, end);
+        cursor = end;
+        continue;
+      }
+      result += marker;
+      cursor = markerEnd;
+      continue;
     }
 
-    if (token.type === "list") {
-      walkMarkdownTokenTree(token.items, visit);
-    } else if (token.type === "table") {
-      for (const cell of [...token.header, ...token.rows.flat()]) {
-        walkMarkdownTokenTree(cell.tokens, visit);
+    const remainder = source.slice(cursor);
+    const destination = findRawWindowsDriveDestination(remainder, "inline");
+    if (!destination) {
+      result += remainder;
+      break;
+    }
+
+    const nextBacktick = source.indexOf("`", cursor);
+    if (nextBacktick >= 0 && nextBacktick - cursor < destination.pathStart) {
+      result += source.slice(cursor, nextBacktick);
+      cursor = nextBacktick;
+      continue;
+    }
+
+    const corrected = canonicalizeRawWindowsDriveDestination(
+      remainder,
+      "inline",
+    );
+    if (!corrected) {
+      result += remainder;
+      break;
+    }
+
+    const pathStart = cursor + destination.pathStart;
+    let pathEnd = pathStart;
+    let parenthesisDepth = 0;
+    while (pathEnd < source.length) {
+      const character = source[pathEnd];
+      if (destination.enclosed) {
+        if (character === ">") break;
+      } else {
+        if (/\s/.test(character ?? "") && parenthesisDepth === 0) break;
+        if (character === "(") {
+          parenthesisDepth += 1;
+        } else if (character === ")") {
+          if (parenthesisDepth === 0) break;
+          parenthesisDepth -= 1;
+        }
       }
+      pathEnd += 1;
+    }
+
+    result += source.slice(cursor, pathStart);
+    result += corrected;
+    cursor = pathEnd;
+  }
+
+  return result;
+}
+
+/**
+ * Repair drive-letter destinations before markdown-it consumes backslash
+ * escapes. Block parsing has already excluded fenced/indented code; the inline
+ * scanner additionally skips matching backtick spans.
+ */
+function repairWindowsDriveMarkdownDestinations(state: StateCore): void {
+  const seenReferences = new Set<string>();
+  let lineStarts: number[] | undefined;
+
+  for (const token of state.tokens) {
+    if (token.type === "inline") {
+      token.content = repairWindowsDriveInlineDestinations(token.content);
+      continue;
+    }
+
+    if (token.type !== "reference_definition" || !token.map) continue;
+    const label = token.meta?.label;
+    if (typeof label !== "string" || seenReferences.has(label)) continue;
+    seenReferences.add(label);
+
+    lineStarts ??= sourceLineStartOffsets(state.src);
+    const start = lineStarts[token.map[0]] ?? state.src.length;
+    const end = lineStarts[token.map[1]] ?? state.src.length;
+    const raw = state.src.slice(start, end);
+    const corrected = canonicalizeRawWindowsDriveDestination(raw, "definition");
+    const reference = state.env.references?.[label];
+    if (corrected && reference) {
+      reference.href = corrected;
     }
   }
 }
 
-/**
- * Marked applies CommonMark backslash escapes before renderer callbacks. Repair
- * only recognized drive-letter destinations from each token's untouched raw
- * syntax so path separators before punctuation cannot disappear.
- */
-function repairWindowsDriveMarkdownDestinations(
-  tokens: Token[] | TokensList,
-): Token[] | TokensList {
-  const referenceCorrections = new Map<string, string | null>();
-  const links = "links" in tokens ? tokens.links : undefined;
-
-  walkMarkdownTokenTree(tokens, (token) => {
-    if (token.type === "def") {
-      const corrected = canonicalizeRawWindowsDriveDestination(
-        token.raw,
-        "definition",
-      );
-      if (!corrected || corrected === token.href) return;
-
-      const originalHref = token.href;
-      const existing = referenceCorrections.get(originalHref);
-      referenceCorrections.set(
-        originalHref,
-        existing === undefined || existing === corrected ? corrected : null,
-      );
-      token.href = corrected;
-      const link = links?.[token.tag];
-      if (link) {
-        link.href = corrected;
-      }
-      return;
-    }
-
-    if (token.type !== "link" && token.type !== "image") return;
-    const corrected = canonicalizeRawWindowsDriveDestination(
-      token.raw,
-      "inline",
-    );
-    if (corrected) {
-      token.href = corrected;
-    }
-  });
-
-  if (referenceCorrections.size > 0) {
-    walkMarkdownTokenTree(tokens, (token) => {
-      if (token.type !== "link" && token.type !== "image") return;
-      const referenceCorrection = referenceCorrections.get(token.href);
-      if (referenceCorrection) {
-        token.href = referenceCorrection;
-      }
-    });
+function sourceLineStartOffsets(source: string): number[] {
+  const starts = [0];
+  let newline = source.indexOf("\n");
+  while (newline >= 0) {
+    starts.push(newline + 1);
+    newline = source.indexOf("\n", newline + 1);
   }
+  if (starts[starts.length - 1] !== source.length) {
+    starts.push(source.length);
+  }
+  return starts;
+}
 
-  return tokens;
+const LITERAL_MATH_META = "yaLiteralMath";
+
+function preserveUnclosedMathBlocks(state: StateCore): void {
+  let lineStarts: number[] | undefined;
+  for (const token of state.tokens) {
+    if (token.type !== "math_block" || !token.map) continue;
+    lineStarts ??= sourceLineStartOffsets(state.src);
+    const start = lineStarts[token.map[0]] ?? state.src.length;
+    const end = lineStarts[token.map[1]] ?? state.src.length;
+    const raw = state.src.slice(start, end);
+    const closing = token.markup === "\\[" ? "\\]" : token.markup;
+    const trimmed = raw.trimEnd();
+    if (trimmed.length > closing.length && trimmed.endsWith(closing)) continue;
+
+    token.meta ??= {};
+    token.meta[LITERAL_MATH_META] = raw;
+  }
 }
 
 function getProjectPathFlavor(path: string): "posix" | "windows" {
@@ -415,6 +472,13 @@ function renderLocalFileLink(
   labelHtml: string,
   options: { renderMarkdown?: boolean; title?: string } = {},
 ): string {
+  return `${renderLocalFileLinkOpen(reference, options)}${labelHtml}</a>`;
+}
+
+function renderLocalFileLinkOpen(
+  reference: LocalPathReference | string,
+  options: { renderMarkdown?: boolean; title?: string } = {},
+): string {
   const parsed = toLocalPathReference(reference);
   const apiUrl = escapeHtml(
     localFileApiUrl(parsed, { renderMarkdown: options.renderMarkdown }),
@@ -424,7 +488,7 @@ function renderLocalFileLink(
   const resourceAttrs = localResourceDataAttributes("local-file", parsed, {
     renderMarkdown: options.renderMarkdown,
   });
-  return `<a href="${apiUrl}"${titleAttr} ${resourceAttrs}>${labelHtml}</a>`;
+  return `<a href="${apiUrl}"${titleAttr} ${resourceAttrs}>`;
 }
 
 function defaultProjectFileExists(absolutePath: string): boolean {
@@ -565,10 +629,19 @@ function renderLocalMediaLink(
   label: string,
   ext: string,
 ): string {
+  const parts = renderLocalMediaLinkParts(reference, ext);
+  const parsed = toLocalPathReference(reference);
+  const escapedLabel = escapeHtml(label || getFileName(parsed.filePath));
+  return `${parts.open}${escapedLabel}${parts.close}`;
+}
+
+function renderLocalMediaLinkParts(
+  reference: LocalPathReference | string,
+  ext: string,
+): { close: string; open: string } {
   const parsed = toLocalPathReference(reference);
   const apiUrl = escapeHtml(localMediaApiUrl(parsed.filePath));
   const escapedPath = escapeHtml(parsed.filePath);
-  const escapedLabel = escapeHtml(label || getFileName(parsed.filePath));
   const mediaType = VIDEO_EXTENSIONS.has(ext) ? "video" : "image";
   const typeLabel = VIDEO_EXTENSIONS.has(ext) ? "video" : "image";
   const defaultExpanded = false;
@@ -580,7 +653,10 @@ function renderLocalMediaLink(
   const resourceAttrs = localResourceDataAttributes("local-media", parsed, {
     mediaType,
   });
-  return `<span class="local-media-link-group"><button type="button" class="local-media-inline-toggle" data-media-path="${escapedPath}" data-media-type="${mediaType}" data-expanded="${defaultExpanded}" aria-label="${toggleVerb} ${mediaType}" aria-expanded="${defaultExpanded}" title="${toggleTitle}">${toggleText}</button><a href="${apiUrl}" class="local-media-link" data-media-type="${mediaType}" ${resourceAttrs}>${escapedLabel}<span class="local-media-type">(${typeLabel})</span></a></span><span class="local-media-inline-preview" data-media-path="${escapedPath}" data-media-type="${mediaType}" data-expanded="${defaultExpanded}"></span>`;
+  return {
+    open: `<span class="local-media-link-group"><button type="button" class="local-media-inline-toggle" data-media-path="${escapedPath}" data-media-type="${mediaType}" data-expanded="${defaultExpanded}" aria-label="${toggleVerb} ${mediaType}" aria-expanded="${defaultExpanded}" title="${toggleTitle}">${toggleText}</button><a href="${apiUrl}" class="local-media-link" data-media-type="${mediaType}" ${resourceAttrs}>`,
+    close: `<span class="local-media-type">(${typeLabel})</span></a></span><span class="local-media-inline-preview" data-media-path="${escapedPath}" data-media-type="${mediaType}" data-expanded="${defaultExpanded}"></span>`,
+  };
 }
 
 function renderDirectLocalImage(path: string, altText: string, title?: string) {
@@ -597,7 +673,13 @@ function renderDirectLocalImage(path: string, altText: string, title?: string) {
 }
 
 function resolveLocalMarkdownHref(href: string): LocalPathReference | null {
-  const trimmed = href.trim();
+  const normalizedHref = href.trim();
+  let trimmed = normalizedHref;
+  try {
+    trimmed = decodeURIComponent(normalizedHref);
+  } catch {
+    // Preserve malformed percent sequences as literal path characters.
+  }
   if (!trimmed) {
     return null;
   }
@@ -721,92 +803,13 @@ const MARKDOWN_SANITIZE_OPTIONS = {
   disallowedTagsMode: "escape" as const,
 };
 
-const renderer: RendererObject<string, string> = {
-  html({ text }) {
-    // Disable raw HTML passthrough from markdown by escaping it.
-    return escapeHtml(text);
-  },
-  link(
-    this: RendererThis<string, string>,
-    { href, title, tokens }: Tokens.Link,
-  ) {
-    const localPath = resolveLocalMarkdownHref(href);
-    if (localPath) {
-      const ext = getExtension(localPath.filePath);
-      const renderedText = this.parser.parseInline(tokens);
+const LINK_SUFFIXES: unique symbol = Symbol("safeMarkdownLinkSuffixes");
 
-      if (MEDIA_EXTENSIONS.has(ext)) {
-        return renderLocalMediaLink(localPath, renderedText, ext);
-      }
-      return renderLocalFileLink(localPath, renderedText, {
-        renderMarkdown: isMarkdownExtension(ext),
-        title: title ?? formatLocalPathReference(localPath),
-      });
-    }
+interface SafeMarkdownEnvironment extends Env {
+  [LINK_SUFFIXES]?: string[];
+}
 
-    const safeHref = sanitizeUrl(href);
-    const renderedText = this.parser.parseInline(tokens);
-
-    if (!safeHref) {
-      // Keep readable text when URL protocol is unsafe.
-      return renderedText;
-    }
-
-    const escapedHref = escapeHtml(safeHref);
-    const titleAttr = title ? ` title="${escapeHtml(title)}"` : "";
-    return `<a href="${escapedHref}"${titleAttr}>${renderedText}</a>`;
-  },
-  codespan({ text }: Tokens.Codespan) {
-    return (
-      renderProjectFileCodeLink(text) ?? `<code>${escapeHtml(text)}</code>`
-    );
-  },
-  image({ href, title, text }: Tokens.Image) {
-    const localPath = resolveLocalMarkdownHref(href);
-    if (localPath) {
-      const ext = getExtension(localPath.filePath);
-
-      if (MEDIA_EXTENSIONS.has(ext)) {
-        if (
-          activeRenderOptions.inlineLocalImages &&
-          IMAGE_EXTENSIONS.has(ext)
-        ) {
-          return renderDirectLocalImage(
-            localPath.filePath,
-            text,
-            title ?? undefined,
-          );
-        }
-        return renderLocalMediaLink(localPath, text, ext);
-      }
-      // Unrecognized extension — just show text
-      return escapeHtml(text || getFileName(localPath.filePath));
-    }
-
-    const safeSrc = sanitizeUrl(href, ALLOWED_IMAGE_PROTOCOLS);
-    if (!safeSrc) {
-      return escapeHtml(text);
-    }
-
-    const escapedSrc = escapeHtml(safeSrc);
-    const altAttr = text ? ` alt="${escapeHtml(text)}"` : ' alt=""';
-    const titleAttr = title ? ` title="${escapeHtml(title)}"` : "";
-    return `<img src="${escapedSrc}"${altAttr}${titleAttr}>`;
-  },
-};
-
-const markdownRenderer = new Marked({
-  async: false,
-  gfm: true,
-});
-
-markdownRenderer.use({
-  hooks: {
-    processAllTokens: repairWindowsDriveMarkdownDestinations,
-  },
-});
-
-// KaTeX output is generated inside the marked renderer and stashed in
+// KaTeX output is generated inside the markdown renderer and stashed in
 // this buffer; the renderer emits placeholder spans that survive
 // sanitize-html unchanged, and we substitute the real HTML back in
 // after sanitization. This keeps katex's complex span/svg markup out
@@ -818,145 +821,242 @@ markdownRenderer.use({
 // and substitute.
 let katexBuffer: string[] = [];
 
-function renderKatexPlaceholder(tex: string, displayMode: boolean): string {
-  let html: string;
-  try {
-    html = katex.renderToString(tex, {
-      throwOnError: false,
-      displayMode,
-      output: "html",
-      strict: "ignore",
-      trust: false,
-    });
-  } catch {
-    html = `<span class="katex-error">${escapeHtml(tex)}</span>`;
-  }
+function storeKatexPlaceholder(html: string, _displayMode: boolean): string {
   const id = katexBuffer.length;
   katexBuffer.push(html);
   return `<span class="yepkatex-placeholder yepkatex-id-${id}"></span>`;
 }
 
-function findUnescapedDelimiter(
-  source: string,
-  delimiter: string,
-  start = 0,
-): number | undefined {
-  let index = source.indexOf(delimiter, start);
-  while (index >= 0) {
-    let precedingBackslashes = 0;
-    for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
-      if (source[cursor] !== "\\") {
-        break;
-      }
-      precedingBackslashes += 1;
+function renderLinkOpen(
+  tokens: Token[],
+  index: number,
+  _options: Parameters<RendererRule>[2],
+  environment: Env | undefined,
+): string {
+  const token = tokens[index];
+  if (!token) return "";
+  const href = String(token.attrGet("href") ?? "");
+  const titleValue = token.attrGet("title");
+  const title = titleValue === null ? undefined : String(titleValue);
+  const localPath = resolveLocalMarkdownHref(href);
+  let open = "";
+  let close = "";
+
+  if (localPath) {
+    const ext = getExtension(localPath.filePath);
+    if (MEDIA_EXTENSIONS.has(ext)) {
+      const parts = renderLocalMediaLinkParts(localPath, ext);
+      open = parts.open;
+      close = parts.close;
+    } else {
+      open = renderLocalFileLinkOpen(localPath, {
+        renderMarkdown: isMarkdownExtension(ext),
+        title: title ?? formatLocalPathReference(localPath),
+      });
+      close = "</a>";
     }
-    if (precedingBackslashes % 2 === 0) {
-      return index;
+  } else {
+    const safeHref = sanitizeUrl(href);
+    if (safeHref) {
+      const titleAttr = title ? ` title="${escapeHtml(title)}"` : "";
+      open = `<a href="${escapeHtml(safeHref)}"${titleAttr}>`;
+      close = "</a>";
     }
-    index = source.indexOf(delimiter, index + delimiter.length);
   }
-  return undefined;
+
+  const safeEnvironment = environment as SafeMarkdownEnvironment | undefined;
+  const suffixes = safeEnvironment?.[LINK_SUFFIXES] ?? [];
+  suffixes.push(close);
+  if (safeEnvironment) safeEnvironment[LINK_SUFFIXES] = suffixes;
+  return open;
 }
 
-markdownRenderer.use({
-  extensions: [
-    {
-      name: "mathBracketBlock",
-      level: "block",
-      start(src: string) {
-        return findUnescapedDelimiter(src, "\\[");
-      },
-      tokenizer(src: string) {
-        if (!src.startsWith("\\[")) return undefined;
-        const closing = findUnescapedDelimiter(src, "\\]", 2);
-        if (closing === undefined) return undefined;
-        const suffix = /^[ \t]*(?:\n|$)/.exec(src.slice(closing + 2));
-        const tex = src.slice(2, closing).trim();
-        if (!suffix || !tex) return undefined;
-        const rawEnd = closing + 2 + suffix[0].length;
-        return {
-          type: "mathBracketBlock",
-          raw: src.slice(0, rawEnd),
-          text: tex,
-        };
-      },
-      renderer(token) {
-        const tex = (token as { text?: string }).text ?? "";
-        return renderKatexPlaceholder(tex, true);
-      },
-    },
-    {
-      name: "mathBlock",
-      level: "block",
-      start(src: string) {
-        const idx = src.indexOf("$$");
-        return idx < 0 ? undefined : idx;
-      },
-      tokenizer(src: string) {
-        const match = /^\$\$\s*([\s\S]+?)\s*\$\$(?:\n|$)/.exec(src);
-        if (!match) return undefined;
-        return {
-          type: "mathBlock",
-          raw: match[0],
-          text: match[1] ?? "",
-        };
-      },
-      renderer(token) {
-        const tex = (token as { text?: string }).text ?? "";
-        return renderKatexPlaceholder(tex, true);
-      },
-    },
-    {
-      name: "mathBracketInline",
-      level: "inline",
-      start(src: string) {
-        return findUnescapedDelimiter(src, "\\(");
-      },
-      tokenizer(src: string) {
-        if (!src.startsWith("\\(")) return undefined;
-        const closing = findUnescapedDelimiter(src, "\\)", 2);
-        if (closing === undefined) return undefined;
-        const tex = src.slice(2, closing).trim();
-        if (!tex || tex.includes("\n")) return undefined;
-        return {
-          type: "mathBracketInline",
-          raw: src.slice(0, closing + 2),
-          text: tex,
-        };
-      },
-      renderer(token) {
-        const tex = (token as { text?: string }).text ?? "";
-        return renderKatexPlaceholder(tex, false);
-      },
-    },
-    {
-      name: "mathInline",
-      level: "inline",
-      start(src: string) {
-        const idx = src.indexOf("$");
-        return idx < 0 ? undefined : idx;
-      },
-      tokenizer(src: string) {
-        // Require non-space immediately after opening $ and before
-        // closing $; require non-digit/non-$ after closing $ to avoid
-        // matching prices like "$100 and $200".
-        const match = /^\$(?!\s)([^\n$]+?)(?<!\s)\$(?![\d$])/.exec(src);
-        if (!match) return undefined;
-        return {
-          type: "mathInline",
-          raw: match[0],
-          text: match[1] ?? "",
-        };
-      },
-      renderer(token) {
-        const tex = (token as { text?: string }).text ?? "";
-        return renderKatexPlaceholder(tex, false);
-      },
-    },
-  ],
+function renderLinkClose(
+  _tokens: Token[],
+  _index: number,
+  _options: Parameters<RendererRule>[2],
+  environment: Env | undefined,
+): string {
+  const suffixes = (environment as SafeMarkdownEnvironment | undefined)?.[
+    LINK_SUFFIXES
+  ];
+  return suffixes?.pop() ?? "";
+}
+
+function renderCodeInline(tokens: Token[], index: number): string {
+  const text = tokens[index]?.content ?? "";
+  return renderProjectFileCodeLink(text) ?? `<code>${escapeHtml(text)}</code>`;
+}
+
+function renderImage(
+  tokens: Token[],
+  index: number,
+  options: Parameters<RendererRule>[2],
+  environment: Env | undefined,
+  renderer: Renderer,
+): string {
+  const token = tokens[index];
+  if (!token) return "";
+  const href = String(token.attrGet("src") ?? "");
+  const titleValue = token.attrGet("title");
+  const title = titleValue === null ? undefined : String(titleValue);
+  const text = renderer.renderInlineAsText(
+    token.children ?? [],
+    options,
+    environment,
+  );
+  const localPath = resolveLocalMarkdownHref(href);
+  if (localPath) {
+    const ext = getExtension(localPath.filePath);
+    if (MEDIA_EXTENSIONS.has(ext)) {
+      if (activeRenderOptions.inlineLocalImages && IMAGE_EXTENSIONS.has(ext)) {
+        return renderDirectLocalImage(localPath.filePath, text, title);
+      }
+      return renderLocalMediaLink(localPath, text, ext);
+    }
+    return escapeHtml(text || getFileName(localPath.filePath));
+  }
+
+  const safeSrc = sanitizeUrl(href, ALLOWED_IMAGE_PROTOCOLS);
+  if (!safeSrc) return escapeHtml(text);
+  const altAttr = text ? ` alt="${escapeHtml(text)}"` : ' alt=""';
+  const titleAttr = title ? ` title="${escapeHtml(title)}"` : "";
+  return `<img src="${escapeHtml(safeSrc)}"${altAttr}${titleAttr}>`;
+}
+
+function renderTableCellOpen(
+  tokens: Token[],
+  index: number,
+  options: Parameters<RendererRule>[2],
+  _environment: Env | undefined,
+  renderer: Renderer,
+): string {
+  const token = tokens[index];
+  if (!token) return "";
+  const styleIndex = token.attrIndex("style");
+  if (styleIndex >= 0 && token.attrs) {
+    const style = String(token.attrs[styleIndex]?.[1] ?? "");
+    const alignment = /^text-align:(left|center|right)$/.exec(style)?.[1];
+    token.attrs.splice(styleIndex, 1);
+    if (alignment) token.attrSet("align", alignment);
+  }
+  return renderer.renderToken(tokens, index, options);
+}
+
+function renderTaskListItems(state: StateCore): void {
+  const pendingItems: boolean[] = [];
+  for (const token of state.tokens) {
+    if (token.type === "list_item_open") {
+      pendingItems.push(true);
+      continue;
+    }
+    if (token.type === "list_item_close") {
+      pendingItems.pop();
+      continue;
+    }
+    if (
+      token.type !== "inline" ||
+      pendingItems.length === 0 ||
+      !pendingItems[pendingItems.length - 1]
+    ) {
+      continue;
+    }
+
+    pendingItems[pendingItems.length - 1] = false;
+    const first = token.children?.[0];
+    if (first?.type !== "text") continue;
+    const match = /^\[([ xX])\]\s+/.exec(first.content);
+    if (!match) continue;
+
+    first.content = first.content.slice(match[0].length);
+    const checkbox = new state.Token("html_inline", "", 0);
+    checkbox.content = `<input${match[1]?.toLowerCase() === "x" ? ' checked=""' : ""} disabled="" type="checkbox"> `;
+    token.children?.unshift(checkbox);
+  }
+}
+
+const markdownRenderer = new MarkdownIt({
+  breaks: false,
+  html: false,
+  linkify: true,
+  typographer: false,
+  xhtmlOut: false,
+}).disable("strip_references");
+
+markdownRenderer.use(markdownItKatex, {
+  allowInlineWithSpace: false,
+  delimiters: "all",
+  logger: (): "ignore" => "ignore",
+  mathFence: false,
+  maxExpand: 1000,
+  output: "html",
+  throwOnError: false,
+  transformer: storeKatexPlaceholder,
+  trust: false,
 });
 
-markdownRenderer.use({ renderer });
+function preserveEmptyMath(
+  rendererRule: RendererRule,
+  displayMode: boolean,
+): RendererRule {
+  return (tokens, index, options, environment, renderer) => {
+    const token = tokens[index];
+    if (!token) return "";
+    const literalSource = token.meta?.[LITERAL_MATH_META];
+    if (typeof literalSource === "string") {
+      const literal = escapeHtml(literalSource);
+      return displayMode ? `<p>${literal}</p>\n` : literal;
+    }
+    if (token.content.trim()) {
+      return rendererRule(tokens, index, options, environment, renderer);
+    }
+
+    const opening = token.markup || (displayMode ? "$$" : "$");
+    const closing =
+      opening === "\\[" ? "\\]" : opening === "\\(" ? "\\)" : opening;
+    const literal = escapeHtml(`${opening}${closing}`);
+    return displayMode ? `<p>${literal}</p>\n` : literal;
+  };
+}
+
+const pluginMathInlineRenderer = markdownRenderer.renderer.rules.math_inline;
+const pluginMathBlockRenderer = markdownRenderer.renderer.rules.math_block;
+if (!pluginMathInlineRenderer || !pluginMathBlockRenderer) {
+  throw new Error("@mdit/plugin-katex did not register its renderer rules");
+}
+markdownRenderer.renderer.rules.math_inline = preserveEmptyMath(
+  pluginMathInlineRenderer,
+  false,
+);
+markdownRenderer.renderer.rules.math_block = preserveEmptyMath(
+  pluginMathBlockRenderer,
+  true,
+);
+
+// Parse every link, including unsafe schemes, so the renderer can keep its
+// readable label while dropping the unsafe destination.
+markdownRenderer.validateLink = () => true;
+markdownRenderer.core.ruler.after(
+  "block",
+  "ya_windows_drive_paths",
+  repairWindowsDriveMarkdownDestinations,
+);
+markdownRenderer.core.ruler.after(
+  "block",
+  "ya_unclosed_math_blocks",
+  preserveUnclosedMathBlocks,
+);
+markdownRenderer.core.ruler.after(
+  "text_join",
+  "ya_task_list_items",
+  renderTaskListItems,
+);
+markdownRenderer.renderer.rules.link_open = renderLinkOpen;
+markdownRenderer.renderer.rules.link_close = renderLinkClose;
+markdownRenderer.renderer.rules.code_inline = renderCodeInline;
+markdownRenderer.renderer.rules.image = renderImage;
+markdownRenderer.renderer.rules.th_open = renderTableCellOpen;
+markdownRenderer.renderer.rules.td_open = renderTableCellOpen;
 
 /**
  * Return a safe absolute URL for markdown links, or null for unsupported schemes.
@@ -987,6 +1087,37 @@ export function sanitizeUrl(
   return normalized;
 }
 
+export interface MarkdownSourceSpan {
+  endLine: number;
+  level: number;
+  nesting: -1 | 0 | 1;
+  startLine: number;
+  type: string;
+}
+
+/**
+ * Parse Markdown into the block/source spans used by aligned projections.
+ * Lines are one-based and inclusive; closing-only tokens have no source map
+ * and are omitted.
+ */
+export function parseMarkdownSourceSpans(
+  markdown: string,
+): MarkdownSourceSpan[] {
+  const tokens = markdownRenderer.parse(markdown, {});
+  const spans: MarkdownSourceSpan[] = [];
+  for (const token of tokens) {
+    if (!token.map) continue;
+    spans.push({
+      endLine: token.map[1],
+      level: token.level,
+      nesting: token.nesting,
+      startLine: token.map[0] + 1,
+      type: token.type,
+    });
+  }
+  return spans;
+}
+
 /**
  * Render markdown to sanitized HTML with raw HTML disabled.
  */
@@ -998,8 +1129,8 @@ export function renderSafeMarkdown(
   projectFileCodeLinkCache = new Map();
   katexBuffer = [];
   try {
-    const rendered = markdownRenderer.parse(markdown, { async: false });
-    const html = typeof rendered === "string" ? rendered : "";
+    const environment: SafeMarkdownEnvironment = {};
+    const html = markdownRenderer.render(markdown, environment);
     const sanitized = sanitizeHtml(html, MARKDOWN_SANITIZE_OPTIONS);
     const substituted = sanitized.replace(
       /<span class="yepkatex-placeholder yepkatex-id-(\d+)"><\/span>/g,

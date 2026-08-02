@@ -57,6 +57,21 @@ This document describes security features that are present in upstream
   arbitrary browser URLs.
 - KaTeX rendering is configured with `trust: false`.
 
+Markdown parsing, rendering plugins, KaTeX, sanitization, and the browser DOM
+are still part of YA's exposure surface. Agent- or project-authored text can be
+misleading, and unusually large documents can consume synchronous server CPU.
+A rendered preview is a presentation aid, not proof that its links or visible
+text are trustworthy.
+
+## Agent and Project Code
+
+YA does not turn the underlying coding agent into a sandbox. With the user's
+approval and provider permissions, agents can fetch, inspect, build, and
+execute open-source or other third-party code. That execution surface is much
+broader than Markdown display risk. Review agent commands and dependency
+changes with the same care as local developer shell activity; use provider or
+host sandboxing where untrusted projects require a stronger boundary.
+
 ## Local Media and Static Files
 
 - Local media serving is restricted to configured allowed path prefixes and
@@ -71,6 +86,10 @@ This document describes security features that are present in upstream
   justify their long-term update and audit cost; established cryptography,
   authentication, frameworks, and official provider SDKs are preferred where
   hand-rolled code would create more risk.
+- Published release installs use the committed lockfile in frozen mode, so
+  resolved dependency versions do not float during the build. Dependency
+  additions and version changes remain explicit, reviewable manifest and
+  lockfile diffs in release review.
 - The maintainers regularly audit authentication, transport and relay
   boundaries, rendered content, local file access, dependencies, packaging,
   and provider integrations as those surfaces change. These are

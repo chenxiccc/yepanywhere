@@ -130,7 +130,7 @@ describe("AugmentGenerator", () => {
   });
 
   describe("non-code blocks", () => {
-    it("renders paragraph with marked", async () => {
+    it("renders a paragraph with markdown-it", async () => {
       const block: CompletedBlock = {
         type: "paragraph",
         content: "This is a simple paragraph.",
@@ -144,7 +144,7 @@ describe("AugmentGenerator", () => {
       expect(augment.html).toBe("<p>This is a simple paragraph.</p>");
     });
 
-    it("renders heading with marked", async () => {
+    it("renders a heading with markdown-it", async () => {
       const block: CompletedBlock = {
         type: "heading",
         content: "# Main Heading",
