@@ -1,0 +1,14 @@
+{
+  "name": "@yep-anywhere/android",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:android": "./gradlew :app:assembleBundledDebug",
+    "build:android:debug": "./gradlew :app:assembleBundledDebug",
+    "build:android": "./gradlew :app:assembleBundledRelease",
+    "build:android:hosted-latest": "./gradlew :app:assembleHostedLatestRelease",
+    "test": "./gradlew test",
+    "lint": "./gradlew lint"
+  }
+}

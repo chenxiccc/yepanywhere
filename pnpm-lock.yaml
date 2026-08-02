@@ -40,6 +40,8 @@ importers:
         specifier: ^5.7.2
         version: 5.9.3
 
+  packages/android: {}
+
   packages/client:
     dependencies:
       '@yep-anywhere/shared':
