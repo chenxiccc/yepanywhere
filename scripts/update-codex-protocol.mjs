@@ -115,6 +115,10 @@ const SUBSET_EXPORTS = [
   },
   { name: "PlanDeltaNotification", file: "v2/PlanDeltaNotification.ts" },
   {
+    name: "TurnPlanUpdatedNotification",
+    file: "v2/TurnPlanUpdatedNotification.ts",
+  },
+  {
     name: "CommandExecutionOutputDeltaNotification",
     file: "v2/CommandExecutionOutputDeltaNotification.ts",
   },

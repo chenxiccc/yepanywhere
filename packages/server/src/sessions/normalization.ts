@@ -673,7 +673,17 @@ function convertCodexResponseItem(
         entry.timestamp,
       );
       toolCallContexts.set(converted.callId, converted.context);
-      return converted.message;
+      const turnId = getCodexResponseItemTurnId(payload);
+      return turnId
+        ? {
+            ...converted.message,
+            [CODEX_TOOL_CORRELATION_FIELD]: createCodexToolCorrelation(
+              "function_call",
+              turnId,
+              converted.callId,
+            ),
+          }
+        : converted.message;
     }
 
     case "function_call_output": {
@@ -694,7 +704,17 @@ function convertCodexResponseItem(
         toolCallContexts.delete(payload.call_id);
         closedToolResultIds.add(payload.call_id);
       }
-      return message;
+      const turnId = getCodexResponseItemTurnId(payload);
+      return turnId
+        ? {
+            ...message,
+            [CODEX_TOOL_CORRELATION_FIELD]: createCodexToolCorrelation(
+              "function_call",
+              turnId,
+              payload.call_id,
+            ),
+          }
+        : message;
     }
 
     case "custom_tool_call": {

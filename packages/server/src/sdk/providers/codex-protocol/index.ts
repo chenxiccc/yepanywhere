@@ -37,6 +37,7 @@ export type { ItemCompletedNotification } from "./generated/v2/ItemCompletedNoti
 export type { RawResponseItemCompletedNotification } from "./generated/v2/RawResponseItemCompletedNotification.js";
 export type { AgentMessageDeltaNotification } from "./generated/v2/AgentMessageDeltaNotification.js";
 export type { PlanDeltaNotification } from "./generated/v2/PlanDeltaNotification.js";
+export type { TurnPlanUpdatedNotification } from "./generated/v2/TurnPlanUpdatedNotification.js";
 export type { CommandExecutionOutputDeltaNotification } from "./generated/v2/CommandExecutionOutputDeltaNotification.js";
 export type { FileChangeOutputDeltaNotification } from "./generated/v2/FileChangeOutputDeltaNotification.js";
 export type { ReasoningSummaryTextDeltaNotification } from "./generated/v2/ReasoningSummaryTextDeltaNotification.js";

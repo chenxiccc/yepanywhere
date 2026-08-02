@@ -118,12 +118,55 @@ function toolResultMessage(options: {
   } as Message;
 }
 
+function planMessage(options: {
+  id: string;
+  kind: "use" | "result";
+  origin: "plan_update" | "custom_tool_call" | "function_call";
+  source: "sdk" | "jsonl";
+  timestamp: string;
+}): Message {
+  const block =
+    options.kind === "use"
+      ? {
+          type: "tool_use" as const,
+          id: options.id,
+          name: "UpdatePlan",
+          input: {
+            plan: [
+              { step: "Read the contracts", status: "in_progress" },
+              { step: "Implement the fix", status: "pending" },
+            ],
+          },
+        }
+      : {
+          type: "tool_result" as const,
+          tool_use_id: options.id,
+          content: "Plan updated",
+        };
+  return {
+    uuid:
+      options.kind === "use" ? options.id : `${options.id}-result`,
+    type: options.kind === "use" ? "assistant" : "user",
+    timestamp: options.timestamp,
+    message: {
+      role: options.kind === "use" ? "assistant" : "user",
+      content: [block],
+    },
+    _source: options.source,
+    [CODEX_TOOL_CORRELATION_FIELD]: createCodexToolCorrelation(
+      options.origin,
+      TURN_ID,
+      options.id,
+    ),
+  } as Message;
+}
+
 function firstContentBlock(message: Message | undefined) {
   const content = message?.message?.content;
   return Array.isArray(content) ? content[0] : undefined;
 }
 
-describe("Codex code-mode tool reconciliation", () => {
+describe("Codex tool reconciliation", () => {
   it("adopts one durable parent and result across started, completed, and rollout", () => {
     const liveId = "exec-sanitized-three-reads";
     const durableId = "call_sanitized_three_reads";
@@ -278,6 +321,53 @@ describe("Codex code-mode tool reconciliation", () => {
     ]);
     expect(messages.every((message) => message._source === "jsonl")).toBe(true);
   });
+
+  it.each(["custom_tool_call", "function_call"] as const)(
+    "adopts durable ids when a live plan update is backfilled from %s",
+    (durableOrigin) => {
+      const liveId = "codex-plan-turn-1-1";
+      const durableId = "call_durable_plan";
+      const messages = reconcileCodexToolMessages([
+        planMessage({
+          id: liveId,
+          kind: "use",
+          origin: "plan_update",
+          source: "sdk",
+          timestamp: "2026-08-02T21:31:20.960Z",
+        }),
+        planMessage({
+          id: liveId,
+          kind: "result",
+          origin: "plan_update",
+          source: "sdk",
+          timestamp: "2026-08-02T21:31:20.960Z",
+        }),
+        planMessage({
+          id: durableId,
+          kind: "use",
+          origin: durableOrigin,
+          source: "jsonl",
+          timestamp: "2026-08-02T21:31:20.958Z",
+        }),
+        planMessage({
+          id: durableId,
+          kind: "result",
+          origin: durableOrigin,
+          source: "jsonl",
+          timestamp: "2026-08-02T21:31:21.077Z",
+        }),
+      ]);
+
+      expect(messages).toHaveLength(2);
+      expect(messages.map((message) => message.uuid)).toEqual([
+        durableId,
+        `${durableId}-result`,
+      ]);
+      expect(messages.every((message) => message._source === "jsonl")).toBe(
+        true,
+      );
+    },
+  );
 
   it("leaves non-equivalent or cross-turn commands untouched", () => {
     const live = {

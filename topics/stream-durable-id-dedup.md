@@ -177,6 +177,7 @@ splits by item class (verified in `references/codex`
 |---|---|---|---|
 | Native tool calls/results | `payload.call_id` (`id: payload.call_id.clone()`) | `call_id` on the response item | **Yes** — both key on `call_id` |
 | Code-mode nested command | inner `commandExecution` id (`exec-*`) | outer `custom_tool_call.call_id` (`call_*`) | **No direct id** — scoped reconciliation below |
+| Checklist update | transient YA id for `turn/plan/updated` (notification has no item id) | `function_call.call_id` or outer `custom_tool_call.call_id` (`call_*`) | **No direct id** — scoped reconciliation below |
 | User turns | counter `item-{N}` + separate `client_id` | event_msg `client_id` (null until YA sends it); also a positional response-item copy | Deferred (see below) |
 | Assistant / reasoning | counter `item-{N}` (`next_item_id()`) | `response_item.payload.id` — **null in practice** | **No** — no shared id; backstop only |
 
@@ -187,9 +188,9 @@ side** — the live id is a synthetic per-thread counter and the rollout's
 items, all `payload.id == null`). So the "Assistant w/ `ResponseItem.id`"
 class does not occur, and *all* assistant messages fall to the
 content+timestamp backstop. Only **native tool calls** are cleanly alignable by
-provider id. Code-mode adds the bounded exception below.
+provider id. Code-mode and checklist updates add the bounded exceptions below.
 
-### Done: native tool-call id alignment and code-mode reconciliation
+### Done: native tool-call id alignment and scoped reconciliation
 
 For directly alignable native tools, both sides key the rendered message uuid
 on `call_id` (call → `call_id`, result → `${call_id}-result`), independent of
@@ -220,6 +221,12 @@ turn — `call_id` is globally unique, so no turn scoping is needed:
   with exactly equal normalized name/input/actions, one-to-one by nearest
   timestamp within 10s, then adopts `call_*` / `call_*-result` as canonical.
   The durable row remains authoritative and no YA record is persisted.
+- Checklist exception (verified against Codex 0.146.0): app-server emits
+  `turn/plan/updated` with the full plan but no item/call id, while code-mode
+  rollout stores the enclosing `custom_tool_call` (ordinary tool mode uses a
+  `function_call`). YA assigns a turn-local live id, then uses the same exact
+  same-turn normalized-input reconciliation to adopt the durable `call_*`
+  identity when backfill overlaps the stream.
 - Multi-nested code mode fails closed: several inner `commandExecution`
   parents cannot be assigned safely to one outer call by id. The explored
   projection may make their default visual group converge, but raw parent

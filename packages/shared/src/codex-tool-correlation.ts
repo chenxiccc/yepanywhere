@@ -1,6 +1,6 @@
 /**
- * Ephemeral correlation metadata for Codex tool messages whose app-server
- * thread item and durable rollout item use different provider identities.
+ * Ephemeral correlation metadata for Codex tool messages whose live
+ * app-server event and durable rollout item use different provider identities.
  *
  * This metadata travels with YA's in-memory/API message representation only.
  * The rollout remains the sole durable transcript source of truth.
@@ -10,7 +10,9 @@ export const CODEX_TOOL_CORRELATION_FIELD = "_codexToolCorrelation";
 
 export type CodexToolCorrelationOrigin =
   | "command_execution"
-  | "custom_tool_call";
+  | "custom_tool_call"
+  | "function_call"
+  | "plan_update";
 
 export interface CodexToolCorrelationMetadata {
   origin: CodexToolCorrelationOrigin;
@@ -44,7 +46,12 @@ export function getCodexToolCorrelation(
 
   const record = metadata as Record<string, unknown>;
   const origin = record.origin;
-  if (origin !== "command_execution" && origin !== "custom_tool_call") {
+  if (
+    origin !== "command_execution" &&
+    origin !== "custom_tool_call" &&
+    origin !== "function_call" &&
+    origin !== "plan_update"
+  ) {
     return null;
   }
   if (typeof record.turnId !== "string" || typeof record.itemId !== "string") {

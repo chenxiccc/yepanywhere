@@ -143,6 +143,28 @@ falsified two assumptions of the shipped extractor:
   are not unique across a rollout (numbering restarts); the maps process
   in transcript order so the latest declaration wins.
 
+### 2026-08-02 plan updates nested in code mode
+
+Codex may invoke `tools.update_plan({ plan })` inside an outer code-mode `exec`.
+The rollout does not persist the TUI's live plan-update event as a first-class
+record: durable state consists of the literal nested call in the outer
+`custom_tool_call` source and an empty `{}` nested-tool result. YA recovers that
+literal call as the canonical `UpdatePlan` tool, preserving the checklist on
+reload, and normalizes the empty success acknowledgement to `Plan updated`
+instead of exposing the code-mode execution envelope.
+
+While a turn is active, app-server reports the checklist separately through
+`turn/plan/updated`. That notification has no tool-call id, so YA presents each
+update immediately with a turn-local transient id; the rollout-derived
+tool call remains authoritative after reload. When live and durable copies
+overlap, the client pairs exact same-turn checklist inputs one-to-one and
+adopts the durable call id. Both paths produce the same canonical `UpdatePlan`
+checklist shape.
+
+The resulting checklist is user supervision state. Conversation view keeps it
+top-level under its own contract rather than counting it as routine hidden
+activity.
+
 ### Live app-server shape
 
 Raw SDK logging is enabled in the inspected environment and records Codex

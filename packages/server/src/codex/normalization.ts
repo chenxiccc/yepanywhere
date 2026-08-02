@@ -228,7 +228,17 @@ export function normalizeCodexToolOutputWithContext(
   const backgroundTaskId = extractCodexBackgroundTaskId(content);
   const interrupted = isCodexInterruptedToolOutput(content);
 
-  if (context?.toolName === "Grep") {
+  if (
+    context?.toolName === "UpdatePlan" &&
+    !isError &&
+    extractCodexShellOutputContent(content).trim() === "{}"
+  ) {
+    // Code-mode update_plan returns only an empty nested-tool result. The
+    // checklist itself lives in the recovered tool input, so normalize the
+    // empty provider acknowledgement to the canonical renderer contract.
+    content = "Plan updated";
+    structured = { message: content };
+  } else if (context?.toolName === "Grep") {
     const grepContent = extractCodexShellOutputContent(content);
     const grepResult = normalizeRipgrepOutput(
       grepContent,

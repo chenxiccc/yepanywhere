@@ -63,8 +63,11 @@ provider-history rewrite and not deletion.
   images stay associated with the agent turn's text.
 - Routine tool calls (pending, complete, or aborted), Thinking rows,
   non-failing task notifications, and subagent-activity notices condense.
+  Provider plan-checklist updates rendered through the canonical `UpdatePlan`
+  tool remain top-level at their transcript position: they are supervision
+  state rather than routine execution and do not count as hidden activity.
   Tool errors, incomplete calls, and task notifications whose structured
-  status is `failed` or `error` retain their ordinary rows because their
+  status is `failed` or `error` also retain their ordinary rows because their
   summary or output path may be the only human-readable failure detail.
   Notifications without a structured failure status remain routine activity;
   YA does not infer failure from unconstrained summary prose.

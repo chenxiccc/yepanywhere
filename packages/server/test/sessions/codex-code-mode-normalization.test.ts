@@ -1,5 +1,6 @@
 import type { CodexSessionEntry } from "@yep-anywhere/shared";
 import { describe, expect, it } from "vitest";
+import { compileTranscriptProjection } from "../../../client/src/lib/transcriptProjection/compiler.ts";
 import { normalizeSession } from "../../src/sessions/normalization.js";
 import type { LoadedSession } from "../../src/sessions/types.js";
 
@@ -143,6 +144,61 @@ describe("Codex code-mode persisted normalization", () => {
     expect(contentBlock(result.messages[1])).toMatchObject({
       type: "tool_result",
       content: "Done!",
+    });
+  });
+
+  it("recovers a nested update_plan checklist from durable exec source", () => {
+    const plan = [
+      {
+        step: "Read the complete engine, tests, and contracts",
+        status: "in_progress",
+      },
+      { step: "Add failing image tests", status: "pending" },
+      { step: "Refactor the engine", status: "pending" },
+      { step: "Normalize attachments", status: "pending" },
+      { step: "Run regression tests", status: "pending" },
+    ];
+    const entries: CodexSessionEntry[] = [
+      {
+        type: "response_item",
+        timestamp: "2026-08-02T21:31:20.958Z",
+        payload: {
+          type: "custom_tool_call",
+          call_id: "call-plan",
+          name: "exec",
+          input: `const r = await tools.update_plan({plan:${JSON.stringify(plan)}});\ntext(r);\n`,
+        },
+      },
+      {
+        type: "response_item",
+        timestamp: "2026-08-02T21:31:21.077Z",
+        payload: {
+          type: "custom_tool_call_output",
+          call_id: "call-plan",
+          output: [
+            {
+              type: "input_text",
+              text: "Script completed\nWall time 0.0 seconds\nOutput:\n",
+            },
+            { type: "input_text", text: "{}" },
+          ],
+        },
+      },
+    ];
+
+    const normalized = normalizeSession(buildLoadedSession(entries));
+    const items = compileTranscriptProjection(normalized.messages);
+
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      type: "tool_call",
+      toolName: "UpdatePlan",
+      toolInput: { plan },
+      toolResult: {
+        content: "Plan updated",
+        structured: { message: "Plan updated" },
+      },
+      status: "complete",
     });
   });
 

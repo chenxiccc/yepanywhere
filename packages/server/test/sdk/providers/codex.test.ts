@@ -3739,6 +3739,88 @@ describe("CodexProvider Event Normalization", () => {
     );
   });
 
+  it("surfaces live Codex checklist updates as completed plan tools", () => {
+    const provider = createTestProvider() as unknown as {
+      convertNotificationToSDKMessages: (
+        notification: { method: string; params?: unknown },
+        sessionId: string,
+        usageByTurnId: Map<string, unknown>,
+        liveEventState: ReturnType<typeof createLiveEventState>,
+      ) => Array<Record<string, unknown>>;
+    };
+
+    const liveEventState = createLiveEventState();
+    const first = provider.convertNotificationToSDKMessages(
+      {
+        method: "turn/plan/updated",
+        params: {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          explanation: "Start with the contracts.",
+          plan: [
+            { step: "Read the contracts", status: "inProgress" },
+            { step: "Implement the fix", status: "pending" },
+          ],
+        },
+      },
+      "session-1",
+      new Map(),
+      liveEventState,
+    );
+    const second = provider.convertNotificationToSDKMessages(
+      {
+        method: "turn/plan/updated",
+        params: {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          explanation: null,
+          plan: [
+            { step: "Read the contracts", status: "completed" },
+            { step: "Implement the fix", status: "inProgress" },
+          ],
+        },
+      },
+      "session-1",
+      new Map(),
+      liveEventState,
+    );
+
+    expect(first).toHaveLength(2);
+    expect(second).toHaveLength(2);
+    expect(
+      compileTranscriptProjection([
+        ...first,
+        ...second,
+      ] as Parameters<typeof compileTranscriptProjection>[0]),
+    ).toMatchObject([
+      {
+        type: "tool_call",
+        id: "codex-plan-turn-1-1",
+        toolName: "UpdatePlan",
+        toolInput: {
+          explanation: "Start with the contracts.",
+          plan: [
+            { step: "Read the contracts", status: "in_progress" },
+            { step: "Implement the fix", status: "pending" },
+          ],
+        },
+        status: "complete",
+      },
+      {
+        type: "tool_call",
+        id: "codex-plan-turn-1-2",
+        toolName: "UpdatePlan",
+        toolInput: {
+          plan: [
+            { step: "Read the contracts", status: "completed" },
+            { step: "Implement the fix", status: "in_progress" },
+          ],
+        },
+        status: "complete",
+      },
+    ]);
+  });
+
   it("marks live result-backed tools incomplete when a turn completes first", () => {
     const provider = createTestProvider() as unknown as {
       convertNotificationToSDKMessages: (

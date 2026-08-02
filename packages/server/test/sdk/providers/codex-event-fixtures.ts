@@ -12,6 +12,7 @@ export function createLiveEventState() {
     streamingToolOutputByItemKey: new Map<string, string>(),
     toolCallContexts: new Map<string, unknown>(),
     resultBackedToolItemsByTurnId: new Map<string, Set<string>>(),
+    planUpdateCountByTurnId: new Map<string, number>(),
   };
 }
 

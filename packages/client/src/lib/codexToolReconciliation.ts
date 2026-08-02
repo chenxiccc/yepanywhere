@@ -6,10 +6,10 @@ import {
 import type { Message } from "../types";
 import { getMessageContent, getMessageId, mergeMessage } from "./mergeMessages";
 
-// A code-mode custom_tool_call is written to rollout immediately before its
-// nested commandExecution starts. Keep this window deliberately narrow and
-// require exact normalized input plus the same provider turn; the timestamp is
-// only used to pair repeated identical commands one-to-one.
+// A durable tool call is written near its live commandExecution or plan-update
+// event. Keep this window deliberately narrow and require exact normalized
+// input plus the same provider turn; the timestamp is only used to pair
+// repeated identical calls one-to-one.
 const CODEX_TOOL_CORRELATION_WINDOW_MS = 10_000;
 
 interface ToolUseCandidate {
@@ -17,6 +17,12 @@ interface ToolUseCandidate {
   metadata: CodexToolCorrelationMetadata;
   timestampMs: number;
   toolUseId: string;
+}
+
+function isDurableOrigin(
+  origin: CodexToolCorrelationMetadata["origin"],
+): boolean {
+  return origin === "custom_tool_call" || origin === "function_call";
 }
 
 function stableStringify(value: unknown): string {
@@ -152,10 +158,11 @@ function mergeCanonicalMessage(existing: Message, incoming: Message): Message {
 }
 
 /**
- * Reconcile the bounded Codex code-mode identity mismatch:
+ * Reconcile bounded Codex live/durable tool identity mismatches:
  *
  * - app-server exposes a nested command as commandExecution(exec-*);
- * - rollout persists its enclosing custom_tool_call(call_*).
+ * - app-server exposes a checklist as turn/plan/updated without a call id;
+ * - rollout persists the corresponding function/custom tool call(call_*).
  *
  * Exact normalized semantics, turn id, nearest timestamp, and one-to-one
  * pairing are all required. Once paired, the durable call id becomes the
@@ -165,10 +172,10 @@ function mergeCanonicalMessage(existing: Message, incoming: Message): Message {
 export function reconcileCodexToolMessages(messages: Message[]): Message[] {
   const candidates = collectToolUseCandidates(messages);
   const liveCandidates = candidates.filter(
-    (candidate) => candidate.metadata.origin === "command_execution",
+    (candidate) => !isDurableOrigin(candidate.metadata.origin),
   );
   const durableCandidates = candidates.filter(
-    (candidate) => candidate.metadata.origin === "custom_tool_call",
+    (candidate) => isDurableOrigin(candidate.metadata.origin),
   );
 
   const liveToDurable = new Map<string, string>();
@@ -176,11 +183,11 @@ export function reconcileCodexToolMessages(messages: Message[]): Message[] {
   for (const message of messages) {
     const metadata = getCodexToolCorrelation(message);
     if (!metadata) continue;
-    if (metadata.origin === "command_execution" && metadata.durableCallId) {
+    if (!isDurableOrigin(metadata.origin) && metadata.durableCallId) {
       liveToDurable.set(metadata.itemId, metadata.durableCallId);
       durableToLive.set(metadata.durableCallId, metadata.itemId);
     }
-    if (metadata.origin === "custom_tool_call" && metadata.liveItemId) {
+    if (isDurableOrigin(metadata.origin) && metadata.liveItemId) {
       liveToDurable.set(metadata.liveItemId, metadata.itemId);
       durableToLive.set(metadata.itemId, metadata.liveItemId);
     }
@@ -223,7 +230,7 @@ export function reconcileCodexToolMessages(messages: Message[]): Message[] {
     const metadata = getCodexToolCorrelation(message);
     if (!metadata) return message;
 
-    if (metadata.origin === "custom_tool_call") {
+    if (isDurableOrigin(metadata.origin)) {
       const toolUse = getToolBlock(message, "tool_use");
       const toolResult = getToolBlock(message, "tool_result");
       const durableCallId =

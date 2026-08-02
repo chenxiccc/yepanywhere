@@ -96,6 +96,9 @@ export function isConversationViewActivity(item: RenderItem): boolean {
   if (item.type !== "tool_call") {
     return false;
   }
+  if (toolRegistry.get(item.toolName).tool === "UpdatePlan") {
+    return false;
+  }
   return (
     !isMediaToolCall(item) &&
     item.status !== "error" &&

@@ -10,6 +10,7 @@ import type {
   ReasoningSummaryTextDeltaNotification,
   ThreadTokenUsageUpdatedNotification,
   TurnCompletedNotification,
+  TurnPlanUpdatedNotification,
 } from "./codex-protocol/index.js";
 
 const CODEX_DISABLE_LIVE_DELTAS_ENV = "YEP_CODEX_DISABLE_LIVE_DELTAS";
@@ -43,6 +44,38 @@ export function asCodexTurnCompletedNotification(
     return null;
   }
   return params as TurnCompletedNotification;
+}
+
+export function asCodexTurnPlanUpdatedNotification(
+  params: unknown,
+): TurnPlanUpdatedNotification | null {
+  if (!params || typeof params !== "object") return null;
+  const record = params as Record<string, unknown>;
+  if (
+    typeof record.threadId !== "string" ||
+    typeof record.turnId !== "string" ||
+    (record.explanation !== null &&
+      typeof record.explanation !== "string") ||
+    !Array.isArray(record.plan)
+  ) {
+    return null;
+  }
+  const validStatuses = new Set(["pending", "inProgress", "completed"]);
+  if (
+    !record.plan.every(
+      (entry) =>
+        entry !== null &&
+        typeof entry === "object" &&
+        typeof (entry as Record<string, unknown>).step === "string" &&
+        typeof (entry as Record<string, unknown>).status === "string" &&
+        validStatuses.has(
+          (entry as Record<string, unknown>).status as string,
+        ),
+    )
+  ) {
+    return null;
+  }
+  return params as TurnPlanUpdatedNotification;
 }
 
 export function asCodexErrorNotification(

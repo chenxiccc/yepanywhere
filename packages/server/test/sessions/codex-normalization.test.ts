@@ -1,7 +1,10 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { CodexSessionEntry } from "@yep-anywhere/shared";
+import {
+  getCodexToolCorrelation,
+  type CodexSessionEntry,
+} from "@yep-anywhere/shared";
 import { describe, expect, it, vi } from "vitest";
 import { compileTranscriptProjection } from "../../../client/src/lib/transcriptProjection/compiler.ts";
 import { normalizeSession } from "../../src/sessions/normalization.js";
@@ -125,6 +128,7 @@ describe("Codex Normalization", () => {
           name: "shell_command",
           call_id: "call-1",
           arguments: '{"command":"npm test"}',
+          internal_chat_message_metadata_passthrough: { turn_id: "turn-1" },
         },
       },
       {
@@ -134,6 +138,7 @@ describe("Codex Normalization", () => {
           type: "function_call_output",
           call_id: "call-1",
           output: "Exit code: 0",
+          internal_chat_message_metadata_passthrough: { turn_id: "turn-1" },
         },
       },
     ];
@@ -154,6 +159,16 @@ describe("Codex Normalization", () => {
       name: "Bash",
     });
     expect(toolResultMessage?.type).toBe("user");
+    expect(getCodexToolCorrelation(toolUseMessage)).toEqual({
+      origin: "function_call",
+      turnId: "turn-1",
+      itemId: "call-1",
+    });
+    expect(getCodexToolCorrelation(toolResultMessage)).toEqual({
+      origin: "function_call",
+      turnId: "turn-1",
+      itemId: "call-1",
+    });
     expect(
       Array.isArray(toolResultContent)
         ? toolResultContent[0]

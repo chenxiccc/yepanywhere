@@ -106,6 +106,7 @@ import {
   asCodexReasoningSummaryTextDeltaNotification,
   asCodexThreadTokenUsageUpdatedNotification,
   asCodexTurnCompletedNotification,
+  asCodexTurnPlanUpdatedNotification,
   isCodexLiveDeltaNotificationMethod,
   isCodexLiveDeltaSuppressionEnabled,
 } from "./codex-notification-guards.js";
@@ -403,6 +404,7 @@ interface CodexLiveEventState {
   streamingToolOutputByItemKey: Map<string, string>;
   toolCallContexts: Map<string, CodexToolCallContext>;
   resultBackedToolItemsByTurnId: Map<string, Set<string>>;
+  planUpdateCountByTurnId: Map<string, number>;
 }
 
 interface CodexFailureTraceEvent {
@@ -2968,6 +2970,7 @@ export class CodexProvider implements AgentProvider {
       streamingToolOutputByItemKey: new Map(),
       toolCallContexts: new Map(),
       resultBackedToolItemsByTurnId: new Map(),
+      planUpdateCountByTurnId: new Map(),
     };
   }
 
@@ -3820,6 +3823,93 @@ export class CodexProvider implements AgentProvider {
         return [message];
       }
 
+      case "turn/plan/updated": {
+        const params = asCodexTurnPlanUpdatedNotification(
+          notification.params,
+        );
+        if (!params) return [];
+
+        const sequence =
+          (liveEventState.planUpdateCountByTurnId.get(params.turnId) ?? 0) + 1;
+        liveEventState.planUpdateCountByTurnId.set(params.turnId, sequence);
+        const callId = `codex-plan-${params.turnId}-${sequence}`;
+        const observedAt = new Date().toISOString();
+        const input = {
+          ...(params.explanation ? { explanation: params.explanation } : {}),
+          plan: params.plan.map(({ status, step }) => ({
+            step,
+            status: status === "inProgress" ? "in_progress" : status,
+          })),
+        };
+        const toolUse = withCodexTimestamp(
+          {
+            type: "assistant",
+            session_id: sessionId,
+            uuid: this.buildItemToolUuid(callId),
+            [CODEX_TOOL_CORRELATION_FIELD]: createCodexToolCorrelation(
+              "plan_update",
+              params.turnId,
+              callId,
+              observedAt,
+            ),
+            message: {
+              role: "assistant",
+              content: [
+                {
+                  type: "tool_use",
+                  id: callId,
+                  name: "UpdatePlan",
+                  input,
+                },
+              ],
+            },
+          } as SDKMessage,
+          observedAt,
+        );
+        const toolResult = withCodexTimestamp(
+          {
+            type: "user",
+            session_id: sessionId,
+            uuid: this.buildItemResultUuid(callId),
+            [CODEX_TOOL_CORRELATION_FIELD]: createCodexToolCorrelation(
+              "plan_update",
+              params.turnId,
+              callId,
+              observedAt,
+            ),
+            message: {
+              role: "user",
+              content: [
+                {
+                  type: "tool_result",
+                  tool_use_id: callId,
+                  content: "Plan updated",
+                },
+              ],
+            },
+            toolUseResult: { message: "Plan updated" },
+          } as SDKMessage,
+          observedAt,
+        );
+        logSdkCorrelationDebug(sessionId, toolUse, {
+          eventKind: "plan_update",
+          turnId: params.turnId,
+          itemId: callId,
+          callId,
+          phase: "completed",
+          sourceEvent: notification.method,
+        });
+        logSdkCorrelationDebug(sessionId, toolResult, {
+          eventKind: "tool_result",
+          turnId: params.turnId,
+          itemId: callId,
+          callId,
+          phase: "completed",
+          sourceEvent: notification.method,
+        });
+        return [toolUse, toolResult];
+      }
+
       case "turn/completed": {
         const params = asCodexTurnCompletedNotification(notification.params);
         const turnId = params?.turn.id ?? null;
@@ -3833,6 +3923,9 @@ export class CodexProvider implements AgentProvider {
             }
           : undefined;
         const messages: SDKMessage[] = [];
+        if (turnId) {
+          liveEventState.planUpdateCountByTurnId.delete(turnId);
+        }
         const orphanedToolUseIds = turnId
           ? this.consumeLiveResultBackedToolItems(liveEventState, turnId)
           : [];

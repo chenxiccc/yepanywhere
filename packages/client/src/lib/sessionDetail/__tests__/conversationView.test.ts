@@ -127,6 +127,35 @@ describe("projectConversationView", () => {
     });
   });
 
+  it("keeps Codex plan updates visible while summarizing routine activity", () => {
+    const items: RenderItem[] = [
+      tool("read-before-plan", 1_000),
+      tool("plan", 2_000, {
+        toolName: "UpdatePlan",
+        toolInput: {
+          plan: [
+            { step: "Read the engine and contracts", status: "in_progress" },
+            { step: "Add failing tests", status: "pending" },
+            { step: "Implement image rendering", status: "pending" },
+            { step: "Normalize attachments", status: "pending" },
+            { step: "Run regression tests", status: "pending" },
+          ],
+        },
+      }),
+    ];
+
+    const projected = projectConversationView(items, {
+      active: true,
+      nowMs: 3_000,
+    });
+
+    expect(projected.map((item) => item.id)).toEqual([
+      "plan",
+      "conversation-activity-read-before-plan",
+    ]);
+    expect(summary(projected).activityCount).toBe(1);
+  });
+
   it("restores hidden rows in their original positions when expanded", () => {
     const items: RenderItem[] = [
       tool("read-before", 1_000),
