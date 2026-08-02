@@ -203,14 +203,17 @@ explicit resume rejection all make the profile require visible SRP
 reauthentication; they do not delete the paired-server metadata. Forgetting a
 profile atomically removes its metadata, encrypted credential, and selection.
 
-The existing paired-server codec is strict schema v1. Security-client
-registration migrates it to schema v2 while continuing to decode v1. V2 adds
-the continuity-key alias, pending idempotent registration request id,
-server-issued client id, and local revoked state. A successful full-SRP
-`pair()` performs initial registration on that still-open authenticated
-connection before closing it and committing the profile, so the dashboard can
-show the phone immediately. A lost registration response reuses the pending
-request id and same key rather than prompting for the password again.
+The existing paired-server codec is strict schema v1, but no Android build has
+been released. Security-client registration bumps development storage to v2
+without a v1 migration. Existing Pixel/AVD profiles are disposable and must be
+cleared and paired again; migration compatibility begins only once distributed
+builds create user-owned state. V2 adds the continuity-key alias, pending
+idempotent registration request id, server-issued client id, and local revoked
+state. A successful full-SRP `pair()` performs initial registration on that
+still-open authenticated connection before closing it and committing the
+profile, so the dashboard can show the phone immediately. A lost registration
+response reuses the pending request id and same key rather than prompting for
+the password again.
 
 Android uses the current seven-day idle and thirty-day absolute server limits
 as a conservative local eligibility check before resume. The server remains

@@ -56,7 +56,7 @@ response member and newer clients never send it to an older server.
 | Audit failed authentication and session eviction | pending | Rate-bounded failed SRP/proof evidence cannot crowd registration/revocation out of the ledger; associated session eviction names the affected client |
 | Revoke the complete client relationship | pending | Atomic tombstone precedes response/cascade; unknown and revoked check-ins differ; sessions, sockets, and push are removed without erasing history |
 | Deliver generic native push | pending | Exact broker endpoint/credential binding, notification-policy mapping, test delivery, 404 invalidation, bounded transient failure, and secret redaction pass |
-| Register and check in from Android | pending | Store v1→v2 migration, per-server Keystore key, registration before pairing closes, signed descriptor, idempotent recovery, revoked/new-client behavior, and restart pass |
+| Register and check in from Android | pending | Pre-release v2 storage reset, per-server Keystore key, registration before pairing closes, signed descriptor, idempotent recovery, revoked/new-client behavior, and restart pass |
 | Register and check in from capable SRP web | pending | Exact capability gate, non-extractable IndexedDB WebCrypto key, quiet legacy/cookie fallback, and no plaintext fingerprint expansion pass |
 | Present the security dashboard | pending | Recognizable cards, distinct reported/owner labels, phone-comparable fingerprint, proof labels, global/per-client history, sessions/push, and revoke UI pass desktop/phone review |
 | Alert on a genuinely new client | pending | Default-off `securityEvent` setting sends once to pre-existing enrolled destinations across supported adapters; retry and first-destination cases stay quiet |
@@ -126,12 +126,14 @@ Plaintext profile-id cleanup remains a separately compatible follow-up.
 Generate one non-exportable P-256 key per local paired-server profile, collect
 the complete current descriptor without new Android permissions, register
 after the capability check, and check in once after each authenticated
-connection. Migrate the strict paired-server codec from schema v1 to v2 for the
-key alias, pending request id, server client id, and revoked state while still
-reading existing v1 profiles. Perform initial registration on the successful
-full-SRP pairing connection before `pair()` closes it, then persist the response
-so the phone appears immediately and a lost response can recover without
-another password entry.
+connection. Bump the strict paired-server codec from schema v1 to v2 for the
+key alias, pending request id, server client id, and revoked state. There is no
+v1 migration because Android has not shipped; clear and re-pair disposable
+Pixel/AVD profiles, and begin migration compatibility with the first
+distributed schema. Perform initial registration on the successful full-SRP
+pairing connection before `pair()` closes it, then persist the response so the
+phone appears immediately and a lost response can recover without another
+password entry.
 
 ### 7 — add the security dashboard, alerts, and revocation
 
