@@ -20,7 +20,7 @@ class YaPairedServerStore internal constructor(
     private val dataStore: DataStore<Preferences>,
     private val cipher: YaResumeCredentialCipher,
     private val ownedScope: CoroutineScope? = null,
-) : Closeable {
+) : YaPairedServerRepository, Closeable {
     val profiles: Flow<List<YaPairedServerProfile>> = dataStore.data.map { preferences ->
         YaPairedServerCodec.decodeProfiles(preferences[PROFILES_KEY])
     }
@@ -39,15 +39,15 @@ class YaPairedServerStore internal constructor(
         }
     }
 
-    suspend fun snapshot(profileId: String): YaPairedServerSnapshot? {
+    override suspend fun snapshot(profileId: String): YaPairedServerSnapshot? {
         requireUuid(profileId, "profile id")
         return snapshots().firstOrNull { it.profile.id == profileId }
     }
 
-    suspend fun upsert(
+    override suspend fun upsert(
         profile: YaPairedServerProfile,
-        resumeCredential: YaStoredResumeCredential? = null,
-        select: Boolean = false,
+        resumeCredential: YaStoredResumeCredential?,
+        select: Boolean,
     ) {
         require(resumeCredential == null || resumeCredential.credential.username == profile.username)
         val encryptedCredential = resumeCredential?.let { stored ->
@@ -92,7 +92,7 @@ class YaPairedServerStore internal constructor(
         }
     }
 
-    suspend fun clearCredential(profileId: String) {
+    override suspend fun clearCredential(profileId: String) {
         requireUuid(profileId, "profile id")
         dataStore.edit { it.remove(credentialKey(profileId)) }
     }
@@ -122,6 +122,38 @@ class YaPairedServerStore internal constructor(
             if (preferences[SELECTED_PROFILE_KEY] == profileId) {
                 preferences.remove(SELECTED_PROFILE_KEY)
             }
+        }
+    }
+
+    override suspend fun recordSuccessfulResume(
+        profileId: String,
+        routeId: String,
+        resumeCredential: YaStoredResumeCredential,
+        connectedAtEpochMs: Long,
+    ) {
+        requireUuid(profileId, "profile id")
+        requireUuid(routeId, "route id")
+        require(connectedAtEpochMs >= 0)
+        val plaintext = YaPairedServerCodec.encodeCredential(resumeCredential)
+        val encrypted = try {
+            cipher.encrypt(profileId, plaintext)
+        } finally {
+            plaintext.fill(0)
+        }
+        dataStore.edit { preferences ->
+            val profiles = YaPairedServerCodec.decodeProfiles(preferences[PROFILES_KEY])
+            val profile = profiles.firstOrNull { it.id == profileId }
+                ?: error("Cannot update an unknown profile")
+            require(profile.username == resumeCredential.credential.username)
+            require(profile.routes.any { it.id == routeId })
+            val updated = profile.copy(
+                preferredRouteId = routeId,
+                lastConnectedAtEpochMs = connectedAtEpochMs,
+            )
+            preferences[PROFILES_KEY] = YaPairedServerCodec.encodeProfiles(
+                profiles.map { if (it.id == profileId) updated else it },
+            )
+            preferences[credentialKey(profileId)] = encrypted
         }
     }
 

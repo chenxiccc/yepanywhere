@@ -7,8 +7,12 @@ import com.yepanywhere.mobile.notifications.NotificationChannels
 import com.yepanywhere.mobile.notifications.NotificationFoundation
 
 class YepAnywhereApplication : Application() {
+    lateinit var nativeRuntime: YaNativeRuntime
+        private set
+
     override fun onCreate() {
         super.onCreate()
+        nativeRuntime = YaNativeRuntime(this)
         NotificationChannels.ensureActivityChannel(this)
         if (!NotificationFoundation.needsFirebaseRegistration(this)) {
             return

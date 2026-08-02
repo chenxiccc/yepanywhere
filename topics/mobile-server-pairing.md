@@ -227,6 +227,41 @@ connection, sockets, subscriptions, heartbeats, retry timers, and discovery
 work quiesce. FCM receipt alone does not start the foreground activity service
 or a persistent YA connection.
 
+### Android connection ownership contract
+
+The Android application owns at most one connection manager for each local
+paired-server profile. UI and future service consumers acquire explicit
+leases. Leases share one authenticated socket, while each request and
+subscription remains attributable to its owning lease. Releasing one lease
+closes only its subscriptions. Releasing the final lease cancels the socket,
+pending requests, subscription work, and any retry delay, and returns the
+manager to idle.
+
+Requests use the existing encrypted `request`/`response` protocol and are
+never replayed automatically after a disconnect. Live subscriptions use the
+existing `subscribe`/`event`/`unsubscribe` protocol, remember their most recent
+event id, and are restored after a successful reconnect. Native inbound and
+per-subscription queues are bounded; a consumer that falls behind loses that
+subscription instead of growing process memory without limit.
+
+While a lease exists, an unexpected disconnect gets three bounded retries
+after 250 ms, 1 second, and 3 seconds. The manager has no recurring retry or
+heartbeat of its own. A new explicit request after a terminal failure may
+start a new bounded cycle; no work restarts after the final lease is gone.
+
+Routes are tried in deterministic order: the last successful/preferred route,
+then remaining direct routes, then remaining legacy relay routes. Every
+automatic candidate must prove the saved SRP resume credential. A successful
+fallback becomes preferred. The initial implementation uses one ordinary
+legacy relay `/ws` per profile; relay `/mux` remains a later optimization and
+is not probed or assumed by Android.
+
+If every reachable route rejects resume, Android deletes only the encrypted
+credential and requires visible SRP login. Network failure does not silently
+become password authentication, and a failed request is not rerouted or
+replayed. Full SRP onboarding targets exactly the route the user entered and
+persists a profile only after the authenticated server proof succeeds.
+
 Compose consumes domain-facing repositories for server state, inbox, sessions,
 notifications, and projections. The raw multiplexed protocol remains internal
 transport plumbing rather than becoming the UI's permanent data model.

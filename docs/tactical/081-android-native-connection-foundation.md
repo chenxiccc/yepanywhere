@@ -159,9 +159,9 @@ server-configuration slice rather than a hidden test-driven migration.
 | Prove physical-device teardown | complete | The client returns after close; the server records disconnect before resume opens and after resume closes, with no retry owner |
 | Review the native crypto checkpoint | complete | Maintainer approved the selected foundation and direct-session result on 2026-08-02 |
 | Persist paired-server resume state | complete | Versioned DataStore metadata, Keystore AES-GCM credentials, local expiry, invalidation, restart, forget, and backup exclusion are covered |
-| Turn the probe into a connection manager | ready | Leased request/subscription ownership, cancellation, reconnect bounds, and final-owner teardown are tested |
-| Add the native relay route | ready after manager | Same core negotiates through deployed legacy relay `/ws`; outer relay `/mux` remains independently capability-gated |
-| Add explicit direct route selection | ready after manager | Resume-authenticated candidates and explicit SRP reauthentication preserve one local profile with deterministic cancellation |
+| Turn the probe into a connection manager | complete | Per-profile process runtime, leases, bounded queues/retry, request correlation, subscription restoration, and final-owner teardown are tested |
+| Add the native relay route | complete | Pixel negotiates and requests through an ordinary local legacy relay `/ws`; Android does not probe or require `/mux` |
+| Add explicit direct route selection | complete | Pixel falls back from an unavailable preferred direct candidate to resume-authenticated relay and records the successful route |
 | Bind Compose onboarding and summaries | ready after profiles | Native login/profile UI and a small real session-summary consumer use the connection manager |
 | Add user-enabled foreground ownership | requires later product review | Correct Android foreground-service type/policy, visible start/stop, lease ownership, process recreation, and timeout behavior are validated |
 | Add bounded LAN discovery | ready after route selection | Foreground NSD scan supplies untrusted candidates, attaches automatically only after resume, and stops completely when its owner releases it |
@@ -349,3 +349,23 @@ manifests remain HTTPS-only.
 - Kotlin JVM tests cover exact idle and absolute eligibility boundaries. The
   existing release manifest disables backup and excludes every app storage
   domain from cloud backup and device transfer.
+
+## Connection-Manager Evidence — 2026-08-02
+
+- The process-owned Android runtime keeps one manager per local profile and
+  does not open an OkHttp socket until a lease supplies demand.
+- JVM tests cover two leases sharing one socket, encrypted request correlation,
+  lease-owned unsubscribe, subscription event-id restoration, bounded
+  reconnect, resume rejection, retry cancellation, and final-owner teardown.
+- Requests fail on disconnect and are not replayed. Subscription and inbound
+  channels have fixed bounds; subscription overflow closes that subscription.
+- The Pixel uses the real encrypted router to request `/api/sessions`, receive
+  the initial activity event, release the socket, acquire a new lease, resume,
+  request again, and return to idle without an Activity or WebView.
+- A disposable local legacy relay pairs the Pixel through `/ws` to the real YA
+  `RelayClientService`. With an unavailable preferred direct candidate first,
+  the same manager falls back to relay, authenticates resume, requests session
+  summaries, records relay as preferred, and tears down both sides.
+- The disposable server pins Codex scanning to its temporary directory, so the
+  integration test cannot inspect the maintainer's real session history or
+  emit unrelated slow-scan warnings.

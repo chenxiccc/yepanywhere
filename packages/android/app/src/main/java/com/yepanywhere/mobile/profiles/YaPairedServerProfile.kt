@@ -27,13 +27,13 @@ data class YaServerRoute(
         when (kind) {
             YaServerRouteKind.DIRECT -> require(relayTarget == null)
             YaServerRouteKind.RELAY -> require(
-                !relayTarget.isNullOrBlank() && relayTarget.length <= MAX_RELAY_TARGET_LENGTH,
+                relayTarget != null && RELAY_TARGET_PATTERN.matches(relayTarget),
             )
         }
     }
 
     companion object {
-        private const val MAX_RELAY_TARGET_LENGTH = 128
+        private val RELAY_TARGET_PATTERN = Regex("^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$")
 
         fun direct(websocketUrl: String): YaServerRoute {
             return YaServerRoute(

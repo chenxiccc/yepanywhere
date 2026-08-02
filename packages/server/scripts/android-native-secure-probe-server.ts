@@ -8,7 +8,11 @@ import { AuthService } from "../src/auth/AuthService.js";
 import { attachUnifiedUpgradeHandler } from "../src/frontend/index.js";
 import { RemoteSessionService } from "../src/remote-access/RemoteSessionService.js";
 import { RemoteAccessService } from "../src/remote-access/index.js";
-import { createWsRelayRoutes } from "../src/routes/ws-relay.js";
+import { RelayClientService } from "../src/services/RelayClientService.js";
+import {
+  createAcceptRelayConnection,
+  createWsRelayRoutes,
+} from "../src/routes/ws-relay.js";
 import { MockClaudeSDK } from "../src/sdk/mock.js";
 import { UploadManager } from "../src/uploads/manager.js";
 import { EventBus } from "../src/watcher/index.js";
@@ -16,6 +20,7 @@ import { EventBus } from "../src/watcher/index.js";
 const username = process.env.YA_NATIVE_PROBE_USERNAME;
 const password = process.env.YA_NATIVE_PROBE_PASSWORD;
 const requestedPort = Number.parseInt(process.env.YA_NATIVE_PROBE_PORT ?? "38901", 10);
+const relayUrl = process.env.YA_NATIVE_PROBE_RELAY_URL;
 
 if (!username || !/^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/.test(username)) {
   throw new Error("YA_NATIVE_PROBE_USERNAME must be a valid 3-32 character SRP identity");
@@ -29,8 +34,10 @@ if (!Number.isSafeInteger(requestedPort) || requestedPort < 1024 || requestedPor
 
 const root = await mkdtemp(join(tmpdir(), "ya-android-native-probe-"));
 const projectsDir = join(root, "projects");
+const codexSessionsDir = join(root, "codex-sessions");
 const dataDir = join(root, "data");
 await mkdir(projectsDir, { recursive: true });
+await mkdir(codexSessionsDir, { recursive: true });
 await mkdir(dataDir, { recursive: true });
 
 const eventBus = new EventBus();
@@ -43,10 +50,10 @@ await authService.initialize();
 const remoteAccessService = new RemoteAccessService({ dataDir });
 await remoteAccessService.initialize();
 // The production state model currently stores SRP identity with relay config.
-// This harness supplies the value without starting RelayClientService, so no
-// registration, DNS lookup, or relay retry occurs.
+// Direct-only runs supply the value without starting RelayClientService. An
+// explicitly supplied test relay URL enables the separate legacy-relay proof.
 await remoteAccessService.setRelayConfig({
-  url: "wss://unused.invalid/ws",
+  url: relayUrl ?? "wss://unused.invalid/ws",
   username,
 });
 await remoteAccessService.configure(password);
@@ -57,6 +64,7 @@ await remoteSessionService.initialize();
 const { app, supervisor } = createApp({
   sdk: new MockClaudeSDK(),
   projectsDir,
+  codexSessionsDir,
   eventBus,
   authService,
   authDisabled: true,
@@ -74,6 +82,25 @@ const wsHandler = createWsRelayRoutes({
   remoteSessionService,
 });
 app.get("/api/ws", wsHandler);
+
+const relayClientService = relayUrl ? new RelayClientService() : null;
+if (relayClientService) {
+  const acceptRelayConnection = createAcceptRelayConnection({
+    app,
+    baseUrl: `http://127.0.0.1:${requestedPort}`,
+    supervisor,
+    eventBus,
+    uploadManager,
+    remoteAccessService,
+    remoteSessionService,
+  });
+  relayClientService.start({
+    relayUrl,
+    username,
+    installId: "android-native-probe-install",
+    onRelayConnection: acceptRelayConnection,
+  });
+}
 
 let server: ReturnType<typeof serve>;
 await new Promise<void>((resolveReady) => {
@@ -104,6 +131,7 @@ await new Promise<void>((resolveStop) => {
 });
 
 remoteSessionService.shutdown();
+relayClientService?.stop();
 await new Promise<void>((resolveClosed) => server!.close(() => resolveClosed()));
 wss.close();
 await rm(root, { recursive: true, force: true });
