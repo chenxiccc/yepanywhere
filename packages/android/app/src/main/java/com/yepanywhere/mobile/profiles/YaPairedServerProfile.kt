@@ -62,6 +62,7 @@ data class YaPairedServerProfile(
     val preferredRouteId: String?,
     val createdAtEpochMs: Long,
     val lastConnectedAtEpochMs: Long?,
+    val securityClient: YaSecurityClientBinding? = null,
 ) {
     init {
         requireUuid(id, "profile id")
@@ -94,6 +95,66 @@ data class YaPairedServerProfile(
                 lastConnectedAtEpochMs = null,
             )
         }
+    }
+}
+
+data class YaSecurityClientBinding(
+    val keyAlias: String?,
+    val pendingRequestId: String?,
+    val clientId: String?,
+    val revoked: Boolean,
+    val capabilityMissing: Boolean,
+) {
+    init {
+        if (revoked) {
+            require(keyAlias == null && pendingRequestId == null && clientId != null) {
+                "A revoked security client retains only its server client id"
+            }
+        } else {
+            require(!keyAlias.isNullOrBlank() && KEY_ALIAS_PATTERN.matches(keyAlias)) {
+                "An active security client requires a valid Keystore alias"
+            }
+            require((pendingRequestId == null) != (clientId == null)) {
+                "An active security client must be pending or registered"
+            }
+            if (pendingRequestId != null) requireUuid(pendingRequestId, "registration request id")
+            if (clientId != null) requireUuid(clientId, "security client id")
+        }
+    }
+
+    companion object {
+        private val KEY_ALIAS_PATTERN = Regex("^[A-Za-z0-9._-]{1,160}$")
+
+        fun pending(
+            keyAlias: String,
+            requestId: String = UUID.randomUUID().toString(),
+            capabilityMissing: Boolean = false,
+        ): YaSecurityClientBinding = YaSecurityClientBinding(
+            keyAlias = keyAlias,
+            pendingRequestId = requestId,
+            clientId = null,
+            revoked = false,
+            capabilityMissing = capabilityMissing,
+        )
+
+        fun registered(
+            keyAlias: String,
+            clientId: String,
+        ): YaSecurityClientBinding = YaSecurityClientBinding(
+            keyAlias = keyAlias,
+            pendingRequestId = null,
+            clientId = clientId,
+            revoked = false,
+            capabilityMissing = false,
+        )
+
+        fun revoked(clientId: String): YaSecurityClientBinding = YaSecurityClientBinding(
+            keyAlias = null,
+            pendingRequestId = null,
+            clientId = clientId,
+            revoked = true,
+            capabilityMissing = false,
+        )
     }
 }
 

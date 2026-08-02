@@ -5,14 +5,70 @@ import com.yepanywhere.mobile.profiles.YaPairedServerRepository
 import com.yepanywhere.mobile.profiles.YaPairedServerSnapshot
 import com.yepanywhere.mobile.profiles.YaServerRoute
 import com.yepanywhere.mobile.profiles.YaStoredResumeCredential
+import com.yepanywhere.mobile.profiles.YaSecurityClientBinding
+import com.yepanywhere.mobile.security.YaSecurityClientLifecycle
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class YaPairingCoordinatorTest {
+    @Test
+    fun registersTheSecurityClientBeforeThePairingTransportCloses() = runBlocking {
+        val route = YaServerRoute.direct("wss://computer.example.test/api/ws")
+        val placeholder = YaPairedServerProfile.create(
+            label = "Placeholder",
+            username = "remote-user",
+            route = route,
+            nowEpochMs = 1_000,
+        )
+        val repository = FakeRepository(YaPairedServerSnapshot(placeholder, null))
+        val transport = FakeTransport(
+            YaResumeCredential(
+                username = "remote-user",
+                sessionId = "new-session",
+                baseKey = ByteArray(YaSecureTransportCrypto.KEY_BYTES),
+                resumeProtocolVersion = YaSecureTransportCrypto.RESUME_PROTOCOL_VERSION,
+            ),
+        )
+        val securityClients = YaSecurityClientLifecycle { profile, activeTransport ->
+            assertTrue(activeTransport === transport)
+            assertFalse(transport.closed)
+            val persisted = checkNotNull(repository.snapshot(profile.id))
+            assertEquals(profile.securityClient, persisted.profile.securityClient)
+            assertEquals("new-session", persisted.resumeCredential?.credential?.sessionId)
+            val registered = YaSecurityClientBinding.registered(
+                keyAlias = checkNotNull(profile.securityClient?.keyAlias),
+                clientId = "44444444-4444-4444-8444-444444444444",
+            )
+            repository.updateSecurityClientBinding(profile.id, registered)
+            profile.copy(securityClient = registered)
+        }
+        val coordinator = YaPairingCoordinator(
+            repository = repository,
+            connector = FakeConnector(transport),
+            securityClients = securityClients,
+            nowEpochMs = { 2_000 },
+        )
+
+        val paired = coordinator.pair(
+            label = "Pixel",
+            username = "remote-user",
+            password = "one-time-password",
+            route = route,
+        )
+
+        assertTrue(transport.closed)
+        assertEquals(
+            "44444444-4444-4444-8444-444444444444",
+            paired.securityClient?.clientId,
+        )
+        assertEquals(paired.securityClient, repository.value.profile.securityClient)
+    }
+
     @Test
     fun reauthenticatesThroughThePreferredRouteAndReplacesTheCredential() = runBlocking {
         val direct = YaServerRoute.direct("wss://computer.example.test/api/ws")
@@ -39,7 +95,11 @@ class YaPairingCoordinatorTest {
             ),
         )
         val connector = FakeConnector(transport)
-        val coordinator = YaPairingCoordinator(repository, connector) { 2_000 }
+        val coordinator = YaPairingCoordinator(
+            repository = repository,
+            connector = connector,
+            nowEpochMs = { 2_000 },
+        )
 
         coordinator.reauthenticate(profile.id, "one-time-password")
 

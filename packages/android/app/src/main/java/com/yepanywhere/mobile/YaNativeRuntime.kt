@@ -6,12 +6,16 @@ import com.yepanywhere.mobile.connection.YaNativeSecureConnection
 import com.yepanywhere.mobile.connection.YaPairingCoordinator
 import com.yepanywhere.mobile.connection.YaServerConnectionManager
 import com.yepanywhere.mobile.profiles.YaPairedServerStore
+import com.yepanywhere.mobile.security.AndroidKeystoreSecurityClientKeyStore
+import com.yepanywhere.mobile.security.YaAndroidSecurityClientDescriptorProvider
+import com.yepanywhere.mobile.security.YaSecurityClientCoordinator
 import java.io.Closeable
 import java.util.concurrent.TimeUnit
 import okhttp3.OkHttpClient
 
 class YaNativeRuntime(context: Context) : Closeable {
-    val pairedServers = YaPairedServerStore.create(context)
+    private val securityKeys = AndroidKeystoreSecurityClientKeyStore()
+    val pairedServers = YaPairedServerStore.create(context, securityKeys = securityKeys)
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS)
@@ -19,7 +23,12 @@ class YaNativeRuntime(context: Context) : Closeable {
     private val connector = YaNativeProfileConnector(
         YaNativeSecureConnection(httpClient),
     )
-    val pairing = YaPairingCoordinator(pairedServers, connector)
+    private val securityClients = YaSecurityClientCoordinator(
+        repository = pairedServers,
+        keys = securityKeys,
+        descriptors = YaAndroidSecurityClientDescriptorProvider(context),
+    )
+    val pairing = YaPairingCoordinator(pairedServers, connector, securityClients)
     private val connectionManagers = mutableMapOf<String, YaServerConnectionManager>()
 
     @Synchronized
@@ -29,6 +38,7 @@ class YaNativeRuntime(context: Context) : Closeable {
                 profileId = profileId,
                 repository = pairedServers,
                 connector = connector,
+                securityClients = securityClients,
             )
         }
     }

@@ -9,12 +9,30 @@ import org.json.JSONObject
 interface YaMessageTransport {
     val credential: YaResumeCredential
     val resumed: Boolean
+    val securityBinding: YaSrpTransportBinding?
+        get() = null
 
     fun send(message: JSONObject)
     suspend fun receive(): JSONObject
     suspend fun awaitClosed()
     suspend fun closeAndAwait()
     fun cancel()
+}
+
+enum class YaSrpAuthenticationMethod {
+    FULL,
+    RESUME,
+}
+
+data class YaSrpTransportBinding(
+    val sessionId: String,
+    val transportNonce: String,
+    val authenticationMethod: YaSrpAuthenticationMethod,
+) {
+    init {
+        require(sessionId.isNotBlank())
+        require(transportNonce.isNotBlank())
+    }
 }
 
 interface YaSecureSessionOpener {

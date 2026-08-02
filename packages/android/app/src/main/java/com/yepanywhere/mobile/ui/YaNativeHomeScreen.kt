@@ -591,6 +591,7 @@ private fun connectionStatus(phase: YaConnectionPhase): String = when (phase) {
     YaConnectionPhase.REAUTHENTICATION_REQUIRED -> stringResource(
         R.string.connection_sign_in_required,
     )
+    YaConnectionPhase.REVOKED -> stringResource(R.string.connection_revoked)
     YaConnectionPhase.FAILED -> stringResource(R.string.connection_failed)
 }
 
@@ -598,6 +599,7 @@ private fun connectionStatus(phase: YaConnectionPhase): String = when (phase) {
 private fun connectionStatusColor(phase: YaConnectionPhase) = when (phase) {
     YaConnectionPhase.CONNECTED -> MaterialTheme.colorScheme.primary
     YaConnectionPhase.REAUTHENTICATION_REQUIRED,
+    YaConnectionPhase.REVOKED,
     YaConnectionPhase.FAILED,
     -> MaterialTheme.colorScheme.error
     else -> MaterialTheme.colorScheme.onSurfaceVariant

@@ -4,10 +4,15 @@ import com.yepanywhere.mobile.profiles.YaPairedServerProfile
 import com.yepanywhere.mobile.profiles.YaPairedServerRepository
 import com.yepanywhere.mobile.profiles.YaServerRoute
 import com.yepanywhere.mobile.profiles.YaStoredResumeCredential
+import com.yepanywhere.mobile.profiles.YaSecurityClientBinding
+import com.yepanywhere.mobile.security.YaSecurityClientLifecycle
+import com.yepanywhere.mobile.security.YaSecurityClientProtocol
+import com.yepanywhere.mobile.security.YaSecurityClientRevokedException
 
 class YaPairingCoordinator(
     private val repository: YaPairedServerRepository,
     private val connector: YaProfileConnector,
+    private val securityClients: YaSecurityClientLifecycle? = null,
     private val nowEpochMs: () -> Long = System::currentTimeMillis,
 ) {
     suspend fun pair(
@@ -19,12 +24,19 @@ class YaPairingCoordinator(
         val transport = connector.login(route, username, password)
         try {
             val establishedAt = nowEpochMs()
-            val profile = YaPairedServerProfile.create(
+            var profile = YaPairedServerProfile.create(
                 label = label,
                 username = username,
                 route = route,
                 nowEpochMs = establishedAt,
             ).copy(lastConnectedAtEpochMs = establishedAt)
+            if (securityClients != null) {
+                profile = profile.copy(
+                    securityClient = YaSecurityClientBinding.pending(
+                        YaSecurityClientProtocol.keyAlias(profile.id),
+                    ),
+                )
+            }
             repository.upsert(
                 profile = profile,
                 resumeCredential = YaStoredResumeCredential(
@@ -34,6 +46,9 @@ class YaPairingCoordinator(
                 ),
                 select = true,
             )
+            if (securityClients != null) {
+                profile = securityClients.ensure(profile, transport)
+            }
             return profile
         } finally {
             transport.closeAndAwait()
@@ -47,6 +62,9 @@ class YaPairingCoordinator(
     ) {
         val snapshot = checkNotNull(repository.snapshot(profileId)) {
             "Cannot authenticate a removed paired server"
+        }
+        snapshot.profile.securityClient?.takeIf { it.revoked }?.let {
+            throw YaSecurityClientRevokedException(checkNotNull(it.clientId))
         }
         val route = if (routeId == null) {
             snapshot.profile.routes.firstOrNull {
@@ -62,6 +80,7 @@ class YaPairingCoordinator(
             password = password,
         )
         try {
+            securityClients?.ensure(snapshot.profile, transport)
             val establishedAt = nowEpochMs()
             repository.recordSuccessfulAuthentication(
                 profileId = profileId,

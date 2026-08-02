@@ -2,6 +2,8 @@ package com.yepanywhere.mobile.connection
 
 import com.yepanywhere.mobile.profiles.YaPairedServerRepository
 import com.yepanywhere.mobile.profiles.YaStoredResumeCredential
+import com.yepanywhere.mobile.security.YaSecurityClientLifecycle
+import com.yepanywhere.mobile.security.YaSecurityClientRevokedException
 import java.io.Closeable
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
@@ -34,6 +36,7 @@ enum class YaConnectionPhase {
     CONNECTED,
     RETRYING,
     REAUTHENTICATION_REQUIRED,
+    REVOKED,
     FAILED,
 }
 
@@ -125,6 +128,7 @@ class YaServerConnectionManager(
     private val profileId: String,
     private val repository: YaPairedServerRepository,
     private val connector: YaProfileConnector,
+    private val securityClients: YaSecurityClientLifecycle? = null,
     dispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val nowEpochMs: () -> Long = System::currentTimeMillis,
     private val retryDelaysMs: List<Long> = listOf(250, 1_000, 3_000),
@@ -343,6 +347,7 @@ class YaServerConnectionManager(
                         throw ReauthenticationRequired()
                     }
                     routed = connector.resume(snapshot.profile, stored.credential)
+                    securityClients?.ensure(snapshot.profile, routed.transport)
                     val connectedAt = maxOf(nowEpochMs(), stored.establishedAtEpochMs)
                     repository.recordSuccessfulAuthentication(
                         profileId = profileId,
@@ -373,6 +378,15 @@ class YaServerConnectionManager(
                         ready,
                         YaConnectionPhase.REAUTHENTICATION_REQUIRED,
                         "The saved session was rejected; sign in again",
+                        error,
+                    )
+                    return
+                } catch (error: YaSecurityClientRevokedException) {
+                    failTerminal(
+                        generation,
+                        ready,
+                        YaConnectionPhase.REVOKED,
+                        "This Android device was revoked; pair it again explicitly",
                         error,
                     )
                     return

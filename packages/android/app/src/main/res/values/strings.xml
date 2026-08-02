@@ -34,6 +34,7 @@
     <string name="connection_connected">Connected</string>
     <string name="connection_retrying">Reconnecting…</string>
     <string name="connection_sign_in_required">Sign-in required</string>
+    <string name="connection_revoked">Device revoked</string>
     <string name="connection_failed">Offline</string>
     <string name="approval_needed">Approval needed</string>
     <string name="answer_needed">Answer needed</string>

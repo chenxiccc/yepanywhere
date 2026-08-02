@@ -141,9 +141,11 @@ android {
         }
         getByName("test") {
             resources.srcDir("src/sharedTest/resources")
+            resources.srcDir("../../shared/test/fixtures")
         }
         getByName("androidTest") {
             assets.srcDir("src/sharedTest/resources")
+            assets.srcDir("../../shared/test/fixtures")
         }
     }
 

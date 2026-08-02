@@ -100,18 +100,23 @@ internal object YaPairedServerCodec {
             .put("preferredRouteId", profile.preferredRouteId ?: JSONObject.NULL)
             .put("createdAtEpochMs", profile.createdAtEpochMs)
             .put("lastConnectedAtEpochMs", profile.lastConnectedAtEpochMs ?: JSONObject.NULL)
+            .put(
+                "securityClient",
+                profile.securityClient?.let(::encodeSecurityClient) ?: JSONObject.NULL,
+            )
     }
 
     private fun decodeProfile(root: JSONObject): YaPairedServerProfile {
         check(
-            root.length() == 7 &&
+            root.length() == 8 &&
                 root.has("id") &&
                 root.has("label") &&
                 root.has("username") &&
                 root.has("routes") &&
                 root.has("preferredRouteId") &&
                 root.has("createdAtEpochMs") &&
-                root.has("lastConnectedAtEpochMs"),
+                root.has("lastConnectedAtEpochMs") &&
+                root.has("securityClient"),
         )
         val routes = root.getJSONArray("routes")
         return YaPairedServerProfile(
@@ -149,9 +154,45 @@ internal object YaPairedServerCodec {
             } else {
                 root.getLong("lastConnectedAtEpochMs")
             },
+            securityClient = if (root.isNull("securityClient")) {
+                null
+            } else {
+                decodeSecurityClient(root.getJSONObject("securityClient"))
+            },
         )
     }
 
-    private const val PROFILE_SCHEMA_VERSION = 1
-    private const val CREDENTIAL_SCHEMA_VERSION = 1
+    private fun encodeSecurityClient(binding: YaSecurityClientBinding): JSONObject {
+        return JSONObject()
+            .put("keyAlias", binding.keyAlias ?: JSONObject.NULL)
+            .put("pendingRequestId", binding.pendingRequestId ?: JSONObject.NULL)
+            .put("clientId", binding.clientId ?: JSONObject.NULL)
+            .put("revoked", binding.revoked)
+            .put("capabilityMissing", binding.capabilityMissing)
+    }
+
+    private fun decodeSecurityClient(root: JSONObject): YaSecurityClientBinding {
+        check(
+            root.length() == 5 &&
+                root.has("keyAlias") &&
+                root.has("pendingRequestId") &&
+                root.has("clientId") &&
+                root.has("revoked") &&
+                root.has("capabilityMissing"),
+        )
+        return YaSecurityClientBinding(
+            keyAlias = root.nullableString("keyAlias"),
+            pendingRequestId = root.nullableString("pendingRequestId"),
+            clientId = root.nullableString("clientId"),
+            revoked = root.getBoolean("revoked"),
+            capabilityMissing = root.getBoolean("capabilityMissing"),
+        )
+    }
+
+    private fun JSONObject.nullableString(name: String): String? {
+        return if (isNull(name)) null else getString(name)
+    }
+
+    private const val PROFILE_SCHEMA_VERSION = 2
+    private const val CREDENTIAL_SCHEMA_VERSION = 2
 }

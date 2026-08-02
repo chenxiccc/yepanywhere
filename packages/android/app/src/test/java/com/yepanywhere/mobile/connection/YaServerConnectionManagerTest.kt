@@ -5,6 +5,8 @@ import com.yepanywhere.mobile.profiles.YaPairedServerRepository
 import com.yepanywhere.mobile.profiles.YaPairedServerSnapshot
 import com.yepanywhere.mobile.profiles.YaServerRoute
 import com.yepanywhere.mobile.profiles.YaStoredResumeCredential
+import com.yepanywhere.mobile.security.YaSecurityClientLifecycle
+import com.yepanywhere.mobile.security.YaSecurityClientRevokedException
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
@@ -108,6 +110,30 @@ class YaServerConnectionManagerTest {
     }
 
     @Test
+    fun exposesRevocationAsADistinctTerminalConnectionState() = runBlocking {
+        val fixture = Fixture()
+        val transport = FakeTransport(fixture.credential)
+        fixture.connector.results.send(Result.success(transport))
+        val manager = fixture.manager(
+            securityClients = YaSecurityClientLifecycle { _, activeTransport ->
+                assertTrue(activeTransport === transport)
+                throw YaSecurityClientRevokedException(
+                    "44444444-4444-4444-8444-444444444444",
+                )
+            },
+        )
+        val lease = manager.acquire()
+
+        val error = runCatching { lease.request("GET", "/sessions") }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertEquals(YaConnectionPhase.REVOKED, manager.state.value.phase)
+        assertTrue(transport.cancelled)
+        lease.releaseAndAwait()
+        manager.shutdownAndAwait()
+    }
+
+    @Test
     fun releasingTheFinalLeaseCancelsAnOwnedRetryDelay() = runBlocking {
         val fixture = Fixture()
         fixture.connector.results.send(Result.failure(IllegalStateException("offline")))
@@ -195,11 +221,15 @@ class YaServerConnectionManagerTest {
         )
         val connector = FakeConnector(route)
 
-        fun manager(retryDelaysMs: List<Long> = emptyList()): YaServerConnectionManager {
+        fun manager(
+            retryDelaysMs: List<Long> = emptyList(),
+            securityClients: YaSecurityClientLifecycle? = null,
+        ): YaServerConnectionManager {
             return YaServerConnectionManager(
                 profileId = profile.id,
                 repository = repository,
                 connector = connector,
+                securityClients = securityClients,
                 dispatcher = Dispatchers.Default,
                 nowEpochMs = { NOW + 1_000 },
                 retryDelaysMs = retryDelaysMs,

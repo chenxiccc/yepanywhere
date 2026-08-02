@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import {
   RegisterSecurityClientRequestSchema,
   SECURITY_CLIENT_KEY_PROTOCOL,
@@ -98,6 +100,41 @@ describe("security-client schemas", () => {
 });
 
 describe("security-client proof transcript", () => {
+  it("matches the language-neutral Android proof vector", () => {
+    const vector = JSON.parse(
+      readFileSync(
+        new URL("./fixtures/security-client-proof-v1.json", import.meta.url),
+        "utf-8",
+      ),
+    ) as {
+      proofBody: unknown;
+      operation: "register";
+      route: string;
+      sessionId: string;
+      transportNonce: string;
+      subjectId: string;
+      canonicalBody: string;
+      bodyDigestBase64Url: string;
+      transcriptBase64Url: string;
+    };
+    const canonical = canonicalizeSecurityClientProofBody(vector.proofBody);
+    const bodyDigest = createHash("sha256").update(canonical).digest();
+    const transcript = buildSecurityClientProofTranscript({
+      operation: vector.operation,
+      route: vector.route,
+      sessionId: vector.sessionId,
+      transportNonce: vector.transportNonce,
+      subjectId: vector.subjectId,
+      bodyDigest,
+    });
+
+    expect(canonical).toBe(vector.canonicalBody);
+    expect(bodyDigest.toString("base64url")).toBe(vector.bodyDigestBase64Url);
+    expect(Buffer.from(transcript).toString("base64url")).toBe(
+      vector.transcriptBase64Url,
+    );
+  });
+
   it("canonicalizes object keys without changing array order", () => {
     expect(
       canonicalizeSecurityClientProofBody({

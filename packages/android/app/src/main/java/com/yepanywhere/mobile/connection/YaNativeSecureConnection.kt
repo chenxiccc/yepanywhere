@@ -65,6 +65,7 @@ class YaNativeSecureSession internal constructor(
     private val listener: SecureSessionListener,
     override val credential: YaResumeCredential,
     override val resumed: Boolean,
+    override val securityBinding: YaSrpTransportBinding,
 ) : YaMessageTransport, Closeable {
     override fun send(message: JSONObject) {
         listener.sendEncrypted(message)
@@ -328,6 +329,7 @@ internal class SecureSessionListener(
     fun establish(
         credential: YaResumeCredential,
         resumed: Boolean,
+        transportNonce: String,
         key: ByteArray,
     ) {
         check(transportKey == null)
@@ -340,7 +342,22 @@ internal class SecureSessionListener(
                 .put("type", "client_capabilities")
                 .put("formats", JSONArray().put(YaSecureTransportCrypto.JSON_FORMAT)),
         )
-        authenticated.complete(YaNativeSecureSession(this, credential, resumed))
+        authenticated.complete(
+            YaNativeSecureSession(
+                listener = this,
+                credential = credential,
+                resumed = resumed,
+                securityBinding = YaSrpTransportBinding(
+                    sessionId = credential.sessionId,
+                    transportNonce = transportNonce,
+                    authenticationMethod = if (resumed) {
+                        YaSrpAuthenticationMethod.RESUME
+                    } else {
+                        YaSrpAuthenticationMethod.FULL
+                    },
+                ),
+            ),
+        )
     }
 
     fun sendEncrypted(message: JSONObject) {
@@ -480,6 +497,7 @@ private class FullLoginAuthentication(
                     listener.establish(
                         credential = credential,
                         resumed = false,
+                        transportNonce = transportNonceValue,
                         key = YaSecureTransportCrypto.deriveTransportKey(baseKey, transportNonce),
                     )
                 } finally {
@@ -573,6 +591,7 @@ private class ResumeAuthentication(
                     listener.establish(
                         credential = credential,
                         resumed = true,
+                        transportNonce = transportNonceValue,
                         key = YaSecureTransportCrypto.deriveTransportKey(baseKey, transportNonce),
                     )
                 } finally {

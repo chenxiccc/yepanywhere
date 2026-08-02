@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStoreFile
+import com.yepanywhere.mobile.security.YaSecurityClientKeyStore
 import java.io.Closeable
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -19,6 +20,7 @@ import kotlinx.coroutines.flow.map
 class YaPairedServerStore internal constructor(
     private val dataStore: DataStore<Preferences>,
     private val cipher: YaResumeCredentialCipher,
+    private val securityKeys: YaSecurityClientKeyStore? = null,
     private val ownedScope: CoroutineScope? = null,
 ) : YaPairedServerRepository, Closeable {
     val profiles: Flow<List<YaPairedServerProfile>> = dataStore.data.map { preferences ->
@@ -97,6 +99,47 @@ class YaPairedServerStore internal constructor(
         dataStore.edit { it.remove(credentialKey(profileId)) }
     }
 
+    override suspend fun updateSecurityClientBinding(
+        profileId: String,
+        binding: YaSecurityClientBinding,
+    ) {
+        requireUuid(profileId, "profile id")
+        dataStore.edit { preferences ->
+            val profiles = YaPairedServerCodec.decodeProfiles(preferences[PROFILES_KEY])
+            check(profiles.any { it.id == profileId }) {
+                "Cannot update an unknown profile"
+            }
+            preferences[PROFILES_KEY] = YaPairedServerCodec.encodeProfiles(
+                profiles.map {
+                    if (it.id == profileId) it.copy(securityClient = binding) else it
+                },
+            )
+        }
+    }
+
+    override suspend fun markSecurityClientRevoked(profileId: String, clientId: String) {
+        requireUuid(profileId, "profile id")
+        requireUuid(clientId, "security client id")
+        dataStore.edit { preferences ->
+            val profiles = YaPairedServerCodec.decodeProfiles(preferences[PROFILES_KEY])
+            val profile = profiles.firstOrNull { it.id == profileId }
+                ?: error("Cannot revoke an unknown profile")
+            check(profile.securityClient?.clientId == clientId) {
+                "Cannot revoke a different security client"
+            }
+            preferences[PROFILES_KEY] = YaPairedServerCodec.encodeProfiles(
+                profiles.map {
+                    if (it.id == profileId) {
+                        it.copy(securityClient = YaSecurityClientBinding.revoked(clientId))
+                    } else {
+                        it
+                    }
+                },
+            )
+            preferences.remove(credentialKey(profileId))
+        }
+    }
+
     suspend fun select(profileId: String?) {
         if (profileId != null) requireUuid(profileId, "profile id")
         dataStore.edit { preferences ->
@@ -114,8 +157,11 @@ class YaPairedServerStore internal constructor(
 
     suspend fun forget(profileId: String) {
         requireUuid(profileId, "profile id")
+        var keyAlias: String? = null
         dataStore.edit { preferences ->
-            val updated = YaPairedServerCodec.decodeProfiles(preferences[PROFILES_KEY])
+            val profiles = YaPairedServerCodec.decodeProfiles(preferences[PROFILES_KEY])
+            keyAlias = profiles.firstOrNull { it.id == profileId }?.securityClient?.keyAlias
+            val updated = profiles
                 .filterNot { it.id == profileId }
             preferences[PROFILES_KEY] = YaPairedServerCodec.encodeProfiles(updated)
             preferences.remove(credentialKey(profileId))
@@ -123,6 +169,7 @@ class YaPairedServerStore internal constructor(
                 preferences.remove(SELECTED_PROFILE_KEY)
             }
         }
+        keyAlias?.let { securityKeys?.delete(it) }
     }
 
     override suspend fun recordSuccessfulAuthentication(
@@ -177,14 +224,15 @@ class YaPairedServerStore internal constructor(
     }
 
     companion object {
-        private val PROFILES_KEY = stringPreferencesKey("profiles_v1")
-        private val SELECTED_PROFILE_KEY = stringPreferencesKey("selected_profile_v1")
-        private const val DATA_STORE_FILE_NAME = "ya_paired_servers_v1"
+        private val PROFILES_KEY = stringPreferencesKey("profiles_v2")
+        private val SELECTED_PROFILE_KEY = stringPreferencesKey("selected_profile_v2")
+        private const val DATA_STORE_FILE_NAME = "ya_paired_servers_v2"
 
         fun create(
             context: Context,
             fileName: String = DATA_STORE_FILE_NAME,
-            keyAlias: String = "ya_paired_server_resume_key_v1",
+            keyAlias: String = "ya_paired_server_resume_key_v2",
+            securityKeys: YaSecurityClientKeyStore? = null,
         ): YaPairedServerStore {
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
             val dataStore = PreferenceDataStoreFactory.create(
@@ -194,12 +242,13 @@ class YaPairedServerStore internal constructor(
             return YaPairedServerStore(
                 dataStore = dataStore,
                 cipher = AndroidKeystoreResumeCredentialCipher(keyAlias),
+                securityKeys = securityKeys,
                 ownedScope = scope,
             )
         }
 
         private fun credentialKey(profileId: String): Preferences.Key<String> {
-            return stringPreferencesKey("resume_credential_v1_$profileId")
+            return stringPreferencesKey("resume_credential_v2_$profileId")
         }
     }
 }

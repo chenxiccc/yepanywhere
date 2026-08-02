@@ -31,11 +31,44 @@ class YaPairedServerProfileTest {
             preferredRouteId = relay.id,
             createdAtEpochMs = 1_800_000_000_000,
             lastConnectedAtEpochMs = null,
+            securityClient = YaSecurityClientBinding.pending(
+                keyAlias = "ya_security_client_p256_v1_test",
+                requestId = "11111111-1111-4111-8111-111111111111",
+            ),
         )
 
         val encoded = YaPairedServerCodec.encodeProfiles(listOf(profile))
         assertEquals(listOf(profile), YaPairedServerCodec.decodeProfiles(encoded))
         assertNull(YaPairedServerCodec.decodeProfiles(encoded).single().lastConnectedAtEpochMs)
+    }
+
+    @Test
+    fun rejectsTheDisposableDevelopmentV1ProfileSchema() {
+        val v1 = """
+            {"version":1,"profiles":[]}
+        """.trimIndent()
+
+        assertThrows(IllegalStateException::class.java) {
+            YaPairedServerCodec.decodeProfiles(v1)
+        }
+    }
+
+    @Test
+    fun securityClientBindingDistinguishesPendingRegisteredAndRevoked() {
+        val pending = YaSecurityClientBinding.pending(
+            keyAlias = "ya_security_client_p256_v1_test",
+            requestId = "11111111-1111-4111-8111-111111111111",
+        )
+        val registered = YaSecurityClientBinding.registered(
+            keyAlias = checkNotNull(pending.keyAlias),
+            clientId = "22222222-2222-4222-8222-222222222222",
+        )
+        val revoked = YaSecurityClientBinding.revoked(checkNotNull(registered.clientId))
+
+        assertNull(pending.clientId)
+        assertNull(registered.pendingRequestId)
+        assertTrue(revoked.revoked)
+        assertNull(revoked.keyAlias)
     }
 
     @Test
