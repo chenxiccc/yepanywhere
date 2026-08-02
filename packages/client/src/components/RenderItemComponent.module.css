@@ -1,0 +1,38 @@
+/*
+ * Conversation thinking-preview header additions.
+ *
+ * The rest of `.conversation-thinking-preview-*` still lives in the legacy
+ * global sheet; `pnpm css:touched` defers extracting it (359 owned lines over
+ * two stylesheets, 18 coupled rules), so only the new rules are owned here.
+ */
+
+/*
+ * The label absorbs the header's free space, which parks the age and the
+ * controls after it against the trailing edge. Deliberately flex-grow rather
+ * than an auto margin on the age: growth resolves before auto margins, so the
+ * chevron's existing global `margin-left: auto` is left with nothing to claim
+ * and stays put next to the age.
+ *
+ * The label is also what yields when the header is tight — the age and
+ * controls are fixed-size and carry state, while the label repeats what the
+ * card's own position already shows.
+ */
+.thinkingPreviewLabel {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/*
+ * Where this thought sits in the turn, not how long it took: a quiet sibling
+ * of the activity summary's elapsed pill. Tabular figures so a live-updating
+ * age on an active turn does not jitter its neighbours.
+ */
+.thinkingPreviewAge {
+  flex: 0 0 auto;
+  padding-left: 0.5rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}

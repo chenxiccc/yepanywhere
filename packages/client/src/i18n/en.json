@@ -1038,6 +1038,8 @@
   "conversationThinkingPreviewCollapse": "Collapse thinking preview",
   "conversationThinkingPreviewExpand": "Expand thinking preview",
   "conversationThinkingPreviewDismiss": "Dismiss {label}",
+  "conversationThinkingPreviewAge": "{duration} ago",
+  "conversationThinkingPreviewAgeTitle": "Ended {duration} before the end of this turn",
   "conversationRecentActivities": "Most recent activities",
   "contextTooltipWithWindow": "Context: {percentage}% ({used} / {total} tokens)",
   "contextTooltipNoWindow": "Context: {percentage}% ({used} tokens)",

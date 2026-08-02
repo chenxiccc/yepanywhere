@@ -344,6 +344,7 @@ describe("selectConversationThinkingPreviews", () => {
         slot: "latest",
         thinking: "Current",
         status: "streaming",
+        endedAtMs: null,
       },
       {
         id: "previous",
@@ -351,6 +352,7 @@ describe("selectConversationThinkingPreviews", () => {
         slot: "previous",
         thinking: "Previous",
         status: "complete",
+        endedAtMs: null,
       },
     ]);
   });

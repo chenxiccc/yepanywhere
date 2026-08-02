@@ -297,6 +297,7 @@ export function selectConversationThinkingPreviews(
       slot: "latest",
       thinking: latest.thinking,
       status: latest.status,
+      endedAtMs: getLatestMessageTimestampMs(latest.sourceMessages),
     },
   ];
   if (latest.status !== "streaming") return previews;
@@ -312,6 +313,7 @@ export function selectConversationThinkingPreviews(
       slot: "previous",
       thinking: candidate.thinking,
       status: candidate.status,
+      endedAtMs: getLatestMessageTimestampMs(candidate.sourceMessages),
     });
     break;
   }

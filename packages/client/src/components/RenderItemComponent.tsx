@@ -47,6 +47,7 @@ import { ThinkingBlock } from "./blocks/ThinkingBlock";
 import { ToolCallRow } from "./blocks/ToolCallRow";
 import { UserPromptBlock } from "./blocks/UserPromptBlock";
 import { LinkifiedText } from "./ui/LinkifiedText";
+import styles from "./RenderItemComponent.module.css";
 
 interface Props {
   item: RenderItem;
@@ -451,6 +452,7 @@ function ConversationActivitySummary({
         <ConversationThinkingPreview
           collapsed={collapsedThinkingPreviewSlots.has(preview.slot)}
           key={preview.slot}
+          turnEndedAtMs={item.endedAtMs}
           onDismiss={onDismissThinkingPreview}
           onToggle={onToggleThinkingPreview}
           preview={preview}
@@ -488,16 +490,40 @@ function estimateThinkingPreviewWidth(text: string): number {
   return longestLineLength * 8;
 }
 
+/**
+ * How far back in the turn a thinking block sits, measured to the turn's end
+ * (the live clock while the turn runs). This is placement, not duration: the
+ * summary beside it already says how long the whole turn took, so an age here
+ * says where in that span the thought happened.
+ *
+ * A streaming block is happening now, so it gets no age. Sub-second ages are
+ * omitted too — "0.4s ago" on a thought that just landed is noise, and the
+ * pulsing dot already carries recency at that scale.
+ */
+function formatThinkingPreviewAge(
+  preview: ConversationThinkingPreviewData,
+  turnEndedAtMs: number | null,
+): string {
+  if (preview.status === "streaming") return "";
+  if (preview.endedAtMs === null || turnEndedAtMs === null) return "";
+  const seconds = (turnEndedAtMs - preview.endedAtMs) / 1000;
+  if (!Number.isFinite(seconds) || seconds < 1) return "";
+  return formatConversationActivityDuration(seconds);
+}
+
 function ConversationThinkingPreview({
   preview,
   collapsed,
   onToggle,
   onDismiss,
+  turnEndedAtMs,
 }: {
   preview: ConversationThinkingPreviewData;
   collapsed: boolean;
   onToggle?: (slot: ConversationThinkingPreviewSlot) => void;
   onDismiss?: (slot: ConversationThinkingPreviewSlot) => void;
+  /** The turn's end, or the live clock while it runs. */
+  turnEndedAtMs: number | null;
 }) {
   const { t } = useI18n();
   const contentRef = useRef<HTMLDivElement>(null);
@@ -516,6 +542,7 @@ function ConversationThinkingPreview({
       : "conversationThinkingPreviewExpand",
   );
   const dismissLabel = t("conversationThinkingPreviewDismiss", { label });
+  const age = formatThinkingPreviewAge(preview, turnEndedAtMs);
   const targetWidthPx =
     widthState?.id === preview.id
       ? widthState.targetWidthPx
@@ -584,7 +611,17 @@ function ConversationThinkingPreview({
           onClick={() => onToggle?.(preview.slot)}
         >
           <span className="conversation-thinking-preview-dot" aria-hidden />
-          <span>{label}</span>
+          <span className={styles.thinkingPreviewLabel}>{label}</span>
+          {age ? (
+            <span
+              className={styles.thinkingPreviewAge}
+              title={t("conversationThinkingPreviewAgeTitle", {
+                duration: age,
+              })}
+            >
+              {t("conversationThinkingPreviewAge", { duration: age })}
+            </span>
+          ) : null}
           <span className="conversation-thinking-preview-chevron" aria-hidden>
             {collapsed ? "▸" : "▾"}
           </span>

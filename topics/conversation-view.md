@@ -107,6 +107,19 @@ provider-history rewrite and not deletion.
   shrink — and so no main-conversation autofollow flicker. The same cap covers
   the activity names, which shorten at turn completion as the bound below moves
   to the newly completed block.
+- A thinking card carries its **placement in the turn** beside its controls:
+  how far before the turn's end that block last spoke, in the same compact
+  form as the activity summary's elapsed time (`4.7s ago` against a
+  `34s · 8 activities hidden` summary). This is placement, not duration — the
+  summary already says how long the turn took, and this says where in that
+  span the thought happened. The turn's end is the reference, which is the
+  live clock while the turn runs, so the age advances on an active turn.
+  A streaming block gets none: it is happening now. Sub-second ages are
+  omitted, since the pulsing dot already carries recency at that scale, and a
+  block whose provider gave no timestamps shows none rather than inventing
+  one — the same rule the activity summary follows.
+  The card label is what yields when the header is tight; the age and controls
+  are fixed-size and carry state.
 - Each thinking-preview slot can be collapsed or dismissed independently.
   Streaming updates to the block occupying a slot do not reopen a collapsed
   card. Dismissing the final visible card switches the thinking-transcript

@@ -1005,6 +1005,8 @@
   "conversationThinkingPreviewCollapse": "收起思考预览",
   "conversationThinkingPreviewExpand": "展开思考预览",
   "conversationThinkingPreviewDismiss": "关闭{label}",
+  "conversationThinkingPreviewAge": "{duration}前",
+  "conversationThinkingPreviewAgeTitle": "在本轮结束前 {duration} 结束",
   "conversationRecentActivities": "最近活动",
   "contextTooltipWithWindow": "上下文：{percentage}%（{used} / {total} tokens）",
   "contextTooltipNoWindow": "上下文：{percentage}%（{used} tokens）",

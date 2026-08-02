@@ -39,6 +39,7 @@ function conversationActivityItem(): RenderItem {
         slot: "latest",
         thinking: "current reasoning tail",
         status: "streaming",
+        endedAtMs: 2000,
       },
       {
         id: "thinking-previous",
@@ -46,6 +47,7 @@ function conversationActivityItem(): RenderItem {
         slot: "previous",
         thinking: "previous reasoning block",
         status: "complete",
+        endedAtMs: 1400,
       },
     ],
     recentActivities: [
@@ -225,5 +227,73 @@ describe("conversation thinking preview height publication", () => {
         .querySelector(".conversation-activity-row")
         ?.classList.contains("is-wide-activity-previews"),
     ).toBe(true);
+  });
+});
+
+describe("conversation thinking preview age", () => {
+  afterEach(() => {
+    observers = [];
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  function renderPreviews(item: RenderItem) {
+    vi.stubGlobal("ResizeObserver", MockResizeObserver);
+    return render(
+      <I18nProvider>
+        <RenderItemComponent
+          item={item}
+          isStreaming
+          thinkingExpanded={false}
+          toggleThinkingExpanded={() => {}}
+        />
+      </I18nProvider>,
+    );
+  }
+
+  function headerText(container: HTMLElement, slot: string): string {
+    return (
+      container.querySelector(
+        `.conversation-thinking-preview[data-preview-slot="${slot}"] .conversation-thinking-preview-header`,
+      )?.textContent ?? ""
+    );
+  }
+
+  it("places a completed block by how far it sits before the turn's end", () => {
+    const base = conversationActivityItem() as Extract<
+      RenderItem,
+      { type: "conversation_activity" }
+    >;
+    // The turn runs to 4000; the previous block last spoke at 1400.
+    const { container } = renderPreviews({ ...base, endedAtMs: 4_000 });
+
+    expect(headerText(container as HTMLElement, "previous")).toContain(
+      "2.6s ago",
+    );
+  });
+
+  it("gives the streaming block no age, since it is happening now", () => {
+    const { container } = renderPreviews(conversationActivityItem());
+
+    expect(headerText(container as HTMLElement, "latest")).not.toContain("ago");
+  });
+
+  it("shows no age when the provider supplied no timestamps", () => {
+    const base = conversationActivityItem() as Extract<
+      RenderItem,
+      { type: "conversation_activity" }
+    >;
+    const item = {
+      ...base,
+      thinkingPreviews: base.thinkingPreviews?.map((preview) => ({
+        ...preview,
+        endedAtMs: null,
+      })),
+    };
+    const { container } = renderPreviews(item);
+
+    expect(headerText(container as HTMLElement, "previous")).not.toContain(
+      "ago",
+    );
   });
 });

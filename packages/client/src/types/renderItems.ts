@@ -157,6 +157,12 @@ export interface ConversationThinkingPreview {
   slot: ConversationThinkingPreviewSlot;
   thinking: string;
   status: ThinkingItem["status"];
+  /**
+   * Latest observed source timestamp for this block, so a card can say how far
+   * back in the turn it sits. Null when the provider gave no timestamps; the
+   * card then shows no age rather than inventing one.
+   */
+  endedAtMs: number | null;
 }
 
 export type ConversationThinkingPreviewSlot = "latest" | "previous";
