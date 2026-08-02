@@ -9,6 +9,7 @@ import { attachUnifiedUpgradeHandler } from "../src/frontend/index.js";
 import { RemoteSessionService } from "../src/remote-access/RemoteSessionService.js";
 import { RemoteAccessService } from "../src/remote-access/index.js";
 import { RelayClientService } from "../src/services/RelayClientService.js";
+import { SecurityClientService } from "../src/services/SecurityClientService.js";
 import {
   createAcceptRelayConnection,
   createWsRelayRoutes,
@@ -66,6 +67,11 @@ await remoteAccessService.configure(password);
 
 const remoteSessionService = new RemoteSessionService({ dataDir });
 await remoteSessionService.initialize();
+const securityClientService = new SecurityClientService({
+  dataDir,
+  remoteSessionService,
+});
+await securityClientService.initialize();
 
 const { app, supervisor } = createApp({
   sdk: new MockClaudeSDK(),
@@ -77,6 +83,7 @@ const { app, supervisor } = createApp({
   eventBus,
   authService,
   authDisabled: true,
+  securityClientService,
 });
 const { upgradeWebSocket, wss } = createNodeWebSocket({ app });
 const uploadManager = new UploadManager({ uploadsDir: join(root, "uploads") });
@@ -89,6 +96,7 @@ const wsHandler = createWsRelayRoutes({
   uploadManager,
   remoteAccessService,
   remoteSessionService,
+  securityClientService,
 });
 app.get("/api/ws", wsHandler);
 
@@ -102,6 +110,7 @@ if (relayClientService) {
     uploadManager,
     remoteAccessService,
     remoteSessionService,
+    securityClientService,
   });
   relayClientService.start({
     relayUrl,
@@ -139,6 +148,7 @@ await new Promise<void>((resolveStop) => {
   process.once("SIGTERM", resolveStop);
 });
 
+await securityClientService.shutdown();
 remoteSessionService.shutdown();
 relayClientService?.stop();
 await new Promise<void>((resolveClosed) => server!.close(() => resolveClosed()));

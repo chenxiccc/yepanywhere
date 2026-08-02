@@ -247,6 +247,13 @@ encoding rather than ambient JSON serialization. It binds:
 - registration request id or server client id; and
 - a SHA-256 digest of the complete proof-excluded request body.
 
+The proof body uses recursively key-sorted JSON with JavaScript
+`JSON.stringify` scalar and string semantics before hashing. Cross-runtime
+implementations must match that byte encoding exactly; in particular `/`
+remains `/` rather than the equivalent JSON escape `\/`. The shared fixture
+contains a slash-bearing Android build fingerprint so another platform cannot
+silently repeat that signature-breaking mismatch.
+
 Binding the mutable descriptor is essential: a verified signature attributes
 the reported snapshot to the same client key. Binding the transport nonce makes
 an old signature unusable on another connection. The authenticated transport

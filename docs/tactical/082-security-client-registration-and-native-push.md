@@ -51,12 +51,12 @@ response member and newer clients never send it to an older server.
 | Register capabilities and version metadata | partial | `security-client-audit-v1` owns the exact mounted routes and passes capability/version tests; native-push advertisement remains in its later slice |
 | Persist clients, tombstones, and the security ledger | complete | Owner-only strict state, bounded histories/anchors/failures, restart, malformed-state, and no-secret API tests pass |
 | Inject authenticated transport facts | complete | Only established SRP gets private proof context; nonce, method, direct/relay kind, real peer, session, and connection handle survive for the socket lifetime |
-| Verify P-256 continuity proofs | partial | Node SPKI/DER verification plus P1363, mutation, replay, wrong-route/key, stale-transport, and key-bound retry tests pass; Kotlin canonical framing shares a language-neutral vector and the Android Keystore test is compiled but still needs the Pixel run |
+| Verify P-256 continuity proofs | complete | Node SPKI/DER verification plus P1363, mutation, replay, wrong-route/key, stale-transport, and key-bound retry tests pass; TypeScript and Kotlin share slash-bearing canonical vectors, and the Pixel proved a non-exportable Keystore signature |
 | Project legacy web clients | complete | Browser profiles, connected tabs, remote sessions, and Web Push merge without invented proof; legacy revocation tombstones the profile and closes tabs |
 | Audit failed authentication and session eviction | complete | Failed SRP/proof evidence is coalesced and quota-bounded; associated session eviction names the client |
 | Revoke the complete client relationship | partial | Atomic tombstones precede session/socket and legacy Web Push cascades with distinct unknown/revoked check-ins; native push is not implemented yet |
 | Deliver generic native push | pending | Exact broker endpoint/credential binding, notification-policy mapping, test delivery, 404 invalidation, bounded transient failure, and secret redaction pass |
-| Register and check in from Android | partial | Pre-release v2 storage reset, per-server Keystore key, pairing-time register, resume check-in, fingerprint pin, capability fallback, unknown re-registration, and revoked terminal state pass JVM tests; attached-Pixel server proof remains |
+| Register and check in from Android | complete | Pre-release v2 storage reset, per-server Keystore key, pairing-time register, resume check-in, fingerprint pin, capability fallback, unknown re-registration, and revoked terminal state pass JVM tests and the attached-Pixel probe |
 | Register and check in from capable SRP web | pending | Exact capability gate, non-extractable IndexedDB WebCrypto key, quiet legacy/cookie fallback, and no plaintext fingerprint expansion pass |
 | Present the security dashboard | pending | Recognizable cards, distinct reported/owner labels, phone-comparable fingerprint, proof labels, global/per-client history, sessions/push, and revoke UI pass desktop/phone review |
 | Alert on a genuinely new client | pending | Default-off `securityEvent` setting sends once to pre-existing enrolled destinations across supported adapters; retry and first-destination cases stay quiet |
@@ -188,3 +188,32 @@ unknown behavior against a disposable YA profile. Report the server API/file
 evidence and legacy-web behavior before capable-web registration, dashboard
 polish, security alerts, native push enrollment, foreground-service, or LAN
 discovery work.
+
+Reached on 2026-08-02 with the implementation checkpoint using physical Pixel 7a
+`33031JEHN17672`, Android 17/API 37, and the disposable direct-only YA probe on
+host loopback through `adb reverse`. The warning-free direct instrumentation
+run proved:
+
+- full SRP registered a `client-key-verified` Android client before pairing
+  closed;
+- resume checked in through the connection manager and the read API reported
+  `srp-resume`, direct transport, Pixel 7a descriptor, and the same
+  phone-computed SHA-256 public-key fingerprint;
+- a full-SRP connection carrying an unknown local client id received the
+  distinct unknown result and re-registered with the same Keystore key;
+- server revocation tombstoned that recovered record, and the next full-SRP
+  check-in received the distinct revoked result, deleted the local key, cleared
+  the resume credential, and retained local revoked state; and
+- `security-clients.json` was mode `0600`; its active record retained full-SRP
+  registration plus resume check-in observations, its revoked record retained
+  registration/check-in/revocation history, and the global ledger retained
+  the registration and revocation anchors.
+
+The first physical attempt exposed a cross-runtime canonicalization defect:
+Android `JSONObject.quote` emitted `\/` in real build fingerprints while
+JavaScript `JSON.stringify` emitted `/`. The Kotlin encoder now implements the
+JavaScript string rules directly, and the shared fixture permanently includes
+the slash case. The successful rerun used that fix. The probe mounted the real
+`SecurityClientService`, did not start the relay or a WebView, removed its own
+current temporary data on shutdown, and left the user's live YA backend
+untouched.

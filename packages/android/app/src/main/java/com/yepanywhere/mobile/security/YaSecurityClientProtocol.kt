@@ -90,7 +90,7 @@ internal object YaSecurityClientProtocol {
     fun canonicalize(value: Any?): String {
         return when (value) {
             null, JSONObject.NULL -> "null"
-            is String -> JSONObject.quote(value)
+            is String -> quoteJsonString(value)
             is Boolean -> value.toString()
             is Number -> {
                 require(value.toDouble().isFinite()) { "Cannot canonicalize a non-finite number" }
@@ -108,7 +108,7 @@ internal object YaSecurityClientProtocol {
                 append('{')
                 value.keys().asSequence().toList().sorted().forEachIndexed { index, key ->
                     if (index > 0) append(',')
-                    append(JSONObject.quote(key))
+                    append(quoteJsonString(key))
                     append(':')
                     append(canonicalize(value.get(key)))
                 }
@@ -150,4 +150,36 @@ internal object YaSecurityClientProtocol {
 
     private fun sha256(value: ByteArray): ByteArray =
         MessageDigest.getInstance("SHA-256").digest(value)
+
+    /** Match JavaScript JSON.stringify string escaping byte for byte. */
+    private fun quoteJsonString(value: String): String = buildString {
+        append('"')
+        value.forEachIndexed { index, character ->
+            when (character) {
+                '"' -> append("\\\"")
+                '\\' -> append("\\\\")
+                '\b' -> append("\\b")
+                '\u000c' -> append("\\f")
+                '\n' -> append("\\n")
+                '\r' -> append("\\r")
+                '\t' -> append("\\t")
+                else -> when {
+                    character.code < 0x20 -> appendUnicodeEscape(character)
+                    Character.isHighSurrogate(character) &&
+                        (index + 1 >= value.length || !Character.isLowSurrogate(value[index + 1])) ->
+                        appendUnicodeEscape(character)
+                    Character.isLowSurrogate(character) &&
+                        (index == 0 || !Character.isHighSurrogate(value[index - 1])) ->
+                        appendUnicodeEscape(character)
+                    else -> append(character)
+                }
+            }
+        }
+        append('"')
+    }
+
+    private fun StringBuilder.appendUnicodeEscape(character: Char) {
+        append("\\u")
+        append(character.code.toString(16).padStart(4, '0'))
+    }
 }
