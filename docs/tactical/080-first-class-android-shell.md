@@ -110,8 +110,8 @@ step and applicable validation rows below have evidence.
 | Step | State | Completion evidence |
 | --- | --- | --- |
 | Freeze the existing shell evidence | complete | 2026-08-02 build, APK/manifest inventory, and Pixel 7a baseline below |
-| Create the Gradle/Compose shell | planned | Config-free build plus launcher JVM/device smoke |
-| Reproduce client asset channels | planned | Bundled and hosted builds plus APK inspection |
+| Create the Gradle/Compose shell | complete | Warning-free config-free builds plus Compose launcher smoke on Pixel 7a |
+| Reproduce client asset channels | in progress | Bundled Pixel smoke and both release APK contracts pass; hosted connected smoke remains |
 | Add the native host channel | planned | Kotlin/client tests plus origin-bound instrumentation |
 | Migrate App Links and FCM probe | planned | Connected App Link and background-FCM evidence |
 | Remove Tauri Mobile | planned | Dependency/source deletion plus artifact inspection |
@@ -202,20 +202,19 @@ packages/android/
 ├── gradle.properties
 ├── gradlew / gradle/
 └── app/
-    └── src/
-        ├── bundled/assets/web/  # generated bundled-client input, not committed
-        └── main/
-            ├── AndroidManifest.xml
-            ├── java/com/yepanywhere/mobile/
-            │   ├── MainActivity.kt
-            │   ├── web/
-            │   │   ├── WebClientActivity.kt
-            │   │   ├── WebClientConfig.kt
-            │   │   ├── WebClientNavigation.kt
-            │   │   └── YaNativeMessageHost.kt
-            │   └── notifications/
-            │       └── YepFirebaseMessagingService.kt
-            └── res/
+    ├── build/generated/webAssets/ # generated bundled-client input, not committed
+    └── src/main/
+        ├── AndroidManifest.xml
+        ├── java/com/yepanywhere/mobile/
+        │   ├── MainActivity.kt
+        │   ├── web/
+        │   │   ├── WebClientActivity.kt
+        │   │   ├── WebClientConfig.kt
+        │   │   ├── WebClientNavigation.kt
+        │   │   └── YaNativeMessageHost.kt
+        │   └── notifications/
+        │       └── YepFirebaseMessagingService.kt
+        └── res/
 ```
 
 `MainActivity` is the Compose-owned launcher and app-navigation root. During

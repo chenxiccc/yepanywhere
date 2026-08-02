@@ -3,6 +3,5 @@ build/
 local.properties
 app/build/
 app/google-services.json
-app/src/bundled/assets/
 *.jks
 *.keystore

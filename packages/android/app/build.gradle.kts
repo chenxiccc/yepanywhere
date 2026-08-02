@@ -1,6 +1,28 @@
+import java.net.URI
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+}
+
+fun buildConfigString(value: String): String =
+    "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
+
+val debugWebClientUrl = providers.gradleProperty("yaWebClientUrl").orNull
+    ?.trim()
+    ?.takeIf(String::isNotEmpty)
+
+if (debugWebClientUrl != null) {
+    val uri = URI(debugWebClientUrl)
+    require(uri.scheme == "http" || uri.scheme == "https") {
+        "yaWebClientUrl must use http or https"
+    }
+    require(uri.host != null && uri.userInfo == null) {
+        "yaWebClientUrl must have a host and no user information"
+    }
+    require(uri.rawQuery == null && uri.rawFragment == null) {
+        "yaWebClientUrl must not contain a query or fragment"
+    }
 }
 
 val hasFirebaseConfiguration = file("google-services.json").isFile
@@ -20,12 +42,18 @@ android {
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["usesCleartextTraffic"] = "false"
+        buildConfigField(
+            "String",
+            "DEBUG_WEB_CLIENT_URL",
+            buildConfigString(debugWebClientUrl.orEmpty()),
+        )
     }
 
     buildTypes {
         debug {
             isDebuggable = true
-            manifestPlaceholders["usesCleartextTraffic"] = "false"
+            manifestPlaceholders["usesCleartextTraffic"] =
+                (debugWebClientUrl?.startsWith("http://") == true).toString()
         }
         release {
             isMinifyEnabled = true
@@ -40,9 +68,27 @@ android {
     productFlavors {
         create("bundled") {
             dimension = "clientChannel"
+            buildConfigField("boolean", "BUNDLED_CLIENT", "true")
+            buildConfigField(
+                "String",
+                "WEB_CLIENT_URL",
+                buildConfigString("https://appassets.androidplatform.net/"),
+            )
         }
         create("hostedLatest") {
             dimension = "clientChannel"
+            buildConfigField("boolean", "BUNDLED_CLIENT", "false")
+            buildConfigField(
+                "String",
+                "WEB_CLIENT_URL",
+                buildConfigString("https://latest.yepanywhere.com/"),
+            )
+        }
+    }
+
+    sourceSets {
+        getByName("bundled") {
+            assets.srcDir(layout.buildDirectory.dir("generated/webAssets"))
         }
     }
 
@@ -77,10 +123,37 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.core:core-ktx:1.16.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.2")
+    implementation("androidx.webkit:webkit:1.14.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
+}
+
+val verifyBundledWebAssets = tasks.register("verifyBundledWebAssets") {
+    val indexFile = layout.buildDirectory.file("generated/webAssets/index.html")
+    inputs.file(indexFile)
+    doLast {
+        check(indexFile.get().asFile.isFile) {
+            "Bundled web assets are missing; run `pnpm prepare-frontend` first"
+        }
+    }
+}
+
+tasks.matching {
+    it.name.startsWith("mergeBundled") && it.name.endsWith("Assets")
+}.configureEach {
+    dependsOn(verifyBundledWebAssets)
+}
+
+tasks.matching {
+    debugWebClientUrl != null &&
+        it.name.startsWith("pre") &&
+        it.name.endsWith("ReleaseBuild")
+}.configureEach {
+    doFirst {
+        error("yaWebClientUrl is a debug-only override")
+    }
 }

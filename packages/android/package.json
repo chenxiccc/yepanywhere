@@ -4,9 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev:android": "./gradlew :app:assembleBundledDebug",
-    "build:android:debug": "./gradlew :app:assembleBundledDebug",
-    "build:android": "./gradlew :app:assembleBundledRelease",
+    "prepare-frontend": "pnpm --filter @yep-anywhere/client build:remote && node ./scripts/prepare-web-assets.mjs",
+    "dev:android": "pnpm prepare-frontend && ./gradlew :app:assembleBundledDebug",
+    "build:android:debug": "pnpm prepare-frontend && ./gradlew :app:assembleBundledDebug",
+    "build:android": "pnpm prepare-frontend && ./gradlew :app:assembleBundledRelease",
     "build:android:hosted-latest": "./gradlew :app:assembleHostedLatestRelease",
     "test": "./gradlew test",
     "lint": "./gradlew lint"

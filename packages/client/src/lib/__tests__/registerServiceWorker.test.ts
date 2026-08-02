@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { isPackagedTauriOrigin } from "../registerServiceWorker";
+import { isPackagedAppOrigin } from "../registerServiceWorker";
 
-describe("isPackagedTauriOrigin", () => {
-  it("recognizes the Android packaged asset origin", () => {
+describe("isPackagedAppOrigin", () => {
+  it("recognizes the transitional Tauri asset origin", () => {
     expect(
-      isPackagedTauriOrigin({
+      isPackagedAppOrigin({
         hostname: "tauri.localhost",
         protocol: "http:",
       }),
@@ -13,16 +13,25 @@ describe("isPackagedTauriOrigin", () => {
 
   it("recognizes the Tauri custom protocol", () => {
     expect(
-      isPackagedTauriOrigin({
+      isPackagedAppOrigin({
         hostname: "localhost",
         protocol: "tauri:",
       }),
     ).toBe(true);
   });
 
+  it("recognizes the Android app-assets origin", () => {
+    expect(
+      isPackagedAppOrigin({
+        hostname: "appassets.androidplatform.net",
+        protocol: "https:",
+      }),
+    ).toBe(true);
+  });
+
   it("leaves hosted clients eligible for browser service workers", () => {
     expect(
-      isPackagedTauriOrigin({
+      isPackagedAppOrigin({
         hostname: "latest.yepanywhere.com",
         protocol: "https:",
       }),

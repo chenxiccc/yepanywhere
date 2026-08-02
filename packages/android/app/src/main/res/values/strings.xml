@@ -1,5 +1,8 @@
 <resources>
     <string name="app_name">Yep Anywhere</string>
+    <string name="open_full_app">Open full app</string>
+    <string name="retry">Retry</string>
+    <string name="web_client_unavailable">Yep Anywhere is unavailable.</string>
     <string name="asset_statements" translatable="false">
         [{
           \"include\": \"https://yepanywhere.com/.well-known/assetlinks.json\"

@@ -15,6 +15,10 @@
             android:resource="@string/asset_statements" />
 
         <activity
+            android:name=".web.WebClientActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask">
