@@ -181,6 +181,74 @@ function writeHighlightCache(key: string, result: HighlightResult): void {
 }
 
 /**
+ * Whole-file tokenizations waiting to run, held oldest-first and taken from
+ * the newest end.
+ *
+ * Each one blocks the loop while it runs, so a fast walk through a changeset
+ * must not queue an unbounded stall behind itself. Both ends of the queue
+ * favour the newest entry, because that is the file being looked at now: it
+ * runs first, and when the queue is full it is the *oldest* that gets dropped.
+ * Dropping is always safe — the request that asked still has its excerpt, and
+ * any later read of that version queues it again.
+ */
+const pendingWarms: { key: string; code: string; lang: BundledLanguage }[] = [];
+const MAX_PENDING_WARM_HIGHLIGHTS = 4;
+let warmRunning = false;
+
+function drainWarms(): void {
+  const next = pendingWarms.pop();
+  if (!next) {
+    warmRunning = false;
+    return;
+  }
+  highlightCode(next.code, next.lang)
+    .catch(() => undefined)
+    // One at a time, and never in the same tick as the response it follows.
+    .finally(() => setImmediate(drainWarms));
+}
+
+function resolveLanguage(language: string): BundledLanguage | null {
+  if (language in bundledLanguages) return language as BundledLanguage;
+  return EXTENSION_TO_LANG[language.toLowerCase()] ?? null;
+}
+
+/**
+ * The retained highlighting for this exact content, or null if it has not been
+ * tokenized yet. Lets a latency-sensitive caller take the exact result when it
+ * is already paid for and choose a cheaper approximation when it is not,
+ * without blocking on tokenization.
+ */
+export function getCachedHighlight(
+  code: string,
+  language: string,
+): HighlightResult | null {
+  const lang = resolveLanguage(language);
+  if (!lang) return null;
+  return readHighlightCache(highlightCacheKey(code, lang));
+}
+
+/**
+ * Tokenize this content off the critical path so a later request finds it in
+ * the cache. Returns immediately; failures are dropped, since every caller has
+ * a working fallback and this only ever improves the next response.
+ */
+export function warmHighlight(code: string, language: string): void {
+  const lang = resolveLanguage(language);
+  if (!lang) return;
+  const key = highlightCacheKey(code, lang);
+  if (highlightCache.has(key)) return;
+  if (pendingWarms.some((entry) => entry.key === key)) return;
+
+  pendingWarms.push({ key, code, lang });
+  if (pendingWarms.length > MAX_PENDING_WARM_HIGHLIGHTS) pendingWarms.shift();
+  if (warmRunning) return;
+
+  warmRunning = true;
+  // After the in-flight response flushes, not ahead of it.
+  setImmediate(drainWarms);
+}
+
+/**
  * Get or create the singleton highlighter instance.
  */
 async function getHighlighter(): Promise<Highlighter> {
@@ -231,14 +299,7 @@ export async function highlightCode(
 ): Promise<HighlightResult | null> {
   const highlighter = await getHighlighter();
 
-  // Resolve language from extension if needed
-  let lang: BundledLanguage | null = null;
-  if (language in bundledLanguages) {
-    lang = language as BundledLanguage;
-  } else {
-    lang = EXTENSION_TO_LANG[language.toLowerCase()] ?? null;
-  }
-
+  const lang = resolveLanguage(language);
   if (!lang) {
     return null;
   }
@@ -316,5 +377,7 @@ export const __test__ = {
   clearCache: () => {
     highlightCache.clear();
     highlightCacheBytes = 0;
+    pendingWarms.length = 0;
   },
+  pendingWarmCount: () => pendingWarms.length,
 };

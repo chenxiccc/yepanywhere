@@ -1,5 +1,10 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import { __test__, highlightCode } from "./index.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  __test__,
+  getCachedHighlight,
+  highlightCode,
+  warmHighlight,
+} from "./index.js";
 
 const PYTHON = Array.from(
   { length: 200 },
@@ -45,6 +50,21 @@ describe("highlightCode", () => {
     // Both raced past the read, so the second write replaced the first. The
     // retained-bytes total must count the survivor once, not both.
     expect(__test__.cacheBytes()).toBe((a?.html.length ?? 0));
+  });
+
+  it("caps queued whole-file warms and drops the oldest, not the newest", async () => {
+    const source = (i: number) => `${PYTHON}\n# variant ${i}`;
+    for (let i = 0; i < 12; i++) warmHighlight(source(i), "python");
+
+    // The newest request is the file being looked at now, so it must survive.
+    expect(__test__.pendingWarmCount()).toBeLessThanOrEqual(4);
+
+    await vi.waitFor(
+      () => expect(getCachedHighlight(source(11), "python")).not.toBeNull(),
+      { timeout: 5000 },
+    );
+    // The oldest were dropped rather than queued into a long loop stall.
+    expect(getCachedHighlight(source(0), "python")).toBeNull();
   });
 
   it("reports the untruncated line count on a cache hit", async () => {

@@ -1601,3 +1601,74 @@ describe("injectWordDiffMarkers", () => {
     });
   });
 });
+
+describe("whole-file highlighting arrives without blocking the first diff", () => {
+  // A change inside a docstring, with the opening `"""` far enough above the
+  // hunk that the 3 context lines do not reach it. Tokenizing only the hunk
+  // lines therefore starts outside the string and reads the prose word
+  // `import` as a keyword.
+  const docstringFile = (marker: string) =>
+    [
+      "def load(path):",
+      '    """Read the config.',
+      "",
+      "    Notes:",
+      "        the import keyword here is prose, not code",
+      "        more prose",
+      "        more prose",
+      `        ${marker}`,
+      '    """',
+      "    return open(path).read()",
+    ].join("\n");
+
+  const before = docstringFile("OLD");
+  const after = docstringFile("NEW");
+
+  /** Whether `import` was emitted as its own token, i.e. coloured as code. */
+  const colouredAsKeyword = (html: string) =>
+    /<span[^>]*>import<\/span>/.test(html);
+
+  it("upgrades a docstring hunk to exact colouring on a later read", async () => {
+    __test__.clearHighlightCache();
+
+    const first = await computeEditAugment("tool-cold", {
+      file_path: "cfg.py",
+      old_string: before,
+      new_string: after,
+    });
+    // First look is the excerpt: fast, and wrong about the docstring.
+    expect(colouredAsKeyword(first.diffHtml)).toBe(true);
+
+    // The whole-file tokenization it scheduled lands off the request path.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    const later = await computeEditAugment("tool-warm", {
+      file_path: "cfg.py",
+      old_string: before,
+      new_string: after,
+    });
+    expect(colouredAsKeyword(later.diffHtml)).toBe(false);
+    expect(later.structuredPatch).toEqual(first.structuredPatch);
+  });
+
+  it("keeps diff line identity stable across that upgrade", async () => {
+    __test__.clearHighlightCache();
+
+    const first = await computeEditAugment("tool-a", {
+      file_path: "cfg.py",
+      old_string: before,
+      new_string: after,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const later = await computeEditAugment("tool-b", {
+      file_path: "cfg.py",
+      old_string: before,
+      new_string: after,
+    });
+
+    const lineIds = (html: string) =>
+      [...html.matchAll(/data-diff-line="(\d+)"/g)].map((m) => m[1]);
+    // Comment anchors key off these, so the upgrade must not renumber them.
+    expect(lineIds(later.diffHtml)).toEqual(lineIds(first.diffHtml));
+  });
+});

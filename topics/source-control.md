@@ -355,13 +355,41 @@ cannot catch a regression here — the classification still wins the race and
 still returns the skip — so the guard is the ordering itself.
 
 Syntax highlighting dominates the remaining cost — roughly 90µs per tokenized
-line, paid for both file versions. A version's content determines its
-highlighting exactly, so the server retains highlighted output keyed by content
-and language, bounded by total retained bytes. Repeat views of one version — a
-poll refetch, a whitespace or full-context toggle, a reselection, a second
-client — reuse it instead of re-tokenizing. Only a version not yet seen pays
-tokenization. This is a pure function of content, so it needs no invalidation
-window; do not add a time-based expiry that would reintroduce the cost.
+line, and a whole file is tokenized per version. A version's content determines
+its highlighting exactly, so the server retains highlighted output keyed by
+content and language, bounded by total retained bytes. This is a pure function
+of content and needs no invalidation window; do not add a time-based expiry
+that would reintroduce the cost.
+
+**No request pays whole-file tokenization.** Highlighting a whole file gives
+the tokenizer exact context, but a request that has to compute it scales with
+the file rather than with the change — for a ~2000-line source file that was
+413ms of tokenizing. A diff therefore takes whichever it can have now: the
+retained whole-file result when that is already paid for, otherwise an excerpt
+of just the hunk lines, while scheduling the whole-file tokenization to land
+after the response. The next read of that same version — the status-poll
+refetch, a reselection, a whitespace or full-context toggle — is exact and
+tokenizes nothing. Measured on that file: 413ms → 89ms first look → 9ms
+thereafter.
+
+Scheduled whole-file tokenizations are capped, because each one blocks the
+loop while it runs and walking quickly through a changeset would otherwise
+queue a long stall. Dropping one is safe — the request still has its excerpt,
+and the next read of that version schedules it again.
+
+The excerpt is what makes this a trade rather than a free win: tokenizing only
+the hunk lines starts outside any string or comment that opened above them, so
+a prose word inside a docstring can render keyword-coloured. That error is
+therefore deliberately **transient** — it belongs only to the first look at a
+version and must not become the steady state. A change here that removes the
+background warm, or that serves the excerpt when the whole-file result is
+cached, breaks the contract even though every response still parses.
+
+Do not "fix" the first-look approximation by making the request wait for
+whole-file tokenization; that is the 1.2s this replaced. Worker threads do not
+substitute either: they would let the two versions tokenize in parallel, but
+the common case has one cold version, so they buy no latency there — their
+value is keeping a long tokenize off the loop that also serves live sessions.
 
 Do not add speculative file-diff prewarming as the first remedy for a slow
 selection. Eliminate unrelated project/session scans and measure the remaining

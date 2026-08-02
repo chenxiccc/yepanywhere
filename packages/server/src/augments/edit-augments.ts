@@ -8,7 +8,13 @@
 
 import type { EditAugment, PatchHunk } from "@yep-anywhere/shared";
 import { diffWordsWithSpace, structuredPatch } from "diff";
-import { getLanguageForPath, highlightCode } from "../highlighting/index.js";
+import {
+  __test__ as highlightingTest,
+  getCachedHighlight,
+  getLanguageForPath,
+  highlightCode,
+  warmHighlight,
+} from "../highlighting/index.js";
 
 /** Number of context lines to include in the diff */
 const CONTEXT_LINES = 3;
@@ -339,6 +345,35 @@ function canHighlightWholeFile(oldString: string, newString: string): boolean {
 }
 
 /**
+ * How one side of a diff gets its highlighted lines.
+ *
+ * `whole` is exact but costs ~90µs per line of the *file*; `excerpt` costs
+ * that per line of the *change*, and mis-colours a hunk whose enclosing
+ * string or comment opened above it. Wanting exactness does not mean paying
+ * tokenization on the request that needs it: a version's content determines
+ * its highlighting, so the exact result is worth waiting one request for.
+ */
+type SideHighlightPlan = "whole" | "excerpt";
+
+/**
+ * Take the whole-file highlighting when it is already retained, otherwise
+ * approximate now and tokenize in the background. The first look at a changed
+ * file is the excerpt; the next read of that same version — a status-poll
+ * refetch, a reselection, a whitespace toggle — is exact and costs no
+ * tokenization at all.
+ */
+function planSideHighlight(
+  content: string,
+  lang: string,
+  wholeFileAllowed: boolean,
+): SideHighlightPlan {
+  if (!wholeFileAllowed || content.length === 0) return "excerpt";
+  if (getCachedHighlight(content, lang)) return "whole";
+  warmHighlight(content, lang);
+  return "excerpt";
+}
+
+/**
  * The absolute 0-based line indices each side's hunks reference, ascending.
  * Mirrors the walk in `highlightDiffWithSyntax` below, so every line that
  * render asks for has been highlighted.
@@ -379,12 +414,12 @@ async function highlightSideLines(
   content: string,
   lang: string,
   indices: number[],
-  wholeFile: boolean,
+  plan: SideHighlightPlan,
 ): Promise<HighlightedLineLookup | null> {
   // highlightCode returns null for empty input; an absent side has no lines.
   if (content.length === 0) return () => undefined;
 
-  if (wholeFile) {
+  if (plan === "whole") {
     const result = await highlightCode(content, lang);
     if (!result) return null;
     const lines = extractShikiLines(result.html);
@@ -423,20 +458,23 @@ async function highlightDiffWithSyntax(
   const lang = getLanguageForPath(filePath);
   if (!lang) return null;
 
-  const wholeFile = canHighlightWholeFile(oldString, newString);
-  const indices = wholeFile ? { old: [], new: [] } : hunkLineIndices(hunks);
+  const wholeFileAllowed = canHighlightWholeFile(oldString, newString);
+  // Always known: a side may fall back to its excerpt even when whole-file
+  // highlighting is permitted, because the whole-file tokens are not paid for
+  // yet.
+  const indices = hunkLineIndices(hunks);
 
   const oldLine = await highlightSideLines(
     oldString,
     lang,
     indices.old,
-    wholeFile,
+    planSideHighlight(oldString, lang, wholeFileAllowed),
   );
   const newLine = await highlightSideLines(
     newString,
     lang,
     indices.new,
-    wholeFile,
+    planSideHighlight(newString, lang, wholeFileAllowed),
   );
 
   // If either side fails (as opposed to being empty), fall back
@@ -1238,4 +1276,5 @@ export const __test__ = {
   computeWordDiff,
   findReplacePairs,
   injectWordDiffMarkers,
+  clearHighlightCache: () => highlightingTest.clearCache(),
 };
