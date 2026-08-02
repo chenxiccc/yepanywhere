@@ -226,6 +226,9 @@
 - android-native-shell - First-class Gradle/Kotlin Android ownership, Compose
   app navigation, a full-web fallback, and an origin-scoped native host
   message contract without Tauri Mobile.
+- android-native-connection - Kotlin-owned SRP, secretbox, direct/relay YA
+  protocol transport, resumable native sessions, and shared Compose/service
+  lifecycle ownership independent of the WebView.
 - mobile-server-pairing - Stable YA server identity, durable mobile-device
   pairing, Kotlin-owned native transport, independent bundled-web transport,
   direct/relay discovery, and push as a revocable child capability.
