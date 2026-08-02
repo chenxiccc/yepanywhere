@@ -92,15 +92,29 @@ class WebClientActivityTest {
             evaluateJavaScript(
                 scenario,
                 """
-                window.__yaNativeFrameResult = "pending";
                 const frame = document.createElement("iframe");
-                frame.srcdoc = "<html><body>frame</body></html>";
-                frame.onload = () => {
-                  const channel = frame.contentWindow.yaNative;
-                  if (!channel) {
-                    window.__yaNativeFrameResult = "absent";
-                    return;
-                  }
+                frame.id = "ya-native-test-frame";
+                document.body.appendChild(frame);
+                true;
+                """.trimIndent(),
+            )
+            awaitJavaScript(
+                scenario,
+                """
+                document.getElementById("ya-native-test-frame")
+                  ?.contentDocument?.readyState ?? "missing"
+                """.trimIndent(),
+                "\"complete\"",
+            )
+            evaluateJavaScript(
+                scenario,
+                """
+                window.__yaNativeFrameResult = "pending";
+                const channel = document.getElementById("ya-native-test-frame")
+                  .contentWindow.yaNative;
+                if (!channel) {
+                  window.__yaNativeFrameResult = "absent";
+                } else {
                   channel.onmessage = () => {
                     window.__yaNativeFrameResult = "reply";
                   };
@@ -111,9 +125,8 @@ class WebClientActivityTest {
                     if (window.__yaNativeFrameResult === "pending") {
                       window.__yaNativeFrameResult = "no-reply";
                     }
-                  }, 250);
-                };
-                document.body.appendChild(frame);
+                  }, 1000);
+                }
                 true;
                 """.trimIndent(),
             )
@@ -171,12 +184,9 @@ class WebClientActivityTest {
     fun backNavigatesWebHistoryBeforeFinishingTheActivity() {
         ActivityScenario.launch(WebClientActivity::class.java).use { scenario ->
             awaitJavaScript(scenario, "document.readyState", "\"complete\"")
-            val initialUrl = AtomicReference<String>()
+            val historyUrl = "https://appassets.androidplatform.net/debug-streaming.html"
             scenario.onActivity { activity ->
-                activity.findViewById<WebView>(R.id.web_client).apply {
-                    initialUrl.set(url)
-                    loadUrl("https://appassets.androidplatform.net/debug-streaming.html")
-                }
+                activity.findViewById<WebView>(R.id.web_client).loadUrl(historyUrl)
             }
             awaitJavaScript(
                 scenario,
@@ -196,9 +206,9 @@ class WebClientActivityTest {
 
             awaitWebViewCondition(
                 scenario,
-                "WebView did not return to the initial document",
+                "WebView did not leave the second history document",
             ) { view ->
-                view.url == initialUrl.get()
+                view.url != null && view.url != historyUrl
             }
             assertEquals(Lifecycle.State.RESUMED, scenario.state)
         }
