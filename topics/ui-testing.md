@@ -52,7 +52,10 @@ build. When there is no explicit handoff, use the default capture workflow.
 
 1. Confirm that the user has not handed visual verification off to themselves.
    If they have, use the user-owned workflow above and stop this protocol.
-2. Start the app UI and reproduce the target path in a real browser.
+2. Start a fresh dev-server process from the current worktree on an unused
+   port; do not reuse an already-running process. Use a disposable data
+   directory when isolation is needed to avoid disturbing the user's live
+   server. Complete or dismiss first-run/setup overlays before capture.
 3. Navigate to the affected view (page, panel, or control).
 4. Take screenshots at:
    - desktop width `1920x1080`,
@@ -68,6 +71,10 @@ build. When there is no explicit handoff, use the default capture workflow.
    exists).
 7. Leave a short reviewer note about what changed and what was
    visually confirmed.
+
+Any capture containing the `Server changed` banner or another stale-runtime
+indicator is invalid. Restart from the current worktree and recapture rather
+than treating the banner as unrelated visual noise.
 
 ## Recommended automation
 

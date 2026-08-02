@@ -98,6 +98,12 @@ browser captures of the final result at 1920×1080 and a phone width (375×812),
 inspected by the agent against the request before claiming completion;
 in-progress captures are optional.
 
+Run final captures against a fresh dev-server process started from the current
+worktree; do not reuse an already-running server. Use an unused port and, when
+needed, a disposable data directory so the user's live server stays untouched.
+A capture containing the `Server changed` banner or another stale-runtime
+indicator is invalid: restart fresh and recapture.
+
 An explicit user handoff overrides this default. If the user says they will
 visually verify the result or asks to skip screenshots or visual validation, do
 not capture screenshots or launch a browser solely for visual QA. Continue
