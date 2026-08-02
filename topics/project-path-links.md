@@ -5,13 +5,9 @@
 
 Topic: project-path-links
 
-Status: **partially implemented; the index is being replaced.** Linkification
-of the file viewer's highlighted source works (2026-08-02). The path index
-behind it does not yet meet this topic's own contract: it misses gitignored
-files, which is the case the feature exists for, and its validation stops being
-live on a wide repository. *Membership decides linking* and *rendering* below
-are current and hold; **The index** below describes what shipped, and is
-superseded — see *Index rebuild* at the end.
+Status: **implemented (2026-08-02).** Highlighted file content links exact
+project files through a bounded, filesystem-backed path trie. Tracked,
+untracked, and gitignored files share the same membership test.
 
 ## Why membership, not shape
 
@@ -32,53 +28,52 @@ here; the Markdown viewer's own local-file handling covers authored links.
 
 ## The index
 
-`packages/server/src/projects/projectPathIndex.ts` holds one path set per
-project.
+`packages/server/src/projects/projectPathIndex.ts` holds one lazy trie per
+project. Each cached directory node records its complete child listing and the
+directory mtime observed with that listing. The filesystem is authoritative;
+Git is never consulted, so ignored files need no special case.
 
-**Untracked files are indexed**, not just `git ls-files` output. The reported
-case is a manifest pointing at `untracked/pii-eval/prod/…jsonl`; a
-tracked-only index would fail exactly the paths worth linking. The set is
-therefore tracked paths plus porcelain-v2 untracked paths.
+**Validation is local to the referenced directory.** One lookup batch groups
+candidates by parent directory. A cached parent takes one `stat`; an unchanged
+mtime makes its child listing authoritative for both presence and absence. A
+changed or cold parent is read between two `stat` calls and cached only when
+the mtime is stable. A directory changing continuously is answered from the
+bounded read but not cached, so the next lookup retries instead of blessing an
+unstable snapshot.
 
-Its size bound is a backstop against a pathological tree, not a working limit,
-and is deliberately far above the Source Control browser's 10,000-path corpus
-bound — that one caps what a human scrolls, this only holds strings for
-membership tests. A real repository here measured 15,365 paths, so a
-10,000 bound silently dropped files that should have linked. Untracked paths
-are inserted first, so if the backstop ever truncates it keeps the paths
-nothing else can supply: tracked files stay reachable through Source Control's
-file browser, while an untracked run output is only ever named in content like
-the manifest this feature exists for.
+Recent directory mtimes receive one conservative settling refresh. This keeps
+creation-after-warm correct on filesystems whose mtimes are coarser than the
+nanosecond timestamps available on the development host; correctness does not
+depend on sub-second precision.
 
-**Staleness is directory mtime.** A directory's mtime moves when an entry is
-created, removed, or renamed inside it — precisely the changes that make a link
-appear or dangle. Editing a file's *contents* does not move it and does not need
-to. The index re-stats its known directories, no more often than a floor
-matching the Source Control status poll, and rebuilds when any differs. A check
-that finds nothing changed advances that floor, so a quiet project is swept once
-per window rather than on every view.
+**Memory and background work are bounded.** At most 50,000 path-component
+nodes remain cached. A listing that cannot fit is used for the current lookup
+without sticking in the trie. When an index first starts, one breadth-first
+warm walks at most 12 directory levels and stops at the same node bound. It has
+no timer, watcher, retry loop, or session lifetime of its own; a cold lookup is
+always sufficient.
 
-The watched-directory cap is set where the sweep stops being the cheaper
-option. Measured on a 10,845-directory repository: 135ms to stat them all
-versus 220ms to rebuild outright — close enough that sweeping buys nothing. A
-project past the cap therefore keeps no watch set and rebuilds on a much longer
-interval instead, trading staleness for not paying either cost on a request the
-reader is waiting for.
+The warm skips directories named `.git` and `node_modules` by default. An
+optional project-root `.yepignore` replaces the default `node_modules`
+exclusion; `.git` is always skipped. Its intentionally small format is one
+project-relative directory per line, with blank lines and lines beginning `#`
+ignored. It is not gitignore syntax: globs, negation, and inline comments have
+no special meaning. An unreadable or malformed file logs once and falls back to
+the defaults.
 
-This is deliberately not a filesystem watcher. A watcher would also serve
-Source Control's dirty-state refresh and is the better long-term answer, but it
-is involved and platform-sensitive, and directory mtimes carry this feature on
-their own. `invalidateProjectPathIndex` exists for callers that already know the
-tree moved — a completed file mutation, a branch change — so a watcher or the
-dirty-file editor observer can drive it later without changing the contract.
+Warm exclusions never restrict lookup. A path under `node_modules`, `.git`, or
+a `.yepignore` entry still links when the file exists; the first reference just
+reads that directory on demand.
 
 ## Rendering
 
 Linkification runs server-side over already-highlighted HTML, in the same
 response that produces it, so the client needs no path corpus and no second
-request. Matches are wrapped in the same `renderLocalFileLink` markup the
-Markdown viewer emits, so the existing `data-ya-resource="local-file"`
-interception opens them in the same popup.
+request. A first pass collects distinct candidates, the index resolves them in
+bounded concurrent directory batches, and a second pass rewrites only the
+confirmed files. Matches use the same `renderLocalFileLink` markup the Markdown
+viewer emits, so the existing `data-ya-resource="local-file"` interception
+opens them in the same popup.
 
 Constraints that keep it safe over arbitrary markup:
 
@@ -102,44 +97,30 @@ Only the file viewer's highlighted source runs this. Other viewers showing
 project content — diff panes, tool-result bodies — would use the same
 `linkifyProjectPaths` seam.
 
-## Index rebuild: per-directory validation
+## Replacement evidence
 
-The index described above is a flat path set validated by re-stat'ing every
-directory it knows. That is being replaced, for two reasons found by checking it
-against a real repository rather than a constructed one.
+The original flat index used `git ls-files` plus porcelain-v2 untracked paths.
+It missed ignored run outputs, while enumerating ignored files up front measured
+2.5s for 131,956 files here and 3.5s for 594,511 in a research repository. Its
+global freshness sweep also measured 135ms for 10,845 directories against 220ms
+to rebuild. Those results ruled out repairing the flat set with another Git
+enumeration or a wider sweep.
 
-**It misses gitignored files.** Its sources are `git ls-files` and
-`git status --untracked-files=all`, and neither reports ignored paths. Run
-outputs — the content this feature exists to make navigable — commonly live
-under a gitignored directory. Enumerating ignored files up front is not the
-answer: measured 2.5s for 131,956 files here (mostly `node_modules`) and 3.5s
-for 594,511 in a research repository.
+The replacement test suite covers ignored membership, same-timestamp creation,
+absolute and parent-traversal rejection before I/O, cache bounds, default and
+project-defined warm exclusions, `.git`'s unconditional exclusion, malformed
+`.yepignore` fallback, HTML safety, self-link suppression, and batch I/O cost.
 
-**Global validation costs as much as rebuilding.** On a 10,845-directory
-repository, stat'ing every directory took 135ms against 220ms to rebuild
-outright, so the sweep bought nothing and the implementation degraded to a long
-TTL at exactly the width where staying live matters.
+A 2026-08-02 end-to-end measurement used the motivating ignored file under
+`trtllm-speculative/draft`: 10,000 highlighted tokens, 191 distinct candidates
+in one parent directory, and 500 occurrences of the existing file.
 
-The replacement keys the structure by path component, one node per directory,
-each holding the child listing and the directory mtime observed when that
-listing was read. A directory's mtime changes exactly when its own entries
-change — verified: adding, deleting and renaming an entry all move it, while
-editing a file's contents does not, and a change inside a subdirectory does not
-move the parent's. Membership of `a/b/c.json` therefore needs only `a/b`'s
-listing to be current, so **one stat of `a/b` validates the answer**, presence
-or absence alike.
+| state | elapsed | `stat` | `readdir` | links |
+|---|---:|---:|---:|---:|
+| cold trie | 22.3ms | 8 | 4 | 500 |
+| cached parent, median of 5 | 9.4ms | 1 | 0 | 500 |
 
-Three properties follow, and each is a requirement of the replacement rather
-than an optimization:
-
-- Cost scales with the distinct directories a piece of content references, not
-  with how many candidate tokens it contains, because a validated directory node
-  answers "not here" without I/O.
-- Ignored files are covered, because `readdir` does not consult `.gitignore` and
-  nothing is enumerated up front.
-- Freshness needs no TTL, because validation is per lookup rather than a sweep
-  that has to be rationed.
-
-Directory watches (inotify) remain the escalation on top of this, not a
-prerequisite — and are the same signal Source Control wants for refreshing dirty
-state.
+The five cached-parent timings ranged from 7.0–11.2ms. This is a local
+regression measurement, not a cross-machine latency guarantee; the structural
+result is the stable part: 10,000 tokens and 191 distinct candidates in one
+directory required one validation `stat`, with no global tree sweep.

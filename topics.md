@@ -251,3 +251,5 @@
 - reload-safe-provider-runtimes - Wrapper-owned provider protocol runtimes
   that can keep active turns alive across a development backend reload;
   Codex-first Linux proposal.
+- project-path-links - Filesystem-authoritative project path membership and
+  highlighted-source linkification.

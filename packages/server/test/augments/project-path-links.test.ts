@@ -1,10 +1,11 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { linkifyProjectPaths } from "../../src/augments/project-path-links.js";
+import { getLogger } from "../../src/logging/logger.js";
 import {
   __test__,
   getProjectPathIndex,
@@ -23,66 +24,185 @@ async function createRepo(): Promise<string> {
 }
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   __test__.reset();
   await Promise.all(repos.splice(0).map((dir) => rm(dir, { recursive: true })));
 });
 
 describe("project path index", () => {
-  it("indexes untracked files, not only tracked ones", async () => {
+  it("finds files inside gitignored directories", async () => {
     const repo = await createRepo();
     await writeFile(join(repo, "tracked.md"), "# tracked\n");
-    await execFileAsync("git", ["-C", repo, "add", "tracked.md"]);
+    await writeFile(join(repo, ".gitignore"), "untracked/\n");
+    await execFileAsync("git", ["-C", repo, "add", "tracked.md", ".gitignore"]);
     await execFileAsync("git", ["-C", repo, "commit", "-m", "add"]);
     await mkdir(join(repo, "untracked/runs"), { recursive: true });
     await writeFile(join(repo, "untracked/runs/eval-v2.jsonl"), "{}\n");
 
     const index = await getProjectPathIndex(repo);
 
-    expect(index.has("tracked.md")).toBe(true);
+    expect(await index.has("tracked.md")).toBe(true);
     // The reported case: an agent hands over a path under an untracked
     // results directory, which `git ls-files` would never report.
-    expect(index.has("untracked/runs/eval-v2.jsonl")).toBe(true);
-    expect(index.has("does/not/exist.json")).toBe(false);
+    expect(await index.has("untracked/runs/eval-v2.jsonl")).toBe(true);
+    expect(await index.has("does/not/exist.json")).toBe(false);
+    expect(
+      await linkifyProjectPaths(
+        "<span>untracked/runs/eval-v2.jsonl</span>",
+        { projectPath: repo, index },
+      ),
+    ).toContain('data-ya-resource="local-file"');
   });
 
-  it("advances its recheck floor so a quiet project is not re-swept per view", async () => {
+  it("validates one referenced parent once per lookup batch", async () => {
+    const repo = await createRepo();
+    await mkdir(join(repo, "runs"), { recursive: true });
+    await writeFile(join(repo, "runs/first.json"), "{}\n");
+    const old = new Date("2020-01-01T00:00:00Z");
+    await utimes(join(repo, "runs"), old, old);
+
+    const index = await __test__.createIndex(repo, { startWarm: false });
+    expect(await index.has("runs/first.json")).toBe(true);
+    __test__.resetDiagnostics(index);
+
+    const found = await index.findExisting([
+      "runs/first.json",
+      "runs/missing-a.json",
+      "runs/missing-b.json",
+    ]);
+
+    expect(found).toEqual(new Set(["runs/first.json"]));
+    expect(__test__.diagnostics(index)).toMatchObject({
+      lookupCandidates: 3,
+      lookupReaddirCalls: 0,
+      lookupStatCalls: 1,
+    });
+  });
+
+  it("notices same-timestamp additions and deletions after warm", async () => {
     const repo = await createRepo();
     await mkdir(join(repo, "runs"), { recursive: true });
     await writeFile(join(repo, "runs/first.json"), "{}\n");
 
-    await getProjectPathIndex(repo, 1_000);
-    // Well past the floor, but nothing changed: the check must record that it
-    // looked, so the next view inside the window costs nothing.
-    const later = 1_000 + __test__.RECHECK_INTERVAL_MS + 1;
-    await getProjectPathIndex(repo, later);
+    const index = await __test__.createIndex(repo);
+    await __test__.waitForWarm(index);
+    const before = await stat(join(repo, "runs"));
 
     await writeFile(join(repo, "runs/second.json"), "{}\n");
-    const withinWindow = await getProjectPathIndex(repo, later + 1);
-    expect(withinWindow.has("runs/second.json")).toBe(false);
+    await utimes(join(repo, "runs"), before.atime, before.mtime);
 
-    const afterWindow = await getProjectPathIndex(
-      repo,
-      later + __test__.RECHECK_INTERVAL_MS + 1,
-    );
-    expect(afterWindow.has("runs/second.json")).toBe(true);
+    expect(await index.has("runs/second.json")).toBe(true);
+
+    const afterAdd = await stat(join(repo, "runs"));
+    await rm(join(repo, "runs/second.json"));
+    await utimes(join(repo, "runs"), afterAdd.atime, afterAdd.mtime);
+
+    expect(await index.has("runs/second.json")).toBe(false);
   });
 
-  it("notices a file added after the index was built", async () => {
+  it("rejects absolute and parent-traversal paths before filesystem I/O", async () => {
     const repo = await createRepo();
-    await mkdir(join(repo, "runs"), { recursive: true });
-    await writeFile(join(repo, "runs/first.json"), "{}\n");
+    const index = await __test__.createIndex(repo, { startWarm: false });
 
-    const first = await getProjectPathIndex(repo, 1_000);
-    expect(first.has("runs/second.json")).toBe(false);
+    expect(
+      await index.findExisting([
+        "/etc/passwd",
+        "../outside.txt",
+        "runs/../../outside.txt",
+      ]),
+    ).toEqual(new Set());
+    expect(__test__.diagnostics(index)).toMatchObject({
+      lookupReaddirCalls: 0,
+      lookupStatCalls: 0,
+    });
+  });
 
-    await writeFile(join(repo, "runs/second.json"), "{}\n");
-
-    // Past the recheck floor, the directory's changed mtime forces a rebuild.
-    const second = await getProjectPathIndex(
-      repo,
-      1_000 + __test__.RECHECK_INTERVAL_MS + 1,
+  it("keeps cache growth within its node bound", async () => {
+    const repo = await createRepo();
+    await mkdir(join(repo, "wide"));
+    await Promise.all(
+      Array.from({ length: 8 }, (_, index) =>
+        writeFile(join(repo, "wide", `${index}.txt`), "x"),
+      ),
     );
-    expect(second.has("runs/second.json")).toBe(true);
+    const index = await __test__.createIndex(repo, {
+      maxCachedNodes: 4,
+      startWarm: false,
+    });
+
+    expect(await index.has("wide/7.txt")).toBe(true);
+    const diagnostics = __test__.diagnostics(index);
+    expect(diagnostics.cacheLimitHit).toBe(true);
+    expect(diagnostics.cachedNodes).toBeLessThanOrEqual(4);
+  });
+
+  it("keeps crawl exclusions separate from on-demand visibility", async () => {
+    const repo = await createRepo();
+    await mkdir(join(repo, "node_modules/pkg"), { recursive: true });
+    await mkdir(join(repo, "blocked/deep"), { recursive: true });
+    await writeFile(join(repo, "node_modules/pkg/index.js"), "export {};\n");
+    await writeFile(join(repo, "blocked/deep/result.json"), "{}\n");
+    await writeFile(join(repo, ".yepignore"), "blocked\n");
+    const old = new Date("2020-01-01T00:00:00Z");
+    await Promise.all(
+      ["node_modules", "node_modules/pkg", "blocked", "blocked/deep"].map(
+        (directory) => utimes(join(repo, directory), old, old),
+      ),
+    );
+
+    const index = await __test__.createIndex(repo);
+    await __test__.waitForWarm(index);
+    __test__.resetDiagnostics(index);
+
+    // A present .yepignore replaces the default, so node_modules is warm.
+    expect(await index.has("node_modules/pkg/index.js")).toBe(true);
+    expect(__test__.diagnostics(index).lookupReaddirCalls).toBe(0);
+
+    __test__.resetDiagnostics(index);
+    // The configured block affects only warming; lookup remains authoritative.
+    expect(await index.has("blocked/deep/result.json")).toBe(true);
+    expect(__test__.diagnostics(index).lookupReaddirCalls).toBeGreaterThan(0);
+
+    __test__.resetDiagnostics(index);
+    // .git remains excluded even when a custom file replaces the defaults.
+    expect(await index.has(".git/config")).toBe(true);
+    expect(__test__.diagnostics(index).lookupReaddirCalls).toBeGreaterThan(0);
+  });
+
+  it("skips node_modules during the default warm", async () => {
+    const repo = await createRepo();
+    await mkdir(join(repo, "node_modules/pkg"), { recursive: true });
+    await writeFile(join(repo, "node_modules/pkg/index.js"), "export {};\n");
+    const old = new Date("2020-01-01T00:00:00Z");
+    await Promise.all(
+      ["node_modules", "node_modules/pkg"].map((directory) =>
+        utimes(join(repo, directory), old, old),
+      ),
+    );
+
+    const index = await __test__.createIndex(repo);
+    await __test__.waitForWarm(index);
+    __test__.resetDiagnostics(index);
+
+    expect(await index.has("node_modules/pkg/index.js")).toBe(true);
+    expect(__test__.diagnostics(index).lookupReaddirCalls).toBeGreaterThan(0);
+  });
+
+  it("logs malformed .yepignore once and falls back to defaults", async () => {
+    const repo = await createRepo();
+    await writeFile(join(repo, ".yepignore"), "../outside\n");
+    await mkdir(join(repo, "node_modules/pkg"), { recursive: true });
+    await writeFile(join(repo, "node_modules/pkg/index.js"), "export {};\n");
+    const warn = vi.spyOn(getLogger(), "warn").mockImplementation(() => undefined);
+
+    const index = await __test__.createIndex(repo);
+    await __test__.waitForWarm(index);
+    await __test__.createIndex(repo, { startWarm: false });
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    __test__.resetDiagnostics(index);
+    expect(await index.has("node_modules/pkg/index.js")).toBe(true);
+    expect(__test__.diagnostics(index).lookupReaddirCalls).toBeGreaterThan(0);
   });
 });
 
@@ -155,5 +275,33 @@ describe("linkifyProjectPaths", () => {
     expect(
       await linkifyProjectPaths(html, { projectPath: "/repo", index: empty }),
     ).toBe(html);
+  });
+
+  it("does lookup I/O per referenced directory, not per token", async () => {
+    const repo = await createRepo();
+    await mkdir(join(repo, "runs"));
+    await writeFile(join(repo, "runs/exists.json"), "{}\n");
+    const old = new Date("2020-01-01T00:00:00Z");
+    await utimes(join(repo, "runs"), old, old);
+    const realIndex = await __test__.createIndex(repo, { startWarm: false });
+    expect(await realIndex.has("runs/exists.json")).toBe(true);
+    __test__.resetDiagnostics(realIndex);
+
+    const tokens = Array.from({ length: 4_000 }, (_, tokenIndex) =>
+      tokenIndex % 20 === 0
+        ? "runs/exists.json"
+        : `runs/missing-${tokenIndex % 200}.json`,
+    );
+    const out = await linkifyProjectPaths(
+      `<span>${tokens.join(" ")}</span>`,
+      { projectPath: repo, index: realIndex },
+    );
+
+    expect(out).toContain('data-ya-resource="local-file"');
+    expect(__test__.diagnostics(realIndex)).toMatchObject({
+      lookupCandidates: 191,
+      lookupReaddirCalls: 0,
+      lookupStatCalls: 1,
+    });
   });
 });
