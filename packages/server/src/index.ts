@@ -86,6 +86,7 @@ import {
   ProjectQueueService,
   PublicShareService,
   RelayClientService,
+  SecurityClientService,
   ServerSettingsService,
   SessionQueuePersistenceService,
   SharingService,
@@ -152,6 +153,7 @@ let disposeAppForShutdown:
   | null = null;
 let deviceBridgeForShutdown: DeviceBridgeService | null = null;
 let hostAwakeForShutdown: HostAwakeService | null = null;
+let securityClientForShutdown: SecurityClientService | null = null;
 let attachmentStagingCleanupTimer: ReturnType<typeof setInterval> | null = null;
 let isShuttingDown = false;
 
@@ -182,6 +184,15 @@ async function gracefulShutdown(signal: string): Promise<void> {
       console.log("[Shutdown] Host-awake assertion released");
     } catch (error) {
       console.error("[Shutdown] Error releasing host-awake assertion:", error);
+    }
+  }
+
+  if (securityClientForShutdown) {
+    try {
+      await securityClientForShutdown.shutdown();
+      console.log("[Shutdown] Security-client audit state flushed");
+    } catch (error) {
+      console.error("[Shutdown] Error flushing security-client audit:", error);
     }
   }
 
@@ -494,6 +505,13 @@ const networkBindingService = new NetworkBindingService({
   defaultPort: 3400,
 });
 const connectedBrowsersService = new ConnectedBrowsersService(eventBus);
+const securityClientService = new SecurityClientService({
+  dataDir: config.dataDir,
+  remoteSessionService,
+  browserProfileService,
+  connectedBrowsers: connectedBrowsersService,
+  pushService,
+});
 const serverSettingsService = new ServerSettingsService({
   dataDir: config.dataDir,
 });
@@ -651,6 +669,9 @@ async function startServer() {
   markStartup("remoteSessionService persistence setting applied");
   await remoteSessionService.initialize();
   markStartup("remoteSessionService initialized");
+  await securityClientService.initialize();
+  securityClientForShutdown = securityClientService;
+  markStartup("securityClientService initialized");
   await networkBindingService.initialize();
   markStartup("networkBindingService initialized");
 
@@ -827,6 +848,7 @@ async function startServer() {
     desktopRuntime: config.desktopRuntime,
     remoteAccessService,
     remoteSessionService,
+    securityClientService,
     relayClientService,
     relayConfigCallbackHolder,
     // Note: frontendProxy not passed - will be added below
@@ -971,6 +993,7 @@ async function startServer() {
     attachmentStagingService,
     remoteAccessService,
     remoteSessionService,
+    securityClientService,
     connectedBrowsers: connectedBrowsersService,
     browserProfileService,
     focusedSessionWatchManager,
@@ -992,6 +1015,7 @@ async function startServer() {
     attachmentStagingService,
     remoteAccessService,
     remoteSessionService,
+    securityClientService,
     connectedBrowsers: connectedBrowsersService,
     browserProfileService,
     focusedSessionWatchManager,
@@ -1008,6 +1032,7 @@ async function startServer() {
     if (relayConfig?.url && relayConfig?.username) {
       const compatibility = await getServerCompatibilityInfo({
         browserSettingsBackupAvailable: true,
+        securityClientAuditAvailable: true,
         getDeviceBridgeState: () => {
           if (!deviceBridgeService) return "unavailable";
           return deviceBridgeService.hasBinary() ? "available" : "downloadable";

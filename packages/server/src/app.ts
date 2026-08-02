@@ -129,6 +129,7 @@ import { createLocalImageRoutes } from "./routes/local-image.js";
 import { createLocalResourcePathPolicy } from "./routes/local-resource-policy.js";
 import { type UploadDeps, createUploadRoutes } from "./routes/upload.js";
 import { createSpeechRoutes } from "./routes/speech.js";
+import { createSecurityClientRoutes } from "./routes/security-clients.js";
 import { createVersionRoutes } from "./routes/version.js";
 import { createWorkstreamRoutes } from "./routes/workstreams.js";
 import { WS_INTERNAL_AUTHENTICATED } from "./middleware/internal-auth.js";
@@ -156,6 +157,7 @@ import { ProjectQueueScheduler } from "./services/ProjectQueueScheduler.js";
 import type { ProjectQueueService } from "./services/ProjectQueueService.js";
 import type { RelayClientService } from "./services/RelayClientService.js";
 import type { ServerSettingsService } from "./services/ServerSettingsService.js";
+import type { SecurityClientService } from "./services/SecurityClientService.js";
 import type { WorkstreamService } from "./services/WorkstreamService.js";
 import type {
   PersistedSessionQueuedMessage,
@@ -264,6 +266,8 @@ export interface AppOptions {
   remoteAccessService?: RemoteAccessService;
   /** RemoteSessionService for session persistence (optional) */
   remoteSessionService?: RemoteSessionService;
+  /** Signed continuity-key registry and security audit service. */
+  securityClientService?: SecurityClientService;
   /** RelayClientService for relay connection status (optional) */
   relayClientService?: RelayClientService;
   /**
@@ -502,6 +506,10 @@ export function createApp(options: AppOptions): AppResult {
           : undefined,
       }),
     );
+  }
+
+  if (options.securityClientService) {
+    app.route("/", createSecurityClientRoutes(options.securityClientService));
   }
 
   // Create dependencies
@@ -1204,6 +1212,7 @@ export function createApp(options: AppOptions): AppResult {
     "/api/version",
     createVersionRoutes({
       browserSettingsBackupAvailable: !!options.browserSettingsBackupService,
+      securityClientAuditAvailable: !!options.securityClientService,
       getDeviceBridgeState: () => {
         if (!options.deviceBridgeService) return "unavailable";
         return options.deviceBridgeService.hasBinary()

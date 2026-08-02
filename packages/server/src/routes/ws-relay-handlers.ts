@@ -9,6 +9,7 @@
  * allowing both entry points to share the same implementation.
  */
 
+import { randomUUID } from "node:crypto";
 import type { HttpBindings } from "@hono/node-server";
 import type {
   BinaryFormatValue,
@@ -41,6 +42,7 @@ import { encryptToBinaryEnvelopeWithCompression } from "../crypto/index.js";
 import type { SrpServerSession } from "../crypto/index.js";
 import type { DeviceBridgeService } from "../device/DeviceBridgeService.js";
 import { getLogger } from "../logging/logger.js";
+import { AUTHENTICATED_SRP_TRANSPORT } from "../middleware/authenticated-transport.js";
 import { WS_INTERNAL_AUTHENTICATED } from "../middleware/internal-auth.js";
 import type {
   RemoteAccessService,
@@ -50,6 +52,7 @@ import type {
   BrowserProfileService,
   ConnectedBrowsersService,
 } from "../services/index.js";
+import type { SecurityClientService } from "../services/SecurityClientService.js";
 import type { ServerSettingsService } from "../services/ServerSettingsService.js";
 import type { SpeechBackendRegistry } from "../services/voice/registry.js";
 import {
@@ -115,6 +118,8 @@ interface SrpConnectionLimiterState extends SrpLimiterState {
 
 /** Per-connection state for secure connections */
 export interface ConnectionState {
+  /** Process-unique id used to bind audit clients and active socket teardown. */
+  connectionId: string;
   /** SRP session during handshake */
   srpSession: SrpServerSession | null;
   /** Derived secretbox key (32 bytes) for encryption */
@@ -134,6 +139,14 @@ export interface ConnectionState {
   username: string | null;
   /** Persistent session ID for resumption (set after successful auth) */
   sessionId: string | null;
+  /** Transport nonce retained for the lifetime of an established SRP socket. */
+  transportNonce: string | null;
+  /** Whether this SRP socket used a full password proof or resume proof. */
+  authenticationMethod: "srp-full" | "srp-resume" | null;
+  /** Whether the client reached this YA server directly or through the relay. */
+  transport: "direct" | "relay";
+  /** Direct TCP peer address; absent for relay-mediated phone/browser peers. */
+  peerAddress: string | null;
   /** Whether client sent binary frames (respond with binary if true) - Phase 0 */
   useBinaryFrames: boolean;
   /** Client's supported binary formats (Phase 3 capabilities) - defaults to [0x01] */
@@ -239,6 +252,8 @@ export interface RelayHandlerDeps {
   remoteAccessService?: RemoteAccessService;
   /** Remote session service for session persistence (optional for direct, required for relay) */
   remoteSessionService?: RemoteSessionService;
+  /** Registered-client continuity and security audit service. */
+  securityClientService?: SecurityClientService;
   /** Connected browsers service for tracking WS connections (optional) */
   connectedBrowsers?: ConnectedBrowsersService;
   /** Browser profile service for tracking connection origins (optional) */
@@ -258,8 +273,12 @@ export interface RelayHandlerDeps {
 /**
  * Create an initial connection state.
  */
-export function createConnectionState(): ConnectionState {
+export function createConnectionState(options?: {
+  transport?: "direct" | "relay";
+  peerAddress?: string | null;
+}): ConnectionState {
   return {
+    connectionId: randomUUID(),
     srpSession: null,
     sessionKey: null,
     baseSessionKey: null,
@@ -268,6 +287,10 @@ export function createConnectionState(): ConnectionState {
     requiresEncryptedMessages: false,
     username: null,
     sessionId: null,
+    transportNonce: null,
+    authenticationMethod: null,
+    transport: options?.transport ?? "direct",
+    peerAddress: options?.peerAddress ?? null,
     useBinaryFrames: false,
     supportedFormats: new Set([BinaryFormat.JSON]),
     browserProfileId: null,
@@ -334,6 +357,7 @@ export function createSendFn(
 export async function handleRequest(
   request: RelayRequest,
   send: SendFn,
+  ws: WSAdapter,
   app: Hono<{ Bindings: HttpBindings }>,
   baseUrl: string,
   connState: ConnectionState,
@@ -363,8 +387,41 @@ export async function handleRequest(
     const fetchRequest = new Request(url.toString(), fetchInit);
     // Mark requests from authenticated websocket transport as internal auth so
     // cookie middleware does not re-challenge routed API requests.
+    let closeAfterResponse = false;
+    const afterResponseTasks: Array<() => Promise<void> | void> = [];
+    const srpTransport =
+      hasEstablishedSrpTransport(connState) &&
+      connState.username &&
+      connState.sessionId &&
+      connState.transportNonce &&
+      connState.authenticationMethod
+        ? {
+            kind: "srp" as const,
+            username: connState.username,
+            sessionId: connState.sessionId,
+            transportNonce: connState.transportNonce,
+            authenticationMethod: connState.authenticationMethod,
+            transport: connState.transport,
+            connectionId: connState.connectionId,
+            ...(connState.peerAddress
+              ? { peerAddress: connState.peerAddress }
+              : {}),
+            closeConnection: () => ws.close(4004, "Security client revoked"),
+            closeAfterResponse: () => {
+              closeAfterResponse = true;
+            },
+            deferAfterResponse: (task: () => Promise<void> | void) => {
+              afterResponseTasks.push(task);
+            },
+          }
+        : null;
     const internalEnv = shouldMarkInternalWsAuthenticated(connState)
-      ? { [WS_INTERNAL_AUTHENTICATED]: true }
+      ? {
+          [WS_INTERNAL_AUTHENTICATED]: true,
+          ...(srpTransport
+            ? { [AUTHENTICATED_SRP_TRANSPORT]: srpTransport }
+            : {}),
+        }
       : {};
     const response = await app.fetch(fetchRequest, internalEnv);
 
@@ -413,6 +470,16 @@ export async function handleRequest(
         Object.keys(responseHeaders).length > 0 ? responseHeaders : undefined,
       body,
     });
+    for (const task of afterResponseTasks) {
+      try {
+        await task();
+      } catch (error) {
+        console.error("[WS Relay] After-response task failed:", error);
+      }
+    }
+    if (closeAfterResponse) {
+      ws.close(4004, "Security client revoked");
+    }
   } catch (err) {
     console.error("[WS Relay] Request error:", err);
     send({
@@ -500,6 +567,7 @@ export function handleActivitySubscribe(
   connState: ConnectionState,
   connectedBrowsers?: ConnectedBrowsersService,
   browserProfileService?: BrowserProfileService,
+  closeConnection?: () => void,
 ): void {
   const { subscriptionId, browserProfileId, originMetadata } = msg;
 
@@ -507,6 +575,7 @@ export function handleActivitySubscribe(
     connState,
     browserProfileId,
     connectedBrowsers,
+    closeConnection,
   );
 
   // Record origin metadata if available
@@ -551,6 +620,7 @@ function retainBrowserTabConnection(
   connState: ConnectionState,
   browserProfileId: string | undefined,
   connectedBrowsers: ConnectedBrowsersService | undefined,
+  closeConnection: (() => void) | undefined,
 ): () => void {
   if (!connectedBrowsers || !browserProfileId) return () => {};
 
@@ -558,7 +628,11 @@ function retainBrowserTabConnection(
   if (!registration) {
     registration = {
       browserProfileId,
-      connectionId: connectedBrowsers.connect(browserProfileId, "ws"),
+      connectionId: connectedBrowsers.connect(
+        browserProfileId,
+        "ws",
+        closeConnection,
+      ),
       activitySubscriptionCount: 0,
     };
     connState.browserTabConnection = registration;
@@ -670,6 +744,7 @@ export function handleSubscribe(
   focusedSessionWatchManager?: FocusedSessionWatchManager,
   connectedBrowsers?: ConnectedBrowsersService,
   browserProfileService?: BrowserProfileService,
+  closeConnection?: () => void,
 ): void {
   const { subscriptionId, channel } = msg;
 
@@ -697,6 +772,7 @@ export function handleSubscribe(
         connState,
         connectedBrowsers,
         browserProfileService,
+        closeConnection,
       );
       break;
 
@@ -1160,6 +1236,7 @@ export async function handleMessage(
     attachmentStagingService,
     remoteAccessService,
     remoteSessionService,
+    securityClientService,
   } = deps;
   const srpRequiredPolicy = isPolicySrpRequired(connState.connectionPolicy);
   const getSpeechSession = (): SpeechWebSocketSession | null => {
@@ -1244,7 +1321,7 @@ export async function handleMessage(
         // but a slow request (e.g. a session index revalidation behind
         // /api/sessions) must not head-of-line block later tunneled requests
         // the way it never would over plain HTTP.
-        void handleRequest(requestMsg, send, app, baseUrl, connState);
+        void handleRequest(requestMsg, send, ws, app, baseUrl, connState);
       },
       onSubscribe: async (subscribeMsg) =>
         handleSubscribe(
@@ -1257,6 +1334,7 @@ export async function handleMessage(
           deps.focusedSessionWatchManager,
           deps.connectedBrowsers,
           deps.browserProfileService,
+          () => ws.close(4004, "Legacy browser profile revoked"),
         ),
       onUnsubscribe: async (unsubscribeMsg) =>
         handleUnsubscribe(subscriptions, unsubscribeMsg),
@@ -1357,7 +1435,14 @@ export async function handleMessage(
   }
 
   if (isSrpClientProof(parsed)) {
-    await handleSrpProof(ws, connState, parsed, parsed.A, remoteSessionService);
+    await handleSrpProof(
+      ws,
+      connState,
+      parsed,
+      parsed.A,
+      remoteSessionService,
+      securityClientService,
+    );
     return;
   }
 

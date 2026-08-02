@@ -41,6 +41,7 @@ export {
   securityClientCheckInProofBody,
   securityClientRegisterProofBody,
   type CheckInSecurityClientRequest,
+  type LegacyWebSecurityClientDescriptor,
   type NativePushVersionInfo,
   type PatchSecurityClientRequest,
   type PutNativePushSubscriptionRequest,

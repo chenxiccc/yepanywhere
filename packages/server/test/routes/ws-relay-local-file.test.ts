@@ -5,6 +5,7 @@ import type { HttpBindings } from "@hono/node-server";
 import type { RelayResponse, YepMessage } from "@yep-anywhere/shared";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { getAuthenticatedSrpTransport } from "../../src/middleware/authenticated-transport.js";
 import { createLocalFileRoutes } from "../../src/routes/local-file.js";
 import {
   createConnectionState,
@@ -50,6 +51,7 @@ describe("WebSocket relay local-file requests", () => {
         path: `/api/local-file?path=${encodeURIComponent(filePath)}`,
       },
       (message) => sent.push(message),
+      { send: () => {}, close: () => {} },
       app,
       "http://localhost",
       connState,
@@ -66,5 +68,69 @@ describe("WebSocket relay local-file requests", () => {
     expect(response.headers?.["content-type"]).toBe(
       "application/json; charset=utf-8",
     );
+  });
+
+  it("injects proof context only for established SRP transport", async () => {
+    const app = new Hono<{ Bindings: HttpBindings }>();
+    app.get("/inspect", (c) =>
+      c.json({
+        hasSrpContext: !!getAuthenticatedSrpTransport(c.env),
+      }),
+    );
+    const ws = { send: () => {}, close: () => {} };
+    const trustedState = createConnectionState();
+    trustedState.connectionPolicy = "local_trusted";
+    trustedState.authState = "authenticated";
+    const trustedResponses: YepMessage[] = [];
+
+    await handleRequest(
+      {
+        type: "request",
+        id: "trusted",
+        method: "GET",
+        path: "/inspect",
+        headers: {
+          "X-Security-Client-Transport": "srp",
+        },
+      },
+      (message) => trustedResponses.push(message),
+      ws,
+      app,
+      "http://localhost",
+      trustedState,
+    );
+
+    expect(trustedResponses[0]).toMatchObject({
+      body: { hasSrpContext: false },
+    });
+
+    const srpState = createConnectionState({
+      transport: "relay",
+    });
+    srpState.authState = "authenticated";
+    srpState.sessionKey = new Uint8Array(32);
+    srpState.username = "testuser";
+    srpState.sessionId = "session-id";
+    srpState.transportNonce = "fresh-transport-nonce";
+    srpState.authenticationMethod = "srp-resume";
+    const srpResponses: YepMessage[] = [];
+
+    await handleRequest(
+      {
+        type: "request",
+        id: "srp",
+        method: "GET",
+        path: "/inspect",
+      },
+      (message) => srpResponses.push(message),
+      ws,
+      app,
+      "http://localhost",
+      srpState,
+    );
+
+    expect(srpResponses[0]).toMatchObject({
+      body: { hasSrpContext: true },
+    });
   });
 });

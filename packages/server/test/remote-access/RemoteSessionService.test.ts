@@ -291,6 +291,68 @@ describe("RemoteSessionService", () => {
     });
   });
 
+  describe("security client ownership", () => {
+    it("binds a session once to the authenticated client", async () => {
+      const sessionId = await service.createSession(
+        "testuser",
+        new Uint8Array(32).fill(0x42),
+      );
+
+      await expect(
+        service.attachSecurityClient(sessionId, "testuser", "client-a"),
+      ).resolves.toBe(true);
+      await expect(
+        service.attachSecurityClient(sessionId, "testuser", "client-a"),
+      ).resolves.toBe(true);
+      await expect(
+        service.attachSecurityClient(sessionId, "testuser", "client-b"),
+      ).resolves.toBe(false);
+      await expect(
+        service.attachSecurityClient(sessionId, "otheruser", "client-a"),
+      ).resolves.toBe(false);
+      expect(service.getSession(sessionId)?.securityClientId).toBe("client-a");
+    });
+
+    it("invalidates only sessions owned by the revoked client", async () => {
+      const key = new Uint8Array(32).fill(0x42);
+      const ownedA = await service.createSession("testuser", key);
+      const ownedB = await service.createSession("testuser", key);
+      const other = await service.createSession("testuser", key);
+      await service.attachSecurityClient(ownedA, "testuser", "client-a");
+      await service.attachSecurityClient(ownedB, "testuser", "client-a");
+      await service.attachSecurityClient(other, "testuser", "client-b");
+
+      await expect(
+        service.invalidateSecurityClientSessions("client-a"),
+      ).resolves.toBe(2);
+      expect(service.getSession(ownedA)).toBeNull();
+      expect(service.getSession(ownedB)).toBeNull();
+      expect(service.getSession(other)).not.toBeNull();
+    });
+
+    it("reports the security client when the session cap evicts it", async () => {
+      const evicted: Array<{ sessionId: string; securityClientId?: string }> =
+        [];
+      service.setEvictionListener((session) => {
+        evicted.push(session);
+      });
+      const key = new Uint8Array(32).fill(0x42);
+      const oldest = await service.createSession("testuser", key);
+      await service.attachSecurityClient(oldest, "testuser", "client-a");
+      for (let i = 0; i < 5; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 2));
+        await service.createSession("testuser", key);
+      }
+
+      expect(evicted).toContainEqual(
+        expect.objectContaining({
+          sessionId: oldest,
+          securityClientId: "client-a",
+        }),
+      );
+    });
+  });
+
   describe("invalidateUserSessions", () => {
     it("invalidates all sessions for a user", async () => {
       const sessionKey = new Uint8Array(32).fill(0x42);

@@ -211,6 +211,12 @@ an in-flight check-in cannot resurrect it. Deleting a legacy projected browser
 entry must use the existing browser-profile and remote-session ownership rather
 than pretending it had a continuity key, while its global revocation event
 survives that deletion.
+The server tombstones that legacy profile id, removes its Web Push
+subscription, invalidates its profile-associated resume sessions, and closes
+currently tracked tabs so the still-connected profile cannot immediately
+reappear in the unified inventory. A legacy owner-label override is stored
+separately from the browser-reported/device-name label and does not raise its
+assurance.
 
 ## Continuity-Key Protocol
 

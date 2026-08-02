@@ -34,6 +34,8 @@ export class ConnectedBrowsersService {
   private connections = new Map<number, BrowserTabConnection>();
   /** Map from browserProfileId to set of connectionIds */
   private browserProfileConnections = new Map<string, Set<number>>();
+  /** Native socket close callbacks stay private to the server process. */
+  private closeCallbacks = new Map<number, () => void>();
 
   constructor(private eventBus: EventBus) {}
 
@@ -46,6 +48,7 @@ export class ConnectedBrowsersService {
   connect(
     browserProfileId: string,
     transport: BrowserConnectionTransport,
+    closeConnection?: () => void,
   ): number {
     const connectionId = this.nextConnectionId++;
     const connection: BrowserTabConnection = {
@@ -56,6 +59,7 @@ export class ConnectedBrowsersService {
     };
 
     this.connections.set(connectionId, connection);
+    if (closeConnection) this.closeCallbacks.set(connectionId, closeConnection);
 
     // Add to browser profile's connection set
     let profileSet = this.browserProfileConnections.get(browserProfileId);
@@ -91,6 +95,7 @@ export class ConnectedBrowsersService {
 
     // Remove from connections map
     this.connections.delete(connectionId);
+    this.closeCallbacks.delete(connectionId);
 
     // Remove from browser profile's connection set
     const profileSet = this.browserProfileConnections.get(browserProfileId);
@@ -110,6 +115,19 @@ export class ConnectedBrowsersService {
       totalTabCount: this.getTotalTabCount(),
       timestamp: new Date().toISOString(),
     });
+  }
+
+  /** Close and forget every active tab for a legacy browser profile. */
+  disconnectBrowserProfile(browserProfileId: string): number {
+    const connectionIds = [
+      ...(this.browserProfileConnections.get(browserProfileId) ?? []),
+    ];
+    for (const connectionId of connectionIds) {
+      const closeConnection = this.closeCallbacks.get(connectionId);
+      this.disconnect(connectionId);
+      closeConnection?.();
+    }
+    return connectionIds.length;
   }
 
   /**

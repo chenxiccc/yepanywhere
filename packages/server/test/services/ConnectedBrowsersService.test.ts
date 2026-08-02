@@ -108,6 +108,25 @@ describe("ConnectedBrowsersService", () => {
     });
   });
 
+  describe("disconnectBrowserProfile", () => {
+    it("closes every matching tab and leaves other profiles connected", () => {
+      const closeA = vi.fn();
+      const closeB = vi.fn();
+      const closeOther = vi.fn();
+      service.connect("profile-1", "ws", closeA);
+      service.connect("profile-1", "ws", closeB);
+      service.connect("profile-2", "ws", closeOther);
+
+      expect(service.disconnectBrowserProfile("profile-1")).toBe(2);
+
+      expect(closeA).toHaveBeenCalledOnce();
+      expect(closeB).toHaveBeenCalledOnce();
+      expect(closeOther).not.toHaveBeenCalled();
+      expect(service.getTabCount("profile-1")).toBe(0);
+      expect(service.getTabCount("profile-2")).toBe(1);
+    });
+  });
+
   describe("isBrowserProfileConnected", () => {
     it("returns false for unconnected device", () => {
       expect(service.isBrowserProfileConnected("profile-1")).toBe(false);

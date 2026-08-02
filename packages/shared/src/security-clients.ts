@@ -14,8 +14,7 @@ export const SECURITY_EVENT_MAX_FAILURE_ENTRIES = 128;
 export const SECURITY_EVENT_ANCHOR_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 export const SECURITY_EVENT_ALERT_SUPPRESSION_MS = 15 * 60 * 1000;
 
-export const SECURITY_CLIENT_REGISTER_ROUTE =
-  "/api/security/clients/register";
+export const SECURITY_CLIENT_REGISTER_ROUTE = "/api/security/clients/register";
 export const SECURITY_CLIENT_EVENTS_ROUTE = "/api/security/events";
 
 export function securityClientCheckInRoute(clientId: string): string {
@@ -25,7 +24,11 @@ export function securityClientCheckInRoute(clientId: string): string {
 const boundedText = (max: number) => z.string().trim().min(1).max(max);
 const optionalText = (max: number) => boundedText(max).optional();
 const base64Url = (max: number) =>
-  z.string().min(1).max(max).regex(/^[A-Za-z0-9_-]+$/);
+  z
+    .string()
+    .min(1)
+    .max(max)
+    .regex(/^[A-Za-z0-9_-]+$/);
 const sha256Digest = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
 const dateTime = z.iso.datetime({ offset: true });
 
@@ -271,6 +274,20 @@ export type SecurityClientAuthenticationMethod =
 
 export type SecurityClientTransport = "direct" | "relay" | "http";
 
+/**
+ * Honest projection of pre-continuity browser state. Fields unavailable from
+ * the legacy profile/session records stay absent instead of being invented.
+ */
+export interface LegacyWebSecurityClientDescriptor {
+  installationId: string;
+  deviceClass: "browser";
+  appName: "Yep Anywhere Web";
+  appVersion?: string;
+  supportedProofs: [];
+  origin?: string;
+  userAgent?: string;
+}
+
 export interface SecurityClientSessionSummary {
   sessionId: string;
   createdAt: string;
@@ -315,7 +332,7 @@ export interface SecurityClientSummary {
   ownerLabel?: string;
   displayLabel: string;
   descriptorVersion: number;
-  descriptor: SecurityClientDescriptor;
+  descriptor: SecurityClientDescriptor | LegacyWebSecurityClientDescriptor;
   assurance: SecurityClientAssurance;
   proofs: SecurityClientProofSummary[];
   createdAt: string;
@@ -456,10 +473,7 @@ function canonicalizeValue(value: unknown): string {
     const record = value as Record<string, unknown>;
     return `{${Object.keys(record)
       .sort()
-      .map(
-        (key) =>
-          `${JSON.stringify(key)}:${canonicalizeValue(record[key])}`,
-      )
+      .map((key) => `${JSON.stringify(key)}:${canonicalizeValue(record[key])}`)
       .join(",")}}`;
   }
   throw new Error(`Cannot canonicalize ${typeof value}`);

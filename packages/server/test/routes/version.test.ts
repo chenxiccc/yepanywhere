@@ -15,6 +15,7 @@ import {
   SESSION_SANDBOXING_CAPABILITY,
   SESSION_SANDBOXING_STATUS_CAPABILITY,
   SESSION_FORK_TURN_INTENTS_CAPABILITY,
+  SECURITY_CLIENT_AUDIT_CAPABILITY,
 } from "@yep-anywhere/shared";
 import { getServerCapabilities } from "../../src/routes/version.js";
 
@@ -33,6 +34,15 @@ describe("Version Routes", () => {
     ).toContain(BROWSER_SETTINGS_BACKUP_CAPABILITY);
     expect(getServerCapabilities()).not.toContain(
       BROWSER_SETTINGS_BACKUP_CAPABILITY,
+    );
+  });
+
+  it("advertises security-client audit only when its routes are mounted", () => {
+    expect(
+      getServerCapabilities({ securityClientAuditAvailable: true }),
+    ).toContain(SECURITY_CLIENT_AUDIT_CAPABILITY);
+    expect(getServerCapabilities()).not.toContain(
+      SECURITY_CLIENT_AUDIT_CAPABILITY,
     );
   });
 
@@ -68,9 +78,7 @@ describe("Version Routes", () => {
   });
 
   it("advertises dirty-file editor attribution", () => {
-    expect(getServerCapabilities()).toContain(
-      GIT_DIRTY_FILE_EDITOR_CAPABILITY,
-    );
+    expect(getServerCapabilities()).toContain(GIT_DIRTY_FILE_EDITOR_CAPABILITY);
   });
 
   it("advertises Source Control diff projections", () => {

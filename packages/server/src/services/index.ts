@@ -100,3 +100,12 @@ export {
 } from "./PublicShareService.js";
 
 export { ModelInfoService } from "./ModelInfoService.js";
+
+export {
+  SecurityClientService,
+  SecurityClientServiceError,
+  type PreparedSecurityClientRevocation,
+  type RegisterSecurityClientResult,
+  type SecurityClientServiceOptions,
+  type SrpAuditFacts,
+} from "./SecurityClientService.js";

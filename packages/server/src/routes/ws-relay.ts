@@ -13,6 +13,7 @@ import type {
   ConnectedBrowsersService,
 } from "../services/index.js";
 import type { ServerSettingsService } from "../services/ServerSettingsService.js";
+import type { SecurityClientService } from "../services/SecurityClientService.js";
 import type { SpeechBackendRegistry } from "../services/voice/registry.js";
 import type { Supervisor } from "../supervisor/Supervisor.js";
 import type { AttachmentStagingService } from "../uploads/AttachmentStagingService.js";
@@ -57,6 +58,8 @@ export interface WsRelayDeps {
   remoteAccessService?: RemoteAccessService;
   /** Remote session service for session persistence (optional) */
   remoteSessionService?: RemoteSessionService;
+  /** Registered-client continuity and security audit service. */
+  securityClientService?: SecurityClientService;
   /** Connected browsers service for tracking WS connections (optional) */
   connectedBrowsers?: ConnectedBrowsersService;
   /** Browser profile service for tracking connection origins (optional) */
@@ -94,6 +97,8 @@ export interface AcceptRelayConnectionDeps {
   remoteAccessService: RemoteAccessService;
   /** Remote session service for session persistence */
   remoteSessionService: RemoteSessionService;
+  /** Registered-client continuity and security audit service. */
+  securityClientService?: SecurityClientService;
   /** Connected browsers service for tracking WS connections (optional) */
   connectedBrowsers?: ConnectedBrowsersService;
   /** Browser profile service for tracking connection origins (optional) */
@@ -210,6 +215,7 @@ export function createWsRelayRoutes(
     attachmentStagingService,
     remoteAccessService,
     remoteSessionService,
+    securityClientService,
     connectedBrowsers,
     browserProfileService,
     focusedSessionWatchManager,
@@ -229,6 +235,7 @@ export function createWsRelayRoutes(
     attachmentStagingService,
     remoteAccessService,
     remoteSessionService,
+    securityClientService,
     connectedBrowsers,
     browserProfileService,
     focusedSessionWatchManager,
@@ -264,7 +271,10 @@ export function createWsRelayRoutes(
     // Message queue to serialize async message handling
     let messageQueue: Promise<void> = Promise.resolve();
     // Connection state for SRP authentication
-    const connState: ConnectionState = createConnectionState();
+    const connState: ConnectionState = createConnectionState({
+      transport: "direct",
+      peerAddress: getPeerAddress(c),
+    });
     // Ping interval for dead connection detection (set in onOpen, cleared in onClose)
     let pingInterval: ReturnType<typeof setInterval> | null = null;
     // Encryption-aware send function (created on open, captures connState)
@@ -352,6 +362,7 @@ export function createWsRelayRoutes(
 
       onClose(_evt, _ws) {
         if (pingInterval) clearInterval(pingInterval);
+        securityClientService?.disconnect(connState.connectionId);
         cleanupConnectionState(connState);
 
         // Clean up all uploads
@@ -406,6 +417,7 @@ export function createAcceptRelayConnection(
     attachmentStagingService,
     remoteAccessService,
     remoteSessionService,
+    securityClientService,
     connectedBrowsers,
     browserProfileService,
     focusedSessionWatchManager,
@@ -425,6 +437,7 @@ export function createAcceptRelayConnection(
     attachmentStagingService,
     remoteAccessService,
     remoteSessionService,
+    securityClientService,
     connectedBrowsers,
     browserProfileService,
     focusedSessionWatchManager,
@@ -455,7 +468,9 @@ export function createAcceptRelayConnection(
     let messageQueue: Promise<void> = Promise.resolve();
 
     // Connection state - requires authentication for relay connections
-    const connState: ConnectionState = createConnectionState();
+    const connState: ConnectionState = createConnectionState({
+      transport: "relay",
+    });
     connState.connectionPolicy = "srp_required";
 
     // Create WSAdapter for raw WebSocket
@@ -494,6 +509,7 @@ export function createAcceptRelayConnection(
     // Wire up close handling
     rawWs.on("close", () => {
       clearInterval(pingInterval);
+      securityClientService?.disconnect(connState.connectionId);
       cleanupConnectionState(connState);
 
       cleanupUploads(uploads, uploadManager, attachmentStagingService).catch(

@@ -70,7 +70,14 @@ export interface RemoteSession {
   origin?: string;
   /** When the session was last actively connected (ISO timestamp) */
   lastConnectedAt?: string;
+  /** Registered security client that proved ownership of this session. */
+  securityClientId?: string;
 }
+
+export type RemoteSessionPublic = Omit<RemoteSession, "sessionKey">;
+export type RemoteSessionEvictionListener = (
+  session: RemoteSessionPublic,
+) => Promise<void> | void;
 
 interface RemoteSessionsState {
   /** Schema version for future migrations */
@@ -94,6 +101,7 @@ export class RemoteSessionService {
   private saver = createCoalescingSaver(() => this.doSave());
   private cleanupTimer: ReturnType<typeof setInterval> | null = null;
   private initialized = false;
+  private evictionListener: RemoteSessionEvictionListener | null = null;
 
   constructor(options: RemoteSessionServiceOptions) {
     this.dataDir = options.dataDir;
@@ -164,6 +172,10 @@ export class RemoteSessionService {
 
   isDiskPersistenceEnabled(): boolean {
     return this.persistSessionsToDisk;
+  }
+
+  setEvictionListener(listener: RemoteSessionEvictionListener | null): void {
+    this.evictionListener = listener;
   }
 
   private async loadStateFromDisk(): Promise<void> {
@@ -372,6 +384,63 @@ export class RemoteSessionService {
     }
   }
 
+  async attachSecurityClient(
+    sessionId: string,
+    username: string,
+    securityClientId: string,
+  ): Promise<boolean> {
+    const session = this.state.sessions[sessionId];
+    if (!session || session.username !== username) return false;
+    if (
+      session.securityClientId &&
+      session.securityClientId !== securityClientId
+    ) {
+      return false;
+    }
+    if (session.securityClientId === securityClientId) return true;
+    session.securityClientId = securityClientId;
+    await this.saver.save();
+    return true;
+  }
+
+  async invalidateSecurityClientSessions(
+    securityClientId: string,
+  ): Promise<number> {
+    let count = 0;
+    for (const [sessionId, session] of Object.entries(this.state.sessions)) {
+      if (session.securityClientId === securityClientId) {
+        delete this.state.sessions[sessionId];
+        count += 1;
+      }
+    }
+    if (count > 0) {
+      await this.saver.save();
+    }
+    return count;
+  }
+
+  async invalidateBrowserProfileSessions(
+    browserProfileId: string,
+  ): Promise<number> {
+    let count = 0;
+    for (const [sessionId, session] of Object.entries(this.state.sessions)) {
+      if (session.browserProfileId === browserProfileId) {
+        delete this.state.sessions[sessionId];
+        count += 1;
+      }
+    }
+    if (count > 0) {
+      await this.saver.save();
+    }
+    return count;
+  }
+
+  listSecurityClientSessions(securityClientId: string): RemoteSessionPublic[] {
+    return this.listSessions().filter(
+      (session) => session.securityClientId === securityClientId,
+    );
+  }
+
   /**
    * Invalidate all sessions for a user (e.g., on password change).
    */
@@ -401,7 +470,7 @@ export class RemoteSessionService {
   /**
    * List all active sessions (without session keys for security).
    */
-  listSessions(): Array<Omit<RemoteSession, "sessionKey">> {
+  listSessions(): RemoteSessionPublic[] {
     return Object.values(this.state.sessions)
       .filter((s) => !this.isExpired(s))
       .map(({ sessionKey: _, ...rest }) => rest)
@@ -447,6 +516,10 @@ export class RemoteSessionService {
       const oldest = userSessions.shift();
       if (oldest) {
         delete this.state.sessions[oldest.sessionId];
+        if (this.evictionListener) {
+          const { sessionKey: _, ...publicSession } = oldest;
+          await this.evictionListener(publicSession);
+        }
       }
     }
   }

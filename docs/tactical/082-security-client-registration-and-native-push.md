@@ -47,14 +47,14 @@ response member and newer clients never send it to an older server.
 | Step | State | Completion evidence |
 | --- | --- | --- |
 | Record the unified security-client contract | complete | Topic contract fixes routes, gates, proof transcript, descriptor/history, legacy projection, revocation, push child, and future assurance |
-| Keep default in-memory resume credentials off disk | pending | A regression test proves every mutation avoids `remote-sessions.json` while persistence is disabled and preserves owner-only persistence when enabled |
-| Register capabilities and version metadata | pending | Capability audit and version-route tests cover exact routes and conditional native-push metadata |
-| Persist clients, tombstones, and the security ledger | pending | Owner-only versioned state, 256 client observations, 512 global events, 30-day anchor protection, failure quotas/coalescing, restart, malformed-state, and no-secret API tests pass |
-| Inject authenticated transport facts | pending | Only established SRP gets proof context; nonce, method, direct/relay kind, real peer, session, and connection handle are retained outside forgeable headers |
-| Verify P-256 continuity proofs | pending | Node verifies Android/WebCrypto-compatible SPKI/DER; P1363 conversion vectors and mutation, replay, wrong route/key/client, stale transport, and key-bound retry tests pass |
-| Project legacy web clients | pending | Existing browser profiles, connected tabs, remote sessions, and Web Push appear without invented proof or changed legacy behavior |
-| Audit failed authentication and session eviction | pending | Rate-bounded failed SRP/proof evidence cannot crowd registration/revocation out of the ledger; associated session eviction names the affected client |
-| Revoke the complete client relationship | pending | Atomic tombstone precedes response/cascade; unknown and revoked check-ins differ; sessions, sockets, and push are removed without erasing history |
+| Keep default in-memory resume credentials off disk | complete | Every mutation avoids `remote-sessions.json` while persistence is disabled and owner-only persistence remains available when enabled |
+| Register capabilities and version metadata | partial | `security-client-audit-v1` owns the exact mounted routes and passes capability/version tests; native-push advertisement remains in its later slice |
+| Persist clients, tombstones, and the security ledger | complete | Owner-only strict state, bounded histories/anchors/failures, restart, malformed-state, and no-secret API tests pass |
+| Inject authenticated transport facts | complete | Only established SRP gets private proof context; nonce, method, direct/relay kind, real peer, session, and connection handle survive for the socket lifetime |
+| Verify P-256 continuity proofs | partial | Node SPKI/DER verification plus P1363, mutation, replay, wrong-route/key, stale-transport, and key-bound retry tests pass; Kotlin runtime proof remains |
+| Project legacy web clients | complete | Browser profiles, connected tabs, remote sessions, and Web Push merge without invented proof; legacy revocation tombstones the profile and closes tabs |
+| Audit failed authentication and session eviction | complete | Failed SRP/proof evidence is coalesced and quota-bounded; associated session eviction names the client |
+| Revoke the complete client relationship | partial | Atomic tombstones precede session/socket and legacy Web Push cascades with distinct unknown/revoked check-ins; native push is not implemented yet |
 | Deliver generic native push | pending | Exact broker endpoint/credential binding, notification-policy mapping, test delivery, 404 invalidation, bounded transient failure, and secret redaction pass |
 | Register and check in from Android | pending | Pre-release v2 storage reset, per-server Keystore key, registration before pairing closes, signed descriptor, idempotent recovery, revoked/new-client behavior, and restart pass |
 | Register and check in from capable SRP web | pending | Exact capability gate, non-extractable IndexedDB WebCrypto key, quiet legacy/cookie fallback, and no plaintext fingerprint expansion pass |
@@ -181,8 +181,10 @@ These are recorded now but must not expand the first implementation:
 
 ## Human Checkpoint
 
-Stop after the attached Pixel has registered a key-verified Android client and
-the YA security dashboard shows its descriptor and authentication history,
-before foreground-service or LAN-discovery work. Report the continuity-key and
-legacy-web behavior, live broker/FCM evidence, remaining platform gaps, and any
-reason a later attestation experiment should change the v1 extension point.
+Stop after the attached Pixel has registered a key-verified Android client on
+the full-SRP pairing connection, resumed and checked in with the same key,
+matched the server's public-key fingerprint, and demonstrated revoked versus
+unknown behavior against a disposable YA profile. Report the server API/file
+evidence and legacy-web behavior before capable-web registration, dashboard
+polish, security alerts, native push enrollment, foreground-service, or LAN
+discovery work.

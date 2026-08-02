@@ -35,6 +35,7 @@ import {
   SESSION_SANDBOXING_CAPABILITY,
   SESSION_SANDBOXING_STATUS_CAPABILITY,
   SESSION_FORK_TURN_INTENTS_CAPABILITY,
+  SECURITY_CLIENT_AUDIT_CAPABILITY,
   VOICE_INPUT_CAPABILITY,
   type ClientDefaults,
   type SessionSandboxAvailability,
@@ -300,6 +301,8 @@ export interface DeviceBridgeStatus {
 }
 
 export interface VersionRouteOptions {
+  /** Whether the signed security-client audit routes are mounted. */
+  securityClientAuditAvailable?: boolean;
   /** Whether the browser-settings backup storage route is mounted. */
   browserSettingsBackupAvailable?: boolean;
   /** Dynamic device bridge state: available (binary exists), downloadable (ADB found, no binary), unavailable (no ADB). */
@@ -380,6 +383,9 @@ export function getServerCapabilities(options?: VersionRouteOptions): string[] {
   }
   if (options?.browserSettingsBackupAvailable) {
     capabilities.push(BROWSER_SETTINGS_BACKUP_CAPABILITY);
+  }
+  if (options?.securityClientAuditAvailable) {
+    capabilities.push(SECURITY_CLIENT_AUDIT_CAPABILITY);
   }
   if (options?.voiceInputEnabled !== false) {
     capabilities.push(VOICE_INPUT_CAPABILITY);

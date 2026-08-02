@@ -1,3 +1,5 @@
+import { SECURITY_CLIENT_AUDIT_CAPABILITY } from "./security-clients.js";
+
 export type ServerCapabilityKind = "permanent" | "transitional";
 
 export interface ServerCapabilitySource {
@@ -26,6 +28,7 @@ export interface ServerCapabilityDefinition {
     | "projectQueue"
     | "providers"
     | "remoteAccess"
+    | "security"
     | "sessions"
     | "settings"
     | "speech";
@@ -311,6 +314,34 @@ export const SERVER_CAPABILITIES = {
       kind: "permanent",
       reason:
         "Older servers lack the configurable approval audit-log setting and should not receive writes for it.",
+    },
+  },
+  securityClientAudit: {
+    name: SECURITY_CLIENT_AUDIT_CAPABILITY,
+    kind: "permanent",
+    area: "security",
+    introducedIn: "0.7.1",
+    description:
+      "Server supports signed security-client continuity, bounded audit history, and revocation.",
+    clientFallback:
+      "Do not call security-client routes; native clients may still use ordinary SRP but cannot establish registered-device continuity.",
+    serverContract: {
+      routes: [
+        "POST /api/security/clients/register",
+        "POST /api/security/clients/:clientId/check-in",
+        "GET /api/security/clients",
+        "GET /api/security/events",
+        "GET /api/security/clients/:clientId",
+        "GET /api/security/clients/:clientId/events",
+        "PATCH /api/security/clients/:clientId",
+        "DELETE /api/security/clients/:clientId",
+      ],
+      routeModules: ["packages/server/src/routes/security-clients.ts"],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Installed servers may permanently predate the registered-client audit surface, and clients must never probe proof-bearing routes without an exact gate.",
     },
   },
   browserSettingsBackup: {
