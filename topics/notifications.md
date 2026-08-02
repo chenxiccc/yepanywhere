@@ -55,7 +55,7 @@ decision.
 | Direct browser `Notification` API | No active UI or event path. A future deduplicated low-latency role remains possible. | N/A |
 | Browser Web Push/VAPID | Implemented for any supported desktop or mobile browser profile. The server owns VAPID keys and subscriptions; a push wakes the origin's service worker. | No YA tab is required |
 | Browser service worker | Receives Web Push, renders notifications, handles clicks/dismissal, and already contains focused-window/session suppression logic. It is event-driven and must not own a persistent YA secure connection. | No |
-| Native Android FCM | The credential-free broker exists and direct Firebase registration/receipt was proven on a Pixel. App/broker enrollment, YA-server subscription storage, live broker delivery, and user-visible native presentation remain unimplemented. | No WebView is required |
+| Native Android FCM | The credential-free broker is deployed and a temporary broker-to-FCM delivery was proven on a Pixel. App-owned broker enrollment, YA-server subscription storage, and user-visible native presentation remain unimplemented. | No WebView is required |
 | Android foreground service | Planned only. It would maintain an explicitly enabled headless summary/activity connection with a persistent status notification. | No visible UI, but a persistent notification is mandatory |
 | Native iOS push | Future adapter through FCM/APNs under the same provider-neutral device-subscription model. | No |
 

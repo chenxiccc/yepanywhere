@@ -4,9 +4,11 @@
 
 Approved product direction with a transitional Android wrapper in progress.
 The local-bundled and hosted-`latest` Android asset channels and a minimal FCM
-registration/receive probe exist; broker enrollment, YA-server subscription
-storage, native notification presentation, and the native foreground UI remain
-unimplemented.
+registration/receive probe exist. The current Tauri Mobile shell will be
+replaced by the first-class Gradle/Kotlin shell in
+[`080-first-class-android-shell.md`](../tactical/080-first-class-android-shell.md)
+before broker enrollment, native notification presentation, or native
+foreground UI implementation continues.
 
 The first native foreground surface was selected on 2026-08-02: Android uses a
 Compose companion shell and Conversation-view session detail, with SwiftUI as
@@ -111,9 +113,10 @@ Constraints:
   [`topics/trusted-client-packaging.md`](../../topics/trusted-client-packaging.md).
 - The official app must not accept an arbitrary remote UI URL by default. A
   source or development build may expose an explicit build-time override.
-- Hosted content must not inherit general Tauri or Android native IPC
-  privileges. Any future web-to-native bridge requires a narrow, explicit
-  capability and its own threat review.
+- Hosted content must not inherit general Android native privileges. The
+  planned web/native channel is exact-origin, main-frame-only, versioned, and
+  limited to explicit high-level operations; ordinary browsers receive no
+  native host.
 - An HTTPS page cannot connect directly to an insecure `ws://` YA endpoint
   without weakening mixed-content protections. Relay or other `wss://`
   connections work naturally. Do not enable production-wide mixed content to
@@ -137,9 +140,11 @@ that website credentials are offered, repeat launches reuse cached assets, no
 unintended native IPC is exposed, and background FCM delivery does not start a
 WebView.
 
-The wrapper/hosted-client boundary, minimal IPC surface, notification lifecycle,
-and foreground-activity staging are planned in
-[`docs/tactical/071-android-wrapper-notification-integration.md`](../tactical/071-android-wrapper-notification-integration.md).
+The first-class shell and WebView host are planned in
+[`080-first-class-android-shell.md`](../tactical/080-first-class-android-shell.md).
+The subsequent notification lifecycle and foreground-activity staging remain
+in
+[`071-android-wrapper-notification-integration.md`](../tactical/071-android-wrapper-notification-integration.md).
 
 ## Product Shape
 
@@ -219,13 +224,14 @@ path. The normal model is not "each relay owns an FCM project". It is:
   paired YA server.
 
 The credential-free broker service is implemented as a separate package and
-runtime. A physical Android build has registered through Firebase's current
-FID API and received a direct Firebase Console test message; live delivery
-through the broker and publication at `https://push.yepanywhere.com` remain
-planned. The broker may share physical hosting with the relay, but it should
-not share the relay's process, event loop, database, or delivery credentials.
-The relay is encrypted transport, while the broker is a token registry and
-notification dispatcher.
+runtime at `https://push.yepanywhere.com`. A physical Android build has
+registered through Firebase's current FID API, received a direct Firebase
+Console test message, and received a temporary generic notification through
+the deployed broker. App-owned broker enrollment and user-visible native
+presentation remain unimplemented. The broker may share physical hosting with
+the relay, but it does not share the relay's process, event loop, database, or
+delivery credentials. The relay is encrypted transport, while the broker is a
+token registry and notification dispatcher.
 
 Payloads should be generic by default. A user may explicitly opt into bounded
 notification text passing in plaintext through the YA push broker and Google
@@ -372,7 +378,7 @@ Revocation must be first-class:
   direct/relay transport, reconnect, and secure session state without coupling
   either native UI to a hidden WebView?
 - How should the native shell transfer authenticated context into the packaged
-  full-web fallback without broadening the web-to-native bridge or exposing
+  full-web fallback without broadening the web-to-native host or exposing
   native installation secrets?
 - Should notification acknowledgement be recorded by the app, the server, the
   broker, or all three?

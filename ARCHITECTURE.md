@@ -40,10 +40,12 @@ linked docs when the details change.
   capabilities and submits bounded generic notifications through an injected
   provider. It is not part of provider session routing or the encrypted relay.
 - **Mobile companions** use native platform shells and notification delivery.
-  Android Compose is the first native foreground target and iOS follows with
-  SwiftUI. Their default session surface is the compact Conversation projection;
-  the packaged web client remains an explicit full-fidelity fallback. The
-  versioned projection and native connection core are not implemented yet.
+  Android is a first-class Gradle/Kotlin application with Compose as the first
+  native foreground target; its Android-owned WebView keeps the packaged client
+  as an explicit full-fidelity fallback. Tauri Mobile is being removed and is
+  unrelated to the separate desktop Tauri application. iOS follows later with
+  SwiftUI. The versioned projection and native connection core are not
+  implemented yet.
 
 Single-user / small-team scale is assumed throughout — see the cleanups
 section below for what would have to change at higher fan-out.
@@ -98,6 +100,10 @@ section below for what would have to change at higher fan-out.
 - [`docs/project/mobile-companion-app.md`](docs/project/mobile-companion-app.md)
   — Android-first native companion product shape, transitional packaged-web
   fallback, notification/inbox scope, and later SwiftUI iOS counterpart.
+- [`docs/tactical/080-first-class-android-shell.md`](docs/tactical/080-first-class-android-shell.md)
+  — removal of Tauri Mobile, first-class Gradle/Compose ownership, explicit
+  bundled/hosted WebView channels, and the exact-origin native-host message
+  contract.
 - [`topics/stream-persisted-render-parity.md`](topics/stream-persisted-render-parity.md)
   — graded convergence contract between the active live tail and the durable
   provider transcript: strong structural stability for paired tool calls,

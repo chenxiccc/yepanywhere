@@ -7,10 +7,11 @@
 Topic: android-fcm-push
 
 Status: Approved architecture direction. The credential-free broker v1 is
-implemented and tested. The Android shell now has a minimal FID registration
-and receive probe, and direct Firebase Console delivery has been verified on a
-physical device. Live broker delivery, Android broker enrollment, and the YA
-server subscription protocol are not implemented.
+implemented, deployed, and proven through FCM to a physical Pixel. The current
+Android shell has a minimal FID registration and receive probe. Android-owned
+broker enrollment, native notification presentation, and the YA server
+subscription protocol are not implemented; the Tauri Mobile shell will be
+removed before those slices continue.
 
 Related:
 
@@ -18,6 +19,7 @@ Related:
 - [Push broker v1 tactical plan](../docs/tactical/068-push-broker-v1.md)
 - [Android FCM live smoke](../docs/tactical/069-android-fcm-live-smoke.md)
 - [Android wrapper and notification integration](../docs/tactical/071-android-wrapper-notification-integration.md)
+- [First-class Android shell](../docs/tactical/080-first-class-android-shell.md)
 - [Mobile companion app](../docs/project/mobile-companion-app.md)
 - [Relay design](../docs/project/relay-design.md)
 - [Relay client mux](relay-client-mux.md)
@@ -274,11 +276,11 @@ installation's current target without recreating its server-specific
 subscriptions.
 
 The FID and broker installation capability are native installation state. A
-hosted foreground client does not need either value. The narrow bridge seam is
-server-specific push enrollment: native code may create a broker subscription
-and return that subscription's one-time send capability to the already
-authenticated hosted client for installation on the YA server. The FID and
-installation-management secret stay native.
+hosted foreground client does not need either value. The narrow native-host
+seam is server-specific push enrollment: native code may create a broker
+subscription and return that subscription's one-time send capability to the
+already authenticated hosted client for installation on the YA server. The FID
+and installation-management secret stay native.
 
 Do not prescribe a retry schedule, offline recovery algorithm,
 stale-registration threshold, or deletion policy here. Those details still

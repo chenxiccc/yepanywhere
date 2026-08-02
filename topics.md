@@ -223,6 +223,9 @@
 - android-fcm-push - Native Android device push subscriptions through a
   hosted FCM broker, with SRP-first enrollment, generic/descriptive privacy
   modes, and registration-lifecycle details deferred to implementation.
+- android-native-shell - First-class Gradle/Kotlin Android ownership, Compose
+  app navigation, a full-web fallback, and an origin-scoped native host
+  message contract without Tauri Mobile.
 - css-architecture - Containment for legacy global stylesheets: CSS Modules by
   default, frozen line-count ceilings, and opportunistic extraction with a
   downward-only ratchet.

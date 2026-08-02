@@ -1,8 +1,11 @@
 # Android Wrapper And Notification Integration
 
-Status: planned. The local-bundled and hosted-`latest` build channels are
-implemented; native bridge, broker enrollment, YA server compatibility work,
-notification presentation, and foreground activity remain future slices.
+Status: planned behind the first-class Android-shell migration in
+[`080-first-class-android-shell.md`](080-first-class-android-shell.md). The
+local-bundled and hosted-`latest` build channels and live broker delivery are
+proven; native-host notification operations, broker enrollment, YA server
+compatibility work, notification presentation, and foreground activity remain
+future slices.
 
 Topic: android-fcm-push
 
@@ -28,7 +31,8 @@ before the hosted enrollment contract is implemented.
 
 This plan distinguishes three things that are easy to conflate:
 
-- **Foreground UI:** the visible Tauri WebView running the hosted YA client.
+- **Foreground UI:** an Android-owned full-screen WebView running the bundled
+  or hosted YA client until native Compose surfaces replace routine routes.
 - **Firebase messaging service:** a short-lived native Android component that
   can receive FCM callbacks while the activity and WebView are absent. It is
   not an Android foreground service.
@@ -76,8 +80,9 @@ or CSS, and loaded the current `latest` login UI. Wry `0.55.1` currently runs
 its built-in initialization scripts through both Android document-start
 injection and its external-page fallback, producing five harmless property
 redefinition errors after the first initialization succeeds. Treat that as an
-upstream hosted-page diagnostic gap: do not suppress it, and resolve or update
-the Wry behavior before enabling the remote bridge.
+upstream hosted-page diagnostic gap: do not suppress it. The first-class shell
+removes Wry, and its hosted-channel equivalence check must prove those errors
+are absent before enabling native-host notification operations.
 
 The same device also ran a debug APK built after a local client edit. Its
 foreground client loaded from the packaged Tauri app origin, and the launch
@@ -103,21 +108,22 @@ the installation capability and subscription routing records. The exact
 storage library is an implementation choice. Do not store these values in the
 hosted origin's `localStorage`.
 
-## Minimal Hosted-Client Bridge
+## Minimal Hosted-Client Native Host
 
-The hosted client feature-detects the wrapper in two stages:
+The hosted client feature-detects the Android host in two stages:
 
-1. use Tauri's supported `isTauri()` test; and
-2. invoke a versioned `mobile_bridge_capabilities` command.
+1. test for the exact-origin `window.yaNative` message object; and
+2. invoke the protocol-1 `host.describe` request through the typed client
+   adapter.
 
-A missing runtime, denied command, unknown command, version mismatch, or other
-invoke failure means "native bridge unavailable." The normal browser UI keeps
-working and existing Web Push remains available.
+A missing message object, rejected request, unknown method, version mismatch,
+or request timeout means "native host unavailable." The normal browser UI
+keeps working and existing Web Push remains available.
 
-The first bridge should expose high-level operations, not general native
+The native host should expose high-level operations, not general native
 primitives:
 
-- read bridge version and supported feature names;
+- read native-host protocol version and supported feature names;
 - read notification permission/enrollment status without secrets;
 - request notification permission from an explicit user action;
 - prepare or reuse a server-specific broker subscription;
@@ -132,22 +138,24 @@ secret. The command does not return the FID, broker installation secret,
 Keystore data, arbitrary files, an unrestricted HTTP client, or a generic
 native command channel.
 
-The hosted origin is an important security boundary. Before any custom command
-is enabled for it:
+The hosted origin is an important security boundary. Before any notification
+operation is enabled for it:
 
-- keep the Tauri CLI/runtime at or above the current mobile baseline, which
-  includes the remote-origin ACL fixes in Tauri 2.11.1;
-- define a remote capability with `local: false`, exact approved HTTPS origin
-  patterns, and only the individual mobile bridge permissions;
+- register Android's WebView message listener before navigation with exact
+  approved HTTPS origin rules and no wildcard;
+- accept messages only from the main frame and recheck the supplied origin on
+  every request;
 - keep hosted `latest` and stable production origins explicit rather than using
   a wildcard subdomain; and
 - enforce argument validation and server/subscription ownership again inside
-  each command.
+  each native operation.
 
-Tauri events are not required for enrollment v1. If later used for notification
-taps or live state, they need the same feature detection and narrow remote
-capability. A safe native navigation or opaque launch-context read is
-preferable to exposing a generic event or evaluation channel.
+Native events are not required for enrollment v1. If later used for
+notification taps or live state, they need the same feature detection and
+document-bound message channel. A safe native navigation or opaque
+launch-context read is preferable to exposing a generic event or evaluation
+channel. The exact host envelope, origin, lifecycle, and removal sequence live
+in the first-class shell plan.
 
 ## Push Enrollment Sequence
 
@@ -156,9 +164,9 @@ preferable to exposing a generic event or evaluation channel.
    installation without involving the WebView.
 3. The user signs into one YA server through the hosted client and explicitly
    enables native notifications.
-4. The client confirms the native bridge and notification permission.
+4. The client confirms the native host and notification permission.
 5. Native code creates or reuses one broker subscription for that server.
-6. The bridge returns only the server-scoped subscription id/send secret.
+6. The native host returns only the server-scoped subscription id/send secret.
 7. The client sends that capability to the authenticated YA server.
 8. After server acceptance, native code marks the subscription mapping active.
 9. The YA server can submit bounded notification intents using its send secret.
@@ -191,8 +199,8 @@ The normal default is push-only and has no long-running foreground service.
   than trusting message-supplied navigation.
 - Notification receipt itself does not fetch session data, start the WebView,
   or hold a relay socket.
-- The packaged Tauri client skips browser service-worker registration on its
-  local app origin. Native Firebase delivery remains independent of the
+- The packaged Android client skips browser service-worker registration on its
+  app-assets origin. Native Firebase delivery remains independent of the
   WebView; hosted HTTPS clients remain eligible for browser PWA registration.
 - Permission denial or disabled notification channels leave ordinary app use
   intact and produce a visible disabled status when the user next opens the
@@ -252,14 +260,14 @@ notification plan.
 
 ## Compatibility Boundary
 
-Bridge feature detection is client-local and does not require a YA server
+Native-host feature detection is client-local and does not require a YA server
 change. Push enrollment does.
 
 Before implementing YA server enrollment routes or fields, perform the required
 stable-release compatibility review. The intended optional-feature fallback is:
 
 - a new hosted client hides native push enrollment unless both the native
-  bridge and a new server capability are present;
+  native host and a new server capability are present;
 - older servers receive no unsupported request;
 - browser Web Push and ordinary remote use remain unchanged; and
 - absence of native enrollment never blocks login, session browsing, or FCM
@@ -273,9 +281,9 @@ remain an approval gate rather than being committed by this plan.
 1. **Asset channels:** keep local development, debug APKs, and ordinary
    production builds bundled; provide an explicit hosted-`latest` release
    channel for Play testing.
-2. **Native foundation:** add exact remote capabilities, native secure storage,
-   permission/channel state, and a versioned capability query. The Tauri
-   remote-origin ACL prerequisite is already on the 2.11 line.
+2. **Native foundation:** after tactical 080 removes Tauri Mobile, add native
+   secure storage, permission/channel state, and versioned notification
+   operations to its exact-origin host channel.
 3. **Live broker lifecycle:** exercise real broker installation creation and
    FID replacement before prescribing retry or cleanup behavior.
 4. **Compatibility review and enrollment:** audit stable YA releases, approve
@@ -292,15 +300,15 @@ remain an approval gate rather than being committed by this plan.
 - A debug run and debug APK use current-checkout client assets without a
   website deployment.
 - A packaged debug launch does not attempt browser service-worker registration
-  on the Tauri local app origin.
+  on the Android app-assets origin.
 - The hosted-`latest` release build loads the fixed hosted origin and packages
   no client JavaScript or CSS.
 - An ordinary production build still uses its packaged client assets, and an
   explicit build-time override wins.
 - Receiving an FCM message with the UI closed does not create a WebView.
 - Browser use and hosted use outside the wrapper behave normally when every
-  bridge call is absent or denied.
-- Remote content cannot invoke undeclared Tauri/core/plugin commands.
+  native-host request is unavailable or denied.
+- Remote content cannot invoke undeclared Android host operations.
 - The hosted client never observes the FID or installation-management secret.
 - One server cannot create, revoke, or route another server's subscription.
 - Notification taps never navigate to a URL supplied by an FCM payload.
