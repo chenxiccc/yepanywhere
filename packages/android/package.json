@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "prepare-frontend": "pnpm --filter @yep-anywhere/client build:remote && node ./scripts/prepare-web-assets.mjs",
+    "prepare-frontend": "pnpm --filter @yep-anywhere/shared build && pnpm --filter @yep-anywhere/client build:remote && node ./scripts/prepare-web-assets.mjs",
     "dev:android": "pnpm prepare-frontend && ./gradlew :app:assembleBundledDebug",
     "build:android:debug": "pnpm prepare-frontend && ./gradlew :app:assembleBundledDebug",
     "build:android": "pnpm prepare-frontend && ./gradlew :app:assembleBundledRelease",
