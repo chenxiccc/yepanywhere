@@ -208,6 +208,8 @@
   user-owned visual-verification handoff that skips agent capture work.
 - source-control - Repository-navigation workbench: changes, commits, files,
   blame, diffs, responsive panes, and links to relevant agent sessions.
+- aligned-markdown-diffs - Resumable source-positioned Markdown rendering that
+  keeps changed rows, diff lanes, and scroll context aligned.
 - federated-super-sessions - One canonical YA session whose active provider
   runtime can migrate safely between trusted cross-platform YA peers.
 - skill-invocation - Provider-aware `/name` and `$name` skill discovery,

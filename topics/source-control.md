@@ -222,6 +222,11 @@ A current client also suppresses binary-looking structured patch text returned
 by an older server. Large-content, long-line, and highlighted-HTML limits remain
 independent reasons to omit a text preview.
 
+Markdown Preview must remain a rendered projection of those same diff rows,
+not replace them with the complete new document. Its source-line identities,
+incremental rendering boundary, and cross-representation scroll contract live
+in [aligned Markdown diffs](aligned-markdown-diffs.md).
+
 The wide diff pane keeps filename, path, view controls, hunk navigation, and
 file actions in one toolbar row when they fit. A narrow pane or phone modal may
 use a compact second row. The filename is the primary identity: it uses compact
