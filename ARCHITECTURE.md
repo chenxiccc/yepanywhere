@@ -39,6 +39,11 @@ linked docs when the details change.
   under `packages/push-broker/`. It stores revocable device-delivery
   capabilities and submits bounded generic notifications through an injected
   provider. It is not part of provider session routing or the encrypted relay.
+- **Mobile companions** use native platform shells and notification delivery.
+  Android Compose is the first native foreground target and iOS follows with
+  SwiftUI. Their default session surface is the compact Conversation projection;
+  the packaged web client remains an explicit full-fidelity fallback. The
+  versioned projection and native connection core are not implemented yet.
 
 Single-user / small-team scale is assumed throughout — see the cleanups
 section below for what would have to change at higher fan-out.
@@ -82,6 +87,13 @@ section below for what would have to change at higher fan-out.
   — approved direction for a stable server ingest kernel, bounded transcript
   windows with prefix facts, and a versioned presentation compiler shared by
   web, Android, and iOS while platform renderers remain native to each surface.
+- [`topics/conversation-view.md`](topics/conversation-view.md) — compact default
+  transcript projection that preserves user/agent text, media, and important
+  failures while summarizing routine per-turn activity; selected as the first
+  native session-detail presentation.
+- [`docs/project/mobile-companion-app.md`](docs/project/mobile-companion-app.md)
+  — Android-first native companion product shape, transitional packaged-web
+  fallback, notification/inbox scope, and later SwiftUI iOS counterpart.
 - [`topics/stream-persisted-render-parity.md`](topics/stream-persisted-render-parity.md)
   — graded convergence contract between the active live tail and the durable
   provider transcript: strong structural stability for paired tool calls,

@@ -29,6 +29,26 @@ compromised, but the user has already installed or pinned a trusted client.
   later reconnects should prefer key-bound resume without asking the hosted page
   for the password again.
 
+## Current Mobile Packaging Checkpoint
+
+The Tauri Android wrapper now proves two explicit asset channels. Local debug
+and ordinary production builds bundle the current checkout's client assets; a
+separate hosted-`latest` release channel loads a fixed YA HTTPS origin for Play
+internal or closed testing. Neither channel accepts an arbitrary runtime UI URL,
+and loading hosted content does not itself grant native IPC.
+
+The longer-term foreground choice is also narrower now: Android Compose, and
+later iOS SwiftUI, own the native companion shell and default Conversation-view
+session detail. Packaged web assets remain an explicit full-fidelity fallback
+for rich tools, settings, and unsupported surfaces rather than the permanent
+home screen. Hosted `latest` remains valuable for transitional testing, but it
+does not answer the stronger production trust requirement below.
+
+Still unresolved are the public production fallback's asset update and signing
+policy, the authenticated-context handoff between native and packaged web
+surfaces, and the exact secure storage/rotation model. Native installation and
+push-management secrets must never become part of that handoff.
+
 ## Deferred Verification Setup
 
 A useful host-local regression gate would run a separate YA checkout or built
@@ -75,9 +95,12 @@ threat requires signed or locally served client packaging.
 
 ## Open Questions
 
-- Which install shape should be first: Android WebView assets, a Trusted Web
-  Activity with signed asset pinning, a browser extension, or a local loopback
-  static-file launcher?
+- How are production fallback web assets updated and verified without making
+  live hosted JavaScript the credential trust root or waiting indefinitely for
+  fixes behind app-store review?
+- How does a native authenticated server profile enter the packaged full-web
+  fallback without exporting native installation secrets or creating a broad
+  native bridge?
 - Should graehl and kzahel use independent signing keys, a threshold policy, or
   a primary/backup-key policy with explicit rotation?
 - What is the minimum browser storage model that keeps local-file or

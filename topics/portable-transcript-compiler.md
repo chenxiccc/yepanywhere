@@ -8,7 +8,9 @@
 Topic: portable-transcript-compiler
 
 Status: Architecture direction approved; the internal web-only foundation is
-complete. Further portability or native work requires a new human decision.
+complete. A native Conversation-view renderer is now the selected second
+consumer, but its bounded input, projection ABI, runtime boundary, and
+compatibility policy still require a separately approved implementation plan.
 
 See also:
 
@@ -22,6 +24,10 @@ See also:
   fold where a bounded tail needs facts from older records;
 - [trusted-client-packaging](trusted-client-packaging.md) — signed/local mobile
   client packaging and its trust boundary;
+- [conversation-view](conversation-view.md) — the selected compact native
+  session-detail presentation and its visibility/failure semantics;
+- [mobile-companion-app](../docs/project/mobile-companion-app.md) — Android-first
+  native companion product shape and later iOS counterpart;
 - [hard-development-rules](hard-development-rules.md) — hosted-client protocol
   grace and compatibility policy.
 
@@ -56,6 +62,36 @@ for the boundary, evidence, and deferred decisions.
 No later migration step is authorized by this checkpoint. A human must first
 identify a real second consumer and choose the bounded input, minimum projection
 contract, package/runtime target, and compatibility policy.
+
+## Native Consumer Direction (2026-08-02)
+
+The real second consumer is now identified: an Android Compose companion whose
+default session detail is the compact Conversation view, followed later by a
+SwiftUI renderer for iOS. The existing packaged web client remains an explicit
+full-fidelity fallback for full activity, rich tool inspection, settings, and
+other surfaces outside the native companion. It is not the permanent native
+home screen.
+
+The first native slice is a read-only Compose renderer over saved projection
+fixtures. It should cover user prompts, assistant text, status/boundary rows,
+important failures, media, compact per-turn activity, and bounded generic tool
+fallbacks before adding live transport, approvals, or a composer. Basic text
+response can follow once foreground transport and reconciliation are proven.
+Approvals that need command, diff, or provider-specific context continue into
+the full web presentation until native can support an informed decision.
+
+The shared asset is the versioned semantic contract: projection schemas and
+generated types, stable identities, fixtures, pagination/coverage, action
+meanings, and generic fallbacks. Compose, SwiftUI, and React keep independent
+platform views. Server projection remains the preferred mobile-efficient mode;
+this decision does not authorize Kotlin and Swift ports of provider
+normalization or the current client-internal `RenderItem[]` ABI.
+
+This checkpoint resolves the consumer and product-surface choice only. Before
+source or protocol work begins, a reviewed plan must still choose the minimum
+bounded envelope/projection, package and execution boundary, native
+connection-core ownership, capability/version negotiation, stable-release
+corpus, and exact fallback that makes no unsupported request to an older server.
 
 ## Decision
 
@@ -467,11 +503,13 @@ They share:
 They do not need pixel-identical UI. Each platform may exploit its native
 capabilities while preserving semantic and action parity.
 
-A native client may initially implement only inbox, notification, basic text,
-thinking, generic tool, approval, and error nodes. Unsupported rich nodes must
-degrade inside the native renderer rather than forcing the entire session into
-a WebView. A WebView remains a valid packaging or full-fidelity transition
-strategy, not an architectural requirement.
+A native client may initially implement only inbox, notification,
+Conversation-view user/assistant text, compact activity, generic tool, media,
+status, and error nodes. Unsupported rich nodes must retain a bounded native
+fallback rather than involuntarily replacing the entire session with a WebView.
+The user may explicitly enter the packaged full-web session for richer detail.
+Approval actions remain there until native presents enough command, diff, and
+provider-specific context for an informed choice.
 
 ## Graceful Degradation
 
@@ -587,8 +625,9 @@ rewrite. Use adapter-first, parity-first slices:
    notices.
 7. **Move expensive/history-aware work server-first.** Add bounded prefix facts
    and server augments one measured domain at a time.
-8. **Prototype native read-only rendering.** Consume saved projection fixtures
-   before adding live transport, approvals, or composer behavior.
+8. **Prototype Android Conversation rendering.** Build a read-only Compose
+   renderer over saved projection fixtures before adding live transport,
+   approvals, or composer behavior; reuse the same fixtures for later SwiftUI.
 9. **Graduate only after parity and profiling.** Preserve existing vanilla UI
    behavior and provider-like presentation throughout migration.
 
@@ -647,8 +686,10 @@ weaken live/durable parity merely to accommodate a compiler discrepancy.
   grace, and for how long?
 - Is TypeScript sufficiently small and deterministic across adopted runtimes, or
   do measurements justify a Rust/native implementation later?
-- What is the first native scope: read-only session detail, inbox plus basic
-  session nodes, or a native shell that keeps WebView full-session fallback?
+- What is the minimum Conversation-view projection that preserves failures,
+  media, partial coverage, generic tool expansion, and safe full-web fallback?
+- Which shared runtime, if any, should own native SRP/resume, direct/relay
+  transport, reconnect, and secure session state independently of the renderer?
 
 Resolve these through bounded prototypes and fixtures. They are not reasons to
 collapse the layer separation or begin with a whole-session rewrite.

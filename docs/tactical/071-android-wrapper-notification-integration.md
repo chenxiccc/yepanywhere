@@ -13,6 +13,14 @@ small native notification wrapper. It should not keep a WebView alive merely
 to receive notifications, and hosted JavaScript should receive only the native
 authority needed for an explicit user action.
 
+This plan owns the transitional wrapper, notification, and enrollment path. It
+does not make the foreground WebView the permanent mobile home screen. The
+approved product direction in
+[`mobile-companion-app.md`](../project/mobile-companion-app.md) makes a Compose
+Conversation-view session surface the eventual Android default and retains the
+packaged web client as an explicit full-fidelity fallback. Its projection and
+native connection work require a separate compatibility-reviewed plan.
+
 This plan distinguishes three things that are easy to conflate:
 
 - **Foreground UI:** the visible Tauri WebView running the hosted YA client.
@@ -220,6 +228,22 @@ or a deliberately embedded shared runtime. It would need to own:
 That is materially larger than native push. Do not begin it until FCM delivery
 measurements show a user problem it would solve or the native summary UI needs
 live state strongly enough to justify the cost.
+
+## Native Session Handoff
+
+The selected later foreground UI is a Compose Conversation-view renderer, not
+an invisible WebView or a native rewrite of the full web application. Its first
+slice consumes saved semantic projection fixtures read-only. It then needs a
+bounded, capability-gated projection and a foreground connection core before it
+can replace the wrapper's normal session route.
+
+Until that work lands, notification taps may continue into the known WebView
+route. Once native session detail is available, routine taps should open native
+Conversation view and expose an explicit full-activity action for rich tool
+inspection. Approvals remain on the full presentation until native provides
+enough command, diff, and provider-specific context for an informed response.
+This handoff does not add native-session implementation slices to the current
+notification plan.
 
 ## Compatibility Boundary
 

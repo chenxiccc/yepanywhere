@@ -2,13 +2,27 @@
 
 ## Status
 
-Concept note. This records the product and architecture direction for a native
-mobile companion app. It is not yet an implementation plan.
+Approved product direction with a transitional Android wrapper in progress.
+The local-bundled and hosted-`latest` Android asset channels and a minimal FCM
+registration/receive probe exist; broker enrollment, YA-server subscription
+storage, native notification presentation, and the native foreground UI remain
+unimplemented.
+
+The first native foreground surface was selected on 2026-08-02: Android uses a
+Compose companion shell and Conversation-view session detail, with SwiftUI as
+the corresponding later iOS renderer. The existing full web client remains an
+explicit full-fidelity fallback. This decision does not yet approve a projection
+wire schema, native connection-core implementation, or client/server protocol
+change.
 
 The Android notification path is specified separately in
 [`topics/android-fcm-push.md`](../../topics/android-fcm-push.md).
 The current packaged app's password-manager association is specified in
 [`topics/android-credential-sharing.md`](../../topics/android-credential-sharing.md).
+The shared semantic boundary and current web-only compiler checkpoint are in
+[`topics/portable-transcript-compiler.md`](../../topics/portable-transcript-compiler.md),
+and the selected compact session presentation is specified in
+[`topics/conversation-view.md`](../../topics/conversation-view.md).
 
 ## Motivation
 
@@ -138,7 +152,10 @@ Core surfaces:
   similar user-visible events.
 - A minimal inbox/activity dashboard.
 - Aggregation across multiple paired YA servers.
-- Shortcuts that deep-link into the full YA web app for detailed work.
+- Native Conversation-view session detail for routine monitoring, followed by
+  basic text response once the read-only projection and transport are proven.
+- An explicit packaged-web action for the complete activity transcript, rich
+  tool inspection, settings, and other surfaces outside the native companion.
 - Optional foreground-service mode on Android for users who explicitly want a
   persistent activity subscriber.
 
@@ -154,6 +171,36 @@ entire YA interface must be learned.
 - Do not make Android foreground service behavior mandatory or always on.
 - Do not make localhost or local-network bridging part of the core data path
   unless a concrete benefit justifies the added auth and proxy surface.
+
+## Native Session Direction
+
+The default session-detail experience should be native rather than a permanent
+full-screen WebView. Android renders it with Compose; a later iOS app renders the
+same semantic projection with SwiftUI. Platform renderers share projection
+schemas, generated data types, stable identities, fixtures, pagination and
+fallback meanings. They do not share layout widgets or aim for pixel identity.
+
+Conversation view makes this scope useful without requiring a native port of
+every rich tool renderer. Its native baseline retains user prompts,
+agent-authored text, status and boundary rows, important failures, media, and
+one compact activity summary per assistant turn. Expanding routine activity may
+initially use bounded generic tool rows. A deliberate **Open full activity**
+action enters the packaged web client when the user needs rich diffs, file
+viewers, provider-specific tools, or settings.
+
+The first renderer prototype should be read-only and consume saved projection
+fixtures before it owns live transport, approvals, or a composer. Basic text
+response follows only after foreground connection and reconciliation behavior
+are established. An approval that requires command, diff, or other rich context
+must open the full web presentation until the native renderer can show enough
+information for an informed decision; the compact native surface must not offer
+an under-explained approval action.
+
+The server-compiled projection is the preferred efficient path. Native clients
+should not independently reimplement provider normalization in Kotlin and
+Swift. The exact bounded envelope, projection schema, capability gate,
+older-server fallback, and connection-core ownership remain a separate
+compatibility-reviewed implementation decision.
 
 ## Hosted Push Model
 
@@ -217,8 +264,10 @@ Each paired server contributes a small activity feed:
 - Connection and freshness state.
 
 The app should preserve server boundaries in the UI. Aggregation is for scanning
-and triage, not for hiding which machine owns a session. Opening a detailed item
-should deep-link to the corresponding YA web app route.
+and triage, not for hiding which machine owns a session. Opening a routine item
+enters that server's native Conversation-view detail. Full activity and
+unsupported detail remain available through the corresponding packaged web
+route.
 
 This aligns with the existing multi-host direction in
 `docs/project/multi-host-plan.md`.
@@ -232,7 +281,8 @@ idea:
 - A foreground service for explicitly enabled persistent activity subscription.
 - Optional localhost or local-network endpoints for detection, pairing, or
   page-open/event handoff.
-- A native dashboard without relying on browser service-worker delivery.
+- A Compose dashboard and Conversation-view session surface without relying on
+  browser service-worker delivery.
 
 Foreground service mode should be default-off and clearly user controlled. It is
 useful for "keep activity live" behavior, but it carries battery and notification
@@ -250,7 +300,8 @@ The core companion concept is compatible with a future iOS app:
 - Native push notifications.
 - Pairing and server status.
 - Aggregated inbox/dashboard.
-- Deep links into the web app.
+- SwiftUI Conversation-view session detail.
+- Explicit full-web fallback for rich or unsupported detail.
 
 The Android foreground-service activity subscriber is not portable to iOS in the
 same form. A future iOS implementation would likely rely on APNs-backed push,
@@ -270,6 +321,8 @@ To keep that path open, shared backend concepts should be platform-neutral:
 - Push intents.
 - Inbox snapshots.
 - Event freshness and acknowledgement metadata.
+- Transcript projection nodes, stable identities, coverage, and pagination.
+- Generic fallback and action-eligibility meanings.
 
 Platform-specific delivery details can live below that shared model.
 
@@ -311,10 +364,16 @@ Revocation must be first-class:
 
 ## Open Questions
 
-- Should the first app be native Android, Kotlin Multiplatform, React Native, or
-  another shared mobile stack?
 - What is the smallest inbox snapshot API that supports useful aggregation
   without pulling in the full web app session model?
+- What is the minimum versioned Conversation-view projection that preserves
+  failures, media, coverage, generic tool detail, and safe fallback behavior?
+- Which cross-platform implementation should own foreground SRP/resume,
+  direct/relay transport, reconnect, and secure session state without coupling
+  either native UI to a hidden WebView?
+- How should the native shell transfer authenticated context into the packaged
+  full-web fallback without broadening the web-to-native bridge or exposing
+  native installation secrets?
 - Should notification acknowledgement be recorded by the app, the server, the
   broker, or all three?
 - Beyond the verified clean-install and cleared-app-data FID callbacks, what
