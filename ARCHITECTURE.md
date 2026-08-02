@@ -104,9 +104,10 @@ section below for what would have to change at higher fan-out.
   — Android-first native companion product shape, permanent bundled full-web
   alternative, notification/inbox scope, and later SwiftUI iOS counterpart.
 - [`topics/mobile-server-pairing.md`](topics/mobile-server-pairing.md) —
-  approved boundary between stable YA server identity, durable paired devices,
-  expiring SRP resume credentials, native Kotlin transport, independent bundled
-  web transport, direct/relay discovery, and push enrollment.
+  approved boundary between app-local paired-server profiles, durable paired
+  devices, expiring SRP resume credentials, native Kotlin transport,
+  independent bundled web transport, resume-authenticated direct/relay
+  discovery, and push enrollment; public installation identity is deferred.
 - [`docs/tactical/080-first-class-android-shell.md`](docs/tactical/080-first-class-android-shell.md)
   — removal of Tauri Mobile, first-class Gradle/Compose ownership, explicit
   bundled/hosted WebView channels, and the exact-origin native-host message

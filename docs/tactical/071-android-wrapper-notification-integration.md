@@ -115,7 +115,7 @@ produced no failed browser service-worker registration.
 | Native Android app | Paired-server profiles, native SRP/resume, Keystore credentials, direct/relay connection core, broker installation, notification permission/channels, notification routing, and any foreground service |
 | Bundled YA web client | Permanent complete UI with its existing independent TypeScript SRP/transport unless measurements justify a native adapter |
 | Hosted `latest` client | Mutable testing UI with browser-owned auth and only explicitly reviewed native-host methods |
-| User-operated YA server | Stable public server identity, paired-device and revocation state, server-specific broker subscription/send secret, and notification policy |
+| User-operated YA server | Paired-device and revocation state, server-specific broker subscription/send secret, and notification policy; no public installation identity is required |
 | Push broker | FID target mapping, subscription authentication/rate limits, and FCM submission |
 
 The FID is a delivery target, not the user's YA credential. The more powerful
@@ -242,7 +242,7 @@ the next lifecycle trigger.
 1. Firebase invokes `onRegistered()` with the current FID.
 2. Native code records that target and creates or updates its broker
    installation without involving the WebView.
-3. Native onboarding completes SRP with one authenticated server identity and
+3. Native onboarding completes SRP for one app-local paired-server profile and
    creates or resumes its durable paired-device record.
 4. The user explicitly enables native notifications for that paired server and
    grants Android permission.
@@ -368,9 +368,10 @@ remain an approval gate rather than being committed by this plan.
 3. **Live broker lifecycle — complete:** a physical Pixel created its durable
    broker installation and replaced the live target after FID rotation without
    replacing the installation capability.
-4. **Pairing and connection tactical:** define stable server identity, durable
-   paired-device state, Kotlin SRP/transport ownership, and the separate
-   compatibility gates before adding enrollment routes.
+4. **Pairing and connection tactical:** persist app-local paired-server state,
+   build Kotlin SRP/transport ownership, define durable paired-device state,
+   and perform the separate compatibility gates before adding enrollment
+   routes. Public installation identity is deferred.
 5. **Compatibility review and enrollment:** audit stable YA releases, approve
    the optional capability/fallback, then attach server-specific subscriptions
    to paired devices.

@@ -1,8 +1,9 @@
 # Android Native Connection Foundation
 
-Status: checkpoint ready for maintainer review. The evidence-backed library
+Status: native crypto checkpoint approved. The evidence-backed library
 selection and native Android full-SRP, server-proof, encrypted-traffic, resume,
-and teardown proof are complete against a disposable direct YA server.
+and teardown proof are complete against a disposable direct YA server. The
+post-checkpoint connection and profile slices may proceed.
 
 Topic: android-native-connection
 Topic: mobile-server-pairing
@@ -70,9 +71,12 @@ the relay.
 - A route is only a location. Direct, discovered, and relay routes do not
   create separate logical server identities.
 - mDNS/DNS-SD results are untrusted hints. They cannot update an authenticated
-  server profile until SRP/resume server proof establishes the expected
-  server. Automatic direct/relay profile merging also waits for the approved
-  stable-server-identity contract.
+  server profile until resume with that profile's credential proves continuity.
+  Without a valid resume credential, a candidate requires explicit SRP
+  reauthentication and user profile selection rather than automatic merging.
+- Public, fingerprinted, and Android-specific server installation identities
+  are deferred. Do not expose relay `installId` or add a server-proof identity
+  field for this work.
 - This work adds no client/server route, field, event, capability, protocol
   version, endpoint default, or relay-selection change before a separate
   compatibility review.
@@ -139,8 +143,8 @@ proofs, or decrypted response bodies.
 
 This proves direct SRP without changing the current production configuration
 model, where SRP identity is still stored with relay configuration. Decoupling
-server identity/auth credentials from relay registration remains a later
-paired-server contract slice rather than a hidden test-driven migration.
+SRP username/password configuration from relay registration remains a later
+server-configuration slice rather than a hidden test-driven migration.
 
 ## Work Tracker
 
@@ -153,16 +157,17 @@ paired-server contract slice rather than a hidden test-driven migration.
 | Exchange encrypted YA protocol traffic | complete | Pixel sends binary encrypted capabilities and ping, then validates the sequenced encrypted pong |
 | Prove native session resume | complete | A second Pixel socket authenticates the challenge-bound server proof and exchanges traffic under a fresh transport key |
 | Prove physical-device teardown | complete | The client returns after close; the server records disconnect before resume opens and after resume closes, with no retry owner |
-| Review the native crypto checkpoint | ready for review | Maintainer approval is the intentional stop before relay, durable storage, service, and Compose product work continue |
-| Add the native relay route | blocked on checkpoint | Same core negotiates through deployed legacy relay `/ws`; outer relay `/mux` remains independently capability-gated |
-| Persist paired-server resume state | blocked on checkpoint | Keystore/DataStore boundaries, backup exclusion, expiry, forget, and password re-entry behavior are tested |
-| Bind Compose onboarding and summaries | blocked on checkpoint | Native login/profile UI and a small real session-summary consumer use the connection manager |
-| Add user-enabled foreground ownership | blocked on checkpoint | Correct Android foreground-service type/policy, visible start/stop, lease ownership, process recreation, and timeout behavior are validated |
-| Add explicit direct route selection | blocked on checkpoint | Manual direct candidate and relay fallback preserve one logical profile with deterministic cancellation |
-| Add bounded LAN discovery | blocked on stable identity | Foreground NSD scan supplies untrusted candidates and stops completely when its owner releases it |
+| Review the native crypto checkpoint | complete | Maintainer approved the selected foundation and direct-session result on 2026-08-02 |
+| Persist paired-server resume state | ready | Keystore/DataStore boundaries, backup exclusion, expiry, forget, and password re-entry behavior are tested |
+| Turn the probe into a connection manager | ready | Leased request/subscription ownership, cancellation, reconnect bounds, and final-owner teardown are tested |
+| Add the native relay route | ready after manager | Same core negotiates through deployed legacy relay `/ws`; outer relay `/mux` remains independently capability-gated |
+| Add explicit direct route selection | ready after manager | Resume-authenticated candidates and explicit SRP reauthentication preserve one local profile with deterministic cancellation |
+| Bind Compose onboarding and summaries | ready after profiles | Native login/profile UI and a small real session-summary consumer use the connection manager |
+| Add user-enabled foreground ownership | requires later product review | Correct Android foreground-service type/policy, visible start/stop, lease ownership, process recreation, and timeout behavior are validated |
+| Add bounded LAN discovery | ready after route selection | Foreground NSD scan supplies untrusted candidates, attaches automatically only after resume, and stops completely when its owner releases it |
 
-`blocked on checkpoint` in this table describes intentional sequencing, not an
-implementation failure or a request to mark an agent goal blocked.
+`ready after` in this table describes sequencing rather than a human approval
+gate.
 
 ## Detailed Steps
 
@@ -235,9 +240,10 @@ Present:
 - any discovered mismatch in existing TypeScript comments or contracts; and
 - the proposed first post-checkpoint slice.
 
-Stop here for maintainer review. Do not begin relay integration, durable
-credential persistence, foreground-service declarations, server-identity wire
-changes, or polished Compose UI in the same checkpoint series.
+This checkpoint was approved on 2026-08-02. Relay integration, durable
+credential persistence, the connection manager, and bounded Compose work may
+continue as later slices. Foreground-service declarations retain their own
+product/policy review.
 
 ## Validation Matrix
 

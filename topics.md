@@ -229,9 +229,10 @@
 - android-native-connection - Kotlin-owned SRP, secretbox, direct/relay YA
   protocol transport, resumable native sessions, and shared Compose/service
   lifecycle ownership independent of the WebView.
-- mobile-server-pairing - Stable YA server identity, durable mobile-device
+- mobile-server-pairing - App-local server profiles, durable mobile-device
   pairing, Kotlin-owned native transport, independent bundled-web transport,
-  direct/relay discovery, and push as a revocable child capability.
+  resume-authenticated direct/relay discovery, and push as a revocable child
+  capability; public installation identity is deferred.
 - css-architecture - Containment for legacy global stylesheets: CSS Modules by
   default, frozen line-count ceilings, and opportunistic extraction with a
   downward-only ratchet.

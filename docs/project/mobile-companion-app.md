@@ -20,9 +20,9 @@ client/server protocol change.
 
 The Android notification path is specified separately in
 [`topics/android-fcm-push.md`](../../topics/android-fcm-push.md).
-Durable server identity, paired-device ownership, native credentials,
-direct/relay selection, LAN discovery, and the independent bundled-web
-transport are specified in
+Local paired-server profiles, paired-device ownership, native credentials,
+resume-authenticated direct/relay selection, LAN discovery, and the independent
+bundled-web transport are specified in
 [`topics/mobile-server-pairing.md`](../../topics/mobile-server-pairing.md).
 The current packaged app's password-manager association is specified in
 [`topics/android-credential-sharing.md`](../../topics/android-credential-sharing.md).
@@ -56,10 +56,10 @@ push infrastructure.
 5. Grant notification permission.
 6. Receive native mobile notifications and see a minimal activity dashboard.
 
-An optional QR may carry public server identity and route hints so the user
-does not type URLs, while Android still asks for the SRP password. A future
-passwordless grant requires step-up authorization and a separate security and
-compatibility review.
+An optional QR may carry route hints and the SRP username so the user does not
+type URLs, while Android still asks for the SRP password. A future passwordless
+grant requires step-up authorization and a separate security and compatibility
+review.
 
 Source builds and `adb install` should remain possible for advanced users, but
 they are not the product-defining path.
@@ -259,22 +259,27 @@ not a first-release requirement.
 ## Server Pairing And Push Enrollment
 
 The existing SRP login authorizes creation of a durable relationship between
-one mobile app installation and one authenticated YA server identity. The
-paired-device record is distinct from an expiring SRP resume session; native
-push is an optional child of that relationship rather than its definition.
+one mobile app installation and one YA server. Android gives the relationship
+an app-local profile id; the server later gives the device relationship its own
+opaque id. The paired-device record is distinct from an expiring SRP resume
+session, and native push is an optional child rather than its definition.
 
 Likely relationship data:
 
-- Authenticated public server identity and display name.
+- App-local profile id and user-visible server label.
 - A set of relay and direct connection routes.
 - Server-issued mobile device id, display name, and revocation metadata.
 - Expiring native SRP resume credentials stored under Android Keystore.
 - Optional broker device push subscription id and send secret.
 
-The server identity survives direct/relay route changes and must be separate
-from the relay-ownership `installId`. A discovery-only QR may bootstrap public
-identity and routes, but manual SRP password authentication remains the initial
-authorization. The complete model and current resume-session limits are in
+While the resume credential remains valid, its challenge-bound server proof is
+sufficient to attach direct and relay routes to the same local profile. Without
+resume, the app requires explicit SRP reauthentication and profile selection;
+it does not infer installation equality. Public/fingerprinted installation ids
+and the relay-ownership `installId` are not part of the mobile contract. A
+discovery-only QR may bootstrap routes, but manual SRP password authentication
+remains the initial authorization. The complete model and current
+resume-session limits are in
 [`topics/mobile-server-pairing.md`](../../topics/mobile-server-pairing.md).
 
 ## Multi-Server Inbox
@@ -317,9 +322,11 @@ surface costs.
 
 LAN discovery is an auxiliary candidate source, not authentication. mDNS or an
 equivalent scan must be bounded to a visible owner, advertise no credentials,
-and accept a route only after SRP/resume proves the expected server identity.
-Native direct traffic may use that authenticated route; the bundled web client
-may continue using its independent TypeScript transport.
+sessions, or installation identity, and attach a route automatically only after
+resume proves continuity with the selected profile. Without resume, full SRP
+and explicit user selection establish the route. Native direct traffic may use
+that authenticated route; the bundled web client may continue using its
+independent TypeScript transport.
 
 ## iOS Compatibility
 

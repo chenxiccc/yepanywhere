@@ -40,8 +40,9 @@ change the separate desktop Tauri application.
 - [Trusted client packaging](../../topics/trusted-client-packaging.md) owns the
   difference between bundled trusted assets and mutable hosted content.
 - [Mobile server pairing](../../topics/mobile-server-pairing.md) owns the
-  post-shell decision for stable server identity, native Kotlin transport,
-  durable paired devices, and the bundled web client's independent transport.
+  post-shell decision for local paired-server profiles, native Kotlin
+  transport, durable paired devices, resume-authenticated route continuity,
+  and the bundled web client's independent transport.
 - [Android credential sharing](../../topics/android-credential-sharing.md)
   owns the package, certificate, App Link, and password-manager association.
 - [Hard development rules](../../topics/hard-development-rules.md) require

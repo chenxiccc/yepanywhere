@@ -57,7 +57,7 @@ record:
 
 | Concept | Meaning | Secret? | Lifetime owner |
 | --- | --- | --- | --- |
-| Server identity | One logical YA installation across direct and relay routes | Public, but authenticated | YA server installation |
+| Local paired-server id | App-generated key for one saved server relationship; it has no server-authentication meaning | No | Native mobile app |
 | Paired server profile | Phone-side record for one trusted YA server | Contains secret children | Native mobile app |
 | Paired device | Server-side durable record for one mobile installation | Contains credential handles and revocation state | YA server |
 | SRP resume credential | `sessionId` plus shared base key proving a previous SRP login | Yes, bearer-equivalent | One client/server auth session |
@@ -97,34 +97,38 @@ Every operation that creates, changes, or uses it still needs proof from the
 appropriate authenticated connection or device credential. Exact credential
 types and grant rules remain protocol-design work.
 
-## Stable Server Identity
+## Deferred Installation Identity And Route Continuity
 
-One YA server needs a stable public identity that survives route changes. The
-identity is authenticated during full SRP and resume so a mobile client can
-verify that a discovered direct endpoint and a relay endpoint are the same
-server.
+A public or fingerprinted YA installation id is not required for native
+pairing and is explicitly deferred. Do not add an Android-specific identity,
+expose the relay-ownership `installId`, populate `SavedHost.serverInstanceId`,
+or add a server-proof field merely to label an installation.
 
-The identity may initially be a persistent random public id carried inside
-authenticated server proof material. A later public-key identity could use a
-public-key fingerprint as the same logical id. The server's private key, if
-introduced, stays server-side; the public key and fingerprint are designed to
-be shared.
+The Android app assigns its own local id to each paired-server profile. While
+an SRP resume credential is valid, successful resume already proves that an
+endpoint possesses that profile's shared base key and live server-side session.
+The app may therefore attach a direct or relay route candidate to the local
+profile only after the candidate completes resume and returns a valid,
+challenge-bound server proof. Acceptance through both routes is sufficient
+continuity evidence for that credential's lifetime.
 
-Do not reuse the existing `installId` as this public identity. `installId`
-participates in relay username ownership/reclamation and must not become a
-widely advertised mDNS or QR value. Use a separate public server identity with
-an explicit authentication contract.
+If resume is missing, expired, evicted, or lost after a server restart, Android
+must not automatically merge a discovered or newly entered endpoint into an
+existing profile. The user explicitly selects the profile or creates a new one,
+enters the SRP password, and confirms the route. Full SRP authenticates that
+endpoint but does not claim that two independent installations using the same
+credentials are one installation.
 
-The web client already has the seam for this change:
-`SavedHost.serverInstanceId` and `sourceIdentity.ts` can map multiple routes to
-one `server:<id>` source. Nothing populates the field today. Until an
-authenticated server identity lands, route-scoped keys remain opaque and must
-not be presented as durable server identity.
+A future durable paired-device credential may extend route continuity beyond
+the current resume-session lifetime. That is part of paired-device enrollment
+and revocation, not a global public server-identity contract.
 
-Server-identity rotation or loss is a security event. Clients treat the result
-as a new server until an explicit recovery or re-pairing flow proves otherwise;
-they do not silently transfer credentials or source state to an unauthenticated
-replacement.
+The server may later keep a high-entropy installation secret or id entirely for
+its own persistence, token binding, or diagnostics. If it ever exposes a hash
+or fingerprint of that value, the fingerprint is itself a public identifier
+and requires a separately motivated compatibility and migration review. The
+existing web `SavedHost.serverInstanceId` seam remains unused for now, and no
+route-scoped web caches or saved hosts are automatically merged.
 
 ## Current SRP Resume Facts
 
@@ -158,7 +162,7 @@ contract.
 Android should keep one app-private profile per paired YA server. Conceptual
 state includes:
 
-- authenticated public server identity and display name;
+- app-generated local profile id and user-visible server label;
 - opaque server-issued paired-device id;
 - SRP username and current native resume credential;
 - explicit relay configuration and direct route candidates;
@@ -259,8 +263,8 @@ Consequences accepted during the transition and potentially longer term:
 - the native core and bundled web client may hold separate SRP resume sessions
   for the same physical Android installation;
 - they may briefly maintain separate connections and subscriptions;
-- server identity, not session id or route, is how they recognize the same YA
-  server; and
+- native and web profiles are not automatically merged merely because the user
+  reaches the same machine through both presentations; and
 - the current five-session server limit may need explicit reconsideration
   before several mobile, browser, and native clients coexist routinely.
 
@@ -288,14 +292,16 @@ A paired server owns a set of routes rather than one route-shaped identity:
 The connection core may prefer a working direct path and fall back to relay,
 but explicit operator configuration stays authoritative. Route selection does
 not create a second paired device, source cache, inbox, or notification record.
-Every successful route must authenticate the expected public server identity.
+A new candidate joins an existing profile automatically only after successful
+resume with that profile's credential. Otherwise it requires explicit SRP
+reauthentication and user selection.
 
 mDNS/Bonjour is discovery, never authentication. A bounded foreground scan may
-advertise or discover a service name, port, protocol/capability hints, and the
-public server identity. It must not advertise credentials, sessions, project
+advertise or discover a service name, port, and protocol/capability hints. It
+must not advertise credentials, sessions, installation identity, project
 names, or push state. A copied or spoofed advertisement is merely an endpoint
-candidate; SRP/resume server proof must authenticate it before it can update
-the paired profile or carry application traffic.
+candidate; resume must prove continuity before automatic attachment, while
+full SRP plus explicit user selection can establish a new route/profile.
 
 Discovery work is lifecycle-owned and bounded. Opening an onboarding or server
 connection surface may scan; closing it releases the scan. The design does not
@@ -303,10 +309,9 @@ add an indefinite background mDNS watcher.
 
 ## QR And Passwordless Pairing
 
-The safe first QR flow is discovery-only. It can encode public server identity,
-relay locator, direct route hints, and SRP username so the user does not type
-URLs. Android still asks for the SRP password and full SRP authorizes the
-pairing.
+The safe first QR flow is discovery-only. It can encode a relay locator, direct
+route hints, and SRP username so the user does not type URLs. Android still
+asks for the SRP password and full SRP authorizes the pairing.
 
 Merely opening an unlocked desktop Settings page must not mint durable remote
 access. A future passwordless QR grant requires a separate security and
@@ -348,12 +353,13 @@ semantics remain implementation decisions.
 
 ## iOS Direction
 
-The conceptual model is platform-neutral: public server identity, paired
-device, expiring connection credentials, route candidates, push capability,
-typed inbox/session repositories, and revocation. A future SwiftUI app uses
-Keychain-backed credentials and its platform's foreground/background and LAN
-discovery facilities. Android- and iOS-specific UI and lifecycle code need not
-share widgets or pretend their background execution rules are identical.
+The conceptual model is platform-neutral: a local paired-server profile,
+paired device, expiring connection credentials, route candidates, push
+capability, typed inbox/session repositories, and revocation. A future SwiftUI
+app uses Keychain-backed credentials and its platform's foreground/background
+and LAN discovery facilities. Android- and iOS-specific UI and lifecycle code
+need not share widgets or pretend their background execution rules are
+identical.
 
 The wire protocols and projection schemas should remain shared even if the
 first native connection implementations are written separately in Kotlin and
@@ -367,7 +373,6 @@ perform the stable-release review required by
 [`remote-hosted-compatibility.md`](remote-hosted-compatibility.md) separately
 for each new client/server dependency, including:
 
-- authenticated stable server identity;
 - durable paired-device enrollment/listing/revocation;
 - native projection or inbox APIs;
 - server-specific native push enrollment; and
@@ -384,13 +389,13 @@ web interface remains available.
 1. **Prove Kotlin SRP and secure transport — complete:** checked-in
    cross-language fixtures and the direct physical-device probe establish the
    connection foundation without adding a server contract.
-2. **Authenticate stable server identity:** define the public identity,
-   authenticated SRP/resume proof field, rotation behavior, and capability
-   fallback; populate the existing client source-identity seam.
-3. **Store native paired-server profiles:** establish Keystore/DataStore
+2. **Store native paired-server profiles:** establish Keystore/DataStore
    boundaries, forget/reauthentication states, and backup exclusions.
-4. **Select direct and relay routes:** keep one logical server profile while
-   proving authenticated route fallback and deterministic teardown.
+3. **Own native connection demand:** turn the bounded probe into a
+   lease-controlled request/subscription manager with deterministic teardown.
+4. **Select direct and relay routes:** attach a candidate automatically only
+   after resume proves credential continuity; otherwise require explicit SRP
+   reauthentication and profile selection.
 5. **Create paired-device records and revocation:** attach expiring native
    sessions to the durable server-side relationship without reusing browser
    profile ids.

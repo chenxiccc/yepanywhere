@@ -104,8 +104,8 @@ server records the authenticated paired device:
 5. The YA server stores those credentials under the paired device and uses
    them for future notification requests.
 
-A discovery-only QR may make the SRP device login easier by carrying public
-server identity and route hints; it does not replace the password. Any future
+A discovery-only QR may make the SRP device login easier by carrying route
+hints and the SRP username; it does not replace the password. Any future
 passwordless grant requires step-up authorization and its own security and
 compatibility review. Neither QR form is a separate push authorization model.
 
@@ -287,8 +287,8 @@ path uses the native paired-server connection to install a server-specific send
 capability. A future bundled app-assets control may initiate the same explicit
 user action or carry the send capability over its own authenticated web
 connection, but that is not required for native enrollment and must resolve the
-same authenticated server identity. Mutable hosted-`latest` content remains a
-separate trust decision. The FID and installation-management secret stay
+same app-local paired-server profile. Mutable hosted-`latest` content remains
+a separate trust decision. The FID and installation-management secret stay
 native in every case.
 
 The first native lifecycle has no timer, polling loop, durable job, or internal
@@ -394,8 +394,9 @@ default.
 
 ## Deferred Implementation Decisions
 
-- Stable server identity, paired-device storage/routes, their Android client
-  contract, and their compatibility gates.
+- Paired-device storage/routes, their Android client contract, and their
+  compatibility gates. Public or fingerprinted server installation identity is
+  explicitly deferred as unnecessary for the first native lifecycle.
 - Live transient-provider-failure validation.
 - Registration refresh, invalidation, offline recovery, and stale cleanup.
 - Durable quotas, coalescing, acknowledgement, and delivery-result semantics.
