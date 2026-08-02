@@ -115,7 +115,7 @@ step and applicable validation rows below have evidence.
 | Add the native host channel | complete | Protocol/client tests and real WebMessage `host.describe` pass; denied-origin/subframe instrumentation passes in both channels |
 | Migrate App Links and FCM probe | complete | Exact verified App Link plus direct, broker-foreground, and no-process broker-background Pixel evidence |
 | Remove Tauri Mobile | complete | Mobile Rust/Tauri workspace, lock entry, commands, and generated-project ownership removed |
-| Add Android CI | planned | Warning-free required workflow and uploaded APK artifacts |
+| Add Android CI | complete | Config-free unit/lint/channel build, APK contract inspection, AVD instrumentation, and report uploads are required |
 | Prove physical-device equivalence | planned | Recorded connected acceptance matrix |
 | Hand off to notifications/onboarding | planned | Updated downstream plan and no open shell blockers |
 

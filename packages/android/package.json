@@ -9,6 +9,7 @@
     "build:android:debug": "pnpm prepare-frontend && ./gradlew :app:assembleBundledDebug",
     "build:android": "pnpm prepare-frontend && ./gradlew :app:assembleBundledRelease",
     "build:android:hosted-latest": "./gradlew :app:assembleHostedLatestRelease",
+    "inspect:apks": "./scripts/inspect-apks.sh",
     "test": "./gradlew test",
     "test:connected": "./gradlew connectedBundledDebugAndroidTest",
     "lint": "./gradlew lint"

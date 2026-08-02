@@ -1,0 +1,122 @@
+name: Android App CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/android/**'
+      - 'packages/client/**'
+      - 'packages/shared/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/android-app-ci.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'packages/android/**'
+      - 'packages/client/**'
+      - 'packages/shared/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/android-app-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+concurrency:
+  group: android-app-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-android-app:
+    name: Build, inspect, and instrument
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20.12'
+          cache: pnpm
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+          cache-dependency-path: |
+            packages/android/*.gradle.kts
+            packages/android/gradle.properties
+            packages/android/gradle/wrapper/gradle-wrapper.properties
+            packages/android/app/*.gradle.kts
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Android SDK packages
+        run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
+
+      - name: Test the web native-host adapter
+        run: >-
+          pnpm --filter @yep-anywhere/client exec vitest run
+          src/lib/__tests__/nativeHost.test.ts
+
+      - name: Prepare bundled client assets
+        run: pnpm --filter @yep-anywhere/android prepare-frontend
+
+      - name: Test, lint, and build Android channels
+        working-directory: packages/android
+        run: >-
+          ./gradlew test lint assembleBundledDebug assembleBundledRelease
+          assembleHostedLatestRelease --warning-mode all --no-daemon
+
+      - name: Inspect APK contracts
+        run: pnpm --filter @yep-anywhere/android inspect:apks
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' |
+            sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run WebView instrumentation
+        uses: ReactiveCircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7
+          disable-animations: true
+          emulator-options: >-
+            -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+            -camera-back none
+          script: >-
+            cd packages/android && ./gradlew connectedBundledDebugAndroidTest
+            --warning-mode all --no-daemon
+
+      - name: Upload Android artifacts and reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-app-${{ github.run_attempt }}
+          if-no-files-found: ignore
+          path: |
+            packages/android/app/build/outputs/apk/**/*.apk
+            packages/android/app/build/reports/**
+            packages/android/app/build/outputs/androidTest-results/**
+            packages/android/app/build/test-results/**
