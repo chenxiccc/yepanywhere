@@ -42,7 +42,15 @@ check passes on a physical device.
 - The existing relay and direct login forms continue to expose the standard
   `username` and `current-password` autocomplete hints.
 - App Link authorization remains bounded by the Android manifest. The app's
-  current verified-link intent filter handles only `/open` routes.
+  current verified-link intent filter handles only exact HTTPS
+  `yepanywhere.com/open` routes.
+- Native code rejects unexpected schemes, hosts, ports, paths, fragments,
+  malformed encoding, and links without nonempty `u` and `p` parameters. A
+  rejected link opens the ordinary configured client without link-supplied
+  state.
+- An accepted link becomes a fragment on the fixed, build-configured WebView
+  URL. Link text is never interpolated into executable JavaScript and cannot
+  choose a different privileged WebView origin.
 - A missing, unreachable, malformed, or certificate-mismatched statement fails
   closed: Android does not treat the app and website as associated.
 - Credential suggestions remain under the installed password manager's control.
@@ -116,6 +124,13 @@ sideloaded Google Password Manager result is negative for seamless credential
 sharing: the user must search manually. Do not claim automatic
 `yepanywhere.com` suggestions until a public Play build passes the visible
 device test.
+
+The first-class Android-shell replacement was checked on a Pixel 7a running
+Android 17 / API 37 on 2026-08-02. The replacement APK retained the same debug
+certificate and package identity, Android reported `yepanywhere.com` verified,
+and enabling that device user's previously disabled link selection made a cold
+HTTPS `/open` intent launch `MainActivity` and its Android-owned WebView. The
+replacement intent filter no longer admits HTTP or path-prefix lookalikes.
 
 ## Production Follow-Up
 

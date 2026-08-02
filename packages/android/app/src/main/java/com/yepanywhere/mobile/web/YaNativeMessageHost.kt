@@ -28,7 +28,11 @@ class YaNativeMessageHost private constructor(
         isMainFrame: Boolean,
         reply: androidx.webkit.JavaScriptReplyProxy,
     ) {
-        if (!isMainFrame || normalizedOrigin(sourceOrigin) != allowedOrigin) {
+        if (
+            !WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) ||
+            !isMainFrame ||
+            normalizedOrigin(sourceOrigin) != allowedOrigin
+        ) {
             return
         }
         if (message.type != WebMessageCompat.TYPE_STRING) {

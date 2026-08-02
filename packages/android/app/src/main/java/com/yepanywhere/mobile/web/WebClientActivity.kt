@@ -26,6 +26,7 @@ import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.net.toUri
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.webkit.WebViewAssetLoader
@@ -95,7 +96,15 @@ class WebClientActivity : ComponentActivity() {
         )
 
         clientView.webViewClient = createWebViewClient(errorView)
-        clientView.loadUrl(config.startUrl)
+        clientView.loadUrl(consumeStartUrl())
+    }
+
+    private fun consumeStartUrl(): String {
+        val requestedUrl = intent.dataString
+        intent.data = null
+        return requestedUrl?.takeIf {
+            WebClientNavigation.decide(it, config.origin) == NavigationDecision.ALLOW_IN_APP
+        } ?: config.startUrl
     }
 
     @Suppress("SetJavaScriptEnabled")
@@ -202,7 +211,7 @@ class WebClientActivity : ComponentActivity() {
                     request.url.lastPathSegment?.contains('.') != true
                 ) {
                     return assetLoader.shouldInterceptRequest(
-                        Uri.parse("${config.origin}/index.html"),
+                        "${config.origin}/index.html".toUri(),
                     )
                 }
                 return assetLoader?.shouldInterceptRequest(request.url)
@@ -275,7 +284,7 @@ class WebClientActivity : ComponentActivity() {
         }
         try {
             startActivity(
-                Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                Intent(Intent.ACTION_VIEW, url.toUri()).apply {
                     addCategory(Intent.CATEGORY_BROWSABLE)
                 },
             )

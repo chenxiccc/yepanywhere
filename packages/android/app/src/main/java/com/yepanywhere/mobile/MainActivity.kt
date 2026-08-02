@@ -23,8 +23,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
+import com.yepanywhere.mobile.links.AppLinkDestination
 import com.yepanywhere.mobile.ui.theme.YepAnywhereTheme
 import com.yepanywhere.mobile.web.WebClientActivity
+import com.yepanywhere.mobile.web.WebClientConfig
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -44,7 +47,18 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun openWebClient() {
-        startActivity(Intent(this, WebClientActivity::class.java))
+        val requestedUrl = AppLinkDestination.toWebClientUrl(
+            intent.dataString,
+            WebClientConfig.fromBuild().startUrl,
+        )
+        intent.data = null
+        startActivity(
+            Intent(this, WebClientActivity::class.java).apply {
+                if (requestedUrl != null) {
+                    data = requestedUrl.toUri()
+                }
+            },
+        )
     }
 }
 

@@ -10,8 +10,9 @@ Status: Approved architecture direction. The credential-free broker v1 is
 implemented, deployed, and proven through FCM to a physical Pixel. The current
 Android shell has a minimal FID registration and receive probe. Android-owned
 broker enrollment, native notification presentation, and the YA server
-subscription protocol are not implemented; the Tauri Mobile shell will be
-removed before those slices continue.
+subscription protocol are not implemented. The probe now lives in the
+first-class Gradle/Kotlin shell; the remaining Tauri Mobile source is scheduled
+for removal before those slices continue.
 
 Related:
 
@@ -262,8 +263,8 @@ installation. The broad ownership rule is simple:
 - ordinary FCM refresh should not require the user to repeat SRP login or
   recreate otherwise-valid server/device relationships.
 
-The first physical-device probe pins Firebase Messaging `25.1.1` through BoM
-`34.16.0`, opts into FID targeting, and receives the current FID through
+The Android probe pins Firebase Messaging `25.1.1` through BoM `34.16.0`, opts
+into FID targeting, and receives the current FID through
 `FirebaseMessagingService.onRegistered()`. Firebase auto-initialization
 registered a clean app installation without activity code, a custom background
 job, or a retry loop. Clearing the dev app's data caused a different FID to be
@@ -287,9 +288,55 @@ stale-registration threshold, or deletion policy here. Those details still
 need evidence from the pinned SDK against the live broker.
 
 Before this lifecycle is treated as complete, exercise real target refresh,
-offline app/broker recovery, reinstall or cleared-app-data behavior, invalid
-FCM send responses, and eventual stale-record cleanup. That implementation
-work should produce the concrete observable contract.
+offline app/broker recovery, reinstall or cleared-app-data behavior, and
+eventual stale-record cleanup. Valid and invalid live broker targets are
+already proven; the remaining implementation work should produce the concrete
+observable contract.
+
+## Android Probe Contract
+
+The first-class Android project:
+
+- applies Google Services only when
+  `packages/android/app/google-services.json` exists;
+- ignores that project-specific file and builds without it, explicitly
+  reporting that Firebase messaging is disabled;
+- registers a non-exported native messaging service and does not require an
+  Activity or WebView for receipt;
+- declares notification permission but does not prompt for it;
+- uses Firebase auto-initialization rather than an Activity-owned registration
+  call, polling loop, retry timer, or background job; and
+- does not upload the FID, display an app-owned notification, fetch YA state,
+  or persist broker capabilities.
+
+Debug builds log the FID on `onRegistered()`, a value-free token-refresh
+diagnostic, and only received data-key names plus notification presence.
+Notification title/body, broker capabilities, and token values are never
+logged. Release builds log none of this diagnostic material.
+
+For notification payloads, foreground receipt invokes the diagnostic service.
+With no app process or Activity alive, Firebase/Android owns background tray
+presentation and does not invoke `onMessageReceived`; this distinction is
+expected and must not be mistaken for a failed delivery.
+
+## First-Class Shell Live Verification
+
+Completed on 2026-08-02 with the configured replacement APK and an attached
+Pixel 7a running Android 17 / API 37:
+
+1. A direct Firebase Console test to the current FID produced exactly one
+   foreground service callback.
+2. The public broker created a temporary installation and subscription,
+   accepted `approval_required` with `202`, and produced exactly one foreground
+   callback with the expected `intent` and `subscriptionId` data-key names.
+3. The same public path accepted a second message after all YA Activities and
+   the app process were absent. Android created the generic system notification
+   without starting the diagnostic service callback.
+4. Notification permission was granted by ADB only for this acceptance test;
+   the product still has no permission prompt or enrollment UI.
+5. Temporary broker capabilities were deleted, and the FID, Firebase
+   configuration, and returned secrets were neither printed nor retained in
+   the repository.
 
 ## Future Apple Delivery
 
@@ -335,7 +382,7 @@ default.
 
 - YA-server storage/routes, their Android client contract, and their
   compatibility gates.
-- Live broker validation of FID sends and provider failures.
+- Live transient-provider-failure validation.
 - Registration refresh, invalidation, offline recovery, and stale cleanup.
 - Durable quotas, coalescing, acknowledgement, and delivery-result semantics.
 - App-attestation requirements for official and source-built distributions.

@@ -28,6 +28,8 @@ if (debugWebClientUrl != null) {
 val hasFirebaseConfiguration = file("google-services.json").isFile
 if (hasFirebaseConfiguration) {
     apply(plugin = "com.google.gms.google-services")
+} else {
+    logger.lifecycle("google-services.json not found; Firebase messaging is disabled")
 }
 
 android {
@@ -109,6 +111,16 @@ android {
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
     }
+    lint {
+        warningsAsErrors = true
+        // Toolchain and library upgrades are reviewed changes. Network-based
+        // freshness checks are not deterministic build-quality diagnostics.
+        disable += setOf(
+            "AndroidGradlePluginVersion",
+            "GradleDependency",
+            "NewerVersionAvailable",
+        )
+    }
 }
 
 dependencies {
@@ -122,8 +134,11 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.core:core-ktx:1.16.0")
+    implementation("androidx.fragment:fragment-ktx:1.8.9")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.2")
     implementation("androidx.webkit:webkit:1.14.0")
+    implementation(platform("com.google.firebase:firebase-bom:34.16.0"))
+    implementation("com.google.firebase:firebase-messaging")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 

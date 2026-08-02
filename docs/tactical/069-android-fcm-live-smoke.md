@@ -18,10 +18,10 @@ contract.
 
 ## Android Probe Contract
 
-The generated Android project:
+The probe now lives in the first-class Android project:
 
 - applies Google Services only when
-  `packages/mobile/src-tauri/gen/android/app/google-services.json` exists;
+  `packages/android/app/google-services.json` exists;
 - ignores that project-specific file in Git and builds without it, reporting
   that Firebase messaging is disabled;
 - pins Google Services plugin `4.5.0`, Firebase BoM `34.16.0`, and the BoM's
@@ -68,6 +68,13 @@ handling, or stale-record cleanup is complete.
 The build retained existing Tauri/generated Android deprecation warnings and
 the established frontend build advisories. The added Kotlin service emitted no
 compiler warning.
+
+The 2026-08-02 first-class-shell follow-up removed those Android build warnings
+and repeated the probe on a Pixel 7a running Android 17 / API 37. A direct
+Firebase Console test reached the replacement service once. The public broker
+then produced one foreground callback and one background system notification;
+the background send began with no YA Activity, WebView, or process alive. The
+test used only temporary broker capabilities and retained no FID or secret.
 
 ## Stop Conditions
 

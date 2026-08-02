@@ -113,7 +113,7 @@ step and applicable validation rows below have evidence.
 | Create the Gradle/Compose shell | complete | Warning-free config-free builds plus Compose launcher smoke on Pixel 7a |
 | Reproduce client asset channels | in progress | Bundled Pixel smoke and both release APK contracts pass; hosted connected smoke remains |
 | Add the native host channel | in progress | Protocol/client tests pass; real WebMessage `host.describe` passes on Pixel 7a; denied-origin/subframe instrumentation remains |
-| Migrate App Links and FCM probe | planned | Connected App Link and background-FCM evidence |
+| Migrate App Links and FCM probe | complete | Exact verified App Link plus direct, broker-foreground, and no-process broker-background Pixel evidence |
 | Remove Tauri Mobile | planned | Dependency/source deletion plus artifact inspection |
 | Add Android CI | planned | Warning-free required workflow and uploaded APK artifacts |
 | Prove physical-device equivalence | planned | Recorded connected acceptance matrix |
@@ -160,6 +160,32 @@ VIEW intent opened Chrome; later replacement testing must explicitly distinguish
 domain verification from user link-selection state. Prior recorded broker/FCM
 receipt remains the notification baseline and no FID or credential was
 captured during this freeze.
+
+### First-class App Link and Firebase evidence — 2026-08-02
+
+The replacement preserved `com.yepanywhere.mobile`, the maintainer debug
+certificate, Digital Asset Links metadata, conditional Google Services build,
+Firebase BoM `34.16.0`, FID targeting, and the non-exported diagnostic service.
+Both configured and config-free Gradle builds, unit tests, and Android lint ran
+without warnings.
+
+On the attached Pixel 7a running Android 17 / API 37, Android reported
+`yepanywhere.com` verified. After enabling the device user's previously disabled
+selection, a cold exact HTTPS `/open` intent resolved to the replacement
+`MainActivity` and its Android-owned WebView. The replacement admits neither
+HTTP nor `/open` path-prefix lookalikes, and its native parser maps accepted
+credentials only to the fixed configured client origin's fragment.
+
+A direct Firebase Console test to the current installation produced exactly one
+foreground callback. Through `https://push.yepanywhere.com`, temporary
+installation and subscription capabilities produced a `202` accepted send and
+exactly one foreground callback with the expected data-key names. A second
+`202` send began with no YA Activity, WebView, or app process alive and created
+Android's generic YA notification without a service callback, which is the
+expected background-notification path. Notification permission was granted by
+ADB for this acceptance check; product permission UI remains out of scope. The
+temporary broker installation was deleted and no FID or capability was printed
+or retained.
 
 ## Scope
 
