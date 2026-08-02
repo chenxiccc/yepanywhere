@@ -63,7 +63,7 @@ export const distributions = [
     status: "development",
     summary: "Android is in development and iOS is planned afterward. Neither is published; use the mobile browser client today.",
     docsPath: "/docs/getting-started",
-    sourceRefs: ["packages/mobile/package.json", "topics/android-fcm-push.md"],
+    sourceRefs: ["packages/android/package.json", "topics/android-fcm-push.md"],
   },
 ] as const satisfies readonly PublicDistribution[];
 

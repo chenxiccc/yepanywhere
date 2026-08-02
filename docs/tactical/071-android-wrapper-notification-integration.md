@@ -65,24 +65,21 @@ The rules are:
 The package commands are:
 
 ```text
-pnpm --filter @yep-anywhere/mobile dev:android
-pnpm --filter @yep-anywhere/mobile build:android:debug
-pnpm --filter @yep-anywhere/mobile build:android:hosted-latest
+pnpm --filter @yep-anywhere/android dev:android
+pnpm --filter @yep-anywhere/android build:android:debug
+pnpm --filter @yep-anywhere/android build:android:hosted-latest
 ```
 
 The first two commands use locally built assets. The ordinary `build:android`
 path also retains bundled assets. The third command produces a release build
 whose foreground client is hosted `latest`.
 
-Physical channel verification on 2026-07-31 built and installed the hosted APK
-on the Pixel 9, confirmed that the APK contains no packaged client JavaScript
-or CSS, and loaded the current `latest` login UI. Wry `0.55.1` currently runs
-its built-in initialization scripts through both Android document-start
-injection and its external-page fallback, producing five harmless property
-redefinition errors after the first initialization succeeds. Treat that as an
-upstream hosted-page diagnostic gap: do not suppress it. The first-class shell
-removes Wry, and its hosted-channel equivalence check must prove those errors
-are absent before enabling native-host notification operations.
+Physical channel verification on 2026-07-31 built and installed the old hosted
+APK on the Pixel 9 and loaded the current `latest` login UI. Replacement
+verification on 2026-08-02 loaded the same channel through the first-class
+Android-owned WebView on the `jstorrent-dev` AVD, confirmed that its APK
+contains no packaged client JavaScript or CSS, and found none of the Wry
+property-redefinition errors emitted by the old shell.
 
 The same device also ran a debug APK built after a local client edit. Its
 foreground client loaded from the packaged Tauri app origin, and the launch
@@ -281,9 +278,9 @@ remain an approval gate rather than being committed by this plan.
 1. **Asset channels:** keep local development, debug APKs, and ordinary
    production builds bundled; provide an explicit hosted-`latest` release
    channel for Play testing.
-2. **Native foundation:** after tactical 080 removes Tauri Mobile, add native
-   secure storage, permission/channel state, and versioned notification
-   operations to its exact-origin host channel.
+2. **Native foundation:** add native secure storage, permission/channel state,
+   and versioned notification operations to the first-class shell's
+   exact-origin host channel.
 3. **Live broker lifecycle:** exercise real broker installation creation and
    FID replacement before prescribing retry or cleanup behavior.
 4. **Compatibility review and enrollment:** audit stable YA releases, approve

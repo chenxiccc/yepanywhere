@@ -2,13 +2,14 @@
 
 ## Status
 
-Approved product direction with a transitional Android wrapper in progress.
-The local-bundled and hosted-`latest` Android asset channels and a minimal FCM
-registration/receive probe exist. The current Tauri Mobile shell will be
-replaced by the first-class Gradle/Kotlin shell in
-[`080-first-class-android-shell.md`](../tactical/080-first-class-android-shell.md)
-before broker enrollment, native notification presentation, or native
-foreground UI implementation continues.
+Approved product direction with a first-class Android shell in progress. The
+local-bundled and hosted-`latest` Android asset channels, exact-origin native
+host, App Link, and minimal FCM registration/receive probe exist. The
+Gradle/Kotlin replacement has landed and Tauri Mobile has been removed; final
+shell validation and CI are tracked in
+[`080-first-class-android-shell.md`](../tactical/080-first-class-android-shell.md).
+Broker enrollment, native notification presentation, and native foreground UI
+remain later slices.
 
 The first native foreground surface was selected on 2026-08-02: Android uses a
 Compose companion shell and Conversation-view session detail, with SwiftUI as

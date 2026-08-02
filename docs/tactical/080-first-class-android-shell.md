@@ -14,11 +14,11 @@ Topic: android-fcm-push
 
 ## Origin
 
-The current Android APK is a Tauri Mobile application with a generated Gradle
-project, a small Rust host, a foreground WebView, and custom Kotlin Firebase
-code inside the generated Android tree. That shape proved the bundled and
-hosted client channels plus direct FCM receipt, but Tauri no longer owns enough
-product behavior to justify its mobile build and runtime layer.
+At plan creation, the Android APK was a Tauri Mobile application with a
+generated Gradle project, a small Rust host, a foreground WebView, and custom
+Kotlin Firebase code inside the generated Android tree. That shape proved the
+bundled and hosted client channels plus direct FCM receipt, but Tauri no longer
+owned enough product behavior to justify its mobile build and runtime layer.
 
 Android is now the first native companion target. Compose will own onboarding,
 server profiles, inbox, and Conversation-view surfaces incrementally. The full
@@ -114,7 +114,7 @@ step and applicable validation rows below have evidence.
 | Reproduce client asset channels | complete | Bundled Pixel smoke and release contracts pass; hosted AVD smoke has no client assets or Tauri/Rust artifacts |
 | Add the native host channel | complete | Protocol/client tests and real WebMessage `host.describe` pass; denied-origin/subframe instrumentation passes in both channels |
 | Migrate App Links and FCM probe | complete | Exact verified App Link plus direct, broker-foreground, and no-process broker-background Pixel evidence |
-| Remove Tauri Mobile | planned | Dependency/source deletion plus artifact inspection |
+| Remove Tauri Mobile | complete | Mobile Rust/Tauri workspace, lock entry, commands, and generated-project ownership removed |
 | Add Android CI | planned | Warning-free required workflow and uploaded APK artifacts |
 | Prove physical-device equivalence | planned | Recorded connected acceptance matrix |
 | Hand off to notifications/onboarding | planned | Updated downstream plan and no open shell blockers |

@@ -21,7 +21,6 @@
       "!**/docs/tasks",
       "!**/branding",
       "!**/packages/desktop",
-      "!**/packages/mobile",
       "!**/packages/server/generated/codex-app-server",
       "!**/packages/server/src/sdk/providers/codex-protocol/generated"
     ]

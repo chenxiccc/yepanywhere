@@ -11,8 +11,8 @@ implemented, deployed, and proven through FCM to a physical Pixel. The current
 Android shell has a minimal FID registration and receive probe. Android-owned
 broker enrollment, native notification presentation, and the YA server
 subscription protocol are not implemented. The probe now lives in the
-first-class Gradle/Kotlin shell; the remaining Tauri Mobile source is scheduled
-for removal before those slices continue.
+first-class Gradle/Kotlin shell, and the obsolete Tauri Mobile source has been
+removed.
 
 Related:
 

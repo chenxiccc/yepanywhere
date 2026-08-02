@@ -42,7 +42,7 @@ linked docs when the details change.
 - **Mobile companions** use native platform shells and notification delivery.
   Android is a first-class Gradle/Kotlin application with Compose as the first
   native foreground target; its Android-owned WebView keeps the packaged client
-  as an explicit full-fidelity fallback. Tauri Mobile is being removed and is
+  as an explicit full-fidelity fallback. Tauri Mobile has been removed and is
   unrelated to the separate desktop Tauri application. iOS follows later with
   SwiftUI. The versioned projection and native connection core are not
   implemented yet.

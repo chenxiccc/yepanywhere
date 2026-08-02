@@ -1,5 +1,0 @@
-# Rust build output
-src-tauri/target/
-
-# Tauri auto-generated schemas (regenerated every build)
-src-tauri/gen/schemas/

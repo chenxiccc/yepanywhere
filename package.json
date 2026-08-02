@@ -34,7 +34,7 @@
     "build": "pnpm -r build",
     "build:bundle": "tsx scripts/build-bundle.ts",
     "build:stable": "pnpm --filter client build:stable",
-    "typecheck": "pnpm --filter shared build && pnpm -r --filter '!@yep-anywhere/mobile' --filter '!@yep-anywhere/android' exec tsc --noEmit",
+    "typecheck": "pnpm --filter shared build && pnpm -r --filter '!@yep-anywhere/android' exec tsc --noEmit",
     "test": "pnpm -r test",
     "test:e2e": "pnpm --filter client test:e2e",
     "test:e2e:ui": "pnpm --filter client test:e2e",

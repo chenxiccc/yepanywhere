@@ -31,11 +31,13 @@ compromised, but the user has already installed or pinned a trusted client.
 
 ## Current Mobile Packaging Checkpoint
 
-The Tauri Android wrapper now proves two explicit asset channels. Local debug
-and ordinary production builds bundle the current checkout's client assets; a
-separate hosted-`latest` release channel loads a fixed YA HTTPS origin for Play
-internal or closed testing. Neither channel accepts an arbitrary runtime UI URL,
-and loading hosted content does not itself grant native IPC.
+The first-class Android application has two explicit asset channels. Local
+debug and ordinary production builds bundle the current checkout's client
+assets through Android's HTTPS app-assets origin; a separate hosted-`latest`
+release channel loads a fixed YA HTTPS origin for Play internal or closed
+testing. Neither channel accepts an arbitrary runtime UI URL. Its native host
+is exact-origin and main-frame bound, exposes only declared high-level methods,
+and currently grants only `host.describe`.
 
 The longer-term foreground choice is also narrower now: Android Compose, and
 later iOS SwiftUI, own the native companion shell and default Conversation-view

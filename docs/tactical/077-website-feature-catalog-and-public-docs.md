@@ -10,7 +10,7 @@ Related surfaces:
 [`site/src/pages/privacy.astro`](../../site/src/pages/privacy.astro),
 [`site/src/pages/spring-2026.astro`](../../site/src/pages/spring-2026.astro),
 [`packages/desktop/README.md`](../../packages/desktop/README.md),
-[`packages/mobile/package.json`](../../packages/mobile/package.json),
+[`packages/android/package.json`](../../packages/android/package.json),
 [`README.md`](../../README.md), and the current internal
 [`docs/project/`](../project/) records.
 

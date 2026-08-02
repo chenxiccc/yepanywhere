@@ -152,12 +152,6 @@ importers:
         specifier: ^7.0.4
         version: 7.3.1(@types/node@25.5.0)(lightningcss@1.32.0)(tsx@4.21.0)
 
-  packages/mobile:
-    devDependencies:
-      '@tauri-apps/cli':
-        specifier: ^2.11.4
-        version: 2.11.4
-
   packages/push-broker:
     dependencies:
       '@hono/node-server':
