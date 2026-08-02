@@ -456,6 +456,47 @@ describe("useSession completion reconciliation", () => {
     );
   });
 
+  it("defers pending-agent backfill while the session DOM is parked", async () => {
+    sessionMessagesMock.messages = [
+      {
+        id: "msg-parked",
+        type: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: "toolu-parked",
+            name: "Task",
+            input: { description: "Background research" },
+          },
+        ],
+      },
+    ];
+
+    const { rerender } = renderHook(
+      ({ paused }) =>
+        useSession(
+          PROJECT_ID,
+          "sess-1",
+          { owner: "self", processId: "proc-1" },
+          undefined,
+          { backgroundEffectsPaused: paused },
+        ),
+      { initialProps: { paused: true } },
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(apiMocks.getAgentMappings).not.toHaveBeenCalled();
+
+    rerender({ paused: false });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(apiMocks.getAgentMappings).toHaveBeenCalledTimes(1);
+  });
+
   it("routes agent context usage through the action wrapper", () => {
     renderHook(() =>
       useSession(PROJECT_ID, "sess-1", {

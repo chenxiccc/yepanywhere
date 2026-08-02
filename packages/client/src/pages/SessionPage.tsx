@@ -444,13 +444,20 @@ function SessionPageContent({
     () => ({
       ...clientTailParams,
       detailedLoadingProgress: sessionLoadingProgressEnabled,
+      backgroundEffectsPaused: isDomLingerParked,
       onConfigurationError: (failure: { setting: "effort" }) => {
         if (failure.setting === "effort") {
           showToast(t("effortChangeApplyFailed"), "error");
         }
       },
     }),
-    [clientTailParams, sessionLoadingProgressEnabled, showToast, t],
+    [
+      clientTailParams,
+      isDomLingerParked,
+      sessionLoadingProgressEnabled,
+      showToast,
+      t,
+    ],
   );
 
   const updateClientTailParams = useCallback(

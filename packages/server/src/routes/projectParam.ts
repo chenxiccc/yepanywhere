@@ -15,7 +15,9 @@ export async function resolveProjectPath(
   if (!projectId || !isUrlProjectId(projectId)) {
     return c.json({ error: "Invalid project ID format" }, 400);
   }
-  const project = await scanner.getProject(projectId);
+  const project = await scanner.getProject(projectId, {
+    allowStaleSnapshot: true,
+  });
   if (!project) return c.json({ error: "Project not found" }, 404);
   return project.path;
 }

@@ -401,6 +401,9 @@ describe("git-status routes", () => {
       old: { kind: "index", path: "big.json", side: "old" },
       new: { kind: "worktree", path: "big.json", side: "new" },
     });
+    expect(response.headers.get("Server-Timing")).toMatch(
+      /project;dur=.*preflight;dur=.*versions;dur=.*render;dur=.*projections;dur=.*total;dur=/,
+    );
     // Only the hunk is rendered, not the file it came from.
     expect(body.diffHtml.length).toBeLessThan(20_000);
   });
@@ -474,7 +477,9 @@ describe("git-status routes", () => {
     expect(response.status).toBe(200);
     // The 30k-character line is context the hunk never touches.
     expect(body.previewSkipped).toBeUndefined();
-    expect(body.structuredPatch[0]?.lines).toContain("+export const value = 2;");
+    expect(body.structuredPatch[0]?.lines).toContain(
+      "+export const value = 2;",
+    );
   });
 
   it("skips full-context requests for files over the render budget", async () => {
@@ -532,7 +537,9 @@ describe("git-status routes", () => {
     expect(body.previewSkipped).toBeUndefined();
     expect(body.diffHtml).toContain("<pre");
     expect(body.structuredPatch).toHaveLength(1);
-    expect(body.structuredPatch[0]?.lines).toContain("+export const value = 1;");
+    expect(body.structuredPatch[0]?.lines).toContain(
+      "+export const value = 1;",
+    );
   });
 
   it("skips small untracked binary content regardless of its extension", async () => {
@@ -653,16 +660,10 @@ describe("git-status routes", () => {
 
   it("skips staged binary changes before reading them as text", async () => {
     const repoDir = await createRepoWithUpstream();
-    await writeFile(
-      join(repoDir, "artifact.data"),
-      Buffer.from([0, 1, 2, 3]),
-    );
+    await writeFile(join(repoDir, "artifact.data"), Buffer.from([0, 1, 2, 3]));
     await runGit(repoDir, ["add", "artifact.data"]);
     await runGit(repoDir, ["commit", "-m", "Add artifact"]);
-    await writeFile(
-      join(repoDir, "artifact.data"),
-      Buffer.from([0, 1, 2, 4]),
-    );
+    await writeFile(join(repoDir, "artifact.data"), Buffer.from([0, 1, 2, 4]));
     await runGit(repoDir, ["add", "artifact.data"]);
     const { projectId, routes } = createRoutesForProject(repoDir);
 

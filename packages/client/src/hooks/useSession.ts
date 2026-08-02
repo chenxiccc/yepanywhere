@@ -465,6 +465,7 @@ export function useSession(
     tailTurns?: number;
     tailFrom?: string;
     detailedLoadingProgress?: boolean;
+    backgroundEffectsPaused?: boolean;
     onConfigurationError?: (failure: {
       setting: "effort";
       requestedValue?: string;
@@ -801,43 +802,39 @@ export function useSession(
     [sessionId],
   );
 
-  const reconcileSessionRuntime = useCallback(async (options?: {
-    ignoreIfLiveSnapshotHandled?: boolean;
-  }) => {
-    const data = await api.getSessionMetadata(projectId, sessionId);
-    if (
-      options?.ignoreIfLiveSnapshotHandled &&
-      hasHandledConnectedEventRef.current
-    ) {
-      return;
-    }
-    reportProviderRuntimeStatus(sessionId, data.providerRuntimeStatus);
-    const metadataProcessState = parseProcessState(data.processState);
-    setStatus(data.ownership);
-    if (metadataProcessState) {
-      setProcessState(metadataProcessState);
-    }
-    if (data.ownership.owner === "none") {
-      setProcessState("idle");
-      setPendingInputRequest(null);
-    } else if (
-      metadataProcessState === "waiting-input" &&
-      data.pendingInputRequest
-    ) {
-      setPendingInputRequest(data.pendingInputRequest);
-    } else if (
-      metadataProcessState &&
-      metadataProcessState !== "waiting-input"
-    ) {
-      setPendingInputRequest(null);
-    }
-    setDeferredMessages(data.deferredMessages ?? []);
-  }, [
-    projectId,
-    reportProviderRuntimeStatus,
-    sessionId,
-    setDeferredMessages,
-  ]);
+  const reconcileSessionRuntime = useCallback(
+    async (options?: { ignoreIfLiveSnapshotHandled?: boolean }) => {
+      const data = await api.getSessionMetadata(projectId, sessionId);
+      if (
+        options?.ignoreIfLiveSnapshotHandled &&
+        hasHandledConnectedEventRef.current
+      ) {
+        return;
+      }
+      reportProviderRuntimeStatus(sessionId, data.providerRuntimeStatus);
+      const metadataProcessState = parseProcessState(data.processState);
+      setStatus(data.ownership);
+      if (metadataProcessState) {
+        setProcessState(metadataProcessState);
+      }
+      if (data.ownership.owner === "none") {
+        setProcessState("idle");
+        setPendingInputRequest(null);
+      } else if (
+        metadataProcessState === "waiting-input" &&
+        data.pendingInputRequest
+      ) {
+        setPendingInputRequest(data.pendingInputRequest);
+      } else if (
+        metadataProcessState &&
+        metadataProcessState !== "waiting-input"
+      ) {
+        setPendingInputRequest(null);
+      }
+      setDeferredMessages(data.deferredMessages ?? []);
+    },
+    [projectId, reportProviderRuntimeStatus, sessionId, setDeferredMessages],
+  );
 
   // Handle initial load completion from useSessionMessages
   const handleLoadComplete = useCallback(
@@ -884,10 +881,7 @@ export function useSession(
       // become idle, while the full session-detail response carries ownership
       // but not process state. Reconcile through the lightweight runtime
       // snapshot so a missed stream/activity event cannot leave false activity.
-      if (
-        hasOptimisticInitialStatus &&
-        !hasHandledConnectedEventRef.current
-      ) {
+      if (hasOptimisticInitialStatus && !hasHandledConnectedEventRef.current) {
         void reconcileSessionRuntime({
           ignoreIfLiveSnapshotHandled: true,
         }).catch(() => {});
@@ -1197,12 +1191,24 @@ export function useSession(
   // Tasks are running by loading child content-so-far.
   useEffect(() => {
     // Only run once per session after initial load
-    if (loading || pendingAgentsLoadedRef.current === sessionId) return;
+    if (
+      options?.backgroundEffectsPaused ||
+      loading ||
+      pendingAgentsLoadedRef.current === sessionId
+    ) {
+      return;
+    }
     if (messages.length === 0) return;
 
     pendingAgentsLoadedRef.current = sessionId;
     void loadPendingAgents();
-  }, [loading, loadPendingAgents, messages, sessionId]);
+  }, [
+    loading,
+    loadPendingAgents,
+    messages,
+    options?.backgroundEffectsPaused,
+    sessionId,
+  ]);
 
   // Leading + trailing edge throttle:
   // - Leading: fires immediately on first call
@@ -1442,12 +1448,7 @@ export function useSession(
         });
       }
     },
-    [
-      projectId,
-      reportProviderRuntimeStatus,
-      sessionId,
-      setDeferredMessages,
-    ],
+    [projectId, reportProviderRuntimeStatus, sessionId, setDeferredMessages],
   );
 
   // Handle activity bus reconnection (e.g., after phone screen wake).
@@ -1905,8 +1906,7 @@ export function useSession(
           serverSessionId: serverSessionId ?? null,
           state: connectedData.state ?? null,
           permissionMode: connectedData.permissionMode ?? null,
-          appliedPermissionMode:
-            connectedData.appliedPermissionMode ?? null,
+          appliedPermissionMode: connectedData.appliedPermissionMode ?? null,
           modeVersion: connectedData.modeVersion ?? null,
           provider: connectedData.provider ?? null,
           model: connectedData.model ?? null,
@@ -2154,12 +2154,7 @@ export function useSession(
       setProcessState("idle");
       setPendingInputRequest(null);
     }
-  }, [
-    projectId,
-    sessionId,
-    reportProviderRuntimeStatus,
-    setDeferredMessages,
-  ]);
+  }, [projectId, sessionId, reportProviderRuntimeStatus, setDeferredMessages]);
 
   // Only connect to session stream when we own the session
   // External sessions are tracked via the activity stream instead

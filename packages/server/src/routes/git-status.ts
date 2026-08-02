@@ -16,7 +16,9 @@ import {
   type ReviewSourceProjection,
   isUrlProjectId,
 } from "@yep-anywhere/shared";
+import type { Context } from "hono";
 import { Hono } from "hono";
+import { getLogger } from "../logging/logger.js";
 import type { ProjectScanner } from "../projects/scanner.js";
 import {
   GIT_DIFF_PREVIEW_MAX_DIFF_CHARS,
@@ -26,11 +28,7 @@ import {
 } from "../git/diffPreviewGuards.js";
 import { gitDiffReportsBinary } from "../git/binaryDiff.js";
 import { buildGitDiffResultFromBytes } from "../git/diffResult.js";
-import {
-  GIT_DECODE_PATHS_ARGS,
-  runGit,
-  runGitBytes,
-} from "../git/gitExec.js";
+import { GIT_DECODE_PATHS_ARGS, runGit, runGitBytes } from "../git/gitExec.js";
 
 export interface GitStatusDeps {
   scanner: ProjectScanner;
@@ -52,6 +50,51 @@ const remoteCheckedAtByProjectPath = new Map<string, string>();
 const gitOperationsByProjectPath = new Set<string>();
 const UNTRACKED_FOLDER_FILE_LIMIT = 500;
 
+interface GitDiffRequestTimings {
+  project?: number;
+  preflight?: number;
+  versions?: number;
+  render?: number;
+  projections?: number;
+}
+
+function recordGitDiffRequestTiming(
+  c: Context,
+  input: {
+    startedAt: number;
+    projectId: string;
+    path: string;
+    timings: GitDiffRequestTimings;
+  },
+): void {
+  const total = performance.now() - input.startedAt;
+  const rounded = Object.fromEntries(
+    Object.entries(input.timings).map(([name, duration]) => [
+      name,
+      Math.round(duration * 100) / 100,
+    ]),
+  );
+  const totalRounded = Math.round(total * 100) / 100;
+  c.header(
+    "Server-Timing",
+    [
+      ...Object.entries(rounded).map(
+        ([name, duration]) => `${name};dur=${duration}`,
+      ),
+      `total;dur=${totalRounded}`,
+    ].join(", "),
+  );
+
+  const event = {
+    event: "git_diff_request",
+    projectId: input.projectId,
+    path: input.path,
+    ...rounded,
+    total: totalRounded,
+  };
+  getLogger().debug(event, "GIT_DIFF: request complete");
+}
+
 export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
   const routes = new Hono();
 
@@ -62,7 +105,9 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
       return c.json({ error: "Invalid project ID format" }, 400);
     }
 
-    const project = await deps.scanner.getProject(projectId);
+    const project = await deps.scanner.getProject(projectId, {
+      allowStaleSnapshot: true,
+    });
     if (!project) {
       return c.json({ error: "Project not found" }, 404);
     }
@@ -89,7 +134,9 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
       return c.json({ error: "Invalid project ID format" }, 400);
     }
 
-    const project = await deps.scanner.getProject(projectId);
+    const project = await deps.scanner.getProject(projectId, {
+      allowStaleSnapshot: true,
+    });
     if (!project) {
       return c.json({ error: "Project not found" }, 404);
     }
@@ -120,7 +167,9 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
       return c.json({ error: "Invalid project ID format" }, 400);
     }
 
-    const project = await deps.scanner.getProject(projectId);
+    const project = await deps.scanner.getProject(projectId, {
+      allowStaleSnapshot: true,
+    });
     if (!project) {
       return c.json({ error: "Project not found" }, 404);
     }
@@ -186,7 +235,9 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
       return c.json({ error: "Invalid project ID format" }, 400);
     }
 
-    const project = await deps.scanner.getProject(projectId);
+    const project = await deps.scanner.getProject(projectId, {
+      allowStaleSnapshot: true,
+    });
     if (!project) {
       return c.json({ error: "Project not found" }, 404);
     }
@@ -262,7 +313,9 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
       return c.json({ error: "Invalid project ID format" }, 400);
     }
 
-    const project = await deps.scanner.getProject(projectId);
+    const project = await deps.scanner.getProject(projectId, {
+      allowStaleSnapshot: true,
+    });
     if (!project) {
       return c.json({ error: "Project not found" }, 404);
     }
@@ -331,7 +384,9 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
       return c.json({ error: "Invalid project ID format" }, 400);
     }
 
-    const project = await deps.scanner.getProject(projectId);
+    const project = await deps.scanner.getProject(projectId, {
+      allowStaleSnapshot: true,
+    });
     if (!project) {
       return c.json({ error: "Project not found" }, 404);
     }
@@ -412,13 +467,19 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
    * Body: { path, staged, status, againstHead?, origPath?, fullContext? }
    */
   routes.post("/:projectId/git/diff", async (c) => {
+    const startedAt = performance.now();
+    const timings: GitDiffRequestTimings = {};
     const projectId = c.req.param("projectId");
 
     if (!isUrlProjectId(projectId)) {
       return c.json({ error: "Invalid project ID format" }, 400);
     }
 
-    const project = await deps.scanner.getProject(projectId);
+    const projectStartedAt = performance.now();
+    const project = await deps.scanner.getProject(projectId, {
+      allowStaleSnapshot: true,
+    });
+    timings.project = performance.now() - projectStartedAt;
     if (!project) {
       return c.json({ error: "Project not found" }, 404);
     }
@@ -467,14 +528,23 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
     }
 
     try {
+      const preflightStartedAt = performance.now();
       const untrackedSizeSkip =
         status === "?"
           ? await getUntrackedDiffPreviewSizeSkip(project.path, path)
           : null;
+      timings.preflight = performance.now() - preflightStartedAt;
       if (untrackedSizeSkip) {
+        recordGitDiffRequestTiming(c, {
+          startedAt,
+          projectId,
+          path,
+          timings,
+        });
         return c.json(skippedGitDiffResult(untrackedSizeSkip));
       }
 
+      const binaryStartedAt = performance.now();
       if (
         status !== "?" &&
         (await gitDiffReportsBinary(
@@ -483,9 +553,20 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
           path,
         ))
       ) {
+        timings.preflight =
+          (timings.preflight ?? 0) + (performance.now() - binaryStartedAt);
+        recordGitDiffRequestTiming(c, {
+          startedAt,
+          projectId,
+          path,
+          timings,
+        });
         return c.json(skippedBinaryGitDiffResult());
       }
+      timings.preflight =
+        (timings.preflight ?? 0) + (performance.now() - binaryStartedAt);
 
+      const versionsStartedAt = performance.now();
       const { oldContent, newContent } = await getFileVersions(
         project.path,
         path,
@@ -494,15 +575,19 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
         againstHead,
         origPath,
       );
+      timings.versions = performance.now() - versionsStartedAt;
 
+      const renderStartedAt = performance.now();
       const result = await buildGitDiffResultFromBytes({
-          path,
-          oldContent,
-          newContent,
-          fullContext,
-          ignoreWhitespace,
-        });
+        path,
+        oldContent,
+        newContent,
+        fullContext,
+        ignoreWhitespace,
+      });
+      timings.render = performance.now() - renderStartedAt;
       if (!result.previewSkipped) {
+        const projectionsStartedAt = performance.now();
         result.reviewProjections = await workingTreeReviewProjections(
           project.path,
           path,
@@ -511,9 +596,22 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
           againstHead,
           origPath,
         );
+        timings.projections = performance.now() - projectionsStartedAt;
       }
+      recordGitDiffRequestTiming(c, {
+        startedAt,
+        projectId,
+        path,
+        timings,
+      });
       return c.json(result);
     } catch (err) {
+      recordGitDiffRequestTiming(c, {
+        startedAt,
+        projectId,
+        path,
+        timings,
+      });
       const message =
         err instanceof Error ? err.message : "Failed to compute diff";
       return c.json({ error: message }, 500);

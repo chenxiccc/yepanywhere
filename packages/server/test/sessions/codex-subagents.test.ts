@@ -153,9 +153,32 @@ describe("Codex subagent sessions", () => {
     const summaries = await reader.listSessions(projectId);
     expect(summaries.map((summary) => summary.id)).toEqual([parentId]);
 
+    expect(reader.getAgentMappingCacheStats()).toEqual({
+      sessions: 0,
+      mappings: 0,
+    });
+    await expect(
+      reader.getSession(parentId, projectId),
+    ).resolves.not.toBeNull();
+    expect(reader.getAgentMappingCacheStats()).toEqual({
+      sessions: 1,
+      mappings: 1,
+    });
+
     await expect(reader.getAgentMappings(parentId)).resolves.toEqual([
       { toolUseId: callId, agentId: childId },
     ]);
+    const coldReader = new CodexSessionReader({
+      sessionsDir,
+      projectPath: PROJECT_PATH,
+    });
+    await expect(coldReader.getAgentMappings(parentId)).resolves.toEqual([
+      { toolUseId: callId, agentId: childId },
+    ]);
+    expect(coldReader.getAgentMappingCacheStats()).toEqual({
+      sessions: 1,
+      mappings: 1,
+    });
     await expect(reader.listProviderChildSessions(parentId)).resolves.toEqual([
       {
         id: childId,

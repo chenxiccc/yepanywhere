@@ -301,3 +301,28 @@ or similar routes in a new tab does not trigger hidden-DOM parking in the source
 session tab. The current app has cross-tab storage/channels for preferences,
 draft decorations, service-worker messages, and shared speech mic leasing, but
 no session-view ownership or DOM-transfer protocol.
+
+## 2026-08-02 Foreground-work isolation
+
+A parked session must not begin optional pending-agent recovery while another
+route is foreground. In particular, navigating to Source Control must not make
+its first diff compete with a Codex transcript scan initiated by the hidden
+session. Recovery remains pending and runs when that same session becomes
+foreground again.
+
+Codex session-detail parsing seeds a compact, file-fingerprint-keyed map from
+`spawn_agent` tool calls to child session ids. Pending-agent recovery reuses
+that map without reparsing or retaining another copy of the transcript. A cold
+mapping request streams the rollout and parses only candidate spawn/output
+lines, then retains the compact map; a size or modification-time change
+invalidates it. The existing parse-phase metrics report compact-cache hits and
+cold scans under the `agent-mapping` purpose.
+
+The motivating trace was a Source Control file click delayed while the parked
+session issued `/agents`; the Git diff itself does not need agent mappings or
+blame. A development corpus with 617 Codex rollouts measured 1,165 ms in cold
+global session discovery, while a mapping lookup seeded by the already-loaded
+session detail took 0.17 ms. That establishes both ownership fixes: parked
+optional work waits for foreground, and the normal foreground session-detail
+path prepopulates the compact mapping rather than making recovery rediscover or
+reparse the session.

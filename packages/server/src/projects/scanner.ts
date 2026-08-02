@@ -48,6 +48,15 @@ export interface ScannerOptions {
   cacheTtlMs?: number;
 }
 
+export interface GetProjectOptions {
+  /**
+   * Reuse an already-resolved project identity even when aggregate project
+   * metadata is stale. Path-only routes use this to avoid making an unrelated
+   * provider-session inventory scan part of their foreground latency.
+   */
+  allowStaleSnapshot?: boolean;
+}
+
 const CLAUDE_PROJECT_SCAN_BATCH_SIZE = 16;
 const CWD_SCAN_BATCH_SIZE = 8;
 const PROJECT_SCAN_CACHE_VERSION = 4;
@@ -896,8 +905,14 @@ export class ProjectScanner {
     return projects;
   }
 
-  async getProject(projectId: string): Promise<Project | null> {
-    const snapshot = await this.getSnapshot();
+  async getProject(
+    projectId: string,
+    options?: GetProjectOptions,
+  ): Promise<Project | null> {
+    const snapshot =
+      options?.allowStaleSnapshot && this.snapshot
+        ? this.snapshot
+        : await this.getSnapshot();
     let project = snapshot.byId.get(projectId);
     if (!project) {
       try {
@@ -908,7 +923,10 @@ export class ProjectScanner {
         project = undefined;
       }
     }
-    return project ? this.cloneProject(project) : null;
+    if (!project || this.isHiddenProjectPath(project.path)) {
+      return null;
+    }
+    return this.cloneProject(project);
   }
 
   private isHiddenProjectPath(projectPath: string): boolean {

@@ -119,6 +119,40 @@ describe("ProjectScanner cache", () => {
     expect(refreshed).toHaveLength(2);
   });
 
+  it("resolves a known project without refreshing stale aggregates", async () => {
+    const projectsDir = join(tmpdir(), `project-scanner-${randomUUID()}`);
+    tempDirs.push(projectsDir);
+    const projectPath = "/home/user/project-one";
+
+    await createClaudeProject(projectsDir, "localhost", projectPath, "sess-1");
+
+    const scanner = new ProjectScanner({
+      projectsDir,
+      enableCodex: false,
+      enableGemini: false,
+      cacheTtlMs: 60000,
+    });
+    await scanner.listProjects();
+
+    const scanSpy = vi.spyOn(
+      scanner as unknown as {
+        getProjectDirInfo: (projectDirPath: string) => Promise<unknown>;
+      },
+      "getProjectDirInfo",
+    );
+    scanner.invalidateCache();
+
+    await expect(
+      scanner.getProject(encodeProjectId(projectPath), {
+        allowStaleSnapshot: true,
+      }),
+    ).resolves.toMatchObject({ path: projectPath });
+    expect(scanSpy).not.toHaveBeenCalled();
+
+    await scanner.getProject(encodeProjectId(projectPath));
+    expect(scanSpy).toHaveBeenCalledTimes(1);
+  });
+
   it("coalesces concurrent scans into one in-flight refresh", async () => {
     const projectsDir = join(tmpdir(), `project-scanner-${randomUUID()}`);
     tempDirs.push(projectsDir);
@@ -447,6 +481,32 @@ describe("ProjectScanner cache", () => {
     );
   });
 
+  it("does not reuse a stale snapshot after its project is hidden", async () => {
+    const projectsDir = join(tmpdir(), `project-scanner-${randomUUID()}`);
+    const dataDir = join(tmpdir(), `project-metadata-${randomUUID()}`);
+    tempDirs.push(projectsDir, dataDir);
+    const projectPath = "/home/user/project-one";
+    const projectId = encodeProjectId(projectPath);
+
+    await createClaudeProject(projectsDir, "localhost", projectPath, "sess-1");
+    const metadata = new ProjectMetadataService({ dataDir });
+    await metadata.initialize();
+    const scanner = new ProjectScanner({
+      projectsDir,
+      enableCodex: false,
+      enableGemini: false,
+      projectMetadataService: metadata,
+      cacheTtlMs: 60000,
+    });
+    await expect(scanner.getProject(projectId)).resolves.not.toBeNull();
+
+    await metadata.hideProject(projectId, projectPath);
+
+    await expect(
+      scanner.getProject(projectId, { allowStaleSnapshot: true }),
+    ).resolves.toBeNull();
+  });
+
   it("skips hidden Codex projects", async () => {
     const projectsDir = join(tmpdir(), `project-scanner-${randomUUID()}`);
     const dataDir = join(tmpdir(), `project-metadata-${randomUUID()}`);
@@ -510,12 +570,7 @@ describe("ProjectScanner cache", () => {
       managedByYa: true,
     });
 
-    await createClaudeProject(
-      projectsDir,
-      "localhost",
-      lanePath,
-      "sess-lane",
-    );
+    await createClaudeProject(projectsDir, "localhost", lanePath, "sess-lane");
 
     const scanner = new ProjectScanner({
       projectsDir,

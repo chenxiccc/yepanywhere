@@ -321,6 +321,31 @@ distinction for the usually small visible author set. Regenerating only after
 an error keeps corrupt state recoverable without turning palette maintenance
 into a background retry loop.
 
+## Foreground diff latency
+
+A working-tree file selection depends on its exact Git projection and renderer,
+not on fresh provider-session aggregates. Once the project id has resolved in
+the server's project snapshot, every Source Control path-only route may reuse
+that known identity even after the aggregate snapshot's five-second freshness
+window expires. A cold server may discover projects once; clicking a file after
+the Changes list is visible must not synchronously rescan Claude, Codex, or
+Gemini histories. Session/project inventory refresh remains owned by the
+surfaces that consume that mutable inventory.
+
+The working-tree diff endpoint reports `Server-Timing` phases named `project`,
+`preflight`, `versions`, `render`, `projections`, and `total`, and emits the same
+numbers in its debug event. This keeps future regressions attributable: a
+simple file should spend only ordinary subprocess time in Git preflight/version
+reads, while syntax highlighting or Markdown rendering is visible separately
+as `render`. The file-diff request does not compute or fetch blame.
+
+Do not add speculative file-diff prewarming as the first remedy for a slow
+selection. Eliminate unrelated project/session scans and measure the remaining
+phases first. Prewarming the likely next file remains an optional latency
+courtesy only if those measurements show a meaningful irreducible renderer
+cost; it cannot become a correctness dependency or retain unbounded file
+content.
+
 The permanent `git-source-review` capability currently gates the complete
 Changes/Files/Comments browser, including commit history inside Changes, as
 well as the review endpoints. An
@@ -332,30 +357,31 @@ selected-revision-to-HEAD comparison remain gated by
 [server capabilities](server-capabilities.md) and
 [`063-source-control-hosted-compatibility.md`](../docs/tactical/063-source-control-hosted-compatibility.md).
 
-## Dirty-file editor sessions — proposal
+## Dirty-file last editor — proposal
 
-Kyle suggested a button to **“navigate to session(s) that made edits to this
-dirty file”**; graehl agrees (2026-07-28). This reverses the existing bridge
-from a session Edit block into the exact dirty file. In Changes, the selected
-file banner and shared file context menu expose a compact `Sessions (N)`
-action. One candidate may navigate directly; more than one opens a
-newest-evidence-first chooser using the standard session identity, hovercard,
-and canonical YA-session navigation.
+The selected dirty file should link to the **last YA session observed editing
+it**. This reverses the existing bridge from a session Edit block into the exact
+dirty file without pretending YA can reconstruct complete authorship. In
+Changes, the selected file banner and shared file context menu expose one
+compact session action when attribution exists; it navigates through the
+canonical YA session id and uses the standard session identity/hovercard.
 
 Git records no dirty-file session authorship. The deliberately bounded
-contract is **sessions with recorded edits**: successful structured file
-mutations YA observed in a canonical session—Edit, Write, `apply_patch`, or a
+contract is **the last session with a recorded edit**: a successful structured
+file mutation YA observed in a canonical session—Edit, Write, `apply_patch`, or a
 provider equivalent—whose normalized project-relative target is this path.
-Do not infer candidates from active sessions, project membership, or file
+Do not infer an editor from active sessions, project membership, or file
 mtime.
 
 Shell commands, generators, human edits, external processes, and provider
-activity YA did not observe may remain unattributed. An unobserved writer can
-also replace or revert an observed session's contribution while leaving the
-path dirty, so a stale candidate can remain until the file next becomes clean.
-This accepted limitation bounds implementation effort; the UI never claims the
-set is exhaustive or that every listed session contributed to the exact
-current contents.
+activity YA did not observe may remain unattributed. Scripted edit/output
+commands are a best-effort extension only where their touched paths can be
+deduced reliably; gaps are accepted and documented rather than guessed. An
+unobserved writer can also replace or revert the observed session's
+contribution while leaving the path dirty, so stale attribution can remain
+until the file next becomes clean. The UI says "last observed editor", never
+claims exhaustive authorship, and does not imply that session contributed to
+the exact current bytes.
 
 Implementation plan:
 
@@ -363,34 +389,41 @@ Implementation plan:
    success boundary. For `apply_patch`, parse every Add, Update, Delete, and
    Move header; after a successful multi-file patch, upsert one row for each
    touched normalized path. Ignore failed or merely proposed mutations.
-2. Persist logical rows of
-   `(source, project, normalized file, canonical YA session, latest edit time)`.
-   A later successful edit by the same session to the same file only replaces
-   that row's time. Retain no event history, tool/message ids, content hashes,
-   transcript backfill, or before/after lineage. Store the set in private
-   server-owned state and reload it after process restart; it has no TTL or
-   bounded-retention expiry. Its lifecycle ends at authoritative clean-state
-   reconciliation, not elapsed time.
+2. Persist one logical record per `(source, project, normalized file)`, carrying
+   the canonical YA session id and latest observed edit time. Any later
+   successful edit replaces the prior session and time. Retain no editor set,
+   event history, tool/message ids, content hashes, transcript backfill, or
+   before/after lineage. Store these records in private server-owned state and
+   reload them after process restart; they have no TTL. The mutation observer
+   already has source, project, and canonical session context, so Source Control
+   must not run provider-specific discovery or `agent-mapping` work to construct
+   the link.
 3. Reconcile only from a successful, complete, authoritative Git-status
    refresh. Whenever such a refresh observes that a tracked path has become not
-   dirty, clear every row for that file. A successful commit normally causes
+   dirty, clear that file's record. A successful commit normally causes
    this transition, but
    a commit that leaves further staged or unstaged changes does not: the
    clearing condition is observed clean file state, not a commit command.
-   Restart performs the same reconciliation for every reachable project.
+   Reconciliation may wait until Source Control enters or refreshes that
+   project; restart need not eagerly walk every repository.
    Temporary source/project disconnect retains rows and does not pretend that
    files became clean; reconnect reconciles before serving them. Explicit
    project removal clears that project's rows, and explicit source removal
    clears all rows owned by that source.
-4. Add a capability-gated query for remaining candidate session summaries,
-   ordered by latest recorded edit, and reuse the existing session
-   hovercard/navigation and file banner/menu.
-5. Test one and several sessions, repeated edits deduplicating to latest time,
-   failed edits being ignored, clean-state clearing, restart persistence and
+4. Under a dedicated capability, add the remaining editor session id and
+   observation time as an optional field on each dirty-file record returned by
+   the existing Git-status response. This prepopulates all visible links in one
+   request; selecting a file starts no attribution query. Reuse the existing
+   session hovercard/navigation and file banner/menu. An absent record produces
+   no request-time provider scan and no empty chooser.
+5. Test first attribution, a later session replacing it, repeated edits by the
+   same session updating its time, failed edits being ignored, clean-state
+   clearing, restart persistence and
    reconciliation, disconnect/reconnect retention, explicit project/source
    removal, a commit that leaves the file dirty, and accepted missing/stale
    attribution after unobserved shell or human changes.
 
 **Difficulty:** the UI is low difficulty. Provider mutation hooks, clean-state
-observation, the small tuple set, and its query are low-to-medium difficulty.
+observation, the one-record-per-file store, and its query are low-to-medium
+difficulty.
 Exact lineage and exhaustive attribution are deliberately out of scope.
