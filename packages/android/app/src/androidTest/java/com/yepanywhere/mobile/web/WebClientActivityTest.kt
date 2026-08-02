@@ -184,30 +184,40 @@ class WebClientActivityTest {
     fun backNavigatesWebHistoryBeforeFinishingTheActivity() {
         ActivityScenario.launch(WebClientActivity::class.java).use { scenario ->
             awaitJavaScript(scenario, "document.readyState", "\"complete\"")
-            val historyUrl = "https://appassets.androidplatform.net/debug-streaming.html"
             scenario.onActivity { activity ->
-                activity.findViewById<WebView>(R.id.web_client).loadUrl(historyUrl)
+                activity.findViewById<WebView>(R.id.web_client).apply {
+                    webViewClient = WebViewClient()
+                    loadDataWithBaseURL(
+                        "https://appassets.androidplatform.net/history-first/",
+                        "<html><body>history-first</body></html>",
+                        "text/html",
+                        Charsets.UTF_8.name(),
+                        "https://appassets.androidplatform.net/history-first",
+                    )
+                }
             }
             awaitJavaScript(
                 scenario,
-                "window.location.pathname",
-                "\"/debug-streaming.html\"",
+                "document.body.textContent",
+                "\"history-first\"",
             )
-            evaluateJavaScript(
-                scenario,
-                """
-                history.pushState({}, "", "/native-back-test");
-                window.location.pathname;
-                """.trimIndent(),
-            )
+            scenario.onActivity { activity ->
+                activity.findViewById<WebView>(R.id.web_client).loadDataWithBaseURL(
+                    "https://appassets.androidplatform.net/history-second/",
+                    "<html><body>history-second</body></html>",
+                    "text/html",
+                    Charsets.UTF_8.name(),
+                    "https://appassets.androidplatform.net/history-second",
+                )
+            }
             awaitJavaScript(
                 scenario,
-                "window.location.pathname",
-                "\"/native-back-test\"",
+                "document.body.textContent",
+                "\"history-second\"",
             )
             awaitWebViewCondition(
                 scenario,
-                "WebView history did not include the pushed state",
+                "WebView history did not include the first document",
             ) { view ->
                 view.canGoBack()
             }
@@ -218,12 +228,8 @@ class WebClientActivityTest {
 
             awaitJavaScript(
                 scenario,
-                """
-                window.location.pathname === "/native-back-test"
-                  ? "waiting"
-                  : "returned"
-                """.trimIndent(),
-                "\"returned\"",
+                "document.body.textContent",
+                "\"history-first\"",
             )
             assertEquals(Lifecycle.State.RESUMED, scenario.state)
         }
