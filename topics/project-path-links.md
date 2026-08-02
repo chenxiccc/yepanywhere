@@ -5,7 +5,13 @@
 
 Topic: project-path-links
 
-Status: implemented 2026-08-02 for the file viewer's highlighted source.
+Status: **partially implemented; the index is being replaced.** Linkification
+of the file viewer's highlighted source works (2026-08-02). The path index
+behind it does not yet meet this topic's own contract: it misses gitignored
+files, which is the case the feature exists for, and its validation stops being
+live on a wide repository. *Membership decides linking* and *rendering* below
+are current and hold; **The index** below describes what shipped, and is
+superseded — see *Index rebuild* at the end.
 
 ## Why membership, not shape
 
@@ -95,3 +101,45 @@ degrades to plain content rather than failing the view.
 Only the file viewer's highlighted source runs this. Other viewers showing
 project content — diff panes, tool-result bodies — would use the same
 `linkifyProjectPaths` seam.
+
+## Index rebuild: per-directory validation
+
+The index described above is a flat path set validated by re-stat'ing every
+directory it knows. That is being replaced, for two reasons found by checking it
+against a real repository rather than a constructed one.
+
+**It misses gitignored files.** Its sources are `git ls-files` and
+`git status --untracked-files=all`, and neither reports ignored paths. Run
+outputs — the content this feature exists to make navigable — commonly live
+under a gitignored directory. Enumerating ignored files up front is not the
+answer: measured 2.5s for 131,956 files here (mostly `node_modules`) and 3.5s
+for 594,511 in a research repository.
+
+**Global validation costs as much as rebuilding.** On a 10,845-directory
+repository, stat'ing every directory took 135ms against 220ms to rebuild
+outright, so the sweep bought nothing and the implementation degraded to a long
+TTL at exactly the width where staying live matters.
+
+The replacement keys the structure by path component, one node per directory,
+each holding the child listing and the directory mtime observed when that
+listing was read. A directory's mtime changes exactly when its own entries
+change — verified: adding, deleting and renaming an entry all move it, while
+editing a file's contents does not, and a change inside a subdirectory does not
+move the parent's. Membership of `a/b/c.json` therefore needs only `a/b`'s
+listing to be current, so **one stat of `a/b` validates the answer**, presence
+or absence alike.
+
+Three properties follow, and each is a requirement of the replacement rather
+than an optimization:
+
+- Cost scales with the distinct directories a piece of content references, not
+  with how many candidate tokens it contains, because a validated directory node
+  answers "not here" without I/O.
+- Ignored files are covered, because `readdir` does not consult `.gitignore` and
+  nothing is enumerated up front.
+- Freshness needs no TTL, because validation is per lookup rather than a sweep
+  that has to be rationed.
+
+Directory watches (inotify) remain the escalation on top of this, not a
+prerequisite — and are the same signal Source Control wants for refreshing dirty
+state.
