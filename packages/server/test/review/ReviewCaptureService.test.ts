@@ -18,7 +18,13 @@ describe("ReviewCaptureService", () => {
   beforeEach(async () => {
     repo = await mkdtemp(join(tmpdir(), "yep-review-capture-"));
     await execFileAsync("git", ["-C", repo, "init"]);
-    await execFileAsync("git", ["-C", repo, "config", "user.email", "test@example.com"]);
+    await execFileAsync("git", [
+      "-C",
+      repo,
+      "config",
+      "user.email",
+      "test@example.com",
+    ]);
     await execFileAsync("git", ["-C", repo, "config", "user.name", "Test"]);
     await mkdir(join(repo, "src"), { recursive: true });
     await writeFile(join(repo, "src", "file.ts"), "const committed = 1;\n");
@@ -75,6 +81,21 @@ describe("ReviewCaptureService", () => {
     ]);
     expect(dirtyBytes).toBe("const dirty = 2;\n");
 
+    const excerpt = await service.readExcerpt(repo, dirty, {
+      path: "src/file.ts",
+      revision: { kind: "uncommitted", savedAt: new Date().toISOString() },
+      side: "new",
+      oldLine: 1,
+      newLine: 1,
+      snippet: "const dirty = 2;",
+    });
+    expect(excerpt).toMatchObject({
+      status: "captured",
+      content: "const dirty = 2;\n",
+      startLine: 1,
+      highlightLine: 1,
+    });
+
     await service.pin(repo, dirty.captureBlobId);
     await execFileAsync("git", ["-C", repo, "gc", "--prune=now"]);
     await expect(
@@ -83,7 +104,12 @@ describe("ReviewCaptureService", () => {
   });
 
   it("rejects absolute, traversal, and escaping symlink paths", async () => {
-    for (const invalid of ["/etc/passwd", "../outside", "src/../../outside", "C:\\outside"]) {
+    for (const invalid of [
+      "/etc/passwd",
+      "../outside",
+      "src/../../outside",
+      "C:\\outside",
+    ]) {
       expect(() => repositoryRelativePath(invalid)).toThrow();
     }
 

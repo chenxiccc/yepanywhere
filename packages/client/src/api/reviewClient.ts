@@ -3,6 +3,9 @@ import type {
   ReviewComment,
   ReviewCommentAnchor,
   ReviewNewSessionOptions,
+  ReviewReviewerEntry,
+  ReviewSubmissionDetail,
+  ReviewSubmissionSummary,
 } from "@yep-anywhere/shared";
 import { fetchJSON } from "./sourceApiFetch";
 
@@ -52,6 +55,11 @@ export interface ReviewSubmitResult {
   /** "queued" (HTTP 202) when the supervisor was at capacity. */
   status?: "queued";
   submissionId?: string;
+}
+
+export interface ReviewSubmissionPage {
+  submissions: ReviewSubmissionSummary[];
+  nextCursor: string | null;
 }
 
 export const reviewApi = {
@@ -107,4 +115,40 @@ export const reviewApi = {
           : {}),
       }),
     }),
+
+  listReviewSubmissions: (
+    projectId: string,
+    options?: { cursor?: string; limit?: number },
+  ) => {
+    const params = new URLSearchParams();
+    if (options?.cursor) params.set("cursor", options.cursor);
+    if (options?.limit) params.set("limit", String(options.limit));
+    const query = params.size > 0 ? `?${params}` : "";
+    return fetchJSON<ReviewSubmissionPage>(
+      `/projects/${projectId}/review/submissions${query}`,
+    );
+  },
+
+  getReviewSubmission: (projectId: string, submissionId: string) =>
+    fetchJSON<ReviewSubmissionDetail>(
+      `/projects/${projectId}/review/submissions/${encodeURIComponent(submissionId)}`,
+    ),
+
+  addReviewFollowUp: (projectId: string, siteId: string, text: string) =>
+    fetchJSON<{ entry: ReviewReviewerEntry }>(
+      `/projects/${projectId}/review/sites/${encodeURIComponent(siteId)}/follow-ups`,
+      { method: "POST", body: JSON.stringify({ text }) },
+    ),
+
+  resolveReviewSite: (projectId: string, siteId: string) =>
+    fetchJSON<{ resolved: true }>(
+      `/projects/${projectId}/review/sites/${encodeURIComponent(siteId)}/resolve`,
+      { method: "POST" },
+    ),
+
+  acknowledgeReviewSubmission: (projectId: string, submissionId: string) =>
+    fetchJSON<{ submission: ReviewSubmissionSummary }>(
+      `/projects/${projectId}/review/submissions/${encodeURIComponent(submissionId)}/acknowledge`,
+      { method: "POST" },
+    ),
 };

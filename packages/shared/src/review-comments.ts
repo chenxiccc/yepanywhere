@@ -274,6 +274,33 @@ export interface ReviewSubmissionResponse {
   suggestedTitle?: string;
 }
 
+/** Bounded source excerpt read from an immutable capture blob. */
+export type ReviewCapturedSource =
+  | { status: "legacy-missing" }
+  | {
+      status: "captured";
+      captureBlobId: string;
+      content: string;
+      startLine: number;
+      highlightLine: number;
+    }
+  | {
+      status: "unavailable";
+      captureBlobId: string;
+      reason: "binary" | "too-large" | "missing";
+    };
+
+export interface ReviewEntryCapturedSource extends ReviewEntryRef {
+  source: ReviewCapturedSource;
+}
+
+/** Canonical submission detail returned by the capability-gated reader. */
+export interface ReviewSubmissionDetail {
+  submission: ReviewSubmissionSummary;
+  sites: ReviewSite[];
+  capturedSources: ReviewEntryCapturedSource[];
+}
+
 /** First-comment excerpt used both as the name-field prefill and title fallback. */
 export function deriveReviewSubmissionName(text: string): string {
   const line = text

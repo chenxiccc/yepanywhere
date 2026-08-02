@@ -491,6 +491,12 @@ export class ReviewCommentService {
     const store = await this.getStore(projectPath);
     const site = store.state.sites.find((item) => item.id === siteId);
     if (!site) return false;
+    if (store.state.drafts.some((draft) => draft.siteId === siteId)) {
+      throw new HttpError(
+        409,
+        "Submit or discard the pending follow-up before resolving this site",
+      );
+    }
     site.resolvedAt = this.now();
     await store.save();
     return true;

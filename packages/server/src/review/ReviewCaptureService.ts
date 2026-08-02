@@ -3,9 +3,11 @@
 import { spawn } from "node:child_process";
 import type {
   ReviewCapture,
+  ReviewCapturedSource,
+  ReviewCommentAnchor,
   ReviewSourceProjection,
 } from "@yep-anywhere/shared";
-import { runGit } from "../git/gitExec.js";
+import { runGit, runGitBytes } from "../git/gitExec.js";
 import { HttpError } from "../middleware/error-handler.js";
 import {
   repositoryFilePath,
@@ -15,6 +17,9 @@ import {
 export const SOURCE_REVIEW_CAPTURE_REF =
   "refs/yep/source-review/captures" as const;
 const MAX_PIN_RETRIES = 12;
+const MAX_CAPTURE_SOURCE_BYTES = 1024 * 1024;
+const MAX_CAPTURE_EXCERPT_CHARS = 64 * 1024;
+const CAPTURE_CONTEXT_LINES = 6;
 const OBJECT_ID_RE = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 
 export class ReviewCaptureService {
@@ -44,6 +49,73 @@ export class ReviewCaptureService {
     };
   }
 
+  /** Read a bounded, binary-safe excerpt around the originally reviewed line. */
+  async readExcerpt(
+    projectPath: string,
+    capture: ReviewCapture,
+    anchor: ReviewCommentAnchor,
+  ): Promise<ReviewCapturedSource> {
+    if (capture.status === "legacy-missing") {
+      return { status: "legacy-missing" };
+    }
+    const captureBlobId = capture.captureBlobId;
+    try {
+      const { stdout: sizeText } = await runGit(projectPath, [
+        "cat-file",
+        "-s",
+        captureBlobId,
+      ]);
+      const size = Number(sizeText.trim());
+      if (!Number.isSafeInteger(size) || size < 0) {
+        return { status: "unavailable", captureBlobId, reason: "missing" };
+      }
+      if (size > MAX_CAPTURE_SOURCE_BYTES) {
+        return { status: "unavailable", captureBlobId, reason: "too-large" };
+      }
+      const { stdout } = await runGitBytes(
+        projectPath,
+        ["cat-file", "blob", captureBlobId],
+        { maxBuffer: MAX_CAPTURE_SOURCE_BYTES + 1 },
+      );
+      if (stdout.includes(0)) {
+        return { status: "unavailable", captureBlobId, reason: "binary" };
+      }
+      let text: string;
+      try {
+        text = new TextDecoder("utf-8", { fatal: true }).decode(stdout);
+      } catch {
+        return { status: "unavailable", captureBlobId, reason: "binary" };
+      }
+      const lines = text.split("\n");
+      const requestedLine =
+        (anchor.side === "old" ? anchor.oldLine : anchor.newLine) ??
+        anchor.newLine ??
+        anchor.oldLine ??
+        1;
+      const highlightLine = Math.min(
+        Math.max(1, requestedLine),
+        Math.max(1, lines.length),
+      );
+      const startIndex = Math.max(0, highlightLine - 1 - CAPTURE_CONTEXT_LINES);
+      const endIndex = Math.min(
+        lines.length,
+        highlightLine + CAPTURE_CONTEXT_LINES,
+      );
+      return {
+        status: "captured",
+        captureBlobId,
+        content: lines
+          .slice(startIndex, endIndex)
+          .join("\n")
+          .slice(0, MAX_CAPTURE_EXCERPT_CHARS),
+        startLine: startIndex + 1,
+        highlightLine,
+      };
+    } catch {
+      return { status: "unavailable", captureBlobId, reason: "missing" };
+    }
+  }
+
   /** Add a blob to the shared-worktree ref with compare-and-swap retries. */
   async pin(projectPath: string, blobId: string): Promise<void> {
     if (!OBJECT_ID_RE.test(blobId)) {
@@ -69,7 +141,9 @@ export class ReviewCaptureService {
         // A concurrent writer may have advanced the ref. Re-read and union.
       }
     }
-    throw new Error("Could not update the source-review capture ref after retries");
+    throw new Error(
+      "Could not update the source-review capture ref after retries",
+    );
   }
 }
 
@@ -80,7 +154,10 @@ async function resolveProjectionBlob(
   try {
     let stdout: string;
     if (projection.kind === "worktree") {
-      const absolutePath = await repositoryFilePath(projectPath, projection.path);
+      const absolutePath = await repositoryFilePath(
+        projectPath,
+        projection.path,
+      );
       ({ stdout } = await runGit(projectPath, [
         "hash-object",
         "-w",
@@ -101,7 +178,8 @@ async function resolveProjectionBlob(
       ]));
     }
     const blobId = stdout.trim();
-    if (!OBJECT_ID_RE.test(blobId)) throw new Error("git returned an invalid blob id");
+    if (!OBJECT_ID_RE.test(blobId))
+      throw new Error("git returned an invalid blob id");
     await assertBlob(projectPath, blobId);
     return blobId;
   } catch (error) {

@@ -5,9 +5,11 @@ import type { ReviewComment } from "@yep-anywhere/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const deleteReviewComment = vi.fn();
+const updateReviewComment = vi.fn();
 vi.mock("../api/client", () => ({
   api: {
     deleteReviewComment: (...args: unknown[]) => deleteReviewComment(...args),
+    updateReviewComment: (...args: unknown[]) => updateReviewComment(...args),
   },
 }));
 
@@ -95,6 +97,32 @@ describe("ReviewCommentsPanel", () => {
     fireEvent.click(screen.getByText("sourceReviewDeleteConfirm"));
     await screen.findByText("sourceReviewDelete");
     expect(deleteReviewComment).toHaveBeenCalledWith("p1", "c1");
+  });
+
+  it("edits a pending comment in place", async () => {
+    updateReviewComment.mockResolvedValue({
+      comment: { ...comment("c1"), text: "updated" },
+    });
+    render(
+      <ReviewCommentsPanel
+        projectId="p1"
+        pending={[comment("c1")]}
+        onOpenFile={vi.fn()}
+        onSubmit={vi.fn()}
+        t={t}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("sourceReviewEdit"));
+    fireEvent.change(screen.getByLabelText("sourceReviewEditComment"), {
+      target: { value: "updated feedback" },
+    });
+    fireEvent.click(screen.getByText("sourceReviewSaveEdit"));
+
+    await screen.findByText("comment c1");
+    expect(updateReviewComment).toHaveBeenCalledWith("p1", "c1", {
+      text: "updated feedback",
+    });
   });
 
   it("shows the empty state with the how-to hint", () => {

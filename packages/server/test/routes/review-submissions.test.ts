@@ -1,16 +1,21 @@
+import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import type { ReviewCommentAnchor } from "@yep-anywhere/shared";
 import { toUrlProjectId } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ProjectScanner } from "../../src/projects/scanner.js";
 import { ReviewCommentService } from "../../src/review/ReviewCommentService.js";
+import { ReviewCaptureService } from "../../src/review/ReviewCaptureService.js";
 import { createReviewInboxRoutes } from "../../src/routes/review-inbox.js";
 import { createReviewSubmissionsRoutes } from "../../src/routes/review-submissions.js";
 import type { Project } from "../../src/supervisor/types.js";
 
-function anchor(): ReviewCommentAnchor {
+const execFileAsync = promisify(execFile);
+
+function anchor(captured = false): ReviewCommentAnchor {
   return {
     path: "src/a.ts",
     revision: { kind: "uncommitted", savedAt: "2026-08-01T00:00:00Z" },
@@ -18,6 +23,15 @@ function anchor(): ReviewCommentAnchor {
     oldLine: null,
     newLine: 3,
     snippet: "line",
+    ...(captured
+      ? {
+          projection: {
+            kind: "worktree" as const,
+            path: "src/a.ts",
+            side: "new" as const,
+          },
+        }
+      : {}),
   };
 }
 
@@ -40,6 +54,7 @@ describe("review submission routes", () => {
   let project: Project;
   let scanner: ProjectScanner;
   let service: ReviewCommentService;
+  let captureService: ReviewCaptureService;
 
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), "yep-review-submission-route-"));
@@ -52,7 +67,21 @@ describe("review submission routes", () => {
         return [project];
       },
     } as unknown as ProjectScanner;
-    service = new ReviewCommentService();
+    await execFileAsync("git", ["-C", dir, "init"]);
+    await execFileAsync("git", [
+      "-C",
+      dir,
+      "config",
+      "user.email",
+      "test@example.com",
+    ]);
+    await execFileAsync("git", ["-C", dir, "config", "user.name", "Test"]);
+    await mkdir(join(dir, "src"), { recursive: true });
+    await writeFile(join(dir, "src", "a.ts"), "before\nother\nline\nafter\n");
+    await execFileAsync("git", ["-C", dir, "add", "--", "src/a.ts"]);
+    await execFileAsync("git", ["-C", dir, "commit", "-m", "fixture"]);
+    captureService = new ReviewCaptureService();
+    service = new ReviewCommentService({ captureWriter: captureService });
   });
 
   afterEach(async () => {
@@ -71,6 +100,7 @@ describe("review submission routes", () => {
     const routes = createReviewSubmissionsRoutes({
       scanner,
       service,
+      captureReader: captureService,
       isEnabled: () => true,
     });
 
@@ -107,6 +137,7 @@ describe("review submission routes", () => {
     const routes = createReviewSubmissionsRoutes({
       scanner,
       service,
+      captureReader: captureService,
       isEnabled: () => true,
     });
 
@@ -121,14 +152,35 @@ describe("review submission routes", () => {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ anchor: anchor(), text: "please revisit" }),
+        body: JSON.stringify({ text: "please revisit" }),
       },
     );
     expect(followUp.status).toBe(201);
     const store = await service.getStoreFile(dir);
     expect(store.sites[0]?.entries).toHaveLength(2);
+    expect(store.sites[0]?.entries[1]?.capture.status).toBe("captured");
     expect(store.sites[0]?.resolvedAt).toBeUndefined();
     expect(store.drafts).toHaveLength(1);
+
+    await expect(service.resolveSite(dir, siteId)).rejects.toMatchObject({
+      status: 409,
+    });
+
+    const detail = await routes.request(
+      `/${project.id}/review/submissions/${batch.id}`,
+    );
+    expect(await detail.json()).toMatchObject({
+      capturedSources: [
+        { source: { status: "legacy-missing" } },
+        {
+          entryId: store.sites[0]?.entries[1]?.id,
+          source: {
+            status: "captured",
+            content: expect.stringContaining("line"),
+          },
+        },
+      ],
+    });
 
     const acknowledged = await routes.request(
       `/${project.id}/review/submissions/${batch.id}/acknowledge`,
@@ -141,11 +193,10 @@ describe("review submission routes", () => {
     const routes = createReviewSubmissionsRoutes({
       scanner,
       service,
+      captureReader: captureService,
       isEnabled: () => false,
     });
-    const response = await routes.request(
-      `/${project.id}/review/submissions`,
-    );
+    const response = await routes.request(`/${project.id}/review/submissions`);
     expect(response.status).toBe(409);
   });
 

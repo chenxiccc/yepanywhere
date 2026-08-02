@@ -63,16 +63,27 @@
   white-space: nowrap;
 }
 
-.delete {
+.rowActions {
+  display: flex;
+  gap: var(--space-1, 4px);
   margin-left: auto;
+}
+
+.edit,
+.delete {
   padding: 2px 8px;
-  font-size: 0.75rem;
   color: var(--text-secondary, #8b949e);
+  font-size: 0.75rem;
+  white-space: nowrap;
+  cursor: pointer;
   background: transparent;
   border: 1px solid var(--border-subtle, #21262d);
   border-radius: var(--radius-sm, 4px);
-  cursor: pointer;
-  white-space: nowrap;
+}
+
+.edit:hover {
+  color: var(--text-primary, #e6edf3);
+  border-color: var(--accent-color);
 }
 
 .delete:hover {
@@ -85,6 +96,32 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   color: var(--text-primary, #e6edf3);
+}
+
+.editor {
+  display: grid;
+  gap: var(--space-2, 8px);
+  margin-top: var(--space-2, 8px);
+}
+
+.editor textarea {
+  min-height: 6rem;
+  padding: var(--space-2, 8px);
+  color: var(--text-primary, #e6edf3);
+  resize: vertical;
+  background: var(--bg-input, var(--bg-primary));
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm, 4px);
+}
+
+.editorActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2, 8px);
+}
+
+.error {
+  color: var(--error-color);
 }
 
 .actions {

@@ -814,8 +814,7 @@ function GitStatusContent({
         />
       ) : tab === "reviews" ? (
         <ReviewSubmissionsPanel
-          batches={reviewComments.batches}
-          archived={reviewComments.archived}
+          projectId={projectId}
           sessionHref={(sessionId) =>
             `${basePath}/projects/${projectId}/sessions/${sessionId}`
           }

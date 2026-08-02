@@ -1589,8 +1589,9 @@ export function createApp(options: AppOptions): AppResult {
   app.route("/api/projects", createGitProjectionRoutes({ scanner }));
 
   // Source-review draft comments (topic: source-review-to-session)
+  const reviewCaptureService = new ReviewCaptureService();
   const reviewCommentService = new ReviewCommentService({
-    captureWriter: new ReviewCaptureService(),
+    captureWriter: reviewCaptureService,
   });
   const sourceReviewSubmissionsEnabled = () =>
     options.serverSettingsService?.getSetting(
@@ -1626,6 +1627,7 @@ export function createApp(options: AppOptions): AppResult {
     createReviewSubmissionsRoutes({
       scanner,
       service: reviewCommentService,
+      captureReader: reviewCaptureService,
       isEnabled: sourceReviewSubmissionsEnabled,
     }),
   );

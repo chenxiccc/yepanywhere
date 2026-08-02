@@ -31,6 +31,8 @@ export function ReviewCommentsPanel({
 }) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editText, setEditText] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const handleDelete = async (id: string) => {
@@ -44,10 +46,31 @@ export function ReviewCommentsPanel({
       await api.deleteReviewComment(projectId, id);
       notifyReviewCommentsChanged(projectId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete");
+      setError(
+        err instanceof Error ? err.message : t("sourceReviewDeleteFailed"),
+      );
     } finally {
       setBusyId(null);
       setConfirmId(null);
+    }
+  };
+
+  const handleSave = async (id: string) => {
+    const text = editText.trim();
+    if (!text) return;
+    setBusyId(id);
+    setError(null);
+    try {
+      await api.updateReviewComment(projectId, id, { text });
+      notifyReviewCommentsChanged(projectId);
+      setEditId(null);
+      setEditText("");
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : t("sourceReviewEditFailed"),
+      );
+    } finally {
+      setBusyId(null);
     }
   };
 
@@ -64,7 +87,7 @@ export function ReviewCommentsPanel({
 
   return (
     <section className={styles.panel}>
-      {error && <div className="review-submit-error">{error}</div>}
+      {error && <div className={styles.error}>{error}</div>}
       <ul className={styles.list}>
         {pending.map((comment) => (
           <li key={comment.id} className={styles.row}>
@@ -80,18 +103,61 @@ export function ReviewCommentsPanel({
               <span className={styles.revision}>
                 {revisionLabel(comment, t)}
               </span>
-              <button
-                type="button"
-                className={styles.delete}
-                disabled={busyId === comment.id}
-                onClick={() => void handleDelete(comment.id)}
-              >
-                {confirmId === comment.id
-                  ? t("sourceReviewDeleteConfirm")
-                  : t("sourceReviewDelete")}
-              </button>
+              <div className={styles.rowActions}>
+                <button
+                  type="button"
+                  className={styles.edit}
+                  disabled={busyId === comment.id}
+                  onClick={() => {
+                    setEditId(comment.id);
+                    setEditText(comment.text);
+                    setConfirmId(null);
+                  }}
+                >
+                  {t("sourceReviewEdit")}
+                </button>
+                <button
+                  type="button"
+                  className={styles.delete}
+                  disabled={busyId === comment.id}
+                  onClick={() => void handleDelete(comment.id)}
+                >
+                  {confirmId === comment.id
+                    ? t("sourceReviewDeleteConfirm")
+                    : t("sourceReviewDelete")}
+                </button>
+              </div>
             </div>
-            <div className={styles.text}>{comment.text}</div>
+            {editId === comment.id ? (
+              <div className={styles.editor}>
+                <textarea
+                  aria-label={t("sourceReviewEditComment")}
+                  value={editText}
+                  maxLength={20_000}
+                  onChange={(event) => setEditText(event.target.value)}
+                />
+                <div className={styles.editorActions}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditId(null);
+                      setEditText("");
+                    }}
+                  >
+                    {t("cancel")}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busyId === comment.id || !editText.trim()}
+                    onClick={() => void handleSave(comment.id)}
+                  >
+                    {t("sourceReviewSaveEdit")}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className={styles.text}>{comment.text}</div>
+            )}
           </li>
         ))}
       </ul>
