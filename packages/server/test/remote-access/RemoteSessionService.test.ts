@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { encrypt } from "../../src/crypto/nacl-wrapper.js";
 import { RemoteSessionService } from "../../src/remote-access/RemoteSessionService.js";
 
@@ -140,6 +140,7 @@ describe("RemoteSessionService", () => {
     });
 
     it("rejects proof with old timestamp", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
       const sessionKey = new Uint8Array(32).fill(0x42);
       const sessionId = await service.createSession("testuser", sessionKey);
       const challenge = "test-challenge";
@@ -160,6 +161,10 @@ describe("RemoteSessionService", () => {
         challenge,
       );
       expect(validatedSession).toBeNull();
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining("Resume proof rejected due to timestamp skew"),
+      );
+      warn.mockRestore();
     });
 
     it("accepts proof within the 5 minute skew window", async () => {
@@ -326,9 +331,32 @@ describe("RemoteSessionService", () => {
   });
 
   describe("persistence", () => {
-    it("does not persist sessions to disk by default", async () => {
+    it("never writes session credentials in default in-memory mode", async () => {
       const sessionKey = new Uint8Array(32).fill(0x42);
       const sessionId = await service.createSession("testuser", sessionKey);
+      const filePath = path.join(testDir, "remote-sessions.json");
+
+      await expect(fs.stat(filePath)).rejects.toMatchObject({ code: "ENOENT" });
+
+      const challenge = "in-memory-persistence-check";
+      const proofData = JSON.stringify({
+        timestamp: Date.now(),
+        sessionId,
+        challenge,
+      });
+      const { nonce, ciphertext } = encrypt(proofData, sessionKey);
+      await service.validateProof(
+        sessionId,
+        JSON.stringify({ nonce, ciphertext }),
+        challenge,
+      );
+      await service.updateLastConnected(sessionId);
+
+      await expect(fs.stat(filePath)).rejects.toMatchObject({ code: "ENOENT" });
+
+      await service.deleteSession(sessionId);
+
+      await expect(fs.stat(filePath)).rejects.toMatchObject({ code: "ENOENT" });
 
       // Shutdown current service
       service.shutdown();

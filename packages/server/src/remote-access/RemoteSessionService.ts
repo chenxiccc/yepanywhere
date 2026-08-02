@@ -471,6 +471,10 @@ export class RemoteSessionService {
   }
 
   private async doSave(): Promise<void> {
+    if (!this.persistSessionsToDisk) {
+      return;
+    }
+
     const content = JSON.stringify(this.state, null, 2);
     await fs.writeFile(this.filePath, content, {
       encoding: "utf-8",
