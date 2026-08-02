@@ -225,26 +225,29 @@ it. An immediate development reload therefore interrupts an active turn;
 **Reload When Safe** avoids the interruption only by waiting for active work
 and volatile queues to drain.
 
-**Proposal.** Let the stable `scripts/dev.js` wrapper own a small provider
-runtime host. The replacement server reattaches by canonical YA session id,
-control epoch, and event cursor. Start with a Linux-only Codex experiment using
-the pinned app-server's supported Unix-socket transport and running-thread
-rejoin behavior; keep safe restart everywhere the capability is absent. See
+**Proposal.** Behind a default-off Codex provider setting, let the stable
+`scripts/dev.js` wrapper own a Linux-only lifecycle host with one private Unix-
+socket app-server per eligible session. A replacement Hono generation
+reattaches directly through native running-thread resume; explicit HUP/API
+reload preserves the runtime, while terminal wrapper shutdown and owner loss
+use bounded verified reaping. Keep safe restart everywhere the capability is
+absent. See
 [`topics/reload-safe-provider-runtimes.md`](topics/reload-safe-provider-runtimes.md).
 
-**Cost.** Cross-process discovery, replay, snapshots, approval preservation,
-single-controller fencing, runtime generations, sandbox isolation, and bounded
-idle teardown. Providers without a reconnectable native service require a YA
-worker that owns their SDK object, not merely a detached CLI PID.
+**Cost.** Cross-process discovery, native snapshot reconciliation, approval
+preservation, single-controller fencing, sandbox isolation, wrapper/host
+failure handling, and bounded idle/terminal teardown. Providers without a
+reconnectable native service would require a later YA worker that owns their
+SDK object, not merely a detached CLI PID.
 
 **Benefit.** The development backend can load changed code immediately without
 stopping eligible active agent turns, then reconstruct the same visible YA
 session when it returns.
 
-**Trigger.** The narrow Codex experiment is triggered by an observed reload
-interruption and verified upstream rejoin support. A general provider-runtime
-extraction waits for that smoke test and separate provider-specific continuity
-proofs.
+**Trigger.** The default-off Codex implementation is approved after an observed
+reload interruption, verified upstream rejoin support, and lifecycle review. A
+general provider-runtime extraction waits for the Codex smoke and separate
+provider-specific continuity proofs.
 
 ### Outbound buffering / per-listener async dispatch
 
