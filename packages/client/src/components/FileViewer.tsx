@@ -695,8 +695,18 @@ export const FileViewer = memo(function FileViewer({
             data-language={fileData.highlightedLanguage ?? language}
             style={sourceStyle}
           >
+            {/* Source content carries project-path links too, so it needs the
+                same interception the Markdown preview has — otherwise a path
+                inside a JSON manifest would navigate away from the viewer
+                instead of opening beside it. The handlers delegate to the
+                anchors inside, which carry their own roles and keyboard
+                behaviour. */}
+            {/* biome-ignore lint/a11y/noStaticElementInteractions: delegation target for anchors in server-rendered HTML */}
             <div
               className="shiki-container"
+              onClick={handleLocalResourceClick}
+              onContextMenu={handleLocalResourceContextMenu}
+              onKeyDown={handleLocalResourceKeyDown}
               // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered HTML
               dangerouslySetInnerHTML={{ __html: highlightedHtml }}
             />

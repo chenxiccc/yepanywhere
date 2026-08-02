@@ -21,6 +21,8 @@ import { Hono } from "hono";
 import { computeEditAugment } from "../augments/edit-augments.js";
 import { renderMarkdownFilePreview } from "../augments/markdown-file-preview.js";
 import { highlightFile } from "../highlighting/index.js";
+import { linkifyProjectPaths } from "../augments/project-path-links.js";
+import { getProjectPathIndex } from "../projects/projectPathIndex.js";
 import type { ProjectScanner } from "../projects/scanner.js";
 import { isLikelyUtf8Text } from "../utils/utf8Text.js";
 import { createLocalResourcePathPolicy } from "./local-resource-policy.js";
@@ -908,7 +910,15 @@ export function createFilesRoutes(deps: FilesDeps): Hono {
         if (highlight) {
           const result = await highlightFile(content, relativePath);
           if (result) {
-            response.highlightedHtml = result.html;
+            // A path in this file's text is a link when it names a real file
+            // here, so an agent handing over a JSON manifest of run outputs
+            // becomes navigable without the reader copying paths out.
+            const pathIndex = await getProjectPathIndex(projectRoot);
+            response.highlightedHtml = linkifyProjectPaths(result.html, {
+              projectPath: projectRoot,
+              index: pathIndex,
+              selfRelativePath: relativePath,
+            });
             response.highlightedLanguage = result.language;
             response.highlightedTruncated = result.truncated;
           }
