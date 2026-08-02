@@ -15736,16 +15736,6 @@ body:has(.session-page)
   color: var(--bg-primary);
 }
 
-.diff-context-toggle.diff-ignore-whitespace-toggle.active {
-  color: var(--accent-color);
-  background: color-mix(in srgb, var(--accent-color) 11%, transparent);
-  border-color: color-mix(
-    in srgb,
-    var(--accent-color) 42%,
-    var(--border-color)
-  );
-}
-
 .git-diff-empty-projection {
   padding: var(--space-6) var(--space-4);
   color: var(--text-muted);

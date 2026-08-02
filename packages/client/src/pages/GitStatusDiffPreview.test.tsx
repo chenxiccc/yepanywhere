@@ -12,10 +12,11 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const getGitDiff = vi.fn();
 const listReviewComments = vi.fn();
+const originalScrollIntoView = Element.prototype.scrollIntoView;
 vi.mock("../api/client", () => ({
   api: {
     getGitDiff: (...args: unknown[]) => getGitDiff(...args),
@@ -53,7 +54,23 @@ function result(line: string): GitDiffResult {
 }
 
 describe("GitDiffBody", () => {
+  beforeEach(() => {
+    Object.defineProperty(Element.prototype, "scrollIntoView", {
+      configurable: true,
+      value: vi.fn(),
+    });
+  });
+
   afterEach(() => {
+    if (originalScrollIntoView) {
+      Object.defineProperty(Element.prototype, "scrollIntoView", {
+        configurable: true,
+        value: originalScrollIntoView,
+      });
+    } else {
+      delete (Element.prototype as { scrollIntoView?: unknown })
+        .scrollIntoView;
+    }
     cleanup();
     vi.clearAllMocks();
   });
@@ -153,7 +170,7 @@ describe("GitDiffBody", () => {
     expect(
       screen.getByRole("button", { name: "gitStatusIgnoreWhitespace" })
         .textContent,
-    ).toBe("␠");
+    ).toBe("␣");
     expect(
       screen.getByRole("button", { name: "gitStatusFullContext" }).textContent,
     ).toBe("");

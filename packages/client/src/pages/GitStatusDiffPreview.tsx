@@ -900,7 +900,7 @@ function GitDiffContent({
       {onToggleIgnoreWhitespace && (
         <button
           type="button"
-          className={`diff-context-toggle diff-toolbar-icon-button diff-ignore-whitespace-toggle ${
+          className={`diff-context-toggle diff-toolbar-icon-button ${
             ignoreWhitespace ? "active" : ""
           }`}
           onClick={onToggleIgnoreWhitespace}
@@ -909,7 +909,7 @@ function GitDiffContent({
           aria-pressed={ignoreWhitespace}
         >
           <span className="diff-whitespace-glyph" aria-hidden="true">
-            ␠
+            ␣
           </span>
         </button>
       )}
