@@ -158,7 +158,7 @@ server-configuration slice rather than a hidden test-driven migration.
 | Prove native session resume | complete | A second Pixel socket authenticates the challenge-bound server proof and exchanges traffic under a fresh transport key |
 | Prove physical-device teardown | complete | The client returns after close; the server records disconnect before resume opens and after resume closes, with no retry owner |
 | Review the native crypto checkpoint | complete | Maintainer approved the selected foundation and direct-session result on 2026-08-02 |
-| Persist paired-server resume state | ready | Keystore/DataStore boundaries, backup exclusion, expiry, forget, and password re-entry behavior are tested |
+| Persist paired-server resume state | complete | Versioned DataStore metadata, Keystore AES-GCM credentials, local expiry, invalidation, restart, forget, and backup exclusion are covered |
 | Turn the probe into a connection manager | ready | Leased request/subscription ownership, cancellation, reconnect bounds, and final-owner teardown are tested |
 | Add the native relay route | ready after manager | Same core negotiates through deployed legacy relay `/ws`; outer relay `/mux` remains independently capability-gated |
 | Add explicit direct route selection | ready after manager | Resume-authenticated candidates and explicit SRP reauthentication preserve one local profile with deterministic cancellation |
@@ -331,3 +331,21 @@ instrument`, avoiding Gradle's configuration-cache warning for arbitrary
 command-line instrumentation arguments. The cleartext allowance exists only in
 that explicitly opted-in debug build for host-loopback `adb reverse`; release
 manifests remain HTTPS-only.
+
+## Paired-Server Storage Evidence — 2026-08-02
+
+- Android stores versioned paired-server metadata in Preferences DataStore and
+  keeps the resume session id and base key inside an AES-256-GCM envelope whose
+  key lives in Android Keystore.
+- The local profile id is AES-GCM additional authenticated data. The Pixel test
+  confirms that moving an envelope to another profile makes it undecryptable.
+- The Pixel test inspects the DataStore file, confirms it contains neither the
+  plaintext session id nor base64 base key, closes the process-owned store,
+  reloads the credential, clears it for reauthentication, and forgets the
+  complete profile.
+- Updating a profile to a different SRP username removes its old credential.
+  Missing, malformed, or undecryptable credentials surface as reauthentication
+  without deleting non-secret profile metadata.
+- Kotlin JVM tests cover exact idle and absolute eligibility boundaries. The
+  existing release manifest disables backup and excludes every app storage
+  domain from cloud backup and device transfer.

@@ -179,6 +179,28 @@ ownership model with Keychain-backed storage.
 The native store is independent of browser `localStorage`. Native Compose and
 background operation must never require a WebView profile to exist.
 
+### Android storage contract
+
+Android persists versioned, non-secret paired-server metadata in one
+Preferences DataStore. Each resume credential is serialized separately and
+encrypted with AES-256-GCM under an app-owned Android Keystore key. The local
+profile id is authenticated as additional data, so an encrypted credential
+cannot be reassigned to a different profile. Neither the SRP password nor a
+plaintext resume session id or base key is written to app storage.
+
+The current Android manifest excludes all app domains from cloud backup and
+device transfer. Process restart reopens the same DataStore and Keystore key.
+Missing keys, malformed ciphertext, profile/credential username mismatch, and
+explicit resume rejection all make the profile require visible SRP
+reauthentication; they do not delete the paired-server metadata. Forgetting a
+profile atomically removes its metadata, encrypted credential, and selection.
+
+Android uses the current seven-day idle and thirty-day absolute server limits
+as a conservative local eligibility check before resume. The server remains
+authoritative: restart, explicit logout, password change, session eviction, or
+future policy may invalidate the credential sooner. A successful resume must
+advance the stored last-resumed timestamp.
+
 ## Kotlin Connection Core
 
 The Android-native core owns, per paired server:
