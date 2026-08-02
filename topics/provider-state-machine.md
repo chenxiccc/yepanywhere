@@ -17,6 +17,13 @@ are valid in each state.
 - `isCompacting` (`system` status subtype `status` + `status=compacting`)
 - `status.owner` (`self` / `external` / `none`) for action availability
 
+Navigation status is only an optimistic bootstrap hint for a newly started
+session. It may establish ownership and open the live stream, but it is not
+durable evidence that a turn is still active. After the initial session-detail
+load, the client must reconcile current ownership and `processState` even when
+the process remains self-owned; browser history can replay an old navigation
+hint after that process has become idle.
+
 `terminated` is a derived/diagnostic condition for unhealthy termination; it is
 shown through liveness status (`needs-attention`) and server recovery workflows
 rather than as a first-class interactive state.

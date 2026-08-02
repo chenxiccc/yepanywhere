@@ -12,6 +12,7 @@ import type {
 import { sessionModelPick } from "../../lib/sessionPickStorage";
 import type { SessionStatus } from "../../types";
 import { __resetAwayRecapTimersForTest, useSession } from "../useSession";
+import type { SessionLoadResult } from "../useSessionMessages";
 
 const apiMocks = vi.hoisted(() => ({
   getAgentMappings: vi.fn(),
@@ -55,6 +56,12 @@ let streamingContentOptions:
         agentId: string,
         usage: { inputTokens: number; percentage: number },
       ) => void;
+    }
+  | undefined;
+
+let sessionMessagesOptions:
+  | {
+      onLoadComplete?: (result: SessionLoadResult) => void;
     }
   | undefined;
 
@@ -136,38 +143,41 @@ function installVisibilityStateMock(initial: DocumentVisibilityState) {
 }
 
 vi.mock("../useSessionMessages", () => ({
-  useSessionMessages: vi.fn(() => ({
-    messages: sessionMessagesMock.messages,
-    agentContent: {},
-    toolUseToAgent: new Map(),
-    loading: false,
-    sessionLoadProgress: {
-      stage: "complete",
-      messageCount: sessionMessagesMock.messages.length,
-      updatedAtMs: 0,
-    },
-    session: {
-      id: "sess-1",
-      projectId: "proj-1",
-      provider: sessionMessagesMock.provider,
-      model: "gpt-5.4",
-      messages: [],
-    },
-    updateSession,
-    handleStreamingUpdate: vi.fn(),
-    handleStreamMessageEvent: vi.fn(),
-    handleStreamSubagentMessage,
-    registerToolUseAgent,
-    mergeLoadedAgentContent,
-    updateAgentContextUsage,
-    clearAgentStreamingPlaceholders,
-    clearStreamingPlaceholders,
-    fetchNewMessages,
-    fetchSessionMetadata,
-    pagination: undefined,
-    loadingOlder: false,
-    loadOlderMessages: vi.fn(async () => {}),
-  })),
+  useSessionMessages: vi.fn((options) => {
+    sessionMessagesOptions = options;
+    return {
+      messages: sessionMessagesMock.messages,
+      agentContent: {},
+      toolUseToAgent: new Map(),
+      loading: false,
+      sessionLoadProgress: {
+        stage: "complete",
+        messageCount: sessionMessagesMock.messages.length,
+        updatedAtMs: 0,
+      },
+      session: {
+        id: "sess-1",
+        projectId: "proj-1",
+        provider: sessionMessagesMock.provider,
+        model: "gpt-5.4",
+        messages: [],
+      },
+      updateSession,
+      handleStreamingUpdate: vi.fn(),
+      handleStreamMessageEvent: vi.fn(),
+      handleStreamSubagentMessage,
+      registerToolUseAgent,
+      mergeLoadedAgentContent,
+      updateAgentContextUsage,
+      clearAgentStreamingPlaceholders,
+      clearStreamingPlaceholders,
+      fetchNewMessages,
+      fetchSessionMetadata,
+      pagination: undefined,
+      loadingOlder: false,
+      loadOlderMessages: vi.fn(async () => {}),
+    };
+  }),
 }));
 
 vi.mock("../../api/client", () => ({
@@ -227,6 +237,7 @@ describe("useSession completion reconciliation", () => {
     });
     installLocalStorageMock();
     fileActivityOptions = undefined;
+    sessionMessagesOptions = undefined;
     sessionStreamHandler = null;
     streamingContentOptions = undefined;
     sessionMessagesMock.messages = [];
@@ -605,6 +616,108 @@ describe("useSession completion reconciliation", () => {
     });
     expect(result.current.processState).toBe("idle");
     expect(fetchNewMessages).toHaveBeenCalledTimes(1);
+  });
+
+  it("reconciles a replayed busy navigation hint with retained idle state", async () => {
+    apiMocks.getSessionMetadata.mockResolvedValue({
+      session: {},
+      ownership: {
+        owner: "self",
+        processId: "proc-1",
+      },
+      processState: "idle",
+      pendingInputRequest: null,
+    });
+    const { result } = renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+
+    expect(result.current.processState).toBe("in-turn");
+
+    await act(async () => {
+      sessionMessagesOptions?.onLoadComplete?.({
+        session: {
+          id: "sess-1",
+          projectId: PROJECT_ID,
+          title: null,
+          fullTitle: null,
+          createdAt: "2026-04-23T23:00:00.000Z",
+          updatedAt: "2026-04-24T00:00:00.000Z",
+          messageCount: 1,
+          ownership: { owner: "self", processId: "proc-1" },
+          provider: "codex",
+        },
+        status: { owner: "self", processId: "proc-1" },
+      });
+      await Promise.resolve();
+    });
+
+    expect(apiMocks.getSessionMetadata).toHaveBeenCalledWith(
+      PROJECT_ID,
+      "sess-1",
+    );
+    expect(result.current.processState).toBe("idle");
+  });
+
+  it("keeps a newer live snapshot over initial runtime reconciliation", async () => {
+    let resolveMetadata:
+      | ((value: {
+          session: Record<string, never>;
+          ownership: { owner: "self"; processId: string };
+          processState: "idle";
+          pendingInputRequest: null;
+        }) => void)
+      | undefined;
+    apiMocks.getSessionMetadata.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveMetadata = resolve;
+        }),
+    );
+    const { result } = renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+
+    act(() => {
+      sessionMessagesOptions?.onLoadComplete?.({
+        session: {
+          id: "sess-1",
+          projectId: PROJECT_ID,
+          title: null,
+          fullTitle: null,
+          createdAt: "2026-04-23T23:00:00.000Z",
+          updatedAt: "2026-04-24T00:00:00.000Z",
+          messageCount: 1,
+          ownership: { owner: "self", processId: "proc-1" },
+          provider: "codex",
+        },
+        status: { owner: "self", processId: "proc-1" },
+      });
+    });
+
+    await act(async () => {
+      sessionStreamHandler?.({
+        eventType: "connected",
+        sessionId: "sess-1",
+        state: "in-turn",
+        provider: "codex",
+      });
+      resolveMetadata?.({
+        session: {},
+        ownership: { owner: "self", processId: "proc-1" },
+        processState: "idle",
+        pendingInputRequest: null,
+      });
+      await Promise.resolve();
+    });
+
+    expect(result.current.processState).toBe("in-turn");
   });
 
   it("clears compacting state when reconnect reports no owner", async () => {

@@ -481,6 +481,7 @@ export function useSession(
   const [processState, setProcessState] = useState<ProcessState>(
     initialStatus ? "in-turn" : "idle",
   );
+  const hasOptimisticInitialStatus = initialStatus !== undefined;
   const [pendingInputRequest, setPendingInputRequest] =
     useState<InputRequest | null>(null);
   const [error, setError] = useState<Error | null>(null);
@@ -800,6 +801,44 @@ export function useSession(
     [sessionId],
   );
 
+  const reconcileSessionRuntime = useCallback(async (options?: {
+    ignoreIfLiveSnapshotHandled?: boolean;
+  }) => {
+    const data = await api.getSessionMetadata(projectId, sessionId);
+    if (
+      options?.ignoreIfLiveSnapshotHandled &&
+      hasHandledConnectedEventRef.current
+    ) {
+      return;
+    }
+    reportProviderRuntimeStatus(sessionId, data.providerRuntimeStatus);
+    const metadataProcessState = parseProcessState(data.processState);
+    setStatus(data.ownership);
+    if (metadataProcessState) {
+      setProcessState(metadataProcessState);
+    }
+    if (data.ownership.owner === "none") {
+      setProcessState("idle");
+      setPendingInputRequest(null);
+    } else if (
+      metadataProcessState === "waiting-input" &&
+      data.pendingInputRequest
+    ) {
+      setPendingInputRequest(data.pendingInputRequest);
+    } else if (
+      metadataProcessState &&
+      metadataProcessState !== "waiting-input"
+    ) {
+      setPendingInputRequest(null);
+    }
+    setDeferredMessages(data.deferredMessages ?? []);
+  }, [
+    projectId,
+    reportProviderRuntimeStatus,
+    sessionId,
+    setDeferredMessages,
+  ]);
+
   // Handle initial load completion from useSessionMessages
   const handleLoadComplete = useCallback(
     (result: SessionLoadResult) => {
@@ -840,6 +879,20 @@ export function useSession(
       setSlashCommands(result.slashCommands ?? []);
       setDeferredMessages(result.deferredMessages ?? []);
 
+      // Navigation status is an optimistic seed for a newly started session.
+      // Browser history can later replay that same seed after the process has
+      // become idle, while the full session-detail response carries ownership
+      // but not process state. Reconcile through the lightweight runtime
+      // snapshot so a missed stream/activity event cannot leave false activity.
+      if (
+        hasOptimisticInitialStatus &&
+        !hasHandledConnectedEventRef.current
+      ) {
+        void reconcileSessionRuntime({
+          ignoreIfLiveSnapshotHandled: true,
+        }).catch(() => {});
+      }
+
       // Focusing a non-running session: its list/hover preview gets no live
       // session-updated events, so recompute it once (the server pushes the
       // result). Owned/external sessions are tracked live. See
@@ -848,7 +901,14 @@ export function useSession(
         void api.refreshSessionPreview(projectId, sessionId).catch(() => {});
       }
     },
-    [applyServerModeUpdate, projectId, sessionId, setDeferredMessages],
+    [
+      applyServerModeUpdate,
+      hasOptimisticInitialStatus,
+      projectId,
+      reconcileSessionRuntime,
+      sessionId,
+      setDeferredMessages,
+    ],
   );
 
   // Handle initial load error
@@ -1398,38 +1458,11 @@ export function useSession(
   const handleActivityReconnect = useCallback(async () => {
     fetchNewMessages();
     try {
-      const data = await api.getSessionMetadata(projectId, sessionId);
-      reportProviderRuntimeStatus(sessionId, data.providerRuntimeStatus);
-      const metadataProcessState = parseProcessState(data.processState);
-      setStatus(data.ownership);
-      if (metadataProcessState) {
-        setProcessState(metadataProcessState);
-      }
-      if (data.ownership.owner === "none") {
-        setProcessState("idle");
-        setPendingInputRequest(null);
-      } else if (
-        metadataProcessState === "waiting-input" &&
-        data.pendingInputRequest
-      ) {
-        setPendingInputRequest(data.pendingInputRequest);
-      } else if (
-        metadataProcessState &&
-        metadataProcessState !== "waiting-input"
-      ) {
-        setPendingInputRequest(null);
-      }
-      setDeferredMessages(data.deferredMessages ?? []);
+      await reconcileSessionRuntime();
     } catch {
       // Silent fail - non-critical
     }
-  }, [
-    projectId,
-    sessionId,
-    fetchNewMessages,
-    reportProviderRuntimeStatus,
-    setDeferredMessages,
-  ]);
+  }, [fetchNewMessages, reconcileSessionRuntime]);
 
   useFileActivity({
     onSessionStatusChange: handleSessionStatusChange,
