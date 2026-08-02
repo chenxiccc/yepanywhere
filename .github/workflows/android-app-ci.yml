@@ -6,7 +6,9 @@ on:
     paths:
       - 'packages/android/**'
       - 'packages/client/**'
+      - 'packages/server/src/crypto/**'
       - 'packages/shared/**'
+      - 'scripts/android-secure-interop-fixture.ts'
       - 'package.json'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
@@ -16,7 +18,9 @@ on:
     paths:
       - 'packages/android/**'
       - 'packages/client/**'
+      - 'packages/server/src/crypto/**'
       - 'packages/shared/**'
+      - 'scripts/android-secure-interop-fixture.ts'
       - 'package.json'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
@@ -76,6 +80,9 @@ jobs:
         run: >-
           pnpm --filter @yep-anywhere/client exec vitest run
           src/lib/__tests__/nativeHost.test.ts
+
+      - name: Verify native secure-transport fixtures
+        run: pnpm android:interop:check
 
       - name: Prepare bundled client assets
         run: pnpm --filter @yep-anywhere/android prepare-frontend

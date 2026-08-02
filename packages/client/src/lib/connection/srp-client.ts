@@ -1,7 +1,7 @@
 /**
  * SRP-6a client helpers for remote access authentication.
  *
- * Uses tssrp6a library with 2048-bit prime group and SHA-256.
+ * Uses tssrp6a library with its 2048-bit prime group and SHA-512 default.
  * The library is loaded lazily via dynamic import() to avoid crashing
  * in non-secure contexts (HTTP on LAN IPs) where crypto.subtle is
  * unavailable — tssrp6a checks crypto.subtle at module init time.

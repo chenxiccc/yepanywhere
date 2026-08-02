@@ -11,6 +11,15 @@ fun buildConfigString(value: String): String =
 val debugWebClientUrl = providers.gradleProperty("yaWebClientUrl").orNull
     ?.trim()
     ?.takeIf(String::isNotEmpty)
+val nativeProbeCleartext = providers.gradleProperty("yaNativeProbeCleartext").orNull
+    ?.trim()
+    ?.let {
+        require(it == "true" || it == "false") {
+            "yaNativeProbeCleartext must be true or false"
+        }
+        it.toBoolean()
+    }
+    ?: false
 
 if (debugWebClientUrl != null) {
     val uri = URI(debugWebClientUrl)
@@ -62,6 +71,11 @@ android {
         targetSdk = 36
         versionCode = 1000
         versionName = "0.1.0"
+        ndk {
+            // Keep the app's established modern Android ABI set and prevent
+            // JNA's AAR from reintroducing obsolete armeabi/MIPS binaries.
+            abiFilters += setOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+        }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["usesCleartextTraffic"] = "false"
         buildConfigField(
@@ -85,7 +99,10 @@ android {
         debug {
             isDebuggable = true
             manifestPlaceholders["usesCleartextTraffic"] =
-                (debugWebClientUrl?.startsWith("http://") == true).toString()
+                (
+                    debugWebClientUrl?.startsWith("http://") == true ||
+                        nativeProbeCleartext
+                ).toString()
         }
         release {
             isMinifyEnabled = true
@@ -122,6 +139,12 @@ android {
         getByName("bundled") {
             assets.srcDir(layout.buildDirectory.dir("generated/webAssets"))
         }
+        getByName("test") {
+            resources.srcDir("src/sharedTest/resources")
+        }
+        getByName("androidTest") {
+            assets.srcDir("src/sharedTest/resources")
+        }
     }
 
     buildFeatures {
@@ -140,6 +163,10 @@ android {
     }
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        // JNA's Android AAR ships libjnidispatch prebuilt in a form the NDK
+        // stripper does not recognize. Preserve it deliberately so builds do
+        // not emit a misleading strip warning.
+        jniLibs.keepDebugSymbols += "**/libjnidispatch.so"
     }
     lint {
         warningsAsErrors = true
@@ -167,8 +194,23 @@ dependencies {
     implementation("androidx.fragment:fragment-ktx:1.8.9")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.2")
     implementation("androidx.webkit:webkit:1.14.0")
+    implementation("com.goterl:lazysodium-android:5.2.0") {
+        // The AAR API is Java bytecode. Its POM's Kotlin 2.1 stdlib is used
+        // only by transitive Android helpers and conflicts with this app's
+        // Kotlin 1.9 compiler; the app already supplies a compatible stdlib.
+        exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib")
+        // Android needs JNA's AAR-packaged libjnidispatch rather than the
+        // ordinary JVM JAR selected by LazySodium's published POM.
+        exclude(group = "net.java.dev.jna", module = "jna")
+    }
+    implementation("net.java.dev.jna:jna:5.17.0@aar")
     implementation(platform("com.google.firebase:firebase-bom:34.16.0"))
     implementation("com.google.firebase:firebase-messaging")
+    implementation("com.nimbusds:srp6a:2.1.0")
+    // OkHttp 5.x is compiled with Kotlin 2.2. Keep the latest 4.x release
+    // until the Android Kotlin/Compose compiler is upgraded deliberately.
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 

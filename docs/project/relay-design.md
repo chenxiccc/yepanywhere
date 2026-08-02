@@ -110,7 +110,8 @@ Lightweight WebSocket router. Responsibilities:
 
 ### SRP Authentication
 
-Using SRP-6a with SHA-256. Yepanywhere server stores verifier, never password.
+Using SRP-6a with the RFC 5054 2048-bit group and SHA-512. Yepanywhere server
+stores the verifier, never the password.
 
 ```
 Phone                      Relay                      Yepanywhere

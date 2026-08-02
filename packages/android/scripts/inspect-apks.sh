@@ -52,11 +52,18 @@ for entries in "$bundled_entries" "$hosted_entries"; do
 
   unexpected_native="$(
     grep -E '^lib/.*\.so$' <<<"$entries" |
-      grep -Ev '/(libandroidx\.graphics\.path|libdatastore_shared_counter)\.so$' ||
+      grep -Ev '^lib/(arm64-v8a|armeabi-v7a|x86|x86_64)/(libandroidx\.graphics\.path|libdatastore_shared_counter|libjnidispatch|libsodium)\.so$' ||
       true
   )"
   [[ -z "$unexpected_native" ]] ||
     fail "APK contains an unreviewed native library: ${unexpected_native}"
+
+  for abi in arm64-v8a armeabi-v7a x86 x86_64; do
+    grep -qx "lib/${abi}/libjnidispatch.so" <<<"$entries" ||
+      fail "APK is missing JNA for ${abi}"
+    grep -qx "lib/${abi}/libsodium.so" <<<"$entries" ||
+      fail "APK is missing libsodium for ${abi}"
+  done
 done
 
 for apk in "$bundled_apk" "$hosted_apk"; do

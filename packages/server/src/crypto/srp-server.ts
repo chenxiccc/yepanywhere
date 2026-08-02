@@ -1,7 +1,7 @@
 /**
  * SRP-6a server helpers for remote access authentication.
  *
- * Uses tssrp6a library with 2048-bit prime group and SHA-256.
+ * Uses tssrp6a library with its 2048-bit prime group and SHA-512 default.
  */
 import {
   SRPParameters,
@@ -12,7 +12,7 @@ import {
   createVerifierAndSalt,
 } from "tssrp6a";
 
-/** SRP parameters: 2048-bit prime group with SHA-256 */
+/** SRP parameters: 2048-bit prime group with SHA-512 */
 const SRP_PARAMS = new SRPParameters();
 const SRP_ROUTINES = new SRPRoutines(SRP_PARAMS);
 

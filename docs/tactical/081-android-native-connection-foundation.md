@@ -1,9 +1,8 @@
 # Android Native Connection Foundation
 
-Status: in progress. The first maintainer checkpoint is the evidence-backed
-crypto-library selection and a native Android client completing full SRP,
-server proof verification, encrypted YA protocol traffic, and clean teardown
-against a disposable direct YA server.
+Status: checkpoint ready for maintainer review. The evidence-backed library
+selection and native Android full-SRP, server-proof, encrypted-traffic, resume,
+and teardown proof are complete against a disposable direct YA server.
 
 Topic: android-native-connection
 Topic: mobile-server-pairing
@@ -148,13 +147,13 @@ paired-server contract slice rather than a hidden test-driven migration.
 | Step | State | Completion evidence |
 | --- | --- | --- |
 | Record the native connection contract | complete | This tracker fixes boundaries, wire facts, review gate, and validation ladder |
-| Prove cross-language crypto vectors | pending | TypeScript producer/consumer and Kotlin JVM/device tests agree on every checked byte |
-| Select Android crypto and WebSocket libraries | pending | Dependency review, warning-free builds, ABI/APK measurement, shrinker inspection, and vector results recorded below |
-| Negotiate a direct native SRP session | pending | Android verifies `M2` and authenticated server-info proof against a disposable real YA `/api/ws` route |
-| Exchange encrypted YA protocol traffic | pending | Android sends capabilities plus an encrypted ping/request and validates a sequenced encrypted response |
-| Prove native session resume | pending | A second socket resumes with the checkpoint's in-memory credential, authenticates the server proof, and exchanges fresh encrypted traffic |
-| Prove physical-device teardown | pending | Pixel evidence shows socket closure and no YA process-owned reconnect after the probe releases its owner |
-| Review the native crypto checkpoint | pending | Maintainer approves library selection and direct-session evidence before relay, durable storage, service, and Compose product work continue |
+| Prove cross-language crypto vectors | complete | Production TypeScript generation, Kotlin JVM SRP, and Pixel LazySodium tests agree on the checked-in fixture |
+| Select Android crypto and WebSocket libraries | complete | Nimbus 2.1.0, LazySodium 5.2.0/JNA 5.17.0, OkHttp 4.12.0, and coroutines 1.9.0 pass the release and device evidence below |
+| Negotiate a direct native SRP session | complete | Pixel verifies Nimbus `M2` and the authenticated server-info proof against the real disposable YA `/api/ws` route |
+| Exchange encrypted YA protocol traffic | complete | Pixel sends binary encrypted capabilities and ping, then validates the sequenced encrypted pong |
+| Prove native session resume | complete | A second Pixel socket authenticates the challenge-bound server proof and exchanges traffic under a fresh transport key |
+| Prove physical-device teardown | complete | The client returns after close; the server records disconnect before resume opens and after resume closes, with no retry owner |
+| Review the native crypto checkpoint | ready for review | Maintainer approval is the intentional stop before relay, durable storage, service, and Compose product work continue |
 | Add the native relay route | blocked on checkpoint | Same core negotiates through deployed legacy relay `/ws`; outer relay `/mux` remains independently capability-gated |
 | Persist paired-server resume state | blocked on checkpoint | Keystore/DataStore boundaries, backup exclusion, expiry, forget, and password re-entry behavior are tested |
 | Bind Compose onboarding and summaries | blocked on checkpoint | Native login/profile UI and a small real session-summary consumer use the connection manager |
@@ -254,3 +253,75 @@ changes, or polished Compose UI in the same checkpoint series.
 The existing attached physical device is preferred. If it is unavailable, use
 an existing JSTorrent AVD for functional feedback and defer only the
 physical-device acceptance row.
+
+## Checkpoint Evidence — 2026-08-02
+
+### Library result
+
+| Library | Result |
+| --- | --- |
+| Nimbus SRP6a 2.1.0 | Selected. Apache-2.0, no production transitive dependencies, exact `A`, `M1`, `M2`, raw `S`, base-key, and transport-key match without replacing its arithmetic. The YA wrapper only fixes the group/hash, translates hex, extracts minimal unsigned `S`, and discards the password-holding session after verification. |
+| LazySodium Android 5.2.0 | Selected. MPL-2.0 wrapper around bundled libsodium; its ARM64 implementation matched production TweetNaCl proof, binary-envelope, resume, and tamper vectors on the Pixel. |
+| JNA 5.17.0 Android AAR | Selected as LazySodium's native dispatcher, dual Apache-2.0/LGPL-2.1-or-later. LazySodium's POM otherwise resolves the non-Android JNA JAR, so the build excludes that edge and requests the AAR explicitly. |
+| OkHttp 4.12.0 | Selected. Apache-2.0 and already-shaped WebSocket cancellation/close ownership. OkHttp 5.4 was rejected for this checkpoint because its Kotlin 2.2 metadata cannot be consumed by the app's deliberate Kotlin 1.9/Compose toolchain. |
+| Kotlin coroutines 1.9.0 | Selected for cancellable suspension and timeout ownership; Apache-2.0. |
+
+No pure-Java secretbox fallback was necessary: the reviewed native candidate
+worked on device, passed R8, supplies all four established Android ABIs, and has
+a measured rather than unknown packaging cost.
+
+### Packaging result
+
+The universal hosted release APK grew from the pre-dependency baseline of
+1,772,548 bytes to 3,749,469 bytes: +1,976,921 bytes. Of that, the new native
+payload is 1,886,068 bytes across all four ABIs. An ARM64 installation needs
+443,256 bytes of the two new native libraries before package-level overhead;
+the universal APK carries every ABI by design.
+
+Every release APK contains only the exact established native allowlist:
+`libandroidx.graphics.path.so`, `libdatastore_shared_counter.so`,
+`libjnidispatch.so`, and `libsodium.so` for `arm64-v8a`, `armeabi-v7a`, `x86`,
+and `x86_64`. ABI filtering removes the obsolete `armeabi`, `mips`, and
+`mips64` dispatch libraries present in JNA's AAR. R8 succeeds for both bundled
+and hosted release channels. The JNA dispatcher is deliberately kept unstripped
+because the Android NDK stripper does not recognize its prebuilt form.
+
+### Protocol and device result
+
+- Fixture verification reproduces production `tssrp6a` 3.0.0, TweetNaCl
+  1.0.3, YA key derivation, and shared binary framing byte for byte.
+- Kotlin JVM tests match the exact 2048-bit/SHA-512 SRP transcript and reject a
+  changed server proof plus attempted session reuse.
+- LazySodium device tests match full-login proof, binary protocol, and resume
+  fixtures and reject changed ciphertext.
+- The direct integration probe uses real `RemoteAccessService`,
+  `RemoteSessionService`, `/api/ws`, SRP handlers, encryption, and message
+  router. It binds host loopback and reaches the phone through `adb reverse`;
+  it never starts `RelayClientService`.
+- Physical device `33031JEHN17672`, Pixel 7a, Android 17 / API 37, user 0,
+  completed full SRP, authenticated server-info proof, encrypted capabilities,
+  encrypted ping/pong, normal close, challenge-bound resume on a new socket,
+  a fresh transport key, a second encrypted ping/pong, and a second normal
+  close. No Activity or WebView was allocated by the instrumentation test.
+- Server ordering showed first disconnect before the resume connection and a
+  final disconnect afterward. The probe has no heartbeat, retry, or recurring
+  owner, and its temporary server directory is removed on shutdown.
+
+### Warning-free validation
+
+- `pnpm android:interop:check`
+- server secure-WebSocket E2E: 23 passed, 1 intentionally skipped
+- `pnpm typecheck`
+- `pnpm lint`
+- `pnpm console:scan`: 110/110 existing warning budget, delta zero
+- Gradle tests, lint, bundled debug/release, and hosted release with
+  `--warning-mode all --no-daemon`
+- Android APK contract inspection
+- Pixel instrumentation: two LazySodium tests and one direct full-login/resume
+  test, all passed
+
+The final direct proof invokes the already-built test APK with `adb shell am
+instrument`, avoiding Gradle's configuration-cache warning for arbitrary
+command-line instrumentation arguments. The cleartext allowance exists only in
+that explicitly opted-in debug build for host-loopback `adb reverse`; release
+manifests remain HTTPS-only.
