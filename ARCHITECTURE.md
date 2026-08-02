@@ -108,6 +108,11 @@ section below for what would have to change at higher fan-out.
   devices, expiring SRP resume credentials, native Kotlin transport,
   independent bundled web transport, resume-authenticated direct/relay
   discovery, and push enrollment; public installation identity is deferred.
+- [`topics/security-client-audit.md`](topics/security-client-audit.md) —
+  unified cross-platform client registration, P-256 continuity keys,
+  recognizable audit fingerprints, bounded authentication history, legacy web
+  projection, cascading revocation, native push ownership, and future
+  WebAuthn/platform-attestation assurance.
 - [`docs/tactical/080-first-class-android-shell.md`](docs/tactical/080-first-class-android-shell.md)
   — removal of Tauri Mobile, first-class Gradle/Compose ownership, explicit
   bundled/hosted WebView channels, and the exact-origin native-host message

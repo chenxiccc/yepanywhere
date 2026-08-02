@@ -8,11 +8,12 @@ Topic: android-fcm-push
 
 Status: Approved architecture direction. The credential-free broker v1 is
 implemented, deployed, and proven through FCM to a physical Pixel. The current
-Android shell now owns notification permission/channel status and a
+Android shell owns notification permission/channel status and a
 Keystore-backed broker installation whose FCM target follows FID replacement.
-Server-specific broker subscriptions, native notification presentation, and
-the YA server subscription protocol are not implemented. The obsolete Tauri
-Mobile source has been removed.
+The unified security-client and native-push server contracts are approved but
+not implemented; server-specific subscriptions and native notification
+presentation remain the active slice. The obsolete Tauri Mobile source has
+been removed.
 
 Related:
 
@@ -23,6 +24,7 @@ Related:
 - [First-class Android shell](../docs/tactical/080-first-class-android-shell.md)
 - [Mobile companion app](../docs/project/mobile-companion-app.md)
 - [Mobile server pairing](mobile-server-pairing.md)
+- [Security clients and authentication audit](security-client-audit.md)
 - [Relay design](../docs/project/relay-design.md)
 - [Relay client mux](relay-client-mux.md)
 - [Web Push notifications](../docs/push-notifications.md)
@@ -394,9 +396,10 @@ default.
 
 ## Deferred Implementation Decisions
 
-- Paired-device storage/routes, their Android client contract, and their
-  compatibility gates. Public or fingerprinted server installation identity is
-  explicitly deferred as unnecessary for the first native lifecycle.
+- Hardware Android Key Attestation and Play Integrity remain optional future
+  assurance above the required v1 Android Keystore continuity key. Public or
+  fingerprinted server installation identity remains deferred as unnecessary
+  for the first native lifecycle.
 - Live transient-provider-failure validation.
 - Registration refresh, invalidation, offline recovery, and stale cleanup.
 - Durable quotas, coalescing, acknowledgement, and delivery-result semantics.

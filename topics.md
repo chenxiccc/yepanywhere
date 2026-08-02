@@ -233,6 +233,9 @@
   pairing, Kotlin-owned native transport, independent bundled-web transport,
   resume-authenticated direct/relay discovery, and push as a revocable child
   capability; public installation identity is deferred.
+- security-client-audit - Unified browser/native/desktop client registration,
+  signed continuity check-in, bounded authentication history, revocation, and
+  future WebAuthn/platform-attestation assurance.
 - css-architecture - Containment for legacy global stylesheets: CSS Modules by
   default, frozen line-count ceilings, and opportunistic extraction with a
   downward-only ratchet.

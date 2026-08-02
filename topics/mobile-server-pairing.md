@@ -8,14 +8,15 @@
 Topic: mobile-server-pairing
 
 Status: Approved architecture direction. This document fixes the product and
-ownership boundaries agreed on 2026-08-02. It does not approve a wire schema,
-endpoint, capability name, SRP protocol change, or stable-release compatibility
-plan.
+ownership boundaries agreed on 2026-08-02. The unified security-client wire,
+continuity-key, audit, revocation, capability, and stable-release compatibility
+contract is approved in [`security-client-audit.md`](security-client-audit.md).
 
 Related:
 
 - [Mobile companion app](../docs/project/mobile-companion-app.md)
 - [Android FCM push](android-fcm-push.md)
+- [Security clients and authentication audit](security-client-audit.md)
 - [Android wrapper and notification integration](../docs/tactical/071-android-wrapper-notification-integration.md)
 - [First-class Android shell](../docs/tactical/080-first-class-android-shell.md)
 - [Trusted client packaging](trusted-client-packaging.md)
@@ -414,6 +415,27 @@ Any such grant must be single-use, short-lived, visibly name the proposed
 device, and require explicit confirmation. Password-first remains the normal
 pairing posture unless that stronger flow is deliberately approved.
 
+## Security Client Registration And Continuity
+
+The server-side paired-device idea is implemented as the Android kind of the
+cross-platform security-client registry rather than a mobile-only namespace.
+After SRP succeeds and the exact capability is present, Android registers a
+per-server Android Keystore P-256 public key, signed device/app/environment
+descriptor, and user-visible label. It checks in once per authenticated
+connection with a proof bound to the fresh SRP transport nonce.
+
+The stable key, not mutable OS/app metadata, anchors continuity. Android
+updates, security patches, locale/timezone changes, and app releases update the
+signed audit snapshot without password login or re-pairing. A copied resume
+credential cannot impersonate the existing Android client without its
+Keystore key; a password-only attacker creates a new visible client record.
+
+The same API admits capable browser WebCrypto keys and a future extension-free
+desktop WebView or native-shell key. Existing browser-profile and remote-session
+state remains visible as a legacy projection. Exact routes, schemas, proof
+transcript, history bounds, assurance labels, and compatibility fallback live
+in the security-client topic.
+
 ## Push As A Pairing Capability
 
 The broker installation belongs to the Android app installation. A
@@ -456,22 +478,15 @@ Swift.
 
 ## Compatibility And Approval Gates
 
-This document does not name capabilities or routes. Before implementation,
-perform the stable-release review required by
-[`server-capabilities.md`](server-capabilities.md) and
-[`remote-hosted-compatibility.md`](remote-hosted-compatibility.md) separately
-for each new client/server dependency, including:
-
-- durable paired-device enrollment/listing/revocation;
-- native projection or inbox APIs;
-- server-specific native push enrollment; and
-- any future passwordless grant or native-backed web transport.
-
-An older server remains usable through the existing bundled/hosted web login
-and current remote transport. A new Android client makes no unsupported pairing
-or native-push request when the relevant exact gate is absent. Native Compose
-surfaces may honestly report that a server update is required while the full
-web interface remains available.
+The optional `security-client-audit-v1` and
+`native-push-subscriptions-v1` contracts, reviewed stable releases, and exact
+old-server fallbacks are approved in
+[`security-client-audit.md`](security-client-audit.md). An older server remains
+usable through current SRP/native summaries and the bundled/hosted web client;
+Android reports that registration/push requires an update and makes no
+unsupported request. Native projection/inbox APIs, passwordless grants,
+plaintext browser-profile cleanup, native-backed web transport, and optional
+attestation retain their own future compatibility reviews.
 
 ## Recommended Implementation Order
 
@@ -491,9 +506,9 @@ web interface remains available.
    profile selection, reauthentication, connection state, and compact existing
    session summaries use the native core while the full web client remains an
    independent escape hatch.
-6. **Create paired-device records and revocation:** attach expiring native
-   sessions to the durable server-side relationship without reusing browser
-   profile ids.
+6. **Register security clients and revocation:** attach expiring native
+   sessions to a Keystore-key-verified cross-platform security-client record,
+   retain legacy web audit visibility, and cascade explicit revocation.
 7. **Feed native inbox and Conversation view:** add only the separately
    approved bounded APIs/projections required by useful Compose surfaces.
 8. **Attach native push subscriptions:** make broker subscriptions children of

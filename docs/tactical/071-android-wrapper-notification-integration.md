@@ -1,12 +1,14 @@
 # Android Wrapper And Notification Integration
 
 Status: native foundation and live broker installation lifecycle complete on
-2026-08-02. YA server enrollment is now sequenced behind stable server
-identity, durable paired-device records, and a Kotlin native connection core.
-Notification presentation and foreground activity remain future slices.
+2026-08-02. YA server enrollment now uses the approved unified
+security-client registry, mandatory Android Keystore continuity proof, and
+Kotlin native connection core. Notification presentation remains the active
+slice; foreground activity remains future work.
 
 Topic: android-fcm-push
 Topic: mobile-server-pairing
+Topic: security-client-audit
 
 ## Origin
 
@@ -342,20 +344,12 @@ an informed response. This handoff does not make either presentation temporary.
 ## Compatibility Boundary
 
 Native-host feature detection is client-local and does not require a YA server
-change. Push enrollment does.
-
-Before implementing YA server enrollment routes or fields, perform the required
-stable-release compatibility review. The intended optional-feature fallback is:
-
-- a new native or bundled-web control hides native push enrollment unless the
-  exact paired-device/push capabilities it needs are present;
-- older servers receive no unsupported request;
-- browser Web Push and ordinary remote use remain unchanged; and
-- absence of native enrollment never blocks login, session browsing, or FCM
-  registration at the app-installation level.
-
-The exact server capability, route schema, server storage, and revocation order
-remain an approval gate rather than being committed by this plan.
+change. Unified security-client registration and push enrollment use the exact
+approved `security-client-audit-v1` and `native-push-subscriptions-v1` gates in
+[`security-client-audit.md`](../../topics/security-client-audit.md). Missing
+gates produce no unsupported request: Android retains SRP, native summaries,
+and full web while explaining the update requirement; web retains its legacy
+browser-profile/activity/Web Push path.
 
 ## Implementation Slices
 
@@ -368,17 +362,19 @@ remain an approval gate rather than being committed by this plan.
 3. **Live broker lifecycle — complete:** a physical Pixel created its durable
    broker installation and replaced the live target after FID rotation without
    replacing the installation capability.
-4. **Pairing and connection tactical:** persist app-local paired-server state,
-   build Kotlin SRP/transport ownership, define durable paired-device state,
-   and perform the separate compatibility gates before adding enrollment
-   routes. Public installation identity is deferred.
-5. **Compatibility review and enrollment:** audit stable YA releases, approve
-   the optional capability/fallback, then attach server-specific subscriptions
-   to paired devices.
-6. **Notification presentation:** validate background, foreground, denied
+4. **Pairing and connection tactical — complete through Compose summaries:**
+   app-local paired-server state, Kotlin SRP/transport ownership, route
+   selection, and native summary UI are proven. Public server installation
+   identity remains deferred.
+5. **Unified security-client registration — active:** register and check in
+   with a per-server Keystore key, project legacy web state, show the audit
+   dashboard, and cascade revocation under the approved exact capability.
+6. **Native push enrollment:** attach server-specific subscriptions to
+   key-verified native security clients.
+7. **Notification presentation:** validate background, foreground, denied
    permission, tap routing, unknown mapping, process death, and cold-start
    behavior on physical devices.
-7. **Foreground activity:** first prove the Kotlin core under visible Compose
+8. **Foreground activity:** first prove the Kotlin core under visible Compose
    ownership, then add an explicit persistent subscriber with complete stop.
 
 ### Native foundation acceptance — 2026-08-02
