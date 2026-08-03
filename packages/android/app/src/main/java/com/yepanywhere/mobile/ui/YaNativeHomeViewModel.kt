@@ -10,6 +10,8 @@ import com.yepanywhere.mobile.connection.YaConnectionState
 import com.yepanywhere.mobile.connection.YaSubscription
 import com.yepanywhere.mobile.profiles.YaPairedServerProfile
 import com.yepanywhere.mobile.profiles.YaServerRoute
+import com.yepanywhere.mobile.profiles.YaServerRemovalCoordinator
+import com.yepanywhere.mobile.profiles.YaServerRemovalOutcome
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
@@ -82,6 +84,16 @@ data class YaSourcedSession(
     val key: String = "$profileId:${session.id}"
 }
 
+enum class YaRemovalPromptKind {
+    SERVER_RECORD_MAY_REMAIN,
+    SERVER_ALREADY_UNREGISTERED,
+}
+
+data class YaRemovalPrompt(
+    val profileId: String,
+    val kind: YaRemovalPromptKind,
+)
+
 data class YaNativeHomeState(
     val profiles: List<YaPairedServerProfile> = emptyList(),
     val includedProfileIds: Set<String> = emptySet(),
@@ -89,6 +101,7 @@ data class YaNativeHomeState(
     val servers: Map<String, YaNativeServerState> = emptyMap(),
     val actionInProgress: Boolean = false,
     val error: YaNativeUiError? = null,
+    val removalPrompt: YaRemovalPrompt? = null,
 ) {
     val includedProfiles: List<YaPairedServerProfile>
         get() = profiles.filter { it.id in includedProfileIds }
@@ -122,6 +135,7 @@ class YaNativeHomeViewModel(application: Application) : AndroidViewModel(applica
     private val connectionRevision = MutableStateFlow(0L)
     private val actionRunning = AtomicBoolean(false)
     private val activeLeases = mutableMapOf<String, ActiveSource>()
+    private val removal = YaServerRemovalCoordinator(store::forget)
 
     val state: StateFlow<YaNativeHomeState> = mutableState.asStateFlow()
 
@@ -230,16 +244,55 @@ class YaNativeHomeViewModel(application: Application) : AndroidViewModel(applica
         }
     }
 
-    fun forgetProfile(profileId: String) {
+    fun removeProfile(profileId: String) {
         runAction {
-            try {
-                store.forget(profileId)
-            } catch (error: CancellationException) {
-                throw error
-            } catch (_: Throwable) {
-                setError(YaNativeUiError.CONNECTION_FAILED)
+            val profile = mutableState.value.profiles.firstOrNull { it.id == profileId }
+                ?: return@runAction
+            val active = activeLeases[profileId]
+            val online = mutableState.value.servers[profileId]
+                ?.connection
+                ?.phase == YaConnectionPhase.CONNECTED
+            val unregister: (suspend (String) -> Unit)? = if (active != null && online) {
+                { clientId ->
+                    active.lease.request("DELETE", "/security/clients/$clientId")
+                    Unit
+                }
+            } else {
+                null
+            }
+            when (removal.remove(profile, unregister)) {
+                YaServerRemovalOutcome.COMPLETE -> clearRemovalPrompt()
+                YaServerRemovalOutcome.NEEDS_FORGET_ANYWAY -> {
+                    mutableState.value = mutableState.value.copy(
+                        removalPrompt = YaRemovalPrompt(
+                            profileId,
+                            YaRemovalPromptKind.SERVER_RECORD_MAY_REMAIN,
+                        ),
+                    )
+                }
+                YaServerRemovalOutcome.NEEDS_LOCAL_CLEANUP -> {
+                    mutableState.value = mutableState.value.copy(
+                        removalPrompt = YaRemovalPrompt(
+                            profileId,
+                            YaRemovalPromptKind.SERVER_ALREADY_UNREGISTERED,
+                        ),
+                    )
+                }
             }
         }
+    }
+
+    fun forgetAnyway(profileId: String) {
+        runAction {
+            when (removal.forgetAnyway(profileId)) {
+                YaServerRemovalOutcome.COMPLETE -> clearRemovalPrompt()
+                else -> setError(YaNativeUiError.CONNECTION_FAILED)
+            }
+        }
+    }
+
+    fun clearRemovalPrompt() {
+        mutableState.value = mutableState.value.copy(removalPrompt = null)
     }
 
     fun retryConnections() {

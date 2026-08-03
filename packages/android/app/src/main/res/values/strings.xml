@@ -28,6 +28,15 @@
     <string name="forget_server">Forget server</string>
     <string name="forget_server_title">Forget this server?</string>
     <string name="forget_server_explanation">This removes the saved server profile and its protected resume credential from this device.</string>
+    <string name="remove_server">Remove server</string>
+    <string name="remove_server_title">Remove this server?</string>
+    <string name="remove_server_explanation">Yep Anywhere will first unregister this Android device from the server, revoking its saved sessions and push access, and then erase the local profile and protected keys.</string>
+    <string name="forget_anyway">Forget anyway</string>
+    <string name="forget_anyway_title">Could not unregister this device</string>
+    <string name="forget_anyway_explanation">The server is offline or rejected the request. Forgetting anyway erases this phone’s profile and keys, but the server-side device or push record may remain until you remove it there.</string>
+    <string name="finish_forgetting">Finish forgetting</string>
+    <string name="finish_forgetting_title">Device unregistered</string>
+    <string name="finish_forgetting_explanation">The server revoked this device, but Android could not erase the local profile. Try the local cleanup again.</string>
     <string name="include_in_all_servers">Included</string>
     <string name="notifications_setup_pending">Notification delivery settings will appear here after native push registration is connected to this server.</string>
     <string name="sign_in_again">Sign in again</string>

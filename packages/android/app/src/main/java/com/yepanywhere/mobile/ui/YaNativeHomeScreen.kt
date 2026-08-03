@@ -67,23 +67,101 @@ fun YaNativeHomeScreen(
     var confirmForgetProfileId by rememberSaveable { mutableStateOf<String?>(null) }
 
     if (confirmForgetProfileId != null) {
+        val profile = state.profiles.firstOrNull { it.id == confirmForgetProfileId }
+        val unregistersServer = profile?.securityClient?.let {
+            !it.revoked && !it.capabilityMissing && it.clientId != null
+        } == true
         AlertDialog(
             onDismissRequest = { confirmForgetProfileId = null },
-            title = { Text(stringResource(R.string.forget_server_title)) },
-            text = { Text(stringResource(R.string.forget_server_explanation)) },
+            title = {
+                Text(
+                    stringResource(
+                        if (unregistersServer) {
+                            R.string.remove_server_title
+                        } else {
+                            R.string.forget_server_title
+                        },
+                    ),
+                )
+            },
+            text = {
+                Text(
+                    stringResource(
+                        if (unregistersServer) {
+                            R.string.remove_server_explanation
+                        } else {
+                            R.string.forget_server_explanation
+                        },
+                    ),
+                )
+            },
             confirmButton = {
                 TextButton(
                     onClick = {
                         val profileId = checkNotNull(confirmForgetProfileId)
                         confirmForgetProfileId = null
-                        viewModel.forgetProfile(profileId)
+                        viewModel.removeProfile(profileId)
                     },
                 ) {
-                    Text(stringResource(R.string.forget_server))
+                    Text(
+                        stringResource(
+                            if (unregistersServer) {
+                                R.string.remove_server
+                            } else {
+                                R.string.forget_server
+                            },
+                        ),
+                    )
                 }
             },
             dismissButton = {
                 TextButton(onClick = { confirmForgetProfileId = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
+    }
+
+    state.removalPrompt?.let { prompt ->
+        AlertDialog(
+            onDismissRequest = viewModel::clearRemovalPrompt,
+            title = {
+                Text(
+                    stringResource(
+                        if (prompt.kind == YaRemovalPromptKind.SERVER_ALREADY_UNREGISTERED) {
+                            R.string.finish_forgetting_title
+                        } else {
+                            R.string.forget_anyway_title
+                        },
+                    ),
+                )
+            },
+            text = {
+                Text(
+                    stringResource(
+                        if (prompt.kind == YaRemovalPromptKind.SERVER_ALREADY_UNREGISTERED) {
+                            R.string.finish_forgetting_explanation
+                        } else {
+                            R.string.forget_anyway_explanation
+                        },
+                    ),
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { viewModel.forgetAnyway(prompt.profileId) }) {
+                    Text(
+                        stringResource(
+                            if (prompt.kind == YaRemovalPromptKind.SERVER_ALREADY_UNREGISTERED) {
+                                R.string.finish_forgetting
+                            } else {
+                                R.string.forget_anyway
+                            },
+                        ),
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::clearRemovalPrompt) {
                     Text(stringResource(R.string.cancel))
                 }
             },
@@ -607,7 +685,18 @@ private fun ServerSettingsCard(
                 enabled = !actionInProgress,
                 onClick = onForgetServer,
             ) {
-                Text(stringResource(R.string.forget_server))
+                val unregistersServer = profile.securityClient?.let {
+                    !it.revoked && !it.capabilityMissing && it.clientId != null
+                } == true
+                Text(
+                    stringResource(
+                        if (unregistersServer) {
+                            R.string.remove_server
+                        } else {
+                            R.string.forget_server
+                        },
+                    ),
+                )
             }
         }
     }
