@@ -31,6 +31,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import postcss from "postcss";
+import selectorParser from "postcss-selector-parser";
 import * as ts from "typescript";
 
 export interface Options {
@@ -263,13 +264,21 @@ export function isModuleStylesheet(file: string): boolean {
   return file.endsWith(".module.css");
 }
 
-/** Match class selectors like .foo, .foo-bar, .foo_bar. */
-export const CLASS_REGEX = /\.([a-zA-Z_][a-zA-Z0-9_-]*)/g;
-
 function isLikelyClassName(name: string): boolean {
   if (name.match(/^[0-9]/)) return false; // .5em etc
   if (name.length < 2) return false; // Single char classes
   return true;
+}
+
+/** Extract actual class-selector nodes, excluding dots in strings and values. */
+export function extractSelectorClassNames(selector: string): string[] {
+  const names = new Set<string>();
+  selectorParser((root) => {
+    root.walkClasses((node) => {
+      if (isLikelyClassName(node.value)) names.add(node.value);
+    });
+  }).processSync(selector);
+  return Array.from(names);
 }
 
 export function extractClassSelectors(
@@ -280,9 +289,7 @@ export function extractClassSelectors(
   const seen = new Set<string>();
 
   postcss.parse(cssContent, { from: filename }).walkRules((rule) => {
-    for (const match of rule.selector.matchAll(CLASS_REGEX)) {
-      const className = match[1];
-      if (!isLikelyClassName(className)) continue;
+    for (const className of extractSelectorClassNames(rule.selector)) {
       if (seen.has(className)) continue;
       seen.add(className);
       classes.push({
@@ -310,50 +317,16 @@ export function splitGlobalReferences(line: string): {
   scoped: string;
   globalRefs: string[];
 } {
-  const globalRefs: string[] = [];
-  let scoped = "";
-  let index = 0;
-
-  while (index < line.length) {
-    const start = line.indexOf(":global(", index);
-    if (start === -1) {
-      scoped += line.slice(index);
-      break;
-    }
-
-    scoped += line.slice(index, start);
-
-    let depth = 0;
-    let end = -1;
-    for (let i = start + ":global".length; i < line.length; i++) {
-      if (line[i] === "(") depth++;
-      else if (line[i] === ")") {
-        depth--;
-        if (depth === 0) {
-          end = i;
-          break;
-        }
-      }
-    }
-
-    if (end === -1) {
-      // Unbalanced (selector continues on the next line); treat the remainder
-      // as global so its classes are not claimed as module-owned.
-      const rest = line.slice(start);
-      for (const match of rest.matchAll(CLASS_REGEX)) {
-        if (isLikelyClassName(match[1])) globalRefs.push(match[1]);
-      }
-      break;
-    }
-
-    const inner = line.slice(start + ":global(".length, end);
-    for (const match of inner.matchAll(CLASS_REGEX)) {
-      if (isLikelyClassName(match[1])) globalRefs.push(match[1]);
-    }
-    index = end + 1;
-  }
-
-  return { scoped, globalRefs };
+  const root = selectorParser().astSync(line);
+  const globalRefs = new Set<string>();
+  root.walkPseudos((pseudo) => {
+    if (pseudo.value !== ":global") return;
+    pseudo.walkClasses((node) => {
+      if (isLikelyClassName(node.value)) globalRefs.add(node.value);
+    });
+    pseudo.remove();
+  });
+  return { scoped: root.toString(), globalRefs: Array.from(globalRefs) };
 }
 
 export interface ComposesReference {
@@ -411,9 +384,7 @@ export function extractModuleSelectors(
     const { scoped, globalRefs: lineGlobals } = splitGlobalReferences(
       rule.selector,
     );
-    const localAnchors = Array.from(
-      new Set(Array.from(scoped.matchAll(CLASS_REGEX), (match) => match[1])),
-    ).filter(isLikelyClassName);
+    const localAnchors = extractSelectorClassNames(scoped);
     for (const name of lineGlobals) {
       globalRefs.add(name);
       globalUses.push({
@@ -425,9 +396,7 @@ export function extractModuleSelectors(
       });
     }
 
-    for (const match of scoped.matchAll(CLASS_REGEX)) {
-      const className = match[1];
-      if (!isLikelyClassName(className)) continue;
+    for (const className of localAnchors) {
       if (seen.has(className)) continue;
       seen.add(className);
       selectors.push({
@@ -447,9 +416,7 @@ export function extractModuleSelectors(
     const rule = declaration.parent;
     const selector = rule?.type === "rule" ? rule.selector : "<declaration>";
     const { scoped } = splitGlobalReferences(selector);
-    const localAnchors = Array.from(
-      new Set(Array.from(scoped.matchAll(CLASS_REGEX), (item) => item[1])),
-    ).filter(isLikelyClassName);
+    const localAnchors = extractSelectorClassNames(scoped);
     for (const name of match[1].split(/\s+/).filter(Boolean)) {
       globalRefs.add(name);
       globalUses.push({
@@ -724,51 +691,80 @@ export function buildClassProducerUsageIndex(
 ): SourceUsageIndex {
   const exact = new Map<string, Set<string>>();
   const dynamic = new Map<string, Set<string>>();
-
-  for (const [filename, content] of srcFiles) {
-    const sourceFile = ts.createSourceFile(
-      filename,
+  const contentsByPath = new Map(
+    Array.from(srcFiles, ([filename, content]) => [
+      path.resolve(filename),
       content,
-      ts.ScriptTarget.Latest,
-      true,
-      scriptKind(filename),
-    );
-    const declarations = new Map<string, ts.Expression>();
+    ]),
+  );
+  const compilerOptions: ts.CompilerOptions = {
+    allowJs: true,
+    jsx: ts.JsxEmit.Preserve,
+    noLib: true,
+    noResolve: true,
+    target: ts.ScriptTarget.Latest,
+  };
+  const host = ts.createCompilerHost(compilerOptions);
+  host.fileExists = (filename) => contentsByPath.has(path.resolve(filename));
+  host.readFile = (filename) => contentsByPath.get(path.resolve(filename));
+  host.getSourceFile = (filename, languageVersion) => {
+    const content = contentsByPath.get(path.resolve(filename));
+    return content === undefined
+      ? undefined
+      : ts.createSourceFile(
+          path.resolve(filename),
+          content,
+          languageVersion,
+          true,
+          scriptKind(filename),
+        );
+  };
+  const program = ts.createProgram({
+    rootNames: Array.from(contentsByPath.keys()),
+    options: compilerOptions,
+    host,
+  });
+  const checker = program.getTypeChecker();
 
-    function collectDeclarations(node: ts.Node): void {
-      if (
-        ts.isVariableDeclaration(node) &&
-        ts.isIdentifier(node.name) &&
-        node.initializer
-      ) {
-        declarations.set(node.name.text, node.initializer);
-      }
-      ts.forEachChild(node, collectDeclarations);
+  for (const filename of srcFiles.keys()) {
+    const sourceFile = program.getSourceFile(path.resolve(filename));
+    if (!sourceFile) {
+      throw new Error(`Could not parse source file: ${filename}`);
     }
-
-    collectDeclarations(sourceFile);
 
     const transparentClassHelpers = new Set(["classNames", "clsx", "cn", "cx"]);
 
-    function resolveObjectLiteral(
-      node: ts.Expression,
-      seenDeclarations: Set<string>,
-    ): ts.ObjectLiteralExpression | undefined {
-      if (ts.isObjectLiteralExpression(node)) return node;
-      if (!ts.isIdentifier(node) || seenDeclarations.has(node.text)) {
+    function resolveIdentifierInitializer(
+      node: ts.Identifier,
+      seenDeclarations: Set<ts.Symbol>,
+    ): { initializer: ts.Expression; symbol: ts.Symbol } | undefined {
+      const symbol = checker.getSymbolAtLocation(node);
+      if (!symbol || seenDeclarations.has(symbol)) return undefined;
+      const declaration = symbol.valueDeclaration;
+      if (!declaration || !ts.isVariableDeclaration(declaration)) {
         return undefined;
       }
-      const initializer = declarations.get(node.text);
-      if (!initializer) return undefined;
+      if (!declaration.initializer) return undefined;
+      return { initializer: declaration.initializer, symbol };
+    }
+
+    function resolveObjectLiteral(
+      node: ts.Expression,
+      seenDeclarations: Set<ts.Symbol>,
+    ): ts.ObjectLiteralExpression | undefined {
+      if (ts.isObjectLiteralExpression(node)) return node;
+      if (!ts.isIdentifier(node)) return undefined;
+      const binding = resolveIdentifierInitializer(node, seenDeclarations);
+      if (!binding) return undefined;
       const nextSeen = new Set(seenDeclarations);
-      nextSeen.add(node.text);
-      return resolveObjectLiteral(initializer, nextSeen);
+      nextSeen.add(binding.symbol);
+      return resolveObjectLiteral(binding.initializer, nextSeen);
     }
 
     function collectObjectValue(
       object: ts.ObjectLiteralExpression,
       propertyName: string | undefined,
-      seenDeclarations: Set<string>,
+      seenDeclarations: Set<ts.Symbol>,
     ): void {
       for (const property of object.properties) {
         if (ts.isSpreadAssignment(property)) {
@@ -791,7 +787,7 @@ export function buildClassProducerUsageIndex(
 
     function collectClassHelperArgument(
       node: ts.Expression,
-      seenDeclarations: Set<string>,
+      seenDeclarations: Set<ts.Symbol>,
     ): void {
       const object = resolveObjectLiteral(node, seenDeclarations);
       if (object) {
@@ -812,7 +808,7 @@ export function buildClassProducerUsageIndex(
 
     function collectClassExpression(
       node: ts.Expression,
-      seenDeclarations = new Set<string>(),
+      seenDeclarations = new Set<ts.Symbol>(),
     ): void {
       if (ts.isTemplateExpression(node)) {
         addExactTokens(exact, node.head.text, filename);
@@ -835,11 +831,11 @@ export function buildClassProducerUsageIndex(
         return;
       }
       if (ts.isIdentifier(node)) {
-        const initializer = declarations.get(node.text);
-        if (initializer && !seenDeclarations.has(node.text)) {
+        const binding = resolveIdentifierInitializer(node, seenDeclarations);
+        if (binding) {
           const nextSeen = new Set(seenDeclarations);
-          nextSeen.add(node.text);
-          collectClassExpression(initializer, nextSeen);
+          nextSeen.add(binding.symbol);
+          collectClassExpression(binding.initializer, nextSeen);
         }
         return;
       }

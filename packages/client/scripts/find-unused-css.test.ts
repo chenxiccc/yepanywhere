@@ -16,6 +16,7 @@ import {
   extractBindingUsage,
   extractComposes,
   extractModuleImports,
+  extractSelectorClassNames,
   findSourceFiles,
   moduleContractIssues,
   parseArgs,
@@ -79,6 +80,29 @@ describe("class-production evidence", () => {
     expect(producers.exact.get("card-idle")).toBeDefined();
     expect(producers.exact.get("card-selected")).toBeDefined();
     expect(producers.exact.get("card-mounted")).toBeDefined();
+  });
+
+  it("resolves shadowed class variables in their lexical scope", () => {
+    const producers = buildClassProducerUsageIndex(
+      new Map([
+        [
+          "ScopedOwner.tsx",
+          `
+            function Visible() {
+              const classes = "alpha";
+              return <div className={classes} />;
+            }
+            function Unused() {
+              const classes = "beta";
+              return <span />;
+            }
+          `,
+        ],
+      ]),
+    );
+
+    expect(producers.exact.has("alpha")).toBe(true);
+    expect(producers.exact.has("beta")).toBe(false);
   });
 });
 
@@ -281,6 +305,14 @@ describe("module selector analysis", () => {
 });
 
 describe("parsing helpers", () => {
+  it("extracts selector nodes without reading quoted attribute values", () => {
+    expect(
+      extractSelectorClassNames(
+        '.root[data-ext=".json"]:not(.disabled, .escaped\\:state)',
+      ),
+    ).toEqual(["root", "disabled", "escaped:state"]);
+  });
+
   it("scans every package for generated vocabulary by default", () => {
     expect(parseArgs([]).srcDir).toBe("packages");
     expect(parseArgs(["--modules-check"]).modulesCheck).toBe(true);
@@ -306,9 +338,18 @@ describe("parsing helpers", () => {
   });
 
   it("separates :global(...) references from module-scoped selectors", () => {
-    expect(splitGlobalReferences(":global(.modal):has(.content) {")).toEqual({
-      scoped: ":has(.content) {",
+    expect(splitGlobalReferences(":global(.modal):has(.content)")).toEqual({
+      scoped: ":has(.content)",
       globalRefs: ["modal"],
+    });
+  });
+
+  it("does not read :global syntax from quoted attribute values", () => {
+    expect(
+      splitGlobalReferences('.root[data-label=":global(.phantom)"]'),
+    ).toEqual({
+      scoped: '.root[data-label=":global(.phantom)"]',
+      globalRefs: [],
     });
   });
 

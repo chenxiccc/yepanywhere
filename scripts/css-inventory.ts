@@ -15,7 +15,7 @@ import postcss from "postcss";
 import {
   buildClassProducerUsageIndex,
   buildSourceUsageIndex,
-  CLASS_REGEX,
+  extractSelectorClassNames,
   findDynamicUsage,
   findFiles,
   findSourceFiles,
@@ -183,9 +183,7 @@ function isReactOwner(file: string, ownerDir: string): boolean {
 }
 
 function classNames(selector: string): string[] {
-  return Array.from(
-    new Set(Array.from(selector.matchAll(CLASS_REGEX), (match) => match[1])),
-  );
+  return extractSelectorClassNames(selector);
 }
 
 function intersect(sets: Set<string>[]): Set<string> {
