@@ -7,14 +7,18 @@ describe("initializeSidebarSpacing", () => {
     localStorage.clear();
     document.documentElement.removeAttribute("data-sidebar-spacing");
     document.documentElement.style.removeProperty("--sidebar-row-min-height");
+    document.documentElement.style.removeProperty(
+      "--sidebar-actions-padding-top",
+    );
+    document.documentElement.style.removeProperty(
+      "--sidebar-sessions-padding-top",
+    );
   });
 
   it("defaults to comfortable spacing", () => {
     initializeSidebarSpacing();
 
-    expect(document.documentElement.dataset.sidebarSpacing).toBe(
-      "comfortable",
-    );
+    expect(document.documentElement.dataset.sidebarSpacing).toBe("comfortable");
     expect(
       document.documentElement.style.getPropertyValue(
         "--sidebar-row-min-height",
@@ -43,5 +47,15 @@ describe("initializeSidebarSpacing", () => {
         "--sidebar-brand-display",
       ),
     ).toBe("none");
+    expect(
+      document.documentElement.style.getPropertyValue(
+        "--sidebar-actions-padding-top",
+      ),
+    ).toBe("1px");
+    expect(
+      document.documentElement.style.getPropertyValue(
+        "--sidebar-sessions-padding-top",
+      ),
+    ).toBe("0");
   });
 });

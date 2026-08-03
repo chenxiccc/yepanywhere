@@ -141,16 +141,19 @@ pointers keep at least 40px rows with 6px block padding in both modes, so
 desktop density does not reduce phone and tablet tap reliability.
 
 Compact hides the YepAnywhere sidebar brand because it links to the same route
-as New session. Its primary navigation labels use `--font-size-base`, one UI
-font token above the `--font-size-sm` session titles; Comfortable keeps both at
-the smaller token. The mobile close control and collapsed desktop rail remain
+as New session, so the New session row carries the Y brand glyph in place of a
+generic plus. Its primary navigation labels use `--font-size-base`, one UI font
+token above the `--font-size-sm` session titles; Comfortable keeps both at the
+smaller token. The mobile close control and collapsed desktop rail remain
 available when the brand is hidden.
 
 The same preference controls navigation-row padding and the gaps between
 sidebar sections. Inline edge spacing follows the active UI font: top-level
 sidebar labels use a `0.75ch` inset, while nested session and queue rows use
 `1ch`. The inset must not grow from a fixed window-edge margin independently
-of the selected UI font.
+of the selected UI font. Compact leaves a 1px top breathing gap above New
+session and starts the scrolling navigation immediately below that row instead
+of retaining Comfortable's separate 0.25rem inset.
 
 ### UI size
 

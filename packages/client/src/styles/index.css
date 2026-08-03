@@ -1803,7 +1803,7 @@ body.session-transcript-selection-active .reload-banner * {
 }
 
 .sidebar-actions {
-  padding: 0;
+  padding: var(--sidebar-actions-padding-top, 0) 0 0;
   display: flex;
   flex-direction: column;
 }
@@ -1834,7 +1834,7 @@ body.session-transcript-selection-active .reload-banner * {
 .sidebar-sessions {
   flex: 1;
   overflow-y: auto;
-  padding: 0.25rem 0 1rem;
+  padding: var(--sidebar-sessions-padding-top, 0.25rem) 0 1rem;
 }
 
 /* Unified sidebar navigation section and items */
@@ -15131,34 +15131,6 @@ a.linkified-url:hover {
 
 .settings-info-box a {
   color: var(--link-color);
-}
-
-/* ==========================================================================
-   Connection Bar
-   ========================================================================== */
-
-.connection-bar {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  z-index: 9999;
-  pointer-events: none;
-  transition: background-color 0.3s ease;
-}
-
-.connection-connected {
-  background-color: var(--success-color);
-}
-
-.connection-connecting {
-  background-color: var(--thinking-color);
-  animation: connection-pulse 1.5s ease-in-out infinite;
-}
-
-.connection-disconnected {
-  background-color: var(--error-color);
 }
 
 .client-log-recording-badge {

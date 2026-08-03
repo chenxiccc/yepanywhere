@@ -20,6 +20,8 @@ const sidebarSpacingMetrics: Record<
     headerPadding: string;
     headerJustifyContent: string;
     brandDisplay: string;
+    actionsPaddingTop: string;
+    sessionsPaddingTop: string;
   }
 > = {
   compact: {
@@ -33,6 +35,8 @@ const sidebarSpacingMetrics: Record<
     headerPadding: "0",
     headerJustifyContent: "flex-end",
     brandDisplay: "none",
+    actionsPaddingTop: "1px",
+    sessionsPaddingTop: "0",
   },
   comfortable: {
     rowMinHeight: "34px",
@@ -45,6 +49,8 @@ const sidebarSpacingMetrics: Record<
     headerPadding: "0.75rem 1rem",
     headerJustifyContent: "space-between",
     brandDisplay: "inline",
+    actionsPaddingTop: "0",
+    sessionsPaddingTop: "0.25rem",
   },
 };
 
@@ -77,6 +83,14 @@ function applySidebarSpacing(spacing: SidebarSpacing): void {
     metrics.headerJustifyContent,
   );
   root.style.setProperty("--sidebar-brand-display", metrics.brandDisplay);
+  root.style.setProperty(
+    "--sidebar-actions-padding-top",
+    metrics.actionsPaddingTop,
+  );
+  root.style.setProperty(
+    "--sidebar-sessions-padding-top",
+    metrics.sessionsPaddingTop,
+  );
 }
 
 function loadSidebarSpacing(): SidebarSpacing {

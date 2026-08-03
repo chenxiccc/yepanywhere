@@ -319,8 +319,10 @@ arbiter for demand traffic; callers only opt *optional* work out.
   `ClientLogCollector` already follows this pattern against the singleton
   manager and generalizes to per-source status.
 - **UI affordances** (offline banners, composer state, connection bar): read
-  `transport.status`. Users see offline-ness; the plumbing does not reject
-  work it could complete in under a second.
+  `transport.status`. The global diagnostic bar is exceptional-state-only:
+  ready renders no full-width success rule, while reconnecting and disconnected
+  remain visible. Users see offline-ness; the plumbing does not reject work it
+  could complete in under a second.
 - **Subscriptions** while not ready: raw `subscribe*` delivers an async
   `onError` (retryable classification). The managed-stream layer is what
   waits for readiness and installs the subscription; raw primitives stay
