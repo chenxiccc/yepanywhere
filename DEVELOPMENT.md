@@ -40,6 +40,8 @@ warning that must stand needs an inline justification.
 The general CI unit-test job runs `pnpm test`. Android unit, lint, build, and
 instrumentation coverage belongs to the dedicated Android App workflow so its
 Gradle work does not contend with the JavaScript workspace test processes.
+Android JVM unit-test tasks have a five-minute task timeout and emit per-test
+lifecycle output so a stalled worker fails with attributable evidence.
 
 Environment-dependent subprocess tests must control both the child environment
 and relevant process descriptors. In particular, Bash `BASH_ENV` probes use

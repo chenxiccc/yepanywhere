@@ -1,4 +1,7 @@
 import java.net.URI
+import java.time.Duration
+import org.gradle.api.tasks.testing.Test
+import org.gradle.api.tasks.testing.logging.TestLogEvent
 
 plugins {
     id("com.android.application")
@@ -251,5 +254,17 @@ tasks.matching {
 }.configureEach {
     doFirst {
         error("yaWebClientUrl is a debug-only override")
+    }
+}
+
+tasks.withType<Test>().configureEach {
+    timeout.set(Duration.ofMinutes(5))
+    testLogging {
+        events(
+            TestLogEvent.STARTED,
+            TestLogEvent.PASSED,
+            TestLogEvent.SKIPPED,
+            TestLogEvent.FAILED,
+        )
     }
 }

@@ -32,6 +32,7 @@ class YaRelayMuxSocketBrokerTest {
     fun `small health response advertises mux without requiring a fixed body size`() =
         kotlinx.coroutines.runBlocking {
             val server = MockWebServer()
+            val client = OkHttpClient()
             server.enqueue(
                 MockResponse().setBody(
                     """{"status":"ok","relayCapabilities":["client-mux-v1"]}""",
@@ -40,11 +41,13 @@ class YaRelayMuxSocketBrokerTest {
             server.start()
             try {
                 assertTrue(
-                    relayMuxCapabilityProbe(OkHttpClient())(
+                    relayMuxCapabilityProbe(client)(
                         server.url("/health").toString(),
                     ),
                 )
             } finally {
+                client.connectionPool.evictAll()
+                client.dispatcher.executorService.shutdown()
                 server.shutdown()
             }
         }
