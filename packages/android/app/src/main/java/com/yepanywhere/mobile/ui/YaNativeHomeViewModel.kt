@@ -7,6 +7,7 @@ import com.yepanywhere.mobile.YepAnywhereApplication
 import com.yepanywhere.mobile.connection.YaConnectionLease
 import com.yepanywhere.mobile.connection.YaConnectionPhase
 import com.yepanywhere.mobile.connection.YaConnectionState
+import com.yepanywhere.mobile.connection.YaSubscription
 import com.yepanywhere.mobile.profiles.YaPairedServerProfile
 import com.yepanywhere.mobile.profiles.YaServerRoute
 import java.util.Locale
@@ -15,6 +16,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,6 +26,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
 enum class YaPairingRouteKind {
     DIRECT,
@@ -57,18 +61,58 @@ enum class YaNativeUiError {
     INVALID_SERVER_DETAILS,
     AUTHENTICATION_FAILED,
     CONNECTION_FAILED,
-    SESSION_LOAD_FAILED,
+}
+
+data class YaNativeServerState(
+    val profile: YaPairedServerProfile,
+    val included: Boolean,
+    val connection: YaConnectionState = YaConnectionState(YaConnectionPhase.IDLE),
+    val sessions: List<YaSessionSummary> = emptyList(),
+    val sessionsLoading: Boolean = false,
+    val sessionLoadFailed: Boolean = false,
+    val hostIcon: String? = null,
+)
+
+data class YaSourcedSession(
+    val profileId: String,
+    val serverUsername: String,
+    val serverIcon: String?,
+    val session: YaSessionSummary,
+) {
+    val key: String = "$profileId:${session.id}"
 }
 
 data class YaNativeHomeState(
     val profiles: List<YaPairedServerProfile> = emptyList(),
-    val selectedProfileId: String? = null,
-    val connection: YaConnectionState = YaConnectionState(YaConnectionPhase.IDLE),
-    val sessions: List<YaSessionSummary> = emptyList(),
-    val sessionsLoading: Boolean = false,
+    val includedProfileIds: Set<String> = emptySet(),
+    val filterProfileId: String? = null,
+    val servers: Map<String, YaNativeServerState> = emptyMap(),
     val actionInProgress: Boolean = false,
     val error: YaNativeUiError? = null,
-)
+) {
+    val includedProfiles: List<YaPairedServerProfile>
+        get() = profiles.filter { it.id in includedProfileIds }
+
+    val sourcedSessions: List<YaSourcedSession>
+        get() {
+            val visibleIds = filterProfileId?.let(::setOf) ?: includedProfileIds
+            return servers.values
+                .asSequence()
+                .filter { it.profile.id in visibleIds }
+                .flatMap { source ->
+                    source.sessions.asSequence().map { session ->
+                        YaSourcedSession(
+                            profileId = source.profile.id,
+                            serverUsername = source.profile.username,
+                            serverIcon = source.hostIcon,
+                            session = session,
+                        )
+                    }
+                }
+                .sortedByDescending { it.session.updatedAt }
+                .toList()
+        }
+}
 
 class YaNativeHomeViewModel(application: Application) : AndroidViewModel(application) {
     private val runtime = (application as YepAnywhereApplication).nativeRuntime
@@ -77,35 +121,41 @@ class YaNativeHomeViewModel(application: Application) : AndroidViewModel(applica
     private val visible = MutableStateFlow(false)
     private val connectionRevision = MutableStateFlow(0L)
     private val actionRunning = AtomicBoolean(false)
-    private var activeLease: YaConnectionLease? = null
-    private var loadJob: Job? = null
+    private val activeLeases = mutableMapOf<String, ActiveSource>()
 
     val state: StateFlow<YaNativeHomeState> = mutableState.asStateFlow()
 
     init {
         viewModelScope.launch {
-            combine(store.profiles, store.selectedProfileId) { profiles, selected ->
-                profiles to selected
-            }.collect { (profiles, selected) ->
-                val validSelected = selected?.takeIf { id -> profiles.any { it.id == id } }
-                mutableState.value = mutableState.value.copy(
-                    profiles = profiles,
-                    selectedProfileId = validSelected,
-                )
-                if (validSelected == null && profiles.isNotEmpty()) {
-                    store.select(profiles.first().id)
+            store.listState.collect { listState ->
+                val sources = listState.profiles.associate { profile ->
+                    val previous = mutableState.value.servers[profile.id]
+                    profile.id to (previous?.copy(
+                        profile = profile,
+                        included = profile.id in listState.includedProfileIds,
+                    ) ?: YaNativeServerState(
+                        profile = profile,
+                        included = profile.id in listState.includedProfileIds,
+                    ))
                 }
+                val filter = mutableState.value.filterProfileId
+                    ?.takeIf { it in listState.includedProfileIds }
+                mutableState.value = mutableState.value.copy(
+                    profiles = listState.profiles,
+                    includedProfileIds = listState.includedProfileIds,
+                    filterProfileId = filter,
+                    servers = sources,
+                )
             }
         }
         viewModelScope.launch {
-            combine(
-                store.selectedProfileId,
-                visible,
-                connectionRevision,
-            ) { selected, isVisible, revision ->
-                BindingKey(selected.takeIf { isVisible }, revision)
+            combine(store.listState, visible, connectionRevision) { list, isVisible, revision ->
+                BindingKey(
+                    profileIds = if (isVisible) list.includedProfileIds.sorted() else emptyList(),
+                    revision = revision,
+                )
             }.distinctUntilChanged().collectLatest { key ->
-                bindProfile(key.profileId)
+                bindProfiles(key.profileIds)
             }
         }
     }
@@ -114,9 +164,14 @@ class YaNativeHomeViewModel(application: Application) : AndroidViewModel(applica
         visible.value = isVisible
     }
 
-    fun selectProfile(profileId: String) {
+    fun setFilter(profileId: String?) {
+        if (profileId != null && profileId !in mutableState.value.includedProfileIds) return
+        mutableState.value = mutableState.value.copy(filterProfileId = profileId)
+    }
+
+    fun setIncluded(profileId: String, included: Boolean) {
         viewModelScope.launch {
-            runCatching { store.select(profileId) }
+            runCatching { store.setIncluded(profileId, included) }
                 .onFailure { setError(YaNativeUiError.CONNECTION_FAILED) }
         }
     }
@@ -149,8 +204,7 @@ class YaNativeHomeViewModel(application: Application) : AndroidViewModel(applica
         }
     }
 
-    fun reauthenticate(password: String) {
-        val profileId = mutableState.value.selectedProfileId ?: return
+    fun reauthenticate(profileId: String, password: String) {
         runAction {
             if (password.isEmpty()) {
                 setError(YaNativeUiError.INVALID_SERVER_DETAILS)
@@ -167,14 +221,16 @@ class YaNativeHomeViewModel(application: Application) : AndroidViewModel(applica
         }
     }
 
-    fun refreshSessions() {
-        val lease = activeLease ?: return
-        loadJob?.cancel()
-        loadJob = viewModelScope.launch { loadSessions(lease) }
+    fun refreshSessions(profileId: String? = mutableState.value.filterProfileId) {
+        val ids = profileId?.let(::listOf) ?: mutableState.value.includedProfileIds.toList()
+        ids.forEach { id ->
+            activeLeases[id]?.let { active ->
+                viewModelScope.launch { loadSessions(id, active) }
+            }
+        }
     }
 
-    fun forgetSelectedProfile() {
-        val profileId = mutableState.value.selectedProfileId ?: return
+    fun forgetProfile(profileId: String) {
         runAction {
             try {
                 store.forget(profileId)
@@ -186,72 +242,146 @@ class YaNativeHomeViewModel(application: Application) : AndroidViewModel(applica
         }
     }
 
+    fun retryConnections() {
+        connectionRevision.value += 1
+    }
+
     fun clearError() {
         mutableState.value = mutableState.value.copy(error = null)
     }
 
-    private suspend fun bindProfile(profileId: String?) {
-        activeLease = null
-        loadJob?.cancel()
-        loadJob = null
-        mutableState.value = mutableState.value.copy(
-            connection = YaConnectionState(YaConnectionPhase.IDLE),
-            sessions = emptyList(),
-            sessionsLoading = false,
-        )
-        if (profileId == null) return
-
-        val manager = runtime.connectionManager(profileId)
-        val lease = manager.acquire()
-        activeLease = lease
-        val stateJob = viewModelScope.launch {
-            manager.state.collect { connection ->
-                if (activeLease === lease) {
-                    mutableState.value = mutableState.value.copy(connection = connection)
-                }
-            }
+    private suspend fun bindProfiles(profileIds: List<String>): Unit = coroutineScope {
+        profileIds.forEach { profileId ->
+            launch { bindProfile(profileId) }
         }
-        loadJob = viewModelScope.launch { loadSessions(lease) }
+        awaitCancellation()
+    }
+
+    private suspend fun bindProfile(profileId: String) {
+        val manager = runtime.connectionManager(profileId)
+        val lease = try {
+            manager.acquire()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Throwable) {
+            updateSource(profileId) {
+                it.copy(connection = YaConnectionState(YaConnectionPhase.FAILED))
+            }
+            return
+        }
+        val active = ActiveSource(lease)
+        activeLeases[profileId] = active
         try {
-            awaitCancellation()
+            coroutineScope {
+                launch {
+                    manager.state.collect { connection ->
+                        if (activeLeases[profileId] === active) {
+                            updateSource(profileId) { it.copy(connection = connection) }
+                        }
+                    }
+                }
+                launch { loadSessions(profileId, active) }
+                launch { loadHostIdentity(profileId, active) }
+                launch { watchActivity(profileId, active) }
+                awaitCancellation()
+            }
         } finally {
-            loadJob?.cancel()
-            if (activeLease === lease) activeLease = null
-            stateJob.cancel()
+            if (activeLeases[profileId] === active) activeLeases.remove(profileId)
             withContext(NonCancellable) { lease.releaseAndAwait() }
+            updateSource(profileId) {
+                it.copy(
+                    connection = YaConnectionState(YaConnectionPhase.IDLE),
+                    sessionsLoading = false,
+                    hostIcon = null,
+                )
+            }
         }
     }
 
-    private suspend fun loadSessions(lease: YaConnectionLease) {
-        if (activeLease !== lease) return
-        mutableState.value = mutableState.value.copy(
-            sessionsLoading = true,
-            error = null,
-        )
+    private suspend fun loadSessions(profileId: String, active: ActiveSource) {
+        if (activeLeases[profileId] !== active) return
+        updateSource(profileId) {
+            it.copy(sessionsLoading = true, sessionLoadFailed = false)
+        }
         try {
-            val response = lease.request("GET", "/sessions?limit=50")
+            val response = active.lease.request("GET", "/sessions?limit=50")
             val sessions = YaSessionSummary.parseResponse(response.body)
-            if (activeLease === lease) {
-                mutableState.value = mutableState.value.copy(
-                    sessions = sessions,
-                    sessionsLoading = false,
-                )
+            if (activeLeases[profileId] === active) {
+                updateSource(profileId) {
+                    it.copy(
+                        sessions = sessions,
+                        sessionsLoading = false,
+                        sessionLoadFailed = false,
+                    )
+                }
             }
         } catch (error: CancellationException) {
             throw error
         } catch (_: Throwable) {
-            if (activeLease === lease) {
-                val phase = mutableState.value.connection.phase
-                mutableState.value = mutableState.value.copy(
-                    sessionsLoading = false,
-                    error = if (phase == YaConnectionPhase.REAUTHENTICATION_REQUIRED) {
-                        null
-                    } else {
-                        YaNativeUiError.SESSION_LOAD_FAILED
-                    },
-                )
+            if (activeLeases[profileId] === active) {
+                updateSource(profileId) {
+                    it.copy(sessionsLoading = false, sessionLoadFailed = true)
+                }
             }
         }
+    }
+
+    private suspend fun loadHostIdentity(profileId: String, active: ActiveSource) {
+        try {
+            val version = active.lease.request("GET", "/version").body as? JSONObject ?: return
+            val capabilities = version.optJSONArray("capabilities") ?: return
+            val supported = (0 until capabilities.length()).any { index ->
+                capabilities.optString(index) == HOST_IDENTITY_CAPABILITY
+            }
+            if (!supported) return
+            val response = active.lease.request("GET", "/settings").body as? JSONObject ?: return
+            val icon = response.optJSONObject("settings")
+                ?.optJSONObject("hostIdentity")
+                ?.optString("icon")
+                ?.trim()
+                ?.takeIf(String::isNotEmpty)
+            if (activeLeases[profileId] === active) {
+                updateSource(profileId) { it.copy(hostIcon = icon) }
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Throwable) {
+            // Host identity is optional; source connection and sessions remain usable.
+        }
+    }
+
+    private suspend fun watchActivity(profileId: String, active: ActiveSource) {
+        var subscription: YaSubscription? = null
+        var refreshJob: Job? = null
+        try {
+            subscription = active.lease.subscribe(channel = "activity")
+            subscription.events.collect {
+                if (refreshJob?.isActive != true) {
+                    refreshJob = viewModelScope.launch {
+                        delay(ACTIVITY_REFRESH_DELAY_MS)
+                        loadSessions(profileId, active)
+                    }
+                }
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Throwable) {
+            // The initial request and manual refresh remain useful without activity events.
+        } finally {
+            refreshJob?.cancel()
+            subscription?.close()
+        }
+    }
+
+    private fun updateSource(
+        profileId: String,
+        transform: (YaNativeServerState) -> YaNativeServerState,
+    ) {
+        val current = mutableState.value
+        val source = current.servers[profileId] ?: return
+        mutableState.value = current.copy(
+            servers = current.servers + (profileId to transform(source)),
+        )
     }
 
     private fun runAction(block: suspend () -> Unit) {
@@ -274,5 +404,11 @@ class YaNativeHomeViewModel(application: Application) : AndroidViewModel(applica
         mutableState.value = mutableState.value.copy(error = error)
     }
 
-    private data class BindingKey(val profileId: String?, val revision: Long)
+    private data class ActiveSource(val lease: YaConnectionLease)
+    private data class BindingKey(val profileIds: List<String>, val revision: Long)
+
+    companion object {
+        private const val HOST_IDENTITY_CAPABILITY = "host-identity"
+        private const val ACTIVITY_REFRESH_DELAY_MS = 250L
+    }
 }
