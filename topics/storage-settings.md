@@ -26,7 +26,7 @@ visible. **Performance** would misstate filesystem consent as tuning;
 
 The page introduction is conceptually:
 
-> Control where this YA server stores its own project-related data and whether
+> Control where this YA server stores attachments and viewer state and whether
 > it keeps independent copies of new tool-result images. This does not restrict
 > files modified by agents or explicit source-control actions.
 
@@ -44,13 +44,20 @@ The first section presents a full-width stacked radio list rather than a toggle
 so the off state cannot be mistaken for disabling required attachment storage.
 Each clickable option row carries its own explanation; the layout remains one
 column as options are added instead of separating explanations from controls or
-crowding choices into a fixed grid:
+crowding choices into a fixed grid.
+
+The section explicitly identifies the affected storage families: uploaded
+attachments, source-review drafts and capture snapshots, Git author colors
+used by blame, and tool-result images only when separate preservation is
+enabled. It also distinguishes that YA-owned state from files changed by
+agents or explicit source-control actions.
 
 ### YA data directory — default
 
-Store YA-managed attachments, review state, indexes, and any separately
-enabled preserved media below the server's configured YA data directory. Do
-not create YA storage paths or YA-owned Git metadata inside projects.
+Store uploaded attachments, source-review state and captures, Git author color
+assignments, and any separately enabled preserved media below the server's
+configured YA data directory. Do not create YA storage paths, Git exclusions,
+or YA-owned refs and objects inside projects.
 
 This UI choice maps to:
 
@@ -60,9 +67,11 @@ settings.projectDirectoryStorage = "app-data";
 
 ### Inside each project — explicit opt-in
 
-Allow eligible YA-managed state below the single project root
-`<project>/.yep/`. YA may best-effort add `.yep/` to that clone's local Git
-exclude after containment, symlink, and tracked-path checks.
+Allow eligible YA-managed state below the project-local `.yep/` root. YA may
+best-effort add `.yep/` to that clone's local Git exclude after containment,
+symlink, and tracked-path checks. Source-review capture may additionally write
+YA-owned Git objects and `refs/yep/source-review/captures` because those
+snapshots must remain addressable after the reviewed worktree changes.
 
 This UI choice maps to:
 
