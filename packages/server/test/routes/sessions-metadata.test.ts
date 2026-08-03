@@ -4731,6 +4731,40 @@ describe("Sessions metadata route", () => {
     expect(interruptProcess).toHaveBeenCalled();
   });
 
+  it.each([
+    {
+      label: "non-string",
+      handoffText: { text: "not a string" },
+      error: "handoffText must be a string",
+    },
+    {
+      label: "oversized",
+      handoffText: "x".repeat(40_001),
+      error: "handoffText must be at most 40000 characters",
+    },
+  ])(
+    "rejects $label edited handoff text before touching the source process",
+    async ({ handoffText, error }) => {
+      const { project, routes, queueMessage, interruptProcess, startSession } =
+        createHandoffDraftRoutes();
+
+      const response = await routes.request(
+        `/projects/${project.id}/sessions/sess-1/restart`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ handoffText }),
+        },
+      );
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({ error });
+      expect(queueMessage).not.toHaveBeenCalled();
+      expect(interruptProcess).not.toHaveBeenCalled();
+      expect(startSession).not.toHaveBeenCalled();
+    },
+  );
+
   it("summarizes fallback activity and appends queued turns last", async () => {
     const project = createProject();
     const verboseReadOutput = "VERBOSE_READ_OUTPUT".repeat(200);

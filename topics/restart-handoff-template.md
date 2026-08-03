@@ -56,6 +56,11 @@ Code: `summarizeToolUse` (shell-only), `renderRestartActivityContent`
 divider), `shellCommandFromInput`. Size budgets remain the `RESTART_HANDOFF_*`
 constants (40k total); slimming frees room within the same caps.
 
+An edited draft is accepted only as a string no longer than that same 40,000
+character total budget. The restart route rejects malformed or oversized
+drafts before attempting compaction or interrupting the source process, so an
+invalid replacement request cannot sacrifice the live session.
+
 ## Source Session block (implemented)
 
 ```

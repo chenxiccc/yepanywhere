@@ -419,6 +419,21 @@ const RESTART_HANDOFF_RECENT_USER_TURNS = 10;
 const RESTART_HANDOFF_RECENT_ACTIVITY_ITEMS = 24;
 const RESTART_COMPACT_WAIT_MS = 12_000;
 
+function parseRestartHandoffText(
+  value: unknown,
+): { handoffText?: string } | { error: string } {
+  if (value === undefined) return { handoffText: undefined };
+  if (typeof value !== "string") {
+    return { error: "handoffText must be a string" };
+  }
+  if (value.length > RESTART_HANDOFF_MAX_CHARS) {
+    return {
+      error: `handoffText must be at most ${RESTART_HANDOFF_MAX_CHARS} characters`,
+    };
+  }
+  return { handoffText: value };
+}
+
 function truncateForRestart(text: string, maxChars: number): string {
   if (text.length <= maxChars) {
     return text;
@@ -4282,6 +4297,12 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       // Body is optional for this endpoint.
     }
 
+    const parsedHandoffText = parseRestartHandoffText(body.handoffText);
+    if ("error" in parsedHandoffText) {
+      return c.json({ error: parsedHandoffText.error }, 400);
+    }
+    const { handoffText } = parsedHandoffText;
+
     const parsedBodyExecutor = parseOptionalExecutor(body.executor);
     if (parsedBodyExecutor.error) {
       return c.json({ error: parsedBodyExecutor.error }, 400);
@@ -4354,7 +4375,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     // available. A supplied draft was already built from a compacted
     // transcript by the preview route, so compacting again would only spend
     // tokens to produce a boundary this restart will not read.
-    if (restartMode !== "fork" && body.handoffText === undefined) {
+    if (restartMode !== "fork" && handoffText === undefined) {
       await tryRestartCompact(oldProcess);
     }
     const oldProcessInterrupted =
@@ -4553,7 +4574,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       sourceSession,
     });
     const handoff =
-      body.handoffText ??
+      handoffText ??
       (await buildHandoffText({
         project,
         projectId,
