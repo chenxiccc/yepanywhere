@@ -3,7 +3,9 @@ package com.yepanywhere.mobile
 import android.content.Context
 import com.yepanywhere.mobile.connection.YaNativeProfileConnector
 import com.yepanywhere.mobile.connection.YaNativeSecureConnection
+import com.yepanywhere.mobile.connection.YaOkHttpClientSocketConnector
 import com.yepanywhere.mobile.connection.YaPairingCoordinator
+import com.yepanywhere.mobile.connection.YaRelayMuxSocketBroker
 import com.yepanywhere.mobile.connection.YaServerConnectionManager
 import com.yepanywhere.mobile.profiles.YaPairedServerStore
 import com.yepanywhere.mobile.security.AndroidKeystoreSecurityClientKeyStore
@@ -20,8 +22,15 @@ class YaNativeRuntime(context: Context) : Closeable {
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .build()
+    private val relayMuxSockets = YaRelayMuxSocketBroker(
+        httpClient = httpClient,
+        legacyConnector = YaOkHttpClientSocketConnector(httpClient),
+    )
     private val connector = YaNativeProfileConnector(
-        YaNativeSecureConnection(httpClient),
+        YaNativeSecureConnection(
+            httpClient = httpClient,
+            socketConnector = relayMuxSockets,
+        ),
     )
     private val securityClients = YaSecurityClientCoordinator(
         repository = pairedServers,
@@ -48,6 +57,7 @@ class YaNativeRuntime(context: Context) : Closeable {
             connectionManagers.values.toList().also { connectionManagers.clear() }
         }
         managers.forEach { it.close() }
+        relayMuxSockets.close()
         pairedServers.close()
         httpClient.connectionPool.evictAll()
         httpClient.dispatcher.executorService.shutdown()

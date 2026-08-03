@@ -7,10 +7,6 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.Response
-import okhttp3.WebSocket
-import okhttp3.WebSocketListener
 import okio.ByteString
 import okio.ByteString.Companion.toByteString
 import org.json.JSONArray
@@ -107,8 +103,10 @@ class YaNativeSecureSession internal constructor(
  * higher-level leased connection manager.
  */
 class YaNativeSecureConnection(
-    private val httpClient: OkHttpClient,
+    httpClient: OkHttpClient,
     private val secretBoxFactory: () -> YaSecretBox = ::LazySodiumSecretBox,
+    private val socketConnector: YaClientSocketConnector =
+        YaOkHttpClientSocketConnector(httpClient),
 ) : YaSecureSessionOpener {
     override suspend fun login(
         wsUrl: String,
@@ -157,13 +155,12 @@ class YaNativeSecureConnection(
         relayTarget: String?,
         authentication: Authentication,
     ): YaNativeSecureSession {
-        val request = Request.Builder().url(wsUrl).build()
         val listener = SecureSessionListener(
             authentication = authentication,
             relayTarget = relayTarget,
             secretBox = secretBoxFactory(),
         )
-        val socket = httpClient.newWebSocket(request, listener)
+        val socket = socketConnector.open(wsUrl, relayTarget, listener)
         listener.attach(socket)
         return try {
             listener.awaitAuthenticated()
@@ -193,20 +190,20 @@ internal class SecureSessionListener(
     private val authentication: Authentication,
     private val relayTarget: String?,
     private val secretBox: YaSecretBox,
-) : WebSocketListener() {
+) : YaClientSocketListener {
     private val authenticated = CompletableDeferred<YaNativeSecureSession>()
     private val closed = CompletableDeferred<Unit>()
     private val incoming = Channel<JSONObject>(INCOMING_BUFFER_SIZE)
     private val terminated = AtomicBoolean(false)
     private val sendLock = Any()
-    private var socket: WebSocket? = null
+    private var socket: YaClientSocket? = null
     private var transportKey: ByteArray? = null
     private var nextOutboundSequence = 0L
     private var lastInboundSequence = -1L
     private var relayPaired = relayTarget == null
     private var closeRequested = false
 
-    fun attach(webSocket: WebSocket) {
+    fun attach(webSocket: YaClientSocket) {
         socket = webSocket
     }
 
@@ -218,15 +215,16 @@ internal class SecureSessionListener(
         closed.await()
     }
 
-    override fun onOpen(webSocket: WebSocket, response: Response) {
+    override fun onOpen(socket: YaClientSocket, relayPaired: Boolean) {
         if (terminated.get()) {
-            webSocket.cancel()
+            socket.cancel()
             return
         }
-        socket = webSocket
+        this.socket = socket
+        this.relayPaired = relayPaired
         runCatching {
             val target = relayTarget
-            if (target == null) {
+            if (relayPaired || target == null) {
                 authentication.start(this)
             } else {
                 sendPlaintext(
@@ -238,7 +236,7 @@ internal class SecureSessionListener(
         }.onFailure(::fail)
     }
 
-    override fun onMessage(webSocket: WebSocket, text: String) {
+    override fun onText(socket: YaClientSocket, text: String) {
         runCatching {
             check(transportKey == null) {
                 "Plaintext message received after secure transport establishment"
@@ -263,7 +261,7 @@ internal class SecureSessionListener(
         }.onFailure(::fail)
     }
 
-    override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
+    override fun onBytes(socket: YaClientSocket, bytes: ByteString) {
         runCatching {
             val key = checkNotNull(transportKey) {
                 "Binary message received before secure transport establishment"
@@ -288,11 +286,11 @@ internal class SecureSessionListener(
         }.onFailure(::fail)
     }
 
-    override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-        webSocket.close(code, reason)
+    override fun onClosing(socket: YaClientSocket, code: Int, reason: String) {
+        socket.close(code, reason)
     }
 
-    override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+    override fun onClosed(socket: YaClientSocket, code: Int, reason: String) {
         val normalOwnerClose = closeRequested && code == NORMAL_CLOSE_CODE
         terminate(
             if (normalOwnerClose) {
@@ -303,8 +301,8 @@ internal class SecureSessionListener(
         )
     }
 
-    override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-        terminate(if (closeRequested) null else t)
+    override fun onFailure(socket: YaClientSocket, error: Throwable) {
+        terminate(if (closeRequested) null else error)
     }
 
     fun sendPlaintext(message: JSONObject) {
