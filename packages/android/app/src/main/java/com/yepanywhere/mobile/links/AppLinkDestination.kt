@@ -4,6 +4,15 @@ import java.net.URI
 import java.net.URLDecoder
 
 object AppLinkDestination {
+    fun toWebClientUrlForIntent(
+        action: String?,
+        appLink: String?,
+        clientStartUrl: String,
+    ): String? {
+        if (action != ACTION_VIEW) return null
+        return toWebClientUrl(appLink, clientStartUrl)
+    }
+
     fun toWebClientUrl(appLink: String?, clientStartUrl: String): String? {
         if (appLink == null) {
             return null
@@ -43,4 +52,5 @@ object AppLinkDestination {
 
     private const val APP_LINK_HOST = "yepanywhere.com"
     private const val APP_LINK_PATH = "/open"
+    private const val ACTION_VIEW = "android.intent.action.VIEW"
 }

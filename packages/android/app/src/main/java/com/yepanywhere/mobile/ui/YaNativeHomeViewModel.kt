@@ -9,6 +9,7 @@ import com.yepanywhere.mobile.connection.YaConnectionPhase
 import com.yepanywhere.mobile.connection.YaConnectionState
 import com.yepanywhere.mobile.profiles.YaPairedServerProfile
 import com.yepanywhere.mobile.profiles.YaServerRoute
+import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -31,10 +32,26 @@ enum class YaPairingRouteKind {
 data class YaPairingInput(
     val username: String,
     val password: String,
-    val websocketUrl: String,
-    val routeKind: YaPairingRouteKind,
-    val relayTarget: String?,
+    val routeKind: YaPairingRouteKind = YaPairingRouteKind.RELAY,
+    val relayWebsocketUrl: String = "",
+    val directWebsocketUrl: String = "",
 )
+
+// Keep aligned with @yep-anywhere/shared DEFAULT_RELAY_URL.
+internal const val DEFAULT_RELAY_WEBSOCKET_URL = "wss://relay.yepanywhere.com/ws"
+
+internal fun YaPairingInput.normalizedUsername(): String = when (routeKind) {
+    YaPairingRouteKind.RELAY -> username.trim().lowercase(Locale.ROOT)
+    YaPairingRouteKind.DIRECT -> username.trim()
+}
+
+internal fun YaPairingInput.resolveRoute(username: String): YaServerRoute = when (routeKind) {
+    YaPairingRouteKind.RELAY -> YaServerRoute.relay(
+        websocketUrl = relayWebsocketUrl.trim().ifEmpty { DEFAULT_RELAY_WEBSOCKET_URL },
+        relayTarget = username,
+    )
+    YaPairingRouteKind.DIRECT -> YaServerRoute.direct(directWebsocketUrl.trim())
+}
 
 enum class YaNativeUiError {
     INVALID_SERVER_DETAILS,
@@ -106,20 +123,14 @@ class YaNativeHomeViewModel(application: Application) : AndroidViewModel(applica
 
     fun pair(input: YaPairingInput) {
         runAction {
-            val username = input.username.trim()
-            val route = try {
-                when (input.routeKind) {
-                    YaPairingRouteKind.DIRECT -> YaServerRoute.direct(input.websocketUrl.trim())
-                    YaPairingRouteKind.RELAY -> YaServerRoute.relay(
-                        websocketUrl = input.websocketUrl.trim(),
-                        relayTarget = input.relayTarget.orEmpty().trim(),
-                    )
-                }
-            } catch (_: IllegalArgumentException) {
+            val username = input.normalizedUsername()
+            if (username.isBlank() || input.password.isEmpty()) {
                 setError(YaNativeUiError.INVALID_SERVER_DETAILS)
                 return@runAction
             }
-            if (username.isBlank() || input.password.isEmpty()) {
+            val route = try {
+                input.resolveRoute(username)
+            } catch (_: IllegalArgumentException) {
                 setError(YaNativeUiError.INVALID_SERVER_DETAILS)
                 return@runAction
             }

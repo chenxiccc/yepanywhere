@@ -92,9 +92,11 @@ phone and server.
 ## Login And Push Enrollment
 
 The default server-pairing path is the existing username/password SRP flow over
-a direct or relay connection. The native Kotlin core owns that native login and
-its Keystore-backed resume credential. Push enrollment happens only after the
-server records the authenticated paired device:
+the upstream public relay. The same normalized username is the relay target and
+SRP identity, matching the web relay login. A custom relay or direct connection
+is an explicit advanced choice. The native Kotlin core owns that native login
+and its Keystore-backed resume credential. Push enrollment happens only after
+the server records the authenticated paired device:
 
 1. The user logs the native YA Android client into a YA server with SRP and
    establishes the paired-device relationship.

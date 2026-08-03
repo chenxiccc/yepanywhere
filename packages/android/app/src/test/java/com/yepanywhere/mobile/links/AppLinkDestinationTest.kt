@@ -8,6 +8,29 @@ class AppLinkDestinationTest {
     private val clientUrl = "https://appassets.androidplatform.net/"
 
     @Test
+    fun ignoresOrdinaryLauncherIntentsEvenWhenTheActivityAlreadyExists() {
+        assertNull(
+            AppLinkDestination.toWebClientUrlForIntent(
+                action = "android.intent.action.MAIN",
+                appLink = null,
+                clientStartUrl = clientUrl,
+            ),
+        )
+    }
+
+    @Test
+    fun acceptsAValidViewIntent() {
+        assertEquals(
+            "https://appassets.androidplatform.net/#u=user&p=password",
+            AppLinkDestination.toWebClientUrlForIntent(
+                action = "android.intent.action.VIEW",
+                appLink = "https://yepanywhere.com/open?u=user&p=password",
+                clientStartUrl = clientUrl,
+            ),
+        )
+    }
+
+    @Test
     fun mapsCredentialsToTheFixedClientOriginFragment() {
         assertEquals(
             "https://appassets.androidplatform.net/#u=user%2Bname&p=safe%27value&" +

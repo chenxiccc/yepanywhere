@@ -145,8 +145,9 @@ private fun PairingScreen(
 ) {
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    var websocketUrl by remember { mutableStateOf("") }
-    var relayTarget by remember { mutableStateOf("") }
+    var showAdvanced by remember { mutableStateOf(false) }
+    var relayWebsocketUrl by remember { mutableStateOf("") }
+    var directWebsocketUrl by remember { mutableStateOf("") }
     var routeKind by remember { mutableStateOf(YaPairingRouteKind.RELAY) }
 
     Column(
@@ -165,61 +166,10 @@ private fun PairingScreen(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         ErrorCard(error, onDismissError)
-        Text(
-            modifier = Modifier.padding(top = 20.dp),
-            text = stringResource(R.string.connection_route),
-            style = MaterialTheme.typography.labelLarge,
-        )
-        Row(
-            modifier = Modifier.padding(top = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            FilterChip(
-                selected = routeKind == YaPairingRouteKind.RELAY,
-                onClick = { routeKind = YaPairingRouteKind.RELAY },
-                label = { Text(stringResource(R.string.relay_connection)) },
-            )
-            FilterChip(
-                selected = routeKind == YaPairingRouteKind.DIRECT,
-                onClick = { routeKind = YaPairingRouteKind.DIRECT },
-                label = { Text(stringResource(R.string.direct_connection)) },
-            )
-        }
-        Text(
-            text = if (routeKind == YaPairingRouteKind.DIRECT) {
-                stringResource(R.string.direct_connection_explanation)
-            } else {
-                stringResource(R.string.relay_connection_explanation)
-            },
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
         OutlinedTextField(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 12.dp),
-            value = websocketUrl,
-            onValueChange = { websocketUrl = it },
-            label = { Text(stringResource(R.string.websocket_url)) },
-            placeholder = { Text(stringResource(R.string.websocket_url_example)) },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-            singleLine = true,
-        )
-        if (routeKind == YaPairingRouteKind.RELAY) {
-            OutlinedTextField(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp),
-                value = relayTarget,
-                onValueChange = { relayTarget = it },
-                label = { Text(stringResource(R.string.relay_target)) },
-                singleLine = true,
-            )
-        }
-        OutlinedTextField(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 12.dp),
+                .padding(top = 20.dp),
             value = username,
             onValueChange = { username = it },
             label = { Text(stringResource(R.string.username)) },
@@ -236,6 +186,93 @@ private fun PairingScreen(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             singleLine = true,
         )
+        TextButton(
+            modifier = Modifier.padding(top = 8.dp),
+            enabled = !actionInProgress,
+            onClick = { showAdvanced = !showAdvanced },
+        ) {
+            Text(
+                stringResource(
+                    if (showAdvanced) {
+                        R.string.hide_advanced_connection
+                    } else {
+                        R.string.advanced_connection
+                    },
+                ),
+            )
+        }
+        if (showAdvanced) {
+            Text(
+                modifier = Modifier.padding(top = 8.dp),
+                text = stringResource(R.string.connection_route),
+                style = MaterialTheme.typography.labelLarge,
+            )
+            Row(
+                modifier = Modifier.padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                FilterChip(
+                    selected = routeKind == YaPairingRouteKind.RELAY,
+                    onClick = { routeKind = YaPairingRouteKind.RELAY },
+                    label = { Text(stringResource(R.string.relay_connection)) },
+                )
+                FilterChip(
+                    selected = routeKind == YaPairingRouteKind.DIRECT,
+                    onClick = { routeKind = YaPairingRouteKind.DIRECT },
+                    label = { Text(stringResource(R.string.direct_connection)) },
+                )
+            }
+            Text(
+                text = if (routeKind == YaPairingRouteKind.DIRECT) {
+                    stringResource(R.string.direct_connection_explanation)
+                } else {
+                    stringResource(R.string.relay_connection_explanation)
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedTextField(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp),
+                value = if (routeKind == YaPairingRouteKind.RELAY) {
+                    relayWebsocketUrl
+                } else {
+                    directWebsocketUrl
+                },
+                onValueChange = {
+                    if (routeKind == YaPairingRouteKind.RELAY) {
+                        relayWebsocketUrl = it
+                    } else {
+                        directWebsocketUrl = it
+                    }
+                },
+                label = {
+                    Text(
+                        stringResource(
+                            if (routeKind == YaPairingRouteKind.RELAY) {
+                                R.string.custom_relay_url
+                            } else {
+                                R.string.websocket_url
+                            },
+                        ),
+                    )
+                },
+                placeholder = {
+                    Text(
+                        stringResource(
+                            if (routeKind == YaPairingRouteKind.RELAY) {
+                                R.string.default_relay_url
+                            } else {
+                                R.string.websocket_url_example
+                            },
+                        ),
+                    )
+                },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                singleLine = true,
+            )
+        }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -261,11 +298,9 @@ private fun PairingScreen(
                         YaPairingInput(
                             username = username,
                             password = enteredPassword,
-                            websocketUrl = websocketUrl,
                             routeKind = routeKind,
-                            relayTarget = relayTarget.takeIf {
-                                routeKind == YaPairingRouteKind.RELAY
-                            },
+                            relayWebsocketUrl = relayWebsocketUrl,
+                            directWebsocketUrl = directWebsocketUrl,
                         ),
                     )
                 },

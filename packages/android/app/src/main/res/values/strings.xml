@@ -2,15 +2,18 @@
     <string name="app_name">Yep Anywhere</string>
     <string name="open_full_app">Open full app</string>
     <string name="connect_to_server">Connect to your server</string>
-    <string name="connect_to_server_explanation">Sign in to a Yep Anywhere server. Your password is used only for this sign-in.</string>
+    <string name="connect_to_server_explanation">Enter the remote-access username and password configured on your Yep Anywhere server.</string>
+    <string name="advanced_connection">Advanced connection</string>
+    <string name="hide_advanced_connection">Hide advanced connection</string>
     <string name="connection_route">Connection route</string>
     <string name="direct_connection">Direct</string>
     <string name="relay_connection">Relay</string>
     <string name="direct_connection_explanation">Enter the exact secure WebSocket address of your server.</string>
-    <string name="relay_connection_explanation">Enter the exact relay WebSocket address and target configured by your server.</string>
+    <string name="relay_connection_explanation">The public Yep Anywhere relay is used when the custom URL is empty.</string>
+    <string name="custom_relay_url">Custom relay URL</string>
+    <string name="default_relay_url" translatable="false">wss://relay.yepanywhere.com/ws</string>
     <string name="websocket_url">WebSocket URL</string>
     <string name="websocket_url_example" translatable="false">wss://example.com/api/ws</string>
-    <string name="relay_target">Relay target</string>
     <string name="username">Username</string>
     <string name="password">Password</string>
     <string name="connect">Connect</string>
@@ -40,7 +43,7 @@
     <string name="input_needed">Input needed</string>
     <string name="session_working">Working</string>
     <string name="session_waiting">Waiting for input</string>
-    <string name="invalid_server_details">Check the route, username, and password.</string>
+    <string name="invalid_server_details">Check the username, password, and any advanced connection settings.</string>
     <string name="authentication_failed">Could not authenticate with this server.</string>
     <string name="connection_failed_message">Could not update the saved server.</string>
     <string name="session_load_failed">Could not load sessions from this server.</string>

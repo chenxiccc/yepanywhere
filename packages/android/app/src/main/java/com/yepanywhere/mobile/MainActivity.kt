@@ -28,8 +28,8 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
-        if (savedInstanceState == null && intent.dataString != null) {
-            openWebClient()
+        if (savedInstanceState == null) {
+            openAppLink(intent)
         }
     }
 
@@ -46,15 +46,24 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        openWebClient()
+        openAppLink(intent)
     }
 
     private fun openWebClient() {
-        val requestedUrl = AppLinkDestination.toWebClientUrl(
-            intent.dataString,
-            WebClientConfig.fromBuild().startUrl,
-        )
+        startWebClient(null)
+    }
+
+    private fun openAppLink(intent: Intent) {
+        val requestedUrl = AppLinkDestination.toWebClientUrlForIntent(
+            action = intent.action,
+            appLink = intent.dataString,
+            clientStartUrl = WebClientConfig.fromBuild().startUrl,
+        ) ?: return
         intent.data = null
+        startWebClient(requestedUrl)
+    }
+
+    private fun startWebClient(requestedUrl: String?) {
         startActivity(
             Intent(this, WebClientActivity::class.java).apply {
                 if (requestedUrl != null) {

@@ -291,22 +291,28 @@ transport plumbing rather than becoming the UI's permanent data model.
 
 The Android launcher now opens a native Compose server surface by default; it
 does not allocate a WebView or JavaScript runtime merely because the app is
-opened. An exact `https://yepanywhere.com/open` App Link still hands its typed
-destination to the dedicated full-web activity. **Open full app** remains
-available from every native state and starts the same bundled or hosted client
-channel without routing that web client's traffic through Kotlin.
+opened. This remains true when Android delivers a later launcher `ACTION_MAIN`
+intent to the existing single-task activity. Only a valid exact
+`https://yepanywhere.com/open` `ACTION_VIEW` App Link hands its typed destination
+to the dedicated full-web activity. **Open full app** remains available from
+every native state and starts the same bundled or hosted client channel without
+routing that web client's traffic through Kotlin.
 
-Native onboarding accepts an SRP username/password and either an exact direct
-WebSocket URL or an exact legacy-relay WebSocket URL plus relay target. The
+The default native onboarding surface asks only for the remote-access username
+and password. It matches the web relay login by using
+`wss://relay.yepanywhere.com/ws` when no custom relay is supplied and by using
+the normalized lowercase username as both relay target and SRP identity. The
 username also becomes the local profile's display label; onboarding does not
-ask for a second name. Relay is initially selected for each new pairing, while
-Direct remains an explicit option. This initial selection does not change any
-saved profile's route or preferred-route history. Onboarding does not infer,
-rewrite, probe, or silently replace the entered endpoint. The password is held
-only in the visible field and full-login attempt, cleared from Compose state on
-submission, and never placed in saved instance state, a ViewModel field,
-DataStore, or the web bridge. A profile is persisted only after the
-authenticated server proof succeeds.
+ask for a second name.
+
+An advanced disclosure permits an explicit custom relay WebSocket URL or an
+exact direct WebSocket URL. Explicitly entered endpoints remain authoritative:
+onboarding does not probe or silently replace them. This default affects only
+new pairings and does not change any saved profile's route or preferred-route
+history. The password is held only in the visible field and full-login attempt,
+cleared from Compose state on submission, and never placed in saved instance
+state, a ViewModel field, DataStore, or the web bridge. A profile is persisted
+only after the authenticated server proof succeeds.
 
 The initial signed-in surface can select or forget local server profiles,
 display connection and reauthentication state, and read up to 50 compact

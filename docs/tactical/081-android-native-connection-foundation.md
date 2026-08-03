@@ -370,16 +370,18 @@ manifests remain HTTPS-only.
   temporary directories, so the integration test cannot inspect the
   maintainer's real session history or emit unrelated slow-scan warnings.
 
-## Initial Compose Consumer Evidence — 2026-08-02
+## Initial Compose Consumer Evidence — 2026-08-02, updated 2026-08-03
 
-- A normal launcher start shows native onboarding rather than automatically
-  allocating `WebClientActivity`; **Open full app** remains in the top bar, and
-  exact App Links retain their dedicated full-web handoff.
-- The Compose form defaults new pairings to an explicit legacy relay route,
-  keeps Direct available as an explicit alternative, and uses the SRP username
-  as the saved display name rather than asking for a second label. It clears
-  its password field before handing the one login value to the Kotlin pairing
-  coordinator.
+- A normal launcher start and a repeated launcher intent to the existing
+  single-task activity show native onboarding rather than allocating
+  `WebClientActivity`; **Open full app** remains in the top bar, and only a
+  valid exact `ACTION_VIEW` App Link retains the dedicated full-web handoff.
+- The default Compose form exposes only username and password. It matches the
+  web login by deriving the relay target and SRP identity from that username
+  and using the upstream public relay. Advanced connection settings retain a
+  custom relay URL and Direct escape hatch. The username is also the saved
+  display name, and the form clears its password before handing the one login
+  value to the Kotlin pairing coordinator.
 - A lifecycle-aware ViewModel observes DataStore profiles, holds no password,
   and owns a manager lease only while `MainActivity` is started. Closing the
   physical-device Activity returned the manager to idle.
