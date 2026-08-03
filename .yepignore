@@ -8,3 +8,10 @@ packages/relay/node_modules
 packages/server/node_modules
 packages/shared/node_modules
 site/node_modules
+
+# Local environments, checkouts, generated artifacts, and runtime state.
+.pixi
+.local-checkouts
+.artifacts
+references
+.yep
