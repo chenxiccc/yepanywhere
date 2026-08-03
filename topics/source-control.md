@@ -298,6 +298,14 @@ preferences. When palette generation fails or an older server omits the
 optional preference, a stable author-name hash supplies the preference without
 an unsupported request.
 
+Current source persists that palette at `.yep/git-author-palette.json` and
+warms it merely when a project is opened or added. That post-`0.7.0` behavior
+is audited but not the target contract: under
+[Project Directory Storage](project-directory-storage.md), default project
+browsing performs no project or Git-metadata write. The palette belongs in
+memory or a central project-keyed cache unless project-local storage was
+explicitly enabled.
+
 Files caches the selected file's maximum intrinsic rendered code-line width by
 project, path, content fingerprint, and the typography metrics that affect
 measurement. On a wide layout, selection or a relevant viewport/typography

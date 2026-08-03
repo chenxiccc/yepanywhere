@@ -36,6 +36,11 @@ novelty must never be the out-of-the-box experience.
   apart from explicitly invoked transforms (emulated slash-command
   expansion, attachment references): "when I send a message I want my
   exact message to be sent", with no YA-added framing or annotations.
+- **The filesystem is also a user-visible surface.** Creating hidden state,
+  growing a checkout, or changing its Git metadata is observable even when an
+  exclusion keeps `git status` clean. YA-managed project storage is therefore
+  novel and default-off; ordinary project/session viewing stays project-read-
+  only. See [project-directory-storage](project-directory-storage.md).
 - **Established-convention affordances, invisible until invoked, may
   ship always-on.** A behavior a first-party-trained user already
   recognizes from common harnesses — a shell-escape command prefix such

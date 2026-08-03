@@ -59,9 +59,10 @@ viewer must not navigate into `/api/local-file`, `/api/local-image`, or
 `/projects/.../file` directly, because those routes are authenticated/local app
 surfaces and cause public viewers to fall into Remote Access login.
 
-See [`attachment-storage`](attachment-storage.md) for how project-relative
-`.attachments/` uploads interact with these same `/api/local-image` and
-`/api/local-file` routes.
+See [`attachment-storage`](attachment-storage.md) for the current legacy
+project-relative `.attachments/` path and the app-data-only target. Physical
+attachment location does not broaden these `/api/local-image` and
+`/api/local-file` routes or constitute public authorization.
 
 The current lightweight route serves project files whose relative or
 project-root-absolute path is present in the shared transcript. Public clients

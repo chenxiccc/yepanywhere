@@ -100,6 +100,31 @@ plan. Any proposal to reuse or broaden an already-advertised capability needs
 particular scrutiny: an older server has already claimed the old meaning and
 cannot acquire new routes retroactively.
 
+### Planned project-directory storage policy gate
+
+The project-directory storage correction is a core trust/default change. Its
+2026-08-03 60-day stable corpus is `0.5.2`, `0.6.0`, `0.6.1`, `0.6.2`, and
+`0.7.0`; `0.5.0` and `0.5.1` are also audited because `0.5.0` introduced the
+project-local attachment default. Every one of those releases lacks a storage
+setting and every release from `0.5.0` through `0.7.0` writes uploads to
+`.attachments/`. No stable release contains the later tool-result, review,
+author-palette, or managed-exclude writers.
+
+The proposed permanent capability is `project-directory-storage-policy`. It
+owns `GET /api/settings`, `PUT /api/settings`, and the request/response field
+`settings.projectDirectoryStorage: "app-data" | "project"`. Advertisement
+attests that every audited YA-managed writer obeys the setting and that absent
+configuration defaults to `"app-data"`; a server must not advertise a partial
+settings-only implementation.
+
+Without the capability, the client omits the field and makes no unsupported
+request. Because absence means an older server may still write into projects,
+the Settings surface shows a read-only update-required explanation rather than
+claiming app-data-only protection. Existing capability meanings and older
+server behavior remain unchanged. The implementation release supplies the
+registry `introducedIn` value. The full behavior and audit are in
+[Project Directory Storage](project-directory-storage.md).
+
 ## Server Use
 
 `packages/server/src/routes/version.ts` advertises capability names from the

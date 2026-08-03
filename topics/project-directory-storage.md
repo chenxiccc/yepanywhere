@@ -1,0 +1,192 @@
+# Project Directory Storage
+
+> YA-managed caches, viewer state, metadata, and retained assets stay out of
+> project directories by default. A single global setting may opt into
+> project-local storage; Git exclusion is a safeguard after consent, never a
+> substitute for consent.
+
+Topic: project-directory-storage
+
+Status: target product contract. The writer audit is complete; implementation
+is pending. Current source behavior is recorded below and must not be mistaken
+for the target default.
+
+## Scope
+
+This topic owns every write YA itself makes inside a selected project root or
+that project's Git metadata in order to retain YA state. It includes:
+
+- hidden directories such as `.yep/` and `.attachments/`;
+- caches, indexes, viewer state, uploaded assets, review state, and retained
+  tool output;
+- `.git/info/exclude` and YA-owned refs or objects under the repository's Git
+  directory; and
+- project-local temporary files used to publish any of the above.
+
+It does not turn YA into a read-only editor. Provider/agent file mutations,
+explicit Source Control operations, and an export whose project destination
+the user directly selects are user-requested project operations rather than
+YA-managed storage. A feature cannot evade this contract merely by calling its
+state an artifact: if YA chooses the path and retains the data for later use,
+the storage policy applies.
+
+## Default Contract
+
+The default global mode is **App data only**. In that mode:
+
+- opening, adding, scanning, rendering, replaying, or indexing a project or
+  session makes no YA-managed write inside the project or its Git metadata;
+- uploading an attachment stores it below the configured YA data directory;
+- performance indexes and viewer caches remain in memory or in bounded,
+  disposable data-directory storage;
+- persistent feature state is namespaced by project below the configured YA
+  data directory; and
+- a feature that cannot work without project-local storage remains unavailable
+  or explains the required opt-in. It never silently changes the mode.
+
+The alternative global mode is **Store YA assets with projects**. It is an
+explicit opt-in. It authorizes eligible YA-managed features to use one
+documented project-local YA root, preferably `<project>/.yep/`, subject to
+symlink, tracked-path, and containment checks. It does not enable a new class
+of retention by itself. For example, project-local mode chooses a location for
+durable tool-result media only after the separate preservation feature has
+also been enabled.
+
+The global choice is stored below the YA data directory, not in a marker file
+inside each project. Per-project overrides are deliberately deferred. They may
+be added if real demand appears, but the first implementation has one global
+policy only.
+
+## Git Exclusion Is Not Consent
+
+Creating or editing `.git/info/exclude` is itself a project-metadata write. YA
+must not do it in **App data only** mode, even if an exclusion would keep the
+working tree visually clean.
+
+After the user opts into project-local storage, YA may best-effort add its one
+documented storage root to the clone-local exclude file when that root is not
+already ignored. It must not edit a committed `.gitignore`. An already tracked
+storage root is unsafe for implicit YA output; do not place new state there
+without a separate explicit operation. Exclusion reduces accidental commits,
+but does not address checkout growth, backups, cloud synchronization, privacy,
+or the user's ownership of the project namespace.
+
+## Feature Retention And Location Are Independent
+
+Every feature answers two questions separately:
+
+1. **Should this data be retained at all?** Incidental performance data is
+   bounded and disposable. Durable preservation of otherwise ephemeral output
+   is a user-visible feature and defaults off unless an explicit product
+   decision says otherwise.
+2. **Where does enabled durable data live?** **App data only** selects the YA
+   data directory. The project-local opt-in selects the documented project
+   root where the feature supports it.
+
+A location setting cannot silently enable attachment retention, tool-result
+preservation, review history, or any later storage family. Likewise, enabling
+one retained-data feature does not grant permission for unrelated project
+writes.
+
+## Upgrade, Disable, And Legacy Data
+
+When a server first gains this policy, an absent stored setting resolves to
+**App data only**, including for upgraded installations. The upgrade itself
+does not move, rewrite, exclude, or delete existing `.attachments/`, `.yep/`,
+or Git refs. Existing project-local data may remain readable for compatibility,
+but read compatibility is not permission to refresh or grow it.
+
+Switching from project-local storage back to **App data only** stops future
+project writes immediately. Cleanup and migration are separate explicit
+actions. A failed or unsafe selected location never falls back from app-data
+mode into the project.
+
+Downgrading to a server without the policy can reintroduce that older server's
+write behavior. A new client connected to such a server must not claim the
+project is protected; the compatibility fallback below explains the limitation.
+
+## Current Writer Audit — 2026-08-03
+
+| Writer | Current trigger and location | Setting today | Released behavior | Required correction |
+| --- | --- | --- | --- | --- |
+| Attachments | An explicit upload or staged-send materialization writes `<project>/.attachments/<session>/`. Current source may also create a local Git exclude. | None. The setting described in `attachment-storage.md` was never implemented. | npm `0.5.0` through `0.7.0` write project-local attachments; those releases do not contain the later shared exclude helper. | Write below the YA data directory by default; use the project root only after the global opt-in. Keep legacy project paths readable. |
+| Tool-result media | Live image results and durable session-detail loads materialize blobs and catalogs below `<project>/.yep/tool-results/<session>/`; merely reading image-bearing history can grow it. | None. | Added after `0.7.0`; no stable npm release contains it. | Restore lazy transcript-backed handles without persistent copies. Durable preservation is separate and default-off; its location follows this policy. |
+| Git author palette | Fetching or adding a project starts a background warm that writes `<project>/.yep/git-author-palette.json`. | None. | Added after `0.7.0`; no stable npm release contains it. | Keep the palette in memory or in the YA data directory. Project browsing is read-only in the default mode. |
+| Source-review drafts and submissions | Comment mutation writes `.yep/review-comments.json`; submission preparation writes `.yep/source-review/<id>/request.json`. Some reads can rewrite normalized state. | Submission capture is default-off, but basic review drafts have no storage-location gate. | Added after `0.7.0`; no stable npm release contains it. | Store private state centrally by default. If an agent needs a review artifact, deliver it without ambient project storage or require the global project-local opt-in. |
+| Source-review capture ref | When the default-off submission workflow captures a projection, it writes Git objects and updates `refs/yep/source-review/captures`. | `sourceReviewSubmissionsEnabled`, default off; no project-storage gate. | Added after `0.7.0`; no stable npm release contains it. | App-data mode cannot create YA-owned Git refs or objects. Use central snapshots or require project-local opt-in. |
+| Managed-directory exclusion | First creation of `.yep/` or `.attachments/` may append to the resolved `.git/info/exclude`. | None. | Added after `0.7.0`; no stable npm release contains it. | Resolve the global policy before directory creation; exclude only after project-local opt-in. |
+
+The audit also checked `.yepignore` and the project path index: `.yepignore` is
+user-authored crawl input and YA only reads it. Explicit file-edit, Git
+Pull/Push, and workstream operations are outside this storage-state table; they
+remain governed by their own explicit-action and safety contracts.
+
+## Released-Server Corpus
+
+This is a core trust and filesystem-default change, so the 60-day compatibility
+corpus applies. As of 2026-08-03 the applicable stable npm releases are
+`0.5.2`, `0.6.0`, `0.6.1`, `0.6.2`, and `0.7.0`; the latest-two rule is already
+covered by `0.6.2` and `0.7.0`. `0.5.0` and `0.5.1` fall just outside the
+minimum horizon but are included in the audit because `0.5.0` introduced the
+project-local attachment default.
+
+All stable releases from `0.5.0` through `0.7.0` lack a storage-policy setting
+and write uploads to `.attachments/`. No stable release contains tool-result
+materialization, source-review project state, the author palette, or the shared
+Git-exclude helper. Those behaviors exist only in current source after the
+`0.7.0` tag.
+
+## Advertised Capability And Hosted Fallback
+
+The implementation should add a permanent exact capability named
+`project-directory-storage-policy`. Advertisement means all of the following
+are true, not merely that a settings field parses:
+
+- `GET /api/settings` returns `settings.projectDirectoryStorage`;
+- `PUT /api/settings` accepts that field;
+- the value is `"app-data" | "project"` and defaults to `"app-data"` when
+  absent;
+- every writer in the audit routes through the policy before touching a
+  project or its Git metadata; and
+- disabling project storage stops future writes without migrating or deleting
+  legacy data.
+
+The registry entry's `introducedIn` value is the first release that implements
+the complete invariant; do not advertise it from a partial implementation.
+Existing capability meanings remain unchanged.
+
+Without the capability, a new client omits the field and makes no unsupported
+settings write. The storage setting should remain visible but read-only with an
+update-required explanation: older servers may write uploads into project
+directories and cannot enforce **App data only**. Hiding the control entirely
+would incorrectly imply there is no relevant policy difference.
+
+This fallback preserves ordinary use of older servers. It does not pretend the
+new client can stop an old server's filesystem behavior.
+
+## Implementation Acceptance
+
+The implementation is incomplete until tests prove the project tree and Git
+metadata remain byte-for-byte unchanged in **App data only** mode while YA:
+
+- lists, adds, opens, and indexes a project;
+- loads image-bearing live and historical sessions;
+- uploads and sends an attachment;
+- creates, edits, previews, and submits source-review state under every
+  independently enabled review mode; and
+- requests Git browse and blame data.
+
+Project-local mode needs complementary tests for explicit opt-in, safe root
+creation, legacy reads, tracked/symlink rejection, and Git-exclude behavior.
+Data-directory stores need their own containment, retention, and cleanup tests;
+moving state out of a checkout must not turn it into unbounded invisible state
+elsewhere.
+
+## Related Topics
+
+- [Attachment storage](attachment-storage.md)
+- [Session media handles](session-media-handles.md)
+- [Source Review → New Session](source-review-to-session.md)
+- [Server capabilities](server-capabilities.md)
+- [Vanilla defaults](vanilla-defaults.md)
+- [Hard development rules](hard-development-rules.md)

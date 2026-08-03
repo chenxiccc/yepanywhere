@@ -13,6 +13,11 @@ Design decisions captured here:
 - Keep final sent attachment storage on the existing attachment-storage policy.
 - Make draft-owned staging cleanup required and bounded.
 
+Storage amendment (2026-08-03): the implemented staging lifecycle remains
+valid, but its final project-local destination is superseded by
+`topics/project-directory-storage.md`. App-data storage is the default; staged
+materialization may write into a project only after the global opt-in.
+
 Implementation progress:
 
 - [x] Add draft envelope helpers and update draft persistence.
@@ -49,8 +54,9 @@ Relevant standing contracts:
 
 - `topics/project-queue.md` - new-session Project Queue cannot support
   attachments until durable staging exists.
-- `topics/attachment-storage.md` - final attachment storage currently supports
-  project-relative `.attachments/<session>/` and legacy data-dir upload paths.
+- `topics/attachment-storage.md` - released servers currently write
+  `.attachments/<session>/`; the target returns to app-data by default and
+  keeps project paths as compatibility reads or explicit opt-in destinations.
 - `topics/vanilla-defaults.md` - staging files must not create hidden sends,
   hidden queue items, prompt rewriting, or new default-visible queue behavior.
 - `topics/architecture-mandates.md` - cleanup must be bounded; closed tabs and
@@ -64,7 +70,7 @@ prompt-visible file references rather than provider-native attachment blocks.
 message reaches the provider, YA appends a section like:
 
 ```text
-User uploaded files in .attachments:
+User uploaded files:
 - [screenshot.png](</absolute/path/to/file>) (...)
 ```
 

@@ -7,6 +7,15 @@ Topic: backward-compat
 
 ## Decisions
 
+2026-08-03 project-directory storage — a server that first implements
+`project-directory-storage-policy` defaults absent configuration to app-data
+storage, but does not migrate, rewrite, exclude, or delete legacy
+`.attachments`, `.yep`, or `refs/yep/*` state during upgrade. Legacy data may
+remain readable without permission to refresh or grow it. Older servers lack
+the capability and may retain their historical project-write behavior; newer
+clients omit the unsupported setting and explain that an update is required to
+enforce app-data-only storage.
+
 2026-08-01 `.yep/review-comments.json` version 2 — migrate every valid
 version-1 draft, archived comment, and batch into canonical sites, reviewer
 entries, active-draft references, and submission summaries before persisting

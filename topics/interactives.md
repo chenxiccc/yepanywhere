@@ -26,6 +26,14 @@ current core and same-origin execution is a security non-starter. Any future
 experiment belongs behind a separately isolated, optional companion boundary.
 See [`interactives-architectural-review.md`](interactives-architectural-review.md).
 
+**Storage amendment (2026-08-03):** the proposal's `.yep/interactives.json`
+registry is YA-managed state and is governed by
+[Project Directory Storage](project-directory-storage.md). It lives centrally
+by default and may be project-local only after the global opt-in. The user's
+explicit request for an agent to create visible, committed application source
+is a project operation; it does not independently authorize YA's hidden
+registry.
+
 ## Motivation
 
 The only reason to couple YA with an environment-for-a-web-app panel is

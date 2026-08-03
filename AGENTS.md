@@ -10,6 +10,16 @@ catch-up paths, read `topics/architecture-mandates.md`. In particular, an idle
 provider session and a closed client tab must never indefinitely consume server
 resources.
 
+## Project Directory Storage
+
+Before adding or changing any YA-managed write inside a selected project or
+its Git metadata, read `topics/project-directory-storage.md`. App-data-only is
+the default: browsing, rendering, replaying, indexing, caching, and preserving
+viewer state must not create `.yep`, `.attachments`, Git excludes, or YA-owned
+refs. A helper that creates or excludes a directory is not authorization;
+project-local storage requires the explicit global opt-in, and feature-level
+retention choices remain separate.
+
 ## Provider Session Identity
 
 YA URL session ids are the canonical user-facing session ids. Provider-native

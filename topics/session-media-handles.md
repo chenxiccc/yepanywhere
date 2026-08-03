@@ -1,78 +1,89 @@
 # Session Media Handles
 
-> Inline base64 media in transcript messages should become server-owned media
-> handles before it enters retained session-detail state. The public handle is
-> stable and opaque; row, line, byte offset, and JSON pointer locations are
-> internal lookup details.
+> Replace inline transcript media with authenticated, lazy server handles
+> without making persistent copies by default. Durable tool-result preservation
+> is a separate default-off feature whose location follows the global
+> project-directory storage policy.
 
 Topic: session-media-handles
 
-Status: implementation contract. Use this document before changing provider
-message normalization, session detail REST payloads, transcript media
-renderers, `Read` image result rendering, public share transcript capture, or
-the session-detail data-layer ingest boundary.
+Parent storage contract:
+[Project Directory Storage](project-directory-storage.md).
+
+Status: media handles and unconditional materialization are implemented in
+current source after `0.7.0`; no stable npm release contains them. The default
+persistence behavior violates the approved target and awaits implementation.
+
+Use this document before changing provider message normalization, session
+detail REST payloads, transcript media renderers, image-bearing tool results,
+public share transcript capture, or the session-detail ingest boundary.
 
 ## Problem
 
 Provider transcripts legitimately store binary media as JSON strings. Codex
 uses `data:image/...;base64,...` URLs in session JSONL; Claude-style messages
 can carry `{ type: "image", source: { type: "base64", data } }`; structured
-`Read` image results can carry `file.base64`. That is a provider interchange
-format, not a good retained UI state format.
+image results can carry data URLs or path-only references.
 
-When inline base64 crosses into YA's session detail API and browser state:
+Sending that representation through every YA session-detail response is
+expensive:
 
-- the REST response pays full image size even if the user never expands the
-  image;
-- relay users receive that payload over the encrypted request channel as part
-  of the JSON body instead of fetching bytes only when needed;
-- the client retains UTF-16 base64 strings in transcript caches, which is much
-  heavier than retaining a `Blob` URL while visible;
-- render behavior differs across providers because Codex durable input images
-  are already partially stripped while Claude image blocks and some `Read`
-  results still ride through;
-- auto-expanded inline image previews can shift old transcript rows unless the
-  server supplies enough metadata to reserve layout.
+- the response pays full image size even if the user never expands it;
+- relay traffic carries the bytes as part of the encrypted JSON body;
+- the browser retains large UTF-16 base64 strings in transcript caches; and
+- presentation varies across provider formats.
 
-This is a performance feature with security implications. A media URL is not
-authorization by itself. Any fetched media must use the same authenticated
-session access check as the transcript, work through direct and relay
-transports, avoid client-supplied filesystem paths, and serve untrusted bytes
-with safe content headers.
+That performance problem requires lazy media delivery. It does not require YA
+to preserve another durable copy of every image, and it does not authorize a
+project write.
 
-## Current Evidence
+## Separate Decisions
 
-Measured locally on 2026-07-04:
+Three concerns must remain independent:
 
-| Provider / session | JSONL size | Image bytes in JSONL | Live full API response |
-| --- | ---: | ---: | ---: |
-| Codex `webvam / 019d2bd5-...` | 173.3 MB | 164.9 MB, 95.2% | 14.20 MB |
-| Codex `webvam / 019d2fd3-...` | 125.2 MB | 119.8 MB, 95.7% | 5.63 MB |
-| Codex `playbox / 019e3998-...` | 86.8 MB | 77.4 MB, 89.1% | 14.67 MB |
-| Claude `jstorrent / 06a8e997-...` | 61.6 MB | 0 MB | 61.76 MB |
-| Claude `jstorrent / fe23a2d9-...` | 20.6 MB | 17.3 MB, 84.2% | 22.96 MB |
-| Claude `webvam / ebcf36f3-...` | 19.6 MB | 7.2 MB, 36.8% | 21.87 MB |
+1. **Lazy delivery:** replace inline bytes in the client-facing transcript with
+   metadata plus an opaque authenticated handle.
+2. **Durable preservation:** retain bytes that might otherwise disappear, such
+   as a path-only result in `/tmp`. This is a user-visible data-retention
+   feature and defaults off.
+3. **Storage location:** if preservation is enabled, use app-data storage by
+   default or the project only after the separate global project-local opt-in.
 
-The Codex rows show the local JSONL problem clearly: large files are often
-image-dominated, including repeated `payload.content.0.image_url`,
-`payload.images.0`, `payload.replacement_history...image_url`, and generated
-image `payload.output.0.image_url` strings. YA's current Codex durable
-normalization already strips the image URL from the session API for many input
-image cases, so the live API payload is much smaller than the JSONL.
+Calling preservation a cache or implementation detail does not change its
+retention semantics.
 
-The Claude rows show the remaining API problem. The largest sampled Claude
-JSONL was not image-driven; it was a huge `toolUseResult.stdout`. But the next
-large Claude image sessions still returned inline base64 in the live API body
-(`"base64"` keys were present in the response).
+## Default Lazy Handle Model
 
-## Target Shape
+During normal transcript scanning, the server detects media and builds an
+in-memory catalog keyed by provider, project, session, source file stamp, and
+opaque media id. A durable locator may contain internal JSONL line/offset and
+JSON-pointer information; none of that enters the public handle.
 
-Session detail responses should contain metadata and handles, not bytes:
+On media fetch, the server seeks to the provider-owned transcript location,
+parses the containing record, validates the content hash and safe raster type,
+decodes the bytes, and streams them. If the in-memory catalog is cold or the
+source stamp changed, rebuilding it by scanning the transcript is the default
+cost. Persistent indexing is an optional optimization only after measurements
+justify it, and any such index lives in bounded app-data storage.
+
+Live output can arrive before provider persistence catches up. That boundary
+uses a size- and lifetime-bounded memory or temporary app-data store tied to
+the process/session lifecycle. It must not survive indefinitely because a
+provider session is idle or a client tab closed.
+
+A path-only result is available while its permitted source path exists. When
+the source disappears and preservation was not enabled, the media ref becomes
+unavailable with an explicit reason. YA does not snapshot it silently.
+
+## Public Shape And Fetch Route
+
+Session responses contain presentation metadata and handles, never retained
+base64 payloads:
 
 ```ts
 type TranscriptMediaRef =
   | {
-      state: "stored";
+      state: "available";
       toolCallId: string;
       id: string;
       mimeType: string;
@@ -82,7 +93,7 @@ type TranscriptMediaRef =
       filename?: string;
     }
   | {
-      state: "rejected";
+      state: "unavailable";
       toolCallId: string;
       reason:
         | "invalid-image-data"
@@ -93,28 +104,13 @@ type TranscriptMediaRef =
       filename?: string;
       claimedMimeType?: string;
     };
-
-interface InputImageBlock {
-  type: "input_image";
-  file_path?: string;
-  media?: TranscriptMediaRef;
-}
 ```
 
-A stored ref contains presentation metadata and an opaque handle, never a
-filesystem path or bytes. A rejected ref is an explicit terminal result: the
-renderer can explain why no preview is available without retrying a bad
-payload or silently falling back to its claimed extension.
+The exact migration from the current `stored`/`rejected` names is an
+implementation compatibility detail. The invariant is that a handle does not
+promise or imply that YA made a durable copy.
 
-The exact block names may follow existing provider-specific shapes, but the
-normalized message also carries a provider-neutral tool-result media list so
-the transcript compiler can give every image-bearing tool result the same
-presentation. Every ref retains its tool-call ID so a provider message
-containing several parallel results cannot project one tool's images onto a
-sibling row. The session-detail response must not retain the replaced base64
-payload.
-
-The fetch route is:
+The authenticated route remains:
 
 ```text
 GET /api/projects/:projectId/sessions/:sessionId/media/:mediaId
@@ -125,160 +121,120 @@ The client fetches through the active source transport:
 - direct mode: credentialed HTTP fetch;
 - relay mode: `connection.fetchBlob(path)`, then `URL.createObjectURL(blob)`.
 
-Do not render a bare `/api/...` URL directly in an `<img>`; relay-origin pages
-do not have the local server's API.
+Collapsed media rows fetch no bytes. Expanded rows lazily fetch and render an
+object URL. Do not render a bare `/api/...` URL directly in `<img>` because a
+relay-origin page does not share the server origin.
 
-## Materialized Tool-Result Storage
+## Optional Durable Preservation
 
-Tool-result output is materialized under:
+Durable tool-result preservation is default-off and requires a dedicated
+setting. Enabling project-local storage alone does not enable it.
 
-```text
-<project>/.yep/tool-results/<session-id>/
-```
+When preservation is enabled, capture the authoritative returned bytes at the
+tool-result boundary; use a permitted source path only for a path-only result.
+Validate file signatures, reject script-capable formats such as SVG, record
+safe metadata, and content-address identical bytes. Blob and catalog writes
+remain atomic and hash-verified.
 
-The directory must be obtained through `ensureManagedProjectDir`, preserving
-its creation-time `.git/info/exclude` behavior for `.yep/`. A symlinked or
-unwritable managed path is unsafe; use a project/session-scoped fallback below
-the configured YA data directory. The public ref and serving route stay
-identical across both physical locations.
+Physical location follows the global policy:
 
-Bytes are content-addressed within the session. A separate catalog record maps
-each stable handle to the content hash and safe metadata:
+- **App data only:**
+  `<data-dir>/tool-results/<project-key>/<session-id>/`;
+- **Store YA assets with projects:**
+  `<project>/.yep/tool-results/<session-id>/` after explicit opt-in and safety
+  checks.
 
-```ts
-interface SessionMediaCatalogEntry {
-  id: string;
-  provider: string;
-  projectId: string;
-  sessionId: string;
-  toolCallId: string;
-  mimeType: string;
-  byteLength: number;
-  width?: number;
-  height?: number;
-  filename?: string;
-  originalPath?: string;
-  contentHash: string;
-}
-```
+Preservation cannot ship enabled until its age/size limits, pruning order,
+cleanup UI or command, and disk-pressure behavior are defined. Cleanup removes
+catalog records before unreferenced content-addressed blobs.
 
-The handle may be deterministic but clients must not parse it. Blob and catalog
-writes are atomic: a partial image must never become a valid handle. Identical
-bytes in one project/session share the same content-addressed blob even when
-separate tool calls have separate stable handles. File length is not proof of
-content identity: blob reuse and lookup verify the recorded SHA-256. A corrupted
-blob is not fetchable, and capturing the authoritative bytes again atomically
-repairs it.
+Preserved tool output is viewer state, not provider input. It is never listed
+as an attachment or supplied automatically to a later turn.
 
-## Media ID And Lookup Model
+## Current Implementation Audit — 2026-08-03
 
-The public `mediaId` is opaque. A reasonable deterministic seed is:
+Commit `800a4598` replaced the earlier lazy-locator proposal with unconditional
+materialization below `<project>/.yep/tool-results/<session-id>/`. It captures
+both live results and images encountered while reading durable session history.
+There is no setting and no automatic retention or garbage collection.
 
-```text
-sha256(provider + projectId + sessionId + toolCallId + mediaIndex + contentHash)
-```
+Observed in one project after seven days of current-source use:
 
-Row numbers, line numbers, byte offsets, JSON pointers, `.yep`, and host paths
-must not be part of the public handle. The catalog is the only durable
-handle-to-blob mapping.
+- 352 image blobs: 342 PNG and 10 JPEG files;
+- 391 small catalog records;
+- 258.8 MiB of blobs across five Codex sessions; and
+- most path-backed captures copied from `/tmp` or `/private/tmp`.
 
-### Active Process Media
+The originating implementation commit explicitly listed automatic retention
+and garbage collection as deferred. This growth satisfies the documented
+trigger for revisiting that decision.
 
-`Process` is the live provider-neutral capture boundary. It materializes image
-bytes before retaining or emitting a normalized tool result. The durable
-session-detail boundary performs the same conversion after authorized history
-slicing and before returning messages. Both use the same store and reference
-shape, preserving live/persisted render parity.
+No stable npm release contains the implementation: the latest stable release,
+`0.7.0`, predates `800a4598`. Existing source checkouts after that tag may
+already contain `.yep/tool-results` data.
 
-When immediate durable materialization is impossible, any temporary live-byte
-store must be size- and lifetime-bounded and cleaned with the process/session.
-The implemented path should prefer immediate materialization so an idle
-provider or closed tab retains no unbounded image buffer.
+## Legacy Data And Upgrade Behavior
 
-Provider transcript or input media is a separate migration. It may still use a
-transcript locator/catalog until it is moved to materialized storage; that
-locator must remain server-internal and must not weaken the handle or
-authorization contract above.
+The policy correction does not delete, migrate, rehash, or add exclusions for
+existing `.yep/tool-results` during upgrade. In app-data mode the server may
+read legacy project-local records for compatibility, but it does not refresh,
+repair, or grow them.
 
-## Metadata Extraction
+A separate explicit cleanup action may later remove legacy data after showing
+the exact project, sessions, size, and effect on historical previews.
 
-The server should extract cheap metadata while replacing the payload:
+## Metadata And Layout
 
-- MIME type from validated file signatures, retaining a provider claim only as
-  diagnostic metadata;
-- decoded byte length and content hash from the validated bytes;
-- dimensions for PNG, JPEG, GIF, and WebP using header parsing when practical;
-- filename from provider path or a stable synthetic name such as
-  `pasted-image-1.png`.
+The server extracts cheap safe metadata while replacing payloads:
 
-The returned bytes are authoritative when a result also names a path. YA must
-not reread the mutable path instead. A path-only image event is snapshotted at
-event completion only when the existing local-file policy permits it.
-Unsupported or script-capable content, including SVG, is rejected based on
-bytes rather than accepted from its claimed MIME type or extension.
+- MIME type from validated signatures rather than extension claims;
+- decoded byte length and a content hash;
+- dimensions for PNG, JPEG, GIF, and WebP where practical; and
+- a safe filename from provider metadata or a stable synthetic name.
 
-Dimensions matter because historical transcript rows must not change height
-unexpectedly. Known dimensions reserve bounded layout space; unknown dimensions
-use a bounded loading placeholder.
-
-## Client Rendering Contract
-
-Every normalized image-bearing tool result uses the shared outline media row:
-filename/type metadata, an individual `+ / -` toggle, and a lazy inline
-preview. The browser-local `inlineMediaExpandedByDefault` setting chooses the
-initial state until that row is toggled. Collapsed rows fetch no bytes; expanded
-rows fetch through the active source transport and render an object URL.
-Filename and image clicks may still open the shared full-image viewer, whose
-linked filename, 1:1/fit controls, and download action use that same object URL.
-
-Stable transcript media handles would also unlock durable client UI state for
-inline preview expansion. The 2026-07-04 inline-media regression showed that
-DOM-only expansion state (`data-expanded`, mounted preview children, and object
-URLs owned by the rendered-markdown post-processing effect) is vulnerable when
-React legitimately remounts rendered transcript HTML. The immediate fix was to
-keep identical rendered HTML in a stable island so unrelated quote-button
-measurement does not remount inline media. Media handles would address the
-next layer: expansion/collapse state and any bounded blob/object-URL cache
-could be keyed by stable media identity, so route restores, transcript cache
-eviction, changed HTML, or other legitimate remounts can recreate an expanded
-preview intentionally without refetch flicker.
-
-The setting remains default-off. Applying it to historical rows must respect
-the layout-stability rule from `packages/client/RENDERING_PERFORMANCE.md`;
-known dimensions or the bounded placeholder reserve the expanding row.
+Known dimensions reserve bounded layout space. Unknown dimensions use a
+bounded loading placeholder. The browser-local inline-expansion preference
+remains default-off and does not alter storage or preservation policy.
 
 ## Security Contract
 
-Media handle fetches must:
+Media fetches must:
 
-- use the same authenticated/local session authorization as the transcript;
+- use the same authenticated session access check as the transcript;
 - never accept a client-supplied filesystem path;
-- use opaque IDs mapped server-side;
-- send accurate `Content-Type`;
-- include `X-Content-Type-Options: nosniff`;
-- neutralize or refuse script-capable formats such as SVG unless there is an
-  explicit safe rendering path;
-- work over relay by riding the encrypted request channel.
+- use opaque ids mapped server-side;
+- validate source containment and returned bytes;
+- send accurate `Content-Type` and `X-Content-Type-Options: nosniff`;
+- reject script-capable media without an explicit safe rendering path; and
+- work over the encrypted relay request channel.
 
-Public shares need a separate share-scoped media manifest. Do not let a public
-share fetch arbitrary session media by raw session ID plus media ID unless the
-media was part of the shared transcript snapshot or live-share visibility set.
+Public shares require a share-scoped media manifest. A raw session id plus
+media id never grants public access.
 
 ## Non-Goals
 
-- Do not rewrite provider-owned JSONL as the first implementation.
-- Do not expose row numbers, line numbers, byte offsets, or JSON pointers as
-  public media addresses.
-- Do not move this conversion to the browser as a client-only cleanup. That
-  still transfers and retains the base64 payload.
-- Do not make image auto-expansion default-on as part of the media handle work.
-- Do not solve huge non-media payloads such as giant stdout in this proposal.
-  Those need separate output truncation/windowing rules.
+- Do not rewrite provider-owned JSONL as the first correction.
+- Do not expose line numbers, byte offsets, JSON pointers, host paths, or
+  `.yep` paths as public media identifiers.
+- Do not move conversion to the browser; that still transfers the base64.
+- Do not make inline expansion default-on.
+- Do not treat huge non-media output such as stdout as part of this policy.
 
-## Retention
+## Acceptance
 
-Tool-result media is viewer state, not provider input: it is never appended to
-later user turns or attachment lists. Automatic pruning is deferred until
-observed project/data-dir growth justifies a policy. A future cleanup must
-remove catalog records and only then unreferenced content-addressed blobs; it
-must cover both project-local and fallback locations.
+In the default configuration, loading live or historical image-bearing
+sessions leaves the project tree and Git metadata unchanged and creates no
+durable media copy. A cold image fetch may rescan provider persistence, and an
+expired path-only image may report unavailable.
+
+With preservation explicitly enabled, tests cover the configured location,
+content deduplication, corruption handling, bounds and cleanup, direct/relay
+fetches, and transition from live temporary bytes to provider-backed or
+preserved media.
+
+## Related Topics
+
+- [Project Directory Storage](project-directory-storage.md)
+- [Attachment Storage](attachment-storage.md)
+- [Media Rendering And Routing](media-rendering-and-routing.md)
+- [Server Capabilities](server-capabilities.md)

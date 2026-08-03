@@ -16,6 +16,8 @@
 - Session UI customization
 - Provider image sizing guidance
 - Attachment previews and same-browser cache
+- Project directory storage (app-data-only default, global project-local
+  opt-in, writer audit, and Git-metadata boundary)
 - OpenCode backend capability and rendering parity
 - OpenCode ses_ session ID unification with YA session ID
 - MessageQueue batch delivery and steering UI

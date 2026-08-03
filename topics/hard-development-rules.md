@@ -35,6 +35,28 @@ Maintainer-specific hosted-client publishing choices, such as pointing a
 personal Pages build at a personal relay, must stay in local deploy
 configuration rather than becoming an upstream default.
 
+## Project Directory Sovereignty
+
+YA-managed state must not be written into a selected project or its Git
+metadata by default. Browsing, adding, scanning, rendering, replaying, or
+indexing a project is read-only with respect to that project. Caches, viewer
+state, indexes, private metadata, and retained assets belong below the
+configured YA data directory unless the user has explicitly selected the
+global project-local storage mode.
+
+This includes hidden directories and seemingly harmless metadata such as
+`.git/info/exclude` or YA-owned Git refs. Ignoring a path keeps it out of Git
+status; it is not consent to create it. Performance, discoverability,
+implementation simplicity, and preservation "just in case" do not justify an
+exception.
+
+Retention and location are independent choices. Enabling project-local storage
+does not enable new categories of durable data, and enabling one durable
+feature does not authorize unrelated project writes. An explicit app-data-only
+choice is authoritative. See
+[Project Directory Storage](project-directory-storage.md) for the writer audit,
+upgrade behavior, and capability contract.
+
 ## Protocol Compatibility Grace
 
 Hosted Remote Access is a user-facing entry point, so protocol and handshake
@@ -74,5 +96,7 @@ Before changing an affected default, protocol, or migration path:
   users who have never configured the value.
 - Keep personal deploy endpoints, relay choices, and hosted-client conveniences
   in local deploy configuration or private docs.
+- Audit every YA-owned project and Git-metadata writer before adding or changing
+  project-local storage; a shared directory helper is not authorization.
 - For hosted remote protocol changes, define the previous-protocol grace path,
   warning copy, and planned cutoff condition before landing the enforcement.

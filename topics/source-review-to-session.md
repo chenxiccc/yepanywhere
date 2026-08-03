@@ -30,6 +30,25 @@ and seeded turns pointed agents at the whole mutable draft store.
 is the governing contract for the implemented replacement** and supersedes the
 older lifecycle and draft-location prose below.
 
+## Storage Policy Amendment — 2026-08-03
+
+The historical design below chose project-local `.yep` files and the Git ref
+`refs/yep/source-review/captures`. That location decision is superseded by
+[Project Directory Storage](project-directory-storage.md).
+
+In the default **App data only** mode, review drafts, submissions, response
+state, and exact-source captures live in central project-keyed storage. Source
+review must not create or modify `.yep`, `.git/info/exclude`, Git objects, or
+YA-owned refs. If a file-by-reference agent workflow truly requires a
+project-local artifact, it requires the global project-local storage opt-in;
+the source-review feature setting alone is not storage consent.
+
+Existing `.yep` state and `refs/yep/source-review/captures` may remain readable
+for compatibility but are not migrated, refreshed, or deleted during upgrade.
+The current post-`0.7.0` implementation is recorded in the parent topic's audit
+and awaits correction. Wherever later historical prose says the project-local
+home "stands" or is the established convention, this amendment wins.
+
 Related topics: [selection-comment-ui](selection-comment-ui.md) (the
 quote-comment ancestor — but see the gesture difference below),
 [floating-new-session-composer](floating-new-session-composer.md) (the

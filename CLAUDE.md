@@ -81,6 +81,11 @@ Server state is stored in a data directory (default: `~/.yep-anywhere/`). This i
 - `vapid.json` - VAPID keys for push
 - `auth.json` - Authentication state (password hash, sessions)
 
+YA-managed state belongs in this data directory by default. Project-local
+storage is an explicit global opt-in; merely opening, rendering, indexing, or
+replaying a project must not create hidden files or change its Git metadata.
+See [`topics/project-directory-storage.md`](topics/project-directory-storage.md).
+
 ### Running Multiple Instances
 
 Use profiles to run dev and production instances simultaneously (like Chrome profiles):

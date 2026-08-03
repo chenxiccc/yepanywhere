@@ -133,9 +133,12 @@ section below for what would have to change at higher fan-out.
   provider transcript: strong structural stability for paired tool calls,
   bounded optimistic/live-only detail near the tail, and no YA shadow
   transcript replacing provider persistence as source of truth.
+- [`topics/project-directory-storage.md`](topics/project-directory-storage.md)
+  — app-data-only default for YA-managed state, explicit global project-local
+  opt-in, the complete project/Git writer audit, and hosted capability rollout.
 - [`topics/session-media-handles.md`](topics/session-media-handles.md) —
-  problem statement and latent proposal for replacing transcript inline
-  base64 image/blob payloads with authenticated server media handles.
+  authenticated lazy transcript media handles, default-off durable
+  preservation, and the correction to unconditional project materialization.
 - [`topics/disk-full-degraded-mode.md`](topics/disk-full-degraded-mode.md)
   — problem statement and latent proposal for keeping relay/local control
   paths alive when optional disk writers hit `ENOSPC`.

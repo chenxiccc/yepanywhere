@@ -255,3 +255,6 @@
   Codex-first Linux proposal.
 - project-path-links - Filesystem-authoritative project path membership and
   highlighted-source linkification.
+- project-directory-storage - App-data-only default for YA-managed state,
+  explicit global opt-in for project-local assets, and no ambient project or
+  Git-metadata writes from browsing, rendering, indexing, or replay.
