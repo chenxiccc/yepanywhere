@@ -155,6 +155,33 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
 
     const updates: Partial<ServerSettings> = {};
 
+    if ("projectDirectoryStorage" in body) {
+      if (
+        body.projectDirectoryStorage !== "app-data" &&
+        body.projectDirectoryStorage !== "project"
+      ) {
+        return c.json(
+          { error: "projectDirectoryStorage must be app-data or project" },
+          400,
+        );
+      }
+      updates.projectDirectoryStorage = body.projectDirectoryStorage;
+    }
+    if ("toolResultMediaPreservation" in body) {
+      if (
+        body.toolResultMediaPreservation !== "on-demand" &&
+        body.toolResultMediaPreservation !== "preserve"
+      ) {
+        return c.json(
+          {
+            error: "toolResultMediaPreservation must be on-demand or preserve",
+          },
+          400,
+        );
+      }
+      updates.toolResultMediaPreservation = body.toolResultMediaPreservation;
+    }
+
     // Handle boolean settings
     if (typeof body.serviceWorkerEnabled === "boolean") {
       updates.serviceWorkerEnabled = body.serviceWorkerEnabled;

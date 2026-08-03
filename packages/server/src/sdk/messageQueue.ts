@@ -349,7 +349,7 @@ export class MessageQueue
       const lines = msg.attachments.map((f) =>
         formatUploadedFileReference(f, this.formatSize.bind(this)),
       );
-      text += `\n\nUser uploaded files in .attachments:\n${lines.join("\n")}`;
+      text += `\n\nUser uploaded files:\n${lines.join("\n")}`;
     }
 
     if (msg.images?.length || msg.documents?.length) {

@@ -1,6 +1,7 @@
 import type { CodexSessionEntry, ToolResultMedia } from "@yep-anywhere/shared";
 import { execFile } from "node:child_process";
 import {
+  access,
   mkdir,
   mkdtemp,
   readFile,
@@ -25,6 +26,7 @@ import type { SDKMessage } from "../../src/sdk/types.js";
 import { Process } from "../../src/supervisor/Process.js";
 import { encodeProjectId } from "../../src/supervisor/types.js";
 import type { ProjectScanner } from "../../src/projects/scanner.js";
+import { ProjectStoragePolicy } from "../../src/projects/projectStoragePolicy.js";
 
 const execFileAsync = promisify(execFile);
 const PNG_BASE64 =
@@ -55,7 +57,13 @@ describe("tool-result media storage", () => {
     differentSourceBytes[differentSourceBytes.length - 1] ^= 0xff;
     await writeFile(sourcePath, differentSourceBytes);
 
-    const store = new ToolResultMediaStore({ dataDir });
+    const store = new ToolResultMediaStore({
+      dataDir,
+      storagePolicy: new ProjectStoragePolicy({
+        dataDir,
+        getMode: () => "project",
+      }),
+    });
     const projectId = encodeProjectId(projectDir);
     const media = await store.capture(
       { dataUrl: DATA_URL, originalPath: sourcePath },
@@ -67,6 +75,7 @@ describe("tool-result media storage", () => {
       },
       "call-a",
       0,
+      { preserve: true },
     );
 
     expect(media).toMatchObject({
@@ -110,12 +119,7 @@ describe("tool-result media storage", () => {
     await writeFile(file.path, corruptBytes);
 
     await expect(
-      store.getMediaFile(
-        projectDir,
-        projectId,
-        "session-corrupt",
-        media.id,
-      ),
+      store.getMediaFile(projectDir, projectId, "session-corrupt", media.id),
     ).resolves.toBeNull();
   });
 
@@ -133,11 +137,7 @@ describe("tool-result media storage", () => {
     if (!file) throw new Error("Expected stored media file");
     await writeFile(file.path, Buffer.alloc(file.byteLength, 0x5a));
 
-    const repaired = await captureDataUrl(
-      store,
-      projectDir,
-      "session-repair",
-    );
+    const repaired = await captureDataUrl(store, projectDir, "session-repair");
 
     expect(repaired).toMatchObject({ state: "stored", id: first.id });
     await expect(readFile(file.path)).resolves.toEqual(PNG_BYTES);
@@ -175,6 +175,7 @@ describe("tool-result media storage", () => {
       },
       "call-path-only",
       0,
+      { preserve: true },
     );
     if (media.state !== "stored") throw new Error("Expected stored media");
 
@@ -419,6 +420,81 @@ describe("tool-result media storage", () => {
         mimeType: "image/png",
       }),
     ]);
+    await expect(access(join(projectDir, ".yep"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    await expect(access(join(dataDir, "tool-results"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
+  it("never preserves historical materialization when preservation is enabled", async () => {
+    const storagePolicy = new ProjectStoragePolicy({
+      dataDir,
+      getMode: () => "app-data",
+    });
+    const store = new ToolResultMediaStore({
+      dataDir,
+      storagePolicy,
+      shouldPreserveLiveMedia: () => true,
+    });
+    const materialized = await store
+      .createMaterializer({
+        provider: "claude",
+        projectId: encodeProjectId(projectDir),
+        projectPath: projectDir,
+        getSessionId: () => "historical-session",
+      })
+      .materializeMessages(toolImageMessages("historical-call"));
+
+    expect(materialized[1]?.toolResultMedia).toHaveLength(1);
+    await expect(
+      access(
+        storagePolicy.writePath(
+          projectDir,
+          "tool-results",
+          "historical-session",
+        ),
+      ),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("preserves only a new result crossing the live materializer boundary", async () => {
+    const storagePolicy = new ProjectStoragePolicy({
+      dataDir,
+      getMode: () => "app-data",
+    });
+    const store = new ToolResultMediaStore({
+      dataDir,
+      storagePolicy,
+      shouldPreserveLiveMedia: () => true,
+    });
+    const materialized = await store
+      .createMaterializer(
+        {
+          provider: "claude",
+          projectId: encodeProjectId(projectDir),
+          projectPath: projectDir,
+          getSessionId: () => "live-session",
+        },
+        { live: true },
+      )
+      .materializeMessages(toolImageMessages("live-call"));
+    const media = materialized[1]?.toolResultMedia?.[0];
+    if (media?.state !== "stored") throw new Error("Expected stored media");
+
+    await expect(
+      access(
+        join(
+          storagePolicy.writePath(projectDir, "tool-results", "live-session"),
+          "records",
+          `${media.id}.json`,
+        ),
+      ),
+    ).resolves.toBeUndefined();
+    await expect(access(join(projectDir, ".yep"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
   });
 
   it("preserves Claude Read image behavior through the shared materializer", async () => {
@@ -684,6 +760,7 @@ async function captureDataUrl(
     },
     "call-image",
     0,
+    { preserve: true },
   );
 }
 
@@ -709,4 +786,34 @@ function buildCodexLoadedSession(
       session: { entries },
     },
   } as unknown as LoadedSession;
+}
+
+function toolImageMessages(toolCallId: string) {
+  return [
+    {
+      type: "assistant",
+      message: {
+        content: [
+          {
+            type: "tool_use",
+            id: toolCallId,
+            name: "RenderDiagram",
+            input: {},
+          },
+        ],
+      },
+    },
+    {
+      type: "user",
+      message: {
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: toolCallId,
+            content: DATA_URL,
+          },
+        ],
+      },
+    },
+  ];
 }

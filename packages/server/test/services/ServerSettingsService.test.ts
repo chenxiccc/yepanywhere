@@ -32,6 +32,42 @@ describe("ServerSettingsService", () => {
     expect(service.getSetting("workstreamsEnabled")).toBe(false);
   });
 
+  it("defaults project writes to app data and tool media to on demand", async () => {
+    const service = new ServerSettingsService({ dataDir: testDir });
+    await service.initialize();
+
+    expect(service.getSetting("projectDirectoryStorage")).toBe("app-data");
+    expect(service.getSetting("toolResultMediaPreservation")).toBe("on-demand");
+
+    await service.updateSettings({
+      projectDirectoryStorage: "project",
+      toolResultMediaPreservation: "preserve",
+    });
+    const reloaded = new ServerSettingsService({ dataDir: testDir });
+    await reloaded.initialize();
+    expect(reloaded.getSetting("projectDirectoryStorage")).toBe("project");
+    expect(reloaded.getSetting("toolResultMediaPreservation")).toBe("preserve");
+  });
+
+  it("normalizes unknown storage policy values to safe defaults", async () => {
+    await fs.writeFile(
+      path.join(testDir, "server-settings.json"),
+      JSON.stringify({
+        version: 2,
+        settings: {
+          projectDirectoryStorage: "both",
+          toolResultMediaPreservation: "cache",
+        },
+      }),
+      "utf-8",
+    );
+    const service = new ServerSettingsService({ dataDir: testDir });
+    await service.initialize();
+
+    expect(service.getSetting("projectDirectoryStorage")).toBe("app-data");
+    expect(service.getSetting("toolResultMediaPreservation")).toBe("on-demand");
+  });
+
   it("keeps reload-safe Codex sessions off by default and persists opt-in", async () => {
     const service = new ServerSettingsService({ dataDir: testDir });
     await service.initialize();

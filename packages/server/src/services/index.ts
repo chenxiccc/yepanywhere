@@ -40,7 +40,11 @@ export {
   ServerSettingsService,
   type ServerSettings,
   type ServerSettingsServiceOptions,
+  type ProjectDirectoryStorage,
+  type ToolResultMediaPreservation,
   DEFAULT_SERVER_SETTINGS,
+  PROJECT_DIRECTORY_STORAGE_VALUES,
+  TOOL_RESULT_MEDIA_PRESERVATION_VALUES,
 } from "./ServerSettingsService.js";
 
 export {

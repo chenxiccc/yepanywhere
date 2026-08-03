@@ -11,9 +11,14 @@ import {
   resetGitAuthorPaletteForTests,
 } from "./authorPalette.js";
 import { getBlame, resetBlameCacheForTest } from "./blame.js";
+import { ProjectStoragePolicy } from "../projects/projectStoragePolicy.js";
 
 const execFileAsync = promisify(execFile);
 const repos: string[] = [];
+const projectStoragePolicy = new ProjectStoragePolicy({
+  dataDir: tmpdir(),
+  getMode: () => "project",
+});
 
 describe("Git author palette", () => {
   afterEach(async () => {
@@ -52,7 +57,7 @@ describe("Git author palette", () => {
     await git(repo, ["add", "file.txt"]);
     await git(repo, ["commit", "-m", "first"]);
 
-    const first = await getGitAuthorPalette(repo);
+    const first = await getGitAuthorPalette(repo, projectStoragePolicy);
     const firstKey = getGitAuthorIdentity("First", "first@example.com");
     expect(first?.seeds.has(firstKey)).toBe(true);
 
@@ -62,11 +67,40 @@ describe("Git author palette", () => {
     await git(repo, ["add", "file.txt"]);
     await git(repo, ["commit", "-m", "second"]);
 
-    const second = await getGitAuthorPalette(repo);
+    const second = await getGitAuthorPalette(repo, projectStoragePolicy);
     expect(second?.seeds.get(firstKey)).toBe(first?.seeds.get(firstKey));
     expect(
       second?.seeds.has(getGitAuthorIdentity("Second", "second@example.com")),
     ).toBe(true);
+  });
+
+  it("stores the palette in app data without creating .yep by default", async () => {
+    const repo = await makeRepo("ya-author-palette-app-data-");
+    const dataDir = await makeRepo("ya-author-palette-data-");
+    await git(repo, ["init"]);
+    await git(repo, ["config", "commit.gpgsign", "false"]);
+    await git(repo, ["config", "user.name", "First"]);
+    await git(repo, ["config", "user.email", "first@example.com"]);
+    await writeFile(join(repo, "file.txt"), "one\n");
+    await git(repo, ["add", "file.txt"]);
+    await git(repo, ["commit", "-m", "first"]);
+    const storagePolicy = new ProjectStoragePolicy({
+      dataDir,
+      getMode: () => "app-data",
+    });
+
+    await expect(getGitAuthorPalette(repo, storagePolicy)).resolves.toBeTruthy();
+    await expect(readFile(join(repo, ".yep"), "utf8")).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    expect(
+      JSON.parse(
+        await readFile(
+          storagePolicy.writePath(repo, "git-author-palette.json"),
+          "utf8",
+        ),
+      ).version,
+    ).toBe(1);
   });
 
   it("rebuilds once from corrupt persisted state", async () => {
@@ -78,19 +112,21 @@ describe("Git author palette", () => {
     await writeFile(join(repo, "file.txt"), "one\n");
     await git(repo, ["add", "file.txt"]);
     await git(repo, ["commit", "-m", "first"]);
-    await getGitAuthorPalette(repo);
+    await getGitAuthorPalette(repo, projectStoragePolicy);
     resetGitAuthorPaletteForTests();
 
     const palettePath = join(repo, ".yep", "git-author-palette.json");
     await writeFile(palettePath, "{broken");
-    const rebuilt = await getGitAuthorPalette(repo);
+    const rebuilt = await getGitAuthorPalette(repo, projectStoragePolicy);
     expect(rebuilt?.seeds.size).toBe(1);
     expect(JSON.parse(await readFile(palettePath, "utf8")).version).toBe(1);
   });
 
   it("fails safely after the single regeneration attempt", async () => {
     const notARepository = await makeRepo("ya-author-palette-not-git-");
-    await expect(getGitAuthorPalette(notARepository)).resolves.toBeNull();
+    await expect(
+      getGitAuthorPalette(notARepository, projectStoragePolicy),
+    ).resolves.toBeNull();
   });
 
   it("attaches the remembered author seed to blame lines", async () => {
@@ -103,8 +139,13 @@ describe("Git author palette", () => {
     await git(repo, ["add", "file.txt"]);
     await git(repo, ["commit", "-m", "add blamed line"]);
 
-    const palette = await getGitAuthorPalette(repo);
-    const result = await getBlame(repo, "file.txt", undefined);
+    const palette = await getGitAuthorPalette(repo, projectStoragePolicy);
+    const result = await getBlame(
+      repo,
+      "file.txt",
+      undefined,
+      projectStoragePolicy,
+    );
     expect(result.lines[0]?.authorColorSeed).toBe(
       palette?.seeds.get(
         getGitAuthorIdentity("Blame Author", "blame@example.com"),

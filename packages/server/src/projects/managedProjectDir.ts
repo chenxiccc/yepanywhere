@@ -1,9 +1,9 @@
 /**
  * YA-managed project subdirectories.
  *
- * YA keeps some state inside a user's project tree — `.yep/` (source-review
- * drafts, interactives registry) and `.attachments/` (uploaded files). By
- * convention YA git-excludes such a dir the first time it creates one, so
+ * After the server-wide project-storage opt-in, YA may keep state inside a
+ * user's project tree under `.yep/`. By convention YA git-excludes that dir
+ * the first time it creates it, so
  * YA-managed state doesn't clutter the project's `git status`, without
  * touching a committed `.gitignore`.
  *
@@ -23,7 +23,7 @@ const execFileAsync = promisify(execFile);
 
 /**
  * Ensure a YA-managed project subdir exists, returning its path. `name` is the
- * top-level managed dir (e.g. `.yep` or `.attachments`); `subPath` are deeper
+ * top-level managed dir (`.yep`); `subPath` are deeper
  * segments to also create under it. If YA is the one creating the top-level
  * dir, it is added to this clone's local git exclude by default (see the
  * module doc). Best-effort on the git side — a non-git tree or any git failure

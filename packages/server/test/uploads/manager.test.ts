@@ -12,6 +12,7 @@ import {
   resolveUploadStoragePath,
   sanitizeFilename,
 } from "../../src/uploads/manager.js";
+import { ProjectStoragePolicy } from "../../src/projects/projectStoragePolicy.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -420,15 +421,48 @@ describe("getProjectAttachmentUploadDir", () => {
     await rm(projectDir, { recursive: true, force: true });
   });
 
-  it("creates .attachments/<session> and git-excludes .attachments on first use", async () => {
+  it("writes to app data without creating project state by default", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "yep-attach-data-"));
+    try {
+      const storagePolicy = new ProjectStoragePolicy({
+        dataDir,
+        getMode: () => "app-data",
+      });
+      const dir = await getProjectAttachmentUploadDir(
+        projectDir,
+        "sess-1",
+        storagePolicy,
+      );
+
+      expect(dir).toBe(
+        storagePolicy.writePath(projectDir, "attachments", "sess-1"),
+      );
+      expect((await stat(dir)).isDirectory()).toBe(true);
+      await expect(stat(join(projectDir, ".yep"))).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+    } finally {
+      await rm(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("creates .yep/attachments/<session> after the project opt-in", async () => {
     await execFileAsync("git", ["-C", projectDir, "init"]);
-    const dir = await getProjectAttachmentUploadDir(projectDir, "sess-1");
-    expect(dir).toBe(join(projectDir, ".attachments", "sess-1"));
+    const storagePolicy = new ProjectStoragePolicy({
+      dataDir: join(projectDir, "unused-data"),
+      getMode: () => "project",
+    });
+    const dir = await getProjectAttachmentUploadDir(
+      projectDir,
+      "sess-1",
+      storagePolicy,
+    );
+    expect(dir).toBe(join(projectDir, ".yep", "attachments", "sess-1"));
     expect((await stat(dir)).isDirectory()).toBe(true);
     const exclude = await readFile(
       join(projectDir, ".git", "info", "exclude"),
       "utf-8",
     );
-    expect(exclude).toContain(".attachments/");
+    expect(exclude).toContain(".yep/");
   });
 });

@@ -50,6 +50,7 @@ import { initFileAccess, updateFileAccess } from "./middleware/file-access.js";
 import { NotificationService } from "./notifications/index.js";
 import { CodexSessionScanner } from "./projects/codex-scanner.js";
 import { GeminiSessionScanner } from "./projects/gemini-scanner.js";
+import { ProjectStoragePolicy } from "./projects/projectStoragePolicy.js";
 import { PushService, getOrCreateVapidKeys } from "./push/index.js";
 import { RecentsService } from "./recents/index.js";
 import {
@@ -553,6 +554,11 @@ const securityClientService = new SecurityClientService({
 const serverSettingsService = new ServerSettingsService({
   dataDir: config.dataDir,
 });
+const projectStoragePolicy = new ProjectStoragePolicy({
+  dataDir: config.dataDir,
+  getMode: () =>
+    serverSettingsService.getSetting("projectDirectoryStorage") ?? "app-data",
+});
 const hostAwakeService = new HostAwakeService();
 hostAwakeForShutdown = hostAwakeService;
 const browserSettingsBackupService = new BrowserSettingsBackupService({
@@ -572,6 +578,7 @@ const modelInfoService = new ModelInfoService({ dataDir: config.dataDir });
 const attachmentStagingService = new AttachmentStagingService({
   dataDir: config.dataDir,
   maxUploadSizeBytes: config.maxUploadSizeBytes,
+  storagePolicy: projectStoragePolicy,
 });
 const dirtyFileEditorService = new DirtyFileEditorService({
   dataDir: config.dataDir,
@@ -1042,6 +1049,7 @@ async function startServer() {
     upgradeWebSocket,
     maxUploadSizeBytes: config.maxUploadSizeBytes,
     attachmentStagingService,
+    storagePolicy: projectStoragePolicy,
   });
   app.route("/api", uploadRoutes);
   markStartup("upload routes mounted");
@@ -1064,6 +1072,7 @@ async function startServer() {
   const baseUrl = `${serverProtocol}://${config.host}:${config.port}`;
   const wsRelayUploadManager = new UploadManager({
     maxUploadSizeBytes: config.maxUploadSizeBytes,
+    storagePolicy: projectStoragePolicy,
   });
   const wsRelayHandler = createWsRelayRoutes({
     upgradeWebSocket,

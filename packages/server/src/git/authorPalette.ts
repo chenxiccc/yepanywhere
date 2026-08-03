@@ -1,6 +1,6 @@
 import { readFile, rename, unlink, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import { ensureManagedProjectDir } from "../projects/managedProjectDir.js";
+import { getDataDir } from "../config.js";
+import { ProjectStoragePolicy } from "../projects/projectStoragePolicy.js";
 import { runGit } from "./gitExec.js";
 
 const PALETTE_VERSION = 1;
@@ -26,6 +26,10 @@ export interface GitAuthorPalette {
 
 const loaded = new Map<string, PersistedGitAuthorPalette>();
 const inFlight = new Map<string, Promise<GitAuthorPalette | null>>();
+const defaultStoragePolicy = new ProjectStoragePolicy({
+  dataDir: getDataDir(),
+  getMode: () => "app-data",
+});
 
 /**
  * Refresh the durable project palette. A failed incremental/load attempt
@@ -33,19 +37,29 @@ const inFlight = new Map<string, Promise<GitAuthorPalette | null>>();
  */
 export function getGitAuthorPalette(
   projectPath: string,
+  storagePolicy: ProjectStoragePolicy = defaultStoragePolicy,
 ): Promise<GitAuthorPalette | null> {
-  const pending = inFlight.get(projectPath);
+  const cacheKey = storagePolicy.writePath(
+    projectPath,
+    GIT_AUTHOR_PALETTE_FILE,
+  );
+  const pending = inFlight.get(cacheKey);
   if (pending) return pending;
 
-  const refresh = refreshPalette(projectPath).finally(() => {
-    if (inFlight.get(projectPath) === refresh) inFlight.delete(projectPath);
-  });
-  inFlight.set(projectPath, refresh);
+  const refresh = refreshPalette(projectPath, storagePolicy, cacheKey).finally(
+    () => {
+      if (inFlight.get(cacheKey) === refresh) inFlight.delete(cacheKey);
+    },
+  );
+  inFlight.set(cacheKey, refresh);
   return refresh;
 }
 
-export async function warmGitAuthorPalette(projectPath: string): Promise<void> {
-  await getGitAuthorPalette(projectPath);
+export async function warmGitAuthorPalette(
+  projectPath: string,
+  storagePolicy: ProjectStoragePolicy = defaultStoragePolicy,
+): Promise<void> {
+  await getGitAuthorPalette(projectPath, storagePolicy);
 }
 
 export function getGitAuthorIdentity(name: string, email: string): string {
@@ -54,46 +68,61 @@ export function getGitAuthorIdentity(name: string, email: string): string {
 
 async function refreshPalette(
   projectPath: string,
+  storagePolicy: ProjectStoragePolicy,
+  cacheKey: string,
 ): Promise<GitAuthorPalette | null> {
-  let filePath: string | undefined;
+  const filePath = storagePolicy.writePath(
+    projectPath,
+    GIT_AUTHOR_PALETTE_FILE,
+  );
   try {
-    filePath = await paletteFilePath(projectPath);
-    const existing = await loadPalette(filePath, projectPath);
+    const existing = await loadPalette(
+      storagePolicy.readPaths(projectPath, GIT_AUTHOR_PALETTE_FILE),
+      cacheKey,
+    );
     return existing
-      ? await updatePalette(projectPath, filePath, existing)
-      : await regeneratePalette(projectPath, filePath);
+      ? await updatePalette(
+          projectPath,
+          filePath,
+          existing,
+          storagePolicy,
+          cacheKey,
+        )
+      : await regeneratePalette(projectPath, filePath, storagePolicy, cacheKey);
   } catch {
-    loaded.delete(projectPath);
+    loaded.delete(cacheKey);
   }
 
   try {
-    filePath ??= await paletteFilePath(projectPath);
-    return await regeneratePalette(projectPath, filePath);
+    return await regeneratePalette(
+      projectPath,
+      filePath,
+      storagePolicy,
+      cacheKey,
+    );
   } catch {
-    loaded.delete(projectPath);
-    if (filePath) await unlink(filePath).catch(() => undefined);
+    loaded.delete(cacheKey);
+    await unlink(filePath).catch(() => undefined);
     return null;
   }
 }
 
-async function paletteFilePath(projectPath: string): Promise<string> {
-  const directory = await ensureManagedProjectDir(projectPath, ".yep");
-  return join(directory, GIT_AUTHOR_PALETTE_FILE);
-}
-
 async function loadPalette(
-  filePath: string,
-  projectPath: string,
+  filePaths: readonly string[],
+  cacheKey: string,
 ): Promise<PersistedGitAuthorPalette | null> {
-  const cached = loaded.get(projectPath);
+  const cached = loaded.get(cacheKey);
   if (cached) return cached;
-  let raw: string;
-  try {
-    raw = await readFile(filePath, "utf8");
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
-    throw error;
+  let raw: string | undefined;
+  for (const filePath of filePaths) {
+    try {
+      raw = await readFile(filePath, "utf8");
+      break;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
   }
+  if (raw === undefined) return null;
   const parsed = JSON.parse(raw) as Partial<PersistedGitAuthorPalette>;
   if (
     parsed.version !== PALETTE_VERSION ||
@@ -110,7 +139,7 @@ async function loadPalette(
     throw new Error("Invalid Git author palette");
   }
   const palette = parsed as PersistedGitAuthorPalette;
-  loaded.set(projectPath, palette);
+  loaded.set(cacheKey, palette);
   return palette;
 }
 
@@ -118,6 +147,8 @@ async function updatePalette(
   projectPath: string,
   filePath: string,
   existing: PersistedGitAuthorPalette,
+  storagePolicy: ProjectStoragePolicy,
+  cacheKey: string,
 ): Promise<GitAuthorPalette> {
   const head = await getHead(projectPath);
   if (existing.head === head) return publicPalette(existing);
@@ -131,14 +162,20 @@ async function updatePalette(
     authors: { ...existing.authors },
   };
   addAuthors(next.authors, identities);
+  await storagePolicy.ensureParentForWrite(
+    projectPath,
+    GIT_AUTHOR_PALETTE_FILE,
+  );
   await savePalette(filePath, next);
-  loaded.set(projectPath, next);
+  loaded.set(cacheKey, next);
   return publicPalette(next);
 }
 
 async function regeneratePalette(
   projectPath: string,
   filePath: string,
+  storagePolicy: ProjectStoragePolicy,
+  cacheKey: string,
 ): Promise<GitAuthorPalette> {
   const head = await getHead(projectPath);
   const identities = await listAuthorIdentities(projectPath, head);
@@ -148,8 +185,12 @@ async function regeneratePalette(
     authors: {},
   };
   addAuthors(next.authors, identities);
+  await storagePolicy.ensureParentForWrite(
+    projectPath,
+    GIT_AUTHOR_PALETTE_FILE,
+  );
   await savePalette(filePath, next);
-  loaded.set(projectPath, next);
+  loaded.set(cacheKey, next);
   return publicPalette(next);
 }
 

@@ -1,5 +1,12 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -9,8 +16,13 @@ import {
   SOURCE_REVIEW_CAPTURE_REF,
 } from "../../src/review/ReviewCaptureService.js";
 import { repositoryRelativePath } from "../../src/review/repositoryPath.js";
+import { ProjectStoragePolicy } from "../../src/projects/projectStoragePolicy.js";
 
 const execFileAsync = promisify(execFile);
+const projectStoragePolicy = new ProjectStoragePolicy({
+  dataDir: tmpdir(),
+  getMode: () => "project",
+});
 
 describe("ReviewCaptureService", () => {
   let repo: string;
@@ -37,7 +49,9 @@ describe("ReviewCaptureService", () => {
   });
 
   it("captures committed and dirty projections as pinned blobs", async () => {
-    const service = new ReviewCaptureService();
+    const service = new ReviewCaptureService({
+      storagePolicy: projectStoragePolicy,
+    });
     const { stdout: head } = await execFileAsync("git", [
       "-C",
       repo,
@@ -123,6 +137,49 @@ describe("ReviewCaptureService", () => {
     ).resolves.toBeTruthy();
   });
 
+  it("captures into app data without project or Git metadata by default", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "yep-review-capture-data-"));
+    const storagePolicy = new ProjectStoragePolicy({
+      dataDir,
+      getMode: () => "app-data",
+    });
+    try {
+      const service = new ReviewCaptureService({ storagePolicy });
+      const capture = await service.capture(repo, {
+        kind: "worktree",
+        path: "src/file.ts",
+        side: "new",
+      });
+      if (capture.status !== "captured") throw new Error("Expected capture");
+
+      await expect(
+        readFile(
+          storagePolicy.writePath(
+            repo,
+            "source-review",
+            "captures",
+            capture.captureBlobId,
+          ),
+          "utf8",
+        ),
+      ).resolves.toBe("const committed = 1;\n");
+      await expect(readFile(join(repo, ".yep"))).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+      await expect(
+        execFileAsync("git", [
+          "-C",
+          repo,
+          "show-ref",
+          "--verify",
+          SOURCE_REVIEW_CAPTURE_REF,
+        ]),
+      ).rejects.toBeTruthy();
+    } finally {
+      await rm(dataDir, { recursive: true, force: true });
+    }
+  });
+
   it("rejects absolute, traversal, and escaping symlink paths", async () => {
     for (const invalid of [
       "/etc/passwd",
@@ -137,7 +194,9 @@ describe("ReviewCaptureService", () => {
     try {
       await writeFile(join(outside, "secret.ts"), "secret\n");
       await symlink(join(outside, "secret.ts"), join(repo, "src", "escape.ts"));
-      const service = new ReviewCaptureService();
+      const service = new ReviewCaptureService({
+        storagePolicy: projectStoragePolicy,
+      });
       await expect(
         service.capture(repo, {
           kind: "worktree",

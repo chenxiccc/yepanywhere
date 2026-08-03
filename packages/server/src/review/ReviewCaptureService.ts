@@ -9,9 +9,12 @@ import type {
   ReviewSourceProjection,
 } from "@yep-anywhere/shared";
 import { DEFAULT_SNIPPET_CONTEXT_RADIUS } from "@yep-anywhere/shared";
-import { open } from "node:fs/promises";
+import { open, readFile, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { getDataDir } from "../config.js";
 import { runGit, runGitBytes } from "../git/gitExec.js";
 import { HttpError } from "../middleware/error-handler.js";
+import { ProjectStoragePolicy } from "../projects/projectStoragePolicy.js";
 import {
   repositoryFilePath,
   repositoryFilePathIfExists,
@@ -27,10 +30,22 @@ const CAPTURE_CONTEXT_LINES = 6;
 const OBJECT_ID_RE = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 
 export class ReviewCaptureService {
+  private readonly storagePolicy: ProjectStoragePolicy;
+
+  constructor(options: { storagePolicy?: ProjectStoragePolicy } = {}) {
+    this.storagePolicy =
+      options.storagePolicy ??
+      new ProjectStoragePolicy({
+        dataDir: getDataDir(),
+        getMode: () => "app-data",
+      });
+  }
+
   async capture(
     projectPath: string,
     projection: ReviewSourceProjection,
   ): Promise<ReviewCapture> {
+    const projectStorageEnabled = this.storagePolicy.mode === "project";
     const path = repositoryRelativePath(projection.path);
     const safeProjection: ReviewSourceProjection =
       projection.kind === "revision"
@@ -41,11 +56,13 @@ export class ReviewCaptureService {
             side: projection.side,
           }
         : { kind: projection.kind, path, side: projection.side };
-    const captureBlobId = await resolveProjectionBlob(
-      projectPath,
-      safeProjection,
-    );
-    await this.pin(projectPath, captureBlobId);
+    const captureBlobId =
+      projectStorageEnabled
+        ? await resolveProjectionBlob(projectPath, safeProjection)
+        : await this.captureInAppData(projectPath, safeProjection);
+    if (projectStorageEnabled) {
+      await this.pin(projectPath, captureBlobId);
+    }
     return {
       status: "captured",
       captureBlobId,
@@ -63,7 +80,11 @@ export class ReviewCaptureService {
       return { status: "legacy-missing" };
     }
     const captureBlobId = capture.captureBlobId;
-    const captured = await readCaptureText(projectPath, captureBlobId);
+    const captured = await readCaptureText(
+      projectPath,
+      captureBlobId,
+      this.storagePolicy,
+    );
     if (captured.status === "unavailable") {
       return { ...captured, captureBlobId };
     }
@@ -106,7 +127,11 @@ export class ReviewCaptureService {
     anchor: ReviewCommentAnchor,
   ): Promise<ReviewSourceChangeStatus> {
     if (capture.status === "legacy-missing") return "unavailable";
-    const captured = await readCaptureText(projectPath, capture.captureBlobId);
+    const captured = await readCaptureText(
+      projectPath,
+      capture.captureBlobId,
+      this.storagePolicy,
+    );
     if (captured.status === "unavailable") return "unavailable";
     if (anchor.newLine === null) return "changed";
 
@@ -157,6 +182,12 @@ export class ReviewCaptureService {
     }
     await assertBlob(projectPath, blobId);
 
+    if (this.storagePolicy.mode !== "project") {
+      const bytes = await readGitBlobBytes(projectPath, blobId);
+      await this.writeAppDataCapture(projectPath, blobId, bytes);
+      return;
+    }
+
     for (let attempt = 0; attempt < MAX_PIN_RETRIES; attempt++) {
       const current = await readCaptureTree(projectPath);
       if (current.blobIds.has(blobId)) return;
@@ -179,6 +210,34 @@ export class ReviewCaptureService {
       "Could not update the source-review capture ref after retries",
     );
   }
+
+  private async captureInAppData(
+    projectPath: string,
+    projection: ReviewSourceProjection,
+  ): Promise<string> {
+    const bytes = await resolveProjectionBytes(projectPath, projection);
+    const captureId = createHash("sha256").update(bytes).digest("hex");
+    await this.writeAppDataCapture(projectPath, captureId, bytes);
+    return captureId;
+  }
+
+  private async writeAppDataCapture(
+    projectPath: string,
+    captureId: string,
+    bytes: Buffer,
+  ): Promise<void> {
+    const capturePath = await this.storagePolicy.ensureParentForWrite(
+      projectPath,
+      "source-review",
+      "captures",
+      captureId,
+    );
+    try {
+      await writeFile(capturePath, bytes, { flag: "wx" });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    }
+  }
 }
 
 type CaptureTextResult =
@@ -188,7 +247,27 @@ type CaptureTextResult =
 async function readCaptureText(
   projectPath: string,
   captureBlobId: string,
+  storagePolicy: ProjectStoragePolicy,
 ): Promise<CaptureTextResult> {
+  for (const capturePath of storagePolicy.readPaths(
+    projectPath,
+    "source-review",
+    "captures",
+    captureBlobId,
+  )) {
+    try {
+      const bytes = await readFile(capturePath);
+      if (bytes.length > MAX_CAPTURE_SOURCE_BYTES) {
+        return { status: "unavailable", reason: "too-large" };
+      }
+      const text = decodeText(bytes);
+      return text === null
+        ? { status: "unavailable", reason: "binary" }
+        : { status: "captured", text };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") break;
+    }
+  }
   try {
     const { stdout: sizeText } = await runGit(projectPath, [
       "cat-file",
@@ -214,6 +293,51 @@ async function readCaptureText(
   } catch {
     return { status: "unavailable", reason: "missing" };
   }
+}
+
+async function resolveProjectionBytes(
+  projectPath: string,
+  projection: ReviewSourceProjection,
+): Promise<Buffer> {
+  try {
+    if (projection.kind === "worktree") {
+      const absolutePath = await repositoryFilePath(
+        projectPath,
+        projection.path,
+      );
+      const bytes = await readFile(absolutePath);
+      if (bytes.length > MAX_CAPTURE_SOURCE_BYTES) {
+        throw new Error("source projection is too large");
+      }
+      return bytes;
+    }
+    const objectSpec =
+      projection.kind === "index"
+        ? `:${projection.path}`
+        : `${projection.revision}:${projection.path}`;
+    const { stdout } = await runGitBytes(projectPath, ["show", objectSpec], {
+      maxBuffer: MAX_CAPTURE_SOURCE_BYTES + 1,
+    });
+    return stdout;
+  } catch (error) {
+    if (error instanceof HttpError) throw error;
+    throw new HttpError(
+      400,
+      `Could not capture the rendered source projection for ${projection.path}`,
+    );
+  }
+}
+
+async function readGitBlobBytes(
+  projectPath: string,
+  blobId: string,
+): Promise<Buffer> {
+  const { stdout } = await runGitBytes(
+    projectPath,
+    ["cat-file", "blob", blobId],
+    { maxBuffer: MAX_CAPTURE_SOURCE_BYTES + 1 },
+  );
+  return stdout;
 }
 
 async function readTextFileBounded(filePath: string): Promise<string | null> {

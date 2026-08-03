@@ -466,7 +466,7 @@ describe("review-comments routes", () => {
       async startReviewSession(_projectPath, turn, _options, submissionId) {
         launches++;
         expect(turn).toContain(
-          `.yep/source-review/${submissionId}/request.json`,
+          `${service.submissionDirectoryFor(dir, submissionId ?? "")}/request.json`,
         );
         expect(turn).not.toContain("review-comments.json");
         return { status: "queued" };

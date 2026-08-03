@@ -1647,6 +1647,10 @@ export const DEFAULT_FILE_ACCESS: FileAccessSettings = {
 
 /** Server-wide settings that persist across restarts */
 export interface ServerSettings {
+  /** Where new YA-owned project state is written. */
+  projectDirectoryStorage?: "app-data" | "project";
+  /** Whether new live tool-result images receive durable copies. */
+  toolResultMediaPreservation?: "on-demand" | "preserve";
   /** Whether clients should register the service worker */
   serviceWorkerEnabled: boolean;
   /** Whether remote SRP resume sessions should be persisted to disk */

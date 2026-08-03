@@ -10,9 +10,9 @@ Parent contract: [Project Directory Storage](project-directory-storage.md).
 
 Settings surface: [Storage Settings](storage-settings.md).
 
-Status: policy correction pending implementation. Current releases write
-attachments into projects and expose no storage-location setting; this topic
-records both that compatibility fact and the approved target.
+Status: corrected in current source after `0.7.0`; no stable npm release
+contains the storage-location setting yet. The release history below explains
+the missing-capability warning for older servers.
 
 ## Why Attachments Are Stored
 
@@ -36,10 +36,11 @@ exclude only hides the symptom from `git status`; it does not address checkout
 growth, synchronization, backups, privacy, or ownership of the project
 namespace.
 
-## Current Implementation And Release History
+## Release History And Pre-Correction Behavior
 
-There is no implemented attachment storage setting. The earlier
-"Configuration — v1" prose in this topic described a design that never landed.
+Before this correction there was no implemented attachment storage setting.
+The earlier "Configuration — v1" prose in this topic described a design that
+never landed.
 
 Stable npm releases `0.5.0`, `0.5.1`, `0.5.2`, `0.6.0`, `0.6.1`, `0.6.2`, and
 `0.7.0` route uploads to `<project>/.attachments/<session>/` whenever the upload
@@ -47,17 +48,16 @@ route resolves a project path. They retain the older data-directory location
 as a read fallback.
 
 Those stable releases predate the shared managed-directory helper and do not
-themselves guarantee a `.git/info/exclude` entry. Current source after the
-`0.7.0` tag calls `ensureManagedProjectDir`, which may create the top-level
-directory and append `.attachments/` to the clone-local exclude file. That
-post-release behavior is also automatic and is disallowed by the target
-default.
+themselves guarantee a `.git/info/exclude` entry. Source between the `0.7.0`
+tag and this correction called `ensureManagedProjectDir`, which could create
+the top-level directory and append `.attachments/` to the clone-local exclude
+file automatically.
 
-Pre-session staging is already central and temporary. Materializing a staged
-file into a real session currently moves it into the same project-local final
-location, so staging does not avoid the policy issue.
+Pre-session staging was already central and temporary. Before this correction,
+materializing a staged file into a real session moved it into the same
+project-local final location, so staging did not avoid the policy issue.
 
-## Target Location Resolution
+## Location Resolution
 
 The first implementation uses the one global
 `projectDirectoryStorage: "app-data" | "project"` setting from the parent
@@ -68,7 +68,7 @@ contract. There is no per-project override.
 Final attachments are written below:
 
 ```text
-<data-dir>/uploads/<project-key>/<session-id>/
+<data-dir>/projects/<project-key>/attachments/<session-id>/
 ```
 
 Uploading and sending an attachment must not create `.attachments`, `.yep`, or
@@ -138,7 +138,7 @@ decision removes them.
 
 ## Capability Gate
 
-The location control is part of the proposed permanent
+The location control is part of the permanent
 `project-directory-storage-policy` capability. Without it, a new client sends
 no storage field and warns that the older server may write uploads into project
 directories. See the parent topic for the full release corpus and absent-gate

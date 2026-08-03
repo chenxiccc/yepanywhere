@@ -23,6 +23,7 @@ import {
   runGitBytes,
 } from "../git/gitExec.js";
 import type { ProjectScanner } from "../projects/scanner.js";
+import type { ProjectStoragePolicy } from "../projects/projectStoragePolicy.js";
 import { resolveProjectPath } from "./projectParam.js";
 
 /**
@@ -40,6 +41,7 @@ import { resolveProjectPath } from "./projectParam.js";
 
 export interface GitBrowseDeps {
   scanner: ProjectScanner;
+  storagePolicy?: ProjectStoragePolicy;
 }
 
 /** `hash | shortHash | authorName | authorDate | subject`, records `\x1e`-joined. */
@@ -281,7 +283,12 @@ export function createGitBrowseRoutes(deps: GitBrowseDeps): Hono {
     }
 
     try {
-      const result = await getBlame(projectPath, path, rev || undefined);
+      const result = await getBlame(
+        projectPath,
+        path,
+        rev || undefined,
+        deps.storagePolicy,
+      );
       return c.json(result);
     } catch (err) {
       return gitError(c, err);

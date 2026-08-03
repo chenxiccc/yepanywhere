@@ -61,6 +61,7 @@ import {
   type PushService,
 } from "./push/index.js";
 import { createPushRoutes } from "./push/routes.js";
+import { ProjectStoragePolicy } from "./projects/projectStoragePolicy.js";
 import type { RecentsService } from "./recents/index.js";
 import type {
   RemoteAccessService,
@@ -453,11 +454,21 @@ export function createApp(options: AppOptions): AppResult {
   // errors Hono routes here rather than to the sub-app — return structured
   // JSON instead of an opaque empty 500.
   app.onError(structuredErrorHandler);
+  const effectiveDataDir =
+    options.dataDir ??
+    join(process.env.HOME ?? process.env.USERPROFILE ?? ".", ".yep-anywhere");
+  const projectStoragePolicy = new ProjectStoragePolicy({
+    dataDir: effectiveDataDir,
+    getMode: () =>
+      options.serverSettingsService?.getSetting("projectDirectoryStorage") ??
+      "app-data",
+  });
   const attachmentStagingService =
     options.attachmentStagingService ??
     new AttachmentStagingService({
       dataDir: options.dataDir,
       maxUploadSizeBytes: options.maxUploadSizeBytes,
+      storagePolicy: projectStoragePolicy,
     });
   options.projectQueueService?.setAttachmentStagingService(
     attachmentStagingService,
@@ -578,6 +589,11 @@ export function createApp(options: AppOptions): AppResult {
   });
   const toolResultMediaStore = new ToolResultMediaStore({
     dataDir: options.dataDir,
+    storagePolicy: projectStoragePolicy,
+    shouldPreserveLiveMedia: () =>
+      options.serverSettingsService?.getSetting(
+        "toolResultMediaPreservation",
+      ) === "preserve",
     resolveSourcePath: async (absolutePath) => {
       const resolved =
         await localResourcePathPolicy.resolveAllowedFilePath(absolutePath);
@@ -595,9 +611,6 @@ export function createApp(options: AppOptions): AppResult {
           ]
         : [],
   });
-  const effectiveDataDir =
-    options.dataDir ??
-    join(process.env.HOME ?? process.env.USERPROFILE ?? ".", ".yep-anywhere");
   const bangCommandService =
     options.sessionMetadataService && options.dataDir
       ? new BangCommandService({
@@ -1385,6 +1398,7 @@ export function createApp(options: AppOptions): AppResult {
       piSessionsDir,
       piReaderFactory,
       sessionAutoArchiveDays: options.sessionAutoArchiveDays,
+      storagePolicy: projectStoragePolicy,
     }),
   );
   if (options.projectQueueService) {
@@ -1639,15 +1653,21 @@ export function createApp(options: AppOptions): AppResult {
   );
 
   // Read-only git browse routes (commit list/diff, blame, search — stage 3)
-  app.route("/api/projects", createGitBrowseRoutes({ scanner }));
+  app.route(
+    "/api/projects",
+    createGitBrowseRoutes({ scanner, storagePolicy: projectStoragePolicy }),
+  );
 
   // Optional Source Control diff projections.
   app.route("/api/projects", createGitProjectionRoutes({ scanner }));
 
   // Source-review draft comments (topic: source-review-to-session)
-  const reviewCaptureService = new ReviewCaptureService();
+  const reviewCaptureService = new ReviewCaptureService({
+    storagePolicy: projectStoragePolicy,
+  });
   const reviewCommentService = new ReviewCommentService({
     captureWriter: reviewCaptureService,
+    storagePolicy: projectStoragePolicy,
   });
   const sourceReviewSubmissionsEnabled = () =>
     options.serverSettingsService?.getSetting(
@@ -2078,6 +2098,7 @@ export function createApp(options: AppOptions): AppResult {
         upgradeWebSocket: options.upgradeWebSocket,
         maxUploadSizeBytes: options.maxUploadSizeBytes,
         attachmentStagingService,
+        storagePolicy: projectStoragePolicy,
       }),
     );
   }

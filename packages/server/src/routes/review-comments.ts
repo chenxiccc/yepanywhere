@@ -36,10 +36,6 @@ import type { ReviewSessionLauncher } from "../review/reviewSessionLauncher.js";
 import { repositoryRelativePath } from "../review/repositoryPath.js";
 import { resolveProjectPath } from "./projectParam.js";
 
-/** Repo-relative path of the drafts file the seeded turn references. */
-const REVIEW_COMMENTS_REL_PATH = ".yep/review-comments.json";
-const SOURCE_REVIEW_REL_PATH = ".yep/source-review";
-
 export interface ReviewCommentsDeps {
   scanner: ProjectScanner;
   /** Injectable for tests (stub clock/id); a fresh service by default. */
@@ -254,13 +250,16 @@ export function createReviewCommentsRoutes(deps: ReviewCommentsDeps): Hono {
     const turn = request
       ? composeSubmissionReviewTurn({
           request,
-          submissionDirectoryRelPath: `${SOURCE_REVIEW_REL_PATH}/${request.submissionId}`,
+          submissionDirectoryRelPath: service.submissionDirectoryFor(
+            projectPath,
+            request.submissionId,
+          ),
           followUp: target !== "new",
         })
       : composeReviewTurn({
           comments: included,
           relocations: relocationMap,
-          reviewFileRelPath: REVIEW_COMMENTS_REL_PATH,
+          reviewFileRelPath: service.filePathFor(projectPath),
           followUp: target !== "new",
         });
 

@@ -4,6 +4,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AttachmentStagingService } from "../../src/uploads/index.js";
+import { ProjectStoragePolicy } from "../../src/projects/projectStoragePolicy.js";
+
+function projectModeService(stagingRoot: string): AttachmentStagingService {
+  return new AttachmentStagingService({
+    stagingRoot,
+    storagePolicy: new ProjectStoragePolicy({
+      dataDir: join(stagingRoot, "app-data"),
+      getMode: () => "project",
+    }),
+  });
+}
 
 async function completeDraftUpload(
   service: AttachmentStagingService,
@@ -217,7 +228,7 @@ describe("AttachmentStagingService", () => {
   });
 
   it("materializes draft attachments into final session attachments", async () => {
-    const service = new AttachmentStagingService({ stagingRoot });
+    const service = projectModeService(stagingRoot);
     const { batchId, ref } = await completeDraftUpload(
       service,
       Buffer.from("session attachment"),
@@ -236,7 +247,7 @@ describe("AttachmentStagingService", () => {
         id: ref.id,
         originalName: ref.originalName,
         name: ref.name,
-        path: join(projectPath, ".attachments", "session-a", ref.name),
+        path: join(projectPath, ".yep", "attachments", "session-a", ref.name),
         size: ref.size,
         mimeType: ref.mimeType,
       },
@@ -276,13 +287,13 @@ describe("AttachmentStagingService", () => {
   });
 
   it("fails materialization when a final attachment has the wrong size", async () => {
-    const service = new AttachmentStagingService({ stagingRoot });
+    const service = projectModeService(stagingRoot);
     const { batchId, ref } = await completeDraftUpload(
       service,
       Buffer.from("expected"),
     );
     const projectPath = join(stagingRoot, "project");
-    const finalDir = join(projectPath, ".attachments", "session-a");
+    const finalDir = join(projectPath, ".yep", "attachments", "session-a");
     await mkdir(finalDir, { recursive: true });
     await writeFile(join(finalDir, ref.name), "wrong size");
 
@@ -317,7 +328,7 @@ describe("AttachmentStagingService", () => {
   });
 
   it("materializes queue-owned attachments for a session", async () => {
-    const service = new AttachmentStagingService({ stagingRoot });
+    const service = projectModeService(stagingRoot);
     const { batchId, ref } = await completeDraftUpload(
       service,
       Buffer.from("queued session attachment"),
@@ -341,7 +352,7 @@ describe("AttachmentStagingService", () => {
         id: ref.id,
         originalName: ref.originalName,
         name: ref.name,
-        path: join(projectPath, ".attachments", "session-a", ref.name),
+        path: join(projectPath, ".yep", "attachments", "session-a", ref.name),
         size: ref.size,
         mimeType: ref.mimeType,
       },

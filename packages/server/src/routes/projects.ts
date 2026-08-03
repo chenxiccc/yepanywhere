@@ -23,6 +23,7 @@ import {
   isDetachedProjectPath,
 } from "../projects/paths.js";
 import type { ProjectScanner } from "../projects/scanner.js";
+import type { ProjectStoragePolicy } from "../projects/projectStoragePolicy.js";
 import type { CodexSessionReader } from "../sessions/codex-reader.js";
 import type { GeminiSessionReader } from "../sessions/gemini-reader.js";
 import { listSessionsAcrossProviders } from "../sessions/provider-resolution.js";
@@ -77,6 +78,7 @@ export interface ProjectsDeps {
   piReaderFactory?: (projectPath: string) => PiSessionReader;
   /** Sessions older than this many days are hidden from default scans. 0 disables. */
   sessionAutoArchiveDays?: number;
+  storagePolicy?: ProjectStoragePolicy;
 }
 
 interface ProjectActivityCounts {
@@ -427,7 +429,7 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
     if (!project) {
       return c.json({ error: "Project not found" }, 404);
     }
-    void warmGitAuthorPalette(project.path);
+    void warmGitAuthorPalette(project.path, deps.storagePolicy);
 
     const activityCounts = await getProjectActivityCounts(
       deps.supervisor,
@@ -489,7 +491,7 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
         404,
       );
     }
-    void warmGitAuthorPalette(project.path);
+    void warmGitAuthorPalette(project.path, deps.storagePolicy);
 
     // Persist the project so it appears in future listings
     if (deps.projectMetadataService) {

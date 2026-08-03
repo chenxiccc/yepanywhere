@@ -2,6 +2,7 @@ import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { GitBlameLine, GitBlameResult } from "@yep-anywhere/shared";
 import { highlightFile } from "../highlighting/index.js";
+import type { ProjectStoragePolicy } from "../projects/projectStoragePolicy.js";
 import { getGitAuthorIdentity, getGitAuthorPalette } from "./authorPalette.js";
 import { GIT_DECODE_PATHS_ARGS, runGit } from "./gitExec.js";
 
@@ -53,6 +54,7 @@ export async function getBlame(
   cwd: string,
   path: string,
   rev: string | undefined,
+  storagePolicy?: ProjectStoragePolicy,
 ): Promise<GitBlameResult> {
   // Resolving covers "HEAD" and short shas, so equivalent revs share a key.
   const resolved = rev ? await resolveCommit(cwd, rev) : null;
@@ -93,7 +95,7 @@ export async function getBlame(
       maxBuffer: BLAME_MAX_BUFFER,
       timeout: BLAME_TIMEOUT_MS,
     }),
-    getGitAuthorPalette(cwd),
+    getGitAuthorPalette(cwd, storagePolicy),
   ]);
   let parsedLines = parseBlamePorcelain(stdout);
 

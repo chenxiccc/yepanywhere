@@ -982,12 +982,15 @@ export class Process {
     this._permissions = options.permissions;
     this.provider = options.provider;
     this.toolResultMediaMaterializer =
-      options.toolResultMediaStore?.createMaterializer({
-        provider: this.provider,
-        projectId: this.projectId,
-        projectPath: this.projectPath,
-        getSessionId: () => this._sessionId,
-      });
+      options.toolResultMediaStore?.createMaterializer(
+        {
+          provider: this.provider,
+          projectId: this.projectId,
+          projectPath: this.projectPath,
+          getSessionId: () => this._sessionId,
+        },
+        { live: true },
+      );
     this.model = options.model;
     this._requestedModel = options.model;
     this._compactAtContextPercent = options.compactAtContextPercent;
@@ -2704,7 +2707,7 @@ export class Process {
       const lines = message.attachments.map((file) =>
         this.formatUploadedFileReference(file),
       );
-      text += `\n\nUser uploaded files in .attachments:\n${lines.join("\n")}`;
+      text += `\n\nUser uploaded files:\n${lines.join("\n")}`;
     }
 
     return text;

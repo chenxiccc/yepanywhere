@@ -314,7 +314,7 @@ describe("review response ingestion", () => {
     });
 
     const persisted = JSON.parse(
-      await readFile(join(dir, ".yep", "review-comments.json"), "utf-8"),
+      await readFile(restarted.filePathFor(dir), "utf-8"),
     );
     expect(persisted.submissions[0].targetSessionId).toBe("canonical");
   });

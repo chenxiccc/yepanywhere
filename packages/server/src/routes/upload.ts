@@ -15,12 +15,13 @@ import { Hono } from "hono";
 import { stream } from "hono/streaming";
 import type { WSContext, WSEvents } from "hono/ws";
 import type { ProjectScanner } from "../projects/scanner.js";
+import { getDataDir } from "../config.js";
+import { ProjectStoragePolicy } from "../projects/projectStoragePolicy.js";
 import {
   type AttachmentStagingService,
   UploadManager,
-  getProjectAttachmentDir,
+  getLegacyProjectAttachmentDir,
   resolveUploadStoragePath,
-  UPLOADS_DIR,
 } from "../uploads/index.js";
 
 /** Progress update interval in bytes (64KB) */
@@ -35,6 +36,7 @@ export interface UploadDeps {
   /** Maximum upload file size in bytes. 0 = unlimited */
   maxUploadSizeBytes?: number;
   attachmentStagingService?: AttachmentStagingService;
+  storagePolicy?: ProjectStoragePolicy;
 }
 
 interface DraftAttachmentRefsBody {
@@ -73,8 +75,15 @@ function isStagedAttachmentRefArray(
 
 export function createUploadRoutes(deps: UploadDeps): Hono {
   const routes = new Hono();
+  const storagePolicy =
+    deps.storagePolicy ??
+    new ProjectStoragePolicy({
+      dataDir: getDataDir(),
+      getMode: () => "app-data",
+    });
   const uploadManager = new UploadManager({
     maxUploadSizeBytes: deps.maxUploadSizeBytes,
+    storagePolicy,
   });
 
   const sendMessage = (ws: WSContext, msg: UploadServerMessage) => {
@@ -545,21 +554,29 @@ export function createUploadRoutes(deps: UploadDeps): Hono {
         return c.json({ error: "Unknown project" }, 404);
       }
 
-      const filePath = join(
-        getProjectAttachmentDir(project.path, sessionId),
+      const policyFilePaths = storagePolicy.readPaths(
+        project.path,
+        "attachments",
+        sessionId,
+        filename,
+      );
+      const legacyProjectFilePath = join(
+        getLegacyProjectAttachmentDir(project.path, sessionId),
         filename,
       );
       const legacyFilePath = resolveUploadStoragePath(
-        UPLOADS_DIR,
+        join(storagePolicy.dataDir, "uploads"),
         projectId,
         sessionId,
         filename,
       );
 
       try {
-        const candidates = [filePath, legacyFilePath].filter(
-          (candidate): candidate is string => Boolean(candidate),
-        );
+        const candidates = [
+          ...policyFilePaths,
+          legacyProjectFilePath,
+          legacyFilePath,
+        ].filter((candidate): candidate is string => Boolean(candidate));
 
         for (const candidate of candidates) {
           const stats = await stat(candidate).catch((err) => {

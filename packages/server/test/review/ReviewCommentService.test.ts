@@ -12,8 +12,13 @@ import {
   ReviewCommentService,
   type ReviewCommentServiceOptions,
 } from "../../src/review/ReviewCommentService.js";
+import { ProjectStoragePolicy } from "../../src/projects/projectStoragePolicy.js";
 
 const execFileAsync = promisify(execFile);
+const projectStoragePolicy = new ProjectStoragePolicy({
+  dataDir: tmpdir(),
+  getMode: () => "project",
+});
 
 function anchor(
   overrides: Partial<ReviewCommentAnchor> = {},
@@ -35,6 +40,7 @@ function makeService(extra: ReviewCommentServiceOptions = {}) {
   return new ReviewCommentService({
     now: () => "2026-07-26T12:00:00.000Z",
     newId: () => `id-${++n}`,
+    storagePolicy: projectStoragePolicy,
     ...extra,
   });
 }
@@ -348,7 +354,10 @@ describe("ReviewCommentService", () => {
       "Submission request manifest is invalid",
     );
     expect(
-      await readFile(restarted.requestPathFor(dir, input.submissionId), "utf-8"),
+      await readFile(
+        restarted.requestPathFor(dir, input.submissionId),
+        "utf-8",
+      ),
     ).toBe("{");
   });
 
@@ -387,6 +396,47 @@ describe("ReviewCommentService", () => {
     expect(all).toHaveLength(1);
     expect(all[0]?.status).toBe("archived");
     expect((await restarted.getFile(dir)).batches).toHaveLength(1);
+  });
+
+  it("reads legacy project state without copying it until a future write", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "yep-review-data-"));
+    const storagePolicy = new ProjectStoragePolicy({
+      dataDir,
+      getMode: () => "app-data",
+    });
+    const legacyPath = join(dir, ".yep", "review-comments.json");
+    await mkdir(join(dir, ".yep"), { recursive: true });
+    await writeFile(
+      legacyPath,
+      JSON.stringify({
+        version: 1,
+        comments: [
+          {
+            id: "old-draft",
+            anchor: anchor(),
+            text: "legacy",
+            status: "pending",
+            createdAt: "2026-07-25T00:00:00Z",
+          },
+        ],
+        batches: [],
+      }),
+    );
+
+    try {
+      const service = makeService({ storagePolicy });
+      expect(await service.listComments(dir)).toHaveLength(1);
+      const appDataPath = service.filePathFor(dir);
+      await expect(readFile(appDataPath, "utf-8")).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+
+      await service.addComment(dir, { anchor: anchor(), text: "new" });
+      expect(JSON.parse(await readFile(appDataPath, "utf-8")).version).toBe(2);
+      expect(JSON.parse(await readFile(legacyPath, "utf-8")).version).toBe(1);
+    } finally {
+      await rm(dataDir, { recursive: true, force: true });
+    }
   });
 
   it("migrates version-1 state before persisting another edit", async () => {
@@ -435,6 +485,12 @@ describe("ReviewCommentService", () => {
       status: "legacy-missing",
     });
 
+    const beforeEdit = JSON.parse(
+      await readFile(join(dir, ".yep", "review-comments.json"), "utf-8"),
+    );
+    expect(beforeEdit.version).toBe(1);
+
+    await svc.addComment(dir, { anchor: anchor(), text: "new draft" });
     const persisted = JSON.parse(
       await readFile(join(dir, ".yep", "review-comments.json"), "utf-8"),
     );

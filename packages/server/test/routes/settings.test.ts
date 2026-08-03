@@ -18,6 +18,8 @@ describe("Settings Routes", () => {
 
   beforeEach(() => {
     settings = {
+      projectDirectoryStorage: "app-data",
+      toolResultMediaPreservation: "on-demand",
       serviceWorkerEnabled: true,
       persistRemoteSessionsToDisk: false,
       clientLogCollectionRequested: false,
@@ -91,6 +93,44 @@ describe("Settings Routes", () => {
   });
 
   describe("PUT /", () => {
+    it("updates the two independent storage policies", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectDirectoryStorage: "project",
+          toolResultMediaPreservation: "preserve",
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectDirectoryStorage: "project",
+          toolResultMediaPreservation: "preserve",
+        }),
+      );
+    });
+
+    it.each([
+      { projectDirectoryStorage: "both" },
+      { toolResultMediaPreservation: "cache" },
+    ])("rejects invalid storage settings %j", async (body) => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      expect(response.status).toBe(400);
+      expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
+    });
     it("persists the reload-safe Codex opt-in", async () => {
       const routes = createSettingsRoutes({
         serverSettingsService: mockServerSettingsService,
@@ -1369,9 +1409,7 @@ describe("Settings Routes", () => {
           error:
             "claudeAutoCompactPercentOverride must be an integer from 1 to 100, or 0/null to clear",
         });
-        expect(
-          mockServerSettingsService.updateSettings,
-        ).not.toHaveBeenCalled();
+        expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
       },
     );
 

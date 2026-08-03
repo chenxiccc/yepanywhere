@@ -59,8 +59,26 @@ export interface SpeechAudioRetentionSettings {
   maxBytes: number;
 }
 
+export const PROJECT_DIRECTORY_STORAGE_VALUES = [
+  "app-data",
+  "project",
+] as const;
+export type ProjectDirectoryStorage =
+  (typeof PROJECT_DIRECTORY_STORAGE_VALUES)[number];
+
+export const TOOL_RESULT_MEDIA_PRESERVATION_VALUES = [
+  "on-demand",
+  "preserve",
+] as const;
+export type ToolResultMediaPreservation =
+  (typeof TOOL_RESULT_MEDIA_PRESERVATION_VALUES)[number];
+
 /** Server-wide settings */
 export interface ServerSettings {
+  /** Where YA writes new project-scoped state. */
+  projectDirectoryStorage: ProjectDirectoryStorage;
+  /** Whether new live tool-result images receive durable YA-owned copies. */
+  toolResultMediaPreservation: ToolResultMediaPreservation;
   /** Whether clients should register the service worker (for push notifications) */
   serviceWorkerEnabled: boolean;
   /** Whether remote SRP resume sessions should be persisted to disk (default: false/in-memory only) */
@@ -185,6 +203,8 @@ export type CodexUpdatePolicy = (typeof CODEX_UPDATE_POLICIES)[number];
 
 /** Default settings */
 export const DEFAULT_SERVER_SETTINGS: ServerSettings = {
+  projectDirectoryStorage: "app-data",
+  toolResultMediaPreservation: "on-demand",
   serviceWorkerEnabled: true,
   persistRemoteSessionsToDisk: false,
   clientLogCollectionRequested: false,
@@ -311,6 +331,14 @@ function mergeLoadedClientDefaults(
 
 function normalizeLoadedSettings(settings: ServerSettings): ServerSettings {
   const normalized = { ...DEFAULT_SERVER_SETTINGS, ...settings };
+  normalized.projectDirectoryStorage =
+    settings.projectDirectoryStorage === "project"
+      ? "project"
+      : DEFAULT_SERVER_SETTINGS.projectDirectoryStorage;
+  normalized.toolResultMediaPreservation =
+    settings.toolResultMediaPreservation === "preserve"
+      ? "preserve"
+      : DEFAULT_SERVER_SETTINGS.toolResultMediaPreservation;
   normalized.hostProcessObservabilityEnabled =
     typeof settings.hostProcessObservabilityEnabled === "boolean"
       ? settings.hostProcessObservabilityEnabled

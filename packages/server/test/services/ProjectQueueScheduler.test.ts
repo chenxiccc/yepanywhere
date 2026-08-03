@@ -8,6 +8,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getLogger } from "../../src/logging/logger.js";
+import { ProjectStoragePolicy } from "../../src/projects/projectStoragePolicy.js";
 import type { UserMessage } from "../../src/sdk/types.js";
 import {
   ProjectQueueScheduler,
@@ -309,8 +310,13 @@ describe("ProjectQueueScheduler", () => {
   it("materializes staged attachments before promoting a queued new session", async () => {
     await scheduler.dispose();
     const projectPath = path.join(testDir, "project");
+    const storagePolicy = new ProjectStoragePolicy({
+      dataDir: path.join(testDir, "data"),
+      getMode: () => "project",
+    });
     const stagingService = new AttachmentStagingService({
       stagingRoot: path.join(testDir, "staging"),
+      storagePolicy,
     });
     service.setAttachmentStagingService(stagingService);
     scheduler = new ProjectQueueScheduler({
@@ -356,7 +362,8 @@ describe("ProjectQueueScheduler", () => {
             originalName: "queued.txt",
             path: path.join(
               projectPath,
-              ".attachments",
+              ".yep",
+              "attachments",
               "created-session-1",
               ref.name,
             ),
@@ -366,7 +373,13 @@ describe("ProjectQueueScheduler", () => {
     });
     await expect(
       fs.readFile(
-        path.join(projectPath, ".attachments", "created-session-1", ref.name),
+        path.join(
+          projectPath,
+          ".yep",
+          "attachments",
+          "created-session-1",
+          ref.name,
+        ),
         "utf-8",
       ),
     ).resolves.toBe("queued attachment");

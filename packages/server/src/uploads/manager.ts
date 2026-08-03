@@ -4,11 +4,11 @@ import { mkdir, rm, stat } from "node:fs/promises";
 import { extname, isAbsolute, join, relative, resolve } from "node:path";
 import type { UploadedFile } from "@yep-anywhere/shared";
 import { getDataDir } from "../config.js";
-import { ensureManagedProjectDir } from "../projects/managedProjectDir.js";
+import { ProjectStoragePolicy } from "../projects/projectStoragePolicy.js";
 
 /** Legacy root directory for uploads (kept for old files during transition). */
 export const UPLOADS_DIR = join(getDataDir(), "uploads");
-const ATTACHMENTS_DIR_NAME = ".attachments";
+const ATTACHMENTS_DIR_NAME = "attachments";
 
 /**
  * State machine for a single upload operation.
@@ -126,7 +126,14 @@ export function getProjectAttachmentDir(
   projectPath: string,
   sessionId: string,
 ): string {
-  return join(projectPath, ATTACHMENTS_DIR_NAME, sessionId);
+  return join(projectPath, ".yep", ATTACHMENTS_DIR_NAME, sessionId);
+}
+
+export function getLegacyProjectAttachmentDir(
+  projectPath: string,
+  sessionId: string,
+): string {
+  return join(projectPath, ".attachments", sessionId);
 }
 
 /**
@@ -157,14 +164,18 @@ export async function getUploadDir(
 export async function getProjectAttachmentUploadDir(
   projectPath: string,
   sessionId: string,
+  storagePolicy: ProjectStoragePolicy,
 ): Promise<string> {
-  // Creates `{projectPath}/.attachments/{sessionId}`, git-excluding
-  // `.attachments/` by default the first time YA creates it.
-  return ensureManagedProjectDir(projectPath, ATTACHMENTS_DIR_NAME, sessionId);
+  return storagePolicy.ensureWriteDirectory(
+    projectPath,
+    ATTACHMENTS_DIR_NAME,
+    sessionId,
+  );
 }
 
 export interface UploadManagerOptions {
   uploadsDir?: string;
+  storagePolicy?: ProjectStoragePolicy;
   /** Maximum upload file size in bytes. 0 = unlimited */
   maxUploadSizeBytes?: number;
 }
@@ -195,10 +206,17 @@ export class UploadManager {
   private uploads = new Map<string, UploadState>();
   private uploadsDir: string;
   private maxUploadSizeBytes: number;
+  private storagePolicy: ProjectStoragePolicy;
 
   constructor(options: UploadManagerOptions = {}) {
     this.uploadsDir = options.uploadsDir ?? UPLOADS_DIR;
     this.maxUploadSizeBytes = options.maxUploadSizeBytes ?? 0;
+    this.storagePolicy =
+      options.storagePolicy ??
+      new ProjectStoragePolicy({
+        dataDir: getDataDir(),
+        getMode: () => "app-data",
+      });
   }
 
   /**
@@ -226,7 +244,11 @@ export class UploadManager {
     }
 
     const uploadDir = projectPath
-      ? await getProjectAttachmentUploadDir(projectPath, sessionId)
+      ? await getProjectAttachmentUploadDir(
+          projectPath,
+          sessionId,
+          this.storagePolicy,
+        )
       : await getUploadDir(encodedProjectPath, sessionId, this.uploadsDir);
     const { id, sanitized } = sanitizeFilename(originalName);
     const filePath = join(uploadDir, sanitized);

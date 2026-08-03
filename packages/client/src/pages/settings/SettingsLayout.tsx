@@ -62,6 +62,7 @@ import {
 } from "./SettingsUndoContext";
 import { SpeechSettings } from "./SpeechSettings";
 import { SourceControlSettings } from "./SourceControlSettings";
+import { StorageSettings } from "./StorageSettings";
 import { ToolbarSettings } from "./ToolbarSettings";
 import type { SettingsCategory } from "./types";
 
@@ -74,6 +75,7 @@ const CATEGORY_COMPONENTS: Record<string, React.ComponentType> = {
   "cache-miss-billing": CacheMissBillingSettings,
   "message-delivery": MessageDeliverySettings,
   "source-control": SourceControlSettings,
+  storage: StorageSettings,
   "agent-context": AgentContextSettings,
   notifications: NotificationsSettings,
   webhooks: LifecycleWebhooksSettings,

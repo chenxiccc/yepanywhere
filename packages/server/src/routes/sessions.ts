@@ -750,7 +750,7 @@ function formatRestartQueuedMessage(
 ): string {
   const attachmentLines =
     message.attachments?.length && message.attachments.length > 0
-      ? `\n\nUser uploaded files in .attachments:\n${message.attachments
+      ? `\n\nUser uploaded files:\n${message.attachments
           .map(
             (file) =>
               `- [${file.originalName.replaceAll("[", "\\[").replaceAll("]", "\\]")}](<${file.path}>) (${formatRestartBytes(file.size)}, ${file.mimeType}${file.width && file.height ? `, ${file.width}x${file.height}` : ""})`,

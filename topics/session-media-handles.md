@@ -12,9 +12,9 @@ Parent storage contract:
 
 Settings surface: [Storage Settings](storage-settings.md).
 
-Status: media handles and unconditional materialization are implemented in
-current source after `0.7.0`; no stable npm release contains them. The default
-persistence behavior violates the approved target and awaits implementation.
+Status: corrected in current source after `0.7.0`; no stable npm release
+contains media handles or the preservation policy yet. The permanent
+capability declares `0.7.1` as its first complete release.
 
 Use this document before changing provider message normalization, session
 detail REST payloads, transcript media renderers, image-bearing tool results,
@@ -56,24 +56,21 @@ retention semantics.
 
 ## Default Lazy Handle Model
 
-During normal transcript scanning, the server detects media and builds an
-in-memory catalog keyed by provider, project, session, source file stamp, and
-opaque media id. A durable locator may contain internal JSONL line/offset and
-JSON-pointer information; none of that enters the public handle.
+During session materialization, the server detects media, validates the safe
+raster type, removes inline base64 from the client-facing payload, and builds
+a size- and lifetime-bounded process-memory catalog behind an opaque media id.
+The browser receives metadata and fetches the bytes only when the image is
+viewed. The transient response is `no-store` and creates no disk entry.
 
-On media fetch, the server seeks to the provider-owned transcript location,
-parses the containing record, validates the content hash and safe raster type,
-decodes the bytes, and streams them. If the in-memory catalog is cold or the
-source stamp changed, rebuilding it by scanning the transcript is the default
-cost. Persistent indexing is an optional optimization only after measurements
-justify it, and any such index lives in bounded app-data storage.
+If a transient handle expires, rematerializing the provider-owned session can
+rebuild it while the source remains available. Persistent indexing or a disk
+read-through cache is an optional optimization only after measurements justify
+it; neither exists in the first implementation.
 
-Live output can arrive before provider persistence catches up. In default
-on-demand mode that boundary uses a size- and lifetime-bounded memory or
-temporary app-data store tied to the process/session lifecycle. It must not
-survive indefinitely because a provider session is idle or a client tab
-closed. With preservation explicitly enabled, a newly emitted result crosses
-instead into the durable store at this live managed-session boundary.
+Live output can arrive before provider persistence catches up. Default
+on-demand mode uses the same bounded process-memory catalog. With preservation
+explicitly enabled, a newly emitted result also crosses into the durable store
+at this live managed-session boundary.
 
 A path-only result is available while its permitted source path exists. When
 the source disappears and preservation was not enabled, the media ref becomes
@@ -157,7 +154,7 @@ Preservation is not a historical read-through cache:
 Physical location follows the global policy:
 
 - **App data only:**
-  `<data-dir>/tool-results/<project-key>/<session-id>/`;
+  `<data-dir>/projects/<project-key>/tool-results/<session-id>/`;
 - **Store YA assets with projects:**
   `<project>/.yep/tool-results/<session-id>/` after explicit opt-in and safety
   checks.
@@ -165,8 +162,8 @@ Physical location follows the global policy:
 Preservation has no automatic age limit, size eviction, garbage collection, or
 pruning. It may grow without bound, and the Settings copy states that plainly.
 On disk pressure or write failure, YA does not interrupt the provider turn,
-delete an older copy, or silently change location; it reports the failed
-preservation and uses any still-available provider-backed on-demand source.
+delete an older copy, or silently change location; it keeps any still-available
+transient on-demand handle.
 
 There is no persistent server disk-cache mode in v1. If measurements later
 justify avoiding cold transcript scans or repeated decoding, a bounded cache
@@ -176,7 +173,7 @@ capability. It is not implemented by weakening the preservation promise.
 Preserved tool output is viewer state, not provider input. It is never listed
 as an attachment or supplied automatically to a later turn.
 
-## Current Implementation Audit — 2026-08-03
+## Pre-Correction Implementation Audit — 2026-08-03
 
 Commit `800a4598` replaced the earlier lazy-locator proposal with unconditional
 materialization below `<project>/.yep/tool-results/<session-id>/`. It captures
@@ -194,9 +191,10 @@ The originating implementation commit explicitly listed automatic retention
 and garbage collection as deferred. This growth satisfies the documented
 trigger for revisiting that decision.
 
-No stable npm release contains the implementation: the latest stable release,
-`0.7.0`, predates `800a4598`. Existing source checkouts after that tag may
-already contain `.yep/tool-results` data.
+No stable npm release contains the audited implementation: the latest stable
+release, `0.7.0`, predates `800a4598`. Existing source checkouts after that tag
+may already contain `.yep/tool-results` data. The current correction leaves
+those files in place and reads them only as a compatibility source.
 
 ## Legacy Data And Upgrade Behavior
 
@@ -249,8 +247,9 @@ media id never grants public access.
 
 In the default configuration, loading live or historical image-bearing
 sessions leaves the project tree and Git metadata unchanged and creates no
-durable media copy. A cold image fetch may rescan provider persistence, and an
-expired path-only image may report unavailable.
+durable media copy. An expired transient handle can be rebuilt by
+rematerializing provider persistence; an expired path-only image may report
+unavailable.
 
 With preservation explicitly enabled, tests cover new results emitted by
 managed sessions with and without a connected client, provider replay

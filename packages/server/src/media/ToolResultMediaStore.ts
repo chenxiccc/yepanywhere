@@ -25,12 +25,14 @@ import {
   resolve,
   sep,
 } from "node:path";
-import { ensureManagedProjectDir } from "../projects/managedProjectDir.js";
+import type { ProjectStoragePolicy } from "../projects/projectStoragePolicy.js";
 import type { ToolResultMediaCandidate } from "./inlineImageData.js";
 import { ToolResultMediaMessageMaterializer } from "./ToolResultMediaMessageMaterializer.js";
 
 const STORE_VERSION = 1;
 const DEFAULT_MAX_IMAGE_BYTES = 25 * 1024 * 1024;
+const DEFAULT_TRANSIENT_MEDIA_MAX_BYTES = 64 * 1024 * 1024;
+const DEFAULT_TRANSIENT_MEDIA_TTL_MS = 30 * 60 * 1000;
 const SAFE_SEGMENT_RE = /^[A-Za-z0-9._-]+$/;
 const MEDIA_ID_RE = /^[A-Za-z0-9_-]{43}$/;
 const CONTENT_HASH_RE = /^[a-f0-9]{64}$/;
@@ -70,9 +72,11 @@ export interface ToolResultMediaContext {
 }
 
 export interface ToolResultMediaFile {
-  path: string;
+  path?: string;
+  bytes?: Buffer;
   mimeType: string;
   byteLength: number;
+  persistent: boolean;
 }
 
 export interface ToolResultMediaStoreOptions {
@@ -82,6 +86,10 @@ export interface ToolResultMediaStoreOptions {
   providerSourceRoots?: (
     context: ToolResultMediaProviderSourceContext,
   ) => readonly string[];
+  storagePolicy?: ProjectStoragePolicy;
+  shouldPreserveLiveMedia?: () => boolean;
+  transientMediaMaxBytes?: number;
+  transientMediaTtlMs?: number;
 }
 
 export interface ToolResultMediaProviderSourceContext {
@@ -97,22 +105,45 @@ export class ToolResultMediaStore {
     | ((absolutePath: string) => Promise<string | null>)
     | undefined;
   private readonly providerSourceRoots:
-    | ((
-        context: ToolResultMediaProviderSourceContext,
-      ) => readonly string[])
+    | ((context: ToolResultMediaProviderSourceContext) => readonly string[])
     | undefined;
+  private readonly storagePolicy: ProjectStoragePolicy | undefined;
+  private readonly shouldPreserveLiveMediaValue: () => boolean;
+  private readonly transientMediaMaxBytes: number;
+  private readonly transientMediaTtlMs: number;
+  private readonly transientMedia = new Map<
+    string,
+    ToolResultMediaCatalogEntry & { bytes: Buffer; lastAccessedAt: number }
+  >();
+  private transientMediaBytes = 0;
 
   constructor(options: ToolResultMediaStoreOptions = {}) {
     this.dataDir = options.dataDir;
     this.maxImageBytes = options.maxImageBytes ?? DEFAULT_MAX_IMAGE_BYTES;
     this.resolveSourcePath = options.resolveSourcePath;
     this.providerSourceRoots = options.providerSourceRoots;
+    this.storagePolicy = options.storagePolicy;
+    this.shouldPreserveLiveMediaValue =
+      options.shouldPreserveLiveMedia ?? (() => false);
+    this.transientMediaMaxBytes =
+      options.transientMediaMaxBytes ?? DEFAULT_TRANSIENT_MEDIA_MAX_BYTES;
+    this.transientMediaTtlMs =
+      options.transientMediaTtlMs ?? DEFAULT_TRANSIENT_MEDIA_TTL_MS;
   }
 
   createMaterializer(
     context: ToolResultMediaContext,
+    options: { live?: boolean } = {},
   ): ToolResultMediaMessageMaterializer {
-    return new ToolResultMediaMessageMaterializer(this, context);
+    return new ToolResultMediaMessageMaterializer(
+      this,
+      context,
+      options.live === true,
+    );
+  }
+
+  shouldPreserveLiveMedia(): boolean {
+    return this.shouldPreserveLiveMediaValue();
   }
 
   async capture(
@@ -120,6 +151,7 @@ export class ToolResultMediaStore {
     context: ToolResultMediaContext,
     toolCallId: string,
     mediaIndex: number,
+    options: { preserve: boolean } = { preserve: false },
   ): Promise<ToolResultMedia> {
     const sessionId = context.getSessionId();
     const filename =
@@ -147,14 +179,11 @@ export class ToolResultMediaStore {
       if ("reason" in decoded) return rejected(decoded.reason);
       bytes = decoded.bytes;
     } else if (originalPath) {
-      const sourcePath = await this.resolvePermittedSourcePath(
-        originalPath,
-        {
-          provider: context.provider,
-          projectPath: context.projectPath,
-          sessionId,
-        },
-      );
+      const sourcePath = await this.resolvePermittedSourcePath(originalPath, {
+        provider: context.provider,
+        projectPath: context.projectPath,
+        sessionId,
+      });
       if (!sourcePath) return rejected("source-unavailable");
       originalPath = sourcePath;
       const sourceStats = await stat(sourcePath).catch(() => null);
@@ -197,19 +226,28 @@ export class ToolResultMediaStore {
       contentHash: validated.contentHash,
     };
 
-    try {
-      const root = await this.getWriteRoot(context.projectPath, sessionId);
-      await atomicWriteIfAbsent(
-        join(root, "blobs", `${validated.contentHash}.${validated.extension}`),
-        validated.bytes,
-        validated.contentHash,
-      );
-      await atomicWrite(
-        join(root, "records", `${id}.json`),
-        Buffer.from(`${JSON.stringify(entry)}\n`),
-      );
-    } catch {
-      return rejected("storage-unavailable");
+    this.rememberTransient(entry, validated.bytes);
+
+    if (options.preserve) {
+      try {
+        const root = await this.getWriteRoot(context.projectPath, sessionId);
+        await atomicWriteIfAbsent(
+          join(
+            root,
+            "blobs",
+            `${validated.contentHash}.${validated.extension}`,
+          ),
+          validated.bytes,
+          validated.contentHash,
+        );
+        await atomicWrite(
+          join(root, "records", `${id}.json`),
+          Buffer.from(`${JSON.stringify(entry)}\n`),
+        );
+        this.forgetTransient(id);
+      } catch {
+        // The transient handle remains usable even when preservation fails.
+      }
     }
 
     return {
@@ -231,6 +269,23 @@ export class ToolResultMediaStore {
     mediaId: string,
   ): Promise<ToolResultMediaFile | null> {
     if (!isSafeSegment(sessionId) || !MEDIA_ID_RE.test(mediaId)) return null;
+
+    this.pruneTransient();
+    const transient = this.transientMedia.get(mediaId);
+    if (
+      transient?.projectId === projectId &&
+      transient.sessionId === sessionId
+    ) {
+      transient.lastAccessedAt = Date.now();
+      this.transientMedia.delete(mediaId);
+      this.transientMedia.set(mediaId, transient);
+      return {
+        bytes: transient.bytes,
+        mimeType: transient.mimeType,
+        byteLength: transient.byteLength,
+        persistent: false,
+      };
+    }
 
     for (const root of await this.getReadRoots(projectPath, sessionId)) {
       const entry = await readCatalogEntry(
@@ -259,6 +314,7 @@ export class ToolResultMediaStore {
         path: blobPath,
         mimeType: entry.mimeType,
         byteLength: entry.byteLength,
+        persistent: true,
       };
     }
     return null;
@@ -302,40 +358,21 @@ export class ToolResultMediaStore {
     projectPath: string,
     sessionId: string,
   ): Promise<string> {
-    try {
-      await rejectSymlink(join(projectPath, ".yep"));
-      await rejectSymlink(join(projectPath, ".yep", "tool-results"));
-      await rejectSymlink(join(projectPath, ".yep", "tool-results", sessionId));
-      await rejectSymlink(
-        join(projectPath, ".yep", "tool-results", sessionId, "blobs"),
-      );
-      await rejectSymlink(
-        join(projectPath, ".yep", "tool-results", sessionId, "records"),
-      );
-      const root = await ensureManagedProjectDir(
-        projectPath,
-        ".yep",
-        "tool-results",
-        sessionId,
-      );
-      if (!(await prepareMediaRoot(root, projectPath))) {
-        throw new Error("Managed media directory escaped the project");
-      }
-      return root;
-    } catch (projectError) {
-      if (!this.dataDir) throw projectError;
-      const fallback = this.getFallbackRoot(projectPath, sessionId);
-      await rejectSymlink(join(this.dataDir, "tool-results"));
-      await rejectSymlink(dirname(fallback));
-      await rejectSymlink(fallback);
-      await rejectSymlink(join(fallback, "blobs"));
-      await rejectSymlink(join(fallback, "records"));
-      await mkdir(fallback, { recursive: true });
-      if (!(await prepareMediaRoot(fallback, this.dataDir))) {
-        throw new Error("Fallback media directory escaped the data directory");
-      }
-      return fallback;
+    const root = this.storagePolicy
+      ? await this.storagePolicy.ensureWriteDirectory(
+          projectPath,
+          "tool-results",
+          sessionId,
+        )
+      : await this.ensureFallbackWriteRoot(projectPath, sessionId);
+    const boundary =
+      this.storagePolicy?.mode === "project"
+        ? projectPath
+        : (this.storagePolicy?.dataDir ?? this.dataDir);
+    if (!boundary || !(await prepareMediaRoot(root, boundary))) {
+      throw new Error("Managed media directory escaped its storage root");
     }
+    return root;
   }
 
   private async getReadRoots(
@@ -343,13 +380,29 @@ export class ToolResultMediaStore {
     sessionId: string,
   ): Promise<string[]> {
     const roots: string[] = [];
-    const projectRoot = join(projectPath, ".yep", "tool-results", sessionId);
-    if (await isSafeProjectMediaRoot(projectPath, projectRoot)) {
-      roots.push(projectRoot);
+    if (this.storagePolicy) {
+      for (const root of this.storagePolicy.readPaths(
+        projectPath,
+        "tool-results",
+        sessionId,
+      )) {
+        const boundary = isWithin(root, this.storagePolicy.dataDir)
+          ? this.storagePolicy.dataDir
+          : projectPath;
+        if (await isSafeMediaRoot(boundary, root)) roots.push(root);
+      }
+    } else {
+      const projectRoot = join(projectPath, ".yep", "tool-results", sessionId);
+      if (await isSafeProjectMediaRoot(projectPath, projectRoot)) {
+        roots.push(projectRoot);
+      }
     }
     if (this.dataDir) {
       const fallbackRoot = this.getFallbackRoot(projectPath, sessionId);
-      if (await isSafeMediaRoot(this.dataDir, fallbackRoot)) {
+      if (
+        !roots.includes(fallbackRoot) &&
+        (await isSafeMediaRoot(this.dataDir, fallbackRoot))
+      ) {
         roots.push(fallbackRoot);
       }
     }
@@ -362,6 +415,58 @@ export class ToolResultMediaStore {
       .digest("hex")
       .slice(0, 32);
     return join(this.dataDir ?? "", "tool-results", projectKey, sessionId);
+  }
+
+  private async ensureFallbackWriteRoot(
+    projectPath: string,
+    sessionId: string,
+  ): Promise<string> {
+    if (!this.dataDir) throw new Error("Tool media storage is unavailable");
+    const fallback = this.getFallbackRoot(projectPath, sessionId);
+    await rejectSymlink(join(this.dataDir, "tool-results"));
+    await rejectSymlink(dirname(fallback));
+    await rejectSymlink(fallback);
+    await rejectSymlink(join(fallback, "blobs"));
+    await rejectSymlink(join(fallback, "records"));
+    await mkdir(fallback, { recursive: true });
+    return fallback;
+  }
+
+  private rememberTransient(
+    entry: ToolResultMediaCatalogEntry,
+    bytes: Buffer,
+  ): void {
+    if (bytes.length > this.transientMediaMaxBytes) return;
+    const existing = this.transientMedia.get(entry.id);
+    if (existing) this.transientMediaBytes -= existing.bytes.length;
+    this.transientMedia.set(entry.id, {
+      ...entry,
+      bytes,
+      lastAccessedAt: Date.now(),
+    });
+    this.transientMediaBytes += bytes.length;
+    this.pruneTransient();
+  }
+
+  private forgetTransient(id: string): void {
+    const existing = this.transientMedia.get(id);
+    if (!existing) return;
+    this.transientMedia.delete(id);
+    this.transientMediaBytes -= existing.bytes.length;
+  }
+
+  private pruneTransient(): void {
+    const expiresBefore = Date.now() - this.transientMediaTtlMs;
+    for (const [id, entry] of this.transientMedia) {
+      if (
+        entry.lastAccessedAt >= expiresBefore &&
+        this.transientMediaBytes <= this.transientMediaMaxBytes
+      ) {
+        break;
+      }
+      this.transientMedia.delete(id);
+      this.transientMediaBytes -= entry.bytes.length;
+    }
   }
 }
 

@@ -5,7 +5,7 @@
  * to address each comment and report per-comment dispositions, and — crucially
  * — instructs it to read current file state rather than trust the quoted
  * snippets. The structured comments travel by reference in the project-local
- * `.yep/review-comments.json`; each comment also carries a small inline snippet
+ * the storage-policy-selected review file; each comment also carries a small inline snippet
  * for human readability and immediate context.
  *
  * A SHA is cited only when relocation failed (the line is gone) or the comment
@@ -26,7 +26,7 @@ export interface ComposeReviewTurnInput {
   comments: ReviewComment[];
   /** Relocation per comment id, from {@link relocateAnchors} at submit time. */
   relocations: Map<string, AnchorRelocation>;
-  /** Repo-relative path of the review file the prompt references. */
+  /** Storage-policy-selected path of the review file the prompt references. */
   reviewFileRelPath: string;
   /** True for a follow-up turn to an existing review session. */
   followUp?: boolean;
@@ -39,7 +39,7 @@ export const READ_CURRENT_STATE_INSTRUCTION =
 
 export interface ComposeSubmissionReviewTurnInput {
   request: ReviewSubmissionRequest;
-  /** Repo-relative submission directory, never the private draft store. */
+  /** Storage-policy-selected submission directory. */
   submissionDirectoryRelPath: string;
   followUp?: boolean;
 }

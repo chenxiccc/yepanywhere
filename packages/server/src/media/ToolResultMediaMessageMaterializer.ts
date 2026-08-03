@@ -27,6 +27,7 @@ export class ToolResultMediaMessageMaterializer {
   constructor(
     private readonly store: ToolResultMediaStore,
     private readonly context: ToolResultMediaContext,
+    private readonly live: boolean,
   ) {}
 
   async materializeMessages<T extends object>(
@@ -133,7 +134,9 @@ export class ToolResultMediaMessageMaterializer {
       media.push(
         ...(await Promise.all(
           normalizedCandidates.map((candidate, index) =>
-            this.store.capture(candidate, this.context, toolCallId, index),
+            this.store.capture(candidate, this.context, toolCallId, index, {
+              preserve: this.live && this.store.shouldPreserveLiveMedia(),
+            }),
           ),
         )),
       );

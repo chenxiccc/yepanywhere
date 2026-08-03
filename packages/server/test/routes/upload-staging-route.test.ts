@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
 import { attachUnifiedUpgradeHandler } from "../../src/frontend/index.js";
 import type { ProjectScanner } from "../../src/projects/scanner.js";
+import { ProjectStoragePolicy } from "../../src/projects/projectStoragePolicy.js";
 import { createUploadRoutes } from "../../src/routes/upload.js";
 import { AttachmentStagingService } from "../../src/uploads/index.js";
 
@@ -45,8 +46,13 @@ describe("staged upload direct route", () => {
     projectPath = join(testDir, "project");
     projectId = toUrlProjectId(projectPath);
     server = null;
+    const storagePolicy = new ProjectStoragePolicy({
+      dataDir: join(testDir, "data"),
+      getMode: () => "project",
+    });
     stagingService = new AttachmentStagingService({
       stagingRoot: join(testDir, "staging"),
+      storagePolicy,
     });
 
     const app = new Hono();
@@ -72,6 +78,7 @@ describe("staged upload direct route", () => {
         } as unknown as ProjectScanner,
         upgradeWebSocket,
         attachmentStagingService: stagingService,
+        storagePolicy,
       }),
     );
 
@@ -197,7 +204,7 @@ describe("staged upload direct route", () => {
         id: ref.id,
         originalName: "draft.txt",
         name: ref.name,
-        path: join(projectPath, ".attachments", "session-a", ref.name),
+        path: join(projectPath, ".yep", "attachments", "session-a", ref.name),
         size: ref.size,
         mimeType: "text/plain",
       }),

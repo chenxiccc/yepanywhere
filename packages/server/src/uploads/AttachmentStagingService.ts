@@ -13,6 +13,7 @@ import {
 import { isAbsolute, join, relative, resolve } from "node:path";
 import type { StagedAttachmentRef, UploadedFile } from "@yep-anywhere/shared";
 import { getDataDir } from "../config.js";
+import { ProjectStoragePolicy } from "../projects/projectStoragePolicy.js";
 import {
   getProjectAttachmentUploadDir,
   isSafeUploadPathSegment,
@@ -62,6 +63,7 @@ export interface AttachmentStagingServiceOptions {
   draftTtlMs?: number;
   /** Clock hook for tests. */
   now?: () => number;
+  storagePolicy?: ProjectStoragePolicy;
 }
 
 export interface StartDraftStagedUploadParams {
@@ -189,13 +191,18 @@ export class AttachmentStagingService {
   private readonly maxUploadSizeBytes: number;
   private readonly draftTtlMs: number;
   private readonly now: () => number;
+  private readonly storagePolicy: ProjectStoragePolicy;
   private readonly activeUploads = new Map<string, ActiveStagedUpload>();
   private readonly records = new Map<string, StagedAttachmentRecord>();
   private initialized = false;
   private mutationQueue: Promise<void> = Promise.resolve();
 
   constructor(options: AttachmentStagingServiceOptions = {}) {
-    const dataDir = options.dataDir ?? getDataDir();
+    const dataDir =
+      options.dataDir ??
+      (options.stagingRoot
+        ? join(resolve(options.stagingRoot), "app-data")
+        : getDataDir());
     this.stagingRoot = resolve(
       options.stagingRoot ?? join(dataDir, "uploads", "staging"),
     );
@@ -203,6 +210,12 @@ export class AttachmentStagingService {
     this.maxUploadSizeBytes = options.maxUploadSizeBytes ?? 0;
     this.draftTtlMs = options.draftTtlMs ?? DEFAULT_DRAFT_STAGING_TTL_MS;
     this.now = options.now ?? Date.now;
+    this.storagePolicy =
+      options.storagePolicy ??
+      new ProjectStoragePolicy({
+        dataDir,
+        getMode: () => "app-data",
+      });
   }
 
   createBatchId(): string {
@@ -789,6 +802,7 @@ export class AttachmentStagingService {
     const targetDir = await getProjectAttachmentUploadDir(
       params.projectPath,
       params.sessionId,
+      this.storagePolicy,
     );
     const files: UploadedFile[] = [];
 

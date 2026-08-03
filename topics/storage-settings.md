@@ -7,7 +7,8 @@
 
 Topic: project-directory-storage
 
-Status: target Settings contract. Implementation is pending.
+Status: implemented in current source after `0.7.0`. The two permanent
+capabilities declare `0.7.1` as their first complete release.
 
 Parent contracts:
 [Project Directory Storage](project-directory-storage.md) and
@@ -86,10 +87,10 @@ a separate policy and capability.
 ### Load on demand — default
 
 Return authenticated lazy media handles without keeping an additional
-persistent YA copy. Historical inline media is decoded from provider-owned
-persistence when requested. A path-only result remains available only while
-its permitted source exists. Live output may use bounded memory or temporary
-app-data storage until provider persistence catches up.
+persistent YA copy. Historical inline media is removed from the session
+payload and retained only in a size- and lifetime-bounded process-memory
+catalog; the browser fetches the bytes only when the image is viewed. A
+path-only result remains available only while its permitted source exists.
 
 This UI choice maps to:
 
@@ -142,9 +143,8 @@ The UI states the resolved class of destination and warns plainly:
 > Preserved copies are not removed automatically.
 
 Failure to preserve an optional copy must not interrupt the provider turn,
-delete an older copy, or silently place the bytes in another location. YA
-reports the failed preservation while retaining any provider-backed on-demand
-path that is still available.
+delete an older copy, or silently place the bytes in another location. The
+bounded transient handle remains usable when preservation fails.
 
 ## Changes, Mixed Locations, And Legacy Data
 

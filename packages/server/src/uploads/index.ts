@@ -14,6 +14,7 @@ export {
   getUploadDir,
   getProjectAttachmentDir,
   getProjectAttachmentUploadDir,
+  getLegacyProjectAttachmentDir,
   resolveUploadStoragePath,
   sanitizeFilename,
   UPLOADS_DIR,

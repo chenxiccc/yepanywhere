@@ -7,9 +7,9 @@
 
 Topic: project-directory-storage
 
-Status: target product contract. The writer audit is complete; implementation
-is pending. Current source behavior is recorded below and must not be mistaken
-for the target default.
+Status: implemented in current source after `0.7.0`; no stable npm release
+contains the policy yet. The pre-correction writer audit remains below as
+release and compatibility history.
 
 Settings surface: [Storage Settings](storage-settings.md).
 
@@ -109,7 +109,7 @@ Downgrading to a server without the policy can reintroduce that older server's
 write behavior. A new client connected to such a server must not claim the
 project is protected; the compatibility fallback below explains the limitation.
 
-## Current Writer Audit — 2026-08-03
+## Pre-Correction Writer Audit — 2026-08-03
 
 | Writer | Current trigger and location | Setting today | Released behavior | Required correction |
 | --- | --- | --- | --- | --- |
@@ -142,7 +142,7 @@ Git-exclude helper. Those behaviors exist only in current source after the
 
 ## Advertised Capability And Hosted Fallback
 
-The implementation should add a permanent exact capability named
+The implementation advertises a permanent exact capability named
 `project-directory-storage-policy`. Advertisement means all of the following
 are true, not merely that a settings field parses:
 
@@ -178,8 +178,8 @@ The exact Settings presentation and absent-capability behavior are in
 
 ## Implementation Acceptance
 
-The implementation is incomplete until tests prove the project tree and Git
-metadata remain byte-for-byte unchanged in **App data only** mode while YA:
+Tests prove the project tree and Git metadata remain byte-for-byte unchanged
+in **App data only** mode while YA:
 
 - lists, adds, opens, and indexes a project;
 - loads image-bearing live and historical sessions;

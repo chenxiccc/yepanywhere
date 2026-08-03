@@ -53,6 +53,46 @@ export interface ServerCapabilityDefinition {
 }
 
 export const SERVER_CAPABILITIES = {
+  projectDirectoryStoragePolicy: {
+    name: "project-directory-storage-policy",
+    kind: "permanent",
+    area: "settings",
+    introducedIn: "0.7.1",
+    description:
+      "Server defaults project-scoped YA state to its data directory and supports an explicit project-local storage opt-in.",
+    clientFallback:
+      "Show the storage location as unavailable and make no unsupported settings write.",
+    serverContract: {
+      routes: ["GET /api/settings", "PUT /api/settings"],
+      requestFields: ["settings.projectDirectoryStorage"],
+      responseFields: ["settings.projectDirectoryStorage"],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Older servers may write YA-managed state into project directories without an opt-in.",
+    },
+  },
+  toolResultMediaPreservationPolicy: {
+    name: "tool-result-media-preservation-policy",
+    kind: "permanent",
+    area: "settings",
+    introducedIn: "0.7.1",
+    description:
+      "Server loads tool-result images on demand by default and can preserve new live results when explicitly enabled.",
+    clientFallback:
+      "Show media preservation as unavailable and make no unsupported settings write.",
+    serverContract: {
+      routes: ["GET /api/settings", "PUT /api/settings"],
+      requestFields: ["settings.toolResultMediaPreservation"],
+      responseFields: ["settings.toolResultMediaPreservation"],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Older and development servers may use different tool-media storage semantics.",
+    },
+  },
   gitStatus: {
     name: "git-status",
     kind: "permanent",
@@ -858,6 +898,10 @@ export type ServerCapabilityKey = keyof typeof SERVER_CAPABILITIES;
 export type ServerCapabilityName =
   (typeof SERVER_CAPABILITIES)[ServerCapabilityKey]["name"];
 
+export const PROJECT_DIRECTORY_STORAGE_POLICY_CAPABILITY =
+  SERVER_CAPABILITIES.projectDirectoryStoragePolicy.name;
+export const TOOL_RESULT_MEDIA_PRESERVATION_POLICY_CAPABILITY =
+  SERVER_CAPABILITIES.toolResultMediaPreservationPolicy.name;
 export const PROJECT_QUEUE_CAPABILITY = SERVER_CAPABILITIES.projectQueue.name;
 export const PROJECT_QUEUE_NEW_SESSION_SHORTCUT_SETTING_CAPABILITY =
   SERVER_CAPABILITIES.projectQueueNewSessionShortcutSetting.name;

@@ -14,7 +14,6 @@ import {
   MAX_REVIEW_COMMENTS,
   MAX_REVIEW_RESPONSE_FILE_BYTES,
   MAX_REVIEW_SUBMISSION_NAME_LENGTH,
-  REVIEW_COMMENTS_FILE_VERSION,
   REVIEW_SUBMISSION_REQUEST_VERSION,
   type ReviewBatch,
   type ReviewCapture,
@@ -37,9 +36,9 @@ import {
 } from "@yep-anywhere/shared";
 import { createCoalescingSaver } from "../lib/coalescingSaver.js";
 import { HttpError } from "../middleware/error-handler.js";
-import { ensureManagedProjectDir } from "../projects/managedProjectDir.js";
+import { getDataDir } from "../config.js";
+import { ProjectStoragePolicy } from "../projects/projectStoragePolicy.js";
 
-const YEP_DIR = ".yep";
 const REVIEW_COMMENTS_FILENAME = "review-comments.json";
 const SOURCE_REVIEW_DIR = "source-review";
 const REQUEST_FILENAME = "request.json";
@@ -116,6 +115,7 @@ export interface ReviewCommentServiceOptions {
   now?: () => string;
   newId?: () => string;
   captureWriter?: ReviewCaptureWriter;
+  storagePolicy?: ProjectStoragePolicy;
 }
 
 export class ReviewCommentService {
@@ -123,11 +123,18 @@ export class ReviewCommentService {
   private now: () => string;
   private newId: () => string;
   private captureWriter?: ReviewCaptureWriter;
+  private storagePolicy: ProjectStoragePolicy;
 
   constructor(options: ReviewCommentServiceOptions = {}) {
     this.now = options.now ?? (() => new Date().toISOString());
     this.newId = options.newId ?? (() => randomUUID());
     this.captureWriter = options.captureWriter;
+    this.storagePolicy =
+      options.storagePolicy ??
+      new ProjectStoragePolicy({
+        dataDir: getDataDir(),
+        getMode: () => "app-data",
+      });
   }
 
   /** Stable version-1 projection for established clients. */
@@ -421,11 +428,7 @@ export class ReviewCommentService {
           summary.targetSessionId !== input.targetSessionId
         ) {
           summary.targetSessionId = input.targetSessionId;
-          setOutcomeSession(
-            store.state,
-            summary.id,
-            input.targetSessionId,
-          );
+          setOutcomeSession(store.state, summary.id, input.targetSessionId);
           changed = true;
         }
         if (changed) await store.save();
@@ -644,12 +647,16 @@ export class ReviewCommentService {
   }
 
   filePathFor(projectPath: string): string {
-    return path.join(projectPath, YEP_DIR, REVIEW_COMMENTS_FILENAME);
+    return this.storagePolicy.writePath(projectPath, REVIEW_COMMENTS_FILENAME);
   }
 
   submissionDirectoryFor(projectPath: string, submissionId: string): string {
     validateSubmissionId(submissionId);
-    return path.join(projectPath, YEP_DIR, SOURCE_REVIEW_DIR, submissionId);
+    return this.storagePolicy.writePath(
+      projectPath,
+      SOURCE_REVIEW_DIR,
+      submissionId,
+    );
   }
 
   requestPathFor(projectPath: string, submissionId: string): string {
@@ -686,7 +693,15 @@ export class ReviewCommentService {
   ): Promise<ReviewResponseReadStatus> {
     let bytes: Buffer;
     try {
-      const responsePath = this.responsePathFor(projectPath, submission.id);
+      const responsePath = await this.findReadablePath(
+        this.storagePolicy.readPaths(
+          projectPath,
+          SOURCE_REVIEW_DIR,
+          submission.id,
+          RESPONSE_FILENAME,
+        ),
+      );
+      if (!responsePath) return "missing";
       const bounded = await readFileBounded(
         responsePath,
         MAX_REVIEW_RESPONSE_FILE_BYTES,
@@ -781,10 +796,16 @@ export class ReviewCommentService {
     submissionId: string,
   ): Promise<ReviewSubmissionRequest | null> {
     try {
-      const raw = await fs.readFile(
-        this.requestPathFor(projectPath, submissionId),
-        "utf-8",
+      const requestPath = await this.findReadablePath(
+        this.storagePolicy.readPaths(
+          projectPath,
+          SOURCE_REVIEW_DIR,
+          submissionId,
+          REQUEST_FILENAME,
+        ),
       );
+      if (!requestPath) return null;
+      const raw = await fs.readFile(requestPath, "utf-8");
       let value: unknown;
       try {
         value = JSON.parse(raw);
@@ -806,7 +827,7 @@ export class ReviewCommentService {
     projectPath: string,
     request: ReviewSubmissionRequest,
   ): Promise<void> {
-    await ensureManagedProjectDir(projectPath, YEP_DIR);
+    await this.storagePolicy.ensureWriteDirectory(projectPath);
     const directory = this.submissionDirectoryFor(
       projectPath,
       request.submissionId,
@@ -863,7 +884,8 @@ export class ReviewCommentService {
   }
 
   private async getStore(projectPath: string): Promise<ProjectStore> {
-    let store = this.stores.get(projectPath);
+    const storeKey = this.filePathFor(projectPath);
+    let store = this.stores.get(storeKey);
     if (!store) {
       const created: ProjectStore = {
         state: emptyReviewStoreFile(),
@@ -876,7 +898,7 @@ export class ReviewCommentService {
       created.save = createCoalescingSaver(() =>
         this.doSave(projectPath, created),
       ).save;
-      this.stores.set(projectPath, created);
+      this.stores.set(storeKey, created);
       store = created;
     }
     if (!store.loaded) {
@@ -905,9 +927,12 @@ export class ReviewCommentService {
   private async load(projectPath: string, store: ProjectStore): Promise<void> {
     let needsSave = false;
     try {
-      const content = await fs.readFile(this.filePathFor(projectPath), "utf-8");
+      const sourcePath = await this.findReadablePath(
+        this.storagePolicy.readPaths(projectPath, REVIEW_COMMENTS_FILENAME),
+      );
+      if (!sourcePath) return this.finishEmptyLoad(store);
+      const content = await fs.readFile(sourcePath, "utf-8");
       const parsed = JSON.parse(content) as { version?: unknown };
-      needsSave = parsed.version === REVIEW_COMMENTS_FILE_VERSION;
       store.state = parseReviewStoreFile(parsed);
       const recovered: ReviewSubmissionSummary[] = [];
       for (const submission of store.state.submissions) {
@@ -916,7 +941,16 @@ export class ReviewCommentService {
           continue;
         }
         try {
-          await fs.access(this.requestPathFor(projectPath, submission.id));
+          const requestPath = await this.findReadablePath(
+            this.storagePolicy.readPaths(
+              projectPath,
+              SOURCE_REVIEW_DIR,
+              submission.id,
+              REQUEST_FILENAME,
+            ),
+          );
+          if (!requestPath)
+            throw Object.assign(new Error("missing"), { code: "ENOENT" });
           recovered.push(submission);
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
@@ -942,7 +976,7 @@ export class ReviewCommentService {
     store: ProjectStore,
   ): Promise<void> {
     if (!store.dirEnsured) {
-      await ensureManagedProjectDir(projectPath, YEP_DIR);
+      await this.storagePolicy.ensureWriteDirectory(projectPath);
       store.dirEnsured = true;
     }
     const filePath = this.filePathFor(projectPath);
@@ -962,6 +996,25 @@ export class ReviewCommentService {
     } finally {
       await directory.close();
     }
+  }
+
+  private async findReadablePath(
+    candidates: readonly string[],
+  ): Promise<string | null> {
+    for (const candidate of candidates) {
+      try {
+        await fs.access(candidate);
+        return candidate;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+    }
+    return null;
+  }
+
+  private finishEmptyLoad(store: ProjectStore): void {
+    store.state = emptyReviewStoreFile();
+    store.loaded = true;
   }
 }
 

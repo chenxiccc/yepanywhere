@@ -131,6 +131,11 @@ export function getSettingsCategories(
       description: t("settingsSourceControlDescription"),
     },
     {
+      id: "storage",
+      label: t("settingsStorageTitle"),
+      description: t("settingsStorageDescription"),
+    },
+    {
       id: "agent-context",
       label: t("settingsAgentContextTitle"),
       description: t("settingsAgentContextDescription"),

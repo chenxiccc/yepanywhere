@@ -40,12 +40,23 @@ export function createToolResultMediaRoutes(
 
       c.header("Content-Type", media.mimeType);
       c.header("Content-Length", media.byteLength.toString());
-      c.header("Cache-Control", "private, max-age=31536000, immutable");
+      c.header(
+        "Cache-Control",
+        media.persistent
+          ? "private, max-age=31536000, immutable"
+          : "private, no-store",
+      );
       c.header("X-Content-Type-Options", "nosniff");
 
       return stream(c, async (body) => {
-        for await (const chunk of createReadStream(media.path)) {
-          await body.write(chunk);
+        if (media.bytes) {
+          await body.write(media.bytes);
+          return;
+        }
+        if (media.path) {
+          for await (const chunk of createReadStream(media.path)) {
+            await body.write(chunk);
+          }
         }
       });
     },
