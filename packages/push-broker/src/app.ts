@@ -153,9 +153,11 @@ export function createBrokerApp(options: CreateBrokerAppOptions): Hono<BrokerEnv
       return jsonError(c, 400, "invalid_target", "Push target is invalid");
     }
 
+    // Recheck after the awaited body read so revocation during upload cannot
+    // authorize a target mutation from an earlier credential snapshot.
     const currentInstallation = options.repository.authenticateInstallation(
-      authenticated.id,
-      readBearerSecret(c) ?? "",
+      authenticated.installation.id,
+      authenticated.secret,
     );
     if (!currentInstallation) return capabilityNotFound(c);
 
@@ -174,7 +176,7 @@ export function createBrokerApp(options: CreateBrokerAppOptions): Hono<BrokerEnv
     const authenticated = authenticateInstallation(c, options.repository);
     if (!authenticated) return capabilityNotFound(c);
 
-    options.repository.deleteInstallation(authenticated.id);
+    options.repository.deleteInstallation(authenticated.installation.id);
     return c.body(null, 204);
   });
 
@@ -189,7 +191,7 @@ export function createBrokerApp(options: CreateBrokerAppOptions): Hono<BrokerEnv
 
       try {
         const credentials = options.repository.createSubscription(
-          authenticated.id,
+          authenticated.installation.id,
         );
         return c.json(credentials, 201);
       } catch (error) {
@@ -218,7 +220,7 @@ export function createBrokerApp(options: CreateBrokerAppOptions): Hono<BrokerEnv
         !authenticated ||
         !isOpaqueId(subscriptionId) ||
         !options.repository.revokeSubscription(
-          authenticated.id,
+          authenticated.installation.id,
           subscriptionId,
         )
       ) {
@@ -268,6 +270,9 @@ export function createBrokerApp(options: CreateBrokerAppOptions): Hono<BrokerEnv
         );
       }
 
+      // The first authentication supplies stable rate-limit keys. Recheck
+      // after reading the body so a concurrently revoked send capability
+      // cannot reach the provider.
       const currentSubscription =
         options.repository.authenticateSubscription(
           subscriptionId,
@@ -385,10 +390,13 @@ function authenticateInstallation(
   ) {
     return undefined;
   }
-  return repository.authenticateInstallation(
+  const installation = repository.authenticateInstallation(
     installationId,
     installationSecret,
   );
+  return installation
+    ? { installation, secret: installationSecret }
+    : undefined;
 }
 
 function readBearerSecret(c: Context<BrokerEnv>): string | undefined {
