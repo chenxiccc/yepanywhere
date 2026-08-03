@@ -377,8 +377,9 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
     <button
       type="button"
       className={`voice-input-button ${isCapturing ? "listening" : ""} ${
-        inlineWaveform && waveformVisible ? styles.inlineWaveform : ""
+        inlineWaveform ? styles.inlineWaveform : ""
       } ${className}`}
+      data-inline-waveform={inlineWaveform || undefined}
       onClick={handleClick}
       disabled={disabled || !isSupported}
       title={

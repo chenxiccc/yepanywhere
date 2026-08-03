@@ -1332,19 +1332,20 @@ export function MessageInput({
             onClick: handleQueue,
           }
       : null;
-  // Keep the keyboard-open primary action's hit area stable while live session
-  // and project state changes. These potential-action slots stay in the row
-  // even before their buttons become useful, so Queue or Project Queue can
-  // appear without taking space out from under Send/Steer.
-  const reserveMobileProjectQueueSlot =
-    !forkSummaryMode && projectQueueSupported && toolbarVisibility.projectQueue;
-  const reserveMobileProjectQueueNewSessionSlot =
+  // Render session actions only when they are useful, so a neighboring visible
+  // action can absorb their space while the session is inactive.
+  const showMobileProjectQueueAction =
+    !forkSummaryMode &&
+    projectQueueSupported &&
+    toolbarVisibility.projectQueue &&
+    !!onProjectQueue;
+  const showMobileProjectQueueNewSessionAction =
     !forkSummaryMode &&
     projectQueueSupported &&
     toolbarVisibility.projectQueueNewSessionShortcut &&
     !!onProjectQueueNewSession;
-  const reserveMobileSessionAlternateSlot =
-    !forkSummaryMode && supportsSteering;
+  const showMobileSessionAlternateAction =
+    !forkSummaryMode && supportsSteering && !!mobileKeyboardAlternateAction;
   const collapsedActionKind =
     collapsedComposerButton === "alternate" && hasActiveDualActions
       ? effectivePrimaryActionKind === "queue"
@@ -2954,10 +2955,13 @@ export function MessageInput({
               {toolbarVisibility.microphone && (
                 <div
                   className={`message-input-keyboard-secondary-slot ${styles.keyboardSpeechSlot}${
-                    keyboardWaveformActive
-                      ? ` ${styles.keyboardSpeechSlotActive}`
+                    toolbarVisibility.waveform
+                      ? ` ${styles.keyboardSpeechSlotWithWaveform}`
                       : ""
                   }`}
+                  data-waveform-reserved={
+                    toolbarVisibility.waveform || undefined
+                  }
                   data-waveform-active={keyboardWaveformActive || undefined}
                   onPointerDown={(event) => event.preventDefault()}
                 >
@@ -2982,28 +2986,26 @@ export function MessageInput({
                   />
                 </div>
               )}
-              {reserveMobileProjectQueueSlot && (
+              {showMobileProjectQueueAction && (
                 <div className="message-input-keyboard-secondary-slot message-input-keyboard-project-queue-slot">
-                  {onProjectQueue && (
-                    <button
-                      type="button"
-                      className="message-input-keyboard-action message-input-keyboard-secondary project-queue-mode"
-                      onPointerDown={(event) => event.preventDefault()}
-                      onClick={handleProjectQueue}
-                      disabled={disabled}
-                      aria-label={t("toolbarProjectQueueLabel")}
-                      title={
-                        projectQueueShortcutAvailable
-                          ? t("toolbarProjectQueueTooltipWithShortcut")
-                          : t("toolbarProjectQueueTooltip")
-                      }
-                    >
-                      <span aria-hidden="true">⇥</span>
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    className="message-input-keyboard-action message-input-keyboard-secondary project-queue-mode"
+                    onPointerDown={(event) => event.preventDefault()}
+                    onClick={handleProjectQueue}
+                    disabled={disabled}
+                    aria-label={t("toolbarProjectQueueLabel")}
+                    title={
+                      projectQueueShortcutAvailable
+                        ? t("toolbarProjectQueueTooltipWithShortcut")
+                        : t("toolbarProjectQueueTooltip")
+                    }
+                  >
+                    <span aria-hidden="true">⇥</span>
+                  </button>
                 </div>
               )}
-              {reserveMobileProjectQueueNewSessionSlot && (
+              {showMobileProjectQueueNewSessionAction && (
                 <div className="message-input-keyboard-secondary-slot message-input-keyboard-project-queue-new-session-slot">
                   <button
                     type="button"
@@ -3024,23 +3026,21 @@ export function MessageInput({
                   </button>
                 </div>
               )}
-              {reserveMobileSessionAlternateSlot && (
+              {showMobileSessionAlternateAction && (
                 <div className="message-input-keyboard-secondary-slot message-input-keyboard-session-alternate-slot">
-                  {mobileKeyboardAlternateAction && (
-                    <button
-                      type="button"
-                      className={`message-input-keyboard-action message-input-keyboard-secondary ${mobileKeyboardAlternateAction.kind}-mode`}
-                      onPointerDown={(event) => event.preventDefault()}
-                      onClick={mobileKeyboardAlternateAction.onClick}
-                      disabled={disabled}
-                      aria-label={mobileKeyboardAlternateAction.label}
-                      title={mobileKeyboardAlternateAction.label}
-                    >
-                      <span aria-hidden="true">
-                        {mobileKeyboardAlternateAction.icon}
-                      </span>
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    className={`message-input-keyboard-action message-input-keyboard-secondary ${mobileKeyboardAlternateAction.kind}-mode`}
+                    onPointerDown={(event) => event.preventDefault()}
+                    onClick={mobileKeyboardAlternateAction.onClick}
+                    disabled={disabled}
+                    aria-label={mobileKeyboardAlternateAction.label}
+                    title={mobileKeyboardAlternateAction.label}
+                  >
+                    <span aria-hidden="true">
+                      {mobileKeyboardAlternateAction.icon}
+                    </span>
+                  </button>
                 </div>
               )}
               {forkSummaryMode?.onSubmitWithoutSummary &&
@@ -3112,7 +3112,7 @@ export function MessageInput({
               <button
                 type="button"
                 className={`message-input-keyboard-action message-input-keyboard-primary ${effectivePrimaryActionKind}-mode${
-                  keyboardWaveformActive
+                  toolbarVisibility.waveform
                     ? ` ${styles.keyboardPrimaryWithWaveform}`
                     : ""
                 }`}

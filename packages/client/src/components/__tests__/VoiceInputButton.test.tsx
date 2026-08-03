@@ -285,6 +285,22 @@ describe("VoiceInputButton", () => {
     expect(onWaveformActiveChange).toHaveBeenCalledWith(true);
   });
 
+  it("reserves the full inline microphone touch target before capture", () => {
+    render(
+      <VoiceInputButton
+        onTranscript={vi.fn()}
+        onInterimTranscript={vi.fn()}
+        speechMethod="ya-parakeet"
+        showWaveform
+        inlineWaveform
+      />,
+    );
+
+    const button = screen.getByRole("button", { name: "voiceInputStartLabel" });
+    expect(button.getAttribute("data-inline-waveform")).toBe("true");
+    expect(button.querySelector(".composer-speech-waveform")).toBeNull();
+  });
+
   it("prompts when browser-native capture is ready without sample access", () => {
     speechState.status = "listening";
     speechState.isListening = true;

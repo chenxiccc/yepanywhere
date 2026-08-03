@@ -873,7 +873,7 @@ describe("MessageInput", () => {
     }
   });
 
-  it("makes the active keyboard waveform part of the microphone control", () => {
+  it("preallocates the keyboard waveform inside the microphone control", () => {
     const viewport = installMobileKeyboardViewport();
     const textarea = renderMessageInput();
 
@@ -885,11 +885,17 @@ describe("MessageInput", () => {
       expect(voicePropsState.current?.showWaveform).toBe(true);
       expect(voicePropsState.current?.inlineWaveform).toBe(true);
 
-      act(() => voicePropsState.current?.onWaveformActiveChange?.(true));
-
       const speechSlot = document.querySelector(
         ".message-input-keyboard-secondary-slot",
       );
+      expect(speechSlot?.getAttribute("data-waveform-reserved")).toBe("true");
+      expect(speechSlot?.getAttribute("data-waveform-active")).toBeNull();
+
+      act(() => voicePropsState.current?.onWaveformActiveChange?.(true));
+
+      expect(
+        document.querySelector(".message-input-keyboard-secondary-slot"),
+      ).toBe(speechSlot);
       expect(speechSlot?.getAttribute("data-waveform-active")).toBe("true");
       expect(speechSlot?.querySelector(".voice-input-button")).toBeTruthy();
     } finally {
@@ -1019,7 +1025,7 @@ describe("MessageInput", () => {
     }
   });
 
-  it("reserves queue slots before live actions appear", () => {
+  it("lets visible actions absorb unavailable session-action space", () => {
     const viewport = installMobileKeyboardViewport();
     const onQueue = vi.fn();
     const onProjectQueue = vi.fn();
@@ -1055,27 +1061,24 @@ describe("MessageInput", () => {
       act(() => viewport.setHeight(480));
       fireEvent.change(textarea, { target: { value: "queue this later" } });
 
-      const projectQueueSlot = document.querySelector(
-        ".message-input-keyboard-project-queue-slot",
-      );
-      const sessionAlternateSlot = document.querySelector(
-        ".message-input-keyboard-session-alternate-slot",
-      );
       const projectQueueNewSessionSlot = document.querySelector(
         ".message-input-keyboard-project-queue-new-session-slot",
       );
-      const primary = document.querySelector(".message-input-keyboard-primary");
 
-      expect(projectQueueSlot).toBeTruthy();
+      expect(
+        document.querySelector(".message-input-keyboard-project-queue-slot"),
+      ).toBeNull();
       expect(projectQueueNewSessionSlot).toBeTruthy();
-      expect(sessionAlternateSlot).toBeTruthy();
-      expect(projectQueueSlot?.children).toHaveLength(0);
+      expect(
+        document.querySelector(
+          ".message-input-keyboard-session-alternate-slot",
+        ),
+      ).toBeNull();
       expect(
         projectQueueNewSessionSlot?.querySelector(
           ".project-queue-new-session-button",
         ),
       ).toBeTruthy();
-      expect(sessionAlternateSlot?.children).toHaveLength(0);
 
       fireEvent.click(
         screen.getByRole("button", {
@@ -1083,13 +1086,16 @@ describe("MessageInput", () => {
         }),
       );
 
-      expect(document.querySelector(".message-input-keyboard-primary")).toBe(
-        primary,
-      );
       expect(
-        projectQueueSlot?.querySelector(".project-queue-mode"),
+        document.querySelector(
+          ".message-input-keyboard-project-queue-slot .project-queue-mode",
+        ),
       ).toBeTruthy();
-      expect(sessionAlternateSlot?.querySelector(".queue-mode")).toBeTruthy();
+      expect(
+        document.querySelector(
+          ".message-input-keyboard-session-alternate-slot .queue-mode",
+        ),
+      ).toBeTruthy();
     } finally {
       viewport.restore();
     }

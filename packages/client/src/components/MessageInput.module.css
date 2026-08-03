@@ -2,7 +2,7 @@
   overflow: hidden;
 }
 
-.keyboardSpeechSlotActive.keyboardSpeechSlotActive {
+.keyboardSpeechSlotWithWaveform.keyboardSpeechSlotWithWaveform {
   width: 150px;
   max-width: 150px;
   flex: 0 10 150px;

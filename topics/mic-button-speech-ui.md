@@ -97,11 +97,15 @@ the on-screen keyboard. A deliberate textarea press remains the keyboard-open
 signal. If that keyboard is already open and the composer switches to its
 compact delivery row, the mic remains a pinned 48px action alongside the
 delivery controls so entering text does not remove the active speech control.
-During YA-controlled capture, when waveform display is enabled, that row
-extends the Mic into one outlined 150px-maximum button: the Mic keeps its 48px
-zone, the real waveform may use up to 100px, and the entire rectangle toggles
-capture. Under width pressure the waveform shrinks to zero before the Mic can
-shrink; a wide Send or Steer action must yield the waveform's available space.
+When waveform display is enabled, the row preallocates the Mic's full
+150px-maximum slot before capture so starting the waveform does not move its
+neighbors. The Mic button itself fills that outlined slot before and during
+capture, with no untappable gap; pressing anywhere in the rectangle toggles
+capture. The Mic keeps its 48px zone and the real waveform may use up to 100px.
+Under width pressure the waveform shrinks to zero before the Mic can shrink; a
+wide Send or Steer action must yield the waveform's available space.
+Session-only delivery actions do not leave empty placeholders while
+unavailable; an adjacent visible action absorbs that space.
 
 An explicit browser-native preference is effective only while the current
 browser context exposes Web Speech recognition. If that API is unavailable
