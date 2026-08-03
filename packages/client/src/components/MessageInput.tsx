@@ -1078,6 +1078,7 @@ export function MessageInput({
     async (
       messageOverride?: unknown,
       actionOverride?: "send" | "steer" | "queue",
+      focusAfterSubmit = true,
     ) => {
       const override =
         typeof messageOverride === "string" ? messageOverride : undefined;
@@ -1146,8 +1147,12 @@ export function MessageInput({
         resetCompositionMetadata();
         setInterimTranscript("");
         onSend(message, metadata);
-        // Refocus the textarea so user can continue typing
-        textareaRef.current?.focus();
+        if (focusAfterSubmit) {
+          // Refocus the textarea so user can continue typing.
+          textareaRef.current?.focus();
+        } else {
+          textareaRef.current?.blur();
+        }
       }
     },
     [
@@ -2139,6 +2144,13 @@ export function MessageInput({
     setSpeechPreviewRevision((revision) => revision + 1);
   }, [clearPendingSpeechFinal]);
 
+  const handleSmartTurnSend = useCallback(
+    (text: string) => {
+      void handleSubmit(text, undefined, !hasCoarsePointer());
+    },
+    [handleSubmit],
+  );
+
   const commitVoiceTranscript = useCallback(
     (transcript: string, metadata?: SpeechTranscriptionResultMetadata) => {
       commitSpeechTranscript(
@@ -2158,7 +2170,7 @@ export function MessageInput({
               id,
             ];
           },
-          onSmartTurnSend: handleSubmit,
+          onSmartTurnSend: handleSmartTurnSend,
           composerEditedDuringSpeech: () =>
             composerEditedDuringSpeechRef.current,
         },
@@ -2177,7 +2189,7 @@ export function MessageInput({
         setSpeechPreviewRevision((revision) => revision + 1);
       }
     },
-    [controls, handleSubmit, noteComposerEdit],
+    [controls, handleSmartTurnSend, noteComposerEdit],
   );
 
   const handleVoiceTranscript = useCallback(

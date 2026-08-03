@@ -136,6 +136,12 @@ count — and speech-inserted finals (which reach the draft programmatically, no
 through the textarea's change event) are never treated as manual edits. The hold
 is scoped to the current mic transaction and resets when the next one starts.
 
+When Smart Turn actually submits on a coarse-pointer device, YA blurs the
+textarea after submission so the on-screen keyboard closes with the completed
+turn. Desktop Smart Turn keeps the ready-to-type refocus behavior. A held
+automatic send does not blur because no submission occurred and the user still
+owns the draft for review.
+
 xAI may also send one or more non-empty final partials after YA has sent
 `audio.done`, then send an empty `transcript.done`. YA stages such post-stop
 final partials in order and uses them only if the final done event has no text,

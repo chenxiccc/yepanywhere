@@ -2188,6 +2188,65 @@ describe("MessageInput", () => {
       expectSubmission(onSend, "Okay.", "direct");
       expect(textarea.value).toBe("");
     });
+    expect(document.activeElement).toBe(textarea);
+  });
+
+  it("closes mobile keyboard focus after Smart Turn sends", async () => {
+    const viewport = installMobileKeyboardViewport();
+    try {
+      const onSend = vi.fn();
+      const textarea = renderMessageInput(vi.fn(), {
+        onSend,
+      }) as HTMLTextAreaElement;
+      act(() => textarea.focus());
+
+      act(() => {
+        voicePropsState.current?.onListeningStart?.();
+        voicePropsState.current?.onTranscript?.("Okay.");
+        voicePropsState.current?.onTranscript?.("", {
+          smartTurnCommand: "send",
+        });
+      });
+
+      await waitFor(() => {
+        expectSubmission(onSend, "Okay.", "direct");
+        expect(textarea.value).toBe("");
+      });
+      expect(document.activeElement).not.toBe(textarea);
+    } finally {
+      viewport.restore();
+    }
+  });
+
+  it("keeps mobile keyboard focus when Smart Turn auto-send is held", async () => {
+    const viewport = installMobileKeyboardViewport();
+    try {
+      const onSend = vi.fn();
+      const textarea = renderMessageInput(vi.fn(), {
+        onSend,
+      }) as HTMLTextAreaElement;
+      act(() => textarea.focus());
+      act(() => {
+        voicePropsState.current?.onListeningStart?.();
+        voicePropsState.current?.onTranscript?.("Review this.");
+      });
+      await waitFor(() => expect(textarea.value).toBe("Review this."));
+
+      fireEvent.change(textarea, {
+        target: { value: "Review this. manual edit" },
+      });
+      act(() => {
+        voicePropsState.current?.onTranscript?.("", {
+          smartTurnCommand: "send",
+          smartTurnAutoSend: true,
+        });
+      });
+
+      expect(onSend).not.toHaveBeenCalled();
+      expect(document.activeElement).toBe(textarea);
+    } finally {
+      viewport.restore();
+    }
   });
 
   it("holds a Smart Turn auto-send after a manual non-whitespace edit", async () => {
