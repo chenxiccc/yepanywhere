@@ -91,7 +91,8 @@ conceptually adjusting*, not where the code lives):
   model catalog belongs in `ProvidersSettings.tsx`, even though the resulting
   entries later appear in model choosers. It is server-persisted and
   capability-gated because a hosted client edits the connected server's
-  provider catalog; see
+  provider catalog. The provider list presents Codex first, Claude second, then
+  the remaining registered providers; see
   [older-claude-models](older-claude-models.md).
 
 Introduce a **new category** only when a sizable cluster of options doesn't fit

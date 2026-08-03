@@ -13,13 +13,14 @@ import { PiProvider } from "./implementations/PiProvider";
 import type { Provider, ProviderMetadata } from "./types";
 
 const providers: Record<string, Provider> = {
+  // Insertion order is the user-visible order in Settings > Providers.
+  codex: new CodexProvider(),
   claude: new ClaudeProvider(),
   "claude-gateway": new ClaudeGatewayProvider(),
   "claude-ollama": new ClaudeOllamaProvider(),
   gemini: new GeminiProvider(),
   "gemini-acp": new GeminiACPProvider(),
   grok: new GrokProvider(),
-  codex: new CodexProvider(),
   "codex-oss": new CodexOssProvider(),
   opencode: new OpenCodeProvider(),
   pi: new PiProvider(),

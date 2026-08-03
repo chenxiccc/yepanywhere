@@ -144,6 +144,19 @@ describe("ProvidersSettings additional models", () => {
     expect(screen.queryByText("providersAdditionalModelsTitle")).toBeNull();
   });
 
+  it("shows Codex before Claude", () => {
+    render(<ProvidersSettings />);
+
+    const providerRows = Array.from(
+      document.querySelectorAll<HTMLElement>(
+        '[data-settings-item^="provider-"]',
+      ),
+    );
+    expect(
+      providerRows.slice(0, 2).map((row) => row.dataset.settingsItem),
+    ).toEqual(["provider-codex", "provider-claude"]);
+  });
+
   it("hides reload-safe Codex settings from older servers", () => {
     hookState.providers = [
       {
