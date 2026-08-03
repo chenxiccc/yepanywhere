@@ -2,8 +2,10 @@ import type {
   GitFileChange,
   GitStatusInfo,
   GitUntrackedFolderInfo,
+  ReviewSiteStateSummary,
 } from "@yep-anywhere/shared";
 import {
+  memo,
   type ReactNode,
   useCallback,
   useEffect,
@@ -26,6 +28,7 @@ import {
   SourceRowMenuTrigger,
   sourceRowMenuSurface,
   type SourceContextMenuAction,
+  type SourceContextMenuController,
   useSourceContextMenu,
 } from "../components/SourceContextMenu";
 import {
@@ -62,6 +65,88 @@ const UNTRACKED_FOLDER_CONCURRENCY = 4;
 
 /** How long arriving expansions accumulate before one list re-render. */
 const FOLDER_FLUSH_MS = 100;
+
+const EMPTY_REVIEW_STATES: ReviewSiteStateSummary[] = [];
+
+const WorkingTreeFileRow = memo(function WorkingTreeFileRow({
+  file,
+  selected,
+  commentCount,
+  reviewStates,
+  isWideScreen,
+  menuActionsForFile,
+  menuTargetProps,
+  onOpenMenu,
+  onActivateFile,
+  t,
+}: {
+  file: WorktreeFileChange;
+  selected: boolean;
+  commentCount: number;
+  reviewStates: ReviewSiteStateSummary[];
+  isWideScreen: boolean;
+  menuActionsForFile: (
+    file: WorktreeFileChange,
+  ) => SourceContextMenuAction[];
+  menuTargetProps: SourceContextMenuController["targetProps"];
+  onOpenMenu: SourceContextMenuController["openFromButton"];
+  onActivateFile: (file: WorktreeFileChange, selected: boolean) => void;
+  t: TranslationFn;
+}) {
+  const isFolder = file.path.endsWith("/");
+  const menuActions = menuActionsForFile(file);
+  const displayPath = sourceFileDisplayPath(file);
+
+  return (
+    <li className={`commit-file-row ${sourceRowMenuSurface}`}>
+      <SourceFileRowButton
+        path={displayPath}
+        type="button"
+        className={`commit-file-item ${selected ? "selected" : ""}`}
+        disabled={isFolder}
+        data-source-list-item
+        onFocus={() => {
+          if (isWideScreen && !isFolder) {
+            onActivateFile(file, selected);
+          }
+        }}
+        {...menuTargetProps(menuActions, () => {
+          onActivateFile(file, selected);
+        })}
+      >
+        <SourceFileStatusBadge status={file.status} t={t} />
+        <WorktreeStateMarker state={file.worktreeState} t={t} />
+        <SourceFilePath>{displayPath}</SourceFilePath>
+        {(file.linesAdded !== null || file.linesDeleted !== null) && (
+          <span className="git-line-counts">
+            {file.linesAdded ? (
+              <span className="git-lines-added">+{file.linesAdded}</span>
+            ) : null}
+            {file.linesDeleted ? (
+              <span className="git-lines-deleted">−{file.linesDeleted}</span>
+            ) : null}
+          </span>
+        )}
+        {commentCount > 0 && (
+          <span
+            className="source-comment-badge"
+            title={t("sourceCommentCount", { count: commentCount })}
+          >
+            {commentCount}
+          </span>
+        )}
+        <SourceReviewStateBadges states={reviewStates} t={t} />
+      </SourceFileRowButton>
+      {!isFolder && (
+        <SourceRowMenuTrigger
+          actions={menuActions}
+          label={t("sourceMoreActions")}
+          onOpen={onOpenMenu}
+        />
+      )}
+    </li>
+  );
+});
 
 /**
  * The current HEAD-to-filesystem view shared by Changes and the optional
@@ -118,6 +203,13 @@ export function WorkingTreeBrowser({
   const retainedFileRef = useRef<WorktreeFileChange | null>(null);
   const diffPreviewRef = useRef<GitDiffPreviewHandle>(null);
   const navigate = useNavigate();
+  const navigateRef = useRef(navigate);
+  useEffect(() => {
+    navigateRef.current = navigate;
+  }, [navigate]);
+  const navigateTo = useCallback((href: string) => {
+    navigateRef.current(href);
+  }, []);
   const basePath = useRemoteBasePath();
   const fileMenu = useSourceContextMenu(t);
   const { pending, siteStates } = useProjectReviewComments(
@@ -315,18 +407,18 @@ export function WorkingTreeBrowser({
   }, [siteStates]);
 
   const handleFileClick = useCallback(
-    (file: WorktreeFileChange) => {
+    (file: WorktreeFileChange, selected: boolean) => {
       if (file.path.endsWith("/")) return;
       if (
         isWideScreen &&
-        selectedPath === file.path &&
+        selected &&
         diffPreviewRef.current?.jumpToNextHunk()
       ) {
         return;
       }
       setSelectedPath(file.path);
     },
-    [isWideScreen, selectedPath],
+    [isWideScreen],
   );
 
   const fileMenuActions = useCallback(
@@ -346,7 +438,7 @@ export function WorkingTreeBrowser({
           ? [
               {
                 label: t("sourceOpenLastEditorSession"),
-                onSelect: () => navigate(lastEditorSessionHref),
+                onSelect: () => navigateTo(lastEditorSessionHref),
               },
             ]
           : []),
@@ -360,7 +452,7 @@ export function WorkingTreeBrowser({
           : []),
       ];
     },
-    [basePath, navigate, onBlameFile, projectId, supportsLastEditor, t],
+    [basePath, navigateTo, onBlameFile, projectId, supportsLastEditor, t],
   );
 
   const lastEditorSessionHref =
@@ -472,74 +564,23 @@ export function WorkingTreeBrowser({
             />
           </div>
           <ul className="commit-file-list" onKeyDown={handleSourceListKeyDown}>
-            {filteredFiles.map((file) => {
-              const count = fileCommentCount.get(file.path) ?? 0;
-              const isFolder = file.path.endsWith("/");
-              const menuActions = fileMenuActions(file);
-              const displayPath = sourceFileDisplayPath(file);
-              return (
-                <li
-                  key={file.path}
-                  className={`commit-file-row ${sourceRowMenuSurface}`}
-                >
-                  <SourceFileRowButton
-                    path={displayPath}
-                    type="button"
-                    className={`commit-file-item ${
-                      selectedPath === file.path ? "selected" : ""
-                    }`}
-                    disabled={isFolder}
-                    data-source-list-item
-                    onFocus={() => {
-                      if (isWideScreen && !isFolder) {
-                        setSelectedPath(file.path);
-                      }
-                    }}
-                    {...fileMenu.targetProps(menuActions, () => {
-                      handleFileClick(file);
-                    })}
-                  >
-                    <SourceFileStatusBadge status={file.status} t={t} />
-                    <WorktreeStateMarker state={file.worktreeState} t={t} />
-                    <SourceFilePath>{displayPath}</SourceFilePath>
-                    {(file.linesAdded !== null ||
-                      file.linesDeleted !== null) && (
-                      <span className="git-line-counts">
-                        {file.linesAdded ? (
-                          <span className="git-lines-added">
-                            +{file.linesAdded}
-                          </span>
-                        ) : null}
-                        {file.linesDeleted ? (
-                          <span className="git-lines-deleted">
-                            −{file.linesDeleted}
-                          </span>
-                        ) : null}
-                      </span>
-                    )}
-                    {count > 0 && (
-                      <span
-                        className="source-comment-badge"
-                        title={t("sourceCommentCount", { count })}
-                      >
-                        {count}
-                      </span>
-                    )}
-                    <SourceReviewStateBadges
-                      states={reviewStatesByPath.get(file.path) ?? []}
-                      t={t}
-                    />
-                  </SourceFileRowButton>
-                  {!isFolder && (
-                    <SourceRowMenuTrigger
-                      actions={menuActions}
-                      label={t("sourceMoreActions")}
-                      onOpen={fileMenu.openFromButton}
-                    />
-                  )}
-                </li>
-              );
-            })}
+            {filteredFiles.map((file) => (
+              <WorkingTreeFileRow
+                key={file.path}
+                file={file}
+                selected={selectedPath === file.path}
+                commentCount={fileCommentCount.get(file.path) ?? 0}
+                reviewStates={
+                  reviewStatesByPath.get(file.path) ?? EMPTY_REVIEW_STATES
+                }
+                isWideScreen={isWideScreen}
+                menuActionsForFile={fileMenuActions}
+                menuTargetProps={fileMenu.targetProps}
+                onOpenMenu={fileMenu.openFromButton}
+                onActivateFile={handleFileClick}
+                t={t}
+              />
+            ))}
           </ul>
           {filteredFiles.length === 0 && (
             <div className="git-status-empty">{t("sourceNoMatches")}</div>

@@ -405,6 +405,60 @@ describe("WorkingTreeBrowser", () => {
     expect(getGitDiff).toHaveBeenCalledTimes(1);
   });
 
+  it("does not rerender unchanged rows when selection changes", async () => {
+    getGitDiff.mockResolvedValue({ diffHtml: "", structuredPatch: [] });
+    listReviewComments.mockResolvedValue({
+      comments: [],
+      batches: [],
+      pendingCount: 0,
+    });
+    let translationCalls = 0;
+    const countingT = (key: string) => {
+      translationCalls += 1;
+      return key;
+    };
+    const files = Array.from({ length: 400 }, (_, index) => ({
+      path: `generated/file-${String(index).padStart(3, "0")}.ts`,
+      status: "?",
+      staged: false,
+      linesAdded: null,
+      linesDeleted: null,
+    }));
+
+    render(
+      <MemoryRouter>
+        <WorkingTreeBrowser
+          projectId="p1"
+          status={{
+            isGitRepo: true,
+            branch: "main",
+            upstream: null,
+            ahead: 0,
+            behind: 0,
+            isClean: false,
+            files,
+            recentCommits: [],
+          }}
+          isWideScreen={true}
+          t={countingT}
+        />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(getGitDiff).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(document.querySelector(".git-diff-loading")).toBeNull(),
+    );
+    await screen.findByTitle("generated/file-399.ts");
+    getGitDiff.mockImplementation(() => new Promise(() => {}));
+    translationCalls = 0;
+
+    fireEvent.click(screen.getByTitle("generated/file-399.ts"));
+
+    expect(getGitDiff).toHaveBeenCalledTimes(2);
+    expect(translationCalls).toBeLessThan(50);
+  });
+
   it("uses only compact staged and untracked state markers", async () => {
     listReviewComments.mockResolvedValue({
       comments: [],
