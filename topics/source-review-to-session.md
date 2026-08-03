@@ -370,6 +370,15 @@ releases the reservation and leaves the comments pending. Startup recovery
 finishes or rolls back durable `prepared` submissions rather than silently
 resending them.
 
+Manifest publication is atomic and no-clobber: YA writes and fsyncs a unique
+temporary file, links the completed inode into the final `request.json` name,
+then fsyncs the submission directory. A crash before publication may leave only
+an ignored temporary file, never a truncated final manifest. If an older crash
+left an invalid manifest for an unaccepted `prepared` submission, retry removes
+that invalid reservation and rebuilds it from the still-pending entries. An
+invalid manifest already associated with accepted history remains an explicit
+conflict and is never overwritten.
+
 ### The response file is a versioned atomic snapshot
 
 `response.json` contains `{ version, submissionId, outcomes,

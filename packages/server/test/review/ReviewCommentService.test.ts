@@ -272,6 +272,86 @@ describe("ReviewCommentService", () => {
     expect((await restarted.getStoreFile(dir)).submissions).toHaveLength(1);
   });
 
+  it("rebuilds a truncated unaccepted submission manifest", async () => {
+    const svc = makeService();
+    const created = await svc.addComment(dir, {
+      anchor: anchor(),
+      text: "retry after crash",
+    });
+    const input = {
+      submissionId: "submission-truncated",
+      commentIds: [created.id],
+      requestedTarget: "session-1" as const,
+      relocations: new Map([
+        [
+          created.id,
+          {
+            status: "gone" as const,
+            path: "src/a.ts",
+            citeSha: null,
+            snippet: "added line",
+          },
+        ],
+      ]),
+    };
+    const first = await svc.prepareSubmission(dir, input);
+    await writeFile(svc.requestPathFor(dir, input.submissionId), "{", "utf-8");
+
+    const restarted = makeService();
+    const recovered = await restarted.prepareSubmission(dir, input);
+
+    expect(recovered).toEqual(first);
+    expect(
+      JSON.parse(
+        await readFile(
+          restarted.requestPathFor(dir, input.submissionId),
+          "utf-8",
+        ),
+      ),
+    ).toEqual(first);
+    expect((await restarted.getStoreFile(dir)).submissions).toHaveLength(1);
+  });
+
+  it("does not replace a truncated accepted submission manifest", async () => {
+    const svc = makeService();
+    const created = await svc.addComment(dir, {
+      anchor: anchor(),
+      text: "accepted history",
+    });
+    const input = {
+      submissionId: "submission-accepted-truncated",
+      commentIds: [created.id],
+      requestedTarget: "session-1" as const,
+      relocations: new Map([
+        [
+          created.id,
+          {
+            status: "gone" as const,
+            path: "src/a.ts",
+            citeSha: null,
+            snippet: "added line",
+          },
+        ],
+      ]),
+    };
+    await svc.prepareSubmission(dir, input);
+    await svc.acceptSubmission(dir, {
+      submissionId: input.submissionId,
+      targetSessionId: "session-1",
+      deliveryStatus: "delivered",
+      responseTurnLimit: 8,
+    });
+    await writeFile(svc.requestPathFor(dir, input.submissionId), "{", "utf-8");
+
+    const restarted = makeService();
+    await expect(restarted.prepareSubmission(dir, input)).rejects.toThrow(
+      "Submission request manifest is invalid",
+    );
+    expect(
+      await readFile(restarted.requestPathFor(dir, input.submissionId), "utf-8"),
+    ).toBe("{");
+  });
+
   it("archive consumes only currently-pending ids", async () => {
     const svc = makeService();
     const c1 = await svc.addComment(dir, { anchor: anchor(), text: "one" });

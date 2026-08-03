@@ -45,6 +45,13 @@ const SOURCE_REVIEW_DIR = "source-review";
 const REQUEST_FILENAME = "request.json";
 const RESPONSE_FILENAME = "response.json";
 
+class InvalidSubmissionRequestError extends HttpError {
+  constructor() {
+    super(409, "Submission request manifest is invalid");
+    this.name = "InvalidSubmissionRequestError";
+  }
+}
+
 interface ProjectStore {
   state: ReviewStoreFile;
   loadPromise: Promise<void> | null;
@@ -288,13 +295,32 @@ export class ReviewCommentService {
   ): Promise<ReviewSubmissionRequest> {
     validateSubmissionInput(input);
     return this.withMutation(projectPath, async (store) => {
-      const existingRequest = await this.readSubmissionRequest(
-        projectPath,
-        input.submissionId,
-      );
-      const existingSummary = store.state.submissions.find(
+      let existingSummary = store.state.submissions.find(
         (item) => item.id === input.submissionId,
       );
+      let existingRequest: ReviewSubmissionRequest | null;
+      try {
+        existingRequest = await this.readSubmissionRequest(
+          projectPath,
+          input.submissionId,
+        );
+      } catch (error) {
+        if (
+          !(error instanceof InvalidSubmissionRequestError) ||
+          (existingSummary && existingSummary.status !== "prepared")
+        ) {
+          throw error;
+        }
+        await this.removeSubmissionRequest(projectPath, input.submissionId);
+        if (existingSummary) {
+          store.state.submissions = store.state.submissions.filter(
+            (item) => item.id !== input.submissionId,
+          );
+          await store.save();
+          existingSummary = undefined;
+        }
+        existingRequest = null;
+      }
 
       if (existingRequest) {
         assertSameSubmissionRequest(existingRequest, input);
@@ -759,9 +785,15 @@ export class ReviewCommentService {
         this.requestPathFor(projectPath, submissionId),
         "utf-8",
       );
-      const parsed = parseReviewSubmissionRequest(JSON.parse(raw));
+      let value: unknown;
+      try {
+        value = JSON.parse(raw);
+      } catch {
+        throw new InvalidSubmissionRequestError();
+      }
+      const parsed = parseReviewSubmissionRequest(value);
       if (!parsed || parsed.submissionId !== submissionId) {
-        throw new HttpError(409, "Submission request manifest is invalid");
+        throw new InvalidSubmissionRequestError();
       }
       return parsed;
     } catch (error) {
@@ -780,21 +812,53 @@ export class ReviewCommentService {
       request.submissionId,
     );
     await fs.mkdir(directory, { recursive: true });
-    const file = await fs.open(
-      this.requestPathFor(projectPath, request.submissionId),
-      "wx",
-    );
+    const requestPath = this.requestPathFor(projectPath, request.submissionId);
+    const temporaryPath = `${requestPath}.${randomUUID()}.tmp`;
+    const file = await fs.open(temporaryPath, "wx");
     try {
       await file.writeFile(`${JSON.stringify(request, null, 2)}\n`, "utf-8");
       await file.sync();
     } finally {
       await file.close();
     }
+    let publicationError: unknown;
+    try {
+      await fs.link(temporaryPath, requestPath);
+    } catch (error) {
+      publicationError = error;
+    }
+    let cleanupError: unknown;
+    try {
+      await fs.unlink(temporaryPath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        cleanupError = error;
+      }
+    }
+    if (publicationError && cleanupError) {
+      throw new AggregateError(
+        [publicationError, cleanupError],
+        "Failed to publish and clean up submission request manifest",
+      );
+    }
+    if (publicationError) throw publicationError;
+    if (cleanupError) throw cleanupError;
     const directoryHandle = await fs.open(directory, "r");
     try {
       await directoryHandle.sync();
     } finally {
       await directoryHandle.close();
+    }
+  }
+
+  private async removeSubmissionRequest(
+    projectPath: string,
+    submissionId: string,
+  ): Promise<void> {
+    try {
+      await fs.unlink(this.requestPathFor(projectPath, submissionId));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
   }
 
