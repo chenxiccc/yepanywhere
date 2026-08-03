@@ -249,11 +249,18 @@ Node 24.14.0, 25-sample adaptive benchmark, milliseconds p95:
 | 291 KiB | 18.441 | 20.112 | 18.183 | 20.250 |
 | 1 MiB | 64.097 | 72.341 | 71.632 | 90.457 |
 
-The ordinary safe-Markdown test also measures the full positioned-parse and
-sanitized-render path. Its committed ceilings are deliberately broad
-regression tripwires rather than hardware-portable latency promises:
+The dedicated `benchmark:markdown` command measures the full positioned-parse
+and sanitized-render path serially with 25 timed samples after warmup. It
+reports median and p95 latency for observation, but does not treat absolute
+milliseconds on shared CI hardware as a portable product promise. The blocking
+tripwire compares median growth from 16 KiB to 256 KiB and requires each path
+to grow by less than 40x for the 16x larger input. That deliberately broad
+relative guard catches gross superlinear regressions without making one runner
+scheduling pause fail the correctness suite.
 
-| Input | Positioned parse p95 | Safe render p95 | Test ceilings |
+The original isolated measurements remain useful reference data:
+
+| Input | Positioned parse p95 | Safe render p95 | Historical ceilings |
 | ---: | ---: | ---: | ---: |
 | 16 KiB | 8.24 ms | 17.54 ms | 30 / 120 ms |
 | 256 KiB | 111.74 ms | 148.48 ms | 250 / 1000 ms |

@@ -1,6 +1,5 @@
 import { realpathSync } from "node:fs";
 import { createRequire } from "node:module";
-import { performance } from "node:perf_hooks";
 import { describe, expect, it } from "vitest";
 import {
   isLocalFilePath,
@@ -262,72 +261,6 @@ describe("parseMarkdownSourceSpans", () => {
       { startLine: 3, endLine: 3 },
     ]);
   });
-});
-
-const MARKDOWN_PERF_CHUNK = [
-  "## Representative heading",
-  "",
-  "A paragraph with **bold**, `code`, and https://example.com/path?q=1.",
-  "",
-  "- first list item",
-  "- second list item",
-  "",
-  "| name | value |",
-  "| --- | ---: |",
-  "| alpha | 123 |",
-  "",
-].join("\n");
-
-function markdownFixture(bytes: number): string {
-  return MARKDOWN_PERF_CHUNK.repeat(
-    Math.ceil(bytes / MARKDOWN_PERF_CHUNK.length),
-  ).slice(0, bytes);
-}
-
-function p95Milliseconds(operation: () => void, samples: number): number {
-  const timings: number[] = [];
-  for (let index = 0; index < samples; index += 1) {
-    const startedAt = performance.now();
-    operation();
-    timings.push(performance.now() - startedAt);
-  }
-  timings.sort((left, right) => left - right);
-  return timings[Math.ceil(timings.length * 0.95) - 1] ?? 0;
-}
-
-describe("Markdown performance smoke", () => {
-  it("keeps positioned parsing and safe rendering within regression budgets", () => {
-    const cases = [
-      { bytes: 16 * 1024, samples: 7, parseBudgetMs: 30, renderBudgetMs: 120 },
-      {
-        bytes: 256 * 1024,
-        samples: 5,
-        parseBudgetMs: 250,
-        renderBudgetMs: 1000,
-      },
-    ];
-
-    for (const testCase of cases) {
-      const markdown = markdownFixture(testCase.bytes);
-      parseMarkdownSourceSpans(markdown);
-      renderSafeMarkdown(markdown);
-
-      const parseP95Ms = p95Milliseconds(
-        () => parseMarkdownSourceSpans(markdown),
-        testCase.samples,
-      );
-      const renderP95Ms = p95Milliseconds(
-        () => renderSafeMarkdown(markdown),
-        testCase.samples,
-      );
-
-      console.info(
-        `MARKDOWN_PERF: bytes=${testCase.bytes} parse_p95_ms=${parseP95Ms.toFixed(2)} render_p95_ms=${renderP95Ms.toFixed(2)}`,
-      );
-      expect(parseP95Ms).toBeLessThan(testCase.parseBudgetMs);
-      expect(renderP95Ms).toBeLessThan(testCase.renderBudgetMs);
-    }
-  }, 15_000);
 });
 
 describe("renderSafeMarkdown — local file links", () => {

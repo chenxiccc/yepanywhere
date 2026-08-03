@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "astro dev",
-    "build": "astro check && astro build && node scripts/validate-build.mjs",
+    "build": "astro check && tsx scripts/validate-catalog-source-refs.ts && astro build && node scripts/validate-build.mjs",
     "validate": "node scripts/validate-build.mjs",
     "preview": "astro preview"
   },
@@ -14,6 +14,7 @@
     "typescript": "^5.2.2"
   },
   "devDependencies": {
-    "@astrojs/check": "^0.9.9"
+    "@astrojs/check": "^0.9.9",
+    "tsx": "^4.19.2"
   }
 }

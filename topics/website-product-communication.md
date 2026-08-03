@@ -79,6 +79,12 @@ unknown relationships, missing docs destinations, nonexistent repository
 source references, or an invalid status. A development-only distribution must
 not have a download URL.
 
+Repository source references are checked by a dedicated source-time validation
+step before Astro bundles and prerenders the catalog. Rendered catalog modules
+must not derive repository paths from their output location; bundling may move
+them under `dist/`, while the validation script retains a stable repository
+anchor.
+
 Every server runtime provider id must map to one public provider entry, including
 runtime aliases grouped under a single public integration. This build-time
 coverage check prevents a shipped provider from disappearing from the website;

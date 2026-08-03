@@ -17,7 +17,7 @@
     "i18n:prune": "node scripts/prune-i18n-placeholders.mjs --write",
     "i18n:scan": "node scripts/find-raw-i18n-copy.mjs",
     "agent:monitor": "node scripts/monitor-agent-process.mjs",
-    "android:interop:check": "tsx scripts/android-secure-interop-fixture.ts",
+    "android:interop:check": "tsx --conditions source scripts/android-secure-interop-fixture.ts",
     "android:interop:write": "tsx scripts/android-secure-interop-fixture.ts --write",
     "android:probe-server": "pnpm --filter @yep-anywhere/server exec tsx --conditions source scripts/android-native-secure-probe-server.ts",
     "css:check": "node scripts/check-css-architecture.mjs",

@@ -1,13 +1,8 @@
-import { existsSync } from "node:fs";
-import { isAbsolute, relative, resolve, sep } from "node:path";
-import { fileURLToPath } from "node:url";
 import { distributions } from "./distributions";
 import { publishedDocPaths } from "./docs-navigation";
 import { featureCategories, features, type PublicFeature } from "./features";
 import { ALL_PROVIDERS, providers } from "./providers";
 import type { PublicDistribution } from "./distributions";
-
-const repositoryRoot = fileURLToPath(new URL("../../..", import.meta.url));
 
 function requireUniqueIds(label: string, entries: readonly { id: string }[]) {
   const seen = new Set<string>();
@@ -17,42 +12,11 @@ function requireUniqueIds(label: string, entries: readonly { id: string }[]) {
   }
 }
 
-function requireExistingSourceRefs(
-  label: string,
-  entries: readonly { id: string; sourceRefs: readonly string[] }[],
-) {
-  for (const entry of entries) {
-    for (const sourceRef of entry.sourceRefs) {
-      const sourcePath = resolve(repositoryRoot, sourceRef);
-      const relativeSourcePath = relative(repositoryRoot, sourcePath);
-      if (
-        !sourceRef ||
-        isAbsolute(relativeSourcePath) ||
-        relativeSourcePath === ".." ||
-        relativeSourcePath.startsWith(`..${sep}`)
-      ) {
-        throw new Error(
-          `${label} ${entry.id} has non-repository source reference ${sourceRef}`,
-        );
-      }
-      if (!existsSync(sourcePath)) {
-        throw new Error(
-          `${label} ${entry.id} has missing source reference ${sourceRef}`,
-        );
-      }
-    }
-  }
-}
-
 export function validateCatalog() {
   requireUniqueIds("feature", features);
   requireUniqueIds("feature category", featureCategories);
   requireUniqueIds("provider", providers);
   requireUniqueIds("distribution", distributions);
-  requireExistingSourceRefs("Feature", features);
-  requireExistingSourceRefs("Provider", providers);
-  requireExistingSourceRefs("Distribution", distributions);
-
   const categoryIds = new Set(featureCategories.map((category) => category.id));
   const providerIds = new Set(providers.map((provider) => provider.id));
   const coveredRuntimeProviderIds = new Set(

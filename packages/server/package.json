@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "benchmark:markdown": "tsx --conditions source scripts/benchmark-safe-markdown.ts",
     "dev": "node ../../scripts/run-with-safe-home.js tsx --conditions source src/index.ts",
     "dev:watch": "node ../../scripts/run-with-safe-home.js tsx watch --conditions source src/index.ts",
     "dev:mock": "AUTH_DISABLED=true node ../../scripts/run-with-safe-home.js tsx --conditions source src/index.ts",
