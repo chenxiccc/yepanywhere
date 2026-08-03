@@ -232,6 +232,44 @@ describe("DirtyFileEditorService", () => {
     ).toBeUndefined();
   });
 
+  it("retains attribution when Git status is unavailable", async () => {
+    const service = createService();
+    await service.initialize();
+    const process = {
+      id: "process-1",
+      projectPath,
+      sessionId: "session-1",
+    };
+    service.observeMessage(
+      process,
+      toolUse("write", "Write", { file_path: "src/a.ts" }),
+    );
+    service.observeMessage(
+      process,
+      toolResult("write", "2026-08-02T10:00:00.000Z"),
+    );
+
+    service.reconcileGitStatus(
+      projectPath,
+      {
+        ...dirtyStatus(),
+        isGitRepo: false,
+      },
+      { authoritative: false },
+    );
+    await service.idle();
+
+    const reloaded = createService();
+    await reloaded.initialize();
+    expect(
+      reloaded.reconcileGitStatus(projectPath, dirtyStatus("src/a.ts"))
+        .files[0]?.lastEditor,
+    ).toEqual({
+      sessionId: "session-1",
+      observedAt: "2026-08-02T10:00:00.000Z",
+    });
+  });
+
   it("retains child attribution behind a compact untracked folder", async () => {
     const service = createService();
     await service.initialize();

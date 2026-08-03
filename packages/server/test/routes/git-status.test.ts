@@ -234,6 +234,35 @@ describe("git-status routes", () => {
     });
   });
 
+  it("marks a failed fallback status as non-authoritative", async () => {
+    const projectPath = join(tempDir, "broken-repo");
+    await mkdir(projectPath, { recursive: true });
+    await writeFile(join(projectPath, ".git"), "invalid git file\n");
+    const reconciliations: Array<{ authoritative?: boolean }> = [];
+    const dirtyFileEditorService = {
+      reconcileGitStatus: (
+        _projectPath: string,
+        status: GitStatusInfo,
+        options: { authoritative?: boolean },
+      ) => {
+        reconciliations.push(options);
+        return status;
+      },
+    } as DirtyFileEditorService;
+    const { projectId, routes } = createRoutesForProject(
+      projectPath,
+      dirtyFileEditorService,
+    );
+
+    const response = await routes.request(`/${projectId}/git/check-remote`, {
+      method: "POST",
+    });
+    const body = (await response.json()) as GitRemoteCheckResult;
+
+    expect(body.status).toBe("failed");
+    expect(reconciliations).toContainEqual({ authoritative: false });
+  });
+
   it("reports compact untracked folders as dirty entries", async () => {
     const repoDir = await createRepoWithUpstream();
     await mkdir(join(repoDir, "transport", "__tests__"), { recursive: true });

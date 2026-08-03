@@ -60,6 +60,11 @@ interface GitDiffRequestTimings {
   projections?: number;
 }
 
+interface GitStatusSnapshot {
+  status: GitStatusInfo;
+  authoritative: boolean;
+}
+
 function recordGitDiffRequestTiming(
   c: Context,
   input: {
@@ -99,16 +104,27 @@ function recordGitDiffRequestTiming(
 
 export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
   const routes = new Hono();
-  const enrichStatus = (projectPath: string, status: GitStatusInfo) =>
-    deps.dirtyFileEditorService?.reconcileGitStatus(projectPath, status) ??
-    status;
+  const enrichStatus = (
+    projectPath: string,
+    status: GitStatusInfo,
+    authoritative = true,
+  ) =>
+    deps.dirtyFileEditorService?.reconcileGitStatus(projectPath, status, {
+      authoritative,
+    }) ?? status;
   const getGitStatusWithRemoteCheckTime = async (projectPath: string) =>
     enrichStatus(
       projectPath,
       await readGitStatusWithRemoteCheckTime(projectPath),
     );
-  const getGitStatusSnapshot = async (projectPath: string) =>
-    enrichStatus(projectPath, await readGitStatusSnapshot(projectPath));
+  const getGitStatusSnapshot = async (projectPath: string) => {
+    const snapshot = await readGitStatusSnapshot(projectPath);
+    return enrichStatus(
+      projectPath,
+      snapshot.status,
+      snapshot.authoritative,
+    );
+  };
 
   routes.get("/:projectId/git", async (c) => {
     const projectId = c.req.param("projectId");
@@ -828,16 +844,22 @@ async function readGitStatusWithRemoteCheckTime(
 
 async function readGitStatusSnapshot(
   projectPath: string,
-): Promise<GitStatusInfo> {
+): Promise<GitStatusSnapshot> {
   try {
-    return await readGitStatusWithRemoteCheckTime(projectPath);
+    return {
+      status: await readGitStatusWithRemoteCheckTime(projectPath),
+      authoritative: true,
+    };
   } catch (err) {
     if (isNotGitRepoError(err)) {
-      return NOT_A_GIT_REPO;
+      return { status: NOT_A_GIT_REPO, authoritative: true };
     }
     return {
-      ...NOT_A_GIT_REPO,
-      checkedRemoteAt: await getCheckedRemoteAt(projectPath),
+      status: {
+        ...NOT_A_GIT_REPO,
+        checkedRemoteAt: await getCheckedRemoteAt(projectPath),
+      },
+      authoritative: false,
     };
   }
 }

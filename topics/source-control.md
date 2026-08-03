@@ -479,15 +479,17 @@ from active sessions.
 
 A successful complete Git-status refresh is the clearing authority. Any stored
 path absent from dirty status is deleted; a commit that leaves another staged or
-unstaged change does not clear it. Compact untracked-directory rows preserve
-stored child attribution until Git expands or cleans that directory. The
-compact folder itself does not expose a child-session link; its existing
-expansion response includes attribution for the individual files. Reconciliation
-may wait until Source Control enters or refreshes the project; restart does not
-walk all repositories. An unobserved writer can therefore replace or revert
-the recorded session's contribution while leaving the path dirty, so the
-action is worded as the last editing session and never claims exact-byte
-authorship.
+unstaged change does not clear it. A failed or unavailable status read is not a
+clean listing and never prunes attribution; it may decorate whatever rows are
+available, but stored rows survive until an authoritative refresh. Compact
+untracked-directory rows preserve stored child attribution until Git expands or
+cleans that directory. The compact folder itself does not expose a child-session
+link; its existing expansion response includes attribution for the individual
+files. Reconciliation may wait until Source Control enters or refreshes the
+project; restart does not walk all repositories. An unobserved writer can
+therefore replace or revert the recorded session's contribution while leaving
+the path dirty, so the action is worded as the last editing session and never
+claims exact-byte authorship.
 
 The permanent `git-dirty-file-editor` capability adds optional
 `files[].lastEditor = { sessionId, observedAt }` data to the existing

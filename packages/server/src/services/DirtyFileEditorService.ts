@@ -35,6 +35,10 @@ export interface DirtyFileEditorServiceOptions {
   captureDirtyFiles?: (projectPath: string) => Promise<DirtyFileSnapshot>;
 }
 
+export interface ReconcileGitStatusOptions {
+  authoritative?: boolean;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -324,24 +328,27 @@ export class DirtyFileEditorService {
   reconcileGitStatus(
     projectPath: string,
     status: GitStatusInfo,
+    options: ReconcileGitStatusOptions = {},
   ): GitStatusInfo {
     const projectKey = path.resolve(projectPath);
     const records = this.state.projects[projectKey];
     if (!records) return status;
 
-    const exactDirtyPaths = new Set(status.files.map((file) => file.path));
-    const compactFolders = status.files
-      .filter((file) => file.status === "?" && file.path.endsWith("/"))
-      .map((file) => file.path);
     let changed = false;
-    for (const filePath of Object.keys(records)) {
-      const stillDirty =
-        status.isGitRepo &&
-        (exactDirtyPaths.has(filePath) ||
-          compactFolders.some((folder) => filePath.startsWith(folder)));
-      if (!stillDirty) {
-        delete records[filePath];
-        changed = true;
+    if (options.authoritative !== false) {
+      const exactDirtyPaths = new Set(status.files.map((file) => file.path));
+      const compactFolders = status.files
+        .filter((file) => file.status === "?" && file.path.endsWith("/"))
+        .map((file) => file.path);
+      for (const filePath of Object.keys(records)) {
+        const stillDirty =
+          status.isGitRepo &&
+          (exactDirtyPaths.has(filePath) ||
+            compactFolders.some((folder) => filePath.startsWith(folder)));
+        if (!stillDirty) {
+          delete records[filePath];
+          changed = true;
+        }
       }
     }
 
