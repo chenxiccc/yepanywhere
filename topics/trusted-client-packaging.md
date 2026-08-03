@@ -27,13 +27,14 @@ compromised, but the user has already installed or pinned a trusted client.
   a manifest and artifact hashes under pinned graehl/kzahel signing keys.
 - A first-run native flow uses full SRP with the Remote Access password; later
   native reconnects use the Keystore-protected resume credential without
-  asking a hosted page for the password again. The bundled web client may keep
-  its own independent browser session.
+  asking a hosted page for the password again. The bundled web client normally
+  consumes that authenticated native connection without receiving the
+  credential.
 
 The mobile ownership decision is recorded separately in
 [`mobile-server-pairing.md`](mobile-server-pairing.md): native Compose and
 background operation use a native secure connection core, while the bundled
-full web client may retain an independent web-owned SRP session and transport.
+full web client acquires an isolated logical lease on the same core.
 
 ## Current Mobile Packaging Checkpoint
 
@@ -60,10 +61,10 @@ launcher resource.
 The longer-term foreground choice has two permanent presentations. Android
 Compose, and later iOS SwiftUI, own the focused native companion and
 Conversation-view surfaces. The complete bundled web client remains a
-full-fidelity alternative for users who prefer it and for rich tools, settings,
-and unsupported native surfaces. Hosted `latest` remains valuable for
-transitional testing, but it does not answer the stronger production trust
-requirement below.
+full-fidelity escape hatch for users who prefer it and for rich tools, settings,
+and unsupported native surfaces; it is not the primary mobile product surface.
+Hosted `latest` remains valuable for transitional testing, but it does not
+answer the stronger production trust requirement below.
 
 Bundled app-assets JavaScript is trusted application code: it is shipped under
 the APK signature, is isolated in the app WebView, and does not load ordinary
@@ -71,18 +72,20 @@ browser extensions. It may legitimately read and modify YA application data.
 The native host still remains exact-origin and method-scoped as inexpensive
 defense in depth.
 
-The bundled client does not initially need a native data-plane adapter. It may
-keep the existing TypeScript `SecureConnection` and browser-local resume
-credential independently of the Kotlin core. This avoids assuming that bridge
-serialization, stream copying, uploads, and binary paths outperform the proven
-web transport. A native-backed web transport is benchmark-gated future work,
-not a prerequisite for native pairing or Compose.
+The bundled client normally uses a native data-plane adapter so an already
+authenticated Android user is not asked to log in again merely to reach a
+setting or rich renderer missing from Compose. The adapter exposes high-level
+source operations over a bounded exact-origin channel; Kotlin keeps SRP and
+resume material private and arbitrates concurrent Compose, foreground-service,
+and WebView leases. Binary uploads remain chunked and flow-controlled rather
+than copied into one bridge message.
 
 Still unresolved are the stable public asset update/signing policy and the
-exact native secure storage/rotation model. No authenticated-context handoff is
-required for the first native core: native and bundled web may hold separate
-server sessions. Native installation and push-management secrets remain
-app-private and are not web credentials.
+exact native secure storage/rotation model. An independently authenticated
+WebView remains a possible future performance or isolation mode, but it uses
+normal explicit SRP and its own browser-scoped resume session. The baseline
+does not mint or hand off a child credential. Native installation and
+push-management secrets remain app-private and are not web credentials.
 
 ## Deferred Verification Setup
 
@@ -133,9 +136,9 @@ threat requires signed or locally served client packaging.
 - How are permanent bundled web assets updated and verified without making
   live hosted JavaScript the credential trust root or waiting indefinitely for
   fixes behind app-store review?
-- Do representative full-web workloads ever justify a native-backed web
-  transport despite bridge serialization, streaming, upload, and lifecycle
-  costs?
+- Do representative full-web workloads ever justify an independently
+  authenticated bundled-WebView mode despite the duplicate login and extra
+  server session?
 - Should graehl and kzahel use independent signing keys, a threshold policy, or
   a primary/backup-key policy with explicit rotation?
 - What is the minimum browser storage model that keeps local-file or

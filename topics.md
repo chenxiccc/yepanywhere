@@ -217,6 +217,8 @@
   text.
 - relay-client-mux - Optional relay-owned client multiplexing for several
   independently authenticated YA hosts with exact legacy `/ws` fallback.
+- android-native-multi-host - Android saved/included/demanded host ownership,
+  one-or-more-host relay mux, unified filters, server settings, and removal.
 - desktop-v0 - Windows-first self-contained Tauri release with an atomic
   private runtime/server resource, advisory external providers, reload-safe
   loopback bootstrap, and owned process lifecycle.

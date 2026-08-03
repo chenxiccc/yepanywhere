@@ -30,6 +30,10 @@ Topic: host-identity
 - Disconnected host-picker rows do not display the marker. Supporting that
   would require client caching or unauthenticated host metadata, both outside
   this feature's server-owned scope.
+- A connected native multi-host client may use the marker on source filters,
+  aggregate session/activity cards, and server settings rows. The username
+  remains the fallback and the source boundary remains visible. A cold offline
+  row still does not invent or persist a client-owned marker.
 
 ## Compatibility
 

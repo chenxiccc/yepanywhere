@@ -43,12 +43,21 @@ linked docs when the details change.
   Android is a first-class Gradle/Kotlin application with Compose as the first
   native foreground target; its Android-owned WebView keeps the bundled client
   as a permanent full-fidelity alternative for users and surfaces that prefer
-  the complete web interface. A future Kotlin connection core owns native SRP,
-  direct/relay transport, and foreground-service subscriptions, while the
-  bundled web client may retain its independent TypeScript transport. Tauri
-  Mobile has been removed and is unrelated to the separate desktop Tauri
-  application. iOS follows later with SwiftUI. The versioned projection and
-  native connection core are not implemented yet.
+  the complete web interface. The Kotlin connection core owns native SRP,
+  direct/relay transport, and foreground-service subscriptions. The bundled
+  WebView should normally consume that connection through a bounded
+  `SourceTransport` adapter so opening the complete interface does not ask the
+  user to authenticate twice; Compose, background work, and the WebView hold
+  source-scoped logical leases on native-owned connections. Each paired profile
+  keeps independent SRP state and failure lifecycle; compatible relay profiles
+  may share one physical relay-mux socket below that boundary. Native
+  multi-host demand and mux ownership land before the WebView data adapter so
+  the adapter never bakes in a single global host. An independently
+  authenticated TypeScript WebView transport remains a valid future
+  alternative if measurements justify it, but no credential handoff or child
+  session is part of the baseline. Tauri Mobile has been removed and is
+  unrelated to the separate desktop Tauri application. iOS follows later with
+  SwiftUI.
 
 Single-user / small-team scale is assumed throughout — see the cleanups
 section below for what would have to change at higher fan-out.
@@ -106,8 +115,9 @@ section below for what would have to change at higher fan-out.
 - [`topics/mobile-server-pairing.md`](topics/mobile-server-pairing.md) —
   approved boundary between app-local paired-server profiles, durable paired
   devices, expiring SRP resume credentials, native Kotlin transport,
-  independent bundled web transport, resume-authenticated direct/relay
-  discovery, and push enrollment; public installation identity is deferred.
+  a bundled-web lease over that transport, resume-authenticated direct/relay
+  discovery, and push enrollment; an independent bundled-web session remains
+  a possible later optimization and public installation identity is deferred.
 - [`topics/security-client-audit.md`](topics/security-client-audit.md) —
   unified cross-platform client registration, P-256 continuity keys,
   recognizable audit fingerprints, bounded per-client history plus a

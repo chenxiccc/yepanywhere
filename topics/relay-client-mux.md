@@ -9,7 +9,9 @@ Topic: relay-client-mux
 
 Status: Landed 2026-07-30 after compatibility approval. The experimental
 monitor uses mux when the relay advertises it and preserves exact `/ws`
-fallback.
+fallback. The Android native extension was approved 2026-08-03: its
+demand-owned relay pool makes even one eligible host mux-capable and measures
+ordinary/full traffic over the circuit before adding a dedicated-socket policy.
 
 Related:
 
@@ -42,8 +44,8 @@ binary frames they receive today.
 
 The first client consumer is `/-/monitor`, which is already deliberate-entry
 and default-hidden. Ordinary single-host routes keep using the legacy path.
-A later Android client may reuse the transport after the browser proof is
-green.
+The later Android client reuses the proven transport behind a separate native
+pool; it does not change the browser consumer's selection policy.
 
 ## Stable-Release Compatibility Audit
 
@@ -120,7 +122,10 @@ and old server + new relay all retain the legacy path.
   a group.
 - Direct hosts and hosts on relays without the capability remain independent.
 - A group containing only one selected host stays on `/ws`; mux has no socket
-  count benefit there.
+  count benefit there in the browser monitor. Android intentionally differs:
+  one demanded eligible relay host may use mux so adding a peer or moving one
+  host to an authenticated direct route never requires replacing the group's
+  physical relay transport.
 - More than five selected hosts do not fail. The first five may use one mux;
   overflow hosts use legacy sockets until a later, measured reason justifies
   multiple mux sockets or a higher limit.
@@ -240,6 +245,14 @@ preventing application-level starvation:
 - upload/media/full-transcript traffic stays on legacy sockets in the first
   consumer. The monitor leaves its mux route before opening a full session.
 
+The Android extension begins with one source connection per host, not separate
+summary and full-session connections. Its normal API, WebView, media, and
+64 KiB upload frames use that host's mux circuit when the relay advertises the
+capability. The 2 MiB frame cap already bounds every upload chunk. Physical
+Pixel tests must measure a large upload beside another host's activity stream;
+only observed starvation, memory, or lifecycle problems justify later
+dedicated-socket promotion.
+
 Initial configurable relay defaults:
 
 - at most 5 live circuits per mux socket;
@@ -357,6 +370,8 @@ three independently authenticated sources.
   data.
 - Changing server-to-relay registration in V1.
 - Sending bulk uploads, device media, or full-session traffic through mux
-  before measurements justify it.
+  from the first experimental browser-monitor consumer. Android is the
+  separately measured next consumer and may send this traffic under the bounds
+  above.
 - Removing `/ws`, its current framing, or the old-client/new-relay path.
 - Building Android before browser mux behavior is proven.

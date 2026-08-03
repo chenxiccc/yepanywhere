@@ -2,8 +2,9 @@
 
 > A mobile companion pairs with one logical YA server independently of the
 > route used to reach it; native UI and background work use a native secure
-> connection core, while the bundled full web client may keep its existing
-> independent web transport unless measurements justify a native adapter.
+> connection core, while the bundled full web client normally acquires its own
+> logical lease on that core so entering the complete interface does not
+> require a second login.
 
 Topic: mobile-server-pairing
 
@@ -37,7 +38,11 @@ The Android app has two permanent foreground presentations:
 The bundled client is not merely temporary migration scaffolding. It is a
 first-class, full-fidelity alternative. The native presentation may grow until
 it covers most routine mobile use without requiring the bundled presentation
-to disappear.
+to disappear. Compose remains the primary mobile product surface; the bundled
+client is the complete escape hatch for missing native settings, uncommon rich
+renderers, and users who explicitly prefer it. Its transport should be usable
+and bounded, but it does not set the optimization priorities for the native
+application.
 
 Native background work cannot depend on the WebView. A Kotlin connection core
 must eventually support Compose and an explicitly enabled foreground activity
@@ -365,39 +370,119 @@ when Android, shared framing, or server crypto code changes. This checkpoint
 does not yet persist credentials, reconnect, select routes, expose repositories,
 or run a foreground service.
 
-## Bundled Web Client Independence
+## Multiple Native Hosts And Selection
 
-The bundled web client is allowed to keep its existing TypeScript
-`SecureConnection`, browser `localStorage` resume session, and direct relay/YA
-transport. It does not initially need to proxy application traffic through the
-Kotlin connection core.
+One paired profile is one logical source with its own username, routes, resume
+credential, security-client binding, connection manager, SRP/NaCl state,
+readiness, retry, and revocation lifecycle. The process runtime may keep several
+such sources active concurrently when Compose, notification aggregation,
+foreground work, or the WebView holds demand for them.
 
-That independence preserves the proven full interface and avoids assuming a
-native bridge improves performance. A native-backed web transport adds JSON
-serialization, data copying, thread hops, stream buffering, cancellation, and
-difficult binary/upload paths. Full transcripts and high-rate tool streaming
-are especially poor places to assume bridge performance without measurement.
+The selected profile is presentation state, not connection ownership. Changing
+the visible host must not disconnect another profile that still has a lease,
+and one host's offline, reauthentication, revocation, or retry state must not
+block healthy peers. Adding or forgetting a profile changes the native host
+catalog; forgetting also releases its native demand and destroys its protected
+credentials and continuity key as already specified.
 
-Consequences accepted during the transition and potentially longer term:
+Relay mux is an optimization below those source boundaries. A native pool is
+keyed by normalized relay base, discovers `client-mux-v1`, and may provide one
+logical circuit to each independently authenticated profile. Direct profiles,
+old relays, failed mux discovery, and overflow retain ordinary independent
+sockets. A physical mux failure fans out a reconnect signal, but each profile
+still reports and recovers its own logical state.
 
-- the native core and bundled web client may hold separate SRP resume sessions
-  for the same physical Android installation;
-- they may briefly maintain separate connections and subscriptions;
-- native and web profiles are not automatically merged merely because the user
-  reaches the same machine through both presentations; and
-- the current five-session server limit may need explicit reconsideration
-  before several mobile, browser, and native clients coexist routinely.
+Android considers even one demanded relay profile eligible for mux when the
+relay advertises `client-mux-v1`. A profile initially uses one logical source
+connection for summary, full-session, media, WebView, and 64 KiB upload traffic
+rather than opening a second dedicated relay socket. Representative Pixel
+measurements with competing circuits are the gate for retaining that simple
+policy or later promoting measured bulk work to a dedicated socket; the source
+and connection-manager APIs must not expose either physical policy.
 
-A future `NativeSourceTransport` for the web client is optional. Build it only
-after representative measurements show a concrete product, lifecycle, or
-performance benefit. It must not block native pairing, Compose, push, direct
-discovery, or foreground-service work.
+Native multi-host demand, selection, failure isolation, mux fallback, and
+dedicated-full-session policy are proved before the WebView transport adapter.
+That sequencing fixes the source lifecycle the adapter consumes without
+delaying the adapter's already-approved framing and security boundaries.
 
-The existing small `window.yaNative` host remains useful for explicit Android
-operations such as notification permission. It is not automatically the full
-web data plane. Bundled app-assets code may receive broader methods in a future
-review because it is trusted application code; mutable hosted-`latest` content
-remains a separate trust decision.
+## Bundled Web Client Transport
+
+Opening the bundled full web client from an already authenticated Android
+profile should not present another login. Its baseline transport is therefore
+a `NativeSourceTransport` adapter over a dedicated, exact-origin Android
+message channel. The WebView acquires its own lease from the same process-level
+Kotlin connection manager used by Compose and foreground work. Requests and
+subscriptions receive adapter-local identifiers while Kotlin remains the sole
+owner of wire identifiers, SRP credentials, connection capabilities,
+encryption, reconnect, and route selection.
+
+The bridge is multi-source even while the first web presentation shows one
+host at a time. Native supplies document-scoped opaque source handles for its
+paired-profile catalog; every request, subscription, upload, and cancellation
+is scoped to one handle. WebView "Switch Host" selects or opens another native
+source and changes the client source runtime. It does not enter the browser
+login/profile flow. Kotlin acquires the target lease before releasing an old
+WebView-only lease, while unrelated native demand remains untouched.
+
+This is a logical-consumer boundary, not a new server session or authentication
+layer. Compose, a foreground service, and the WebView may make concurrent
+requests and hold independent subscriptions on one SRP mux connection.
+Releasing or overflowing the WebView lease must clean up only its work and must
+not close a connection still demanded by a native consumer.
+
+The existing small `window.yaNative` host remains the bounded control plane for
+explicit Android operations such as notification permission. Its 16 KiB
+request limit is a YA guard for small JSON commands, not a WebView, WebSocket,
+SRP, or file-size limit. Application transport uses a separate channel with
+binary messages, fragmentation, cancellation, and byte-based flow control.
+
+Upload behavior preserves the existing relay contract:
+
+- the WebView reads each `File` as a stream and emits the established 64 KiB
+  upload chunks rather than materializing the complete file in Kotlin;
+- each chunk crosses the bridge as an ArrayBuffer when the installed WebView
+  supports it, receives the existing upload id and offset header, is
+  independently encrypted, and is written by the server before completion;
+- bridge and OkHttp queue high/low-water marks bound resident data and suspend
+  the WebView reader when the native or network consumer falls behind; and
+- abort, navigation, process teardown, invalid offset, and queue overflow fail
+  the one upload or WebView lease without retaining the remaining file.
+
+Chunked does not mean resumable: loss of the authenticated socket discards the
+server's connection-owned upload state, so the current upload fails and a user
+retry starts again at byte zero. Cross-connection upload resume would require a
+separate server contract and is not invented by the WebView adapter.
+
+A 100 MiB upload is consequently 1,600 ordinary 64 KiB data chunks, not one
+100 MiB bridge message. Downloads and blob responses use the same bounded
+fragment discipline on the local bridge, but the current relay response
+contract still base64-encodes a complete binary response inside one JSON
+message. Removing that upstream whole-response/base64 cost would be a separate
+capability-gated server protocol change. Ordinary response and event JSON can
+be larger than one bridge frame and is reassembled by logical message id. A
+single encrypted server WebSocket message must still be decrypted as a whole
+under the current wire protocol; bridge fragmentation controls queue growth but
+does not make JSON parsing incremental. Representative large transcript and
+blob responses therefore remain an explicit memory and latency benchmark
+rather than being conflated with streaming uploads.
+
+The transport handshake advertises whether ArrayBuffer messages are available.
+An older installed WebView may use bounded base64 string chunks as a functional
+compatibility path, accepting the usual size and copy overhead; it does not
+fall back to exposing credentials. Recent supported WebViews should use binary
+messages and avoid that expansion.
+
+The privileged transport channel is available only to signed, bundled
+app-assets code and is removed on document/navigation teardown. Mutable
+hosted-`latest` content never receives it and continues to authenticate with
+its own web-owned session.
+
+An independently authenticated bundled WebView remains a valid future mode or
+performance optimization. In that shape the WebView performs normal SRP itself
+and retains a distinct browser-scoped resume session after the user explicitly
+authenticates there. The baseline does not mint, delegate, or expose a child
+resume credential merely to avoid the second prompt. Any later delegated-token
+proposal requires its own security and compatibility review.
 
 ## Direct, Relay, And LAN Discovery
 
@@ -515,8 +600,10 @@ old-server fallbacks are approved in
 usable through current SRP/native summaries and the bundled/hosted web client;
 Android reports that registration/push requires an update and makes no
 unsupported request. Native projection/inbox APIs, passwordless grants,
-plaintext browser-profile cleanup, native-backed web transport, and optional
-attestation retain their own future compatibility reviews.
+plaintext browser-profile cleanup, any independently authenticated WebView
+optimization, and optional attestation retain their own future compatibility
+reviews. The native WebView adapter reuses existing authenticated API, upload,
+and subscription messages and adds no server route or capability by itself.
 
 ## Recommended Implementation Order
 
@@ -535,7 +622,7 @@ attestation retain their own future compatibility reviews.
 5. **Bind the first Compose consumer — complete:** explicit onboarding,
    profile selection, reauthentication, connection state, and compact existing
    session summaries use the native core while the full web client remains an
-   independent escape hatch.
+   escape hatch.
 6. **Register security clients and revocation:** attach expiring native
    sessions to a Keystore-key-verified cross-platform security-client record,
    retain legacy web audit visibility, and cascade explicit revocation.
@@ -547,5 +634,14 @@ attestation retain their own future compatibility reviews.
    them only after expected-server authentication.
 10. **Add optional foreground activity:** let an explicit user action keep the
    native core subscribed, with a persistent notification and complete stop.
-11. **Benchmark a native web transport:** consider one only if measurements
-    show that sharing Kotlin connections benefits the permanent full web UI.
+11. **Own multiple native hosts and relay mux:** keep source demand concurrent,
+    make selection presentation-only, pool one or more eligible relay circuits,
+    carry ordinary/full traffic through each logical circuit, preserve exact
+    legacy fallback, and prove per-profile failure isolation and fairness.
+12. **Bind the bundled WebView to native transport:** implement and benchmark a
+    bounded `NativeSourceTransport` lease so opening the complete UI reuses the
+    selected authenticated Android profile without exposing its credential;
+    source-scoped handles implement host switching without web-owned login.
+13. **Revisit independent WebView transport only from evidence:** retain normal
+    browser SRP as a possible later mode when measured throughput, lifecycle,
+    or isolation benefits outweigh its separate-login and session-slot costs.

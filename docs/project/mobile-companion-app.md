@@ -21,8 +21,8 @@ client/server protocol change.
 The Android notification path is specified separately in
 [`topics/android-fcm-push.md`](../../topics/android-fcm-push.md).
 Local paired-server profiles, paired-device ownership, native credentials,
-resume-authenticated direct/relay selection, LAN discovery, and the independent
-bundled-web transport are specified in
+resume-authenticated direct/relay selection, LAN discovery, and the bundled
+WebView's logical lease on native transport are specified in
 [`topics/mobile-server-pairing.md`](../../topics/mobile-server-pairing.md).
 The current packaged app's password-manager association is specified in
 [`topics/android-credential-sharing.md`](../../topics/android-credential-sharing.md).
@@ -172,6 +172,9 @@ Core surfaces:
   similar user-visible events.
 - A minimal inbox/activity dashboard.
 - Aggregation across multiple paired YA servers.
+- Native add, select, reauthenticate, and remove flows for paired servers;
+  selecting a visible server does not disconnect other servers still needed
+  for aggregation or notifications.
 - Native Conversation-view session detail for routine monitoring, followed by
   basic text response once the read-only projection and transport are proven.
 - An explicit complete-web presentation for users who prefer it, and for rich
@@ -181,6 +184,16 @@ Core surfaces:
 
 The app should feel like a companion device, not like a second place where the
 entire YA interface must be learned.
+
+Compose is the primary mobile surface. The complete bundled client is a
+permanent escape hatch for settings, uncommon rich renderers, and other
+capabilities not yet native; avoiding a duplicate login is required usability,
+but it should not pull native product priorities toward optimizing every
+WebView-only workflow.
+
+The bundled client's host catalog comes from native paired profiles. Switching
+host selects a source-scoped native transport lease rather than returning to
+the web login screen or maintaining a second browser-only list of servers.
 
 ## Non-Goals
 
@@ -325,8 +338,8 @@ equivalent scan must be bounded to a visible owner, advertise no credentials,
 sessions, or installation identity, and attach a route automatically only after
 resume proves continuity with the selected profile. Without resume, full SRP
 and explicit user selection establish the route. Native direct traffic may use
-that authenticated route; the bundled web client may continue using its
-independent TypeScript transport.
+that authenticated route; the bundled web client normally consumes it through
+an independent WebView lease on the Kotlin connection manager.
 
 ## iOS Compatibility
 
@@ -406,8 +419,9 @@ Revocation must be first-class:
   failures, media, coverage, generic tool detail, and safe fallback behavior?
 - What exact capability-gated protocol advertises authenticated public server
   identity and creates/revokes durable paired-device records?
-- When measurements eventually justify it, is a native-backed bundled-web
-  transport worth its serialization, streaming, upload, and lifecycle costs?
+- Do representative measurements ever justify offering an independently
+  authenticated bundled-WebView transport alongside the native proxy, and if
+  so should it be automatic or an explicit advanced mode?
 - Should notification acknowledgement be recorded by the app, the server, the
   broker, or all three?
 - Beyond the verified clean-install and cleared-app-data FID callbacks, what

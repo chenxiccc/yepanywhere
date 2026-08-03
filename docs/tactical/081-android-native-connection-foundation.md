@@ -65,9 +65,11 @@ the relay.
   process-level connection manager. Releasing the final lease closes sockets,
   rejects pending requests, removes subscriptions, and cancels heartbeat,
   retry, and discovery work.
-- The bundled WebView keeps its existing independent TypeScript connection and
-  browser resume session initially. Native credentials are never exposed over
-  `window.ya`.
+- The bundled WebView transport was deliberately left outside this foundation
+  slice. The subsequent approved direction is an exact-origin
+  `NativeSourceTransport` lease over the Kotlin manager; native credentials are
+  never exposed over `window.ya` or the transport channel. See
+  [tactical 083](083-android-bundled-web-native-transport.md).
 - A route is only a location. Direct, discovered, and relay routes do not
   create separate logical server identities.
 - mDNS/DNS-SD results are untrusted hints. They cannot update an authenticated

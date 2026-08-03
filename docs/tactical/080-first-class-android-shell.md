@@ -261,11 +261,12 @@ compatibility project; the shell does not pre-commit its wire protocol or grant
 a generic native camera/authentication bridge in anticipation of it.
 
 Post-completion architecture keeps the bundled WebView permanently rather than
-treating it as migration scaffolding. It does not initially proxy the full web
-data plane through Kotlin: the bundled client may retain its existing
-TypeScript `SecureConnection`, while Compose and any foreground service use a
-new Kotlin connection core. The exact-origin protocol-1 host remains a small
-operation channel unless later benchmarks justify a native web transport.
+treating it as migration scaffolding. This shell slice intentionally left its
+data plane independent. The subsequent approved direction in
+[tactical 083](083-android-bundled-web-native-transport.md) is a separate
+exact-origin `NativeSourceTransport` channel over the Kotlin connection
+manager; the existing protocol-1 host remains a small operation channel and
+never exports credentials.
 
 ## Target Package Shape
 
