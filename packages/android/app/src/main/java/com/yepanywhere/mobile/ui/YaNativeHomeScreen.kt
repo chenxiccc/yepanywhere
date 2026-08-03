@@ -40,7 +40,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.autofill.ContentType
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentType
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -169,7 +172,8 @@ private fun PairingScreen(
         OutlinedTextField(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 20.dp),
+                .padding(top = 20.dp)
+                .semantics { contentType = ContentType.Username },
             value = username,
             onValueChange = { username = it },
             label = { Text(stringResource(R.string.username)) },
@@ -178,7 +182,8 @@ private fun PairingScreen(
         OutlinedTextField(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 12.dp),
+                .padding(top = 12.dp)
+                .semantics { contentType = ContentType.Password },
             value = password,
             onValueChange = { password = it },
             label = { Text(stringResource(R.string.password)) },
@@ -505,7 +510,8 @@ private fun ReauthenticationCard(
             OutlinedTextField(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 12.dp),
+                    .padding(top = 12.dp)
+                    .semantics { contentType = ContentType.Password },
                 value = password,
                 onValueChange = { password = it },
                 label = { Text(stringResource(R.string.password)) },

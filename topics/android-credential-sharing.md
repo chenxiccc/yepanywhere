@@ -12,7 +12,10 @@ for the current Android debug build. Android App Links verify successfully, but
 Google Password Manager does not automatically offer the
 `yepanywhere.com` credentials in the sideloaded build. It offers only the
 generic Passwords search action. Seamless Google Password Manager sharing
-therefore remains blocked on a public Play release.
+therefore remains blocked on a public Play release. Native Compose onboarding
+now declares standard Autofill username/current-password content types so that
+the configured password manager can at least present its inline action and
+manual credential picker in development builds.
 
 ## Known Gap: Sideloaded Debug Builds
 
@@ -39,8 +42,13 @@ check passes on a physical device.
   `com.yepanywhere.mobile`.
 - The Android app includes that statement list through its application
   metadata.
-- The existing relay and direct login forms continue to expose the standard
-  `username` and `current-password` autocomplete hints.
+- The web relay and direct login forms expose the standard `username` and
+  `current-password` autocomplete hints.
+- Native Compose onboarding exposes `ContentType.Username` and
+  `ContentType.Password` Autofill semantics. Native reauthentication exposes
+  `ContentType.Password`. These hints request the system password-manager UI;
+  they do not give YA access to stored credentials or assert that any dataset
+  matches `yepanywhere.com`.
 - App Link authorization remains bounded by the Android manifest. The app's
   current verified-link intent filter handles only exact HTTPS
   `yepanywhere.com/open` routes.
@@ -92,6 +100,11 @@ For each website release:
 5. Let the user test the configured password manager on the relay login form;
    automated tooling must not inspect or disclose saved credentials.
 
+For native Compose onboarding, also focus the username and password fields and
+confirm that the configured Autofill provider offers its inline action. The
+user, not automated tooling, verifies whether a specific website credential is
+available through the provider's manual picker.
+
 ## Debug Live Verification
 
 Completed on 2026-07-31 with the maintainer-signed debug APK and an attached
@@ -131,6 +144,12 @@ certificate and package identity, Android reported `yepanywhere.com` verified,
 and enabling that device user's previously disabled link selection made a cold
 HTTPS `/open` intent launch `MainActivity` and its Android-owned WebView. The
 replacement intent filter no longer admits HTTP or path-prefix lookalikes.
+
+Native Compose username/password Autofill semantics were added and installed
+on the Pixel 9 on 2026-08-03. Build-time verification proves that the Material
+fields expose the supported Compose content types. The visible Google Password
+Manager result remains a user-owned physical-device check so saved credential
+labels or values never enter automated output.
 
 ## Production Follow-Up
 

@@ -381,7 +381,9 @@ manifests remain HTTPS-only.
   and using the upstream public relay. Advanced connection settings retain a
   custom relay URL and Direct escape hatch. The username is also the saved
   display name, and the form clears its password before handing the one login
-  value to the Kotlin pairing coordinator.
+  value to the Kotlin pairing coordinator. The visible credentials expose
+  standard Compose Autofill username/current-password content types, while the
+  installed password manager remains responsible for matching and disclosure.
 - A lifecycle-aware ViewModel observes DataStore profiles, holds no password,
   and owns a manager lease only while `MainActivity` is started. Closing the
   physical-device Activity returned the manager to idle.
