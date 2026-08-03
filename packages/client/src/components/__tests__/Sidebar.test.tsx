@@ -441,6 +441,36 @@ describe("Sidebar collapsed toggle", () => {
     expect(label?.textContent).toBe("Switch Host");
   });
 
+  it("reloads the host picker when switching hosts", () => {
+    const originalLocation = window.location;
+    const replace = vi.fn();
+    const disconnect = vi.fn();
+    mockRemoteConnectionState.value = { disconnect };
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: {
+        href: "https://ya.example/remote/current/session",
+        replace,
+      },
+    });
+
+    try {
+      renderSidebar();
+      fireEvent.click(screen.getByRole("button", { name: "Switch Host" }));
+
+      expect(disconnect).toHaveBeenCalledOnce();
+      expect(replace).toHaveBeenCalledOnce();
+      const reloadUrl = new URL(String(replace.mock.calls[0]?.[0]));
+      expect(reloadUrl.pathname).toBe("/login");
+      expect(reloadUrl.searchParams.get("__ya_reload")).toMatch(/^\d+$/);
+    } finally {
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        value: originalLocation,
+      });
+    }
+  });
+
   it("renders loaded sidebar sessions without a show-more gate", () => {
     globalSessionsState.sessions = Array.from({ length: 13 }, (_, index) =>
       makeSession(

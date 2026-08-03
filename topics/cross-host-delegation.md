@@ -101,8 +101,11 @@ rather than changing the existing host switcher:
   redirects to the current host's Projects page without rendering the preview;
 - when enabled, the Open action stays inside that setting's card rather than
   appearing as a separate option;
-- the sidebar **Switch Host** action, host picker, and `/-/monitor` retain
-  their existing behavior; and
+- the sidebar **Switch Host** action disconnects the current source and performs
+  a cache-busted document load of the host picker, so an installed web app both
+  changes hosts and refreshes its client bundle at that already-destructive
+  boundary; the host picker and `/-/monitor` otherwise retain their existing
+  behavior; and
 - browser-saved hosts do not appear on the new page because they are
   browser-origin state rather than server-owned delegation state.
 

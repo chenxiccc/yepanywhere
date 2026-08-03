@@ -30,6 +30,7 @@ import { useVersion } from "../hooks/useVersion";
 import { useI18n } from "../i18n";
 import { toBrowserAppHref } from "../lib/appHref";
 import { bangHistoryViewEnabled } from "../lib/bangCommandAvailability";
+import { buildFrontendReloadUrl } from "../lib/frontendReload";
 import { isNearScrollEnd } from "../lib/predictiveScroll";
 import { serverSupportsProjectQueue } from "../lib/projectQueueVisibility";
 import { sessionCollectionRecordToGlobalSessionItem } from "../lib/sessionCollectionRecords";
@@ -620,8 +621,10 @@ export function Sidebar({
   // Handle switching hosts - disconnect and go to host picker
   const handleSwitchHost = () => {
     remoteConnection?.disconnect();
-    navigate("/login");
-    onNavigate();
+    const loginUrl = new URL("/login", window.location.href);
+    window.location.replace(
+      buildFrontendReloadUrl(loginUrl, String(Date.now())),
+    );
   };
 
   const handleCollapsedToggleClick = useCallback(
