@@ -29,7 +29,6 @@ enum class YaPairingRouteKind {
 }
 
 data class YaPairingInput(
-    val label: String,
     val username: String,
     val password: String,
     val websocketUrl: String,
@@ -107,6 +106,7 @@ class YaNativeHomeViewModel(application: Application) : AndroidViewModel(applica
 
     fun pair(input: YaPairingInput) {
         runAction {
+            val username = input.username.trim()
             val route = try {
                 when (input.routeKind) {
                     YaPairingRouteKind.DIRECT -> YaServerRoute.direct(input.websocketUrl.trim())
@@ -119,14 +119,14 @@ class YaNativeHomeViewModel(application: Application) : AndroidViewModel(applica
                 setError(YaNativeUiError.INVALID_SERVER_DETAILS)
                 return@runAction
             }
-            if (input.label.isBlank() || input.username.isBlank() || input.password.isEmpty()) {
+            if (username.isBlank() || input.password.isEmpty()) {
                 setError(YaNativeUiError.INVALID_SERVER_DETAILS)
                 return@runAction
             }
             try {
                 runtime.pairing.pair(
-                    label = input.label.trim(),
-                    username = input.username.trim(),
+                    label = username,
+                    username = username,
                     password = input.password,
                     route = route,
                 )

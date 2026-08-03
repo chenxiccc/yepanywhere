@@ -223,9 +223,9 @@ retry loop, acknowledgement protocol, or delivery guarantee. Those mechanisms
 must be justified by observed live-provider behavior before being added.
 
 The broker may store a normalized relay origin, relay username, and
-user-visible server label with the subscription. Those fields support
-attribution, diagnostics, and secondary rate limits; they are not notification
-authorization.
+username-derived server display label with the subscription. Those fields
+support attribution, diagnostics, and secondary rate limits; they are not
+notification authorization.
 
 Primary abuse controls are based on the subscription, Android installation,
 and source IP. Relay-origin/username limits may supplement them. The v1 limits

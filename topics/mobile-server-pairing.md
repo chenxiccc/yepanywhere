@@ -169,7 +169,8 @@ contract.
 Android should keep one app-private profile per paired YA server. Conceptual
 state includes:
 
-- app-generated local profile id and user-visible server label;
+- app-generated local profile id and a display label derived from the SRP
+  username;
 - opaque server-issued security-client id, continuity-key alias, and revoked
   state;
 - SRP username and current native resume credential;
@@ -295,13 +296,17 @@ destination to the dedicated full-web activity. **Open full app** remains
 available from every native state and starts the same bundled or hosted client
 channel without routing that web client's traffic through Kotlin.
 
-Native onboarding accepts an explicit label, SRP username/password, and either
-an exact direct WebSocket URL or an exact legacy-relay WebSocket URL plus relay
-target. It does not infer, rewrite, probe, or silently replace the entered
-endpoint. The password is held only in the visible field and full-login attempt,
-cleared from Compose state on submission, and never placed in saved instance
-state, a ViewModel field, DataStore, or the web bridge. A profile is persisted
-only after the authenticated server proof succeeds.
+Native onboarding accepts an SRP username/password and either an exact direct
+WebSocket URL or an exact legacy-relay WebSocket URL plus relay target. The
+username also becomes the local profile's display label; onboarding does not
+ask for a second name. Relay is initially selected for each new pairing, while
+Direct remains an explicit option. This initial selection does not change any
+saved profile's route or preferred-route history. Onboarding does not infer,
+rewrite, probe, or silently replace the entered endpoint. The password is held
+only in the visible field and full-login attempt, cleared from Compose state on
+submission, and never placed in saved instance state, a ViewModel field,
+DataStore, or the web bridge. A profile is persisted only after the
+authenticated server proof succeeds.
 
 The initial signed-in surface can select or forget local server profiles,
 display connection and reauthentication state, and read up to 50 compact

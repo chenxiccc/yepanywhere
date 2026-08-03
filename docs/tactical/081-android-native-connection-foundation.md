@@ -375,9 +375,11 @@ manifests remain HTTPS-only.
 - A normal launcher start shows native onboarding rather than automatically
   allocating `WebClientActivity`; **Open full app** remains in the top bar, and
   exact App Links retain their dedicated full-web handoff.
-- The Compose form accepts only an explicit direct route or explicit legacy
-  relay route and clears its password field before handing the one login value
-  to the Kotlin pairing coordinator.
+- The Compose form defaults new pairings to an explicit legacy relay route,
+  keeps Direct available as an explicit alternative, and uses the SRP username
+  as the saved display name rather than asking for a second label. It clears
+  its password field before handing the one login value to the Kotlin pairing
+  coordinator.
 - A lifecycle-aware ViewModel observes DataStore profiles, holds no password,
   and owns a manager lease only while `MainActivity` is started. Closing the
   physical-device Activity returned the manager to idle.

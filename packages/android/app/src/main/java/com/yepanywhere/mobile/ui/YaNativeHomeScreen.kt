@@ -143,12 +143,11 @@ private fun PairingScreen(
     onPair: (YaPairingInput) -> Unit,
     onCancel: (() -> Unit)? = null,
 ) {
-    var label by remember { mutableStateOf("") }
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var websocketUrl by remember { mutableStateOf("") }
     var relayTarget by remember { mutableStateOf("") }
-    var routeKind by remember { mutableStateOf(YaPairingRouteKind.DIRECT) }
+    var routeKind by remember { mutableStateOf(YaPairingRouteKind.RELAY) }
 
     Column(
         modifier = Modifier
@@ -166,15 +165,6 @@ private fun PairingScreen(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         ErrorCard(error, onDismissError)
-        OutlinedTextField(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 20.dp),
-            value = label,
-            onValueChange = { label = it },
-            label = { Text(stringResource(R.string.server_name)) },
-            singleLine = true,
-        )
         Text(
             modifier = Modifier.padding(top = 20.dp),
             text = stringResource(R.string.connection_route),
@@ -185,14 +175,14 @@ private fun PairingScreen(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             FilterChip(
-                selected = routeKind == YaPairingRouteKind.DIRECT,
-                onClick = { routeKind = YaPairingRouteKind.DIRECT },
-                label = { Text(stringResource(R.string.direct_connection)) },
-            )
-            FilterChip(
                 selected = routeKind == YaPairingRouteKind.RELAY,
                 onClick = { routeKind = YaPairingRouteKind.RELAY },
                 label = { Text(stringResource(R.string.relay_connection)) },
+            )
+            FilterChip(
+                selected = routeKind == YaPairingRouteKind.DIRECT,
+                onClick = { routeKind = YaPairingRouteKind.DIRECT },
+                label = { Text(stringResource(R.string.direct_connection)) },
             )
         }
         Text(
@@ -269,7 +259,6 @@ private fun PairingScreen(
                     password = ""
                     onPair(
                         YaPairingInput(
-                            label = label,
                             username = username,
                             password = enteredPassword,
                             websocketUrl = websocketUrl,
