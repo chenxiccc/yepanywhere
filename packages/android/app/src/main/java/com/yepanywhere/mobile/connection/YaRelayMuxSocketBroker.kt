@@ -102,7 +102,7 @@ internal fun relayMuxEndpoints(rawRelayUrl: String): RelayMuxEndpoints? {
     )
 }
 
-private fun relayMuxCapabilityProbe(
+internal fun relayMuxCapabilityProbe(
     httpClient: OkHttpClient,
 ): suspend (String) -> Boolean = { healthUrl ->
     withContext(Dispatchers.IO) {
@@ -112,8 +112,16 @@ private fun relayMuxCapabilityProbe(
             call.execute().use { response ->
                 if (!response.isSuccessful) return@use false
                 val source = response.body?.source() ?: return@use false
-                val body = source.readUtf8(MAX_HEALTH_RESPONSE_BYTES + 1L)
-                if (body.toByteArray().size > MAX_HEALTH_RESPONSE_BYTES) return@use false
+                val buffer = Buffer()
+                while (buffer.size <= MAX_HEALTH_RESPONSE_BYTES) {
+                    val read = source.read(
+                        buffer,
+                        minOf(HEALTH_READ_CHUNK_BYTES, MAX_HEALTH_RESPONSE_BYTES + 1L - buffer.size),
+                    )
+                    if (read == -1L) break
+                }
+                if (buffer.size > MAX_HEALTH_RESPONSE_BYTES) return@use false
+                val body = buffer.readUtf8()
                 val capabilities = JSONObject(body).optJSONArray("relayCapabilities")
                     ?: return@use false
                 (0 until capabilities.length()).any { index ->
@@ -877,6 +885,7 @@ private const val MUX_OPEN_TIMEOUT_MS = 30_000L
 private const val CIRCUIT_CLOSE_TIMEOUT_MS = 5_000L
 private const val MUX_IDLE_CLOSE_DELAY_MS = 5_000L
 private const val MAX_HEALTH_RESPONSE_BYTES = 64 * 1024
+private const val HEALTH_READ_CHUNK_BYTES = 8L * 1024
 private const val CLIENT_QUEUE_BYTES_PER_CIRCUIT = 2L * 1024 * 1024
 private const val CLIENT_QUEUE_BYTES_PER_SOCKET = 8L * 1024 * 1024
 private const val CLIENT_BUFFERED_AMOUNT_HIGH_WATER = 1024L * 1024

@@ -23,9 +23,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -132,9 +130,10 @@ class YaNativeHomeViewModel(application: Application) : AndroidViewModel(applica
     private val store = runtime.pairedServers
     private val mutableState = MutableStateFlow(YaNativeHomeState())
     private val visible = MutableStateFlow(false)
-    private val connectionRevision = MutableStateFlow(0L)
+    private val bindingRevisions = MutableStateFlow<Map<String, Long>>(emptyMap())
     private val actionRunning = AtomicBoolean(false)
     private val activeLeases = mutableMapOf<String, ActiveSource>()
+    private val sourceJobs = mutableMapOf<String, SourceBinding>()
     private val removal = YaServerRemovalCoordinator(store::forget)
 
     val state: StateFlow<YaNativeHomeState> = mutableState.asStateFlow()
@@ -163,13 +162,14 @@ class YaNativeHomeViewModel(application: Application) : AndroidViewModel(applica
             }
         }
         viewModelScope.launch {
-            combine(store.listState, visible, connectionRevision) { list, isVisible, revision ->
-                BindingKey(
-                    profileIds = if (isVisible) list.includedProfileIds.sorted() else emptyList(),
-                    revision = revision,
-                )
-            }.distinctUntilChanged().collectLatest { key ->
-                bindProfiles(key.profileIds)
+            combine(store.listState, visible, bindingRevisions) { list, isVisible, revisions ->
+                if (isVisible) {
+                    list.includedProfileIds.associateWith { revisions[it] ?: 0L }
+                } else {
+                    emptyMap()
+                }
+            }.collect { desired ->
+                reconcileSources(desired)
             }
         }
     }
@@ -226,7 +226,7 @@ class YaNativeHomeViewModel(application: Application) : AndroidViewModel(applica
             }
             try {
                 runtime.pairing.reauthenticate(profileId, password)
-                connectionRevision.value += 1
+                retryConnection(profileId)
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Throwable) {
@@ -295,19 +295,33 @@ class YaNativeHomeViewModel(application: Application) : AndroidViewModel(applica
         mutableState.value = mutableState.value.copy(removalPrompt = null)
     }
 
-    fun retryConnections() {
-        connectionRevision.value += 1
+    fun retryConnection(profileId: String) {
+        if (profileId !in mutableState.value.includedProfileIds) return
+        bindingRevisions.value = bindingRevisions.value +
+            (profileId to ((bindingRevisions.value[profileId] ?: 0L) + 1L))
     }
 
     fun clearError() {
         mutableState.value = mutableState.value.copy(error = null)
     }
 
-    private suspend fun bindProfiles(profileIds: List<String>): Unit = coroutineScope {
-        profileIds.forEach { profileId ->
-            launch { bindProfile(profileId) }
+    private fun reconcileSources(desired: Map<String, Long>) {
+        sourceJobs.entries.toList().forEach { (profileId, binding) ->
+            if (desired[profileId] != binding.revision) {
+                sourceJobs.remove(profileId)
+                binding.job.cancel()
+            }
         }
-        awaitCancellation()
+        desired.forEach { (profileId, revision) ->
+            if (sourceJobs.containsKey(profileId)) return@forEach
+            val job = viewModelScope.launch { bindProfile(profileId) }
+            sourceJobs[profileId] = SourceBinding(revision, job)
+            job.invokeOnCompletion {
+                viewModelScope.launch {
+                    if (sourceJobs[profileId]?.job === job) sourceJobs.remove(profileId)
+                }
+            }
+        }
     }
 
     private suspend fun bindProfile(profileId: String) {
@@ -341,12 +355,14 @@ class YaNativeHomeViewModel(application: Application) : AndroidViewModel(applica
         } finally {
             if (activeLeases[profileId] === active) activeLeases.remove(profileId)
             withContext(NonCancellable) { lease.releaseAndAwait() }
-            updateSource(profileId) {
-                it.copy(
-                    connection = YaConnectionState(YaConnectionPhase.IDLE),
-                    sessionsLoading = false,
-                    hostIcon = null,
-                )
+            if (activeLeases[profileId] == null) {
+                updateSource(profileId) {
+                    it.copy(
+                        connection = YaConnectionState(YaConnectionPhase.IDLE),
+                        sessionsLoading = false,
+                        hostIcon = null,
+                    )
+                }
             }
         }
     }
@@ -458,7 +474,7 @@ class YaNativeHomeViewModel(application: Application) : AndroidViewModel(applica
     }
 
     private data class ActiveSource(val lease: YaConnectionLease)
-    private data class BindingKey(val profileIds: List<String>, val revision: Long)
+    private data class SourceBinding(val revision: Long, val job: Job)
 
     companion object {
         private const val HOST_IDENTITY_CAPABILITY = "host-identity"

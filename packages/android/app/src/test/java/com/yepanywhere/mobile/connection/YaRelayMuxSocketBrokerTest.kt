@@ -3,6 +3,8 @@ package com.yepanywhere.mobile.connection
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import okhttp3.OkHttpClient
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
 import okio.ByteString
 import okio.ByteString.Companion.encodeUtf8
 import org.json.JSONObject
@@ -25,6 +27,27 @@ class YaRelayMuxSocketBrokerTest {
         assertEquals(null, relayMuxEndpoints("https://relay.example/ws"))
         assertEquals(null, relayMuxEndpoints("wss://relay.example/other"))
     }
+
+    @Test
+    fun `small health response advertises mux without requiring a fixed body size`() =
+        kotlinx.coroutines.runBlocking {
+            val server = MockWebServer()
+            server.enqueue(
+                MockResponse().setBody(
+                    """{"status":"ok","relayCapabilities":["client-mux-v1"]}""",
+                ),
+            )
+            server.start()
+            try {
+                assertTrue(
+                    relayMuxCapabilityProbe(OkHttpClient())(
+                        server.url("/health").toString(),
+                    ),
+                )
+            } finally {
+                server.shutdown()
+            }
+        }
 
     @Test
     fun `one and then two hosts share one physical mux socket`() {

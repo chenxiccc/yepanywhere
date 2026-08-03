@@ -176,8 +176,12 @@ fun YaNativeHomeScreen(
                     if (showSettings || showAddServer) {
                         TextButton(
                             onClick = {
-                                showAddServer = false
-                                showSettings = state.profiles.isNotEmpty()
+                                if (showAddServer) {
+                                    showAddServer = false
+                                    showSettings = state.profiles.isNotEmpty()
+                                } else {
+                                    showSettings = false
+                                }
                             },
                         ) {
                             Text(stringResource(R.string.back))
@@ -237,7 +241,7 @@ fun YaNativeHomeScreen(
                     onRefresh = viewModel::refreshSessions,
                     onReauthenticate = viewModel::reauthenticate,
                     onDismissError = viewModel::clearError,
-                    onRetry = viewModel::retryConnections,
+                    onRetry = viewModel::retryConnection,
                 )
             }
         }
@@ -438,7 +442,7 @@ private fun UnifiedHome(
     onRefresh: () -> Unit,
     onReauthenticate: (String, String) -> Unit,
     onDismissError: () -> Unit,
-    onRetry: () -> Unit,
+    onRetry: (String) -> Unit,
 ) {
     val visibleSources = state.servers.values.filter { source ->
         source.included && (state.filterProfileId == null || source.profile.id == state.filterProfileId)
@@ -486,7 +490,10 @@ private fun UnifiedHome(
         }
         item { ErrorCard(state.error, onDismissError) }
         items(visibleSources, key = { "status:${it.profile.id}" }) { source ->
-            SourceStatusCard(source = source, onRetry = onRetry)
+            SourceStatusCard(
+                source = source,
+                onRetry = { onRetry(source.profile.id) },
+            )
         }
         visibleSources
             .filter { it.connection.phase == YaConnectionPhase.REAUTHENTICATION_REQUIRED }

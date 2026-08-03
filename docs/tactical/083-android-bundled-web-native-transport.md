@@ -139,6 +139,14 @@ choice to consumers.
 This prerequisite is tracked in
 [tactical 084](084-android-native-multi-host-runtime.md).
 
+Completed 2026-08-03. The attached Pixel proved two disposable YA profiles on
+one physical local-relay mux, isolated circuit removal/failure, persistent
+inclusion policy, exact production-relay fallback, and cleanup without
+disturbing its three existing profiles. Bulk traffic was deliberately not
+claimed by that prerequisite: the representative response and upload
+benchmarks remain gates for steps 5–7, when this transport supplies an actual
+bulk consumer.
+
 ### 2 — bind the WebView to a native source handle
 
 Pass the selected paired profile into `WebClientActivity`, mint a

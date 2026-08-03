@@ -4,7 +4,8 @@ Topic: android-native-multi-host
 Topic: relay-client-mux
 Topic: mobile-server-pairing
 
-Status: Approved 2026-08-03; implementation in progress.
+Status: Implemented and Pixel-validated 2026-08-03. Production relay rollout
+remains a deployment follow-up.
 
 ## Outcome
 
@@ -92,11 +93,13 @@ peers. A physical loss notifies all affected logical connections; each manager
 retries independently through one coordinated pool recovery or the established
 legacy fallback.
 
-Android initially carries normal API, session, WebView, media, and 64 KiB
-upload frames through the logical circuit. The Pixel exit gate runs a large
-upload beside another circuit's activity stream and records queue high-water,
-latency, failure isolation, and memory. A dedicated bulk socket is a measured
-optimization, not baseline architecture.
+Android initially carries normal API and session traffic through the logical
+circuit. The broker enforces bounded queues and fair writes now. WebView,
+media, and 64 KiB upload traffic will use that same circuit when the native
+WebView transport lands. Its Pixel exit gate owns the representative large
+upload, queue high-water, latency, and memory measurements; see tactical 083
+steps 5–7. A dedicated bulk socket remains a measured optimization, not
+baseline architecture.
 
 Future authenticated direct discovery remains below the same logical source.
 When a direct route proves resume continuity, that profile may close its mux
@@ -194,6 +197,43 @@ existing profiles for real relay validation. Clear app data only for explicit
 clean-install/restart cases, and restore/re-pair only with maintainer-provided
 credentials.
 
+## Validation record
+
+The primary implementation slices landed as independently reviewable commits:
+
+| Slice | Commit |
+| --- | --- |
+| relay mux broker and socket abstraction | `12469117` |
+| saved inclusion policy | `cb209ea7` |
+| concurrent sources, unified view, and settings | `20e0190d` |
+| unregister-before-forget removal | `9e11f748` |
+
+The 2026-08-03 attached-Pixel pass preserved the phone's three existing
+profiles and added two disposable local profiles. The local profiles used two
+standalone YA data directories behind one local relay. Relay status observed
+one physical `/mux`, two live circuits, and two paired servers. Excluding only
+`mux-beta` reduced live circuits to one while `mux-alpha` remained connected;
+including it again restored two circuits on the same physical socket. Stopping
+one standalone server left the other source and the phone's three existing
+sources usable. The Pixel also proved All-server projection, source filters,
+server emoji, persisted inclusion across process restart, capable unregister,
+and local cleanup. Both disposable profiles were removed afterward.
+
+Validation found and fixed two defects before completion: the health probe had
+treated an ordinary short response as premature EOF, and retrying one source
+had restarted every source binding. A bounded small-response probe test now
+covers the former, while runtime binding revisions and retry actions are
+profile-scoped. Settings Back navigation was also corrected during the device
+pass.
+
+The public relay inspected during this pass did not yet advertise
+`client-mux-v1`, so the three existing production profiles honestly exercised
+the exact legacy `/ws` fallback. Deploying a mux-capable relay is operational
+follow-up, not an Android compatibility blocker. The 100 MiB upload and
+Compose/WebView contention benchmark remains explicitly assigned to tactical
+083 because this native summary slice has no WebView proxy or native upload
+consumer yet.
+
 ## Commit and review checkpoints
 
 Land the contract first, then independently reviewable commits for inclusion
@@ -201,7 +241,7 @@ storage, mux broker, concurrent state, unified UI/settings, and removal. Every
 slice runs warning-free Android unit/lint/build checks appropriate to its
 surface.
 
-The first human checkpoint is a Pixel showing three included profiles in the
-unified view over one observed `/mux` socket, with one profile failure isolated
-and inclusion changes surviving restart. Removal and WebView work follow only
-after that source/runtime boundary is trustworthy.
+The first human checkpoint was reached with the Pixel's three existing
+profiles plus two disposable mux-capable local profiles: one physical mux,
+isolated profile failure, persisted inclusion, and successful removal were all
+observed. WebView work may now proceed from this source/runtime boundary.
