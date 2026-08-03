@@ -2,7 +2,7 @@
 
 > Glossary tooltips enrich every Markdown-render-eligible view with subtle,
 > copyable definition hints from the file-nearest current `GLOSSARY.md`, using
-> a persistent compiled phrase automaton to keep matching linear in rendered
+> an in-memory compiled phrase automaton to keep matching linear in rendered
 > text.
 
 Topic: glossary-tooltips
@@ -195,21 +195,36 @@ Exceeding a limit disables glossary annotation for that glossary version with
 one bounded diagnostic; ordinary Markdown rendering continues unchanged. It
 must never fall back to a per-character regex or phrase loop.
 
-## Persistent cache
+## In-memory resolution and compiled cache
 
-The server owns the canonical file-nearest resolver and compiled glossary
-cache. Compiled artifacts are content-addressed and stored below YA's app data
-directory, never beside the project or in its Git metadata. The cache format is
-versioned independently from glossary contents so parser, normalization, or
-automaton-layout changes invalidate old artifacts safely.
+The server owns the canonical file-nearest resolver and holds parsed glossaries
+and compiled automata in process memory. V1 has no persistent cache format,
+database table, app-data cache file, project-local cache, or restart-recovery
+obligation. Glossaries are expected to remain below 1,000 entries, so parsing
+and compilation after a server start are bounded ordinary work.
 
-A resolution entry records the canonical glossary path and a cheap file
-identity; a content digest selects the compiled artifact. An unchanged digest
-reuses the same automaton across files, sessions, source-control views, and
-server restarts. A changed, replaced, removed, or newly nearer glossary
-invalidates the path resolution and selects or builds the appropriate content
-version. Successful and failed bounded compilations are both cached so a bad
-glossary cannot cause repeated work on every render.
+Nearest-file discovery reuses `ProjectPathIndex.findExisting` from
+`packages/server/src/projects/projectPathIndex.ts`. Its lazy directory listings
+and directory-mtime validation already maintain current presence and absence
+for project-relative paths; the glossary resolver should submit the candidate
+ancestor paths and select the nearest returned `GLOSSARY.md`, not add another
+project-tree watcher or directory cache. See
+[project-path-links](project-path-links.md) for that index's contract.
+
+Directory mtime identifies which glossary path exists, but editing an existing
+glossary need not change its parent directory. The compiled cache therefore
+maps the selected canonical glossary path to its own file identity, parsed
+rows, and automaton. An unchanged file identity reuses that structure across
+files, sessions, and Source Control views for the life of the server process.
+A changed file rebuilds it; a changed directory listing re-runs nearest-file
+selection. Successful and failed bounded compilations are cached by the same
+identity so a bad glossary cannot cause repeated work on every render.
+
+All glossary-specific cache state may disappear on server restart. If later
+measurement shows cold parsing or compilation to be material, a persistent
+cache below YA app data may be proposed then; it is neither required nor
+preferred for v1 and must never write inside the selected project or its Git
+metadata.
 
 Client-only Markdown renderers consume the same serializable compiled artifact
 rather than implementing another parser or matcher. The implementation must
@@ -225,9 +240,10 @@ Implementation remains deferred, but the intended sequence is:
 1. **Grammar and phrase-automaton compiler.** Add a browser-free shared
    glossary parser, finite surface-form expansion, serialized trie format,
    matcher, and adversarial budget tests.
-2. **Nearest-glossary resolver and persistent cache.** Add server ownership of
-   contained ancestor lookup, current-working-tree Source Control semantics,
-   app-data persistence, invalidation, and bounded diagnostics.
+2. **Nearest-glossary resolver and in-memory cache.** Reuse
+   `ProjectPathIndex.findExisting` for contained ancestor lookup, then add
+   file-identity invalidation, current-working-tree Source Control semantics,
+   process-memory bounds, and bounded diagnostics.
 3. **Compatibility review.** Inspect the required stable-server corpus and
    approve an optional permanent capability plus exact absent-capability
    fallback before adding the client delivery contract.
@@ -242,8 +258,8 @@ Implementation remains deferred, but the intended sequence is:
    Markdown, Edit/diff, Source Control, standalone local documents, and bounded
    public-share contexts; raw/source modes remain untouched.
 7. **Performance and visual acceptance.** Benchmark cold compilation, warm
-   cache load, and linear scans; then capture and inspect desktop and phone
-   renders with ordinary, hovered, focused, and tapped terms.
+   process-memory reuse, and linear scans; then capture and inspect desktop and
+   phone renders with ordinary, hovered, focused, and tapped terms.
 
 The shared compiler, resolver, and renderer annotation are the owning
 invariants. Individual viewers must not grow bespoke glossary regexes, ancestor
@@ -260,15 +276,16 @@ Grammar and matcher tests cover:
 - case, Unicode, whitespace, punctuation, phrase-edge boundaries, and matches
   spanning ordinary inline formatting;
 - overlap precedence and stable source offsets after normalization;
-- state/byte/row limits, corrupted persistent entries, failed-compilation
-  caching, and cache-format invalidation; and
+- state/byte/row limits, file-identity invalidation, failed-compilation
+  caching, and process-memory bounds; and
 - a long nonmatching document proving scan work is independent of glossary row
   count and maximum phrase length after compilation.
 
 Resolution tests cover same-directory, nested shadowing, root fallback, no
 merge, self-exclusion, containment and symlink escape, current-working-tree
 Source Control behavior, deletion/rename, public-share scoping, content-change
-invalidation, and warm reuse after server restart.
+invalidation, warm in-process reuse, cold rebuild after server restart, and no
+glossary-cache writes to the project or YA app data.
 
 Renderer and interaction tests cover every Markdown-eligible surface, the
 source/raw exclusion, existing links/code/KaTeX/tooltips, original-text copy,
