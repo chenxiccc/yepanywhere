@@ -1947,7 +1947,7 @@
   "providersCodexUpdateManualInstallHint": "This Codex install was not installed with npm, so YA cannot update it automatically. Update it with Codex Desktop or your package manager, then restart Yep Anywhere.",
   "providersCodexUpdateInstallOutput": "Install output",
   "providersCodexReloadSafeTitle": "Keep Codex sessions through server reloads",
-  "providersCodexReloadSafeDescription": "New eligible local Linux Codex sessions keep their provider runtime while Yep Anywhere reloads, then reconnect automatically. Ordinary shutdown still ends them.",
+  "providersCodexReloadSafeDescription": "Eligible local Linux Codex processes started after opt-in—including resumed sessions—keep running while Yep Anywhere reloads, then reconnect automatically. Already-running processes are not converted; ordinary shutdown ends them.",
   "providersCodexReloadSafeUnavailable": "Unavailable in this server launch mode. Start Yep Anywhere with the Linux development wrapper to enable it.",
   "codexUpdateInstalledSummary": "Codex CLI {version} is now installed.",
   "codexUpdateReadySummary": "Codex {current} → {latest} is ready to install.",

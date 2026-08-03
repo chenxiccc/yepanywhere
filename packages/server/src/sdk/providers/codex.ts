@@ -1851,10 +1851,10 @@ export class CodexProvider implements AgentProvider {
     }
 
     if (options.resumeSessionId) {
-      return (
-        (await claimReloadSafeCodexRuntime(options.resumeSessionId)) ??
-        undefined
+      const claimed = await claimReloadSafeCodexRuntime(
+        options.resumeSessionId,
       );
+      if (claimed) return claimed;
     }
     if (!this.getReloadSafeSessions()) return undefined;
 
@@ -2313,7 +2313,7 @@ export class CodexProvider implements AgentProvider {
         await appServer.close();
       } finally {
         const hostOwnsAgentctlBridge = Boolean(
-          reloadSafeRuntime && !options.resumeSessionId,
+          reloadSafeRuntime && !reloadSafeRuntime.sessionId,
         );
         if (!hostOwnsAgentctlBridge) agentctlSessionEnvBridge.cleanup();
       }

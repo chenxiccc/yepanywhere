@@ -7,9 +7,10 @@
 
 Topic: reload-safe-provider-runtimes
 
-Status: **implemented as a default-off Linux Codex feature.** New eligible
-sessions launched under the stable development wrapper use the lifecycle host;
-ordinary and unsupported sessions retain the existing ownership contract.
+Status: **implemented as a default-off Linux Codex feature.** Eligible provider
+processes launched under the stable development wrapper—both new threads and
+resumed durable threads—use the lifecycle host; already-running and unsupported
+processes retain their existing ownership contract.
 The extended hardening matrix below remains useful coverage, but the initial
 contract has been proved with real active-turn reloads through both the API and
 wrapper `SIGHUP`, a second turn after reattach, terminal wrapper cleanup, and
@@ -46,7 +47,8 @@ The first implementation is deliberately Codex-specific:
    reload it uses native `thread/resume` to recover the active snapshot and
    replay pending provider requests.
 3. A server-persisted **Providers → Codex** setting controls this launch path,
-   applies only to new sessions, and defaults off.
+   applies whenever YA starts an eligible new or resumed provider process, and
+   defaults off.
 4. The wrapper treats API restart and `SIGHUP` as Hono-reload intent, while
    `SIGINT`, `SIGTERM`, wrapper/host loss, and exhausted recovery are terminal
    paths with bounded, verified reaping.
@@ -431,18 +433,20 @@ Codex**, default off. Current copy:
 
 > **Keep Codex sessions through server reloads**
 >
-> New eligible local Linux Codex sessions keep their provider runtime while
-> Yep Anywhere reloads, then reconnect automatically. Ordinary shutdown still
-> ends them.
+> Eligible local Linux Codex processes started after opt-in—including resumed
+> sessions—keep running while Yep Anywhere reloads, then reconnect
+> automatically. Already-running processes are not converted; ordinary
+> shutdown ends them.
 
 "Persistent sessions" is not the UI term: idle Codex sessions are already
 durably resumable from provider persistence. This option changes ownership of
 the live app-server so an active turn can cross Hono replacement.
 
-The setting is read at session launch. Enabling it does not adopt a live stdio
-session; disabling it does not kill an already-running external runtime. Such a
-runtime keeps its original contract until verified idle or terminal teardown,
-while subsequent launches use the newly saved value.
+The setting is read whenever YA starts a Codex provider process, including a
+durable-session resume. Enabling it does not adopt a live stdio process;
+disabling it does not kill an already-running external runtime. Such a runtime
+keeps its original contract until verified idle or terminal teardown, while
+subsequent new-thread and resume launches use the newly saved value.
 
 The settings row is capability-gated for hosted clients. A capable server
 reports Linux/host availability separately from the saved preference. When an
@@ -511,18 +515,19 @@ and retain the server's default-off behavior.
 ## Codex-First Verification Matrix
 
 Continuity must be proved rather than inferred from a surviving PID. Initial
-checks cover a new eligible runtime; API-triggered active-turn reload with the
-same app-server, YA session, thread, and turn identities; active snapshot
-completion; a second post-reload turn; no duplicate transcript rows; an active
-turn crossing wrapper `SIGHUP`; terminal idle teardown; and deterministic
-attach-timeout and owner-loss teardown. The remaining cases are an extended
-hardening matrix:
+checks cover new-thread and durable-resume launches through the host;
+API-triggered active-turn reload with the same app-server, YA session, thread,
+and turn identities; active snapshot completion; a second post-reload turn; no
+duplicate transcript rows; an active turn crossing wrapper `SIGHUP`; terminal
+idle teardown; and deterministic attach-timeout and owner-loss teardown. The
+remaining cases are an extended hardening matrix:
 
-1. With the setting off, prove new Codex sessions retain the current stdio
-   ownership and restart behavior.
-2. Enable the setting, start a fresh Linux dev wrapper, and launch a new local
-   Codex session through a private Unix-socket app-server. Prove enabling the
-   setting cannot adopt an already-running stdio session.
+1. With the setting off, prove new and resumed Codex processes retain the
+   current stdio ownership and restart behavior.
+2. Enable the setting, start a fresh Linux dev wrapper, then launch a new local
+   Codex thread and resume an existing one through private Unix-socket
+   app-servers. Prove enabling the setting cannot adopt an already-running
+   stdio process, but its next resume uses the host.
 3. Begin a turn that remains active long enough to reload, with visible text or
    tool progress before and after the boundary. Record wrapper, host, Hono, and
    app-server PIDs; canonical YA session id; Codex thread and turn ids; launch
@@ -544,7 +549,8 @@ hardening matrix:
    terminal runtime status.
 9. Prove direct/deferred volatile queue state blocks seamless reload. Toggle the
    setting off while an external runtime exists; prove that runtime drains under
-   its original contract and the next session launches through stdio.
+   its original contract and the next new or resumed process launches through
+   stdio.
 10. Let the process reach verified idle, release it, and prove the registry
     entry, socket, timers, and owned process tree disappear.
 11. Exercise terminal wrapper `SIGINT` and `SIGTERM` against idle, active,
@@ -583,8 +589,9 @@ control authority.
 ### Adopt a stdio app-server when Restart is clicked — reject
 
 The old Hono process owns the anonymous pipes and JSON-RPC client state. The
-default-off setting must choose socket ownership when the session launches;
-changing it later affects only future sessions.
+default-off setting must choose socket ownership when a provider process
+launches; changing it later affects subsequent new-thread or resume launches,
+not a process already running.
 
 ### Generic YA event-proxy runtime in Codex v1 — defer
 
@@ -657,10 +664,11 @@ protocol; systemd is one explicitly Linux-gated way to host it.
 development backend reload, and the existing safe-restart delay is not always
 acceptable.
 
-**Implemented scope:** the server-persisted, default-off provider
-setting; Codex-specific Linux lifecycle host; direct Unix-socket attach/rejoin;
-explicit wrapper reload/shutdown state machine; bounded owner-loss and terminal
-reaping; and the fake plus real smokes above.
+**Implemented scope:** the server-persisted, default-off provider setting;
+Codex-specific Linux lifecycle host for new-thread and durable-resume launches;
+direct Unix-socket attach/rejoin; explicit wrapper reload/shutdown state
+machine; bounded owner-loss and terminal reaping; and the fake plus real smokes
+above.
 
 **Not approved by this proposal alone:** migrating every provider, changing
 production/full-wrapper restart semantics, enabling a mechanism outside Linux,

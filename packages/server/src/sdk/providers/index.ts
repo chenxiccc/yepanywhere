@@ -96,7 +96,7 @@ export interface ProviderRuntimeConfig {
   getClaudeAdditionalModels?: () =>
     | readonly ClaudeAdditionalModelSelection[]
     | undefined;
-  /** Whether new eligible Codex sessions use the reload-safe lifecycle host. */
+  /** Whether eligible new and resumed Codex processes use the lifecycle host. */
   getCodexReloadSafeSessions?: () => boolean;
   /** Whether legacy ClaudeOllama has configured or persisted usage. */
   isClaudeOllamaVisible?: () => boolean;
