@@ -690,6 +690,16 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
       }
     }
 
+    if ("codexReloadSafeSessions" in body) {
+      if (typeof body.codexReloadSafeSessions !== "boolean") {
+        return c.json(
+          { error: "codexReloadSafeSessions must be a boolean" },
+          400,
+        );
+      }
+      updates.codexReloadSafeSessions = body.codexReloadSafeSessions;
+    }
+
     if (Object.keys(updates).length === 0) {
       return c.json({ error: "At least one valid setting is required" }, 400);
     }

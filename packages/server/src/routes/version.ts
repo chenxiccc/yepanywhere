@@ -30,6 +30,8 @@ import {
   PROJECT_QUEUE_CAPABILITY,
   PROJECT_QUEUE_NEW_SESSION_SHORTCUT_SETTING_CAPABILITY,
   PROVIDER_SUBSCRIPTION_USAGE_CAPABILITY,
+  RELOAD_SAFE_CODEX_RUNTIME_CAPABILITY,
+  RELOAD_SAFE_CODEX_RUNTIME_SETTINGS_CAPABILITY,
   SESSION_SANDBOXING_CAPABILITY,
   SESSION_SANDBOXING_STATUS_CAPABILITY,
   SESSION_FORK_TURN_INTENTS_CAPABILITY,
@@ -280,6 +282,7 @@ const BASE_CAPABILITIES: string[] = [
   PROJECT_QUEUE_CAPABILITY,
   PROJECT_QUEUE_NEW_SESSION_SHORTCUT_SETTING_CAPABILITY,
   PROVIDER_SUBSCRIPTION_USAGE_CAPABILITY,
+  RELOAD_SAFE_CODEX_RUNTIME_SETTINGS_CAPABILITY,
   SESSION_SANDBOXING_STATUS_CAPABILITY,
   SESSION_FORK_TURN_INTENTS_CAPABILITY,
 ];
@@ -324,6 +327,8 @@ export interface VersionRouteOptions {
   getClientDefaults?: () => ClientDefaults | undefined;
   /** Whether this process is the server bundled with the desktop shell. */
   desktopRuntime?: boolean;
+  /** Whether the Linux Codex lifecycle host registered successfully. */
+  reloadSafeCodexRuntimeAvailable?: boolean;
   /** Resolved local sandbox preflight used while constructing capabilities. */
   sessionSandboxAvailability?: SessionSandboxAvailability;
   /** Test/service override for the cached host preflight. */
@@ -378,6 +383,9 @@ export function getServerCapabilities(options?: VersionRouteOptions): string[] {
   }
   if (options?.voiceInputEnabled !== false) {
     capabilities.push(VOICE_INPUT_CAPABILITY);
+  }
+  if (options?.reloadSafeCodexRuntimeAvailable) {
+    capabilities.push(RELOAD_SAFE_CODEX_RUNTIME_CAPABILITY);
   }
   const deviceBridgeState = options?.getDeviceBridgeState?.() ?? "unavailable";
   const enabled = options?.isDeviceBridgeEnabled?.() ?? false;

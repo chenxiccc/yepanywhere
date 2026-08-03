@@ -86,6 +86,31 @@ describe("private YEP_STT_ env harvest", () => {
       SECTION_KEY: "nested",
     });
   });
+
+  it("strips private lifecycle-control variables from child inheritance", () => {
+    const env: NodeJS.ProcessEnv = {
+      YEP_CODEX_RUNTIME_SOCKET: "/tmp/private-host.sock",
+      YEP_CODEX_RUNTIME_TOKEN: "runtime-secret",
+      YEP_DEV_WRAPPER_PORT: "34567",
+      YEP_DEV_WRAPPER_TOKEN: "wrapper-secret",
+      YEP_SERVER_GENERATION: "generation-1",
+    };
+    harvestYaModuleEnv(env);
+
+    expect(env.YEP_CODEX_RUNTIME_SOCKET).toBeUndefined();
+    expect(env.YEP_CODEX_RUNTIME_TOKEN).toBeUndefined();
+    expect(env.YEP_DEV_WRAPPER_PORT).toBeUndefined();
+    expect(env.YEP_DEV_WRAPPER_TOKEN).toBeUndefined();
+    expect(env.YEP_SERVER_GENERATION).toBe("generation-1");
+    expect(getModuleEnv("codex-runtime")).toMatchObject({
+      SOCKET: "/tmp/private-host.sock",
+      TOKEN: "runtime-secret",
+    });
+    expect(getModuleEnv("dev-wrapper")).toMatchObject({
+      PORT: "34567",
+      TOKEN: "wrapper-secret",
+    });
+  });
 });
 
 describe("initSpeechBackendRegistry cloud auto-enable", () => {

@@ -12,6 +12,11 @@ contract and curates the *meaningful* operator-facing vars. Deep tuning knobs
 (session-index timings, codex rescan intervals, cache TTLs) live only in
 `config.ts`.
 
+The development wrapper's `YEP_DEV_WRAPPER_*` and Codex lifecycle host's
+`YEP_CODEX_RUNTIME_*` variables are private control-plane inputs, not operator
+settings. Startup harvests them for their owning modules and removes them from
+ambient child inheritance.
+
 Related topic: [subprocess environment boundaries](subprocess-environment.md)
 defines child propagation, shell-startup, and hermetic-test rules.
 
@@ -60,7 +65,8 @@ set legacy value supplies it, and every listed legacy key is deleted.
   for a YA subsystem, then **deleted from `process.env` on load** so it can
   never leak into a spawned child CLI (`harvestYaModuleEnv` in
   `packages/server/src/yaModuleEnv.ts`; read via `getModuleEnv(module)`).
-  Private modules use explicitly registered prefixes such as `YEP_STT_`;
+  Private modules use explicitly registered prefixes such as `YEP_STT_`,
+  `YEP_CODEX_RUNTIME_`, and `YEP_DEV_WRAPPER_`;
   generic `YEP_*` names cannot be parsed as module-scoped because ordinary
   config toggles use the same separator. This protects credentials whose bare
   names another vendor's CLI would honor — see the billing footgun in

@@ -1738,6 +1738,8 @@ export interface ServerSettings {
   lifecycleWebhookDryRun?: boolean;
   /** How the server handles Codex CLI updates */
   codexUpdatePolicy?: "auto" | "notify" | "off";
+  /** Keep eligible local Linux Codex runtimes across YA server reloads. */
+  codexReloadSafeSessions?: boolean;
   /** Max seconds between consecutive queued turns to join at delivery. */
   deferredJoinWindowSeconds?: number;
   /** Whether delivered queued turns receive compose-time staleness anchors. */

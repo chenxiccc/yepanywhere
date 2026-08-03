@@ -61,6 +61,37 @@ describe("Process", () => {
       expect(result.error).toContain("terminated");
     });
 
+    it("rejects new input once reload-safe detach begins", async () => {
+      let releaseAbort: (() => void) | undefined;
+      const abortPending = new Promise<void>((resolve) => {
+        releaseAbort = resolve;
+      });
+      const process = new Process(
+        createMockIterator([
+          { type: "system", subtype: "init", session_id: "sess-reload" },
+        ]),
+        {
+          projectPath: "/test",
+          projectId: "proj-1" as UrlProjectId,
+          sessionId: "sess-reload",
+          provider: "codex",
+          idleTimeoutMs: 100,
+          abortFn: () => abortPending,
+        },
+      );
+      await vi.waitFor(() => expect(process.state.type).toBe("idle"));
+
+      const detach = process.detachForServerReload();
+      const result = process.queueMessage({ text: "must not be lost" });
+
+      expect(result).toEqual({
+        success: false,
+        error: "Process is detaching for server reload",
+      });
+      releaseAbort?.();
+      await detach;
+    });
+
     it("emits terminated event when process dies", async () => {
       const error = new Error("ProcessTransport is not ready for writing");
       async function* failingIterator(): AsyncIterator<SDKMessage> {

@@ -775,6 +775,8 @@ export class Process {
 
   /** Set synchronously when transport/spawn fails to prevent race with queueMessage */
   private transportFailed = false;
+  /** Freeze new input after a reload-safe detach decision becomes final. */
+  private detachingForServerReload = false;
 
   /**
    * Two-bucket message buffer for SSE replay to late-joining clients.
@@ -2783,6 +2785,13 @@ export class Process {
     position?: number;
     error?: string;
   } {
+    if (this.detachingForServerReload) {
+      return {
+        success: false,
+        error: "Process is detaching for server reload",
+      };
+    }
+
     // Check if process is terminated or transport failed
     if (this._state.type === "terminated") {
       return {
@@ -3880,6 +3889,37 @@ export class Process {
       verifiedStopped: true,
       verification,
     };
+  }
+
+  /**
+   * End this server generation's provider client without requiring the
+   * provider runtime itself to exit. Used only for reload-safe runtimes whose
+   * next owner is the replacement server generation.
+   */
+  async detachForServerReload(): Promise<void> {
+    // Set this before the first await. The shutdown caller checks volatile
+    // queue blockers immediately before entering here, so no client turn can
+    // slip into YA-owned memory after that decision.
+    this.detachingForServerReload = true;
+    this.clearIdleTimer();
+    this.clearPromptCacheKeepaliveTimer();
+    this.stopBucketSwapTimer();
+    this.clearRetryingProviderRuntimeStatus();
+    const deadline = Date.now() + PROCESS_ABORT_TIMEOUT_MS;
+    await waitUntilAbortDeadline(
+      this.requestProviderAbort(),
+      deadline,
+      "Timed out detaching provider client for server reload",
+    );
+    await waitUntilAbortDeadline(
+      this._exitPromise,
+      deadline,
+      "Timed out waiting for provider iterator to detach",
+    );
+    if (this._state.type !== "terminated") {
+      this.emit({ type: "complete" });
+    }
+    this.listeners.clear();
   }
 
   private async processMessages(): Promise<void> {

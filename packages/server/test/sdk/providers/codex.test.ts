@@ -314,6 +314,39 @@ describe("CodexProvider", () => {
 });
 
 describe("CodexProvider app-server lifecycle", () => {
+  it("wakes the idle session iterator when abort closes its input queue", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "codex-provider-abort-idle-"));
+    const logPath = join(tempDir, "fake-codex-requests.jsonl");
+    const codexPath = createFakeCodexCommand(
+      tempDir,
+      "fake-codex-abort-idle",
+      buildFakeCodexPermissionAppServer(logPath),
+    );
+    const testProvider = new CodexProvider({ codexPath });
+    const session = await testProvider.startSession({
+      cwd: tempDir,
+      initialMessage: { text: "finish one turn" },
+    });
+
+    try {
+      await consumeCodexTurn(session.iterator);
+      const pending = session.iterator.next();
+
+      await session.abort();
+
+      await expect(pending).resolves.toMatchObject({
+        done: false,
+        value: { type: "result" },
+      });
+      await expect(session.iterator.next()).resolves.toMatchObject({
+        done: true,
+      });
+    } finally {
+      await session.abort();
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("switches complete turn policies without restarting app-server", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "codex-provider-policy-"));
     const logPath = join(tempDir, "fake-codex-requests.jsonl");

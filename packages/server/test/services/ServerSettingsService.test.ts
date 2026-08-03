@@ -32,6 +32,34 @@ describe("ServerSettingsService", () => {
     expect(service.getSetting("workstreamsEnabled")).toBe(false);
   });
 
+  it("keeps reload-safe Codex sessions off by default and persists opt-in", async () => {
+    const service = new ServerSettingsService({ dataDir: testDir });
+    await service.initialize();
+
+    expect(service.getSetting("codexReloadSafeSessions")).toBe(false);
+    await service.updateSettings({ codexReloadSafeSessions: true });
+
+    const reloaded = new ServerSettingsService({ dataDir: testDir });
+    await reloaded.initialize();
+    expect(reloaded.getSetting("codexReloadSafeSessions")).toBe(true);
+  });
+
+  it("normalizes malformed reload-safe Codex values to off", async () => {
+    await fs.writeFile(
+      path.join(testDir, "server-settings.json"),
+      JSON.stringify({
+        version: 2,
+        settings: { codexReloadSafeSessions: "yes" },
+      }),
+      "utf-8",
+    );
+    const service = new ServerSettingsService({ dataDir: testDir });
+
+    await service.initialize();
+
+    expect(service.getSetting("codexReloadSafeSessions")).toBe(false);
+  });
+
   it("keeps source-review submissions off with an eight-turn response window", async () => {
     const service = new ServerSettingsService({ dataDir: testDir });
     await service.initialize();

@@ -28,6 +28,7 @@ describe("Settings Routes", () => {
       hostProcessObservabilityEnabled: true,
       hostAwakeMode: "off",
       hostAwakeBatteryFloorPercent: 10,
+      codexReloadSafeSessions: false,
     };
 
     mockServerSettingsService = {
@@ -90,6 +91,41 @@ describe("Settings Routes", () => {
   });
 
   describe("PUT /", () => {
+    it("persists the reload-safe Codex opt-in", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ codexReloadSafeSessions: true }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
+        codexReloadSafeSessions: true,
+      });
+    });
+
+    it("rejects a non-boolean reload-safe Codex setting", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ codexReloadSafeSessions: "yes" }),
+      });
+
+      expect(response.status).toBe(400);
+      expect((await response.json()).error).toContain(
+        "codexReloadSafeSessions",
+      );
+      expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
+    });
+
     it("persists a host process observability opt-out", async () => {
       const routes = createSettingsRoutes({
         serverSettingsService: mockServerSettingsService,

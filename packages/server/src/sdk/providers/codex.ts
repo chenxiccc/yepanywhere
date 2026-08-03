@@ -6,7 +6,9 @@
  */
 
 import { type ChildProcess, execFile, spawn } from "node:child_process";
+import { createConnection } from "node:net";
 import { homedir } from "node:os";
+import { dirname } from "node:path";
 import {
   CODEX_TOOL_CORRELATION_FIELD,
   canonicalInvocationName,
@@ -18,6 +20,7 @@ import {
   type ProviderSubscriptionUsage,
   type SlashCommand,
 } from "@yep-anywhere/shared";
+import { WebSocket } from "ws";
 import {
   isCodexCorrelationDebugEnabled,
   logCodexCorrelationDebug,
@@ -87,6 +90,16 @@ import type {
 } from "./codex-protocol/index.js";
 import type { SandboxPolicy as CodexSandboxPolicy } from "./codex-protocol/generated/v2/SandboxPolicy.js";
 import { createAgentctlSessionEnvBridge } from "./agentctl-session-env.js";
+import {
+  bindReloadSafeCodexRuntime,
+  claimReloadSafeCodexRuntime,
+  isCodexRuntimeHostAvailable,
+  launchReloadSafeCodexRuntime,
+  releaseReloadSafeCodexRuntime,
+  shouldReleaseCodexRuntimeForReload,
+  terminateReloadSafeCodexRuntime,
+  type ReloadSafeCodexRuntimeInfo,
+} from "./codex-runtime-host.js";
 import {
   type AppServerModel,
   getFallbackCodexModelsForCliVersion,
@@ -585,15 +598,19 @@ type AppServerRequestHandler = (
 
 class CodexAppServerClient {
   private process: ChildProcess | null = null;
+  private websocket: WebSocket | null = null;
   private stdoutBuffer = "";
   private closePromise: Promise<void> | null = null;
 
   /** OS PID of the spawned app-server child process */
   get pid(): number | undefined {
-    return this.process?.pid;
+    return this.externalRuntime?.pid ?? this.process?.pid;
   }
 
   isAlive(): boolean {
+    if (this.externalRuntime) {
+      return isProcessTargetRunning(-this.externalRuntime.processGroupId);
+    }
     const child = this.process;
     if (!child?.pid) return false;
     const target = process.platform === "win32" ? child.pid : -child.pid;
@@ -621,6 +638,7 @@ class CodexAppServerClient {
       notification: JsonRpcNotification,
     ) => boolean,
     private readonly sessionSandbox?: SessionSandboxRuntime,
+    private externalRuntime?: ReloadSafeCodexRuntimeInfo,
   ) {}
 
   get isClosed(): boolean {
@@ -639,8 +657,13 @@ class CodexAppServerClient {
   }
 
   async connect(): Promise<void> {
-    if (this.process) {
+    if (this.process || this.websocket) {
       throw new Error("Codex app-server already connected");
+    }
+
+    if (this.externalRuntime) {
+      await this.connectExternalWebSocket(this.externalRuntime.socketPath);
+      return;
     }
 
     const commandArgs = ["app-server", "--listen", "stdio://"];
@@ -711,6 +734,52 @@ class CodexAppServerClient {
       child.once("spawn", onSpawn);
       child.once("error", onError);
     });
+  }
+
+  private async connectExternalWebSocket(socketPath: string): Promise<void> {
+    const connectUnixSocket = ((_options: unknown, callback?: () => void) =>
+      createConnection(socketPath, callback)) as typeof createConnection;
+    const websocket = new WebSocket("ws://localhost/rpc", {
+      // Codex's Unix-socket listener deliberately rejects extension headers.
+      perMessageDeflate: false,
+      createConnection: connectUnixSocket,
+    });
+    this.websocket = websocket;
+    websocket.on("message", (data) => {
+      this.handleJsonRpcLine(data.toString());
+    });
+    websocket.on("error", (error) => {
+      this.handleProcessClose(error);
+    });
+    websocket.on("close", (code, reason) => {
+      this.handleProcessClose(
+        new Error(
+          `Codex app-server WebSocket closed (code=${code}, reason=${reason.toString() || "none"})`,
+        ),
+      );
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      const onOpen = () => {
+        websocket.off("error", onError);
+        resolve();
+      };
+      const onError = (error: Error) => {
+        websocket.off("open", onOpen);
+        reject(error);
+      };
+      websocket.once("open", onOpen);
+      websocket.once("error", onError);
+    });
+  }
+
+  async bindRuntimeSession(sessionId: string): Promise<void> {
+    const runtime = this.externalRuntime;
+    if (!runtime || runtime.sessionId === sessionId) return;
+    this.externalRuntime = await bindReloadSafeCodexRuntime(
+      runtime.runtimeId,
+      sessionId,
+    );
   }
 
   private handleJsonRpcLine(line: string): void {
@@ -858,7 +927,7 @@ class CodexAppServerClient {
     if (this.closePromise) {
       return await this.closePromise;
     }
-    if (this.closed) return;
+    if (this.closed && !this.externalRuntime) return;
     this.closed = true;
 
     const closeError = new Error("Codex app-server client closed");
@@ -870,8 +939,39 @@ class CodexAppServerClient {
 
     const child = this.process;
     this.process = null;
-    this.closePromise = terminateChildProcess(child);
+    const websocket = this.websocket;
+    this.websocket = null;
+    const runtime = this.externalRuntime;
+    this.closePromise = runtime
+      ? this.closeExternalRuntime(websocket, runtime)
+      : terminateChildProcess(child);
     await this.closePromise;
+  }
+
+  private async closeExternalRuntime(
+    websocket: WebSocket | null,
+    runtime: ReloadSafeCodexRuntimeInfo,
+  ): Promise<void> {
+    if (websocket && websocket.readyState !== WebSocket.CLOSED) {
+      const closed = new Promise<void>((resolve) => {
+        websocket.once("close", () => resolve());
+      });
+      websocket.close();
+      await Promise.race([
+        closed,
+        new Promise<void>((resolve) => setTimeout(resolve, 500)),
+      ]);
+      if ((websocket as WebSocket).readyState !== WebSocket.CLOSED) {
+        websocket.terminate();
+      }
+    }
+
+    if (shouldReleaseCodexRuntimeForReload(runtime.sessionId)) {
+      await releaseReloadSafeCodexRuntime(runtime.runtimeId);
+    } else {
+      await terminateReloadSafeCodexRuntime(runtime.runtimeId);
+    }
+    this.externalRuntime = undefined;
   }
 
   private handleProcessClose(error: Error): void {
@@ -894,14 +994,20 @@ class CodexAppServerClient {
     });
     this.notifications.close(error);
     this.process = null;
+    this.websocket = null;
   }
 
   private sendRaw(payload: Record<string, unknown>): void {
-    if (!this.process?.stdin || this.closed) {
+    if (this.closed) {
       return;
     }
 
     try {
+      if (this.websocket?.readyState === WebSocket.OPEN) {
+        this.websocket.send(JSON.stringify(payload));
+        return;
+      }
+      if (!this.process?.stdin) return;
       this.process.stdin.write(`${JSON.stringify(payload)}\n`);
     } catch (error) {
       this.handleProcessClose(
@@ -928,6 +1034,7 @@ export class CodexProvider implements AgentProvider {
   readonly supportsNativeCompactThreshold = true;
 
   private readonly config: CodexProviderConfig;
+  private getReloadSafeSessions = () => false;
   private modelCache: { models: ModelInfo[]; expiresAt: number } | null = null;
 
   constructor(config: CodexProviderConfig = {}) {
@@ -937,6 +1044,10 @@ export class CodexProvider implements AgentProvider {
   setCodexPath(codexPath: string | undefined): void {
     this.config.codexPath = codexPath;
     this.modelCache = null;
+  }
+
+  setReloadSafeSessionsGetter(getter: () => boolean): void {
+    this.getReloadSafeSessions = getter;
   }
 
   /**
@@ -1384,6 +1495,26 @@ export class CodexProvider implements AgentProvider {
       iterator,
       queue,
       abort: async () => {
+        if (
+          !shouldReleaseCodexRuntimeForReload(runtimeState.threadId) &&
+          activeClient &&
+          runtimeState.threadId &&
+          runtimeState.activeTurnId
+        ) {
+          await withCodexTimeout(
+            activeClient.request<TurnInterruptResponse>("turn/interrupt", {
+              threadId: runtimeState.threadId,
+              turnId: runtimeState.activeTurnId,
+            } satisfies TurnInterruptParams),
+            750,
+            "Codex turn interrupt during shutdown",
+          ).catch((error) => {
+            log.debug(
+              { error, sessionId: runtimeState.threadId },
+              "Codex turn interrupt did not complete before shutdown",
+            );
+          });
+        }
         abortController.abort();
         await activeClient?.close();
       },
@@ -1705,6 +1836,44 @@ export class CodexProvider implements AgentProvider {
   /**
    * Main session loop using codex app-server.
    */
+  private async acquireReloadSafeRuntime(
+    command: string,
+    env: NodeJS.ProcessEnv,
+    options: StartSessionOptions,
+    cleanupPaths: string[],
+  ): Promise<ReloadSafeCodexRuntimeInfo | undefined> {
+    if (
+      !isCodexRuntimeHostAvailable() ||
+      options.executor ||
+      options.sessionSandbox
+    ) {
+      return undefined;
+    }
+
+    if (options.resumeSessionId) {
+      return (
+        (await claimReloadSafeCodexRuntime(options.resumeSessionId)) ??
+        undefined
+      );
+    }
+    if (!this.getReloadSafeSessions()) return undefined;
+
+    return await launchReloadSafeCodexRuntime({
+      command,
+      projectPath: options.cwd,
+      env,
+      reattach: {
+        permissionMode: options.permissionMode,
+        model: options.model,
+        serviceTier: options.serviceTier,
+        thinking: options.thinking,
+        effort: options.effort,
+        clientName: options.clientName,
+      },
+      cleanupPaths,
+    });
+  }
+
   private async *runSession(
     options: StartSessionOptions,
     queue: MessageQueue,
@@ -1726,6 +1895,18 @@ export class CodexProvider implements AgentProvider {
       // thread/start) stay on the bridge alone.
       codexEnv.AGENTCTL_SESSION_ID = options.resumeSessionId;
     }
+    let reloadSafeRuntime: ReloadSafeCodexRuntimeInfo | undefined;
+    try {
+      reloadSafeRuntime = await this.acquireReloadSafeRuntime(
+        codexCommand,
+        codexEnv,
+        options,
+        [dirname(agentctlSessionEnvBridge.bashEnvPath)],
+      );
+    } catch (error) {
+      agentctlSessionEnvBridge.cleanup();
+      throw error;
+    }
     const appServer = new CodexAppServerClient(
       codexCommand,
       options.cwd,
@@ -1733,6 +1914,7 @@ export class CodexProvider implements AgentProvider {
       (notification) =>
         this.shouldSuppressLiveDeltaNotification(notification, options),
       options.sessionSandbox,
+      reloadSafeRuntime,
     );
     setActiveClient(appServer);
 
@@ -1774,14 +1956,16 @@ export class CodexProvider implements AgentProvider {
       const initialPermissionMode = this.normalizePermissionMode(
         options.permissionMode,
       );
-      const policy =
-        this.mapPermissionModeToThreadPolicy(initialPermissionMode);
+      const policy = this.mapPermissionModeToThreadPolicy(
+        initialPermissionMode,
+      );
 
       const threadResumeParams = this.createThreadResumeParams(
         options,
         sessionId,
         policy,
         experimentalApiEnabled,
+        reloadSafeRuntime !== undefined,
       );
       const threadStartParams = this.createThreadStartParams(options, policy);
       const threadResult = await this.startOrResumeThread(
@@ -1793,6 +1977,7 @@ export class CodexProvider implements AgentProvider {
       options.onPermissionModeApplied?.(initialPermissionMode);
 
       sessionId = threadResult.thread.id;
+      await appServer.bindRuntimeSession(sessionId);
       agentctlSessionEnvBridge.publishSessionId(sessionId);
       runtimeState.threadId = sessionId;
       if (threadResult.sandbox?.type === "workspaceWrite") {
@@ -1841,111 +2026,30 @@ export class CodexProvider implements AgentProvider {
         yield withCodexTimestamp(sessionConfigAck);
       }
 
-      const messageGen = queue;
       const liveEventState = this.createLiveEventState();
-      let isFirstMessage = !options.resumeSessionId;
-
-      for await (const message of messageGen) {
-        if (signal.aborted) {
-          break;
-        }
-
-        let userPrompt = this.extractTextFromMessage(message);
-        if (!userPrompt) {
-          continue;
-        }
-
-        // Prepend global instructions to the first message of new sessions
-        if (isFirstMessage && options.globalInstructions) {
-          userPrompt = `[Global context]\n${options.globalInstructions}\n\n---\n\n${userPrompt}`;
-          isFirstMessage = false;
-        } else {
-          isFirstMessage = false;
-        }
-
-        if (hasInvocationCandidate(userPrompt)) {
-          await this.refreshCodexSkills(
-            appServer,
-            options.cwd,
-            skillInventory,
-            true,
-          );
-        }
-        const preparedInput = this.createCodexUserInputs(
-          userPrompt,
-          skillInventory.skills,
-          skillInventory.stale ? "stale" : "current",
-        );
-        userPrompt = preparedInput.text;
-
-        // Emit user message with UUID from queue to enable deduplication.
-        const userMessage = withCodexTimestamp({
-          type: "user",
-          uuid: message.uuid,
-          session_id: sessionId,
-          message: {
-            role: "user",
-            content: userPrompt,
-          },
-        } as SDKMessage);
-        logSdkCorrelationDebug(sessionId, userMessage, {
-          eventKind: "user_message",
-          phase: "submitted",
-          sourceEvent: "queued_input",
-        });
-        failureTrace.lastUserMessage = {
-          uuid: message.uuid,
-          chars: userPrompt.length,
-        };
-        yield userMessage;
-
-        const turnPermissionMode = this.normalizePermissionMode(
-          this.getPermissionModeFromMessage(message) ?? options.permissionMode,
-        );
-        const turnPolicy =
-          this.mapPermissionModeToThreadPolicy(turnPermissionMode);
-        runtimeState.activePermissionMode = turnPermissionMode;
-        const turnStartParams = this.createTurnStartParams(
-          sessionId,
-          preparedInput.input,
-          options,
-          turnPolicy,
-          runtimeState.workspaceWriteSandboxPolicy,
-        );
-        const turnResult = await appServer.request<TurnStartResponse>(
-          "turn/start",
-          turnStartParams,
-        );
-        options.onPermissionModeApplied?.(turnPermissionMode);
-
-        const activeTurnId = turnResult.turn.id;
+      const provider = this;
+      const consumeTurn = async function* (
+        turn: CodexThreadTurn,
+      ): AsyncIterableIterator<SDKMessage> {
+        const activeTurnId = turn.id;
         runtimeState.activeTurnId = activeTurnId;
         runtimeState.activeToolCallIds.clear();
         runtimeState.backgroundToolCallIds.clear();
         failureTrace.activeTurnId = activeTurnId;
-        log.info(
-          {
-            sessionId,
-            turnId: activeTurnId,
-            turnStatus: turnResult.turn.status,
-            permissionMode: turnPermissionMode,
-            approvalPolicy: turnPolicy.approvalPolicy,
-            sandboxPolicy: turnStartParams.sandboxPolicy,
-          },
-          "Started Codex app-server turn",
-        );
-        let turnComplete = turnResult.turn.status !== "inProgress";
+        let turnComplete = turn.status !== "inProgress";
         let emittedTurnError = false;
 
         while (!turnComplete && !signal.aborted) {
           const notification = await appServer.nextNotification(signal);
-          if (this.shouldSuppressLiveDeltaNotification(notification, options)) {
+          if (
+            provider.shouldSuppressLiveDeltaNotification(notification, options)
+          ) {
             continue;
           }
           logRawNotification(notification);
           if (notification.method === "skills/changed") {
             skillInventory.stale = true;
-            await this.refreshCodexSkills(
+            await provider.refreshCodexSkills(
               appServer,
               options.cwd,
               skillInventory,
@@ -1955,7 +2059,7 @@ export class CodexProvider implements AgentProvider {
               type: "system",
               subtype: "commands_changed",
               session_id: sessionId,
-              slash_command_inventory: this.createCodexSlashCommands(
+              slash_command_inventory: provider.createCodexSlashCommands(
                 skillInventory.skills,
                 skillInventory.stale ? "stale" : "current",
               ),
@@ -1966,19 +2070,18 @@ export class CodexProvider implements AgentProvider {
           failureTrace.activeTurnId = currentActiveTurnId;
 
           if (notification.method === "thread/tokenUsage/updated") {
-            const usage = this.extractTurnUsage(notification.params);
+            const usage = provider.extractTurnUsage(notification.params);
             if (usage) {
               usageByTurnId.set(usage.turnId, usage.snapshot);
             }
           }
-          this.updateBackgroundProcessTracking(notification, runtimeState);
-
-          this.recordCodexFailureTraceEvent(
+          provider.updateBackgroundProcessTracking(notification, runtimeState);
+          provider.recordCodexFailureTraceEvent(
             failureTrace,
-            this.describeNotificationForFailureTrace(notification),
+            provider.describeNotificationForFailureTrace(notification),
           );
 
-          const messages = this.convertNotificationToSDKMessages(
+          const messages = provider.convertNotificationToSDKMessages(
             notification,
             sessionId,
             usageByTurnId,
@@ -1990,50 +2093,49 @@ export class CodexProvider implements AgentProvider {
                 ? ({
                     ...rawMsg,
                     codexFailureTrace:
-                      this.snapshotCodexFailureTrace(failureTrace),
+                      provider.snapshotCodexFailureTrace(failureTrace),
                     codexFailureSummary:
-                      this.formatCodexFailureTrace(failureTrace),
+                      provider.formatCodexFailureTrace(failureTrace),
                   } as SDKMessage)
                 : rawMsg;
             failureTrace.lastEmittedMessage =
-              this.describeSDKMessageForFailureTrace(msg);
+              provider.describeSDKMessageForFailureTrace(msg);
             yield msg;
           }
 
           if (
-            this.isTurnTerminalNotification(notification, currentActiveTurnId)
+            provider.isTurnTerminalNotification(
+              notification,
+              currentActiveTurnId,
+            )
           ) {
-            if (notification.method === "error") {
-              emittedTurnError = true;
-            }
+            if (notification.method === "error") emittedTurnError = true;
             turnComplete = true;
           }
         }
         runtimeState.activeTurnId = null;
         failureTrace.activeTurnId = null;
 
-        // If turn failed without an emitted error notification, surface start response error.
         if (
           !emittedTurnError &&
-          turnResult.turn.status === "failed" &&
-          turnResult.turn.error?.message
+          turn.status === "failed" &&
+          turn.error?.message
         ) {
           yield {
             type: "error",
-            uuid: `codex-error-${turnResult.turn.id}`,
+            uuid: `codex-error-${turn.id}`,
             session_id: sessionId,
-            error: turnResult.turn.error.message,
-            codexErrorInfo: turnResult.turn.error.codexErrorInfo ?? null,
-            codexAdditionalDetails:
-              turnResult.turn.error.additionalDetails ?? null,
+            error: turn.error.message,
+            codexErrorInfo: turn.error.codexErrorInfo ?? null,
+            codexAdditionalDetails: turn.error.additionalDetails ?? null,
             codexWillRetry: false,
-            codexTurnId: turnResult.turn.id,
-            codexFailureTrace: this.snapshotCodexFailureTrace(failureTrace),
-            codexFailureSummary: this.formatCodexFailureTrace(failureTrace),
-            codexRequestId: this.extractOpenAIRequestId(
-              turnResult.turn.error,
-              turnResult.turn.error.additionalDetails,
-              turnResult.turn.error.message,
+            codexTurnId: turn.id,
+            codexFailureTrace: provider.snapshotCodexFailureTrace(failureTrace),
+            codexFailureSummary: provider.formatCodexFailureTrace(failureTrace),
+            codexRequestId: provider.extractOpenAIRequestId(
+              turn.error,
+              turn.error.additionalDetails,
+              turn.error.message,
             ),
           } as SDKMessage;
         }
@@ -2042,6 +2144,145 @@ export class CodexProvider implements AgentProvider {
           type: "result",
           session_id: sessionId,
         } as SDKMessage;
+      };
+
+      const resumedActiveTurn =
+        reloadSafeRuntime && options.resumeSessionId
+          ? [...threadResult.thread.turns]
+              .reverse()
+              .find((turn) => turn.status === "inProgress")
+          : undefined;
+      if (resumedActiveTurn) {
+        for (const item of resumedActiveTurn.items) {
+          const normalized = this.normalizeThreadItem(item);
+          if (!normalized) continue;
+          const sourceEvent =
+            this.isResultBackedThreadItem(normalized) &&
+            "status" in normalized &&
+            normalized.status === "in_progress"
+              ? "item/started"
+              : "item/completed";
+          if (sourceEvent === "item/started") {
+            this.recordLiveResultBackedToolItem(
+              liveEventState,
+              resumedActiveTurn.id,
+              normalized.id,
+            );
+          }
+          for (const message of this.convertItemToSDKMessages(
+            normalized,
+            sessionId,
+            resumedActiveTurn.id,
+            sourceEvent,
+          )) {
+            yield message;
+          }
+        }
+        log.info(
+          { sessionId, turnId: resumedActiveTurn.id },
+          "Rejoined active Codex app-server turn",
+        );
+        yield* consumeTurn(resumedActiveTurn);
+      }
+
+      const messageGen = queue[Symbol.asyncIterator]();
+      const stopMessageWait = () => {
+        void messageGen.return?.();
+      };
+      signal.addEventListener("abort", stopMessageWait, { once: true });
+      let isFirstMessage = !options.resumeSessionId;
+
+      try {
+        for await (const message of messageGen) {
+          if (signal.aborted) {
+            break;
+          }
+
+          let userPrompt = this.extractTextFromMessage(message);
+          if (!userPrompt) {
+            continue;
+          }
+
+          // Prepend global instructions to the first message of new sessions
+          if (isFirstMessage && options.globalInstructions) {
+            userPrompt = `[Global context]\n${options.globalInstructions}\n\n---\n\n${userPrompt}`;
+            isFirstMessage = false;
+          } else {
+            isFirstMessage = false;
+          }
+
+          if (hasInvocationCandidate(userPrompt)) {
+            await this.refreshCodexSkills(
+              appServer,
+              options.cwd,
+              skillInventory,
+              true,
+            );
+          }
+          const preparedInput = this.createCodexUserInputs(
+            userPrompt,
+            skillInventory.skills,
+            skillInventory.stale ? "stale" : "current",
+          );
+          userPrompt = preparedInput.text;
+
+          // Emit user message with UUID from queue to enable deduplication.
+          const userMessage = withCodexTimestamp({
+            type: "user",
+            uuid: message.uuid,
+            session_id: sessionId,
+            message: {
+              role: "user",
+              content: userPrompt,
+            },
+          } as SDKMessage);
+          logSdkCorrelationDebug(sessionId, userMessage, {
+            eventKind: "user_message",
+            phase: "submitted",
+            sourceEvent: "queued_input",
+          });
+          failureTrace.lastUserMessage = {
+            uuid: message.uuid,
+            chars: userPrompt.length,
+          };
+          yield userMessage;
+
+          const turnPermissionMode = this.normalizePermissionMode(
+            this.getPermissionModeFromMessage(message) ??
+              options.permissionMode,
+          );
+          const turnPolicy =
+            this.mapPermissionModeToThreadPolicy(turnPermissionMode);
+          runtimeState.activePermissionMode = turnPermissionMode;
+          const turnStartParams = this.createTurnStartParams(
+            sessionId,
+            preparedInput.input,
+            options,
+            turnPolicy,
+            runtimeState.workspaceWriteSandboxPolicy,
+          );
+          const turnResult = await appServer.request<TurnStartResponse>(
+            "turn/start",
+            turnStartParams,
+          );
+          options.onPermissionModeApplied?.(turnPermissionMode);
+
+          log.info(
+            {
+              sessionId,
+              turnId: turnResult.turn.id,
+              turnStatus: turnResult.turn.status,
+              permissionMode: turnPermissionMode,
+              approvalPolicy: turnPolicy.approvalPolicy,
+              sandboxPolicy: turnStartParams.sandboxPolicy,
+            },
+            "Started Codex app-server turn",
+          );
+          yield* consumeTurn(turnResult.turn);
+        }
+      } finally {
+        signal.removeEventListener("abort", stopMessageWait);
+        await messageGen.return?.();
       }
     } catch (error) {
       const codexFailureTrace = this.snapshotCodexFailureTrace(failureTrace);
@@ -2068,8 +2309,14 @@ export class CodexProvider implements AgentProvider {
       }
     } finally {
       runtimeState.activeTurnId = null;
-      await appServer.close();
-      agentctlSessionEnvBridge.cleanup();
+      try {
+        await appServer.close();
+      } finally {
+        const hostOwnsAgentctlBridge = Boolean(
+          reloadSafeRuntime && !options.resumeSessionId,
+        );
+        if (!hostOwnsAgentctlBridge) agentctlSessionEnvBridge.cleanup();
+      }
     }
 
     yield {
@@ -2264,6 +2511,7 @@ export class CodexProvider implements AgentProvider {
     sessionId: string,
     policy: CodexThreadPolicy,
     experimentalApiEnabled = false,
+    includeTurns = false,
   ): CodexThreadResumeParamsForRequest {
     const params: CodexThreadResumeParamsForRequest = {
       threadId: options.resumeSessionId ?? sessionId,
@@ -2273,7 +2521,7 @@ export class CodexProvider implements AgentProvider {
       ...this.buildThreadPermissionParams(policy),
       config: this.buildThreadConfigOverrides(options),
     };
-    if (experimentalApiEnabled) {
+    if (experimentalApiEnabled && !includeTurns) {
       params.excludeTurns = true;
     }
     return params;

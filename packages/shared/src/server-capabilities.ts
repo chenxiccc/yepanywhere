@@ -431,6 +431,48 @@ export const SERVER_CAPABILITIES = {
         "No maintained client still branches on provider-subscription-usage.",
     },
   },
+  reloadSafeCodexRuntimeSettings: {
+    name: "reload-safe-codex-runtime-settings",
+    kind: "permanent",
+    area: "providers",
+    introducedIn: "0.7.1",
+    description:
+      "Server persists the default-off Codex reload-safe-session setting and exposes the restart action used to apply it.",
+    clientFallback:
+      "Hide the setting, omit its field from writes, and retain ordinary restart behavior.",
+    serverContract: {
+      routes: [
+        "GET /api/settings",
+        "PUT /api/settings",
+        "POST /api/server/restart",
+      ],
+      requestFields: ["settings.codexReloadSafeSessions"],
+      responseFields: ["settings.codexReloadSafeSessions"],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Hosted clients can outpace installed servers that do not understand the setting or reload-safe restart contract.",
+    },
+  },
+  reloadSafeCodexRuntime: {
+    name: "reload-safe-codex-runtime",
+    kind: "permanent",
+    area: "providers",
+    introducedIn: "0.7.1",
+    description:
+      "This Linux server is running under a usable lifecycle host that can retain eligible Codex runtimes across a Hono reload.",
+    clientFallback:
+      "Show the supported setting as unavailable and keep Codex runtimes under ordinary server ownership.",
+    serverContract: {
+      routes: ["GET /api/version"],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Runtime support depends on the current host, launch mode, and successful lifecycle-host registration.",
+    },
+  },
   bangCommands: {
     name: "bang-commands",
     kind: "permanent",
@@ -825,6 +867,12 @@ export const CLAUDE_GATEWAY_AUTOSTART_CAPABILITY =
 
 export const PROVIDER_SUBSCRIPTION_USAGE_CAPABILITY =
   SERVER_CAPABILITIES.providerSubscriptionUsage.name;
+
+export const RELOAD_SAFE_CODEX_RUNTIME_SETTINGS_CAPABILITY =
+  SERVER_CAPABILITIES.reloadSafeCodexRuntimeSettings.name;
+
+export const RELOAD_SAFE_CODEX_RUNTIME_CAPABILITY =
+  SERVER_CAPABILITIES.reloadSafeCodexRuntime.name;
 
 export const BANG_COMMANDS_CAPABILITY = SERVER_CAPABILITIES.bangCommands.name;
 

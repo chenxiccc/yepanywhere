@@ -22,6 +22,7 @@ describe("server admin routes", () => {
       beforeRestart,
       exit,
       exitDelayMs: 10,
+      requestWrapperReload: async () => false,
     });
 
     expect(beforeRestart).toHaveBeenCalledTimes(1);
@@ -44,6 +45,7 @@ describe("server admin routes", () => {
       beforeRestartTimeoutMs: 5,
       exit,
       exitDelayMs: 10,
+      requestWrapperReload: async () => false,
     });
 
     await vi.advanceTimersByTimeAsync(5);
@@ -55,5 +57,21 @@ describe("server admin routes", () => {
     await vi.advanceTimersByTimeAsync(10);
 
     expect(exit).toHaveBeenCalledWith(0);
+  });
+
+  it("uses the acknowledged wrapper reload path without scheduling exit", async () => {
+    vi.useFakeTimers();
+    const exit = vi.fn();
+    const requestWrapperReload = vi.fn(async () => true);
+
+    await triggerServerRestart({
+      exit,
+      exitDelayMs: 10,
+      requestWrapperReload,
+    });
+    await vi.advanceTimersByTimeAsync(20);
+
+    expect(requestWrapperReload).toHaveBeenCalledTimes(1);
+    expect(exit).not.toHaveBeenCalled();
   });
 });

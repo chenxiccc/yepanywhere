@@ -15,7 +15,15 @@
  */
 
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync, unlinkSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
+import { createServer as createNetServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -124,10 +132,6 @@ const basePort = process.env.PORT
 const vitePort = process.env.VITE_PORT
   ? Number.parseInt(process.env.VITE_PORT, 10)
   : basePort + 2;
-const reloadSignalFile = join(
-  tmpdir(),
-  `yep-anywhere-dev-reload-${process.pid}-${basePort}.json`,
-);
 const protocol = process.env.HTTPS_SELF_SIGNED === "true" ? "https" : "http";
 const configuredHost = process.env.HOST?.trim();
 const displayHost =
@@ -154,53 +158,446 @@ const env = {
   // When not using --watch, enable manual reload mode (shows banner on file changes)
   NO_BACKEND_RELOAD: backendWatch ? "" : "true",
   NO_FRONTEND_RELOAD: noFrontendReload ? "true" : "",
-  // Explicit one-shot marker written by the server before a requested restart.
-  // Windows .cmd/shell layers do not always preserve the inner process exit
-  // shape, so the wrapper should not rely only on code === 0.
-  YEP_DEV_RELOAD_SIGNAL_FILE: backendWatch ? "" : reloadSignalFile,
   // Pass vite port to both server and client for consistency
   VITE_PORT: String(vitePort),
 };
 
-function clearReloadSignalFile() {
-  if (!existsSync(reloadSignalFile)) return false;
+const reloadSafeCodexHostEnabled =
+  process.platform === "linux" && !backendWatch;
+const runtimeDir = reloadSafeCodexHostEnabled
+  ? mkdtempSync(join(tmpdir(), "ya-codex-runtime-"))
+  : null;
+if (runtimeDir) chmodSync(runtimeDir, 0o700);
+const runtimeHostSocket = runtimeDir ? join(runtimeDir, "host.sock") : null;
+const runtimeHostToken = runtimeDir
+  ? randomBytes(32).toString("base64url")
+  : null;
+const wrapperToken = randomBytes(32).toString("base64url");
 
+if (runtimeDir && runtimeHostSocket && runtimeHostToken) {
+  env.YEP_CODEX_RUNTIME_DIR = runtimeDir;
+  env.YEP_CODEX_RUNTIME_SOCKET = runtimeHostSocket;
+  env.YEP_CODEX_RUNTIME_TOKEN = runtimeHostToken;
+}
+
+let wrapperState = "starting";
+let serverChild = null;
+let clientChild = null;
+let runtimeHostChild = null;
+let wrapperControlServer = null;
+const wrapperControlSockets = new Set();
+const runtimeProcessGroups = new Map();
+let serverGeneration = 0;
+let unexpectedRecoveryUsed = false;
+let shutdownPromise = null;
+
+function errorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function processTargetAlive(target) {
   try {
-    unlinkSync(reloadSignalFile);
+    process.kill(target, 0);
     return true;
-  } catch (err) {
-    console.warn(
-      `Could not clear reload signal file ${reloadSignalFile}: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
-    return false;
+  } catch (error) {
+    if (error?.code === "ESRCH") return false;
+    if (error?.code === "EPERM") return true;
+    throw error;
   }
 }
 
-// Ignore a stale marker left behind by an earlier wrapper process.
-clearReloadSignalFile();
+function managedTarget(child) {
+  if (!child?.pid) return null;
+  return isWindows ? child.pid : -child.pid;
+}
 
-// Track child processes for cleanup
-const children = [];
+function managedTargets(child) {
+  const targets = new Set();
+  const launcherTarget = managedTarget(child);
+  if (launcherTarget !== null) targets.add(launcherTarget);
+  if (Number.isInteger(child?.backendPid) && child.backendPid > 1) {
+    targets.add(child.backendPid);
+  }
+  return [...targets];
+}
 
-function cleanup() {
-  for (const child of children) {
-    if (child && !child.killed) {
-      child.kill("SIGTERM");
+function signalManagedChild(child, signal) {
+  let signaled = false;
+  for (const target of managedTargets(child)) {
+    if (!processTargetAlive(target)) continue;
+    try {
+      process.kill(target, signal);
+      signaled = true;
+    } catch (error) {
+      if (error?.code !== "ESRCH") throw error;
     }
   }
+  return signaled;
+}
+
+function waitForChildExit(child, timeoutMs) {
+  if (!child || child.exitCode !== null || child.signalCode !== null) {
+    return Promise.resolve(true);
+  }
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      child.off("exit", onExit);
+      resolve(value);
+    };
+    const onExit = () => finish(true);
+    const timeout = setTimeout(() => finish(false), timeoutMs);
+    child.once("exit", onExit);
+  });
+}
+
+async function stopManagedChild(child, name, firstWaitMs = 3_000) {
+  const targets = managedTargets(child);
+  if (!targets.some(processTargetAlive)) return;
+  signalManagedChild(child, "SIGTERM");
+  if (await waitForProcessTargetsExit(targets, firstWaitMs)) return;
+  console.warn(`[Shutdown] ${name} did not stop after SIGTERM; forcing it`);
+  for (const target of targets) {
+    if (!processTargetAlive(target)) continue;
+    try {
+      process.kill(target, "SIGKILL");
+    } catch (error) {
+      if (error?.code !== "ESRCH") throw error;
+    }
+  }
+  if (!(await waitForProcessTargetsExit(targets, 1_500))) {
+    throw new Error(`${name} process target survived SIGKILL`);
+  }
+}
+
+async function waitForProcessTargetsExit(targets, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (targets.some(processTargetAlive)) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) return false;
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.min(25, remaining)),
+    );
+  }
+  return true;
+}
+
+async function waitForProcessTargetExit(target, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (processTargetAlive(target)) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) return false;
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.min(25, remaining)),
+    );
+  }
+  return true;
+}
+
+async function reapRuntimeProcessGroup(processGroupId) {
+  const target = -processGroupId;
+  if (!processTargetAlive(target)) return;
+  process.kill(target, "SIGTERM");
+  if (await waitForProcessTargetExit(target, 1_500)) return;
+  process.kill(target, "SIGTERM");
+  if (await waitForProcessTargetExit(target, 500)) return;
+  process.kill(target, "SIGKILL");
+  if (!(await waitForProcessTargetExit(target, 1_000))) {
+    throw new Error(
+      `Codex runtime process group ${processGroupId} survived SIGKILL`,
+    );
+  }
+}
+
+function spawnManaged(command, childArgs, options) {
+  return spawn(command, childArgs, {
+    ...options,
+    detached: !isWindows,
+  });
+}
+
+async function startRuntimeHost() {
+  if (!reloadSafeCodexHostEnabled) return;
+  const host = spawn(
+    process.execPath,
+    [join(__dirname, "codex-runtime-host.mjs")],
+    {
+      cwd: rootDir,
+      env,
+      detached: !isWindows,
+      stdio: ["ignore", "inherit", "inherit", "ipc"],
+    },
+  );
+  runtimeHostChild = host;
+
+  await new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (fn) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      host.off("message", onMessage);
+      host.off("error", onError);
+      host.off("exit", onExitBeforeReady);
+      fn();
+    };
+    const onMessage = (message) => {
+      if (message?.type === "ready") finish(resolve);
+    };
+    const onError = (error) => finish(() => reject(error));
+    const onExitBeforeReady = (code, signal) =>
+      finish(() =>
+        reject(
+          new Error(
+            `Codex runtime host exited before ready (code=${code}, signal=${signal})`,
+          ),
+        ),
+      );
+    const timeout = setTimeout(
+      () =>
+        finish(() => reject(new Error("Codex runtime host startup timed out"))),
+      5_000,
+    );
+    host.on("message", onMessage);
+    host.once("error", onError);
+    host.once("exit", onExitBeforeReady);
+  });
+
+  host.on("message", (message) => {
+    if (message?.type === "runtimeLaunched") {
+      runtimeProcessGroups.set(message.runtimeId, message.processGroupId);
+    } else if (message?.type === "runtimeExited") {
+      runtimeProcessGroups.delete(message.runtimeId);
+    }
+  });
+  host.on("exit", (code, signal) => {
+    if (runtimeHostChild === host) runtimeHostChild = null;
+    if (wrapperState === "shutting-down") return;
+    console.error(
+      `[CodexRuntimeHost] Exited unexpectedly (code=${code}, signal=${signal})`,
+    );
+    void shutdownWrapper("Codex runtime host exited unexpectedly", 1);
+  });
+}
+
+async function stopRuntimeHost() {
+  const host = runtimeHostChild;
+  if (host && host.exitCode === null && host.signalCode === null) {
+    try {
+      host.send({ type: "shutdown", reason: "dev wrapper shutdown" });
+    } catch {
+      // The fallback process-group sweep below remains authoritative.
+    }
+    if (!(await waitForChildExit(host, 5_000))) {
+      host.kill("SIGTERM");
+      if (!(await waitForChildExit(host, 1_500))) {
+        host.kill("SIGKILL");
+        if (!(await waitForChildExit(host, 1_000))) {
+          throw new Error("Codex runtime host survived SIGKILL");
+        }
+      }
+    }
+  }
+
+  const results = await Promise.allSettled(
+    [...runtimeProcessGroups.values()].map(reapRuntimeProcessGroup),
+  );
+  runtimeProcessGroups.clear();
+  const failures = results.filter((result) => result.status === "rejected");
+  if (failures.length > 0) {
+    throw new Error(
+      `Failed to reap ${failures.length} Codex runtime process group(s)`,
+    );
+  }
+}
+
+async function startWrapperControlServer() {
+  const server = createNetServer((socket) => {
+    wrapperControlSockets.add(socket);
+    socket.setEncoding("utf8");
+    let buffer = "";
+    socket.on("data", (chunk) => {
+      buffer += chunk;
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const rawLine of lines) {
+        const line = rawLine.trim();
+        if (!line) continue;
+        let request;
+        try {
+          request = JSON.parse(line);
+        } catch {
+          socket.end(
+            `${JSON.stringify({ ok: false, error: "invalid JSON" })}\n`,
+          );
+          return;
+        }
+        if (request.token !== wrapperToken) {
+          socket.end(
+            `${JSON.stringify({ ok: false, error: "unauthorized" })}\n`,
+          );
+          return;
+        }
+        if (request.op === "registerBackend") {
+          if (
+            request.generation !== serverChild?.yaGeneration ||
+            !Number.isInteger(request.pid) ||
+            request.pid <= 1
+          ) {
+            socket.end(
+              `${JSON.stringify({ ok: false, error: "invalid backend registration" })}\n`,
+            );
+            return;
+          }
+          serverChild.backendPid = request.pid;
+          socket.end(`${JSON.stringify({ ok: true })}\n`);
+          continue;
+        }
+        if (request.op !== "reload") {
+          socket.end(
+            `${JSON.stringify({ ok: false, error: "unknown operation" })}\n`,
+          );
+          return;
+        }
+        if (wrapperState === "shutting-down") {
+          socket.end(
+            `${JSON.stringify({ ok: false, error: "wrapper is shutting down" })}\n`,
+          );
+          return;
+        }
+        socket.end(`${JSON.stringify({ ok: true, state: wrapperState })}\n`);
+        setTimeout(() => {
+          void requestServerReload("API request");
+        }, 100);
+      }
+    });
+    socket.on("close", () => wrapperControlSockets.delete(socket));
+    socket.on("error", () => wrapperControlSockets.delete(socket));
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  wrapperControlServer = server;
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Dev wrapper control server did not bind a TCP port");
+  }
+  env.YEP_DEV_WRAPPER_PORT = String(address.port);
+  env.YEP_DEV_WRAPPER_TOKEN = wrapperToken;
+}
+
+async function closeWrapperControlServer() {
+  for (const socket of wrapperControlSockets) socket.destroy();
+  wrapperControlSockets.clear();
+  const server = wrapperControlServer;
+  wrapperControlServer = null;
+  if (!server) return;
+  await new Promise((resolve) => server.close(() => resolve()));
+}
+
+async function requestServerReload(source) {
+  if (wrapperState === "shutting-down") return;
+  if (wrapperState === "reloading") {
+    console.log(`[Reload] Coalesced ${source}`);
+    return;
+  }
+  const server = serverChild;
+  if (!server || server.exitCode !== null || server.signalCode !== null) {
+    console.error(`[Reload] ${source} arrived without a live server`);
+    return;
+  }
+  wrapperState = "reloading";
+  console.log(`\n[Reload] Replacing backend after ${source}...`);
+  signalManagedChild(server, isWindows ? "SIGTERM" : "SIGHUP");
+  void completeServerReload(server);
+}
+
+async function completeServerReload(server) {
+  try {
+    if (!(await waitForProcessTargetsExit(managedTargets(server), 10_000))) {
+      console.warn("[Reload] Backend did not stop after SIGHUP; escalating");
+      await stopManagedChild(server, "backend reload", 2_000);
+    }
+  } catch (error) {
+    console.error(`[Reload] ${errorMessage(error)}`);
+    await shutdownWrapper("Backend reload cleanup failed", 1);
+    return;
+  }
+
+  if (wrapperState !== "reloading") return;
+  if (serverChild === server) serverChild = null;
+  console.log("[Reload] Starting replacement backend");
+  startServer();
+  wrapperState = "running";
+}
+
+async function recoverUnexpectedServer(server, code) {
+  try {
+    await stopManagedChild(server, "backend recovery", 2_000);
+  } catch (error) {
+    console.error(`[Recovery] ${errorMessage(error)}`);
+    await shutdownWrapper("Backend recovery cleanup failed", 1);
+    return;
+  }
+  if (wrapperState !== "running") return;
+  if (serverChild === server) serverChild = null;
+  console.error(`[Recovery] Backend exited with code ${code}; retrying once`);
+  startServer();
+}
+
+async function shutdownWrapper(reason, exitCode = 0) {
+  if (shutdownPromise) return await shutdownPromise;
+  wrapperState = "shutting-down";
+  shutdownPromise = (async () => {
+    console.log(`[Shutdown] ${reason}`);
+    const failures = [];
+    await closeWrapperControlServer().catch((error) => failures.push(error));
+
+    await stopManagedChild(serverChild, "backend", 7_000).catch((error) =>
+      failures.push(error),
+    );
+    await stopRuntimeHost().catch((error) => failures.push(error));
+    await stopManagedChild(clientChild, "Vite").catch((error) =>
+      failures.push(error),
+    );
+
+    if (runtimeDir && existsSync(runtimeDir)) {
+      try {
+        rmSync(runtimeDir, { recursive: true });
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+
+    for (const failure of failures) {
+      console.error(`[Shutdown] ${errorMessage(failure)}`);
+    }
+    const finalExitCode = failures.length > 0 ? 1 : exitCode;
+    console.log(
+      failures.length > 0
+        ? "[Shutdown] Cleanup failed"
+        : "[Shutdown] Cleanup complete",
+    );
+    process.exit(finalExitCode);
+  })();
+  return await shutdownPromise;
 }
 
 process.on("SIGINT", () => {
-  cleanup();
-  process.exit(0);
+  void shutdownWrapper("Received SIGINT");
 });
-
 process.on("SIGTERM", () => {
-  cleanup();
-  process.exit(0);
+  void shutdownWrapper("Received SIGTERM");
 });
+if (!isWindows) {
+  process.on("SIGHUP", () => {
+    void requestServerReload("SIGHUP");
+  });
+}
 
 /**
  * Spawn a server process
@@ -209,30 +606,31 @@ function startServer() {
   // Use dev:watch for auto-reload, dev for no-reload (default)
   const serverScript = backendWatch ? "dev:watch" : "dev";
 
-  const server = spawn(pnpmBin, ["--filter", "server", serverScript], {
+  serverGeneration += 1;
+  const generation = `${process.pid}-${serverGeneration}`;
+  const server = spawnManaged(pnpmBin, ["--filter", "server", serverScript], {
     cwd: rootDir,
-    env,
+    env: { ...env, YEP_SERVER_GENERATION: generation },
     stdio: "inherit",
     ...shellOption,
   });
-
-  children.push(server);
+  server.yaGeneration = generation;
+  serverChild = server;
 
   server.on("exit", (code, signal) => {
-    // Remove from children list
-    const idx = children.indexOf(server);
-    if (idx !== -1) children.splice(idx, 1);
-
-    const reloadRequested = !backendWatch && clearReloadSignalFile();
-
-    // If server exited cleanly (code 0) and we're in manual reload mode,
-    // it was a reload request - restart it
-    if (!backendWatch && (reloadRequested || (code === 0 && signal === null))) {
-      console.log("\nRestarting server...");
-      startServer();
-    } else if (code !== null && code !== 0) {
-      console.error(`Server exited with code ${code}`);
+    if (wrapperState === "shutting-down") return;
+    if (wrapperState === "reloading") {
+      return;
     }
+    if (code !== null && code !== 0 && !unexpectedRecoveryUsed) {
+      unexpectedRecoveryUsed = true;
+      void recoverUnexpectedServer(server, code);
+      return;
+    }
+    void shutdownWrapper(
+      `Backend exited without reload intent (code=${code}, signal=${signal})`,
+      code === 0 ? 0 : 1,
+    );
   });
 
   return server;
@@ -242,7 +640,7 @@ function startServer() {
  * Start the client dev server
  */
 function startClient() {
-  const client = spawn(pnpmBin, ["--filter", "client", "dev"], {
+  const client = spawnManaged(pnpmBin, ["--filter", "client", "dev"], {
     cwd: rootDir,
     env,
     stdio: ["ignore", "pipe", "pipe"],
@@ -260,17 +658,29 @@ function startClient() {
     isSuppressedViteBannerLine,
   );
 
-  children.push(client);
+  clientChild = client;
 
-  client.on("exit", (code) => {
+  client.on("exit", (code, signal) => {
+    if (wrapperState === "shutting-down") return;
     if (code !== null && code !== 0) {
       console.error(`Client exited with code ${code}`);
     }
+    void shutdownWrapper(
+      `Vite exited unexpectedly (code=${code}, signal=${signal})`,
+      code === 0 ? 0 : 1,
+    );
   });
 
   return client;
 }
 
-// Start both processes
-startServer();
-startClient();
+try {
+  await startRuntimeHost();
+  await startWrapperControlServer();
+  startServer();
+  startClient();
+  wrapperState = "running";
+} catch (error) {
+  console.error(`[Startup] ${errorMessage(error)}`);
+  await shutdownWrapper("Startup failed", 1);
+}

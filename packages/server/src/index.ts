@@ -19,6 +19,7 @@ import {
   initCodexCorrelationDebugLogger,
 } from "./codex/correlationDebugLogger.js";
 import { loadConfig } from "./config.js";
+import { registerDevWrapperBackend } from "./dev-wrapper-client.js";
 import { DeviceBridgeService } from "./device/DeviceBridgeService.js";
 import { detectAdb } from "./device/adb.js";
 import { DESKTOP_BOOTSTRAP_PROTOCOL_VERSION } from "./desktop/DesktopBootstrapService.js";
@@ -62,6 +63,13 @@ import { createWsRelayRoutes } from "./routes/ws-relay.js";
 import { createAcceptRelayConnection } from "./routes/ws-relay.js";
 import { detectClaudeCli, detectCodexCli } from "./sdk/cli-detection.js";
 import { initMessageLogger } from "./sdk/messageLogger.js";
+import {
+  closeCodexRuntimeHostRegistration,
+  hasReloadSafeCodexRuntime,
+  initializeCodexRuntimeHost,
+  listReloadSafeCodexRuntimes,
+  markCodexRuntimeServerReloading,
+} from "./sdk/providers/codex-runtime-host.js";
 import { ClaudeGatewayProvider } from "./sdk/providers/claude-gateway.js";
 import { ClaudeOllamaProvider } from "./sdk/providers/claude-ollama.js";
 import { grokACPProvider } from "./sdk/providers/grok-acp.js";
@@ -149,7 +157,10 @@ let isShuttingDown = false;
 
 /**
  * Graceful shutdown handler.
- * Aborts all running Claude processes before exiting to prevent orphaned child processes.
+ * Aborts all running provider processes before exiting to prevent orphans.
+ * SIGHUP is the wrapper-owned Hono replacement path: reload-safe Codex
+ * clients release their socket claim while the lifecycle host keeps the
+ * app-server alive for the next generation.
  */
 async function gracefulShutdown(signal: string): Promise<void> {
   if (isShuttingDown) {
@@ -183,8 +194,19 @@ async function gracefulShutdown(signal: string): Promise<void> {
       await Promise.all(
         processes.map(async (p) => {
           try {
-            await p.abort();
-            console.log(`[Shutdown] Aborted session ${p.sessionId}`);
+            if (
+              signal === "SIGHUP" &&
+              p.provider === "codex" &&
+              hasReloadSafeCodexRuntime(p.sessionId) &&
+              p.queueDepth === 0 &&
+              !p.hasVolatileDeferredMessages()
+            ) {
+              await p.detachForServerReload();
+              console.log(`[Shutdown] Detached Codex session ${p.sessionId}`);
+            } else {
+              await p.abort();
+              console.log(`[Shutdown] Aborted session ${p.sessionId}`);
+            }
           } catch (error) {
             console.error(
               `[Shutdown] Error aborting session ${p.sessionId}:`,
@@ -195,6 +217,8 @@ async function gracefulShutdown(signal: string): Promise<void> {
       );
     }
   }
+
+  closeCodexRuntimeHostRegistration();
 
   try {
     await ClaudeGatewayProvider.shutdownGateway();
@@ -230,6 +254,23 @@ async function gracefulShutdown(signal: string): Promise<void> {
 // Register shutdown handlers early
 process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+if (process.platform !== "win32") {
+  process.on("SIGHUP", () => {
+    const reloadableSessionIds =
+      supervisorForShutdown
+        ?.getAllProcesses()
+        .filter(
+          (process) =>
+            process.provider === "codex" &&
+            hasReloadSafeCodexRuntime(process.sessionId) &&
+            process.queueDepth === 0 &&
+            !process.hasVolatileDeferredMessages(),
+        )
+        .map((process) => process.sessionId) ?? [];
+    markCodexRuntimeServerReloading(reloadableSessionIds);
+    void gracefulShutdown("SIGHUP");
+  });
+}
 
 // Initialize logging early to capture all output
 initLogger({
@@ -566,6 +607,13 @@ async function startServer() {
   markStartup("modelInfoService initialized");
   await serverSettingsService.initialize();
   markStartup("serverSettingsService initialized");
+  if (await registerDevWrapperBackend()) {
+    console.log("[DevWrapper] Registered backend process");
+  }
+  if (await initializeCodexRuntimeHost()) {
+    console.log("[CodexRuntimeHost] Registered this server generation");
+  }
+  markStartup("Codex runtime host registration checked");
   await hostAwakeService.initialize({
     mode: serverSettingsService.getSetting("hostAwakeMode"),
     batteryFloorPercent: serverSettingsService.getSetting(
@@ -826,6 +874,41 @@ async function startServer() {
   // Set service references for graceful shutdown
   supervisorForShutdown = supervisor;
   deviceBridgeForShutdown = deviceBridgeService ?? null;
+
+  const reloadSafeCodexRuntimes = await listReloadSafeCodexRuntimes().catch(
+    (error) => {
+      console.error(
+        "[CodexRuntimeHost] Failed to list retained runtimes:",
+        error,
+      );
+      return [];
+    },
+  );
+  for (const runtime of reloadSafeCodexRuntimes) {
+    if (!runtime.sessionId) continue;
+    try {
+      await supervisor.reactivateSession(
+        runtime.projectPath,
+        runtime.sessionId,
+        runtime.reattach.permissionMode,
+        {
+          providerName: "codex",
+          model: runtime.reattach.model,
+          serviceTier: runtime.reattach.serviceTier,
+          thinking: runtime.reattach.thinking,
+          effort: runtime.reattach.effort,
+          clientName: runtime.reattach.clientName,
+        },
+      );
+      console.log(`[CodexRuntimeHost] Reattached session ${runtime.sessionId}`);
+    } catch (error) {
+      console.error(
+        `[CodexRuntimeHost] Failed to reattach session ${runtime.sessionId}:`,
+        error,
+      );
+    }
+  }
+  markStartup("retained Codex runtimes reattached");
 
   // Set up debug context for maintenance server
   setDebugContext({

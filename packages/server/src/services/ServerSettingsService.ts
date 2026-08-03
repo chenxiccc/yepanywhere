@@ -159,6 +159,8 @@ export interface ServerSettings {
    * - "off": don't check or surface updates.
    */
   codexUpdatePolicy?: "auto" | "notify" | "off";
+  /** Keep eligible local Linux Codex runtimes across YA server reloads. */
+  codexReloadSafeSessions: boolean;
   /**
    * Max seconds between consecutive compose times for queued-while-busy turns
    * to join into one `--------`-joined provider turn at a delivery boundary.
@@ -205,6 +207,7 @@ export const DEFAULT_SERVER_SETTINGS: ServerSettings = {
   lifecycleWebhookDryRun: true,
   grokBuildUseXaiApiKey: false,
   codexUpdatePolicy: "notify",
+  codexReloadSafeSessions: false,
   clientDefaults: DEFAULT_CLIENT_DEFAULTS,
   cacheMissBilling: DEFAULT_CACHE_MISS_BILLING_SETTINGS,
   projectQueueQuietSeconds: DEFAULT_PROJECT_QUEUE_QUIET_SECONDS,
@@ -312,6 +315,10 @@ function normalizeLoadedSettings(settings: ServerSettings): ServerSettings {
     typeof settings.hostProcessObservabilityEnabled === "boolean"
       ? settings.hostProcessObservabilityEnabled
       : DEFAULT_SERVER_SETTINGS.hostProcessObservabilityEnabled;
+  normalized.codexReloadSafeSessions =
+    typeof settings.codexReloadSafeSessions === "boolean"
+      ? settings.codexReloadSafeSessions
+      : DEFAULT_SERVER_SETTINGS.codexReloadSafeSessions;
   normalized.hostAwakeMode = isHostAwakeMode(settings.hostAwakeMode)
     ? settings.hostAwakeMode
     : DEFAULT_SERVER_SETTINGS.hostAwakeMode;

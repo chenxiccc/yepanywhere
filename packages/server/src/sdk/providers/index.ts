@@ -96,6 +96,8 @@ export interface ProviderRuntimeConfig {
   getClaudeAdditionalModels?: () =>
     | readonly ClaudeAdditionalModelSelection[]
     | undefined;
+  /** Whether new eligible Codex sessions use the reload-safe lifecycle host. */
+  getCodexReloadSafeSessions?: () => boolean;
   /** Whether legacy ClaudeOllama has configured or persisted usage. */
   isClaudeOllamaVisible?: () => boolean;
 }
@@ -107,6 +109,9 @@ export function configureProviderRuntime(config: ProviderRuntimeConfig): void {
     config.getClaudeAdditionalModels ?? (() => []),
   );
   codexProvider.setCodexPath(config.codexCliPath);
+  codexProvider.setReloadSafeSessionsGetter(
+    config.getCodexReloadSafeSessions ?? (() => false),
+  );
   codexOSSProvider.setCodexPath(config.codexCliPath);
   isClaudeOllamaVisible = config.isClaudeOllamaVisible ?? (() => false);
 }

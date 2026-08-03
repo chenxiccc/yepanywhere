@@ -10,6 +10,8 @@ import {
   GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,
   HOST_AWAKE_CONTROL_CAPABILITY,
   HOST_IDENTITY_CAPABILITY,
+  RELOAD_SAFE_CODEX_RUNTIME_CAPABILITY,
+  RELOAD_SAFE_CODEX_RUNTIME_SETTINGS_CAPABILITY,
   SESSION_SANDBOXING_CAPABILITY,
   SESSION_SANDBOXING_STATUS_CAPABILITY,
   SESSION_FORK_TURN_INTENTS_CAPABILITY,
@@ -47,6 +49,18 @@ describe("Version Routes", () => {
     expect(getServerCapabilities()).toContain(
       CLAUDE_GATEWAY_AUTOSTART_CAPABILITY,
     );
+  });
+
+  it("separates reload-safe Codex settings from host availability", () => {
+    expect(getServerCapabilities()).toContain(
+      RELOAD_SAFE_CODEX_RUNTIME_SETTINGS_CAPABILITY,
+    );
+    expect(getServerCapabilities()).not.toContain(
+      RELOAD_SAFE_CODEX_RUNTIME_CAPABILITY,
+    );
+    expect(
+      getServerCapabilities({ reloadSafeCodexRuntimeAvailable: true }),
+    ).toContain(RELOAD_SAFE_CODEX_RUNTIME_CAPABILITY);
   });
 
   it("advertises the complete source browser and review contract", () => {

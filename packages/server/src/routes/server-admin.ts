@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { requestDevWrapperReload } from "../dev-wrapper-client.js";
 import { markDevReloadRequested } from "../dev-reload-signal.js";
 import type { NotificationService } from "../notifications/index.js";
 import type { Supervisor } from "../supervisor/Supervisor.js";
@@ -15,6 +16,7 @@ export interface TriggerServerRestartOptions {
   beforeRestartTimeoutMs?: number;
   exit?: (code: number) => void;
   exitDelayMs?: number;
+  requestWrapperReload?: () => Promise<boolean>;
 }
 
 const DEFAULT_RESTART_CLEANUP_TIMEOUT_MS = 1000;
@@ -58,9 +60,11 @@ export async function triggerServerRestart({
   beforeRestartTimeoutMs = DEFAULT_RESTART_CLEANUP_TIMEOUT_MS,
   exit = (code) => process.exit(code),
   exitDelayMs = 100,
+  requestWrapperReload = requestDevWrapperReload,
 }: TriggerServerRestartOptions = {}): Promise<void> {
   await notificationService?.flush();
   await runBeforeRestart(beforeRestart, beforeRestartTimeoutMs);
+  if (await requestWrapperReload()) return;
   markDevReloadRequested();
 
   // Process supervisor (scripts/dev.js, systemd, pm2) will restart the process.

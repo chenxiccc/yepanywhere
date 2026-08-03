@@ -25,6 +25,7 @@ import * as fs from "node:fs";
 import * as http from "node:http";
 import * as inspector from "node:inspector";
 
+import { requestDevWrapperReload } from "../dev-wrapper-client.js";
 import { markDevReloadRequested } from "../dev-reload-signal.js";
 import {
   LOG_LEVELS,
@@ -182,7 +183,7 @@ export function startMaintenanceServer(options: MaintenanceServerOptions): {
       } else if (path === "/inspector/close" && method === "POST") {
         handleCloseInspector(res);
       } else if (path === "/reload" && method === "POST") {
-        handleReload(res);
+        await handleReload(res);
       } else {
         sendJson(res, 404, {
           error: "Not found",
@@ -437,8 +438,15 @@ async function handleSetProxyDebug(
 }
 
 /** POST /reload */
-function handleReload(res: http.ServerResponse): void {
-  console.log("[Maintenance] Reload requested, exiting...");
+async function handleReload(res: http.ServerResponse): Promise<void> {
+  console.log("[Maintenance] Reload requested...");
+  if (await requestDevWrapperReload()) {
+    sendJson(res, 200, {
+      message: "Server reload requested...",
+      timestamp: new Date().toISOString(),
+    });
+    return;
+  }
   markDevReloadRequested();
 
   sendJson(res, 200, {
