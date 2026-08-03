@@ -1,12 +1,11 @@
 # Security-Client Registration And Native Push
 
-Status: approved for implementation and amended after source-level design
-review on 2026-08-02. This tracker supersedes the mobile-only paired-device
-endpoint sketch with one cross-platform security-client API. Android must prove
-a Keystore key; capable web clients use WebCrypto; legacy web records remain
-visible through a server projection. A server-global security ledger and
-opt-in new-client alert make the inventory an actionable audit surface. Native
-push is a child of the registered Android client.
+Status: the server security-client baseline and Android continuity-key path are
+implemented, and the physical-device checkpoint passed on 2026-08-02. This
+tracker supersedes the mobile-only paired-device endpoint sketch with one
+cross-platform security-client API. Capable-web registration, the dashboard,
+new-client alerts, and native push remain pending; the work tracker below is
+the authoritative split between completed and remaining slices.
 
 Topic: security-client-audit
 Topic: mobile-server-pairing

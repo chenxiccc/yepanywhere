@@ -6,14 +6,14 @@
 
 Topic: android-fcm-push
 
-Status: Approved architecture direction. The credential-free broker v1 is
-implemented, deployed, and proven through FCM to a physical Pixel. The current
-Android shell owns notification permission/channel status and a
-Keystore-backed broker installation whose FCM target follows FID replacement.
-The unified security-client and native-push server contracts are approved but
-not implemented; server-specific subscriptions and native notification
-presentation remain the active slice. The obsolete Tauri Mobile source has
-been removed.
+Status: The credential-free broker v1 is implemented, deployed, and proven
+through FCM to a physical Pixel. The current Android shell owns notification
+permission/channel status, a Keystore-backed broker installation whose FCM
+target follows FID replacement, and a per-server continuity key that registers
+and checks in through the implemented unified security-client server contract.
+The native-push server contract, server-specific subscription enrollment, and
+native notification presentation remain pending. The obsolete Tauri Mobile
+source has been removed.
 
 Related:
 

@@ -4,22 +4,26 @@ Parent contract: [Project Directory Storage](../../topics/project-directory-stor
 
 Settings contract: [Storage Settings](../../topics/storage-settings.md)
 
-Status: audit complete; implementation intentionally not started. This plan
-exists to drive the follow-up discussion and fixes.
+Status: completed on 2026-08-03. The app-data-only default, explicit
+project-local opt-in, independent media-preservation setting, capability gates,
+legacy reads, writer routing, and no-write acceptance coverage are implemented.
+The ordered sections below are the historical implementation record, not a
+queue of work to execute again.
 
-## Audit result
+## Pre-implementation audit result
 
-Current source has six ways to mutate a project or its Git metadata for
+The audited source had six ways to mutate a project or its Git metadata for
 YA-owned state: attachments, tool-result media, the Git author palette,
 source-review files, the source-review capture ref/object graph, and automatic
-Git excludes. Only project-local attachments have shipped in a stable npm
-release; they first shipped in `0.5.0` and remain present through `0.7.0`.
+Git excludes. The completed implementation routes all six through the shared
+storage policy. Only project-local attachments shipped in a stable npm
+release; they first appeared in `0.5.0` and remained through `0.7.0`.
 
-There is no implemented attachment-location or general project-storage
-setting. The prose that described an attachment setting was a design that
-never landed.
+At audit time there was no attachment-location or general project-storage
+setting; the prose that described one was an unimplemented design. The current
+source now provides the global storage setting documented by the parent topic.
 
-## Recommended order
+## Historical implementation order
 
 ### 1 — establish the global project-storage gate
 

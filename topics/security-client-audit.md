@@ -9,16 +9,14 @@
 
 Topic: security-client-audit
 
-Status: Unified v1 contract approved on 2026-08-02 and amended after direct
-source review on 2026-08-02. Android is the first required continuity-key
-consumer. Capable web clients use the same API and a non-extractable WebCrypto
-key, while the server projects existing browser profile and remote-session
-state into the audit surface for legacy clients. A bounded server security
-ledger survives client revocation, and an opt-in security-alert category makes
-new registrations visible without opening the dashboard. Native push is an
-optional child capability. Hardware/platform attestation, WebAuthn step-up,
-cookie continuity proof, and native desktop key ownership are recorded future
-extensions rather than v1 requirements.
+Status: The unified v1 server registry, continuity verification, legacy-web
+projection, bounded security ledger, revocation cascade, and Android
+registration/check-in are implemented; the physical Pixel checkpoint passed
+on 2026-08-02. Capable-web registration, the security dashboard, new-client
+alerts, and native push remain pending. Native push is an optional child
+capability. Hardware/platform attestation, WebAuthn step-up, cookie continuity
+proof, and native desktop key ownership remain future extensions rather than
+v1 requirements.
 
 Related:
 
