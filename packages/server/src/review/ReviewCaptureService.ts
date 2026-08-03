@@ -1,6 +1,9 @@
 /** Exact source capture and append-only git-object pinning. */
 
 import { spawn } from "node:child_process";
+import { createHash, randomUUID } from "node:crypto";
+import { open, readFile, rename, unlink } from "node:fs/promises";
+import { dirname } from "node:path";
 import type {
   ReviewCapture,
   ReviewCapturedSource,
@@ -9,8 +12,6 @@ import type {
   ReviewSourceProjection,
 } from "@yep-anywhere/shared";
 import { DEFAULT_SNIPPET_CONTEXT_RADIUS } from "@yep-anywhere/shared";
-import { open, readFile, writeFile } from "node:fs/promises";
-import { createHash } from "node:crypto";
 import { getDataDir } from "../config.js";
 import { runGit, runGitBytes } from "../git/gitExec.js";
 import { HttpError } from "../middleware/error-handler.js";
@@ -233,9 +234,36 @@ export class ReviewCaptureService {
       captureId,
     );
     try {
-      await writeFile(capturePath, bytes, { flag: "wx" });
+      const existing = await readFile(capturePath);
+      if (existing.equals(bytes)) return;
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+
+    const temporaryPath = `${capturePath}.${randomUUID()}.tmp`;
+    let published = false;
+    try {
+      const file = await open(temporaryPath, "wx", 0o600);
+      try {
+        await file.writeFile(bytes);
+        await file.sync();
+      } finally {
+        await file.close();
+      }
+      await rename(temporaryPath, capturePath);
+      published = true;
+      const directory = await open(dirname(capturePath), "r");
+      try {
+        await directory.sync();
+      } finally {
+        await directory.close();
+      }
+    } finally {
+      if (!published) {
+        await unlink(temporaryPath).catch((error: NodeJS.ErrnoException) => {
+          if (error.code !== "ENOENT") throw error;
+        });
+      }
     }
   }
 }
@@ -257,6 +285,12 @@ async function readCaptureText(
   )) {
     try {
       const bytes = await readFile(capturePath);
+      if (
+        captureBlobId.length === 64 &&
+        createHash("sha256").update(bytes).digest("hex") !== captureBlobId
+      ) {
+        continue;
+      }
       if (bytes.length > MAX_CAPTURE_SOURCE_BYTES) {
         return { status: "unavailable", reason: "too-large" };
       }

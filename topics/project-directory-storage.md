@@ -74,6 +74,11 @@ without a separate explicit operation. Exclusion reduces accidental commits,
 but does not address checkout growth, backups, cloud synchronization, privacy,
 or the user's ownership of the project namespace.
 
+The tracked-path check fails closed. Only Git's explicit “not a repository”
+result permits a non-Git project to proceed without `ls-files`; a timeout,
+missing executable, permission problem, or other inspection failure aborts the
+write before YA creates `.yep` or edits Git metadata.
+
 ## Feature Retention And Location Are Independent
 
 Every feature answers two questions separately:

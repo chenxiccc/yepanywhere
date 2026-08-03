@@ -476,13 +476,13 @@ export class SecurityClientService {
       }
       this.state = parsed;
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-        console.warn(
-          "[SecurityClientService] Failed to load state, starting fresh:",
-          error,
-        );
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        this.state = emptyState();
+      } else {
+        throw new Error("Failed to load security-client state", {
+          cause: error,
+        });
       }
-      this.state = emptyState();
     }
     this.initialized = true;
     this.remoteSessionService.setEvictionListener(

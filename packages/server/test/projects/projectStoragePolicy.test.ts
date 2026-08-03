@@ -67,6 +67,36 @@ describe("ProjectStoragePolicy", () => {
     ).toContain(".yep/");
   });
 
+  it("allows project-local storage in a confirmed non-Git directory", async () => {
+    const policy = new ProjectStoragePolicy({
+      dataDir,
+      getMode: () => "project",
+    });
+
+    await expect(
+      policy.ensureWriteDirectory(projectPath, "attachments"),
+    ).resolves.toBe(join(projectPath, ".yep", "attachments"));
+  });
+
+  it("does not mutate the project when Git inspection fails", async () => {
+    const policy = new ProjectStoragePolicy({
+      dataDir,
+      getMode: () => "project",
+      runGit: async () => {
+        throw Object.assign(new Error("git inspection timed out"), {
+          code: "ETIMEDOUT",
+        });
+      },
+    });
+
+    await expect(
+      policy.ensureWriteDirectory(projectPath, "attachments"),
+    ).rejects.toThrow("Could not verify project storage Git state");
+    await expect(stat(join(projectPath, ".yep"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
   it("rejects a tracked .yep root", async () => {
     await execFileAsync("git", ["-C", projectPath, "init"]);
     await execFileAsync("git", ["-C", projectPath, "config", "user.email", "test@example.com"]);

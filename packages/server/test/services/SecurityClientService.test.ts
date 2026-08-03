@@ -458,6 +458,9 @@ describe("SecurityClientService", () => {
     await service.prepareRevocation(registered.client.clientId);
     await service.shutdown();
     remoteSessions.shutdown();
+    const statePath = path.join(testDir, "security-clients.json");
+    const validState = await fs.readFile(statePath, "utf8");
+    await fs.writeFile(statePath, "{truncated");
 
     remoteSessions = new RemoteSessionService({ dataDir: testDir });
     await remoteSessions.initialize();
@@ -465,6 +468,12 @@ describe("SecurityClientService", () => {
       dataDir: testDir,
       remoteSessionService: remoteSessions,
     });
+    await expect(service.initialize()).rejects.toThrow(
+      "Failed to load security-client state",
+    );
+    await expect(fs.readFile(statePath, "utf8")).resolves.toBe("{truncated");
+
+    await fs.writeFile(statePath, validState);
     await service.initialize();
 
     expect(service.get(registered.client.clientId).revokedAt).toBeTruthy();
@@ -580,52 +589,71 @@ describe("SecurityClientService", () => {
     connected.disconnect(tabId);
   });
 
-  it("rejects malformed persisted descriptors instead of exposing them", async () => {
+  it("fails closed on malformed persisted descriptors", async () => {
     await service.shutdown();
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    await fs.writeFile(
-      path.join(testDir, "security-clients.json"),
-      JSON.stringify({
-        version: 1,
-        clients: {
-          bad: {
-            clientId: "bad",
-            username: "testuser",
-            kind: "android-native",
-            reportedLabel: "Bad",
-            descriptorVersion: 1,
-            descriptor: { appName: "not enough" },
-            descriptorDigest: "bad",
-            proofs: [
-              {
-                type: "continuity-key",
-                publicKeySpki: "bad",
-                keyFingerprint: "bad",
-              },
-            ],
-            createdAt: new Date().toISOString(),
-            lastSeenAt: new Date().toISOString(),
-            descriptorUpdatedAt: new Date().toISOString(),
-            events: [],
-          },
+    const statePath = path.join(testDir, "security-clients.json");
+    const malformedState = JSON.stringify({
+      version: 1,
+      clients: {
+        bad: {
+          clientId: "bad",
+          username: "testuser",
+          kind: "android-native",
+          reportedLabel: "Bad",
+          descriptorVersion: 1,
+          descriptor: { appName: "not enough" },
+          descriptorDigest: "bad",
+          proofs: [
+            {
+              type: "continuity-key",
+              publicKeySpki: "bad",
+              keyFingerprint: "bad",
+            },
+          ],
+          createdAt: new Date().toISOString(),
+          lastSeenAt: new Date().toISOString(),
+          descriptorUpdatedAt: new Date().toISOString(),
+          events: [],
         },
-        registrationRequests: {},
-        securityEvents: [],
-      }),
-    );
+      },
+      registrationRequests: {},
+      securityEvents: [],
+    });
+    await fs.writeFile(statePath, malformedState);
 
     service = new SecurityClientService({
       dataDir: testDir,
       remoteSessionService: remoteSessions,
     });
-    await service.initialize();
-
-    expect(service.list()).toEqual([]);
-    expect(warn).toHaveBeenCalledWith(
-      "[SecurityClientService] Failed to load state, starting fresh:",
-      expect.any(Error),
+    await expect(service.initialize()).rejects.toThrow(
+      "Failed to load security-client state",
     );
-    warn.mockRestore();
+    await expect(fs.readFile(statePath, "utf8")).resolves.toBe(malformedState);
+    expect(() => service.list()).toThrow("not initialized");
+  });
+
+  it("fails closed on state from a newer server version", async () => {
+    await service.shutdown();
+    const statePath = path.join(testDir, "security-clients.json");
+    const futureState = JSON.stringify({
+      version: 2,
+      clients: {},
+      registrationRequests: {},
+      legacyOwnerLabels: {},
+      revokedLegacyBrowserProfiles: {},
+      securityEvents: [],
+    });
+    await fs.writeFile(statePath, futureState);
+
+    service = new SecurityClientService({
+      dataDir: testDir,
+      remoteSessionService: remoteSessions,
+    });
+    await expect(service.initialize()).rejects.toThrow(
+      "Failed to load security-client state",
+    );
+    await expect(fs.readFile(statePath, "utf8")).resolves.toBe(futureState);
+    expect(() => service.list()).toThrow("not initialized");
   });
 
   it("uses typed service errors for unknown clients", () => {

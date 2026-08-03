@@ -323,6 +323,13 @@ id when known, and only the minimum recognizable descriptor snapshot needed
 after a record is gone. They never contain passwords, SRP values, session keys,
 signatures, raw public keys, push secrets, or FCM identifiers.
 
+The persisted client and ledger file is fail-closed state. A genuinely missing
+file initializes an empty service; malformed JSON, an unsupported version,
+invalid records, or an unreadable existing file prevents the security-client
+service—and therefore the server—from initializing. YA preserves the file for
+operator recovery and never converts load failure into an empty writable
+ledger that could forget a revocation or overwrite audit history.
+
 Failure traffic must not erase useful history by filling the ring. Repeated
 failures coalesce into counted windows by bounded server-observed keys, and
 failure summaries consume at most one quarter of retained ledger entries.

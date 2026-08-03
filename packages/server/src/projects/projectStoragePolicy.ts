@@ -11,16 +11,25 @@ const execFileAsync = promisify(execFile);
 export interface ProjectStoragePolicyOptions {
   dataDir: string;
   getMode: () => ProjectDirectoryStorage;
+  runGit?: ProjectStorageGitRunner;
 }
+
+export type ProjectStorageGitRunner = (
+  projectPath: string,
+  args: readonly string[],
+  output: "text" | "buffer",
+) => Promise<string | Buffer>;
 
 /** Resolve all YA-owned project state through one explicit storage policy. */
 export class ProjectStoragePolicy {
   readonly dataDir: string;
   private readonly getModeValue: () => ProjectDirectoryStorage;
+  private readonly runGit: ProjectStorageGitRunner;
 
   constructor(options: ProjectStoragePolicyOptions) {
     this.dataDir = resolve(options.dataDir);
     this.getModeValue = options.getMode;
+    this.runGit = options.runGit ?? runProjectStorageGit;
   }
 
   get mode(): ProjectDirectoryStorage {
@@ -53,7 +62,7 @@ export class ProjectStoragePolicy {
       const root = this.projectRoot(projectPath);
       const directory = containedPath(root, segments);
       await assertNoSymlinkComponents(resolve(projectPath), directory);
-      await assertProjectRootUntracked(projectPath);
+      await assertProjectRootUntracked(projectPath, this.runGit);
       await ensureManagedProjectDir(projectPath, ".yep", ...segments);
       await assertContainedDirectory(projectPath, directory);
       return directory;
@@ -148,29 +157,65 @@ async function assertContainedDirectory(
   }
 }
 
-async function assertProjectRootUntracked(projectPath: string): Promise<void> {
+async function runProjectStorageGit(
+  projectPath: string,
+  args: readonly string[],
+  output: "text" | "buffer",
+): Promise<string | Buffer> {
+  if (output === "buffer") {
+    const { stdout } = await execFileAsync("git", ["-C", projectPath, ...args], {
+      timeout: 5000,
+      encoding: "buffer",
+    });
+    return stdout;
+  }
+  const { stdout } = await execFileAsync("git", ["-C", projectPath, ...args], {
+    timeout: 5000,
+  });
+  return stdout;
+}
+
+function isConfirmedNonGitProject(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const failure = error as { code?: string | number; stderr?: unknown };
+  return (
+    failure.code === 128 &&
+    String(failure.stderr).toLowerCase().includes("not a git repository")
+  );
+}
+
+async function assertProjectRootUntracked(
+  projectPath: string,
+  runGit: ProjectStorageGitRunner,
+): Promise<void> {
+  let inside: string | Buffer;
   try {
-    const { stdout: inside } = await execFileAsync(
-      "git",
-      ["-C", projectPath, "rev-parse", "--is-inside-work-tree"],
-      { timeout: 5000 },
+    inside = await runGit(
+      projectPath,
+      ["rev-parse", "--is-inside-work-tree"],
+      "text",
     );
-    if (inside.trim() !== "true") return;
-    const { stdout: tracked } = await execFileAsync(
-      "git",
-      ["-C", projectPath, "ls-files", "-z", "--", ".yep"],
-      { timeout: 5000, encoding: "buffer" },
-    );
-    if (tracked.length > 0) {
-      throw new Error("Refusing YA-managed writes into a tracked .yep root");
-    }
   } catch (error) {
-    if (
-      error instanceof Error &&
-      error.message === "Refusing YA-managed writes into a tracked .yep root"
-    ) {
-      throw error;
-    }
-    // A non-Git project has no tracked-path constraint.
+    if (isConfirmedNonGitProject(error)) return;
+    throw new Error("Could not verify project storage Git state", {
+      cause: error,
+    });
+  }
+  if (inside.toString().trim() !== "true") return;
+
+  let tracked: string | Buffer;
+  try {
+    tracked = await runGit(
+      projectPath,
+      ["ls-files", "-z", "--", ".yep"],
+      "buffer",
+    );
+  } catch (error) {
+    throw new Error("Could not verify whether the .yep root is tracked", {
+      cause: error,
+    });
+  }
+  if (tracked.length > 0) {
+    throw new Error("Refusing YA-managed writes into a tracked .yep root");
   }
 }

@@ -291,12 +291,17 @@ provenance or relocation revision: a blame line's origin SHA is not necessarily
 the revision whose file content was rendered, and an old-side commit line may
 come from the comparison base or parent rather than the clicked commit.
 
-For a committed projection, YA resolves the already-existing git blob. For a
-worktree or otherwise dirty projection, YA writes the rendered file bytes as a
-real git blob at **comment creation** (`git hash-object -w`). It never waits for
-submit and never substitutes current bytes for a historical or removed side.
-The capture descriptor also records enough projection identity to reconstruct
-which side was shown without treating `captureBlobId` as provenance.
+With project-local storage enabled, a committed projection resolves the
+already-existing git blob and a worktree or otherwise dirty projection writes
+the rendered bytes as a real git blob at **comment creation** (`git hash-object
+-w`). In the default app-data mode, the same exact bytes are stored centrally
+under their SHA-256 content id without writing Git objects or refs. Publication
+uses a fully written and fsynced temporary file followed by atomic rename;
+existing content is accepted only when its bytes match, and reads reject a
+SHA-256-named file whose content does not match. YA never waits for submit and
+never substitutes current bytes for a historical or removed side. The capture
+descriptor also records enough projection identity to reconstruct which side
+was shown without treating `captureBlobId` as provenance.
 
 All anchor and capture paths must be validated as repository-relative before
 any file read or git invocation. Absolute paths, `..` traversal, and symlink

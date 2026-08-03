@@ -180,6 +180,52 @@ describe("ReviewCaptureService", () => {
     }
   });
 
+  it("rejects and repairs a truncated app-data capture", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "yep-review-capture-data-"));
+    const storagePolicy = new ProjectStoragePolicy({
+      dataDir,
+      getMode: () => "app-data",
+    });
+    try {
+      const service = new ReviewCaptureService({ storagePolicy });
+      const capture = await service.capture(repo, {
+        kind: "worktree",
+        path: "src/file.ts",
+        side: "new",
+      });
+      if (capture.status !== "captured") throw new Error("Expected capture");
+      const capturePath = storagePolicy.writePath(
+        repo,
+        "source-review",
+        "captures",
+        capture.captureBlobId,
+      );
+      await writeFile(capturePath, "truncated");
+
+      await expect(
+        service.readExcerpt(repo, capture, {
+          path: "src/file.ts",
+          revision: { kind: "uncommitted", savedAt: new Date().toISOString() },
+          side: "new",
+          oldLine: 1,
+          newLine: 1,
+          snippet: "const committed = 1;",
+        }),
+      ).resolves.toMatchObject({ status: "unavailable", reason: "missing" });
+
+      await service.capture(repo, {
+        kind: "worktree",
+        path: "src/file.ts",
+        side: "new",
+      });
+      await expect(readFile(capturePath, "utf8")).resolves.toBe(
+        "const committed = 1;\n",
+      );
+    } finally {
+      await rm(dataDir, { recursive: true, force: true });
+    }
+  });
+
   it("rejects absolute, traversal, and escaping symlink paths", async () => {
     for (const invalid of [
       "/etc/passwd",
