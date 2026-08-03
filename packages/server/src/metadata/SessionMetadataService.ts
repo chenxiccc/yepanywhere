@@ -10,10 +10,13 @@ import * as path from "node:path";
 import {
   type CacheMissBillingRecord,
   type DurableRecapMessage,
+  type EffortLevel,
+  type PermissionMode,
   type ProviderName,
   type PromptSuggestionMode,
   type RecapMode,
   type SessionSandboxLevel,
+  type ThinkingConfig,
   type TranscriptDisplayObject,
   type UrlProjectId,
   type WorkstreamId,
@@ -21,6 +24,28 @@ import {
   sanitizeSessionTitle,
 } from "@yep-anywhere/shared";
 import { createCoalescingSaver } from "../lib/coalescingSaver.js";
+
+export interface EffectiveSessionLaunchSettings {
+  /** Record schema, independent of the containing metadata-file schema. */
+  schemaVersion: 1;
+  /** Monotonic session-local revision for ordered client/server updates. */
+  revision: number;
+  /** Standing permission selector restored when YA owns a new process. */
+  permissionMode: PermissionMode;
+  /** Exact YA model token, including "default"; null means provider default. */
+  requestedModel: string | null;
+  /** Provider-visible service tier; null means provider/default behavior. */
+  serviceTier: string | null;
+  /** Effective thinking configuration; null means disabled/default behavior. */
+  thinking: ThinkingConfig | null;
+  /** Effective effort selection; null means provider/default behavior. */
+  effort: EffortLevel | null;
+}
+
+export type EffectiveSessionLaunchSettingsValue = Omit<
+  EffectiveSessionLaunchSettings,
+  "schemaVersion" | "revision"
+>;
 
 export interface SessionMetadata {
   /** Custom title that overrides auto-generated title */
@@ -48,6 +73,8 @@ export interface SessionMetadata {
    * Absent for sessions YA didn't start. See topics/provider-abstraction.md.
    */
   requestedModel?: string;
+  /** Last successfully applied per-session process launch settings. */
+  effectiveLaunchSettings?: EffectiveSessionLaunchSettings;
   /** Provider used for this session (for backward compatibility with sessions that don't have provider in JSONL) */
   provider?: ProviderName;
   /** SSH host alias for remote execution (undefined = local) */
@@ -149,7 +176,9 @@ export class SessionMetadataService {
       let changed = parsed.version !== CURRENT_VERSION;
       for (const metadata of Object.values(this.state.sessions)) {
         if (migrateLegacyLineage && metadata.parentSessionId) {
-          if (/^\/btw(?:\s+|$)/i.test(metadata.customTitle?.trimStart() ?? "")) {
+          if (
+            /^\/btw(?:\s+|$)/i.test(metadata.customTitle?.trimStart() ?? "")
+          ) {
             metadata.parentSessionKind = "btw-aside";
           } else {
             metadata.forkedFromSessionId ??= metadata.parentSessionId;
@@ -226,8 +255,8 @@ export class SessionMetadataService {
 
   getRecapMessages(sessionId: string): DurableRecapMessage[] {
     return [
-      ...(this.state.sessions[this.resolveSessionId(sessionId)]?.recapMessages ??
-        []),
+      ...(this.state.sessions[this.resolveSessionId(sessionId)]
+        ?.recapMessages ?? []),
     ];
   }
 
@@ -443,8 +472,60 @@ export class SessionMetadataService {
     this.updateSessionMetadata(sessionId, (metadata) => ({
       ...metadata,
       requestedModel: requestedModel || undefined,
+      ...(metadata.effectiveLaunchSettings &&
+      metadata.effectiveLaunchSettings.requestedModel !==
+        (requestedModel || null)
+        ? {
+            effectiveLaunchSettings: {
+              ...metadata.effectiveLaunchSettings,
+              revision: metadata.effectiveLaunchSettings.revision + 1,
+              requestedModel: requestedModel || null,
+            },
+          }
+        : {}),
     }));
     await this.save();
+  }
+
+  getEffectiveLaunchSettings(
+    sessionId: string,
+  ): EffectiveSessionLaunchSettings | undefined {
+    return this.getMetadata(sessionId)?.effectiveLaunchSettings;
+  }
+
+  /**
+   * Record one complete, successfully applied launch-settings snapshot.
+   * Identical snapshots are no-ops so reload-safe host reattachment does not
+   * manufacture revisions or rewrite metadata.
+   */
+  async recordEffectiveLaunchSettings(
+    sessionId: string,
+    value: EffectiveSessionLaunchSettingsValue,
+  ): Promise<EffectiveSessionLaunchSettings> {
+    const existing = this.getEffectiveLaunchSettings(sessionId);
+    if (
+      existing &&
+      existing.permissionMode === value.permissionMode &&
+      existing.requestedModel === value.requestedModel &&
+      existing.serviceTier === value.serviceTier &&
+      JSON.stringify(existing.thinking) === JSON.stringify(value.thinking) &&
+      existing.effort === value.effort
+    ) {
+      return existing;
+    }
+
+    const next: EffectiveSessionLaunchSettings = {
+      schemaVersion: 1,
+      revision: (existing?.revision ?? 0) + 1,
+      ...value,
+    };
+    this.updateSessionMetadata(sessionId, (metadata) => ({
+      ...metadata,
+      requestedModel: value.requestedModel || undefined,
+      effectiveLaunchSettings: next,
+    }));
+    await this.save();
+    return next;
   }
 
   /**
@@ -519,7 +600,11 @@ export class SessionMetadataService {
    * Returns undefined for sessions YA didn't start (no requested id was stored).
    */
   getRequestedModel(sessionId: string): string | undefined {
-    return this.getMetadata(sessionId)?.requestedModel;
+    const metadata = this.getMetadata(sessionId);
+    if (metadata?.effectiveLaunchSettings) {
+      return metadata.effectiveLaunchSettings.requestedModel ?? undefined;
+    }
+    return metadata?.requestedModel;
   }
 
   /**
@@ -745,6 +830,9 @@ export class SessionMetadataService {
       cleaned.cacheMissBillingEvents = updated.cacheMissBillingEvents;
     }
     if (updated.requestedModel) cleaned.requestedModel = updated.requestedModel;
+    if (updated.effectiveLaunchSettings) {
+      cleaned.effectiveLaunchSettings = updated.effectiveLaunchSettings;
+    }
     if (updated.provider) cleaned.provider = updated.provider;
     if (updated.executor) cleaned.executor = updated.executor;
     if (updated.initialPrompt) cleaned.initialPrompt = updated.initialPrompt;

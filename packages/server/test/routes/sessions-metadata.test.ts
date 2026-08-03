@@ -562,110 +562,116 @@ describe("Sessions metadata route", () => {
   });
 
   it("returns paused recovered patient queue entries in metadata", async () => {
-    await withSessionQueuePersistence(async (sessionQueuePersistenceService) => {
-      const project = createProject();
-      const summary = createSummary();
-      await sessionQueuePersistenceService.replaceAll([
-        {
-          id: "queue-1",
-          sessionId: "sess-1",
-          projectId: project.id,
-          projectPath: project.path,
-          provider: "claude",
-          kind: "patient",
-          message: {
-            text: "resume after restart",
-            tempId: "temp-patient",
-            metadata: { deliveryIntent: "patient" },
-          },
-          createdAt: "2026-06-30T09:00:00.000Z",
-          updatedAt: "2026-06-30T09:01:00.000Z",
-          queuedAt: "2026-06-30T09:00:00.000Z",
-          status: "paused-after-restart",
-          source: { tempId: "temp-patient" },
-        },
-      ]);
-      const reader = {
-        getSessionSummary: vi.fn(async () => summary),
-      } as unknown as ISessionReader;
-
-      const routes = createSessionsRoutes({
-        supervisor: {
-          getProcessForSession: vi.fn(() => null),
-        } as unknown as SessionsDeps["supervisor"],
-        scanner: {
-          getOrCreateProject: vi.fn(async () => project),
-        } as unknown as SessionsDeps["scanner"],
-        readerFactory: vi.fn(() => reader),
-        sessionQueuePersistenceService,
-      });
-
-      const response = await routes.request(
-        `/projects/${project.id}/sessions/sess-1/metadata`,
-      );
-      expect(response.status).toBe(200);
-      await expect(response.json()).resolves.toMatchObject({
-        deferredMessages: [
+    await withSessionQueuePersistence(
+      async (sessionQueuePersistenceService) => {
+        const project = createProject();
+        const summary = createSummary();
+        await sessionQueuePersistenceService.replaceAll([
           {
             id: "queue-1",
-            tempId: "temp-patient",
-            content: "resume after restart",
-            kind: "patient",
-            status: "paused-after-restart",
             sessionId: "sess-1",
             projectId: project.id,
-            timestamp: "2026-06-30T09:00:00.000Z",
-            metadata: { deliveryIntent: "patient" },
+            projectPath: project.path,
+            provider: "claude",
+            kind: "patient",
+            message: {
+              text: "resume after restart",
+              tempId: "temp-patient",
+              metadata: { deliveryIntent: "patient" },
+            },
+            createdAt: "2026-06-30T09:00:00.000Z",
+            updatedAt: "2026-06-30T09:01:00.000Z",
+            queuedAt: "2026-06-30T09:00:00.000Z",
+            status: "paused-after-restart",
+            source: { tempId: "temp-patient" },
           },
-        ],
-      });
-    });
+        ]);
+        const reader = {
+          getSessionSummary: vi.fn(async () => summary),
+        } as unknown as ISessionReader;
+
+        const routes = createSessionsRoutes({
+          supervisor: {
+            getProcessForSession: vi.fn(() => null),
+          } as unknown as SessionsDeps["supervisor"],
+          scanner: {
+            getOrCreateProject: vi.fn(async () => project),
+          } as unknown as SessionsDeps["scanner"],
+          readerFactory: vi.fn(() => reader),
+          sessionQueuePersistenceService,
+        });
+
+        const response = await routes.request(
+          `/projects/${project.id}/sessions/sess-1/metadata`,
+        );
+        expect(response.status).toBe(200);
+        await expect(response.json()).resolves.toMatchObject({
+          deferredMessages: [
+            {
+              id: "queue-1",
+              tempId: "temp-patient",
+              content: "resume after restart",
+              kind: "patient",
+              status: "paused-after-restart",
+              sessionId: "sess-1",
+              projectId: project.id,
+              timestamp: "2026-06-30T09:00:00.000Z",
+              metadata: { deliveryIntent: "patient" },
+            },
+          ],
+        });
+      },
+    );
   });
 
   it("deletes a paused recovered patient queue entry by durable id", async () => {
-    await withSessionQueuePersistence(async (sessionQueuePersistenceService) => {
-      const project = createProject();
-      await sessionQueuePersistenceService.replaceAll([
-        {
-          id: "queue-1",
-          sessionId: "sess-1",
-          projectId: project.id,
-          projectPath: project.path,
-          provider: "claude",
-          kind: "patient",
-          message: {
-            text: "delete me",
-            tempId: "temp-patient",
-            metadata: { deliveryIntent: "patient" },
+    await withSessionQueuePersistence(
+      async (sessionQueuePersistenceService) => {
+        const project = createProject();
+        await sessionQueuePersistenceService.replaceAll([
+          {
+            id: "queue-1",
+            sessionId: "sess-1",
+            projectId: project.id,
+            projectPath: project.path,
+            provider: "claude",
+            kind: "patient",
+            message: {
+              text: "delete me",
+              tempId: "temp-patient",
+              metadata: { deliveryIntent: "patient" },
+            },
+            createdAt: "2026-06-30T09:00:00.000Z",
+            updatedAt: "2026-06-30T09:01:00.000Z",
+            queuedAt: "2026-06-30T09:00:00.000Z",
+            status: "paused-after-restart",
           },
-          createdAt: "2026-06-30T09:00:00.000Z",
-          updatedAt: "2026-06-30T09:01:00.000Z",
-          queuedAt: "2026-06-30T09:00:00.000Z",
-          status: "paused-after-restart",
-        },
-      ]);
+        ]);
 
-      const routes = createSessionsRoutes({
-        supervisor: {
-          getProcessForSession: vi.fn(() => null),
-        } as unknown as SessionsDeps["supervisor"],
-        scanner: {
-          getOrCreateProject: vi.fn(async () => project),
-        } as unknown as SessionsDeps["scanner"],
-        sessionQueuePersistenceService,
-      });
+        const routes = createSessionsRoutes({
+          supervisor: {
+            getProcessForSession: vi.fn(() => null),
+          } as unknown as SessionsDeps["supervisor"],
+          scanner: {
+            getOrCreateProject: vi.fn(async () => project),
+          } as unknown as SessionsDeps["scanner"],
+          sessionQueuePersistenceService,
+        });
 
-      const response = await routes.request(
-        "/sessions/sess-1/recovered-queue/queue-1",
-        { method: "DELETE" },
-      );
-      expect(response.status).toBe(200);
-      await expect(response.json()).resolves.toEqual({
-        deleted: true,
-        deferredMessages: [],
-      });
-      expect(sessionQueuePersistenceService.listSession("sess-1")).toEqual([]);
-    });
+        const response = await routes.request(
+          "/sessions/sess-1/recovered-queue/queue-1",
+          { method: "DELETE" },
+        );
+        expect(response.status).toBe(200);
+        await expect(response.json()).resolves.toEqual({
+          deleted: true,
+          deferredMessages: [],
+        });
+        expect(sessionQueuePersistenceService.listSession("sess-1")).toEqual(
+          [],
+        );
+      },
+    );
   });
 
   it("resumes recovered patient queue entries through a non-head entry", async () => {
@@ -1605,9 +1611,9 @@ describe("Sessions metadata route", () => {
         undefined,
         { includeOrphans: false },
       );
-      expect(
-        detail.messages[0].message.content[0]._html as string,
-      ).toContain(`data-ya-project-id="${workingProject.id}"`);
+      expect(detail.messages[0].message.content[0]._html as string).toContain(
+        `data-ya-project-id="${workingProject.id}"`,
+      );
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
@@ -1842,8 +1848,7 @@ describe("Sessions metadata route", () => {
           ({
             getSessionSummary: vi.fn(async () => null),
             getSessionFilePath: vi.fn(
-              async () =>
-                "/home/user/.claude/projects/enc/sess-1.jsonl",
+              async () => "/home/user/.claude/projects/enc/sess-1.jsonl",
             ),
           }) as unknown as ISessionReader,
       ),
@@ -2280,8 +2285,7 @@ describe("Sessions metadata route", () => {
           ({
             getSessionSummary: vi.fn(async () => null),
             getSessionFilePath: vi.fn(
-              async () =>
-                "/home/user/.claude/projects/enc/sess-1.jsonl",
+              async () => "/home/user/.claude/projects/enc/sess-1.jsonl",
             ),
           }) as unknown as ISessionReader,
       ),
@@ -2438,8 +2442,7 @@ describe("Sessions metadata route", () => {
           ({
             getSessionSummary: vi.fn(async () => null),
             getSessionFilePath: vi.fn(
-              async () =>
-                "/home/user/.claude/projects/enc/sess-1.jsonl",
+              async () => "/home/user/.claude/projects/enc/sess-1.jsonl",
             ),
           }) as unknown as ISessionReader,
       ),
@@ -2448,7 +2451,18 @@ describe("Sessions metadata route", () => {
         getRequestedModel: vi.fn(() => undefined),
         setRequestedModel: vi.fn(async () => undefined),
         getExecutor: vi.fn(() => undefined),
-        getMetadata: vi.fn(() => ({ customTitle: "Broken Codex session" })),
+        getMetadata: vi.fn(() => ({
+          customTitle: "Broken Codex session",
+          effectiveLaunchSettings: {
+            schemaVersion: 1,
+            revision: 3,
+            permissionMode: "plan",
+            requestedModel: "gpt-5.5",
+            serviceTier: "priority",
+            thinking: { type: "adaptive" },
+            effort: "high",
+          },
+        })),
         setProvider: vi.fn(async () => undefined),
         updateMetadata,
       } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
@@ -2486,9 +2500,13 @@ describe("Sessions metadata route", () => {
       expect.objectContaining({
         text: expect.stringContaining("# Handoff: Broken Codex session"),
       }),
-      undefined,
+      "plan",
       expect.objectContaining({
         model: "gpt-5.4",
+        requestedModel: "gpt-5.4",
+        serviceTier: "priority",
+        thinking: { type: "adaptive" },
+        effort: "high",
         providerName: "codex",
       }),
     );
@@ -2638,6 +2656,15 @@ describe("Sessions metadata route", () => {
           sandboxLevel: "project-write",
           sandboxStateKey: "project-sandbox",
           sandboxProjectPath: project.path,
+          effectiveLaunchSettings: {
+            schemaVersion: 1,
+            revision: 2,
+            permissionMode: "bypassPermissions",
+            requestedModel: "sonnet",
+            serviceTier: "priority",
+            thinking: { type: "adaptive" },
+            effort: "high",
+          },
         })),
         setProvider: vi.fn(async () => undefined),
         setSessionSandbox,
@@ -2682,8 +2709,13 @@ describe("Sessions metadata route", () => {
       "sess-fork",
       project.path,
       expect.objectContaining({ text: "Continue from this fork point." }),
-      undefined,
+      "bypassPermissions",
       expect.objectContaining({
+        model: "sonnet",
+        requestedModel: "sonnet",
+        serviceTier: "priority",
+        thinking: { type: "adaptive" },
+        effort: "high",
         providerName: "claude",
         sandboxLevel: "project-write",
         sandboxStateKey: "project-sandbox",
@@ -4178,8 +4210,7 @@ describe("Sessions metadata route", () => {
           ({
             getSessionSummary: vi.fn(async () => null),
             getSessionFilePath: vi.fn(
-              async () =>
-                "/home/user/.claude/projects/enc/sess-1.jsonl",
+              async () => "/home/user/.claude/projects/enc/sess-1.jsonl",
             ),
           }) as unknown as ISessionReader,
       ),
@@ -4416,8 +4447,7 @@ describe("Sessions metadata route", () => {
           ({
             getSessionSummary: vi.fn(async () => null),
             getSessionFilePath: vi.fn(
-              async () =>
-                "/home/user/.claude/projects/enc/sess-1.jsonl",
+              async () => "/home/user/.claude/projects/enc/sess-1.jsonl",
             ),
           }) as unknown as ISessionReader,
       ),
@@ -4538,8 +4568,7 @@ describe("Sessions metadata route", () => {
           ({
             getSessionSummary: vi.fn(async () => null),
             getSessionFilePath: vi.fn(
-              async () =>
-                "/home/user/.claude/projects/enc/sess-1.jsonl",
+              async () => "/home/user/.claude/projects/enc/sess-1.jsonl",
             ),
           }) as unknown as ISessionReader,
       ),
@@ -4889,8 +4918,7 @@ describe("Sessions metadata route", () => {
           ({
             getSessionSummary: vi.fn(async () => null),
             getSessionFilePath: vi.fn(
-              async () =>
-                "/home/user/.claude/projects/enc/sess-1.jsonl",
+              async () => "/home/user/.claude/projects/enc/sess-1.jsonl",
             ),
           }) as unknown as ISessionReader,
       ),
@@ -4914,8 +4942,7 @@ describe("Sessions metadata route", () => {
           provider: "codex",
           model: "gpt-5.4",
           reason: "Manual restart from Yep Anywhere",
-          sourceUrl:
-            "https://localhost:3400/projects/proj-1/sessions/sess-1",
+          sourceUrl: "https://localhost:3400/projects/proj-1/sessions/sess-1",
         }),
       },
     );
@@ -5006,8 +5033,7 @@ describe("Sessions metadata route", () => {
           ({
             getSessionSummary: vi.fn(async () => null),
             getSessionFilePath: vi.fn(
-              async () =>
-                "/home/user/.claude/projects/enc/sess-1.jsonl",
+              async () => "/home/user/.claude/projects/enc/sess-1.jsonl",
             ),
           }) as unknown as ISessionReader,
       ),

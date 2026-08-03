@@ -18,7 +18,10 @@ import {
 } from "@yep-anywhere/shared";
 import type { AgentActivity, PendingInputType } from "@yep-anywhere/shared";
 import { getLogger } from "../logging/logger.js";
-import type { SessionMetadataService } from "../metadata/index.js";
+import type {
+  EffectiveSessionLaunchSettingsValue,
+  SessionMetadataService,
+} from "../metadata/index.js";
 import type { ToolResultMediaStore } from "../media/ToolResultMediaStore.js";
 import { getProjectName } from "../projects/paths.js";
 import {
@@ -287,9 +290,7 @@ function resolveLaunchCompactPercentOverride(
     | Pick<AgentProvider, "supportsLaunchCompactPercentOverride">
     | null
     | undefined,
-  settings:
-    | Pick<ModelSettings, "claudeAutoCompactPercentOverride">
-    | undefined,
+  settings: Pick<ModelSettings, "claudeAutoCompactPercentOverride"> | undefined,
 ): number | undefined {
   if (provider?.supportsLaunchCompactPercentOverride !== true) {
     return undefined;
@@ -414,6 +415,8 @@ function getActiveHeartbeatAction(params: {
 export interface ModelSettings {
   /** Model to use (e.g., "sonnet", "opus", "haiku"). undefined = use CLI default */
   model?: string;
+  /** Exact YA request token, including "default", used for durable restore. */
+  requestedModel?: string;
   /** Provider-visible service tier. undefined means provider/default behavior. */
   serviceTier?: string;
   /** Thinking configuration. undefined = thinking disabled for new sessions. */
@@ -737,6 +740,74 @@ export class Supervisor {
     return "off";
   }
 
+  /**
+   * Resolve a cold process launch from request overrides, the durable
+   * per-session snapshot, legacy model metadata, then server/provider defaults.
+   */
+  private resolveColdLaunchSettings(
+    sessionId: string,
+    permissionMode?: PermissionMode,
+    modelSettings?: ModelSettings,
+  ): { permissionMode: PermissionMode; modelSettings: ModelSettings } {
+    const durable =
+      this.sessionMetadataService?.getEffectiveLaunchSettings(sessionId);
+    const requestedModel =
+      modelSettings?.requestedModel ??
+      modelSettings?.model ??
+      durable?.requestedModel ??
+      this.sessionMetadataService?.getRequestedModel(sessionId);
+    const thinkingWasRequested = modelSettings?.thinking !== undefined;
+
+    return {
+      permissionMode:
+        permissionMode ?? durable?.permissionMode ?? this.defaultPermissionMode,
+      modelSettings: {
+        ...modelSettings,
+        requestedModel: requestedModel ?? undefined,
+        model:
+          requestedModel && requestedModel !== "default"
+            ? requestedModel
+            : undefined,
+        serviceTier:
+          modelSettings?.serviceTier ?? durable?.serviceTier ?? undefined,
+        thinking: modelSettings?.thinking ?? durable?.thinking ?? undefined,
+        effort: thinkingWasRequested
+          ? modelSettings?.effort
+          : (modelSettings?.effort ?? durable?.effort ?? undefined),
+      },
+    };
+  }
+
+  private processLaunchSettings(
+    process: Process,
+  ): EffectiveSessionLaunchSettingsValue {
+    return {
+      permissionMode: process.permissionMode,
+      requestedModel: process.requestedModel ?? null,
+      serviceTier: process.serviceTier ?? null,
+      thinking: process.thinking ?? null,
+      effort: process.appliedEffort ?? null,
+    };
+  }
+
+  private async persistProcessLaunchSettings(process: Process): Promise<void> {
+    await this.sessionMetadataService?.recordEffectiveLaunchSettings(
+      process.sessionId,
+      this.processLaunchSettings(process),
+    );
+  }
+
+  private async persistProcessLaunchSettingsOrAbort(
+    process: Process,
+  ): Promise<void> {
+    try {
+      await this.persistProcessLaunchSettings(process);
+    } catch (error) {
+      await process.abort();
+      throw error;
+    }
+  }
+
   private async waitForSessionActivation(sessionId: string): Promise<boolean> {
     const activation = this.sessionActivationInFlight.get(sessionId);
     if (!activation) {
@@ -1014,13 +1085,18 @@ export class Supervisor {
       }
 
       const projectId = encodeProjectId(projectPath);
-      const provider = this.resolveProvider(modelSettings);
+      const resolved = this.resolveColdLaunchSettings(
+        resumeSessionId,
+        permissionMode,
+        modelSettings,
+      );
+      const provider = this.resolveProvider(resolved.modelSettings);
       if (provider) {
         return this.createProviderSession(
           projectPath,
           projectId,
-          permissionMode,
-          modelSettings,
+          resolved.permissionMode,
+          resolved.modelSettings,
           provider,
           resumeSessionId,
         );
@@ -1029,8 +1105,8 @@ export class Supervisor {
         return this.createRealSession(
           projectPath,
           projectId,
-          permissionMode,
-          modelSettings,
+          resolved.permissionMode,
+          resolved.modelSettings,
           resumeSessionId,
         );
       }
@@ -1146,6 +1222,7 @@ export class Supervisor {
       permissionMode: effectiveMode,
       provider: "claude", // Real SDK is always Claude
       model: modelSettings?.model,
+      requestedModel: modelSettings?.requestedModel,
       compactAtContextPercent: modelSettings?.compactAtContextPercent,
       compactAtContextWindow: modelSettings?.compactAtContextWindow,
       forceYaOrchestratedCompaction:
@@ -1178,6 +1255,7 @@ export class Supervisor {
       await this.persistProcessSandboxOrAbort(process);
     }
 
+    await this.persistProcessLaunchSettingsOrAbort(process);
     // Recreated processes for an existing session should not emit session-created again.
     this.registerProcess(process, !resumeSessionId);
 
@@ -1700,6 +1778,7 @@ export class Supervisor {
       permissionMode: effectiveMode,
       provider: "claude", // Real SDK is always Claude
       model: modelSettings?.model,
+      requestedModel: modelSettings?.requestedModel,
       compactAtContextPercent: modelSettings?.compactAtContextPercent,
       compactAtContextWindow: modelSettings?.compactAtContextWindow,
       forceYaOrchestratedCompaction:
@@ -1741,6 +1820,7 @@ export class Supervisor {
       throw new Error(queued.error ?? "Failed to queue initial message");
     }
 
+    await this.persistProcessLaunchSettingsOrAbort(process);
     this.registerProcess(process, !resumeSessionId);
 
     return process;
@@ -1773,8 +1853,10 @@ export class Supervisor {
       activeProvider,
       modelSettings,
     );
-    const launchCompactPercentOverride =
-      resolveLaunchCompactPercentOverride(activeProvider, modelSettings);
+    const launchCompactPercentOverride = resolveLaunchCompactPercentOverride(
+      activeProvider,
+      modelSettings,
+    );
     const tempSessionId = resumeSessionId ?? randomUUID();
     const sessionSandbox = await prepareSessionSandbox({
       level: modelSettings?.sandboxLevel,
@@ -1890,6 +1972,7 @@ export class Supervisor {
       permissionMode: effectiveMode,
       provider: activeProvider.name,
       model: modelSettings?.model,
+      requestedModel: modelSettings?.requestedModel,
       compactAtContextPercent: modelSettings?.compactAtContextPercent,
       compactAtContextWindow: modelSettings?.compactAtContextWindow,
       forceYaOrchestratedCompaction:
@@ -1923,6 +2006,7 @@ export class Supervisor {
       await this.persistProcessSandboxOrAbort(process);
     }
 
+    await this.persistProcessLaunchSettingsOrAbort(process);
     // Recreated processes for an existing session should not emit session-created again.
     this.registerProcess(process, !resumeSessionId);
 
@@ -1959,8 +2043,10 @@ export class Supervisor {
       activeProvider,
       modelSettings,
     );
-    const launchCompactPercentOverride =
-      resolveLaunchCompactPercentOverride(activeProvider, modelSettings);
+    const launchCompactPercentOverride = resolveLaunchCompactPercentOverride(
+      activeProvider,
+      modelSettings,
+    );
     const tempSessionId = resumeSessionId ?? randomUUID();
     const sessionSandbox = await prepareSessionSandbox({
       level: modelSettings?.sandboxLevel,
@@ -2075,6 +2161,7 @@ export class Supervisor {
       permissionMode: effectiveMode,
       provider: activeProvider.name,
       model: modelSettings?.model,
+      requestedModel: modelSettings?.requestedModel,
       compactAtContextPercent: modelSettings?.compactAtContextPercent,
       compactAtContextWindow: modelSettings?.compactAtContextWindow,
       forceYaOrchestratedCompaction:
@@ -2116,6 +2203,7 @@ export class Supervisor {
       throw new Error(queued.error ?? "Failed to queue initial message");
     }
 
+    await this.persistProcessLaunchSettingsOrAbort(process);
     this.registerProcess(process, !resumeSessionId);
 
     return process;
@@ -2124,14 +2212,14 @@ export class Supervisor {
   /**
    * Start a session using the legacy mock SDK.
    */
-  private startLegacySession(
+  private async startLegacySession(
     projectPath: string,
     projectId: UrlProjectId,
     message: UserMessage,
     resumeSessionId?: string,
     permissionMode?: PermissionMode,
     modelSettings?: ModelSettings,
-  ): Process {
+  ): Promise<Process> {
     if (modelSettings?.sandboxLevel === "project-write") {
       throw new Error(
         "Project-write session sandboxing requires a local Claude or Codex provider runtime.",
@@ -2158,6 +2246,8 @@ export class Supervisor {
       idleTimeoutMs: this.idleTimeoutMs,
       permissionMode: effectiveMode,
       provider: "claude", // Legacy mock SDK simulates Claude
+      model: modelSettings?.model,
+      requestedModel: modelSettings?.requestedModel,
       compactAtContextPercent: modelSettings?.compactAtContextPercent,
       compactAtContextWindow: modelSettings?.compactAtContextWindow,
       forceYaOrchestratedCompaction:
@@ -2167,10 +2257,11 @@ export class Supervisor {
 
     const process = new Process(iterator, options);
 
-    this.registerProcess(process, !resumeSessionId);
-
     // Queue the initial message
     process.queueMessage(message);
+
+    await this.persistProcessLaunchSettingsOrAbort(process);
+    this.registerProcess(process, !resumeSessionId);
 
     return process;
   }
@@ -2197,11 +2288,17 @@ export class Supervisor {
           this.assertProcessSandboxMatches(existingProcess, modelSettings);
           let restartExistingProcess = false;
           // Check if thinking/effort settings changed
-          const thinkingChanged = !thinkingConfigsEqual(
-            existingProcess.thinking,
-            modelSettings?.thinking,
-          );
+          const thinkingWasRequested = modelSettings?.thinking !== undefined;
+          const effortWasRequested =
+            thinkingWasRequested || modelSettings?.effort !== undefined;
+          const thinkingChanged =
+            thinkingWasRequested &&
+            !thinkingConfigsEqual(
+              existingProcess.thinking,
+              modelSettings?.thinking,
+            );
           const effortChanged =
+            effortWasRequested &&
             existingProcess.effort !== modelSettings?.effort;
 
           if (thinkingChanged || effortChanged) {
@@ -2352,8 +2449,13 @@ export class Supervisor {
         }
       }
 
-      const provider = this.resolveProvider(modelSettings);
-      const resumeMode = modelSettings?.resumeMode ?? "full";
+      const resolved = this.resolveColdLaunchSettings(
+        sessionId,
+        permissionMode,
+        modelSettings,
+      );
+      const provider = this.resolveProvider(resolved.modelSettings);
+      const resumeMode = resolved.modelSettings.resumeMode ?? "full";
 
       // Use provider if available (preferred)
       if (provider) {
@@ -2363,8 +2465,8 @@ export class Supervisor {
             projectId,
             message,
             sessionId,
-            permissionMode,
-            modelSettings,
+            resolved.permissionMode,
+            resolved.modelSettings,
             provider,
           );
         }
@@ -2374,8 +2476,8 @@ export class Supervisor {
           projectId,
           message,
           sessionId,
-          permissionMode,
-          modelSettings,
+          resolved.permissionMode,
+          resolved.modelSettings,
           provider,
         );
       }
@@ -2388,8 +2490,8 @@ export class Supervisor {
             projectId,
             message,
             sessionId,
-            permissionMode,
-            modelSettings,
+            resolved.permissionMode,
+            resolved.modelSettings,
           );
         }
 
@@ -2398,8 +2500,8 @@ export class Supervisor {
           projectId,
           message,
           sessionId,
-          permissionMode,
-          modelSettings,
+          resolved.permissionMode,
+          resolved.modelSettings,
         );
       }
 
@@ -2420,8 +2522,8 @@ export class Supervisor {
         projectId,
         message,
         sessionId,
-        permissionMode,
-        modelSettings,
+        resolved.permissionMode,
+        resolved.modelSettings,
       );
     });
   }
@@ -2818,11 +2920,22 @@ export class Supervisor {
     }
 
     const hasModelUpdate = Object.hasOwn(updates, "model");
+    const hasRequestedModelUpdate = Object.hasOwn(updates, "requestedModel");
     const hasServiceTierUpdate = Object.hasOwn(updates, "serviceTier");
     const hasThinkingUpdate = Object.hasOwn(updates, "thinking");
     const hasEffortUpdate = Object.hasOwn(updates, "effort");
 
-    const nextModel = hasModelUpdate ? updates.model : process.resolvedModel;
+    const currentRequestedModel = process.requestedModel ?? null;
+    const nextRequestedModel = hasRequestedModelUpdate
+      ? (updates.requestedModel ?? null)
+      : hasModelUpdate
+        ? (updates.model ?? null)
+        : currentRequestedModel;
+    const nextModel = hasModelUpdate
+      ? updates.model
+      : nextRequestedModel && nextRequestedModel !== "default"
+        ? nextRequestedModel
+        : undefined;
     const nextServiceTier = hasServiceTierUpdate
       ? updates.serviceTier
       : process.serviceTier;
@@ -2831,7 +2944,9 @@ export class Supervisor {
       : process.thinking;
     const nextEffort = hasEffortUpdate ? updates.effort : process.effort;
 
-    const modelChanged = nextModel !== process.resolvedModel;
+    const modelChanged =
+      (hasModelUpdate || hasRequestedModelUpdate) &&
+      nextRequestedModel !== currentRequestedModel;
     const serviceTierChanged = nextServiceTier !== process.serviceTier;
     const thinkingChanged = !thinkingConfigsEqual(
       process.thinking,
@@ -2856,7 +2971,7 @@ export class Supervisor {
       (process.getProviderRuntimeStatus()?.kind !== "retrying" ||
         process.supportsInterrupt)
     ) {
-      const changed = await process.setModel(nextModel);
+      const changed = await process.setModel(nextModel, nextRequestedModel);
       return changed ? process : null;
     }
 
@@ -2880,15 +2995,14 @@ export class Supervisor {
 
     const mergedSettings: ModelSettings = {
       model: nextModel,
+      requestedModel: nextRequestedModel ?? undefined,
       serviceTier: nextServiceTier,
       thinking: nextThinking,
       effort: nextEffort,
       compactAtContextPercent: process.compactAtContextPercent,
       compactAtContextWindow: process.compactAtContextWindow,
-      forceYaOrchestratedCompaction:
-        process.forceYaOrchestratedCompaction,
-      claudeAutoCompactPercentOverride:
-        process.launchCompactPercentOverride,
+      forceYaOrchestratedCompaction: process.forceYaOrchestratedCompaction,
+      claudeAutoCompactPercentOverride: process.launchCompactPercentOverride,
       providerName: process.provider,
       executor: process.executor,
       recapMode: process.recapMode,
@@ -3042,8 +3156,7 @@ export class Supervisor {
       ? {
           compactAtContextPercent: process.compactAtContextPercent,
           compactAtContextWindow: process.compactAtContextWindow,
-          forceYaOrchestratedCompaction:
-            process.forceYaOrchestratedCompaction,
+          forceYaOrchestratedCompaction: process.forceYaOrchestratedCompaction,
         }
       : hasExplicitCompactSettings
         ? {
@@ -3077,10 +3190,7 @@ export class Supervisor {
     const requestedLaunchCompactPercentOverride = isActiveSteeringMessage
       ? process.launchCompactPercentOverride
       : hasExplicitLaunchCompactPercentOverride
-        ? resolveLaunchCompactPercentOverride(
-            effectiveProvider,
-            modelSettings,
-          )
+        ? resolveLaunchCompactPercentOverride(effectiveProvider, modelSettings)
         : process.launchCompactPercentOverride;
     const launchCompactPercentOverrideChanged =
       hasExplicitLaunchCompactPercentOverride &&
@@ -3161,8 +3271,7 @@ export class Supervisor {
             newThinking: requestedThinking?.type,
             newEffort: requestedEffort,
             newServiceTier: requestedServiceTier,
-            oldCompactAtContextTokenLimit:
-              process.compactAtContextTokenLimit,
+            oldCompactAtContextTokenLimit: process.compactAtContextTokenLimit,
             newCompactAtContextTokenLimit: requestedCompactTokenLimit,
             oldLaunchCompactPercentOverride:
               process.launchCompactPercentOverride,
@@ -3815,9 +3924,7 @@ export class Supervisor {
       `Session interrupt incomplete; hard-aborting process: ${process.sessionId}`,
     );
 
-    const deferredMessages = await process.drainPendingUserMessages(
-      "promoted",
-    );
+    const deferredMessages = await process.drainPendingUserMessages("promoted");
     this.emitSessionAborted(process.sessionId, process.projectId);
     process.terminate("interrupt fallback abort");
     this.unregisterProcess(process);
@@ -4043,7 +4150,24 @@ export class Supervisor {
     }
     this.observedProcessIds.add(process.id);
     process.subscribe((event) => {
-      if (event.type === "idle-reap") {
+      if (
+        event.type === "mode-change" ||
+        event.type === "configuration-applied"
+      ) {
+        void this.persistProcessLaunchSettings(process).catch((error) => {
+          getLogger().warn(
+            {
+              event: "session_launch_settings_save_failed",
+              sessionId: process.sessionId,
+              processId: process.id,
+              setting:
+                event.type === "mode-change" ? "permissionMode" : event.setting,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            "Failed to save applied session launch settings",
+          );
+        });
+      } else if (event.type === "idle-reap") {
         this.emitSessionAborted(process.sessionId, process.projectId);
       } else if (event.type === "complete") {
         this.dirtyFileEditorService?.forgetProcess(process.id);
@@ -4964,7 +5088,14 @@ export class Supervisor {
     permissionMode?: PermissionMode,
     modelSettings?: ModelSettings,
   ): Promise<Process> {
-    const provider = this.resolveProvider(modelSettings);
+    const resolved = resumeSessionId
+      ? this.resolveColdLaunchSettings(
+          resumeSessionId,
+          permissionMode,
+          modelSettings,
+        )
+      : { permissionMode, modelSettings };
+    const provider = this.resolveProvider(resolved.modelSettings);
 
     // Use provider if available (preferred)
     if (provider) {
@@ -4973,8 +5104,8 @@ export class Supervisor {
         projectId,
         message,
         resumeSessionId,
-        permissionMode,
-        modelSettings,
+        resolved.permissionMode,
+        resolved.modelSettings,
         provider,
       );
     }
@@ -4986,8 +5117,8 @@ export class Supervisor {
         projectId,
         message,
         resumeSessionId,
-        permissionMode,
-        modelSettings,
+        resolved.permissionMode,
+        resolved.modelSettings,
       );
     }
 
@@ -4997,8 +5128,8 @@ export class Supervisor {
       projectId,
       message,
       resumeSessionId,
-      permissionMode,
-      modelSettings,
+      resolved.permissionMode,
+      resolved.modelSettings,
     );
   }
 

@@ -115,39 +115,26 @@ a provider capability makes it real.
 The rest of this doc is about *defaults that seed a new session*. A separate
 concern is what happens when a user changes model/effort/thinking **inside an
 existing session** and then reloads or the server process is torn down: the live
-pick should survive as a per-session choice, not silently reset or leak to every
-other session. This is the same contract [permission-mode](permission-mode.md)
-already meets — a per-session UI choice persisted in `localStorage`
-(`permission-mode-{sessionId}` in `useSession`) so a reload restores it instead
-of dropping to `default`.
+pick must survive as a server-owned per-session choice, not silently reset or
+depend on one browser's storage.
 
-- **Model — per session (as of this note).** A session's model pick persists to
-  `localStorage` keyed by session id (`session-model-{sessionId}`,
-  `lib/sessionModelStorage.ts`), saved in `useSession`'s `setSessionModel` and
-  restored on load for an idle (non-self-owned) session. This closes the gap
-  where a model change — which only reaches the server at the next turn — was
-  lost if the tab closed before sending. A live self-owned process's model stays
-  authoritative (its config arrives via the stream); the stored pick only
-  overlays when idle.
+`SessionMetadata.effectiveLaunchSettings` stores the last successfully applied
+permission mode, exact requested-model token, service tier, thinking mode, and
+effort with a session-local monotonic revision. A replacement process resolves
+an explicit validated request first, then this durable record, then applicable
+legacy model metadata, and finally the conservative server/provider default.
+Legacy absence never grants Bypass.
 
-- **Effort / thinking mode — still global, and that seems unintended.** Unlike
-  model and permission mode, effort level and thinking mode persist only
-  *globally* via `useModelSettings` (`BROWSER_LOCAL_KEYS.thinkingLevel` /
-  `.thinkingMode`). Changing effort inside one session therefore rewrites the
-  effort used by *every* session, and reopening a session shows the global value
-  rather than what was last chosen for that session. The idle `ModelSwitchModal`
-  reads these same global values (`getEffortLevel()` / `getThinkingMode()`), and
-  `applyConfig` writes them back globally (`setEffortLevel` / `setThinkingMode`).
+Browser-local permission/model state remains useful for immediate stopped-row
+presentation and compatibility with older servers, while global thinking and
+effort values remain defaults for new or legacy sessions. Once Activate owns a
+process, the existing process-info request and live stream are authoritative;
+the composer and model panel adopt that process's restored configuration. An
+older server that omits newer state therefore retains its established fallback
+instead of causing the client to clear durable server state.
 
-  **Intent:** make effort and thinking-mode changes per-session too, mirroring
-  the model/permission-mode persistence above (a `session-effort-{sessionId}` /
-  `session-thinking-{sessionId}` pair, or a single per-session config record),
-  so a live pick sticks to its own session instead of the whole browser. Keep
-  **show-thinking** display policy all-provider/per-install (it is a render
-  preference, not a spend control) — only effort and thinking *mode* move
-  per-session. The global values become the seed for a session's first pick,
-  preserving today's behavior for sessions the user never touches. This is
-  deferred, not yet built; the model change is the first step of the pattern.
+**Show thinking** remains a browser display preference. It is deliberately not
+part of the provider launch snapshot and does not move with a session.
 
 ## UI placement
 

@@ -1,6 +1,6 @@
 # Session Reactivation (message-less resume)
 
-> Reactivation is a planned server primitive that spawns a live harness process
+> Reactivation is a server primitive that spawns a live harness process
 > for an existing session id **without delivering a user turn**, flipping the
 > session back to owned/`self` and idle so the client can read live process
 > state (model options, config) before any message is sent.
@@ -8,7 +8,8 @@
 Topic: session-reactivation
 
 Status: **implemented** (2026-06-17, after the kzahel merge; lifecycle corrected
-2026-07-31). The message-less spawn primitive already existed in the
+2026-07-31; durable settings restored 2026-08-03). The message-less spawn
+primitive already existed in the
 supervisor; this work exposed it as a public `Supervisor.reactivateSession`, a
 `POST …/reactivate` route, and a client Activate button. See *As built* below.
 
@@ -73,13 +74,20 @@ resume:
   then promotes it. It cannot be blocked forever by a synthetic `in-turn`
   state when no provider turn was actually submitted.
 - **`POST /api/projects/:projectId/sessions/:sessionId/reactivate`** — resolves
-  provider/model/executor from the persisted YA launch record
-  (`SessionMetadata.requestedModel`/`provider`, populated by `persistLaunchMetadata`),
-  returns `{ processId, permissionMode, modeVersion }`.
+  provider/executor from session metadata and resolves mode, exact requested
+  model, service tier, thinking, and effort through the same durable launch
+  settings used by every cold `Supervisor` resume. It returns the new process
+  identity and mode; the established process-info request/stream supplies the
+  full authoritative live configuration without adding a new wire dependency.
 - **Client:** `api.reactivateSession`; `ModelSwitchModal`'s "No active process"
   note becomes an Activate button (`onActivate`); `SessionPage` calls reactivate
   and flips `status` to `{ owner: "self", processId }`, after which the existing
   `processId`-keyed effect loads models and the full options replace the note.
+- **Durable settings:** `SessionMetadata.effectiveLaunchSettings` is a complete,
+  versioned snapshot of the last successfully applied process launch policy.
+  Resolution is explicit request, durable snapshot, legacy requested-model
+  metadata, then conservative server/provider defaults. Identical reattach
+  snapshots do not advance the session-local revision.
 - Coverage: `supervisor.test.ts` asserts message-less resume, immediate idle
   liveness, ownership, idempotency, first-message wake, ordinary idle reaping,
   and recovered patient-message promotion.
@@ -131,11 +139,11 @@ is ~zero on the provider side (local process resources only). Confirm this
 against the provider's resume/load path; if reactivation itself triggers any
 billed provider call, the button must surface it per the economics rule.
 
-## Open questions
+## Resolved decisions
 
-- Should reactivate optionally **apply pending config** (the model the user just
-  picked) at spawn, or strictly spawn-then-configure via the normal model-switch
-  path?
+- Reactivate applies validated request overrides when present and otherwise
+  inherits the durable effective configuration. A successful override becomes
+  the next durable snapshot; a rejected provider change does not.
 - Sibling concern (task029): requested-model persistence may let a model choice
   take effect on the *next* natural turn without reactivating at all —
   reactivation is for users who want the process live *now*. Keep both; they

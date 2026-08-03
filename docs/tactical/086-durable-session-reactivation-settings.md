@@ -4,8 +4,8 @@ Topic: session-reactivation
 Topic: session-defaults
 Topic: reload-safe-provider-runtimes
 
-Status: Planned. Defect verified 2026-08-03; it predates the current harsh-review
-range.
+Status: Implemented 2026-08-03. Defect verified 2026-08-03; it predates the
+current harsh-review range.
 
 ## Observed defect
 
@@ -112,6 +112,37 @@ Add focused tests for:
 - rejected setting changes do not alter the durable record; and
 - Codex-native and shared-host Hono reload reattach preserve their live
   snapshots without needlessly rewriting the durable record.
+
+## Implementation evidence
+
+`SessionMetadataService` now owns one schema-v1 effective launch-settings
+snapshot with a monotonic revision. It records permission mode, the exact
+requested model token (including `default`), service tier, thinking mode, and
+effort. Semantically identical snapshots do not rewrite metadata or advance
+the revision, and the old `requestedModel` field remains a legacy projection
+rather than a competing authority.
+
+`Supervisor` resolves every cold launch through explicit request values,
+durable settings, legacy metadata, then conservative defaults. It writes the
+complete effective snapshot only after process creation or a live setting
+change succeeds; a rejected provider change and a failed launch leave the
+durable record unchanged. Direct resume, message-less Reactivate, recovered
+queue work, restart/handoff, and transcript fork all use that resolution path.
+Provider-host reattach remains a live-runtime path and keeps its existing
+in-memory snapshot instead of manufacturing a cold launch.
+
+Activate already makes the returned process id authoritative: the client
+fetches `ProcessInfo`, adopts its live model/thinking/effort configuration, and
+receives permission-mode changes through the existing process stream. That
+channel also covers another browser after activation, so implementation did
+not add a Reactivate response field or make a new client depend on a newer
+server contract.
+
+Focused server coverage exercises Ask, Plan, and Bypass across process death;
+exact model, service-tier, thinking, and effort restoration; explicit
+overrides; conservative legacy fallback; rejected changes; direct resume;
+recovered queue work; and restart/fork inheritance. The implementation also
+keeps live-runtime reattach snapshots separate from the cold-launch record.
 
 ## Acceptance
 

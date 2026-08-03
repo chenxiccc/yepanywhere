@@ -145,6 +145,16 @@ const SESSION_DETAIL_SLOW_LOG_MS = 250;
 const DEFAULT_SESSION_DETAIL_TAIL_COMPACTIONS = 2;
 const LARGE_FULL_HISTORY_MESSAGE_THRESHOLD = 1000;
 
+function permissionModeError(mode: unknown): string | undefined {
+  if (
+    mode !== undefined &&
+    !ALL_PERMISSION_MODES.includes(mode as PermissionMode)
+  ) {
+    return "Invalid permission mode";
+  }
+  return undefined;
+}
+
 async function getSessionSlashCommands(
   process: Process | undefined,
   provider: ProviderName | undefined,
@@ -231,8 +241,7 @@ function resolveCompactModelSettings(
   | "forceYaOrchestratedCompaction"
   | "claudeAutoCompactPercentOverride"
 > {
-  const defaults =
-    deps.serverSettingsService?.getSetting("clientDefaults");
+  const defaults = deps.serverSettingsService?.getSetting("clientDefaults");
   const compactAtContextPercent = resolveCompactPercent(
     defaults?.compactAtContextPercent,
     options.yaModelId,
@@ -2341,8 +2350,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         parentSessionKind:
           metadata?.parentSessionKind ?? sessionSummary?.parentSessionKind,
         forkedFromSessionId:
-          metadata?.forkedFromSessionId ??
-          sessionSummary?.forkedFromSessionId,
+          metadata?.forkedFromSessionId ?? sessionSummary?.forkedFromSessionId,
         initialPrompt:
           metadata?.initialPrompt ?? sessionSummary?.fullTitle ?? undefined,
         heartbeatTurnsEnabled: metadata?.heartbeatTurnsEnabled,
@@ -3107,6 +3115,11 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({ error: "Invalid JSON body" }, 400);
     }
 
+    const modeError = permissionModeError(body.mode);
+    if (modeError) {
+      return c.json({ error: modeError }, 400);
+    }
+
     if (!body.message) {
       return c.json({ error: "Message is required" }, 400);
     }
@@ -3171,6 +3184,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       body.mode,
       {
         model,
+        requestedModel: body.model,
         serviceTier,
         thinking,
         effort,
@@ -3261,6 +3275,11 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       // Body is optional for this endpoint
     }
 
+    const modeError = permissionModeError(body.mode);
+    if (modeError) {
+      return c.json({ error: modeError }, 400);
+    }
+
     const { executor, error: executorError } = parseOptionalExecutor(
       body.executor,
     );
@@ -3302,6 +3321,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       body.mode,
       {
         model,
+        requestedModel: body.model,
         serviceTier,
         thinking,
         effort,
@@ -3378,6 +3398,11 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({ error: "Invalid JSON body" }, 400);
     }
 
+    const modeError = permissionModeError(body.mode);
+    if (modeError) {
+      return c.json({ error: modeError }, 400);
+    }
+
     if (!body.message) {
       return c.json({ error: "Message is required" }, 400);
     }
@@ -3426,6 +3451,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       body.mode,
       {
         model,
+        requestedModel: body.model,
         serviceTier,
         thinking,
         effort,
@@ -3491,6 +3517,11 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       // Body is optional for this endpoint
     }
 
+    const modeError = permissionModeError(body.mode);
+    if (modeError) {
+      return c.json({ error: modeError }, 400);
+    }
+
     const { executor, error: executorError } = parseOptionalExecutor(
       body.executor,
     );
@@ -3521,6 +3552,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
 
     const result = await deps.supervisor.createSession(projectPath, body.mode, {
       model,
+      requestedModel: body.model,
       serviceTier,
       thinking,
       effort,
@@ -3597,6 +3629,11 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       body = await c.req.json<StartSessionBody>();
     } catch {
       return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
+    const modeError = permissionModeError(body.mode);
+    if (modeError) {
+      return c.json({ error: modeError }, 400);
     }
 
     if (!body.message) {
@@ -3815,6 +3852,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         body.mode,
         {
           model,
+          requestedModel: body.model,
           serviceTier,
           thinking,
           effort,
@@ -3955,6 +3993,11 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         // No body - resume with the session's saved settings.
       }
 
+      const modeError = permissionModeError(body.mode);
+      if (modeError) {
+        return c.json({ error: modeError }, 400);
+      }
+
       const parsedBodyExecutor = parseOptionalExecutor(body.executor);
       if (parsedBodyExecutor.error) {
         return c.json({ error: parsedBodyExecutor.error }, 400);
@@ -4000,6 +4043,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           body.mode,
           {
             model,
+            requestedModel: body.model,
             thinking,
             effort,
             providerName,
@@ -4297,6 +4341,11 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       // Body is optional for this endpoint.
     }
 
+    const modeError = permissionModeError(body.mode);
+    if (modeError) {
+      return c.json({ error: modeError }, 400);
+    }
+
     const parsedHandoffText = parseRestartHandoffText(body.handoffText);
     if ("error" in parsedHandoffText) {
       return c.json({ error: parsedHandoffText.error }, 400);
@@ -4348,9 +4397,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({ error: 'restartMode must be "handoff" or "fork"' }, 400);
     }
     const restartMode = body.restartMode ?? "handoff";
-    if (
-      restartSandboxLevel !== (originalMetadata?.sandboxLevel ?? "none")
-    ) {
+    if (restartSandboxLevel !== (originalMetadata?.sandboxLevel ?? "none")) {
       return c.json(
         {
           error:
@@ -4395,10 +4442,30 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const sourceProvider = sourceSession.provider ?? preferredSourceProvider;
     const providerName = body.provider ?? sourceProvider;
 
-    const { thinking, effort } = buildThinkingOptions(body);
+    const sourceLaunchSettings = originalMetadata?.effectiveLaunchSettings;
+    const requestedModel =
+      body.model ??
+      sourceLaunchSettings?.requestedModel ??
+      deps.sessionMetadataService?.getRequestedModel(sessionId);
+    const parsedThinking = buildThinkingOptions(body);
+    const thinking =
+      body.thinking !== undefined
+        ? parsedThinking.thinking
+        : (sourceLaunchSettings?.thinking ?? undefined);
+    const effort =
+      body.thinking !== undefined
+        ? parsedThinking.effort
+        : (sourceLaunchSettings?.effort ?? undefined);
     const model =
-      body.model && body.model !== "default" ? body.model : undefined;
-    const serviceTier = normalizeOptionalServiceTier(body.serviceTier);
+      requestedModel && requestedModel !== "default"
+        ? requestedModel
+        : undefined;
+    const serviceTier =
+      body.serviceTier !== undefined
+        ? normalizeOptionalServiceTier(body.serviceTier)
+        : (sourceLaunchSettings?.serviceTier ?? undefined);
+    const restartPermissionMode =
+      body.mode ?? sourceLaunchSettings?.permissionMode;
 
     if (restartMode === "fork") {
       if (body.provider && body.provider !== sourceProvider) {
@@ -4457,10 +4524,11 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       const result = await deps.supervisor.resumeSession(
         fork.sessionId,
         restartProjectPath,
-        { text: forkMessage, mode: body.mode },
-        body.mode,
+        { text: forkMessage, mode: restartPermissionMode },
+        restartPermissionMode,
         {
           model,
+          requestedModel: requestedModel ?? undefined,
           serviceTier,
           thinking,
           effort,
@@ -4482,9 +4550,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           helperSideModel: helperSettings.helperSideModel,
           ...resolveCompactModelSettings(deps, {
             provider: sourceProvider,
-            yaModelId:
-              body.model ??
-              deps.sessionMetadataService?.getRequestedModel(sessionId),
+            yaModelId: requestedModel ?? undefined,
             modelCandidates: [
               body.model,
               model,
@@ -4517,7 +4583,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         sourceProvider,
         executor,
         undefined,
-        body.model ?? deps.sessionMetadataService?.getRequestedModel(sessionId),
+        requestedModel ?? undefined,
         result.promptSuggestionMode,
         result.recapAfterSeconds,
         originalMetadata?.workstreamId,
@@ -4592,11 +4658,12 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       restartProjectPath,
       {
         text: handoff,
-        mode: body.mode,
+        mode: restartPermissionMode,
       },
-      body.mode,
+      restartPermissionMode,
       {
         model,
+        requestedModel: requestedModel ?? undefined,
         serviceTier,
         thinking,
         effort,
@@ -4617,9 +4684,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         helperSideModel: helperSettings.helperSideModel,
         ...resolveCompactModelSettings(deps, {
           provider: providerName,
-          yaModelId:
-            body.model ??
-            deps.sessionMetadataService?.getRequestedModel(sessionId),
+          yaModelId: requestedModel ?? undefined,
           modelCandidates: [
             body.model,
             model,
@@ -4653,7 +4718,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       providerName,
       executor,
       undefined,
-      body.model ?? deps.sessionMetadataService?.getRequestedModel(sessionId),
+      requestedModel ?? undefined,
       result.promptSuggestionMode,
       result.recapAfterSeconds,
       undefined,
@@ -5045,8 +5110,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     let requestedModel =
       deps.sessionMetadataService.getRequestedModel(sessionId) ??
       liveSourceProcess?.model;
-    const sourceMetadata =
-      deps.sessionMetadataService.getMetadata?.(sessionId);
+    const sourceMetadata = deps.sessionMetadataService.getMetadata?.(sessionId);
     const sourceProjectPath =
       sourceMetadata?.sandboxLevel === "project-write"
         ? (sourceMetadata.sandboxProjectPath ?? project.path)
@@ -5717,6 +5781,11 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({ error: "Invalid JSON body" }, 400);
     }
 
+    const modeError = permissionModeError(body.mode);
+    if (modeError) {
+      return c.json({ error: modeError }, 400);
+    }
+
     if (!body.message) {
       return c.json({ error: "Message is required" }, 400);
     }
@@ -6126,6 +6195,10 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
 
     if (!body.mode) {
       return c.json({ error: "mode is required" }, 400);
+    }
+    const modeError = permissionModeError(body.mode);
+    if (modeError) {
+      return c.json({ error: modeError }, 400);
     }
 
     const process = deps.supervisor.getProcessForSession(sessionId);

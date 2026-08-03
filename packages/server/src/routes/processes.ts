@@ -462,12 +462,15 @@ export function createProcessesRoutes(deps: ProcessesDeps): Hono {
     }>();
     const updates: {
       model?: string;
+      requestedModel?: string;
       thinking?: ReturnType<typeof thinkingOptionToConfig>["thinking"];
       effort?: ReturnType<typeof thinkingOptionToConfig>["effort"];
     } = {};
 
     if ("model" in body) {
-      updates.model = body.model;
+      updates.model =
+        body.model && body.model !== "default" ? body.model : undefined;
+      updates.requestedModel = body.model;
     }
     if ("thinking" in body) {
       if (body.thinking === undefined) {
@@ -510,7 +513,9 @@ export function createProcessesRoutes(deps: ProcessesDeps): Hono {
       return c.json({ error: "Process not found" }, 404);
     }
     const updatedProcess = await deps.supervisor.reconfigureProcess(processId, {
-      model: body.model,
+      model:
+        body.model && body.model !== "default" ? body.model : undefined,
+      requestedModel: body.model,
     });
     if (!updatedProcess) {
       return c.json({ error: "Model switching failed" }, 400);

@@ -61,6 +61,7 @@ export async function ensureProcessForRecoveredItem(
         mode,
         {
           model,
+          requestedModel: item.model,
           serviceTier: item.serviceTier,
           providerName: item.provider,
           executor: parsedExecutor.executor,
@@ -192,11 +193,7 @@ export async function resolveRecoveredGroupForDelivery(
           body: {
             error: refusal,
             headQueueId: target.id,
-            deferredMessages: sessionQueueSummaries(
-              deps,
-              sessionId,
-              candidate,
-            ),
+            deferredMessages: sessionQueueSummaries(deps, sessionId, candidate),
           },
         }
       : null;

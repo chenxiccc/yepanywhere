@@ -48,9 +48,7 @@ import type {
   AgentProvider,
   PromptCacheRefreshResult,
 } from "../sdk/providers/types.js";
-import {
-  expandSlashCommandEmulation,
-} from "../sdk/slashCommandEmulation.js";
+import { expandSlashCommandEmulation } from "../sdk/slashCommandEmulation.js";
 import type {
   PermissionMode,
   ProviderActivitySnapshot,
@@ -928,13 +926,13 @@ export class Process {
   private _lastKnownPid: number | undefined;
 
   /** Resolved model name from the first assistant message (e.g., "claude-sonnet-4-5-20250929") */
-  private _resolvedModel: string | undefined;
+  private _resolvedModel: string | null | undefined;
   /**
    * Current requested YA model id (launch alias, e.g. "opus"). Starts at the
-   * launch `model` and follows mid-session model switches (which leave the
+   * exact launch request and follows mid-session model switches (which leave the
    * readonly `model` at its original value). Keys per-model settings.
    */
-  private _requestedModel: string | undefined;
+  private _requestedModel: string | null | undefined;
   /** Context window size reported by SDK in result messages' modelUsage */
   private _contextWindow: number | undefined;
   /** Monotonic marker for assistant output observed by this process. */
@@ -992,14 +990,13 @@ export class Process {
         { live: true },
       );
     this.model = options.model;
-    this._requestedModel = options.model;
+    this._requestedModel = options.requestedModel ?? options.model;
     this._compactAtContextPercent = options.compactAtContextPercent;
     this._compactAtContextWindow = options.compactAtContextWindow;
     this._forceYaOrchestratedCompaction =
       options.forceYaOrchestratedCompaction === true;
     this.compactAtContextTokenLimit = options.compactAtContextTokenLimit;
-    this.launchCompactPercentOverride =
-      options.launchCompactPercentOverride;
+    this.launchCompactPercentOverride = options.launchCompactPercentOverride;
     this.serviceTier = options.serviceTier;
     this.executor = options.executor;
     this.sandboxEnforcement = options.sandboxEnforcement;
@@ -1086,6 +1083,9 @@ export class Process {
    * Falls back to the requested model if no assistant message has been received yet.
    */
   get resolvedModel(): string | undefined {
+    if (this._resolvedModel === null) {
+      return undefined;
+    }
     return this._resolvedModel ?? this.model;
   }
 
@@ -1094,6 +1094,9 @@ export class Process {
    * the key for per-model settings. Distinct from `resolvedModel` (reported).
    */
   get requestedModel(): string | undefined {
+    if (this._requestedModel === null) {
+      return undefined;
+    }
     return this._requestedModel ?? this.model;
   }
 
@@ -1649,12 +1652,18 @@ export class Process {
     return this.pendingEffortUpdate?.effort ?? this._effort;
   }
 
+  /** Effort already accepted by the provider, excluding a queued next turn. */
+  get appliedEffort(): EffortLevel | undefined {
+    return this._effort;
+  }
+
   /**
    * Update thinking config and effort after a dynamic change.
    */
   updateThinkingConfig(thinking?: ThinkingConfig, effort?: EffortLevel): void {
     this._thinking = thinking;
     this._effort = effort;
+    this.emit({ type: "configuration-applied", setting: "thinking" });
   }
 
   /**
@@ -1831,6 +1840,7 @@ export class Process {
     );
     await this.setEffortFn(effort);
     this._effort = effort;
+    this.emit({ type: "configuration-applied", setting: "effort" });
   }
 
   private async applyPendingEffort(): Promise<void> {
@@ -2008,9 +2018,13 @@ export class Process {
    * Only supported by Claude SDK 0.2.7+.
    *
    * @param model - New model to use, or undefined to use default
+   * @param requestedModel - Exact YA selection token retained for restoration
    * @returns true if the change was applied, false if not supported
    */
-  async setModel(model?: string): Promise<boolean> {
+  async setModel(
+    model?: string,
+    requestedModel: string | null = model ?? null,
+  ): Promise<boolean> {
     if (!this.setModelFn) {
       return false;
     }
@@ -2055,13 +2069,11 @@ export class Process {
       this.clearRetryingProviderRuntimeStatus();
     }
 
-    // Update resolved model so subsequent API responses reflect the switch
-    if (model) {
-      this._resolvedModel = model;
-      // Follow the switch for per-model-settings keying (readonly `model` stays
-      // at the original launch alias). See topics/provider-abstraction.md.
-      this._requestedModel = model;
-    }
+    // Follow switches, including an explicit return to provider default.
+    // The readonly `model` remains the original launch value.
+    this._resolvedModel = model ?? null;
+    this._requestedModel = requestedModel;
+    this.emit({ type: "configuration-applied", setting: "model" });
     return true;
   }
 
@@ -2207,7 +2219,7 @@ export class Process {
       startedAt: this.startedAt.toISOString(),
       queueDepth: this.queueDepth,
       provider: this.provider,
-      model: this._resolvedModel ?? this.model,
+      model: this.resolvedModel,
       // The requested YA launch alias (e.g. "opus"), distinct from the reported
       // model above. Keys per-model settings; the route enrichment fills the
       // persisted/helper fallback when this is absent (non-YA-started sessions).
@@ -2621,7 +2633,7 @@ export class Process {
       return HELPER_SIDE_MODEL_CHEAPEST;
     }
     if (this._helperSideModel === HELPER_SIDE_MODEL_SAME_AS_MAIN) {
-      return this._resolvedModel ?? this.model;
+      return this.resolvedModel;
     }
     return this._helperSideModel || undefined;
   }

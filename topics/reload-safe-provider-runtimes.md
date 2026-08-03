@@ -282,6 +282,13 @@ gateway and then transfers its process group to the shared host because later
 workers may share that endpoint. Hono must not tear it down during reload.
 Terminal wrapper/host shutdown still reaps it.
 
+The live worker snapshot and the server-owned per-session launch-settings
+record cover different lifetimes. Hono reattach adopts the surviving worker's
+snapshot as authoritative. When the provider runtime has ended, a cold launch
+instead inherits `SessionMetadata.effectiveLaunchSettings`. Persisting an
+identical reattach snapshot is an equality-aware no-op, so a Hono generation
+change does not manufacture a settings revision or rewrite metadata.
+
 ### Attachment, fencing, and deadlines
 
 One server generation controls a worker at a time. Attach and detach use the

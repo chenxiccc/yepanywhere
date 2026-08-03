@@ -697,6 +697,7 @@ export class ProjectQueueScheduler {
       ...(target.model && target.model !== "default"
         ? { model: target.model }
         : {}),
+      ...(target.model ? { requestedModel: target.model } : {}),
       ...(target.serviceTier ? { serviceTier: target.serviceTier } : {}),
       ...(thinkingConfig.thinking ? { thinking: thinkingConfig.thinking } : {}),
       ...(thinkingConfig.effort ? { effort: thinkingConfig.effort } : {}),

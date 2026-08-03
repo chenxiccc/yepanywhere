@@ -1,5 +1,7 @@
 export {
   SessionMetadataService,
+  type EffectiveSessionLaunchSettings,
+  type EffectiveSessionLaunchSettingsValue,
   type SessionMetadata,
   type SessionMetadataServiceOptions,
   type SessionMetadataState,

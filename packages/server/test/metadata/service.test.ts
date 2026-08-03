@@ -189,6 +189,78 @@ describe("SessionMetadataService", () => {
     });
   });
 
+  describe("effective launch settings", () => {
+    it("persists complete settings and preserves exact default model tokens", async () => {
+      await service.initialize();
+
+      await service.recordEffectiveLaunchSettings("session-1", {
+        permissionMode: "bypassPermissions",
+        requestedModel: "default",
+        serviceTier: "priority",
+        thinking: { type: "adaptive", display: "summarized" },
+        effort: "high",
+      });
+
+      const reloaded = new SessionMetadataService({ dataDir: testDir });
+      await reloaded.initialize();
+      expect(reloaded.getEffectiveLaunchSettings("session-1")).toEqual({
+        schemaVersion: 1,
+        revision: 1,
+        permissionMode: "bypassPermissions",
+        requestedModel: "default",
+        serviceTier: "priority",
+        thinking: { type: "adaptive", display: "summarized" },
+        effort: "high",
+      });
+      expect(reloaded.getRequestedModel("session-1")).toBe("default");
+    });
+
+    it("advances revisions only when the applied snapshot changes", async () => {
+      await service.initialize();
+      const value = {
+        permissionMode: "plan" as const,
+        requestedModel: "opus",
+        serviceTier: null,
+        thinking: null,
+        effort: null,
+      };
+
+      const first = await service.recordEffectiveLaunchSettings(
+        "session-1",
+        value,
+      );
+      const duplicate = await service.recordEffectiveLaunchSettings(
+        "session-1",
+        value,
+      );
+      const changed = await service.recordEffectiveLaunchSettings("session-1", {
+        ...value,
+        effort: "max",
+      });
+
+      expect(first.revision).toBe(1);
+      expect(duplicate.revision).toBe(1);
+      expect(changed.revision).toBe(2);
+    });
+
+    it("uses legacy requestedModel only when no durable record exists", async () => {
+      await service.initialize();
+      await service.setRequestedModel("legacy", "sonnet");
+      expect(service.getRequestedModel("legacy")).toBe("sonnet");
+
+      await service.recordEffectiveLaunchSettings("legacy", {
+        permissionMode: "default",
+        requestedModel: null,
+        serviceTier: null,
+        thinking: null,
+        effort: null,
+      });
+
+      expect(service.getRequestedModel("legacy")).toBeUndefined();
+      expect(service.getMetadata("legacy")?.requestedModel).toBeUndefined();
+    });
+  });
+
   describe("setTitle", () => {
     it("sets custom title for a session", async () => {
       await service.initialize();

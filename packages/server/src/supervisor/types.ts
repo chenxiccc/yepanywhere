@@ -296,6 +296,10 @@ export type ProcessEvent =
     }
   | { type: "mode-change"; mode: PermissionMode; version: number }
   | { type: "mode-applied"; mode: PermissionMode }
+  | {
+      type: "configuration-applied";
+      setting: "model" | "thinking" | "effort";
+    }
   | { type: "session-id-changed"; oldSessionId: string; newSessionId: string }
   | {
       type: "context-window-observed";
@@ -356,6 +360,8 @@ export interface ProcessOptions {
   serviceTier?: string;
   /** Model used for this session (e.g., "claude-opus-4-5-20251101") */
   model?: string;
+  /** Exact YA model token selected at launch, including "default". */
+  requestedModel?: string;
   /** Configured per-model compaction threshold percentage, if any. */
   compactAtContextPercent?: number;
   /** Effective full context window used to derive the threshold. */
