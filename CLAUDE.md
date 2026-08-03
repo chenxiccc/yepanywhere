@@ -174,7 +174,7 @@ After editing TypeScript or other source files, verify your changes compile and 
 ```bash
 pnpm lint       # Biome linter
 pnpm typecheck  # TypeScript type checking (fast, no emit)
-pnpm test       # Unit tests
+pnpm test       # Unit tests for non-Android workspaces
 pnpm test:e2e   # E2E tests (if UI changes)
 ```
 

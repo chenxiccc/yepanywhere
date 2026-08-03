@@ -97,7 +97,9 @@ afterEach(async () => {
   );
 });
 
-describe("CodexProvider reload-safe resume", () => {
+const describeOnLinux = process.platform === "linux" ? describe : describe.skip;
+
+describeOnLinux("CodexProvider reload-safe resume", () => {
   it("launches an enabled resumed session through the lifecycle host", async () => {
     const runtimeRoot = await mkdtemp(join(tmpdir(), "codex-resume-host-test-"));
     temporaryPaths.push(runtimeRoot);

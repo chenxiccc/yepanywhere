@@ -231,8 +231,9 @@ describe("Source Control workbench layout CSS contract", () => {
     );
 
     expect(mobileTabs).toMatch(
-      /grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)\s*;/,
+      /grid-auto-columns:\s*minmax\(0,\s*1fr\)\s*;/,
     );
+    expect(mobileTabs).toMatch(/grid-auto-flow:\s*column\s*;/);
     expect(actionGroupRules.length).toBeGreaterThan(0);
     for (const rule of actionGroupRules) {
       expect(rule).not.toMatch(/1fr/);

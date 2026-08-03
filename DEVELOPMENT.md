@@ -25,7 +25,8 @@ pnpm setup:core       # Install root + client + server + shared, skipping relay
 pnpm dev              # Start dev server
 pnpm lint             # Biome linter
 pnpm typecheck        # TypeScript type checking
-pnpm test             # Unit tests
+pnpm test             # Unit tests for non-Android workspaces
+pnpm --filter @yep-anywhere/android test # Android unit tests
 pnpm test:e2e         # E2E tests
 pnpm references:sync  # Clone/sync upstream source to pinned provider versions
 pnpm references:check # Verify local references match pinned provider versions
@@ -35,6 +36,10 @@ Commits should be warning-free: `pnpm lint` reports zero warnings, and test
 runs emit no runtime warnings (e.g. React "cannot update while rendering" or
 `act(...)` notices). Fix the cause rather than suppressing the report; a
 warning that must stand needs an inline justification.
+
+The general CI unit-test job runs `pnpm test`. Android unit, lint, build, and
+instrumentation coverage belongs to the dedicated Android App workflow so its
+Gradle work does not contend with the JavaScript workspace test processes.
 
 Environment-dependent subprocess tests must control both the child environment
 and relevant process descriptors. In particular, Bash `BASH_ENV` probes use
