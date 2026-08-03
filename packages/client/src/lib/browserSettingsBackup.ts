@@ -13,6 +13,7 @@ export const BROWSER_SETTINGS_BACKUP_KEYS = [
   UI_KEYS.locale,
   UI_KEYS.theme,
   UI_KEYS.fontSize,
+  UI_KEYS.sidebarSpacing,
   UI_KEYS.outputProseFont,
   UI_KEYS.outputUiFont,
   UI_KEYS.outputProseFontSize,

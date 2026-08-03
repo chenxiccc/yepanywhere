@@ -17,6 +17,7 @@ export const UI_KEYS = {
   locale: "yep-anywhere-locale",
   theme: "yep-anywhere-theme",
   fontSize: "yep-anywhere-font-size",
+  sidebarSpacing: "yep-anywhere-sidebar-spacing",
   diffViewMode: "yep-anywhere-diff-view-mode",
   outputProseFont: "yep-anywhere-output-prose-font",
   outputUiFont: "yep-anywhere-output-ui-font",

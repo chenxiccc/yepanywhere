@@ -18,7 +18,7 @@ function renderAppearanceSettings() {
   );
 }
 
-describe("AppearanceSettings tooltip controls", () => {
+describe("AppearanceSettings", () => {
   afterEach(() => {
     cleanup();
     localStorage.clear();
@@ -48,6 +48,25 @@ describe("AppearanceSettings tooltip controls", () => {
     expect(localStorage.getItem(UI_KEYS.tooltipMode)).toBe("themed");
     fireEvent.blur(number);
     expect(localStorage.getItem(UI_KEYS.tooltipDelayMs)).toBe("80");
+  });
+
+  it("shows UI size metrics and changes sidebar spacing", () => {
+    renderAppearanceSettings();
+
+    expect(screen.getByRole("button", { name: "Small 85%" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Default 100%" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Large 115%" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Larger 130%" })).toBeTruthy();
+
+    const comfortable = screen.getByRole("button", { name: "Comfortable" });
+    expect(comfortable.classList.contains("active")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Compact" }));
+    expect(localStorage.getItem(UI_KEYS.sidebarSpacing)).toBe("compact");
+    expect(
+      document.documentElement.style.getPropertyValue(
+        "--sidebar-row-min-height",
+      ),
+    ).toBe("1.5rem");
   });
 
   it("places compact image galleries beside inline media and defaults them on", () => {

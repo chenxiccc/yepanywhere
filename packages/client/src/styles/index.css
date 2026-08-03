@@ -1843,7 +1843,7 @@ body.session-transcript-selection-active .reload-banner * {
   flex-direction: column;
   gap: 0.125rem;
   padding: 0;
-  margin-bottom: 1rem;
+  margin-bottom: var(--sidebar-section-gap, 1rem);
 }
 
 .sidebar-collapsed .sidebar-nav-section {
@@ -1858,7 +1858,7 @@ a.sidebar-nav-item {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.5rem 0.875rem;
+  padding: var(--sidebar-navigation-padding-block, 0.5rem) 0.75ch;
   background: transparent;
   border: none;
   color: var(--text-primary);
@@ -1884,7 +1884,7 @@ a.sidebar-nav-item {
 }
 
 .sidebar-section {
-  margin-bottom: 1rem;
+  margin-bottom: var(--sidebar-section-gap, 1rem);
 }
 
 .sidebar-section-header {
@@ -1892,8 +1892,8 @@ a.sidebar-nav-item {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  padding: 0 0.875rem;
-  margin-bottom: 0.5rem;
+  padding: 0 0.75ch;
+  margin-bottom: var(--sidebar-section-header-gap, 0.5rem);
 }
 
 .sidebar-section-title {
@@ -1901,8 +1901,8 @@ a.sidebar-nav-item {
   font-weight: 600;
   text-transform: uppercase;
   color: var(--text-dimmed);
-  padding: 0 0.875rem;
-  margin: 0 0 0.5rem;
+  padding: 0 0.75ch;
+  margin: 0 0 var(--sidebar-section-header-gap, 0.5rem);
 }
 
 .sidebar-section-header .sidebar-section-title {
@@ -1947,30 +1947,6 @@ a.sidebar-nav-item {
   margin: 0;
 }
 
-.sidebar-session-list li.current {
-  background: var(--bg-hover);
-}
-
-.sidebar-session-list li a {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.5rem 0.875rem;
-  min-height: 2.25rem; /* Prevent jump when badges appear/disappear */
-  color: var(--text-primary);
-  text-decoration: none;
-  font-size: var(--font-size-sm);
-  transition: background 0.15s;
-}
-
-.sidebar-session-list li a:hover {
-  background: var(--bg-hover);
-}
-
-.sidebar-session-list li {
-  position: relative;
-}
-
 .sidebar-project-queue-list {
   display: flex;
   flex-direction: column;
@@ -1984,13 +1960,13 @@ a.sidebar-nav-item {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  min-height: 34px;
-  padding: var(--space-1) var(--space-3);
+  min-height: var(--sidebar-row-min-height, 34px);
+  padding: var(--sidebar-row-padding-block, var(--space-1)) 1ch;
   color: var(--text-primary);
   text-decoration: none;
   border-left: 2px solid var(--project-queue-action-bg);
   transition: background 0.15s;
-  line-height: 1.3;
+  line-height: var(--sidebar-row-line-height, 1.3);
 }
 
 @media (pointer: coarse) {
@@ -14307,14 +14283,15 @@ a.linkified-url:hover {
   align-items: center;
   justify-content: space-between;
   flex: 1;
-  min-height: 34px;
-  padding: var(--space-1) var(--space-3);
-  padding-left: calc(var(--space-3) + 4px);
+  min-height: var(--sidebar-row-min-height, 34px);
+  padding: var(--sidebar-row-padding-block, var(--space-1)) 0.75ch;
+  padding-left: 1ch;
   border-radius: var(--radius-sm);
   text-decoration: none;
   color: var(--text-primary);
   overflow: hidden;
-  line-height: 1.3;
+  line-height: var(--sidebar-row-line-height, 1.3);
+  transition: background 0.15s;
 }
 
 .session-list-item--compact .session-list-item__link:hover {
@@ -14338,6 +14315,12 @@ a.linkified-url:hover {
 }
 
 @media (pointer: coarse) {
+  .sidebar-nav-item {
+    min-height: 40px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+
   .session-list-item--compact .session-list-item__link {
     min-height: 40px;
     padding-top: 6px;

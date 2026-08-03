@@ -9,6 +9,7 @@ import { App } from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { TooltipLayer } from "./components/ui/TooltipLayer";
 import { initializeFontSize } from "./hooks/useFontSize";
+import { initializeSidebarSpacing } from "./hooks/useSidebarSpacing";
 import { initializeContentMaxWidth } from "./hooks/useContentMaxWidth";
 import { initializeOutputAppearance } from "./hooks/useOutputAppearance";
 import { initializeTabSize } from "./hooks/useTabSize";
@@ -139,6 +140,7 @@ if (import.meta.env.DEV && window.location.port === String(__VITE_DEV_PORT__)) {
   // Apply saved preferences before React renders to avoid flash
   initializeTheme();
   initializeFontSize();
+  initializeSidebarSpacing();
   initializeOutputAppearance();
   initializeTabSize();
   initializeContentMaxWidth();

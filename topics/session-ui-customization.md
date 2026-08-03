@@ -131,6 +131,20 @@ Relative to the landed surface:
 - Controls disabled by upstream preference should be candidates for
   configurable default-off restoration before the implementation is removed.
 
+### Sidebar spacing
+
+Sidebar spacing is a portable browser preference with two modes. Comfortable
+is the default and keeps the intentionally enlarged 34px desktop session rows;
+Compact restores the earlier 1.5rem minimum, 2px block padding, and 1.2 line
+height. Coarse pointers keep at least 40px rows with 6px block padding in both
+modes, so desktop density does not reduce phone and tablet tap reliability.
+
+The same preference controls navigation-row padding and the gaps between
+sidebar sections. Inline edge spacing follows the active UI font: top-level
+sidebar labels use a `0.75ch` inset, while nested session and queue rows use
+`1ch`. The inset must not grow from a fixed window-edge margin independently
+of the selected UI font.
+
 ## Mockup Requirements
 
 The landed surface shows a realistic session composer/toolbar mockup

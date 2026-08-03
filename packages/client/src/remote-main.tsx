@@ -29,6 +29,7 @@ import { ConnectionGate, RemoteApp, UnauthenticatedGate } from "./RemoteApp";
 import { TooltipLayer } from "./components/ui/TooltipLayer";
 import { initializeContentMaxWidth } from "./hooks/useContentMaxWidth";
 import { initializeFontSize } from "./hooks/useFontSize";
+import { initializeSidebarSpacing } from "./hooks/useSidebarSpacing";
 import { initializeOutputAppearance } from "./hooks/useOutputAppearance";
 import { initializeTabSize } from "./hooks/useTabSize";
 import { initializeTheme } from "./hooks/useTheme";
@@ -62,6 +63,7 @@ import "./styles/index.css";
 // Apply saved preferences before React renders to avoid flash
 initializeTheme();
 initializeFontSize();
+initializeSidebarSpacing();
 initializeOutputAppearance();
 initializeTabSize();
 initializeContentMaxWidth();

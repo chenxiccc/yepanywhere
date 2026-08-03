@@ -18,7 +18,11 @@ import {
 import { estimateHoverCardPromptLines } from "../../components/sessionHoverCardLines";
 import { useDeveloperMode } from "../../hooks/useDeveloperMode";
 import { useFloatingActionButtonEnabled } from "../../hooks/useFloatingActionButtonEnabled";
-import { FONT_SIZES, useFontSize } from "../../hooks/useFontSize";
+import {
+  FONT_SIZES,
+  getFontSizeScalePercent,
+  useFontSize,
+} from "../../hooks/useFontSize";
 import { useFunPhrases } from "../../hooks/useFunPhrases";
 import {
   DEFAULT_GENERATED_TITLE_LENGTH,
@@ -80,6 +84,10 @@ import {
   useSettingsIconStyle,
 } from "../../hooks/useSettingsIconStyle";
 import { useSidebarDuplicateHiding } from "../../hooks/useSidebarDuplicateHiding";
+import {
+  SIDEBAR_SPACINGS,
+  useSidebarSpacing,
+} from "../../hooks/useSidebarSpacing";
 import { TAB_SIZES, useTabSize } from "../../hooks/useTabSize";
 import { useTabTitleActivityPreference } from "../../hooks/useTabTitleActivityPreference";
 import { THEMES, useTheme } from "../../hooks/useTheme";
@@ -89,6 +97,7 @@ import {
   getLocaleLabel,
   getOutputFixedFontLabel,
   getOutputProseFontLabel,
+  getSidebarSpacingLabel,
   getTabSizeLabel,
   getThemeLabel,
 } from "../../i18n-settings";
@@ -169,6 +178,7 @@ export function AppearanceSettings() {
   const navigate = useNavigate();
   const basePath = useRemoteBasePath();
   const { fontSize, setFontSize } = useFontSize();
+  const { sidebarSpacing, setSidebarSpacing } = useSidebarSpacing();
   const {
     outputFont,
     outputUiFont,
@@ -269,6 +279,7 @@ export function AppearanceSettings() {
   const undoEntries = [
     undoEntry(locale, setLocale),
     undoEntry(fontSize, setFontSize),
+    undoEntry(sidebarSpacing, setSidebarSpacing),
     undoEntry(outputFont, setOutputFont),
     undoEntry(outputUiFont, setOutputUiFont),
     undoEntry(outputFontSizePx, setOutputFontSizePx, (value) =>
@@ -1046,7 +1057,26 @@ export function AppearanceSettings() {
                         className={`font-size-option ${fontSize === size ? "active" : ""}`}
                         onClick={() => setFontSize(size)}
                       >
-                        {getFontSizeLabel(size, translate)}
+                        {getFontSizeLabel(size, translate)}{" "}
+                        {getFontSizeScalePercent(size)}%
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="output-appearance-control">
+                  <span className="output-appearance-label">
+                    {t("appearanceSidebarSpacingTitle")}
+                  </span>
+                  <div className="font-size-selector output-font-selector">
+                    {SIDEBAR_SPACINGS.map((spacing) => (
+                      <button
+                        key={spacing}
+                        type="button"
+                        className={`font-size-option ${sidebarSpacing === spacing ? "active" : ""}`}
+                        onClick={() => setSidebarSpacing(spacing)}
+                      >
+                        {getSidebarSpacingLabel(spacing, translate)}
                       </button>
                     ))}
                   </div>

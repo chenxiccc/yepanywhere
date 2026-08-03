@@ -23,6 +23,10 @@ export function getFontSizeLabel(size: FontSize): string {
   return fontSizeLabels[size];
 }
 
+export function getFontSizeScalePercent(size: FontSize): number {
+  return Math.round(fontSizeScales[size] * 100);
+}
+
 function applyFontSize(size: FontSize) {
   const scale = fontSizeScales[size];
   const root = document.documentElement;

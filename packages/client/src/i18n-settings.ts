@@ -1,4 +1,5 @@
 import type { FontSize } from "./hooks/useFontSize";
+import type { SidebarSpacing } from "./hooks/useSidebarSpacing";
 import type {
   OutputFixedFont,
   OutputProseFont,
@@ -37,6 +38,18 @@ export function getFontSizeLabel(
       return t("fontSizeLarge");
     case "larger":
       return t("fontSizeLarger");
+  }
+}
+
+export function getSidebarSpacingLabel(
+  spacing: SidebarSpacing,
+  t: (key: string) => string,
+): string {
+  switch (spacing) {
+    case "compact":
+      return t("sidebarSpacingCompact");
+    case "comfortable":
+      return t("sidebarSpacingComfortable");
   }
 }
 
