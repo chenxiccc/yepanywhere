@@ -32,6 +32,16 @@ describe("initializeSidebarSpacing", () => {
       document.documentElement.style.getPropertyValue(
         "--sidebar-row-min-height",
       ),
-    ).toBe("1.5rem");
+    ).toBe("calc(1.5rem + 1px)");
+    expect(
+      document.documentElement.style.getPropertyValue(
+        "--sidebar-navigation-font-size",
+      ),
+    ).toBe("var(--font-size-base)");
+    expect(
+      document.documentElement.style.getPropertyValue(
+        "--sidebar-brand-display",
+      ),
+    ).toBe("none");
   });
 });

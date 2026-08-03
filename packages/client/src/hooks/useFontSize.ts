@@ -1,39 +1,37 @@
 import { useCallback, useEffect, useState } from "react";
 import { UI_KEYS } from "../lib/storageKeys";
 
-export type FontSize = "small" | "default" | "large" | "larger";
+export const UI_FONT_SCALE_MIN_PERCENT = 50;
+export const UI_FONT_SCALE_MAX_PERCENT = 300;
+export const UI_FONT_SCALE_SLIDER_MIN_PERCENT = 85;
+export const UI_FONT_SCALE_SLIDER_MAX_PERCENT = 130;
+export const UI_FONT_SCALE_STEP_PERCENT = 5;
+export const DEFAULT_UI_FONT_SCALE_PERCENT = 115;
+export const UI_FONT_SCALE_PRESETS = [85, 100, 115, 130] as const;
 
-const fontSizeScales: Record<FontSize, number> = {
-  small: 0.85,
-  default: 1,
-  large: 1.15,
-  larger: 1.3,
-};
+const legacyFontSizePercents = {
+  small: 85,
+  default: 100,
+  large: 115,
+  larger: 130,
+} as const;
 
-const fontSizeLabels: Record<FontSize, string> = {
-  small: "Small",
-  default: "Default",
-  large: "Large",
-  larger: "Larger",
-};
-
-export const FONT_SIZES: FontSize[] = ["small", "default", "large", "larger"];
-
-export function getFontSizeLabel(size: FontSize): string {
-  return fontSizeLabels[size];
+function normalizeFontSizePercent(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_UI_FONT_SCALE_PERCENT;
+  return Math.min(
+    UI_FONT_SCALE_MAX_PERCENT,
+    Math.max(UI_FONT_SCALE_MIN_PERCENT, value),
+  );
 }
 
-export function getFontSizeScalePercent(size: FontSize): number {
-  return Math.round(fontSizeScales[size] * 100);
-}
-
-function applyFontSize(size: FontSize) {
-  const scale = fontSizeScales[size];
+function applyFontSize(percent: number) {
+  const normalized = normalizeFontSizePercent(percent);
+  const scale = normalized / 100;
   const root = document.documentElement;
 
   // Scale the root font-size to affect all rem/em units globally
   // This is the standard approach for accessibility font scaling
-  root.style.fontSize = `${100 * scale}%`;
+  root.style.fontSize = `${normalized}%`;
 
   // Also scale the CSS variables for elements using them directly (px-based)
   root.style.setProperty("--font-size-xs", `${10 * scale}px`);
@@ -42,16 +40,19 @@ function applyFontSize(size: FontSize) {
   root.style.setProperty("--font-size-lg", `${14 * scale}px`);
 }
 
-function loadFontSize(): FontSize {
+function loadFontSize(): number {
   const stored = localStorage.getItem(UI_KEYS.fontSize);
-  if (stored && FONT_SIZES.includes(stored as FontSize)) {
-    return stored as FontSize;
+  if (stored === null) return DEFAULT_UI_FONT_SCALE_PERCENT;
+  if (stored && Object.hasOwn(legacyFontSizePercents, stored)) {
+    return legacyFontSizePercents[
+      stored as keyof typeof legacyFontSizePercents
+    ];
   }
-  return "large";
+  return normalizeFontSizePercent(Number(stored));
 }
 
-function saveFontSize(size: FontSize) {
-  localStorage.setItem(UI_KEYS.fontSize, size);
+function saveFontSize(percent: number) {
+  localStorage.setItem(UI_KEYS.fontSize, String(percent));
 }
 
 /**
@@ -59,19 +60,20 @@ function saveFontSize(size: FontSize) {
  * Persists to localStorage and applies CSS variables.
  */
 export function useFontSize() {
-  const [fontSize, setFontSizeState] = useState<FontSize>(loadFontSize);
+  const [fontSizePercent, setFontSizeState] = useState(loadFontSize);
 
   // Apply font size on mount and when it changes
   useEffect(() => {
-    applyFontSize(fontSize);
-  }, [fontSize]);
+    applyFontSize(fontSizePercent);
+  }, [fontSizePercent]);
 
-  const setFontSize = useCallback((size: FontSize) => {
-    setFontSizeState(size);
-    saveFontSize(size);
+  const setFontSizePercent = useCallback((percent: number) => {
+    const normalized = normalizeFontSizePercent(percent);
+    setFontSizeState(normalized);
+    saveFontSize(normalized);
   }, []);
 
-  return { fontSize, setFontSize };
+  return { fontSizePercent, setFontSizePercent };
 }
 
 /**

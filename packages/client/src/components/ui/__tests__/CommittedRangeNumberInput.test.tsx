@@ -112,4 +112,44 @@ describe("CommittedRangeNumberInput", () => {
 
     expect(onCommit).toHaveBeenCalledWith(75);
   });
+
+  it("allows free number values beyond the slider range", () => {
+    const onCommit = vi.fn();
+    const { container } = render(
+      <CommittedRangeNumberInput
+        min={85}
+        max={130}
+        numberMin={50}
+        numberMax={300}
+        step={5}
+        list="scale-notches"
+        value={300}
+        unit="%"
+        ariaLabel="UI size"
+        snapTextToStep={false}
+        onCommit={onCommit}
+      />,
+    );
+
+    const slider = screen.getByRole<HTMLInputElement>("slider", {
+      name: "UI size",
+    });
+    const number = screen.getByRole<HTMLInputElement>("spinbutton", {
+      name: "UI size",
+    });
+    expect(slider.value).toBe("130");
+    expect(slider.getAttribute("list")).toBe("scale-notches");
+    expect(number.value).toBe("300");
+    expect(number.step).toBe("any");
+
+    fireEvent.change(number, { target: { value: "93.5" } });
+    fireEvent.blur(number);
+    expect(onCommit).toHaveBeenCalledWith(93.5);
+
+    fireEvent.change(number, { target: { value: "20" } });
+    fireEvent.blur(number);
+    expect(onCommit).toHaveBeenLastCalledWith(50);
+    expect(slider.value).toBe("85");
+    expect(container.textContent).toContain("%");
+  });
 });

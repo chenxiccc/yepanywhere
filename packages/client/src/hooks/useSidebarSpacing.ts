@@ -14,25 +14,37 @@ const sidebarSpacingMetrics: Record<
     rowPaddingBlock: string;
     rowLineHeight: string;
     navigationPaddingBlock: string;
+    navigationFontSize: string;
     sectionGap: string;
     sectionHeaderGap: string;
+    headerPadding: string;
+    headerJustifyContent: string;
+    brandDisplay: string;
   }
 > = {
   compact: {
-    rowMinHeight: "1.5rem",
+    rowMinHeight: "calc(1.5rem + 1px)",
     rowPaddingBlock: "2px",
     rowLineHeight: "1.2",
     navigationPaddingBlock: "0.25em",
+    navigationFontSize: "var(--font-size-base)",
     sectionGap: "0.5em",
     sectionHeaderGap: "0.25em",
+    headerPadding: "0",
+    headerJustifyContent: "flex-end",
+    brandDisplay: "none",
   },
   comfortable: {
     rowMinHeight: "34px",
     rowPaddingBlock: "var(--space-1)",
     rowLineHeight: "1.3",
     navigationPaddingBlock: "0.5rem",
+    navigationFontSize: "var(--font-size-sm)",
     sectionGap: "1rem",
     sectionHeaderGap: "0.5rem",
+    headerPadding: "0.75rem 1rem",
+    headerJustifyContent: "space-between",
+    brandDisplay: "inline",
   },
 };
 
@@ -50,11 +62,21 @@ function applySidebarSpacing(spacing: SidebarSpacing): void {
     "--sidebar-navigation-padding-block",
     metrics.navigationPaddingBlock,
   );
+  root.style.setProperty(
+    "--sidebar-navigation-font-size",
+    metrics.navigationFontSize,
+  );
   root.style.setProperty("--sidebar-section-gap", metrics.sectionGap);
   root.style.setProperty(
     "--sidebar-section-header-gap",
     metrics.sectionHeaderGap,
   );
+  root.style.setProperty("--sidebar-header-padding", metrics.headerPadding);
+  root.style.setProperty(
+    "--sidebar-header-justify-content",
+    metrics.headerJustifyContent,
+  );
+  root.style.setProperty("--sidebar-brand-display", metrics.brandDisplay);
 }
 
 function loadSidebarSpacing(): SidebarSpacing {

@@ -19,8 +19,12 @@ import { estimateHoverCardPromptLines } from "../../components/sessionHoverCardL
 import { useDeveloperMode } from "../../hooks/useDeveloperMode";
 import { useFloatingActionButtonEnabled } from "../../hooks/useFloatingActionButtonEnabled";
 import {
-  FONT_SIZES,
-  getFontSizeScalePercent,
+  UI_FONT_SCALE_MAX_PERCENT,
+  UI_FONT_SCALE_MIN_PERCENT,
+  UI_FONT_SCALE_PRESETS,
+  UI_FONT_SCALE_SLIDER_MAX_PERCENT,
+  UI_FONT_SCALE_SLIDER_MIN_PERCENT,
+  UI_FONT_SCALE_STEP_PERCENT,
   useFontSize,
 } from "../../hooks/useFontSize";
 import { useFunPhrases } from "../../hooks/useFunPhrases";
@@ -93,7 +97,6 @@ import { useTabTitleActivityPreference } from "../../hooks/useTabTitleActivityPr
 import { THEMES, useTheme } from "../../hooks/useTheme";
 import { SUPPORTED_LOCALES, useI18n } from "../../i18n";
 import {
-  getFontSizeLabel,
   getLocaleLabel,
   getOutputFixedFontLabel,
   getOutputProseFontLabel,
@@ -177,7 +180,7 @@ export function AppearanceSettings() {
   useSettingsPaneTitle(t("appearanceSectionTitle"));
   const navigate = useNavigate();
   const basePath = useRemoteBasePath();
-  const { fontSize, setFontSize } = useFontSize();
+  const { fontSizePercent, setFontSizePercent } = useFontSize();
   const { sidebarSpacing, setSidebarSpacing } = useSidebarSpacing();
   const {
     outputFont,
@@ -278,7 +281,7 @@ export function AppearanceSettings() {
   // restore cannot drift apart; a new setting is one row here.
   const undoEntries = [
     undoEntry(locale, setLocale),
-    undoEntry(fontSize, setFontSize),
+    undoEntry(fontSizePercent, setFontSizePercent),
     undoEntry(sidebarSpacing, setSidebarSpacing),
     undoEntry(outputFont, setOutputFont),
     undoEntry(outputUiFont, setOutputUiFont),
@@ -1045,24 +1048,37 @@ export function AppearanceSettings() {
                   </div>
                 </div>
 
-                <div className="output-appearance-control">
+                <label
+                  className="output-appearance-control"
+                  htmlFor="ui-font-scale"
+                >
                   <span className="output-appearance-label">
                     {t("appearanceFontSizeTitle")}
                   </span>
-                  <div className="font-size-selector output-font-selector">
-                    {FONT_SIZES.map((size) => (
-                      <button
-                        key={size}
-                        type="button"
-                        className={`font-size-option ${fontSize === size ? "active" : ""}`}
-                        onClick={() => setFontSize(size)}
-                      >
-                        {getFontSizeLabel(size, translate)}{" "}
-                        {getFontSizeScalePercent(size)}%
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                  <CommittedRangeNumberInput
+                    id="ui-font-scale"
+                    min={UI_FONT_SCALE_SLIDER_MIN_PERCENT}
+                    max={UI_FONT_SCALE_SLIDER_MAX_PERCENT}
+                    numberMin={UI_FONT_SCALE_MIN_PERCENT}
+                    numberMax={UI_FONT_SCALE_MAX_PERCENT}
+                    step={UI_FONT_SCALE_STEP_PERCENT}
+                    value={fontSizePercent}
+                    unit="%"
+                    list="ui-font-scale-presets"
+                    ariaLabel={t("appearanceFontSizeTitle")}
+                    snapTextToStep={false}
+                    onCommit={setFontSizePercent}
+                  />
+                </label>
+                <datalist id="ui-font-scale-presets">
+                  {UI_FONT_SCALE_PRESETS.map((percent) => (
+                    <option
+                      key={percent}
+                      value={percent}
+                      label={`${percent}%`}
+                    />
+                  ))}
+                </datalist>
 
                 <div className="output-appearance-control">
                   <span className="output-appearance-label">

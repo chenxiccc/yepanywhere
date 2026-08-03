@@ -1,4 +1,3 @@
-import type { FontSize } from "./hooks/useFontSize";
 import type { SidebarSpacing } from "./hooks/useSidebarSpacing";
 import type {
   OutputFixedFont,
@@ -22,22 +21,6 @@ export function getThemeLabel(
       return t("themeDark");
     case "verydark":
       return t("themeVerydark");
-  }
-}
-
-export function getFontSizeLabel(
-  size: FontSize,
-  t: (key: string) => string,
-): string {
-  switch (size) {
-    case "small":
-      return t("fontSizeSmall");
-    case "default":
-      return t("fontSizeDefault");
-    case "large":
-      return t("fontSizeLarge");
-    case "larger":
-      return t("fontSizeLarger");
   }
 }
 

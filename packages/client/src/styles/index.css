@@ -1679,17 +1679,17 @@ body.session-transcript-selection-active .reload-banner * {
 .sidebar-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0.75rem 1rem;
+  justify-content: var(--sidebar-header-justify-content, space-between);
+  padding: var(--sidebar-header-padding, 0.75rem 1rem);
 }
 
 .sidebar-brand {
+  display: var(--sidebar-brand-display, inline);
   font-weight: 600;
   font-size: 1.1rem;
   color: var(--text-color);
 }
 
-/* YepAnywhere Logo */
 .yep-anywhere-logo {
   display: inline-flex;
   align-items: center;
@@ -1862,7 +1862,7 @@ a.sidebar-nav-item {
   background: transparent;
   border: none;
   color: var(--text-primary);
-  font-size: var(--font-size-sm);
+  font-size: var(--sidebar-navigation-font-size, var(--font-size-sm));
   cursor: pointer;
   border-radius: var(--radius-sm);
   text-align: left;

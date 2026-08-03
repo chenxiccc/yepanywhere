@@ -135,15 +135,33 @@ Relative to the landed surface:
 
 Sidebar spacing is a portable browser preference with two modes. Comfortable
 is the default and keeps the intentionally enlarged 34px desktop session rows;
-Compact restores the earlier 1.5rem minimum, 2px block padding, and 1.2 line
-height. Coarse pointers keep at least 40px rows with 6px block padding in both
-modes, so desktop density does not reduce phone and tablet tap reliability.
+Compact uses the earlier density plus one pixel of separation: a
+`calc(1.5rem + 1px)` minimum, 2px block padding, and 1.2 line height. Coarse
+pointers keep at least 40px rows with 6px block padding in both modes, so
+desktop density does not reduce phone and tablet tap reliability.
+
+Compact hides the YepAnywhere sidebar brand because it links to the same route
+as New session. Its primary navigation labels use `--font-size-base`, one UI
+font token above the `--font-size-sm` session titles; Comfortable keeps both at
+the smaller token. The mobile close control and collapsed desktop rail remain
+available when the brand is hidden.
 
 The same preference controls navigation-row padding and the gaps between
 sidebar sections. Inline edge spacing follows the active UI font: top-level
 sidebar labels use a `0.75ch` inset, while nested session and queue rows use
 `1ch`. The inset must not grow from a fixed window-edge margin independently
 of the selected UI font.
+
+### UI size
+
+UI size is stored as a numeric percentage. Its slider covers 85–130% in 5%
+steps, with notches every 15% at 85, 100, 115, and 130. The adjacent numeric
+field accepts values between steps and clamps only to 50–300%, preserving an
+escape route when the slider range is too narrow. For a numeric value outside
+the slider range, the slider thumb stays at the nearest end while the field
+remains authoritative. Existing `small`, `default`, `large`, and `larger`
+stored values load as 85, 100, 115, and 130% respectively; the default remains
+115%.
 
 ## Mockup Requirements
 
