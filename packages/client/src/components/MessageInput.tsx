@@ -106,6 +106,7 @@ import {
   type SpeechPendingKind,
   type VoiceInputButtonRef,
 } from "./VoiceInputButton";
+import styles from "./MessageInput.module.css";
 
 /** Progress info for an in-flight upload */
 export interface UploadProgress {
@@ -432,6 +433,7 @@ export function MessageInput({
   const [speechPending, setSpeechPending] = useState<SpeechPendingKind | null>(
     null,
   );
+  const [keyboardWaveformActive, setKeyboardWaveformActive] = useState(false);
   const [, setSpeechPreviewRevision] = useState(0);
   const [dismissedSlashQuery, setDismissedSlashQuery] = useState<string | null>(
     null,
@@ -2951,7 +2953,12 @@ export function MessageInput({
               </button>
               {toolbarVisibility.microphone && (
                 <div
-                  className="message-input-keyboard-secondary-slot"
+                  className={`message-input-keyboard-secondary-slot ${styles.keyboardSpeechSlot}${
+                    keyboardWaveformActive
+                      ? ` ${styles.keyboardSpeechSlotActive}`
+                      : ""
+                  }`}
+                  data-waveform-active={keyboardWaveformActive || undefined}
                   onPointerDown={(event) => event.preventDefault()}
                 >
                   <VoiceInputButton
@@ -2964,6 +2971,13 @@ export function MessageInput({
                     onTranscriptionSettled={handleTranscriptionSettled}
                     disabled={disabled}
                     getTranscriptionContext={getTranscriptionContext}
+                    showWaveform={toolbarVisibility.waveform}
+                    inlineWaveform={toolbarVisibility.waveform}
+                    onWaveformActiveChange={
+                      toolbarVisibility.waveform
+                        ? setKeyboardWaveformActive
+                        : undefined
+                    }
                     className="message-input-keyboard-action message-input-keyboard-secondary"
                   />
                 </div>
@@ -3097,7 +3111,11 @@ export function MessageInput({
                 )}
               <button
                 type="button"
-                className={`message-input-keyboard-action message-input-keyboard-primary ${effectivePrimaryActionKind}-mode`}
+                className={`message-input-keyboard-action message-input-keyboard-primary ${effectivePrimaryActionKind}-mode${
+                  keyboardWaveformActive
+                    ? ` ${styles.keyboardPrimaryWithWaveform}`
+                    : ""
+                }`}
                 onPointerDown={(event) => event.preventDefault()}
                 onClick={submitPrimaryAction}
                 disabled={disabled}

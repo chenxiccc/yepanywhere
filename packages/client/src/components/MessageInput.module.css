@@ -1,0 +1,22 @@
+.keyboardSpeechSlot {
+  overflow: hidden;
+}
+
+.keyboardSpeechSlotActive.keyboardSpeechSlotActive {
+  width: 150px;
+  max-width: 150px;
+  flex: 0 10 150px;
+}
+
+.keyboardPrimaryWithWaveform.keyboardPrimaryWithWaveform {
+  min-width: 48px;
+  container-name: keyboard-primary-with-waveform;
+  container-type: inline-size;
+}
+
+@container keyboard-primary-with-waveform (max-width: 4rem) {
+  .keyboardPrimaryWithWaveform
+    :global(.message-input-keyboard-primary-label) {
+    display: none;
+  }
+}

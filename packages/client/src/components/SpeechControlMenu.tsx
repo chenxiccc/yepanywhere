@@ -465,6 +465,7 @@ export function SpeechControlMenu({
                       aria-checked={selected}
                       aria-label={option.label}
                       aria-describedby={descriptionId}
+                      disabled={option.disabled}
                       onClick={() => {
                         if (option.value !== selectedMethod) {
                           onBeforeCaptureChange?.();

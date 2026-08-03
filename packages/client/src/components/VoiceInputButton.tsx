@@ -24,6 +24,7 @@ import { hasCoarsePointer } from "../lib/deviceDetection";
 import {
   DEFAULT_SPEECH_METHOD,
   canSpeechMethodStream,
+  isBrowserNativeSpeechAvailable,
   isServerRoutedSpeechMethod,
   resolveSpeechMethod,
   type SpeechMethodId,
@@ -33,6 +34,8 @@ import {
   clearSpeechWaveform,
   publishSpeechWaveformSamples,
 } from "../lib/speechWaveform";
+import styles from "./VoiceInputButton.module.css";
+import { SpeechWaveform } from "./SpeechWaveform";
 import type {
   SpeechProviderStatus,
   SpeechSmartTurnSettings,
@@ -103,13 +106,16 @@ interface VoiceInputButtonProps {
   smartTurn?: SpeechSmartTurnSettings;
   /** Publish real mic samples for the enclosing session-toolbar waveform. */
   showWaveform?: boolean;
+  /** Render the live waveform inside this button's touch target. */
+  inlineWaveform?: boolean;
+  /** Reports whether this button currently has a real inline waveform. */
+  onWaveformActiveChange?: (active: boolean) => void;
 }
 
 /**
- * Microphone button for voice input using Web Speech API.
- * Only renders when:
- * 1. Web Speech API is supported (Chrome/Edge)
- * 2. Voice input is enabled in settings
+ * Microphone button for the selected speech provider. While an enabled speech
+ * context is still resolving, it remains visible but disabled so a reserved
+ * toolbar slot never turns into an unexplained gap.
  */
 export const VoiceInputButton = forwardRef(function VoiceInputButton(
   {
@@ -125,6 +131,8 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
     getTranscriptionContext,
     smartTurn,
     showWaveform = false,
+    inlineWaveform = false,
+    onWaveformActiveChange,
   }: VoiceInputButtonProps,
   ref: ForwardedRef<VoiceInputButtonRef>,
 ) {
@@ -136,7 +144,7 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
     speechSmartTurnSettings,
     parakeetSpeechModel,
   } = useModelSettings();
-  const { version: versionInfo } = useVersion();
+  const { version: versionInfo, loading: versionLoading } = useVersion();
   const { hasBrowserXaiSttApiKey } = useBrowserXaiSttApiKey();
   const transport = useCurrentSourceRuntime().transport;
   const basePath = useRemoteBasePath();
@@ -152,7 +160,10 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
         storedSpeechMethod,
         versionInfo?.voiceBackends,
         hasStoredSpeechMethod,
-        { directXaiAvailable: hasBrowserXaiSttApiKey },
+        {
+          directXaiAvailable: hasBrowserXaiSttApiKey,
+          browserNativeAvailable: isBrowserNativeSpeechAvailable(),
+        },
       );
     // Never pair a Parakeet model with a backend that can't run it: a NeMo-only
     // model (rnnt-1.1b) routes to ya-nemo, not ya-parakeet — even if a backend
@@ -258,6 +269,9 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
         : null;
 
   const isAvailable = isSupported && voiceInputEnabled && serverVoiceEnabled;
+  const unavailableLabel = versionLoading
+    ? t("speechStartingStatus")
+    : t("speechUnavailableStatus");
 
   // Translate provider lifecycle states into familiar dictation language.
   // "reconnecting" is an internal recognizer restart, not a network failure.
@@ -315,6 +329,14 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
     };
   }, [pendingKind, onPendingSpeechChange]);
 
+  useEffect(() => {
+    const inlineWaveformActive = inlineWaveform && waveformVisible;
+    onWaveformActiveChange?.(inlineWaveformActive);
+    return () => {
+      if (inlineWaveformActive) onWaveformActiveChange?.(false);
+    };
+  }, [inlineWaveform, onWaveformActiveChange, waveformVisible]);
+
   // Handle click - toggle listening and notify when starting
   const handleClick = useCallback(() => {
     const wasActive = isActive;
@@ -327,8 +349,9 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
     toggleListening();
   }, [isActive, toggleListening, onListeningStart, onListeningStop]);
 
-  // Don't render if not supported or disabled in settings
-  if (!isAvailable) {
+  // A disabled setting or a host without speech support removes the control.
+  // Provider discovery leaves a disabled Mic in place until it can run.
+  if (!voiceInputEnabled || !serverVoiceEnabled) {
     return null;
   }
 
@@ -353,24 +376,30 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
   const button = (
     <button
       type="button"
-      className={`voice-input-button ${isCapturing ? "listening" : ""} ${className}`}
+      className={`voice-input-button ${isCapturing ? "listening" : ""} ${
+        inlineWaveform && waveformVisible ? styles.inlineWaveform : ""
+      } ${className}`}
       onClick={handleClick}
-      disabled={disabled}
+      disabled={disabled || !isSupported}
       title={
         error
           ? error
+          : !isSupported
+            ? unavailableLabel
+            : isFinalizing
+              ? statusLabel
+              : isActive
+                ? t("voiceInputStop" as never)
+                : t("voiceInputStart" as never)
+      }
+      aria-label={
+        !isSupported
+          ? unavailableLabel
           : isFinalizing
             ? statusLabel
             : isActive
-              ? t("voiceInputStop" as never)
-              : t("voiceInputStart" as never)
-      }
-      aria-label={
-        isFinalizing
-          ? statusLabel
-          : isActive
-            ? t("voiceInputStopLabel" as never)
-            : t("voiceInputStartLabel" as never)
+              ? t("voiceInputStopLabel" as never)
+              : t("voiceInputStartLabel" as never)
       }
       aria-pressed={isPressed}
     >
@@ -410,6 +439,7 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
           <line x1="8" y1="23" x2="16" y2="23" />
         </g>
       </svg>
+      {inlineWaveform && waveformVisible && <SpeechWaveform />}
     </button>
   );
 

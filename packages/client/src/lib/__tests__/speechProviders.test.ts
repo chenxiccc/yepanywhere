@@ -240,6 +240,24 @@ describe("speech provider method selection", () => {
       }),
     ).toBe(XAI_DIRECT_STREAMING_SPEECH_METHOD);
   });
+
+  it("falls back from unavailable browser speech when another method can run", () => {
+    expect(
+      resolveSpeechMethod(DEFAULT_SPEECH_METHOD, ["ya-grok"], true, {
+        browserNativeAvailable: false,
+      }),
+    ).toBe(XAI_DIRECT_STREAMING_SPEECH_METHOD);
+    expect(
+      resolveSpeechMethod(DEFAULT_SPEECH_METHOD, ["ya-grok"], true, {
+        browserNativeAvailable: true,
+      }),
+    ).toBe(DEFAULT_SPEECH_METHOD);
+    expect(
+      resolveSpeechMethod(DEFAULT_SPEECH_METHOD, [], true, {
+        browserNativeAvailable: false,
+      }),
+    ).toBe(DEFAULT_SPEECH_METHOD);
+  });
 });
 
 describe("speech command parsing", () => {

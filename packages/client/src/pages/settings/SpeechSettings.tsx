@@ -23,6 +23,7 @@ import {
   canSpeechMethodStream,
   getSpeechMethodCapabilities,
   getSpeechMethods,
+  isBrowserNativeSpeechAvailable,
   isServerRoutedSpeechMethod,
   resolveSpeechMethod,
   type SpeechMethodId,
@@ -126,14 +127,17 @@ export function SpeechSettings() {
         : unavailable
           ? backend.disabledReason || t("speechSettingsBackendUnavailable")
           : method.description,
-      disabled: validating || unavailable,
+      disabled: !method.clientSupported || validating || unavailable,
     };
   });
   const selectedBackend = resolveSpeechMethod(
     speechMethod,
     serverBackends,
     hasStoredSpeechMethod,
-    { directXaiAvailable: hasBrowserXaiSttApiKey },
+    {
+      directXaiAvailable: hasBrowserXaiSttApiKey,
+      browserNativeAvailable: isBrowserNativeSpeechAvailable(),
+    },
   );
   const selectedBackendLabel =
     backendOptions.find((option) => option.value === selectedBackend)?.label ??

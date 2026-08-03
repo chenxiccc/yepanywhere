@@ -97,6 +97,18 @@ the on-screen keyboard. A deliberate textarea press remains the keyboard-open
 signal. If that keyboard is already open and the composer switches to its
 compact delivery row, the mic remains a pinned 48px action alongside the
 delivery controls so entering text does not remove the active speech control.
+During YA-controlled capture, when waveform display is enabled, that row
+extends the Mic into one outlined 150px-maximum button: the Mic keeps its 48px
+zone, the real waveform may use up to 100px, and the entire rectangle toggles
+capture. Under width pressure the waveform shrinks to zero before the Mic can
+shrink; a wide Send or Steer action must yield the waveform's available space.
+
+An explicit browser-native preference is effective only while the current
+browser context exposes Web Speech recognition. If that API is unavailable
+and the connected host advertises another speech method, YA uses the preferred
+available method for the live control without overwriting the stored browser
+preference. Unsupported methods remain visible but disabled in selectors; an
+unavailable selection must not leave a reserved blank Mic slot.
 
 xAI STT has two timing notions. The top-level `start`/`duration` on a partial
 can identify the current segment window and remain fixed while several

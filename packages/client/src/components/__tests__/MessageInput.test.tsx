@@ -109,11 +109,14 @@ const {
       onPendingSpeechChange?: (
         kind: "listening" | "transcribing" | "finalizing" | null,
       ) => void;
+      onWaveformActiveChange?: (active: boolean) => void;
       onTranscriptionSettled?: (settlement: {
         speechTargetId?: string;
         status: "completed" | "cancelled" | "error";
       }) => void;
       getTranscriptionContext?: () => { speechTargetId?: string };
+      showWaveform?: boolean;
+      inlineWaveform?: boolean;
     },
   },
   remoteBasePathState: {
@@ -402,8 +405,11 @@ vi.mock("../VoiceInputButton", async () => {
           onInterimTranscript?: (text: string) => void;
           onListeningStart?: () => void;
           onListeningStop?: () => void;
+          onWaveformActiveChange?: (active: boolean) => void;
           getTranscriptionContext?: () => { speechTargetId?: string };
           speechMethod?: string;
+          showWaveform?: boolean;
+          inlineWaveform?: boolean;
           className?: string;
         },
         ref,
@@ -862,6 +868,30 @@ describe("MessageInput", () => {
         ) as HTMLButtonElement,
       );
       expectSubmission(onSend, "steer now", "steer");
+    } finally {
+      viewport.restore();
+    }
+  });
+
+  it("makes the active keyboard waveform part of the microphone control", () => {
+    const viewport = installMobileKeyboardViewport();
+    const textarea = renderMessageInput();
+
+    try {
+      act(() => textarea.focus());
+      act(() => viewport.setHeight(480));
+      fireEvent.change(textarea, { target: { value: "steer with speech" } });
+
+      expect(voicePropsState.current?.showWaveform).toBe(true);
+      expect(voicePropsState.current?.inlineWaveform).toBe(true);
+
+      act(() => voicePropsState.current?.onWaveformActiveChange?.(true));
+
+      const speechSlot = document.querySelector(
+        ".message-input-keyboard-secondary-slot",
+      );
+      expect(speechSlot?.getAttribute("data-waveform-active")).toBe("true");
+      expect(speechSlot?.querySelector(".voice-input-button")).toBeTruthy();
     } finally {
       viewport.restore();
     }

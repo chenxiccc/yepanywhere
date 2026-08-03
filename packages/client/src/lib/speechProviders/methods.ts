@@ -72,6 +72,8 @@ export interface SpeechMethodCapabilities {
 export interface SpeechMethodAvailability {
   /** Browser-local xAI key configured, so direct Grok can run without YA key. */
   directXaiAvailable?: boolean;
+  /** The current browser context exposes a usable Web Speech recognizer. */
+  browserNativeAvailable?: boolean;
 }
 
 const DIRECT_XAI_STREAMING_METHOD: SpeechMethodDescriptor = {
@@ -109,6 +111,10 @@ export function describeBrowserNative(
     clientSupported: browserNativeAvailable() && label.likelySupported,
     serverRouted: false,
   };
+}
+
+export function isBrowserNativeSpeechAvailable(userAgent?: string): boolean {
+  return describeBrowserNative(userAgent).clientSupported;
 }
 
 function normalizeBackendLabelPart(part: string): string {
@@ -280,7 +286,9 @@ export function resolveSpeechMethod(
   }
 
   if (storedMethod === DEFAULT_SPEECH_METHOD) {
-    return DEFAULT_SPEECH_METHOD;
+    return availability.browserNativeAvailable === false
+      ? getPreferredSpeechMethod(serverBackends, availability)
+      : DEFAULT_SPEECH_METHOD;
   }
 
   if (storedMethod === XAI_DIRECT_STREAMING_SPEECH_METHOD) {

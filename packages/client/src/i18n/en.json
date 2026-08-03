@@ -2445,6 +2445,7 @@
   "voiceInputStopLabel": "Stop voice input",
   "speechReadyStatus": "Ready",
   "speechStartingStatus": "Starting...",
+  "speechUnavailableStatus": "Speech input unavailable",
   "speechSpeakNowStatus": "Speak now...",
   "speechListeningPlaceholder": "Listening...",
   "speechTranscribingPlaceholder": "Transcribing...",

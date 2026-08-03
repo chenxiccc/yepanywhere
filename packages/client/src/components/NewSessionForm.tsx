@@ -147,6 +147,7 @@ import {
   canSpeechMethodStream,
   getSpeechMethodCapabilities,
   getSpeechMethods,
+  isBrowserNativeSpeechAvailable,
   isSpeechMethodId,
   resolveSpeechMethod,
   type SpeechMethodId,
@@ -1485,6 +1486,7 @@ export function NewSessionForm({
       value: method.id,
       label: method.label,
       description: method.description,
+      disabled: !method.clientSupported,
     }));
   }, [versionInfo?.voiceBackends, hasBrowserXaiSttApiKey]);
   const selectedSpeechMethod = useMemo(
@@ -1493,7 +1495,10 @@ export function NewSessionForm({
         speechMethod,
         versionInfo?.voiceBackends,
         hasStoredSpeechMethod,
-        { directXaiAvailable: hasBrowserXaiSttApiKey },
+        {
+          directXaiAvailable: hasBrowserXaiSttApiKey,
+          browserNativeAvailable: isBrowserNativeSpeechAvailable(),
+        },
       ),
     [
       speechMethod,

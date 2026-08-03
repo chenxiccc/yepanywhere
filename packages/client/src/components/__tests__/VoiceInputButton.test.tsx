@@ -24,6 +24,7 @@ const {
       },
     },
     speechState: {
+      isSupported: true,
       isListening: false,
       status: "idle" as
         | "idle"
@@ -37,6 +38,7 @@ const {
     },
     versionState: {
       capabilities: [] as string[],
+      loading: false,
     },
   };
 });
@@ -72,7 +74,7 @@ vi.mock("../../hooks/useSpeechRecognition", () => ({
   useSpeechRecognition: (options: UseSpeechRecognitionOptions) => {
     observedSpeechOptions.push(options);
     return {
-      isSupported: true,
+      isSupported: speechState.isSupported,
       isListening: speechState.isListening,
       status: speechState.status,
       interimTranscript: "",
@@ -92,6 +94,7 @@ vi.mock("../../hooks/useVersion", () => ({
       voiceBackends: [],
       voiceBackendCapabilities: {},
     },
+    loading: versionState.loading,
   }),
 }));
 
@@ -105,6 +108,7 @@ vi.mock("../../i18n", () => ({
       ({
         speechReadyStatus: "Ready",
         speechStartingStatus: "Starting...",
+        speechUnavailableStatus: "Speech input unavailable",
         speechSpeakNowStatus: "Speak now...",
         speechListeningPlaceholder: "Listening...",
         speechTranscribingPlaceholder: "Transcribing...",
@@ -118,6 +122,10 @@ vi.mock("../../lib/deviceDetection", () => ({
   hasCoarsePointer: () => false,
 }));
 
+vi.mock("../SpeechWaveform", () => ({
+  SpeechWaveform: () => <div className="composer-speech-waveform" />,
+}));
+
 describe("VoiceInputButton", () => {
   beforeEach(() => {
     versionState.capabilities = [VOICE_INPUT_CAPABILITY];
@@ -128,7 +136,9 @@ describe("VoiceInputButton", () => {
     observedSpeechOptions.length = 0;
     openSpeechSocket.mockReset();
     speechState.isListening = false;
+    speechState.isSupported = true;
     speechState.status = "idle";
+    versionState.loading = false;
   });
 
   it("keeps the relayed speech socket opener stable across rerenders", () => {
@@ -148,6 +158,23 @@ describe("VoiceInputButton", () => {
 
     expect(firstOpenSpeechSocket).toBeDefined();
     expect(secondOpenSpeechSocket).toBe(firstOpenSpeechSocket);
+  });
+
+  it("keeps an unavailable enabled microphone visible but disabled", () => {
+    speechState.isSupported = false;
+
+    render(
+      <VoiceInputButton
+        onTranscript={vi.fn()}
+        onInterimTranscript={vi.fn()}
+        speechMethod="browser-native"
+      />,
+    );
+
+    const button = screen.getByRole("button", {
+      name: "Speech input unavailable",
+    });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("does not render post-capture processing as active capture", () => {
@@ -235,6 +262,27 @@ describe("VoiceInputButton", () => {
     const recordingIcon = document.querySelector(".voice-input-recording");
     expect(recordingIcon).toBeTruthy();
     expect(recordingIcon?.classList.contains("is-speech-active")).toBe(false);
+  });
+
+  it("puts an inline waveform inside the microphone touch target", () => {
+    speechState.status = "listening";
+    speechState.isListening = true;
+    const onWaveformActiveChange = vi.fn();
+
+    render(
+      <VoiceInputButton
+        onTranscript={vi.fn()}
+        onInterimTranscript={vi.fn()}
+        onWaveformActiveChange={onWaveformActiveChange}
+        speechMethod="ya-parakeet"
+        showWaveform
+        inlineWaveform
+      />,
+    );
+
+    const button = screen.getByRole("button", { name: "voiceInputStopLabel" });
+    expect(button.querySelector(".composer-speech-waveform")).toBeTruthy();
+    expect(onWaveformActiveChange).toHaveBeenCalledWith(true);
   });
 
   it("prompts when browser-native capture is ready without sample access", () => {
