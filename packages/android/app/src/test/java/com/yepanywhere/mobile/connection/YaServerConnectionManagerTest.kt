@@ -10,6 +10,7 @@ import com.yepanywhere.mobile.security.YaSecurityClientRevokedException
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -128,6 +129,7 @@ class YaServerConnectionManagerTest {
 
         assertNotNull(error)
         assertEquals(YaConnectionPhase.REVOKED, manager.state.value.phase)
+        transport.awaitCancelled()
         assertTrue(transport.cancelled)
         lease.releaseAndAwait()
         manager.shutdownAndAwait()
@@ -329,6 +331,7 @@ class YaServerConnectionManagerTest {
         val incoming = Channel<JSONObject>(Channel.UNLIMITED)
         val sent = CopyOnWriteArrayList<JSONObject>()
         var cancelled = false
+        private val cancelledSignal = CompletableDeferred<Unit>()
 
         override fun send(message: JSONObject) {
             check(!cancelled)
@@ -347,7 +350,12 @@ class YaServerConnectionManagerTest {
 
         override fun cancel() {
             cancelled = true
+            cancelledSignal.complete(Unit)
             incoming.close()
+        }
+
+        suspend fun awaitCancelled() {
+            withTimeout(2_000) { cancelledSignal.await() }
         }
 
         suspend fun awaitSent(type: String): JSONObject {
