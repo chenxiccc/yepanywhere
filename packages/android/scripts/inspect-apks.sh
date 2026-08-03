@@ -74,6 +74,8 @@ for apk in "$bundled_apk" "$hosted_apk"; do
   manifest="$($apkanalyzer manifest print "$apk")"
   grep -q 'android:name="android.permission.POST_NOTIFICATIONS"' <<<"$manifest" ||
     fail "notification permission is missing from $apk"
+  grep -q 'android:name="com.google.firebase.messaging.default_notification_icon"' <<<"$manifest" ||
+    fail "default notification icon is missing from $apk"
   grep -q 'android:name="asset_statements"' <<<"$manifest" ||
     fail "Digital Asset Links metadata is missing from $apk"
   grep -q 'android:scheme="https"' <<<"$manifest" ||

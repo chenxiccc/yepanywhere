@@ -236,6 +236,11 @@ idempotency rules should be chosen with live broker evidence.
 
 ## Notification Privacy Modes
 
+The Android package declares a dedicated transparent, single-color Y as FCM's
+default small notification icon. System-posted background notifications must
+use that status-bar-safe silhouette rather than flattening or tinting the
+multi-layer launcher icon.
+
 The architecture supports two user choices:
 
 ### Generic

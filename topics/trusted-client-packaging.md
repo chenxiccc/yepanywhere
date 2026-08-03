@@ -47,6 +47,16 @@ methods. The current methods are `host.describe`, `notifications.status`, and
 the explicitly user-triggered `notifications.requestPermission`; no method
 exports native credentials.
 
+The signed Android package also owns one platform-native launcher identity:
+YA's white Y over the established green gradient. Android 8 and later receive
+separate full-bleed background, foreground Y, and monochrome Y layers so each
+launcher can apply its own circle, squircle, themed tint, and motion effects.
+The artwork does not bake in a rounded tile, bevel, border, or shadow. Because
+the app's minimum SDK is 24, only Android 7 and 7.1 use density-specific legacy
+PNGs; those fallbacks precompose the same Y over a green circle. Google Play's
+512-pixel listing icon remains a separate full-bleed artifact rather than a
+launcher resource.
+
 The longer-term foreground choice has two permanent presentations. Android
 Compose, and later iOS SwiftUI, own the focused native companion and
 Conversation-view surfaces. The complete bundled web client remains a
