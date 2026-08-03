@@ -18,6 +18,8 @@
 - Attachment previews and same-browser cache
 - Project directory storage (app-data-only default, global project-local
   opt-in, writer audit, and Git-metadata boundary)
+- Storage settings (YA data directory vs. project `.yep`, default lazy media,
+  and live managed-session preservation opt-in)
 - OpenCode backend capability and rendering parity
 - OpenCode ses_ session ID unification with YA session ID
 - MessageQueue batch delivery and steering UI

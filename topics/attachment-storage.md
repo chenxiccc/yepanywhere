@@ -8,6 +8,8 @@ Topic: attachment-storage
 
 Parent contract: [Project Directory Storage](project-directory-storage.md).
 
+Settings surface: [Storage Settings](storage-settings.md).
+
 Status: policy correction pending implementation. Current releases write
 attachments into projects and expose no storage-location setting; this topic
 records both that compatibility fact and the approved target.
@@ -145,6 +147,7 @@ behavior.
 ## Related Topics
 
 - [Project Directory Storage](project-directory-storage.md)
+- [Storage Settings](storage-settings.md)
 - [Session Media Handles](session-media-handles.md)
 - [Security](security.md)
 - [Pre-session Attachment Staging](../docs/tactical/028-pre-session-attachment-staging.md)

@@ -10,6 +10,8 @@ Topic: session-media-handles
 Parent storage contract:
 [Project Directory Storage](project-directory-storage.md).
 
+Settings surface: [Storage Settings](storage-settings.md).
+
 Status: media handles and unconditional materialization are implemented in
 current source after `0.7.0`; no stable npm release contains them. The default
 persistence behavior violates the approved target and awaits implementation.
@@ -66,10 +68,12 @@ source stamp changed, rebuilding it by scanning the transcript is the default
 cost. Persistent indexing is an optional optimization only after measurements
 justify it, and any such index lives in bounded app-data storage.
 
-Live output can arrive before provider persistence catches up. That boundary
-uses a size- and lifetime-bounded memory or temporary app-data store tied to
-the process/session lifecycle. It must not survive indefinitely because a
-provider session is idle or a client tab closed.
+Live output can arrive before provider persistence catches up. In default
+on-demand mode that boundary uses a size- and lifetime-bounded memory or
+temporary app-data store tied to the process/session lifecycle. It must not
+survive indefinitely because a provider session is idle or a client tab
+closed. With preservation explicitly enabled, a newly emitted result crosses
+instead into the durable store at this live managed-session boundary.
 
 A path-only result is available while its permitted source path exists. When
 the source disappears and preservation was not enabled, the media ref becomes
@@ -130,11 +134,25 @@ relay-origin page does not share the server origin.
 Durable tool-result preservation is default-off and requires a dedicated
 setting. Enabling project-local storage alone does not enable it.
 
-When preservation is enabled, capture the authoritative returned bytes at the
-tool-result boundary; use a permitted source path only for a path-only result.
-Validate file signatures, reject script-capable formats such as SVG, record
-safe metadata, and content-address identical bytes. Blob and catalog writes
-remain atomic and hash-verified.
+The setting is
+`toolResultMediaPreservation: "on-demand" | "preserve"`, defaulting to
+`"on-demand"`. When preservation is enabled, capture the authoritative returned
+bytes for new results emitted while YA is managing a session; use a permitted
+source path only for a path-only result. Capture happens at the live
+tool-result boundary even when no client is connected so temporary sources do
+not disappear first. Validate file signatures, reject script-capable formats
+such as SVG, record safe metadata, and content-address identical bytes. Blob
+and catalog writes remain atomic and hash-verified.
+
+Preservation is not a historical read-through cache:
+
+- enabling it starts no scan, import, migration, or backfill;
+- provider replay and persisted history are not new results;
+- session-detail loads, pagination, and image fetches never create preserved
+  copies;
+- disabling it stops later captures without deleting prior copies; and
+- a provider that cannot distinguish new output from replay cannot implement
+  preservation by treating replay as new output.
 
 Physical location follows the global policy:
 
@@ -144,9 +162,16 @@ Physical location follows the global policy:
   `<project>/.yep/tool-results/<session-id>/` after explicit opt-in and safety
   checks.
 
-Preservation cannot ship enabled until its age/size limits, pruning order,
-cleanup UI or command, and disk-pressure behavior are defined. Cleanup removes
-catalog records before unreferenced content-addressed blobs.
+Preservation has no automatic age limit, size eviction, garbage collection, or
+pruning. It may grow without bound, and the Settings copy states that plainly.
+On disk pressure or write failure, YA does not interrupt the provider turn,
+delete an older copy, or silently change location; it reports the failed
+preservation and uses any still-available provider-backed on-demand source.
+
+There is no persistent server disk-cache mode in v1. If measurements later
+justify avoiding cold transcript scans or repeated decoding, a bounded cache
+with eviction is separate product work and a separate remotely advertised
+capability. It is not implemented by weakening the preservation promise.
 
 Preserved tool output is viewer state, not provider input. It is never listed
 as an attachment or supplied automatically to a later turn.
@@ -180,8 +205,8 @@ existing `.yep/tool-results` during upgrade. In app-data mode the server may
 read legacy project-local records for compatibility, but it does not refresh,
 repair, or grow them.
 
-A separate explicit cleanup action may later remove legacy data after showing
-the exact project, sessions, size, and effect on historical previews.
+Any later cleanup or historical-import action is separate explicit product
+work. The first correction does not add one.
 
 ## Metadata And Layout
 
@@ -227,14 +252,16 @@ sessions leaves the project tree and Git metadata unchanged and creates no
 durable media copy. A cold image fetch may rescan provider persistence, and an
 expired path-only image may report unavailable.
 
-With preservation explicitly enabled, tests cover the configured location,
-content deduplication, corruption handling, bounds and cleanup, direct/relay
-fetches, and transition from live temporary bytes to provider-backed or
-preserved media.
+With preservation explicitly enabled, tests cover new results emitted by
+managed sessions with and without a connected client, provider replay
+rejection, absence of historical-read writes, configured location, content
+deduplication, corruption handling, write failure, direct/relay fetches, and
+transition from live temporary bytes to provider-backed or preserved media.
 
 ## Related Topics
 
 - [Project Directory Storage](project-directory-storage.md)
+- [Storage Settings](storage-settings.md)
 - [Attachment Storage](attachment-storage.md)
 - [Media Rendering And Routing](media-rendering-and-routing.md)
 - [Server Capabilities](server-capabilities.md)

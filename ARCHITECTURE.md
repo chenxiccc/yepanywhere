@@ -136,6 +136,10 @@ section below for what would have to change at higher fan-out.
 - [`topics/project-directory-storage.md`](topics/project-directory-storage.md)
   — app-data-only default for YA-managed state, explicit global project-local
   opt-in, the complete project/Git writer audit, and hosted capability rollout.
+- [`topics/storage-settings.md`](topics/storage-settings.md) — first-pass
+  Storage Settings contract: YA data directory vs. project `.yep`, lazy media
+  by default, and unbounded preservation of new managed-session images as a
+  separate opt-in.
 - [`topics/session-media-handles.md`](topics/session-media-handles.md) —
   authenticated lazy transcript media handles, default-off durable
   preservation, and the correction to unconditional project materialization.

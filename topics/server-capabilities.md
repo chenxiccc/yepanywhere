@@ -100,7 +100,7 @@ plan. Any proposal to reuse or broaden an already-advertised capability needs
 particular scrutiny: an older server has already claimed the old meaning and
 cannot acquire new routes retroactively.
 
-### Planned project-directory storage policy gate
+### Planned storage policy gates
 
 The project-directory storage correction is a core trust/default change. Its
 2026-08-03 60-day stable corpus is `0.5.2`, `0.6.0`, `0.6.1`, `0.6.2`, and
@@ -124,6 +124,23 @@ claiming app-data-only protection. Existing capability meanings and older
 server behavior remain unchanged. The implementation release supplies the
 registry `introducedIn` value. The full behavior and audit are in
 [Project Directory Storage](project-directory-storage.md).
+
+Tool-result preservation is independently gated by the proposed permanent
+`tool-result-media-preservation-policy` capability. It owns `GET
+/api/settings`, `PUT /api/settings`, and
+`settings.toolResultMediaPreservation: "on-demand" | "preserve"`.
+Advertisement attests that absent configuration defaults to `"on-demand"`,
+that on-demand and historical session-detail reads create no persistent media
+copy, that preserve mode captures only new results emitted by managed
+sessions, and that preserved copies have no automatic pruning or eviction.
+
+No stable release through `0.7.0` contains tool-result media handles or
+preservation. A new client connected to a server without the capability omits
+the field and shows a read-only update-required explanation; it does not infer
+safe on-demand semantics because an unadvertised post-`0.7.0` source build may
+contain the unconditional materializer. Existing capability meanings remain
+unchanged. The complete UI and timing contract is in
+[Storage Settings](storage-settings.md).
 
 ## Server Use
 

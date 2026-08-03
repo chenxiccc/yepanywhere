@@ -2,6 +2,8 @@
 
 Parent contract: [Project Directory Storage](../../topics/project-directory-storage.md)
 
+Settings contract: [Storage Settings](../../topics/storage-settings.md)
+
 Status: audit complete; implementation intentionally not started. This plan
 exists to drive the follow-up discussion and fixes.
 
@@ -28,7 +30,9 @@ overrides.
 
 Advertise `project-directory-storage-policy` only when the complete audited
 writer set obeys the resolver. Add the capability registry route and field
-contract together with released-server fixtures.
+contract together with released-server fixtures. Add the **Storage** Settings
+category after **Source Control** with independent capability gating for each
+control.
 
 ### 2 — return attachments to app-data storage by default
 
@@ -48,10 +52,17 @@ Restore the transcript-locator design: build an in-memory media catalog during
 normal transcript scanning, seek and decode provider-owned bytes on demand,
 and use a bounded live store only until provider persistence catches up.
 
-Add durable tool-result preservation as a separate default-off setting only
-with a concrete retention and cleanup contract. Its physical location follows
-the global storage mode. Existing `.yep/tool-results` remains a read-only
-legacy source until the user requests cleanup or migration.
+Add `toolResultMediaPreservation: "on-demand" | "preserve"`, defaulting to
+`"on-demand"`, behind the separate permanent
+`tool-result-media-preservation-policy` capability. Preserve mode captures only
+new results emitted while YA manages a session, even without an open client.
+It never treats provider replay, session-detail loads, pagination, or media
+fetches as preservation triggers. Preserved copies have no automatic pruning
+or eviction and follow the global storage location.
+
+Do not add a persistent disk-cache mode in this pass. Existing
+`.yep/tool-results` remains a read-only legacy source; the implementation does
+not clean it up or import historical media.
 
 ### 4 — move the author palette out of project-open paths
 
@@ -89,9 +100,9 @@ plus `0.5.0`/`0.5.1` as the attachment-default origin. Without the capability,
 the client makes no new settings request and warns that the older server cannot
 enforce app-data-only storage.
 
-### 8 — provide explicit legacy cleanup later
+### 8 — leave legacy storage in place
 
 Do not delete, migrate, or add exclusions during upgrade. After the safe
-default and routing changes are proven, design a separate user-invoked audit
-and cleanup surface for legacy `.attachments`, `.yep`, and `refs/yep/*` state.
-That surface must preview exact paths, sizes, and consequences before mutation.
+default and routing changes are proven, stop. A later cleanup, migration,
+historical-media import, cache, custom location, or per-project override is
+separate product work with its own explicit contract and capability review.

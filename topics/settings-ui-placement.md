@@ -12,6 +12,8 @@ See also:
 configurable + default-off — governs whether an option is even default-on),
 [fork-from-turn](fork-from-turn.md) (the worked example below: fork-after-summary
 auto-open),
+[storage-settings](storage-settings.md) (server-wide storage location and
+tool-result preservation),
 [settings-search](settings-search.md) (how options are found: the shared
 `SettingsItem`/`SettingsSection` row layer every pane's rows should use so
 they stay searchable).
@@ -97,6 +99,19 @@ conceptually adjusting*, not where the code lives):
 
 Introduce a **new category** only when a sizable cluster of options doesn't fit
 an existing one; a single niche toggle joins the nearest existing category.
+
+### Storage category — approved, pending implementation
+
+**Storage** appears immediately after **Source Control** and owns two
+independent server-wide choices: where YA-managed project data may live and
+whether YA preserves new tool-result images from managed sessions. This earns
+a category despite its small initial control count because it is a filesystem
+trust and retention boundary, neither control fits an existing category
+honestly, and older-server limitations must remain visible. It does not absorb
+browser-local cache tuning from **Performance**.
+
+The exact radio choices, defaults, persistence fields, capability gates, and
+missing-capability states are in [Storage Settings](storage-settings.md).
 
 ## The default + live-override pattern
 

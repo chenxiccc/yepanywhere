@@ -11,6 +11,8 @@ Status: target product contract. The writer audit is complete; implementation
 is pending. Current source behavior is recorded below and must not be mistaken
 for the target default.
 
+Settings surface: [Storage Settings](storage-settings.md).
+
 ## Scope
 
 This topic owns every write YA itself makes inside a selected project root or
@@ -55,7 +57,8 @@ also been enabled.
 The global choice is stored below the YA data directory, not in a marker file
 inside each project. Per-project overrides are deliberately deferred. They may
 be added if real demand appears, but the first implementation has one global
-policy only.
+policy only. `YEP_DATA_DIR` remains the configuration mechanism for the central
+location; v1 adds no custom-path setting.
 
 ## Git Exclusion Is Not Consent
 
@@ -75,10 +78,10 @@ or the user's ownership of the project namespace.
 
 Every feature answers two questions separately:
 
-1. **Should this data be retained at all?** Incidental performance data is
-   bounded and disposable. Durable preservation of otherwise ephemeral output
-   is a user-visible feature and defaults off unless an explicit product
-   decision says otherwise.
+1. **Should this data be retained at all?** Durable preservation of otherwise
+   ephemeral output is a user-visible feature and defaults off unless an
+   explicit product decision says otherwise. V1 has no persistent tool-media
+   cache; a future cache with automatic eviction is a separate policy.
 2. **Where does enabled durable data live?** **App data only** selects the YA
    data directory. The project-local opt-in selects the documented project
    root where the feature supports it.
@@ -90,11 +93,12 @@ writes.
 
 ## Upgrade, Disable, And Legacy Data
 
-When a server first gains this policy, an absent stored setting resolves to
-**App data only**, including for upgraded installations. The upgrade itself
-does not move, rewrite, exclude, or delete existing `.attachments/`, `.yep/`,
-or Git refs. Existing project-local data may remain readable for compatibility,
-but read compatibility is not permission to refresh or grow it.
+When a server first gains this policy, absent stored settings resolve to
+**App data only** and **Load on demand**, including for upgraded installations.
+The upgrade itself does not move, merge, rewrite, exclude, or delete existing
+`.attachments/`, `.yep/`, or Git refs. Existing project-local data may remain
+readable for compatibility, but read compatibility is not permission to
+refresh or grow it.
 
 Switching from project-local storage back to **App data only** stops future
 project writes immediately. Cleanup and migration are separate explicit
@@ -110,7 +114,7 @@ project is protected; the compatibility fallback below explains the limitation.
 | Writer | Current trigger and location | Setting today | Released behavior | Required correction |
 | --- | --- | --- | --- | --- |
 | Attachments | An explicit upload or staged-send materialization writes `<project>/.attachments/<session>/`. Current source may also create a local Git exclude. | None. The setting described in `attachment-storage.md` was never implemented. | npm `0.5.0` through `0.7.0` write project-local attachments; those releases do not contain the later shared exclude helper. | Write below the YA data directory by default; use the project root only after the global opt-in. Keep legacy project paths readable. |
-| Tool-result media | Live image results and durable session-detail loads materialize blobs and catalogs below `<project>/.yep/tool-results/<session>/`; merely reading image-bearing history can grow it. | None. | Added after `0.7.0`; no stable npm release contains it. | Restore lazy transcript-backed handles without persistent copies. Durable preservation is separate and default-off; its location follows this policy. |
+| Tool-result media | Live image results and durable session-detail loads materialize blobs and catalogs below `<project>/.yep/tool-results/<session>/`; merely reading image-bearing history can grow it. | None. | Added after `0.7.0`; no stable npm release contains it. | Restore lazy transcript-backed handles without persistent copies. Default-off preservation captures only new results emitted by managed sessions, never historical reads; its location follows this policy. |
 | Git author palette | Fetching or adding a project starts a background warm that writes `<project>/.yep/git-author-palette.json`. | None. | Added after `0.7.0`; no stable npm release contains it. | Keep the palette in memory or in the YA data directory. Project browsing is read-only in the default mode. |
 | Source-review drafts and submissions | Comment mutation writes `.yep/review-comments.json`; submission preparation writes `.yep/source-review/<id>/request.json`. Some reads can rewrite normalized state. | Submission capture is default-off, but basic review drafts have no storage-location gate. | Added after `0.7.0`; no stable npm release contains it. | Store private state centrally by default. If an agent needs a review artifact, deliver it without ambient project storage or require the global project-local opt-in. |
 | Source-review capture ref | When the default-off submission workflow captures a projection, it writes Git objects and updates `refs/yep/source-review/captures`. | `sourceReviewSubmissionsEnabled`, default off; no project-storage gate. | Added after `0.7.0`; no stable npm release contains it. | App-data mode cannot create YA-owned Git refs or objects. Use central snapshots or require project-local opt-in. |
@@ -164,6 +168,14 @@ would incorrectly imply there is no relevant policy difference.
 This fallback preserves ordinary use of older servers. It does not pretend the
 new client can stop an old server's filesystem behavior.
 
+Tool-result preservation has a separate permanent
+`tool-result-media-preservation-policy` capability. It owns
+`settings.toolResultMediaPreservation: "on-demand" | "preserve"` and attests
+that historical reads never create copies, preservation applies only to new
+managed-session results, and preserved copies are not pruned automatically.
+The exact Settings presentation and absent-capability behavior are in
+[Storage Settings](storage-settings.md).
+
 ## Implementation Acceptance
 
 The implementation is incomplete until tests prove the project tree and Git
@@ -178,14 +190,16 @@ metadata remain byte-for-byte unchanged in **App data only** mode while YA:
 
 Project-local mode needs complementary tests for explicit opt-in, safe root
 creation, legacy reads, tracked/symlink rejection, and Git-exclude behavior.
-Data-directory stores need their own containment, retention, and cleanup tests;
-moving state out of a checkout must not turn it into unbounded invisible state
-elsewhere.
+Data-directory stores need their own containment and declared-lifecycle tests.
+Tool-result preservation is deliberately unbounded only after its separate
+explicit opt-in; no automatic pruning may be inferred from moving it out of a
+checkout.
 
 ## Related Topics
 
 - [Attachment storage](attachment-storage.md)
 - [Session media handles](session-media-handles.md)
+- [Storage settings](storage-settings.md)
 - [Source Review → New Session](source-review-to-session.md)
 - [Server capabilities](server-capabilities.md)
 - [Vanilla defaults](vanilla-defaults.md)
