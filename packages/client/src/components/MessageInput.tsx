@@ -2059,7 +2059,9 @@ export function MessageInput({
     pendingTextareaSelectionRef.current = null;
     composerEditedDuringSpeechRef.current = false;
     if (textarea) {
-      textarea.focus();
+      // On touch devices, the mic is a complete input path of its own. Only a
+      // deliberate textarea focus should ask the IME to cover the session.
+      if (!hasCoarsePointer()) textarea.focus();
       textarea.setSelectionRange(selectionStart, selectionEnd);
     }
     setInterimTranscript("");
@@ -2216,7 +2218,9 @@ export function MessageInput({
   const handleListeningStop = useCallback(() => {
     flushPendingSpeechFinal();
     setInterimTranscript("");
-    textareaRef.current?.focus();
+    // Preserve desktop's ready-to-type caret without summoning a touch
+    // keyboard merely because YA-owned dictation finished.
+    if (!hasCoarsePointer()) textareaRef.current?.focus();
   }, [flushPendingSpeechFinal]);
 
   const handleInterimTranscript = useCallback((transcript: string) => {
@@ -2914,6 +2918,7 @@ export function MessageInput({
                   onProjectQueue={undefined}
                   onProjectQueueNewSession={undefined}
                   hidePrimaryDeliveryActions
+                  hideVoiceInput
                 />
               </div>
             )}
@@ -2932,6 +2937,25 @@ export function MessageInput({
               >
                 <span aria-hidden="true">...</span>
               </button>
+              {toolbarVisibility.microphone && (
+                <div
+                  className="message-input-keyboard-secondary-slot"
+                  onPointerDown={(event) => event.preventDefault()}
+                >
+                  <VoiceInputButton
+                    ref={voiceButtonRef}
+                    onTranscript={handleVoiceTranscript}
+                    onInterimTranscript={handleInterimTranscript}
+                    onListeningStart={handleListeningStart}
+                    onListeningStop={handleListeningStop}
+                    onPendingSpeechChange={handlePendingSpeechChange}
+                    onTranscriptionSettled={handleTranscriptionSettled}
+                    disabled={disabled}
+                    getTranscriptionContext={getTranscriptionContext}
+                    className="message-input-keyboard-action message-input-keyboard-secondary"
+                  />
+                </div>
+              )}
               {reserveMobileProjectQueueSlot && (
                 <div className="message-input-keyboard-secondary-slot message-input-keyboard-project-queue-slot">
                   {onProjectQueue && (

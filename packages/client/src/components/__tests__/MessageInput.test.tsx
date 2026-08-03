@@ -404,6 +404,7 @@ vi.mock("../VoiceInputButton", async () => {
           onListeningStop?: () => void;
           getTranscriptionContext?: () => { speechTargetId?: string };
           speechMethod?: string;
+          className?: string;
         },
         ref,
       ) => {
@@ -420,6 +421,7 @@ vi.mock("../VoiceInputButton", async () => {
         return (
           <button
             type="button"
+            className={`voice-input-button ${props.className ?? ""}`.trim()}
             data-speech-method={props.speechMethod}
             onClick={() => {
               props.onListeningStart?.();
@@ -679,7 +681,10 @@ function renderToolbarView(
 }
 
 describe("MessageInput", () => {
+  let restoreDefaultMatchMedia: () => void;
+
   beforeEach(() => {
+    restoreDefaultMatchMedia = installDesktopMatchMedia();
     vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
     versionState.version = {
       current: "test",
@@ -717,6 +722,7 @@ describe("MessageInput", () => {
 
   afterEach(() => {
     cleanup();
+    restoreDefaultMatchMedia();
     vi.useRealTimers();
     vi.restoreAllMocks();
   });
@@ -832,19 +838,21 @@ describe("MessageInput", () => {
       const actions = document.querySelectorAll(
         ".message-input-keyboard-action",
       );
-      expect(actions).toHaveLength(2);
-      expect(actions[0]?.classList.contains("queue-mode")).toBe(true);
-      expect(actions[0]?.getAttribute("aria-label")).toBe("toolbarQueueLabel");
-      expect(actions[0]?.textContent).toBe("→");
-      expect(actions[1]?.classList.contains("steer-mode")).toBe(true);
-      expect(actions[1]?.getAttribute("aria-label")).toBe("Steer current turn");
+      expect(actions).toHaveLength(3);
+      expect(actions[0]?.classList.contains("voice-input-button")).toBe(true);
+      expect(actions[0]?.textContent).toBe("voice");
+      expect(actions[1]?.classList.contains("queue-mode")).toBe(true);
+      expect(actions[1]?.getAttribute("aria-label")).toBe("toolbarQueueLabel");
+      expect(actions[1]?.textContent).toBe("→");
+      expect(actions[2]?.classList.contains("steer-mode")).toBe(true);
+      expect(actions[2]?.getAttribute("aria-label")).toBe("Steer current turn");
       expect(
-        actions[1]?.querySelector(".message-input-keyboard-primary-label")
+        actions[2]?.querySelector(".message-input-keyboard-primary-label")
           ?.textContent,
       ).toBe("Steer");
-      expect(actions[1]?.textContent).toBe("Steer↗");
+      expect(actions[2]?.textContent).toBe("Steer↗");
 
-      fireEvent.click(actions[0] as HTMLButtonElement);
+      fireEvent.click(actions[1] as HTMLButtonElement);
       expectSubmission(onQueue, "wait until done", "patient");
 
       fireEvent.change(textarea, { target: { value: "steer now" } });
@@ -1618,6 +1626,23 @@ describe("MessageInput", () => {
     });
 
     expect(mockVoiceToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not focus the textarea when mobile voice starts or stops", () => {
+    const viewport = installMobileKeyboardViewport();
+    try {
+      const textarea = renderMessageInput();
+      const voice = screen.getByRole("button", { name: "voice" });
+
+      fireEvent.click(voice);
+      expect(document.activeElement).not.toBe(textarea);
+
+      act(() => voice.focus());
+      act(() => voicePropsState.current?.onListeningStop?.());
+      expect(document.activeElement).toBe(voice);
+    } finally {
+      viewport.restore();
+    }
   });
 
   it("replaces selected text only when speech text commits", async () => {

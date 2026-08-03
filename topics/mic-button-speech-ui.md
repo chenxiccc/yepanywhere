@@ -89,9 +89,14 @@ speech. The mirror is used only while actual provisional text exists. Active
 capture does not insert a `Listening…` label into the draft; the animated mic
 control is the capture affordance.
 
-Stopping capture returns focus to the textarea. This keeps the native typing
-caret visible at the speech insertion point while batch transcription or a
-streaming flush finishes.
+Desktop capture start and stop return focus to the textarea. This keeps the
+native typing caret visible at the speech insertion point while batch
+transcription or a streaming flush finishes. On a coarse-pointer device, mic
+start and stop do not focus the textarea: YA-owned dictation must not summon
+the on-screen keyboard. A deliberate textarea press remains the keyboard-open
+signal. If that keyboard is already open and the composer switches to its
+compact delivery row, the mic remains a pinned 48px action alongside the
+delivery controls so entering text does not remove the active speech control.
 
 xAI STT has two timing notions. The top-level `start`/`duration` on a partial
 can identify the current segment window and remain fixed while several

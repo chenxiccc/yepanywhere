@@ -289,6 +289,8 @@ export interface MessageInputToolbarProps {
   disabled?: boolean;
   /** Keep toolbar utilities/settings but omit the ordinary primary/alternate actions. */
   hidePrimaryDeliveryActions?: boolean;
+  /** Keep the live mic outside this toolbar instance. */
+  hideVoiceInput?: boolean;
 
   // Pending approval indicator
   pendingApproval?: {
@@ -2233,6 +2235,7 @@ export function MessageInputToolbar({
   canSend,
   disabled,
   hidePrimaryDeliveryActions = false,
+  hideVoiceInput = false,
   pendingApproval,
 }: MessageInputToolbarProps) {
   const { t } = useI18n();
@@ -2866,6 +2869,7 @@ export function MessageInputToolbar({
           : undefined,
         smartTurnDisabled: voiceDisabled,
         voiceButton:
+          !hideVoiceInput &&
           toolbarVisibility.microphone &&
           voiceButtonRef &&
           onVoiceTranscript &&
