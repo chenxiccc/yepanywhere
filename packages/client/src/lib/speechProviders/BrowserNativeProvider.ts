@@ -103,6 +103,9 @@ export class BrowserNativeProvider implements SpeechProvider {
   private recognition: SpeechRecognition | null = null;
   private isStopping = false;
   private lastFinalTranscript = "";
+  private lastFinalResultIndex = -1;
+  private lastFinalResultPrefix = "";
+  private lastCommittedFinalChunk = "";
   private disposed = false;
   private speechActivityTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -146,6 +149,9 @@ export class BrowserNativeProvider implements SpeechProvider {
 
     this.isStopping = false;
     this.lastFinalTranscript = "";
+    this.lastFinalResultIndex = -1;
+    this.lastFinalResultPrefix = "";
+    this.lastCommittedFinalChunk = "";
     this.setState({
       status: "starting",
       isListening: false,
@@ -206,6 +212,7 @@ export class BrowserNativeProvider implements SpeechProvider {
 
       let interimText = "";
       let latestFinal = "";
+      let latestFinalResultIndex = -1;
 
       for (let i = 0; i < event.results.length; i++) {
         const result = event.results[i];
@@ -213,18 +220,36 @@ export class BrowserNativeProvider implements SpeechProvider {
           const transcript = result[0]?.transcript ?? "";
           if (result.isFinal) {
             latestFinal = transcript;
+            latestFinalResultIndex = i;
           } else {
             interimText += transcript;
           }
         }
       }
 
-      const deltaTranscript = computeSpeechDelta(
-        latestFinal,
-        this.lastFinalTranscript,
-      );
-      if (deltaTranscript) {
+      const revisesLastFinal =
+        latestFinalResultIndex >= 0 &&
+        latestFinalResultIndex === this.lastFinalResultIndex;
+      let finalChunk = "";
+      if (latestFinalResultIndex >= 0) {
+        if (revisesLastFinal) {
+          // A repeated result-list slot is a revision boundary. Replacing the
+          // chunk owned by that slot keeps a corrected cumulative final from
+          // being appended as a second utterance.
+          finalChunk = latestFinal.slice(this.lastFinalResultPrefix.length);
+        } else {
+          finalChunk = computeSpeechDelta(
+            latestFinal,
+            this.lastFinalTranscript,
+          );
+          this.lastFinalResultPrefix = latestFinal.startsWith(
+            this.lastFinalTranscript,
+          )
+            ? this.lastFinalTranscript
+            : "";
+        }
         this.lastFinalTranscript = latestFinal;
+        this.lastFinalResultIndex = latestFinalResultIndex;
       }
 
       const trimmedInterim = interimText.trim();
@@ -235,10 +260,23 @@ export class BrowserNativeProvider implements SpeechProvider {
         this.setState({ interimTranscript: "" });
       }
 
-      const trimmedDelta = deltaTranscript.trim();
-      if (trimmedDelta) {
+      const trimmedFinalChunk = finalChunk.trim();
+      if (
+        revisesLastFinal &&
+        trimmedFinalChunk !== this.lastCommittedFinalChunk
+      ) {
         this.setState({ interimTranscript: "" });
-        this.options.onResult?.(trimmedDelta);
+        this.options.onInterimResult?.("");
+        this.options.onResult?.(trimmedFinalChunk, {
+          replacePreviousTranscriptChars: this.lastCommittedFinalChunk.length,
+        });
+        this.lastCommittedFinalChunk = trimmedFinalChunk;
+      } else if (!revisesLastFinal && trimmedFinalChunk) {
+        this.setState({ interimTranscript: "" });
+        this.options.onResult?.(trimmedFinalChunk);
+      }
+      if (!revisesLastFinal) {
+        this.lastCommittedFinalChunk = trimmedFinalChunk;
       }
     };
 
@@ -282,6 +320,10 @@ export class BrowserNativeProvider implements SpeechProvider {
       if (!this.isStopping && this.recognition === recognition) {
         // Auto-restart after Chrome's ~60s idle timeout.
         this.setState({ status: "reconnecting", error: null });
+        this.lastFinalTranscript = "";
+        this.lastFinalResultIndex = -1;
+        this.lastFinalResultPrefix = "";
+        this.lastCommittedFinalChunk = "";
         try {
           recognition.start();
         } catch {

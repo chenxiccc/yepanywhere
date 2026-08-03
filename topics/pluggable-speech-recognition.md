@@ -113,7 +113,11 @@ streaming/confidence surface exists.
 - Client speech capture was refactored behind a `SpeechProvider` interface.
   `BrowserNativeProvider` owns the Web Speech state machine, explicit
   language setting, interim/final result handling, mobile cumulative-final
-  deduplication, and auto-restart behavior.
+  deduplication, and auto-restart behavior. Browser-native final-result indices
+  are also text-ownership boundaries: a changed final emitted again at the
+  same index replaces the text YA committed for that index, while a higher
+  index remains a distinct result and appends normally. A recognizer restart
+  clears that index ownership before accepting results from the new run.
 - `YaServerProvider` captures microphone audio with `MediaRecorder`, buffers a
   complete utterance, and posts it to `/api/speech/transcribe` through the
   shared client API helper. Remote/SecureConnection clients therefore use the

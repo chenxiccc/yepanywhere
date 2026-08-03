@@ -642,6 +642,60 @@ describe("browser-native speech provider", () => {
 
     provider.dispose();
   });
+
+  it("replaces a revised browser-final result without absorbing the next result", () => {
+    const Recognition = installFakeSpeechRecognition();
+    const onResult = vi.fn();
+    const provider = new BrowserNativeProvider({ onResult });
+    const draft = "It would be more pleasant when using YA Mike.";
+    const revision =
+      "It would be more pleasant when using the YA Mic button.";
+
+    provider.start();
+    Recognition.instance?.onresult?.({
+      resultIndex: 0,
+      results: {
+        length: 1,
+        0: { isFinal: true, 0: { transcript: draft } },
+      },
+    } as unknown as Event);
+    expect(onResult).toHaveBeenLastCalledWith(draft);
+
+    Recognition.instance?.onresult?.({
+      resultIndex: 0,
+      results: {
+        length: 1,
+        0: { isFinal: true, 0: { transcript: revision } },
+      },
+    } as unknown as Event);
+    expect(onResult).toHaveBeenLastCalledWith(revision, {
+      replacePreviousTranscriptChars: draft.length,
+    });
+
+    const nextUtterance = "The keyboard should stay closed.";
+    Recognition.instance?.onresult?.({
+      resultIndex: 1,
+      results: {
+        length: 2,
+        0: { isFinal: true, 0: { transcript: revision } },
+        1: { isFinal: true, 0: { transcript: nextUtterance } },
+      },
+    } as unknown as Event);
+    expect(onResult).toHaveBeenLastCalledWith(nextUtterance);
+
+    Recognition.instance?.onend?.(new Event("end"));
+    const afterRestart = "A restarted recognizer owns a fresh result list.";
+    Recognition.instance?.onresult?.({
+      resultIndex: 0,
+      results: {
+        length: 1,
+        0: { isFinal: true, 0: { transcript: afterRestart } },
+      },
+    } as unknown as Event);
+    expect(onResult).toHaveBeenLastCalledWith(afterRestart);
+
+    provider.dispose();
+  });
 });
 
 describe("YA server speech provider", () => {
