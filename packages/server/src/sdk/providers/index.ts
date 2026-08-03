@@ -5,6 +5,13 @@
  */
 
 import type { ClaudeAdditionalModelSelection } from "@yep-anywhere/shared";
+import {
+  hasHostedProviderRuntime,
+  isProviderRuntimeHostAvailable,
+  retainProviderRuntimeProcessGroup,
+  startHostedProviderSession,
+} from "./provider-runtime-host.js";
+import { hasReloadSafeCodexRuntime } from "./codex-runtime-host.js";
 // Types
 import type { AgentProvider, ProviderName } from "./types.js";
 export type {
@@ -100,9 +107,49 @@ export interface ProviderRuntimeConfig {
   getCodexReloadSafeSessions?: () => boolean;
   /** Whether legacy ClaudeOllama has configured or persisted usage. */
   isClaudeOllamaVisible?: () => boolean;
+  /** Cloneable process-scoped settings supplied to a provider worker. */
+  getProviderRuntimeSnapshot?: () => ProviderRuntimeSnapshot;
+}
+
+export interface ProviderRuntimeSnapshot {
+  codexCliPath?: string;
+  claudeAdditionalModels?: readonly ClaudeAdditionalModelSelection[];
+  claudeGatewayUrl?: string;
+  claudeGatewayStartCommand?: string;
+  ollamaUrl?: string;
+  ollamaSystemPrompt?: string;
+  ollamaUseFullSystemPrompt?: boolean;
+  ambientXaiApiKey?: string;
+  grokBuildUseXaiApiKey?: boolean;
 }
 
 let isClaudeOllamaVisible = () => false;
+let getCodexReloadSafeSessions = () => false;
+let getProviderRuntimeSnapshot = (): ProviderRuntimeSnapshot => ({});
+const hostedProviderProxies = new Map<ProviderName, AgentProvider>();
+
+export type CodexRuntimeBackend =
+  | "codex-native-host"
+  | "shared-provider-host";
+
+/**
+ * Keep an existing Codex session on its launch backend. For an unowned new or
+ * resumed session, the provider setting selects the specialized Codex host.
+ */
+export function selectCodexRuntimeBackend(options: {
+  resumeSessionId?: string;
+  hasCodexNativeRuntime: boolean;
+  hasSharedProviderRuntime: boolean;
+  codexNativeHostEnabled: boolean;
+}): CodexRuntimeBackend {
+  if (options.resumeSessionId) {
+    if (options.hasCodexNativeRuntime) return "codex-native-host";
+    if (options.hasSharedProviderRuntime) return "shared-provider-host";
+  }
+  return options.codexNativeHostEnabled
+    ? "codex-native-host"
+    : "shared-provider-host";
+}
 
 export function configureProviderRuntime(config: ProviderRuntimeConfig): void {
   claudeProvider.setAdditionalModelsGetter(
@@ -112,8 +159,82 @@ export function configureProviderRuntime(config: ProviderRuntimeConfig): void {
   codexProvider.setReloadSafeSessionsGetter(
     config.getCodexReloadSafeSessions ?? (() => false),
   );
+  getCodexReloadSafeSessions =
+    config.getCodexReloadSafeSessions ?? (() => false);
   codexOSSProvider.setCodexPath(config.codexCliPath);
   isClaudeOllamaVisible = config.isClaudeOllamaVisible ?? (() => false);
+  getProviderRuntimeSnapshot =
+    config.getProviderRuntimeSnapshot ?? (() => ({}));
+}
+
+function hostedProvider(rawProvider: AgentProvider): AgentProvider {
+  const existing = hostedProviderProxies.get(rawProvider.name);
+  if (existing) return existing;
+  const proxy = new Proxy(rawProvider, {
+    get(target, property) {
+      if (
+        property === "getAvailableModels" &&
+        target.name === "claude-gateway"
+      ) {
+        return async () => {
+          const models = await target.getAvailableModels();
+          const processGroupId =
+            ClaudeGatewayProvider.getOwnedGatewayProcessGroupId();
+          if (processGroupId) {
+            await retainProviderRuntimeProcessGroup(processGroupId);
+            if (
+              !ClaudeGatewayProvider.relinquishOwnedGatewayProcessGroup(
+                processGroupId,
+              )
+            ) {
+              throw new Error(
+                "Claude Gateway ownership changed during host transfer",
+              );
+            }
+          }
+          return models;
+        };
+      }
+      if (property === "startSession") {
+        return (options: Parameters<AgentProvider["startSession"]>[0]) => {
+          if (target.name === "codex") {
+            const resumeSessionId = options.resumeSessionId;
+            const backend = selectCodexRuntimeBackend({
+              resumeSessionId,
+              hasCodexNativeRuntime: Boolean(
+                resumeSessionId &&
+                  hasReloadSafeCodexRuntime(resumeSessionId),
+              ),
+              hasSharedProviderRuntime: Boolean(
+                resumeSessionId &&
+                  hasHostedProviderRuntime(resumeSessionId),
+              ),
+              codexNativeHostEnabled: getCodexReloadSafeSessions(),
+            });
+            if (backend === "codex-native-host") {
+              return target.startSession(options);
+            }
+          }
+          return startHostedProviderSession(
+            target.name,
+            options,
+            getProviderRuntimeSnapshot(),
+          );
+        };
+      }
+      const value = Reflect.get(target, property, target) as unknown;
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  hostedProviderProxies.set(rawProvider.name, proxy);
+  return proxy;
+}
+
+export { isProviderRuntimeHostAvailable };
+
+function runtimeProvider(rawProvider: AgentProvider): AgentProvider {
+  if (!isProviderRuntimeHostAvailable()) return rawProvider;
+  return hostedProvider(rawProvider);
 }
 
 /**
@@ -132,7 +253,7 @@ export function getAllProviders(): AgentProvider[] {
     grokACPProvider, // Phase 1: additive only (see grok-acp.ts header + topics/grok.md)
     opencodeProvider,
     piProvider,
-  ];
+  ].map(runtimeProvider);
 }
 
 /**
@@ -145,7 +266,7 @@ export function getAllProviders(): AgentProvider[] {
  * "grok" added (additive, isolated). When ENABLED_PROVIDERS does not include "grok",
  * getProvider("grok") is never reached from normal flows.
  */
-export function getProvider(name: ProviderName): AgentProvider | null {
+export function getRawProvider(name: ProviderName): AgentProvider | null {
   switch (name) {
     case "claude":
       return claudeProvider;
@@ -170,4 +291,9 @@ export function getProvider(name: ProviderName): AgentProvider | null {
     default:
       return null;
   }
+}
+
+export function getProvider(name: ProviderName): AgentProvider | null {
+  const provider = getRawProvider(name);
+  return provider ? runtimeProvider(provider) : null;
 }

@@ -1,20 +1,28 @@
 # Reload-Safe Provider Runtimes
 
-> Reload-safe Codex runtimes let explicitly opted-in local Linux sessions keep
-> an active turn running across replacement of YA's Hono server while a stable
-> lifecycle host retains the complete provider protocol owner; terminal wrapper
-> shutdown still reaps every owned runtime within a bounded deadline.
+> Reload-safe provider runtimes keep active local Linux sessions running across
+> replacement of YA's Hono server by placing each live provider protocol owner
+> under a wrapper-lifetime host; terminal wrapper shutdown still reaps every
+> hosted provider process within a bounded deadline.
 
 Topic: reload-safe-provider-runtimes
 
-Status: **implemented as a default-off Linux Codex feature.** Eligible provider
-processes launched under the stable development wrapper—both new threads and
-resumed durable threads—use the lifecycle host; already-running and unsupported
-processes retain their existing ownership contract.
-The extended hardening matrix below remains useful coverage, but the initial
-contract has been proved with real active-turn reloads through both the API and
-wrapper `SIGHUP`, a second turn after reattach, terminal wrapper cleanup, and
-deterministic owner-loss tests.
+Status: **implemented for the Linux non-watch development wrapper.** The
+existing default-off Codex setting continues to select the Codex
+app-server/socket host exactly as shipped. When that setting is off, Codex
+participates in the shared host just like Claude, Gemini, Grok, OpenCode, Pi,
+and Codex OSS. The selection is made on each new or resumed provider launch;
+it never converts an already-live runtime.
+
+The Codex-native contract has been proved with real active-turn reloads through
+both the API and wrapper `SIGHUP`, a second turn after reattach, terminal
+wrapper cleanup, and deterministic owner-loss tests. The shared host has
+deterministic worker replacement, replay, pending-callback, attach-timeout,
+terminal worker, and wrapper-resource cleanup coverage. The provider-specific
+real-runtime smokes in the verification matrix remain release evidence rather
+than missing architecture. An isolated wrapper smoke also proves that both
+hosts survive `SIGHUP` while the Hono PID changes, then both exit on terminal
+wrapper `SIGTERM`.
 
 Related:
 [server message routing](../docs/project/server-message-routing.md),
@@ -29,8 +37,8 @@ Related:
 
 ## Verdict
 
-There is a viable path, but it is neither raw process detachment nor a generic
-provider-runtime extraction.
+There are two reload-safe runtime backends. Both preserve the complete
+provider protocol owner rather than attempting to adopt a bare child PID.
 
 The process that survives must own the complete live provider connection:
 stdin/stdout or socket transport, SDK iterator, request correlation, pending
@@ -39,7 +47,7 @@ mechanism. The new YA server can then attach to that owner and rebuild its
 `Process` projection. Keeping only the provider PID alive loses the state needed
 to interpret or control it.
 
-The first implementation is deliberately Codex-specific:
+The already-shipped backend is deliberately Codex-specific:
 
 1. A stable lifecycle host owned by `scripts/dev.js` launches one Codex
    app-server per eligible session through a private Unix socket.
@@ -52,12 +60,35 @@ The first implementation is deliberately Codex-specific:
 4. The wrapper treats API restart and `SIGHUP` as Hono-reload intent, while
    `SIGINT`, `SIGTERM`, wrapper/host loss, and exhausted recovery are terminal
    paths with bounded, verified reaping.
-5. A generic YA worker protocol and Claude support remain later proposals. A
-   Claude CLI PID cannot be adopted by a new SDK `Query`.
+5. This path remains selected only when the existing Codex provider setting is
+   enabled. Its implementation and native rejoin semantics are not rewritten
+   as part of the shared-host extension.
+
+The shared backend places one provider worker around one `AgentSession`:
+
+1. `scripts/dev.js` owns one provider host for its complete wrapper lifetime.
+2. The host owns a dedicated worker process for each hosted YA session. The
+   worker imports the provider adapter, owns its SDK query/client, message
+   queue, child transport, callbacks, and sandbox, and continuously drains the
+   provider iterator whether or not Hono is attached.
+3. Hono owns the ordinary `Supervisor` and `Process`, but receives an
+   `AgentSession` proxy whose iterator, queue, approvals, liveness probes, and
+   control methods cross a private authenticated Unix socket.
+4. On wrapper `SIGHUP`, Hono detaches that proxy without aborting the worker.
+   The replacement generation claims the same worker under the same canonical
+   YA session id and resumes from the worker's sequenced event buffer.
+5. On terminal wrapper shutdown or wrapper/host ownership loss, the host closes
+   every worker and the worker closes its provider session; bounded TERM/KILL
+   cleanup remains authoritative if cooperative shutdown fails.
+
+This is not provider-native process adoption. A Claude CLI PID still cannot be
+adopted by a new SDK `Query`; the point is that the original `Query` survives
+inside the provider worker and Hono adopts only YA's explicit proxy protocol.
 
 The existing **Reload When Safe** flow remains the required fallback for
-ordinary, already-running, queued, remote, unsupported, or incompatible
-sessions. Enabling the setting never attempts to adopt a live stdio session.
+already-running ordinary sessions, volatile queued work, an unavailable or
+incompatible host, and any session that cannot detach cleanly. Changing the
+Codex setting never attempts to adopt a live process.
 
 ## Baseline Ownership And Failure Path
 
@@ -88,8 +119,8 @@ YA already has the conservative answer. `SafeRestartService` pauses project
 queue dispatch, waits for active sessions and volatile session queues to drain,
 preserves eligible patient queue entries, and only then restarts. This prevents
 an active-turn interruption but delays loading the changed server code. The new
-proposal is solely for the other useful choice: replace the backend now while
-the current turn continues elsewhere.
+reload-safe hosts provide the other useful choice: replace the backend now
+while the current turn continues under its wrapper-lifetime owner.
 
 ## Why `detached` Or `setsid` Alone Cannot Work
 
@@ -116,7 +147,184 @@ Those mechanics do not preserve JavaScript state:
 executing, but none supplies the missing protocol and replay semantics. They
 can supervise a real runtime owner; they cannot replace one.
 
-## Implemented Runtime Boundary
+## Shared Provider-Host Architecture
+
+The wrapper, not a Hono generation, is the terminal owner:
+
+```text
+scripts/dev.js (one operator-started YA lifetime)
+  |
+  +-- Hono generation N       <--- replaced on API Restart / SIGHUP
+  +-- shared provider host
+  |    |
+  |    +-- worker A
+  |    |    +-- AgentSession + provider child/transport
+  |    +-- worker B
+  |         +-- AgentSession + provider child/transport
+  +-- Codex lifecycle host    <--- only Codex setting = enabled
+       +-- app-server + private socket per Codex session
+```
+
+`SIGHUP` means "replace Hono" only. `SIGINT`, `SIGTERM`, ordinary wrapper exit,
+wrapper/host control loss, and terminal cleanup mean "end the complete YA
+lifetime" and therefore end every provider worker and provider descendant.
+Neither host is a machine daemon and neither survives the wrapper that created
+it.
+
+### Stable host and per-session workers
+
+The shared host is deliberately provider-neutral. It authenticates Hono,
+tracks canonical YA session identity, fences controller generations, launches
+workers, applies attach deadlines, and reaps worker process groups. It does not
+import provider adapters or normalize messages.
+
+Each worker is the smallest complete live provider owner. It imports the
+provider implementation in its own process and constructs the real
+`AgentSession`, including its `MessageQueue`, iterator, SDK query or protocol
+client, pending request promises, sandbox runtime, and spawned children. A
+worker started after a reload therefore uses current provider code; an existing
+worker finishes its current lifetime with the code and launch facts it started
+with.
+
+One worker per session is an isolation boundary, not merely an implementation
+convenience. A provider crash or stuck event loop cannot corrupt another
+session's replay or request ledger, and the host can reap one complete process
+group without knowing the provider's internal child topology.
+
+### Hono proxy contract
+
+The replacement-sensitive Hono server keeps the existing `Supervisor` and
+`Process` policy layer. It receives an `AgentSession` proxy with the same
+surface as an in-process adapter:
+
+- `queue.push` sends a user message to the worker-owned `MessageQueue`;
+- the async iterator yields sequenced `SDKMessage` records from the worker;
+- `abort`, `interrupt`, `steer`, model/effort/thinking controls, provider
+  commands, liveness probes, retention snapshots, and inventory reads are
+  request/response operations on the worker;
+- provider activity and retention changes are cached snapshots plus explicit
+  notifications; and
+- `publishAgentctlSessionId` records a newly discovered canonical YA-visible
+  session id synchronously in Hono, then binds it in both the worker and host
+  registries before the asynchronous publication finishes.
+
+The proxy adds one lifecycle operation that ordinary providers do not need:
+detach the current Hono generation without calling the provider's `abort`.
+`Process.detachForServerReload` uses that operation only after confirming the
+YA-owned direct queue is empty and no volatile deferred message would be lost.
+
+### Sequenced replay and acknowledgement
+
+Every worker event receives a monotonically increasing sequence number before
+it can be exposed to Hono. The worker retains unacknowledged events in order.
+The proxy acknowledges an event only when its iterator advances past the event,
+which means `Process.processMessages` finished applying it to the YA projection.
+After reattach, the replacement starts at the last acknowledged sequence and
+receives the remaining suffix in its original order. An event being applied
+exactly when Hono exits may be replayed once because acknowledgement follows
+application; existing provider-item identity and transcript reconciliation
+deduplicate that boundary. The transport cursor prevents loss and broad
+replay, but does not pretend distributed exactly-once delivery exists.
+
+Replay is bounded. The worker may discard an acknowledged prefix, but it must
+never discard an unacknowledged event to stay alive. If the retained suffix
+exceeds its byte or item limit, the runtime becomes non-reattachable and is
+terminated with an explicit continuity failure rather than silently dropping
+output. An attached Hono continues consuming during ordinary operation, so the
+bound covers the short replacement interval rather than complete transcripts.
+
+### Provider-initiated requests
+
+Tool approvals and other provider callbacks are reverse requests with stable
+worker-generated ids. The worker keeps each request and its unresolved promise
+until Hono responds, terminal shutdown cancels it, or the bounded attach grace
+expires. Disconnect does not imply denial and replacement does not allocate a
+new request id. A new Hono generation receives the same pending request once
+and routes it through the new `Process.handleToolApproval` callback. If the
+provider cancels the request, the worker aborts that callback's signal so the
+UI cannot wait on a request that no longer exists. YA never auto-approves
+across a reload.
+
+Callbacks that are observations rather than questions are represented as
+state: the worker records the most recently applied permission mode, provider
+activity, and retention snapshot. It keeps provider deltas enabled while Hono
+is absent so reconnect cannot discard current-turn progress. Reattach begins
+with the current snapshot before later change notifications, so absence of
+Hono does not lose a policy transition.
+
+### Launch facts and sandbox ownership
+
+Only cloneable launch facts cross into a worker: provider name, project path,
+resume identity, model/permission/thinking settings, executor and environment,
+provider runtime configuration, and the session-sandbox preparation request.
+Functions and open descriptors do not cross the boundary.
+
+Hono first runs the existing sandbox preparation as a preflight and to retain
+the enforcement/state metadata used by `Process`. The worker independently
+calls `prepareSessionSandbox` from the same deterministic request and passes
+that resulting runtime to the provider. This keeps Bubblewrap's
+`--die-with-parent` attached to the durable worker rather than the replaceable
+Hono process. Either setup failure fails the launch; neither side falls back to
+an unsandboxed provider.
+
+Provider process-scoped configuration is snapshotted at launch. Settings
+changes affect later workers but do not mutate a surviving runtime under a new
+Hono generation. For Claude Gateway, the worker may launch the configured
+gateway and then transfers its process group to the shared host because later
+workers may share that endpoint. Hono must not tear it down during reload.
+Terminal wrapper/host shutdown still reaps it.
+
+### Attachment, fencing, and deadlines
+
+One server generation controls a worker at a time. Attach and detach use the
+wrapper-issued server generation plus the private wrapper-lifetime credential.
+The host refuses concurrent controllers, stale generations, unknown canonical
+session ids, and incompatible protocol versions.
+
+Intentional Hono detach, controller-socket loss, and an unconfirmed claim each
+start a bounded replacement attach deadline. Claiming alone does not clear the
+deadline: the replacement must finish the worker attach and explicitly confirm
+it to the host. A claimed worker is also subject to YA's ordinary verified-idle
+policy through its `Process`; if no replacement completes the attach, the host
+deadline is authoritative. An empty host has no per-session polling or retry
+loop.
+
+Terminal cleanup is layered:
+
+1. ask the worker to abort its `AgentSession` and settle pending callbacks;
+2. wait a bounded cooperative grace;
+3. TERM the worker process group;
+4. KILL it if still alive; and
+5. verify the group and its registry/socket artifacts are gone.
+
+The wrapper receives every worker process-group id from the host and performs
+the same final sweep if the host itself fails. EOF on the host's inherited IPC
+channel is terminal owner loss, never a reload signal.
+
+Each reported Linux process group is paired with the start time of its leader
+from `/proc`. The host and wrapper verify that identity before signaling it, so
+a stale registry entry cannot kill an unrelated process after PID reuse. If a
+leader exits while its original descendants remain in the group, the missing
+leader does not prevent cleanup of those descendants.
+
+### Routing decision
+
+Routing is evaluated on every provider launch, including a durable resume:
+
+| Launch | Runtime backend |
+|---|---|
+| Codex, already live | backend that originally launched that runtime |
+| Eligible Codex, setting enabled, specialized host available | existing Codex app-server/socket host |
+| Codex, setting disabled | shared provider host |
+| Every other provider | shared provider host |
+| Shared host unavailable or incompatible | ordinary in-Hono provider only when reload continuity was not explicitly promised |
+
+The Codex setting therefore remains a gate around the current specialized
+implementation, not a gate around whether Codex participates in reload-safe
+hosting at all. A runtime keeps the backend selected when it launched until it
+reaches terminal cleanup.
+
+## Codex-Native Runtime Boundary
 
 The development wrapper owns a small **Codex lifecycle host** beside the
 replaceable server:
@@ -152,8 +360,9 @@ cleanup and its capability probe succeed.
 The canonical YA session id remains the public key. Codex thread ids, runtime
 ids, socket paths, PIDs, and wrapper/server generations stay internal. Starting
 a new Codex thread may temporarily precede canonical session-id resolution, so
-the registry must atomically bind the startup runtime id to the final YA session
-id and Codex thread id before reporting launch success.
+Hono records the final YA session id synchronously and binds it to the host
+runtime before exposing the completed `Process` launch. The Codex client keeps
+its provider-native thread id inside the surviving protocol owner.
 
 ### Runtime registry
 
@@ -231,12 +440,12 @@ smoke must prove this before the path is called reload-safe. If the native
 snapshot lacks a required observable state, v1 stops there rather than adding
 an implicit shadow transcript.
 
-YA-only launch facts—selected configuration, applied permission mode, sandbox
-and executor fingerprint, initial canonicalization mapping—must be durable
-before reload eligibility is advertised. Direct, deferred, or other volatile
-queue state remains a blocker unless a later change moves that state under a
-durable owner. Replaying only assistant text would recreate the current split-
-brain failure in a subtler form.
+YA-only launch facts needed for reattach—selected configuration, permission
+mode, project path, and initial canonicalization mapping—stay in the
+wrapper-lifetime registry or surviving owner. Direct, deferred, or other
+volatile Hono queue state remains a blocker unless a later change moves that
+state under a durable owner. Replaying only assistant text would recreate the
+current split-brain failure in a subtler form.
 
 ### Wrapper/host control protocol
 
@@ -260,11 +469,11 @@ continuity, and teardown.
 
 The survivor should not become an immortal provider daemon.
 
-The combined lifecycle owner keeps four independent deadlines:
+The combined lifecycle owner keeps three independent deadlines:
 
 - the ordinary verified-idle reap deadline, using YA's configured idle policy;
-- the replacement-server attach deadline after an intentional Hono detach;
-- the shorter recovery deadline after an unexpected Hono exit; and
+- the replacement-server attach deadline after detach, controller loss, or an
+  unconfirmed claim; and
 - the terminal drain deadline after wrapper shutdown or owner loss.
 
 No deadline is renewed merely because the app-server PID or socket remains
@@ -286,14 +495,14 @@ retry, background tool, or approval to settle. Pending approval is replayed
 after a successful attach and is never auto-approved; after attach timeout it is
 interrupted/terminated rather than kept forever.
 
-If the runtime dies mid-turn, YA surfaces owner loss as a real interruption or
-needs-attention state. It does not silently resume and risk two writers.
+If the runtime dies mid-turn, YA surfaces owner loss as a terminal provider
+error/interruption. It does not silently resume and risk two writers.
 
 ### Reload versus terminal shutdown
 
 The wrapper owns one explicit state machine:
 
-| Input | Wrapper transition | Codex runtime action |
+| Input | Wrapper transition | Provider runtime action |
 |---|---|---|
 | API Restart | `running` → `reloading` | keep eligible runtimes alive |
 | `SIGHUP` to wrapper | same as API Restart | keep eligible runtimes alive |
@@ -337,29 +546,26 @@ loops. One idle control socket for the wrapper lifetime is permitted.
 ## Runtime Generations And Fresh Code
 
 The app-server necessarily finishes an active turn using the Codex binary,
-environment, outer sandbox, and launch fingerprint under which it started. The
+environment, outer sandbox, and launch configuration under which it started. The
 replacement Hono generation may change YA normalization or fan-out code, but it
 must not mutate process-scoped launch facts while adopting the existing thread.
 
-The handshake therefore carries the host protocol, wrapper instance, Codex
-version, and launch fingerprint. A compatible replacement may attach. An
-incompatible replacement leaves the runtime fenced, reports needs-attention,
-and lets the host's attach deadline terminate it; it never starts a second
+The implemented handshake carries a protocol version, a private
+wrapper-lifetime credential, and the Hono generation. The host retains the
+original launch snapshot with the runtime. A compatible replacement may
+attach; an incompatible replacement cannot claim the runtime, and the host's
+attach deadline terminates the unclaimed owner rather than starting a second
 writer.
 
 Source changes inside `scripts/dev.js`, the lifecycle host, its control
 protocol, or process-launch/sandbox boundary are not reload-safe. The banner
-must offer **Reload When Safe** or explicit interrupting wrapper restart for
-those changes. V1 does not run overlapping old/new host generations merely to
-claim that every source edit hot-reloaded.
+cannot replace those wrapper-lifetime components; applying such changes
+requires an explicit terminal wrapper restart. V1 does not run overlapping
+old/new host generations merely to claim that every source edit hot-reloaded.
 
-This also prevents a fresh UI test server from silently exercising stale host
-code. A fresh Hono process attached to an incompatible host is not called fresh
-and must not clear the Server changed state.
+## Provider Backends
 
-## Provider Feasibility
-
-### Codex: recommended first experiment
+### Codex native host
 
 YA 0.7.0 currently pins Codex CLI 0.146.0. That source exposes several pieces
 that substantially lower the first experiment's risk:
@@ -387,16 +593,17 @@ README, `ThreadResumeParams`, the running-thread resume path, and WebSocket
 disconnect tests. They establish upstream capability, not YA integration.
 
 The first implementation keeps one app-server per YA runtime entry. YA's outer
-Bubblewrap session sandbox, environment, executor, launch fingerprint, and
+Bubblewrap session sandbox, environment, executor, launch configuration, and
 owned-tree teardown are process-scoped. Sharing one daemon is outside v1; it
 would require a separately proven isolation partition and teardown contract.
 
-The implementation connects `CodexAppServerClient` to a host-launched socket,
+The native implementation connects `CodexAppServerClient` to a host-launched socket,
 discovers the same thread after server replacement, normalizes the running
 snapshot, restores control callbacks, and retires the app-server after idle or
-any bounded terminal path. Ordinary Codex sessions still use stdio.
+any bounded terminal path. When the Codex option is off, the shared worker owns
+the ordinary Codex adapter instead.
 
-### Claude: YA worker required
+### Shared worker providers
 
 Claude's CLI process is not the owner YA needs to recover. The Claude Agent
 SDK `Query` in `ClaudeProvider.startSession` owns message streaming, dynamic
@@ -404,16 +611,15 @@ model/effort controls, `interrupt`, liveness probes, and the `canUseTool`
 callback. The query and its promises cannot be recreated around an arbitrary
 surviving CLI PID.
 
-A Claude-capable runtime worker must therefore run the provider adapter and SDK
-query itself. The replacement server attaches to that YA worker. Once the
-current turn is idle and acknowledged, the worker may shut down; future sends
-can use Claude's ordinary durable resume path. This is a larger change than the
-Codex socket experiment and should follow it.
+A Claude-capable runtime worker therefore runs the provider adapter and SDK
+query itself. The replacement server attaches to that YA worker. The same
+boundary applies to ACP clients, Pi's RPC client, OpenCode's HTTP/SSE server,
+and turn-scoped Gemini and Codex OSS transports: the worker owns the adapter's
+complete state while Hono owns only the proxy.
 
-### Other providers and remote executors
-
-Every other provider starts unsupported. An adapter earns reload survival only
-after a provider-specific smoke proves:
+The shared architecture is implemented for each adapter. Each adapter earns a
+completed provider-specific reload-safe validation claim only after its smoke
+proves:
 
 - the turn continues with the server connection absent;
 - current-turn state and pending input can be reconstructed;
@@ -421,26 +627,28 @@ after a provider-specific smoke proves:
 - completed output is neither lost nor duplicated; and
 - idle teardown leaves no provider or transport process behind.
 
-Remote executor sessions are out of the first scope. An SSH PID continuing on
-the remote host does not keep the local SSH stdio owner or YA callback state
-alive. They retain **Reload When Safe** until the runtime worker itself can run
-at the correct side of that boundary.
+For remote executor sessions, the local worker owns the SSH transport and its
+provider SDK state. The remote provider PID alone remains insufficient. The
+local worker boundary is complete; its release validation still needs to prove
+terminal SSH/provider cleanup.
 
-## Provider Setting And Platform Gate
+## Codex Setting And Platform Gate
 
-The feature is a server-persisted setting under **Settings → Providers →
-Codex**, default off. Current copy:
+The existing server-persisted setting under **Settings → Providers →
+Codex** remains default off and selects the Codex-native backend. Its copy must
+describe that selection rather than imply that disabling it disables shared
+reload continuity:
 
-> **Keep Codex sessions through server reloads**
+> **Use the Codex-native reload host**
 >
-> Eligible local Linux Codex processes started after opt-in—including resumed
-> sessions—keep running while Yep Anywhere reloads, then reconnect
-> automatically. Already-running processes are not converted; ordinary
-> shutdown ends them.
+> Use Codex app-server's native reconnect path for eligible new and resumed
+> Linux sessions. When off, Codex uses the shared provider host. Already-running
+> sessions keep their launch backend; ordinary shutdown ends both.
 
 "Persistent sessions" is not the UI term: idle Codex sessions are already
-durably resumable from provider persistence. This option changes ownership of
-the live app-server so an active turn can cross Hono replacement.
+durably resumable from provider persistence. This option selects which reload-
+safe owner Codex uses; it does not change the terminal wrapper-lifetime
+contract.
 
 The setting is read whenever YA starts a Codex provider process, including a
 durable-session resume. Enabling it does not adopt a live stdio process;
@@ -449,27 +657,29 @@ keeps its original contract until verified idle or terminal teardown, while
 subsequent new-thread and resume launches use the newly saved value.
 
 The settings row is capability-gated for hosted clients. A capable server
-reports Linux/host availability separately from the saved preference. When an
-eligible local launch is explicitly requested and the lifecycle host, socket,
-sandbox, or attach self-check fails, YA returns a clear launch error rather than
-silently starting a session that lacks the promised reload behavior. Remote and
-otherwise unsupported sessions remain ordinary and are visibly ineligible for
-seamless reload.
+reports Linux/host availability separately from the saved preference. A saved
+native preference does not make an ineligible executor or sandbox eligible:
+the existing Codex adapter then uses its ordinary in-Hono path. When either
+host is unavailable, ordinary sessions remain visibly ineligible for seamless
+reload.
 
-The first Codex experiment is enabled on Linux only. Its capability requires
-all of the following, not merely a successful spawn:
+Both hosts are initially enabled on Linux under the non-watch development
+wrapper only. Host capability requires:
 
 - `process.platform === "linux"`;
 - launch through the recognized development wrapper/lifecycle host;
-- the exact compatible host protocol and Codex capability;
+- the exact compatible host protocol;
 - a private, connectable runtime socket;
-- a supported local executor and sandbox configuration; and
-- successful attach/replay and owner-loss cleanup self-checks.
+- wrapper-generation registration; and
+- bounded owner-loss cleanup owned by the wrapper and host.
+
+Per-session Codex-native eligibility additionally requires a local launch with
+no executor or YA outer session sandbox. An ineligible Codex launch stays on
+the existing in-Hono adapter even when the native preference is saved.
 
 macOS, Windows, direct `pnpm --filter server dev` launches, unsupported Linux
-environments, and failed probes do not attempt the mechanism and do not show a
-seamless-reload action. They keep the existing safe-restart and explicit
-interrupting-restart choices.
+environments, and failed probes retain ordinary in-Hono provider ownership and
+the existing safe-restart/explicit-interruption choices.
 
 Any later use of `systemd-run --user`, Linux abstract sockets, `/proc`, cgroup
 inspection, `PR_SET_PDEATHSIG`, or Linux signal/process-group assumptions is
@@ -505,25 +715,27 @@ path. HUP is sent only to the wrapper. Codex app-server interprets HUP as a
 request to drain and exit after active work, so forwarding it would retire the
 very runtime that Hono reload is meant to preserve.
 
-The client gates the setting field with
+The client gates the Codex backend-selector field with
 `reload-safe-codex-runtime-settings` and enables it only when the current host
 also advertises `reload-safe-codex-runtime`. The approved compatibility corpus
 was stable releases `v0.7.0` and `v0.6.2`: neither knows the new field, so a new
 client hides it and makes no unsupported write. Older clients omit the field
 and retain the server's default-off behavior.
 
-## Codex-First Verification Matrix
+## Verification Matrix
 
-Continuity must be proved rather than inferred from a surviving PID. Initial
-checks cover new-thread and durable-resume launches through the host;
+Continuity must be proved rather than inferred from a surviving PID. Existing
+Codex-native checks cover new-thread and durable-resume launches through its host;
 API-triggered active-turn reload with the same app-server, YA session, thread,
 and turn identities; active snapshot completion; a second post-reload turn; no
 duplicate transcript rows; an active turn crossing wrapper `SIGHUP`; terminal
 idle teardown; and deterministic attach-timeout and owner-loss teardown. The
-remaining cases are an extended hardening matrix:
+shared host repeats the lifecycle proof with a deterministic fake worker and
+provider-specific integration smokes. The remaining cases are an extended
+hardening matrix:
 
-1. With the setting off, prove new and resumed Codex processes retain the
-   current stdio ownership and restart behavior.
+1. With the Codex setting off, prove new and resumed Codex sessions use the
+   shared worker; with it on, prove they retain the current native socket host.
 2. Enable the setting, start a fresh Linux dev wrapper, then launch a new local
    Codex thread and resume an existing one through private Unix-socket
    app-servers. Prove enabling the setting cannot adopt an already-running
@@ -550,12 +762,13 @@ remaining cases are an extended hardening matrix:
 9. Prove direct/deferred volatile queue state blocks seamless reload. Toggle the
    setting off while an external runtime exists; prove that runtime drains under
    its original contract and the next new or resumed process launches through
-   stdio.
+   the shared worker.
 10. Let the process reach verified idle, release it, and prove the registry
     entry, socket, timers, and owned process tree disappear.
 11. Exercise terminal wrapper `SIGINT` and `SIGTERM` against idle, active,
     pending-approval, and deliberately hung turns. Prove the bounded signal
-    ladder ends with no host/app-server PID, process group, timer, or socket.
+    ladder ends with no host/worker/app-server PID, process group, timer, or
+    socket.
 12. Kill the Hono process unexpectedly and prove bounded recovery or teardown.
     Break wrapper/host control independently and prove the surviving owner reaps
     the app-server rather than leaking it.
@@ -593,13 +806,14 @@ default-off setting must choose socket ownership when a provider process
 launches; changing it later affects subsequent new-thread or resume launches,
 not a process already running.
 
-### Generic YA event-proxy runtime in Codex v1 — defer
+### Replace the Codex-native host with the shared worker — reject
 
-Codex already owns the active snapshot, running-thread rejoin, pending-request
-replay, and durable transcript. Adding a second normalized event log, generic
-`AgentSession` control protocol, and YA queue owner before the direct socket
-smoke would duplicate state and enlarge the split-brain surface. Revisit only
-when a proved observable gap or a second provider requires it.
+Codex already supplies a proved active snapshot, running-thread rejoin,
+pending-request replay, and durable transcript through its socket app-server.
+The shared worker is now justified by the other providers, but replacing the
+working specialized path would discard provider-native recovery and needlessly
+change the option the user already verified. Codex uses the shared worker only
+when that option is disabled.
 
 ### Exit code or marker file as reload intent — reject
 
@@ -664,13 +878,18 @@ protocol; systemd is one explicitly Linux-gated way to host it.
 development backend reload, and the existing safe-restart delay is not always
 acceptable.
 
-**Implemented scope:** the server-persisted, default-off provider setting;
-Codex-specific Linux lifecycle host for new-thread and durable-resume launches;
-direct Unix-socket attach/rejoin; explicit wrapper reload/shutdown state
-machine; bounded owner-loss and terminal reaping; and the fake plus real smokes
-above.
+**Implemented foundation:** the server-persisted, default-off Codex backend
+setting; Codex-specific Linux lifecycle host for new-thread and durable-resume
+launches; direct Unix-socket attach/rejoin; explicit wrapper reload/shutdown
+state machine; and bounded owner-loss and terminal reaping.
 
-**Not approved by this proposal alone:** migrating every provider, changing
-production/full-wrapper restart semantics, enabling a mechanism outside Linux,
-sharing one app-server across sandbox boundaries, adding a generic provider
-runtime protocol, or replacing the existing safe-restart flow.
+**Implemented extension:** the wrapper-owned shared host, one complete provider
+worker per session, the `AgentSession` proxy and sequenced replay/request
+protocol, two-phase claim/attach across Hono generations, worker-owned provider
+sandboxing, terminal wrapper-resource reaping, and the exact Codex routing
+decision above.
+
+**Still not implied:** survival across terminal/full-wrapper restart, a
+machine-persistent daemon, enabling the mechanism outside Linux, sharing one
+provider process across sandbox boundaries, or replacing the existing safe-
+restart flow.

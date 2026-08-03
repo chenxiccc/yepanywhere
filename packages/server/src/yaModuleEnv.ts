@@ -17,6 +17,8 @@
 const store = new Map<string, Record<string, string>>();
 const MODULE_PREFIXES = new Map([
   ["YEP_CODEX_RUNTIME_", "codex-runtime"],
+  ["YEP_PROVIDER_RUNTIME_", "provider-runtime"],
+  ["YEP_PROVIDER_WORKER_", "provider-worker"],
   ["YEP_DEV_WRAPPER_", "dev-wrapper"],
   ["YEP_STT_", "stt"],
 ]);

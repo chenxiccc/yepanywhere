@@ -192,6 +192,14 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
     await claudeGatewayLauncher.shutdown();
   }
 
+  static getOwnedGatewayProcessGroupId(): number | undefined {
+    return claudeGatewayLauncher.getOwnedProcessGroupId();
+  }
+
+  static relinquishOwnedGatewayProcessGroup(processGroupId: number): boolean {
+    return claudeGatewayLauncher.relinquishOwnedProcessGroup(processGroupId);
+  }
+
   static getGatewayUrl(): string | undefined {
     return ClaudeGatewayProvider.gatewayUrl;
   }

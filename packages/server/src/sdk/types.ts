@@ -129,7 +129,7 @@ export interface ClaudeSDK {
 }
 
 // New interface for real SDK with full features
-import type { MessageQueue } from "./messageQueue.js";
+import type { AgentMessageQueue } from "./messageQueue.js";
 
 export interface ToolApprovalResult {
   behavior: "allow" | "deny";
@@ -215,7 +215,7 @@ export interface StartSessionOptions {
 
 export interface StartSessionResult {
   iterator: AsyncIterableIterator<SDKMessage>;
-  queue: MessageQueue;
+  queue: AgentMessageQueue;
   abort: () => void | Promise<void>;
   /** Check if the underlying CLI process is still alive (undefined = not available) */
   isProcessAlive?: () => boolean;

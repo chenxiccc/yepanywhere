@@ -1071,7 +1071,6 @@ export class Supervisor {
       resumeSessionId,
       stateRoot: this.sandboxStateRoot,
     });
-
     // Start session WITHOUT an initial message - agent will wait
     const result = await this.realSdk.startSession({
       cwd: projectPath,
@@ -1626,7 +1625,6 @@ export class Supervisor {
       resumeSessionId,
       stateRoot: this.sandboxStateRoot,
     });
-
     const result = await this.realSdk.startSession({
       cwd: projectPath,
       resumeSessionId,
@@ -1787,6 +1785,15 @@ export class Supervisor {
       resumeSessionId,
       stateRoot: this.sandboxStateRoot,
     });
+    const sessionSandboxOptions = {
+      level: modelSettings?.sandboxLevel,
+      provider: activeProvider.name,
+      projectPath,
+      executor: modelSettings?.executor,
+      stateKey: modelSettings?.sandboxStateKey,
+      resumeSessionId,
+      stateRoot: this.sandboxStateRoot,
+    } as const;
 
     // Start session WITHOUT an initial message - agent will wait
     const result = await activeProvider.startSession({
@@ -1810,6 +1817,7 @@ export class Supervisor {
       globalInstructions: modelSettings?.globalInstructions,
       promptSuggestions: promptSuggestionMode === "native",
       sessionSandbox,
+      sessionSandboxOptions,
       shouldEmitLiveDeltas: () =>
         processHolder.process?.hasLiveDeltaSubscribers() ?? false,
       onPermissionModeApplied: (mode) =>
@@ -1828,6 +1836,8 @@ export class Supervisor {
       iterator,
       queue,
       abort,
+      detachForServerReload,
+      activateCallbacks,
       isProcessAlive,
       probeLiveness,
       getProviderActivity,
@@ -1853,6 +1863,7 @@ export class Supervisor {
       sessionQueuePersistenceService: this.sessionQueuePersistenceService,
       toolResultMediaStore: this.toolResultMediaStore,
       abortFn: abort,
+      detachForServerReloadFn: detachForServerReload,
       isProcessAlive,
       shouldRetainIdleProcess: (sessionId) =>
         this.shouldRetainIdleProcess(sessionId),
@@ -1902,6 +1913,7 @@ export class Supervisor {
     const process = new Process(iterator, options);
     processHolder.process = process;
     this.observeProcessEvents(process);
+    activateCallbacks?.();
 
     // Wait for the real session ID from the provider
     if (!resumeSessionId) {
@@ -1959,6 +1971,15 @@ export class Supervisor {
       resumeSessionId,
       stateRoot: this.sandboxStateRoot,
     });
+    const sessionSandboxOptions = {
+      level: modelSettings?.sandboxLevel,
+      provider: activeProvider.name,
+      projectPath,
+      executor: modelSettings?.executor,
+      stateKey: modelSettings?.sandboxStateKey,
+      resumeSessionId,
+      stateRoot: this.sandboxStateRoot,
+    } as const;
 
     const result = await activeProvider.startSession({
       cwd: projectPath,
@@ -1982,6 +2003,7 @@ export class Supervisor {
       globalInstructions: modelSettings?.globalInstructions,
       promptSuggestions: promptSuggestionMode === "native",
       sessionSandbox,
+      sessionSandboxOptions,
       shouldEmitLiveDeltas: () =>
         processHolder.process?.hasLiveDeltaSubscribers() ?? false,
       onPermissionModeApplied: (mode) =>
@@ -2000,6 +2022,8 @@ export class Supervisor {
       iterator,
       queue,
       abort,
+      detachForServerReload,
+      activateCallbacks,
       isProcessAlive,
       probeLiveness,
       getProviderActivity,
@@ -2024,6 +2048,7 @@ export class Supervisor {
       sessionQueuePersistenceService: this.sessionQueuePersistenceService,
       toolResultMediaStore: this.toolResultMediaStore,
       abortFn: abort,
+      detachForServerReloadFn: detachForServerReload,
       isProcessAlive,
       shouldRetainIdleProcess: (sessionId) =>
         this.shouldRetainIdleProcess(sessionId),
@@ -2073,6 +2098,7 @@ export class Supervisor {
     const process = new Process(iterator, options);
     processHolder.process = process;
     this.observeProcessEvents(process);
+    activateCallbacks?.();
 
     // Wait for the real session ID from the provider before registering
     if (!resumeSessionId) {
@@ -3789,7 +3815,9 @@ export class Supervisor {
       `Session interrupt incomplete; hard-aborting process: ${process.sessionId}`,
     );
 
-    const deferredMessages = process.drainPendingUserMessages("promoted");
+    const deferredMessages = await process.drainPendingUserMessages(
+      "promoted",
+    );
     this.emitSessionAborted(process.sessionId, process.projectId);
     process.terminate("interrupt fallback abort");
     this.unregisterProcess(process);

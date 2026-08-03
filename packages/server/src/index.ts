@@ -70,6 +70,13 @@ import {
   listReloadSafeCodexRuntimes,
   markCodexRuntimeServerReloading,
 } from "./sdk/providers/codex-runtime-host.js";
+import {
+  closeProviderRuntimeHostRegistration,
+  hasHostedProviderRuntime,
+  initializeProviderRuntimeHost,
+  listHostedProviderRuntimes,
+  retainProviderRuntimeProcessGroup,
+} from "./sdk/providers/provider-runtime-host.js";
 import { ClaudeGatewayProvider } from "./sdk/providers/claude-gateway.js";
 import { ClaudeOllamaProvider } from "./sdk/providers/claude-ollama.js";
 import { grokACPProvider } from "./sdk/providers/grok-acp.js";
@@ -160,9 +167,9 @@ let isShuttingDown = false;
 /**
  * Graceful shutdown handler.
  * Aborts all running provider processes before exiting to prevent orphans.
- * SIGHUP is the wrapper-owned Hono replacement path: reload-safe Codex
- * clients release their socket claim while the lifecycle host keeps the
- * app-server alive for the next generation.
+ * SIGHUP is the wrapper-owned Hono replacement path: reload-safe provider
+ * clients release their socket claim while their wrapper-lifetime host keeps
+ * the runtime alive for the next generation.
  */
 async function gracefulShutdown(signal: string): Promise<void> {
   if (isShuttingDown) {
@@ -207,13 +214,16 @@ async function gracefulShutdown(signal: string): Promise<void> {
           try {
             if (
               signal === "SIGHUP" &&
-              p.provider === "codex" &&
-              hasReloadSafeCodexRuntime(p.sessionId) &&
+              (hasHostedProviderRuntime(p.sessionId) ||
+                (p.provider === "codex" &&
+                  hasReloadSafeCodexRuntime(p.sessionId))) &&
               p.queueDepth === 0 &&
               !p.hasVolatileDeferredMessages()
             ) {
               await p.detachForServerReload();
-              console.log(`[Shutdown] Detached Codex session ${p.sessionId}`);
+              console.log(
+                `[Shutdown] Detached ${p.provider} session ${p.sessionId}`,
+              );
             } else {
               await p.abort();
               console.log(`[Shutdown] Aborted session ${p.sessionId}`);
@@ -229,14 +239,42 @@ async function gracefulShutdown(signal: string): Promise<void> {
     }
   }
 
-  closeCodexRuntimeHostRegistration();
-
-  try {
-    await ClaudeGatewayProvider.shutdownGateway();
-    console.log("[Shutdown] Managed Claude Gateway stopped");
-  } catch (error) {
-    console.error("[Shutdown] Error stopping managed Claude Gateway:", error);
+  let retainedGateway = false;
+  const gatewayProcessGroupId =
+    signal === "SIGHUP"
+      ? ClaudeGatewayProvider.getOwnedGatewayProcessGroupId()
+      : undefined;
+  if (gatewayProcessGroupId) {
+    try {
+      await retainProviderRuntimeProcessGroup(gatewayProcessGroupId);
+      retainedGateway =
+        ClaudeGatewayProvider.relinquishOwnedGatewayProcessGroup(
+          gatewayProcessGroupId,
+        );
+      if (retainedGateway) {
+        console.log("[Shutdown] Managed Claude Gateway retained by wrapper");
+      }
+    } catch (error) {
+      console.error(
+        "[Shutdown] Could not retain managed Claude Gateway:",
+        error,
+      );
+    }
   }
+  if (!retainedGateway) {
+    try {
+      await ClaudeGatewayProvider.shutdownGateway();
+      console.log("[Shutdown] Managed Claude Gateway stopped");
+    } catch (error) {
+      console.error(
+        "[Shutdown] Error stopping managed Claude Gateway:",
+        error,
+      );
+    }
+  }
+
+  closeCodexRuntimeHostRegistration();
+  closeProviderRuntimeHostRegistration();
 
   if (disposeAppForShutdown) {
     try {
@@ -267,7 +305,7 @@ process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 if (process.platform !== "win32") {
   process.on("SIGHUP", () => {
-    const reloadableSessionIds =
+    const reloadableCodexSessionIds =
       supervisorForShutdown
         ?.getAllProcesses()
         .filter(
@@ -278,7 +316,7 @@ if (process.platform !== "win32") {
             !process.hasVolatileDeferredMessages(),
         )
         .map((process) => process.sessionId) ?? [];
-    markCodexRuntimeServerReloading(reloadableSessionIds);
+    markCodexRuntimeServerReloading(reloadableCodexSessionIds);
     void gracefulShutdown("SIGHUP");
   });
 }
@@ -632,6 +670,10 @@ async function startServer() {
     console.log("[CodexRuntimeHost] Registered this server generation");
   }
   markStartup("Codex runtime host registration checked");
+  if (await initializeProviderRuntimeHost()) {
+    console.log("[ProviderRuntimeHost] Registered this server generation");
+  }
+  markStartup("Provider runtime host registration checked");
   await hostAwakeService.initialize({
     mode: serverSettingsService.getSetting("hostAwakeMode"),
     batteryFloorPercent: serverSettingsService.getSetting(
@@ -931,6 +973,46 @@ async function startServer() {
     }
   }
   markStartup("retained Codex runtimes reattached");
+
+  const hostedProviderRuntimes = await listHostedProviderRuntimes().catch(
+    (error) => {
+      console.error(
+        "[ProviderRuntimeHost] Failed to list retained runtimes:",
+        error,
+      );
+      return [];
+    },
+  );
+  for (const runtime of hostedProviderRuntimes) {
+    if (!runtime.sessionId) continue;
+    try {
+      await supervisor.reactivateSession(
+        runtime.projectPath,
+        runtime.sessionId,
+        runtime.reattach.permissionMode,
+        {
+          providerName: runtime.providerName,
+          model: runtime.reattach.model,
+          serviceTier: runtime.reattach.serviceTier,
+          thinking: runtime.reattach.thinking,
+          effort: runtime.reattach.effort,
+          clientName: runtime.reattach.clientName,
+          executor: runtime.reattach.executor,
+          sandboxLevel: runtime.reattach.sandboxLevel,
+          sandboxStateKey: runtime.reattach.sandboxStateKey,
+        },
+      );
+      console.log(
+        `[ProviderRuntimeHost] Reattached ${runtime.providerName} session ${runtime.sessionId}`,
+      );
+    } catch (error) {
+      console.error(
+        `[ProviderRuntimeHost] Failed to reattach session ${runtime.sessionId}:`,
+        error,
+      );
+    }
+  }
+  markStartup("retained provider runtimes reattached");
 
   // Set up debug context for maintenance server
   setDebugContext({

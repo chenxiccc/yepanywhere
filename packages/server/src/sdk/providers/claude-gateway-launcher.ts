@@ -262,6 +262,17 @@ export class ClaudeGatewayLauncher {
     await this.stopOwnedChild();
   }
 
+  getOwnedProcessGroupId(): number | undefined {
+    return this.ownedChild?.child.pid;
+  }
+
+  relinquishOwnedProcessGroup(processGroupId: number): boolean {
+    const entry = this.ownedChild;
+    if (!entry || entry.child.pid !== processGroupId) return false;
+    this.ownedChild = undefined;
+    return true;
+  }
+
   private async launchAndWait(
     url: string,
     startCommand: string,

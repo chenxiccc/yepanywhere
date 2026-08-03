@@ -136,6 +136,7 @@ import { WS_INTERNAL_AUTHENTICATED } from "./middleware/internal-auth.js";
 import {
   configureProviderRuntime,
   getProvider,
+  isProviderRuntimeHostAvailable,
 } from "./sdk/providers/index.js";
 import { isCodexRuntimeHostAvailable } from "./sdk/providers/codex-runtime-host.js";
 import type {
@@ -417,6 +418,24 @@ export function createApp(options: AppOptions): AppResult {
       Object.values(
         options.sessionMetadataService?.getAllMetadata() ?? {},
       ).some((metadata) => metadata.provider === "claude-ollama"),
+    getProviderRuntimeSnapshot: () => ({
+      codexCliPath: options.codexCliPath,
+      claudeAdditionalModels:
+        options.serverSettingsService?.getSetting("claudeAdditionalModels"),
+      claudeGatewayUrl:
+        options.serverSettingsService?.getSetting("claudeGatewayUrl"),
+      claudeGatewayStartCommand: options.serverSettingsService?.getSetting(
+        "claudeGatewayStartCommand",
+      ),
+      ollamaUrl: options.serverSettingsService?.getSetting("ollamaUrl"),
+      ollamaSystemPrompt:
+        options.serverSettingsService?.getSetting("ollamaSystemPrompt"),
+      ollamaUseFullSystemPrompt:
+        options.serverSettingsService?.getSetting("ollamaUseFullSystemPrompt"),
+      ambientXaiApiKey: process.env.XAI_API_KEY,
+      grokBuildUseXaiApiKey:
+        options.serverSettingsService?.getSetting("grokBuildUseXaiApiKey"),
+    }),
   });
   const codexSessionsDir = options.codexSessionsDir ?? CODEX_SESSIONS_DIR;
   const geminiSessionsDir = options.geminiSessionsDir ?? GEMINI_TMP_DIR;
@@ -987,6 +1006,9 @@ export function createApp(options: AppOptions): AppResult {
   supervisor = new Supervisor({
     sdk: options.sdk,
     realSdk: options.realSdk,
+    provider: isProviderRuntimeHostAvailable()
+      ? (getProvider("claude") ?? undefined)
+      : undefined,
     idleTimeoutMs: options.idleTimeoutMs,
     defaultPermissionMode: options.defaultPermissionMode,
     eventBus: options.eventBus,

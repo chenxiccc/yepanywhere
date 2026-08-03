@@ -34,7 +34,7 @@ import type { ToolResultMediaMessageMaterializer } from "../media/ToolResultMedi
 import type { ToolResultMediaStore } from "../media/ToolResultMediaStore.js";
 import { getProjectName } from "../projects/paths.js";
 import { concatUserMessages, INTERRUPT_PREAMBLE } from "../sdk/messageQueue.js";
-import type { MessageQueue } from "../sdk/messageQueue.js";
+import type { AgentMessageQueue } from "../sdk/messageQueue.js";
 import type {
   PersistedSessionQueuedMessage,
   SessionQueuePersistenceService,
@@ -671,10 +671,12 @@ export interface DeferredDeliveryOptions {
 }
 
 export interface ProcessConstructorOptions extends ProcessOptions {
-  /** MessageQueue for real SDK, undefined for mock SDK */
-  queue?: MessageQueue;
+  /** Provider message queue, undefined for mock SDK */
+  queue?: AgentMessageQueue;
   /** Abort function from real SDK */
   abortFn?: () => void | Promise<void>;
+  /** Release a reload-safe proxy without terminating its provider session. */
+  detachForServerReloadFn?: () => void | Promise<void>;
   /** Check if underlying CLI process is still alive (for stale detection) */
   isProcessAlive?: () => boolean;
   /** Return true when an idle process should stay owned for an explicit feature. */
@@ -756,7 +758,7 @@ export class Process {
   readonly sandboxProjectPath: string | undefined;
 
   private legacyQueue: UserMessage[] = [];
-  private messageQueue: MessageQueue | null;
+  private messageQueue: AgentMessageQueue | null;
   private deferredDeliveryOverrides: DeferredDeliveryOptions | undefined;
   private sessionQueuePersistenceService:
     | SessionQueuePersistenceService
@@ -766,6 +768,7 @@ export class Process {
     | undefined;
   private patientQueuePersistenceTail: Promise<void> = Promise.resolve();
   private abortFn: (() => void | Promise<void>) | null;
+  private detachForServerReloadFn: (() => void | Promise<void>) | null;
   private _state: ProcessState = { type: "in-turn" };
   private listeners: Set<Listener> = new Set();
   private liveDeltaSubscriberCount = 0;
@@ -974,6 +977,7 @@ export class Process {
     this.sessionQueuePersistenceService =
       options.sessionQueuePersistenceService;
     this.abortFn = options.abortFn ?? null;
+    this.detachForServerReloadFn = options.detachForServerReloadFn ?? null;
     this._permissionMode = options.permissionMode ?? "default";
     this._permissions = options.permissions;
     this.provider = options.provider;
@@ -1714,7 +1718,9 @@ export class Process {
     // as a single concatenated batch with the interrupt preamble so the agent
     // knows to treat prior work as resumable.
     if (interrupted !== false && this.messageQueue) {
-      const directDrained = this.messageQueue.drain();
+      const directDrained = this.messageQueue.drainAsync
+        ? await this.messageQueue.drainAsync()
+        : this.messageQueue.drain();
       const deferredEntries = this.deferredQueue;
       const deferredDrained = deferredEntries.map((e) => e.message);
       this.deferredQueue = [];
@@ -3321,10 +3327,14 @@ export class Process {
    * This includes messages in the direct provider queue as well as editable
    * deferred messages.
    */
-  drainPendingUserMessages(
+  async drainPendingUserMessages(
     reason: "cancelled" | "promoted" = "promoted",
-  ): UserMessage[] {
-    const queuedMessages = this.messageQueue?.drain() ?? [];
+  ): Promise<UserMessage[]> {
+    const queuedMessages = this.messageQueue
+      ? this.messageQueue.drainAsync
+        ? await this.messageQueue.drainAsync()
+        : this.messageQueue.drain()
+      : [];
     return [...queuedMessages, ...this.drainDeferredMessages(reason)];
   }
 
@@ -3907,7 +3917,9 @@ export class Process {
     this.clearRetryingProviderRuntimeStatus();
     const deadline = Date.now() + PROCESS_ABORT_TIMEOUT_MS;
     await waitUntilAbortDeadline(
-      this.requestProviderAbort(),
+      this.detachForServerReloadFn
+        ? Promise.resolve(this.detachForServerReloadFn())
+        : this.requestProviderAbort(),
       deadline,
       "Timed out detaching provider client for server reload",
     );

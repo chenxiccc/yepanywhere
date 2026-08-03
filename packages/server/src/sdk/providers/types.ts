@@ -6,8 +6,11 @@ import type {
   ProviderSubscriptionUsage,
   SlashCommand,
 } from "@yep-anywhere/shared";
-import type { MessageQueue } from "../messageQueue.js";
-import type { SessionSandboxRuntime } from "../../session-sandbox.js";
+import type { AgentMessageQueue } from "../messageQueue.js";
+import type {
+  PrepareSessionSandboxOptions,
+  SessionSandboxRuntime,
+} from "../../session-sandbox.js";
 import type {
   CanUseTool,
   ProviderActivitySnapshot,
@@ -137,6 +140,8 @@ export interface StartSessionOptions {
   onProviderRetentionChange?: () => void;
   /** Prepared YA host sandbox applied to every provider child for this session. */
   sessionSandbox?: SessionSandboxRuntime;
+  /** Cloneable sandbox request used when a provider worker owns preparation. */
+  sessionSandboxOptions?: PrepareSessionSandboxOptions;
 }
 
 /**
@@ -147,9 +152,13 @@ export interface AgentSession {
   /** Async iterator yielding SDK messages */
   iterator: AsyncIterableIterator<SDKMessage>;
   /** Message queue for sending messages to the agent */
-  queue: MessageQueue;
+  queue: AgentMessageQueue;
   /** Abort function to cancel the session */
   abort: () => void | Promise<void>;
+  /** Release only the replaceable server's proxy, retaining the provider owner. */
+  detachForServerReload?: () => void | Promise<void>;
+  /** Enable callbacks after the owning Process has installed its handlers. */
+  activateCallbacks?: () => void;
   /** Check if the underlying CLI process is still alive (undefined = not available) */
   isProcessAlive?: () => boolean;
   /** OS PID of the spawned agent child process (undefined if not available) */

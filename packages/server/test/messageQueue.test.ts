@@ -58,6 +58,22 @@ describe("concatUserMessages", () => {
 });
 
 describe("MessageQueue", () => {
+  it("reports authoritative removals to remote queue mirrors", () => {
+    const queue = new MessageQueue();
+    const removed: string[][] = [];
+    const unsubscribe = queue.subscribeRemoved((messages) => {
+      removed.push(messages.map((message) => message.uuid ?? ""));
+    });
+    queue.push({ ...msg("first", "temp-1"), uuid: "uuid-1" });
+    queue.push({ ...msg("second", "temp-2"), uuid: "uuid-2" });
+
+    queue.removeByTempId("temp-1");
+    queue.drain();
+    unsubscribe();
+
+    expect(removed).toEqual([["uuid-1"], ["uuid-2"]]);
+  });
+
   it("removes queued messages by temp id before they are yielded", () => {
     const queue = new MessageQueue();
     queue.push(msg("first", "temp-1"));

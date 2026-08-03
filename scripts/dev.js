@@ -162,14 +162,24 @@ const env = {
   VITE_PORT: String(vitePort),
 };
 
-const reloadSafeCodexHostEnabled =
+const reloadSafeRuntimeHostsEnabled =
   process.platform === "linux" && !backendWatch;
-const runtimeDir = reloadSafeCodexHostEnabled
+const runtimeDir = reloadSafeRuntimeHostsEnabled
   ? mkdtempSync(join(tmpdir(), "ya-codex-runtime-"))
   : null;
 if (runtimeDir) chmodSync(runtimeDir, 0o700);
 const runtimeHostSocket = runtimeDir ? join(runtimeDir, "host.sock") : null;
 const runtimeHostToken = runtimeDir
+  ? randomBytes(32).toString("base64url")
+  : null;
+const providerRuntimeDir = reloadSafeRuntimeHostsEnabled
+  ? mkdtempSync(join(tmpdir(), "ya-provider-runtime-"))
+  : null;
+if (providerRuntimeDir) chmodSync(providerRuntimeDir, 0o700);
+const providerRuntimeHostSocket = providerRuntimeDir
+  ? join(providerRuntimeDir, "host.sock")
+  : null;
+const providerRuntimeHostToken = providerRuntimeDir
   ? randomBytes(32).toString("base64url")
   : null;
 const wrapperToken = randomBytes(32).toString("base64url");
@@ -179,14 +189,25 @@ if (runtimeDir && runtimeHostSocket && runtimeHostToken) {
   env.YEP_CODEX_RUNTIME_SOCKET = runtimeHostSocket;
   env.YEP_CODEX_RUNTIME_TOKEN = runtimeHostToken;
 }
+if (
+  providerRuntimeDir &&
+  providerRuntimeHostSocket &&
+  providerRuntimeHostToken
+) {
+  env.YEP_PROVIDER_RUNTIME_DIR = providerRuntimeDir;
+  env.YEP_PROVIDER_RUNTIME_SOCKET = providerRuntimeHostSocket;
+  env.YEP_PROVIDER_RUNTIME_TOKEN = providerRuntimeHostToken;
+}
 
 let wrapperState = "starting";
 let serverChild = null;
 let clientChild = null;
 let runtimeHostChild = null;
+let providerRuntimeHostChild = null;
 let wrapperControlServer = null;
 const wrapperControlSockets = new Set();
 const runtimeProcessGroups = new Map();
+const providerRuntimeProcessGroups = new Map();
 let serverGeneration = 0;
 let unexpectedRecoveryUsed = false;
 let shutdownPromise = null;
@@ -204,6 +225,58 @@ function processTargetAlive(target) {
     if (error?.code === "EPERM") return true;
     throw error;
   }
+}
+
+function readProcessStartTime(pid) {
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+    const commandEnd = stat.lastIndexOf(")");
+    if (commandEnd < 0) return null;
+    const fields = stat.slice(commandEnd + 1).trim().split(/\s+/);
+    return fields[19] ?? null;
+  } catch (error) {
+    if (error?.code === "ENOENT" || error?.code === "ESRCH") return null;
+    throw error;
+  }
+}
+
+function reportedProcessGroups(message) {
+  if (Array.isArray(message?.processGroups)) {
+    return message.processGroups.filter(
+      (target) =>
+        Number.isInteger(target?.processGroupId) &&
+        target.processGroupId > 1 &&
+        typeof target.leaderStartTime === "string" &&
+        target.leaderStartTime,
+    );
+  }
+  return (message?.processGroupIds ?? [])
+    .filter(
+      (processGroupId) =>
+        Number.isInteger(processGroupId) && processGroupId > 1,
+    )
+    .map((processGroupId) => ({ processGroupId }));
+}
+
+function runtimeProcessGroupAlive(target) {
+  if (!processTargetAlive(-target.processGroupId)) return false;
+  if (!target.leaderStartTime) return true;
+  const currentStartTime = readProcessStartTime(target.processGroupId);
+  return (
+    currentStartTime === null || currentStartTime === target.leaderStartTime
+  );
+}
+
+async function waitForRuntimeProcessGroupExit(target, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (runtimeProcessGroupAlive(target)) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) return false;
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.min(25, remaining)),
+    );
+  }
+  return true;
 }
 
 function managedTarget(child) {
@@ -285,29 +358,23 @@ async function waitForProcessTargetsExit(targets, timeoutMs) {
   return true;
 }
 
-async function waitForProcessTargetExit(target, timeoutMs) {
-  const deadline = Date.now() + timeoutMs;
-  while (processTargetAlive(target)) {
-    const remaining = deadline - Date.now();
-    if (remaining <= 0) return false;
-    await new Promise((resolve) =>
-      setTimeout(resolve, Math.min(25, remaining)),
-    );
-  }
-  return true;
-}
-
-async function reapRuntimeProcessGroup(processGroupId) {
-  const target = -processGroupId;
-  if (!processTargetAlive(target)) return;
-  process.kill(target, "SIGTERM");
-  if (await waitForProcessTargetExit(target, 1_500)) return;
-  process.kill(target, "SIGTERM");
-  if (await waitForProcessTargetExit(target, 500)) return;
-  process.kill(target, "SIGKILL");
-  if (!(await waitForProcessTargetExit(target, 1_000))) {
+async function reapRuntimeProcessGroup(reportedTarget) {
+  const target =
+    typeof reportedTarget === "number"
+      ? { processGroupId: reportedTarget }
+      : reportedTarget;
+  const signalTarget = -target.processGroupId;
+  if (!runtimeProcessGroupAlive(target)) return;
+  process.kill(signalTarget, "SIGTERM");
+  if (await waitForRuntimeProcessGroupExit(target, 1_500)) return;
+  if (!runtimeProcessGroupAlive(target)) return;
+  process.kill(signalTarget, "SIGTERM");
+  if (await waitForRuntimeProcessGroupExit(target, 500)) return;
+  if (!runtimeProcessGroupAlive(target)) return;
+  process.kill(signalTarget, "SIGKILL");
+  if (!(await waitForRuntimeProcessGroupExit(target, 1_000))) {
     throw new Error(
-      `Codex runtime process group ${processGroupId} survived SIGKILL`,
+      `Runtime process group ${target.processGroupId} survived SIGKILL`,
     );
   }
 }
@@ -320,7 +387,7 @@ function spawnManaged(command, childArgs, options) {
 }
 
 async function startRuntimeHost() {
-  if (!reloadSafeCodexHostEnabled) return;
+  if (!reloadSafeRuntimeHostsEnabled) return;
   const host = spawn(
     process.execPath,
     [join(__dirname, "codex-runtime-host.mjs")],
@@ -383,6 +450,82 @@ async function startRuntimeHost() {
   });
 }
 
+async function startProviderRuntimeHost() {
+  if (!reloadSafeRuntimeHostsEnabled) return;
+  const host = spawn(
+    process.execPath,
+    [join(__dirname, "provider-runtime-host.mjs")],
+    {
+      cwd: rootDir,
+      env,
+      detached: !isWindows,
+      stdio: ["ignore", "inherit", "inherit", "ipc"],
+    },
+  );
+  providerRuntimeHostChild = host;
+
+  await new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (fn) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      host.off("message", onMessage);
+      host.off("error", onError);
+      host.off("exit", onExitBeforeReady);
+      fn();
+    };
+    const onMessage = (message) => {
+      if (message?.type === "ready") finish(resolve);
+    };
+    const onError = (error) => finish(() => reject(error));
+    const onExitBeforeReady = (code, signal) =>
+      finish(() =>
+        reject(
+          new Error(
+            `Provider runtime host exited before ready (code=${code}, signal=${signal})`,
+          ),
+        ),
+      );
+    const timeout = setTimeout(
+      () =>
+        finish(() =>
+          reject(new Error("Provider runtime host startup timed out")),
+        ),
+      5_000,
+    );
+    host.on("message", onMessage);
+    host.once("error", onError);
+    host.once("exit", onExitBeforeReady);
+  });
+
+  host.on("message", (message) => {
+    if (message?.type === "runtimeLaunched") {
+      const targets = reportedProcessGroups(message);
+      providerRuntimeProcessGroups.set(
+        message.runtimeId,
+        new Map(targets.map((target) => [target.processGroupId, target])),
+      );
+    } else if (message?.type === "runtimeTargets") {
+      const targets = reportedProcessGroups(message);
+      providerRuntimeProcessGroups.set(
+        message.runtimeId,
+        new Map(targets.map((target) => [target.processGroupId, target])),
+      );
+    } else if (message?.type === "runtimeExited") {
+      providerRuntimeProcessGroups.delete(message.runtimeId);
+    }
+  });
+  host.on("exit", (code, signal) => {
+    if (providerRuntimeHostChild === host) providerRuntimeHostChild = null;
+    if (wrapperState === "shutting-down") return;
+    console.error(
+      `[ProviderRuntimeHost] Exited unexpectedly (code=${code}, signal=${signal})`,
+    );
+    void shutdownWrapper("Provider runtime host exited unexpectedly", 1);
+  });
+}
+
 async function stopRuntimeHost() {
   const host = runtimeHostChild;
   if (host && host.exitCode === null && host.signalCode === null) {
@@ -410,6 +553,43 @@ async function stopRuntimeHost() {
   if (failures.length > 0) {
     throw new Error(
       `Failed to reap ${failures.length} Codex runtime process group(s)`,
+    );
+  }
+}
+
+async function stopProviderRuntimeHost() {
+  const host = providerRuntimeHostChild;
+  if (host && host.exitCode === null && host.signalCode === null) {
+    try {
+      host.send({ type: "shutdown", reason: "dev wrapper shutdown" });
+    } catch {
+      // The fallback process-group sweep below remains authoritative.
+    }
+    if (!(await waitForChildExit(host, 7_000))) {
+      host.kill("SIGTERM");
+      if (!(await waitForChildExit(host, 1_500))) {
+        host.kill("SIGKILL");
+        if (!(await waitForChildExit(host, 1_000))) {
+          throw new Error("Provider runtime host survived SIGKILL");
+        }
+      }
+    }
+  }
+
+  const groups = new Map();
+  for (const targets of providerRuntimeProcessGroups.values()) {
+    for (const [processGroupId, target] of targets) {
+      groups.set(processGroupId, target);
+    }
+  }
+  const results = await Promise.allSettled(
+    [...groups.values()].map(reapRuntimeProcessGroup),
+  );
+  providerRuntimeProcessGroups.clear();
+  const failures = results.filter((result) => result.status === "rejected");
+  if (failures.length > 0) {
+    throw new Error(
+      `Failed to reap ${failures.length} provider runtime process group(s)`,
     );
   }
 }
@@ -561,6 +741,7 @@ async function shutdownWrapper(reason, exitCode = 0) {
       failures.push(error),
     );
     await stopRuntimeHost().catch((error) => failures.push(error));
+    await stopProviderRuntimeHost().catch((error) => failures.push(error));
     await stopManagedChild(clientChild, "Vite").catch((error) =>
       failures.push(error),
     );
@@ -568,6 +749,13 @@ async function shutdownWrapper(reason, exitCode = 0) {
     if (runtimeDir && existsSync(runtimeDir)) {
       try {
         rmSync(runtimeDir, { recursive: true });
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    if (providerRuntimeDir && existsSync(providerRuntimeDir)) {
+      try {
+        rmSync(providerRuntimeDir, { recursive: true });
       } catch (error) {
         failures.push(error);
       }
@@ -676,6 +864,7 @@ function startClient() {
 
 try {
   await startRuntimeHost();
+  await startProviderRuntimeHost();
   await startWrapperControlServer();
   startServer();
   startClient();
