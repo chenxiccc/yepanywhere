@@ -13,6 +13,56 @@ import { SettingsSection } from "./SettingsSection";
 import { useSettingsUndoBaseline } from "./SettingsUndoContext";
 import styles from "./StorageSettings.module.css";
 
+interface StorageChoiceProps {
+  name: string;
+  value: string;
+  label: string;
+  description: string;
+  checked: boolean;
+  disabled: boolean;
+  isDefault?: boolean;
+  onChange: () => void;
+}
+
+function StorageChoice({
+  name,
+  value,
+  label,
+  description,
+  checked,
+  disabled,
+  isDefault = false,
+  onChange,
+}: StorageChoiceProps) {
+  const { t } = useI18n();
+  return (
+    <label
+      className={`${styles.choice} ${checked ? styles.selected : ""}`.trim()}
+    >
+      <input
+        type="radio"
+        name={name}
+        value={value}
+        aria-label={label}
+        checked={checked}
+        disabled={disabled}
+        onChange={onChange}
+      />
+      <span className={styles.choiceText}>
+        <span className={styles.choiceHeading}>
+          <span>{label}</span>
+          {isDefault && (
+            <span className={styles.defaultBadge}>
+              {t("storageChoiceDefault")}
+            </span>
+          )}
+        </span>
+        <span className={styles.choiceDescription}>{description}</span>
+      </span>
+    </label>
+  );
+}
+
 export function StorageSettings() {
   const { t } = useI18n();
   useSettingsPaneTitle(t("storageSettingsTitle"));
@@ -77,7 +127,7 @@ export function StorageSettings() {
       <div className="settings-group">
         <SettingsItem
           id="project-data-location"
-          className={styles.row}
+          className={styles.setting}
           label={t("projectDataLocationTitle")}
           description={t("projectDataLocationDescription")}
           keywords={[".yep", ".attachments", "YEP_DATA_DIR"]}
@@ -98,46 +148,47 @@ export function StorageSettings() {
             className={styles.choices}
             aria-label={t("projectDataLocationTitle")}
           >
-            <label className={styles.choice}>
-              <input
-                type="radio"
-                name="project-data-location"
-                value="app-data"
-                checked={supportsProjectLocation && projectLocation === "app-data"}
-                disabled={!supportsProjectLocation}
-                onChange={() => {
-                  void updateSettings({
-                    projectDirectoryStorage: "app-data",
-                  }).catch(() => {
-                    // The hook keeps the actionable error visible in this pane.
-                  });
-                }}
-              />
-              {t("projectDataLocationAppData")}
-            </label>
-            <label className={styles.choice}>
-              <input
-                type="radio"
-                name="project-data-location"
-                value="project"
-                checked={supportsProjectLocation && projectLocation === "project"}
-                disabled={!supportsProjectLocation}
-                onChange={() => {
-                  void updateSettings({
-                    projectDirectoryStorage: "project",
-                  }).catch(() => {
-                    // The hook keeps the actionable error visible in this pane.
-                  });
-                }}
-              />
-              {t("projectDataLocationProject")}
-            </label>
+            <StorageChoice
+              name="project-data-location"
+              value="app-data"
+              label={t("projectDataLocationAppData")}
+              description={t("projectDataLocationAppDataDescription")}
+              checked={
+                supportsProjectLocation && projectLocation === "app-data"
+              }
+              disabled={!supportsProjectLocation}
+              isDefault
+              onChange={() => {
+                void updateSettings({
+                  projectDirectoryStorage: "app-data",
+                }).catch(() => {
+                  // The hook keeps the actionable error visible in this pane.
+                });
+              }}
+            />
+            <StorageChoice
+              name="project-data-location"
+              value="project"
+              label={t("projectDataLocationProject")}
+              description={t("projectDataLocationProjectDescription")}
+              checked={
+                supportsProjectLocation && projectLocation === "project"
+              }
+              disabled={!supportsProjectLocation}
+              onChange={() => {
+                void updateSettings({
+                  projectDirectoryStorage: "project",
+                }).catch(() => {
+                  // The hook keeps the actionable error visible in this pane.
+                });
+              }}
+            />
           </fieldset>
         </SettingsItem>
 
         <SettingsItem
           id="tool-result-images"
-          className={styles.row}
+          className={styles.setting}
           label={t("toolResultImagesStorageTitle")}
           description={t("toolResultImagesStorageDescription")}
           keywords={["tool results", "image", "preserve", "storage"]}
@@ -158,44 +209,41 @@ export function StorageSettings() {
             className={styles.choices}
             aria-label={t("toolResultImagesStorageTitle")}
           >
-            <label className={styles.choice}>
-              <input
-                type="radio"
-                name="tool-result-images"
-                value="on-demand"
-                checked={
-                  supportsMediaPreservation && mediaPreservation === "on-demand"
-                }
-                disabled={!supportsMediaPreservation}
-                onChange={() => {
-                  void updateSettings({
-                    toolResultMediaPreservation: "on-demand",
-                  }).catch(() => {
-                    // The hook keeps the actionable error visible in this pane.
-                  });
-                }}
-              />
-              {t("toolResultImagesOnDemand")}
-            </label>
-            <label className={styles.choice}>
-              <input
-                type="radio"
-                name="tool-result-images"
-                value="preserve"
-                checked={
-                  supportsMediaPreservation && mediaPreservation === "preserve"
-                }
-                disabled={!supportsMediaPreservation}
-                onChange={() => {
-                  void updateSettings({
-                    toolResultMediaPreservation: "preserve",
-                  }).catch(() => {
-                    // The hook keeps the actionable error visible in this pane.
-                  });
-                }}
-              />
-              {t("toolResultImagesPreserve")}
-            </label>
+            <StorageChoice
+              name="tool-result-images"
+              value="on-demand"
+              label={t("toolResultImagesOnDemand")}
+              description={t("toolResultImagesOnDemandDescription")}
+              checked={
+                supportsMediaPreservation && mediaPreservation === "on-demand"
+              }
+              disabled={!supportsMediaPreservation}
+              isDefault
+              onChange={() => {
+                void updateSettings({
+                  toolResultMediaPreservation: "on-demand",
+                }).catch(() => {
+                  // The hook keeps the actionable error visible in this pane.
+                });
+              }}
+            />
+            <StorageChoice
+              name="tool-result-images"
+              value="preserve"
+              label={t("toolResultImagesPreserve")}
+              description={t("toolResultImagesPreserveDescription")}
+              checked={
+                supportsMediaPreservation && mediaPreservation === "preserve"
+              }
+              disabled={!supportsMediaPreservation}
+              onChange={() => {
+                void updateSettings({
+                  toolResultMediaPreservation: "preserve",
+                }).catch(() => {
+                  // The hook keeps the actionable error visible in this pane.
+                });
+              }}
+            />
           </fieldset>
         </SettingsItem>
       </div>

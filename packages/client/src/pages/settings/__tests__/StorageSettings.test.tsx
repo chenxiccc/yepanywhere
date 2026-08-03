@@ -71,14 +71,20 @@ describe("StorageSettings", () => {
   it("shows the non-project, on-demand defaults and saves explicit opt-ins", () => {
     render(<StorageSettings />);
 
-    expect(
-      (screen.getByLabelText("projectDataLocationAppData") as HTMLInputElement)
-        .checked,
-    ).toBe(true);
-    expect(
-      (screen.getByLabelText("toolResultImagesOnDemand") as HTMLInputElement)
-        .checked,
-    ).toBe(true);
+    const appDataChoice = screen.getByLabelText(
+      "projectDataLocationAppData",
+    ) as HTMLInputElement;
+    const onDemandChoice = screen.getByLabelText(
+      "toolResultImagesOnDemand",
+    ) as HTMLInputElement;
+    expect(appDataChoice.checked).toBe(true);
+    expect(onDemandChoice.checked).toBe(true);
+    expect(appDataChoice.closest("label")?.textContent).toContain(
+      "projectDataLocationAppDataDescription",
+    );
+    expect(onDemandChoice.closest("label")?.textContent).toContain(
+      "toolResultImagesOnDemandDescription",
+    );
 
     fireEvent.click(screen.getByLabelText("projectDataLocationProject"));
     fireEvent.click(screen.getByLabelText("toolResultImagesPreserve"));

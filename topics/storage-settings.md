@@ -40,8 +40,11 @@ preserve, and storage.
 
 ## YA-Managed Project Data
 
-The first section presents a radio choice rather than a toggle so the off state
-cannot be mistaken for disabling required attachment storage:
+The first section presents a full-width stacked radio list rather than a toggle
+so the off state cannot be mistaken for disabling required attachment storage.
+Each clickable option row carries its own explanation; the layout remains one
+column as options are added instead of separating explanations from controls or
+crowding choices into a fixed grid:
 
 ### YA data directory — default
 
@@ -78,11 +81,12 @@ any other independently default-off retention feature.
 
 ## Tool-Result Images
 
-The second section presents a separate radio choice. There is no server disk
-cache mode in the first implementation: the current persistent blob store has
-no eviction behavior, and avoiding a provider-transcript rescan or repeated
-base64 decode does not yet justify another setting. A measured future cache is
-a separate policy and capability.
+The second section presents a separate stacked radio list with the same
+option-owned explanation pattern. There is no server disk cache mode in the
+first implementation: the current persistent blob store has no eviction
+behavior, and avoiding a provider-transcript rescan or repeated base64 decode
+does not yet justify another setting. A measured future cache is a separate
+policy and capability.
 
 ### Load on demand — default
 
