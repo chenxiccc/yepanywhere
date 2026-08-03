@@ -4,8 +4,8 @@ Topic: session-reactivation
 Topic: session-defaults
 Topic: reload-safe-provider-runtimes
 
-Status: Implemented 2026-08-03. Defect verified 2026-08-03; it predates the
-current harsh-review range.
+Status: Implemented 2026-08-03 in `c29bf7e2`. Defect verified 2026-08-03; it
+predates the current harsh-review range.
 
 ## Observed defect
 
