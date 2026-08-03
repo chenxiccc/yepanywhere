@@ -94,6 +94,13 @@ const {
         kind: "listening" | "transcribing" | "finalizing" | null,
       ) => void;
       onInterimTranscript?: (text: string) => void;
+      onTranscript?: (
+        text: string,
+        metadata?: {
+          smartTurnCommand?: "cancel" | "send" | "wait";
+          smartTurnAutoSend?: boolean;
+        },
+      ) => void;
       onListeningStop?: () => void;
     },
   },
@@ -2402,6 +2409,41 @@ describe("NewSessionForm", () => {
     });
 
     expect(mockVoiceToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it("prefixes speech-triggered new-session submissions with ASR", async () => {
+    render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+    const textarea = screen.getByPlaceholderText(
+      "newSessionPlaceholder",
+    ) as HTMLTextAreaElement;
+
+    act(() => {
+      voicePropsState.current?.onTranscript?.("Start here.");
+    });
+    await waitFor(() => expect(textarea.value).toBe("Start here."));
+
+    act(() => {
+      voicePropsState.current?.onTranscript?.("", {
+        smartTurnCommand: "send",
+        smartTurnAutoSend: true,
+      });
+    });
+
+    await waitFor(() => {
+      expect(mockStartSession).toHaveBeenCalledWith(
+        "project-1",
+        "[ASR] Start here.",
+        expect.any(Object),
+        undefined,
+        expect.any(Number),
+      );
+    });
   });
 
   it("keeps the real new-session textarea editable while transcribing", async () => {

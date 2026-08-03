@@ -171,6 +171,7 @@ import {
 import {
   commitSpeechTranscript,
   hasNonWhitespaceEdit,
+  markAsrSubmittedTurn,
   type PendingTextareaSelectionRestore,
 } from "../lib/speechDraftTransaction";
 import { isVoiceInputShortcut } from "../lib/voiceInputShortcut";
@@ -1785,7 +1786,7 @@ export function NewSessionForm({
   );
 
   const handleStartSession = useCallback(
-    async (messageOverride?: unknown) => {
+    async (messageOverride?: unknown, speechTriggered = false) => {
       const override =
         typeof messageOverride === "string" ? messageOverride : undefined;
       // Stop voice recording and get any pending interim text unless the caller
@@ -1813,7 +1814,9 @@ export function NewSessionForm({
       )
         return;
 
-      const trimmedMessage = finalMessage.trim();
+      const trimmedMessage = speechTriggered && hasContent
+        ? markAsrSubmittedTurn(finalMessage)
+        : finalMessage.trim();
       const trimmedProjectInput = normalizeProjectInput(projectInput);
       const actionAtMs = Date.now();
       const clientTimestamp = getServerClockTimestamp(actionAtMs);
@@ -2460,7 +2463,7 @@ export function NewSessionForm({
           speechInsertionRangesRef,
           pendingTextareaSelectionRef,
           onSmartTurnSend: (text) => {
-            void handleStartSession(text);
+            void handleStartSession(text, true);
           },
           composerEditedDuringSpeech: () =>
             composerEditedDuringSpeechRef.current,

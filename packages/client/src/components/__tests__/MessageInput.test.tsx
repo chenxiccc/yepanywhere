@@ -2221,10 +2221,24 @@ describe("MessageInput", () => {
     });
 
     await waitFor(() => {
-      expectSubmission(onSend, "Okay.", "direct");
+      expectSubmission(onSend, "[ASR] Okay.", "direct");
       expect(textarea.value).toBe("");
     });
     expect(document.activeElement).toBe(textarea);
+  });
+
+  it("keeps an empty speech-triggered send as a no-op", () => {
+    const onSend = vi.fn();
+    renderMessageInput(vi.fn(), { onSend });
+
+    act(() => {
+      voicePropsState.current?.onTranscript?.("", {
+        smartTurnCommand: "send",
+        smartTurnAutoSend: true,
+      });
+    });
+
+    expect(onSend).not.toHaveBeenCalled();
   });
 
   it("closes mobile keyboard focus after Smart Turn sends", async () => {
@@ -2245,7 +2259,7 @@ describe("MessageInput", () => {
       });
 
       await waitFor(() => {
-        expectSubmission(onSend, "Okay.", "direct");
+        expectSubmission(onSend, "[ASR] Okay.", "direct");
         expect(textarea.value).toBe("");
       });
       expect(document.activeElement).not.toBe(textarea);
@@ -2328,7 +2342,7 @@ describe("MessageInput", () => {
       });
     });
     await waitFor(() => {
-      expectSubmission(onSend, "Ship it.", "direct");
+      expectSubmission(onSend, "[ASR] Ship it.", "direct");
       expect(textarea.value).toBe("");
     });
   });
@@ -2353,7 +2367,9 @@ describe("MessageInput", () => {
         smartTurnAutoSend: true,
       });
     });
-    await waitFor(() => expectSubmission(onSend, "Go now.", "direct"));
+    await waitFor(() =>
+      expectSubmission(onSend, "[ASR] Go now.", "direct"),
+    );
   });
 
   it("submits an explicit spoken send even after a manual edit", async () => {
@@ -2375,7 +2391,7 @@ describe("MessageInput", () => {
       voicePropsState.current?.onTranscript?.("", { smartTurnCommand: "send" });
     });
     await waitFor(() => {
-      expectSubmission(onSend, "Reply done. plus", "direct");
+      expectSubmission(onSend, "[ASR] Reply done. plus", "direct");
       expect(textarea.value).toBe("");
     });
   });

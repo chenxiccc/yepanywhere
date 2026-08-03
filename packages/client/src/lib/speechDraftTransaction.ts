@@ -17,6 +17,14 @@ export interface PendingTextareaSelectionRestore {
   restore: (textarea: HTMLTextAreaElement) => void;
 }
 
+export const ASR_TURN_MARKER = "[ASR]";
+
+/** Mark a provider-bound turn whose submission was triggered by speech. */
+export function markAsrSubmittedTurn(text: string): string {
+  const trimmed = text.trim();
+  return trimmed ? `${ASR_TURN_MARKER} ${trimmed}` : ASR_TURN_MARKER;
+}
+
 /**
  * Everything a composer surface lends the shared speech-commit algorithm: its
  * textarea, draft get/set, the speech-transaction refs it owns, and optional

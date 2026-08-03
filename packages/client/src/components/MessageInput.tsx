@@ -76,6 +76,7 @@ import {
 import {
   commitSpeechTranscript,
   hasNonWhitespaceEdit,
+  markAsrSubmittedTurn,
   type PendingTextareaSelectionRestore,
 } from "../lib/speechDraftTransaction";
 import {
@@ -1081,6 +1082,7 @@ export function MessageInput({
       messageOverride?: unknown,
       actionOverride?: "send" | "steer" | "queue",
       focusAfterSubmit = true,
+      speechTriggered = false,
     ) => {
       const override =
         typeof messageOverride === "string" ? messageOverride : undefined;
@@ -1105,7 +1107,12 @@ export function MessageInput({
           controls.clearInput();
           resetCompositionMetadata();
           setInterimTranscript("");
-          forkSummaryMode.onSubmit(finalText.trim());
+          const instructions = finalText.trim();
+          forkSummaryMode.onSubmit(
+            speechTriggered && instructions
+              ? markAsrSubmittedTurn(instructions)
+              : instructions,
+          );
           textareaRef.current?.focus();
         }
         return;
@@ -1135,7 +1142,9 @@ export function MessageInput({
 
       const hasContent = finalText.trim() || attachments.length > 0;
       if (hasContent && !disabled) {
-        const message = finalText.trim();
+        const message = speechTriggered
+          ? markAsrSubmittedTurn(finalText)
+          : finalText.trim();
         const actionKind = actionOverride ?? effectivePrimaryActionKind;
         const deliveryIntent =
           actionKind === "steer"
@@ -2149,7 +2158,7 @@ export function MessageInput({
 
   const handleSmartTurnSend = useCallback(
     (text: string) => {
-      void handleSubmit(text, undefined, !hasCoarsePointer());
+      void handleSubmit(text, undefined, !hasCoarsePointer(), true);
     },
     [handleSubmit],
   );

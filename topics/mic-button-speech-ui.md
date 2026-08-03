@@ -207,6 +207,14 @@ Current streaming command semantics:
 - A future "continue after command" option may let `send` submit and begin a
   fresh speech transaction without making the user press the mic again.
 
+Every submission triggered by speech prefixes the provider-bound turn with
+`[ASR]`: both Smart Turn's automatic endpoint send and an explicit spoken
+`send`, including the batch form. The marker is added at submission and does
+not enter the editable draft. Manual stop/finalize only commits speech to the
+draft, and a later manual Send or Enter remains unmarked, including after an
+automatic Smart Turn send was held for a manual edit. A speech-triggered send
+with neither text nor attachments remains a no-op.
+
 Open design slot: command recognition should eventually work per `is_final`
 chunk after a YA command-settle signal. That settle signal may be a timeout
 shorter than the Smart Turn timeout, but the value is not chosen here. Per the
