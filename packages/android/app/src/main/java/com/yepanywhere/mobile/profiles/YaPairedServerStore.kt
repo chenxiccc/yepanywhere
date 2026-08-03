@@ -31,6 +31,12 @@ class YaPairedServerStore internal constructor(
         preferences[SELECTED_PROFILE_KEY]
     }
 
+    val listState: Flow<YaPairedServerListState> = dataStore.data.map(::decodeListState)
+
+    val includedProfileIds: Flow<Set<String>> = listState.map {
+        it.includedProfileIds
+    }
+
     suspend fun snapshots(): List<YaPairedServerSnapshot> {
         val preferences = dataStore.data.first()
         return YaPairedServerCodec.decodeProfiles(preferences[PROFILES_KEY]).map { profile ->
@@ -65,6 +71,13 @@ class YaPairedServerStore internal constructor(
             val previous = current.firstOrNull { it.id == profile.id }
             val updated = current.filterNot { it.id == profile.id } + profile
             preferences[PROFILES_KEY] = YaPairedServerCodec.encodeProfiles(updated)
+            preferences[INCLUDED_PROFILE_IDS_KEY]?.let { existingPolicy ->
+                val currentIds = current.mapTo(mutableSetOf(), YaPairedServerProfile::id)
+                val included = YaIncludedServerPolicy.decode(existingPolicy, currentIds)
+                preferences[INCLUDED_PROFILE_IDS_KEY] = YaIncludedServerPolicy.encode(
+                    if (previous == null) included + profile.id else included,
+                )
+            }
             if (encryptedCredential != null) {
                 preferences[credentialKey(profile.id)] = encryptedCredential
             } else if (previous != null && previous.username != profile.username) {
@@ -155,6 +168,22 @@ class YaPairedServerStore internal constructor(
         }
     }
 
+    suspend fun setIncluded(profileId: String, included: Boolean) {
+        requireUuid(profileId, "profile id")
+        dataStore.edit { preferences ->
+            val profileIds = YaPairedServerCodec.decodeProfiles(preferences[PROFILES_KEY])
+                .mapTo(mutableSetOf(), YaPairedServerProfile::id)
+            check(profileId in profileIds) { "Cannot include an unknown profile" }
+            val current = YaIncludedServerPolicy.decode(
+                preferences[INCLUDED_PROFILE_IDS_KEY],
+                profileIds,
+            )
+            preferences[INCLUDED_PROFILE_IDS_KEY] = YaIncludedServerPolicy.encode(
+                if (included) current + profileId else current - profileId,
+            )
+        }
+    }
+
     suspend fun forget(profileId: String) {
         requireUuid(profileId, "profile id")
         var keyAlias: String? = null
@@ -164,6 +193,13 @@ class YaPairedServerStore internal constructor(
             val updated = profiles
                 .filterNot { it.id == profileId }
             preferences[PROFILES_KEY] = YaPairedServerCodec.encodeProfiles(updated)
+            preferences[INCLUDED_PROFILE_IDS_KEY]?.let { existingPolicy ->
+                val currentIds = profiles.mapTo(mutableSetOf(), YaPairedServerProfile::id)
+                val included = YaIncludedServerPolicy.decode(existingPolicy, currentIds)
+                preferences[INCLUDED_PROFILE_IDS_KEY] = YaIncludedServerPolicy.encode(
+                    included - profileId,
+                )
+            }
             preferences.remove(credentialKey(profileId))
             if (preferences[SELECTED_PROFILE_KEY] == profileId) {
                 preferences.remove(SELECTED_PROFILE_KEY)
@@ -223,9 +259,24 @@ class YaPairedServerStore internal constructor(
         }
     }
 
+    private fun decodeListState(preferences: Preferences): YaPairedServerListState {
+        val profiles = YaPairedServerCodec.decodeProfiles(preferences[PROFILES_KEY])
+        val profileIds = profiles.mapTo(mutableSetOf(), YaPairedServerProfile::id)
+        return YaPairedServerListState(
+            profiles = profiles,
+            includedProfileIds = YaIncludedServerPolicy.decode(
+                preferences[INCLUDED_PROFILE_IDS_KEY],
+                profileIds,
+            ),
+            selectedProfileId = preferences[SELECTED_PROFILE_KEY]
+                ?.takeIf { it in profileIds },
+        )
+    }
+
     companion object {
         private val PROFILES_KEY = stringPreferencesKey("profiles_v2")
         private val SELECTED_PROFILE_KEY = stringPreferencesKey("selected_profile_v2")
+        private val INCLUDED_PROFILE_IDS_KEY = stringPreferencesKey("included_profile_ids_v1")
         private const val DATA_STORE_FILE_NAME = "ya_paired_servers_v2"
 
         fun create(
