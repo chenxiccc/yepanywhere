@@ -139,6 +139,7 @@ export class ProviderRuntimeHost {
     attachTimeoutMs = DEFAULT_ATTACH_TIMEOUT_MS,
     notifyWrapper = () => {},
     workerPath = workerEntrypoint,
+    terminateGroup = terminateProcessGroup,
   }) {
     this.runtimeDir = runtimeDir;
     this.controlSocketPath = controlSocketPath;
@@ -146,7 +147,9 @@ export class ProviderRuntimeHost {
     this.attachTimeoutMs = attachTimeoutMs;
     this.sendToWrapper = notifyWrapper;
     this.workerPath = workerPath;
+    this.terminateGroup = terminateGroup;
     this.runtimes = new Map();
+    this.runtimeIdsBySessionId = new Map();
     this.retainedProcessGroups = new Map();
     this.registeredServers = new Map();
     this.connections = new Set();
@@ -271,10 +274,10 @@ export class ProviderRuntimeHost {
       case "launch":
         return await this.launch(request);
       case "bind":
-        return this.bind(request);
+        return await this.bind(request);
       case "list":
         return [...this.runtimes.values()]
-          .filter((entry) => entry.sessionId && this.isRuntimeAlive(entry))
+          .filter((entry) => entry.sessionId && this.isRuntimeClaimable(entry))
           .map(publicRuntimeEntry);
       case "claim":
         return this.claim(request);
@@ -306,6 +309,18 @@ export class ProviderRuntimeHost {
     return isOwnedProcessGroupAlive(entry.processGroup);
   }
 
+  isRuntimeClaimable(entry) {
+    return entry.state !== "closing" && this.isRuntimeAlive(entry);
+  }
+
+  runtimeForSession(sessionId) {
+    const runtimeId = this.runtimeIdsBySessionId.get(sessionId);
+    if (!runtimeId) return undefined;
+    const entry = this.runtimes.get(runtimeId);
+    if (!entry) this.runtimeIdsBySessionId.delete(sessionId);
+    return entry;
+  }
+
   async launch(request) {
     if (this.shuttingDown) {
       throw new Error("Provider runtime host is shutting down");
@@ -316,6 +331,25 @@ export class ProviderRuntimeHost {
     }
     const providerName = this.requireString(request.providerName, "providerName");
     const projectPath = this.requireString(request.projectPath, "projectPath");
+    const sessionId =
+      typeof request.sessionId === "string" && request.sessionId
+        ? request.sessionId
+        : undefined;
+    if (sessionId) {
+      const existing = this.runtimeForSession(sessionId);
+      if (existing) {
+        if (this.isRuntimeClaimable(existing)) {
+          throw new Error(`Provider session ${sessionId} already has a runtime`);
+        }
+        await this.terminateRuntime(
+          existing.runtimeId,
+          "replace stale provider session runtime",
+        );
+        if (this.runtimeForSession(sessionId)) {
+          throw new Error(`Provider session ${sessionId} already has a runtime`);
+        }
+      }
+    }
     const runtimeId = randomUUID();
     const socketPath = join(
       this.runtimeDir,
@@ -346,10 +380,7 @@ export class ProviderRuntimeHost {
 
     const entry = {
       runtimeId,
-      sessionId:
-        typeof request.sessionId === "string" && request.sessionId
-          ? request.sessionId
-          : undefined,
+      sessionId,
       providerName,
       projectPath,
       socketPath,
@@ -372,6 +403,7 @@ export class ProviderRuntimeHost {
       terminationPromise: null,
     };
     this.runtimes.set(runtimeId, entry);
+    if (sessionId) this.runtimeIdsBySessionId.set(sessionId, runtimeId);
     this.notifyWrapper({
       type: "runtimeLaunched",
       runtimeId,
@@ -382,9 +414,7 @@ export class ProviderRuntimeHost {
     });
 
     child.on("message", (message) => {
-      try {
-        this.handleWorkerMessage(entry, message);
-      } catch (error) {
+      void this.handleWorkerMessage(entry, message).catch((error) => {
         process.stderr.write(
           `[ProviderRuntimeHost] Worker ${runtimeId} sent an invalid lifecycle update: ${errorMessage(error)}\n`,
         );
@@ -395,7 +425,7 @@ export class ProviderRuntimeHost {
             );
           },
         );
-      }
+      });
     });
     child.on("error", (error) => {
       process.stderr.write(
@@ -462,7 +492,7 @@ export class ProviderRuntimeHost {
     }
   }
 
-  handleWorkerMessage(entry, message) {
+  async handleWorkerMessage(entry, message) {
     if (
       message?.type === "retainedProcessGroup" &&
       Number.isInteger(message.processGroupId) &&
@@ -480,7 +510,10 @@ export class ProviderRuntimeHost {
       return;
     }
     if (message?.type === "bound" && typeof message.sessionId === "string") {
-      this.bind({ runtimeId: entry.runtimeId, sessionId: message.sessionId });
+      await this.bind({
+        runtimeId: entry.runtimeId,
+        sessionId: message.sessionId,
+      });
       return;
     }
     if (
@@ -530,24 +563,35 @@ export class ProviderRuntimeHost {
     });
   }
 
-  bind(request) {
+  async bind(request) {
     const runtimeId = this.requireString(request.runtimeId, "runtimeId");
     const sessionId = this.requireString(request.sessionId, "sessionId");
     const entry = this.runtimes.get(runtimeId);
-    if (!entry || !this.isRuntimeAlive(entry)) {
+    if (!entry || !this.isRuntimeClaimable(entry)) {
       throw new Error(`Unknown or dead provider runtime ${runtimeId}`);
     }
     if (entry.sessionId && entry.sessionId !== sessionId) {
       throw new Error(`Provider runtime ${runtimeId} is already bound`);
     }
-    const duplicate = [...this.runtimes.values()].find(
-      (candidate) =>
-        candidate.runtimeId !== runtimeId && candidate.sessionId === sessionId,
-    );
-    if (duplicate) {
+    const duplicate = this.runtimeForSession(sessionId);
+    if (duplicate && duplicate.runtimeId !== runtimeId) {
+      if (this.isRuntimeClaimable(duplicate)) {
+        throw new Error(`Provider session ${sessionId} already has a runtime`);
+      }
+      await this.terminateRuntime(
+        duplicate.runtimeId,
+        "replace stale provider session binding",
+      );
+    }
+    if (!this.isRuntimeClaimable(entry)) {
+      throw new Error(`Provider runtime ${runtimeId} ended while binding`);
+    }
+    const replacement = this.runtimeForSession(sessionId);
+    if (replacement && replacement.runtimeId !== runtimeId) {
       throw new Error(`Provider session ${sessionId} already has a runtime`);
     }
     entry.sessionId = sessionId;
+    this.runtimeIdsBySessionId.set(sessionId, runtimeId);
     if (entry.controllerAttached) {
       entry.state = "attached";
       this.clearAttachDeadline(entry);
@@ -564,10 +608,8 @@ export class ProviderRuntimeHost {
     if (!this.registeredServers.has(generation)) {
       throw new Error(`Server generation ${generation} is not registered`);
     }
-    const entry = [...this.runtimes.values()].find(
-      (candidate) => candidate.sessionId === sessionId,
-    );
-    if (!entry || !this.isRuntimeAlive(entry)) return null;
+    const entry = this.runtimeForSession(sessionId);
+    if (!entry || !this.isRuntimeClaimable(entry)) return null;
     const currentGeneration = entry.attachedServerGeneration;
     if (
       currentGeneration &&
@@ -705,7 +747,7 @@ export class ProviderRuntimeHost {
       const targets = new Map(entry.providerProcessGroups);
       targets.set(entry.processGroupId, entry.processGroup);
       const results = await Promise.allSettled(
-        [...targets.values()].map(terminateProcessGroup),
+        [...targets.values()].map(this.terminateGroup),
       );
       const failures = results.filter((result) => result.status === "rejected");
       if (failures.length > 0) {
@@ -715,12 +757,23 @@ export class ProviderRuntimeHost {
       }
       this.finishRuntimeRemoval(entry, reason);
     })();
-    return await entry.terminationPromise;
+    const attempt = entry.terminationPromise;
+    try {
+      return await attempt;
+    } finally {
+      if (entry.terminationPromise === attempt) entry.terminationPromise = null;
+    }
   }
 
   finishRuntimeRemoval(entry, reason) {
     this.clearAttachDeadline(entry);
     this.runtimes.delete(entry.runtimeId);
+    if (
+      entry.sessionId &&
+      this.runtimeIdsBySessionId.get(entry.sessionId) === entry.runtimeId
+    ) {
+      this.runtimeIdsBySessionId.delete(entry.sessionId);
+    }
     removePathIfPresent(entry.socketPath);
     this.notifyWrapper({
       type: "runtimeExited",
@@ -749,7 +802,7 @@ export class ProviderRuntimeHost {
       );
       const failures = results.filter((result) => result.status === "rejected");
       const retainedResults = await Promise.allSettled(
-        [...this.retainedProcessGroups.values()].map(terminateProcessGroup),
+        [...this.retainedProcessGroups.values()].map(this.terminateGroup),
       );
       this.retainedProcessGroups.clear();
       failures.push(

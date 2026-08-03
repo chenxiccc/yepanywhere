@@ -178,6 +178,14 @@ tracks canonical YA session identity, fences controller generations, launches
 workers, applies attach deadlines, and reaps worker process groups. It does not
 import provider adapters or normalize messages.
 
+One canonical YA session id has at most one claimable worker. The host reserves
+that identity while a worker starts and until terminal cleanup succeeds. A
+closing or dead worker is never returned by list or claim; launch or late bind
+may reuse its identity only after the stale owner is successfully reaped. A
+failed cleanup attempt remains explicit but does not memoize failure forever:
+later bind, launch, attach-timeout, or terminal shutdown retries the same
+bounded cleanup before another worker can own the session.
+
 Each worker is the smallest complete live provider owner. It imports the
 provider implementation in its own process and constructs the real
 `AgentSession`, including its `MessageQueue`, iterator, SDK query or protocol

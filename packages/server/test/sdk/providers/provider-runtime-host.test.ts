@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 // @ts-expect-error The wrapper lifecycle host intentionally runs as plain ESM.
 import { ProviderRuntimeHost } from "../../../../../scripts/provider-runtime-host.mjs";
 import {
@@ -40,6 +40,7 @@ function processGroupAlive(processGroupId: number): boolean {
 
 afterEach(async () => {
   closeProviderRuntimeHostRegistration();
+  vi.restoreAllMocks();
   await Promise.all(
     temporaryPaths
       .splice(0)
@@ -74,7 +75,7 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
       },
       owner,
     );
-    host.bind({ runtimeId: launched.runtimeId, sessionId: "session-1" });
+    await host.bind({ runtimeId: launched.runtimeId, sessionId: "session-1" });
     host.confirmAttach({ runtimeId: launched.runtimeId, generation: "one" });
     expect(processGroupAlive(launched.processGroupId)).toBe(true);
 
@@ -127,6 +128,164 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
 
     expect(processGroupAlive(launched.processGroupId)).toBe(false);
     expect(host.runtimes.size).toBe(0);
+  });
+
+  it("refuses to launch a second live runtime for one session", async () => {
+    const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-host-test-"));
+    temporaryPaths.push(runtimeRoot);
+    const host = new ProviderRuntimeHost({
+      runtimeDir: runtimeRoot,
+      controlSocketPath: join(runtimeRoot, "host.sock"),
+      token: "test-token",
+      workerPath: fixtureWorker,
+    });
+    await host.start();
+    const owner = { destroy() {} };
+    host.registeredServers.set("one", owner);
+    const launchRequest = {
+      token: "test-token",
+      protocolVersion: 1,
+      op: "launch",
+      generation: "one",
+      providerName: "claude",
+      projectPath: runtimeRoot,
+      sessionId: "one-session",
+      options: { cwd: runtimeRoot },
+    };
+    const first = await host.handleRequest(launchRequest, owner);
+    host.confirmAttach({ runtimeId: first.runtimeId, generation: "one" });
+
+    await expect(host.handleRequest(launchRequest, owner)).rejects.toThrow(
+      "Provider session one-session already has a runtime",
+    );
+    expect(host.runtimes.size).toBe(1);
+
+    await host.shutdown("duplicate launch test complete");
+  });
+
+  it("retries failed cleanup before rebinding a closing session", async () => {
+    const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-host-test-"));
+    temporaryPaths.push(runtimeRoot);
+    let cleanupAttempts = 0;
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const host = new ProviderRuntimeHost({
+      runtimeDir: runtimeRoot,
+      controlSocketPath: join(runtimeRoot, "host.sock"),
+      token: "test-token",
+      workerPath: fixtureWorker,
+      terminateGroup: async () => {
+        cleanupAttempts += 1;
+        if (cleanupAttempts === 1) {
+          throw new Error("simulated cleanup failure");
+        }
+      },
+    });
+    await host.start();
+    const owner = { destroy() {} };
+    host.registeredServers.set("one", owner);
+    const first = await host.handleRequest(
+      {
+        token: "test-token",
+        protocolVersion: 1,
+        op: "launch",
+        generation: "one",
+        providerName: "claude",
+        projectPath: runtimeRoot,
+        sessionId: "recover-session",
+        options: { cwd: runtimeRoot },
+      },
+      owner,
+    );
+    host.confirmAttach({ runtimeId: first.runtimeId, generation: "one" });
+
+    await expect(
+      host.terminateRuntime(first.runtimeId, "simulated failure"),
+    ).rejects.toThrow("survived cleanup");
+    expect(host.runtimes.get(first.runtimeId)?.state).toBe("closing");
+    expect(host.runtimes.get(first.runtimeId)?.terminationPromise).toBeNull();
+    expect(
+      host.claim({ generation: "one", sessionId: "recover-session" }),
+    ).toBeNull();
+
+    const second = await host.handleRequest(
+      {
+        token: "test-token",
+        protocolVersion: 1,
+        op: "launch",
+        generation: "one",
+        providerName: "claude",
+        projectPath: runtimeRoot,
+        options: { cwd: runtimeRoot },
+      },
+      owner,
+    );
+    await host.bind({
+      runtimeId: second.runtimeId,
+      sessionId: "recover-session",
+    });
+    host.confirmAttach({ runtimeId: second.runtimeId, generation: "one" });
+
+    expect(host.runtimes.has(first.runtimeId)).toBe(false);
+    expect(
+      host.claim({ generation: "one", sessionId: "recover-session" })
+        ?.runtimeId,
+    ).toBe(second.runtimeId);
+    expect(cleanupAttempts).toBe(2);
+
+    await host.shutdown("cleanup retry test complete");
+  });
+
+  it("serializes concurrent launches after stale cleanup", async () => {
+    const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-host-test-"));
+    temporaryPaths.push(runtimeRoot);
+    let cleanupAttempts = 0;
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const host = new ProviderRuntimeHost({
+      runtimeDir: runtimeRoot,
+      controlSocketPath: join(runtimeRoot, "host.sock"),
+      token: "test-token",
+      workerPath: fixtureWorker,
+      terminateGroup: async () => {
+        cleanupAttempts += 1;
+        if (cleanupAttempts === 1) {
+          throw new Error("simulated cleanup failure");
+        }
+      },
+    });
+    await host.start();
+    const owner = { destroy() {} };
+    host.registeredServers.set("one", owner);
+    const launchRequest = {
+      token: "test-token",
+      protocolVersion: 1,
+      op: "launch",
+      generation: "one",
+      providerName: "claude",
+      projectPath: runtimeRoot,
+      sessionId: "replacement-session",
+      options: { cwd: runtimeRoot },
+    };
+    const first = await host.handleRequest(launchRequest, owner);
+    host.confirmAttach({ runtimeId: first.runtimeId, generation: "one" });
+    await expect(
+      host.terminateRuntime(first.runtimeId, "simulated failure"),
+    ).rejects.toThrow("survived cleanup");
+
+    const replacements = await Promise.allSettled([
+      host.handleRequest(launchRequest, owner),
+      host.handleRequest(launchRequest, owner),
+    ]);
+
+    expect(
+      replacements.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+    expect(
+      replacements.filter((result) => result.status === "rejected"),
+    ).toHaveLength(1);
+    expect(host.runtimes.size).toBe(1);
+    expect(cleanupAttempts).toBe(2);
+
+    await host.shutdown("concurrent replacement test complete");
   });
 
   it("reaps a claimed runtime when its controller never attaches", async () => {
