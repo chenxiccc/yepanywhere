@@ -234,6 +234,7 @@ describe("AttachmentStagingService", () => {
       Buffer.from("session attachment"),
     );
     const projectPath = join(stagingRoot, "project");
+    await mkdir(projectPath, { recursive: true });
 
     const files = await service.materializeDraftAttachmentsForSession({
       batchId,
@@ -339,6 +340,7 @@ describe("AttachmentStagingService", () => {
       refs: [ref],
     });
     const projectPath = join(stagingRoot, "project");
+    await mkdir(projectPath, { recursive: true });
 
     const files = await service.materializeQueueAttachmentsForSession({
       queueItemId: "queue-item-a",

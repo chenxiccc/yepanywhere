@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { readFile, rm } from "node:fs/promises";
+import { mkdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { serve } from "@hono/node-server";
@@ -44,6 +44,7 @@ describe("staged upload direct route", () => {
   beforeEach(async () => {
     testDir = join(tmpdir(), `staged-upload-route-${randomUUID()}`);
     projectPath = join(testDir, "project");
+    await mkdir(projectPath, { recursive: true });
     projectId = toUrlProjectId(projectPath);
     server = null;
     const storagePolicy = new ProjectStoragePolicy({

@@ -97,6 +97,19 @@ describe("ProjectStoragePolicy", () => {
     });
   });
 
+  it("does not create a missing selected project directory", async () => {
+    const missingProject = join(projectPath, "missing");
+    const policy = new ProjectStoragePolicy({
+      dataDir,
+      getMode: () => "project",
+    });
+
+    await expect(
+      policy.ensureWriteDirectory(missingProject, "attachments"),
+    ).rejects.toThrow("Could not verify project storage Git state");
+    await expect(stat(missingProject)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("rejects a tracked .yep root", async () => {
     await execFileAsync("git", ["-C", projectPath, "init"]);
     await execFileAsync("git", ["-C", projectPath, "config", "user.email", "test@example.com"]);

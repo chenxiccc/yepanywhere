@@ -310,6 +310,7 @@ describe("ProjectQueueScheduler", () => {
   it("materializes staged attachments before promoting a queued new session", async () => {
     await scheduler.dispose();
     const projectPath = path.join(testDir, "project");
+    await fs.mkdir(projectPath, { recursive: true });
     const storagePolicy = new ProjectStoragePolicy({
       dataDir: path.join(testDir, "data"),
       getMode: () => "project",
