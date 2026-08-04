@@ -1017,3 +1017,5 @@ export {
   encodeRelayMuxDataFrame,
   decodeRelayMuxDataFrame,
 } from "./relay-mux.js";
+
+export * from "./glossary/index.js";

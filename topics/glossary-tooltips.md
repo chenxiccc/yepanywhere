@@ -7,9 +7,10 @@
 
 Topic: glossary-tooltips
 
-Status: planned in
+Status: implementation in progress under
 [`docs/tactical/087-glossary-tooltip-implementation.md`](../docs/tactical/087-glossary-tooltip-implementation.md);
-implementation has not started.
+the shared grammar, artifact compiler, and matcher are complete, while server
+resolution and user-visible integration remain pending.
 
 ## Product contract
 

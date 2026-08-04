@@ -2,8 +2,12 @@
 
 Topic: glossary-tooltips
 
-Status: Planned 2026-08-04. Product and architecture decisions below are
-settled; implementation has not started.
+Status: In progress 2026-08-04. Steps 1–2 are implemented: the shared package
+parses the first glossary table, expands the bounded phrase grammar, compiles a
+versioned multi-pattern trie, and returns source-aligned deterministic matches.
+The server resolver/cache, compatibility-gated artifact route, background
+client readiness, render integration, interaction, and surface parity remain
+pending.
 
 ## Goal and governing contract
 
