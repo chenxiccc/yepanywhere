@@ -199,6 +199,52 @@ source image when none has yet been featured, and becomes **− Gallery** while
 open. With the gallery setting disabled, manual and automatic per-image
 expansion retain their ordinary full inline presentation.
 
+### Proposed: galleries for adjacent image-producing activities
+
+Status: proposal only; the implemented gallery still has the eligibility
+boundary above.
+
+Adjacent `ViewImage` actions and provider-neutral tool-result image rows should
+eventually receive the same compact gallery and full-screen viewer treatment as
+image links embedded in assistant text. This is not merely a matter of adding
+their URLs to the turn-level image collector. A linked image is a reference
+inside prose whose source position remains visible; a tool image is itself an
+ordered activity row, with tool identity, status, disclosure state, and result
+semantics that must not disappear when its preview moves into a gallery.
+
+The proposed owner is therefore an outline-level image-activity group created
+at the render-item/segment projection boundary:
+
+- A contiguous run of completed image-bearing activities within one assistant
+  turn forms one group when it contains at least two eligible images. One tool
+  result may contribute several images. A single-image run keeps its ordinary
+  row. Eligibility comes from normalized image media or an explicit
+  `ViewImage` result, not filename or tool-name guessing.
+- The group retains a source-ordered outline entry for every contributing
+  activity and owns one gallery over their images. A non-image activity or
+  prose boundary ends the run; the grouping must not pull separated actions
+  together merely because they occurred in the same turn.
+- Gallery packing may reorder thumbnails under the existing compact-layout
+  rules, but it must never reorder the activity outline. Each thumbnail keeps a
+  stable mapping to its source render item, tool/media identity, and original
+  position. Captions and return-to-source navigation target that outline entry,
+  while viewer previous/next order remains the original image order.
+- Collapsing the gallery restores the source-ordered activity presentation and
+  its normal media controls. Expanding it may relocate previews, but entering
+  or leaving Conversation View must not erase user-selected disclosure state;
+  keyed state restoration is sufficient and retaining the same mounted DOM
+  instances is only a possible optimization.
+- Conversation View treats the image-activity group as one activity-outline
+  unit. Expanding that unit reveals both its ordered action entries and the
+  related gallery rather than regenerating an unrelated collection of image
+  rows.
+
+This preserves the semantic trace while allowing the same compact visual
+treatment for consecutive screenshot/view operations. The grouping and stable
+image-to-action mapping need to land before broadening the gallery candidate
+collector; scraping tool-result rows directly into the existing text-image
+gallery would make ordering and disclosure behavior accidental.
+
 The original image links remain at their original positions in the turn text.
 Activating an image link opens that image directly in the full-screen viewer
 with the complete turn gallery as navigation context. It does not change the
