@@ -1,0 +1,23 @@
+.term {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: color-mix(in srgb, var(--link-color) 72%, currentColor);
+  font: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  letter-spacing: inherit;
+  text-decoration: none;
+  cursor: help;
+}
+
+.term:hover,
+.term:active,
+.term:focus-visible {
+  color: var(--link-color);
+}
+
+.term:focus-visible {
+  outline: 1px solid currentColor;
+  outline-offset: 1px;
+}

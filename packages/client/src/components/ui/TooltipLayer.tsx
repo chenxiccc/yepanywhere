@@ -31,6 +31,7 @@ interface VisibleTooltip {
   text: string;
   anchorX: number;
   anchorY: number;
+  forcedThemed: boolean;
 }
 
 interface PointerPosition {
@@ -288,11 +289,19 @@ export function TooltipLayer() {
   }, [hide]);
 
   const show = useCallback(
-    (target: Element, anchorX: number, anchorY: number) => {
+    (
+      target: Element,
+      anchorX: number,
+      anchorY: number,
+      forcedThemed = false,
+    ) => {
       showTimerRef.current = null;
       if (activeTargetRef.current !== target || !target.isConnected) return;
       const currentText =
-        target.getAttribute("data-tooltip") ?? detachTitle(target);
+        target.getAttribute("data-tooltip") ??
+        (forcedThemed
+          ? (target.getAttribute("title") ?? "")
+          : detachTitle(target));
       if (!currentText.trim()) return;
       if (repeatsFullyVisibleContent(target, currentText)) {
         movementDismissedTargetRef.current = target;
@@ -313,6 +322,7 @@ export function TooltipLayer() {
         text: currentText,
         anchorX: resolvedAnchorX,
         anchorY: resolvedAnchorY,
+        forcedThemed,
       });
     },
     [detachTitle, dismissUntilDeparture, hide],
@@ -381,6 +391,87 @@ export function TooltipLayer() {
   );
 
   useEffect(() => subscribeTooltipSuppression(hide), [hide]);
+
+  useEffect(() => {
+    const glossaryTarget = (node: EventTarget | null): HTMLElement | null => {
+      if (!(node instanceof Element)) return null;
+      const target = node.closest<HTMLElement>("[data-glossary-term]");
+      return target?.dataset.tooltip || target?.title ? target : null;
+    };
+    const revealAndCopy = (
+      target: HTMLElement,
+      anchorX: number,
+      anchorY: number,
+    ) => {
+      if (hasSelectedText()) return;
+      hide();
+      activeTargetRef.current = target;
+      show(target, anchorX, anchorY, true);
+      void writeClipboardText(target.dataset.tooltip ?? target.title);
+    };
+    const onClick = (event: MouseEvent) => {
+      const target = glossaryTarget(event.target);
+      if (!target || hasSelectedText()) return;
+      event.preventDefault();
+      revealAndCopy(target, event.clientX, event.clientY);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && visibleTooltipRef.current?.forcedThemed) {
+        hide();
+        return;
+      }
+      if (event.key !== "Enter" && event.key !== " ") return;
+      const target = glossaryTarget(event.target);
+      if (!target) return;
+      event.preventDefault();
+      const rect = target.getBoundingClientRect();
+      revealAndCopy(target, rect.left + rect.width / 2, rect.bottom);
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      if (!visibleTooltipRef.current?.forcedThemed) return;
+      const activeTarget = activeTargetRef.current;
+      if (
+        event.target instanceof Node &&
+        (activeTarget?.contains(event.target) ||
+          tooltipRef.current?.contains(event.target))
+      ) {
+        return;
+      }
+      hide();
+    };
+    const onFocusIn = (event: FocusEvent) => {
+      if (tooltipMode !== "native") return;
+      const target = glossaryTarget(event.target);
+      if (!target?.matches(":focus-visible")) return;
+      hide();
+      activeTargetRef.current = target;
+      const rect = target.getBoundingClientRect();
+      show(target, rect.left + rect.width / 2, rect.bottom, true);
+    };
+    const onFocusOut = (event: FocusEvent) => {
+      if (!visibleTooltipRef.current?.forcedThemed) return;
+      if (
+        event.relatedTarget instanceof Node &&
+        activeTargetRef.current?.contains(event.relatedTarget)
+      ) {
+        return;
+      }
+      hide();
+    };
+
+    document.addEventListener("click", onClick);
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("focusin", onFocusIn);
+    document.addEventListener("focusout", onFocusOut);
+    return () => {
+      document.removeEventListener("click", onClick);
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("focusin", onFocusIn);
+      document.removeEventListener("focusout", onFocusOut);
+    };
+  }, [hide, show, tooltipMode]);
 
   useEffect(() => {
     const onComposerInput = (event: Event) => {
@@ -726,7 +817,9 @@ export function TooltipLayer() {
     });
   }, [visible]);
 
-  if (tooltipMode !== "themed" || !visible) return null;
+  if ((!visible?.forcedThemed && tooltipMode !== "themed") || !visible) {
+    return null;
+  }
   return createPortal(
     <div
       ref={tooltipRef}

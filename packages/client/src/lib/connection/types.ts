@@ -261,6 +261,9 @@ export interface Connection {
    */
   subscribeActivity(handlers: StreamHandlers): Subscription;
 
+  /** Subscribe to one project's glossary path snapshot and later changes. */
+  subscribeGlossary(projectId: string, handlers: StreamHandlers): Subscription;
+
   /**
    * Subscribe to focused file-change events for a specific session file.
    *

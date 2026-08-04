@@ -32,6 +32,7 @@ import {
   UploadChunkError,
   decodeUploadChunkPayload,
   encodeJsonFrame,
+  isUrlProjectId,
   isSrpClientHello,
   isSrpClientProof,
   isSrpSessionResume,
@@ -44,6 +45,7 @@ import type { DeviceBridgeService } from "../device/DeviceBridgeService.js";
 import { getLogger } from "../logging/logger.js";
 import { AUTHENTICATED_SRP_TRANSPORT } from "../middleware/authenticated-transport.js";
 import { WS_INTERNAL_AUTHENTICATED } from "../middleware/internal-auth.js";
+import type { ProjectGlossarySubscriptionManager } from "../projects/projectGlossarySubscriptionManager.js";
 import type {
   RemoteAccessService,
   RemoteSessionService,
@@ -260,6 +262,8 @@ export interface RelayHandlerDeps {
   browserProfileService?: BrowserProfileService;
   /** Focused session watch manager for per-session targeted file watching (optional) */
   focusedSessionWatchManager?: FocusedSessionWatchManager;
+  /** Project glossary path subscriptions and their reference-counted watchers. */
+  projectGlossarySubscriptionManager?: ProjectGlossarySubscriptionManager;
   /** Emulator bridge service for Android emulator streaming (optional) */
   deviceBridgeService?: DeviceBridgeService;
   /** Speech backend registry for relayed streaming STT (optional) */
@@ -731,10 +735,114 @@ export function handleSessionWatchSubscribe(
   );
 }
 
+/** Subscribe to the complete glossary-path set and later changes for a project. */
+export async function handleGlossarySubscribe(
+  subscriptions: Map<string, () => void>,
+  msg: RelaySubscribe,
+  send: SendFn,
+  manager?: ProjectGlossarySubscriptionManager,
+): Promise<void> {
+  const { subscriptionId, projectId } = msg;
+  if (!manager) {
+    send({
+      type: "response",
+      id: subscriptionId,
+      status: 503,
+      body: { error: "Glossary subscription service unavailable" },
+    });
+    return;
+  }
+  if (!projectId || !isUrlProjectId(projectId)) {
+    send({
+      type: "response",
+      id: subscriptionId,
+      status: 400,
+      body: { error: "Valid projectId required for glossary channel" },
+    });
+    return;
+  }
+
+  let eventId = 0;
+  let opened = false;
+  let cancelled = false;
+  let heartbeatInterval: NodeJS.Timeout | null = null;
+  let release: (() => void) | null = null;
+  const buffered: Array<{ eventType: string; data: unknown }> = [];
+  const sendEvent = (eventType: string, data: unknown) => {
+    if (!opened) {
+      buffered.push({ eventType, data });
+      return;
+    }
+    send({
+      type: "event",
+      subscriptionId,
+      eventType,
+      eventId: String(eventId++),
+      data,
+    });
+  };
+
+  const cleanup = () => {
+    cancelled = true;
+    if (heartbeatInterval) clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
+    release?.();
+    release = null;
+  };
+  subscriptions.set(subscriptionId, cleanup);
+
+  try {
+    release = await manager.subscribe(projectId, (event) => {
+      sendEvent(event.type, event);
+    });
+  } catch (error) {
+    if (subscriptions.get(subscriptionId) === cleanup) {
+      subscriptions.delete(subscriptionId);
+    }
+    if (cancelled) return;
+    send({
+      type: "response",
+      id: subscriptionId,
+      status:
+        error instanceof Error && error.message === "Project not found"
+          ? 404
+          : 500,
+      body: {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Glossary subscription failed",
+      },
+    });
+    return;
+  }
+  if (cancelled || subscriptions.get(subscriptionId) !== cleanup) {
+    release();
+    release = null;
+    return;
+  }
+
+  opened = true;
+  send({
+    type: "event",
+    subscriptionId,
+    eventType: "connected",
+    eventId: String(eventId++),
+    data: { timestamp: new Date().toISOString() },
+  });
+  for (const event of buffered) sendEvent(event.eventType, event.data);
+  heartbeatInterval = setInterval(() => {
+    sendEvent("heartbeat", { timestamp: new Date().toISOString() });
+  }, 30_000);
+  getLogger().debug(
+    `[WS Relay] Subscribed to glossary project=${projectId} (${subscriptionId})`,
+  );
+}
+
 /**
  * Handle a subscribe message.
  */
-export function handleSubscribe(
+export async function handleSubscribe(
   subscriptions: Map<string, () => void>,
   msg: RelaySubscribe,
   send: SendFn,
@@ -742,10 +850,11 @@ export function handleSubscribe(
   eventBus: EventBus,
   connState: ConnectionState,
   focusedSessionWatchManager?: FocusedSessionWatchManager,
+  projectGlossarySubscriptionManager?: ProjectGlossarySubscriptionManager,
   connectedBrowsers?: ConnectedBrowsersService,
   browserProfileService?: BrowserProfileService,
   closeConnection?: () => void,
-): void {
+): Promise<void> {
   const { subscriptionId, channel } = msg;
 
   if (subscriptions.has(subscriptionId)) {
@@ -782,6 +891,15 @@ export function handleSubscribe(
         msg,
         send,
         focusedSessionWatchManager,
+      );
+      break;
+
+    case "glossary":
+      await handleGlossarySubscribe(
+        subscriptions,
+        msg,
+        send,
+        projectGlossarySubscriptionManager,
       );
       break;
 
@@ -1332,6 +1450,7 @@ export async function handleMessage(
           eventBus,
           connState,
           deps.focusedSessionWatchManager,
+          deps.projectGlossarySubscriptionManager,
           deps.connectedBrowsers,
           deps.browserProfileService,
           () => ws.close(4004, "Legacy browser profile revoked"),

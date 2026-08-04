@@ -28,6 +28,7 @@ import { createPortal } from "react-dom";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import { ProjectSelector } from "../components/ProjectSelector";
+import { GlossaryProjectBoundary } from "../contexts/GlossaryContext";
 import { SourceReviewDefaultSessionContext } from "../contexts/SourceReviewDefaultSessionContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import {
@@ -588,23 +589,25 @@ export function GitStatusPage() {
           ) : gitStatus && !gitStatus.isGitRepo ? (
             <div className="git-status-empty">{t("gitStatusNotRepo")}</div>
           ) : gitStatus && effectiveProjectId && supportsSourceReview ? (
-            <SourceReviewDefaultSessionContext.Provider value={defaultSession}>
-              <GitStatusContent
-                key={`${sourceKey}:${effectiveProjectId}`}
-                status={gitStatus}
-                projectId={effectiveProjectId}
-                isWideScreen={isWideScreen}
-                supportsProjections={supportsSourceReviewProjections}
-                supportsLastEditor={supportsLastEditor}
-                gitActions={gitActions}
-                reviewComments={reviewComments}
-                reviewsEnabled={reviewsEnabled}
-                showReviewModal={showReviewModal}
-                onOpenReview={() => setShowReviewModal(true)}
-                onCloseReview={() => setShowReviewModal(false)}
-                t={t}
-              />
-            </SourceReviewDefaultSessionContext.Provider>
+            <GlossaryProjectBoundary projectId={effectiveProjectId}>
+              <SourceReviewDefaultSessionContext.Provider value={defaultSession}>
+                <GitStatusContent
+                  key={`${sourceKey}:${effectiveProjectId}`}
+                  status={gitStatus}
+                  projectId={effectiveProjectId}
+                  isWideScreen={isWideScreen}
+                  supportsProjections={supportsSourceReviewProjections}
+                  supportsLastEditor={supportsLastEditor}
+                  gitActions={gitActions}
+                  reviewComments={reviewComments}
+                  reviewsEnabled={reviewsEnabled}
+                  showReviewModal={showReviewModal}
+                  onOpenReview={() => setShowReviewModal(true)}
+                  onCloseReview={() => setShowReviewModal(false)}
+                  t={t}
+                />
+              </SourceReviewDefaultSessionContext.Provider>
+            </GlossaryProjectBoundary>
           ) : gitStatus && effectiveProjectId ? (
             <GitStatusCompatibilityContent
               key={`${sourceKey}:${effectiveProjectId}:compatibility`}

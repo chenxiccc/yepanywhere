@@ -765,6 +765,50 @@ export class RelayProtocol {
     };
   }
 
+  /** Subscribe to one project's glossary path snapshot and later changes. */
+  subscribeGlossary(projectId: string, handlers: StreamHandlers): Subscription {
+    const subscriptionId = generateId();
+    let closed = false;
+    this.subscriptions.set(subscriptionId, handlers);
+
+    this.transport
+      .ensureConnected()
+      .then(() => {
+        if (closed) return;
+        const msg: RelaySubscribe = {
+          type: "subscribe",
+          subscriptionId,
+          channel: "glossary",
+          projectId,
+        };
+        this.transport.sendMessage(msg);
+      })
+      .catch((err) => {
+        handlers.onError?.(err);
+        this.subscriptions.delete(subscriptionId);
+      });
+
+    return {
+      close: () => {
+        if (closed) return;
+        closed = true;
+        this.subscriptions.delete(subscriptionId);
+        this.trackRecentlyClosed(subscriptionId);
+        if (this.transport.isConnected()) {
+          try {
+            this.transport.sendMessage({
+              type: "unsubscribe",
+              subscriptionId,
+            });
+          } catch {
+            // Ignore send errors on close.
+          }
+        }
+        handlers.onClose?.();
+      },
+    };
+  }
+
   /**
    * Subscribe to focused file-change events for a specific session.
    */

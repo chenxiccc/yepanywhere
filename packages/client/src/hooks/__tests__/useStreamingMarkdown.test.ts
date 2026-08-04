@@ -257,4 +257,56 @@ describe("useStreamingMarkdown", () => {
     flushBufferedUpdates();
     expect(pending.innerHTML).toBe("ABC");
   });
+
+  it("reformats retained source HTML when the transform changes", () => {
+    const { result, rerender } = renderHook(
+      ({ prefix }: { prefix: string }) =>
+        useStreamingMarkdown({
+          transformHtml: (html) => `${prefix}${html}`,
+        }),
+      { initialProps: { prefix: "first:" } },
+    );
+    attachRefs(result.current);
+
+    act(() => {
+      result.current.onAugment({
+        blockIndex: 0,
+        html: "<p>Stable source</p>",
+        type: "paragraph",
+      });
+      result.current.onPending({ html: "pending" });
+    });
+    flushBufferedUpdates();
+    expect(container.children[0]?.innerHTML).toBe("first:<p>Stable source</p>");
+    expect(pending.innerHTML).toBe("first:pending");
+
+    act(() => rerender({ prefix: "second:" }));
+
+    expect(container.children[0]?.innerHTML).toBe(
+      "second:<p>Stable source</p>",
+    );
+    expect(pending.innerHTML).toBe("second:pending");
+  });
+
+  it("captures untransformed source HTML for persistence", () => {
+    const { result } = renderHook(() =>
+      useStreamingMarkdown({
+        transformHtml: (html) => `<mark>${html}</mark>`,
+      }),
+    );
+    attachRefs(result.current);
+
+    act(() => {
+      result.current.onAugment({
+        blockIndex: 0,
+        html: "<p>Persist me</p>",
+        type: "paragraph",
+      });
+    });
+
+    expect(container.innerHTML).toContain("<mark>");
+    expect(result.current.captureHtml()).toBe(
+      '<div class="streaming-block" data-block-index="0"><p>Persist me</p></div>',
+    );
+  });
 });

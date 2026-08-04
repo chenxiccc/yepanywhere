@@ -175,6 +175,8 @@
   "appearanceOutputToolPreviewLinesUnit": "lines",
   "appearanceWiderActivityPreviewsTitle": "Wider activity previews",
   "appearanceWiderActivityPreviewsDescription": "In Conversation view, move thinking to the right to make room for longer activity previews.",
+  "appearanceGlossaryHintsTitle": "Glossary hints",
+  "appearanceGlossaryHintsDescription": "Show definitions for project glossary terms in rendered Markdown.",
   "appearanceOutputPreviewLabel": "Output preview",
   "appearanceOutputSpecimenLabel": "Specimen",
   "appearanceOutputTypographyReset": "Reset typography",

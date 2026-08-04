@@ -6,6 +6,7 @@ import {
   CLAUDE_GATEWAY_AUTOSTART_CAPABILITY,
   CLAUDE_GATEWAY_CAPABILITY,
   GIT_DIRTY_FILE_EDITOR_CAPABILITY,
+  GLOSSARY_TOOLTIPS_CAPABILITY,
   GIT_SOURCE_REVIEW_CAPABILITY,
   GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,
   HOST_AWAKE_CONTROL_CAPABILITY,
@@ -20,6 +21,10 @@ import {
 import { getServerCapabilities } from "../../src/routes/version.js";
 
 describe("Version Routes", () => {
+  it("advertises compiled glossary artifacts", () => {
+    expect(getServerCapabilities()).toContain(GLOSSARY_TOOLTIPS_CAPABILITY);
+  });
+
   it("advertises approval audit log control", () => {
     expect(getServerCapabilities()).toContain(APPROVAL_AUDIT_LOG_CAPABILITY);
   });

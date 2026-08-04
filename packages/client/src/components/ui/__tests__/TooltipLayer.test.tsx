@@ -608,9 +608,7 @@ describe("TooltipLayer", () => {
     view.rerender(
       <>
         <TooltipLayer />
-        <button type="button">
-          Target
-        </button>
+        <button type="button">Target</button>
       </>,
     );
     await act(async () => Promise.resolve());
@@ -766,6 +764,97 @@ describe("TooltipLayer", () => {
     act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS * 2));
 
     expect(target.getAttribute("title")).toBe("Browser tip");
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  });
+
+  it("reveals and copies a glossary definition even in native mode", () => {
+    localStorage.setItem(UI_KEYS.tooltipMode, "native");
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    render(
+      <>
+        <TooltipLayer />
+        <span
+          data-glossary-term="true"
+          title="oracle — Best published system."
+          role="button"
+          tabIndex={0}
+        >
+          oracle
+        </span>
+      </>,
+    );
+    const term = screen.getByRole("button", { name: "oracle" });
+
+    fireEvent.click(term, { clientX: 20, clientY: 30 });
+
+    expect(screen.getByRole("tooltip").textContent).toBe(
+      "oracle — Best published system.",
+    );
+    expect(writeText).toHaveBeenCalledWith("oracle — Best published system.");
+    expect(term.getAttribute("title")).toBe(
+      "oracle — Best published system.",
+    );
+    expect(term.getAttribute("data-tooltip")).toBeNull();
+  });
+
+  it("reveals a native-mode glossary definition on keyboard focus", () => {
+    localStorage.setItem(UI_KEYS.tooltipMode, "native");
+    render(
+      <>
+        <TooltipLayer />
+        <span
+          data-glossary-term="true"
+          title="oracle — Best published system."
+          role="button"
+          tabIndex={0}
+        >
+          oracle
+        </span>
+      </>,
+    );
+    const term = screen.getByRole("button", { name: "oracle" });
+    vi.spyOn(term, "matches").mockImplementation(
+      (selector) => selector === ":focus-visible",
+    );
+
+    fireEvent.focusIn(term);
+
+    expect(screen.getByRole("tooltip").textContent).toBe(
+      "oracle — Best published system.",
+    );
+  });
+
+  it("preserves glossary text selection instead of activating it", () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    vi.spyOn(document, "getSelection").mockReturnValue({
+      isCollapsed: false,
+      toString: () => "oracle",
+    } as Selection);
+    render(
+      <>
+        <TooltipLayer />
+        <span
+          data-glossary-term="true"
+          data-tooltip="oracle — Best published system."
+          role="button"
+          tabIndex={0}
+        >
+          oracle
+        </span>
+      </>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "oracle" }));
+
+    expect(writeText).not.toHaveBeenCalled();
     expect(screen.queryByRole("tooltip")).toBeNull();
   });
 });

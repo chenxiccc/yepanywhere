@@ -676,6 +676,7 @@ export const FileViewer = memo(function FileViewer({
         return (
           <MarkdownPreview
             html={renderedMarkdownHtml}
+            sourcePath={filePath}
             density={markdownDensity}
             ariaLabel={t("fileViewerPreview" as never)}
             onClick={handleLocalResourceClick}

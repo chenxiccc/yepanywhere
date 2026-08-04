@@ -9,9 +9,10 @@ Topic: glossary-tooltips
 
 Status: implementation in progress under
 [`docs/tactical/087-glossary-tooltip-implementation.md`](../docs/tactical/087-glossary-tooltip-implementation.md);
-the shared grammar, artifact compiler, matcher, and in-memory server resolver
-are complete, while the capability-gated route and user-visible integration
-remain pending.
+the shared grammar, resolver, capability-gated delivery, tab-local cache,
+annotation boundary, interaction, and authenticated render surfaces are
+implemented. Standalone local documents, explicitly authorized public-share
+artifacts, and final performance/visual acceptance remain pending.
 
 ## Product contract
 
@@ -48,9 +49,8 @@ their placement; the governing glossary opts into their entries by referring
 to them.
 
 Project-affiliated prose without a source-file path uses the project-root
-`GLOSSARY.md`. A multi-file diff resolves the glossary independently for each
-file section from that section's target path. A `GLOSSARY.md` never annotates
-itself.
+`GLOSSARY.md`. A selected Source Control file resolves from its displayed
+target path. A `GLOSSARY.md` never annotates itself.
 
 Any project-local path mentioned in a parsed `GLOSSARY.md` whose basename is
 `GLOSSARY.md` is an include edge. Includes are transitive. For each mention,
@@ -146,12 +146,18 @@ Matching is case-insensitive over normalized Unicode text. Runs of Markdown
 whitespace normalize to one separator for matching while retaining source
 offsets for annotation. Punctuation is literal: punctuation and spacing inside
 a declared phrase are consumed by that phrase and do not break it.
+Hyphen-minus, Unicode hyphen, and non-breaking hyphen are word characters at
+phrase edges, so hyphenated and space-separated forms are distinct unless the
+term cell declares both as comma-separated alternatives. A Markdown list
+marker still precedes an eligible match because its following space is the
+boundary.
 
 A candidate begins and ends at an ordinary text boundary—document edge or a
-Unicode whitespace/punctuation boundary—so a glossary term does not match as a
-substring of a larger word. Those anchors apply only to the phrase edges.
-Internal punctuation and whitespace remain part of the literal match, allowing
-a declared multi-token phrase to span them in one pass.
+Unicode whitespace/punctuation boundary other than a lexical hyphen—so a
+glossary term does not match as a substring of a larger or hyphenated word.
+Those anchors apply only to the phrase edges. Internal punctuation and
+whitespace remain part of the literal match, allowing a declared multi-token
+phrase to span them in one pass.
 
 Matching follows contiguous visible prose and may cross ordinary inline
 formatting boundaries. Links, inline and fenced code, raw HTML, generated
@@ -253,10 +259,8 @@ are bounded ordinary work.
 Governing-file and include-candidate discovery reuse
 `ProjectPathIndex.findExisting` from
 `packages/server/src/projects/projectPathIndex.ts`. Its lazy directory listings
-and directory-mtime validation already maintain current presence and absence
-for project-relative paths; the glossary resolver should submit each resolution
-batch and select the nearest governing `GLOSSARY.md`, not add another project-
-tree watcher or directory cache. See
+and directory-mtime validation maintain current presence and absence for each
+single source-context resolution. See
 [project-path-links](project-path-links.md) for that index's contract.
 
 Directory mtime identifies which glossary path exists, but editing an existing
@@ -269,11 +273,27 @@ a changed directory listing re-runs governing or include selection. Successful
 and failed bounded compilations are cached by the same dependency identity so
 a bad graph cannot cause repeated work on every render.
 
-The existing successful-file-mutation observation may eagerly evict a parsed
-glossary and every compiled closure depending on it when the touched path is a
-`GLOSSARY.md`. This is a low-priority optimization only. File-identity checks
-remain authoritative because human edits and unobserved shell mutations can
-bypass the session signal.
+While at least one client subscribes to a project's glossary paths, the server
+holds one reference-counted project watcher. Subscription begins with the
+complete project-relative set of files named exactly `GLOSSARY.md` and a
+monotonic process-local generation. It then emits one `create`, `modify`, or
+`delete` notification for each glossary-path change. The watcher is independent
+of source paths previously queried by the client and is torn down when its last
+subscriber disconnects. A bounded periodic check covers missed native watcher
+events while the subscription remains live; it must not survive without a live
+subscriber.
+
+The client maintains the glossary-path hierarchy. Modification invalidates
+cached artifacts whose dependency list names the changed glossary. Creation,
+deletion, or rename invalidates cached source contexts below the changed
+glossary's directory because nearest-governing resolution may have changed.
+An initial subscription snapshot after reconnect lets the client detect missed
+changes without retaining per-source subscription state on the server.
+
+File-identity checks in the artifact resolver remain authoritative even with
+notifications: an artifact request validates the actual current dependency
+graph before reuse. Notifications provide prompt cache invalidation; they do
+not weaken the resolver's correctness boundary.
 
 All glossary-specific cache state may disappear on server restart. If later
 measurement shows cold parsing or compilation to be material, a persistent
@@ -305,12 +325,16 @@ block first paint. Aggregate limits and ordinary unannotated rendering remain
 the fallback when a graph cannot be compiled safely.
 
 Client render boundaries consume the same serializable compiled artifact
-rather than implementing another parser or matcher. For server-rendered HTML,
-annotation transforms the sanitized renderer output before insertion; it is
-not a document-wide mounted-DOM rewrite. The implementation must complete the
-optional-feature client/server compatibility review before choosing its route,
-response field, and capability name. An older server's missing capability
-means the client makes no unsupported matcher request and renders ordinary
+rather than implementing another parser or matcher. The authenticated delivery
+contract is one optional-source request,
+`GET /api/projects/:projectId/glossary-artifact[?sourcePath=...]`, plus one
+project-scoped glossary-path subscription. Omitting `sourcePath` selects the
+project-root assistant-prose context. Subscription starts with all glossary
+paths and their generation, then reports additions, modifications, and
+deletions. For server-rendered HTML, annotation transforms the sanitized
+renderer output before insertion; it is not a document-wide mounted-DOM
+rewrite. An older server's missing `glossary-tooltips` capability means the
+client makes no unsupported request or subscription and renders ordinary
 Markdown without glossary annotations.
 
 ## Render-boundary implementation plan

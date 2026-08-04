@@ -182,6 +182,7 @@ export interface SourceTransport {
     options?: SessionWatchSubscriptionOptions,
   ): Subscription;
   subscribeActivity(handlers: StreamHandlers): Subscription;
+  subscribeGlossary(projectId: string, handlers: StreamHandlers): Subscription;
 
   /**
    * Source-level reconnect action. Localhost implementations no-op because

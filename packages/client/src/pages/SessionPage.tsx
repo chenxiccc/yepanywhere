@@ -60,6 +60,7 @@ import { ToolApprovalPanel } from "../components/ToolApprovalPanel";
 import type { ModalAnchorRect } from "../components/ui/Modal";
 import { ViewerCountIndicator } from "../components/ViewerCountIndicator";
 import { AgentContentProvider } from "../contexts/AgentContentContext";
+import { GlossaryProjectProvider } from "../contexts/GlossaryContext";
 import { RenderModeProvider } from "../contexts/RenderModeContext";
 import { SessionMetadataProvider } from "../contexts/SessionMetadataContext";
 import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
@@ -313,17 +314,19 @@ export function SessionPage({
   // Key ensures component remounts on session change, resetting all state
   // Wrap with StreamingMarkdownProvider for server-rendered markdown streaming
   return (
-    <StreamingMarkdownProvider>
-      <RenderModeProvider key={sessionId}>
-        <SessionPageContent
-          key={sessionId}
-          projectId={projectId}
-          sessionId={sessionId}
-          routeLocation={routeLocation}
-          isDomLingerParked={isDomLingerParked}
-        />
-      </RenderModeProvider>
-    </StreamingMarkdownProvider>
+    <GlossaryProjectProvider projectId={projectId} enabled={!isDomLingerParked}>
+      <StreamingMarkdownProvider>
+        <RenderModeProvider key={sessionId}>
+          <SessionPageContent
+            key={sessionId}
+            projectId={projectId}
+            sessionId={sessionId}
+            routeLocation={routeLocation}
+            isDomLingerParked={isDomLingerParked}
+          />
+        </RenderModeProvider>
+      </StreamingMarkdownProvider>
+    </GlossaryProjectProvider>
   );
 }
 

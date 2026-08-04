@@ -14,9 +14,11 @@ import {
   GLOSSARY_LIMITS,
   compileGlossaryArtifact,
   parseFirstGlossaryTable,
-  type GlossaryArtifact,
-  type GlossaryCompileDiagnostic,
+  type GlossaryArtifactResponse,
+  type GlossaryDependencyIdentity,
   type GlossaryLimits,
+  type GlossaryResolutionDiagnostic,
+  type GlossaryResolutionDiagnosticCode,
   type GlossaryRowInput,
   type ParsedGlossaryTable,
 } from "@yep-anywhere/shared";
@@ -30,48 +32,7 @@ const MAX_PARSED_FILES = 512;
 const MAX_COMPILED_GRAPHS = 128;
 const STABLE_READ_ATTEMPTS = 3;
 
-export type GlossaryResolutionDiagnosticCode =
-  | "escaped-include"
-  | "include-depth-limit"
-  | "included-file-limit"
-  | "invalid-governing-glossary"
-  | "total-byte-limit"
-  | "unresolved-include";
-
-export interface GlossaryResolutionDiagnostic {
-  code: GlossaryResolutionDiagnosticCode;
-  glossaryPath: string;
-  message: string;
-}
-
-export interface GlossaryDependencyIdentity {
-  contentHash: string;
-  path: string;
-  size: number;
-}
-
-export type GlossaryResolutionResult =
-  | {
-      reason:
-        | "governing-glossary-is-source"
-        | "invalid-source-path"
-        | "no-governing-glossary";
-      status: "none";
-    }
-  | {
-      artifact: GlossaryArtifact;
-      dependencies: GlossaryDependencyIdentity[];
-      diagnostics: GlossaryResolutionDiagnostic[];
-      governingPath: string;
-      status: "ready";
-    }
-  | {
-      dependencies: GlossaryDependencyIdentity[];
-      diagnostic: GlossaryCompileDiagnostic | GlossaryResolutionDiagnostic;
-      diagnostics: GlossaryResolutionDiagnostic[];
-      governingPath: string;
-      status: "disabled";
-    };
+export type GlossaryResolutionResult = GlossaryArtifactResponse;
 
 interface FileStatsIdentity {
   ctimeMs: number;
@@ -311,6 +272,30 @@ export class GlossaryIndexService {
     this.compiledGraphs.clear();
   }
 
+  invalidateProject(projectPath: string): void {
+    const projectRoot = resolve(projectPath);
+    for (const glossaryPath of this.parsedFiles.keys()) {
+      if (isContained(projectRoot, glossaryPath)) {
+        this.parsedFiles.delete(glossaryPath);
+      }
+    }
+    for (const governingPath of this.compiledGraphs.keys()) {
+      if (isContained(projectRoot, governingPath)) {
+        this.compiledGraphs.delete(governingPath);
+      }
+    }
+    const requestPrefix = `${projectRoot}\0`;
+    for (const requestKey of this.inFlight.keys()) {
+      if (requestKey.startsWith(requestPrefix))
+        this.inFlight.delete(requestKey);
+    }
+    for (const requestKey of this.canonicalInFlight.keys()) {
+      if (requestKey.startsWith(requestPrefix)) {
+        this.canonicalInFlight.delete(requestKey);
+      }
+    }
+  }
+
   diagnostics(): {
     compiledGraphs: number;
     inFlight: number;
@@ -379,6 +364,7 @@ export class GlossaryIndexService {
         diagnostic,
         diagnostics: [diagnostic],
         governingPath: governingRelative,
+        sourceVersion: null,
         status: "disabled",
       };
     }
@@ -406,6 +392,7 @@ export class GlossaryIndexService {
         diagnostic: closure.fatal,
         diagnostics: closure.diagnostics,
         governingPath: governing.projectRelativePath,
+        sourceVersion: closure.dependencyVersion,
         status: "disabled",
       };
     } else {
@@ -420,6 +407,7 @@ export class GlossaryIndexService {
             dependencies: closure.dependencies,
             diagnostics: closure.diagnostics,
             governingPath: governing.projectRelativePath,
+            sourceVersion: compiled.artifact.sourceVersion,
             status: "ready",
           }
         : {
@@ -427,6 +415,7 @@ export class GlossaryIndexService {
             diagnostic: compiled.diagnostic,
             diagnostics: closure.diagnostics,
             governingPath: governing.projectRelativePath,
+            sourceVersion: closure.dependencyVersion,
             status: "disabled",
           };
     }

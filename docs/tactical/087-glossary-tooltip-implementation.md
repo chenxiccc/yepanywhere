@@ -2,14 +2,13 @@
 
 Topic: glossary-tooltips
 
-Status: In progress 2026-08-04. Steps 1–3 are implemented. The shared package
-parses the first glossary table, expands the bounded phrase grammar, compiles a
-versioned multi-pattern trie, and returns source-aligned deterministic matches.
-The server now resolves the nearest governing glossary and its explicit,
-contained include closure, strongly validates dependency content, and reuses
-bounded successful and failed compilations with single-flight requests. The
-compatibility-gated artifact route, background client readiness, render
-integration, interaction, and surface parity remain pending.
+Status: In progress 2026-08-04. Steps 1–7 and the authenticated portions of
+step 8 are implemented: bounded grammar and matcher, contained resolver and
+cache, capability-gated route and project subscription, tab-local artifact
+state, detached annotation, semantic tooltip interaction, default-off setting,
+and authenticated session/file/tool/Source Control render surfaces. Standalone
+local documents, explicitly authorized public-share artifacts, and step 9
+performance/visual acceptance remain pending.
 
 ## Goal and governing contract
 
@@ -146,17 +145,25 @@ change.
 
 ### Capability and fallback shape
 
-Propose one permanent `glossary-tooltips` server capability and one schema-
-versioned artifact format. The natural authenticated route shape is
-`POST /api/projects/:projectId/glossary-artifacts`, accepting a bounded set of
-project-relative source contexts and returning the governing context key,
-artifact version, dependency identity, serialized automaton, and bounded
-diagnostics for each distinct result.
+Use one permanent `glossary-tooltips` server capability and one schema-versioned
+artifact format. The authenticated request resolves one render context:
+`GET /api/projects/:projectId/glossary-artifact[?sourcePath=...]`. The optional
+project-relative `sourcePath` selects the nearest governing glossary; omission
+selects the root assistant-prose context. The response contains the governing
+path, artifact/dependency version, serialized automaton, dependency paths, and
+bounded diagnostics.
 
-The exact route and fields remain behind the mandatory compatibility review in
-step 4. The absent-capability behavior is already decided: hide or disable the
-unsupported preference, make no glossary request, and render ordinary
-Markdown. Do not broaden an existing capability to cover this contract.
+The same capability owns a project-scoped glossary-path subscription. Its
+initial snapshot contains every project-relative `GLOSSARY.md` path and a
+process-local generation. Subsequent events report each path creation,
+modification, or deletion. A client maps those rare path events onto its own
+bounded source-context artifact cache; the server never retains the set of
+source directories that client queried.
+
+The compatibility review approved this route, subscription, and absent-
+capability behavior: hide or disable the unsupported preference, make no
+glossary request or subscription, and render ordinary Markdown. Do not broaden
+an existing capability to cover this contract.
 
 ### Public shares and standalone documents are explicit boundaries
 
@@ -177,7 +184,7 @@ unscoped project API call or a general DOM text scanner to that document.
 
 | Concern | Current owner | Planned seam |
 | --- | --- | --- |
-| Project-relative existence | `packages/server/src/projects/projectPathIndex.ts` — `getProjectPathIndex`, `findExisting`, `validateDirectory` | Batch ancestor/include candidates; reuse its mtime validation and per-directory single flight |
+| Project-relative existence | `packages/server/src/projects/projectPathIndex.ts` — `getProjectPathIndex`, `findExisting`, `validateDirectory` | Resolve one source context at a time; reuse its mtime validation and per-directory single flight |
 | Safe Markdown parsing | `packages/server/src/augments/safe-markdown.ts` — `renderSafeMarkdown` | Preserve safety/exclusion structure and expose stable annotation boundaries if detached HTML lacks enough token provenance |
 | Completed assistant augments | `packages/server/src/augments/markdown-augments.ts` — `renderMarkdownToHtml`, `augmentTextBlocks` | Continue producing canonical unannotated HTML; client decorates it when an artifact is ready |
 | Streaming assistant augments | `packages/server/src/augments/augment-generator.ts`; `packages/client/src/hooks/useStreamingMarkdown.ts` | Retain original block HTML, transform before insertion, and reapply all live blocks on artifact-version change |
@@ -251,13 +258,13 @@ optional feature. Record which lack the proposed route, fields, and capability.
 Then obtain maintainer approval for this exact shape or its source-informed
 replacement:
 
-> Compatibility review for glossary tooltips: releases `<corpus>` lack
-> `POST /api/projects/:projectId/glossary-artifacts` and the
-> `glossary-tooltips` capability. I propose that permanent capability and a
-> versioned artifact response; without it the client hides or disables
-> Glossary hints, makes no artifact request, and renders ordinary Markdown.
-> Existing capability meanings and older capable behavior remain unchanged.
-> Approve?
+> Compatibility review for glossary tooltips: releases `v0.7.0` and `v0.6.2`
+> lack `GET /api/projects/:projectId/glossary-artifact`, the project glossary-
+> path subscription, and the `glossary-tooltips` capability. The approved
+> permanent capability gates both contracts; without it the client hides or
+> disables Glossary hints, makes no artifact request or subscription, and
+> renders ordinary Markdown. Existing capability meanings and older capable
+> behavior remain unchanged.
 
 After approval, add a dedicated route module, mount it with the project routes
 in `packages/server/src/app.ts`, register its complete contract in
@@ -269,9 +276,17 @@ path-contained; diagnostics must not disclose glossary text or escaped paths.
 
 Add one client artifact store keyed by server identity, project id, governing
 source context, artifact schema version, and dependency version. A relevant
-enabled session/file visit asks the store to ensure its needed contexts. The
+enabled session/file visit asks the store to ensure its needed context. The
 store renders through the initial `empty/not-ready` state, shares promises, and
 publishes immutable ready artifacts to subscribed renderers.
+
+Retain one glossary-path subscription for each actively used project. Seed the
+client's path hierarchy from its initial full-path snapshot, then apply each
+create/modify/delete event. Modification marks entries stale when their
+dependency paths contain the changed glossary. Structural changes mark cached
+source contexts below that glossary directory stale. Reconnect replaces the
+path snapshot and compares generation. Keep the artifact store bounded; do not
+turn previously queried source directories into subscription registrations.
 
 Do not attach this to provider-process activation or server session liveness:
 glossary work is presentation data and must not wake or retain a provider. A
@@ -326,7 +341,7 @@ Wire in this order so each new surface inherits tested primitives:
 
 1. completed and streaming assistant prose, governed by the root glossary;
 2. `FileViewer` full/range Markdown and Read/Write target paths;
-3. Markdown-eligible Edit previews and each multi-file Source Control section;
+3. Markdown-eligible Edit previews and the selected Source Control file;
 4. project-affiliated fixed-font rendered output;
 5. standalone local Markdown documents; and
 6. public-share snapshots/capabilities.

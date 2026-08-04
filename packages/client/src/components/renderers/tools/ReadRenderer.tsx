@@ -296,6 +296,7 @@ function FileModalContent({
     showPreview && markdownHtml ? (
       <MarkdownPreview
         html={markdownHtml}
+        sourcePath={file.filePath}
         density={FILE_MARKDOWN_PREVIEW_BASE_DENSITY}
       />
     ) : highlightedHtml ? (

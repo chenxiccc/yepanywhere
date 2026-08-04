@@ -1506,6 +1506,10 @@ export class SecureConnection implements Connection {
     return this.protocol.subscribeActivity(handlers);
   }
 
+  subscribeGlossary(projectId: string, handlers: StreamHandlers): Subscription {
+    return this.protocol.subscribeGlossary(projectId, handlers);
+  }
+
   subscribeSessionWatch(
     sessionId: string,
     handlers: StreamHandlers,

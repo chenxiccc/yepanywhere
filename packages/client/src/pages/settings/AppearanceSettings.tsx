@@ -1,3 +1,7 @@
+import {
+  GLOSSARY_TOOLTIPS_CAPABILITY,
+  serverHasCapability,
+} from "@yep-anywhere/shared";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ThinkingText } from "../../components/ThinkingText";
@@ -118,6 +122,8 @@ import {
   useTooltipAppearance,
 } from "../../hooks/useTooltipAppearance";
 import { useWiderConversationActivityPreviews } from "../../hooks/useWiderConversationActivityPreviews";
+import { useGlossaryHints } from "../../hooks/useGlossaryHints";
+import { useVersion } from "../../hooks/useVersion";
 
 const OUTPUT_INLINE_MATH_SAMPLE = "$E=mc^2$";
 
@@ -211,6 +217,12 @@ export function AppearanceSettings() {
     widerConversationActivityPreviews,
     setWiderConversationActivityPreviews,
   } = useWiderConversationActivityPreviews();
+  const { glossaryHintsEnabled, setGlossaryHintsEnabled } = useGlossaryHints();
+  const { version: versionInfo } = useVersion();
+  const glossaryHintsSupported = serverHasCapability(
+    versionInfo,
+    GLOSSARY_TOOLTIPS_CAPABILITY,
+  );
   const { hoverCardMaxHeightPx, setHoverCardMaxHeightPx } =
     useHoverCardAppearance();
   const { tooltipMode, tooltipDelayMs, setTooltipMode, setTooltipDelayMs } =
@@ -326,6 +338,7 @@ export function AppearanceSettings() {
       widerConversationActivityPreviews,
       setWiderConversationActivityPreviews,
     ),
+    undoEntry(glossaryHintsEnabled, setGlossaryHintsEnabled),
     undoEntry(tooltipDelayMs, setTooltipDelayMs),
     undoEntry(tooltipMode, setTooltipMode),
     undoEntry(hoverCardMaxHeightPx, setHoverCardMaxHeightPx, (value) =>
@@ -768,6 +781,24 @@ export function AppearanceSettings() {
             </div>
           )}
         </div>
+        {glossaryHintsSupported && (
+          <SettingsItem
+            label={t("appearanceGlossaryHintsTitle")}
+            description={t("appearanceGlossaryHintsDescription")}
+          >
+            <label className="toggle-switch">
+              <input
+                type="checkbox"
+                checked={glossaryHintsEnabled}
+                onChange={(event) =>
+                  setGlossaryHintsEnabled(event.target.checked)
+                }
+                aria-label={t("appearanceGlossaryHintsTitle")}
+              />
+              <span className="toggle-slider" />
+            </label>
+          </SettingsItem>
+        )}
         <SettingsItem
           label={t("appearanceTooltipDelayTitle")}
           description={t("appearanceTooltipDelayDescription")}

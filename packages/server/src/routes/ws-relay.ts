@@ -4,6 +4,7 @@ import type { WSEvents } from "hono/ws";
 import type { WebSocket as RawWebSocket } from "ws";
 import type { DeviceBridgeService } from "../device/DeviceBridgeService.js";
 import { isAllowedOrigin } from "../middleware/allowed-hosts.js";
+import type { ProjectGlossarySubscriptionManager } from "../projects/projectGlossarySubscriptionManager.js";
 import type {
   RemoteAccessService,
   RemoteSessionService,
@@ -66,6 +67,8 @@ export interface WsRelayDeps {
   browserProfileService?: BrowserProfileService;
   /** Focused session watch manager for per-session targeted file watching (optional) */
   focusedSessionWatchManager?: FocusedSessionWatchManager;
+  /** Project glossary path subscriptions and reference-counted watchers. */
+  projectGlossarySubscriptionManager?: ProjectGlossarySubscriptionManager;
   /** Emulator bridge service for Android emulator streaming (optional) */
   deviceBridgeService?: DeviceBridgeService;
   /** Speech backend registry for relayed streaming STT (optional) */
@@ -105,6 +108,8 @@ export interface AcceptRelayConnectionDeps {
   browserProfileService?: BrowserProfileService;
   /** Focused session watch manager for per-session targeted file watching (optional) */
   focusedSessionWatchManager?: FocusedSessionWatchManager;
+  /** Project glossary path subscriptions and reference-counted watchers. */
+  projectGlossarySubscriptionManager?: ProjectGlossarySubscriptionManager;
   /** Emulator bridge service for Android emulator streaming (optional) */
   deviceBridgeService?: DeviceBridgeService;
   /** Speech backend registry for relayed streaming STT (optional) */
@@ -219,6 +224,7 @@ export function createWsRelayRoutes(
     connectedBrowsers,
     browserProfileService,
     focusedSessionWatchManager,
+    projectGlossarySubscriptionManager,
     deviceBridgeService,
     speechBackendRegistry,
     dataDir,
@@ -239,6 +245,7 @@ export function createWsRelayRoutes(
     connectedBrowsers,
     browserProfileService,
     focusedSessionWatchManager,
+    projectGlossarySubscriptionManager,
     deviceBridgeService,
     speechBackendRegistry,
     dataDir,
@@ -421,6 +428,7 @@ export function createAcceptRelayConnection(
     connectedBrowsers,
     browserProfileService,
     focusedSessionWatchManager,
+    projectGlossarySubscriptionManager,
     deviceBridgeService,
     speechBackendRegistry,
     dataDir,
@@ -441,6 +449,7 @@ export function createAcceptRelayConnection(
     connectedBrowsers,
     browserProfileService,
     focusedSessionWatchManager,
+    projectGlossarySubscriptionManager,
     deviceBridgeService,
     speechBackendRegistry,
     dataDir,

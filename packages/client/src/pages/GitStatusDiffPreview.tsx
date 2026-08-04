@@ -1035,7 +1035,7 @@ function GitDiffContent({
         ref={mountContent}
       >
         {showMarkdownPreview && markdownHtml ? (
-          <MarkdownPreview html={markdownHtml} />
+          <MarkdownPreview html={markdownHtml} sourcePath={file.path} />
         ) : previewSkipped ? (
           <GitDiffPreviewSkippedState
             file={file}

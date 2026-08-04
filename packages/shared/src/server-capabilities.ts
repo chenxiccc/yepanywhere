@@ -27,6 +27,7 @@ export interface ServerCapabilityDefinition {
     | "localAccess"
     | "projectQueue"
     | "providers"
+    | "rendering"
     | "remoteAccess"
     | "security"
     | "sessions"
@@ -53,6 +54,35 @@ export interface ServerCapabilityDefinition {
 }
 
 export const SERVER_CAPABILITIES = {
+  glossaryTooltips: {
+    name: "glossary-tooltips",
+    kind: "permanent",
+    area: "rendering",
+    introducedIn: "0.7.1",
+    description:
+      "Server resolves governing project glossaries, returns compiled phrase automata, and streams project glossary-path changes.",
+    clientFallback:
+      "Hide Glossary hints, make no artifact request or subscription, and render ordinary Markdown.",
+    serverContract: {
+      routes: ["GET /api/projects/:projectId/glossary-artifact"],
+      routeModules: ["packages/server/src/routes/glossary-artifacts.ts"],
+      requestFields: ["glossaryArtifact.sourcePath"],
+      responseFields: [
+        "glossaryArtifact.status",
+        "glossaryArtifact.governingPath",
+        "glossaryArtifact.sourceVersion",
+        "glossaryArtifact.dependencies",
+        "glossaryArtifact.artifact",
+        "glossaryArtifact.diagnostics",
+      ],
+      events: ["glossary-paths-snapshot", "glossary-path-changed"],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Hosted clients may outpace installed servers, and glossary discovery must remain server-owned.",
+    },
+  },
   projectDirectoryStoragePolicy: {
     name: "project-directory-storage-policy",
     kind: "permanent",
@@ -900,6 +930,8 @@ export type ServerCapabilityName =
 
 export const PROJECT_DIRECTORY_STORAGE_POLICY_CAPABILITY =
   SERVER_CAPABILITIES.projectDirectoryStoragePolicy.name;
+export const GLOSSARY_TOOLTIPS_CAPABILITY =
+  SERVER_CAPABILITIES.glossaryTooltips.name;
 export const TOOL_RESULT_MEDIA_PRESERVATION_POLICY_CAPABILITY =
   SERVER_CAPABILITIES.toolResultMediaPreservationPolicy.name;
 export const PROJECT_QUEUE_CAPABILITY = SERVER_CAPABILITIES.projectQueue.name;

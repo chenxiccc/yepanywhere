@@ -23,6 +23,8 @@ function createConnectionShim(transport: SourceTransport): Connection {
     subscribeSession: (sessionId, handlers, lastEventId, options) =>
       transport.subscribeSession(sessionId, handlers, lastEventId, options),
     subscribeActivity: (handlers) => transport.subscribeActivity(handlers),
+    subscribeGlossary: (projectId, handlers) =>
+      transport.subscribeGlossary(projectId, handlers),
     subscribeSessionWatch: (sessionId, handlers, options) =>
       transport.subscribeSessionWatch(sessionId, handlers, options),
     upload: (projectId, sessionId, file, options) =>

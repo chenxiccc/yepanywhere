@@ -1,5 +1,6 @@
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { FileViewer } from "../components/FileViewer";
+import { GlossaryProjectBoundary } from "../contexts/GlossaryContext";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useI18n } from "../i18n";
 
@@ -50,28 +51,30 @@ export function FilePage() {
   }
 
   return (
-    <div className="file-page">
-      <div className="file-page-nav">
-        <Link
-          to={`${basePath}/projects/${projectId}`}
-          className="file-page-back-link"
-          title={t("fileBackToProject" as never)}
-        >
-          <BackIcon />
-          <span>{t("fileBackToProject" as never)}</span>
-        </Link>
+    <GlossaryProjectBoundary projectId={projectId}>
+      <div className="file-page">
+        <div className="file-page-nav">
+          <Link
+            to={`${basePath}/projects/${projectId}`}
+            className="file-page-back-link"
+            title={t("fileBackToProject" as never)}
+          >
+            <BackIcon />
+            <span>{t("fileBackToProject" as never)}</span>
+          </Link>
+        </div>
+        <div className="file-page-content">
+          <FileViewer
+            projectId={projectId}
+            filePath={filePath}
+            lineNumber={lineNumber}
+            lineEnd={lineEnd}
+            viewMode={viewMode}
+            standalone
+          />
+        </div>
       </div>
-      <div className="file-page-content">
-        <FileViewer
-          projectId={projectId}
-          filePath={filePath}
-          lineNumber={lineNumber}
-          lineEnd={lineEnd}
-          viewMode={viewMode}
-          standalone
-        />
-      </div>
-    </div>
+    </GlossaryProjectBoundary>
   );
 }
 

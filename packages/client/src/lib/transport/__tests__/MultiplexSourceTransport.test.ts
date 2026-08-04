@@ -94,6 +94,14 @@ class FakeMultiplexConnection implements Connection {
     return { close: () => handlers.onClose?.() };
   }
 
+  subscribeGlossary(
+    _projectId: string,
+    handlers: StreamHandlers,
+  ): Subscription {
+    handlers.onOpen?.();
+    return { close: () => handlers.onClose?.() };
+  }
+
   subscribeSessionWatch(
     _sessionId: string,
     handlers: StreamHandlers,
@@ -173,7 +181,9 @@ describe("multiplex source transports", () => {
     const second = new FakeMultiplexConnection("second");
 
     const pending = transport.fetch("/projects");
-    transport.attach(first as unknown as Parameters<typeof transport.attach>[0]);
+    transport.attach(
+      first as unknown as Parameters<typeof transport.attach>[0],
+    );
 
     await expect(pending).resolves.toEqual({
       from: "first",
@@ -184,7 +194,9 @@ describe("multiplex source transports", () => {
       state: "ready",
     });
 
-    transport.attach(second as unknown as Parameters<typeof transport.attach>[0]);
+    transport.attach(
+      second as unknown as Parameters<typeof transport.attach>[0],
+    );
     await expect(facade.fetch("/projects")).resolves.toEqual({
       from: "second",
       path: "/projects",

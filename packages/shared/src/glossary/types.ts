@@ -1,4 +1,5 @@
 export const GLOSSARY_ARTIFACT_VERSION = 1 as const;
+export const GLOSSARY_SOURCE_PATH_MAX_LENGTH = 4_096;
 
 export const GLOSSARY_LIMITS = {
   maxIncludeDepth: 16,
@@ -98,6 +99,78 @@ export interface GlossaryCompileDiagnostic {
 export type GlossaryCompileResult =
   | { artifact: GlossaryArtifact; ok: true }
   | { diagnostic: GlossaryCompileDiagnostic; ok: false };
+
+export type GlossaryResolutionDiagnosticCode =
+  | "escaped-include"
+  | "include-depth-limit"
+  | "included-file-limit"
+  | "invalid-governing-glossary"
+  | "total-byte-limit"
+  | "unresolved-include";
+
+export interface GlossaryResolutionDiagnostic {
+  code: GlossaryResolutionDiagnosticCode;
+  glossaryPath: string;
+  message: string;
+}
+
+export interface GlossaryDependencyIdentity {
+  contentHash: string;
+  path: string;
+  size: number;
+}
+
+export type GlossaryPathChangeType = "create" | "modify" | "delete";
+
+/** Process-local identity for one project's current glossary-path snapshot. */
+export interface GlossaryProjectGeneration {
+  epoch: string;
+  sequence: number;
+}
+
+export interface GlossaryPathsSnapshotEvent {
+  type: "glossary-paths-snapshot";
+  generation: GlossaryProjectGeneration;
+  paths: string[];
+  timestamp: string;
+}
+
+export interface GlossaryPathChangedEvent {
+  type: "glossary-path-changed";
+  changeType: GlossaryPathChangeType;
+  generation: GlossaryProjectGeneration;
+  path: string;
+  timestamp: string;
+}
+
+export type GlossarySubscriptionEvent =
+  | GlossaryPathsSnapshotEvent
+  | GlossaryPathChangedEvent;
+
+export type GlossaryArtifactResponse =
+  | {
+      reason:
+        | "governing-glossary-is-source"
+        | "invalid-source-path"
+        | "no-governing-glossary";
+      status: "none";
+    }
+  | {
+      artifact: GlossaryArtifact;
+      dependencies: GlossaryDependencyIdentity[];
+      diagnostics: GlossaryResolutionDiagnostic[];
+      governingPath: string;
+      sourceVersion: string;
+      status: "ready";
+    }
+  | {
+      dependencies: GlossaryDependencyIdentity[];
+      diagnostic: GlossaryCompileDiagnostic | GlossaryResolutionDiagnostic;
+      diagnostics: GlossaryResolutionDiagnostic[];
+      governingPath: string;
+      sourceVersion: string | null;
+      status: "disabled";
+    };
 
 export interface GlossaryMatch {
   definitionText: string;

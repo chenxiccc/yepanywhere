@@ -50,6 +50,7 @@ import { initFileAccess, updateFileAccess } from "./middleware/file-access.js";
 import { NotificationService } from "./notifications/index.js";
 import { CodexSessionScanner } from "./projects/codex-scanner.js";
 import { GeminiSessionScanner } from "./projects/gemini-scanner.js";
+import { ProjectGlossarySubscriptionManager } from "./projects/projectGlossarySubscriptionManager.js";
 import { ProjectStoragePolicy } from "./projects/projectStoragePolicy.js";
 import { PushService, getOrCreateVapidKeys } from "./push/index.js";
 import { RecentsService } from "./recents/index.js";
@@ -160,6 +161,8 @@ let disposeAppForShutdown:
   | Awaited<ReturnType<typeof createApp>>["disposeSessionReaders"]
   | null = null;
 let deviceBridgeForShutdown: DeviceBridgeService | null = null;
+let projectGlossarySubscriptionsForShutdown: ProjectGlossarySubscriptionManager | null =
+  null;
 let hostAwakeForShutdown: HostAwakeService | null = null;
 let securityClientForShutdown: SecurityClientService | null = null;
 let attachmentStagingCleanupTimer: ReturnType<typeof setInterval> | null = null;
@@ -285,6 +288,8 @@ async function gracefulShutdown(signal: string): Promise<void> {
       console.error("[Shutdown] Error disposing session readers:", error);
     }
   }
+  projectGlossarySubscriptionsForShutdown?.dispose();
+  projectGlossarySubscriptionsForShutdown = null;
 
   // Shut down device bridge sidecar
   if (deviceBridgeForShutdown) {
@@ -870,7 +875,13 @@ async function startServer() {
 
   // Create the app first (without WebSocket support initially)
   // We'll add WebSocket routes after setting up WebSocket support
-  const { app, supervisor, scanner, disposeSessionReaders } = createApp({
+  const {
+    app,
+    supervisor,
+    scanner,
+    disposeSessionReaders,
+    glossaryIndexService,
+  } = createApp({
     realSdk,
     projectsDir: config.claudeProjectsDir,
     idleTimeoutMs: config.idleTimeoutMs,
@@ -941,6 +952,12 @@ async function startServer() {
       sessionsDir: config.geminiSessionsDir,
     }),
   });
+  const projectGlossarySubscriptionManager =
+    new ProjectGlossarySubscriptionManager({
+      scanner,
+      glossaryIndexService,
+    });
+  projectGlossarySubscriptionsForShutdown = projectGlossarySubscriptionManager;
 
   // Set service references for graceful shutdown
   supervisorForShutdown = supervisor;
@@ -1088,6 +1105,7 @@ async function startServer() {
     connectedBrowsers: connectedBrowsersService,
     browserProfileService,
     focusedSessionWatchManager,
+    projectGlossarySubscriptionManager,
     deviceBridgeService,
     speechBackendRegistry,
     dataDir: config.dataDir,
@@ -1110,6 +1128,7 @@ async function startServer() {
     connectedBrowsers: connectedBrowsersService,
     browserProfileService,
     focusedSessionWatchManager,
+    projectGlossarySubscriptionManager,
     deviceBridgeService,
     speechBackendRegistry,
     dataDir: config.dataDir,

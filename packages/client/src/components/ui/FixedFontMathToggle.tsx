@@ -14,6 +14,7 @@ import {
   type PublicShareContextValue,
   usePublicShareContext,
 } from "../../contexts/PublicShareContext";
+import { useGlossaryArtifact } from "../../contexts/GlossaryContext";
 import {
   type RenderMode,
   useRenderModeToggle,
@@ -23,6 +24,7 @@ import { useRemoteBasePath } from "../../hooks/useRemoteBasePath";
 import { useTooltipMode } from "../../hooks/useTooltipAppearance";
 import { toBrowserAppHref } from "../../lib/appHref";
 import { profileRenderWork } from "../../lib/diagnostics/renderProfiler";
+import { annotateGlossaryHtml } from "../../lib/glossary/annotateGlossaryHtml";
 import {
   extractMarkdownSnippetsFromSelection,
   registerMarkdownCopySource,
@@ -1006,6 +1008,7 @@ export function FixedFontMathToggle({
   const publicShare = usePublicShareContext();
   const basePath = useRemoteBasePath();
   const tooltipMode = useTooltipMode();
+  const glossary = useGlossaryArtifact(baseFilePath);
   const [viewerLink, setViewerLink] = useState<{
     filePath: string;
     href: string | null;
@@ -1056,8 +1059,16 @@ export function FixedFontMathToggle({
   const { btnRef: toggleBtnRef, handleClick: handleToggleClick } =
     useScrollPreservingToggle(showRendered, toggleLocalMode);
   const presentedHtml = useMemo(
-    () => applyRenderedTooltipMode(rendered.html, tooltipMode),
-    [rendered.html, tooltipMode],
+    () => {
+      const tooltipHtml = applyRenderedTooltipMode(rendered.html, tooltipMode);
+      return annotateGlossaryHtml(
+        tooltipHtml,
+        glossary.state === "ready" && glossary.result?.status === "ready"
+          ? glossary.result.artifact
+          : undefined,
+      ).html;
+    },
+    [glossary, rendered.html, tooltipMode],
   );
 
   useEffect(() => {

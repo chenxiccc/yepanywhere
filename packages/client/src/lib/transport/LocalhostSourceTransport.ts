@@ -199,6 +199,12 @@ export class LocalhostSourceTransport implements SourceTransport {
     )(handlers);
   }
 
+  subscribeGlossary(projectId: string, handlers: StreamHandlers): Subscription {
+    return this.trackStreamSubscription((wrappedHandlers) =>
+      this.streamConnection.subscribeGlossary(projectId, wrappedHandlers),
+    )(handlers);
+  }
+
   async reconnect(): Promise<void> {
     this.assertNotDisposed();
     // Localhost source-level readiness is same-origin HTTP and always ready.

@@ -113,6 +113,7 @@ function WriteModalContent({
         {toggleButton}
         <MarkdownPreview
           html={input._renderedMarkdownHtml}
+          sourcePath={file.filePath}
           density={FILE_MARKDOWN_PREVIEW_BASE_DENSITY}
         />
       </div>

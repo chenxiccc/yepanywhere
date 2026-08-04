@@ -53,6 +53,7 @@ export const UI_KEYS = {
   conversationViewTurnLimit: "yep-anywhere-conversation-view-turn-limit",
   widerConversationActivityPreviews:
     "yep-anywhere-wider-conversation-activity-previews-enabled",
+  glossaryHints: "yep-anywhere-glossary-hints-enabled",
   sessionToolbarPresence: "yep-anywhere-session-toolbar-presence",
   // Legacy pre-presence keys, read once for migration then removed.
   sessionToolbarVisibility: "yep-anywhere-session-toolbar-visibility",

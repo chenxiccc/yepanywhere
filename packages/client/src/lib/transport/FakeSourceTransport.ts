@@ -34,12 +34,14 @@ type FakeStagedUploadHandler = (
 export type FakeSourceTransportSubscriptionKind =
   | "session"
   | "session-watch"
+  | "glossary"
   | "activity";
 
 export interface FakeSourceTransportSubscriptionRecord {
   readonly id: string;
   readonly kind: FakeSourceTransportSubscriptionKind;
   readonly sessionId?: string;
+  readonly projectId?: string;
   readonly lastEventId?: string;
   readonly options?:
     | SessionSubscriptionOptions
@@ -333,6 +335,10 @@ export class FakeSourceTransport implements SourceTransport {
     return this.createSubscription("activity", handlers, {});
   }
 
+  subscribeGlossary(projectId: string, handlers: StreamHandlers): Subscription {
+    return this.createSubscription("glossary", handlers, { projectId });
+  }
+
   async reconnect(): Promise<void> {
     this.assertNotDisposed();
     await this.reconnectHandler?.();
@@ -405,6 +411,7 @@ export class FakeSourceTransport implements SourceTransport {
     handlers: StreamHandlers,
     details: {
       sessionId?: string;
+      projectId?: string;
       lastEventId?: string;
       options?: SessionSubscriptionOptions | SessionWatchSubscriptionOptions;
     },
@@ -416,6 +423,7 @@ export class FakeSourceTransport implements SourceTransport {
       kind,
       handlers,
       sessionId: details.sessionId,
+      projectId: details.projectId,
       lastEventId: details.lastEventId,
       options: details.options,
       closed: false,
@@ -490,6 +498,7 @@ function publicSubscriptionRecord(
     id: record.id,
     kind: record.kind,
     sessionId: record.sessionId,
+    projectId: record.projectId,
     lastEventId: record.lastEventId,
     options: record.options,
     closed: record.closed,

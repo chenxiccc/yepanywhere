@@ -53,6 +53,7 @@ import {
   GEMINI_TMP_DIR,
   GeminiSessionScanner,
 } from "./projects/gemini-scanner.js";
+import { GlossaryIndexService } from "./projects/glossaryIndexService.js";
 import { GROK_SESSIONS_DIR, PI_SESSIONS_DIR } from "./projects/paths.js";
 import { ProjectScanner } from "./projects/scanner.js";
 import {
@@ -83,6 +84,7 @@ import { BangCommandService } from "./services/BangCommandService.js";
 import { createGitBrowseRoutes } from "./routes/git-browse.js";
 import { createGitProjectionRoutes } from "./routes/git-projections.js";
 import { createGitStatusRoutes } from "./routes/git-status.js";
+import { createGlossaryArtifactRoutes } from "./routes/glossary-artifacts.js";
 import { createGlobalSessionsRoutes } from "./routes/global-sessions.js";
 import { createReviewCommentsRoutes } from "./routes/review-comments.js";
 import { createReviewInboxRoutes } from "./routes/review-inbox.js";
@@ -349,6 +351,8 @@ export interface AppResult {
   readerFactory: (project: Project) => ISessionReader;
   /** Close cached session readers and their owned parser workers. */
   disposeSessionReaders: () => Promise<void>;
+  /** Shared resolver used by the artifact route and glossary subscriptions. */
+  glossaryIndexService: GlossaryIndexService;
 }
 
 function getMessageContentBlocks(message: Message): AppContentBlock[] {
@@ -582,6 +586,7 @@ export function createApp(options: AppOptions): AppResult {
     eventBus: options.eventBus,
     cacheTtlMs: options.projectScanCacheTtlMs,
   });
+  const glossaryIndexService = new GlossaryIndexService();
   const localResourcePathPolicy = createLocalResourcePathPolicy({
     allowedPaths: getAllowedFilePaths,
     scanner,
@@ -1643,6 +1648,11 @@ export function createApp(options: AppOptions): AppResult {
     }),
   );
 
+  app.route(
+    "/api/projects",
+    createGlossaryArtifactRoutes({ scanner, service: glossaryIndexService }),
+  );
+
   // Git status routes
   app.route(
     "/api/projects",
@@ -2186,7 +2196,14 @@ export function createApp(options: AppOptions): AppResult {
     });
   }
 
-  return { app, supervisor, scanner, readerFactory, disposeSessionReaders };
+  return {
+    app,
+    supervisor,
+    scanner,
+    readerFactory,
+    disposeSessionReaders,
+    glossaryIndexService,
+  };
 }
 
 // Default app for backwards compatibility (health check only)
