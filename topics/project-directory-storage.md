@@ -7,9 +7,10 @@
 
 Topic: project-directory-storage
 
-Status: implemented in current source after `0.7.0`; no stable npm release
-contains the policy yet. The pre-correction writer audit remains below as
-release and compatibility history.
+Status: implemented in current source after `0.7.0`, with repeated-toggle
+transition safety still incomplete; no stable npm release contains the policy
+yet. The pre-correction writer audit remains below as release and compatibility
+history.
 
 Settings surface: [Storage Settings](storage-settings.md).
 
@@ -109,6 +110,87 @@ Switching from project-local storage back to **App data only** stops future
 project writes immediately. Cleanup and migration are separate explicit
 actions. A failed or unsafe selected location never falls back from app-data
 mode into the project.
+
+## Mode Transitions And Split State
+
+The location setting currently changes write routing; it is not a migration,
+copy, synchronization, or cleanup action. Reads generally try the selected
+location and then the other location. That fallback preserves access when only
+one copy exists, but it does not establish which of two copies is newer or
+authoritative.
+
+Selected-first fallback is safe only when retained objects are immutable and
+additive, and a same-key collision is either impossible or verified to contain
+the same bytes. It is not safe for a mutable singleton. For example, this
+sequence can regress Source Review state:
+
+1. write revision A to project storage;
+2. switch to app-data storage and write revision B;
+3. switch back to project storage;
+4. load the selected project copy A before considering B.
+
+A later mutation may then continue from A and strand B. File modification time
+is not an adequate conflict rule: clocks can differ, atomic replacement changes
+times, restored backups can be newer on disk but older logically, and two
+stores may both contain valid non-overlapping changes.
+
+The routed storage families have different transition requirements:
+
+| Family | Storage semantics | Required transition behavior |
+| --- | --- | --- |
+| Source Review `review-comments.json` | Authoritative mutable state | Transfer or losslessly reconcile before the new mode becomes authoritative. Never choose solely by selected location or modification time. |
+| Source Review `request.json` | Immutable, submission-ID-keyed manifest | Treat both roots as an additive union and reject a same-ID byte mismatch. |
+| Source Review `response.json` | Agent-written mutable outcome snapshot | Keep an active submission pinned to one directory, or quiesce and transfer it with the review state. A global toggle must not make YA watch a different path from the agent. |
+| Exact Source Review captures | Immutable content-addressed bytes: Git objects in project mode, SHA-256 files in app-data mode | Read the union without rewriting old objects. Preserve the project capture ref; disabling project storage does not authorize deleting it. |
+| Completed attachments | Intended append-only payloads under UUID-prefixed names, but not content-addressed | Read both roots. A transfer must validate same-name bytes rather than overwrite; current lookup relies on UUID uniqueness. |
+| Preserved tool-result media | Content-addressed blobs plus records whose IDs include the content hash and session context | Read the validated union. Copying is optional and must remain idempotent; preservation remains a separate opt-in. |
+| Git author palette | Derived, regenerable cache | Invalidate and regenerate in the destination. Do not migrate it as authoritative state. |
+| `.git/info/exclude` and the Source Review capture ref | Additive project metadata | Leave existing entries and refs in place when disabling project storage. Cleanup is a separate explicit operation. |
+
+A safe toggle must therefore do one of two things before committing the new
+mode: complete an explicit conflict-safe transfer/reconciliation of every
+authoritative mutable family, or refuse the toggle while such state exists and
+offer that transfer as a separate action. The transition needs a durable
+logical revision or equivalent merge basis, must be idempotent across repeated
+toggles, and must leave the old mode selected if any required transfer fails.
+Active writers must either be quiesced or remain pinned to their original
+location for their full lifecycle. Disposable caches should be cleared rather
+than ported.
+
+The current implementation has no transition coordinator, no cross-root
+revision marker, and no conflict resolution. `ProjectStoragePolicy.readPaths()`
+implements selected-first compatibility lookup only. Until the authoritative
+mutable families satisfy the contract above, isolated lifecycle tests for each
+mode do not prove that toggling between those modes is safe.
+
+### Explicit migration and cleanup
+
+Large retained payloads should not be recursively moved as a side effect of
+changing the global setting. A mode change may span many projects, filesystems,
+and active sessions; an in-place move can fail halfway and makes a quick
+settings request responsible for unbounded work.
+
+The preferred product split is:
+
+1. the mode control selects the destination for new additive payloads, subject
+   to the authoritative-state preflight above;
+2. a separate **Migrate existing data** action copies eligible old data into
+   the selected location with durable progress, byte or hash verification,
+   no unverified overwrite, and idempotent restart; and
+3. a separate cleanup phase removes an old copy only after YA proves that no
+   persisted reference or active writer still depends on its physical path.
+
+Copy completion does not by itself prove cleanup safety. Provider transcripts
+contain the absolute paths originally sent for attachments, so deleting a
+successfully copied attachment can still break a resumed agent that follows
+the old path. Existing attachments should remain readable at both locations
+until YA has a durable logical-reference or compatibility strategy for those
+transcripts. Preserved tool-result media is a better cleanup candidate because
+its blob bytes are hash-validated and normal reads use logical media IDs.
+
+The migration action must report work and blockers by project and storage
+family. It must never collapse “copied,” “source safe to delete,” and “source
+deleted” into one success state.
 
 Downgrading to a server without the policy can reintroduce that older server's
 write behavior. A new client connected to such a server must not claim the

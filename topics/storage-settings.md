@@ -47,10 +47,12 @@ column as options are added instead of separating explanations from controls or
 crowding choices into a fixed grid.
 
 The section explicitly identifies the affected storage families: uploaded
-attachments, source-review drafts and capture snapshots, Git author colors
+attachments, Source Review drafts and exact file snapshots, Git author colors
 used by blame, and tool-result images only when separate preservation is
-enabled. It also distinguishes that YA-owned state from files changed by
-agents or explicit source-control actions.
+enabled. “File snapshots” means the exact source bytes retained for a review
+anchor, not assistant-turn or tool-output images. The section also
+distinguishes that YA-owned state from files changed by agents or explicit
+source-control actions.
 
 ### YA data directory — default
 

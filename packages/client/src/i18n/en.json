@@ -1311,7 +1311,7 @@
   "storageSettingsLoading": "Loading Storage settings…",
   "storageChoiceDefault": "Default",
   "projectDataLocationTitle": "YA-managed project storage",
-  "projectDataLocationDescription": "Includes uploaded attachments, source-review drafts and capture snapshots, Git author colors used by blame, and tool-result images when preservation is enabled. It does not include files changed by agents or explicit source-control actions.",
+  "projectDataLocationDescription": "Includes uploaded attachments, Source Review drafts and exact file snapshots, Git author colors used by blame, and tool-result images when preservation is enabled. It does not include files changed by agents or explicit source-control actions.",
   "projectDataLocationAppData": "YA data directory",
   "projectDataLocationAppDataDescription": "Store these assets under YEP_DATA_DIR. Do not create YA storage folders, Git excludes, or YA-owned refs and objects inside projects.",
   "projectDataLocationProject": "Inside each project (.yep)",

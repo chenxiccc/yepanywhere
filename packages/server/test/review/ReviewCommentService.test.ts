@@ -9,6 +9,10 @@ import {
 } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  ReviewCaptureService,
+  SOURCE_REVIEW_CAPTURE_REF,
+} from "../../src/review/ReviewCaptureService.js";
+import {
   ReviewCommentService,
   type ReviewCommentServiceOptions,
 } from "../../src/review/ReviewCommentService.js";
@@ -397,6 +401,146 @@ describe("ReviewCommentService", () => {
     expect(all[0]?.status).toBe("archived");
     expect((await restarted.getFile(dir)).batches).toHaveLength(1);
   });
+
+  it.each(["project", "app-data"] as const)(
+    "keeps dirty comment captures addressable through restart and Git GC in %s mode",
+    async (mode) => {
+      const dataDir = await mkdtemp(join(tmpdir(), "yep-review-data-"));
+      const storagePolicy = new ProjectStoragePolicy({
+        dataDir,
+        getMode: () => mode,
+      });
+      try {
+        await execFileAsync("git", ["-C", dir, "init"]);
+        await execFileAsync("git", [
+          "-C",
+          dir,
+          "config",
+          "user.email",
+          "test@example.com",
+        ]);
+        await execFileAsync("git", ["-C", dir, "config", "user.name", "Test"]);
+        await mkdir(join(dir, "src"), { recursive: true });
+        await writeFile(join(dir, "src", "a.ts"), "const original = 1;\n");
+        await execFileAsync("git", ["-C", dir, "add", "--", "src/a.ts"]);
+        await execFileAsync("git", ["-C", dir, "commit", "-m", "fixture"]);
+        await writeFile(join(dir, "src", "a.ts"), "const reviewed = 2;\n");
+
+        const captureWriter = new ReviewCaptureService({ storagePolicy });
+        const service = makeService({ storagePolicy, captureWriter });
+        const created = await service.addComment(dir, {
+          anchor: anchor({
+            path: "src/a.ts",
+            newLine: 1,
+            snippet: "const reviewed = 2;",
+            projection: { kind: "worktree", path: "src/a.ts", side: "new" },
+          }),
+          text: "Keep this exact dirty version",
+        });
+        const capture = (await service.getStoreFile(dir)).sites[0]?.entries[0]
+          ?.capture;
+        expect(capture?.status).toBe("captured");
+        if (capture?.status !== "captured") return;
+
+        const statePath = storagePolicy.writePath(dir, "review-comments.json");
+        expect(await readFile(statePath, "utf-8")).toContain(created.id);
+        if (mode === "project") {
+          await expect(
+            readFile(
+              storagePolicy.writePath(
+                dir,
+                "source-review",
+                "captures",
+                capture.captureBlobId,
+              ),
+            ),
+          ).rejects.toMatchObject({ code: "ENOENT" });
+        } else {
+          expect(
+            await readFile(
+              storagePolicy.writePath(
+                dir,
+                "source-review",
+                "captures",
+                capture.captureBlobId,
+              ),
+              "utf-8",
+            ),
+          ).toBe("const reviewed = 2;\n");
+          await expect(
+            readFile(join(dir, ".yep", "review-comments.json")),
+          ).rejects.toMatchObject({ code: "ENOENT" });
+        }
+
+        await writeFile(join(dir, "src", "a.ts"), "const later = 3;\n");
+        await execFileAsync("git", ["-C", dir, "gc", "--prune=now"]);
+
+        const restartedCaptureReader = new ReviewCaptureService({
+          storagePolicy,
+        });
+        const restarted = makeService({
+          storagePolicy,
+          captureWriter: restartedCaptureReader,
+        });
+        expect((await restarted.getComment(dir, created.id))?.text).toBe(
+          "Keep this exact dirty version",
+        );
+        await expect(
+          restartedCaptureReader.readExcerpt(dir, capture, {
+            ...created.anchor,
+            newLine: 1,
+          }),
+        ).resolves.toMatchObject({
+          status: "captured",
+          captureBlobId: capture.captureBlobId,
+          content: "const reviewed = 2;\n",
+          highlightLine: 1,
+        });
+
+        if (mode === "project") {
+          await expect(
+            execFileAsync("git", [
+              "-C",
+              dir,
+              "cat-file",
+              "-e",
+              `${capture.captureBlobId}^{blob}`,
+            ]),
+          ).resolves.toBeTruthy();
+          await expect(
+            execFileAsync("git", [
+              "-C",
+              dir,
+              "show-ref",
+              "--verify",
+              SOURCE_REVIEW_CAPTURE_REF,
+            ]),
+          ).resolves.toBeTruthy();
+        } else {
+          await expect(
+            execFileAsync("git", [
+              "-C",
+              dir,
+              "cat-file",
+              "-e",
+              `${capture.captureBlobId}^{blob}`,
+            ]),
+          ).rejects.toBeTruthy();
+          await expect(
+            execFileAsync("git", [
+              "-C",
+              dir,
+              "show-ref",
+              "--verify",
+              SOURCE_REVIEW_CAPTURE_REF,
+            ]),
+          ).rejects.toBeTruthy();
+        }
+      } finally {
+        await rm(dataDir, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("reads legacy project state without copying it until a future write", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "yep-review-data-"));
