@@ -397,7 +397,7 @@ describe("FileViewer", () => {
     ]);
   });
 
-  it("keeps Markdown preview toggleable in range views", async () => {
+  it("opens Markdown range views rendered and keeps source toggleable", async () => {
     const fileResponse: FileContentResponse = {
       metadata: {
         path: "notes.md",
@@ -435,15 +435,16 @@ describe("FileViewer", () => {
       expect(screen.getByRole("button", { name: "Preview" })).toBeTruthy();
     });
 
-    expect(container.querySelector(".shiki-container")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
-
-    const heading = await screen.findByRole("heading", { name: "Title" });
-    expect(heading).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Title" })).toBeTruthy();
     expect(
       container.querySelector(".markdown-preview-span-start"),
     ).toBeTruthy();
 
+    fireEvent.click(screen.getByRole("button", { name: "Source" }));
+    expect(container.querySelector(".shiki-container")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+
+    const heading = await screen.findByRole("heading", { name: "Title" });
     const headingText = heading.firstChild;
     expect(headingText).toBeTruthy();
     const range = document.createRange();

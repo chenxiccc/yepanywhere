@@ -459,13 +459,16 @@ export function TooltipLayer() {
       hide();
     };
 
-    document.addEventListener("click", onClick);
+    // Glossary terms also appear inside dialogs whose click boundaries stop
+    // bubbling. Capture activation so the same term interaction works in
+    // file-viewer modals and ordinary rendered prose.
+    document.addEventListener("click", onClick, true);
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("focusin", onFocusIn);
     document.addEventListener("focusout", onFocusOut);
     return () => {
-      document.removeEventListener("click", onClick);
+      document.removeEventListener("click", onClick, true);
       document.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("focusin", onFocusIn);

@@ -6,6 +6,7 @@ import {
   buildPublicShareFileHref,
   usePublicShareContext,
 } from "../contexts/PublicShareContext";
+import { GlossaryProjectBoundary } from "../contexts/GlossaryContext";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useTextTooltipAttributes } from "../hooks/useTooltipAppearance";
 import { toBrowserAppHref } from "../lib/appHref";
@@ -307,6 +308,7 @@ export function FileViewerModal({
   openInNewTabUrl?: string | null;
   onClose: () => void;
 }) {
+  const publicShareContext = usePublicShareContext();
   const handleOverlayClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {
       onClose();
@@ -367,5 +369,14 @@ export function FileViewerModal({
     </div>
   );
 
-  return createPortal(modalContent, document.body);
+  return createPortal(
+    publicShareContext ? (
+      modalContent
+    ) : (
+      <GlossaryProjectBoundary projectId={projectId}>
+        {modalContent}
+      </GlossaryProjectBoundary>
+    ),
+    document.body,
+  );
 }

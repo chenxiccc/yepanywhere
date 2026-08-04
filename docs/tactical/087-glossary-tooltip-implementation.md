@@ -426,6 +426,15 @@ waits for nor infers governing selection from the snapshot. The client cache
 retains every source context used during the tab/project lifetime, and the
 route has no YA-specific source-path length limit.
 
+Corrective follow-up 2026-08-04 (this commit): an intercepted cross-project
+file link now gives its modal the linked project's glossary boundary rather
+than inheriting the enclosing session's project. Glossary tap activation runs
+at the document capture boundary so click-isolated dialogs cannot suppress it,
+and eligible Markdown line/range links open rendered while retaining the
+Source toggle. The focused client suite passed 33 tests; the real relay path
+passed with inspected 1920x1080 and 375x812 captures, including a tapped
+`Fresh20` definition in the phone modal.
+
 ## Suggested commit slices
 
 Keep the series in local commit order and use `Topic: glossary-tooltips` on

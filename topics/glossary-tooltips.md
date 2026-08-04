@@ -33,6 +33,11 @@ code files and non-Markdown diffs out of structural Markdown rendering remain
 authoritative; glossary matching does not make an otherwise ineligible surface
 Markdown-renderable.
 
+An eligible Markdown file opens as rendered Markdown, including when its link
+targets a line or bounded range. Source remains an explicit viewer toggle;
+glossary readiness never selects source mode or delays the initial rendered
+content.
+
 The presence of an in-scope `GLOSSARY.md` is the content-level prerequisite;
 the browser preference is the user-level opt-in. Projects without one and
 browsers with the preference disabled render exactly as before. YA does not
@@ -353,7 +358,9 @@ ordinary Markdown without glossary annotations.
 
 Authenticated project-contained Markdown links use the shared FileViewer
 route, including browser new-tab gestures, so project documents retain their
-project/source context and the same glossary boundary. The legacy standalone
+project/source context and the same glossary boundary. An intercepted link
+opened in a file-viewer modal resolves glossary hints from the linked file's
+project, never from the enclosing session's project. The legacy standalone
 local-file HTML shell remains as a compatibility path for non-project or old
 direct URLs; it has no selected-project authority and remains unannotated.
 

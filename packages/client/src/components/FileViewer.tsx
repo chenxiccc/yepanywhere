@@ -421,9 +421,7 @@ export const FileViewer = memo(function FileViewer({
         if (!cancelled) {
           setFileData(data);
           setShowPreview(
-            lineNumber === undefined &&
-              isMarkdownLikeFile(filePath) &&
-              Boolean(data.renderedMarkdownHtml),
+            isMarkdownLikeFile(filePath) && Boolean(data.renderedMarkdownHtml),
           );
           setLoading(false);
         }

@@ -801,6 +801,31 @@ describe("TooltipLayer", () => {
     expect(term.getAttribute("data-tooltip")).toBeNull();
   });
 
+  it("reveals a glossary definition inside a click-isolated dialog", () => {
+    localStorage.setItem(UI_KEYS.tooltipMode, "native");
+    render(
+      <>
+        <TooltipLayer />
+        <dialog open onClick={(event) => event.stopPropagation()}>
+          <span
+            data-glossary-term="true"
+            title="oracle — Best published system."
+            role="button"
+            tabIndex={0}
+          >
+            oracle
+          </span>
+        </dialog>
+      </>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "oracle" }));
+
+    expect(screen.getByRole("tooltip").textContent).toBe(
+      "oracle — Best published system.",
+    );
+  });
+
   it("reveals a native-mode glossary definition on keyboard focus", () => {
     localStorage.setItem(UI_KEYS.tooltipMode, "native");
     render(
