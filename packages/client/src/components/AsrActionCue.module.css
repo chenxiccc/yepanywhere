@@ -1,0 +1,12 @@
+.cue {
+  position: absolute;
+  inset-block-end: 0.1rem;
+  inset-inline-start: 0.13rem;
+  color: currentColor;
+  font-size: 0.42rem;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 1;
+  opacity: 0.82;
+  pointer-events: none;
+}

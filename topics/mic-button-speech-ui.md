@@ -94,18 +94,30 @@ native typing caret visible at the speech insertion point while batch
 transcription or a streaming flush finishes. On a coarse-pointer device, mic
 start and stop do not focus the textarea: YA-owned dictation must not summon
 the on-screen keyboard. A deliberate textarea press remains the keyboard-open
-signal. If that keyboard is already open and the composer switches to its
-compact delivery row, the mic remains a pinned 48px action alongside the
-delivery controls so entering text does not remove the active speech control.
-When waveform display is enabled, the row preallocates the Mic's full
-150px-maximum slot before capture so starting the waveform does not move its
-neighbors. The Mic button itself fills that outlined slot before and during
-capture, with no untappable gap; pressing anywhere in the rectangle toggles
-capture. The Mic keeps its 48px zone and the real waveform may use up to 100px.
-Under width pressure the waveform shrinks to zero before the Mic can shrink; a
-wide Send or Steer action must yield the waveform's available space.
+signal. The mic is a 60px-wide rectangular target while retaining the bottom
+bar's existing height. On a coarse-pointer device its hit area extends 10px
+upward into the composer and 4px below the control without contributing to
+layout height.
+
+If the keyboard is already open and the composer switches to its compact
+delivery row, the mic remains pinned alongside the delivery controls so
+entering text does not remove the active speech control. When waveform display
+is enabled, the row preallocates the Mic's full 150px-maximum slot before
+capture so starting the waveform does not move its neighbors. The Mic button
+itself fills that outlined slot before and during capture, with no untappable
+gap; pressing anywhere in the rectangle toggles capture. The Mic reserves its
+60px target plus a compact backend glyph and the real waveform may use the
+remaining space, up to 78px. Under width pressure the waveform shrinks to zero
+before the Mic can shrink; a wide Send or Steer action must yield the
+waveform's available space.
 Session-only delivery actions do not leave empty placeholders while
 unavailable; an adjacent visible action absorbs that space.
+
+The mic always includes a short backend glyph (`Web`, `Grok`, `Deep`, `Whsp`,
+`Para`, `NeMo`, or `Test`) beside the microphone icon. An unknown backend uses
+the first five characters of its method id after any `ya-` prefix. The glyph
+reports the method actually selected for the live control, including an
+availability fallback; it is not merely the stored preference.
 
 An explicit browser-native preference is effective only while the current
 browser context exposes Web Speech recognition. If that API is unavailable
@@ -175,6 +187,15 @@ the next provider stream only after the previous `transcript.done` resolves.
 That follow-up must preserve the user's click-time insertion target and flush
 the buffered audio without dropping first words.
 
+Send, Steer, and Queue remain visible and actionable while capture or
+post-capture finalization is active. Activating one records that exact delivery
+intent, stops capture, and waits for a successful provider settlement plus any
+held final-text commit before delivery. The mutable interim preview is never
+spliced into the provider-bound turn. A failed speech cycle clears the pending
+delivery instead of sending the pre-speech draft; a later deliberate delivery
+press may still send that retained draft. This contract applies in both the
+active-session and new-session composers.
+
 When server-routed speech audio retention is enabled, YA persists structured
 streaming transcript events next to the retained audio. The older
 tab-separated text trace is kept for grepping, but the structured trace keeps
@@ -202,24 +223,47 @@ Current streaming command semantics:
   holds, `wait` is **left in the draft** (not stripped, unlike `send`): a false
   hold is then a one-click manual send with nothing lost. The `send`/`cancel`
   pause gate is 300 ms.
-- `send` submits the whole composer. The initial implementation stops
-  recognition after sending.
-- A future "continue after command" option may let `send` submit and begin a
-  fresh speech transaction without making the user press the mic again.
+- `send` submits the whole composer.
+- **Follow-up listening** is a browser-local Smart Turn option, default off.
+  After a speech-triggered send, a non-zero window actively starts a fresh
+  speech transaction. Speech beginning before the deadline is allowed to
+  finish rather than being cut off by the deadline; another speech send renews
+  the window. The coordinator survives the New Session -> active-session
+  navigation boundary. With Keep Mic Warm off, YA retains the device only for
+  this temporary window and releases it when the window ends. With Keep Mic
+  Warm on, the same active-listening window ends on schedule while the ordinary
+  idle warm stream remains. Only a streaming backend that advertises Smart
+  Turn can use this option.
 
 Every submission triggered by speech prefixes the provider-bound turn with
 `[ASR]`: both Smart Turn's automatic endpoint send and an explicit spoken
 `send`, including the batch form. The marker is added at submission and does
-not enter the editable draft. Manual stop/finalize only commits speech to the
-draft, and a later manual Send or Enter remains unmarked, including after an
-automatic Smart Turn send was held for a manual edit. A speech-triggered send
-with neither text nor attachments remains a no-op.
+not enter the editable draft. A separate browser-local **Quick-send [ASR]
+window** controls attribution for manual Send, Steer, or Queue after finalized
+speech. It is configurable from 0-5000 ms and defaults to 0 (disabled). A
+non-empty finalized speech commit arms the window; a successful delivery
+consumes it. While capture, deferred speech delivery, or the window is active,
+the normal delivery glyph remains visible and gains a compact `ASR` cue. A
+delivery pressed during capture is evaluated only after the backend final is
+committed. Successful provider settlement rearms the quick-send window before
+the recorded delivery runs, so backend processing time cannot consume the
+configured delay. The delivered turn receives `[ASR]` when that delay is
+non-zero and remains unmarked at 0. A speech-triggered send with neither text
+nor attachments remains a no-op.
 
 Open design slot: command recognition should eventually work per `is_final`
 chunk after a YA command-settle signal. That settle signal may be a timeout
 shorter than the Smart Turn timeout, but the value is not chosen here. Per the
 speech UI timing rule, do not implement a fixed delay unless the maintainer
 explicitly authorizes the value.
+
+Open feasibility slot: audio captured during that command-settle delay which
+is neither a command nor represented in the current finalized transcript may
+belong at the front of the next follow-up ASR request. Retaining and prepending
+that PCM is desirable only if a replay test proves the current request did not
+already consume it; otherwise the handoff would duplicate words across the
+turn boundary. Do not implement this until provider event timing can identify
+the unconsumed audio span and the behavior can be exercised deterministically.
 
 ## Batch Behavior
 
@@ -337,11 +381,13 @@ speech chunk and keeps recognition running.
 ## Feedback
 
 The mic's capture readiness stays event-driven. While the capture path is
-initializing, the mic retains its normal inactive appearance and the
-wide-screen status says `Starting…`; startup does not add an amber color or
-pulse. Once the path produces a real capture event, the wide-screen status says
-`Speak now…`; while the recognizer reports speech or delivers transcription
-results, it says `Listening…`. Because browsers do not reliably emit a matching
+initializing or browser-native capture is reconnecting, the mic uses an amber
+treatment and the wide-screen status says `Starting…`. Amber means capture was
+requested but no real audio/capture event has arrived; it never claims the mic
+is recording. Once the path produces a real capture event, the mic turns red
+and the wide-screen status says `Speak now…`; while the recognizer reports
+speech or delivers transcription results, it says `Listening…`. Because
+browsers do not reliably emit a matching
 speech-end event, 1.2 seconds without a provisional or final recognition update
 returns the status to `Speak now…`; an explicit speech-end event returns it
 immediately. This inactivity inference changes only the feedback label, never
@@ -349,10 +395,9 @@ transcript boundaries or capitalization.
 Browser-native Web Speech sessions that end unexpectedly and are automatically
 restarted return to `Starting…`; they do not expose the network-sounding
 internal `reconnecting` state. The changing words provide the status feedback;
-all non-error status text keeps the normal text color and weight instead of
-flashing between state-specific red, green, and amber treatments. Actual error
-text remains red. The mic control itself turns red after the active path
-produces a real listening/capture event. Its active icon is a microphone
+status text keeps the normal text color and weight, and actual error text
+remains red. The mic control itself turns red after the active path produces a
+real listening/capture event. Its active icon is a microphone
 knocked out of a filled circle in the input background color. The unified disc
 stays still at `Speak now…` and pulses only while the state says `Listening…`.
 Only the filled circle changes size; the larger microphone glyph remains fixed
@@ -395,6 +440,21 @@ queue no paints. Spoken commands may be shown as
 temporary UI feedback near the mic, such as a small command chip, but the chip
 is advisory UI only: the command word still must not appear in the textarea
 value.
+
+`Reduce playback while dictating` is a browser-local, default-on capture
+setting. From the first starting state through the end of capture, YA exactly
+mutes every HTML audio/video element it owns, including media inserted or
+unmuted during capture. Multiple simultaneous capture owners share the mute;
+YA restores each element's original muted state only after the last owner is
+idle. The default also requests echo cancellation for YA-controlled microphone
+streams, which lets Android Chromium select its communication/AEC capture path.
+Noise suppression and automatic gain control remain off, and the speech wire
+format remains mono 16 kHz PCM16. Browser-native Web Speech cannot receive YA's
+media constraints, but the exact YA-media mute still applies. Android may
+lower or reroute other-app playback as a consequence of its communication
+path, but hosted JavaScript cannot request audio focus or promise system-wide
+ducking. Turning the setting off is the explicit raw-capture opt-out: YA does
+not mute its media and requests echo cancellation off.
 
 Each stopped batch recording also owns a terminal settlement event keyed by
 its captured speech target. A later mic activation does not cancel or replace

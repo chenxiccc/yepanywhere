@@ -26,6 +26,7 @@ import {
   XAI_DIRECT_BATCH_SPEECH_METHOD,
   XAI_DIRECT_STREAMING_SPEECH_METHOD,
   canSpeechMethodStream,
+  getCompactSpeechMethodLabel,
   getSpeechMethodCapabilities,
   getOrderedServerSpeechBackends,
   getPreferredSpeechMethod,
@@ -66,6 +67,13 @@ afterEach(() => {
 });
 
 describe("speech provider method selection", () => {
+  it("provides compact mic-chip labels for known and advertised backends", () => {
+    expect(getCompactSpeechMethodLabel("browser-native")).toBe("Web");
+    expect(getCompactSpeechMethodLabel("ya-grok")).toBe("Grok");
+    expect(getCompactSpeechMethodLabel("ya-parakeet")).toBe("Para");
+    expect(getCompactSpeechMethodLabel("ya-custom-stt")).toBe("Custo");
+  });
+
   it("uses advertised server backends directly and orders preferred cloud STT first", () => {
     expect(
       getOrderedServerSpeechBackends([
@@ -837,7 +845,7 @@ describe("YA server speech provider", () => {
         channelCount: { ideal: 1 },
         sampleRate: { ideal: 16_000 },
         sampleSize: { ideal: 16 },
-        echoCancellation: false,
+        echoCancellation: true,
         noiseSuppression: false,
         autoGainControl: false,
       }),
@@ -2254,7 +2262,7 @@ describe("YA server speech provider", () => {
         sampleRate: 16_000,
         sampleSize: 16,
         channelCount: 1,
-        echoCancellation: false,
+        echoCancellation: true,
         noiseSuppression: false,
         autoGainControl: false,
       }),
@@ -2625,6 +2633,65 @@ describe("YA server speech provider", () => {
     expect(secondTrack.stop).toHaveBeenCalledTimes(1);
   });
 
+  it("preserves raw capture when a hidden warm mic is reacquired", async () => {
+    localStorage.setItem(UI_KEYS.speechKeepMicWarm, "true");
+    localStorage.setItem(UI_KEYS.speechReducePlayback, "false");
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+
+    const makeStream = () => {
+      let stopped = false;
+      const track = {
+        get readyState() {
+          return stopped ? "ended" : "live";
+        },
+        stop: vi.fn(() => {
+          stopped = true;
+        }),
+      } as unknown as MediaStreamTrack;
+      return {
+        stream: { getTracks: () => [track] } as unknown as MediaStream,
+        track,
+      };
+    };
+    const first = makeStream();
+    const second = makeStream();
+    const getUserMedia = vi
+      .fn<() => Promise<MediaStream>>()
+      .mockResolvedValueOnce(first.stream)
+      .mockResolvedValueOnce(second.stream);
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia },
+    });
+
+    await getSpeechMicStream({ keepWarm: true, reducePlayback: false });
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(getUserMedia).toHaveBeenCalledTimes(2);
+    expect(getUserMedia).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        audio: expect.objectContaining({ echoCancellation: false }),
+      }),
+    );
+
+    releaseSharedSpeechMicStream();
+  });
+
   it("retries visible warm mic reacquire after the previous tab lease releases", async () => {
     vi.useFakeTimers();
     try {
@@ -2791,6 +2858,16 @@ describe("YA server speech provider", () => {
       configurable: true,
       value: { query },
     });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ ok: true }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+      ),
+    );
     vi.stubGlobal("WebSocket", class FakeWebSocket {});
     vi.stubGlobal("AudioContext", class FakeAudioContext {});
 
@@ -3336,7 +3413,7 @@ describe("direct xAI speech provider", () => {
         channelCount: { ideal: 1 },
         sampleRate: { ideal: 16_000 },
         sampleSize: { ideal: 16 },
-        echoCancellation: false,
+        echoCancellation: true,
         noiseSuppression: false,
         autoGainControl: false,
       }),

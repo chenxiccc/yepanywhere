@@ -114,6 +114,28 @@ describe("SpeechControlMenu", () => {
     expect(localStorage.getItem(UI_KEYS.speechMicDeviceId)).toBe("usb-mic");
   });
 
+  it("defaults voice capture on and can opt back into raw capture", async () => {
+    installMediaDevices([]);
+
+    renderSpeechControlMenu({
+      trigger: <button type="button">voice</button>,
+      showMethodSelector: false,
+      methodOptions: [],
+      selectedMethod: "browser-native",
+      onMethodChange: vi.fn(),
+    });
+
+    await openSpeechMenu();
+    const toggle = screen.getByRole("checkbox", {
+      name: "Reduce playback while dictating",
+    });
+    expect((toggle as HTMLInputElement).checked).toBe(true);
+
+    fireEvent.click(toggle);
+
+    expect(localStorage.getItem(UI_KEYS.speechReducePlayback)).toBe("false");
+  });
+
   it("prewarms once while the mouse remains near the trigger margin", () => {
     installMediaDevices([]);
     const prewarm = vi.fn();

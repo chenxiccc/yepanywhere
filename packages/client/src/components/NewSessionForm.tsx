@@ -177,11 +177,14 @@ import {
 import { isVoiceInputShortcut } from "../lib/voiceInputShortcut";
 import { generateUUID } from "../lib/uuid";
 import { useVersion } from "../hooks/useVersion";
+import { useSpeechCaptureSettings } from "../hooks/useSpeechCaptureSettings";
+import { useRecentSpeechAttribution } from "../hooks/useRecentSpeechAttribution";
 import { useProviderSubscriptionUsage } from "../hooks/useProviderSubscriptionUsage";
 import { shortenPath } from "../lib/text";
 import { getPermissionModeOptions } from "../lib/permissionModes";
 import type { PermissionMode, Project } from "../types";
 import { FilterDropdown, type FilterOption } from "./FilterDropdown";
+import { AsrActionCue } from "./AsrActionCue";
 import { ProviderBadge } from "./ProviderBadge";
 import { ModelSubscriptionUsage } from "./ModelSubscriptionUsage";
 import { RecapAfterSecondsControl } from "./RecapAfterSecondsControl";
@@ -192,6 +195,7 @@ import {
 } from "./ThinkingControls";
 import {
   VoiceInputButton,
+  type SpeechCycleSettlement,
   type SpeechPendingKind,
   type VoiceInputButtonRef,
 } from "./VoiceInputButton";
@@ -207,6 +211,8 @@ interface PendingSpeechFinal {
   transcript: string;
   metadata?: SpeechTranscriptionResultMetadata;
 }
+
+type PendingNewSessionSpeechDelivery = "start" | "project-queue";
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes}\u202fb`;
@@ -353,6 +359,20 @@ export function NewSessionForm({
   const [speechPending, setSpeechPending] = useState<SpeechPendingKind | null>(
     null,
   );
+  const speechPendingRef = useRef<SpeechPendingKind | null>(null);
+  const pendingSpeechDeliveryRef =
+    useRef<PendingNewSessionSpeechDelivery | null>(null);
+  const pendingSpeechDeliverySettledRef = useRef(false);
+  const speechTransactionHasTextRef = useRef(false);
+  const dispatchingSettledSpeechDeliveryRef = useRef(false);
+  const runPendingSpeechDeliveryRef = useRef<() => void>(() => {});
+  const { asrAttributionMs } = useSpeechCaptureSettings();
+  const {
+    active: speechAttributionActive,
+    noteSpeech: noteSpeechAttribution,
+    isRecent: isRecentSpeechAttribution,
+    consume: consumeSpeechAttribution,
+  } = useRecentSpeechAttribution(asrAttributionMs);
   const [, setSpeechPreviewRevision] = useState(0);
   const [isProjectChooserExpanded, setIsProjectChooserExpanded] =
     useState(false);
@@ -1785,24 +1805,36 @@ export function NewSessionForm({
     [attachmentQuality, sourceTransport, showToast, t],
   );
 
+  const deferSpeechDelivery = useCallback(
+    (intent: PendingNewSessionSpeechDelivery) => {
+      if (dispatchingSettledSpeechDeliveryRef.current) return false;
+      const voice = voiceButtonRef.current;
+      const speechWorkPending =
+        voice?.isListening === true ||
+        speechPendingRef.current !== null ||
+        pendingSpeechFinalRef.current !== null;
+      if (!speechWorkPending) {
+        pendingSpeechDeliveryRef.current = null;
+        pendingSpeechDeliverySettledRef.current = false;
+        return false;
+      }
+      pendingSpeechDeliveryRef.current = intent;
+      pendingSpeechDeliverySettledRef.current = false;
+      if (voice?.isListening) voice.stopAndFinalize();
+      return true;
+    },
+    [],
+  );
+
   const handleStartSession = useCallback(
     async (messageOverride?: unknown, speechTriggered = false) => {
       const override =
         typeof messageOverride === "string" ? messageOverride : undefined;
-      // Stop voice recording and get any pending interim text unless the caller
-      // already supplied the finalized text from the STT backend.
-      const pendingVoice =
-        override === undefined
-          ? (voiceButtonRef.current?.stopAndFinalize() ?? "")
-          : "";
-
-      // Combine committed text with any pending voice text
-      let finalMessage = (override ?? message).trimEnd();
-      if (pendingVoice) {
-        finalMessage = finalMessage
-          ? `${finalMessage} ${pendingVoice}`
-          : pendingVoice;
+      if (override === undefined && deferSpeechDelivery("start")) {
+        return;
       }
+
+      const finalMessage = (override ?? draftControls.getDraft()).trimEnd();
 
       const hasContent = finalMessage.trim() || pendingFiles.length > 0;
       // A muted composer composes its own first turn, so an empty message is
@@ -1814,14 +1846,17 @@ export function NewSessionForm({
       )
         return;
 
-      const trimmedMessage = speechTriggered && hasContent
-        ? markAsrSubmittedTurn(finalMessage)
-        : finalMessage.trim();
+      const asrAttributed = speechTriggered || isRecentSpeechAttribution();
+      const trimmedMessage =
+        asrAttributed && hasContent
+          ? markAsrSubmittedTurn(finalMessage)
+          : finalMessage.trim();
       const trimmedProjectInput = normalizeProjectInput(projectInput);
       const actionAtMs = Date.now();
       const clientTimestamp = getServerClockTimestamp(actionAtMs);
 
       setInterimTranscript("");
+      consumeSpeechAttribution();
       setIsStarting(true);
 
       try {
@@ -2115,8 +2150,10 @@ export function NewSessionForm({
       hasSelectedProviderModel,
       isStarting,
       launch,
-      message,
       composerMuted,
+      consumeSpeechAttribution,
+      deferSpeechDelivery,
+      isRecentSpeechAttribution,
       navigate,
       pendingFiles,
       projectInput,
@@ -2141,19 +2178,16 @@ export function NewSessionForm({
   const handleQueueProjectSession = async (messageOverride?: unknown) => {
     const override =
       typeof messageOverride === "string" ? messageOverride : undefined;
-    const pendingVoice =
-      override === undefined
-        ? (voiceButtonRef.current?.stopAndFinalize() ?? "")
-        : "";
-
-    let finalMessage = (override ?? message).trimEnd();
-    if (pendingVoice) {
-      finalMessage = finalMessage
-        ? `${finalMessage} ${pendingVoice}`
-        : pendingVoice;
+    if (override === undefined && deferSpeechDelivery("project-queue")) {
+      return;
     }
 
-    const trimmedMessage = finalMessage.trim();
+    const finalMessage = (override ?? draftControls.getDraft()).trimEnd();
+    const rawTrimmedMessage = finalMessage.trim();
+    const trimmedMessage =
+      rawTrimmedMessage && isRecentSpeechAttribution()
+        ? markAsrSubmittedTurn(rawTrimmedMessage)
+        : rawTrimmedMessage;
     const trimmedProjectInput = normalizeProjectInput(projectInput);
     const stagedRefs = pendingFiles
       .filter(isPendingStagedFile)
@@ -2167,6 +2201,8 @@ export function NewSessionForm({
     ) {
       return;
     }
+
+    consumeSpeechAttribution();
 
     const actionAtMs = Date.now();
     const clientTimestamp = getServerClockTimestamp(actionAtMs);
@@ -2257,6 +2293,34 @@ export function NewSessionForm({
       showToast(t("projectQueueSubmitFailed", { message: errorMsg }), "error");
     }
   };
+
+  runPendingSpeechDeliveryRef.current = () => {
+    if (
+      speechPendingRef.current !== null ||
+      pendingSpeechFinalRef.current !== null
+    ) {
+      return;
+    }
+    if (!pendingSpeechDeliverySettledRef.current) return;
+    const pending = pendingSpeechDeliveryRef.current;
+    if (!pending) return;
+    pendingSpeechDeliveryRef.current = null;
+    pendingSpeechDeliverySettledRef.current = false;
+    dispatchingSettledSpeechDeliveryRef.current = true;
+    try {
+      if (pending === "project-queue") {
+        void handleQueueProjectSession();
+        return;
+      }
+      void handleStartSession();
+    } finally {
+      dispatchingSettledSpeechDeliveryRef.current = false;
+    }
+  };
+
+  const maybeRunPendingSpeechDelivery = useCallback(() => {
+    runPendingSpeechDeliveryRef.current();
+  }, []);
 
   const handleKeyDown = (e: KeyboardEvent) => {
     // Escape cancels a pending post-capture wait. Active listening still
@@ -2360,6 +2424,7 @@ export function NewSessionForm({
 
   // Voice input handlers
   const handleListeningStart = useCallback(() => {
+    speechTransactionHasTextRef.current = false;
     const textarea = textareaRef.current;
     const current = draftControls.getDraft();
     const selectionStart = Math.max(
@@ -2452,6 +2517,11 @@ export function NewSessionForm({
 
   const commitVoiceTranscript = useCallback(
     (transcript: string, metadata?: SpeechTranscriptionResultMetadata) => {
+      if (transcript.trim() && metadata?.smartTurnCommand !== "cancel") {
+        speechTransactionHasTextRef.current = true;
+        noteSpeechAttribution();
+      }
+      pendingSpeechDeliverySettledRef.current = true;
       commitSpeechTranscript(
         {
           textareaRef,
@@ -2463,6 +2533,7 @@ export function NewSessionForm({
           speechInsertionRangesRef,
           pendingTextareaSelectionRef,
           onSmartTurnSend: (text) => {
+            voiceButtonRef.current?.continueAfterSpeechSend();
             void handleStartSession(text, true);
           },
           composerEditedDuringSpeech: () =>
@@ -2471,6 +2542,7 @@ export function NewSessionForm({
         transcript,
         metadata,
       );
+      maybeRunPendingSpeechDelivery();
       // A completed overlapping (non-active) target's result has landed;
       // forget its range (active target is forgotten on pending->null).
       const committedTargetId = metadata?.speechTargetId;
@@ -2482,7 +2554,12 @@ export function NewSessionForm({
         setSpeechPreviewRevision((revision) => revision + 1);
       }
     },
-    [draftControls, handleStartSession],
+    [
+      draftControls,
+      handleStartSession,
+      maybeRunPendingSpeechDelivery,
+      noteSpeechAttribution,
+    ],
   );
 
   const handleVoiceTranscript = useCallback(
@@ -2531,7 +2608,20 @@ export function NewSessionForm({
   }, []);
 
   const handlePendingSpeechChange = useCallback(
-    (kind: SpeechPendingKind | null) => {
+    (kind: SpeechPendingKind | null, settlement?: SpeechCycleSettlement) => {
+      if (settlement === "failed") {
+        pendingSpeechDeliveryRef.current = null;
+        pendingSpeechDeliverySettledRef.current = false;
+      } else if (settlement === "completed") {
+        if (
+          pendingSpeechDeliveryRef.current &&
+          speechTransactionHasTextRef.current
+        ) {
+          noteSpeechAttribution();
+        }
+        pendingSpeechDeliverySettledRef.current = true;
+      }
+      speechPendingRef.current = kind;
       if (kind === null) {
         // Active recording finished: forget its target so completed targets do
         // not accumulate (see MessageInput).
@@ -2543,8 +2633,9 @@ export function NewSessionForm({
         activeSpeechTargetIdRef.current = null;
       }
       setSpeechPending(kind);
+      if (kind === null) maybeRunPendingSpeechDelivery();
     },
-    [],
+    [maybeRunPendingSpeechDelivery, noteSpeechAttribution],
   );
 
   // Cancel a pending transcription/finalization. The provider discards the
@@ -2552,6 +2643,8 @@ export function NewSessionForm({
   // target.
   const handleCancelTranscription = useCallback(() => {
     voiceButtonRef.current?.cancelProcessing();
+    pendingSpeechDeliveryRef.current = null;
+    pendingSpeechDeliverySettledRef.current = false;
     clearPendingSpeechFinal();
     const targetId = activeSpeechTargetIdRef.current;
     if (targetId) {
@@ -2560,6 +2653,7 @@ export function NewSessionForm({
     speechInsertionRangeRef.current = null;
     activeSpeechTargetIdRef.current = null;
     setSpeechPending(null);
+    speechPendingRef.current = null;
     setInterimTranscript("");
   }, [clearPendingSpeechFinal]);
 
@@ -2582,7 +2676,11 @@ export function NewSessionForm({
     [handleListeningStart, handleListeningStop],
   );
 
-  const hasContent = message.trim() || pendingFiles.length > 0;
+  const hasContent =
+    message.trim() ||
+    pendingFiles.length > 0 ||
+    speechPending !== null ||
+    interimTranscript;
   const canStart = Boolean(
     (hasContent || composerMuted) && hasSelectedProviderModel,
   );
@@ -2603,7 +2701,7 @@ export function NewSessionForm({
   const canQueueProjectSession = Boolean(
     allowProjectQueue &&
     showProjectQueueAction &&
-      message.trim() &&
+      (message.trim() || speechPending !== null || interimTranscript) &&
       pendingFilesReadyForProjectQueue &&
       hasProjectQueueTargetProject &&
       hasSelectedProviderModel,
@@ -2839,6 +2937,9 @@ export function NewSessionForm({
               title={projectQueueNewSessionTitle}
             >
               <span className="send-icon">⇥</span>
+              {(speechPending !== null ||
+                pendingSpeechDeliveryRef.current !== null ||
+                speechAttributionActive) && <AsrActionCue />}
             </button>
           )}
           <button
@@ -2867,6 +2968,10 @@ export function NewSessionForm({
                 <path d="m5 12 7-7 7 7" />
               </svg>
             )}
+            {!isStarting &&
+              (speechPending !== null ||
+                pendingSpeechDeliveryRef.current !== null ||
+                speechAttributionActive) && <AsrActionCue />}
           </button>
         </div>
       </div>

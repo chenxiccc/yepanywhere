@@ -67,6 +67,7 @@ vi.mock("../../hooks/useSpeechCaptureSettings", () => ({
   useSpeechCaptureSettings: () => ({
     keepMicWarm: false,
     micDeviceId: null,
+    reducePlayback: true,
   }),
 }));
 
@@ -158,6 +159,7 @@ describe("VoiceInputButton", () => {
 
     expect(firstOpenSpeechSocket).toBeDefined();
     expect(secondOpenSpeechSocket).toBe(firstOpenSpeechSocket);
+    expect(observedSpeechOptions.at(-1)?.reducePlayback).toBe(true);
   });
 
   it("keeps an unavailable enabled microphone visible but disabled", () => {
@@ -353,7 +355,7 @@ describe("VoiceInputButton", () => {
     expect(screen.getByRole("status").textContent).toBe("Starting...");
   });
 
-  it("keeps the microphone neutral while capture starts", () => {
+  it("shows a distinct requested state while capture starts", () => {
     speechState.status = "starting";
 
     render(
@@ -365,8 +367,25 @@ describe("VoiceInputButton", () => {
     );
 
     const button = screen.getByRole("button", { name: "voiceInputStopLabel" });
-    expect(button.classList.contains("connecting")).toBe(false);
+    expect(button.getAttribute("data-speech-phase")).toBe("starting");
+    expect(button.className).toContain("starting");
     expect(button.classList.contains("listening")).toBe(false);
     expect(document.querySelector(".voice-input-recording")).toBeNull();
+  });
+
+  it("shows the selected STT backend inside the wider mic chip", () => {
+    render(
+      <VoiceInputButton
+        onTranscript={vi.fn()}
+        onInterimTranscript={vi.fn()}
+        speechMethod="ya-parakeet"
+      />,
+    );
+
+    const button = screen.getByRole("button", {
+      name: "voiceInputStartLabel",
+    });
+    expect(button.textContent).toContain("Para");
+    expect(button.getAttribute("data-speech-method")).toBe("ya-parakeet");
   });
 });

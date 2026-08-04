@@ -13,6 +13,7 @@ import {
   type FilterOption,
 } from "../../components/FilterDropdown";
 import { SpeechSmartTurnControls } from "../../components/SpeechSmartTurnControls";
+import { SpeechTimingControls } from "../../components/SpeechTimingControls";
 import { useModelSettings } from "../../hooks/useModelSettings";
 import { useBrowserXaiSttApiKey } from "../../hooks/useBrowserXaiSttApiKey";
 import { useRemoteBasePath } from "../../hooks/useRemoteBasePath";
@@ -60,7 +61,16 @@ export function SpeechSettings() {
   } = useModelSettings();
   const parakeetModelPresetId = useId();
   const parakeetModelInputId = useId();
-  const { keepMicWarm, setKeepMicWarm } = useSpeechCaptureSettings();
+  const {
+    keepMicWarm,
+    setKeepMicWarm,
+    reducePlayback,
+    setReducePlayback,
+    followUpListenMs,
+    setFollowUpListenMs,
+    asrAttributionMs,
+    setAsrAttributionMs,
+  } = useSpeechCaptureSettings();
   const {
     browserXaiSttApiKey,
     hasBrowserXaiSttApiKey,
@@ -74,6 +84,9 @@ export function SpeechSettings() {
       speechMethod,
       speechSmartTurnSettings,
       keepMicWarm,
+      reducePlayback,
+      followUpListenMs,
+      asrAttributionMs,
       parakeetSpeechModel,
     }),
     [
@@ -81,6 +94,9 @@ export function SpeechSettings() {
       speechMethod,
       speechSmartTurnSettings,
       keepMicWarm,
+      reducePlayback,
+      followUpListenMs,
+      asrAttributionMs,
       parakeetSpeechModel,
     ],
   );
@@ -90,6 +106,9 @@ export function SpeechSettings() {
       setSpeechMethod(snapshot.speechMethod);
       setSpeechSmartTurnSettings(snapshot.speechSmartTurnSettings);
       setKeepMicWarm(snapshot.keepMicWarm);
+      setReducePlayback(snapshot.reducePlayback);
+      setFollowUpListenMs(snapshot.followUpListenMs);
+      setAsrAttributionMs(snapshot.asrAttributionMs);
       setParakeetSpeechModel(snapshot.parakeetSpeechModel);
     },
     [
@@ -97,6 +116,9 @@ export function SpeechSettings() {
       setSpeechMethod,
       setSpeechSmartTurnSettings,
       setKeepMicWarm,
+      setReducePlayback,
+      setFollowUpListenMs,
+      setAsrAttributionMs,
       setParakeetSpeechModel,
     ],
   );
@@ -412,6 +434,21 @@ export function SpeechSettings() {
         </SettingsItem>
 
         <SettingsItem
+          label={t("speechSettingsReducePlaybackTitle")}
+          description={t("speechSettingsReducePlaybackDescription")}
+        >
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={reducePlayback}
+              onChange={(event) => setReducePlayback(event.target.checked)}
+              aria-label={t("speechSettingsReducePlaybackTitle")}
+            />
+            <span className="toggle-slider" />
+          </label>
+        </SettingsItem>
+
+        <SettingsItem
           label={t("speechSettingsSmartTurnTitle")}
           description={t("speechSettingsSmartTurnDescription", {
             backend: selectedBackendLabel,
@@ -426,6 +463,14 @@ export function SpeechSettings() {
           ) : (
             <p className="settings-hint">{smartTurnUnavailableHint}</p>
           )}
+        </SettingsItem>
+
+        <SettingsItem
+          label={t("speechSettingsTimingTitle")}
+          description={t("speechSettingsTimingDescription")}
+          className="model-settings-item"
+        >
+          <SpeechTimingControls showFollowUp={supportsSelectedSmartTurn} />
         </SettingsItem>
       </div>
     </SettingsSection>

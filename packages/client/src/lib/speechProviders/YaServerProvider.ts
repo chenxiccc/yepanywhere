@@ -449,6 +449,8 @@ function describeAudioTrackSettings(stream: MediaStream): string | null {
       : undefined;
   const settings = track?.getSettings?.();
   if (!settings) return null;
+  const latency = (settings as MediaTrackSettings & { latency?: number })
+    .latency;
   const part = (label: string, value: unknown): string =>
     `${label}=${value ?? "?"}`;
   return [
@@ -456,6 +458,7 @@ function describeAudioTrackSettings(stream: MediaStream): string | null {
     part("rate", settings.sampleRate),
     part("channels", settings.channelCount),
     part("sampleSize", settings.sampleSize),
+    part("latency", latency),
     part("ec", settings.echoCancellation),
     part("ns", settings.noiseSuppression),
     part("agc", settings.autoGainControl),
@@ -560,6 +563,7 @@ export class YaServerProvider implements SpeechProvider {
     return getSpeechMicStream({
       keepWarm: this.options.keepMicWarm === true,
       micDeviceId: this.options.micDeviceId,
+      reducePlayback: this.options.reducePlayback !== false,
     });
   }
 

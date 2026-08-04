@@ -10,6 +10,7 @@ import {
   useImperativeHandle,
   useMemo,
   useRef,
+  useSyncExternalStore,
 } from "react";
 import { useBrowserXaiSttApiKey } from "../hooks/useBrowserXaiSttApiKey";
 import { useModelSettings } from "../hooks/useModelSettings";
@@ -21,15 +22,28 @@ import { useViewportWidth } from "../hooks/useViewportWidth";
 import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import { type MessageKey, useI18n } from "../i18n";
 import { hasCoarsePointer } from "../lib/deviceDetection";
+import { setSpeechCaptureActivity } from "../lib/speechCaptureActivity";
+import {
+  armSpeechFollowUp,
+  cancelSpeechFollowUp,
+  claimSpeechFollowUp,
+  getSpeechFollowUpSnapshot,
+  noteSpeechFollowUpActivity,
+  releaseSpeechFollowUpOwner,
+  subscribeSpeechFollowUp,
+} from "../lib/speechFollowUp";
 import {
   DEFAULT_SPEECH_METHOD,
   canSpeechMethodStream,
+  getCompactSpeechMethodLabel,
+  getSpeechMethodCapabilities,
   isBrowserNativeSpeechAvailable,
   isServerRoutedSpeechMethod,
   resolveSpeechMethod,
   type SpeechMethodId,
 } from "../lib/speechProviders/methods";
 import { reconcileParakeetBackendForModel } from "../lib/speechProviders/parakeetModels";
+import { releaseSharedSpeechMicStream } from "../lib/speechProviders/sharedMicCapture";
 import {
   clearSpeechWaveform,
   publishSpeechWaveformSamples,
@@ -62,6 +76,7 @@ const SPEECH_STATUS_MESSAGE_KEYS: Record<SpeechProviderStatus, MessageKey> = {
  * draft when the remaining work is cancelled.
  */
 export type SpeechPendingKind = "listening" | "transcribing" | "finalizing";
+export type SpeechCycleSettlement = "completed" | "failed";
 
 export interface VoiceInputButtonRef {
   /** Stop listening and return any pending interim text */
@@ -72,6 +87,8 @@ export interface VoiceInputButtonRef {
   cancelProcessing: () => void;
   /** Speculatively warm capture resources before the first click. */
   prewarm: () => void;
+  /** Keep listening briefly after a speech-triggered Smart Turn send. */
+  continueAfterSpeechSend: () => void;
   /** Whether currently listening */
   isListening: boolean;
   /** Whether voice input is available (supported and enabled) */
@@ -91,7 +108,10 @@ interface VoiceInputButtonProps {
   /** Callback when the user explicitly stops active capture. */
   onListeningStop?: () => void;
   /** Callback when a post-capture pending state (transcribing/finalizing) starts or ends. */
-  onPendingSpeechChange?: (kind: SpeechPendingKind | null) => void;
+  onPendingSpeechChange?: (
+    kind: SpeechPendingKind | null,
+    settlement?: SpeechCycleSettlement,
+  ) => void;
   /** Callback when one batch transcription target reaches a terminal state. */
   onTranscriptionSettled?: (settlement: SpeechTranscriptionSettlement) => void;
   /** Whether the button should be disabled */
@@ -148,7 +168,8 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
   const { hasBrowserXaiSttApiKey } = useBrowserXaiSttApiKey();
   const transport = useCurrentSourceRuntime().transport;
   const basePath = useRemoteBasePath();
-  const { keepMicWarm, micDeviceId } = useSpeechCaptureSettings();
+  const { keepMicWarm, micDeviceId, reducePlayback, followUpListenMs } =
+    useSpeechCaptureSettings();
   const serverVoiceEnabled =
     versionInfo?.capabilities === undefined
       ? true
@@ -195,6 +216,17 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
     relayedServerSpeechAvailable:
       !speechMethodServerRouted || openRelayedSpeechSocket !== undefined,
   });
+  const supportsSmartTurn =
+    serverStreaming &&
+    getSpeechMethodCapabilities(
+      speechMethod,
+      versionInfo?.voiceBackendCapabilities,
+    ).smartTurn === true;
+  const activeSmartTurn = supportsSmartTurn
+    ? (smartTurn ?? speechSmartTurnSettings)
+    : undefined;
+  const followUpEnabled =
+    activeSmartTurn?.enabled === true && followUpListenMs > 0;
   const viewportWidth = useViewportWidth();
 
   // Show status text on desktop with sufficient width
@@ -221,6 +253,7 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
     status,
     toggleListening,
     stopListening,
+    startListening,
     cancelProcessing,
     prewarm,
     error,
@@ -230,11 +263,10 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
     basePath,
     getTranscriptionContext,
     serverStreaming,
-    smartTurn: serverStreaming
-      ? (smartTurn ?? speechSmartTurnSettings)
-      : undefined,
-    keepMicWarm,
+    smartTurn: activeSmartTurn,
+    keepMicWarm: keepMicWarm || followUpEnabled,
     micDeviceId,
+    reducePlayback,
     onAudioSamples: showWaveform ? publishSpeechWaveformSamples : undefined,
     parakeetModel: parakeetSpeechModel,
     openRelayedSpeechSocket,
@@ -243,17 +275,33 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
     onTranscriptionSettled,
   });
   const isStarting = status === "starting";
+  const isCaptureStarting = isStarting || status === "reconnecting";
   const isCapturing =
     isListening ||
     status === "listening" ||
     (status === "receiving" && isListening);
   const isFinalizing = status === "finalizing";
-  const isBusy = isStarting || isFinalizing || status === "reconnecting";
+  const isBusy = isCaptureStarting || isFinalizing;
   const isActive = isCapturing || isBusy;
   const isPressed = isCapturing || isStarting || status === "reconnecting";
   const isProcessing = status === "processing";
   const speechActivityDetected = status === "receiving";
   const wasCapturingRef = useRef(false);
+  const previousPendingKindRef = useRef<SpeechPendingKind | null>(null);
+  const onPendingSpeechChangeRef = useRef(onPendingSpeechChange);
+  onPendingSpeechChangeRef.current = onPendingSpeechChange;
+  const speechCaptureOwnerRef = useRef<object>({});
+  const followUpSnapshot = useSyncExternalStore(
+    subscribeSpeechFollowUp,
+    getSpeechFollowUpSnapshot,
+    getSpeechFollowUpSnapshot,
+  );
+  const compactSpeechMethodLabel = getCompactSpeechMethodLabel(speechMethod);
+  const speechCapturePhase = isCapturing
+    ? "capturing"
+    : isCaptureStarting
+      ? "starting"
+      : null;
   const waveformVisible =
     showWaveform && speechMethod !== DEFAULT_SPEECH_METHOD && isCapturing;
   const showPostCaptureStatus = isProcessing || isFinalizing;
@@ -267,7 +315,6 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
       : isCapturing
         ? "listening"
         : null;
-
   const isAvailable = isSupported && voiceInputEnabled && serverVoiceEnabled;
   const unavailableLabel = versionLoading
     ? t("speechStartingStatus")
@@ -277,12 +324,25 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
   // "reconnecting" is an internal recognizer restart, not a network failure.
   const statusLabel = error || t(SPEECH_STATUS_MESSAGE_KEYS[status]);
 
+  const endFollowUpListening = useCallback(() => {
+    stopListening();
+    if (!keepMicWarm) releaseSharedSpeechMicStream();
+  }, [keepMicWarm, stopListening]);
+
   // Expose methods and state to parent
   useImperativeHandle(
     ref,
     () => ({
       stopAndFinalize: () => {
         const pending = interimTranscript;
+        if (
+          followUpSnapshot.active &&
+          (followUpSnapshot.owner === null ||
+            followUpSnapshot.owner === speechCaptureOwnerRef.current)
+        ) {
+          cancelSpeechFollowUp(speechCaptureOwnerRef.current);
+          return pending;
+        }
         if (isActive) {
           stopListening();
         }
@@ -291,13 +351,26 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
       toggle: toggleListening,
       cancelProcessing,
       prewarm,
+      continueAfterSpeechSend: () => {
+        if (!followUpEnabled) return;
+        armSpeechFollowUp(
+          followUpListenMs,
+          speechCaptureOwnerRef.current,
+          endFollowUpListening,
+        );
+      },
       isListening: isActive,
       isAvailable,
     }),
     [
       interimTranscript,
+      followUpEnabled,
+      followUpListenMs,
+      followUpSnapshot.active,
+      followUpSnapshot.owner,
       isActive,
       cancelProcessing,
+      endFollowUpListening,
       prewarm,
       stopListening,
       toggleListening,
@@ -322,12 +395,84 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
     };
   }, [isCapturing]);
 
+  useEffect(
+    () => () => {
+      setSpeechCaptureActivity(speechCaptureOwnerRef.current, null);
+      releaseSpeechFollowUpOwner(speechCaptureOwnerRef.current);
+    },
+    [],
+  );
+
   useEffect(() => {
-    onPendingSpeechChange?.(pendingKind);
-    return () => {
-      if (pendingKind) onPendingSpeechChange?.(null);
-    };
-  }, [pendingKind, onPendingSpeechChange]);
+    if (!followUpSnapshot.active || !followUpEnabled) return;
+    const owner = speechCaptureOwnerRef.current;
+    if (
+      followUpSnapshot.owner !== null &&
+      followUpSnapshot.owner !== owner
+    ) {
+      return;
+    }
+    if (!claimSpeechFollowUp(owner, endFollowUpListening)) return;
+    if (status === "receiving") {
+      noteSpeechFollowUpActivity(owner);
+      return;
+    }
+    if (status === "idle" && !disabled && isAvailable) {
+      onListeningStart?.();
+      startListening();
+    }
+  }, [
+    disabled,
+    endFollowUpListening,
+    followUpEnabled,
+    followUpSnapshot.active,
+    followUpSnapshot.owner,
+    isAvailable,
+    onListeningStart,
+    startListening,
+    status,
+  ]);
+
+  useEffect(() => {
+    if (
+      followUpEnabled ||
+      followUpSnapshot.owner !== speechCaptureOwnerRef.current
+    ) {
+      return;
+    }
+    cancelSpeechFollowUp(speechCaptureOwnerRef.current);
+  }, [followUpEnabled, followUpSnapshot.owner]);
+
+  useEffect(() => {
+    setSpeechCaptureActivity(
+      speechCaptureOwnerRef.current,
+      reducePlayback ? speechCapturePhase : null,
+    );
+  }, [reducePlayback, speechCapturePhase]);
+
+  useEffect(() => {
+    const previousKind = previousPendingKindRef.current;
+    const settlement =
+      previousKind !== null && pendingKind === null
+        ? status === "error" || error
+          ? "failed"
+          : "completed"
+        : undefined;
+    previousPendingKindRef.current = pendingKind;
+    if (settlement) {
+      onPendingSpeechChange?.(pendingKind, settlement);
+    } else {
+      onPendingSpeechChange?.(pendingKind);
+    }
+  }, [error, pendingKind, onPendingSpeechChange, status]);
+
+  useEffect(
+    () => () => {
+      previousPendingKindRef.current = null;
+      onPendingSpeechChangeRef.current?.(null);
+    },
+    [],
+  );
 
   useEffect(() => {
     const inlineWaveformActive = inlineWaveform && waveformVisible;
@@ -342,12 +487,27 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
     const wasActive = isActive;
     if (wasActive) {
       onListeningStop?.();
+      if (
+        followUpSnapshot.active &&
+        (followUpSnapshot.owner === null ||
+          followUpSnapshot.owner === speechCaptureOwnerRef.current)
+      ) {
+        cancelSpeechFollowUp(speechCaptureOwnerRef.current);
+        return;
+      }
       toggleListening();
       return;
     }
     onListeningStart?.();
     toggleListening();
-  }, [isActive, toggleListening, onListeningStart, onListeningStop]);
+  }, [
+    followUpSnapshot.active,
+    followUpSnapshot.owner,
+    isActive,
+    toggleListening,
+    onListeningStart,
+    onListeningStop,
+  ]);
 
   // A disabled setting or a host without speech support removes the control.
   // Provider discovery leaves a disabled Mic in place until it can run.
@@ -376,10 +536,14 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
   const button = (
     <button
       type="button"
-      className={`voice-input-button ${isCapturing ? "listening" : ""} ${
+      className={`voice-input-button ${styles.button} ${
+        isCaptureStarting ? styles.starting : ""
+      } ${isCapturing ? "listening" : ""} ${
         inlineWaveform ? styles.inlineWaveform : ""
       } ${className}`}
       data-inline-waveform={inlineWaveform || undefined}
+      data-speech-method={speechMethod}
+      data-speech-phase={speechCapturePhase ?? "idle"}
       onClick={handleClick}
       disabled={disabled || !isSupported}
       title={
@@ -404,6 +568,9 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
       }
       aria-pressed={isPressed}
     >
+      <span className={styles.backendLabel} aria-hidden="true">
+        {compactSpeechMethodLabel}
+      </span>
       <svg
         width="18"
         height="18"

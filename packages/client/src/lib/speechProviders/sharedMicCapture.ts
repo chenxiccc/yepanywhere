@@ -37,8 +37,11 @@ let reacquireRetryTimer: ReturnType<typeof setTimeout> | null = null;
 let lifecycleInstalled = false;
 let leaseChannel: BroadcastChannel | null = null;
 
-function deviceKey(micDeviceId: string | null | undefined): string {
-  return micDeviceId ?? "";
+function deviceKey(
+  micDeviceId: string | null | undefined,
+  reducePlayback: boolean,
+): string {
+  return `${micDeviceId ?? ""}\u0000${reducePlayback ? "voice" : "raw"}`;
 }
 
 function canUseStorage(): boolean {
@@ -60,6 +63,13 @@ function getStoredKeepMicWarm(): boolean {
   return (
     canUseStorage() &&
     globalThis.localStorage.getItem(UI_KEYS.speechKeepMicWarm) === "true"
+  );
+}
+
+function getStoredReducePlayback(): boolean {
+  return (
+    !canUseStorage() ||
+    globalThis.localStorage.getItem(UI_KEYS.speechReducePlayback) !== "false"
   );
 }
 
@@ -238,6 +248,7 @@ function maybeReacquireSharedWarmStream(): void {
   void getSpeechMicStream({
     keepWarm: true,
     micDeviceId: getStoredMicDeviceId(),
+    reducePlayback: getStoredReducePlayback(),
   })
     .then((stream) => {
       if (isSharedSpeechMicStream(stream) && hasLiveSpeechTracks(stream)) {
@@ -405,6 +416,7 @@ export function isSharedSpeechMicStream(stream: MediaStream | null): boolean {
 
 export function speechMicConstraints(
   micDeviceId: string | null | undefined,
+  reducePlayback = true,
 ): MediaStreamConstraints {
   return {
     audio: {
@@ -414,10 +426,11 @@ export function speechMicConstraints(
       channelCount: { ideal: 1 },
       sampleRate: { ideal: SPEECH_CAPTURE_SAMPLE_RATE },
       sampleSize: { ideal: 16 },
-      // Capture raw mic audio. The selected OS/browser device is the gain and
-      // processing choice; YA should not silently route some backends through
-      // browser call-processing while others use raw PCM.
-      echoCancellation: false,
+      // Keep one capture shape across YA-controlled backends. The default voice
+      // path asks Chromium Android for its communication capture mode as well
+      // as browser echo cancellation. Users can opt back into raw capture for
+      // a device or backend that performs worse with browser processing.
+      echoCancellation: reducePlayback,
       noiseSuppression: false,
       autoGainControl: false,
     },
@@ -440,12 +453,14 @@ export function releaseSharedSpeechMicStream(): void {
 export function getSpeechMicStream({
   keepWarm,
   micDeviceId,
+  reducePlayback = true,
 }: {
   keepWarm: boolean;
   micDeviceId?: string | null;
+  reducePlayback?: boolean;
 }): Promise<MediaStream> {
-  const key = deviceKey(micDeviceId);
-  const constraints = speechMicConstraints(micDeviceId);
+  const key = deviceKey(micDeviceId, reducePlayback);
+  const constraints = speechMicConstraints(micDeviceId, reducePlayback);
   if (!keepWarm) {
     return navigator.mediaDevices.getUserMedia(constraints);
   }

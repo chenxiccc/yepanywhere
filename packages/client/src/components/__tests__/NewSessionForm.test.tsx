@@ -26,6 +26,7 @@ import {
   YA_GROK_BATCH_SPEECH_METHOD,
   XAI_DIRECT_STREAMING_SPEECH_METHOD,
 } from "../../lib/speechProviders/methods";
+import { UI_KEYS } from "../../lib/storageKeys";
 import { NewSessionForm } from "../NewSessionForm";
 
 const {
@@ -52,6 +53,7 @@ const {
   mockSetGrokSpeechAudioSettings,
   mockVoiceToggle,
   mockVoiceCancelProcessing,
+  mockVoiceContinueAfterSpeechSend,
   voicePropsState,
   draftKeys,
   modelSettingsState,
@@ -88,10 +90,12 @@ const {
   mockSetGrokSpeechAudioSettings: vi.fn(),
   mockVoiceToggle: vi.fn(),
   mockVoiceCancelProcessing: vi.fn(),
+  mockVoiceContinueAfterSpeechSend: vi.fn(),
   voicePropsState: {
     current: null as null | {
       onPendingSpeechChange?: (
         kind: "listening" | "transcribing" | "finalizing" | null,
+        settlement?: "completed" | "failed",
       ) => void;
       onInterimTranscript?: (text: string) => void;
       onTranscript?: (
@@ -561,6 +565,7 @@ vi.mock("../VoiceInputButton", () => ({
         stopAndFinalize: () => "",
         toggle: mockVoiceToggle,
         cancelProcessing: mockVoiceCancelProcessing,
+        continueAfterSpeechSend: mockVoiceContinueAfterSpeechSend,
         isListening: false,
         isAvailable: true,
       }),
@@ -704,6 +709,7 @@ describe("NewSessionForm", () => {
     mockSetGrokSpeechAudioSettings.mockReset();
     mockVoiceToggle.mockReset();
     mockVoiceCancelProcessing.mockReset();
+    mockVoiceContinueAfterSpeechSend.mockReset();
     voicePropsState.current = null;
     draftKeys.length = 0;
     draftAttachmentState.value = null;
@@ -786,6 +792,7 @@ describe("NewSessionForm", () => {
 
   afterEach(() => {
     cleanup();
+    window.localStorage.clear();
     vi.clearAllMocks();
     vi.unstubAllGlobals();
   });
@@ -2444,6 +2451,57 @@ describe("NewSessionForm", () => {
         expect.any(Number),
       );
     });
+    expect(mockVoiceContinueAfterSpeechSend).toHaveBeenCalledOnce();
+  });
+
+  it("defers an active-capture Start until backend-final speech settles", async () => {
+    window.localStorage.setItem(UI_KEYS.speechAsrAttributionMs, "500");
+    render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+
+    act(() => {
+      voicePropsState.current?.onPendingSpeechChange?.("listening");
+      voicePropsState.current?.onInterimTranscript?.("provisional words");
+    });
+    const start = screen.getByRole("button", {
+      name: "newSessionStartAction",
+    });
+    expect(start.textContent).toContain("ASR");
+    fireEvent.click(start);
+    expect(mockStartSession).not.toHaveBeenCalled();
+
+    act(() => {
+      voicePropsState.current?.onPendingSpeechChange?.("finalizing");
+      voicePropsState.current?.onTranscript?.("backend final words");
+    });
+    await waitFor(() => {
+      expect(
+        (screen.getByPlaceholderText(
+          "newSessionPlaceholder",
+        ) as HTMLTextAreaElement).value,
+      ).toBe("backend final words");
+    });
+    act(() => {
+      voicePropsState.current?.onPendingSpeechChange?.(null, "completed");
+    });
+
+    await waitFor(() => {
+      expect(mockStartSession).toHaveBeenCalledWith(
+        "project-1",
+        "[ASR] backend final words",
+        expect.any(Object),
+        undefined,
+        expect.any(Number),
+      );
+    });
+    expect(mockStartSession.mock.calls[0]?.[1]).not.toContain(
+      "provisional words",
+    );
   });
 
   it("keeps the real new-session textarea editable while transcribing", async () => {

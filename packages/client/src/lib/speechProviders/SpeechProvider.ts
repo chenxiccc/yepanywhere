@@ -136,6 +136,8 @@ export interface SpeechProviderOptions extends SpeechProviderEvents {
   keepMicWarm?: boolean;
   /** Browser-local microphone device id for YA-server capture. */
   micDeviceId?: string | null;
+  /** Ask the browser to reduce speaker leakage into YA-controlled capture. */
+  reducePlayback?: boolean;
   /**
    * Receive browser microphone samples for local visualization. The callback
    * must consume the view synchronously; capture buffers may be reused.

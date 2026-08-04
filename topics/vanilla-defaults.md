@@ -141,10 +141,13 @@ decision after observing the pause-boundary behavior interactively.
 
 The same speech UI prefixes provider-bound turns with `[ASR]` when speech
 itself triggers submission: Smart Turn endpoint sends and explicit spoken
-`send` commands. Ordinary manual submissions remain verbatim. Authorized by
-graehl on 2026-08-03 as a deliberate provenance marker for turns whose send
-boundary was chosen through speech recognition rather than a manual Send or
-Enter action.
+`send` commands. A browser-local Quick-send `[ASR]` window may extend that
+attribution to a manual Send, Steer, or Queue shortly after finalized speech,
+but it defaults to 0/off so ordinary manual submissions remain verbatim.
+Authorized by graehl on 2026-08-03 as a deliberate provenance marker for turns
+whose send boundary was chosen through speech recognition rather than a manual
+Send or Enter action; the optional quick-send extension was approved on
+2026-08-04.
 
 ## Worked instances: queued-turn delivery
 

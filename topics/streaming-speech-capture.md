@@ -59,11 +59,25 @@ Primary code: `packages/client/src/lib/speechProviders/YaServerProvider.ts`
    3.5s audio-flow watchdog then surfaces a visible error. `resume()` rejection
    is logged, not swallowed.
 
-4. **Capture constraints: all call-oriented processing off.** No audio is
-   played, so `echoCancellation` has nothing to cancel; `noiseSuppression` and
-   `autoGainControl` reshape the waveform - all three **off**, capture the raw
-   mic. Keep `channelCount: 1` (a proper mono downmix transcribes better than
-   one channel of a stereo stream; dropping it hurt quality).
+4. **Capture constraints: communication/AEC by default, raw as an opt-out.**
+   `echoCancellation` is **on** by default for every YA-controlled microphone
+   stream. In Android Chromium this is the standards-facing request that lets
+   the browser select its communication/AEC capture path and use a playback
+   reference without exposing that reference to page JavaScript. It does not
+   guarantee Android audio focus or system-wide ducking. `noiseSuppression`
+   and `autoGainControl` remain **off** because they reshape speech level and
+   timbre. Keep `channelCount: 1` (a proper mono downmix transcribes better
+   than one channel of a stereo stream; dropping it hurt quality).
+
+   The browser-local, default-on `Reduce playback while dictating` setting
+   owns this choice. While capture is starting or active, YA also exactly
+   mutes its current and newly inserted HTML audio/video elements and restores
+   each element's prior muted state after the final capture owner goes idle.
+   Browser-native Web Speech gets that YA-media mute even though its capture
+   constraints are browser-owned. Turning the setting off requests
+   `echoCancellation: false` and disables YA-media muting, providing a raw
+   capture escape hatch for devices or Bluetooth routes where communication
+   mode regresses quality or latency.
 
    Capture **level** is managed by **input-device selection**, not AGC. Retained
    captures showed peak swinging 0.5%-16% FS with quiet ones mis-transcribing
@@ -76,7 +90,9 @@ Primary code: `packages/client/src/lib/speechProviders/YaServerProvider.ts`
    transcript directly rather than trusting the browser console.
 
 5. **PCM packing must not allocate per callback.** The streaming path targets
-   xAI-native 16 kHz PCM16 and emits 100 ms chunks (1600 samples / 3200 bytes).
+   xAI-native mono 16 kHz PCM16 and emits 100 ms chunks (1600 samples / 3200
+   bytes, 256 kbit/s). Communication/AEC processing changes microphone samples,
+   not this transport format.
    `Pcm16Chunker` reuses fixed buffers and only flushes a short final frame on
    manual stop. If Web Audio still reports a non-16 kHz context, the fallback
    resampler averages input windows and each output sample must span at least 1
@@ -154,6 +170,14 @@ settings surface):
   lease expires; it must not give up after the first refused acquire.
 
   Default off keeps no speculative capture.
+
+  Smart Turn follow-up listening is independent of this preference. A non-zero
+  follow-up window temporarily uses the same shared warm stream so a second
+  utterance can start without another device cold-open. When the window expires
+  with Keep Mic Warm off, YA stops the follow-up capture and releases that
+  temporary stream. With Keep Mic Warm on, only active follow-up listening
+  stops; the visibility-scoped idle stream remains under the ordinary warm-mic
+  contract.
 
   Settings copy should name this visibility scope. Prefer wording like "Keep
   this browser's microphone stream ready while this tab is visible between
@@ -269,17 +293,21 @@ Next diagnostic step (not yet done): enable **Remote Log Collection**
 
 - **Done:** direct `/api/speech/ws` streaming and dedicated relayed speech
   channel selection (contract #1); capture from mic-on with handshake
-  buffering (#2); first-frame-gated `listening` + watchdog (#3); EC/NS/AGC off
-  + `channelCount: 1` (#4); resampler at-least-1-sample span (#5); `onError`/timeout
-  salvage + request-id guard (#6); browser-local warm-mic option with
-  pointer-near initial prewarm; browser-local mic device picker; `[YaSTT]`
-  diagnostics.
+  buffering (#2); first-frame-gated `listening` + watchdog (#3); default-on
+  communication/AEC capture, YA-media muting, raw opt-out, and
+  `channelCount: 1` (#4); resampler at-least-1-sample span (#5);
+  `onError`/timeout salvage + request-id guard (#6); browser-local warm-mic
+  option with pointer-near initial prewarm; temporary Smart Turn follow-up
+  listening across composer navigation; browser-local mic device picker;
+  `[YaSTT]` diagnostics.
 - **Open / not implemented:** mobile "never red" (above); AudioWorklet mode.
   The non-AudioWorklet path already sends 16 kHz PCM16 in 100 ms chunks.
 
 ## Diagnostics
 
-`[YaSTT]` console marks (and `frame peak=`) are intentionally kept in
+`[YaSTT]` console marks (including actual track rate, channel count, sample
+size, processing constraints, and latency where the browser reports it, plus
+`frame peak=`) are intentionally kept in
 `doStartStreaming` while this path is being hardened; they flow to the remote
 client log collector too. Remove or gate them once standard mode is settled and
 AudioWorklet mode lands.

@@ -51,6 +51,7 @@ const {
   mockVoiceToggle,
   mockVoiceStopAndFinalize,
   mockVoiceCancelProcessing,
+  mockVoiceContinueAfterSpeechSend,
   voiceButtonState,
   voicePropsState,
   remoteBasePathState,
@@ -89,6 +90,7 @@ const {
   mockVoiceToggle: vi.fn(),
   mockVoiceStopAndFinalize: vi.fn(() => ""),
   mockVoiceCancelProcessing: vi.fn(),
+  mockVoiceContinueAfterSpeechSend: vi.fn(),
   voiceButtonState: {
     isListening: false,
   },
@@ -108,6 +110,7 @@ const {
       onListeningStop?: () => void;
       onPendingSpeechChange?: (
         kind: "listening" | "transcribing" | "finalizing" | null,
+        settlement?: "completed" | "failed",
       ) => void;
       onWaveformActiveChange?: (active: boolean) => void;
       onTranscriptionSettled?: (settlement: {
@@ -405,6 +408,10 @@ vi.mock("../VoiceInputButton", async () => {
           onInterimTranscript?: (text: string) => void;
           onListeningStart?: () => void;
           onListeningStop?: () => void;
+          onPendingSpeechChange?: (
+            kind: "listening" | "transcribing" | "finalizing" | null,
+            settlement?: "completed" | "failed",
+          ) => void;
           onWaveformActiveChange?: (active: boolean) => void;
           getTranscriptionContext?: () => { speechTargetId?: string };
           speechMethod?: string;
@@ -420,6 +427,7 @@ vi.mock("../VoiceInputButton", async () => {
           toggle: mockVoiceToggle,
           cancelProcessing: mockVoiceCancelProcessing,
           prewarm: vi.fn(),
+          continueAfterSpeechSend: mockVoiceContinueAfterSpeechSend,
           isAvailable: true,
           isListening: voiceButtonState.isListening,
         }));
@@ -720,6 +728,7 @@ describe("MessageInput", () => {
     mockVoiceToggle.mockReset();
     mockVoiceStopAndFinalize.mockReset();
     mockVoiceCancelProcessing.mockReset();
+    mockVoiceContinueAfterSpeechSend.mockReset();
     voiceButtonState.isListening = false;
     voicePropsState.current = null;
     window.localStorage.clear();
@@ -2224,7 +2233,67 @@ describe("MessageInput", () => {
       expectSubmission(onSend, "[ASR] Okay.", "direct");
       expect(textarea.value).toBe("");
     });
+    expect(mockVoiceContinueAfterSpeechSend).toHaveBeenCalledOnce();
     expect(document.activeElement).toBe(textarea);
+  });
+
+  it("keeps Send available and waits for backend-final speech", async () => {
+    window.localStorage.setItem(UI_KEYS.speechAsrAttributionMs, "1000");
+    const onSend = vi.fn();
+    renderMessageInput(vi.fn(), { onSend });
+
+    voiceButtonState.isListening = true;
+    act(() => {
+      voicePropsState.current?.onListeningStart?.();
+      voicePropsState.current?.onPendingSpeechChange?.("listening");
+      voicePropsState.current?.onInterimTranscript?.("provisional words");
+    });
+
+    const send = screen.getByLabelText("toolbarSend");
+    expect(send.textContent).toContain("ASR");
+    fireEvent.click(send);
+
+    expect(mockVoiceStopAndFinalize).toHaveBeenCalledOnce();
+    expect(onSend).not.toHaveBeenCalled();
+
+    act(() => {
+      voiceButtonState.isListening = false;
+      voicePropsState.current?.onPendingSpeechChange?.("finalizing");
+      voicePropsState.current?.onTranscript?.("backend final words");
+      voicePropsState.current?.onPendingSpeechChange?.(null, "completed");
+    });
+
+    await waitFor(() => {
+      expectSubmission(onSend, "[ASR] backend final words", "direct");
+    });
+    expect(onSend.mock.calls[0]?.[0]).not.toContain("provisional words");
+  });
+
+  it("starts deferred-delivery ASR timing at backend settlement", () => {
+    vi.useFakeTimers();
+    window.localStorage.setItem(UI_KEYS.speechAsrAttributionMs, "500");
+    const onSend = vi.fn();
+    renderMessageInput(vi.fn(), { onSend });
+
+    voiceButtonState.isListening = true;
+    act(() => {
+      voicePropsState.current?.onListeningStart?.();
+      voicePropsState.current?.onPendingSpeechChange?.("listening");
+    });
+    fireEvent.click(screen.getByLabelText("toolbarSend"));
+
+    act(() => {
+      voiceButtonState.isListening = false;
+      voicePropsState.current?.onPendingSpeechChange?.("finalizing");
+      voicePropsState.current?.onTranscript?.("settled backend words");
+      vi.advanceTimersByTime(1000);
+    });
+    expect(onSend).not.toHaveBeenCalled();
+
+    act(() => {
+      voicePropsState.current?.onPendingSpeechChange?.(null, "completed");
+    });
+    expectSubmission(onSend, "[ASR] settled backend words", "direct");
   });
 
   it("keeps an empty speech-triggered send as a no-op", () => {
@@ -2367,9 +2436,7 @@ describe("MessageInput", () => {
         smartTurnAutoSend: true,
       });
     });
-    await waitFor(() =>
-      expectSubmission(onSend, "[ASR] Go now.", "direct"),
-    );
+    await waitFor(() => expectSubmission(onSend, "[ASR] Go now.", "direct"));
   });
 
   it("submits an explicit spoken send even after a manual edit", async () => {

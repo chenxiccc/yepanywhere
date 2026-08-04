@@ -12,6 +12,7 @@ import {
 } from "react";
 import type { FilterOption } from "./FilterDropdown";
 import { SpeechSmartTurnControls } from "./SpeechSmartTurnControls";
+import { SpeechTimingControls } from "./SpeechTimingControls";
 import { useModelSettings } from "../hooks/useModelSettings";
 import { useSpeechCaptureSettings } from "../hooks/useSpeechCaptureSettings";
 import { useI18n } from "../i18n";
@@ -71,7 +72,8 @@ export function SpeechControlMenu({
   const parakeetModelPresetId = useId();
   const parakeetModelInputId = useId();
   const methodDescriptionIdPrefix = useId();
-  const { micDeviceId, setMicDeviceId } = useSpeechCaptureSettings();
+  const { micDeviceId, setMicDeviceId, reducePlayback, setReducePlayback } =
+    useSpeechCaptureSettings();
   const { parakeetSpeechModel, setParakeetSpeechModel } = useModelSettings();
   const [open, setOpen] = useState(false);
   const [micDevices, setMicDevices] = useState<MediaDeviceInfo[]>([]);
@@ -125,11 +127,6 @@ export function SpeechControlMenu({
   )
     ? storedParakeetPreset
     : "";
-  const hasOptions =
-    showMethodSelector ||
-    showMicDeviceControls ||
-    showParakeetModelControls ||
-    showSmartTurnControls;
   const selectedMicDeviceUnavailable =
     !!micDeviceId &&
     !micDevices.some((device) => device.deviceId === micDeviceId);
@@ -207,12 +204,6 @@ export function SpeechControlMenu({
     onBeforeOpen?.();
     setOpen(true);
   }, [onBeforeOpen]);
-
-  useEffect(() => {
-    if (!hasOptions) {
-      setOpen(false);
-    }
-  }, [hasOptions]);
 
   const refreshMicDevices = useCallback(async () => {
     const mediaDevices = getMediaDevices();
@@ -299,7 +290,7 @@ export function SpeechControlMenu({
   }, [open]);
 
   const handleContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
-    if (!hasOptions || panelRef.current?.contains(event.target as Node)) {
+    if (panelRef.current?.contains(event.target as Node)) {
       return;
     }
 
@@ -314,7 +305,7 @@ export function SpeechControlMenu({
   };
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!hasOptions || event.button !== 0) {
+    if (event.button !== 0) {
       return;
     }
 
@@ -328,7 +319,7 @@ export function SpeechControlMenu({
   };
 
   const handleClickCapture = (event: ReactMouseEvent<HTMLDivElement>) => {
-    if (!hasOptions || panelRef.current?.contains(event.target as Node)) {
+    if (panelRef.current?.contains(event.target as Node)) {
       return;
     }
 
@@ -360,7 +351,7 @@ export function SpeechControlMenu({
       onPointerLeave={clearLongPress}
     >
       {trigger}
-      {open && hasOptions && (
+      {open && (
         <div
           ref={panelRef}
           className="speech-options-panel"
@@ -393,6 +384,15 @@ export function SpeechControlMenu({
               />
             </section>
           )}
+          <section className="speech-options-section">
+            <div className="speech-options-section-title">
+              {t("speechSettingsTimingTitle")}
+            </div>
+            <SpeechTimingControls
+              showFollowUp={showSmartTurnControls}
+              disabled={smartTurnDisabled}
+            />
+          </section>
           {showParakeetModelControls && (
             <section className="speech-options-section">
               <label
@@ -534,6 +534,26 @@ export function SpeechControlMenu({
               )}
             </section>
           )}
+          <section className="speech-options-section">
+            <div className="speech-options-section-title">
+              {t("speechSettingsReducePlaybackSection")}
+            </div>
+            <label className="speech-method-option">
+              <input
+                type="checkbox"
+                checked={reducePlayback}
+                onChange={(event) => {
+                  onBeforeCaptureChange?.();
+                  setReducePlayback(event.currentTarget.checked);
+                }}
+              />
+              <span className="speech-method-copy">
+                <span className="speech-method-label">
+                  {t("speechSettingsReducePlaybackTitle")}
+                </span>
+              </span>
+            </label>
+          </section>
         </div>
       )}
     </div>

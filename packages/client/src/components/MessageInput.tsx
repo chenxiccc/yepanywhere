@@ -34,6 +34,8 @@ import {
   useDraftPersistence,
 } from "../hooks/useDraftPersistence";
 import { useSessionToolbarPresence } from "../hooks/useSessionToolbarPresence";
+import { useSpeechCaptureSettings } from "../hooks/useSpeechCaptureSettings";
+import { useRecentSpeechAttribution } from "../hooks/useRecentSpeechAttribution";
 import { useVersion } from "../hooks/useVersion";
 import { useI18n } from "../i18n";
 import type { ClientSummarySourceKey } from "../lib/clientSummaryStore";
@@ -104,6 +106,7 @@ import {
 } from "./MessageInputToolbar";
 import {
   VoiceInputButton,
+  type SpeechCycleSettlement,
   type SpeechPendingKind,
   type VoiceInputButtonRef,
 } from "./VoiceInputButton";
@@ -142,6 +145,14 @@ interface PendingSpeechFinal {
   transcript: string;
   metadata?: SpeechTranscriptionResultMetadata;
 }
+
+type PendingSpeechDelivery =
+  | {
+      kind: "submit";
+      actionOverride?: "send" | "steer" | "queue";
+      focusAfterSubmit: boolean;
+    }
+  | { kind: "queue" };
 
 interface PendingDraftInputEdit {
   start: number;
@@ -434,6 +445,19 @@ export function MessageInput({
   const [speechPending, setSpeechPending] = useState<SpeechPendingKind | null>(
     null,
   );
+  const speechPendingRef = useRef<SpeechPendingKind | null>(null);
+  const pendingSpeechDeliveryRef = useRef<PendingSpeechDelivery | null>(null);
+  const pendingSpeechDeliverySettledRef = useRef(false);
+  const speechTransactionHasTextRef = useRef(false);
+  const dispatchingSettledSpeechDeliveryRef = useRef(false);
+  const runPendingSpeechDeliveryRef = useRef<() => void>(() => {});
+  const { asrAttributionMs } = useSpeechCaptureSettings();
+  const {
+    active: speechAttributionActive,
+    noteSpeech: noteSpeechAttribution,
+    isRecent: isRecentSpeechAttribution,
+    consume: consumeSpeechAttribution,
+  } = useRecentSpeechAttribution(asrAttributionMs);
   const [keyboardWaveformActive, setKeyboardWaveformActive] = useState(false);
   const [, setSpeechPreviewRevision] = useState(0);
   const [dismissedSlashQuery, setDismissedSlashQuery] = useState<string | null>(
@@ -579,7 +603,12 @@ export function MessageInput({
     ? !forkSummaryMode.submitting &&
       attachments.length === 0 &&
       uploadProgress.length === 0
-    : !!(text.trim() || attachments.length > 0);
+    : !!(
+        text.trim() ||
+        attachments.length > 0 ||
+        speechPending !== null ||
+        interimTranscript
+      );
   const speechInsertionRange = speechInsertionRangeRef.current;
   const interimDisplayTranscript = getSpeechInterimDisplayTranscript(
     text,
@@ -1077,6 +1106,24 @@ export function MessageInput({
     }
   }, [canSubmit]);
 
+  const deferSpeechDelivery = useCallback((intent: PendingSpeechDelivery) => {
+    if (dispatchingSettledSpeechDeliveryRef.current) return false;
+    const voice = voiceButtonRef.current;
+    const speechWorkPending =
+      voice?.isListening === true ||
+      speechPendingRef.current !== null ||
+      pendingSpeechFinalRef.current !== null;
+    if (!speechWorkPending) {
+      pendingSpeechDeliveryRef.current = null;
+      pendingSpeechDeliverySettledRef.current = false;
+      return false;
+    }
+    pendingSpeechDeliveryRef.current = intent;
+    pendingSpeechDeliverySettledRef.current = false;
+    if (voice?.isListening) voice.stopAndFinalize();
+    return true;
+  }, []);
+
   const handleSubmit = useCallback(
     async (
       messageOverride?: unknown,
@@ -1086,17 +1133,19 @@ export function MessageInput({
     ) => {
       const override =
         typeof messageOverride === "string" ? messageOverride : undefined;
-      // Stop voice recording and get any pending interim text
-      const pendingVoice =
-        override === undefined
-          ? (voiceButtonRef.current?.stopAndFinalize() ?? "")
-          : "";
-
-      // Combine committed text with any pending voice text
-      let finalText = (override ?? controls.getDraft()).trimEnd();
-      if (pendingVoice) {
-        finalText = finalText ? `${finalText} ${pendingVoice}` : pendingVoice;
+      if (
+        override === undefined &&
+        deferSpeechDelivery({
+          kind: "submit",
+          actionOverride,
+          focusAfterSubmit,
+        })
+      ) {
+        return;
       }
+
+      let finalText = (override ?? controls.getDraft()).trimEnd();
+      const asrAttributed = speechTriggered || isRecentSpeechAttribution();
 
       if (forkSummaryMode) {
         if (
@@ -1109,10 +1158,11 @@ export function MessageInput({
           setInterimTranscript("");
           const instructions = finalText.trim();
           forkSummaryMode.onSubmit(
-            speechTriggered && instructions
+            asrAttributed && instructions
               ? markAsrSubmittedTurn(instructions)
               : instructions,
           );
+          consumeSpeechAttribution();
           textareaRef.current?.focus();
         }
         return;
@@ -1142,7 +1192,7 @@ export function MessageInput({
 
       const hasContent = finalText.trim() || attachments.length > 0;
       if (hasContent && !disabled) {
-        const message = speechTriggered
+        const message = asrAttributed
           ? markAsrSubmittedTurn(finalText)
           : finalText.trim();
         const actionKind = actionOverride ?? effectivePrimaryActionKind;
@@ -1158,6 +1208,7 @@ export function MessageInput({
         resetCompositionMetadata();
         setInterimTranscript("");
         onSend(message, metadata);
+        consumeSpeechAttribution();
         if (focusAfterSubmit) {
           // Refocus the textarea so user can continue typing.
           textareaRef.current?.focus();
@@ -1177,6 +1228,9 @@ export function MessageInput({
       resetCompositionMetadata,
       forkSummaryMode,
       bangSupport,
+      consumeSpeechAttribution,
+      deferSpeechDelivery,
+      isRecentSpeechAttribution,
     ],
   );
 
@@ -1218,14 +1272,9 @@ export function MessageInput({
   const handleQueue = useCallback(() => {
     const queueHandler =
       onQueue ?? (effectivePrimaryActionKind === "queue" ? onSend : undefined);
+    if (deferSpeechDelivery({ kind: "queue" })) return;
 
-    // Stop voice recording and get any pending interim text
-    const pendingVoice = voiceButtonRef.current?.stopAndFinalize() ?? "";
-
-    let finalText = controls.getDraft().trimEnd();
-    if (pendingVoice) {
-      finalText = finalText ? `${finalText} ${pendingVoice}` : pendingVoice;
-    }
+    const finalText = controls.getDraft().trimEnd();
 
     const hasContent = finalText.trim() || attachments.length > 0;
     if (hasContent && !disabled && queueHandler) {
@@ -1235,7 +1284,13 @@ export function MessageInput({
       controls.clearInput();
       resetCompositionMetadata();
       setInterimTranscript("");
-      queueHandler(finalText.trim(), metadata);
+      queueHandler(
+        isRecentSpeechAttribution()
+          ? markAsrSubmittedTurn(finalText)
+          : finalText.trim(),
+        metadata,
+      );
+      consumeSpeechAttribution();
       textareaRef.current?.focus();
     }
   }, [
@@ -1247,8 +1302,44 @@ export function MessageInput({
     patientQueueEnabled,
     attachments.length,
     buildSubmissionMetadata,
+    consumeSpeechAttribution,
+    deferSpeechDelivery,
+    isRecentSpeechAttribution,
     resetCompositionMetadata,
   ]);
+
+  const runPendingSpeechDelivery = useCallback(() => {
+    if (
+      speechPendingRef.current !== null ||
+      pendingSpeechFinalRef.current !== null
+    ) {
+      return;
+    }
+    if (!pendingSpeechDeliverySettledRef.current) return;
+    const pending = pendingSpeechDeliveryRef.current;
+    if (!pending) return;
+    pendingSpeechDeliveryRef.current = null;
+    pendingSpeechDeliverySettledRef.current = false;
+    dispatchingSettledSpeechDeliveryRef.current = true;
+    try {
+      if (pending.kind === "queue") {
+        handleQueue();
+        return;
+      }
+      void handleSubmit(
+        undefined,
+        pending.actionOverride,
+        pending.focusAfterSubmit,
+      );
+    } finally {
+      dispatchingSettledSpeechDeliveryRef.current = false;
+    }
+  }, [handleQueue, handleSubmit]);
+  runPendingSpeechDeliveryRef.current = runPendingSpeechDelivery;
+
+  const maybeRunPendingSpeechDelivery = useCallback(() => {
+    runPendingSpeechDeliveryRef.current();
+  }, []);
 
   const submitToProjectQueue = useCallback(
     (
@@ -2055,6 +2146,7 @@ export function MessageInput({
 
   // Voice input handlers
   const handleListeningStart = useCallback(() => {
+    speechTransactionHasTextRef.current = false;
     const textarea = textareaRef.current;
     const currentText = controls.getDraft();
     const selectionStart = Math.max(
@@ -2158,6 +2250,7 @@ export function MessageInput({
 
   const handleSmartTurnSend = useCallback(
     (text: string) => {
+      voiceButtonRef.current?.continueAfterSpeechSend();
       void handleSubmit(text, undefined, !hasCoarsePointer(), true);
     },
     [handleSubmit],
@@ -2165,6 +2258,11 @@ export function MessageInput({
 
   const commitVoiceTranscript = useCallback(
     (transcript: string, metadata?: SpeechTranscriptionResultMetadata) => {
+      if (transcript.trim() && metadata?.smartTurnCommand !== "cancel") {
+        speechTransactionHasTextRef.current = true;
+        noteSpeechAttribution();
+      }
+      pendingSpeechDeliverySettledRef.current = true;
       commitSpeechTranscript(
         {
           textareaRef,
@@ -2189,6 +2287,7 @@ export function MessageInput({
         transcript,
         metadata,
       );
+      maybeRunPendingSpeechDelivery();
       // An overlapping (non-active) target's batch result has now landed;
       // forget its range. The active target is forgotten on the pending->null
       // transition instead (it may still get more streaming finals).
@@ -2201,7 +2300,13 @@ export function MessageInput({
         setSpeechPreviewRevision((revision) => revision + 1);
       }
     },
-    [controls, handleSmartTurnSend, noteComposerEdit],
+    [
+      controls,
+      handleSmartTurnSend,
+      maybeRunPendingSpeechDelivery,
+      noteComposerEdit,
+      noteSpeechAttribution,
+    ],
   );
 
   const handleVoiceTranscript = useCallback(
@@ -2252,7 +2357,20 @@ export function MessageInput({
   }, []);
 
   const handlePendingSpeechChange = useCallback(
-    (kind: SpeechPendingKind | null) => {
+    (kind: SpeechPendingKind | null, settlement?: SpeechCycleSettlement) => {
+      if (settlement === "failed") {
+        pendingSpeechDeliveryRef.current = null;
+        pendingSpeechDeliverySettledRef.current = false;
+      } else if (settlement === "completed") {
+        if (
+          pendingSpeechDeliveryRef.current &&
+          speechTransactionHasTextRef.current
+        ) {
+          noteSpeechAttribution();
+        }
+        pendingSpeechDeliverySettledRef.current = true;
+      }
+      speechPendingRef.current = kind;
       if (kind === null) {
         // The active recording finished (its result has already committed);
         // forget its insertion target so the range map does not accumulate
@@ -2265,8 +2383,9 @@ export function MessageInput({
         activeSpeechTargetIdRef.current = null;
       }
       setSpeechPending(kind);
+      if (kind === null) maybeRunPendingSpeechDelivery();
     },
-    [],
+    [maybeRunPendingSpeechDelivery, noteSpeechAttribution],
   );
 
   const handleTranscriptionSettled = useCallback(
@@ -2275,12 +2394,16 @@ export function MessageInput({
       if (!targetId || settlement.status === "completed") return;
 
       const removed = speechInsertionRangesRef.current.delete(targetId);
-      if (targetId === activeSpeechTargetIdRef.current) {
+      const activeTargetFailed = targetId === activeSpeechTargetIdRef.current;
+      if (activeTargetFailed) {
         clearPendingSpeechFinal();
         speechInsertionRangeRef.current = null;
         activeSpeechTargetIdRef.current = null;
         setSpeechPending(null);
+        speechPendingRef.current = null;
         setInterimTranscript("");
+        pendingSpeechDeliveryRef.current = null;
+        pendingSpeechDeliverySettledRef.current = false;
       }
       if (removed) {
         setSpeechPreviewRevision((revision) => revision + 1);
@@ -2294,6 +2417,8 @@ export function MessageInput({
   // speech target so the composer forgets the reserved insertion point.
   const handleCancelTranscription = useCallback(() => {
     voiceButtonRef.current?.cancelProcessing();
+    pendingSpeechDeliveryRef.current = null;
+    pendingSpeechDeliverySettledRef.current = false;
     clearPendingSpeechFinal();
     const targetId = activeSpeechTargetIdRef.current;
     if (targetId) {
@@ -2302,6 +2427,7 @@ export function MessageInput({
     speechInsertionRangeRef.current = null;
     activeSpeechTargetIdRef.current = null;
     setSpeechPending(null);
+    speechPendingRef.current = null;
     setInterimTranscript("");
   }, [clearPendingSpeechFinal]);
 
@@ -2409,6 +2535,10 @@ export function MessageInput({
       : undefined,
     canForkAfterSummary: !!onForkSummaryShortcut,
     canSend: canSubmit,
+    asrAttributed:
+      speechPending !== null ||
+      pendingSpeechDeliveryRef.current !== null ||
+      speechAttributionActive,
     disabled,
   };
   const showMobileKeyboardCompact = mobileKeyboardOpen && canSubmit;

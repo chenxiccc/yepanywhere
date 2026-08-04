@@ -97,6 +97,7 @@ import type {
 } from "../lib/speechProviders/SpeechProvider";
 import type { ContextUsage, PermissionMode } from "../types";
 import { ContextThresholdQuickEdit } from "./ContextThresholdQuickEdit";
+import { AsrActionCue } from "./AsrActionCue";
 import type { FilterOption } from "./FilterDropdown";
 import { MessageAge } from "./MessageAge";
 import { ModeSelector } from "./ModeSelector";
@@ -107,6 +108,7 @@ import { ThinkingControlsPanel, ThinkingIcon } from "./ThinkingControls";
 import { RenderModeGlyph } from "./ui/RenderModeGlyph";
 import {
   VoiceInputButton,
+  type SpeechCycleSettlement,
   type SpeechPendingKind,
   type VoiceInputButtonRef,
 } from "./VoiceInputButton";
@@ -203,7 +205,10 @@ export interface MessageInputToolbarProps {
   onInterimTranscript?: (transcript: string) => void;
   onListeningStart?: () => void;
   onListeningStop?: () => void;
-  onPendingSpeechChange?: (kind: SpeechPendingKind | null) => void;
+  onPendingSpeechChange?: (
+    kind: SpeechPendingKind | null,
+    settlement?: SpeechCycleSettlement,
+  ) => void;
   onTranscriptionSettled?: (settlement: SpeechTranscriptionSettlement) => void;
   voiceDisabled?: boolean;
   getTranscriptionContext?: () => SpeechTranscriptionContext | undefined;
@@ -287,6 +292,8 @@ export interface MessageInputToolbarProps {
   };
   canForkAfterSummary?: boolean;
   canSend?: boolean;
+  /** Show that a rapid manual delivery will carry the [ASR] marker. */
+  asrAttributed?: boolean;
   disabled?: boolean;
   /** Keep toolbar utilities/settings but omit the ordinary primary/alternate actions. */
   hidePrimaryDeliveryActions?: boolean;
@@ -523,7 +530,10 @@ type ToolbarVoiceButtonControl =
       onInterimTranscript: (transcript: string) => void;
       onListeningStart?: () => void;
       onListeningStop?: () => void;
-      onPendingSpeechChange?: (kind: SpeechPendingKind | null) => void;
+      onPendingSpeechChange?: (
+        kind: SpeechPendingKind | null,
+        settlement?: SpeechCycleSettlement,
+      ) => void;
       onTranscriptionSettled?: (
         settlement: SpeechTranscriptionSettlement,
       ) => void;
@@ -604,6 +614,7 @@ interface ToolbarSendControl {
   primaryActionLabel: string;
   tooltip: string;
   icon: string;
+  asrAttributed?: boolean;
   showSteerNowMode?: boolean;
   steerNowEnabled?: boolean;
   onToggleSteerNow?: () => void;
@@ -2114,6 +2125,7 @@ export function MessageInputToolbarView({
                   title={queueControl.queueTooltip}
                 >
                   <span className="send-icon queue-icon">→</span>
+                  {actionsControl.send.asrAttributed && <AsrActionCue />}
                 </button>
               )}
             {!hidePrimaryDeliveryActions &&
@@ -2131,6 +2143,7 @@ export function MessageInputToolbarView({
                   title={t("toolbarSteerTooltip")}
                 >
                   <span className="send-icon">↗</span>
+                  {actionsControl.send.asrAttributed && <AsrActionCue />}
                 </button>
               )}
             {!hidePrimaryDeliveryActions && actionsControl.send.alternate && (
@@ -2147,6 +2160,7 @@ export function MessageInputToolbarView({
                 <span className="send-icon">
                   {actionsControl.send.alternate.icon}
                 </span>
+                {actionsControl.send.asrAttributed && <AsrActionCue />}
               </button>
             )}
             {renderProjectQueueButtons()}
@@ -2169,6 +2183,7 @@ export function MessageInputToolbarView({
                 )}
               >
                 <span className="send-icon">{actionsControl.send.icon}</span>
+                {actionsControl.send.asrAttributed && <AsrActionCue />}
               </button>
             )}
           </>
@@ -2234,6 +2249,7 @@ export function MessageInputToolbar({
   sendAlternate,
   canForkAfterSummary,
   canSend,
+  asrAttributed,
   disabled,
   hidePrimaryDeliveryActions = false,
   hideVoiceInput = false,
@@ -2775,9 +2791,9 @@ export function MessageInputToolbar({
 
   const heartbeatTitle = t("sessionHeartbeatTitle");
   const handleToolbarPendingSpeechChange = useCallback(
-    (kind: SpeechPendingKind | null) => {
+    (kind: SpeechPendingKind | null, settlement?: SpeechCycleSettlement) => {
       setSpeechCaptureActive(kind === "listening");
-      onPendingSpeechChange?.(kind);
+      onPendingSpeechChange?.(kind, settlement);
     },
     [onPendingSpeechChange],
   );
@@ -2961,6 +2977,7 @@ export function MessageInputToolbar({
               primaryActionLabel,
               tooltip: sendTooltip,
               icon: primaryActionIcon,
+              asrAttributed,
               showSteerNowMode,
               steerNowEnabled,
               onToggleSteerNow,

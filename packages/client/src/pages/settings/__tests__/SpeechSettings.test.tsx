@@ -32,6 +32,12 @@ const modelSettings = vi.hoisted(() => {
 const speechCaptureSettings = vi.hoisted(() => ({
   keepMicWarm: false,
   setKeepMicWarm: vi.fn(),
+  reducePlayback: true,
+  setReducePlayback: vi.fn(),
+  followUpListenMs: 0,
+  setFollowUpListenMs: vi.fn(),
+  asrAttributionMs: 0,
+  setAsrAttributionMs: vi.fn(),
 }));
 const browserXaiKey = vi.hoisted(() => ({
   browserXaiSttApiKey: "",
@@ -56,6 +62,8 @@ vi.mock("../../../hooks/useModelSettings", () => ({
 }));
 
 vi.mock("../../../hooks/useSpeechCaptureSettings", () => ({
+  MAX_SPEECH_FOLLOW_UP_LISTEN_MS: 30_000,
+  MAX_SPEECH_ASR_ATTRIBUTION_MS: 5_000,
   useSpeechCaptureSettings: () => speechCaptureSettings,
 }));
 
@@ -110,6 +118,9 @@ describe("SpeechSettings", () => {
     modelSettings.setSpeechMethod.mockClear();
     modelSettings.setParakeetSpeechModel.mockClear();
     speechCaptureSettings.setKeepMicWarm.mockClear();
+    speechCaptureSettings.setReducePlayback.mockClear();
+    speechCaptureSettings.setFollowUpListenMs.mockClear();
+    speechCaptureSettings.setAsrAttributionMs.mockClear();
     browserXaiKey.setBrowserXaiSttApiKey.mockClear();
     prewarmYaServerSpeechBackend.mockClear();
   });

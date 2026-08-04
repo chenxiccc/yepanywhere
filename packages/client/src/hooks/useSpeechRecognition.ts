@@ -37,6 +37,8 @@ export interface UseSpeechRecognitionOptions {
   keepMicWarm?: boolean;
   /** Browser-local microphone device id for YA-server capture. */
   micDeviceId?: string | null;
+  /** Ask the browser to reduce speaker leakage into YA-controlled capture. */
+  reducePlayback?: boolean;
   /** Receive real microphone samples for local waveform rendering. */
   onAudioSamples?: (samples: Float32Array) => void;
   /** Browser-selected local Parakeet model id for the YA Parakeet backend. */
@@ -85,6 +87,7 @@ function createProvider(
     smartTurn?: SpeechSmartTurnSettings;
     keepMicWarm?: boolean;
     micDeviceId?: string | null;
+    reducePlayback?: boolean;
     onAudioSamples?: (samples: Float32Array) => void;
     parakeetModel?: string;
     openRelayedSpeechSocket?: () => Promise<ConnectionSpeechSocket>;
@@ -135,6 +138,7 @@ export function useSpeechRecognition(
     smartTurn,
     keepMicWarm,
     micDeviceId,
+    reducePlayback,
     onAudioSamples,
     parakeetModel,
     openRelayedSpeechSocket,
@@ -177,6 +181,7 @@ export function useSpeechRecognition(
   const smartTurnRef = useRef(smartTurn);
   const keepMicWarmRef = useRef(keepMicWarm);
   const micDeviceIdRef = useRef(micDeviceId);
+  const reducePlaybackRef = useRef(reducePlayback);
   const parakeetModelRef = useRef(parakeetModel);
   const openRelayedSpeechSocketRef = useRef(openRelayedSpeechSocket);
 
@@ -192,6 +197,7 @@ export function useSpeechRecognition(
         smartTurn: smartTurnRef.current,
         keepMicWarm: keepMicWarmRef.current,
         micDeviceId: micDeviceIdRef.current,
+        reducePlayback: reducePlaybackRef.current,
         onAudioSamples: onAudioSamples
           ? (samples) => onAudioSamplesRef.current?.(samples)
           : undefined,
@@ -225,6 +231,7 @@ export function useSpeechRecognition(
       smartTurn === smartTurnRef.current &&
       keepMicWarm === keepMicWarmRef.current &&
       micDeviceId === micDeviceIdRef.current &&
+      reducePlayback === reducePlaybackRef.current &&
       Boolean(onAudioSamples) === onAudioSamplesEnabledRef.current &&
       parakeetModel === parakeetModelRef.current &&
       openRelayedSpeechSocket === openRelayedSpeechSocketRef.current
@@ -237,6 +244,7 @@ export function useSpeechRecognition(
     smartTurnRef.current = smartTurn;
     keepMicWarmRef.current = keepMicWarm;
     micDeviceIdRef.current = micDeviceId;
+    reducePlaybackRef.current = reducePlayback;
     onAudioSamplesRef.current = onAudioSamples;
     onAudioSamplesEnabledRef.current = Boolean(onAudioSamples);
     parakeetModelRef.current = parakeetModel;
@@ -252,6 +260,7 @@ export function useSpeechRecognition(
       smartTurn,
       keepMicWarm,
       micDeviceId,
+      reducePlayback,
       onAudioSamples: onAudioSamples
         ? (samples) => onAudioSamplesRef.current?.(samples)
         : undefined,
@@ -275,6 +284,7 @@ export function useSpeechRecognition(
     smartTurn,
     keepMicWarm,
     micDeviceId,
+    reducePlayback,
     onAudioSamples,
     parakeetModel,
     openRelayedSpeechSocket,

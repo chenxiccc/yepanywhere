@@ -24,6 +24,19 @@ export const XAI_DIRECT_BATCH_SPEECH_METHOD: SpeechMethodId =
 const SERVER_BACKEND_PREFERENCE = ["ya-grok", "ya-deepgram"] as const;
 const YA_GROK_BACKEND_ID = "ya-grok";
 
+const COMPACT_SPEECH_METHOD_LABELS: Record<string, string> = {
+  [DEFAULT_SPEECH_METHOD]: "Web",
+  [YA_GROK_STREAMING_SPEECH_METHOD]: "Grok",
+  [YA_GROK_BATCH_SPEECH_METHOD]: "Grok",
+  [XAI_DIRECT_STREAMING_SPEECH_METHOD]: "Grok",
+  [XAI_DIRECT_BATCH_SPEECH_METHOD]: "Grok",
+  "ya-deepgram": "Deep",
+  "ya-whisper": "Whsp",
+  "ya-parakeet": "Para",
+  "ya-nemo": "NeMo",
+  "ya-dummy": "Test",
+};
+
 const SERVER_BACKEND_LABELS: Record<
   string,
   { label: string; description: string }
@@ -120,6 +133,16 @@ export function isBrowserNativeSpeechAvailable(userAgent?: string): boolean {
 function normalizeBackendLabelPart(part: string): string {
   if (!part) return part;
   return `${part[0]?.toUpperCase() ?? ""}${part.slice(1)}`;
+}
+
+/** A stable, narrow label for the speech backend shown inside the mic chip. */
+export function getCompactSpeechMethodLabel(methodId: SpeechMethodId): string {
+  const knownLabel = COMPACT_SPEECH_METHOD_LABELS[methodId];
+  if (knownLabel) return knownLabel;
+
+  const backendName = methodId.trim().replace(/^ya-/, "").split(/[-_]+/)[0];
+  if (!backendName) return "STT";
+  return normalizeBackendLabelPart(backendName).slice(0, 5);
 }
 
 function formatServerBackendLabel(id: string): string {

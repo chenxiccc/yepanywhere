@@ -189,6 +189,7 @@ export class DirectXaiSpeechProvider implements SpeechProvider {
     return getSpeechMicStream({
       keepWarm: this.options.keepMicWarm === true,
       micDeviceId: this.options.micDeviceId,
+      reducePlayback: this.options.reducePlayback !== false,
     });
   }
 
