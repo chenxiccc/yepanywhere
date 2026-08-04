@@ -3,8 +3,13 @@
 import { Profiler } from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { SessionMetadataProvider } from "../../contexts/SessionMetadataContext";
+import { SourceRuntimeProvider } from "../../contexts/SourceRuntimeContext";
+import { asClientSummarySourceKey } from "../../lib/clientSummaryStore";
 import { buildCorrectionText } from "../../lib/correctionText";
+import type { YaSourceRuntime } from "../../lib/sourceRuntime";
 import { UI_KEYS } from "../../lib/storageKeys";
+import { FakeSourceTransport } from "../../lib/transport";
 import { setConversationViewPreference } from "../../hooks/useConversationView";
 import {
   assistantMessage,
@@ -15,6 +20,7 @@ import {
 } from "./MessageList.test-support";
 import { createComposerDraftSignal } from "../../lib/composerDraftSignal";
 import { invalidateLocalStorageValues } from "../../lib/localStorageValue";
+import type { Message } from "../../types";
 import { MessageList } from "../MessageList";
 import galleryStyles from "../TurnImageGallery.module.css";
 
@@ -538,6 +544,152 @@ describe("MessageList rendering", () => {
         .querySelector(".conversation-activity-summary")
         ?.getAttribute("aria-expanded"),
     ).toBe("true");
+  });
+
+  it("remembers tool-media disclosure across Conversation view toggles", () => {
+    const transport = new FakeSourceTransport({
+      fetchBlob: vi.fn(() => new Promise<Blob>(() => {})),
+    });
+    const runtime: YaSourceRuntime = {
+      sourceKey: asClientSummarySourceKey("test:remembered-disclosure"),
+      transport,
+      api: {} as YaSourceRuntime["api"],
+      summary: {} as YaSourceRuntime["summary"],
+      sessionDetails: {} as YaSourceRuntime["sessionDetails"],
+    };
+    const messages: Message[] = [
+      userMessage("user-media", "inspect these"),
+      codexThinkingMessage("thinking-media", "checking images"),
+      assistantToolUseMessage("assistant-media", [
+        {
+          type: "tool_use",
+          id: "tool-media",
+          name: "ViewImage",
+          input: { path: "/repo/first.png" },
+        },
+      ]),
+      {
+        type: "user",
+        uuid: "tool-result-media",
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tool-media",
+              content: "",
+            },
+          ],
+        },
+        toolResultMedia: [
+          {
+            state: "stored",
+            toolCallId: "tool-media",
+            id: "media-a",
+            mimeType: "image/png",
+            byteLength: 128,
+            filename: "first.png",
+          },
+        ],
+      },
+      assistantMessage("assistant-media-answer", "Done"),
+    ];
+    const view = (conversationViewEnabled: boolean) => (
+      <SourceRuntimeProvider runtime={runtime}>
+        <SessionMetadataProvider
+          projectId="project-1"
+          projectPath="/repo"
+          sessionId="session-1"
+        >
+          <MessageList
+            conversationViewEnabledOverride={conversationViewEnabled}
+            conversationViewStateKey="session-1"
+            messages={messages}
+          />
+        </SessionMetadataProvider>
+      </SourceRuntimeProvider>
+    );
+    const { rerender } = render(view(false));
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "toolResultMediaExpand" }),
+    );
+    expect(
+      screen.getByRole("button", { name: "toolResultMediaCollapse" }),
+    ).toBeTruthy();
+
+    rerender(view(true));
+    expect(
+      screen.getByRole("button", { name: "toolResultMediaCollapse" }),
+    ).toBeTruthy();
+
+    rerender(view(false));
+    expect(
+      screen.getByRole("button", { name: "toolResultMediaCollapse" }),
+    ).toBeTruthy();
+  });
+
+  it("remembers ordinary tool-row disclosure across Conversation view toggles", () => {
+    const messages: Message[] = [
+      userMessage("user-tool", "run the custom tool"),
+      assistantToolUseMessage("assistant-tool", [
+        {
+          type: "tool_use",
+          id: "tool-custom",
+          name: "CustomTool",
+          input: { query: "status" },
+        },
+      ]),
+      {
+        type: "user",
+        uuid: "tool-result-custom",
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tool-custom",
+              content: "custom result",
+            },
+          ],
+        },
+      },
+      assistantMessage("assistant-tool-answer", "Done"),
+    ];
+    const view = (
+      conversationViewEnabled: boolean,
+      visibleMessages = messages,
+      activeWindowTrimRevision = 0,
+    ) => (
+      <MessageList
+        activeWindowTrimRevision={activeWindowTrimRevision}
+        conversationViewEnabledOverride={conversationViewEnabled}
+        conversationViewStateKey="session-tool"
+        messages={visibleMessages}
+      />
+    );
+    const { container, rerender } = render(view(false));
+    const toolRow = () =>
+      container.querySelector<HTMLElement>(
+        '[data-render-id="tool-custom"] .tool-row',
+      );
+
+    fireEvent.click(
+      container.querySelector<HTMLElement>(
+        '[data-render-id="tool-custom"] .tool-row-header',
+      ) as HTMLElement,
+    );
+    expect(toolRow()?.classList.contains("expanded")).toBe(true);
+
+    rerender(view(true));
+    expect(toolRow()).toBeNull();
+
+    rerender(view(false));
+    expect(toolRow()?.classList.contains("expanded")).toBe(true);
+
+    rerender(view(false, [], 1));
+    rerender(view(false, messages, 1));
+    expect(toolRow()?.classList.contains("expanded")).toBe(false);
   });
 
   it("shows compact conversation activity durations", () => {

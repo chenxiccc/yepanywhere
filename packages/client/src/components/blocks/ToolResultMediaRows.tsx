@@ -4,6 +4,7 @@ import type {
   ToolResultMediaRejectionReason,
 } from "@yep-anywhere/shared";
 import { type CSSProperties, useEffect, useMemo, useState } from "react";
+import { useRememberedDisclosureState } from "../../contexts/RememberedDisclosureStateContext";
 import { useSessionMetadata } from "../../contexts/SessionMetadataContext";
 import { useCurrentSourceRuntime } from "../../contexts/SourceRuntimeContext";
 import { useInlineMedia } from "../../hooks/useInlineMedia";
@@ -113,7 +114,11 @@ function StoredToolResultMediaRow({
   const { projectId, sessionId } = useSessionMetadata();
   const transport = useCurrentSourceRuntime().transport;
   const { t } = useI18n();
-  const [expanded, setExpanded] = useState(initialExpanded);
+  const [expanded, setExpanded] = useRememberedDisclosureState(
+    media.toolCallId,
+    `media-preview:${media.id}`,
+    initialExpanded,
+  );
   const [preview, setPreview] = useState<PreviewState>({ state: "idle" });
   const [modalOpen, setModalOpen] = useState(false);
   const apiPath = `/api/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(sessionId)}/media/${encodeURIComponent(media.id)}`;

@@ -6,6 +6,7 @@ import type {
   UploadedFile,
 } from "@yep-anywhere/shared";
 import {
+  createElement,
   memo,
   useCallback,
   useEffect,
@@ -28,6 +29,10 @@ import { useMessageListIsearch } from "../hooks/useMessageListIsearch";
 import { useMessageListSelectionQuote } from "../hooks/useMessageListSelectionQuote";
 import { useRelativeNow } from "../hooks/useRelativeNow";
 import { useI18n } from "../i18n";
+import {
+  createRememberedDisclosureStateRegistry,
+  RememberedDisclosureStateProvider,
+} from "../contexts/RememberedDisclosureStateContext";
 import type {
   ComposerDraftSignal,
   ComposerEditAvailabilityStore,
@@ -1028,6 +1033,14 @@ export const MessageList = memo(function MessageList({
   >(null);
   const [isScrolledToBottom, setIsScrolledToBottom] = useState(true);
   const [newOutputBelowVisible, setNewOutputBelowVisible] = useState(false);
+  const rememberedDisclosureStateRegistry = useMemo(() => {
+    // The registry belongs to one mounted session view, even though its
+    // contents need no session key once that lifetime has been established.
+    void conversationViewStateKey;
+    return createRememberedDisclosureStateRegistry();
+  }, [conversationViewStateKey]);
+  const previousDisclosureOwnerCountRef = useRef<number | null>(null);
+  const previousDisclosureTrimRevisionRef = useRef(activeWindowTrimRevision);
   const { t } = useI18n();
   const { widerConversationActivityPreviews } =
     useWiderConversationActivityPreviews();
@@ -1259,6 +1272,30 @@ export const MessageList = memo(function MessageList({
   useEffect(() => {
     previousRenderItemsRef.current = renderItems;
   }, [renderItems]);
+  useEffect(() => {
+    const previousOwnerCount = previousDisclosureOwnerCountRef.current;
+    const trimRevisionChanged =
+      previousDisclosureTrimRevisionRef.current !== activeWindowTrimRevision;
+    previousDisclosureOwnerCountRef.current = renderItems.length;
+    previousDisclosureTrimRevisionRef.current = activeWindowTrimRevision;
+
+    if (
+      rememberedDisclosureStateRegistry.size === 0 ||
+      (!trimRevisionChanged &&
+        previousOwnerCount !== null &&
+        renderItems.length >= previousOwnerCount)
+    ) {
+      return;
+    }
+
+    rememberedDisclosureStateRegistry.pruneOwners(
+      new Set(renderItems.map((item) => item.id)),
+    );
+  }, [
+    activeWindowTrimRevision,
+    rememberedDisclosureStateRegistry,
+    renderItems,
+  ]);
   const thinkingItemCount = useMemo(
     () => countThinkingItems(renderItems),
     [renderItems],
@@ -2792,7 +2829,9 @@ export const MessageList = memo(function MessageList({
         <span>{followButtonLabel}</span>
       </button>
     ) : null;
-  return (
+  return createElement(
+    RememberedDisclosureStateProvider,
+    { registry: rememberedDisclosureStateRegistry },
     <>
       <UserTurnNavigator
         getAnchors={getNavigatorAnchors}
@@ -3437,6 +3476,6 @@ export const MessageList = memo(function MessageList({
           onToggleThinkingLatestOnly={toggleThinkingLatestOnly}
         />
       </div>
-    </>
+    </>,
   );
 });

@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useRememberedDisclosureState } from "../../contexts/RememberedDisclosureStateContext";
 import { useOptionalSessionMetadata } from "../../contexts/SessionMetadataContext";
 import {
   OUTPUT_APPEARANCE_CHANGE_EVENT,
@@ -528,15 +529,20 @@ export const ToolCallRow = memo(function ToolCallRow({
   startTimestampMs,
   resultTimestampMs,
 }: Props) {
-  const [summaryExpanded, setSummaryExpanded] = useState(false);
-  const [bashCommandExpanded, setBashCommandExpanded] = useState(false);
+  const [summaryExpanded, setSummaryExpanded] = useRememberedDisclosureState(
+    id,
+    "interactive-summary",
+    false,
+  );
+  const [bashCommandExpanded, setBashCommandExpanded] =
+    useRememberedDisclosureState(id, "bash-command", false);
   const sessionMetadata = useOptionalSessionMetadata();
   const outputToolPreviewLineCount = useOutputToolPreviewLineCount();
   const deferredPreviewTypography = useDeferredPreviewTypographyMetrics();
   const tooltipMode = useTooltipMode();
   const toggleSummaryExpanded = useCallback(() => {
     setSummaryExpanded((current) => !current);
-  }, []);
+  }, [setSummaryExpanded]);
 
   // Create a minimal render context for tool renderers
   const renderContext: RenderContext = useMemo(
@@ -706,7 +712,11 @@ export const ToolCallRow = memo(function ToolCallRow({
   const hasDeferredInteractiveShell =
     !shouldHydrateRichContent &&
     (mayHaveCollapsedPreview || mayHaveInteractiveSummary);
-  const [previewExpanded, setPreviewExpanded] = useState(true);
+  const [previewExpanded, setPreviewExpanded] = useRememberedDisclosureState(
+    id,
+    "rich-preview",
+    true,
+  );
   // Tools with collapsed preview or interactive summary don't expand
   const isNonExpandable =
     hasInteractiveSummary || hasCollapsedPreview || hasDeferredInteractiveShell;
@@ -745,23 +755,26 @@ export const ToolCallRow = memo(function ToolCallRow({
   ]);
 
   // Edit and TodoWrite tools are expanded by default
-  const [expanded, setExpanded] = useState(
+  const defaultExpanded =
     !isNonExpandable &&
-      (toolName === "Edit" ||
-        toolName === "TodoWrite" ||
-        shellOutputFitsPreview),
-  );
+    (toolName === "Edit" || toolName === "TodoWrite" || shellOutputFitsPreview);
+  const [expanded, setExpanded, expandedInitiallyOverridden] =
+    useRememberedDisclosureState(id, "tool-result", defaultExpanded);
   // A live poll completes after mount; expand it then, unless the user
   // has toggled the row themselves.
-  const userToggledExpandRef = useRef(false);
+  const userToggledExpandRef = useRef(expandedInitiallyOverridden);
   useEffect(() => {
     if (shellOutputFitsPreview && !userToggledExpandRef.current) {
       setExpanded(true);
     }
-  }, [shellOutputFitsPreview]);
+  }, [setExpanded, shellOutputFitsPreview]);
 
   // Dot-expanded: inline full result for preview-first rows (starts collapsed).
-  const [dotExpanded, setDotExpanded] = useState(false);
+  const [dotExpanded, setDotExpanded] = useRememberedDisclosureState(
+    id,
+    "inline-tool-result",
+    false,
+  );
   const shouldFocusExpandedTopRef = useRef(false);
   const canInlineExpandToolResult =
     isNonExpandable &&
@@ -794,6 +807,7 @@ export const ToolCallRow = memo(function ToolCallRow({
     } else if (hasSummaryDotToggle) {
       setSummaryExpanded((current) => !current);
     } else if (!isNonExpandable) {
+      userToggledExpandRef.current = true;
       setExpanded((v) => {
         if (!v) {
           shouldFocusExpandedTopRef.current = true;
@@ -841,10 +855,12 @@ export const ToolCallRow = memo(function ToolCallRow({
       : "",
   );
 
+  const previousHeaderCommandRef = useRef(headerCommand);
   useEffect(() => {
-    void headerCommand;
+    if (previousHeaderCommandRef.current === headerCommand) return;
+    previousHeaderCommandRef.current = headerCommand;
     setBashCommandExpanded(false);
-  }, [headerCommand]);
+  }, [headerCommand, setBashCommandExpanded]);
 
   // The command tooltip leads with the elapsed (so-far) time — "[12.5s] cmd"
   // — refreshed on hover so a running command's elapsed stays current.
@@ -1286,7 +1302,12 @@ export const ToolCallRow = memo(function ToolCallRow({
 
       {expanded && !isNonExpandable && (
         <div className="tool-row-content">
-          <ToolRowCollapseStrip onCollapse={() => setExpanded(false)} />
+          <ToolRowCollapseStrip
+            onCollapse={() => {
+              userToggledExpandRef.current = true;
+              setExpanded(false);
+            }}
+          />
           {noOutputBashResult && isBashTool ? (
             <BashNoOutputExpanded command={headerCommand} />
           ) : status === "pending" ||
