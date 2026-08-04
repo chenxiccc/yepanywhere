@@ -62,9 +62,30 @@ surface would need its own capability and default analysis.
 
 Child discovery is filesystem- and rollout-backed; it does not spawn a provider
 runtime. Claude JSONL and metadata creation events are both classified as
-`agent-session` changes. The client refreshes the retained process snapshot on
-creation, not on every child transcript append, so a long-running child cannot
-turn token/file churn into unbounded process-list parsing or polling.
+`agent-session` changes. The retained process snapshot also revalidates for
+generic process and session progress, including `session-updated`; therefore a
+provider-child implementation must make unchanged transcript versions cache
+hits and must not turn ordinary token/file churn into a full parent-transcript
+parse. Child creation may invalidate the bounded child projection. An append
+with no child lifecycle record must cost at most incremental append inspection,
+not a replay from byte zero.
+
+The Codex implementation currently violates this contract.
+`createProcessesRoutes` enriches every active and recently terminated row with
+`listProviderChildSessions`. `CodexSessionReader.listProviderChildSessions`
+then calls `readEntries` with `cache: false`, parsing the complete parent
+rollout on every process-snapshot refresh. The 2026-08-04 investigation in
+[`docs/tactical/089-main-thread-startup-cpu-investigation.md`](../docs/tactical/089-main-thread-startup-cpu-investigation.md)
+demonstrated sustained multi-core CPU and hundreds of logical GiB of repeated
+input from that path. The owning correction is a shared, versioned child-summary
+projection with in-flight coalescing and bounded/incremental append handling;
+generic process refresh must consume that projection rather than full entries.
+
+A regression for this boundary should issue repeated process refreshes against
+one unchanged large parent rollout. After at most one initial child-projection
+build, it must observe zero full-entry parses. Appending ordinary non-child
+records must not rebuild from byte zero; appending a spawn/lifecycle record
+must update the child summary without retaining the complete entry array.
 
 Inline content follows the heavier session-detail path. Current Claude streams
 route content by the provider child ID and map a parent tool call only when that

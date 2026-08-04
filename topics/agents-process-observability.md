@@ -142,6 +142,30 @@ descriptor count, or graphs to the first slice. They can follow when a concrete
 diagnostic question needs them; the three requested signals above already
 cover footprint, recent work, and lifetime.
 
+### Local development process tree
+
+`pstree.sh` is the Linux operator view for attributing local development
+processes; it is not part of the client route or its wire contract. Each run
+discovers live YA roots from an exact `scripts/dev.js` argv token in a
+`yep-anywhere` working tree, so it survives PID changes and does not trust a
+saved PID. It samples `/proc` over the requested interval (one second by
+default) and prints:
+
+- PID and `/proc/<pid>/comm`, the same short `COMMAND` name shown by `top`;
+- a sanitized YA/provider owner such as `YA server`, `YA host: Codex`,
+  `Codex harness`, `YA parser worker`, Vite, or esbuild;
+- direct process CPU, virtual allocation, and RSS to the left of `|`; and
+- descendant-inclusive `ΣCPU`, `ΣVIRT`, and `ΣRSS` to the right.
+
+`MainThread` is a generic Node process name, not a YA role. PID plus the tree
+and owner column supplies the attribution. `100%` sampled CPU is one fully used
+core. Direct RSS is resident physical memory for that process; direct VIRT is
+its reserved/mapped address space, not physical consumption. Tree sums are
+attribution totals: shared pages and mappings may be counted once per process,
+so `ΣRSS` is not unique proportional-set memory and `ΣVIRT` is not a host
+commitment. The script excludes its own observer process and never prints argv,
+environment values, or raw paths.
+
 ## Host Discovery And Identity
 
 Discovery is isolated in the server sampler, not embedded in the route or

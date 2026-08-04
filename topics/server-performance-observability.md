@@ -42,7 +42,26 @@ server log represented hundreds of logical GiB of transcript input. This is a
 fix lead at the read/coalescing owner, independent of memory-pressure cache
 eviction.
 
-The incident evidence and remaining investigation are kept in
+The completed live measurement makes the owner exact. From 22:44–22:54 UTC,
+37–47 minutes after restart, the Hono PID averaged 246.6% CPU (218.3% user,
+28.2% system) and 107.3 MiB/s of `rchar`, while physical storage reads averaged
+only 0.02 MiB/s. RSS oscillated from 3.56–5.01 GiB and VIRT from 46.59–48.03
+GiB; the process incurred about 100,500 minor faults/s, zero major faults, no
+swap-out, and 0.256% host I/O wait. Its four V8 workers used 152.3% CPU
+combined and the OS-named `MainThread` 91.0%, identifying allocation, parsing,
+and garbage collection rather than disk wait.
+
+Source and structured logs locate the repeating call chain. The retained
+process query revalidates on `session-updated`; `createProcessesRoutes` enriches
+each active and recently terminated process with provider children; and
+`CodexSessionReader.listProviderChildSessions` full-parses the parent rollout
+with `cache: false`. By 23:04 UTC that generation had recorded 1,707 such
+agent-mapping misses and 273.55 logical GiB of input. One unchanged 264.27 MiB
+snapshot alone was parsed 656 times over 34 minutes. The process-list child
+projection is therefore the first owning invariant. Scanner coalescing,
+summary-worker isolation, and pressure eviction do not correct that call site.
+
+The full incident evidence and completed investigation are kept in
 [`docs/tactical/089-main-thread-startup-cpu-investigation.md`](../docs/tactical/089-main-thread-startup-cpu-investigation.md).
 
 ## Server metrics
