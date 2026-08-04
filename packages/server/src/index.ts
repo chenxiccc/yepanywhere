@@ -10,6 +10,7 @@ import { RESPONSE_ALREADY_SENT } from "@hono/node-server/utils/response";
 import { createNodeWebSocket } from "@hono/node-ws";
 import {
   SPEECH_RELAY_CHANNEL,
+  idleReapHoursToMs,
   isClaudeProviderName,
 } from "@yep-anywhere/shared";
 import { createApp } from "./app.js";
@@ -873,6 +874,12 @@ async function startServer() {
     );
   }
 
+  const savedIdleReapHours = serverSettingsService.getSetting("idleReapHours");
+  const idleTimeoutMs =
+    savedIdleReapHours === undefined
+      ? config.idleTimeoutMs
+      : idleReapHoursToMs(savedIdleReapHours);
+
   // Create the app first (without WebSocket support initially)
   // We'll add WebSocket routes after setting up WebSocket support
   const {
@@ -884,7 +891,7 @@ async function startServer() {
   } = createApp({
     realSdk,
     projectsDir: config.claudeProjectsDir,
-    idleTimeoutMs: config.idleTimeoutMs,
+    idleTimeoutMs,
     defaultPermissionMode: config.defaultPermissionMode,
     eventBus,
     // Note: uploadeWebSocket not passed yet - will be added below

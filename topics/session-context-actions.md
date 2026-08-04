@@ -25,12 +25,15 @@ revises the handoff decision below
 Nothing semantically owned by the conversation is discarded by
 inactivity; what dies is the *process* and the *cache warmth*.
 
-- YA reaps an idle provider process after `IDLE_TIMEOUT` seconds
-  (default 60 minutes, matching the prompt-cache window;
-  `DEFAULT_IDLE_TIMEOUT_MS`/`DEFAULT_IDLE_TIMEOUT_SECONDS` in
-  `packages/server/src/defaults.ts`, env parsing in `config.ts`). The
-  supervisor `Process` tracks this as an intentional idle reap, distinct
-  from a crash.
+- YA may reap a verified-idle, unretained provider process after the
+  server-wide `idleReapHours` grace (default 24 hours). Any mounted session tab
+  suspends idle reaping for every process; active and waiting-input sessions
+  have no viewer-absence deadline. Negative hours disable idle reaping. Until
+  the setting is first saved, legacy `IDLE_TIMEOUT` seconds remain
+  authoritative (`DEFAULT_IDLE_TIMEOUT_MS`/`DEFAULT_IDLE_TIMEOUT_SECONDS` in
+  `packages/server/src/defaults.ts`, env parsing in `config.ts`). The supervisor
+  `Process` tracks an actual expiry as an intentional idle reap, distinct from
+  a crash.
 - The transcript persists on disk independently of the process: Claude
   writes jsonl under `{CLAUDE_CONFIG_DIR}/projects/`, Codex writes
   rollout files under its own sessions dir. These survive server

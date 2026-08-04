@@ -26,11 +26,12 @@ Related topic: [reload-safe provider runtimes](reload-safe-provider-runtimes.md)
   session as idle for automatic work. Synthetic heartbeat turns may also run as
   explicit steering-capable doubt probes after their quiet period, but that is
   a heartbeat-specific contract rather than a general idle claim.
-- A mounted session stream is a resource-retention lease, not liveness
-  evidence. After its last viewer leaves, only `verified-idle` may select the
-  short no-viewer reap grace; waiting-input receives its attention grace, and
-  active, unverified, or explicitly retained work remains bounded by the
-  absolute no-viewer lifetime ceiling.
+- An open browser tab is a server-global resource-retention lease, not
+  liveness evidence. Its app activity stream, plus live-session streams across
+  activity reconnects, suspends idle reaping for every provider process.
+  Active and waiting-input sessions are presumed live and have no
+  viewer-absence kill deadline; only `verified-idle` without another retention
+  owner is eligible for the configured idle grace.
 - Heartbeat turns are idle-timeout checks, not wall-clock ticks. Once a session
   is `verified-idle`, the timeout anchor is the latest real provider/session
   liveness signal, including verified idle/progress, normalized provider
@@ -109,9 +110,10 @@ Related topic: [reload-safe provider runtimes](reload-safe-provider-runtimes.md)
   generate a provider interrupt. If an interrupt is observed after one of those
   paths, YA should treat the correlation as a high-priority causality bug while
   still surfacing the interrupt boundary immediately.
-- A returning session viewer cancels no-viewer teardown. Provider traffic,
-  process liveness, retention signals, and transport heartbeats must not
-  impersonate a viewer or renew the absolute no-viewer lifetime ceiling.
+- A viewer opening any session cancels every pending idle teardown. When the
+  final session viewer leaves, eligible idle sessions receive a fresh full
+  grace. Provider traffic and process liveness do not make an active session
+  idle, while explicit retention continues to block idle teardown.
 - Server restart or hot reload that tears down the provider owner is not passive
   browser refresh. Treat it as owner-loss liveness evidence first, then decide
   whether the process can be safely resumed or must be shown as interrupted.
@@ -197,6 +199,6 @@ Related topic: [reload-safe provider runtimes](reload-safe-provider-runtimes.md)
   exposes a copy action for that prompt in session history.
 - Claude control probes time out and surface errors rather than relying on
   process-alive as proof of progress.
-- No-viewer reaping distinguishes verified idle, waiting-input, and active or
-  retained work; a returning viewer cancels the pending reap, while provider
-  activity alone does not extend the absolute ceiling.
+- Viewer-absence reaping applies only to verified-idle, unretained work. Any
+  open app tab globally refreshes the grace; active, waiting-input, and
+  explicitly retained processes have no viewer-absence deadline.

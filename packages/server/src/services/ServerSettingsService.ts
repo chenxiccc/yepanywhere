@@ -25,6 +25,8 @@ import {
   DEFAULT_HOST_AWAKE_BATTERY_FLOOR_PERCENT,
   DEFAULT_PROJECT_QUEUE_QUIET_SECONDS,
   clampProjectQueueQuietSeconds,
+  isIdleReapHours,
+  normalizeIdleReapHours,
   normalizeYaClientBaseUrlFromShareViewerUrl,
   isHostAwakeBatteryFloorPercent,
   isHostAwakeMode,
@@ -179,6 +181,8 @@ export interface ServerSettings {
   codexUpdatePolicy?: "auto" | "notify" | "off";
   /** Keep eligible local Linux Codex runtimes across YA server reloads. */
   codexReloadSafeSessions: boolean;
+  /** Best-effort idle provider reap grace in hours; negative disables it. */
+  idleReapHours?: number;
   /**
    * Max seconds between consecutive compose times for queued-while-busy turns
    * to join into one `--------`-joined provider turn at a delivery boundary.
@@ -347,6 +351,9 @@ function normalizeLoadedSettings(settings: ServerSettings): ServerSettings {
     typeof settings.codexReloadSafeSessions === "boolean"
       ? settings.codexReloadSafeSessions
       : DEFAULT_SERVER_SETTINGS.codexReloadSafeSessions;
+  normalized.idleReapHours = isIdleReapHours(settings.idleReapHours)
+    ? normalizeIdleReapHours(settings.idleReapHours)
+    : undefined;
   normalized.hostAwakeMode = isHostAwakeMode(settings.hostAwakeMode)
     ? settings.hostAwakeMode
     : DEFAULT_SERVER_SETTINGS.hostAwakeMode;

@@ -315,7 +315,6 @@ export type ProcessEvent =
     }
   | { type: "error"; error: Error }
   | { type: "idle-reap" }
-  | { type: "lifecycle-reap"; reason: string }
   | { type: "complete" }
   | { type: "terminated"; reason: string; error?: Error }
   | {
@@ -350,7 +349,7 @@ export interface ProcessOptions {
    * and reactivate flows start idle; turn-bearing flows keep the default.
    */
   initialState?: "in-turn" | "idle";
-  idleTimeoutMs?: number; // default 60 minutes
+  idleTimeoutMs?: number; // default 24 hours; negative disables idle reaping
   permissionMode?: PermissionMode;
   provider: ProviderName; // which provider is running this process
   /** Thinking configuration (undefined = thinking disabled) */

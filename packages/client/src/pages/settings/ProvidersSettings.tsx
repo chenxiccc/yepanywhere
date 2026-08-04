@@ -11,11 +11,16 @@ import {
   CLAUDE_ADDITIONAL_MODELS_CAPABILITY,
   CLAUDE_GATEWAY_AUTOSTART_CAPABILITY,
   CLAUDE_GATEWAY_CAPABILITY,
+  DEFAULT_IDLE_REAP_HOURS,
+  IDLE_REAP_HOURS_SETTING_CAPABILITY,
+  MAX_IDLE_REAP_HOURS,
+  NEVER_IDLE_REAP_HOURS,
   RELOAD_SAFE_CODEX_RUNTIME_CAPABILITY,
   RELOAD_SAFE_CODEX_RUNTIME_SETTINGS_CAPABILITY,
   MAX_CLAUDE_ADDITIONAL_MODEL_ID_LENGTH,
   isValidClaudeAdditionalModelId,
   isValidClaudeAdditionalModelLabel,
+  normalizeIdleReapHours,
   type ClaudeAdditionalModelSelection,
   type HelperTargetConfig,
   type ModelInfo,
@@ -1322,6 +1327,11 @@ export function ProvidersSettings() {
     version,
     RELOAD_SAFE_CODEX_RUNTIME_CAPABILITY,
   );
+  const supportsIdleReapHours = serverHasCapability(
+    version,
+    IDLE_REAP_HOURS_SETTING_CAPABILITY,
+  );
+  const idleReapHours = settings?.idleReapHours ?? DEFAULT_IDLE_REAP_HOURS;
 
   const handleCopyClaudeLoginCommand = useCallback(
     async (command: string) => {
@@ -1377,6 +1387,54 @@ export function ProvidersSettings() {
         </div>
       )}
       <div className="settings-group">
+        {supportsIdleReapHours && (
+          <SettingsItem
+            id="providers-idle-reap-hours"
+            label={t("providersIdleReapHoursLabel")}
+            description={t("providersIdleReapHoursDescription")}
+            className="settings-item--wide-control"
+            valueText={
+              idleReapHours < 0
+                ? t("providersIdleReapNever")
+                : t("providersIdleReapHoursValue", {
+                    value: idleReapHours,
+                  })
+            }
+            after={
+              <p className="settings-hint">{t("providersIdleReapNeverHint")}</p>
+            }
+          >
+            <CommittedRangeNumberInput
+              id="providers-idle-reap-hours-control"
+              min={NEVER_IDLE_REAP_HOURS}
+              max={MAX_IDLE_REAP_HOURS}
+              numberMin={NEVER_IDLE_REAP_HOURS}
+              numberMax={MAX_IDLE_REAP_HOURS}
+              step={1}
+              list="providers-idle-reap-hours-ticks"
+              value={idleReapHours}
+              unit={t("providersIdleReapHoursUnit")}
+              ariaLabel={t("providersIdleReapHoursAria")}
+              snapTextToStep={false}
+              onCommit={(value) => {
+                void updateSetting(
+                  "idleReapHours",
+                  normalizeIdleReapHours(value),
+                );
+              }}
+            />
+            <datalist id="providers-idle-reap-hours-ticks">
+              <option
+                value={NEVER_IDLE_REAP_HOURS}
+                label={t("providersIdleReapNever")}
+              />
+              <option value="0" />
+              <option value="24" />
+              <option value="48" />
+              <option value={MAX_IDLE_REAP_HOURS} />
+            </datalist>
+          </SettingsItem>
+        )}
         {providerDisplayList.map((provider) => (
           <Fragment key={provider.id}>
             <SettingsItem

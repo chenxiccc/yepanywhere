@@ -80,6 +80,48 @@ describe("ServerSettingsService", () => {
     expect(reloaded.getSetting("codexReloadSafeSessions")).toBe(true);
   });
 
+  it("leaves idle-reap hours absent until explicitly saved", async () => {
+    const service = new ServerSettingsService({ dataDir: testDir });
+    await service.initialize();
+
+    expect(service.getSetting("idleReapHours")).toBeUndefined();
+
+    await service.updateSettings({ idleReapHours: 2.5 });
+    const reloaded = new ServerSettingsService({ dataDir: testDir });
+    await reloaded.initialize();
+    expect(reloaded.getSetting("idleReapHours")).toBe(2.5);
+  });
+
+  it("normalizes persisted negative idle-reap hours to Never", async () => {
+    await fs.writeFile(
+      path.join(testDir, "server-settings.json"),
+      JSON.stringify({
+        version: 2,
+        settings: { idleReapHours: -12 },
+      }),
+      "utf-8",
+    );
+    const service = new ServerSettingsService({ dataDir: testDir });
+    await service.initialize();
+
+    expect(service.getSetting("idleReapHours")).toBe(-1);
+  });
+
+  it("drops persisted idle-reap hours above the supported range", async () => {
+    await fs.writeFile(
+      path.join(testDir, "server-settings.json"),
+      JSON.stringify({
+        version: 2,
+        settings: { idleReapHours: 73 },
+      }),
+      "utf-8",
+    );
+    const service = new ServerSettingsService({ dataDir: testDir });
+    await service.initialize();
+
+    expect(service.getSetting("idleReapHours")).toBeUndefined();
+  });
+
   it("normalizes malformed reload-safe Codex values to off", async () => {
     await fs.writeFile(
       path.join(testDir, "server-settings.json"),

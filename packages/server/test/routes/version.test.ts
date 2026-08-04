@@ -11,6 +11,7 @@ import {
   GIT_SOURCE_REVIEW_PROJECTIONS_CAPABILITY,
   HOST_AWAKE_CONTROL_CAPABILITY,
   HOST_IDENTITY_CAPABILITY,
+  IDLE_REAP_HOURS_SETTING_CAPABILITY,
   RELOAD_SAFE_CODEX_RUNTIME_CAPABILITY,
   RELOAD_SAFE_CODEX_RUNTIME_SETTINGS_CAPABILITY,
   SESSION_SANDBOXING_CAPABILITY,
@@ -57,6 +58,12 @@ describe("Version Routes", () => {
 
   it("advertises host-awake settings and status", () => {
     expect(getServerCapabilities()).toContain(HOST_AWAKE_CONTROL_CAPABILITY);
+  });
+
+  it("advertises configurable idle provider reaping", () => {
+    expect(getServerCapabilities()).toContain(
+      IDLE_REAP_HOURS_SETTING_CAPABILITY,
+    );
   });
 
   it("advertises isolated Claude gateway configuration", () => {

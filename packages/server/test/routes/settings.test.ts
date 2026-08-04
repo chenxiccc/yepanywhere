@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MAX_PROJECT_QUEUE_QUIET_SECONDS } from "@yep-anywhere/shared";
+import {
+  MAX_PROJECT_QUEUE_QUIET_SECONDS,
+  NEVER_IDLE_REAP_HOURS,
+} from "@yep-anywhere/shared";
 import { createSettingsRoutes } from "../../src/routes/settings.js";
 import type { PublicShareService } from "../../src/services/PublicShareService.js";
 import type { HostAwakeService } from "../../src/services/host-awake/HostAwakeService.js";
@@ -93,6 +96,79 @@ describe("Settings Routes", () => {
   });
 
   describe("PUT /", () => {
+    it("returns the effective idle-reap grace before it is persisted", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+        getIdleReapHours: () => 7.5,
+      });
+
+      const response = await routes.request("/");
+
+      expect(response.status).toBe(200);
+      expect((await response.json()).settings.idleReapHours).toBe(7.5);
+    });
+
+    it("persists fractional idle-reap hours and applies them live", async () => {
+      const onIdleReapHoursChanged = vi.fn();
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+        getIdleReapHours: () => settings.idleReapHours ?? 24,
+        onIdleReapHoursChanged,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idleReapHours: 2.5 }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
+        idleReapHours: 2.5,
+      });
+      expect(onIdleReapHoursChanged).toHaveBeenCalledWith(2.5);
+      expect((await response.json()).settings.idleReapHours).toBe(2.5);
+    });
+
+    it("normalizes negative idle-reap input to the Never notch", async () => {
+      const onIdleReapHoursChanged = vi.fn();
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+        onIdleReapHoursChanged,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idleReapHours: -12 }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
+        idleReapHours: NEVER_IDLE_REAP_HOURS,
+      });
+      expect(onIdleReapHoursChanged).toHaveBeenCalledWith(
+        NEVER_IDLE_REAP_HOURS,
+      );
+    });
+
+    it.each([73, "24", null])(
+      "rejects invalid idle-reap input %p",
+      async (idleReapHours) => {
+        const routes = createSettingsRoutes({
+          serverSettingsService: mockServerSettingsService,
+        });
+        const response = await routes.request("/", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ idleReapHours }),
+        });
+
+        expect(response.status).toBe(400);
+        expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
+      },
+    );
+
     it("updates the two independent storage policies", async () => {
       const routes = createSettingsRoutes({
         serverSettingsService: mockServerSettingsService,

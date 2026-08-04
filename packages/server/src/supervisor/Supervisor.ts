@@ -17,6 +17,7 @@ import {
   truncateSessionTitle,
 } from "@yep-anywhere/shared";
 import type { AgentActivity, PendingInputType } from "@yep-anywhere/shared";
+import { DEFAULT_IDLE_TIMEOUT_MS } from "../defaults.js";
 import { getLogger } from "../logging/logger.js";
 import type {
   EffectiveSessionLaunchSettingsValue,
@@ -71,6 +72,7 @@ import {
   type ProcessConstructorOptions,
   type RecapRequestResult,
 } from "./Process.js";
+import { SessionViewerPresence } from "./SessionViewerPresence.js";
 import {
   type QueuedRequestInfo,
   type QueuedResponse,
@@ -606,7 +608,8 @@ export class Supervisor {
   private provider: AgentProvider | null;
   private sdk: ClaudeSDK | null;
   private realSdk: RealClaudeSDKInterface | null;
-  private idleTimeoutMs?: number;
+  private idleTimeoutMs: number;
+  private readonly viewerPresence = new SessionViewerPresence();
   private defaultPermissionMode: PermissionMode;
   private eventBus?: EventBus;
   private maxWorkers: number;
@@ -661,7 +664,7 @@ export class Supervisor {
     this.provider = options.provider ?? null;
     this.sdk = options.sdk ?? null;
     this.realSdk = options.realSdk ?? null;
-    this.idleTimeoutMs = options.idleTimeoutMs;
+    this.idleTimeoutMs = options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
     this.defaultPermissionMode = options.defaultPermissionMode ?? "default";
     this.eventBus = options.eventBus;
     this.maxWorkers = options.maxWorkers ?? 0; // 0 = unlimited
@@ -1195,6 +1198,7 @@ export class Supervisor {
       sessionId: tempSessionId,
       initialState: "idle",
       idleTimeoutMs: this.idleTimeoutMs,
+      viewerPresence: this.viewerPresence,
       queue,
       sessionQueuePersistenceService: this.sessionQueuePersistenceService,
       toolResultMediaStore: this.toolResultMediaStore,
@@ -1753,6 +1757,7 @@ export class Supervisor {
       projectId,
       sessionId: tempSessionId,
       idleTimeoutMs: this.idleTimeoutMs,
+      viewerPresence: this.viewerPresence,
       queue,
       sessionQueuePersistenceService: this.sessionQueuePersistenceService,
       toolResultMediaStore: this.toolResultMediaStore,
@@ -1945,6 +1950,7 @@ export class Supervisor {
       sessionId: tempSessionId,
       initialState: "idle",
       idleTimeoutMs: this.idleTimeoutMs,
+      viewerPresence: this.viewerPresence,
       queue,
       sessionQueuePersistenceService: this.sessionQueuePersistenceService,
       toolResultMediaStore: this.toolResultMediaStore,
@@ -2136,6 +2142,7 @@ export class Supervisor {
       projectId,
       sessionId: tempSessionId,
       idleTimeoutMs: this.idleTimeoutMs,
+      viewerPresence: this.viewerPresence,
       queue,
       sessionQueuePersistenceService: this.sessionQueuePersistenceService,
       toolResultMediaStore: this.toolResultMediaStore,
@@ -2252,6 +2259,7 @@ export class Supervisor {
       projectId,
       sessionId,
       idleTimeoutMs: this.idleTimeoutMs,
+      viewerPresence: this.viewerPresence,
       permissionMode: effectiveMode,
       provider: "claude", // Legacy mock SDK simulates Claude
       model: modelSettings?.model,
@@ -3345,6 +3353,24 @@ export class Supervisor {
     return Array.from(this.processes.values());
   }
 
+  getIdleTimeoutMs(): number {
+    return this.idleTimeoutMs;
+  }
+
+  registerViewerPresence(): () => void {
+    return this.viewerPresence.registerViewer();
+  }
+
+  updateIdleTimeoutMs(idleTimeoutMs: number): void {
+    if (!Number.isFinite(idleTimeoutMs)) {
+      throw new Error("Idle reap timeout must be finite");
+    }
+    this.idleTimeoutMs = idleTimeoutMs;
+    for (const process of this.processes.values()) {
+      process.updateIdleTimeoutMs(idleTimeoutMs);
+    }
+  }
+
   private async queueHeartbeatTurns(): Promise<void> {
     if (this.heartbeatTurnInFlight) {
       return;
@@ -4175,10 +4201,7 @@ export class Supervisor {
             "Failed to save applied session launch settings",
           );
         });
-      } else if (
-        event.type === "idle-reap" ||
-        event.type === "lifecycle-reap"
-      ) {
+      } else if (event.type === "idle-reap") {
         this.emitSessionAborted(process.sessionId, process.projectId);
       } else if (event.type === "complete") {
         this.dirtyFileEditorService?.forgetProcess(process.id);

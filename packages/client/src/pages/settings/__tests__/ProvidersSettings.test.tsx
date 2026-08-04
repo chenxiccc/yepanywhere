@@ -11,6 +11,7 @@ import {
   CLAUDE_ADDITIONAL_MODELS_CAPABILITY,
   CLAUDE_GATEWAY_AUTOSTART_CAPABILITY,
   CLAUDE_GATEWAY_CAPABILITY,
+  IDLE_REAP_HOURS_SETTING_CAPABILITY,
   RELOAD_SAFE_CODEX_RUNTIME_CAPABILITY,
   RELOAD_SAFE_CODEX_RUNTIME_SETTINGS_CAPABILITY,
   type ProviderInfo,
@@ -142,6 +143,52 @@ describe("ProvidersSettings additional models", () => {
     render(<ProvidersSettings />);
 
     expect(screen.queryByText("providersAdditionalModelsTitle")).toBeNull();
+  });
+
+  it("hides idle harness lifetime from older servers", () => {
+    render(<ProvidersSettings />);
+
+    expect(screen.queryByText("providersIdleReapHoursLabel")).toBeNull();
+  });
+
+  it("shows the Never notch as -1", () => {
+    hookState.settings = {
+      ...hookState.settings,
+      idleReapHours: -1,
+    };
+    versionState.capabilities = [IDLE_REAP_HOURS_SETTING_CAPABILITY];
+
+    render(<ProvidersSettings />);
+
+    expect(screen.getByText("providersIdleReapHoursLabel")).toBeTruthy();
+    expect(screen.getByText("providersIdleReapNeverHint")).toBeTruthy();
+    expect(
+      document.querySelector<HTMLInputElement>(
+        "#providers-idle-reap-hours-control-number",
+      )?.value,
+    ).toBe("-1");
+  });
+
+  it("saves fractional idle harness hours from the number field", async () => {
+    hookState.settings = {
+      ...hookState.settings,
+      idleReapHours: 24,
+    };
+    versionState.capabilities = [IDLE_REAP_HOURS_SETTING_CAPABILITY];
+    render(<ProvidersSettings />);
+    const numberInput = document.querySelector<HTMLInputElement>(
+      "#providers-idle-reap-hours-control-number",
+    );
+    expect(numberInput).not.toBeNull();
+
+    fireEvent.change(numberInput as HTMLInputElement, {
+      target: { value: "2.5" },
+    });
+    fireEvent.blur(numberInput as HTMLInputElement);
+
+    await waitFor(() => {
+      expect(mockUpdateSetting).toHaveBeenCalledWith("idleReapHours", 2.5);
+    });
   });
 
   it("shows Codex before Claude", () => {

@@ -493,46 +493,80 @@ continuity, and teardown.
 
 The survivor should not become an immortal provider daemon.
 
-The combined lifecycle owner keeps four independent deadline classes:
+The combined lifecycle owner keeps three independent deadline classes:
 
 - the ordinary verified-idle reap deadline, using YA's configured idle policy;
-- the attached-process no-viewer deadlines, selected from verified liveness and
-  bounded by an absolute ceiling;
 - the replacement-server attach deadline after detach, controller loss, or an
   unconfirmed claim; and
 - the terminal drain deadline after wrapper shutdown or owner loss.
 
-No deadline is renewed merely because the app-server PID or socket remains
-alive. Provider events may update liveness evidence, but only a successful
-reattach or a real state transition changes the applicable lifecycle state.
+Active and waiting-input sessions are presumed live. They remain visible in
+the sidebar and are never terminated by a viewer-absence deadline, including
+when an active turn runs unattended for days. Provider silence may change the
+session's liveness diagnosis and UI, but it is not an idle boundary and does
+not make the process eligible for this reaper. Explicit provider retention
+likewise blocks idle reaping.
 
-An attached `Process` treats each mounted session stream as a viewer lease,
-independently of whether that stream requests live provider deltas. A mounted
-background browser tab still counts as viewing; browser document visibility is
-not a termination signal. The last lease release starts the no-viewer period,
-and the next real session subscription cancels every no-viewer deadline. If
-that viewer later leaves, a new no-viewer period begins.
-
-No-viewer teardown is state-aware and finite:
-
-- verified idle with no feature, prompt-cache, or provider retention: 15
-  minutes;
-- waiting for user input or approval: one hour; and
-- active, unverified, or explicitly retained work: a 24-hour absolute ceiling.
-
-State transitions may select the shorter applicable deadline, but never move
-the absolute ceiling past 24 hours from the last viewer release. Provider
-traffic, a live PID, retained background work, and an open host socket do not
-reset that ceiling. Expiry uses the same provider abort path as explicit
-session teardown; a hosted proxy therefore enters the host's bounded
+Only a truly idle process is eligible: its process state and conservative
+liveness result are both idle, and no feature, prompt-cache lease, or provider
+retention owns it. Expiry uses the same provider abort path as explicit session
+teardown; a hosted proxy therefore enters the host's bounded
 cooperative/TERM/KILL cleanup rather than leaving the worker alive.
 
-Both reload-safe hosts retain the first/last viewer transition with the runtime
-entry. Reattach returns the existing no-viewer anchor to the replacement
-`Process`; claiming a runtime or losing its controller marks a previously
-attached viewer as gone but preserves an already-running no-viewer period.
-Repeated Hono reloads therefore cannot renew an unviewed runtime's absolute
-ceiling.
+Viewer presence is server-global rather than session-local. Every mounted app
+activity stream holds a viewer lease, so a tab viewing a historical session
+still protects every live provider process. Mounted live-session streams also
+hold leases across transient activity-stream reconnects, independently of
+whether they request live provider deltas. A mounted background browser tab
+counts; browser document visibility is not a termination signal. The first
+global viewer cancels all pending idle deadlines. After the last global viewer
+leaves, each eligible idle process receives a fresh full grace period; a
+process that becomes idle later receives its full grace from that idle
+transition. Thus any visit or open session tab refreshes the dead-man switch
+for all sessions.
+
+Both reload-safe hosts retain the global first/last-viewer transition with
+their runtime entries. Reattach returns the existing no-viewer anchor to the
+replacement `Process`; claiming a runtime or losing its controller preserves
+the viewer-absence evidence. The replacement generation re-establishes idle
+eligibility from its attached provider state, so the best-effort idle grace may
+restart across reload. A real viewer reconnect still refreshes every idle
+runtime.
+
+### Configurable idle-reap courtesy
+
+`idleReapHours` is the server-wide number of idle hours after which a harness
+process may be reaped. It is a finite floating-point value and defaults to
+`24`. Negative values disable idle reaping. Zero makes a truly idle process
+immediately eligible, but this remains a best-effort cleanup threshold rather
+than a promise to terminate at an exact wall-clock instant.
+
+Settings > Providers exposes synchronized numeric and range controls. The
+slider's `-1` position is visibly labeled **Never**, followed by the numeric
+`0–72` hour range; the synchronized numeric field displays `-1` at that notch.
+The numeric field accepts fractional hours within the same range. All negative
+input is normalized to the canonical `-1` value, keeping the discoverable hint
+and persisted representation stable.
+
+An explicitly configured legacy `IDLE_TIMEOUT` remains authoritative until the
+user deliberately saves `idleReapHours`; that save is the opt-in that moves
+the deployment to the persisted setting. Changes apply to existing processes:
+idle timers are recalculated, while active and waiting-input processes remain
+unaffected.
+
+An idle process that is temporarily ineligible because another owner retains
+it is rechecked periodically. An explicit retention-release signal starts a
+fresh full grace; the periodic check is the backstop for retention sources
+without such a signal. Rechecks use a nonzero interval even when the configured
+grace is zero, avoiding a busy timer loop.
+
+The optional Settings contract is capability-gated. Stable releases `0.7.0`
+and `0.6.2` (the latest two, including every stable server from the preceding
+14 days) have neither the field nor the capability. A new permanent
+`idle-reap-hours-setting` capability owns `GET /api/settings`,
+`PUT /api/settings`, and `settings.idleReapHours`. Without it, a newer client
+omits the Providers row and never sends the field; older server behavior and
+all existing capability meanings remain unchanged.
 
 Once Hono detaches or disappears for reload, its `Process` no longer owns the
 no-viewer timer. The host's 30-second replacement attach deadline becomes

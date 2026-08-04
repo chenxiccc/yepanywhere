@@ -287,7 +287,7 @@ export const ENV_VAR_REGISTRY: EnvVarDescriptor[] = [
     name: "IDLE_TIMEOUT",
     group: "Processes & workers",
     description:
-      "Seconds an idle provider process is kept warm before it is reaped. Default 3600 (60 min), matching the prompt-cache window.",
+      "Seconds an eligible idle provider process is kept warm before it may be reaped. Default 86400 (24 hours).",
   },
   {
     name: "IDLE_PREEMPT_THRESHOLD",

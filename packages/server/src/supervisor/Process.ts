@@ -44,6 +44,7 @@ import {
   type DeferredDeliverySettings,
   resolveDeferredDeliverySettings,
 } from "./deferredDeliverySettings.js";
+import { SessionViewerPresence } from "./SessionViewerPresence.js";
 import type {
   AgentProvider,
   PromptCacheRefreshResult,
@@ -213,14 +214,7 @@ function patientPatienceMsForEntry(entry: DeferredQueueEntry): number {
 const ASK_USER_QUESTION_TOOL_NAME = "AskUserQuestion";
 const PROMPT_CACHE_KEEPALIVE_RECHECK_MS = 30_000;
 const PROMPT_CACHE_KEEPALIVE_MIN_DELAY_MS = 1_000;
-const DEFAULT_UNVIEWED_IDLE_TIMEOUT_MS = 15 * 60_000;
-const DEFAULT_UNVIEWED_WAITING_INPUT_TIMEOUT_MS = 60 * 60_000;
-const DEFAULT_UNVIEWED_ACTIVE_TIMEOUT_MS = 24 * 60 * 60_000;
-
-type UnviewedDeadlineKind =
-  | "verified-idle"
-  | "waiting-input"
-  | "active-ceiling";
+const IDLE_REAP_ELIGIBILITY_RECHECK_MS = 60_000;
 
 function isAskUserQuestionTool(toolName: string): boolean {
   return toolName === ASK_USER_QUESTION_TOOL_NAME;
@@ -687,12 +681,8 @@ export interface ProcessConstructorOptions extends ProcessOptions {
   isProcessAlive?: () => boolean;
   /** Return true when an idle process should stay owned for an explicit feature. */
   shouldRetainIdleProcess?: (sessionId: string) => boolean;
-  /** Override the no-viewer verified-idle grace (tests/embedding). */
-  unviewedIdleTimeoutMs?: number;
-  /** Override the no-viewer waiting-input grace (tests/embedding). */
-  unviewedWaitingInputTimeoutMs?: number;
-  /** Override the absolute no-viewer process lifetime (tests/embedding). */
-  unviewedActiveTimeoutMs?: number;
+  /** Server-generation-wide viewer registry shared by every Process. */
+  viewerPresence?: SessionViewerPresence;
   /** Terminal provider incident retained by Supervisor across process reaping. */
   initialProviderRuntimeStatus?: ProviderRuntimeStatus;
   /** Actively query provider/session status when passive evidence is stale. */
@@ -788,14 +778,11 @@ export class Process {
   private _state: ProcessState = { type: "in-turn" };
   private listeners: Set<Listener> = new Set();
   private liveDeltaSubscriberCount = 0;
-  private viewerCount = 0;
+  private readonly viewerPresence: SessionViewerPresence;
+  private releaseViewerPresenceSubscription: (() => void) | null = null;
   private idleTimer: NodeJS.Timeout | null = null;
   private idleTimeoutMs: number;
-  private unviewedTimer: NodeJS.Timeout | null = null;
   private unviewedSince: Date | null;
-  private readonly unviewedIdleTimeoutMs: number;
-  private readonly unviewedWaitingInputTimeoutMs: number;
-  private readonly unviewedActiveTimeoutMs: number;
   private getRuntimeUnviewedSinceFn: (() => Date | undefined) | null;
   private setRuntimeViewerPresenceFn:
     | ((hasViewers: boolean) => void | Promise<void>)
@@ -997,20 +984,10 @@ export class Process {
         ? { type: "idle", since: this.startedAt }
         : { type: "in-turn" };
     this.idleTimeoutMs = options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
-    this.unviewedSince = this.startedAt;
-    this.unviewedIdleTimeoutMs = Math.max(
-      0,
-      options.unviewedIdleTimeoutMs ?? DEFAULT_UNVIEWED_IDLE_TIMEOUT_MS,
-    );
-    this.unviewedWaitingInputTimeoutMs = Math.max(
-      0,
-      options.unviewedWaitingInputTimeoutMs ??
-        DEFAULT_UNVIEWED_WAITING_INPUT_TIMEOUT_MS,
-    );
-    this.unviewedActiveTimeoutMs = Math.max(
-      0,
-      options.unviewedActiveTimeoutMs ?? DEFAULT_UNVIEWED_ACTIVE_TIMEOUT_MS,
-    );
+    this.viewerPresence = options.viewerPresence ?? new SessionViewerPresence();
+    this.unviewedSince = this.viewerPresence.hasViewers()
+      ? null
+      : this.startedAt;
 
     // Real SDK provides these, mock SDK doesn't
     this.messageQueue = options.queue ?? null;
@@ -1079,6 +1056,12 @@ export class Process {
     this._lastMessageTime = new Date();
     this._lastProviderMessageTime = null;
     this._lastStateChangeTime = this.startedAt;
+    this.releaseViewerPresenceSubscription = this.viewerPresence.subscribe(
+      (hasViewers) => this.handleViewerPresenceChanged(hasViewers),
+    );
+    if (this.viewerPresence.hasViewers()) {
+      this.recordRuntimeViewerPresence(true);
+    }
 
     // Exit promise resolves when the CLI process fully terminates
     this._exitPromise = new Promise((resolve) => {
@@ -1094,7 +1077,6 @@ export class Process {
     if (this._state.type === "idle") {
       this.startIdleTimer();
     }
-    this.scheduleUnviewedDeadline();
 
     // Start processing messages from the SDK
     this.processMessages();
@@ -1321,9 +1303,8 @@ export class Process {
   handleProviderRetentionChanged(): void {
     this.emit({ type: "liveness-update" });
     if (this._state.type === "idle") {
-      this.rescheduleIdleTimerForCurrentIdlePeriod();
+      this.startIdleTimer();
     }
-    this.scheduleUnviewedDeadline();
   }
 
   supportsPromptCacheKeepalive(): boolean {
@@ -1343,6 +1324,9 @@ export class Process {
       this.promptCacheKeepaliveLeases.delete(leaseId);
       if (this.promptCacheKeepaliveLeases.size === 0) {
         this.clearPromptCacheKeepaliveTimer();
+        if (this._state.type === "idle") {
+          this.startIdleTimer();
+        }
       } else {
         this.schedulePromptCacheKeepalive();
       }
@@ -2195,7 +2179,7 @@ export class Process {
     );
 
     this.clearIdleTimer();
-    this.clearUnviewedTimer();
+    this.releaseViewerPresence();
     this.clearPromptCacheKeepaliveTimer();
     this.stopBucketSwapTimer();
     this.iteratorDone = true;
@@ -3853,27 +3837,11 @@ export class Process {
   }
 
   hasViewers(): boolean {
-    return this.viewerCount > 0;
+    return this.viewerPresence.hasViewers();
   }
 
   registerViewer(): () => void {
-    this.viewerCount += 1;
-    if (this.viewerCount === 1) {
-      this.unviewedSince = null;
-      this.clearUnviewedTimer();
-      this.recordRuntimeViewerPresence(true);
-    }
-    let active = true;
-    return () => {
-      if (!active) return;
-      active = false;
-      this.viewerCount = Math.max(0, this.viewerCount - 1);
-      if (this.viewerCount === 0 && this._state.type !== "terminated") {
-        this.unviewedSince = new Date();
-        this.recordRuntimeViewerPresence(false);
-        this.scheduleUnviewedDeadline();
-      }
-    };
+    return this.viewerPresence.registerViewer();
   }
 
   /**
@@ -3911,7 +3879,7 @@ export class Process {
 
   async abort(): Promise<ProcessAbortResult> {
     this.clearIdleTimer();
-    this.clearUnviewedTimer();
+    this.releaseViewerPresence();
     this.clearPromptCacheKeepaliveTimer();
     this.stopBucketSwapTimer();
     this.clearRetryingProviderRuntimeStatus();
@@ -4001,15 +3969,12 @@ export class Process {
     // slip into YA-owned memory after that decision.
     this.detachingForServerReload = true;
     this.clearIdleTimer();
-    this.clearUnviewedTimer();
+    this.releaseViewerPresence();
     this.clearPromptCacheKeepaliveTimer();
     this.stopBucketSwapTimer();
     this.clearRetryingProviderRuntimeStatus();
-    if (this.viewerCount > 0) {
-      this.viewerCount = 0;
-      this.unviewedSince = new Date();
-      this.recordRuntimeViewerPresence(false);
-    }
+    this.unviewedSince = new Date();
+    this.recordRuntimeViewerPresence(false);
     await this.runtimeViewerPresenceTail;
     const deadline = Date.now() + PROCESS_ABORT_TIMEOUT_MS;
     await waitUntilAbortDeadline(
@@ -4098,7 +4063,6 @@ export class Process {
           const log = getLogger();
           const oldSessionId = this._sessionId;
           this._sessionId = message.session_id;
-          this.scheduleUnviewedDeadline();
           this.sessionIdResolved = true;
 
           log.info(
@@ -4767,26 +4731,19 @@ export class Process {
 
   private startIdleTimer(delayMs = this.idleTimeoutMs): void {
     this.clearIdleTimer();
+    if (!this.shouldScheduleIdleReapCheck()) {
+      return;
+    }
     this.idleTimer = setTimeout(
       () => {
         this.idleTimer = null;
 
-        // State may have changed while the timer was pending.
-        if (this._state.type !== "idle") {
-          return;
-        }
-
-        const retainedByFeature =
-          this.shouldRetainIdleProcess?.(this._sessionId) ?? false;
-        const retainedByPromptCacheKeepalive =
-          this.hasPromptCacheKeepaliveLease();
-        const providerRetention = this.getProviderRetentionSnapshot();
-        if (
-          this.hasViewers() ||
-          retainedByFeature ||
-          retainedByPromptCacheKeepalive ||
-          providerRetention.retained
-        ) {
+        if (!this.isIdleReapEligible()) {
+          const retainedByFeature =
+            this.shouldRetainIdleProcess?.(this._sessionId) ?? false;
+          const retainedByPromptCacheKeepalive =
+            this.hasPromptCacheKeepaliveLease();
+          const providerRetention = this.getProviderRetentionSnapshot();
           getLogger().debug(
             {
               event: "idle_cleanup_deferred",
@@ -4794,7 +4751,7 @@ export class Process {
               processId: this.id,
               projectId: this.projectId,
               idleTimeoutMs: this.idleTimeoutMs,
-              viewerCount: this.viewerCount,
+              viewerCount: this.viewerPresence.getViewerCount(),
               liveDeltaSubscriberCount: this.liveDeltaSubscriberCount,
               retainedByFeature,
               retainedByPromptCacheKeepalive,
@@ -4805,9 +4762,9 @@ export class Process {
               providerSessionCronCount: providerRetention.sessionCronCount,
               providerLiveTaskCount: providerRetention.liveTaskCount,
             },
-            `Idle cleanup deferred: ${this._sessionId} is explicitly retained`,
+            `Idle cleanup deferred: ${this._sessionId} is not currently eligible`,
           );
-          this.startIdleTimer();
+          this.startIdleTimer(IDLE_REAP_ELIGIBILITY_RECHECK_MS);
           return;
         }
 
@@ -4819,53 +4776,70 @@ export class Process {
   }
 
   private rescheduleIdleTimerForCurrentIdlePeriod(): void {
-    if (this._state.type !== "idle") {
+    if (
+      this._state.type !== "idle" ||
+      !this.shouldScheduleIdleReapCheck()
+    ) {
+      this.clearIdleTimer();
       return;
     }
-    const elapsedMs = Date.now() - this._state.since.getTime();
+    const runtimeUnviewedSinceMs =
+      this.getRuntimeUnviewedSinceFn?.()?.getTime();
+    const localUnviewedSinceMs = this.unviewedSince?.getTime();
+    const effectiveUnviewedSinceMs =
+      runtimeUnviewedSinceMs !== undefined &&
+      Number.isFinite(runtimeUnviewedSinceMs) &&
+      localUnviewedSinceMs !== undefined
+        ? Math.min(runtimeUnviewedSinceMs, localUnviewedSinceMs)
+        : (runtimeUnviewedSinceMs ?? localUnviewedSinceMs);
+    const eligibleSinceMs = Math.max(
+      this._state.since.getTime(),
+      effectiveUnviewedSinceMs ?? this._state.since.getTime(),
+    );
+    const elapsedMs = Date.now() - eligibleSinceMs;
     this.startIdleTimer(Math.max(0, this.idleTimeoutMs - elapsedMs));
   }
 
-  private reapIdleProcess(): void {
-    this.reapProcess("idle reap", { type: "idle-reap" });
+  updateIdleTimeoutMs(idleTimeoutMs: number): void {
+    this.idleTimeoutMs = idleTimeoutMs;
+    if (this._state.type === "idle") {
+      this.rescheduleIdleTimerForCurrentIdlePeriod();
+    }
   }
 
-  private reapUnviewedProcess(kind: UnviewedDeadlineKind): void {
-    const reason =
-      kind === "verified-idle"
-        ? "unviewed verified-idle deadline"
-        : kind === "waiting-input"
-          ? "unviewed waiting-input deadline"
-          : "unviewed active lifetime ceiling";
-    getLogger().info(
-      {
-        event: "unviewed_process_reaped",
-        sessionId: this._sessionId,
-        processId: this.id,
-        projectId: this.projectId,
-        provider: this.provider,
-        reason,
-        state: this._state.type,
-        unviewedSince: this.unviewedSince?.toISOString(),
-      },
-      `Reaping unviewed provider process: ${this._sessionId}`,
+  private isIdleReapEligible(): boolean {
+    if (
+      !this.shouldScheduleIdleReapCheck() ||
+      this.shouldRetainIdleProcess?.(this._sessionId) === true ||
+      this.hasPromptCacheKeepaliveLease() ||
+      this.getProviderRetentionSnapshot().retained
+    ) {
+      return false;
+    }
+    return this.getLivenessSnapshot().derivedStatus === "verified-idle";
+  }
+
+  private shouldScheduleIdleReapCheck(): boolean {
+    return (
+      this.idleTimeoutMs >= 0 &&
+      this._state.type === "idle" &&
+      !this.hasViewers() &&
+      !this.detachingForServerReload &&
+      !this.lifecycleReapInProgress
     );
-    this.reapProcess(reason, { type: "lifecycle-reap", reason });
   }
 
-  private reapProcess(
-    reason: string,
-    event: Extract<ProcessEvent, { type: "idle-reap" | "lifecycle-reap" }>,
-  ): void {
+  private reapIdleProcess(): void {
+    const reason = "idle reap";
     this.lifecycleReapInProgress = true;
     this.clearIdleTimer();
-    this.clearUnviewedTimer();
+    this.releaseViewerPresence();
     this.clearPromptCacheKeepaliveTimer();
     this.stopBucketSwapTimer();
     this.iteratorDone = true;
     this.clearRetryingProviderRuntimeStatus();
 
-    this.emit(event);
+    this.emit({ type: "idle-reap" });
 
     this.requestProviderAbortWithoutWaiting(reason);
 
@@ -4878,84 +4852,6 @@ export class Process {
     }
   }
 
-  private resolveUnviewedDeadline(): {
-    kind: UnviewedDeadlineKind;
-    atMs: number;
-  } | null {
-    if (
-      this.viewerCount > 0 ||
-      !this.unviewedSince ||
-      this.detachingForServerReload ||
-      this.lifecycleReapInProgress ||
-      this._state.type === "terminated"
-    ) {
-      return null;
-    }
-
-    const runtimeUnviewedSinceMs =
-      this.getRuntimeUnviewedSinceFn?.()?.getTime();
-    const unviewedSinceMs =
-      runtimeUnviewedSinceMs !== undefined &&
-      Number.isFinite(runtimeUnviewedSinceMs)
-        ? Math.min(this.unviewedSince.getTime(), runtimeUnviewedSinceMs)
-        : this.unviewedSince.getTime();
-    const activeCeilingAtMs = unviewedSinceMs + this.unviewedActiveTimeoutMs;
-    if (this._state.type === "waiting-input") {
-      const waitingDeadlineAtMs =
-        Math.max(unviewedSinceMs, this._lastStateChangeTime.getTime()) +
-        this.unviewedWaitingInputTimeoutMs;
-      return waitingDeadlineAtMs <= activeCeilingAtMs
-        ? { kind: "waiting-input", atMs: waitingDeadlineAtMs }
-        : { kind: "active-ceiling", atMs: activeCeilingAtMs };
-    }
-
-    if (this._state.type === "idle") {
-      const retainedByFeature =
-        this.shouldRetainIdleProcess?.(this._sessionId) ?? false;
-      const retainedByPromptCacheKeepalive =
-        this.hasPromptCacheKeepaliveLease();
-      const providerRetention = this.getProviderRetentionSnapshot();
-      const isVerifiedIdle =
-        this.getLivenessSnapshot().derivedStatus === "verified-idle";
-      if (
-        isVerifiedIdle &&
-        !retainedByFeature &&
-        !retainedByPromptCacheKeepalive &&
-        !providerRetention.retained
-      ) {
-        const idleDeadlineAtMs =
-          Math.max(unviewedSinceMs, this._state.since.getTime()) +
-          this.unviewedIdleTimeoutMs;
-        return idleDeadlineAtMs <= activeCeilingAtMs
-          ? { kind: "verified-idle", atMs: idleDeadlineAtMs }
-          : { kind: "active-ceiling", atMs: activeCeilingAtMs };
-      }
-    }
-
-    return { kind: "active-ceiling", atMs: activeCeilingAtMs };
-  }
-
-  private scheduleUnviewedDeadline(): void {
-    this.clearUnviewedTimer();
-    const deadline = this.resolveUnviewedDeadline();
-    if (!deadline) return;
-    this.unviewedTimer = setTimeout(
-      () => {
-        this.unviewedTimer = null;
-        const current = this.resolveUnviewedDeadline();
-        if (!current) return;
-        const remainingMs = current.atMs - Date.now();
-        if (remainingMs > 0) {
-          this.scheduleUnviewedDeadline();
-          return;
-        }
-        this.reapUnviewedProcess(current.kind);
-      },
-      Math.max(0, deadline.atMs - Date.now()),
-    );
-    this.unviewedTimer.unref?.();
-  }
-
   private clearIdleTimer(): void {
     if (this.idleTimer) {
       clearTimeout(this.idleTimer);
@@ -4963,11 +4859,19 @@ export class Process {
     }
   }
 
-  private clearUnviewedTimer(): void {
-    if (this.unviewedTimer) {
-      clearTimeout(this.unviewedTimer);
-      this.unviewedTimer = null;
+  private handleViewerPresenceChanged(hasViewers: boolean): void {
+    this.unviewedSince = hasViewers ? null : new Date();
+    this.recordRuntimeViewerPresence(hasViewers);
+    if (hasViewers) {
+      this.clearIdleTimer();
+    } else if (this._state.type === "idle") {
+      this.startIdleTimer();
     }
+  }
+
+  private releaseViewerPresence(): void {
+    this.releaseViewerPresenceSubscription?.();
+    this.releaseViewerPresenceSubscription = null;
   }
 
   private recordRuntimeViewerPresence(hasViewers: boolean): void {
@@ -5001,9 +4905,11 @@ export class Process {
   private setState(state: ProcessState): void {
     this._state = state;
     this._lastStateChangeTime = new Date();
+    if (state.type !== "idle") {
+      this.clearIdleTimer();
+    }
     this.emit({ type: "state-change", state });
     this.schedulePromptCacheKeepalive();
-    this.scheduleUnviewedDeadline();
   }
 
   private emit(event: ProcessEvent): void {

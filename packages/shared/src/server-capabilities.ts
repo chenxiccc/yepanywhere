@@ -103,6 +103,26 @@ export const SERVER_CAPABILITIES = {
         "Older servers may write YA-managed state into project directories without an opt-in.",
     },
   },
+  idleReapHoursSetting: {
+    name: "idle-reap-hours-setting",
+    kind: "permanent",
+    area: "settings",
+    introducedIn: "0.7.1",
+    description:
+      "Server exposes a live-configurable best-effort grace before unviewed, verified-idle provider processes may be reaped.",
+    clientFallback:
+      "Hide the idle-reap control and make no unsupported settings write.",
+    serverContract: {
+      routes: ["GET /api/settings", "PUT /api/settings"],
+      requestFields: ["settings.idleReapHours"],
+      responseFields: ["settings.idleReapHours"],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Hosted clients may outpace installed servers, and older servers do not expose a persisted idle-reap policy.",
+    },
+  },
   toolResultMediaPreservationPolicy: {
     name: "tool-result-media-preservation-policy",
     kind: "permanent",
@@ -930,6 +950,8 @@ export type ServerCapabilityName =
 
 export const PROJECT_DIRECTORY_STORAGE_POLICY_CAPABILITY =
   SERVER_CAPABILITIES.projectDirectoryStoragePolicy.name;
+export const IDLE_REAP_HOURS_SETTING_CAPABILITY =
+  SERVER_CAPABILITIES.idleReapHoursSetting.name;
 export const GLOSSARY_TOOLTIPS_CAPABILITY =
   SERVER_CAPABILITIES.glossaryTooltips.name;
 export const TOOL_RESULT_MEDIA_PRESERVATION_POLICY_CAPABILITY =

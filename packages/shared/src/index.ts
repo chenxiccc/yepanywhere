@@ -469,6 +469,7 @@ export {
   DEVICE_BRIDGE_UPDATE_CAPABILITY,
   GLOSSARY_TOOLTIPS_CAPABILITY,
   HOST_IDENTITY_CAPABILITY,
+  IDLE_REAP_HOURS_SETTING_CAPABILITY,
   HOST_AWAKE_CONTROL_CAPABILITY,
   HOST_AGENT_PROCESS_OBSERVABILITY_CAPABILITY,
   SESSION_SANDBOXING_CAPABILITY,
@@ -490,6 +491,16 @@ export {
   type ServerCapabilityName,
   type ServerCapabilitySource,
 } from "./server-capabilities.js";
+
+export {
+  DEFAULT_IDLE_REAP_HOURS,
+  MAX_IDLE_REAP_HOURS,
+  NEVER_IDLE_REAP_HOURS,
+  idleReapHoursToMs,
+  idleReapMsToHours,
+  isIdleReapHours,
+  normalizeIdleReapHours,
+} from "./idle-reap.js";
 
 export {
   DEFAULT_HOST_AWAKE_BATTERY_FLOOR_PERCENT,

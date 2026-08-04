@@ -572,6 +572,7 @@ export function handleActivitySubscribe(
   connectedBrowsers?: ConnectedBrowsersService,
   browserProfileService?: BrowserProfileService,
   closeConnection?: () => void,
+  registerViewerPresence?: () => () => void,
 ): void {
   const { subscriptionId, browserProfileId, originMetadata } = msg;
 
@@ -611,10 +612,12 @@ export function handleActivitySubscribe(
       console.error("[WS Relay] Error in activity subscription:", err);
     },
   });
+  const releaseViewerPresence = registerViewerPresence?.() ?? (() => {});
 
   subscriptions.set(subscriptionId, () => {
     cleanup();
     releaseBrowserTabConnection();
+    releaseViewerPresence();
   });
 
   getLogger().debug(`[WS Relay] Subscribed to activity (${subscriptionId})`);
@@ -882,6 +885,7 @@ export async function handleSubscribe(
         connectedBrowsers,
         browserProfileService,
         closeConnection,
+        () => supervisor.registerViewerPresence(),
       );
       break;
 

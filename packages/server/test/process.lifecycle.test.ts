@@ -14,10 +14,11 @@ import type {
   SDKMessage,
   UrlProjectId,
 } from "./process.test-support.js";
+import { SessionViewerPresence } from "../src/supervisor/SessionViewerPresence.js";
 
 describe("Process", () => {
-  describe("unviewed lifecycle", () => {
-    it("reaps a verified-idle process after the short grace", async () => {
+  describe("idle lifecycle", () => {
+    it("reaps a verified-idle process after the configured grace", async () => {
       vi.useFakeTimers();
       try {
         const controller = createControllableIterator();
@@ -29,9 +30,7 @@ describe("Process", () => {
           sessionId: "sess-1",
           provider: "claude",
           initialState: "idle",
-          idleTimeoutMs: 10_000,
-          unviewedIdleTimeoutMs: 20,
-          unviewedActiveTimeoutMs: 100,
+          idleTimeoutMs: 20,
           abortFn,
         });
         process.subscribe((event) => events.push(event.type));
@@ -41,13 +40,13 @@ describe("Process", () => {
 
         await vi.advanceTimersByTimeAsync(1);
         expect(abortFn).toHaveBeenCalledOnce();
-        expect(events).toEqual(["lifecycle-reap", "complete"]);
+        expect(events).toEqual(["idle-reap", "complete"]);
       } finally {
         vi.useRealTimers();
       }
     });
 
-    it("cancels and restarts deadlines as viewers return and leave", async () => {
+    it("restarts the full grace when viewers return and leave", async () => {
       vi.useFakeTimers();
       try {
         const controller = createControllableIterator();
@@ -59,9 +58,7 @@ describe("Process", () => {
           sessionId: "sess-1",
           provider: "claude",
           initialState: "idle",
-          idleTimeoutMs: 10_000,
-          unviewedIdleTimeoutMs: 20,
-          unviewedActiveTimeoutMs: 100,
+          idleTimeoutMs: 20,
           abortFn,
           setRuntimeViewerPresenceFn,
         });
@@ -90,7 +87,51 @@ describe("Process", () => {
       }
     });
 
-    it("gives waiting-input sessions the attention grace", async () => {
+    it("a viewer on one session suspends idle reaping for all sessions", async () => {
+      vi.useFakeTimers();
+      try {
+        const viewerPresence = new SessionViewerPresence();
+        const idleController = createControllableIterator();
+        const activeController = createControllableIterator();
+        const idleAbort = vi.fn();
+        const activeAbort = vi.fn();
+        const idleProcess = new Process(idleController.iterator, {
+          projectPath: "/test",
+          projectId: "proj-1" as UrlProjectId,
+          sessionId: "idle-session",
+          provider: "claude",
+          initialState: "idle",
+          idleTimeoutMs: 20,
+          abortFn: idleAbort,
+          viewerPresence,
+        });
+        const activeProcess = new Process(activeController.iterator, {
+          projectPath: "/test",
+          projectId: "proj-1" as UrlProjectId,
+          sessionId: "active-session",
+          provider: "claude",
+          idleTimeoutMs: 20,
+          abortFn: activeAbort,
+          viewerPresence,
+        });
+
+        const releaseViewer = activeProcess.registerViewer();
+        await vi.advanceTimersByTimeAsync(100);
+        expect(idleAbort).not.toHaveBeenCalled();
+
+        releaseViewer();
+        await vi.advanceTimersByTimeAsync(19);
+        expect(idleAbort).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(1);
+        expect(idleAbort).toHaveBeenCalledOnce();
+        expect(activeAbort).not.toHaveBeenCalled();
+        expect(idleProcess.hasViewers()).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("never reaps waiting-input sessions for viewer absence", async () => {
       vi.useFakeTimers();
       try {
         const controller = createControllableIterator();
@@ -100,9 +141,7 @@ describe("Process", () => {
           projectId: "proj-1" as UrlProjectId,
           sessionId: "sess-1",
           provider: "claude",
-          idleTimeoutMs: 10_000,
-          unviewedWaitingInputTimeoutMs: 30,
-          unviewedActiveTimeoutMs: 100,
+          idleTimeoutMs: 20,
           abortFn,
         });
 
@@ -118,9 +157,62 @@ describe("Process", () => {
         await vi.advanceTimersByTimeAsync(0);
         expect(process.state.type).toBe("waiting-input");
 
-        await vi.advanceTimersByTimeAsync(29);
+        await vi.advanceTimersByTimeAsync(10_000);
+        expect(abortFn).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("never reaps active sessions for viewer absence", async () => {
+      vi.useFakeTimers();
+      try {
+        const controller = createControllableIterator();
+        const abortFn = vi.fn();
+        const process = new Process(controller.iterator, {
+          projectPath: "/test",
+          projectId: "proj-1" as UrlProjectId,
+          sessionId: "sess-1",
+          provider: "claude",
+          idleTimeoutMs: 20,
+          abortFn,
+        });
+        expect(process.state.type).toBe("in-turn");
+
+        await vi.advanceTimersByTimeAsync(10_000);
+        expect(abortFn).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("starts a full grace when provider retention ends", async () => {
+      vi.useFakeTimers();
+      try {
+        const controller = createControllableIterator();
+        const abortFn = vi.fn();
+        let retained = true;
+        const process = new Process(controller.iterator, {
+          projectPath: "/test",
+          projectId: "proj-1" as UrlProjectId,
+          sessionId: "sess-1",
+          provider: "claude",
+          initialState: "idle",
+          idleTimeoutMs: 20,
+          abortFn,
+          getProviderRetentionFn: () => ({
+            retained,
+            reasons: retained ? ["background-task"] : [],
+          }),
+        });
+
+        await vi.advanceTimersByTimeAsync(100);
         expect(abortFn).not.toHaveBeenCalled();
 
+        retained = false;
+        process.handleProviderRetentionChanged();
+        await vi.advanceTimersByTimeAsync(19);
+        expect(abortFn).not.toHaveBeenCalled();
         await vi.advanceTimersByTimeAsync(1);
         expect(abortFn).toHaveBeenCalledOnce();
       } finally {
@@ -128,7 +220,37 @@ describe("Process", () => {
       }
     });
 
-    it("keeps retained idle work through the short grace but not the ceiling", async () => {
+    it("periodically rechecks feature retention without a change callback", async () => {
+      vi.useFakeTimers();
+      try {
+        const controller = createControllableIterator();
+        const abortFn = vi.fn();
+        let retained = true;
+        new Process(controller.iterator, {
+          projectPath: "/test",
+          projectId: "proj-1" as UrlProjectId,
+          sessionId: "sess-1",
+          provider: "claude",
+          initialState: "idle",
+          idleTimeoutMs: 0,
+          abortFn,
+          shouldRetainIdleProcess: () => retained,
+        });
+
+        await vi.advanceTimersByTimeAsync(0);
+        expect(abortFn).not.toHaveBeenCalled();
+
+        retained = false;
+        await vi.advanceTimersByTimeAsync(59_999);
+        expect(abortFn).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(1);
+        expect(abortFn).toHaveBeenCalledOnce();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("keeps idle sessions indefinitely when idle reaping is disabled", async () => {
       vi.useFakeTimers();
       try {
         const controller = createControllableIterator();
@@ -139,76 +261,15 @@ describe("Process", () => {
           sessionId: "sess-1",
           provider: "claude",
           initialState: "idle",
-          idleTimeoutMs: 10_000,
-          unviewedIdleTimeoutMs: 20,
-          unviewedActiveTimeoutMs: 80,
+          idleTimeoutMs: -1,
           abortFn,
-          getProviderRetentionFn: () => ({
-            retained: true,
-            reasons: ["background-task"],
-          }),
         });
-        expect(process.state.type).toBe("idle");
 
+        await vi.advanceTimersByTimeAsync(10_000);
+        expect(abortFn).not.toHaveBeenCalled();
+
+        process.updateIdleTimeoutMs(20);
         await vi.advanceTimersByTimeAsync(20);
-        expect(abortFn).not.toHaveBeenCalled();
-
-        await vi.advanceTimersByTimeAsync(60);
-        expect(abortFn).toHaveBeenCalledOnce();
-      } finally {
-        vi.useRealTimers();
-      }
-    });
-
-    it("reaps active work at the absolute unviewed ceiling", async () => {
-      vi.useFakeTimers();
-      try {
-        const controller = createControllableIterator();
-        const abortFn = vi.fn();
-        const process = new Process(controller.iterator, {
-          projectPath: "/test",
-          projectId: "proj-1" as UrlProjectId,
-          sessionId: "sess-1",
-          provider: "claude",
-          idleTimeoutMs: 10_000,
-          unviewedActiveTimeoutMs: 80,
-          abortFn,
-        });
-        expect(process.state.type).toBe("in-turn");
-
-        await vi.advanceTimersByTimeAsync(79);
-        expect(abortFn).not.toHaveBeenCalled();
-
-        await vi.advanceTimersByTimeAsync(1);
-        expect(abortFn).toHaveBeenCalledOnce();
-      } finally {
-        vi.useRealTimers();
-      }
-    });
-
-    it("keeps an earlier runtime-owned no-viewer anchor after reattach", async () => {
-      vi.useFakeTimers();
-      try {
-        const runtimeUnviewedSince = new Date("2026-08-04T00:00:00.000Z");
-        vi.setSystemTime(new Date("2026-08-04T00:00:00.080Z"));
-        const controller = createControllableIterator();
-        const abortFn = vi.fn();
-        const process = new Process(controller.iterator, {
-          projectPath: "/test",
-          projectId: "proj-1" as UrlProjectId,
-          sessionId: "sess-1",
-          provider: "claude",
-          idleTimeoutMs: 10_000,
-          unviewedActiveTimeoutMs: 100,
-          getRuntimeUnviewedSinceFn: () => runtimeUnviewedSince,
-          abortFn,
-        });
-        expect(process.state.type).toBe("in-turn");
-
-        await vi.advanceTimersByTimeAsync(19);
-        expect(abortFn).not.toHaveBeenCalled();
-
-        await vi.advanceTimersByTimeAsync(1);
         expect(abortFn).toHaveBeenCalledOnce();
       } finally {
         vi.useRealTimers();

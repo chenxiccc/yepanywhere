@@ -321,7 +321,9 @@ describe("Process", () => {
 
         providerRetention = { retained: false, reasons: [] };
         process.handleProviderRetentionChanged();
-        await vi.advanceTimersByTimeAsync(0);
+        await vi.advanceTimersByTimeAsync(99);
+        expect(abortFn).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(1);
 
         expect(abortFn).toHaveBeenCalledOnce();
       } finally {

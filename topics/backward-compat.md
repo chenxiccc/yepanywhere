@@ -7,12 +7,18 @@ Topic: backward-compat
 
 ## Decisions
 
+2026-08-04 `idleReapHours` settings contract — advertise the optional field
+with the permanent `idle-reap-hours-setting` capability. New clients hide the
+control and make no settings write against older servers. Until an operator
+saves the field, the legacy `IDLE_TIMEOUT` environment value remains
+authoritative; saving opts the deployment into the persisted setting.
+
 2026-08-04 reload-safe runtime viewer presence — retain host protocol v1 and
 advertise viewer-state retention as an optional additive lifecycle capability.
 A replacement Hono may attach to a host already running older v1 code and use
-generation-local no-viewer timing; after a terminal wrapper restart, capable
-hosts preserve the absolute no-viewer anchor across Hono reloads. Older Hono
-generations ignore the added runtime fields and never issue the new operation.
+generation-local viewer timing; capable hosts preserve viewer-absence evidence
+across Hono reloads. Older Hono generations ignore the added runtime fields and
+never issue the new operation.
 
 2026-08-03 project-directory storage — a server that first implements
 `project-directory-storage-policy` defaults absent configuration to app-data

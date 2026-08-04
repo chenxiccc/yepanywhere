@@ -11,6 +11,8 @@ import {
   DEFAULT_PROMPT_CACHE_KEEPALIVE_INACTIVITY_MINUTES,
   buildEffectiveAgentContext,
   clampProjectQueueQuietSeconds,
+  idleReapHoursToMs,
+  idleReapMsToHours,
   isClaudeProviderName,
 } from "@yep-anywhere/shared";
 import { Hono } from "hono";
@@ -1851,6 +1853,11 @@ export function createApp(options: AppOptions): AppResult {
         },
         onGrokBuildUseXaiApiKeyChanged: (enabled) => {
           grokACPProvider.setUseAmbientXaiApiKey(enabled);
+        },
+        getIdleReapHours: () =>
+          idleReapMsToHours(supervisor.getIdleTimeoutMs()),
+        onIdleReapHoursChanged: (hours) => {
+          supervisor.updateIdleTimeoutMs(idleReapHoursToMs(hours));
         },
         publicShareService: options.publicShareService,
       }),

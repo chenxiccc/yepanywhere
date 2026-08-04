@@ -8,10 +8,12 @@ import {
   MAX_PROJECT_QUEUE_QUIET_SECONDS,
   PROMPT_CACHE_KEEPALIVE_MODES,
   clampProjectQueueQuietSeconds,
+  isIdleReapHours,
   isHostAwakeBatteryFloorPercent,
   isHostAwakeMode,
   normalizeYaClientBaseUrl,
   normalizeYaClientBaseUrlFromShareViewerUrl,
+  normalizeIdleReapHours,
   parseClaudeAdditionalModelSelections,
 } from "@yep-anywhere/shared";
 import { Hono } from "hono";
@@ -80,6 +82,10 @@ export interface SettingsRoutesDeps {
   onOllamaUseFullSystemPromptChanged?: (enabled: boolean) => void;
   /** Callback to apply Grok Build XAI_API_KEY opt-in at runtime */
   onGrokBuildUseXaiApiKeyChanged?: (enabled: boolean) => void;
+  /** Current effective idle-reap grace, including legacy env fallback. */
+  getIdleReapHours?: () => number;
+  /** Callback to apply idle-reap grace changes to existing processes. */
+  onIdleReapHoursChanged?: (hours: number) => void;
   /** Public share storage, used to revoke existing shares when disabled */
   publicShareService?: PublicShareService;
   /** Process-global host-awake policy and status owner. */
@@ -99,6 +105,8 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
     onOllamaSystemPromptChanged,
     onOllamaUseFullSystemPromptChanged,
     onGrokBuildUseXaiApiKeyChanged,
+    getIdleReapHours,
+    onIdleReapHoursChanged,
     publicShareService,
     hostAwakeService,
   } = deps;
@@ -109,7 +117,12 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
    */
   app.get("/", (c) => {
     const settings = serverSettingsService.getSettings();
-    return c.json({ settings });
+    return c.json({
+      settings: {
+        ...settings,
+        ...(getIdleReapHours ? { idleReapHours: getIdleReapHours() } : {}),
+      },
+    });
   });
 
   app.get("/host-awake/status", async (c) => {
@@ -727,6 +740,18 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
       updates.codexReloadSafeSessions = body.codexReloadSafeSessions;
     }
 
+    if ("idleReapHours" in body) {
+      if (!isIdleReapHours(body.idleReapHours)) {
+        return c.json(
+          {
+            error: "idleReapHours must be a finite number no greater than 72",
+          },
+          400,
+        );
+      }
+      updates.idleReapHours = normalizeIdleReapHours(body.idleReapHours);
+    }
+
     if (Object.keys(updates).length === 0) {
       return c.json({ error: "At least one valid setting is required" }, 400);
     }
@@ -811,12 +836,18 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
     if ("grokBuildUseXaiApiKey" in updates && onGrokBuildUseXaiApiKeyChanged) {
       onGrokBuildUseXaiApiKeyChanged(settings.grokBuildUseXaiApiKey ?? false);
     }
+    if (typeof updates.idleReapHours === "number" && onIdleReapHoursChanged) {
+      onIdleReapHoursChanged(updates.idleReapHours);
+    }
     if (updates.publicSharesEnabled === false && publicShareService) {
       await publicShareService.revokeAllShares();
     }
 
     return c.json({
-      settings,
+      settings: {
+        ...settings,
+        ...(getIdleReapHours ? { idleReapHours: getIdleReapHours() } : {}),
+      },
       ...(hostAwakeStatus ? { hostAwakeStatus } : {}),
     });
   });
