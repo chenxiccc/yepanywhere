@@ -17,6 +17,11 @@ browser-owned so copied definitions can still be selected. Glossary hover and
 activated definitions use a one-pixel text-size increase over their
 corresponding ordinary themed tooltip treatments.
 
+Follow-up 2026-08-04: the active project's tab-local subscription and artifact
+store live above session-keyed routes. Same-project session navigation reuses a
+ready root automaton without another query; a cold or invalidated automaton
+still arrives asynchronously after ordinary transcript text renders.
+
 ## Goal and governing contract
 
 Implement the behavior specified in

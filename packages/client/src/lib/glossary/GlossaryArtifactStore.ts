@@ -274,6 +274,13 @@ export class GlossaryArtifactStore {
       return;
     }
 
+    const reusableRootSnapshot = this.findReusableRootSnapshot(entry);
+    if (reusableRootSnapshot) {
+      entry.snapshot = reusableRootSnapshot;
+      this.emit(key);
+      return;
+    }
+
     const active = this.active;
     const generation = this.generation;
     const requestSerial = ++entry.requestSerial;
@@ -312,6 +319,26 @@ export class GlossaryArtifactStore {
         };
         this.emit(key);
       });
+  }
+
+  private findReusableRootSnapshot(
+    entry: ArtifactEntry,
+  ): GlossaryArtifactSnapshot | null {
+    if (entry.sourcePath !== undefined || !this.pathsReady) return null;
+    for (const candidate of this.entries.values()) {
+      if (candidate === entry) continue;
+      const result = candidate.snapshot.result;
+      if (
+        (candidate.snapshot.state === "ready" ||
+          candidate.snapshot.state === "disabled") &&
+        result &&
+        "governingPath" in result &&
+        result.governingPath === "GLOSSARY.md"
+      ) {
+        return candidate.snapshot;
+      }
+    }
+    return null;
   }
 
   private getOrCreateEntry(key: string): ArtifactEntry {

@@ -10,6 +10,7 @@ import {
 } from "react";
 import { Outlet, useLocation, useOutletContext } from "react-router-dom";
 import { Sidebar, SidebarToggleIcon } from "../components/Sidebar";
+import { GlossaryProjectProvider } from "../contexts/GlossaryContext";
 import { useClientSummarySourceKey } from "../lib/clientSummaryStore";
 import { useSidebarPreference } from "../hooks/useSidebarPreference";
 import { useSessionPerformanceSettings } from "../hooks/useSessionPerformanceSettings";
@@ -118,6 +119,11 @@ function readSessionRouteFromPathname(
   };
 }
 
+function readProjectIdFromPathname(pathname: string): string | null {
+  const match = pathname.match(/(?:^|\/)projects\/([^/]+)/);
+  return match?.[1] ? decodeURIComponent(match[1]) : null;
+}
+
 function isContentFrameRoutePathname(pathname: string): boolean {
   return /(?:^|\/)projects\/[^/]+\/file\/?$/.test(pathname);
 }
@@ -138,6 +144,10 @@ export function NavigationLayout({ sessionElement }: NavigationLayoutProps) {
   const location = useLocation();
   const currentSessionMatch = useMemo(
     () => readSessionRouteFromPathname(location.pathname),
+    [location.pathname],
+  );
+  const currentProjectId = useMemo(
+    () => readProjectIdFromPathname(location.pathname),
     [location.pathname],
   );
   const isContentFrameRoute = useMemo(
@@ -402,35 +412,40 @@ export function NavigationLayout({ sessionElement }: NavigationLayoutProps) {
         />
       )}
 
-      <NavigationLayoutReactContext.Provider value={context}>
-        <div className="navigation-route-stack">
-          {renderedSessionRoute && sessionElement && (
+      <GlossaryProjectProvider
+        projectId={currentProjectId ?? ""}
+        enabled={currentProjectId !== null}
+      >
+        <NavigationLayoutReactContext.Provider value={context}>
+          <div className="navigation-route-stack">
+            {renderedSessionRoute && sessionElement && (
+              <div
+                key={renderedSessionRoute.key}
+                ref={sessionLayerRef}
+                className={`navigation-route-layer session-dom-linger-layer ${
+                  sessionLayerVisible ? "is-active" : "is-parked"
+                }`}
+                aria-hidden={sessionLayerParked ? true : undefined}
+                data-session-dom-linger={
+                  sessionLayerVisible ? "active" : "parked"
+                }
+              >
+                {sessionElement(renderedSessionRoute, {
+                  parked: sessionLayerParked,
+                })}
+              </div>
+            )}
             <div
-              key={renderedSessionRoute.key}
-              ref={sessionLayerRef}
-              className={`navigation-route-layer session-dom-linger-layer ${
-                sessionLayerVisible ? "is-active" : "is-parked"
+              className={`navigation-route-layer navigation-route-foreground ${
+                sessionLayerVisible ? "is-hidden" : "is-active"
               }`}
-              aria-hidden={sessionLayerParked ? true : undefined}
-              data-session-dom-linger={
-                sessionLayerVisible ? "active" : "parked"
-              }
+              aria-hidden={sessionLayerVisible ? true : undefined}
             >
-              {sessionElement(renderedSessionRoute, {
-                parked: sessionLayerParked,
-              })}
+              <Outlet context={context} />
             </div>
-          )}
-          <div
-            className={`navigation-route-layer navigation-route-foreground ${
-              sessionLayerVisible ? "is-hidden" : "is-active"
-            }`}
-            aria-hidden={sessionLayerVisible ? true : undefined}
-          >
-            <Outlet context={context} />
           </div>
-        </div>
-      </NavigationLayoutReactContext.Provider>
+        </NavigationLayoutReactContext.Provider>
+      </GlossaryProjectProvider>
     </div>
   );
 }

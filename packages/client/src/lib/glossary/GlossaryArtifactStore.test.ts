@@ -114,6 +114,33 @@ describe("GlossaryArtifactStore", () => {
     expect(store.diagnostics().artifacts).toBe(100);
   });
 
+  it("reuses a subscribed root-governed file artifact for session prose", async () => {
+    const fetchMock = vi.fn();
+    const fetch = async <T>(path: string, init?: RequestInit): Promise<T> => {
+      fetchMock(path, init);
+      return readyResponse("v1") as T;
+    };
+    const transport = new FakeSourceTransport({ fetch });
+    const store = new GlossaryArtifactStore();
+    store.activate(PROJECT_ID, transport);
+    store.ensure("README.md");
+    const subscription = transport.getSubscriptions("glossary")[0]!;
+    transport.emitSubscriptionEvent(
+      subscription.id,
+      "glossary-paths-snapshot",
+      snapshot(0, ["GLOSSARY.md"]),
+    );
+    await flush();
+
+    store.ensure();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(store.getSnapshot()).toMatchObject({
+      state: "ready",
+      result: { governingPath: "GLOSSARY.md", sourceVersion: "v1" },
+    });
+  });
+
   it("invalidates a dependent artifact after one glossary edit event", async () => {
     let fetchCount = 0;
     const fetchMock = vi.fn();

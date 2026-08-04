@@ -5,12 +5,32 @@ import {
   render,
   screen,
 } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import { UI_KEYS } from "../../lib/storageKeys";
 
 const mocks = vi.hoisted(() => ({
+  GlossaryProjectProvider: vi.fn(
+    ({
+      children,
+      enabled,
+      projectId,
+    }: {
+      children: ReactNode;
+      enabled?: boolean;
+      projectId: string;
+    }) => (
+      <div
+        data-testid="glossary-project-provider"
+        data-enabled={enabled ? "true" : "false"}
+        data-project-id={projectId}
+      >
+        {children}
+      </div>
+    ),
+  ),
   useRetainSidebarSessionFeeds: vi.fn(),
   Sidebar: vi.fn(
     ({
@@ -34,6 +54,10 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../../components/Sidebar", () => ({
   Sidebar: mocks.Sidebar,
   SidebarToggleIcon: () => <svg aria-hidden="true" />,
+}));
+
+vi.mock("../../contexts/GlossaryContext", () => ({
+  GlossaryProjectProvider: mocks.GlossaryProjectProvider,
 }));
 
 vi.mock("../../hooks/useSidebarSessionFeeds", () => ({
@@ -133,6 +157,7 @@ function enableSessionDomLinger() {
 
 describe("NavigationLayout", () => {
   beforeEach(() => {
+    mocks.GlossaryProjectProvider.mockClear();
     mocks.useRetainSidebarSessionFeeds.mockClear();
     mocks.Sidebar.mockClear();
     window.localStorage.clear();
@@ -281,5 +306,22 @@ describe("NavigationLayout", () => {
     expect(secondSessionLayer).not.toBe(firstSessionLayer);
     expect(secondSessionLayer.dataset.sessionId).toBe("session-2");
     expect(secondSessionLayer.dataset.parked).toBe("false");
+  });
+
+  it("retains one project glossary owner across same-project sessions", () => {
+    renderNavigationLayoutWithSessionLinger();
+
+    const glossaryProvider = screen.getByTestId("glossary-project-provider");
+    expect(glossaryProvider.dataset.projectId).toBe("project-1");
+    expect(glossaryProvider.dataset.enabled).toBe("true");
+
+    fireEvent.click(screen.getByText("Session 2"));
+
+    expect(screen.getByTestId("glossary-project-provider")).toBe(
+      glossaryProvider,
+    );
+    expect(
+      screen.getByTestId("glossary-project-provider").dataset.projectId,
+    ).toBe("project-1");
   });
 });

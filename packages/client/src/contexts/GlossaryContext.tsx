@@ -51,27 +51,37 @@ export function GlossaryProjectProvider({
   enabled?: boolean;
   projectId: string;
 }) {
+  const enclosing = useContext(GlossaryStoreContext);
   const sourceRuntime = useCurrentSourceRuntime();
   const { glossaryHintsEnabled } = useGlossaryHints();
   const { version } = useVersion();
-  const store = useMemo(() => new GlossaryArtifactStore(), []);
-  const active =
+  const ownedStore = useMemo(() => new GlossaryArtifactStore(), []);
+  const enclosingStore =
+    enclosing?.projectId === projectId ? enclosing.store : null;
+  const ownsStore = enclosingStore === null;
+  const ownedStoreActive =
+    ownsStore &&
     enabled &&
     glossaryHintsEnabled &&
     isUrlProjectId(projectId) &&
     serverHasCapability(version, GLOSSARY_TOOLTIPS_CAPABILITY);
 
   useLayoutEffect(() => {
-    if (!active || !isUrlProjectId(projectId)) {
-      store.deactivate();
+    if (!ownedStoreActive || !isUrlProjectId(projectId)) {
+      ownedStore.deactivate();
       return;
     }
-    store.activate(projectId, sourceRuntime.transport);
-    return () => store.deactivate();
-  }, [active, projectId, sourceRuntime.transport, store]);
+    ownedStore.activate(projectId, sourceRuntime.transport);
+    return () => ownedStore.deactivate();
+  }, [ownedStore, ownedStoreActive, projectId, sourceRuntime.transport]);
   const contextValue = useMemo(
-    () => (active ? { projectId, store } : null),
-    [active, projectId, store],
+    () =>
+      enclosingStore
+        ? { projectId, store: enclosingStore }
+        : ownedStoreActive
+          ? { projectId, store: ownedStore }
+          : null,
+    [enclosingStore, ownedStore, ownedStoreActive, projectId],
   );
 
   return (
@@ -89,8 +99,6 @@ export function GlossaryProjectBoundary({
   children: ReactNode;
   projectId: string;
 }) {
-  const context = useContext(GlossaryStoreContext);
-  if (context?.projectId === projectId) return children;
   return (
     <GlossaryProjectProvider projectId={projectId}>
       {children}

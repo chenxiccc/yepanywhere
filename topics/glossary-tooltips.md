@@ -300,8 +300,16 @@ detected. No subscription startup or poll recursively crawls the project. The
 watcher and poll are torn down when the last subscriber disconnects.
 
 The client uses the glossary-path stream for invalidation, not governing-file
-selection. Every source-context artifact request goes directly to the server,
-which resolves the nearest glossary from the source path. Modification
+selection. One tab-local project store owns the active project's subscription
+and artifacts above session-keyed route content. Same-project session and file
+navigation preserves that store: a ready root artifact is current knowledge
+under the active subscription generation and is consumed synchronously without
+another artifact request. A source-file artifact whose reported governing path
+is root `GLOSSARY.md` may also satisfy the root assistant-prose context once the
+subscription snapshot has arrived; that reuse needs no new hierarchy guess or
+server query. Leaving the project closes the subscription and clears its
+artifacts. Every uncached source-context artifact request goes directly to the
+server, which resolves the nearest glossary from the source path. Modification
 invalidates cached artifacts whose dependency list names the changed glossary.
 Creation, deletion, or rename invalidates cached source contexts below the
 changed glossary's directory because nearest-governing resolution may have
@@ -327,6 +335,9 @@ request for the same project and unresolved governing-graph version awaits the
 existing promise rather than starting duplicate path validation, parsing, or
 compilation. This wait belongs only to glossary initialization; it must never
 hold the displayable content response behind a possible glossary result.
+When that project already has an active subscription and a ready artifact in
+the tab, navigation reuses it without a request; cache reuse is not permission
+to delay content while validating or refreshing it.
 The source-qualified artifact request also does not wait for the project-wide
 glossary-path subscription's initial snapshot. The server resolves the nearest
 governing glossary from the supplied source path; the independent path stream
@@ -450,6 +461,7 @@ Markdown-render-eligible YA view uses one governing current glossary and the
 same project-contained include semantics, compiled artifact,
 multi-definition paragraphs, match precedence, metric-neutral visual
 treatment, and reveal/copy interaction; warm scans are linear in rendered
-text; first paint never waits for glossary compilation; and browsers with the
-preference disabled, projects without a controlling glossary, and surfaces in
-source/raw mode remain observably unchanged.
+text; first paint never waits for glossary compilation; same-project session
+navigation reuses current subscribed artifacts without another query; and
+browsers with the preference disabled, projects without a controlling
+glossary, and surfaces in source/raw mode remain observably unchanged.
