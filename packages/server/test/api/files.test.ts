@@ -92,6 +92,38 @@ describe("Files API", () => {
       expect(json.rawUrl).toContain("/files/raw?path=README.md");
     });
 
+    it("keeps file reads independent of provider inventory refreshes", async () => {
+      const { app } = createApp({
+        codexSessionsDir: join(testDir, "codex-sessions"),
+        geminiSessionsDir: join(testDir, "gemini-sessions"),
+        sdk: mockSdk,
+        projectsDir: join(testDir, "sessions"),
+        projectScanCacheTtlMs: 0,
+      });
+
+      const initial = await app.request(
+        `/api/projects/${projectId}/files?path=README.md`,
+      );
+      expect(initial.status).toBe(200);
+
+      await rm(join(testDir, "sessions"), { recursive: true });
+
+      const inline = await app.request(
+        `/api/projects/${projectId}/files?path=README.md`,
+      );
+      expect(inline.status).toBe(200);
+      const json = (await inline.json()) as FileContentResponse;
+      expect(json.content).toBe("# Test Project\n\nThis is a test.");
+
+      const raw = await app.request(
+        `/api/projects/${projectId}/files/raw?path=README.md`,
+      );
+      expect(raw.status).toBe(200);
+      await expect(raw.text()).resolves.toBe(
+        "# Test Project\n\nThis is a test.",
+      );
+    });
+
     it("renders Markdown previews with relative project media resolved", async () => {
       const { app } = createApp({
         sdk: mockSdk,
