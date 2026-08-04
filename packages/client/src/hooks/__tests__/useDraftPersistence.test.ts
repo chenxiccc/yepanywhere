@@ -84,6 +84,33 @@ describe("useDraftPersistence", () => {
     expect(readStoredText("draft-test")).toBe("blur save");
   });
 
+  it("does not let a delayed submission acknowledgement clear a newer draft", () => {
+    const { result } = renderHook(() => useDraftPersistence("draft-test"));
+
+    act(() => {
+      result.current[1]("submitted turn");
+      result.current[2].clearInput();
+      result.current[1]("next turn draft");
+      result.current[2].confirmInputClear();
+    });
+
+    expect(result.current[0]).toBe("next turn draft");
+    expect(readStoredText("draft-test")).toBe("next turn draft");
+  });
+
+  it("removes the recovery copy when the cleared input stays empty", () => {
+    const { result } = renderHook(() => useDraftPersistence("draft-test"));
+
+    act(() => {
+      result.current[1]("submitted turn");
+      result.current[2].clearInput();
+      result.current[2].confirmInputClear();
+    });
+
+    expect(result.current[0]).toBe("");
+    expect(window.localStorage.getItem("draft-test")).toBe(null);
+  });
+
   it("reads legacy raw-string drafts and rewrites them as envelopes", () => {
     store.set("draft-test", "legacy draft");
 

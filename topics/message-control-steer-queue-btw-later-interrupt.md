@@ -93,6 +93,14 @@ Rationale:
 - Observed on 2026-06-07: patient rows did deliver per contract after the quiet
   threshold, while a later regular queued row passed them as intended.
 
+### Composer acknowledgement safety
+
+Send, Steer, Queue, and Project Queue optimistically empty the composer so the
+next turn can be drafted while the request is in flight. A later successful
+acknowledgement confirms only that optimistic empty state. If the user has
+already begun the next draft, the acknowledgement must preserve both its live
+text and its recovery copy; it must never clear the newer turn.
+
 ### Patient countdown and promotion proposal
 
 Status: promotion landed 2026-07-03; countdown still a proposal.

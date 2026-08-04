@@ -2094,7 +2094,7 @@ function SessionPageContent({
       }
       // Success - clear the draft from localStorage
       rememberSentSubmission(text, tempId);
-      draftControlsRef.current?.clearDraft();
+      draftControlsRef.current?.confirmInputClear();
       revokeAttachmentPreviewUrls(currentAttachments);
       setCorrectionDraft(null);
       clearQuoteAnchors();
@@ -2161,7 +2161,7 @@ function SessionPageContent({
             recapAfterSeconds: result.recapAfterSeconds,
           });
           rememberSentSubmission(text, tempId);
-          draftControlsRef.current?.clearDraft();
+          draftControlsRef.current?.confirmInputClear();
           revokeAttachmentPreviewUrls(currentAttachments);
           setCorrectionDraft(null);
           clearQuoteAnchors();
@@ -2512,7 +2512,7 @@ function SessionPageContent({
           tempId,
         };
       }
-      draftControlsRef.current?.clearDraft();
+      draftControlsRef.current?.confirmInputClear();
       revokeAttachmentPreviewUrls(currentAttachments);
       setCorrectionDraft(null);
       clearQuoteAnchors();
@@ -2564,7 +2564,7 @@ function SessionPageContent({
             recapAfterSeconds: result.recapAfterSeconds,
           });
           rememberSentSubmission(text, tempId);
-          draftControlsRef.current?.clearDraft();
+          draftControlsRef.current?.confirmInputClear();
           revokeAttachmentPreviewUrls(currentAttachments);
           setCorrectionDraft(null);
           clearQuoteAnchors();
@@ -2692,7 +2692,7 @@ function SessionPageContent({
         targetType,
         uploadWaitMs: requestSentAtMs - actionAtMs,
       });
-      draftControlsRef.current?.clearDraft();
+      draftControlsRef.current?.confirmInputClear();
       revokeAttachmentPreviewUrls(currentAttachments);
       setCorrectionDraft(null);
       clearQuoteAnchors();

@@ -2269,6 +2269,62 @@ describe("MessageInput", () => {
     expect(onSend.mock.calls[0]?.[0]).not.toContain("provisional words");
   });
 
+  it("keeps a new draft typed while a speech queue settles", async () => {
+    const onQueue = vi.fn();
+    const textarea = renderMessageInput(vi.fn(), {
+      onQueue,
+      supportsSteering: true,
+      primaryActionKind: "queue",
+    }) as HTMLTextAreaElement;
+
+    voiceButtonState.isListening = true;
+    act(() => {
+      voicePropsState.current?.onListeningStart?.();
+      voicePropsState.current?.onPendingSpeechChange?.("listening");
+      voicePropsState.current?.onInterimTranscript?.("previous turn");
+    });
+
+    fireEvent.click(screen.getByLabelText("toolbarQueueLabel"));
+    fireEvent.change(textarea, { target: { value: "next turn draft" } });
+
+    act(() => {
+      voiceButtonState.isListening = false;
+      voicePropsState.current?.onPendingSpeechChange?.("finalizing");
+      voicePropsState.current?.onTranscript?.("previous turn final");
+      voicePropsState.current?.onPendingSpeechChange?.(null, "completed");
+    });
+
+    await waitFor(() => {
+      expectSubmission(onQueue, "previous turn final", "deferred");
+      expect(textarea.value).toBe("next turn draft");
+    });
+  });
+
+  it("restores a detached speech draft without replacing newer text", () => {
+    const onSend = vi.fn();
+    const textarea = renderMessageInput(vi.fn(), {
+      onSend,
+    }) as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "previous typed text" } });
+
+    voiceButtonState.isListening = true;
+    act(() => {
+      voicePropsState.current?.onListeningStart?.();
+      voicePropsState.current?.onPendingSpeechChange?.("listening");
+    });
+    fireEvent.click(screen.getByLabelText("toolbarSend"));
+    fireEvent.change(textarea, { target: { value: "next turn draft" } });
+    act(() => {
+      voiceButtonState.isListening = false;
+      voicePropsState.current?.onPendingSpeechChange?.("transcribing");
+    });
+
+    fireEvent.keyDown(textarea, { key: "Escape" });
+
+    expect(onSend).not.toHaveBeenCalled();
+    expect(textarea.value).toBe("previous typed text\n\nnext turn draft");
+  });
+
   it("starts deferred-delivery ASR timing at backend settlement", () => {
     vi.useFakeTimers();
     window.localStorage.setItem(UI_KEYS.speechAsrAttributionMs, "500");

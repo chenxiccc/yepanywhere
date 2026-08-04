@@ -196,6 +196,14 @@ delivery instead of sending the pre-speech draft; a later deliberate delivery
 press may still send that retained draft. This contract applies in both the
 active-session and new-session composers.
 
+In the active-session composer, that delivery press also transfers the current
+draft and speech insertion target into a delivery-owned transaction and clears
+the live field for the next turn. Backend-final text may update only the
+detached outgoing turn. Text begun after the press must neither join that turn
+nor be cleared when speech settles or when the server later acknowledges the
+delivery. A failed or cancelled speech cycle restores the detached text ahead
+of any newer live draft so neither turn is lost.
+
 When server-routed speech audio retention is enabled, YA persists structured
 streaming transcript events next to the retained audio. The older
 tab-separated text trace is kept for grepping, but the structured trace keeps
