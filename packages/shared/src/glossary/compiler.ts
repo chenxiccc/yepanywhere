@@ -150,14 +150,11 @@ function comparePrecedence(
 function formatDefinitionText(
   contributions: readonly GlossaryDefinitionContribution[],
 ): string {
-  const qualified = contributions.length > 1;
   return contributions
-    .map((contribution) => {
-      const body = `${contribution.canonicalLabel}: ${contribution.definition}`;
-      return qualified
-        ? `[${contribution.glossaryDirectory || "."}] ${body}`
-        : body;
-    })
+    .map(
+      (contribution) =>
+        `${contribution.canonicalLabel}: ${contribution.definition}`,
+    )
     .join("\n\n");
 }
 

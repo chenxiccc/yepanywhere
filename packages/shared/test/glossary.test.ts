@@ -150,8 +150,7 @@ describe("glossary phrase compilation", () => {
 
     expect(terminal?.contributions).toHaveLength(2);
     expect(terminal?.definitionText).toBe(
-      "[.] shared term: Root meaning\n\n" +
-        "[docs/paper] shared term: Paper meaning",
+      "shared term: Root meaning\n\nshared term: Paper meaning",
     );
   });
 

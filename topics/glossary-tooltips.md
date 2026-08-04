@@ -137,11 +137,10 @@ qualifiers. One concrete surface form maps to one tooltip string. Each
 distinct source row that produces that form contributes one paragraph made
 from its canonical label and definition flattened to plain text; several
 entries, including conflicts within one glossary, are concatenated as
-consecutive paragraphs in governing-closure order. When more than one row
-contributes, each paragraph identifies its glossary's project-relative
-directory. Duplicate expansions from the same row contribute only once.
-Reference columns are excluded from tooltip text even when a reference creates
-an include edge.
+consecutive paragraphs in governing-closure order. Directory paths remain
+artifact metadata and are not added to the user-visible definition text.
+Duplicate expansions from the same row contribute only once. Reference columns
+are excluded from tooltip text even when a reference creates an include edge.
 
 ## Match semantics
 
