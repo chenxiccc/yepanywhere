@@ -206,6 +206,27 @@ async function loginViaRemoteClient(
   await expect(page.locator(".sidebar")).toBeVisible({ timeout: 5000 });
 }
 
+async function setBangHistoryVisibility(
+  baseURL: string,
+  enabled: boolean,
+): Promise<void> {
+  const response = await fetch(`${baseURL}/api/settings`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Yep-Anywhere": "true",
+    },
+    body: JSON.stringify({
+      clientDefaults: { bangCommandsEnabled: enabled },
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Failed to configure bang history: ${await response.text()}`,
+    );
+  }
+}
+
 test.describe("Session Resumption", () => {
   test.beforeEach(async ({ baseURL }) => {
     // Configure remote access with test credentials
@@ -457,6 +478,36 @@ test.describe("Encrypted Data Flow", () => {
     await expect(page.locator('a[href="/projects"]')).toBeVisible();
     await expect(page.locator('a[href="/settings"]')).toBeVisible();
     await expect(page.locator('a[href="/inbox"]')).toBeVisible();
+  });
+
+  test("!! Commands sidebar category stays on its remote route", async ({
+    page,
+    baseURL,
+    remoteClientURL,
+    wsURL,
+  }) => {
+    await setBangHistoryVisibility(baseURL, true);
+    try {
+      await loginViaRemoteClient(
+        page,
+        remoteClientURL,
+        wsURL,
+        TEST_USERNAME,
+        TEST_PASSWORD,
+      );
+
+      const bangHistoryLink = page.locator('a[href="/bang-commands"]');
+      await expect(bangHistoryLink).toBeVisible();
+      await bangHistoryLink.click();
+
+      await expect(page).toHaveURL(/\/bang-commands$/);
+      await expect(bangHistoryLink).toHaveClass(/\bactive\b/);
+      await expect(
+        page.getByText("No local commands have been run yet."),
+      ).toBeVisible({ timeout: 10_000 });
+    } finally {
+      await setBangHistoryVisibility(baseURL, false);
+    }
   });
 
   test("activity subscription receives events", async ({

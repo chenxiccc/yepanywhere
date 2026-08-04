@@ -18,10 +18,19 @@ describe("getRelayCanonicalRedirectTarget", () => {
     ).toBe("/macbook/projects?queueItem=item-1#top");
   });
 
-  it("redirects the direct index route to relay projects", () => {
+  it("redirects bang-command history into the active relay namespace", () => {
     expect(
-      getRelayCanonicalRedirectTarget({ pathname: "/" }, "macbook"),
-    ).toBe("/macbook/projects");
+      getRelayCanonicalRedirectTarget(
+        { pathname: "/bang-commands" },
+        "macbook",
+      ),
+    ).toBe("/macbook/bang-commands");
+  });
+
+  it("redirects the direct index route to relay projects", () => {
+    expect(getRelayCanonicalRedirectTarget({ pathname: "/" }, "macbook")).toBe(
+      "/macbook/projects",
+    );
   });
 
   it("does not redirect routes already under the relay namespace", () => {
@@ -52,17 +61,12 @@ describe("getRelayCanonicalRedirectTarget", () => {
 describe("getSafeRemoteReturnTarget", () => {
   it("redirects direct return targets into the active relay namespace", () => {
     expect(
-      getSafeRemoteReturnTarget(
-        "/projects?queueItem=item-1#top",
-        "macbook",
-      ),
+      getSafeRemoteReturnTarget("/projects?queueItem=item-1#top", "macbook"),
     ).toBe("/macbook/projects?queueItem=item-1#top");
   });
 
   it("redirects the direct index return target to relay projects", () => {
-    expect(getSafeRemoteReturnTarget("/", "macbook")).toBe(
-      "/macbook/projects",
-    );
+    expect(getSafeRemoteReturnTarget("/", "macbook")).toBe("/macbook/projects");
   });
 
   it("preserves already scoped relay return targets", () => {
@@ -91,13 +95,14 @@ describe("getSafeRemoteReturnTarget", () => {
   });
 
   it("rejects backslash authority return targets", () => {
-    expect(
-      getSafeRemoteReturnTarget("/\\evil.example/projects", null),
-    ).toBe(null);
+    expect(getSafeRemoteReturnTarget("/\\evil.example/projects", null)).toBe(
+      null,
+    );
   });
 
   it("rejects login return targets", () => {
-    expect(getSafeRemoteReturnTarget("/login?returnTo=/projects", "macbook"))
-      .toBe(null);
+    expect(
+      getSafeRemoteReturnTarget("/login?returnTo=/projects", "macbook"),
+    ).toBe(null);
   });
 });

@@ -7,6 +7,7 @@ export interface RemoteRouteLocationParts {
 const DIRECT_APP_ROUTE_SEGMENTS = new Set([
   "activity",
   "agents",
+  "bang-commands",
   "devices",
   "git-status",
   "inbox",
@@ -16,10 +17,14 @@ const DIRECT_APP_ROUTE_SEGMENTS = new Set([
   "settings",
 ]);
 
+export function isDirectAppRouteSegment(segment: string): boolean {
+  return DIRECT_APP_ROUTE_SEGMENTS.has(segment);
+}
+
 function isDirectAppRoutePath(pathname: string): boolean {
   if (pathname === "/") return true;
   const firstSegment = pathname.split("/")[1];
-  return firstSegment ? DIRECT_APP_ROUTE_SEGMENTS.has(firstSegment) : false;
+  return firstSegment ? isDirectAppRouteSegment(firstSegment) : false;
 }
 
 function formatRouteTarget(location: RemoteRouteLocationParts): string {
@@ -83,10 +88,7 @@ export function getSafeRemoteReturnTarget(
   const target = parseSafeRouteTarget(returnTo);
   if (!target) return null;
 
-  if (
-    target.pathname === "/login" ||
-    target.pathname.startsWith("/login/")
-  ) {
+  if (target.pathname === "/login" || target.pathname.startsWith("/login/")) {
     return null;
   }
 

@@ -111,6 +111,17 @@ describe("resolveClientSummarySourceKey", () => {
     ).toBe("host:direct-host");
   });
 
+  it("keeps bang-command history bound to the direct host", () => {
+    saveHost(directHost("direct-host", "ws://127.0.0.1:3400/api/ws"));
+
+    expect(
+      resolveClientSummarySourceKey({
+        pathname: "/bang-commands",
+        remote: remote({ currentHostId: "direct-host" }),
+      }),
+    ).toBe("host:direct-host");
+  });
+
   it("uses a normalized direct source key without a saved direct host", () => {
     expect(
       resolveClientSummarySourceKey({

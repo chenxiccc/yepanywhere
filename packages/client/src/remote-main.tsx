@@ -38,6 +38,7 @@ import { I18nProvider } from "./i18n";
 import { NavigationLayout, SessionDomLingerRouteMarker } from "./layouts";
 import { ActivityPage } from "./pages/ActivityPage";
 import { AgentsPage } from "./pages/AgentsPage";
+import { BangCommandsPage } from "./pages/BangCommandsPage";
 import { DirectLoginPage } from "./pages/DirectLoginPage";
 import { EmulatorPage } from "./pages/EmulatorPage";
 import { FilePage } from "./pages/FilePage";
@@ -117,6 +118,7 @@ const APP_ROUTES = (
       <Route path="inbox" element={<InboxPage />} />
       <Route path="-/hosts" element={<HostsRoute />} />
       <Route path="git-status" element={<GitStatusPage />} />
+      <Route path="bang-commands" element={<BangCommandsPage />} />
       <Route path="devices" element={<EmulatorPage />} />
       <Route path="devices/:deviceId" element={<EmulatorPage />} />
       <Route path="settings" element={<SettingsLayout />} />

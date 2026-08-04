@@ -6,10 +6,12 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BangCommandsPage } from "../BangCommandsPage";
 
-const { mockNavigate, mockFetchBangCommandHistory } = vi.hoisted(() => ({
-  mockNavigate: vi.fn(),
-  mockFetchBangCommandHistory: vi.fn(),
-}));
+const { mockNavigate, mockFetchBangCommandHistory, mockRemoteBasePath } =
+  vi.hoisted(() => ({
+    mockNavigate: vi.fn(),
+    mockFetchBangCommandHistory: vi.fn(),
+    mockRemoteBasePath: { value: "" },
+  }));
 
 vi.mock("react-router-dom", async () => {
   const actual =
@@ -27,6 +29,10 @@ vi.mock("../../api/client", () => ({
     fetchBangCommandHistory: mockFetchBangCommandHistory,
     fetchBangCommandOutput: vi.fn(),
   },
+}));
+
+vi.mock("../../hooks/useRemoteBasePath", () => ({
+  useRemoteBasePath: () => mockRemoteBasePath.value,
 }));
 
 // The block component fetches rendered output on demand; stub it so the test
@@ -108,6 +114,7 @@ describe("BangCommandsPage per-entry actions", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    mockRemoteBasePath.value = "";
   });
 
   it("renders the three actions only for entries with a project", async () => {
@@ -129,13 +136,11 @@ describe("BangCommandsPage per-entry actions", () => {
       "/projects/project-1/sessions/session-1",
     );
 
-    expect(
-      screen.getAllByLabelText("Edit / re-issue command"),
-    ).toHaveLength(1);
+    expect(screen.getAllByLabelText("Edit / re-issue command")).toHaveLength(1);
     expect(screen.getAllByLabelText("New command in session")).toHaveLength(1);
-    expect(
-      screen.getAllByLabelText("Jump to command in session"),
-    ).toHaveLength(1);
+    expect(screen.getAllByLabelText("Jump to command in session")).toHaveLength(
+      1,
+    );
   });
 
   it("edit navigates to the source session prefilling !!<command>", async () => {
@@ -149,6 +154,28 @@ describe("BangCommandsPage per-entry actions", () => {
 
     expect(mockNavigate).toHaveBeenCalledWith(
       "/projects/project-1/sessions/session-1",
+      { state: { composerPrefill: "!!git status" } },
+    );
+  });
+
+  it("keeps remote entry links and actions within the connected host", async () => {
+    mockRemoteBasePath.value = "/relay-host";
+    mockFetchBangCommandHistory.mockResolvedValue({
+      entries: [PROJECTFUL_ENTRY],
+    });
+
+    renderPage();
+
+    const sessionLink = await screen.findByRole("link", {
+      name: "Open session",
+    });
+    expect(sessionLink.getAttribute("href")).toBe(
+      "/relay-host/projects/project-1/sessions/session-1",
+    );
+
+    fireEvent.click(screen.getByLabelText("Edit / re-issue command"));
+    expect(mockNavigate).toHaveBeenCalledWith(
+      "/relay-host/projects/project-1/sessions/session-1",
       { state: { composerPrefill: "!!git status" } },
     );
   });

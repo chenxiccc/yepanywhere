@@ -13,6 +13,7 @@ import {
   BangCommandDisplayObject,
 } from "../components/BangCommandDisplayObject";
 import { PageHeader } from "../components/PageHeader";
+import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useI18n } from "../i18n";
 import { MainContent, useNavigationLayout } from "../layouts";
 import { createSessionNavigationState } from "../lib/sessionNavigationState";
@@ -37,15 +38,17 @@ function BangHistoryEntryActions({
   sessionId,
   command,
   objectId,
+  basePath,
 }: {
   projectId: string;
   sessionId: string;
   command: string;
   objectId: string;
+  basePath: string;
 }) {
   const { t } = useI18n();
   const navigate = useNavigate();
-  const sessionPath = `/projects/${projectId}/sessions/${sessionId}`;
+  const sessionPath = `${basePath}/projects/${projectId}/sessions/${sessionId}`;
   return (
     <span className={styles.entryActions}>
       <button
@@ -133,6 +136,7 @@ function BangHistoryEntryActions({
 
 export function BangCommandsPage() {
   const { t } = useI18n();
+  const basePath = useRemoteBasePath();
   const { openSidebar, isWideScreen } = useNavigationLayout();
   const [entries, setEntries] = useState<BangHistoryEntry[] | null>(null);
   const [expandedEntryKey, setExpandedEntryKey] = useState<string | null>(null);
@@ -181,7 +185,7 @@ export function BangCommandsPage() {
                 </span>
                 {entry.projectId && (
                   <Link
-                    to={`/projects/${entry.projectId}/sessions/${entry.sessionId}`}
+                    to={`${basePath}/projects/${entry.projectId}/sessions/${entry.sessionId}`}
                     className={styles.entrySession}
                   >
                     {t("bangHistoryOpenSession")}
@@ -193,6 +197,7 @@ export function BangCommandsPage() {
                     sessionId={entry.sessionId}
                     command={entry.object.command}
                     objectId={entry.object.id}
+                    basePath={basePath}
                   />
                 )}
               </div>

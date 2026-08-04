@@ -261,9 +261,12 @@ keeps the submitted draft intact so the user can correct or retry it.
 `/bang-commands` (sidebar: "!! Commands") lists all bang runs across
 sessions, newest first (capped 500), with time, project directory, an
 open-session link, and the same block component fetching rendered output on
-demand. It starts from bounded previews and keeps at most one entry's full
-output expanded and retained. Reads only the bounded metadata already in
-`session-metadata.json` plus that single on-demand output fetch.
+demand. The route exists in both the local client and each connected-host
+remote-client scope; links back to source sessions retain the remote host
+prefix, and the page's requests remain bound to that host. It starts from
+bounded previews and keeps at most one entry's full output expanded and
+retained. Reads only the bounded metadata already in `session-metadata.json`
+plus that single on-demand output fetch.
 
 **Per-entry actions — three small icons.** Each entry knows its source
 session id, bang object id, and project directory (cwd), so it offers,
