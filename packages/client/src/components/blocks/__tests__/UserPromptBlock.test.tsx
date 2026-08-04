@@ -6,6 +6,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { SessionMetadataProvider } from "../../../contexts/SessionMetadataContext";
 import { I18nProvider } from "../../../i18n";
 import { useRemoteImage } from "../../../hooks/useRemoteImage";
 import type { ContentBlock } from "../../../types";
@@ -94,9 +95,7 @@ describe("UserPromptBlock", () => {
 
     // Let the chip's attachment-cache load settle (it rejects in jsdom)
     // before the test ends, so its setState lands inside act.
-    await waitFor(() =>
-      expect(screen.queryByText("Loading...")).toBeNull(),
-    );
+    await waitFor(() => expect(screen.queryByText("Loading...")).toBeNull());
 
     expect(screen.getByText(/Annotated image:/)).toBeDefined();
     expect(screen.queryByText("<image>")).toBeNull();
@@ -189,19 +188,25 @@ describe("UserPromptBlock", () => {
       screen.getByRole("button", { name: "Fork from this turn" }),
     );
     expect(
-      (screen.getByRole("menuitem", {
-        name: "Before this turn",
-      }) as HTMLButtonElement).disabled,
+      (
+        screen.getByRole("menuitem", {
+          name: "Before this turn",
+        }) as HTMLButtonElement
+      ).disabled,
     ).toBe(false);
     expect(
-      (screen.getByRole("menuitem", {
-        name: "After this turn",
-      }) as HTMLButtonElement).disabled,
+      (
+        screen.getByRole("menuitem", {
+          name: "After this turn",
+        }) as HTMLButtonElement
+      ).disabled,
     ).toBe(true);
     expect(
-      (screen.getByRole("menuitem", {
-        name: "After with summary…",
-      }) as HTMLButtonElement).disabled,
+      (
+        screen.getByRole("menuitem", {
+          name: "After with summary…",
+        }) as HTMLButtonElement
+      ).disabled,
     ).toBe(true);
   });
 
@@ -280,4 +285,44 @@ describe("UserPromptBlock", () => {
       expect(useRemoteImage).toHaveBeenCalledWith(remotePath, true);
     });
   });
+
+  it.each([
+    [
+      "app-data",
+      "/home/user/.yep-anywhere/projects/0123456789abcdef0123456789abcdef/attachments/session-a/123e4567-e89b-12d3-a456-426614174000_photo.jpg",
+    ],
+    [
+      "project-local",
+      "/workspace/project/.yep/attachments/session-a/123e4567-e89b-12d3-a456-426614174000_photo.jpg",
+    ],
+  ])(
+    "routes a persisted %s attachment through logical session metadata",
+    async (_storageMode, filePath) => {
+      const remotePath =
+        "/api/projects/project-a/sessions/session-a/upload/123e4567-e89b-12d3-a456-426614174000_photo.jpg";
+      const content = `Attached image\n\nUser uploaded files:\n- [photo.jpg](<${filePath}>) (6 kb, image/jpeg, 277x100)`;
+
+      render(
+        <SessionMetadataProvider
+          projectId="project-a"
+          projectPath="/workspace/project"
+          sessionId="session-a"
+        >
+          <I18nProvider>
+            <UserPromptBlock content={content} />
+          </I18nProvider>
+        </SessionMetadataProvider>,
+      );
+
+      await waitFor(() => {
+        expect(useRemoteImage).toHaveBeenCalledWith(remotePath, false);
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: /photo\.jpg/i }));
+
+      await waitFor(() => {
+        expect(useRemoteImage).toHaveBeenCalledWith(remotePath, true);
+      });
+    },
+  );
 });

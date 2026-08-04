@@ -1,6 +1,7 @@
 import { planThumbnail, toUrlProjectId } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useOptionalSessionMetadata } from "../contexts/SessionMetadataContext";
 import { useRemoteImage } from "../hooks/useRemoteImage";
 import { loadCachedAttachmentPreview } from "../lib/attachmentPreviewCache";
 import { Modal } from "./ui/Modal";
@@ -18,6 +19,9 @@ export interface AttachmentChipProps {
   imageWidth?: number;
   imageHeight?: number;
   previewUrl?: string;
+  /** Logical route coordinates for attachments outside session context. */
+  projectId?: string;
+  sessionId?: string;
   onRemove?: () => void;
 }
 
@@ -63,26 +67,45 @@ export function formatAttachmentName(name: string): string {
   return `${trimmed.slice(0, ATTACHMENT_NAME_SOFT_LIMIT).replace(/[ -_]+$/u, "")}...`;
 }
 
-function getUploadUrl(filePath: string | undefined): string | null {
+function getUploadUrl(
+  filePath: string | undefined,
+  projectId?: string,
+  sessionId?: string,
+): string | null {
   if (!filePath) return null;
   const parts = filePath.split("/");
   if (parts.length < 3) return null;
 
   const filename = parts[parts.length - 1];
-  const sessionId = parts[parts.length - 2];
+  const pathSessionId = parts[parts.length - 2];
   const projectSegment = parts[parts.length - 3];
 
-  if (!filename || !sessionId || !projectSegment) return null;
+  if (!filename || !pathSessionId || !projectSegment) return null;
+  if (!/^[0-9a-f-]{36}_/.test(filename)) return null;
+
+  // Current storage paths contain either an irreversible app-data project key
+  // or a physical `.yep` directory. Build the browser route from the logical
+  // session identity instead of trying to reverse either filesystem layout.
+  if (projectId && sessionId) {
+    return `/api/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(sessionId)}/upload/${encodeURIComponent(filename)}`;
+  }
 
   if (projectSegment === ".attachments") {
     const projectPath = parts.slice(0, -3).join("/");
     if (!projectPath) return null;
     const projectId = toUrlProjectId(projectPath);
-    return `/api/projects/${projectId}/sessions/${sessionId}/upload/${encodeURIComponent(filename)}`;
+    return `/api/projects/${projectId}/sessions/${encodeURIComponent(pathSessionId)}/upload/${encodeURIComponent(filename)}`;
   }
 
-  if (!/^[0-9a-f-]{36}_/.test(filename)) return null;
-  return `/api/projects/${projectSegment}/sessions/${sessionId}/upload/${encodeURIComponent(filename)}`;
+  if (projectSegment === "attachments" && parts[parts.length - 4] === ".yep") {
+    const projectPath = parts.slice(0, -4).join("/");
+    if (!projectPath) return null;
+    const projectId = toUrlProjectId(projectPath);
+    return `/api/projects/${projectId}/sessions/${encodeURIComponent(pathSessionId)}/upload/${encodeURIComponent(filename)}`;
+  }
+
+  if (projectSegment === "attachments") return null;
+  return `/api/projects/${projectSegment}/sessions/${encodeURIComponent(pathSessionId)}/upload/${encodeURIComponent(filename)}`;
 }
 
 function useCachedAttachmentImage(
@@ -90,6 +113,8 @@ function useCachedAttachmentImage(
   path: string | undefined,
   remotePreviewEnabled: boolean,
   previewUrl?: string,
+  projectId?: string,
+  sessionId?: string,
 ): {
   previewUrl: string | null;
   fullUrl: string | null;
@@ -112,7 +137,10 @@ function useCachedAttachmentImage(
   const previewUrlRef = useRef<string | null>(null);
   const fullUrlRef = useRef<string | null>(null);
 
-  const remotePath = useMemo(() => getUploadUrl(path), [path]);
+  const remotePath = useMemo(
+    () => getUploadUrl(path, projectId, sessionId),
+    [path, projectId, sessionId],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -256,8 +284,20 @@ function ImageAttachmentChip({
   imageWidth,
   imageHeight,
   previewUrl,
+  projectId,
+  sessionId,
   onRemove,
 }: AttachmentChipProps) {
+  const sessionMetadata = useOptionalSessionMetadata();
+  const routeCoordinates =
+    projectId && sessionId
+      ? { projectId, sessionId }
+      : sessionMetadata
+        ? {
+            projectId: sessionMetadata.projectId,
+            sessionId: sessionMetadata.sessionId,
+          }
+        : null;
   const [showModal, setShowModal] = useState(false);
   const [showHoverPreview, setShowHoverPreview] = useState(false);
   const hoverTimerRef = useRef<number | null>(null);
@@ -274,6 +314,8 @@ function ImageAttachmentChip({
     path,
     showModal || showHoverPreview,
     previewUrl,
+    routeCoordinates?.projectId,
+    routeCoordinates?.sessionId,
   );
 
   const clearHoverTimer = useCallback(() => {

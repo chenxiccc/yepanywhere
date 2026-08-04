@@ -2870,6 +2870,8 @@ export function MessageInput({
                   imageWidth={file.width}
                   imageHeight={file.height}
                   previewUrl={file.previewUrl}
+                  projectId={projectId}
+                  sessionId={sessionId}
                   onRemove={
                     onRemoveAttachment
                       ? () => onRemoveAttachment(file.id)

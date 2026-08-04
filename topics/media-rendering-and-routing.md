@@ -114,8 +114,12 @@ URL.
 - **Attachment chips** — image thumbnails on a sent user message and in the
   composer's pending-attachment row. `components/AttachmentChip.tsx` via
   `useRemoteImage` → `/api/projects/:id/sessions/:sid/upload/:filename`.
-  Rendered from `MessageInput.tsx`, `MessageList.tsx`, and
-  `blocks/UserPromptBlock.tsx`. Relay-safe.
+  The route coordinates come from logical session metadata, never from the
+  attachment's physical storage path; app-data project keys are intentionally
+  irreversible and project-local paths are a storage detail. Legacy
+  `.attachments` and central-upload paths retain path-based fallback routing
+  when no current session context exists. Rendered from `MessageInput.tsx`,
+  `MessageList.tsx`, and `blocks/UserPromptBlock.tsx`. Relay-safe.
 - **New-session pending file preview** — a thumbnail in the new-session form for
   a file you've attached but not yet uploaded. `NewSessionForm.tsx`, using a
   local `File` object URL (pre-upload). No network, always works.
