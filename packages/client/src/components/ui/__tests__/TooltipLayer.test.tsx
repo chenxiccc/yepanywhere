@@ -67,6 +67,9 @@ describe("TooltipLayer", () => {
     });
     act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
     expect(screen.getByRole("tooltip").textContent).toBe("Command tail");
+    expect(screen.getByRole("tooltip").classList).not.toContain(
+      styles.glossary,
+    );
 
     fireEvent.pointerMove(target, {
       pointerType: "mouse",
@@ -795,12 +798,39 @@ describe("TooltipLayer", () => {
     expect(screen.getByRole("tooltip").textContent).toBe(
       "oracle — Best published system.",
     );
+    expect(screen.getByRole("tooltip").classList).toContain(styles.glossary);
     expect(screen.getByRole("tooltip").classList).toContain(styles.enlarged);
     expect(writeText).toHaveBeenCalledWith("oracle — Best published system.");
     expect(term.getAttribute("title")).toBe(
       "oracle — Best published system.",
     );
     expect(term.getAttribute("data-tooltip")).toBeNull();
+  });
+
+  it("marks a passively hovered glossary definition without enlarging it", () => {
+    render(
+      <>
+        <TooltipLayer />
+        <span
+          data-glossary-term="true"
+          data-tooltip="oracle — Best published system."
+        >
+          oracle
+        </span>
+      </>,
+    );
+    const term = screen.getByText("oracle");
+
+    fireEvent.pointerOver(term, {
+      pointerType: "mouse",
+      clientX: 20,
+      clientY: 30,
+    });
+    act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
+
+    const tooltip = screen.getByRole("tooltip");
+    expect(tooltip.classList).toContain(styles.glossary);
+    expect(tooltip.classList).not.toContain(styles.enlarged);
   });
 
   it("leaves activated glossary text selection to the browser", () => {

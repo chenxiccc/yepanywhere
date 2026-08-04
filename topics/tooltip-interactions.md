@@ -186,12 +186,13 @@ copy/enlarge.
 
 Explicit glossary-term activation begins in the same enlarged treatment because
 the activation expresses reading intent; passive pointer hover remains compact.
-Long definitions use the shared tooltip's contained scrolling. Because primary
-activation already copies the exact definition, the activated definition does
-not intercept a secondary click or touch long-press; the browser keeps those
-gestures for text selection and its normal context menu. Tapping or selecting
-inside the tooltip does not dismiss it; Escape or activation outside the term
-and tooltip does.
+Glossary context adds one pixel to both corresponding text sizes, without
+changing ordinary themed tooltips. Long definitions use the shared tooltip's
+contained scrolling. Because primary activation already copies the exact
+definition, the activated definition does not intercept a secondary click or
+touch long-press; the browser keeps those gestures for text selection and its
+normal context menu. Tapping or selecting inside the tooltip does not dismiss
+it; Escape or activation outside the term and tooltip does.
 
 Rich explanatory tooltips may retain structured content while using the same
 dwell/warmth coordinator and the same keyboard-visible versus pointer-generated

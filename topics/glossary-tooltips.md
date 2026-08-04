@@ -214,12 +214,14 @@ exact text to the clipboard. Touch activation therefore has an explicit YA
 surface even when the browser cannot reveal a native title reliably. The
 activation surface must not navigate. An activated definition uses the shared
 tooltip's enlarged treatment immediately and scrolls within its viewport cap
-when long; passive pointer hover remains compact. Its secondary click and touch
-long-press stay browser-owned for text selection because activation already
-copied the exact definition. Keyboard focus reveals the definition; Enter or
-Space performs the same reveal-and-copy action. A non-collapsed text selection
-wins over activation so selecting prose does not unexpectedly write to the
-clipboard.
+when long; passive pointer hover remains compact. Both glossary treatments are
+one pixel larger than the corresponding ordinary themed tooltip treatment so
+definitions remain readable with compact UI metrics. Its secondary click and
+touch long-press stay browser-owned for text selection because activation
+already copied the exact definition. Keyboard focus reveals the definition;
+Enter or Space performs the same reveal-and-copy action. A non-collapsed text
+selection wins over activation so selecting prose does not unexpectedly write
+to the clipboard.
 
 The term interaction is semantic and keyboard-operable, not a click handler
 inferred from arbitrary generated DOM. Tooltip text remains selectable in

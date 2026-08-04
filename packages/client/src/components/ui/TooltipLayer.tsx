@@ -32,6 +32,7 @@ interface VisibleTooltip {
   anchorX: number;
   anchorY: number;
   forcedThemed: boolean;
+  glossary: boolean;
 }
 
 interface PointerPosition {
@@ -323,6 +324,7 @@ export function TooltipLayer() {
         anchorX: resolvedAnchorX,
         anchorY: resolvedAnchorY,
         forcedThemed,
+        glossary: target.matches("[data-glossary-term]"),
       });
     },
     [detachTitle, dismissUntilDeparture, hide],
@@ -833,7 +835,9 @@ export function TooltipLayer() {
     <div
       ref={tooltipRef}
       id={TOOLTIP_ID}
-      className={`${styles.root}${enlarged ? ` ${styles.enlarged}` : ""}`}
+      className={`${styles.root}${
+        visible.glossary ? ` ${styles.glossary}` : ""
+      }${enlarged ? ` ${styles.enlarged}` : ""}`}
       role="tooltip"
       style={{ left: position.left, top: position.top }}
     >

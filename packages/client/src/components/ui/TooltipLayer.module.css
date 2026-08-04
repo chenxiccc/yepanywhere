@@ -27,8 +27,16 @@
   cursor: text;
 }
 
+.glossary {
+  font-size: calc(var(--font-size-xs) + 2px);
+}
+
 .enlarged {
   max-width: min(680px, calc(100vw - 16px));
   padding: 7px 9px;
   font-size: var(--font-size-sm);
+}
+
+.glossary.enlarged {
+  font-size: calc(var(--font-size-sm) + 1px);
 }

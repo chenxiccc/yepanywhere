@@ -13,7 +13,9 @@ captures no glossary authority.
 Follow-up 2026-08-04: browsers without an explicit tooltip-style preference now
 default to Themed. Explicit glossary activation uses the shared enlarged,
 scrollable treatment; its context click and touch long-press remain
-browser-owned so copied definitions can still be selected.
+browser-owned so copied definitions can still be selected. Glossary hover and
+activated definitions use a one-pixel text-size increase over their
+corresponding ordinary themed tooltip treatments.
 
 ## Goal and governing contract
 
