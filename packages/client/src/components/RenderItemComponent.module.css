@@ -1,9 +1,9 @@
 /*
- * Conversation thinking-preview header additions.
+ * Conversation activity controls and thinking-preview header additions.
  *
  * The rest of `.conversation-thinking-preview-*` still lives in the legacy
  * global sheet; `pnpm css:touched` defers extracting it (359 owned lines over
- * two stylesheets, 18 coupled rules), so only the new rules are owned here.
+ * two stylesheets, 18 coupled rules), so only bounded rules are owned here.
  */
 
 /*
@@ -35,4 +35,35 @@
   padding-left: 0.5rem;
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
+}
+
+.activityChevron {
+  display: inline-flex;
+  width: 0.8rem;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(1em + 1px);
+  line-height: 1;
+  opacity: 0.8;
+  transform: translateY(-0.25px);
+}
+
+.activityChevronExpanded {
+  transform: translateY(0.25px);
+}
+
+.activityPulse {
+  width: 4px;
+  height: 4px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 0 0 0 3px
+    color-mix(in srgb, var(--app-yep-green) 14%, transparent);
+  transform: translateY(-0.25px);
+}
+
+.activityLabel {
+  position: relative;
+  top: 0.25px;
 }

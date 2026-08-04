@@ -425,13 +425,18 @@ function ConversationActivitySummary({
           aria-expanded={item.expanded}
           title={title}
         >
-          <span className="conversation-activity-chevron" aria-hidden="true">
+          <span
+            className={`${styles.activityChevron}${
+              item.expanded ? ` ${styles.activityChevronExpanded}` : ""
+            }`}
+            aria-hidden="true"
+          >
             {item.expanded ? "▾" : "▸"}
           </span>
           {item.active ? (
-            <span className="conversation-activity-pulse" aria-hidden="true" />
+            <span className={styles.activityPulse} aria-hidden="true" />
           ) : null}
-          <span>{label}</span>
+          <span className={styles.activityLabel}>{label}</span>
         </button>
         {hasExpandedThinkingPreview && item.recentActivities ? (
           <ul

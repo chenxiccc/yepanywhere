@@ -7401,27 +7401,6 @@ a.linkified-url:hover {
   color: color-mix(in srgb, var(--app-yep-green) 62%, var(--text-muted));
 }
 
-.conversation-activity-chevron {
-  display: inline-flex;
-  width: 0.8rem;
-  align-items: center;
-  justify-content: center;
-  color: currentColor;
-  line-height: 1;
-  opacity: 0.8;
-  transform: translateY(0.025em);
-}
-
-.conversation-activity-pulse {
-  width: 4px;
-  height: 4px;
-  flex: 0 0 auto;
-  border-radius: 999px;
-  background: currentColor;
-  box-shadow: 0 0 0 3px
-    color-mix(in srgb, var(--app-yep-green) 14%, transparent);
-}
-
 /* ==========================================================================
    System Messages - Context compaction notifications
    ========================================================================== */

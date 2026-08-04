@@ -77,6 +77,9 @@ provider-history rewrite and not deletion.
   unavailable, the label keeps the activity count without inventing a time.
   Durations below 10 seconds retain one decimal place; durations from 10
   seconds onward use whole seconds (or the existing compact minute/hour form).
+  Its disclosure triangle stays legible at the compact text size and is
+  optically centered beside the live-status dot in both directions without
+  changing the button's hit target.
 - Clicking the summary restores every condensed row in its original transcript
   position. The summary remains at the turn end as the one-click collapse
   control. While reading above the live edge, direct expansion or collapse
