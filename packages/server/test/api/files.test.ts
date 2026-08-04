@@ -104,13 +104,15 @@ describe("Files API", () => {
 
       expect(res.status).toBe(200);
       const json = (await res.json()) as FileContentResponse;
-      const peerPath = await realpath(join(projectPath, "docs", "peer.md"));
       const diagramPath = await realpath(
         join(projectPath, "docs", "assets", "diagram.svg"),
       );
       expect(json.renderedMarkdownHtml).toContain("<h1>Guide</h1>");
       expect(json.renderedMarkdownHtml).toContain(
-        `href="/api/local-file?path=${encodeURIComponent(peerPath)}&amp;render=1"`,
+        `href="/projects/${projectId}/file?path=docs%2Fpeer.md"`,
+      );
+      expect(json.renderedMarkdownHtml).not.toContain(
+        "data-ya-private-project-file-link",
       );
       expect(json.renderedMarkdownHtml).toContain(
         `data-media-path="${diagramPath}"`,
@@ -187,13 +189,12 @@ describe("Files API", () => {
 
       expect(res.status).toBe(200);
       const json = (await res.json()) as FileContentResponse;
-      const peerPath = await realpath(join(projectPath, "docs", "peer.md"));
       expect(json.content).toBe("See [Peer][peer]");
       expect(json.renderedMarkdownHtml).toContain(
         'class="markdown-preview-span markdown-preview-span-start" data-line-start="1" data-line-end="1"',
       );
       expect(json.renderedMarkdownHtml).toContain(
-        `href="/api/local-file?path=${encodeURIComponent(peerPath)}&amp;render=1"`,
+        `href="/projects/${projectId}/file?path=docs%2Fpeer.md"`,
       );
     });
 
@@ -219,10 +220,9 @@ describe("Files API", () => {
 
       expect(res.status).toBe(200);
       const json = (await res.json()) as FileContentResponse;
-      const peerPath = await realpath(join(projectPath, "docs", "peer.md"));
       expect(json.content).toBe("See [Peer][peer]");
       expect(json.renderedMarkdownHtml).toContain(
-        `href="/api/local-file?path=${encodeURIComponent(peerPath)}&amp;render=1"`,
+        `href="/projects/${projectId}/file?path=docs%2Fpeer.md"`,
       );
     });
 

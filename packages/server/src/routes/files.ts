@@ -945,6 +945,10 @@ export function createFilesRoutes(deps: FilesDeps): Hono {
                 previewContent,
                 {
                   localFileBasePath: dirname(filePath),
+                  projectFileLinks: {
+                    projectId,
+                    projectPath: projectRoot,
+                  },
                 },
                 previewStartLine,
                 requestedRange,

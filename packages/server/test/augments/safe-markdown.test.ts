@@ -352,6 +352,26 @@ describe("renderSafeMarkdown — local file links", () => {
     expect(html).toContain('title="/workspace/project/docs/peer.md:12"');
   });
 
+  it("routes project-contained authored links through FileViewer", () => {
+    const html = renderSafeMarkdown("[peer](docs/peer.md:12)", {
+      localFileBasePath: "/workspace/project",
+      projectFileLinks: {
+        projectId: "project-1",
+        projectPath: "/workspace/project",
+        fileExists: (_absolutePath, relativePath) =>
+          relativePath === "docs/peer.md",
+      },
+    });
+
+    expect(html).toContain(
+      'href="/projects/project-1/file?path=docs%2Fpeer.md&amp;line=12"',
+    );
+    expect(html).toContain('data-ya-resource="project-file"');
+    expect(html).toContain('data-ya-path="docs/peer.md"');
+    expect(html).not.toContain("data-ya-private-project-file-link");
+    expect(html).not.toContain("/api/local-file");
+  });
+
   it("resolves relative local images as inline media placeholders", () => {
     const html = renderSafeMarkdown("![diagram](assets/diagram.svg)", {
       localFileBasePath: "/workspace/project/docs",

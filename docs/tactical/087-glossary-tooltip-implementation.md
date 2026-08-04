@@ -6,9 +6,10 @@ Status: In progress 2026-08-04. Steps 1–7 and the authenticated portions of
 step 8 are implemented: bounded grammar and matcher, contained resolver and
 cache, capability-gated route and project subscription, tab-local artifact
 state, detached annotation, semantic tooltip interaction, default-off setting,
-and authenticated session/file/tool/Source Control render surfaces. Standalone
-local documents, explicitly authorized public-share artifacts, and step 9
-performance/visual acceptance remain pending.
+and authenticated session/file/tool/Source Control render surfaces.
+Project-contained document links now converge on FileViewer; public shares
+deliberately remain unannotated because existing share creation captures no
+glossary authority. Step 9 performance/visual acceptance remains pending.
 
 ## Goal and governing contract
 
@@ -168,17 +169,19 @@ an existing capability to cover this contract.
 ### Public shares and standalone documents are explicit boundaries
 
 An authenticated project artifact route must not be reused from a public
-share. Public shares receive only an artifact compiled from glossary files
-already present in the share capability/snapshot; otherwise they remain
-unannotated.
+share. V1 leaves public shares unannotated because existing share creation
+neither captures a glossary artifact nor asks the owner to expose glossary
+definitions. A later public implementation requires an explicit share option
+and captured artifact or manifest authority; it cannot infer authority from
+the selected project.
 
 `renderMarkdownDocument` in
-`packages/server/src/routes/local-file.ts` currently emits a standalone HTML
-shell, while the main file path uses `renderMarkdownFilePreview` from
-`packages/server/src/augments/markdown-file-preview.ts`. Preserve the one safe
-Markdown renderer, but give the standalone shell an explicit bounded artifact
-bootstrap or move it onto the shared `FileViewer` presentation. Do not add an
-unscoped project API call or a general DOM text scanner to that document.
+`packages/server/src/routes/local-file.ts` still emits a compatibility HTML
+shell for non-project or old direct URLs. Authenticated authored Markdown
+links that resolve inside the selected project instead use the shared
+`FileViewer` route, including browser new-tab gestures. This preserves the one
+safe Markdown renderer without adding an unscoped project API call or general
+DOM scanner to the legacy shell.
 
 ## Source map
 
@@ -343,17 +346,19 @@ Wire in this order so each new surface inherits tested primitives:
 2. `FileViewer` full/range Markdown and Read/Write target paths;
 3. Markdown-eligible Edit previews and the selected Source Control file;
 4. project-affiliated fixed-font rendered output;
-5. standalone local Markdown documents; and
-6. public-share snapshots/capabilities.
+5. project-contained standalone/new-tab documents through FileViewer; and
+6. an explicit unannotated fallback for public shares and legacy unscoped
+   local-file documents.
 
 At every step add a paired raw/source assertion and an absent-artifact
 assertion. Do not make glossary matching a reason to structurally render a code
 file or non-Markdown diff.
 
-For standalone documents, prefer convergence on shared `FileViewer` if it
-preserves raw-link and line-target behavior. If the transitional shell remains,
-its bootstrap must be narrowly scoped, covered by the active-content security
-contract, and able to apply only a pre-authorized artifact.
+Project-contained documents converge on shared `FileViewer` while preserving
+raw-link and line-target behavior. The transitional local-file shell remains
+only where no selected-project context exists and receives no artifact
+bootstrap. Public shares likewise remain unannotated until share creation can
+capture or explicitly authorize a glossary artifact.
 
 ### 9 — verify performance, parity, and visual behavior
 
@@ -387,10 +392,10 @@ each non-standalone slice:
 3. capability-approved route and client artifact store;
 4. detached annotation boundary and streaming regeneration;
 5. semantic interaction, preference, and metric-neutral style;
-6. remaining file/diff/share surface parity and final contract evidence.
+6. remaining file/diff surface parity and final contract evidence.
 
-Do not combine public-share authorization work with the basic authenticated
-route merely to reduce the commit count; they have different trust boundaries.
+Do not add public-share authorization merely to complete this list; it is a
+separate trust-boundary product decision.
 
 ## Done condition
 

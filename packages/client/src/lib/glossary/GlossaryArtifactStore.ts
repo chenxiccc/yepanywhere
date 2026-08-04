@@ -1,10 +1,10 @@
-import {
-  type GlossaryArtifactResponse,
-  type GlossaryPathChangedEvent,
-  type GlossaryPathsSnapshotEvent,
-  type GlossaryProjectGeneration,
-  type GlossarySubscriptionEvent,
-  type UrlProjectId,
+import type {
+  GlossaryArtifactResponse,
+  GlossaryPathChangedEvent,
+  GlossaryPathsSnapshotEvent,
+  GlossaryProjectGeneration,
+  GlossarySubscriptionEvent,
+  UrlProjectId,
 } from "@yep-anywhere/shared";
 import {
   createManagedStream,

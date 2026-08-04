@@ -584,29 +584,32 @@ function projectFileViewerHref(
   return `/projects/${encodeURIComponent(projectId)}/file?${params}`;
 }
 
-function renderProjectFileCodeLink(text: string): string | null {
-  const options = activeRenderOptions.projectFileLinks;
-  if (!options) {
-    return null;
-  }
-
-  const target = resolveProjectFileCodeReference(text, options);
-  if (!target) {
-    return null;
-  }
-
+function renderProjectFileLinkOpen(
+  options: ProjectFileLinkOptions,
+  target: ProjectFileCodeLink,
+  linkOptions: {
+    className?: string;
+    privateReference?: boolean;
+    title?: string;
+  } = {},
+): string {
   const attributes: Array<[string, string]> = [
-    ["class", "fixed-font-file-link"],
     ["href", projectFileViewerHref(options.projectId, target)],
     ["data-ya-resource", "project-file"],
     ["data-ya-project-id", options.projectId],
     ["data-ya-path", target.relativePath],
-    ["data-ya-private-project-file-link", "true"],
     [
       "title",
-      `${target.relativePath}${target.lineNumber !== undefined ? `:${target.lineNumber}` : ""}\nClick to view, or use a browser link gesture to open this file`,
+      linkOptions.title ??
+        `${target.relativePath}${target.lineNumber !== undefined ? `:${target.lineNumber}` : ""}\nClick to view, or use a browser link gesture to open this file`,
     ],
   ];
+  if (linkOptions.className) {
+    attributes.unshift(["class", linkOptions.className]);
+  }
+  if (linkOptions.privateReference) {
+    attributes.push(["data-ya-private-project-file-link", "true"]);
+  }
   if (target.lineNumber !== undefined) {
     attributes.push(["data-ya-line", String(target.lineNumber)]);
   }
@@ -617,7 +620,24 @@ function renderProjectFileCodeLink(text: string): string | null {
   const attrs = attributes
     .map(([name, value]) => `${name}="${escapeHtml(value)}"`)
     .join(" ");
-  return `<a ${attrs}><code>${escapeHtml(text)}</code></a>`;
+  return `<a ${attrs}>`;
+}
+
+function renderProjectFileCodeLink(text: string): string | null {
+  const options = activeRenderOptions.projectFileLinks;
+  if (!options) {
+    return null;
+  }
+
+  const target = resolveProjectFileCodeReference(text, options);
+  if (!target) {
+    return null;
+  }
+  const open = renderProjectFileLinkOpen(options, target, {
+    className: "fixed-font-file-link",
+    privateReference: true,
+  });
+  return `${open}<code>${escapeHtml(text)}</code></a>`;
 }
 
 /**
@@ -849,10 +869,21 @@ function renderLinkOpen(
       open = parts.open;
       close = parts.close;
     } else {
-      open = renderLocalFileLinkOpen(localPath, {
-        renderMarkdown: isMarkdownExtension(ext),
-        title: title ?? formatLocalPathReference(localPath),
-      });
+      const projectOptions = activeRenderOptions.projectFileLinks;
+      const projectTarget = projectOptions
+        ? resolveProjectFileCodeReference(
+            formatLocalPathReference(localPath),
+            projectOptions,
+          )
+        : null;
+      open = projectOptions && projectTarget
+        ? renderProjectFileLinkOpen(projectOptions, projectTarget, {
+            title: title ?? formatLocalPathReference(localPath),
+          })
+        : renderLocalFileLinkOpen(localPath, {
+            renderMarkdown: isMarkdownExtension(ext),
+            title: title ?? formatLocalPathReference(localPath),
+          });
       close = "</a>";
     }
   } else {

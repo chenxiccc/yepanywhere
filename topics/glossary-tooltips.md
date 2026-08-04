@@ -11,8 +11,9 @@ Status: implementation in progress under
 [`docs/tactical/087-glossary-tooltip-implementation.md`](../docs/tactical/087-glossary-tooltip-implementation.md);
 the shared grammar, resolver, capability-gated delivery, tab-local cache,
 annotation boundary, interaction, and authenticated render surfaces are
-implemented. Standalone local documents, explicitly authorized public-share
-artifacts, and final performance/visual acceptance remain pending.
+implemented. Project-contained document links now converge on FileViewer;
+public shares deliberately remain unannotated. Final performance and visual
+acceptance remain pending.
 
 ## Product contract
 
@@ -82,7 +83,10 @@ Every governing and included path is resolved through the existing project-
 containment boundary. Public-share rendering may use a glossary only when that
 file is part of the share's explicit file capability or captured snapshot; a
 share must never disclose an otherwise unshared current glossary through an
-include.
+include. V1 does not add either authorization to existing share creation, so
+public session and file shares remain unannotated. Adding hints to a future
+share requires an explicit captured-artifact or share-capability decision; it
+must not reuse the authenticated project artifact route.
 
 ## Glossary term grammar
 
@@ -336,6 +340,12 @@ renderer output before insertion; it is not a document-wide mounted-DOM
 rewrite. An older server's missing `glossary-tooltips` capability means the
 client makes no unsupported request or subscription and renders ordinary
 Markdown without glossary annotations.
+
+Authenticated project-contained Markdown links use the shared FileViewer
+route, including browser new-tab gestures, so project documents retain their
+project/source context and the same glossary boundary. The legacy standalone
+local-file HTML shell remains as a compatibility path for non-project or old
+direct URLs; it has no selected-project authority and remains unannotated.
 
 ## Render-boundary implementation plan
 
