@@ -330,7 +330,7 @@ export class GlossaryArtifactStore {
     const suffix = params.size > 0 ? `?${params.toString()}` : "";
     void active.transport
       .fetch<GlossaryArtifactResponse>(
-        `/api/projects/${encodeURIComponent(active.projectId)}/glossary-artifact${suffix}`,
+        `/projects/${encodeURIComponent(active.projectId)}/glossary-artifact${suffix}`,
       )
       .then((result) => {
         if (

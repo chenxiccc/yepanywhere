@@ -2,14 +2,13 @@
 
 Topic: glossary-tooltips
 
-Status: In progress 2026-08-04. Steps 1–7 and the authenticated portions of
-step 8 are implemented: bounded grammar and matcher, contained resolver and
-cache, capability-gated route and project subscription, tab-local artifact
-state, detached annotation, semantic tooltip interaction, default-off setting,
-and authenticated session/file/tool/Source Control render surfaces.
-Project-contained document links now converge on FileViewer; public shares
-deliberately remain unannotated because existing share creation captures no
-glossary authority. Step 9 performance/visual acceptance remains pending.
+Status: Implemented 2026-08-04. The bounded grammar and matcher, contained
+resolver and cache, capability-gated route and project subscription, tab-local
+artifact state, detached annotation, semantic tooltip interaction, default-off
+setting, authenticated session/file/tool/Source Control surfaces, FileViewer
+link convergence, and performance/visual acceptance are complete. Public
+shares deliberately remain unannotated because existing share creation
+captures no glossary authority.
 
 ## Goal and governing contract
 
@@ -136,8 +135,8 @@ inherits font family, font size, font weight, line height, and letter spacing;
 has no padding, margin, border width, minimum size, generated content, or
 inline-size contribution; and does not replace text with a different glyph
 sequence. Turning hints on or applying a newly ready artifact must preserve
-line breaks, line-box height, measured text width, selection offsets, source
-line targets, and scroll anchoring.
+line breaks, line-box height, selection offsets, source line targets, and
+scroll anchoring, and must not increase measured text width.
 
 Use a co-located CSS module owned by the term primitive. Do not add a global
 Markdown class rule merely because the term originates in generated HTML.
@@ -332,8 +331,9 @@ Space do the same; non-collapsed selection wins; clipboard failure never claims
 success. Ensure disabling the feature removes focusability and interaction.
 
 Add a co-located CSS module and automated geometry assertions comparing the
-same fixture before and after annotation: identical client rect width/height,
-line count, scroll height, and selected plain text.
+same fixture before and after annotation: no increased text width or line
+height, identical container geometry and selected plain text, and at most the
+browser's subpixel inline-boundary quantization.
 
 ### 8 — propagate governing source context across every surface
 
@@ -381,6 +381,24 @@ first paint followed by ready-state re-render, ordinary/hover/focus/touch term
 states, light and dark themes, a multi-definition tooltip, and a raw/source
 control. Inspect line breaks and adjacent baseline geometry before claiming the
 metric-neutral contract.
+
+Completed 2026-08-04 against a fresh isolated server process. Root-glossary
+cold resolution and compilation took 0.474 seconds; warm reuse took 0.0033
+seconds and returned a 161,378-byte serialized artifact. A delayed artifact
+response demonstrated an unannotated first paint followed by four eligible
+annotations. The real FileViewer retained identical text, an 18.4375-pixel
+paragraph height, 1872.21875-pixel paragraph width, 14-pixel phrase height,
+and 72.953125-pixel phrase width; Chromium shifted the inline phrase start by
+1/64 pixel without moving its line or container. A browser regression test now
+enforces the directional metric contract through ordinary, hover, and focus
+states.
+
+Desktop light ready/hover/focus and source captures plus a 375×812 dark touch
+capture showed the multi-definition tooltip, code/link exclusions,
+hyphen-significant nonmatch, source-mode exclusion, and no client console
+warnings or errors. The first real-browser pass also caught a doubled `/api`
+prefix in the new artifact request; the store now passes the source transport's
+API-relative path rather than duplicating the transport-owned prefix.
 
 ## Suggested commit slices
 

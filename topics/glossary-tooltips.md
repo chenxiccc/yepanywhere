@@ -7,13 +7,12 @@
 
 Topic: glossary-tooltips
 
-Status: implementation in progress under
+Status: Implemented 2026-08-04 under
 [`docs/tactical/087-glossary-tooltip-implementation.md`](../docs/tactical/087-glossary-tooltip-implementation.md);
 the shared grammar, resolver, capability-gated delivery, tab-local cache,
-annotation boundary, interaction, and authenticated render surfaces are
-implemented. Project-contained document links now converge on FileViewer;
-public shares deliberately remain unannotated. Final performance and visual
-acceptance remain pending.
+annotation boundary, interaction, authenticated render surfaces, FileViewer
+link convergence, and performance/visual acceptance are complete. Public
+shares deliberately remain unannotated.
 
 ## Product contract
 
@@ -192,11 +191,13 @@ An annotated term has a restrained link-like tint at normal font weight. It
 has no underline and introduces no box, icon, or layout shift. The term wrapper
 inherits the surrounding font metrics and adds no padding, border width,
 letter spacing, minimum size, or inline width. Enabling hints or replacing an
-unannotated render after the matcher becomes ready must not change line height,
-line breaks, text width, or source-aligned geometry. Hover, active, and
-keyboard-focus states may strengthen the tint enough to make the interaction
-legible without turning the document into a field of conventional navigation
-links.
+unannotated render after the matcher becomes ready must not increase line
+height or text width, change line breaks, or move source-aligned container
+geometry. Browser subpixel quantization at the new inline boundary is
+acceptable only when the containing line and paragraph metrics remain
+unchanged. Hover, active, and keyboard-focus states may strengthen the tint
+enough to make the interaction legible without turning the document into a
+field of conventional navigation links.
 
 Pointer hover uses the ordinary tooltip appearance preference:
 

@@ -87,7 +87,7 @@ describe("GlossaryArtifactStore", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith(
-      `/api/projects/${encodeURIComponent(PROJECT_ID)}/glossary-artifact?sourcePath=papers%2Fdraft.md`,
+      `/projects/${encodeURIComponent(PROJECT_ID)}/glossary-artifact?sourcePath=papers%2Fdraft.md`,
       undefined,
     );
     expect(store.getSnapshot("papers/draft.md")).toMatchObject({
