@@ -605,6 +605,42 @@ rejects new input once its volatile-queue blocker check passes. The wrapper
 waits for the old generation to detach and exit, then starts exactly one
 replacement. It never forwards HUP to Codex app-server.
 
+### Development bind takeover
+
+Every process spawned beneath `scripts/dev.js` carries a non-secret dev
+instance marker: one random instance id, the normalized main-server bind, and
+the canonical source root from which that process was launched. Bind identity,
+not source identity, decides cleanup eligibility. A test server on another
+port is unrelated; a prior YA process carrying the bind claimed by the new
+server is obsolete even when it came from another worktree or checkout.
+
+Intent alone does not authorize cleanup. The new Hono generation reports its
+actual localhost `onReady` bind through the authenticated wrapper control
+channel. The wrapper verifies that the reporting PID and generation are the
+registered backend and that the acquired host/port normalizes to the launch
+bind. A failed or different bind reaps nothing. After successful acquisition,
+Linux startup finds same-user processes carrying the same bind marker, excludes
+the current instance id, and revalidates each PID, start time, instance id, and
+bind immediately before signaling it. No project-local registry or PID file is
+created.
+
+Prior processes first receive `SIGTERM`. Same-source survivors enter the
+ordinary bounded shutdown escalation after 10 seconds. Processes from a
+different or unknown source root receive up to 60 seconds from the first TERM
+before `SIGKILL`; source identity affects grace only and never grants an
+exemption. The wrapper verifies that no matching marked process survives the
+force deadline and logs cleanup failure if one does.
+
+YA-owned work must tolerate this bounded terminal treatment. No provider,
+indexer, test helper, or future background facility may make correctness or
+user-data safety depend on a development process being indefinitely
+unkillable. Cooperative shutdown may persist durable state and interrupt work;
+after its deadline, provider persistence and ordinary resume are the recovery
+source. Legacy processes launched before the marker contract require explicit
+operator cleanup, but every newly marked descendant—including persistent
+runtime hosts and their provider children—is in scope for a later bind
+takeover.
+
 On terminal shutdown the wrapper first disables respawn and new runtime
 launches. It gives a live Hono generation a short opportunity to flush durable
 state, interrupt active turns, and close provider connections, then orders the

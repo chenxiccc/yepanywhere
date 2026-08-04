@@ -21,12 +21,18 @@ import {
   existsSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
 } from "node:fs";
 import { createServer as createNetServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  createDevInstanceProvenance,
+  devBindKey,
+  reapObsoleteDevInstances,
+} from "./dev-instance-provenance.mjs";
 import { exitIfUnsafeHome } from "./safe-home.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -138,6 +144,11 @@ const displayHost =
   configuredHost && configuredHost !== "0.0.0.0" && configuredHost !== "::"
     ? configuredHost
     : "localhost";
+const devInstanceProvenance = createDevInstanceProvenance({
+  host: configuredHost,
+  port: basePort,
+  sourceRoot: realpathSync(rootDir),
+});
 
 console.log("Starting dev server...");
 console.log(`  Access at: ${protocol}://${displayHost}:${basePort}`);
@@ -155,6 +166,7 @@ if (!backendWatch && !noFrontendReload)
 // Build environment for child processes
 const env = {
   ...process.env,
+  ...devInstanceProvenance.env,
   // When not using --watch, enable manual reload mode (shows banner on file changes)
   NO_BACKEND_RELOAD: backendWatch ? "" : "true",
   NO_FRONTEND_RELOAD: noFrontendReload ? "true" : "",
@@ -211,6 +223,7 @@ const providerRuntimeProcessGroups = new Map();
 let serverGeneration = 0;
 let unexpectedRecoveryUsed = false;
 let shutdownPromise = null;
+let obsoleteInstanceReapPromise = null;
 
 function errorMessage(error) {
   return error instanceof Error ? error.message : String(error);
@@ -633,6 +646,48 @@ async function startWrapperControlServer() {
             return;
           }
           serverChild.backendPid = request.pid;
+          socket.end(`${JSON.stringify({ ok: true })}\n`);
+          continue;
+        }
+        if (request.op === "backendListening") {
+          if (
+            request.generation !== serverChild?.yaGeneration ||
+            request.pid !== serverChild.backendPid ||
+            typeof request.host !== "string" ||
+            !Number.isInteger(request.port)
+          ) {
+            socket.end(
+              `${JSON.stringify({ ok: false, error: "invalid listening registration" })}\n`,
+            );
+            return;
+          }
+          let acquiredBindKey;
+          try {
+            acquiredBindKey = devBindKey(request.host, request.port);
+          } catch (error) {
+            socket.end(
+              `${JSON.stringify({ ok: false, error: errorMessage(error) })}\n`,
+            );
+            return;
+          }
+          if (acquiredBindKey !== devInstanceProvenance.bindKey) {
+            socket.end(
+              `${JSON.stringify({ ok: false, error: "listening bind differs from launch provenance" })}\n`,
+            );
+            return;
+          }
+          if (!obsoleteInstanceReapPromise && process.platform === "linux") {
+            obsoleteInstanceReapPromise = reapObsoleteDevInstances({
+              bindKey: acquiredBindKey,
+              currentInstanceId: devInstanceProvenance.instanceId,
+              currentSourceRoot:
+                devInstanceProvenance.env.YEP_DEV_SOURCE_ROOT,
+            }).catch((error) => {
+              console.error(
+                `[Startup] Failed to reap prior YA dev instance: ${errorMessage(error)}`,
+              );
+            });
+          }
           socket.end(`${JSON.stringify({ ok: true })}\n`);
           continue;
         }

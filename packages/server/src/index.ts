@@ -20,7 +20,10 @@ import {
   initCodexCorrelationDebugLogger,
 } from "./codex/correlationDebugLogger.js";
 import { loadConfig } from "./config.js";
-import { registerDevWrapperBackend } from "./dev-wrapper-client.js";
+import {
+  registerDevWrapperBackend,
+  reportDevWrapperListening,
+} from "./dev-wrapper-client.js";
 import { DeviceBridgeService } from "./device/DeviceBridgeService.js";
 import { detectAdb } from "./device/adb.js";
 import { DESKTOP_BOOTSTRAP_PROTOCOL_VERSION } from "./desktop/DesktopBootstrapService.js";
@@ -1521,6 +1524,15 @@ async function startServer() {
     "127.0.0.1",
     (info) => {
       markStartup("localhost server onReady");
+      void reportDevWrapperListening({
+        host: "127.0.0.1",
+        port: info.port,
+      }).catch((error) => {
+        console.error(
+          "[DevWrapper] Failed to report acquired localhost bind:",
+          error,
+        );
+      });
       // Write port to file if requested (for test harnesses)
       if (config.portFile) {
         fs.writeFileSync(config.portFile, String(info.port));

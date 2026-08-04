@@ -4,9 +4,11 @@ import { getModuleEnv } from "./yaModuleEnv.js";
 const REQUEST_TIMEOUT_MS = 2_000;
 
 interface WrapperRequest {
-  op: "reload" | "registerBackend";
+  op: "reload" | "registerBackend" | "backendListening";
   generation?: string;
   pid?: number;
+  host?: string;
+  port?: number;
 }
 
 function requestDevWrapper(
@@ -105,6 +107,25 @@ export function registerDevWrapperBackend(): Promise<boolean> {
   if (!generation) return Promise.resolve(false);
   return requestDevWrapper(
     { op: "registerBackend", generation, pid: process.pid },
+    false,
+  );
+}
+
+/** Tell the wrapper that this generation proved ownership of its main bind. */
+export function reportDevWrapperListening(args: {
+  host: string;
+  port: number;
+}): Promise<boolean> {
+  const generation = process.env.YEP_SERVER_GENERATION?.trim();
+  if (!generation) return Promise.resolve(false);
+  return requestDevWrapper(
+    {
+      op: "backendListening",
+      generation,
+      pid: process.pid,
+      host: args.host,
+      port: args.port,
+    },
     false,
   );
 }
