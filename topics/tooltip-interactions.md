@@ -6,6 +6,12 @@
 
 Topic: tooltip-interactions
 
+Status: A passive-tooltip noninterference correction and labelled-control hint
+audit are planned in
+[`docs/tactical/088-tooltip-noninterference.md`](../docs/tactical/088-tooltip-noninterference.md).
+Until enacted, ordinary Themed tooltips remain pointer-opaque and can consume a
+click when their surface appears over the trigger.
+
 ## Modes and settings
 
 Appearance presents `Themed` and `Native` as an explicit two-way style
@@ -38,8 +44,8 @@ hidden output tails, elapsed times, and concise file paths:
   timing, placement, dismissal, and input behavior.
 - In `Themed`, the target owns `data-tooltip` and YA renders the text in the
   document. This permits a configurable delay, immediate scanning between warm
-  targets, stable placement during app scroll, selectable text, and
-  secondary-click copy/enlarge behavior.
+  targets, stable placement during app scroll, secondary-click full-text
+  copy/enlarge behavior, and contained wheel scrolling for long hints.
 
 Themed tooltips therefore aim to preserve the basic semantics of native hints—
 supplemental, nonessential information opened by pointer hover or
@@ -103,13 +109,19 @@ explanations, and session hovercards: granting it to a new tooltip synchronously
 dismisses the prior owner. A genuine move between warm text targets hands the
 single surface directly to the new target, while small or absent pointer
 movement cannot switch it during scroll or layout re-hit-testing. Neither path
-can flash two tooltips or an intermediate blank tooltip. Every tooltip is the
-frontmost app hit-test surface and belongs to its active hover region. Pointer
-enter, move, down, and context-menu events over its visible bounds target the
-tooltip, never any mouseover-driven component geometrically underneath it.
-Boundary motion accumulates from the last point inside the active hover region;
-up to four CSS pixels is treated as hand/sensor jitter rather than an intent to
-switch targets or dismiss.
+can flash two tooltips or an intermediate blank tooltip. A passive ordinary
+tooltip is visually frontmost but pointer-transparent. Its measured rectangle
+still belongs to the active hover region: pointer motion inside it cannot warm
+or switch to a tooltip target geometrically underneath it. Primary, middle,
+and modified activation inside that rectangle passes through only when the
+browser's hit target belongs to the active trigger. Activation of an unrelated
+obscured control is blocked and dismisses the tooltip; the layer never
+synthesizes or forwards a click. Secondary-click inside the rectangle remains
+tooltip intent, and wheel input scrolls an overflowing tooltip rather than the
+page beneath it. Explicitly activated glossary definitions may remain
+pointer-interactive. Boundary motion accumulates from the last point inside
+the active hover region; up to four CSS pixels is treated as hand/sensor jitter
+rather than an intent to switch targets or dismiss.
 
 The session preview hover card is intentionally slower and does not require
 pointer rest: its first reveal waits three times the configured delay (150 ms
@@ -144,19 +156,29 @@ titles whose producers still own them. No pointer departure, dismissal, or
 viewport change may reintroduce a browser-owned bubble while Themed mode owns
 tooltip presentation.
 
-A hint that exactly repeats its target's visible text is omitted only when the
-target is measurably visible in its own scrollport, every clipping ancestor,
-and the viewport. If any of those clips the content—or the target cannot be
-measured—the hint remains. When an outer target fits but an exact-text
-descendant is ellipsized, that descendant's visibility governs too; measuring
-only the row or button would incorrectly suppress the hint. Explanatory hints
-and extra metadata are not inferred to be redundant. Ran commands use their
-producer's hidden-content count first, then the same actual scroll-visibility
-check on hover. Thus a command without a `+N` badge still reveals its full text
-when partly scrolled out of view, while any fully scroll-visible command has
-neither a themed nor native command tooltip. Expansion alone does not suppress
-the hint when the command remains clipped by its own scrollport, an ancestor,
-or the viewport. The Ran-label hint separately owns elapsed time.
+An ordinary control hint must add information not already conveyed by a
+persistent visible label: hidden or clipped content, a shortcut, disabled
+reason, consequence, dynamic state, path/range, or explanation. A `title` that
+only repeats or lightly restates a visible button/link label is omitted at the
+producer. Visible label text supplies the accessible name. An icon-only control
+still needs an independent `aria-label`, `aria-labelledby`, or visible label;
+its same-text visual hint is not also associated as a duplicate accessible
+description.
+
+A hint that exactly repeats its target or one of its measurable text-owning
+descendants is omitted only when every exact-text owner is visible in its own
+scrollport, every clipping ancestor, and the viewport. The actionable target
+may also contain metadata; that does not make a fully visible exact-title
+descendant need a tooltip. If any exact owner is clipped or cannot be measured,
+the hint remains. If there is no exact owner, the layer does not infer
+redundancy from partial string similarity. Explanatory hints and extra metadata
+are not inferred to be redundant. Ran commands use their producer's hidden-
+content count first, then the same actual scroll-visibility check on hover.
+Thus a command without a `+N` badge still reveals its full text when partly
+scrolled out of view, while any fully scroll-visible command has neither a
+themed nor native command tooltip. Expansion alone does not suppress the hint
+when the command remains clipped by its own scrollport, an ancestor, or the
+viewport. The Ran-label hint separately owns elapsed time.
 
 Faded output/diff previews reveal a plain-text tail through shared preview
 machinery: an ellipsis plus the final configured number of lines. The same
@@ -174,15 +196,16 @@ Filename and adjacent `N lines` range links may therefore show the same hint.
 Instructions such as “Click to view” are omitted because link activation and
 browser link gestures are already conventional.
 
-Secondary-click on a visible plain text tooltip copies its full text and
-immediately increases the tooltip by one text-size step, without animation.
-This must not intercept a right-click already handled by the app, a nonempty
-text selection, or browser-operable link, form, editable, image, video, or
-audio targets. The enlarged tooltip follows the same hover-region and close
-grace as its ordinary form. The themed surface permits ordinary text selection:
-primary drag within it does not dismiss it, and a secondary-click on selected
-text retains the browser's normal selection menu instead of invoking tooltip
-copy/enlarge.
+Secondary-click inside a visible passive plain-text tooltip's measured bounds
+copies its full text and immediately increases the tooltip by one text-size
+step, without animation or changing primary hit-testing. A nonempty existing
+selection or an app-owned context menu retains browser/application behavior;
+right-click outside the visible tooltip bounds likewise remains owned by its
+page target. The enlarged tooltip follows the same hover-region and close grace
+as its ordinary form. Passive tooltip text is not pointer-selectable: full-text
+copy is the retrieval path. Wheel input inside a vertically overflowing tooltip
+scrolls its contained text and does not scroll or chain into the page beneath
+it; a non-overflowing tooltip does not consume wheel input.
 
 Explicit glossary-term activation begins in the same enlarged treatment because
 the activation expresses reading intent; passive pointer hover remains compact.
@@ -226,10 +249,10 @@ not the surface into a card.
   keystrokes that do not edit a composer. Composer edits dismiss every
   YA-rendered tooltip owner and suppress pending/new reveals for 100 ms after
   the latest edit; nothing reopens without a later pointer/focus event.
-- Exact visible-content hints are absent only when the target and any
-  exact-text descendant are fully scroll-visible, and remain when clipped by
-  self, descendant, ancestor, or viewport; no-`+N` Ran commands follow the
-  same measured rule.
+- Exact visible-content hints are absent only when every measurable exact-text
+  owner (target or descendant) is fully scroll-visible, and remain when any
+  owner is clipped by self, descendant, ancestor, or viewport; no-`+N` Ran
+  commands follow the same measured rule.
 - Every faded hidden-content preview exposes its actual tail from the fade and
   `+N` badge where present; an unfaded preview exposes its full content when
   any of its rendered surface is not scroll-visible.
@@ -240,16 +263,22 @@ not the surface into a card.
   handoff changes ownership without a blank or dual-tooltip frame.
 - Boundary jitter within four CSS pixels neither switches tooltip content nor
   starts departure dismissal.
-- Every visible tooltip is pointer-opaque and frontmost: hover and pointer
-  interactions cannot reach an obscured component underneath it.
+- A passive visible tooltip is pointer-transparent but geometrically remains
+  part of its active hover region. Native activation passes through only to its
+  own trigger; unrelated obscured controls are blocked without synthesized
+  events or partial press/focus state.
+- Persistently labelled controls have no hints that merely restate their
+  labels. Icon-only controls have independent accessible names, and a same-text
+  visual hint is not also exposed as a duplicate accessible description.
 - Native mode leaves ordinary browser titles intact.
 - Valid slider/number edits select themed mode; an empty number draft does not.
 - Session hover cards use the 3× first-open delay and immediate warm switching.
 - Touch activation of a session row or Recent Sessions link navigates without
   opening, warming, or leaving behind a session preview or text tooltip.
-- Secondary-click copy/enlarge respects context-menu and selection exclusions.
-- Themed tooltip text is pointer-selectable without weakening departure
-  dismissal.
+- Secondary-click inside passive tooltip bounds copies/enlarges the full text
+  while respecting existing-selection and app-context-menu exclusions.
+- Wheel input over an overflowing passive tooltip scrolls its content without
+  moving the underlying page; passive text remains unselectable.
 - The local and remote entry points install the same tooltip layer and
   pre-render appearance initialization.
 
