@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   GLOSSARY_ARTIFACT_VERSION,
@@ -6,6 +7,7 @@ import {
   flattenGlossaryInlineMarkdown,
   matchGlossaryText,
   parseFirstGlossaryTable,
+  parseGlossaryInline,
   splitGlossaryAlternatives,
   type GlossaryArtifact,
   type GlossaryLimits,
@@ -74,6 +76,14 @@ describe("glossary Markdown parsing", () => {
     ).toBe("Term with literal code and visible & *");
   });
 
+  it("excludes Markdown comments from visible term text", () => {
+    expect(
+      flattenGlossaryInlineMarkdown(
+        "**session scroll memory** <!-- unconfirmed: 2026-07-04 -->",
+      ),
+    ).toBe("session scroll memory");
+  });
+
   it("splits only top-level unescaped comma alternatives", () => {
     expect(
       splitGlossaryAlternatives(
@@ -86,6 +96,49 @@ describe("glossary Markdown parsing", () => {
       "`code, comma`",
       "[label, x](url)",
     ]);
+  });
+
+  it("keeps the root project glossary fully bold and compilable", () => {
+    const markdown = readFileSync(
+      new URL("../../../GLOSSARY.md", import.meta.url),
+      "utf8",
+    );
+    const parsed = parseFirstGlossaryTable(markdown);
+    expect(parsed).not.toBeNull();
+    if (!parsed) return;
+
+    for (const glossaryRow of parsed.rows) {
+      for (const alternative of splitGlossaryAlternatives(
+        glossaryRow.termMarkdown,
+      )) {
+        const visiblePieces = parseGlossaryInline(alternative).pieces.filter(
+          (piece) => piece.text.trim().length > 0,
+        );
+        expect(
+          visiblePieces.every((piece) => piece.required),
+          `Expected a fully bold term at GLOSSARY.md:${glossaryRow.sourceLine}`,
+        ).toBe(true);
+      }
+    }
+
+    const rows = parsed.rows.map((glossaryRow) => ({
+      definitionMarkdown: glossaryRow.definitionMarkdown,
+      glossaryDirectory: "",
+      glossaryOrder: 0,
+      rowOrder: glossaryRow.rowOrder,
+      termMarkdown: glossaryRow.termMarkdown,
+    }));
+    const result = compileGlossaryArtifact(rows, "root-fixture");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(forms(result.artifact)).toContain("client source runtime topology");
+    expect(
+      parsed.rows.find(
+        (glossaryRow) =>
+          flattenGlossaryInlineMarkdown(glossaryRow.termMarkdown) ===
+          "momentum",
+      )?.termMarkdown,
+    ).toBe("**momentum**");
   });
 });
 
@@ -103,6 +156,21 @@ describe("glossary phrase compilation", () => {
       "typed overlap f1",
     ]);
     expect(forms(artifact)).not.toContain("typed arbitrary overlap f1");
+  });
+
+  it("clones bold hyphenated text with spaces", () => {
+    expect(forms(compile([row("**client-source-runtime-topology**")]))).toEqual(
+      ["client source runtime topology", "client-source-runtime-topology"],
+    );
+  });
+
+  it("clones hyphens only inside a partially bold phrase", () => {
+    expect(forms(compile([row("per-language **published-oracle**")]))).toEqual([
+      "per-language published oracle",
+      "per-language published-oracle",
+      "published oracle",
+      "published-oracle",
+    ]);
   });
 
   it("keeps an unbolded phrase wholly required", () => {
@@ -259,6 +327,17 @@ describe("compiled glossary matching", () => {
     ]);
   });
 
+  it("matches both authored and spaced forms of a bold hyphenated term", () => {
+    const artifact = compile([row("**source-path**", "path")]);
+    const text = "source-path and source path";
+
+    expect(
+      matchGlossaryText(text, artifact).map((match) =>
+        text.slice(match.start, match.end),
+      ),
+    ).toEqual(["source-path", "source path"]);
+  });
+
   it("selects the longest visible match when candidates overlap", () => {
     const artifact = compile([
       row("**alpha**"),
@@ -278,7 +357,7 @@ describe("compiled glossary matching", () => {
     expect(text.slice(match?.start, match?.end)).toBe("CAFE\u0301");
   });
 
-  it("compiles a generous 999-row graph and scans a long miss under the cold budget", () => {
+  it("compiles 999 hyphen-alias rows and scans a long miss under the cold budget", () => {
     const rows = Array.from({ length: 999 }, (_, index) =>
       row(`**term-${index}**`, `definition ${index}`, { rowOrder: index }),
     );
@@ -291,7 +370,7 @@ describe("compiled glossary matching", () => {
     const elapsedMs = performance.now() - startedAt;
 
     expect(matches).toEqual([]);
-    expect(artifact.terminals).toHaveLength(999);
+    expect(artifact.terminals).toHaveLength(1_998);
     expect(elapsedMs).toBeLessThan(1_000);
   });
 });

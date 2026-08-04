@@ -118,6 +118,14 @@ export function parseGlossaryInline(markdown: string): {
       continue;
     }
 
+    if (markdown.startsWith("<!--", index)) {
+      const close = markdown.indexOf("-->", index + 4);
+      if (close >= 0) {
+        index = close + 3;
+        continue;
+      }
+    }
+
     if (char === "<") {
       const close = markdown.indexOf(">", index + 1);
       if (close >= 0) {

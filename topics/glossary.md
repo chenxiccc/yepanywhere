@@ -13,9 +13,13 @@ Topic: glossary
 - Topic-linked rows correspond to non-companion `topics/<name>.md` files.
   Their definitions should come from the topic doc's blockquote lede when the
   topic has one.
-- A topic-linked term starts with its topic basename as plain text. Add any
-  deliberately supported shorter or prose form after a comma; comma-separated
-  forms are independent glossary matches.
+- Every term surface is bold Markdown. A topic-linked term starts with its
+  topic basename, and each deliberately supported shorter or prose form follows
+  as a separately bold, comma-separated alternative. Comma-separated forms are
+  independent glossary matches.
+- A hyphen-minus inside bold term text automatically contributes a second
+  surface with every bold hyphen-minus replaced by a space. Hyphens outside
+  bold text remain literal.
 - Vernacular rows are curated. Add one only when a term's Yep Anywhere meaning
   is distinct from default usage.
 - The glossary is a lookup surface, not a contribution manual; regeneration
@@ -26,7 +30,7 @@ Topic: glossary
 Scan `topics/*.md` from repo root, excluding companion files such as
 `*.evidence.md`. For each topic doc with an H1 followed by a `> ` blockquote
 lede, use the space-joined lede as the glossary definition and link the row as
-`[<name>](topics/<name>.md)`.
+`[<name>](topics/<name>.md)`. Write the term as `**<name>**`.
 
 When a topic doc lacks a lede, either keep a concise curated row in
 `GLOSSARY.md` or normalize the topic doc by adding a body-preserving lede from

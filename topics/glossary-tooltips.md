@@ -107,6 +107,11 @@ tokens and is normalized when optional tokens are omitted.
 
 - If the phrase contains no bold span, its entire visible text is required.
 - If it contains bold spans, every bold span is required, in source order.
+- If any bold span contains ASCII hyphen-minus (`-`), the compiler also emits
+  one clone of every resulting phrase form with all hyphen-minuses inside bold
+  spans replaced by spaces. Hyphens in non-bold text are not replaced. This
+  applies when only part of the phrase is bold as well as when the complete
+  phrase is bold.
 - Each non-bold visible token is independently optional in its original
   position: the matcher may consume that complete literal token or omit it.
 - Omission joins the surviving neighboring pieces with the normalized
@@ -131,10 +136,12 @@ wildcards, edit-distance gaps, or unbounded variation.
 
 Each non-bold token independently contributes a present/absent branch. V1
 allows at most two optional non-bold tokens in each comma-separated phrase,
-so one phrase produces at most four literal surface forms before identical
-forms are deduplicated. The same cap applies independently to every comma
-alternative. This modest compile-time expansion is bounded; it is not paid
-again at every source character.
+so one phrase produces at most four literal surface forms from optional-token
+expansion. A phrase with an ASCII hyphen in bold text doubles those forms once
+by replacing all bold ASCII hyphens with spaces, for at most eight before
+identical forms are deduplicated. The same cap applies independently to every
+comma alternative. This modest compile-time expansion is bounded; it is not
+paid again at every source character.
 
 The canonical label for a match is the complete comma-separated alternative
 that produced it, stripped of Markdown emphasis but retaining its optional
@@ -154,10 +161,11 @@ whitespace normalize to one separator for matching while retaining source
 offsets for annotation. Punctuation is literal: punctuation and spacing inside
 a declared phrase are consumed by that phrase and do not break it.
 Hyphen-minus, Unicode hyphen, and non-breaking hyphen are word characters at
-phrase edges, so hyphenated and space-separated forms are distinct unless the
-term cell declares both as comma-separated alternatives. A Markdown list
-marker still precedes an eligible match because its following space is the
-boundary.
+phrase edges. Hyphenated and space-separated forms are therefore distinct
+unless the term cell declares both as comma-separated alternatives or derives
+the spaced form from an ASCII hyphen-minus inside bold term text. Unicode and
+non-breaking hyphens do not receive that derived form. A Markdown list marker
+still precedes an eligible match because its following space is the boundary.
 
 A candidate begins and ends at an ordinary text boundary—document edge or a
 Unicode whitespace/punctuation boundary other than a lexical hyphen—so a
@@ -241,8 +249,9 @@ Compilation proceeds conceptually as follows:
 
 1. Parse each comma-separated phrase into required bold spans and independently
    optional non-bold tokens.
-2. Expand the present/absent choices into finite literal surface forms. No form
-   contains a wildcard or consumes undeclared intervening text.
+2. Expand the present/absent choices into finite literal surface forms, then
+   clone forms containing bold ASCII hyphens with those hyphens replaced by
+   spaces. No form contains a wildcard or consumes undeclared intervening text.
 3. Deduplicate the forms and insert them into one trie, attaching ordered
    definition paragraphs and overlap-precedence metadata to terminal nodes.
 4. Compile failure links so one forward scan recognizes a form beginning at
@@ -423,7 +432,8 @@ walks, or click handlers.
 Grammar and matcher tests cover:
 
 - no-bold phrases, one and several bold spans, edge and intervening optional
-  tokens, the two-optional-token cap, comma alternatives, and escaped commas;
+  tokens, bold-hyphen space clones including partially bold phrases, the
+  two-optional-token cap, comma alternatives, and escaped commas;
 - independently present/absent optional tokens, rejection of a third optional
   token, and rejection of arbitrary gaps;
 - case, Unicode, whitespace, punctuation, phrase-edge boundaries, and matches

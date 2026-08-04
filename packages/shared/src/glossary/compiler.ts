@@ -48,8 +48,12 @@ export function normalizeGlossaryText(text: string): string {
   return text.normalize("NFKC").toLowerCase().replace(/\s+/gu, " ").trim();
 }
 
-function phraseTokens(markdown: string): {
+function phraseTokens(
+  markdown: string,
+  replaceBoldHyphens = false,
+): {
   hasBold: boolean;
+  hasBoldHyphen: boolean;
   requiredBoldCodePoints: number;
   tokens: PhraseToken[];
 } {
@@ -67,21 +71,36 @@ function phraseTokens(markdown: string): {
   };
 
   for (const piece of inline.pieces) {
-    for (const char of piece.text) {
+    if (piece.required) {
+      for (const char of piece.text) {
+        if (!/\s/u.test(char)) requiredBoldCodePoints += 1;
+      }
+    }
+    const matchText =
+      replaceBoldHyphens && piece.required
+        ? piece.text.replaceAll("-", " ")
+        : piece.text;
+    for (const char of matchText) {
       if (/\s/u.test(char)) {
         flush();
         continue;
       }
       buffer += char;
       bufferRequired ||= piece.required;
-      if (piece.required) requiredBoldCodePoints += 1;
     }
   }
   flush();
   if (!inline.hasBold) {
     for (const token of tokens) token.required = true;
   }
-  return { hasBold: inline.hasBold, requiredBoldCodePoints, tokens };
+  return {
+    hasBold: inline.hasBold,
+    hasBoldHyphen: inline.pieces.some(
+      (piece) => piece.required && piece.text.includes("-"),
+    ),
+    requiredBoldCodePoints,
+    tokens,
+  };
 }
 
 function expandPhrase(
@@ -99,38 +118,43 @@ function expandPhrase(
     };
   }
 
-  const parsed = phraseTokens(markdown);
-  const optionalIndexes = parsed.tokens
-    .map((token, index) => (token.required ? -1 : index))
-    .filter((index) => index >= 0);
-  if (optionalIndexes.length > limits.maxOptionalTokens) {
-    return {
-      code: "too-many-optional-tokens",
-      message: `Glossary phrase exceeds ${limits.maxOptionalTokens} optional tokens`,
-    };
-  }
-
   const forms = new Map<string, ExpandedPhrase>();
-  const variants = 1 << optionalIndexes.length;
-  for (let mask = 0; mask < variants; mask += 1) {
-    let optionalPosition = 0;
-    const selected = parsed.tokens.filter((token) => {
-      if (token.required) return true;
-      const include = (mask & (1 << optionalPosition)) !== 0;
-      optionalPosition += 1;
-      return include;
-    });
-    const form = normalizeGlossaryText(
-      selected.map((token) => token.text).join(" "),
-    );
-    if (!form) continue;
-    forms.set(form, {
-      canonicalLabel,
-      form,
-      requiredBoldCodePoints: parsed.hasBold
-        ? parsed.requiredBoldCodePoints
-        : 0,
-    });
+  const parsed = phraseTokens(markdown);
+  const parsedVariants = parsed.hasBoldHyphen
+    ? [parsed, phraseTokens(markdown, true)]
+    : [parsed];
+  for (const parsedVariant of parsedVariants) {
+    const optionalIndexes = parsedVariant.tokens
+      .map((token, index) => (token.required ? -1 : index))
+      .filter((index) => index >= 0);
+    if (optionalIndexes.length > limits.maxOptionalTokens) {
+      return {
+        code: "too-many-optional-tokens",
+        message: `Glossary phrase exceeds ${limits.maxOptionalTokens} optional tokens`,
+      };
+    }
+
+    const variants = 1 << optionalIndexes.length;
+    for (let mask = 0; mask < variants; mask += 1) {
+      let optionalPosition = 0;
+      const selected = parsedVariant.tokens.filter((token) => {
+        if (token.required) return true;
+        const include = (mask & (1 << optionalPosition)) !== 0;
+        optionalPosition += 1;
+        return include;
+      });
+      const form = normalizeGlossaryText(
+        selected.map((token) => token.text).join(" "),
+      );
+      if (!form) continue;
+      forms.set(form, {
+        canonicalLabel,
+        form,
+        requiredBoldCodePoints: parsedVariant.hasBold
+          ? parsedVariant.requiredBoldCodePoints
+          : 0,
+      });
+    }
   }
   return [...forms.values()];
 }
