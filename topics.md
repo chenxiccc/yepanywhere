@@ -147,6 +147,9 @@
   discontinuity for the default compact tail.
 - memory-growth - Browser/client memory-growth investigations and bounded
   transcript load contracts for large provider sessions.
+- server-performance-observability - Draft local operator metrics, bounded
+  diagnostic events, and V8 memory-pressure cache eviction; implementation is
+  deferred pending a measured investigation and compatibility approval.
 - transcript-virtualization - Viewport-bounded transcript rendering, native
   content visibility, and first-traversal scroll stability.
 - codex-code-mode-render-convergence - Shared rollout-recoverable semantic
