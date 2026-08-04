@@ -104,7 +104,10 @@ rather than changing the existing host switcher:
 - the sidebar **Switch Host** action disconnects the current source and performs
   a cache-busted document load of the host picker, so an installed web app both
   changes hosts and refreshes its client bundle at that already-destructive
-  boundary; the host picker and `/-/monitor` otherwise retain their existing
+  boundary. An updated service worker claims already-open older clients without
+  navigating them, and treats the next host-picker navigation as a network
+  reload even when that old client's Switch Host action predates the cache-bust
+  parameter. The host picker and `/-/monitor` otherwise retain their existing
   behavior; and
 - browser-saved hosts do not appear on the new page because they are
   browser-origin state rather than server-owned delegation state.

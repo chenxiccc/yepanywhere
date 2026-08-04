@@ -18,7 +18,7 @@
 // Version constant for controlled updates
 // Increment this when making intentional SW changes
 // Browsers reinstall SW only when file content changes
-const SW_VERSION = "1.0.7";
+const SW_VERSION = "1.0.8";
 void SW_VERSION;
 const FRONTEND_RELOAD_QUERY_PARAM = "__ya_reload";
 
@@ -160,15 +160,25 @@ async function clearSwLogs() {
  * Since HTML contains Vite's content-hashed asset URLs, fresh HTML = fresh everything.
  *
  * - cache: "no-cache" forces revalidation (sends If-None-Match for ETag-based 304s)
+ * - Host picker loads use "reload" so an older Switch Host action that lacks
+ *   YA's cache-busting query still crosses the client-version boundary.
  * - Fallback: if network is down, allows the browser's HTTP cache to serve what it has
  * - Only intercepts navigation (HTML) — hashed assets are immutable and don't need this
  */
 self.addEventListener("fetch", (event) => {
   if (event.request.mode === "navigate") {
     const url = new URL(event.request.url);
-    const cacheMode = url.searchParams.has(FRONTEND_RELOAD_QUERY_PARAM)
-      ? "reload"
-      : "no-cache";
+    const scopeUrl = new URL(self.registration.scope);
+    const scopePath = scopeUrl.pathname.replace(/\/$/, "");
+    const hostPickerPath = `${scopePath}/login`;
+    const isHostPicker =
+      url.origin === scopeUrl.origin &&
+      (url.pathname === hostPickerPath ||
+        url.pathname === `${hostPickerPath}/`);
+    const cacheMode =
+      isHostPicker || url.searchParams.has(FRONTEND_RELOAD_QUERY_PARAM)
+        ? "reload"
+        : "no-cache";
     event.respondWith(
       fetch(event.request, { cache: cacheMode }).catch(() =>
         fetch(event.request),
@@ -180,43 +190,17 @@ self.addEventListener("fetch", (event) => {
 /**
  * Service Worker Lifecycle: Install & Activate
  *
- * We use skipWaiting() to activate immediately, but are careful with clients.claim().
- *
- * Problem: Calling clients.claim() while pages are loading can disrupt in-flight
- * network requests (SSE connections, fetches), causing the page to appear to "reload".
- * This is especially noticeable in dev mode where the SW updates frequently, or on
- * mobile browsers with aggressive SW update checking.
- *
- * Solution: Only claim clients if there are no windows currently open. This means:
- * - First visit: SW installs but doesn't claim until next navigation
- * - SW update with tabs open: New SW waits, old SW continues serving
- * - SW update with no tabs: New SW claims immediately
- *
- * Potential drawbacks:
- * - Push notifications may be handled by old SW until user navigates/refreshes
- * - Settings synced via postMessage won't reach new SW until it claims
- * - In production this is rarely an issue; mainly affects dev mode with frequent updates
- *
- * Alternative: Remove skipWaiting() entirely for fully lazy updates, but this delays
- * all SW updates until all tabs close (could be days).
+ * Activate immediately and claim open windows without navigating them. Claiming
+ * changes which worker owns the next navigation; it does not reload the current
+ * document. This is the upgrade bridge for older clients whose Switch Host action
+ * predates YA's cache-busting reload URL.
  */
 self.addEventListener("install", (_event) => {
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    self.clients.matchAll({ type: "window" }).then((windowClients) => {
-      // Only claim if no windows are open - avoids disrupting active pages
-      if (windowClients.length === 0) {
-        return self.clients.claim();
-      }
-      // Otherwise, let pages naturally pick up new SW on next navigation
-      console.log(
-        `[SW] Skipping claim - ${windowClients.length} window(s) open`,
-      );
-    }),
-  );
+  event.waitUntil(self.clients.claim());
 });
 
 /**
