@@ -402,19 +402,22 @@ interface ReloadSafeCodexRuntimeEntry {
   socketPath: string;
   state: "starting" | "attached" | "detached" | "closing";
   startedAt: string;
+  viewerAttached: boolean;
+  unviewedSince?: string;
   detachedAt?: string;
   attachDeadlineAt?: string;
   idleDeadlineAt?: string;
 }
 ```
 
-The wrapper-lifetime v1 registry keeps the smaller subset required for direct
-reattach: runtime and YA session ids, project path, socket path, PID/process
-group, attachment generation/state, launch time, reattach settings, cleanup
-paths, and its bounded attach timer. The private runtime directory and token
-fence entries to one wrapper instance. A host protocol bump fences Hono code
-that can no longer interpret the registry. The broader separations remain
-load-bearing for any future persistence beyond one wrapper lifetime:
+The implemented wrapper-lifetime registry keeps the smaller subset required
+for direct reattach: runtime and YA session ids, project path, socket path,
+PID/process group, attachment generation/state, launch time, viewer state and
+no-viewer anchor, reattach settings, cleanup paths, and its bounded attach
+timer. The private runtime directory and token fence entries to one wrapper
+instance. A host protocol bump fences Hono code that can no longer interpret
+the registry. The broader separations remain load-bearing for any future
+persistence beyond one wrapper lifetime:
 
 - YA session identity versus Codex thread identity;
 - wrapper, Hono server, and provider process generations;
@@ -427,6 +430,12 @@ YA user. Socket creation and stale-socket cleanup must resist symlink/path
 replacement. Control secrets travel through an inherited private pipe or an
 owner-only file, never process arguments or public diagnostics. Nothing binds a
 LAN interface.
+
+Viewer-state retention is an additive lifecycle capability under host protocol
+v1. A replacement Hono can still attach to an already-running v1 host that
+lacks it, using generation-local no-viewer timing until the wrapper is
+terminally restarted and loads the capable host. New hosts advertise the
+capability and older Hono generations ignore the extra runtime fields.
 
 ### Attach and single-controller fencing
 
@@ -484,9 +493,11 @@ continuity, and teardown.
 
 The survivor should not become an immortal provider daemon.
 
-The combined lifecycle owner keeps three independent deadlines:
+The combined lifecycle owner keeps four independent deadline classes:
 
 - the ordinary verified-idle reap deadline, using YA's configured idle policy;
+- the attached-process no-viewer deadlines, selected from verified liveness and
+  bounded by an absolute ceiling;
 - the replacement-server attach deadline after detach, controller loss, or an
   unconfirmed claim; and
 - the terminal drain deadline after wrapper shutdown or owner loss.
@@ -495,12 +506,40 @@ No deadline is renewed merely because the app-server PID or socket remains
 alive. Provider events may update liveness evidence, but only a successful
 reattach or a real state transition changes the applicable lifecycle state.
 
-When an attached turn reaches verified idle, Hono's normal YA idle retention
-timer continues to apply. Once Hono detaches or disappears, the host's bounded
-attach deadline becomes authoritative, so server absence cannot leave the
-runtime alive indefinitely. Terminal expiry terminates the app-server, verifies
-its owned process group is gone, removes its socket and registry entry, and
-leaves provider persistence as the later resume source.
+An attached `Process` treats each mounted session stream as a viewer lease,
+independently of whether that stream requests live provider deltas. A mounted
+background browser tab still counts as viewing; browser document visibility is
+not a termination signal. The last lease release starts the no-viewer period,
+and the next real session subscription cancels every no-viewer deadline. If
+that viewer later leaves, a new no-viewer period begins.
+
+No-viewer teardown is state-aware and finite:
+
+- verified idle with no feature, prompt-cache, or provider retention: 15
+  minutes;
+- waiting for user input or approval: one hour; and
+- active, unverified, or explicitly retained work: a 24-hour absolute ceiling.
+
+State transitions may select the shorter applicable deadline, but never move
+the absolute ceiling past 24 hours from the last viewer release. Provider
+traffic, a live PID, retained background work, and an open host socket do not
+reset that ceiling. Expiry uses the same provider abort path as explicit
+session teardown; a hosted proxy therefore enters the host's bounded
+cooperative/TERM/KILL cleanup rather than leaving the worker alive.
+
+Both reload-safe hosts retain the first/last viewer transition with the runtime
+entry. Reattach returns the existing no-viewer anchor to the replacement
+`Process`; claiming a runtime or losing its controller marks a previously
+attached viewer as gone but preserves an already-running no-viewer period.
+Repeated Hono reloads therefore cannot renew an unviewed runtime's absolute
+ceiling.
+
+Once Hono detaches or disappears for reload, its `Process` no longer owns the
+no-viewer timer. The host's 30-second replacement attach deadline becomes
+authoritative, so server absence cannot leave the runtime alive indefinitely.
+Terminal expiry terminates the app-server, verifies its owned process group is
+gone, removes its socket and registry entry, and leaves provider persistence as
+the later resume source.
 
 After intentional reload detach, the runtime may preserve an active turn or
 pending provider request only through the bounded attach grace. If no compatible

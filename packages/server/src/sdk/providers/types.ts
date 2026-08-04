@@ -169,6 +169,10 @@ export interface AgentSession {
   getProviderActivity?: () => ProviderActivitySnapshot;
   /** Provider-owned work that should retain an otherwise idle process. */
   getProviderRetention?: () => ProviderRetentionSnapshot;
+  /** No-viewer period retained by a reload-safe runtime owner. */
+  getRuntimeUnviewedSince?: () => Date | undefined;
+  /** Persist the first/last viewer transition with a reload-safe runtime owner. */
+  setRuntimeViewerPresence?: (hasViewers: boolean) => void | Promise<void>;
   /**
    * Refresh provider prompt-cache warmth without adding a visible or
    * future-context-visible message to this session.

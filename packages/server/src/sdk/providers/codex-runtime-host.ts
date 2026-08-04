@@ -38,6 +38,8 @@ export interface ReloadSafeCodexRuntimeInfo {
   state: "starting" | "attached" | "detached" | "closing";
   attachedServerGeneration?: string;
   startedAt: string;
+  unviewedSince?: string;
+  lifecycleCapabilities?: { viewerPresence?: boolean };
   detachedAt?: string;
   reattach: ReloadSafeCodexReattachSpec;
 }
@@ -336,6 +338,16 @@ export async function releaseReloadSafeCodexRuntime(
   } finally {
     forgetRuntime(runtimeId);
   }
+}
+
+export async function setReloadSafeCodexRuntimeViewerPresence(
+  runtimeId: string,
+  hasViewers: boolean,
+): Promise<ReloadSafeCodexRuntimeInfo> {
+  return await requestHost<ReloadSafeCodexRuntimeInfo>("setViewerPresence", {
+    runtimeId,
+    hasViewers,
+  });
 }
 
 export async function terminateReloadSafeCodexRuntime(

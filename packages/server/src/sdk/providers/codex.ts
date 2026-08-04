@@ -96,6 +96,7 @@ import {
   isCodexRuntimeHostAvailable,
   launchReloadSafeCodexRuntime,
   releaseReloadSafeCodexRuntime,
+  setReloadSafeCodexRuntimeViewerPresence,
   shouldReleaseCodexRuntimeForReload,
   terminateReloadSafeCodexRuntime,
   type ReloadSafeCodexRuntimeInfo,
@@ -654,6 +655,21 @@ class CodexAppServerClient {
       lastRawProviderEventAt: this.lastRawProviderEventAt,
       lastRawProviderEventSource: this.lastRawProviderEventSource,
     };
+  }
+
+  getRuntimeUnviewedSince(): Date | undefined {
+    return this.externalRuntime?.unviewedSince
+      ? new Date(this.externalRuntime.unviewedSince)
+      : undefined;
+  }
+
+  async setRuntimeViewerPresence(hasViewers: boolean): Promise<void> {
+    const runtime = this.externalRuntime;
+    if (!runtime?.lifecycleCapabilities?.viewerPresence) return;
+    this.externalRuntime = await setReloadSafeCodexRuntimeViewerPresence(
+      runtime.runtimeId,
+      hasViewers,
+    );
   }
 
   async connect(): Promise<void> {
@@ -1476,6 +1492,20 @@ export class CodexProvider implements AgentProvider {
     }
 
     let activeClient: CodexAppServerClient | null = null;
+    let runtimeHasViewers = false;
+    let runtimeViewerPresenceKnown = false;
+    let runtimeViewerPresenceTail = Promise.resolve();
+    const syncRuntimeViewerPresence = (): Promise<void> => {
+      const client = activeClient;
+      if (!client || !runtimeViewerPresenceKnown) {
+        return runtimeViewerPresenceTail;
+      }
+      const hasViewers = runtimeHasViewers;
+      runtimeViewerPresenceTail = runtimeViewerPresenceTail
+        .catch(() => {})
+        .then(() => client.setRuntimeViewerPresence(hasViewers));
+      return runtimeViewerPresenceTail;
+    };
     const skillInventory: CodexSessionSkillInventory = {
       skills: [],
       stale: true,
@@ -1487,6 +1517,15 @@ export class CodexProvider implements AgentProvider {
       runtimeState,
       (client) => {
         activeClient = client;
+        void syncRuntimeViewerPresence().catch((error) => {
+          log.warn(
+            {
+              sessionId: runtimeState.threadId || undefined,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            "Failed to initialize Codex runtime viewer presence",
+          );
+        });
       },
       skillInventory,
     );
@@ -1524,6 +1563,12 @@ export class CodexProvider implements AgentProvider {
           lastRawProviderEventAt: null,
           lastRawProviderEventSource: null,
         },
+      getRuntimeUnviewedSince: () => activeClient?.getRuntimeUnviewedSince(),
+      setRuntimeViewerPresence: (hasViewers) => {
+        runtimeViewerPresenceKnown = true;
+        runtimeHasViewers = hasViewers;
+        return syncRuntimeViewerPresence();
+      },
       get pid() {
         return activeClient?.pid;
       },

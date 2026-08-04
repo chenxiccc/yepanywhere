@@ -315,6 +315,7 @@ export type ProcessEvent =
     }
   | { type: "error"; error: Error }
   | { type: "idle-reap" }
+  | { type: "lifecycle-reap"; reason: string }
   | { type: "complete" }
   | { type: "terminated"; reason: string; error?: Error }
   | {

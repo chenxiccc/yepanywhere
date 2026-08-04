@@ -7,6 +7,13 @@ Topic: backward-compat
 
 ## Decisions
 
+2026-08-04 reload-safe runtime viewer presence — retain host protocol v1 and
+advertise viewer-state retention as an optional additive lifecycle capability.
+A replacement Hono may attach to a host already running older v1 code and use
+generation-local no-viewer timing; after a terminal wrapper restart, capable
+hosts preserve the absolute no-viewer anchor across Hono reloads. Older Hono
+generations ignore the added runtime fields and never issue the new operation.
+
 2026-08-03 project-directory storage — a server that first implements
 `project-directory-storage-policy` defaults absent configuration to app-data
 storage, but does not migrate, rewrite, exclude, or delete legacy

@@ -125,6 +125,8 @@ function publicRuntimeEntry(entry) {
     state: entry.state,
     attachedServerGeneration: entry.attachedServerGeneration,
     startedAt: entry.startedAt,
+    unviewedSince: entry.unviewedSince,
+    lifecycleCapabilities: { viewerPresence: true },
     detachedAt: entry.detachedAt,
     reattach: entry.reattach,
     worker: entry.workerMetadata,
@@ -283,6 +285,8 @@ export class ProviderRuntimeHost {
         return this.claim(request);
       case "confirmAttach":
         return this.confirmAttach(request);
+      case "setViewerPresence":
+        return this.setViewerPresence(request);
       case "release":
         return this.release(request);
       case "retainProcessGroup":
@@ -378,6 +382,7 @@ export class ProviderRuntimeHost {
       throw new Error("Provider worker launch returned no PID or input pipe");
     }
 
+    const startedAt = new Date().toISOString();
     const entry = {
       runtimeId,
       sessionId,
@@ -392,7 +397,9 @@ export class ProviderRuntimeHost {
       state: "starting",
       attachedServerGeneration: generation,
       controllerAttached: false,
-      startedAt: new Date().toISOString(),
+      startedAt,
+      unviewedSince: startedAt,
+      viewerAttached: false,
       detachedAt: undefined,
       reattach:
         request.reattach && typeof request.reattach === "object"
@@ -620,6 +627,7 @@ export class ProviderRuntimeHost {
         `Provider runtime ${entry.runtimeId} is controlled by ${currentGeneration}`,
       );
     }
+    this.markViewerDetached(entry);
     entry.attachedServerGeneration = generation;
     entry.controllerAttached = false;
     entry.state = "starting";
@@ -650,12 +658,46 @@ export class ProviderRuntimeHost {
     return publicRuntimeEntry(entry);
   }
 
+  setViewerPresence(request) {
+    const runtimeId = this.requireString(request.runtimeId, "runtimeId");
+    const generation = this.requireString(request.generation, "generation");
+    if (typeof request.hasViewers !== "boolean") {
+      throw new Error("Invalid hasViewers");
+    }
+    const entry = this.runtimes.get(runtimeId);
+    if (
+      !entry ||
+      !this.isRuntimeClaimable(entry) ||
+      entry.attachedServerGeneration !== generation
+    ) {
+      throw new Error(
+        `Provider runtime ${runtimeId} is not controlled by ${generation}`,
+      );
+    }
+    if (request.hasViewers) {
+      entry.viewerAttached = true;
+      entry.unviewedSince = undefined;
+    } else {
+      entry.viewerAttached = false;
+      entry.unviewedSince = new Date().toISOString();
+    }
+    return publicRuntimeEntry(entry);
+  }
+
+  markViewerDetached(entry) {
+    if (entry.viewerAttached || !entry.unviewedSince) {
+      entry.unviewedSince = new Date().toISOString();
+    }
+    entry.viewerAttached = false;
+  }
+
   release(request) {
     const runtimeId = this.requireString(request.runtimeId, "runtimeId");
     const generation = this.requireString(request.generation, "generation");
     const entry = this.runtimes.get(runtimeId);
     if (!entry || entry.attachedServerGeneration !== generation) return {};
     if (entry.state === "closing") return {};
+    this.markViewerDetached(entry);
     entry.attachedServerGeneration = undefined;
     entry.controllerAttached = false;
     entry.state = "detached";
@@ -690,6 +732,7 @@ export class ProviderRuntimeHost {
   detachGeneration(generation) {
     for (const entry of this.runtimes.values()) {
       if (entry.attachedServerGeneration !== generation) continue;
+      this.markViewerDetached(entry);
       entry.attachedServerGeneration = undefined;
       entry.controllerAttached = false;
       entry.state = "detached";

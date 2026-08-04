@@ -94,6 +94,18 @@ describe("CodexRuntimeHost", () => {
       sessionId: "thread-1",
     });
     expect(processGroupAlive(bound.processGroupId)).toBe(true);
+    const viewed = host.setViewerPresence({
+      runtimeId: launched.runtimeId,
+      generation: "one",
+      hasViewers: true,
+    });
+    expect(viewed.unviewedSince).toBeUndefined();
+    const unviewed = host.setViewerPresence({
+      runtimeId: launched.runtimeId,
+      generation: "one",
+      hasViewers: false,
+    });
+    expect(unviewed.unviewedSince).toBeDefined();
 
     host.detachGeneration("one");
     host.registeredServers.delete("one");
@@ -103,6 +115,7 @@ describe("CodexRuntimeHost", () => {
       sessionId: "thread-1",
     });
     expect(reclaimed?.runtimeId).toBe(launched.runtimeId);
+    expect(reclaimed?.unviewedSince).toBe(unviewed.unviewedSince);
 
     await new Promise((resolve) => setTimeout(resolve, 220));
     expect(processGroupAlive(bound.processGroupId)).toBe(true);

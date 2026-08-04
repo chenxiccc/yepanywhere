@@ -88,6 +88,8 @@ export interface HostedProviderRuntimeInfo {
   state: "starting" | "attached" | "detached" | "closing";
   attachedServerGeneration?: string;
   startedAt: string;
+  unviewedSince?: string;
+  lifecycleCapabilities?: { viewerPresence?: boolean };
   detachedAt?: string;
   reattach: HostedProviderReattachSpec;
   worker: WorkerMetadata;
@@ -819,6 +821,23 @@ class HostedAgentSession {
     }
   }
 
+  private getRuntimeUnviewedSince(): Date | undefined {
+    return this.runtime.unviewedSince
+      ? new Date(this.runtime.unviewedSince)
+      : undefined;
+  }
+
+  private async setRuntimeViewerPresence(hasViewers: boolean): Promise<void> {
+    const runtime = await requestHost<HostedProviderRuntimeInfo>(
+      "setViewerPresence",
+      {
+        runtimeId: this.runtime.runtimeId,
+        hasViewers,
+      },
+    );
+    this.runtime.unviewedSince = runtime.unviewedSince;
+  }
+
   private toAgentSession(): AgentSession {
     const iterator: AsyncIterableIterator<SDKMessage> = {
       [Symbol.asyncIterator]: () => iterator,
@@ -862,6 +881,13 @@ class HostedAgentSession {
         : {}),
       ...(capabilities.getProviderRetention
         ? { getProviderRetention: () => this.providerRetention }
+        : {}),
+      ...(this.runtime.lifecycleCapabilities?.viewerPresence
+        ? {
+            getRuntimeUnviewedSince: () => this.getRuntimeUnviewedSince(),
+            setRuntimeViewerPresence: (hasViewers: boolean) =>
+              this.setRuntimeViewerPresence(hasViewers),
+          }
         : {}),
       ...(capabilities.refreshPromptCache
         ? { refreshPromptCache: (arg) => this.rpc("refreshPromptCache", [arg]) }

@@ -227,6 +227,10 @@ export interface StartSessionResult {
   getProviderActivity?: () => ProviderActivitySnapshot;
   /** Provider-owned work that should retain an otherwise idle process. */
   getProviderRetention?: () => ProviderRetentionSnapshot;
+  /** No-viewer period retained by a reload-safe runtime owner. */
+  getRuntimeUnviewedSince?: () => Date | undefined;
+  /** Persist the first/last viewer transition with a reload-safe runtime owner. */
+  setRuntimeViewerPresence?: (hasViewers: boolean) => void | Promise<void>;
   /**
    * Change max thinking tokens without restarting the session.
    * Pass null to disable thinking mode.

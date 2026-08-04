@@ -93,6 +93,7 @@ export function createSessionSubscription(
   let completed = false;
   let currentStreamingMessageId: string | null = null;
   const wantsLiveDeltas = options?.wantsLiveDeltas !== false;
+  const unregisterViewer = process.registerViewer();
   const unregisterLiveDeltaSubscriber = wantsLiveDeltas
     ? process.registerLiveDeltaSubscriber()
     : null;
@@ -336,6 +337,7 @@ export function createSessionSubscription(
       clearInterval(heartbeatInterval);
       unsubscribe();
       unregisterLiveDeltaSubscriber?.();
+      unregisterViewer();
       if (currentStreamingMessageId) {
         process.clearStreamingText();
         currentStreamingMessageId = null;

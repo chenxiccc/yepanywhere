@@ -498,6 +498,12 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
     );
     const firstEvent = await first.iterator.next();
     expect(firstEvent.value?.session_id).toBe("fake-session-1");
+    expect(first.getRuntimeUnviewedSince?.()).toBeInstanceOf(Date);
+    await first.setRuntimeViewerPresence?.(true);
+    expect(first.getRuntimeUnviewedSince?.()).toBeUndefined();
+    await first.setRuntimeViewerPresence?.(false);
+    const unviewedSince = first.getRuntimeUnviewedSince?.()?.toISOString();
+    expect(unviewedSince).toBeDefined();
     const waitingForMore = first.iterator.next();
     await first.publishAgentctlSessionId?.("canonical-session");
     await first.detachForServerReload?.();
@@ -516,6 +522,9 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
     );
     const secondEvent = await second.iterator.next();
     expect(secondEvent.value?.session_id).toBe("fake-session-2");
+    expect(second.getRuntimeUnviewedSince?.()?.toISOString()).toBe(
+      unviewedSince,
+    );
     expect(host.runtimes.size).toBe(1);
 
     await second.abort();

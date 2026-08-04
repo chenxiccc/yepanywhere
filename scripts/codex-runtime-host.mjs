@@ -144,6 +144,8 @@ function publicRuntimeEntry(entry) {
     state: entry.state,
     attachedServerGeneration: entry.attachedServerGeneration,
     startedAt: entry.startedAt,
+    unviewedSince: entry.unviewedSince,
+    lifecycleCapabilities: { viewerPresence: true },
     detachedAt: entry.detachedAt,
     reattach: entry.reattach,
   };
@@ -293,6 +295,8 @@ export class CodexRuntimeHost {
           .map(publicRuntimeEntry);
       case "claim":
         return this.claim(request);
+      case "setViewerPresence":
+        return this.setViewerPresence(request);
       case "release":
         return this.release(request);
       case "terminate":
@@ -355,6 +359,7 @@ export class CodexRuntimeHost {
       throw new Error("Codex app-server launch returned no PID");
     }
 
+    const startedAt = new Date().toISOString();
     const entry = {
       runtimeId,
       sessionId: undefined,
@@ -365,7 +370,9 @@ export class CodexRuntimeHost {
       child,
       state: "starting",
       attachedServerGeneration: generation,
-      startedAt: new Date().toISOString(),
+      startedAt,
+      unviewedSince: startedAt,
+      viewerAttached: false,
       detachedAt: undefined,
       reattach:
         request.reattach && typeof request.reattach === "object"
@@ -452,11 +459,45 @@ export class CodexRuntimeHost {
         `Codex runtime ${entry.runtimeId} is controlled by server generation ${currentGeneration}`,
       );
     }
+    this.markViewerDetached(entry);
     entry.attachedServerGeneration = generation;
     entry.state = "attached";
     entry.detachedAt = undefined;
     this.clearAttachDeadline(entry);
     return publicRuntimeEntry(entry);
+  }
+
+  setViewerPresence(request) {
+    const runtimeId = this.requireString(request.runtimeId, "runtimeId");
+    const generation = this.requireString(request.generation, "generation");
+    if (typeof request.hasViewers !== "boolean") {
+      throw new Error("Invalid hasViewers");
+    }
+    const entry = this.runtimes.get(runtimeId);
+    if (
+      !entry ||
+      !this.isRuntimeAlive(entry) ||
+      entry.attachedServerGeneration !== generation
+    ) {
+      throw new Error(
+        `Codex runtime ${runtimeId} is not controlled by ${generation}`,
+      );
+    }
+    if (request.hasViewers) {
+      entry.viewerAttached = true;
+      entry.unviewedSince = undefined;
+    } else {
+      entry.viewerAttached = false;
+      entry.unviewedSince = new Date().toISOString();
+    }
+    return publicRuntimeEntry(entry);
+  }
+
+  markViewerDetached(entry) {
+    if (entry.viewerAttached || !entry.unviewedSince) {
+      entry.unviewedSince = new Date().toISOString();
+    }
+    entry.viewerAttached = false;
   }
 
   release(request) {
@@ -470,6 +511,7 @@ export class CodexRuntimeHost {
     ) {
       return {};
     }
+    this.markViewerDetached(entry);
     entry.attachedServerGeneration = undefined;
     entry.state = "detached";
     entry.detachedAt = new Date().toISOString();
@@ -480,6 +522,7 @@ export class CodexRuntimeHost {
   detachGeneration(generation) {
     for (const entry of this.runtimes.values()) {
       if (entry.attachedServerGeneration !== generation) continue;
+      this.markViewerDetached(entry);
       entry.attachedServerGeneration = undefined;
       entry.state = "detached";
       entry.detachedAt = new Date().toISOString();

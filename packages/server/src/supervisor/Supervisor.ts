@@ -1208,6 +1208,8 @@ export class Supervisor {
       probeLivenessFn: probeLiveness,
       getProviderActivityFn: getProviderActivity,
       getProviderRetentionFn: getProviderRetention,
+      getRuntimeUnviewedSinceFn: result.getRuntimeUnviewedSince,
+      setRuntimeViewerPresenceFn: result.setRuntimeViewerPresence,
       pid: () => {
         const p = result.pid;
         return typeof p === "function" ? p() : p;
@@ -1764,6 +1766,8 @@ export class Supervisor {
       probeLivenessFn: probeLiveness,
       getProviderActivityFn: getProviderActivity,
       getProviderRetentionFn: getProviderRetention,
+      getRuntimeUnviewedSinceFn: result.getRuntimeUnviewedSince,
+      setRuntimeViewerPresenceFn: result.setRuntimeViewerPresence,
       pid: () => {
         const p = result.pid;
         return typeof p === "function" ? p() : p;
@@ -1955,6 +1959,8 @@ export class Supervisor {
       probeLivenessFn: probeLiveness,
       getProviderActivityFn: getProviderActivity,
       getProviderRetentionFn: getProviderRetention,
+      getRuntimeUnviewedSinceFn: result.getRuntimeUnviewedSince,
+      setRuntimeViewerPresenceFn: result.setRuntimeViewerPresence,
       refreshPromptCacheFn: result.refreshPromptCache,
       pid: () => {
         const p = result.pid;
@@ -2144,6 +2150,8 @@ export class Supervisor {
       probeLivenessFn: probeLiveness,
       getProviderActivityFn: getProviderActivity,
       getProviderRetentionFn: getProviderRetention,
+      getRuntimeUnviewedSinceFn: result.getRuntimeUnviewedSince,
+      setRuntimeViewerPresenceFn: result.setRuntimeViewerPresence,
       refreshPromptCacheFn: result.refreshPromptCache,
       pid: () => {
         const p = result.pid;
@@ -4167,7 +4175,10 @@ export class Supervisor {
             "Failed to save applied session launch settings",
           );
         });
-      } else if (event.type === "idle-reap") {
+      } else if (
+        event.type === "idle-reap" ||
+        event.type === "lifecycle-reap"
+      ) {
         this.emitSessionAborted(process.sessionId, process.projectId);
       } else if (event.type === "complete") {
         this.dirtyFileEditorService?.forgetProcess(process.id);

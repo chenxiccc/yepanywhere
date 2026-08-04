@@ -83,6 +83,8 @@ function createMockProcess(overrides?: Partial<Record<string, unknown>>): {
     clearStreamingText: vi.fn(),
     hasLiveDeltaSubscribers: vi.fn(() => false),
     registerLiveDeltaSubscriber: vi.fn(() => vi.fn()),
+    hasViewers: vi.fn(() => false),
+    registerViewer: vi.fn(() => vi.fn()),
     getDeferredQueueSummary: vi.fn(() => []),
     getLivenessSnapshot: vi.fn(() => MOCK_LIVENESS),
     getProviderRuntimeStatus: vi.fn(() => null),
@@ -165,6 +167,25 @@ describe("createSessionSubscription", () => {
     subscription.cleanup();
 
     expect(unregister).toHaveBeenCalledOnce();
+  });
+
+  it("registers viewer presence independently of live delta demand", () => {
+    const unregisterViewer = vi.fn();
+    const { process } = createMockProcess({
+      registerViewer: vi.fn(() => unregisterViewer),
+    });
+    const { emit } = collectEmit();
+
+    const subscription = createSessionSubscription(process, emit, {
+      wantsLiveDeltas: false,
+    });
+
+    expect(process.registerViewer).toHaveBeenCalledOnce();
+    expect(process.registerLiveDeltaSubscriber).not.toHaveBeenCalled();
+
+    subscription.cleanup();
+
+    expect(unregisterViewer).toHaveBeenCalledOnce();
   });
 
   it("skips live delta messages for subscribers that opt out", async () => {
