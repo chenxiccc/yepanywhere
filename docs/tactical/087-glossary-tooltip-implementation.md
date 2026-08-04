@@ -2,12 +2,14 @@
 
 Topic: glossary-tooltips
 
-Status: In progress 2026-08-04. Steps 1–2 are implemented: the shared package
+Status: In progress 2026-08-04. Steps 1–3 are implemented. The shared package
 parses the first glossary table, expands the bounded phrase grammar, compiles a
 versioned multi-pattern trie, and returns source-aligned deterministic matches.
-The server resolver/cache, compatibility-gated artifact route, background
-client readiness, render integration, interaction, and surface parity remain
-pending.
+The server now resolves the nearest governing glossary and its explicit,
+contained include closure, strongly validates dependency content, and reuses
+bounded successful and failed compilations with single-flight requests. The
+compatibility-gated artifact route, background client readiness, render
+integration, interaction, and surface parity remain pending.
 
 ## Goal and governing contract
 

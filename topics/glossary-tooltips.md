@@ -9,8 +9,9 @@ Topic: glossary-tooltips
 
 Status: implementation in progress under
 [`docs/tactical/087-glossary-tooltip-implementation.md`](../docs/tactical/087-glossary-tooltip-implementation.md);
-the shared grammar, artifact compiler, and matcher are complete, while server
-resolution and user-visible integration remain pending.
+the shared grammar, artifact compiler, matcher, and in-memory server resolver
+are complete, while the capability-gated route and user-visible integration
+remain pending.
 
 ## Product contract
 

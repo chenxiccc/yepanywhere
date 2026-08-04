@@ -258,3 +258,6 @@
 - project-directory-storage - App-data-only default for YA-managed state,
   explicit global opt-in for project-local assets, and no ambient project or
   Git-metadata writes from browsing, rendering, indexing, or replay.
+- glossary-tooltips - Default-off glossary annotations backed by one governing
+  contained include graph, a compiled phrase matcher, and nonblocking render
+  integration.
