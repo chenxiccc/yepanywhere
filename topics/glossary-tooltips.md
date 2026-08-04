@@ -1,9 +1,9 @@
 # Glossary Tooltips
 
 > Glossary tooltips enrich every Markdown-render-eligible view with subtle,
-> copyable definition hints from the file-nearest current `GLOSSARY.md`, using
-> an in-memory compiled phrase automaton to keep matching linear in rendered
-> text.
+> copyable definition hints from one governing current `GLOSSARY.md` and its
+> project-contained include graph, using an in-memory compiled phrase
+> automaton to keep matching linear in rendered text.
 
 Topic: glossary-tooltips
 
@@ -34,13 +34,34 @@ glossary or any other project-local file for this feature.
 
 For a rendered source file, begin in that file's directory and walk parent
 directories up to and including the selected project root. The first regular
-file named exactly `GLOSSARY.md` controls the render. The nearest glossary
-shadows more distant glossaries; rows are not merged across scopes.
+file named exactly `GLOSSARY.md` is the single governing glossary for that
+render. Parent and sibling glossaries do not participate merely because of
+their placement; the governing glossary opts into their entries by referring
+to them.
 
 Project-affiliated prose without a source-file path uses the project-root
 `GLOSSARY.md`. A multi-file diff resolves the glossary independently for each
 file section from that section's target path. A `GLOSSARY.md` never annotates
 itself.
+
+Any project-local path mentioned in a parsed `GLOSSARY.md` whose basename is
+`GLOSSARY.md` is an include edge. Includes are transitive. For each mention,
+the resolver checks both the directory containing the referring glossary and
+the selected project root as bases. It normalizes each result, rejects paths
+outside the project, converts retained candidates back to project-relative
+paths for indexed lookup, and includes every distinct existing regular file
+whose real path also remains inside the project. The referring file itself is
+ignored, canonical paths are included only once, and cycles therefore
+terminate without special author syntax. Escaped candidates are discarded; a
+mention with no contained resolution is rejected with one bounded diagnostic.
+A valid directory-relative `../../GLOSSARY.md` may therefore normalize to the
+project root and remain contained even though the project-root-relative
+candidate is discarded.
+
+The governing file followed by a depth-first, source-order traversal of its
+first-seen includes forms one ordered glossary. Each file contributes the rows
+from its first Markdown table in table order. This is an explicit union, not
+implicit inheritance from directory placement.
 
 Source Control deliberately resolves from the current working tree even when
 it displays historical source or a commit diff. Glossary definitions describe
@@ -49,11 +70,11 @@ glossary from the viewed revision. Renamed or deleted paths likewise walk the
 current tree from the displayed target path and fall back toward the current
 project root.
 
-Every candidate path is resolved through the existing project-containment
-boundary. The walk stops at the selected project root and never follows a
-glossary outside it. Public-share rendering may use a glossary only when that
+Every governing and included path is resolved through the existing project-
+containment boundary. Public-share rendering may use a glossary only when that
 file is part of the share's explicit file capability or captured snapshot; a
-share must never disclose an otherwise unshared current glossary.
+share must never disclose an otherwise unshared current glossary through an
+include.
 
 ## Glossary term grammar
 
@@ -92,17 +113,24 @@ and `typed one-to-one overlap F1`. It does **not** admit `typed arbitrary words
 overlap F1`: optional non-bold tokens are literal alternatives, never `.*`,
 wildcards, edit-distance gaps, or unbounded variation.
 
-With several non-bold tokens, each token independently contributes a
-present/absent branch. A phrase with `k` such tokens therefore denotes at most
-`2^k` literal surface forms before identical forms are deduplicated. Glossary
-entries are expected to use one or two optional tokens, producing at most two
-or four forms per phrase in the ordinary case. This modest compile-time
-expansion is bounded; it is not paid again at every source character.
+Each non-bold token independently contributes a present/absent branch. V1
+allows at most two optional non-bold tokens in each comma-separated phrase,
+so one phrase produces at most four literal surface forms before identical
+forms are deduplicated. The same cap applies independently to every comma
+alternative. This modest compile-time expansion is bounded; it is not paid
+again at every source character.
 
 The canonical label for a match is the complete comma-separated alternative
 that produced it, stripped of Markdown emphasis but retaining its optional
-qualifiers. The tooltip text is that canonical label followed by the row's
-definition flattened to plain text. Reference columns are excluded.
+qualifiers. One concrete surface form maps to one tooltip string. Each
+distinct source row that produces that form contributes one paragraph made
+from its canonical label and definition flattened to plain text; several
+entries, including conflicts within one glossary, are concatenated as
+consecutive paragraphs in governing-closure order. When more than one row
+contributes, each paragraph identifies its glossary's project-relative
+directory. Duplicate expansions from the same row contribute only once.
+Reference columns are excluded from tooltip text even when a reference creates
+an include edge.
 
 ## Match semantics
 
@@ -127,8 +155,13 @@ Overlapping matches use one deterministic precedence rule:
 
 1. the match consuming the most visible source text;
 2. then the match with the most required bold text;
-3. then the earlier glossary-table row; and
-4. then the earlier comma-separated alternative in that row.
+3. then the earlier glossary in governing-closure order;
+4. then the earlier glossary-table row; and
+5. then the earlier comma-separated alternative in that row.
+
+Entries producing the same concrete surface form share one automaton terminal
+and one candidate span, so their definition paragraphs do not compete under
+this overlap rule.
 
 Copying or selecting rendered prose still yields only the original visible
 document text. Glossary metadata must not enter ordinary rich or plain-text
@@ -164,9 +197,10 @@ the definition visible but must not report a successful copy.
 
 ## Compiled matcher contract
 
-Runtime matching uses one compiled multi-pattern phrase automaton per glossary
-content version. The intended implementation explicitly expands the small set
-of finite literal surface forms, deduplicates them, and indexes them in one
+Runtime matching uses one compiled multi-pattern phrase automaton per governing
+glossary include-graph version. The intended implementation explicitly expands
+the small set of finite literal surface forms, deduplicates them while
+retaining every contributing definition paragraph, and indexes them in one
 Aho–Corasick-style trie with failure links. It is not a row-by-row regex pass
 and does not retry every glossary phrase at every character.
 
@@ -176,8 +210,8 @@ Compilation proceeds conceptually as follows:
    optional non-bold tokens.
 2. Expand the present/absent choices into finite literal surface forms. No form
    contains a wildcard or consumes undeclared intervening text.
-3. Deduplicate the forms and insert them into one trie, attaching overlap-
-   precedence metadata to terminal nodes.
+3. Deduplicate the forms and insert them into one trie, attaching ordered
+   definition paragraphs and overlap-precedence metadata to terminal nodes.
 4. Compile failure links so one forward scan recognizes a form beginning at
    any eligible boundary without restarting a phrase loop at each character.
 5. Serialize the trie transitions, failure links, terminal metadata, and
@@ -188,37 +222,46 @@ point plus bounded terminal work: `O(rendered characters + selected matches)`,
 with no factor for glossary rows or maximum phrase length after compilation.
 Sparse trie transitions keep the serialized artifact small.
 
-Finite expansion can still grow exponentially for adversarial optional-token
-counts. Compilation therefore has explicit limits for glossary bytes, rows,
-phrase length, optional tokens, expanded forms, alternatives, and trie states.
-Exceeding a limit disables glossary annotation for that glossary version with
-one bounded diagnostic; ordinary Markdown rendering continues unchanged. It
-must never fall back to a per-character regex or phrase loop.
+Compilation has explicit aggregate limits for include depth, included files,
+glossary bytes, rows, phrase length, the two optional tokens per phrase,
+expanded forms, alternatives, definition paragraphs per form, and trie states.
+Exceeding a limit disables glossary annotation for that governing-graph
+version with one bounded diagnostic; ordinary Markdown rendering continues
+unchanged. It must never fall back to a per-character regex or phrase loop.
 
 ## In-memory resolution and compiled cache
 
-The server owns the canonical file-nearest resolver and holds parsed glossaries
-and compiled automata in process memory. V1 has no persistent cache format,
-database table, app-data cache file, project-local cache, or restart-recovery
-obligation. Glossaries are expected to remain below 1,000 entries, so parsing
-and compilation after a server start are bounded ordinary work.
+The server owns the canonical governing-glossary and include-graph resolver and
+holds parsed glossaries and compiled automata in process memory. V1 has no
+persistent cache format, database table, app-data cache file, project-local
+cache, or restart-recovery obligation. Governing include closures are expected
+to remain below 1,000 entries, so parsing and compilation after a server start
+are bounded ordinary work.
 
-Nearest-file discovery reuses `ProjectPathIndex.findExisting` from
+Governing-file and include-candidate discovery reuse
+`ProjectPathIndex.findExisting` from
 `packages/server/src/projects/projectPathIndex.ts`. Its lazy directory listings
 and directory-mtime validation already maintain current presence and absence
-for project-relative paths; the glossary resolver should submit the candidate
-ancestor paths and select the nearest returned `GLOSSARY.md`, not add another
-project-tree watcher or directory cache. See
+for project-relative paths; the glossary resolver should submit each resolution
+batch and select the nearest governing `GLOSSARY.md`, not add another project-
+tree watcher or directory cache. See
 [project-path-links](project-path-links.md) for that index's contract.
 
 Directory mtime identifies which glossary path exists, but editing an existing
 glossary need not change its parent directory. The compiled cache therefore
-maps the selected canonical glossary path to its own file identity, parsed
-rows, and automaton. An unchanged file identity reuses that structure across
-files, sessions, and Source Control views for the life of the server process.
-A changed file rebuilds it; a changed directory listing re-runs nearest-file
-selection. Successful and failed bounded compilations are cached by the same
-identity so a bad glossary cannot cause repeated work on every render.
+maps a governing canonical path to the ordered canonical dependency paths,
+their file identities, parsed rows, and compiled automaton. Unchanged dependency
+identities reuse that structure across files, sessions, and Source Control views
+for the life of the server process. A changed dependency rebuilds the closure;
+a changed directory listing re-runs governing or include selection. Successful
+and failed bounded compilations are cached by the same dependency identity so
+a bad graph cannot cause repeated work on every render.
+
+The existing successful-file-mutation observation may eagerly evict a parsed
+glossary and every compiled closure depending on it when the touched path is a
+`GLOSSARY.md`. This is a low-priority optimization only. File-identity checks
+remain authoritative because human edits and unobserved shell mutations can
+bypass the session signal.
 
 All glossary-specific cache state may disappear on server restart. If later
 measurement shows cold parsing or compilation to be material, a persistent
@@ -238,12 +281,13 @@ renders ordinary Markdown without glossary annotations.
 Implementation remains deferred, but the intended sequence is:
 
 1. **Grammar and phrase-automaton compiler.** Add a browser-free shared
-   glossary parser, finite surface-form expansion, serialized trie format,
-   matcher, and adversarial budget tests.
-2. **Nearest-glossary resolver and in-memory cache.** Reuse
-   `ProjectPathIndex.findExisting` for contained ancestor lookup, then add
-   file-identity invalidation, current-working-tree Source Control semantics,
-   process-memory bounds, and bounded diagnostics.
+   glossary parser, recursive contained includes, finite surface-form
+   expansion, multi-paragraph terminals, serialized trie format, matcher, and
+   adversarial budget tests.
+2. **Governing-glossary resolver and in-memory cache.** Reuse
+   `ProjectPathIndex.findExisting` for contained ancestor and include lookup,
+   then add dependency-identity invalidation, current-working-tree Source
+   Control semantics, process-memory bounds, and bounded diagnostics.
 3. **Compatibility review.** Inspect the required stable-server corpus and
    approve an optional permanent capability plus exact absent-capability
    fallback before adding the client delivery contract.
@@ -270,22 +314,26 @@ walks, or click handlers.
 Grammar and matcher tests cover:
 
 - no-bold phrases, one and several bold spans, edge and intervening optional
-  tokens, comma alternatives, and escaped commas;
-- independently present/absent optional tokens and rejection of arbitrary
-  gaps;
+  tokens, the two-optional-token cap, comma alternatives, and escaped commas;
+- independently present/absent optional tokens, rejection of a third optional
+  token, and rejection of arbitrary gaps;
 - case, Unicode, whitespace, punctuation, phrase-edge boundaries, and matches
   spanning ordinary inline formatting;
-- overlap precedence and stable source offsets after normalization;
+- same-form definitions within and across glossaries, concatenated paragraph
+  order, overlap precedence, and stable source offsets after normalization;
 - state/byte/row limits, file-identity invalidation, failed-compilation
   caching, and process-memory bounds; and
 - a long nonmatching document proving scan work is independent of glossary row
   count and maximum phrase length after compilation.
 
-Resolution tests cover same-directory, nested shadowing, root fallback, no
-merge, self-exclusion, containment and symlink escape, current-working-tree
-Source Control behavior, deletion/rename, public-share scoping, content-change
-invalidation, warm in-process reuse, cold rebuild after server restart, and no
-glossary-cache writes to the project or YA app data.
+Resolution tests cover same-directory and nearest-ancestor governing selection,
+root-governed project prose, independent multi-file diff sections, project-
+relative and referring-directory-relative includes, transitive cycles,
+canonical deduplication, self-exclusion, containment and symlink escape,
+current-working-tree Source Control behavior, deletion/rename, public-share
+scoping, dependency-change invalidation, warm in-process reuse, cold rebuild
+after server restart, and no glossary-cache writes to the project or YA app
+data.
 
 Renderer and interaction tests cover every Markdown-eligible surface, the
 source/raw exclusion, existing links/code/KaTeX/tooltips, original-text copy,
@@ -299,8 +347,9 @@ leave stale tooltip state.
 
 ## Acceptance boundary
 
-The feature is complete when every Markdown-render-eligible YA view uses the
-same file-nearest current glossary semantics, compiled artifact, match
-precedence, visual treatment, and reveal/copy interaction; warm scans are
-linear in rendered text; projects without a controlling glossary and surfaces
-in source/raw mode remain observably unchanged.
+The feature is complete when every Markdown-render-eligible YA view uses one
+governing current glossary and the same project-contained include semantics,
+compiled artifact, multi-definition paragraphs, match precedence, visual
+treatment, and reveal/copy interaction; warm scans are linear in rendered
+text; projects without a controlling glossary and surfaces in source/raw mode
+remain observably unchanged.
