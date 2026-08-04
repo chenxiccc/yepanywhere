@@ -7,13 +7,17 @@
 
 Topic: glossary-tooltips
 
-Status: planned; implementation deliberately deferred.
+Status: planned in
+[`docs/tactical/087-glossary-tooltip-implementation.md`](../docs/tactical/087-glossary-tooltip-implementation.md);
+implementation has not started.
 
 ## Product contract
 
-Whenever YA renders Markdown rather than source text, YA annotates glossary
-terms in the rendered prose. This is one render-boundary feature, not a file-
-preview special case. It covers:
+When the browser-local **Glossary hints** Appearance preference is enabled and
+YA renders Markdown rather than source text, YA annotates glossary terms in the
+rendered prose. The preference is default-off under
+[vanilla-defaults](vanilla-defaults.md). This is one render-boundary feature,
+not a file-preview special case. It covers:
 
 - assistant Markdown and other project-affiliated Markdown documents;
 - full and range-based Markdown file previews;
@@ -26,9 +30,11 @@ code files and non-Markdown diffs out of structural Markdown rendering remain
 authoritative; glossary matching does not make an otherwise ineligible surface
 Markdown-renderable.
 
-The presence of an in-scope `GLOSSARY.md` is the content-level opt-in. Projects
-without one render exactly as before. YA does not create, modify, or exclude a
-glossary or any other project-local file for this feature.
+The presence of an in-scope `GLOSSARY.md` is the content-level prerequisite;
+the browser preference is the user-level opt-in. Projects without one and
+browsers with the preference disabled render exactly as before. YA does not
+create, modify, or exclude a glossary or any other project-local file for this
+feature.
 
 ## Which glossary controls a render
 
@@ -171,10 +177,14 @@ alignment.
 ## Presentation and interaction
 
 An annotated term has a restrained link-like tint at normal font weight. It
-has no underline and introduces no box, icon, or layout shift. Hover, active,
-and keyboard-focus states may strengthen the tint enough to make the
-interaction legible without turning the document into a field of conventional
-navigation links.
+has no underline and introduces no box, icon, or layout shift. The term wrapper
+inherits the surrounding font metrics and adds no padding, border width,
+letter spacing, minimum size, or inline width. Enabling hints or replacing an
+unannotated render after the matcher becomes ready must not change line height,
+line breaks, text width, or source-aligned geometry. Hover, active, and
+keyboard-focus states may strengthen the tint enough to make the interaction
+legible without turning the document into a field of conventional navigation
+links.
 
 Pointer hover uses the ordinary tooltip appearance preference:
 
@@ -269,16 +279,43 @@ cache below YA app data may be proposed then; it is neither required nor
 preferred for v1 and must never write inside the selected project or its Git
 metadata.
 
-Client-only Markdown renderers consume the same serializable compiled artifact
-rather than implementing another parser or matcher. The implementation must
-complete the optional-feature client/server compatibility review before
-choosing its route, response field, and capability name. An older server's
-missing capability means the client makes no unsupported matcher request and
-renders ordinary Markdown without glossary annotations.
+Glossary initialization is lazy, asynchronous, and single-flight. With the
+preference enabled, the first glossary-relevant session or file visit starts a
+separate artifact request without delaying the session, message, or file
+response that can render ordinary unannotated Markdown. Another artifact
+request for the same project and unresolved governing-graph version awaits the
+existing promise rather than starting duplicate path validation, parsing, or
+compilation. This wait belongs only to glossary initialization; it must never
+hold the displayable content response behind a possible glossary result.
+
+When the artifact becomes ready, the owning Markdown renderer re-renders from
+its original source or sanitized renderer output and replaces the speculative
+unannotated presentation. It does not search and mutate the mounted document.
+Streaming renderers retain the original block augment needed to apply the same
+artifact to already-received blocks. A stale completion is ignored when its
+project, governing source path, or dependency version no longer matches the
+current render.
+
+For a bounded valid glossary graph, initial path validation, parsing, and
+compilation should complete in under one second on the project's ordinary
+development baseline. This is a cold-work budget rather than permission to
+block first paint. Aggregate limits and ordinary unannotated rendering remain
+the fallback when a graph cannot be compiled safely.
+
+Client render boundaries consume the same serializable compiled artifact
+rather than implementing another parser or matcher. For server-rendered HTML,
+annotation transforms the sanitized renderer output before insertion; it is
+not a document-wide mounted-DOM rewrite. The implementation must complete the
+optional-feature client/server compatibility review before choosing its route,
+response field, and capability name. An older server's missing capability
+means the client makes no unsupported matcher request and renders ordinary
+Markdown without glossary annotations.
 
 ## Render-boundary implementation plan
 
-Implementation remains deferred, but the intended sequence is:
+The detailed, source-anchored task is
+[`docs/tactical/087-glossary-tooltip-implementation.md`](../docs/tactical/087-glossary-tooltip-implementation.md).
+Its intended sequence is:
 
 1. **Grammar and phrase-automaton compiler.** Add a browser-free shared
    glossary parser, recursive contained includes, finite surface-form
@@ -291,17 +328,19 @@ Implementation remains deferred, but the intended sequence is:
 3. **Compatibility review.** Inspect the required stable-server corpus and
    approve an optional permanent capability plus exact absent-capability
    fallback before adding the client delivery contract.
-4. **Shared Markdown annotation boundary.** Feed the matcher into the common
-   server Markdown token pipeline and every client-only Markdown renderer.
-   Annotation happens on parsed tokens or renderer output before insertion,
-   never through a document-wide DOM search after rendering.
-5. **Term interaction and style.** Add one semantic term primitive and extend
+4. **Non-blocking artifact readiness.** Start one background, capability-gated
+   artifact request from a relevant project visit, share concurrent work, and
+   publish a versioned ready result without delaying ordinary content.
+5. **Shared Markdown annotation boundary.** Feed the matcher into each owning
+   Markdown renderer. Annotation happens on parsed tokens or sanitized renderer
+   output before insertion, never through a document-wide mounted-DOM search.
+6. **Term interaction and style.** Add one semantic term primitive and extend
    the shared tooltip coordinator for activation reveal/copy, Native/Themed
    ownership, keyboard behavior, selection precedence, and clipboard failure.
-6. **Surface parity.** Wire assistant prose, FileViewer, Read/Write, fixed-font
+7. **Surface parity.** Wire assistant prose, FileViewer, Read/Write, fixed-font
    Markdown, Edit/diff, Source Control, standalone local documents, and bounded
    public-share contexts; raw/source modes remain untouched.
-7. **Performance and visual acceptance.** Benchmark cold compilation, warm
+8. **Performance and visual acceptance.** Benchmark cold compilation, warm
    process-memory reuse, and linear scans; then capture and inspect desktop and
    phone renders with ordinary, hovered, focused, and tapped terms.
 
@@ -347,9 +386,11 @@ leave stale tooltip state.
 
 ## Acceptance boundary
 
-The feature is complete when every Markdown-render-eligible YA view uses one
-governing current glossary and the same project-contained include semantics,
-compiled artifact, multi-definition paragraphs, match precedence, visual
+The feature is complete when, after asynchronous artifact readiness, every
+Markdown-render-eligible YA view uses one governing current glossary and the
+same project-contained include semantics, compiled artifact,
+multi-definition paragraphs, match precedence, metric-neutral visual
 treatment, and reveal/copy interaction; warm scans are linear in rendered
-text; projects without a controlling glossary and surfaces in source/raw mode
-remain observably unchanged.
+text; first paint never waits for glossary compilation; and browsers with the
+preference disabled, projects without a controlling glossary, and surfaces in
+source/raw mode remain observably unchanged.
