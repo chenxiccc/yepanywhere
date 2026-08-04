@@ -783,9 +783,9 @@ describe("MessageList rendering", () => {
     expect(screen.getByText("Edit")).toBeTruthy();
     expect(screen.getByText("pnpm test")).toBeTruthy();
     expect(screen.getByText("app.ts")).toBeTruthy();
-    expect(screen.getByText("Run").closest("li")?.getAttribute("title")).toBe(
-      "Run: pnpm test",
-    );
+    expect(
+      screen.getByText("Run").closest("li")?.getAttribute("data-tooltip"),
+    ).toBe("Run: pnpm test");
 
     for (const collapse of screen.getAllByRole("button", {
       name: "Collapse thinking preview",

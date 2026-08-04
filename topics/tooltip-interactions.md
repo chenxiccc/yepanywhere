@@ -12,12 +12,11 @@ Appearance presents `Themed` and `Native` as an explicit two-way style
 selector. The delay slider and number field remain visible beside that selector
 in the same row:
 
-- `Native` is the default when the browser has no explicit saved mode. It leaves
-  ordinary `title=` tooltips to the browser, including the browser's timing and
-  colors. YA must not describe that timing as a numeric preset because it is
-  controlled by the browser/OS.
-- `Themed` renders YA's tooltip layer with the active theme. Its initial delay
-  is 50 ms.
+- `Themed` is the default when the browser has no explicit saved mode. It
+  renders YA's tooltip layer with the active theme and an initial 50 ms delay.
+- `Native` leaves ordinary `title=` tooltips to the browser, including the
+  browser's timing and colors. YA must not describe that timing as a numeric
+  preset because it is controlled by the browser/OS.
 - Explicitly saved `Native` and `Themed` choices remain authoritative across
   default changes.
 - Moving the slider or entering a valid number selects `Themed`. Temporarily
@@ -127,7 +126,8 @@ light or dark color scheme, a visible border and modest shadow, UI font, tight
 unzoomed line spacing, and no decorative animation. The ordinary themed
 tooltip is one pixel larger than the compact `--font-size-xs` UI token; the
 secondary-click enlargement still advances to `--font-size-sm`. Multiline
-content preserves line breaks.
+content preserves line breaks. Content taller than the viewport-relative cap
+scrolls inside the tooltip rather than being clipped.
 
 The shared layer consumes both legacy static `title=` hints and explicit
 `data-tooltip` hints. New and pointer-computed producers assign exactly one
@@ -183,6 +183,15 @@ grace as its ordinary form. The themed surface permits ordinary text selection:
 primary drag within it does not dismiss it, and a secondary-click on selected
 text retains the browser's normal selection menu instead of invoking tooltip
 copy/enlarge.
+
+Explicit glossary-term activation begins in the same enlarged treatment because
+the activation expresses reading intent; passive pointer hover remains compact.
+Long definitions use the shared tooltip's contained scrolling. Because primary
+activation already copies the exact definition, the activated definition does
+not intercept a secondary click or touch long-press; the browser keeps those
+gestures for text selection and its normal context menu. Tapping or selecting
+inside the tooltip does not dismiss it; Escape or activation outside the term
+and tooltip does.
 
 Rich explanatory tooltips may retain structured content while using the same
 dwell/warmth coordinator and the same keyboard-visible versus pointer-generated

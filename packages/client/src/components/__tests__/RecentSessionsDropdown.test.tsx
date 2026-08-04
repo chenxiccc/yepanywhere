@@ -124,7 +124,7 @@ describe("RecentSessionsDropdown", () => {
     expect(item.getAttribute("data-tooltip")).toBeNull();
 
     fireEvent.pointerEnter(item, { pointerType: "mouse" });
-    expect(item.getAttribute("title")).toBe(
+    expect(item.getAttribute("data-tooltip")).toBe(
       "Longer complete title text that should be visible in the recent sessions dropdown",
     );
 
@@ -150,7 +150,7 @@ describe("RecentSessionsDropdown", () => {
     const item = screen.getByRole("link");
     fireEvent.focus(item);
 
-    expect(item.getAttribute("title")).toBe(
+    expect(item.getAttribute("data-tooltip")).toBe(
       "Longer complete title text that should be visible in the recent sessions dropdown",
     );
   });

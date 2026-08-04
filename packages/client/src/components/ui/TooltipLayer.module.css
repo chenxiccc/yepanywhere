@@ -6,7 +6,9 @@
   width: max-content;
   max-width: min(520px, calc(100vw - 16px));
   max-height: min(50vh, 420px);
-  overflow: hidden;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
   padding: 5px 7px;
   border: 1px solid var(--tooltip-border);
   border-radius: 4px;

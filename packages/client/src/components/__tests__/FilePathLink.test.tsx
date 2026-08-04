@@ -26,6 +26,7 @@ describe("FilePathLink", () => {
   });
 
   it("renders a native link to the standalone file viewer", () => {
+    window.localStorage.setItem(UI_KEYS.tooltipMode, "native");
     render(
       <FilePathLink
         projectId="project-id"

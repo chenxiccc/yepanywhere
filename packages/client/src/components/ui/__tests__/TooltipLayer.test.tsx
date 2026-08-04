@@ -744,7 +744,7 @@ describe("TooltipLayer", () => {
     );
   });
 
-  it("leaves title timing and presentation to the browser by default", () => {
+  it("uses the themed tooltip layer by default", () => {
     localStorage.removeItem(UI_KEYS.tooltipMode);
     render(
       <>
@@ -763,8 +763,9 @@ describe("TooltipLayer", () => {
     });
     act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS * 2));
 
-    expect(target.getAttribute("title")).toBe("Browser tip");
-    expect(screen.queryByRole("tooltip")).toBeNull();
+    expect(target.getAttribute("title")).toBe("");
+    expect(target.getAttribute("data-tooltip")).toBe("Browser tip");
+    expect(screen.getByRole("tooltip").textContent).toBe("Browser tip");
   });
 
   it("reveals and copies a glossary definition even in native mode", () => {
@@ -794,6 +795,7 @@ describe("TooltipLayer", () => {
     expect(screen.getByRole("tooltip").textContent).toBe(
       "oracle — Best published system.",
     );
+    expect(screen.getByRole("tooltip").classList).toContain(styles.enlarged);
     expect(writeText).toHaveBeenCalledWith("oracle — Best published system.");
     expect(term.getAttribute("title")).toBe(
       "oracle — Best published system.",
@@ -801,11 +803,40 @@ describe("TooltipLayer", () => {
     expect(term.getAttribute("data-tooltip")).toBeNull();
   });
 
+  it("leaves activated glossary text selection to the browser", () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    render(
+      <>
+        <TooltipLayer />
+        <span
+          data-glossary-term="true"
+          data-tooltip="oracle — Best published system."
+          role="button"
+          tabIndex={0}
+        >
+          oracle
+        </span>
+      </>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "oracle" }));
+    const tooltip = screen.getByRole("tooltip");
+
+    expect(fireEvent.contextMenu(tooltip)).toBe(true);
+    expect(writeText).toHaveBeenCalledTimes(1);
+    expect(tooltip.classList).toContain(styles.enlarged);
+  });
+
   it("reveals a glossary definition inside a click-isolated dialog", () => {
     localStorage.setItem(UI_KEYS.tooltipMode, "native");
     render(
       <>
         <TooltipLayer />
+        {/* biome-ignore lint/a11y/useKeyWithClickEvents: This fixture deliberately isolates bubbled clicks; the term itself remains keyboard-operable. */}
         <dialog open onClick={(event) => event.stopPropagation()}>
           <span
             data-glossary-term="true"

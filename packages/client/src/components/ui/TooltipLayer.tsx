@@ -407,6 +407,9 @@ export function TooltipLayer() {
       hide();
       activeTargetRef.current = target;
       show(target, anchorX, anchorY, true);
+      // Explicit glossary activation is reading intent, so use the existing
+      // enlarged tooltip treatment immediately. Pointer hover stays compact.
+      setEnlarged(true);
       void writeClipboardText(target.dataset.tooltip ?? target.title);
     };
     const onClick = (event: MouseEvent) => {
@@ -748,6 +751,9 @@ export function TooltipLayer() {
       ) {
         return;
       }
+      // Glossary activation already copied and enlarged the definition. Keep
+      // its context menu native so touch long-press can establish selection.
+      if (currentTooltip.forcedThemed) return;
       event.preventDefault();
       setEnlarged(true);
       void writeClipboardText(currentTooltip.text);

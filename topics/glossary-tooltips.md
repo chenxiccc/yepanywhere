@@ -212,10 +212,14 @@ Pointer hover uses the ordinary tooltip appearance preference:
 Primary activation—tap or click—reveals the same tooltip text and copies that
 exact text to the clipboard. Touch activation therefore has an explicit YA
 surface even when the browser cannot reveal a native title reliably. The
-activation surface must not navigate. Keyboard focus reveals the definition;
-Enter or Space performs the same reveal-and-copy action. A non-collapsed text
-selection wins over activation so selecting prose does not unexpectedly write
-to the clipboard.
+activation surface must not navigate. An activated definition uses the shared
+tooltip's enlarged treatment immediately and scrolls within its viewport cap
+when long; passive pointer hover remains compact. Its secondary click and touch
+long-press stay browser-owned for text selection because activation already
+copied the exact definition. Keyboard focus reveals the definition; Enter or
+Space performs the same reveal-and-copy action. A non-collapsed text selection
+wins over activation so selecting prose does not unexpectedly write to the
+clipboard.
 
 The term interaction is semantic and keyboard-operable, not a click handler
 inferred from arbitrary generated DOM. Tooltip text remains selectable in

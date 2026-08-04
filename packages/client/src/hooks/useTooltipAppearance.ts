@@ -66,8 +66,8 @@ function normalizeTooltipDelay(value: number): number {
 
 const tooltipModeStore = createLocalStorageValue<TooltipMode>(
   UI_KEYS.tooltipMode,
-  "native",
-  (raw) => (raw === "themed" ? "themed" : "native"),
+  "themed",
+  (raw) => (raw === "native" ? "native" : "themed"),
 );
 
 const tooltipDelayStore = createLocalStorageValue(
@@ -169,7 +169,7 @@ export function useTooltipMode(): TooltipMode {
   return useSyncExternalStore(
     subscribe,
     getTooltipMode,
-    () => "native" as const,
+    () => "themed" as const,
   );
 }
 

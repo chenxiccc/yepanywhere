@@ -169,7 +169,7 @@ describe("WorkingTreeBrowser", () => {
     expect(
       screen
         .getByText("sourceWorktreePartial")
-        .getAttribute("title"),
+        .getAttribute("data-tooltip"),
     ).toBe("sourceWorktreePartialDescription");
     expect(screen.queryByText("sourceWorktreeUnstaged")).toBeNull();
     expect(screen.queryByText("sourceWorktreeUntracked")).toBeNull();
@@ -177,9 +177,9 @@ describe("WorkingTreeBrowser", () => {
       document.querySelectorAll(".commit-file-item .git-file-path"),
     ).toHaveLength(1);
     const row = document.querySelector(".commit-file-item");
-    expect(row?.getAttribute("title")).toBe("src/dirty.ts");
+    expect(row?.getAttribute("data-tooltip")).toBe("src/dirty.ts");
     expect(
-      row?.querySelector(".git-status-badge")?.getAttribute("title"),
+      row?.querySelector(".git-status-badge")?.getAttribute("data-tooltip"),
     ).toBe("M — sourceFileStatusModified");
     await waitFor(() =>
       expect(getGitDiff).toHaveBeenCalledWith(
@@ -449,11 +449,14 @@ describe("WorkingTreeBrowser", () => {
     await waitFor(() =>
       expect(document.querySelector(".git-diff-loading")).toBeNull(),
     );
-    await screen.findByTitle("generated/file-399.ts");
+    const finalRow = (await screen.findByText("generated/file-399.ts")).closest(
+      ".commit-file-item",
+    );
+    if (!finalRow) throw new Error("Final generated file row is missing");
     getGitDiff.mockImplementation(() => new Promise(() => {}));
     translationCalls = 0;
 
-    fireEvent.click(screen.getByTitle("generated/file-399.ts"));
+    fireEvent.click(finalRow);
 
     expect(getGitDiff).toHaveBeenCalledTimes(2);
     expect(translationCalls).toBeLessThan(50);
@@ -508,26 +511,33 @@ describe("WorkingTreeBrowser", () => {
       </MemoryRouter>,
     );
 
-    const stagedRow = await screen.findByTitle("src/staged.ts");
+    const stagedRow = (await screen.findByText("src/staged.ts")).closest(
+      ".commit-file-item",
+    );
+    if (!stagedRow) throw new Error("Staged file row is missing");
     expect(
       stagedRow.querySelector(".worktree-file-state")?.textContent,
     ).toBe("✓");
     expect(
       stagedRow
         .querySelector(".worktree-file-state")
-        ?.getAttribute("title"),
+        ?.getAttribute("data-tooltip"),
     ).toBe("sourceWorktreeStaged");
     expect(
       screen
-        .getByTitle("src/unstaged.ts")
-        .querySelector(".worktree-file-state"),
+        .getByText("src/unstaged.ts")
+        .closest(".commit-file-item")
+        ?.querySelector(".worktree-file-state"),
     ).toBeNull();
-    const untrackedRow = screen.getByTitle("src/untracked.ts");
+    const untrackedRow = screen
+      .getByText("src/untracked.ts")
+      .closest(".commit-file-item");
+    if (!untrackedRow) throw new Error("Untracked file row is missing");
     expect(untrackedRow.querySelector(".worktree-file-state")).toBeNull();
     expect(
       untrackedRow
         .querySelector(".git-status-badge")
-        ?.getAttribute("title"),
+        ?.getAttribute("data-tooltip"),
     ).toBe("? — sourceFileStatusUntracked");
   });
 

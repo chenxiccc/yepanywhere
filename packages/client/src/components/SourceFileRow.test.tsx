@@ -19,6 +19,7 @@ describe("SourceFileRow", () => {
   });
 
   it("puts the full native tooltip on the actual row target", () => {
+    localStorage.setItem(UI_KEYS.tooltipMode, "native");
     render(
       <SourceFileRowButton path="src/a/very-long-file-name.ts">
         <SourceFilePath>src/a/very-long-file-name.ts</SourceFilePath>
@@ -49,7 +50,9 @@ describe("SourceFileRow", () => {
     render(<SourceFileStatusBadge status="M" t={t} />);
 
     const badge = screen.getByText("M");
-    expect(badge.getAttribute("title")).toBe("M — sourceFileStatusModified");
+    expect(badge.getAttribute("data-tooltip")).toBe(
+      "M — sourceFileStatusModified",
+    );
     expect(badge.getAttribute("aria-label")).toBe(
       "M — sourceFileStatusModified",
     );

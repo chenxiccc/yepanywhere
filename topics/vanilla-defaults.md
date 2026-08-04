@@ -68,6 +68,13 @@ novelty must never be the out-of-the-box experience.
 
 ## Known Exceptions
 
+[tooltip-interactions](tooltip-interactions.md) Themed tooltips ship default-on
+for browsers without an explicit saved mode. Explicit Native and Themed choices
+remain authoritative. Authorized by graehl on 2026-08-04 after the
+pointer-generated touch-focus reopen defect that motivated the temporary Native
+default was fixed; the shared layer now provides fast scanning, selectable text,
+and readable glossary definitions without changing control activation.
+
 **`!!` bang commands** ([bang-commands](bang-commands.md); recall drawer
 in [composer-recall-drawer](composer-recall-drawer.md)) run a local shell
 command from the composer instead of sending the line to the provider.

@@ -10,6 +10,11 @@ link convergence, and performance/visual acceptance are complete. Public
 shares deliberately remain unannotated because existing share creation
 captures no glossary authority.
 
+Follow-up 2026-08-04: browsers without an explicit tooltip-style preference now
+default to Themed. Explicit glossary activation uses the shared enlarged,
+scrollable treatment; its context click and touch long-press remain
+browser-owned so copied definitions can still be selected.
+
 ## Goal and governing contract
 
 Implement the behavior specified in
