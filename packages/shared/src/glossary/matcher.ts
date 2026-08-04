@@ -69,7 +69,10 @@ function normalizeSource(text: string): NormalizedSource {
 }
 
 function isBoundary(char: string | undefined): boolean {
-  return char === undefined || /[\p{White_Space}\p{P}]/u.test(char);
+  return (
+    char === undefined ||
+    (!/[-\u2010\u2011]/u.test(char) && /[\p{White_Space}\p{P}]/u.test(char))
+  );
 }
 
 function overlaps(left: Candidate, right: Candidate): boolean {

@@ -13,6 +13,9 @@ Topic: glossary
 - Topic-linked rows correspond to non-companion `topics/<name>.md` files.
   Their definitions should come from the topic doc's blockquote lede when the
   topic has one.
+- A topic-linked term starts with its topic basename as plain text. Add any
+  deliberately supported shorter or prose form after a comma; comma-separated
+  forms are independent glossary matches.
 - Vernacular rows are curated. Add one only when a term's Yep Anywhere meaning
   is distinct from default usage.
 - The glossary is a lookup surface, not a contribution manual; regeneration

@@ -240,6 +240,26 @@ describe("compiled glossary matching", () => {
     ).toEqual(["term", "score/F1"]);
   });
 
+  it("treats lexical hyphens as significant word characters", () => {
+    const artifact = compile([
+      row("source-path", "hyphenated"),
+      row("source path", "spaced", { rowOrder: 1 }),
+      row("source", "short", { rowOrder: 2 }),
+    ]);
+    const text = "source-path source path - source";
+
+    expect(
+      matchGlossaryText(text, artifact).map((match) => ({
+        definition: match.definitionText,
+        text: text.slice(match.start, match.end),
+      })),
+    ).toEqual([
+      { definition: "source-path: hyphenated", text: "source-path" },
+      { definition: "source path: spaced", text: "source path" },
+      { definition: "source: short", text: "source" },
+    ]);
+  });
+
   it("selects the longest visible match when candidates overlap", () => {
     const artifact = compile([
       row("**alpha**"),
