@@ -118,9 +118,9 @@ describe("governing glossary resolution", () => {
         ({ normalizedForm }) => normalizedForm === "shared term",
       )?.definitionText,
     ).toBe(
-      "[.] shared term: Root meaning\n\n" +
-        "[papers] shared term: Paper meaning\n\n" +
-        "[shared] shared term: Shared meaning",
+      "shared term: Root meaning\n\n" +
+        "shared term: Paper meaning\n\n" +
+        "shared term: Shared meaning",
     );
   });
 
@@ -139,7 +139,7 @@ describe("governing glossary resolution", () => {
 
     const service = new GlossaryIndexService();
     const rootResult = await service.resolve(project, "README.md");
-    const paperResult = await service.resolve(project, "papers/draft.md");
+    const paperResult = await service.resolve(project, "papers/notes/draft.md");
 
     expect(rootResult).toMatchObject({
       governingPath: "GLOSSARY.md",
@@ -149,6 +149,11 @@ describe("governing glossary resolution", () => {
       governingPath: "papers/GLOSSARY.md",
       status: "ready",
     });
+    expect(service.getObservedGlossaryPaths(project)).toMatchObject([
+      { identity: expect.any(Object), path: "GLOSSARY.md" },
+      { identity: expect.any(Object), path: "papers/GLOSSARY.md" },
+      { identity: null, path: "papers/notes/GLOSSARY.md" },
+    ]);
     expect(await service.resolve(project, "papers/GLOSSARY.md")).toEqual({
       reason: "governing-glossary-is-source",
       status: "none",

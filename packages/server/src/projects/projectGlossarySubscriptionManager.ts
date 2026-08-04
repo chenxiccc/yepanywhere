@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
-import { readdir, realpath, stat } from "node:fs/promises";
+import { realpath, stat } from "node:fs/promises";
 import { basename, isAbsolute, join, relative, sep } from "node:path";
 import type {
   GlossaryPathChangedEvent,
@@ -37,6 +37,7 @@ interface ProjectGlossaryState {
   epoch: string;
   generation: number;
   initialized: boolean;
+  observedPaths: Set<string>;
   paths: Map<string, GlossaryPathIdentity>;
   subscribers: Map<number, GlossarySubscriber>;
   watcher: fs.FSWatcher | null;
@@ -84,9 +85,9 @@ function sortedPaths(paths: Map<string, GlossaryPathIdentity>): string[] {
  * Project-scoped glossary path subscriptions.
  *
  * One native watcher and fallback poll are reference-counted across every tab
- * subscribed to the same project. Inactive projects retain only a bounded
- * path/fingerprint snapshot so reconnect can detect edits missed while no
- * watcher was live.
+ * subscribed to the same project. The service stats only candidates learned
+ * from source-context resolution; the watcher adds newly changed glossary
+ * paths without requiring an exhaustive project crawl.
  */
 export class ProjectGlossarySubscriptionManager {
   private readonly scanner: ProjectGlossarySubscriptionManagerOptions["scanner"];
@@ -197,6 +198,7 @@ export class ProjectGlossarySubscriptionManager {
       epoch: randomUUID(),
       generation: 0,
       initialized: false,
+      observedPaths: new Set(),
       paths: new Map(),
       subscribers: new Map(),
       watcher: null,
@@ -229,9 +231,17 @@ export class ProjectGlossarySubscriptionManager {
         state.projectPath,
         { recursive: true },
         (_eventType, filename) => {
-          if (!filename || basename(filename.toString()) === "GLOSSARY.md") {
+          if (!filename) {
             this.scheduleRefresh(state);
+            return;
           }
+          const changedPath = filename.toString().replaceAll("\\", "/");
+          if (basename(changedPath) !== "GLOSSARY.md") return;
+          this.glossaryIndexService.observeGlossaryPath(
+            state.projectPath,
+            changedPath,
+          );
+          this.scheduleRefresh(state);
         },
       );
       state.watcher.on("error", (error) => {
@@ -283,15 +293,33 @@ export class ProjectGlossarySubscriptionManager {
   ): Promise<void> {
     do {
       state.refreshQueued = false;
-      const nextPaths = await this.scanProject(state.projectPath);
+      const observations =
+        this.glossaryIndexService.getObservedGlossaryPaths(state.projectPath);
+      const nextPaths = await this.scanObservedPaths(
+        state.projectPath,
+        observations.map(({ path }) => path),
+      );
       if (!state.initialized) {
         state.paths = nextPaths;
+        state.observedPaths = new Set(
+          observations.map(({ path }) => path),
+        );
         state.initialized = true;
         continue;
       }
 
-      const changes = this.diffPaths(state.paths, nextPaths);
+      const previousPaths = new Map(state.paths);
+      for (const observation of observations) {
+        if (
+          !state.observedPaths.has(observation.path) &&
+          observation.identity
+        ) {
+          previousPaths.set(observation.path, observation.identity);
+        }
+      }
+      const changes = this.diffPaths(previousPaths, nextPaths);
       state.paths = nextPaths;
+      state.observedPaths = new Set(observations.map(({ path }) => path));
       if (changes.length === 0) continue;
 
       this.glossaryIndexService.invalidateProject(state.projectPath);
@@ -332,39 +360,22 @@ export class ProjectGlossarySubscriptionManager {
     return changes;
   }
 
-  private async scanProject(
+  private async scanObservedPaths(
     projectPath: string,
+    observedPaths: readonly string[],
   ): Promise<Map<string, GlossaryPathIdentity>> {
     const result = new Map<string, GlossaryPathIdentity>();
-    const pending = [projectPath];
-
-    while (pending.length > 0) {
-      const directory = pending.pop()!;
-      let entries: fs.Dirent[];
-      try {
-        entries = await readdir(directory, { withFileTypes: true });
-      } catch (error) {
-        if (directory === projectPath) throw error;
-        continue;
-      }
-      for (const entry of entries) {
-        const fullPath = join(directory, entry.name);
-        if (entry.isDirectory()) {
-          if (entry.name !== ".git") pending.push(fullPath);
-          continue;
-        }
-        if (entry.name !== "GLOSSARY.md") continue;
+    await Promise.all(
+      observedPaths.map(async (projectRelativePath) => {
+        const fullPath = join(projectPath, projectRelativePath);
         try {
           const [canonicalPath, fileStats] = await Promise.all([
             realpath(fullPath),
             stat(fullPath),
           ]);
           if (!fileStats.isFile() || !isContained(projectPath, canonicalPath)) {
-            continue;
+            return;
           }
-          const projectRelativePath = relative(projectPath, fullPath)
-            .split(sep)
-            .join("/");
           result.set(projectRelativePath, {
             ctimeMs: fileStats.ctimeMs,
             dev: fileStats.dev,
@@ -373,10 +384,10 @@ export class ProjectGlossarySubscriptionManager {
             size: fileStats.size,
           });
         } catch {
-          // The candidate disappeared or became unreadable during the scan.
+          // Missing candidates remain observed so their creation is detected.
         }
-      }
-    }
+      }),
+    );
     return result;
   }
 

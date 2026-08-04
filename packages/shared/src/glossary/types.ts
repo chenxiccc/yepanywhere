@@ -1,5 +1,4 @@
 export const GLOSSARY_ARTIFACT_VERSION = 1 as const;
-export const GLOSSARY_SOURCE_PATH_MAX_LENGTH = 4_096;
 
 export const GLOSSARY_LIMITS = {
   maxIncludeDepth: 16,

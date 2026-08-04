@@ -1,7 +1,4 @@
-import {
-  GLOSSARY_SOURCE_PATH_MAX_LENGTH,
-  type GlossaryArtifactResponse,
-} from "@yep-anywhere/shared";
+import type { GlossaryArtifactResponse } from "@yep-anywhere/shared";
 import { Hono } from "hono";
 import {
   GlossaryIndexService,
@@ -29,18 +26,6 @@ export function createGlossaryArtifactRoutes(
     if (sourcePath !== undefined && sourcePath.length === 0) {
       return c.json({ error: "sourcePath must not be empty" }, 400);
     }
-    if (
-      sourcePath !== undefined &&
-      sourcePath.length > GLOSSARY_SOURCE_PATH_MAX_LENGTH
-    ) {
-      return c.json(
-        {
-          error: `sourcePath exceeds ${GLOSSARY_SOURCE_PATH_MAX_LENGTH} characters`,
-        },
-        400,
-      );
-    }
-
     const result: GlossaryResolutionResult = await service.resolve(
       projectPath,
       sourcePath,

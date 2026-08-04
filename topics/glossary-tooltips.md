@@ -279,20 +279,23 @@ a bad graph cannot cause repeated work on every render.
 
 While at least one client subscribes to a project's glossary paths, the server
 holds one reference-counted project watcher. Subscription begins with the
-complete project-relative set of files named exactly `GLOSSARY.md` and a
-monotonic process-local generation. It then emits one `create`, `modify`, or
-`delete` notification for each glossary-path change. The watcher is independent
-of source paths previously queried by the client and is torn down when its last
-subscriber disconnects. A bounded periodic check covers missed native watcher
-events while the subscription remains live; it must not survive without a live
-subscriber.
+currently existing candidate and dependency paths learned by on-demand source
+resolution, plus a monotonic process-local generation. It then emits one
+`create`, `modify`, or `delete` notification for each glossary-path change. The
+native watcher notices future `GLOSSARY.md` changes project-wide; the fallback
+poll stats only ancestor candidates and include dependencies already learned by
+queries. Missing candidates remain observed so creating a nearer glossary is
+detected. No subscription startup or poll recursively crawls the project. The
+watcher and poll are torn down when the last subscriber disconnects.
 
-The client maintains the glossary-path hierarchy. Modification invalidates
-cached artifacts whose dependency list names the changed glossary. Creation,
-deletion, or rename invalidates cached source contexts below the changed
-glossary's directory because nearest-governing resolution may have changed.
-An initial subscription snapshot after reconnect lets the client detect missed
-changes without retaining per-source subscription state on the server.
+The client uses the glossary-path stream for invalidation, not governing-file
+selection. Every source-context artifact request goes directly to the server,
+which resolves the nearest glossary from the source path. Modification
+invalidates cached artifacts whose dependency list names the changed glossary.
+Creation, deletion, or rename invalidates cached source contexts below the
+changed glossary's directory because nearest-governing resolution may have
+changed. A snapshot generation change after reconnect invalidates the tab's
+cached artifacts without creating one subscription per queried source.
 
 File-identity checks in the artifact resolver remain authoritative even with
 notifications: an artifact request validates the actual current dependency
@@ -313,6 +316,12 @@ request for the same project and unresolved governing-graph version awaits the
 existing promise rather than starting duplicate path validation, parsing, or
 compilation. This wait belongs only to glossary initialization; it must never
 hold the displayable content response behind a possible glossary result.
+The source-qualified artifact request also does not wait for the project-wide
+glossary-path subscription's initial snapshot. The server resolves the nearest
+governing glossary from the supplied source path; the independent path stream
+then supplies hierarchy-aware invalidation for later additions, edits, and
+deletions. Project discovery is on demand; a large unrelated subtree must not
+delay either the document or its glossary artifact.
 
 When the artifact becomes ready, the owning Markdown renderer re-renders from
 its original source or sanitized renderer output and replaces the speculative
@@ -333,13 +342,14 @@ rather than implementing another parser or matcher. The authenticated delivery
 contract is one optional-source request,
 `GET /api/projects/:projectId/glossary-artifact[?sourcePath=...]`, plus one
 project-scoped glossary-path subscription. Omitting `sourcePath` selects the
-project-root assistant-prose context. Subscription starts with all glossary
-paths and their generation, then reports additions, modifications, and
-deletions. For server-rendered HTML, annotation transforms the sanitized
-renderer output before insertion; it is not a document-wide mounted-DOM
-rewrite. An older server's missing `glossary-tooltips` capability means the
-client makes no unsupported request or subscription and renders ordinary
-Markdown without glossary annotations.
+project-root assistant-prose context. The subscription snapshot contains the
+existing candidates and dependencies learned by on-demand resolution plus its
+generation; the project-wide change stream then reports glossary additions,
+modifications, and deletions. For server-rendered HTML, annotation transforms
+the sanitized renderer output before insertion; it is not a document-wide
+mounted-DOM rewrite. An older server's missing `glossary-tooltips` capability
+means the client makes no unsupported request or subscription and renders
+ordinary Markdown without glossary annotations.
 
 Authenticated project-contained Markdown links use the shared FileViewer
 route, including browser new-tab gestures, so project documents retain their

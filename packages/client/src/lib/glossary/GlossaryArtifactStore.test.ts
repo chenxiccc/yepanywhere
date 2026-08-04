@@ -63,7 +63,7 @@ async function flush(): Promise<void> {
 }
 
 describe("GlossaryArtifactStore", () => {
-  it("waits for the path snapshot and requests one source context", async () => {
+  it("requests one source context without waiting for the path snapshot", async () => {
     const fetchMock = vi.fn();
     const fetch = async <T>(path: string, init?: RequestInit): Promise<T> => {
       fetchMock(path, init);
@@ -73,7 +73,16 @@ describe("GlossaryArtifactStore", () => {
     const store = new GlossaryArtifactStore();
     store.activate(PROJECT_ID, transport);
     store.ensure("papers/draft.md");
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `/projects/${encodeURIComponent(PROJECT_ID)}/glossary-artifact?sourcePath=papers%2Fdraft.md`,
+      undefined,
+    );
+    await flush();
+    expect(store.getSnapshot("papers/draft.md")).toMatchObject({
+      state: "ready",
+      result: { governingPath: "papers/GLOSSARY.md", sourceVersion: "v1" },
+    });
 
     const subscription = transport.getSubscriptions("glossary")[0];
     expect(subscription?.projectId).toBe(PROJECT_ID);
@@ -86,17 +95,13 @@ describe("GlossaryArtifactStore", () => {
     await flush();
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledWith(
-      `/projects/${encodeURIComponent(PROJECT_ID)}/glossary-artifact?sourcePath=papers%2Fdraft.md`,
-      undefined,
-    );
     expect(store.getSnapshot("papers/draft.md")).toMatchObject({
       state: "ready",
       result: { governingPath: "papers/GLOSSARY.md", sourceVersion: "v1" },
     });
   });
 
-  it("uses one project subscription for many queried source directories", () => {
+  it("uses one project subscription for every queried source directory", () => {
     const transport = new FakeSourceTransport();
     const store = new GlossaryArtifactStore();
     store.activate(PROJECT_ID, transport);
@@ -106,7 +111,7 @@ describe("GlossaryArtifactStore", () => {
     }
 
     expect(transport.getSubscriptions("glossary")).toHaveLength(1);
-    expect(store.diagnostics().artifacts).toBeLessThanOrEqual(64);
+    expect(store.diagnostics().artifacts).toBe(100);
   });
 
   it("invalidates a dependent artifact after one glossary edit event", async () => {

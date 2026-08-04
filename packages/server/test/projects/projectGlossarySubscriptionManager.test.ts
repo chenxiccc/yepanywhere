@@ -36,8 +36,17 @@ async function createHarness() {
     ),
   } as unknown as ProjectScanner;
   const invalidateProject = vi.fn();
+  const observedPaths = new Set<string>();
+  const observeGlossaryPath = vi.fn((_projectPath: string, path: string) => {
+    observedPaths.add(path);
+    return true;
+  });
   const glossaryIndexService = {
+    getObservedGlossaryPaths: vi.fn(() =>
+      [...observedPaths].map((path) => ({ identity: null, path })),
+    ),
     invalidateProject,
+    observeGlossaryPath,
   } as unknown as GlossaryIndexService;
   const manager = new ProjectGlossarySubscriptionManager({
     scanner,
@@ -49,6 +58,7 @@ async function createHarness() {
     glossaryIndexService,
     invalidateProject,
     manager,
+    observePath: (path: string) => observeGlossaryPath(projectPath, path),
     projectId,
     projectPath,
   };
@@ -75,12 +85,14 @@ afterEach(async () => {
 });
 
 describe("ProjectGlossarySubscriptionManager", () => {
-  it("sends all glossary paths first and reports later changes", async () => {
-    const { manager, projectId, projectPath, invalidateProject } =
+  it("sends observed glossary paths first and reports later changes", async () => {
+    const { manager, projectId, projectPath, invalidateProject, observePath } =
       await createHarness();
     await mkdir(join(projectPath, "papers"));
     await writeFile(join(projectPath, "GLOSSARY.md"), "root");
     await writeFile(join(projectPath, "papers", "GLOSSARY.md"), "paper");
+    observePath("GLOSSARY.md");
+    observePath("papers/GLOSSARY.md");
     const events: GlossarySubscriptionEvent[] = [];
 
     const unsubscribe = await manager.subscribe(projectId, (event) => {
@@ -118,9 +130,63 @@ describe("ProjectGlossarySubscriptionManager", () => {
     manager.dispose();
   });
 
-  it("shares one project state across subscribers and detects offline edits", async () => {
+  it("does not crawl unobserved project subtrees", async () => {
+    const { manager, observePath, projectId, projectPath } =
+      await createHarness();
+    await mkdir(join(projectPath, "unqueried"));
+    await writeFile(join(projectPath, "GLOSSARY.md"), "root");
+    await writeFile(
+      join(projectPath, "unqueried", "GLOSSARY.md"),
+      "unqueried",
+    );
+    observePath("GLOSSARY.md");
+    const events: GlossarySubscriptionEvent[] = [];
+
+    const unsubscribe = await manager.subscribe(projectId, (event) => {
+      events.push(event);
+    });
+
+    expect(events[0]).toMatchObject({
+      type: "glossary-paths-snapshot",
+      paths: ["GLOSSARY.md"],
+    } satisfies Partial<GlossaryPathsSnapshotEvent>);
+    unsubscribe();
+    manager.dispose();
+  });
+
+  it("discovers a newly changed glossary path project-wide", async () => {
     const { manager, projectId, projectPath } = await createHarness();
+    await mkdir(join(projectPath, "unqueried"));
+    const events: GlossarySubscriptionEvent[] = [];
+    const unsubscribe = await manager.subscribe(projectId, (event) => {
+      events.push(event);
+    });
+
+    await writeFile(join(projectPath, "unqueried", "GLOSSARY.md"), "new");
+    await waitFor(
+      () =>
+        events.some(
+          (event) =>
+            event.type === "glossary-path-changed" &&
+            event.path === "unqueried/GLOSSARY.md",
+        ),
+      "Expected project-wide glossary creation event",
+    );
+
+    expect(events.at(-1)).toMatchObject({
+      changeType: "create",
+      path: "unqueried/GLOSSARY.md",
+      type: "glossary-path-changed",
+    });
+    unsubscribe();
+    manager.dispose();
+  });
+
+  it("shares one project state across subscribers and detects offline edits", async () => {
+    const { manager, observePath, projectId, projectPath } =
+      await createHarness();
     await writeFile(join(projectPath, "GLOSSARY.md"), "one");
+    observePath("GLOSSARY.md");
     const firstEvents: GlossarySubscriptionEvent[] = [];
     const secondEvents: GlossarySubscriptionEvent[] = [];
 

@@ -13,7 +13,6 @@ import {
 } from "../transport";
 
 const ROOT_CONTEXT_KEY = "";
-const MAX_ARTIFACTS = 64;
 
 export type GlossaryArtifactState =
   | "idle"
@@ -34,7 +33,6 @@ interface ArtifactEntry {
   snapshot: GlossaryArtifactSnapshot;
   requested: boolean;
   requestSerial: number;
-  lastUsedAt: number;
 }
 
 interface ActiveProject {
@@ -87,25 +85,6 @@ function sourceIsBelowDirectory(
   return (
     sourcePath === directory || sourcePath?.startsWith(`${directory}/`) === true
   );
-}
-
-function findGoverningGlossary(
-  paths: Set<string>,
-  sourcePath: string | undefined,
-): string | null {
-  if (sourcePath === undefined) {
-    return paths.has("GLOSSARY.md") ? "GLOSSARY.md" : null;
-  }
-  const parts = sourcePath.split("/");
-  if (parts.at(-1) === "GLOSSARY.md") return null;
-  parts.pop();
-  while (true) {
-    const candidate =
-      parts.length > 0 ? `${parts.join("/")}/GLOSSARY.md` : "GLOSSARY.md";
-    if (paths.has(candidate)) return candidate;
-    if (parts.length === 0) return null;
-    parts.pop();
-  }
 }
 
 function isGlossarySubscriptionEvent(
@@ -192,9 +171,7 @@ export class GlossaryArtifactStore {
     if (key === null) return;
     const entry = this.getOrCreateEntry(key);
     entry.requested = true;
-    entry.lastUsedAt = Date.now();
     this.ensureEntry(key, entry);
-    this.evictEntries();
   }
 
   diagnostics(): {
@@ -286,11 +263,7 @@ export class GlossaryArtifactStore {
   }
 
   private ensureEntry(key: string, entry: ArtifactEntry): void {
-    if (
-      !this.active ||
-      !this.pathsReady ||
-      entry.snapshot.state === "loading"
-    ) {
+    if (!this.active || entry.snapshot.state === "loading") {
       return;
     }
     if (
@@ -298,23 +271,6 @@ export class GlossaryArtifactStore {
       entry.snapshot.state === "none" ||
       entry.snapshot.state === "disabled"
     ) {
-      return;
-    }
-
-    const governingPath = findGoverningGlossary(this.paths, entry.sourcePath);
-    if (!governingPath) {
-      entry.snapshot = {
-        state: "none",
-        result: {
-          reason:
-            entry.sourcePath?.endsWith("/GLOSSARY.md") ||
-            entry.sourcePath === "GLOSSARY.md"
-              ? "governing-glossary-is-source"
-              : "no-governing-glossary",
-          status: "none",
-        },
-      };
-      this.emit(key);
       return;
     }
 
@@ -336,7 +292,7 @@ export class GlossaryArtifactStore {
         if (
           this.active !== active ||
           entry.requestSerial !== requestSerial ||
-          !sameGeneration(generation, this.generation)
+          (generation !== null && !sameGeneration(generation, this.generation))
         ) {
           return;
         }
@@ -366,24 +322,9 @@ export class GlossaryArtifactStore {
       snapshot: IDLE_SNAPSHOT,
       requested: false,
       requestSerial: 0,
-      lastUsedAt: Date.now(),
     };
     this.entries.set(key, entry);
     return entry;
-  }
-
-  private evictEntries(): void {
-    if (this.entries.size <= MAX_ARTIFACTS) return;
-    const candidates = [...this.entries.entries()]
-      .filter(
-        ([key, entry]) =>
-          (this.listeners.get(key)?.size ?? 0) === 0 &&
-          entry.snapshot.state !== "loading",
-      )
-      .sort((left, right) => left[1].lastUsedAt - right[1].lastUsedAt);
-    while (this.entries.size > MAX_ARTIFACTS && candidates.length > 0) {
-      this.entries.delete(candidates.shift()![0]);
-    }
   }
 
   private emit(key: string): void {

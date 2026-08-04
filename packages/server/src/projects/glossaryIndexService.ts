@@ -42,6 +42,11 @@ interface FileStatsIdentity {
   size: number;
 }
 
+export interface GlossaryPathObservation {
+  identity: FileStatsIdentity | null;
+  path: string;
+}
+
 interface GlossarySnapshot {
   canonicalPath: string;
   content: string;
@@ -224,6 +229,10 @@ export class GlossaryIndexService {
   >();
   private readonly parsedFiles = new Map<string, ParsedGlossaryCacheEntry>();
   private readonly compiledGraphs = new Map<string, CompiledGraphCacheEntry>();
+  private readonly observedPaths = new Map<
+    string,
+    Map<string, FileStatsIdentity | null>
+  >();
 
   constructor(options: GlossaryIndexServiceOptions = {}) {
     this.compile = options.compile ?? compileGlossaryArtifact;
@@ -270,6 +279,30 @@ export class GlossaryIndexService {
   clear(): void {
     this.parsedFiles.clear();
     this.compiledGraphs.clear();
+    this.observedPaths.clear();
+  }
+
+  /**
+   * Return glossary candidates learned while resolving source contexts.
+   * Missing candidates are retained so a later file creation is observable.
+   */
+  getObservedGlossaryPaths(projectPath: string): GlossaryPathObservation[] {
+    const observations = this.observedPaths.get(resolve(projectPath));
+    if (!observations) return [];
+    return [...observations.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([path, identity]) => ({
+        identity: identity ? { ...identity } : null,
+        path,
+      }));
+  }
+
+  /** Add a project-relative path reported by the project-wide watcher. */
+  observeGlossaryPath(projectPath: string, glossaryPath: string): boolean {
+    const normalized = normalizeSourcePath(glossaryPath);
+    if (!normalized || basename(normalized) !== "GLOSSARY.md") return false;
+    this.observePaths(resolve(projectPath), [normalized]);
+    return true;
   }
 
   invalidateProject(projectPath: string): void {
@@ -341,6 +374,7 @@ export class GlossaryIndexService {
   ): Promise<GlossaryResolutionResult> {
     const pathIndex = await this.io.getPathIndex(canonicalProject);
     const candidates = governingCandidates(sourcePath);
+    this.observePaths(canonicalProject, candidates);
     const existing = await pathIndex.findExisting(candidates);
     const governingRelative = candidates.find((candidate) =>
       existing.has(candidate),
@@ -590,6 +624,7 @@ export class GlossaryIndexService {
     }
 
     const existing = await pathIndex.findExisting(allRelativePaths);
+    this.observePaths(projectRoot, allRelativePaths);
     const included: GlossarySnapshot[] = [];
     const includedCanonical = new Set<string>();
     for (const entry of mentionCandidates) {
@@ -648,11 +683,19 @@ export class GlossaryIndexService {
         ) {
           continue;
         }
+        const identity: FileStatsIdentity = {
+          ctimeMs: after.ctimeMs,
+          dev: after.dev,
+          ino: after.ino,
+          mtimeMs: after.mtimeMs,
+          size: after.size,
+        };
+        this.observeIdentity(projectRoot, projectRelativePath, identity);
         return {
           canonicalPath,
           content: bytes.toString("utf-8"),
           contentHash: createHash("sha256").update(bytes).digest("hex"),
-          identity: after,
+          identity,
           projectRelativePath,
         };
       } catch {
@@ -660,5 +703,28 @@ export class GlossaryIndexService {
       }
     }
     return null;
+  }
+
+  private observePaths(
+    projectRoot: string,
+    glossaryPaths: readonly string[],
+  ): void {
+    let observations = this.observedPaths.get(projectRoot);
+    if (!observations) {
+      observations = new Map();
+      this.observedPaths.set(projectRoot, observations);
+    }
+    for (const glossaryPath of glossaryPaths) {
+      if (!observations.has(glossaryPath)) observations.set(glossaryPath, null);
+    }
+  }
+
+  private observeIdentity(
+    projectRoot: string,
+    glossaryPath: string,
+    identity: FileStatsIdentity,
+  ): void {
+    this.observePaths(projectRoot, [glossaryPath]);
+    this.observedPaths.get(projectRoot)!.set(glossaryPath, identity);
   }
 }

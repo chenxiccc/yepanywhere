@@ -9,7 +9,6 @@ export { matchGlossaryText } from "./matcher.js";
 export {
   GLOSSARY_ARTIFACT_VERSION,
   GLOSSARY_LIMITS,
-  GLOSSARY_SOURCE_PATH_MAX_LENGTH,
   type GlossaryArtifact,
   type GlossaryArtifactNode,
   type GlossaryArtifactTerminal,

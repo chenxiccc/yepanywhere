@@ -1,5 +1,4 @@
 import {
-  GLOSSARY_SOURCE_PATH_MAX_LENGTH,
   type GlossaryArtifactResponse,
   toUrlProjectId,
 } from "@yep-anywhere/shared";
@@ -92,7 +91,7 @@ describe("glossary artifact route", () => {
     expect(service.resolve).toHaveBeenCalledWith(PROJECT_PATH, undefined);
   });
 
-  it("rejects empty, oversized, and escaping source paths", async () => {
+  it("rejects empty and escaping source paths", async () => {
     const { routes, service } = createRoutes({
       reason: "invalid-source-path",
       status: "none",
@@ -101,19 +100,25 @@ describe("glossary artifact route", () => {
     const empty = await routes.request(
       `/${PROJECT_ID}/glossary-artifact?sourcePath=`,
     );
-    const oversized = await routes.request(
-      `/${PROJECT_ID}/glossary-artifact?sourcePath=${"x".repeat(
-        GLOSSARY_SOURCE_PATH_MAX_LENGTH + 1,
-      )}`,
-    );
     const escaping = await routes.request(
       `/${PROJECT_ID}/glossary-artifact?sourcePath=..%2Foutside.md`,
     );
 
     expect(empty.status).toBe(400);
-    expect(oversized.status).toBe(400);
     expect(escaping.status).toBe(400);
     expect(service.resolve).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not impose an arbitrary source-path length limit", async () => {
+    const { routes, service } = createRoutes();
+    const sourcePath = `${"nested/".repeat(700)}draft.md`;
+
+    const response = await routes.request(
+      `/${PROJECT_ID}/glossary-artifact?sourcePath=${encodeURIComponent(sourcePath)}`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(service.resolve).toHaveBeenCalledWith(PROJECT_PATH, sourcePath);
   });
 
   it("returns no artifact when the project has no governing glossary", async () => {

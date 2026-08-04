@@ -154,11 +154,13 @@ path, artifact/dependency version, serialized automaton, dependency paths, and
 bounded diagnostics.
 
 The same capability owns a project-scoped glossary-path subscription. Its
-initial snapshot contains every project-relative `GLOSSARY.md` path and a
-process-local generation. Subsequent events report each path creation,
-modification, or deletion. A client maps those rare path events onto its own
-bounded source-context artifact cache; the server never retains the set of
-source directories that client queried.
+initial snapshot contains currently existing candidates and dependencies
+learned by on-demand source resolution, plus a process-local generation.
+Subsequent native-watcher events report project-wide path creation,
+modification, or deletion; fallback polling stats only learned paths, including
+missing ancestor candidates. A client maps those rare path events onto its own
+tab-lifetime source-context artifact cache. Neither side recursively crawls the
+project or creates one subscription per source directory.
 
 The compatibility review approved this route, subscription, and absent-
 capability behavior: hide or disable the unsupported preference, make no
@@ -271,8 +273,10 @@ replacement:
 After approval, add a dedicated route module, mount it with the project routes
 in `packages/server/src/app.ts`, register its complete contract in
 `packages/shared/src/server-capabilities.ts`, export shared request/response
-types, and cover direct plus relay transport. The request must be bounded and
-path-contained; diagnostics must not disclose glossary text or escaped paths.
+types, and cover direct plus relay transport. The request accepts one
+project-relative path and rejects paths outside the project without imposing an
+arbitrary source-count or path-length limit; diagnostics must not disclose
+glossary text or escaped paths.
 
 ### 5 — start background readiness from project render contexts
 
@@ -283,12 +287,14 @@ store renders through the initial `empty/not-ready` state, shares promises, and
 publishes immutable ready artifacts to subscribed renderers.
 
 Retain one glossary-path subscription for each actively used project. Seed the
-client's path hierarchy from its initial full-path snapshot, then apply each
-create/modify/delete event. Modification marks entries stale when their
-dependency paths contain the changed glossary. Structural changes mark cached
-source contexts below that glossary directory stale. Reconnect replaces the
-path snapshot and compares generation. Keep the artifact store bounded; do not
-turn previously queried source directories into subscription registrations.
+client's invalidation state from the initial observed-path snapshot, then apply
+each create/modify/delete event. Artifact lookup never waits for or infers the
+governing glossary from that snapshot. Modification marks entries stale when
+their dependency paths contain the changed glossary. Structural changes mark
+cached source contexts below that glossary directory stale. Reconnect replaces
+the path snapshot and compares generation. Keep one project subscription rather
+than turning previously queried source directories into subscription
+registrations.
 
 Do not attach this to provider-process activation or server session liveness:
 glossary work is presentation data and must not wake or retain a provider. A
@@ -399,6 +405,26 @@ hyphen-significant nonmatch, source-mode exclusion, and no client console
 warnings or errors. The first real-browser pass also caught a doubled `/api`
 prefix in the new artifact request; the store now passes the source transport's
 API-relative path rather than duplicating the transport-owned prefix.
+
+Corrective verification on 2026-08-04 used
+`research/pii-redaction-frontier/incumbent-comparison-handout.md` in the
+`trtllm-speculative/draft` project. The source-qualified request selected the
+same-directory `research/pii-redaction-frontier/GLOSSARY.md`, and all 29
+`Fresh20` occurrences received that glossary's definition. Holding the
+artifact response proved that document text appeared unannotated first, then
+re-rendered when the artifact arrived. Desktop and 375x812 measurements kept
+the preview and term line heights and container dimensions unchanged; the
+desktop term width differed by only Chromium's 1/64-pixel inline-boundary
+quantization. No client console problem or stale-server banner appeared.
+
+That pass also found that the original project subscription recursively
+crawled 71,605 directories before publishing its initial snapshot. The
+corrected subscription now snapshots only ancestor candidates and include
+dependencies learned by source-qualified requests, while its native watcher
+still reports later project-wide glossary changes. Artifact lookup neither
+waits for nor infers governing selection from the snapshot. The client cache
+retains every source context used during the tab/project lifetime, and the
+route has no YA-specific source-path length limit.
 
 ## Suggested commit slices
 
