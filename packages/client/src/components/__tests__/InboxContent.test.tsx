@@ -324,6 +324,16 @@ describe("InboxContent", () => {
     ).not.toContain("Generated title");
   });
 
+  it("does not restate the visible Refresh label in a title", () => {
+    renderInbox(<InboxContent />);
+
+    expect(
+      screen.getByRole("button", { name: "inboxRefresh" }).getAttribute(
+        "title",
+      ),
+    ).toBeNull();
+  });
+
   it("passes starred state through to inbox rows", () => {
     inboxState.needsAttention = [
       {

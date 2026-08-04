@@ -664,7 +664,6 @@ export function SessionListItem({
           onClick={handleSessionClick}
           onMouseDown={handleSessionMouseDown}
           onAuxClick={handleSessionAuxClick}
-          title={showHoverCard ? undefined : titleTooltip}
           className="session-list-item__link"
         >
           {mode === "card" ? (
@@ -690,7 +689,9 @@ export function SessionListItem({
                     /btw
                   </span>
                 )}
-                {visibleTitle}
+                <span title={showHoverCard ? undefined : titleTooltip}>
+                  {visibleTitle}
+                </span>
                 {hasDraft && <span className="session-draft-badge">Draft</span>}
                 {hasProjectQueue && (
                   <span
@@ -818,7 +819,9 @@ export function SessionListItem({
                       /btw
                     </span>
                   )}
-                  {visibleTitle}
+                  <span title={showHoverCard ? undefined : titleTooltip}>
+                    {visibleTitle}
+                  </span>
                 </span>
                 {hasDraft && <span className="session-draft-badge">Draft</span>}
                 {hasProjectQueue && (

@@ -6,11 +6,10 @@
 
 Topic: tooltip-interactions
 
-Status: A passive-tooltip noninterference correction and labelled-control hint
-audit are planned in
-[`docs/tactical/088-tooltip-noninterference.md`](../docs/tactical/088-tooltip-noninterference.md).
-Until enacted, ordinary Themed tooltips remain pointer-opaque and can consume a
-click when their surface appears over the trigger.
+Status: The passive-tooltip noninterference correction and first labelled-
+control hint audit described in
+[`docs/tactical/088-tooltip-noninterference.md`](../docs/tactical/088-tooltip-noninterference.md)
+were enacted on 2026-08-04.
 
 ## Modes and settings
 
@@ -201,11 +200,17 @@ copies its full text and immediately increases the tooltip by one text-size
 step, without animation or changing primary hit-testing. A nonempty existing
 selection or an app-owned context menu retains browser/application behavior;
 right-click outside the visible tooltip bounds likewise remains owned by its
-page target. The enlarged tooltip follows the same hover-region and close grace
-as its ordinary form. Passive tooltip text is not pointer-selectable: full-text
-copy is the retrieval path. Wheel input inside a vertically overflowing tooltip
-scrolls its contained text and does not scroll or chain into the page beneath
-it; a non-overflowing tooltip does not consume wheel input.
+page target. The compact tooltip reserves no empty enlarged-state space. On
+enlargement, the box retains the ordinary maximum width and its existing top-
+left position when that fits; each axis moves only the minimum needed to keep
+the enlarged box inside the viewport. This limits rewrapping and aspect-ratio
+change without making the initial tooltip loose. The enlarged tooltip follows
+the same hover-region and close grace as its ordinary form. Passive tooltip
+text is not pointer-selectable: full-text copy is the retrieval path. Wheel
+input inside a vertically overflowing tooltip changes only its internal scroll
+position: the tooltip rectangle, word wrapping, and underlying page position
+remain fixed, including at the tooltip's scroll boundary. A non-overflowing
+tooltip does not consume wheel input.
 
 Explicit glossary-term activation begins in the same enlarged treatment because
 the activation expresses reading intent; passive pointer hover remains compact.
@@ -276,9 +281,13 @@ not the surface into a card.
 - Touch activation of a session row or Recent Sessions link navigates without
   opening, warming, or leaving behind a session preview or text tooltip.
 - Secondary-click inside passive tooltip bounds copies/enlarges the full text
-  while respecting existing-selection and app-context-menu exclusions.
+  while respecting existing-selection and app-context-menu exclusions. The
+  compact box reserves no enlarged-state gap; enlargement preserves its top-
+  left position unless the viewport requires the minimum per-axis clamp and
+  retains the ordinary maximum width to limit reflow.
 - Wheel input over an overflowing passive tooltip scrolls its content without
-  moving the underlying page; passive text remains unselectable.
+  changing its rectangle, wrapping, or the underlying page position; passive
+  text remains unselectable.
 - The local and remote entry points install the same tooltip layer and
   pre-render appearance initialization.
 

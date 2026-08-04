@@ -735,7 +735,6 @@ export function ModelSettings() {
                         })
                       }
                       disabled={settingsLoading}
-                      title={modeDescriptions[modeValue]}
                     >
                       <span className={`mode-option-dot mode-${modeValue}`} />
                       <div className="mode-option-content">

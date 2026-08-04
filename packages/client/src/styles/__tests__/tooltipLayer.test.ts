@@ -20,11 +20,15 @@ const riskModuleUrl = new URL(
 );
 
 describe("themed tooltip CSS contract", () => {
-  it("is the frontmost selectable pointer surface", async () => {
+  it("keeps passive hints frontmost and explicit reading interactive", async () => {
     const tooltipCss = await readFile(tooltipModuleUrl, "utf8");
     const hovercardCss = await readFile(hovercardModuleUrl, "utf8");
     const riskCss = await readFile(riskModuleUrl, "utf8");
     const declarations = /\.root\s*\{([^}]*)\}/.exec(tooltipCss)?.[1] ?? "";
+    const interactiveDeclarations =
+      /\.interactive\s*\{([^}]*)\}/.exec(tooltipCss)?.[1] ?? "";
+    const enlargedDeclarations =
+      /\.enlarged\s*\{([^}]*)\}/.exec(tooltipCss)?.[1] ?? "";
     const richRootDeclarations =
       /^\.tooltipVisible\s*\{([^}]*)\}/m.exec(riskCss)?.[1] ?? "";
     const richDeclarations =
@@ -34,8 +38,11 @@ describe("themed tooltip CSS contract", () => {
 
     expect(declarations).toMatch(/position:\s*fixed\s*;/);
     expect(declarations).toMatch(/z-index:\s*2147483647\s*;/);
-    expect(declarations).toMatch(/pointer-events:\s*auto\s*;/);
-    expect(declarations).toMatch(/user-select:\s*text\s*;/);
+    expect(declarations).toMatch(/pointer-events:\s*none\s*;/);
+    expect(declarations).toMatch(/user-select:\s*none\s*;/);
+    expect(interactiveDeclarations).toMatch(/pointer-events:\s*auto\s*;/);
+    expect(interactiveDeclarations).toMatch(/user-select:\s*text\s*;/);
+    expect(enlargedDeclarations).not.toMatch(/max-width\s*:/);
     expect(richRootDeclarations).toMatch(/z-index:\s*2147483647\s*;/);
     expect(richDeclarations).toMatch(/z-index:\s*2147483647\s*;/);
     expect(hovercardDeclarations).toMatch(/z-index:\s*2147483647\s*;/);

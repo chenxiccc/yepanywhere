@@ -165,7 +165,6 @@
   "inboxAllProjects": "Tous les projets",
   "inboxRefresh": "Actualiser",
   "inboxRefreshing": "Actualisation...",
-  "inboxRefreshTitle": "Actualiser la boîte de réception",
   "inboxLoading": "Chargement de la boîte de réception...",
   "inboxError": "Erreur lors du chargement de la boîte de réception : {message}",
   "inboxEmptyTitle": "Tout est à jour",

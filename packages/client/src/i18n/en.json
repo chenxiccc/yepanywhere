@@ -447,7 +447,6 @@
   "inboxAllProjects": "All Projects",
   "inboxRefresh": "Refresh",
   "inboxRefreshing": "Refreshing...",
-  "inboxRefreshTitle": "Refresh inbox",
   "inboxLoading": "Loading inbox...",
   "inboxError": "Error loading inbox: {message}",
   "inboxEmptyTitle": "All caught up!",

@@ -3173,14 +3173,14 @@ export function NewSessionForm({
                 onClick={() => isAvailable && handleProviderSelect(p.name)}
                 disabled={isStarting || !isAvailable}
                 title={
-                  !isAvailable
-                    ? t("newSessionProviderUnavailable", {
+                  isAvailable
+                    ? undefined
+                    : t("newSessionProviderUnavailable", {
                         provider: p.displayName,
                         reason: !p.installed
                           ? t("newSessionProviderNotInstalled")
                           : t("newSessionProviderNotAuthenticated"),
                       })
-                    : p.displayName
                 }
               >
                 <span className={`provider-option-dot provider-${p.name}`} />

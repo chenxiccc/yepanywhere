@@ -303,7 +303,7 @@ describe("SessionListItem links", () => {
     );
   });
 
-  it("uses custom titles for native row tooltips", () => {
+  it("attaches the recoverable title to the visible title owner", () => {
     render(
       <I18nProvider>
         <MemoryRouter>
@@ -321,9 +321,11 @@ describe("SessionListItem links", () => {
       </I18nProvider>,
     );
 
-    expect(
-      screen.getByRole("link", { name: /Custom title/ }).getAttribute("title"),
-    ).toBe("Custom title");
+    const link = screen.getByRole("link", { name: /Custom title/ });
+    expect(link.getAttribute("title")).toBeNull();
+    expect(screen.getByText("Custom title").getAttribute("title")).toBe(
+      "Custom title",
+    );
   });
 
   it("shows a card-mode thinking dot when requested for active rows", () => {
@@ -370,7 +372,7 @@ describe("SessionListItem links", () => {
     const title = screen.getByRole("link", { name: "Active row" }).querySelector(
       "strong",
     );
-    expect(title?.firstElementChild).toBeNull();
+    expect(title?.children).toHaveLength(1);
   });
 
   it("uses custom titles for session hover previews", () => {

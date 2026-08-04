@@ -417,7 +417,6 @@
   "inboxAllProjects": "全部项目",
   "inboxRefresh": "刷新",
   "inboxRefreshing": "刷新中...",
-  "inboxRefreshTitle": "刷新收件箱",
   "inboxLoading": "正在加载收件箱...",
   "inboxError": "加载收件箱失败：{message}",
   "inboxEmptyTitle": "都处理完了",

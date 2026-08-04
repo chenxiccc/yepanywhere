@@ -165,7 +165,6 @@
   "inboxAllProjects": "すべてのプロジェクト",
   "inboxRefresh": "更新",
   "inboxRefreshing": "更新中...",
-  "inboxRefreshTitle": "受信箱を更新",
   "inboxLoading": "受信箱を読み込み中...",
   "inboxError": "受信箱の読み込みエラー: {message}",
   "inboxEmptyTitle": "対応完了",

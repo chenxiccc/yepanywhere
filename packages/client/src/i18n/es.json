@@ -165,7 +165,6 @@
   "inboxAllProjects": "Todos los proyectos",
   "inboxRefresh": "Actualizar",
   "inboxRefreshing": "Actualizando...",
-  "inboxRefreshTitle": "Actualizar bandeja de entrada",
   "inboxLoading": "Cargando bandeja de entrada...",
   "inboxError": "Error al cargar la bandeja de entrada: {message}",
   "inboxEmptyTitle": "Todo al día",

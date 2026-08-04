@@ -1,6 +1,6 @@
 .root {
   position: fixed;
-  /* Keep the visible tooltip as the frontmost app hit-test surface. */
+  /* Stay visually frontmost while document capture owns passive hit testing. */
   z-index: 2147483647;
   box-sizing: border-box;
   width: max-content;
@@ -22,6 +22,12 @@
   text-align: left;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  pointer-events: none;
+  user-select: none;
+  cursor: default;
+}
+
+.interactive {
   pointer-events: auto;
   user-select: text;
   cursor: text;
@@ -32,7 +38,6 @@
 }
 
 .enlarged {
-  max-width: min(680px, calc(100vw - 16px));
   padding: 7px 9px;
   font-size: var(--font-size-sm);
 }

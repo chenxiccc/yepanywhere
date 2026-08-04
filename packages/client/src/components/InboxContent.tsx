@@ -630,7 +630,6 @@ export function InboxContent({
             className="inbox-refresh-button"
             onClick={handleRefresh}
             disabled={refreshing || loading}
-            title={t("inboxRefreshTitle")}
           >
             <svg
               className={refreshing ? styles.refreshSpinner : ""}

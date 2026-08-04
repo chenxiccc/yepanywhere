@@ -20,6 +20,28 @@ import styles from "../TooltipLayer.module.css";
 
 const originalClipboard = navigator.clipboard;
 
+function mockElementRect(
+  element: Element,
+  {
+    left,
+    top,
+    width,
+    height,
+  }: { left: number; top: number; width: number; height: number },
+) {
+  vi.spyOn(element, "getBoundingClientRect").mockReturnValue({
+    x: left,
+    y: top,
+    left,
+    top,
+    right: left + width,
+    bottom: top + height,
+    width,
+    height,
+    toJSON: () => ({}),
+  });
+}
+
 describe("TooltipLayer", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -34,6 +56,7 @@ describe("TooltipLayer", () => {
     localStorage.clear();
     vi.useRealTimers();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: originalClipboard,
@@ -172,7 +195,7 @@ describe("TooltipLayer", () => {
     expect(screen.getByRole("tooltip").textContent).toBe("Accidental hint");
   });
 
-  it("keeps the tooltip open while hovering and selecting its text", () => {
+  it("keeps a passive tooltip open across its visible rectangle", () => {
     render(
       <>
         <TooltipLayer />
@@ -193,27 +216,27 @@ describe("TooltipLayer", () => {
     });
     act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
     const tooltip = screen.getByRole("tooltip");
+    mockElementRect(tooltip, {
+      left: 18,
+      top: 18,
+      width: 80,
+      height: 40,
+    });
 
     fireEvent.pointerOut(target, {
       pointerType: "mouse",
       clientX: 20,
       clientY: 20,
-      relatedTarget: tooltip,
+      relatedTarget: underlyingTarget,
     });
-    fireEvent.pointerOver(tooltip, {
+    fireEvent.pointerOver(underlyingTarget, {
       pointerType: "mouse",
       clientX: 20,
       clientY: 20,
       relatedTarget: target,
     });
-    fireEvent.pointerMove(tooltip, {
+    fireEvent.pointerMove(underlyingTarget, {
       pointerType: "mouse",
-      clientX: 22,
-      clientY: 20,
-    });
-    fireEvent.pointerDown(tooltip, {
-      pointerType: "mouse",
-      button: 0,
       clientX: 22,
       clientY: 20,
     });
@@ -224,6 +247,106 @@ describe("TooltipLayer", () => {
     );
     expect(screen.getByRole("tooltip").textContent).toBe("Selectable tail");
     expect(underlyingTarget.getAttribute("aria-describedby")).toBeNull();
+  });
+
+  it("allows activation through a passive tooltip only to its trigger", () => {
+    const onTriggerClick = vi.fn();
+    const onCoveredPointerDown = vi.fn();
+    const onCoveredClick = vi.fn();
+    const onCoveredAuxClick = vi.fn();
+    render(
+      <>
+        <TooltipLayer />
+        <button type="button" title="Trigger hint" onClick={onTriggerClick}>
+          Trigger
+        </button>
+        <button
+          type="button"
+          onPointerDown={onCoveredPointerDown}
+          onClick={onCoveredClick}
+          onAuxClick={onCoveredAuxClick}
+        >
+          Covered
+        </button>
+      </>,
+    );
+    const trigger = screen.getByRole("button", { name: "Trigger" });
+    const covered = screen.getByRole("button", { name: "Covered" });
+
+    const showTriggerTooltip = () => {
+      fireEvent.pointerOut(trigger, {
+        pointerType: "mouse",
+        relatedTarget: document.body,
+      });
+      fireEvent.pointerOver(trigger, {
+        pointerType: "mouse",
+        clientX: 10,
+        clientY: 10,
+      });
+      act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
+      const tooltip = screen.getByRole("tooltip");
+      mockElementRect(tooltip, {
+        left: 18,
+        top: 18,
+        width: 80,
+        height: 40,
+      });
+    };
+
+    showTriggerTooltip();
+    fireEvent.pointerDown(trigger, {
+      pointerType: "mouse",
+      button: 0,
+      clientX: 20,
+      clientY: 20,
+    });
+    fireEvent.click(trigger, {
+      button: 0,
+      clientX: 20,
+      clientY: 20,
+      ctrlKey: true,
+      detail: 1,
+    });
+    expect(onTriggerClick).toHaveBeenCalledTimes(1);
+
+    showTriggerTooltip();
+    expect(
+      fireEvent.pointerDown(covered, {
+        pointerType: "mouse",
+        button: 0,
+        clientX: 20,
+        clientY: 20,
+      }),
+    ).toBe(false);
+    expect(
+      fireEvent.click(covered, {
+        button: 0,
+        clientX: 20,
+        clientY: 20,
+        detail: 1,
+      }),
+    ).toBe(false);
+    expect(onCoveredPointerDown).not.toHaveBeenCalled();
+    expect(onCoveredClick).not.toHaveBeenCalled();
+
+    showTriggerTooltip();
+    fireEvent.pointerDown(covered, {
+      pointerType: "mouse",
+      button: 1,
+      clientX: 20,
+      clientY: 20,
+    });
+    covered.dispatchEvent(
+      new MouseEvent("auxclick", {
+        bubbles: true,
+        cancelable: true,
+        button: 1,
+        clientX: 20,
+        clientY: 20,
+        detail: 1,
+      }),
+    );
+    expect(onCoveredAuxClick).not.toHaveBeenCalled();
   });
 
   it("opens a temporally adjacent tooltip immediately only after a reveal", () => {
@@ -385,6 +508,7 @@ describe("TooltipLayer", () => {
     act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
 
     expect(screen.getByRole("tooltip").textContent).toBe("Clipped command");
+    expect(target.getAttribute("aria-describedby")).toBeNull();
   });
 
   it("keeps a row tooltip when its exact-text child is clipped", () => {
@@ -424,6 +548,36 @@ describe("TooltipLayer", () => {
     expect(screen.getByRole("tooltip").textContent).toBe(
       "src/a/long-file-name.ts",
     );
+  });
+
+  it("suppresses a visible exact-text owner inside a composite target", () => {
+    render(
+      <>
+        <TooltipLayer />
+        <button type="button" data-tooltip="Visible title">
+          <span>Visible title</span>
+          <small>Project · 2m</small>
+        </button>
+      </>,
+    );
+    const title = screen.getByText("Visible title");
+    const target = title.closest("button");
+    expect(target).not.toBeNull();
+    Object.defineProperties(title, {
+      clientWidth: { configurable: true, value: 100 },
+      clientHeight: { configurable: true, value: 24 },
+      scrollWidth: { configurable: true, value: 100 },
+      scrollHeight: { configurable: true, value: 24 },
+    });
+
+    fireEvent.pointerOver(target!, {
+      pointerType: "mouse",
+      clientX: 10,
+      clientY: 10,
+    });
+    act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
+
+    expect(screen.queryByRole("tooltip")).toBeNull();
   });
 
   it("keeps an exact-content tooltip when a scroll ancestor clips it", () => {
@@ -502,6 +656,54 @@ describe("TooltipLayer", () => {
     expect(target.getAttribute("aria-describedby")).toBeNull();
     expect(target.getAttribute("title")).toBe("");
     expect(target.getAttribute("data-tooltip")).toBe("Focused hint");
+  });
+
+  it("ignores focus departure from an element outside the active trigger", () => {
+    render(
+      <>
+        <TooltipLayer />
+        <button type="button">Previously focused</button>
+        <button type="button" title="Hovered hint">
+          Hovered
+        </button>
+      </>,
+    );
+    const previous = screen.getByRole("button", {
+      name: "Previously focused",
+    });
+    const target = screen.getByRole("button", { name: "Hovered" });
+    fireEvent.focusIn(previous);
+    fireEvent.pointerOver(target, {
+      pointerType: "mouse",
+      clientX: 10,
+      clientY: 10,
+    });
+    act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
+
+    fireEvent.focusOut(previous, { relatedTarget: document.body });
+
+    expect(screen.getByRole("tooltip").textContent).toBe("Hovered hint");
+  });
+
+  it("does not repeat an icon control name as its description", () => {
+    render(
+      <>
+        <TooltipLayer />
+        <button type="button" aria-label="Settings" title="Settings">
+          <svg aria-hidden="true" />
+        </button>
+      </>,
+    );
+    const target = screen.getByRole("button", { name: "Settings" });
+    vi.spyOn(target, "matches").mockImplementation(
+      (selector) => selector === ":focus-visible",
+    );
+
+    fireEvent.focusIn(target);
+    act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
+
+    expect(screen.getByRole("tooltip").textContent).toBe("Settings");
+    expect(target.getAttribute("aria-describedby")).toBeNull();
   });
 
   it("does not open a themed tooltip when a touch tap focuses its target", () => {
@@ -641,14 +843,80 @@ describe("TooltipLayer", () => {
       clientY: 10,
     });
     act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
+    const tooltip = screen.getByRole("tooltip");
+    mockElementRect(tooltip, {
+      left: 18,
+      top: 18,
+      width: 100,
+      height: 40,
+    });
+    const initialPosition = {
+      left: tooltip.style.left,
+      top: tooltip.style.top,
+    };
 
-    fireEvent.contextMenu(screen.getByRole("tooltip"));
+    fireEvent.contextMenu(target, { clientX: 20, clientY: 20 });
 
     expect(writeText).toHaveBeenCalledWith("Copy this tail");
-    expect(screen.getByRole("tooltip").classList).toContain(styles.enlarged);
+    expect(tooltip.classList).toContain(styles.enlarged);
+    expect(tooltip.style.left).toBe(initialPosition.left);
+    expect(tooltip.style.top).toBe(initialPosition.top);
   });
 
-  it("preserves the browser menu for selected tooltip text", () => {
+  it("moves an enlarged tooltip only enough to remain in the viewport", () => {
+    vi.stubGlobal("innerWidth", 300);
+    vi.stubGlobal("innerHeight", 200);
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    render(
+      <>
+        <TooltipLayer />
+        <button type="button" title="Edge tooltip">
+          Trigger
+        </button>
+      </>,
+    );
+    const target = screen.getByRole("button", { name: "Trigger" });
+    fireEvent.pointerOver(target, {
+      pointerType: "mouse",
+      clientX: 260,
+      clientY: 20,
+    });
+    act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
+    const tooltip = screen.getByRole("tooltip");
+    const enlargedClass = styles.enlarged;
+    if (!enlargedClass) throw new Error("missing enlarged tooltip class");
+    vi.spyOn(tooltip, "getBoundingClientRect").mockImplementation(() => {
+      const left = Number.parseFloat(tooltip.style.left) || 0;
+      const top = Number.parseFloat(tooltip.style.top) || 0;
+      const width = tooltip.classList.contains(enlargedClass) ? 200 : 100;
+      const height = tooltip.classList.contains(enlargedClass) ? 60 : 40;
+      return {
+        x: left,
+        y: top,
+        left,
+        top,
+        right: left + width,
+        bottom: top + height,
+        width,
+        height,
+        toJSON: () => ({}),
+      };
+    });
+    fireEvent.resize(window);
+    expect(tooltip.style.left).toBe("146px");
+
+    fireEvent.contextMenu(target, { clientX: 150, clientY: 40 });
+
+    expect(writeText).toHaveBeenCalledWith("Edge tooltip");
+    expect(tooltip.style.left).toBe("92px");
+    expect(tooltip.style.top).toBe("34px");
+  });
+
+  it("preserves an existing page selection on a passive context click", () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
@@ -673,13 +941,102 @@ describe("TooltipLayer", () => {
       clientY: 10,
     });
     act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
+    const tooltip = screen.getByRole("tooltip");
+    mockElementRect(tooltip, {
+      left: 18,
+      top: 18,
+      width: 100,
+      height: 40,
+    });
 
-    fireEvent.contextMenu(screen.getByRole("tooltip"));
+    fireEvent.contextMenu(target, { clientX: 20, clientY: 20 });
 
     expect(writeText).not.toHaveBeenCalled();
-    expect(screen.getByRole("tooltip").classList).not.toContain(
-      styles.enlarged,
+    expect(tooltip.classList).not.toContain(styles.enlarged);
+  });
+
+  it("contains wheel scrolling inside an overflowing passive tooltip", () => {
+    const onCoveredWheel = vi.fn();
+    render(
+      <>
+        <TooltipLayer />
+        <button type="button" title="Long tooltip content">
+          Trigger
+        </button>
+        <button type="button" onWheel={onCoveredWheel}>
+          Covered
+        </button>
+      </>,
     );
+    const target = screen.getByRole("button", { name: "Trigger" });
+    const covered = screen.getByRole("button", { name: "Covered" });
+    fireEvent.pointerOver(target, {
+      pointerType: "mouse",
+      clientX: 10,
+      clientY: 10,
+    });
+    act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
+    const tooltip = screen.getByRole("tooltip");
+    mockElementRect(tooltip, {
+      left: 18,
+      top: 18,
+      width: 100,
+      height: 40,
+    });
+    let scrollTop = 80;
+    Object.defineProperties(tooltip, {
+      clientHeight: { configurable: true, value: 100 },
+      scrollHeight: { configurable: true, value: 200 },
+      scrollTop: {
+        configurable: true,
+        get: () => scrollTop,
+        set: (value: number) => {
+          scrollTop = value;
+        },
+      },
+    });
+    const initialPosition = {
+      left: tooltip.style.left,
+      top: tooltip.style.top,
+    };
+
+    expect(
+      fireEvent.wheel(covered, {
+        clientX: 20,
+        clientY: 20,
+        deltaY: 30,
+        deltaMode: WheelEvent.DOM_DELTA_PIXEL,
+      }),
+    ).toBe(false);
+    expect(scrollTop).toBe(100);
+    expect(onCoveredWheel).not.toHaveBeenCalled();
+    expect(tooltip.style.left).toBe(initialPosition.left);
+    expect(tooltip.style.top).toBe(initialPosition.top);
+
+    expect(
+      fireEvent.wheel(covered, {
+        clientX: 20,
+        clientY: 20,
+        deltaY: 30,
+        deltaMode: WheelEvent.DOM_DELTA_PIXEL,
+      }),
+    ).toBe(false);
+    expect(scrollTop).toBe(100);
+    expect(onCoveredWheel).not.toHaveBeenCalled();
+
+    Object.defineProperty(tooltip, "scrollHeight", {
+      configurable: true,
+      value: 100,
+    });
+    expect(
+      fireEvent.wheel(covered, {
+        clientX: 20,
+        clientY: 20,
+        deltaY: 30,
+        deltaMode: WheelEvent.DOM_DELTA_PIXEL,
+      }),
+    ).toBe(true);
+    expect(onCoveredWheel).toHaveBeenCalledTimes(1);
   });
 
   it("preserves an app-owned context click instead of copying", () => {

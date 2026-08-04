@@ -6,18 +6,45 @@
 
 Topic: tooltip-interactions
 
-Status: Planned. The complaint reproduces on current `main`; no behavior change
-has been enacted. The governing contract remains
+Status: Implemented on 2026-08-04. The governing contract and final observable
+behavior live in
 [`topics/tooltip-interactions.md`](../../topics/tooltip-interactions.md).
+
+## Implementation result
+
+- Passive ordinary tooltips are pointer-transparent while document-capture
+  geometry keeps their visible rectangle in the active hover region. Native
+  activation reaches only the tooltip's own trigger; unrelated covered
+  controls are blocked through the matching click or auxiliary-click.
+- Secondary-click still copies the full text and applies one reading-size
+  increment. The compact box reserves no larger footprint. Enlargement keeps
+  its current top-left position when possible, clamps each axis only as much as
+  the enlarged box requires, and retains the compact maximum width to limit
+  aspect-ratio and wrapping changes.
+- Wheel input scrolls an overflowing passive tooltip without changing its
+  rectangle, wrapping, or the page position. Wheel input at either scroll edge
+  remains contained; non-overflowing tooltips leave it to the page.
+- Exact fully visible descendant text now participates in duplicate-hint
+  suppression, and same-text hints are not attached as duplicate accessible
+  descriptions. Explicit glossary reading remains interactive and selectable.
+- Session titles now own their recovery hint. The visibly labelled Inbox
+  **Refresh** and queued **Resume** buttons, an available provider card, and a
+  visibly rendered model description no longer carry redundant hints. The
+  production intrinsic-button inventory retained icon discovery, shortcuts,
+  disabled reasons, consequences, clipped content, and responsive-hidden
+  labels.
+- Focused component tests and a real-browser fixture cover own-trigger versus
+  unrelated-control activation, secondary-click enlargement, fixed-rectangle
+  scrolling, and desktop/phone viewport behavior.
 
 ## Report and classification
 
-The reported defect reproduces in default Themed mode. A tooltip appears 14
-pixels down and right from the rested pointer, receives pointer events at the
-frontmost application layer, and treats the trigger plus tooltip as one hover
-region. If that surface appears over a card or button while the pointer is
-approaching it, a primary click lands on the tooltip and never activates the
-underlying control.
+Before implementation, the reported defect reproduced in default Themed mode.
+A tooltip appeared 14 pixels down and right from the rested pointer, received
+pointer events at the frontmost application layer, and treated the trigger plus
+tooltip as one hover region. If that surface appeared over a card or button
+while the pointer was approaching it, a primary click landed on the tooltip and
+never activated the underlying control.
 
 The Inbox examples expose a second defect family:
 
@@ -32,9 +59,9 @@ The Inbox examples expose a second defect family:
 The title producers predate the themed default. Browser-native title bubbles
 do not participate in page hit-testing, so the global conversion of legacy
 titles into page-DOM tooltips made both old producers materially more
-intrusive. The pointer-opaque tooltip behavior was added to keep tooltip text
-selectable and stable while the pointer enters it; making Themed mode the
-default exposed the collision to browsers without an explicit saved mode.
+intrusive. The pointer-opaque tooltip behavior had been added to keep tooltip
+text selectable and stable while the pointer entered it; making Themed mode
+the default exposed the collision to browsers without an explicit saved mode.
 
 ## Accessibility constraints
 
@@ -46,7 +73,7 @@ region; `event.target` is not the only possible source of that geometry. The
 existing trigger-to-tooltip persistence and Escape dismissal remain part of
 the contract.
 
-Pointer opacity currently pays for text selection, contained scrolling of long
+Pointer opacity had paid for text selection, contained scrolling of long
 content, and secondary-click copy/enlarge. Full-text copy covers the selection
 and close-reading need, so passive tooltips do not need selectable text. Keep
 secondary-click copy/enlarge through geometric event handling. Capture wheel
@@ -85,9 +112,12 @@ description.
 6. Secondary-click inside a passive tooltip's bounds retains the current
    full-text copy/enlarge behavior without making primary clicks opaque. Wheel
    input inside a vertically overflowing passive tooltip scrolls that tooltip
-   and does not scroll the page beneath it. Glossary definitions activated by
-   click, Enter, or Space may remain explicitly interactive. Native mode remains
-   browser-owned.
+   and does not scroll the page beneath it. Scrolling changes neither tooltip
+   geometry nor wrapping. Enlargement reserves no space in the compact box,
+   keeps its top-left position unless a minimum viewport clamp is required,
+   and retains the ordinary maximum width to limit aspect-ratio change.
+   Glossary definitions activated by click, Enter, or Space may remain
+   explicitly interactive. Native mode remains browser-owned.
 
 ## Ordered implementation
 
@@ -224,16 +254,13 @@ scroll changes only the tooltip. Phone coverage confirms taps never leave an
 ordinary tooltip over the post-activation view. Record hit-target and scroll
 assertions in the browser test rather than treating screenshots alone as proof.
 
-## Suggested commit slices
+## Commit structure
 
-1. passive click-through geometry plus the activation/hoverability regressions;
-2. session-title ownership and exact-descendant compatibility;
-3. Inbox Refresh plus the first coherent labelled-button audit;
-4. remaining shared-button producer dispositions and accessibility-tree
-   coverage.
-
-Use `Topic: tooltip-interactions` throughout the series. Keep broad producer
-cleanup split by coherent product surface so each commit remains reviewable.
+The investigation and contract plan landed before implementation. The shared
+geometry, producer corrections, accessibility behavior, browser regression,
+and enacted contract form one implementation unit under
+`Topic: tooltip-interactions`; no open-ended producer cleanup is carried beyond
+the classified audit described above.
 
 ## Done condition
 

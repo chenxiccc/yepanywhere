@@ -165,7 +165,6 @@
   "inboxAllProjects": "Alle Projekte",
   "inboxRefresh": "Aktualisieren",
   "inboxRefreshing": "Wird aktualisiert...",
-  "inboxRefreshTitle": "Posteingang aktualisieren",
   "inboxLoading": "Posteingang wird geladen...",
   "inboxError": "Fehler beim Laden des Posteingangs: {message}",
   "inboxEmptyTitle": "Alles erledigt",

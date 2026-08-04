@@ -817,7 +817,6 @@ function QueuedMessageActions({
           disabled={disabled}
           onClick={onResume}
           aria-label={t("projectQueueResume")}
-          title={t("projectQueueResume")}
         >
           <PlayIcon />
           <span>{t("projectQueueResume")}</span>
