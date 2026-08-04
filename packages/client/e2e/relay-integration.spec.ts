@@ -33,6 +33,27 @@ async function goToRelayLogin(page: import("@playwright/test").Page) {
   await expect(page.locator('[data-testid="relay-login-form"]')).toBeVisible();
 }
 
+async function setBangHistoryVisibility(
+  baseURL: string,
+  enabled: boolean,
+): Promise<void> {
+  const response = await fetch(`${baseURL}/api/settings`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Yep-Anywhere": "true",
+    },
+    body: JSON.stringify({
+      clientDefaults: { bangCommandsEnabled: enabled },
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Failed to configure bang history: ${await response.text()}`,
+    );
+  }
+}
+
 test.describe("Full Relay Integration", () => {
   test.beforeEach(async ({ baseURL, relayWsURL }) => {
     // Configure remote access with test credentials
@@ -94,6 +115,51 @@ test.describe("Full Relay Integration", () => {
     await expect(
       page.locator(`a[href="/${TEST_RELAY_USERNAME}/settings"]`),
     ).toBeVisible();
+  });
+
+  test("!! Commands sidebar category stays on its relay route", async ({
+    page,
+    baseURL,
+    remoteClientURL,
+    relayWsURL,
+  }) => {
+    await setBangHistoryVisibility(baseURL, true);
+    try {
+      await page.setViewportSize({ width: 375, height: 812 });
+      await page.goto(remoteClientURL);
+      await goToRelayLogin(page);
+      await page.fill(
+        '[data-testid="relay-username-input"]',
+        TEST_RELAY_USERNAME,
+      );
+      await page.fill('[data-testid="srp-password-input"]', TEST_SRP_PASSWORD);
+      await page.click("text=Show Advanced Options");
+      await page.fill('[data-testid="custom-relay-url-input"]', relayWsURL);
+      await page.click('[data-testid="login-button"]');
+      await expect(
+        page.locator('[data-testid="relay-login-form"]'),
+      ).not.toBeVisible({ timeout: 15000 });
+      const openSidebar = page.getByRole("button", { name: "Open sidebar" });
+      await expect(openSidebar).toBeVisible();
+      await openSidebar.click();
+
+      const bangHistoryLink = page.locator(
+        `a[href="/${TEST_RELAY_USERNAME}/bang-commands"]`,
+      );
+      await expect(bangHistoryLink).toBeVisible();
+      await bangHistoryLink.click();
+
+      await expect(page).toHaveURL(
+        new RegExp(`/${TEST_RELAY_USERNAME}/bang-commands$`),
+      );
+      await expect(
+        page.getByText("No local commands have been run yet."),
+      ).toBeVisible({ timeout: 10_000 });
+      await openSidebar.click();
+      await expect(bangHistoryLink).toHaveClass(/\bactive\b/);
+    } finally {
+      await setBangHistoryVisibility(baseURL, false);
+    }
   });
 
   // This test verifies that sessions persist across page refresh via relay.
