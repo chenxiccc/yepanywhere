@@ -67,3 +67,19 @@
   position: relative;
   top: 0.25px;
 }
+
+/*
+ * Held height for the conversation activity row.
+ *
+ * A long streaming thinking block grows the row; when a shorter block replaces
+ * it, the row would hand that height straight back and — under follow mode —
+ * drag everything the reader was reading down the viewport. The row therefore
+ * keeps its high-water height until it has wanted less for a full cooling-off
+ * period. RenderItemComponent publishes the value (see
+ * lib/sessionDetail/activityHeightReserve.ts); no descendant sizes itself
+ * against it, which is what keeps the measurement from feeding back into the
+ * reserve.
+ */
+.activityHeightReserve {
+  min-height: var(--conversation-activity-reserved-height, 0);
+}

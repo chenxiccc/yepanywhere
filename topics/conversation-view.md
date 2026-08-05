@@ -122,6 +122,31 @@ provider-history rewrite and not deletion.
   shrink — and so no main-conversation autofollow flicker. The same cap covers
   the activity names, which shorten at turn completion as the bound below moves
   to the newly completed block.
+- **The row keeps its high-water height for a cooling-off period.** The cap
+  above stops the row growing past the current thinking block, but says nothing
+  about shrinking: a long streamed block followed by a short one hands the
+  height straight back, and under follow mode that drags the passage the reader
+  is on down the viewport. So the row claims its tallest measured height as a
+  `min-height` and gives it up only after wanting less continuously for
+  `CONVERSATION_ACTIVITY_RESERVE_HOLD_MS` (30s). The hold is anchored at the
+  moment content *first* fell below the reserve, so content that grows back
+  into the reserve restarts the wait rather than spending it — a turn that
+  alternates thinking and activity never releases mid-stream. Policy lives in
+  `packages/client/src/lib/sessionDetail/activityHeightReserve.ts` as a pure
+  reducer; `RenderItemComponent` publishes the result on the row as
+  `--conversation-activity-reserved-height` and a `ResizeObserver` re-measures.
+  Two invariants make it safe:
+  - **Measure the children, never the row.** The reserve is applied to the
+    row's own box, so measuring that box would feed the reserve back into
+    itself and the row could never shrink. The natural height is the greatest
+    child bottom relative to the row's top. For the same reason the observer
+    watches the children as well as the row: while the reserve holds, the row's
+    box is pinned, and only a child's resize reveals that content wants less.
+  - **Reader gestures release it at once.** Collapsing a card (chevron) or
+    dismissing the last card — which hides thinking entirely — is a request for
+    the space back, so the reserve resets instead of leaving a 30s hole.
+    Dismissing a non-final card gets no special handling: under rapid
+    alternation a dismissal would not have saved the space anyway.
 - A thinking card carries its **placement in the turn** beside its controls:
   how far before the turn's end that block last spoke, in the same compact
   form as the activity summary's elapsed time (`4.7s ago` against a

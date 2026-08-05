@@ -29,6 +29,11 @@ import type {
 import { formatCommandDuration } from "../lib/shellToolOutput";
 import { useStickToBottom } from "../lib/stickToBottom";
 import {
+  type ActivityHeightReserve,
+  activityHeightReserveReleaseDelayMs,
+  updateActivityHeightReserve,
+} from "../lib/sessionDetail/activityHeightReserve";
+import {
   THINKING_PREVIEW_DEFAULT_WIDTH_PX,
   type ThinkingPreviewWidthState,
   updateThinkingPreviewWidth,
@@ -274,6 +279,55 @@ function CollapsibleSystemMessage({
   );
 }
 
+interface ActivityHeightReserveController {
+  reserve: ActivityHeightReserve | null;
+  timer: number | null;
+}
+
+/**
+ * Apply the row's held height and re-arm the release.
+ *
+ * The natural height is measured from the children's bottoms rather than the
+ * row's own box: the reserve is applied as the row's `min-height`, so measuring
+ * the row would feed the reserve back into itself and it could never fall.
+ */
+function syncActivityHeightReserve(
+  row: HTMLElement,
+  controller: ActivityHeightReserveController,
+): void {
+  const rowTop = row.getBoundingClientRect().top;
+  let naturalHeightPx = 0;
+  for (const child of Array.from(row.children)) {
+    naturalHeightPx = Math.max(
+      naturalHeightPx,
+      child.getBoundingClientRect().bottom - rowTop,
+    );
+  }
+  const nowMs = Date.now();
+  const reserve = updateActivityHeightReserve(
+    controller.reserve,
+    naturalHeightPx,
+    nowMs,
+  );
+  controller.reserve = reserve;
+  row.style.setProperty(
+    "--conversation-activity-reserved-height",
+    `${reserve.heightPx}px`,
+  );
+  if (controller.timer !== null) {
+    window.clearTimeout(controller.timer);
+    controller.timer = null;
+  }
+  const delayMs = activityHeightReserveReleaseDelayMs(reserve, nowMs);
+  if (delayMs === null) return;
+  // Content changes re-measure on their own; this wake-up is only for the case
+  // where nothing else happens before the hold expires.
+  controller.timer = window.setTimeout(() => {
+    controller.timer = null;
+    syncActivityHeightReserve(row, controller);
+  }, delayMs);
+}
+
 function formatConversationActivityDuration(seconds: number): string {
   if (seconds >= 10 && seconds < 60) {
     return `${Math.round(seconds)}s`;
@@ -365,6 +419,69 @@ function ConversationActivitySummary({
     observer.observe(content);
     return () => observer.disconnect();
   }, [previewLayoutKey, syncActivityClip]);
+  // Hold the row's vertical space across shrinks. A long streaming thinking
+  // block grows this row, and when a shorter block replaces it the row would
+  // hand that height straight back — in follow mode that drags everything the
+  // reader was reading down the viewport. Instead the row keeps its high-water
+  // height and releases it only after a hold spent continuously wanting less,
+  // so a turn alternating thinking and activity never spends the wait out.
+  const reserveRef = useRef<ActivityHeightReserveController>({
+    reserve: null,
+    timer: null,
+  });
+  const syncHeightReserve = useCallback(() => {
+    const row = rowRef.current;
+    if (row) syncActivityHeightReserve(row, reserveRef.current);
+  }, []);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: previewLayoutKey re-attaches the observers when the measured children mount/unmount
+  useLayoutEffect(() => {
+    const row = rowRef.current;
+    if (!row) return;
+    syncHeightReserve();
+    // Watch the children, not just the row: while the reserve holds, the row's
+    // own box stays put and only a child's resize reveals the shrink.
+    const observer = new ResizeObserver(syncHeightReserve);
+    observer.observe(row);
+    for (const child of Array.from(row.children)) observer.observe(child);
+    const controller = reserveRef.current;
+    return () => {
+      observer.disconnect();
+      if (controller.timer !== null) {
+        window.clearTimeout(controller.timer);
+        controller.timer = null;
+      }
+    };
+  }, [previewLayoutKey, syncHeightReserve]);
+  // The hold is for space the reader still needs; two gestures say otherwise
+  // and release it at once. Collapsing a card with its chevron asks for a
+  // shorter row and keeps that card collapsed as later blocks stream into the
+  // slot, so the space really is freed. Dismissing one card of two does not:
+  // thinking stays visible and the space is about to be used again. Dismissing
+  // the last card hides thinking entirely, which does.
+  const previewCount = item.thinkingPreviews?.length ?? 0;
+  const collapsedSlotsKey = (item.thinkingPreviews ?? [])
+    .filter((preview) => collapsedThinkingPreviewSlots.has(preview.slot))
+    .map((preview) => preview.slot)
+    .join("|");
+  const previousCollapsedSlotsRef = useRef(collapsedSlotsKey);
+  const previousPreviewCountRef = useRef(previewCount);
+  useLayoutEffect(() => {
+    const wasCollapsed = new Set(
+      previousCollapsedSlotsRef.current.split("|").filter(Boolean),
+    );
+    const readerCollapsedACard = collapsedSlotsKey
+      .split("|")
+      .filter(Boolean)
+      .some((slot) => !wasCollapsed.has(slot));
+    const thinkingJustHidden =
+      previewCount === 0 && previousPreviewCountRef.current > 0;
+    previousCollapsedSlotsRef.current = collapsedSlotsKey;
+    previousPreviewCountRef.current = previewCount;
+    if (readerCollapsedACard || thinkingJustHidden) {
+      reserveRef.current.reserve = null;
+      syncHeightReserve();
+    }
+  }, [collapsedSlotsKey, previewCount, syncHeightReserve]);
   // Re-evaluate the bottom fade when the rendered activity rows change (new
   // rows can start overflowing the cap without the thinking height moving).
   // biome-ignore lint/correctness/useExhaustiveDependencies: recentActivities identity is the render-changed trigger
@@ -417,7 +534,7 @@ function ConversationActivitySummary({
 
   return (
     <div
-      className={`conversation-activity-row${
+      className={`conversation-activity-row ${styles.activityHeightReserve}${
         widerActivityPreviews ? " is-wide-activity-previews" : ""
       }`}
       ref={rowRef}
