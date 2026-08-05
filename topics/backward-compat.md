@@ -170,6 +170,9 @@ gate never becomes removable. The approved obligation is a performance floor,
 not a feature floor: an out-of-date client against a current server, and a
 current client against an out-of-date server, must still perform basic actions
 at some non-optimal performance level, so the ungated path stays a working
-enumeration rather than a degraded stub. Field list and release corpus are
-filled in when the wire shape exists; see
-[Server Capabilities](server-capabilities.md) § Planned session-catalog gate.
+enumeration rather than a degraded stub. The server half now exists —
+`GET /api/sessions` reports `generation`, accepts `knownGeneration`, and answers
+`{ unchanged: true }` on a match — and is additive: an older server ignores the
+parameter and returns a full response, so a client without the capability is
+safe either way. Release corpus is filled in when the client half ships; see
+[Server Capabilities](server-capabilities.md) § Session-catalog gate.

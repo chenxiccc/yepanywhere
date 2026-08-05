@@ -14,6 +14,7 @@
     "benchmark:provider-catalog-adapters": "tsx --conditions source scripts/benchmark-provider-catalog-adapters.ts",
     "benchmark:review-inbox": "tsx --conditions source scripts/benchmark-review-inbox.ts",
     "benchmark:version-route": "tsx --conditions source scripts/benchmark-version-route.ts",
+    "benchmark:session-collection-generation": "tsx --conditions source scripts/benchmark-session-collection-generation.ts",
     "dev": "node ../../scripts/run-with-safe-home.js tsx --conditions source src/index.ts",
     "dev:watch": "node ../../scripts/run-with-safe-home.js tsx watch --conditions source src/index.ts",
     "dev:mock": "AUTH_DISABLED=true node ../../scripts/run-with-safe-home.js tsx --conditions source src/index.ts",

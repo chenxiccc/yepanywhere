@@ -35,6 +35,7 @@ import type {
   SessionSummary,
 } from "../supervisor/types.js";
 import type { BusEvent, EventBus } from "../watcher/index.js";
+import { SessionCollectionGeneration } from "../sessions/sessionCollectionGeneration.js";
 import { buildProviderProjectCatalog } from "./provider-catalog.js";
 import {
   getActiveSessionIndexOptions,
@@ -135,6 +136,21 @@ export interface GlobalSessionsResponse {
   stats: GlobalSessionStats;
   /** All projects for filter dropdown */
   projects: ProjectOption[];
+  /**
+   * The collection revision this response reflects. A client may send it back
+   * as `knownGeneration` to get {@link GlobalSessionsUnchangedResponse} instead
+   * of another full walk. Gated by `progressive-session-catalog`.
+   */
+  generation?: number;
+}
+
+/**
+ * The answer to a conditional read whose `knownGeneration` still holds. It
+ * carries no rows: the client keeps the ones it has.
+ */
+export interface GlobalSessionsUnchangedResponse {
+  unchanged: true;
+  generation: number;
 }
 
 /** Default limit for sessions per page */
@@ -162,6 +178,8 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
     null;
   let statsDirty = true;
   let inFlightStats: Promise<GlobalSessionStats> | null = null;
+
+  const collectionGeneration = new SessionCollectionGeneration(deps.eventBus);
 
   const shouldInvalidateStats = (event: BusEvent): boolean => {
     switch (event.type) {
@@ -331,6 +349,27 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
       Math.max(1, Number.parseInt(limitParam || "", 10) || DEFAULT_LIMIT),
       MAX_LIMIT,
     );
+
+    // Read before the walk, never after: a change landing mid-walk must leave
+    // the client's token behind the current generation, so its next
+    // conditional read is answered `changed`. Stamping the response with the
+    // post-walk value would certify rows the response does not contain.
+    const generation = collectionGeneration.current;
+    // A cursor page is not a whole-collection read, so it never short-circuits;
+    // the token only means "the collection behind an identical query is
+    // unchanged", which is why the client must replay it against the same
+    // parameters it received it from.
+    const knownGeneration = Number.parseInt(
+      c.req.query("knownGeneration") ?? "",
+      10,
+    );
+    if (!afterCursor && collectionGeneration.matches(knownGeneration)) {
+      const unchanged: GlobalSessionsUnchangedResponse = {
+        unchanged: true,
+        generation,
+      };
+      return c.json(unchanged);
+    }
 
     // Get all projects
     const allProjects = await deps.scanner.listProjects();
@@ -534,6 +573,7 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
       hasMore,
       stats,
       projects: projectOptions,
+      generation,
     };
 
     return c.json(response);

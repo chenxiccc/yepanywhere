@@ -133,13 +133,12 @@ server behavior remain unchanged. The implementation release supplies the
 registry `introducedIn` value. The full behavior and audit are in
 [Project Directory Storage](project-directory-storage.md).
 
-### Planned session-catalog gate
+### Session-catalog gate
 
 Approved 2026-08-05. Global session lists and Inbox move from request-complete
-enumeration to a progressive retained snapshot that reuses the server's catalog
-generation, so the client begins sending a known generation on revalidation and
-relies on `no-change` / bounded-delta / replacement answers that older servers
-cannot give.
+enumeration to a progressive retained snapshot, so the client begins sending a
+known generation on revalidation and relies on answers older servers cannot
+give.
 
 The permanent capability is `progressive-session-catalog`. Permanent rather
 than transitional because YA is self-hosted with no forced upgrade: the
@@ -153,9 +152,25 @@ floor.** An out-of-date client must still perform basic actions against a
 current server, and a current client against an out-of-date server, at some
 non-optimal performance level. The ungated path therefore stays a working
 enumeration rather than a degraded stub, and that — not the size of the release
-corpus audited — is what a review of this gate should check. The exact field
-list and its release corpus are filled in when the wire shape exists; the
-generation is server-internal until then.
+corpus audited — is what a review of this gate should check.
+
+**Landed so far: the server half on `GET /api/sessions`.** The response carries
+`generation`; a request may carry `knownGeneration`, and a match answers
+`{ unchanged: true, generation }` without walking any project. Two rules a
+caller must respect, because neither is enforceable from the server side alone:
+
+- a token is only meaningful against **identical query parameters**. The
+  generation covers the collection, not a particular filter, so replaying a
+  token from a different `project` / `q` / `starred` / `includeArchived` read
+  would claim rows the client does not have. Cursor pages (`after`) never
+  short-circuit for the same reason.
+- a client without the capability must not send `knownGeneration` and must
+  ignore `generation`; an older server silently ignores the parameter and
+  returns a full response, so the fallback is safe either way.
+
+The client half — sending the token, handling `unchanged`, and bounded deltas —
+is not built. Its release corpus is filled in then; the fields above are the
+whole current wire surface.
 
 Tool-result preservation is independently gated by the proposed permanent
 `tool-result-media-preservation-policy` capability. It owns `GET

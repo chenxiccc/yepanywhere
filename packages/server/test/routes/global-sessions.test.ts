@@ -293,6 +293,112 @@ describe("Global Sessions Routes", () => {
     });
   });
 
+  describe("conditional reads", () => {
+    async function readCollection(
+      routes: ReturnType<typeof createGlobalSessionsRoutes>,
+      queryString = "",
+    ): Promise<GlobalSessionsResponse & { unchanged?: true }> {
+      const response = await routes.request(`/${queryString}`);
+      expect(response.status).toBe(200);
+      return response.json();
+    }
+
+    function setUpOneSession(eventBus: EventBus) {
+      const project = createProject("proj1", "project-one", "/sessions/proj1");
+      vi.mocked(mockScanner.listProjects).mockResolvedValue([project]);
+      sessionsByDir.set("/sessions/proj1", [
+        createSession("sess1", "proj1", minutesAgo(5)),
+      ]);
+      return createGlobalSessionsRoutes(getDeps({ eventBus }));
+    }
+
+    it("answers an unchanged collection without walking any project", async () => {
+      const eventBus = new EventBus();
+      const routes = setUpOneSession(eventBus);
+
+      const first = await readCollection(routes);
+      expect(first.sessions).toHaveLength(1);
+      expect(first.generation).toBeGreaterThan(0);
+      const walks = vi.mocked(mockScanner.listProjects).mock.calls.length;
+
+      const second = await readCollection(
+        routes,
+        `?knownGeneration=${first.generation}`,
+      );
+      expect(second.unchanged).toBe(true);
+      expect(second.generation).toBe(first.generation);
+      expect(second.sessions).toBeUndefined();
+      expect(vi.mocked(mockScanner.listProjects).mock.calls).toHaveLength(walks);
+    });
+
+    it("re-walks once an event could have changed a row", async () => {
+      const eventBus = new EventBus();
+      const routes = setUpOneSession(eventBus);
+      const first = await readCollection(routes);
+
+      eventBus.emit({
+        type: "session-metadata-changed",
+        sessionId: "sess1",
+        starred: true,
+        timestamp: new Date().toISOString(),
+      });
+
+      const second = await readCollection(
+        routes,
+        `?knownGeneration=${first.generation}`,
+      );
+      expect(second.unchanged).toBeUndefined();
+      expect(second.sessions).toHaveLength(1);
+      expect(second.generation).toBeGreaterThan(first.generation as number);
+    });
+
+    it("leaves a connection-only event's generation alone", async () => {
+      const eventBus = new EventBus();
+      const routes = setUpOneSession(eventBus);
+      const first = await readCollection(routes);
+
+      // Nothing a row renders, so a client holding rows is still current.
+      eventBus.emit({
+        type: "browser-tab-connected",
+        tabId: "tab-1",
+        timestamp: new Date().toISOString(),
+      } as never);
+
+      const second = await readCollection(
+        routes,
+        `?knownGeneration=${first.generation}`,
+      );
+      expect(second.unchanged).toBe(true);
+    });
+
+    it("never short-circuits a cursor page", async () => {
+      const eventBus = new EventBus();
+      const routes = setUpOneSession(eventBus);
+      const first = await readCollection(routes);
+
+      const paged = await readCollection(
+        routes,
+        `?after=${new Date().toISOString()}&knownGeneration=${first.generation}`,
+      );
+      expect(paged.unchanged).toBeUndefined();
+      expect(paged.sessions).toBeDefined();
+    });
+
+    it("rejects a token no generation ever had", async () => {
+      const eventBus = new EventBus();
+      const routes = setUpOneSession(eventBus);
+
+      for (const token of ["0", "-1", "not-a-number", "999999"]) {
+        const result = await readCollection(
+          routes,
+          `?knownGeneration=${token}`,
+        );
+        expect(result.unchanged).toBeUndefined();
+        expect(result.sessions).toBeDefined();
+      }
+    });
+  });
+
   describe("stats endpoint", () => {
     it("returns cached stats and invalidates on metadata changes", async () => {
       const project = createProject("proj1", "project-one", "/sessions/proj1");

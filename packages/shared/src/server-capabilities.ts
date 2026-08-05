@@ -113,6 +113,30 @@ export const SERVER_CAPABILITIES = {
         "Hosted clients may outpace installed servers, and glossary discovery must remain server-owned.",
     },
   },
+  progressiveSessionCatalog: {
+    name: "progressive-session-catalog",
+    kind: "permanent",
+    area: "sessions",
+    introducedIn: "0.7.1",
+    description:
+      "Server reports a session-collection generation and answers a conditional global session read with no-change instead of re-walking every project.",
+    clientFallback:
+      "Send no known generation, ignore any reported one, and keep the complete-request enumeration.",
+    serverContract: {
+      // No `routeModules`: this capability adds an optional request field and
+      // two response fields to a route that predates it, rather than owning a
+      // module. `global-sessions.ts` also serves `GET /api/sessions/stats`,
+      // which this capability has nothing to do with.
+      routes: ["GET /api/sessions"],
+      requestFields: ["knownGeneration"],
+      responseFields: ["generation", "unchanged"],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "YA is self-hosted with no forced upgrade, so the population of servers without the conditional read never converges and the client's enumeration fallback never becomes removable.",
+    },
+  },
   projectDirectoryStoragePolicy: {
     name: "project-directory-storage-policy",
     kind: "permanent",
@@ -988,6 +1012,8 @@ export const GLOSSARY_TOOLTIPS_CAPABILITY =
   SERVER_CAPABILITIES.glossaryTooltips.name;
 export const TOOL_RESULT_MEDIA_PRESERVATION_POLICY_CAPABILITY =
   SERVER_CAPABILITIES.toolResultMediaPreservationPolicy.name;
+export const PROGRESSIVE_SESSION_CATALOG_CAPABILITY =
+  SERVER_CAPABILITIES.progressiveSessionCatalog.name;
 export const PROJECT_QUEUE_CAPABILITY = SERVER_CAPABILITIES.projectQueue.name;
 export const PROJECT_QUEUE_NEW_SESSION_SHORTCUT_SETTING_CAPABILITY =
   SERVER_CAPABILITIES.projectQueueNewSessionShortcutSetting.name;

@@ -202,6 +202,25 @@ given query membership, in which case conditional reconciliation advances the
 token with no replacement rows — and where that query maps to one shard, its
 shard generation answers no-change without consulting the delta window at all.
 
+### The session-collection generation is a different clock
+
+`GET /api/sessions` has its own revision, in
+`packages/server/src/sessions/sessionCollectionGeneration.ts`, and it is
+deliberately not the catalog's. The catalog generation covers *rows*; the
+global list also renders session metadata, notification read state, supervisor
+ownership, external-process tracking, and workstream membership, none of which
+the catalog owns. Answering a conditional read from a rows-only clock would
+serve a stale star, unread badge, or ownership state while reporting no change
+— an error a conditional response makes invisible, which is why the collection
+clock advances on any bus event not proven unable to change a rendered row.
+
+It is also deliberately coarse where the catalog's is a vector: the unfiltered
+global list genuinely depends on every project, so a single counter is the
+right shape for it. A `project=`-filtered read is the case a vector component
+would serve, and it waits for measurement rather than being added
+speculatively. Wire contract and the caller's obligations:
+[`server-capabilities.md`](server-capabilities.md) § Session-catalog gate.
+
 The global generation orders server catalog publication; it does not replace
 field fidelity or provider source versions. A newer compact title observation
 still cannot masquerade as a complete transcript summary, and a pending-tool
