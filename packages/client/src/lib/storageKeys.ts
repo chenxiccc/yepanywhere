@@ -49,6 +49,8 @@ export const UI_KEYS = {
   speechReducePlayback: "yep-anywhere-speech-reduce-playback",
   speechFollowUpListenMs: "yep-anywhere-speech-follow-up-listen-ms",
   speechAsrAttributionMs: "yep-anywhere-speech-asr-attribution-ms",
+  speechMessagePrefixMode: "yep-anywhere-speech-message-prefix-mode",
+  speechMessageCustomPrefix: "yep-anywhere-speech-message-custom-prefix",
   speechMicDeviceId: "yep-anywhere-speech-mic-device-id",
   floatingActionButtonEnabled: "yep-anywhere-floating-action-button-enabled",
   developerMode: "yep-anywhere-developer-mode",

@@ -17,6 +17,39 @@ See also:
   active-capture waveform's measured center-space and overflow contract.
 - [direct-xai-speech.md](direct-xai-speech.md) for direct browser-to-xAI STT.
 
+## Speech Input UX Overview
+
+YA offers browser-native Web Speech when the browser exposes
+`SpeechRecognition` or `webkitSpeechRecognition`, plus configured streaming or
+batch STT backends. The Mic glyph identifies the method actually used. Starting
+capture records the current selection as the insertion target; mutable speech
+appears as an underlined preview, and finalized text commits into the ordinary
+editable draft at that mapped target.
+
+Manual Send, Steer, Queue, and Project Queue during capture operate on the exact
+text visible at the press. They stop capture, wait for successful transcription
+settlement, and then deliver the preserved snapshot. A failed or cancelled
+cycle does not silently deliver provisional text. Streaming backends may commit
+several chunks and support Smart Turn or spoken control words; batch backends
+return one final transcript after recording stops and do not provide mid-
+utterance Smart Turn.
+
+`send`, `cancel`, and `wait` are control words when the selected backend emits
+the required command metadata. A Smart Turn endpoint may send automatically;
+manual non-whitespace editing holds only that automatic endpoint send. Optional
+follow-up listening can start another streaming transaction after a speech-
+triggered delivery.
+
+The browser-local **Speech message prefix** setting is Off by default. When
+enabled, it can prepend `[ASR]`, `[STT]`, `[Dictation]`, or a custom one-line
+prefix to warn the agent that submitted text may contain transcription errors.
+Speech-triggered delivery always uses the selected prefix. The optional 0–5000
+ms **Quick-send speech-prefix window** extends it to one rapid manual delivery
+after finalized speech. Every visible delivery cue is derived from the same
+prefix decision as its payload: all eligible Send, Steer, Queue, Project Queue,
+New Session, overflow, and mobile-keyboard controls show the exact selected cue
+when their activation will prepend it, and no prefix cue otherwise.
+
 ## Speech Insertion Transaction
 
 Pressing the mic button creates a speech insertion transaction at the current
@@ -279,21 +312,35 @@ Current streaming command semantics:
   idle warm stream remains. Only a streaming backend that advertises Smart
   Turn can use this option.
 
-Every submission triggered by speech prefixes the provider-bound turn with
-`[ASR]`: both Smart Turn's automatic endpoint send and an explicit spoken
-`send`, including the batch form. The marker is added at submission and does
-not enter the editable draft. A separate browser-local **Quick-send [ASR]
-window** controls attribution for manual Send, Steer, or Queue after finalized
-speech. It is configurable from 0-5000 ms and defaults to 0 (disabled). A
-non-empty finalized speech commit arms the window; a successful delivery
-consumes it. While capture, deferred speech delivery, or the window is active,
-the normal delivery glyph remains visible and gains a compact `ASR` cue. A
-delivery pressed during capture is evaluated only after the backend final is
+The browser-local **Speech message prefix** selector is Off by default. Its
+presets are `[ASR]`, `[STT]`, and `[Dictation]`; Custom accepts one trimmed,
+non-empty line up to 64 characters and adds no brackets. An enabled prefix is
+added only to the provider-bound message, never the editable draft, to tell the
+agent that the text may contain speech-recognition errors. The preference is
+backend-independent: browser-native Web Speech and configured STT backends use
+the same selection. Off guarantees verbatim provider-bound text for both
+manual and speech-triggered delivery.
+
+When prefixing is enabled, Smart Turn's automatic endpoint send and an explicit
+spoken `send`, including the batch form, receive the selected prefix. A separate
+browser-local **Quick-send speech-prefix window** controls the same attribution
+for a manual Send, Steer, Queue, Project Queue, or eligible fork/summary delivery
+after finalized speech. It is configurable from 0–5000 ms and defaults to 0
+(disabled). A non-empty finalized speech commit arms the window; one successful
+eligible delivery consumes it. Later manual delivery remains unmarked. The
+window is disabled in the UI while the prefix is Off, but its stored duration is
+preserved.
+
+A delivery pressed during capture is evaluated only after the backend final is
 committed. Successful provider settlement rearms the quick-send window before
 the recorded delivery runs, so backend processing time cannot consume the
-configured delay. The delivered turn receives `[ASR]` when that delay is
-non-zero and remains unmarked at 0. A speech-triggered send with neither text
-nor attachments remains a no-op.
+configured delay. Send, Steer, Queue, Project Queue, New Session, overflow-menu,
+and mobile-keyboard controls consume the same resolved prefix as their payload.
+They retain their normal glyph and gain a compact cue for that exact prefix only
+when activating them will prepend it; the full prefix is present in tooltip and
+accessible copy. With prefixing Off or the manual window inactive, no prefix cue
+appears merely because speech is pending. A speech-triggered send with neither
+text nor attachments remains a no-op.
 
 Open design slot: command recognition should eventually work per `is_final`
 chunk after a YA command-settle signal. That settle signal may be a timeout

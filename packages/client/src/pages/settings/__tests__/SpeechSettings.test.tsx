@@ -38,6 +38,11 @@ const speechCaptureSettings = vi.hoisted(() => ({
   setFollowUpListenMs: vi.fn(),
   asrAttributionMs: 0,
   setAsrAttributionMs: vi.fn(),
+  speechMessagePrefixMode: "off" as const,
+  setSpeechMessagePrefixMode: vi.fn(),
+  speechMessageCustomPrefix: "",
+  setSpeechMessageCustomPrefix: vi.fn(),
+  speechMessagePrefix: null,
 }));
 const browserXaiKey = vi.hoisted(() => ({
   browserXaiSttApiKey: "",
@@ -64,6 +69,7 @@ vi.mock("../../../hooks/useModelSettings", () => ({
 vi.mock("../../../hooks/useSpeechCaptureSettings", () => ({
   MAX_SPEECH_FOLLOW_UP_LISTEN_MS: 30_000,
   MAX_SPEECH_ASR_ATTRIBUTION_MS: 5_000,
+  MAX_SPEECH_MESSAGE_CUSTOM_PREFIX_LENGTH: 64,
   useSpeechCaptureSettings: () => speechCaptureSettings,
 }));
 
@@ -121,6 +127,8 @@ describe("SpeechSettings", () => {
     speechCaptureSettings.setReducePlayback.mockClear();
     speechCaptureSettings.setFollowUpListenMs.mockClear();
     speechCaptureSettings.setAsrAttributionMs.mockClear();
+    speechCaptureSettings.setSpeechMessagePrefixMode.mockClear();
+    speechCaptureSettings.setSpeechMessageCustomPrefix.mockClear();
     browserXaiKey.setBrowserXaiSttApiKey.mockClear();
     prewarmYaServerSpeechBackend.mockClear();
   });
@@ -142,6 +150,17 @@ describe("SpeechSettings", () => {
       "ya-parakeet",
       "nvidia/parakeet-ctc-1.1b",
     );
+  });
+
+  it("offers the default-off speech prefix selector", () => {
+    render(<SpeechSettings />);
+
+    const selector = screen.getByLabelText("speechSettingsMessagePrefixTitle");
+    expect((selector as HTMLSelectElement).value).toBe("off");
+    fireEvent.change(selector, { target: { value: "stt" } });
+    expect(
+      speechCaptureSettings.setSpeechMessagePrefixMode,
+    ).toHaveBeenCalledWith("stt");
   });
 
   it("shows a validating backend immediately but does not allow selection", () => {

@@ -38,6 +38,8 @@ export const BROWSER_SETTINGS_BACKUP_KEYS = [
   UI_KEYS.speechReducePlayback,
   UI_KEYS.speechFollowUpListenMs,
   UI_KEYS.speechAsrAttributionMs,
+  UI_KEYS.speechMessagePrefixMode,
+  UI_KEYS.speechMessageCustomPrefix,
   UI_KEYS.floatingActionButtonEnabled,
   UI_KEYS.developerMode,
   UI_KEYS.conversationView,

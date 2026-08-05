@@ -97,7 +97,7 @@ import type {
 } from "../lib/speechProviders/SpeechProvider";
 import type { ContextUsage, PermissionMode } from "../types";
 import { ContextThresholdQuickEdit } from "./ContextThresholdQuickEdit";
-import { AsrActionCue } from "./AsrActionCue";
+import { SpeechPrefixActionCue } from "./SpeechPrefixActionCue";
 import type { FilterOption } from "./FilterDropdown";
 import { MessageAge } from "./MessageAge";
 import { ModeSelector } from "./ModeSelector";
@@ -292,8 +292,10 @@ export interface MessageInputToolbarProps {
   };
   canForkAfterSummary?: boolean;
   canSend?: boolean;
-  /** Show that a rapid manual delivery will carry the [ASR] marker. */
-  asrAttributed?: boolean;
+  /** Exact prefix this delivery will prepend, or null for an unchanged payload. */
+  speechMessagePrefix?: string | null;
+  /** Primary-action override for local-only composer commands. */
+  primarySpeechMessagePrefix?: string | null;
   disabled?: boolean;
   /** Keep toolbar utilities/settings but omit the ordinary primary/alternate actions. */
   hidePrimaryDeliveryActions?: boolean;
@@ -614,7 +616,8 @@ interface ToolbarSendControl {
   primaryActionLabel: string;
   tooltip: string;
   icon: string;
-  asrAttributed?: boolean;
+  speechMessagePrefix?: string | null;
+  primarySpeechMessagePrefix?: string | null;
   showSteerNowMode?: boolean;
   steerNowEnabled?: boolean;
   onToggleSteerNow?: () => void;
@@ -1142,6 +1145,21 @@ export function MessageInputToolbarView({
     }
     const projectQueue = actionsControl.projectQueue;
     const disabled = actionsControl.disabled || !projectQueue.canSend;
+    const speechPrefix = actionsControl.send.speechMessagePrefix;
+    const deliveryLabel = (label: string) =>
+      speechPrefix
+        ? t("speechPrefixDeliveryLabel", {
+            action: label,
+            prefix: speechPrefix,
+          })
+        : label;
+    const deliveryTooltip = (tooltip: string | undefined) =>
+      speechPrefix && tooltip
+        ? t("speechPrefixDeliveryTooltip", {
+            tooltip,
+            prefix: speechPrefix,
+          })
+        : tooltip;
     const classNameFor = (
       key: "projectQueue" | "projectQueueNewSessionShortcut",
       ...extra: string[]
@@ -1161,11 +1179,12 @@ export function MessageInputToolbarView({
               onClick={projectQueue.onProjectQueue}
               disabled={disabled}
               className={classNameFor("projectQueue")}
-              aria-label={t("toolbarProjectQueueLabel")}
-              title={projectQueue.tooltip}
+              aria-label={deliveryLabel(t("toolbarProjectQueueLabel"))}
+              title={deliveryTooltip(projectQueue.tooltip)}
               role={menu ? "menuitem" : undefined}
             >
               <span className="send-icon">⇥</span>
+              {speechPrefix && <SpeechPrefixActionCue prefix={speechPrefix} />}
             </button>
           )}
         {showNewSessionProjectQueueButton &&
@@ -1179,8 +1198,10 @@ export function MessageInputToolbarView({
                 "projectQueueNewSessionShortcut",
                 "project-queue-new-session-button",
               )}
-              aria-label={t("toolbarProjectQueueNewSessionLabel")}
-              title={projectQueue.newSessionTooltip}
+              aria-label={deliveryLabel(
+                t("toolbarProjectQueueNewSessionLabel"),
+              )}
+              title={deliveryTooltip(projectQueue.newSessionTooltip)}
               role={menu ? "menuitem" : undefined}
             >
               <span className="send-icon">⇥</span>
@@ -1190,6 +1211,7 @@ export function MessageInputToolbarView({
               >
                 +
               </span>
+              {speechPrefix && <SpeechPrefixActionCue prefix={speechPrefix} />}
             </button>
           )}
       </>
@@ -2121,11 +2143,29 @@ export function MessageInputToolbarView({
                     actionsControl.disabled || !actionsControl.send.canSend
                   }
                   className="send-button queue-button"
-                  aria-label={t("toolbarQueueLabel")}
-                  title={queueControl.queueTooltip}
+                  aria-label={
+                    actionsControl.send.speechMessagePrefix
+                      ? t("speechPrefixDeliveryLabel", {
+                          action: t("toolbarQueueLabel"),
+                          prefix: actionsControl.send.speechMessagePrefix,
+                        })
+                      : t("toolbarQueueLabel")
+                  }
+                  title={
+                    actionsControl.send.speechMessagePrefix
+                      ? t("speechPrefixDeliveryTooltip", {
+                          tooltip: queueControl.queueTooltip,
+                          prefix: actionsControl.send.speechMessagePrefix,
+                        })
+                      : queueControl.queueTooltip
+                  }
                 >
                   <span className="send-icon queue-icon">→</span>
-                  {actionsControl.send.asrAttributed && <AsrActionCue />}
+                  {actionsControl.send.speechMessagePrefix && (
+                    <SpeechPrefixActionCue
+                      prefix={actionsControl.send.speechMessagePrefix}
+                    />
+                  )}
                 </button>
               )}
             {!hidePrimaryDeliveryActions &&
@@ -2139,11 +2179,29 @@ export function MessageInputToolbarView({
                     actionsControl.disabled || !actionsControl.send.canSend
                   }
                   className="send-button steer-button"
-                  aria-label={t("toolbarSteerTooltip")}
-                  title={t("toolbarSteerTooltip")}
+                  aria-label={
+                    actionsControl.send.speechMessagePrefix
+                      ? t("speechPrefixDeliveryLabel", {
+                          action: t("toolbarSteerTooltip"),
+                          prefix: actionsControl.send.speechMessagePrefix,
+                        })
+                      : t("toolbarSteerTooltip")
+                  }
+                  title={
+                    actionsControl.send.speechMessagePrefix
+                      ? t("speechPrefixDeliveryTooltip", {
+                          tooltip: t("toolbarSteerTooltip"),
+                          prefix: actionsControl.send.speechMessagePrefix,
+                        })
+                      : t("toolbarSteerTooltip")
+                  }
                 >
                   <span className="send-icon">↗</span>
-                  {actionsControl.send.asrAttributed && <AsrActionCue />}
+                  {actionsControl.send.speechMessagePrefix && (
+                    <SpeechPrefixActionCue
+                      prefix={actionsControl.send.speechMessagePrefix}
+                    />
+                  )}
                 </button>
               )}
             {!hidePrimaryDeliveryActions && actionsControl.send.alternate && (
@@ -2154,13 +2212,31 @@ export function MessageInputToolbarView({
                   actionsControl.disabled || !actionsControl.send.canSend
                 }
                 className="send-button fork-summary-no-summary-button"
-                aria-label={actionsControl.send.alternate.label}
-                title={actionsControl.send.alternate.tooltip}
+                aria-label={
+                  actionsControl.send.speechMessagePrefix
+                    ? t("speechPrefixDeliveryLabel", {
+                        action: actionsControl.send.alternate.label,
+                        prefix: actionsControl.send.speechMessagePrefix,
+                      })
+                    : actionsControl.send.alternate.label
+                }
+                title={
+                  actionsControl.send.speechMessagePrefix
+                    ? t("speechPrefixDeliveryTooltip", {
+                        tooltip: actionsControl.send.alternate.tooltip,
+                        prefix: actionsControl.send.speechMessagePrefix,
+                      })
+                    : actionsControl.send.alternate.tooltip
+                }
               >
                 <span className="send-icon">
                   {actionsControl.send.alternate.icon}
                 </span>
-                {actionsControl.send.asrAttributed && <AsrActionCue />}
+                {actionsControl.send.speechMessagePrefix && (
+                  <SpeechPrefixActionCue
+                    prefix={actionsControl.send.speechMessagePrefix}
+                  />
+                )}
               </button>
             )}
             {renderProjectQueueButtons()}
@@ -2176,14 +2252,30 @@ export function MessageInputToolbarView({
                     ? "queue-mode"
                     : ""
                 }`}
-                aria-label={actionsControl.send.primaryActionLabel}
+                aria-label={
+                  actionsControl.send.primarySpeechMessagePrefix
+                      ? t("speechPrefixDeliveryLabel", {
+                          action: actionsControl.send.primaryActionLabel,
+                          prefix: actionsControl.send.primarySpeechMessagePrefix,
+                        })
+                    : actionsControl.send.primaryActionLabel
+                }
                 {...getTextTooltipAttributes(
-                  actionsControl.send.tooltip,
+                  actionsControl.send.primarySpeechMessagePrefix
+                      ? t("speechPrefixDeliveryTooltip", {
+                          tooltip: actionsControl.send.tooltip,
+                          prefix: actionsControl.send.primarySpeechMessagePrefix,
+                        })
+                    : actionsControl.send.tooltip,
                   tooltipMode,
                 )}
               >
                 <span className="send-icon">{actionsControl.send.icon}</span>
-                {actionsControl.send.asrAttributed && <AsrActionCue />}
+                {actionsControl.send.primarySpeechMessagePrefix && (
+                  <SpeechPrefixActionCue
+                    prefix={actionsControl.send.primarySpeechMessagePrefix}
+                  />
+                )}
               </button>
             )}
           </>
@@ -2249,7 +2341,8 @@ export function MessageInputToolbar({
   sendAlternate,
   canForkAfterSummary,
   canSend,
-  asrAttributed,
+  speechMessagePrefix,
+  primarySpeechMessagePrefix,
   disabled,
   hidePrimaryDeliveryActions = false,
   hideVoiceInput = false,
@@ -2977,7 +3070,11 @@ export function MessageInputToolbar({
               primaryActionLabel,
               tooltip: sendTooltip,
               icon: primaryActionIcon,
-              asrAttributed,
+              speechMessagePrefix,
+              primarySpeechMessagePrefix:
+                primarySpeechMessagePrefix === undefined
+                  ? speechMessagePrefix
+                  : primarySpeechMessagePrefix,
               showSteerNowMode,
               steerNowEnabled,
               onToggleSteerNow,

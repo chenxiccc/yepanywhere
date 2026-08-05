@@ -373,6 +373,8 @@ vi.mock("../../i18n", () => ({
           speechSettingsXaiKeyTitle: "Browser xAI STT Key",
           speechSettingsXaiKeyPlaceholder: "Borrow from server when empty",
           speechListeningPlaceholder: "Listening...",
+          speechPrefixDeliveryLabel: `${params?.action ?? ""}. Prepends ${params?.prefix ?? ""}.`,
+          speechPrefixDeliveryTooltip: `${params?.tooltip ?? ""} Prepends ${params?.prefix ?? ""}.`,
           speechTranscribingPlaceholder: "Transcribing...",
           speechFinalizingPlaceholder: "Finalizing...",
           speechTranscribingCancel: "Cancel transcription",
@@ -737,6 +739,7 @@ describe("MessageInput", () => {
     voicePropsState.current = null;
     window.localStorage.clear();
     window.localStorage.setItem(UI_KEYS.tooltipMode, "themed");
+    window.localStorage.setItem(UI_KEYS.speechMessagePrefixMode, "asr");
   });
 
   afterEach(() => {
@@ -1949,9 +1952,7 @@ describe("MessageInput", () => {
     });
 
     await waitFor(() => {
-      expect(textarea.value).toBe(
-        "spoken first [typing this] resumed speech",
-      );
+      expect(textarea.value).toBe("spoken first [typing this] resumed speech");
       expect(textarea.selectionStart).toBe(textarea.value.length);
     });
   });
@@ -1978,9 +1979,7 @@ describe("MessageInput", () => {
     });
 
     await waitFor(() =>
-      expect(textarea.value).toBe(
-        "alpha resumed speech omega spoken first",
-      ),
+      expect(textarea.value).toBe("alpha resumed speech omega spoken first"),
     );
   });
 
@@ -2058,9 +2057,7 @@ describe("MessageInput", () => {
     });
 
     await waitFor(() =>
-      expect(textarea.value).toBe(
-        "alpha batch speech suffix [typed later]",
-      ),
+      expect(textarea.value).toBe("alpha batch speech suffix [typed later]"),
     );
   });
 
@@ -2195,9 +2192,7 @@ describe("MessageInput", () => {
     act(() => {
       voicePropsState.current?.onTranscript?.("draft");
     });
-    await waitFor(() =>
-      expect(textarea.value).toBe("alpha beta gamma draft"),
-    );
+    await waitFor(() => expect(textarea.value).toBe("alpha beta gamma draft"));
 
     act(() => {
       voicePropsState.current?.onTranscript?.("replacement");
@@ -2419,7 +2414,7 @@ describe("MessageInput", () => {
       voicePropsState.current?.onInterimTranscript?.("provisional words");
     });
 
-    const send = screen.getByLabelText("toolbarSend");
+    const send = screen.getByRole("button", { name: /toolbarSend/ });
     expect(send.textContent).toContain("ASR");
     fireEvent.click(send);
 
@@ -2434,11 +2429,7 @@ describe("MessageInput", () => {
     });
 
     await waitFor(() => {
-      expectSubmission(
-        onSend,
-        "[ASR] alpha provisional words omega",
-        "direct",
-      );
+      expectSubmission(onSend, "[ASR] alpha provisional words omega", "direct");
     });
     expect(onSend.mock.calls[0]?.[0]).not.toContain("backend final words");
   });
@@ -2529,6 +2520,26 @@ describe("MessageInput", () => {
       voicePropsState.current?.onPendingSpeechChange?.(null, "completed");
     });
     expectSubmission(onSend, "[ASR] visible at press", "direct");
+  });
+
+  it("shows no speech prefix cue and sends verbatim when prefixing is Off", async () => {
+    window.localStorage.removeItem(UI_KEYS.speechMessagePrefixMode);
+    window.localStorage.setItem(UI_KEYS.speechAsrAttributionMs, "1000");
+    const onSend = vi.fn();
+    renderMessageInput(vi.fn(), {
+      onSend,
+    });
+
+    act(() => {
+      voicePropsState.current?.onListeningStart?.();
+      voicePropsState.current?.onTranscript?.("Plain speech.");
+    });
+
+    const send = screen.getByLabelText("toolbarSend");
+    expect(send.textContent).not.toContain("ASR");
+    fireEvent.click(send);
+
+    await waitFor(() => expectSubmission(onSend, "Plain speech.", "direct"));
   });
 
   it("keeps an empty speech-triggered send as a no-op", () => {
@@ -4149,6 +4160,51 @@ describe("MessageInput", () => {
     );
 
     expectSubmission(onProjectQueue, "project-wide later", "deferred");
+  });
+
+  it("uses the selected speech prefix and cue for Project Queue", async () => {
+    window.localStorage.setItem(UI_KEYS.speechAsrAttributionMs, "1000");
+    window.localStorage.setItem(UI_KEYS.speechMessagePrefixMode, "custom");
+    window.localStorage.setItem(
+      UI_KEYS.speechMessageCustomPrefix,
+      "Needs review:",
+    );
+    const onProjectQueue = vi.fn();
+    renderMessageInput(vi.fn(), { onProjectQueue });
+
+    voiceButtonState.isListening = true;
+    act(() => {
+      voicePropsState.current?.onListeningStart?.();
+      voicePropsState.current?.onPendingSpeechChange?.("listening");
+      voicePropsState.current?.onInterimTranscript?.("project-wide dictation");
+    });
+
+    const projectQueueButton = screen.getByRole("button", {
+      name: /Queue for Project Queue.*Needs review:/,
+    });
+    expect(projectQueueButton.textContent).toContain("Needs review:");
+    expect(
+      screen.getByRole("button", { name: /toolbarSend.*Needs review:/ }),
+    ).toBeDefined();
+
+    fireEvent.click(projectQueueButton);
+    expect(onProjectQueue).not.toHaveBeenCalled();
+
+    act(() => {
+      voiceButtonState.isListening = false;
+      voicePropsState.current?.onPendingSpeechChange?.("finalizing");
+      voicePropsState.current?.onTranscript?.("settled backend words");
+      voicePropsState.current?.onPendingSpeechChange?.(null, "completed");
+    });
+
+    await waitFor(() => {
+      expectSubmission(
+        onProjectQueue,
+        "Needs review: project-wide dictation",
+        "deferred",
+      );
+      expect(screen.queryByText("Needs review:")).toBeNull();
+    });
   });
 
   it("routes the explicit Project Queue new-session action", () => {

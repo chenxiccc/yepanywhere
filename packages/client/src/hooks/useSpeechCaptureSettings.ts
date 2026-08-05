@@ -6,6 +6,22 @@ const subscribers = new Set<() => void>();
 
 export const MAX_SPEECH_FOLLOW_UP_LISTEN_MS = 30_000;
 export const MAX_SPEECH_ASR_ATTRIBUTION_MS = 5_000;
+export const MAX_SPEECH_MESSAGE_CUSTOM_PREFIX_LENGTH = 64;
+
+export type SpeechMessagePrefixMode =
+  | "off"
+  | "asr"
+  | "stt"
+  | "dictation"
+  | "custom";
+
+const SPEECH_MESSAGE_PREFIX_MODES = new Set<SpeechMessagePrefixMode>([
+  "off",
+  "asr",
+  "stt",
+  "dictation",
+  "custom",
+]);
 
 function canUseLocalStorage(): boolean {
   return (
@@ -53,6 +69,46 @@ export function getSpeechAsrAttributionMsSetting(): number {
     UI_KEYS.speechAsrAttributionMs,
     MAX_SPEECH_ASR_ATTRIBUTION_MS,
   );
+}
+
+export function getSpeechMessagePrefixModeSetting(): SpeechMessagePrefixMode {
+  if (!canUseLocalStorage()) return "off";
+  const stored = globalThis.localStorage.getItem(
+    UI_KEYS.speechMessagePrefixMode,
+  );
+  return SPEECH_MESSAGE_PREFIX_MODES.has(stored as SpeechMessagePrefixMode)
+    ? (stored as SpeechMessagePrefixMode)
+    : "off";
+}
+
+function limitSpeechMessageCustomPrefixInput(value: string): string {
+  return (value.split(/\r?\n/, 1)[0] ?? "").slice(
+    0,
+    MAX_SPEECH_MESSAGE_CUSTOM_PREFIX_LENGTH,
+  );
+}
+
+export function cleanSpeechMessageCustomPrefix(value: string): string {
+  return limitSpeechMessageCustomPrefixInput(value).trim();
+}
+
+export function getSpeechMessageCustomPrefixSetting(): string {
+  if (!canUseLocalStorage()) return "";
+  return limitSpeechMessageCustomPrefixInput(
+    globalThis.localStorage.getItem(UI_KEYS.speechMessageCustomPrefix) ?? "",
+  );
+}
+
+export function resolveSpeechMessagePrefix(
+  mode: SpeechMessagePrefixMode,
+  customPrefix: string,
+): string | null {
+  if (mode === "asr") return "[ASR]";
+  if (mode === "stt") return "[STT]";
+  if (mode === "dictation") return "[Dictation]";
+  if (mode === "custom")
+    return cleanSpeechMessageCustomPrefix(customPrefix) || null;
+  return null;
 }
 
 export function setSpeechKeepMicWarmSetting(enabled: boolean): void {
@@ -124,6 +180,31 @@ export function setSpeechAsrAttributionMsSetting(value: number): void {
   );
 }
 
+export function setSpeechMessagePrefixModeSetting(
+  mode: SpeechMessagePrefixMode,
+): void {
+  const cleanMode = SPEECH_MESSAGE_PREFIX_MODES.has(mode) ? mode : "off";
+  if (canUseLocalStorage()) {
+    globalThis.localStorage.setItem(UI_KEYS.speechMessagePrefixMode, cleanMode);
+  }
+  for (const subscriber of subscribers) subscriber();
+}
+
+export function setSpeechMessageCustomPrefixSetting(value: string): void {
+  const storedValue = limitSpeechMessageCustomPrefixInput(value);
+  if (canUseLocalStorage()) {
+    if (storedValue) {
+      globalThis.localStorage.setItem(
+        UI_KEYS.speechMessageCustomPrefix,
+        storedValue,
+      );
+    } else {
+      globalThis.localStorage.removeItem(UI_KEYS.speechMessageCustomPrefix);
+    }
+  }
+  for (const subscriber of subscribers) subscriber();
+}
+
 export function useSpeechCaptureSettings() {
   const [keepMicWarm, setKeepMicWarmState] = useState(
     getSpeechKeepMicWarmSetting,
@@ -140,6 +221,11 @@ export function useSpeechCaptureSettings() {
   const [asrAttributionMs, setAsrAttributionMsState] = useState(
     getSpeechAsrAttributionMsSetting,
   );
+  const [speechMessagePrefixMode, setSpeechMessagePrefixModeState] = useState(
+    getSpeechMessagePrefixModeSetting,
+  );
+  const [speechMessageCustomPrefix, setSpeechMessageCustomPrefixState] =
+    useState(getSpeechMessageCustomPrefixSetting);
   useEffect(() => {
     const update = () => {
       setKeepMicWarmState(getSpeechKeepMicWarmSetting());
@@ -147,6 +233,8 @@ export function useSpeechCaptureSettings() {
       setReducePlaybackState(getSpeechReducePlaybackSetting());
       setFollowUpListenMsState(getSpeechFollowUpListenMsSetting());
       setAsrAttributionMsState(getSpeechAsrAttributionMsSetting());
+      setSpeechMessagePrefixModeState(getSpeechMessagePrefixModeSetting());
+      setSpeechMessageCustomPrefixState(getSpeechMessageCustomPrefixSetting());
     };
     subscribers.add(update);
     globalThis.addEventListener?.("storage", update);
@@ -176,6 +264,22 @@ export function useSpeechCaptureSettings() {
     setSpeechAsrAttributionMsSetting(value);
   }, []);
 
+  const setSpeechMessagePrefixMode = useCallback(
+    (mode: SpeechMessagePrefixMode) => {
+      setSpeechMessagePrefixModeSetting(mode);
+    },
+    [],
+  );
+
+  const setSpeechMessageCustomPrefix = useCallback((value: string) => {
+    setSpeechMessageCustomPrefixSetting(value);
+  }, []);
+
+  const speechMessagePrefix = resolveSpeechMessagePrefix(
+    speechMessagePrefixMode,
+    speechMessageCustomPrefix,
+  );
+
   return {
     keepMicWarm,
     setKeepMicWarm,
@@ -187,5 +291,10 @@ export function useSpeechCaptureSettings() {
     setFollowUpListenMs,
     asrAttributionMs,
     setAsrAttributionMs,
+    speechMessagePrefixMode,
+    setSpeechMessagePrefixMode,
+    speechMessageCustomPrefix,
+    setSpeechMessageCustomPrefix,
+    speechMessagePrefix,
   };
 }

@@ -29,11 +29,7 @@ import {
   useState,
 } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  type SessionOptions,
-  type UploadedFile,
-  api,
-} from "../api/client";
+import { type SessionOptions, type UploadedFile, api } from "../api/client";
 import { ENTER_SENDS_MESSAGE } from "../constants";
 import styles from "./NewSessionForm.module.css";
 import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
@@ -172,10 +168,13 @@ import {
 import {
   commitSpeechTranscript,
   hasNonWhitespaceEdit,
-  markAsrSubmittedTurn,
   type PendingSpeechRetarget,
   type PendingTextareaSelectionRestore,
 } from "../lib/speechDraftTransaction";
+import {
+  prependSpeechMessagePrefix,
+  resolveDeliverySpeechPrefix,
+} from "../lib/speechMessagePrefix";
 import { isVoiceInputShortcut } from "../lib/voiceInputShortcut";
 import { generateUUID } from "../lib/uuid";
 import { useVersion } from "../hooks/useVersion";
@@ -186,7 +185,7 @@ import { shortenPath } from "../lib/text";
 import { getPermissionModeOptions } from "../lib/permissionModes";
 import type { PermissionMode, Project } from "../types";
 import { FilterDropdown, type FilterOption } from "./FilterDropdown";
-import { AsrActionCue } from "./AsrActionCue";
+import { SpeechPrefixActionCue } from "./SpeechPrefixActionCue";
 import { ProviderBadge } from "./ProviderBadge";
 import { ModelSubscriptionUsage } from "./ModelSubscriptionUsage";
 import { RecapAfterSecondsControl } from "./RecapAfterSecondsControl";
@@ -375,7 +374,7 @@ export function NewSessionForm({
   const speechTransactionHasTextRef = useRef(false);
   const dispatchingSettledSpeechDeliveryRef = useRef(false);
   const runPendingSpeechDeliveryRef = useRef<() => void>(() => {});
-  const { asrAttributionMs } = useSpeechCaptureSettings();
+  const { asrAttributionMs, speechMessagePrefix } = useSpeechCaptureSettings();
   const {
     active: speechAttributionActive,
     noteSpeech: noteSpeechAttribution,
@@ -1325,9 +1324,7 @@ export function NewSessionForm({
       getDefaultHelperSideModel(initialModels, initialProviderDefaults),
     );
     setMode(
-      preferredPermissionMode ??
-        savedDefaults?.permissionMode ??
-        "default",
+      preferredPermissionMode ?? savedDefaults?.permissionMode ?? "default",
     );
     setSelectedExecutor(preferredExecutor ?? null);
   }, [
@@ -1863,10 +1860,14 @@ export function NewSessionForm({
       )
         return;
 
-      const asrAttributed = speechTriggered || isRecentSpeechAttribution();
+      const deliverySpeechPrefix = resolveDeliverySpeechPrefix({
+        configuredPrefix: speechMessagePrefix,
+        speechTriggered,
+        recentSpeech: isRecentSpeechAttribution(),
+      });
       const trimmedMessage =
-        asrAttributed && hasContent
-          ? markAsrSubmittedTurn(finalMessage)
+        deliverySpeechPrefix && hasContent
+          ? prependSpeechMessagePrefix(finalMessage, deliverySpeechPrefix)
           : finalMessage.trim();
       const trimmedProjectInput = normalizeProjectInput(projectInput);
       const actionAtMs = Date.now();
@@ -1972,8 +1973,7 @@ export function NewSessionForm({
           sessionId = createResult.sessionId;
           processId = createResult.processId;
           initialPermissionMode = createResult.permissionMode;
-          initialAppliedPermissionMode =
-            createResult.appliedPermissionMode;
+          initialAppliedPermissionMode = createResult.appliedPermissionMode;
           initialModeVersion = createResult.modeVersion;
           resolvedProjectId = activeProjectId;
           logSessionUiTrace("new-session-created", {
@@ -2187,6 +2187,7 @@ export function NewSessionForm({
       selectedRecapMode,
       setPendingFiles,
       showToast,
+      speechMessagePrefix,
       supportsSessionSandboxing,
       t,
     ],
@@ -2201,10 +2202,14 @@ export function NewSessionForm({
 
     const finalMessage = (override ?? draftControls.getDraft()).trimEnd();
     const rawTrimmedMessage = finalMessage.trim();
-    const trimmedMessage =
-      rawTrimmedMessage && isRecentSpeechAttribution()
-        ? markAsrSubmittedTurn(rawTrimmedMessage)
-        : rawTrimmedMessage;
+    const deliverySpeechPrefix = resolveDeliverySpeechPrefix({
+      configuredPrefix: speechMessagePrefix,
+      speechTriggered: false,
+      recentSpeech: isRecentSpeechAttribution(),
+    });
+    const trimmedMessage = rawTrimmedMessage
+      ? prependSpeechMessagePrefix(rawTrimmedMessage, deliverySpeechPrefix)
+      : rawTrimmedMessage;
     const trimmedProjectInput = normalizeProjectInput(projectInput);
     const stagedRefs = pendingFiles
       .filter(isPendingStagedFile)
@@ -2764,7 +2769,7 @@ export function NewSessionForm({
   useAttachmentNavigationGuard(attachmentNavigationGuardActive);
   const canQueueProjectSession = Boolean(
     allowProjectQueue &&
-    showProjectQueueAction &&
+      showProjectQueueAction &&
       (message.trim() || speechPending !== null || interimTranscript) &&
       pendingFilesReadyForProjectQueue &&
       hasProjectQueueTargetProject &&
@@ -2777,6 +2782,29 @@ export function NewSessionForm({
         ? t("toolbarProjectQueueTooltipWithShortcut")
         : t("toolbarProjectQueueTooltip")
       : t("projectQueueNewSessionNeedsProject");
+  const manualDeliverySpeechPrefix =
+    speechMessagePrefix &&
+    asrAttributionMs > 0 &&
+    (speechAttributionActive ||
+      ((speechPending !== null || pendingSpeechDeliveryRef.current !== null) &&
+        (speechTransactionHasTextRef.current ||
+          interimTranscript.trim().length > 0)))
+      ? speechMessagePrefix
+      : null;
+  const describePrefixedDelivery = (action: string) =>
+    manualDeliverySpeechPrefix
+      ? t("speechPrefixDeliveryLabel", {
+          action,
+          prefix: manualDeliverySpeechPrefix,
+        })
+      : action;
+  const describePrefixedTooltip = (tooltip: string) =>
+    manualDeliverySpeechPrefix
+      ? t("speechPrefixDeliveryTooltip", {
+          tooltip,
+          prefix: manualDeliverySpeechPrefix,
+        })
+      : tooltip;
   const speechInsertionRange = speechInsertionRangeRef.current;
   const interimDisplayTranscript = getSpeechInterimDisplayTranscript(
     message,
@@ -3001,13 +3029,15 @@ export function NewSessionForm({
               onClick={handleQueueProjectSession}
               disabled={isStarting || !canQueueProjectSession}
               className="send-button project-queue-button new-session-project-queue-button"
-              aria-label={t("toolbarProjectQueueLabel")}
-              title={projectQueueNewSessionTitle}
+              aria-label={describePrefixedDelivery(
+                t("toolbarProjectQueueLabel"),
+              )}
+              title={describePrefixedTooltip(projectQueueNewSessionTitle)}
             >
               <span className="send-icon">⇥</span>
-              {(speechPending !== null ||
-                pendingSpeechDeliveryRef.current !== null ||
-                speechAttributionActive) && <AsrActionCue />}
+              {manualDeliverySpeechPrefix && (
+                <SpeechPrefixActionCue prefix={manualDeliverySpeechPrefix} />
+              )}
             </button>
           )}
           <button
@@ -3015,7 +3045,12 @@ export function NewSessionForm({
             onClick={handleStartSession}
             disabled={isStarting || !canStart}
             className="send-button new-session-submit-button"
-            aria-label={launch?.startLabel ?? t("newSessionStartAction")}
+            aria-label={describePrefixedDelivery(
+              launch?.startLabel ?? t("newSessionStartAction"),
+            )}
+            title={describePrefixedTooltip(
+              launch?.startLabel ?? t("newSessionStartAction"),
+            )}
           >
             {isStarting ? (
               <span className="send-spinner" />
@@ -3036,10 +3071,9 @@ export function NewSessionForm({
                 <path d="m5 12 7-7 7 7" />
               </svg>
             )}
-            {!isStarting &&
-              (speechPending !== null ||
-                pendingSpeechDeliveryRef.current !== null ||
-                speechAttributionActive) && <AsrActionCue />}
+            {!isStarting && manualDeliverySpeechPrefix && (
+              <SpeechPrefixActionCue prefix={manualDeliverySpeechPrefix} />
+            )}
           </button>
         </div>
       </div>
@@ -3190,7 +3224,6 @@ export function NewSessionForm({
           </div>
         </div>
       )}
-
     </div>
   );
   const workstreamChooser =

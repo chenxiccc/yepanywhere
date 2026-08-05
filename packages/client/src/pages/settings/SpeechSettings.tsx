@@ -70,6 +70,10 @@ export function SpeechSettings() {
     setFollowUpListenMs,
     asrAttributionMs,
     setAsrAttributionMs,
+    speechMessagePrefixMode,
+    setSpeechMessagePrefixMode,
+    speechMessageCustomPrefix,
+    setSpeechMessageCustomPrefix,
   } = useSpeechCaptureSettings();
   const {
     browserXaiSttApiKey,
@@ -87,6 +91,8 @@ export function SpeechSettings() {
       reducePlayback,
       followUpListenMs,
       asrAttributionMs,
+      speechMessagePrefixMode,
+      speechMessageCustomPrefix,
       parakeetSpeechModel,
     }),
     [
@@ -97,6 +103,8 @@ export function SpeechSettings() {
       reducePlayback,
       followUpListenMs,
       asrAttributionMs,
+      speechMessagePrefixMode,
+      speechMessageCustomPrefix,
       parakeetSpeechModel,
     ],
   );
@@ -109,6 +117,8 @@ export function SpeechSettings() {
       setReducePlayback(snapshot.reducePlayback);
       setFollowUpListenMs(snapshot.followUpListenMs);
       setAsrAttributionMs(snapshot.asrAttributionMs);
+      setSpeechMessagePrefixMode(snapshot.speechMessagePrefixMode);
+      setSpeechMessageCustomPrefix(snapshot.speechMessageCustomPrefix);
       setParakeetSpeechModel(snapshot.parakeetSpeechModel);
     },
     [
@@ -119,6 +129,8 @@ export function SpeechSettings() {
       setReducePlayback,
       setFollowUpListenMs,
       setAsrAttributionMs,
+      setSpeechMessagePrefixMode,
+      setSpeechMessageCustomPrefix,
       setParakeetSpeechModel,
     ],
   );

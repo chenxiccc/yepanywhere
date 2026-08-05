@@ -79,10 +79,13 @@ import {
 import {
   commitSpeechTranscript,
   hasNonWhitespaceEdit,
-  markAsrSubmittedTurn,
   type PendingSpeechRetarget,
   type PendingTextareaSelectionRestore,
 } from "../lib/speechDraftTransaction";
+import {
+  prependSpeechMessagePrefix,
+  resolveDeliverySpeechPrefix,
+} from "../lib/speechMessagePrefix";
 import {
   applyBangCompletion,
   getBangCompletionQuery,
@@ -106,6 +109,7 @@ import {
   MessageInputToolbar,
   type MessageInputToolbarProps,
 } from "./MessageInputToolbar";
+import { SpeechPrefixActionCue } from "./SpeechPrefixActionCue";
 import {
   VoiceInputButton,
   type SpeechCycleSettlement,
@@ -154,7 +158,8 @@ type PendingSpeechDeliveryIntent =
       actionOverride?: "send" | "steer" | "queue";
       focusAfterSubmit: boolean;
     }
-  | { kind: "queue" };
+  | { kind: "queue" }
+  | { kind: "project-queue"; newSession: boolean };
 
 interface SubmissionCompositionSnapshot {
   typingStartedAt: string | null;
@@ -481,7 +486,7 @@ export function MessageInput({
   const speechTransactionHasTextRef = useRef(false);
   const dispatchingSettledSpeechDeliveryRef = useRef(false);
   const runPendingSpeechDeliveryRef = useRef<() => void>(() => {});
-  const { asrAttributionMs } = useSpeechCaptureSettings();
+  const { asrAttributionMs, speechMessagePrefix } = useSpeechCaptureSettings();
   const {
     active: speechAttributionActive,
     noteSpeech: noteSpeechAttribution,
@@ -868,8 +873,7 @@ export function MessageInput({
         snapshot?.typingStartedAt ?? typingStartedAtRef.current ?? submittedAt;
       const lastEditedAt =
         snapshot?.lastEditedAt ?? lastEditedAtRef.current ?? typingStartedAt;
-      const speechTurnId =
-        snapshot?.speechTurnId ?? speechTurnIdRef.current;
+      const speechTurnId = snapshot?.speechTurnId ?? speechTurnIdRef.current;
       const speechTranscriptionIds =
         snapshot?.speechTranscriptionIds ?? speechTranscriptionIdsRef.current;
       const speech: UserMessageSpeechMetadata | undefined =
@@ -1234,7 +1238,11 @@ export function MessageInput({
       }
 
       let finalText = (override ?? controls.getDraft()).trimEnd();
-      const asrAttributed = speechTriggered || isRecentSpeechAttribution();
+      const deliverySpeechPrefix = resolveDeliverySpeechPrefix({
+        configuredPrefix: speechMessagePrefix,
+        speechTriggered,
+        recentSpeech: isRecentSpeechAttribution(),
+      });
 
       if (forkSummaryMode) {
         if (
@@ -1249,8 +1257,8 @@ export function MessageInput({
           }
           const instructions = finalText.trim();
           forkSummaryMode.onSubmit(
-            asrAttributed && instructions
-              ? markAsrSubmittedTurn(instructions)
+            instructions
+              ? prependSpeechMessagePrefix(instructions, deliverySpeechPrefix)
               : instructions,
           );
           consumeSpeechAttribution();
@@ -1285,9 +1293,10 @@ export function MessageInput({
 
       const hasContent = finalText.trim() || attachments.length > 0;
       if (hasContent && !disabled) {
-        const message = asrAttributed
-          ? markAsrSubmittedTurn(finalText)
-          : finalText.trim();
+        const message = prependSpeechMessagePrefix(
+          finalText,
+          deliverySpeechPrefix,
+        );
         const actionKind = actionOverride ?? effectivePrimaryActionKind;
         const deliveryIntent =
           actionKind === "steer"
@@ -1330,6 +1339,7 @@ export function MessageInput({
       consumeSpeechAttribution,
       deferSpeechDelivery,
       isRecentSpeechAttribution,
+      speechMessagePrefix,
     ],
   );
 
@@ -1355,14 +1365,27 @@ export function MessageInput({
     controls.clearInput();
     resetCompositionMetadata();
     setInterimTranscript("");
-    forkSummaryMode.onSubmitWithoutSummary(finalText);
+    const deliverySpeechPrefix = resolveDeliverySpeechPrefix({
+      configuredPrefix: speechMessagePrefix,
+      speechTriggered: false,
+      recentSpeech: isRecentSpeechAttribution(),
+    });
+    forkSummaryMode.onSubmitWithoutSummary(
+      deliverySpeechPrefix
+        ? prependSpeechMessagePrefix(finalText, deliverySpeechPrefix)
+        : finalText,
+    );
+    consumeSpeechAttribution();
     textareaRef.current?.focus();
   }, [
     attachments.length,
     controls,
     disabled,
     forkSummaryMode,
+    consumeSpeechAttribution,
+    isRecentSpeechAttribution,
     resetCompositionMetadata,
+    speechMessagePrefix,
     uploadProgress.length,
   ]);
 
@@ -1394,10 +1417,13 @@ export function MessageInput({
           resetCompositionMetadata();
           setInterimTranscript("");
         }
+        const deliverySpeechPrefix = resolveDeliverySpeechPrefix({
+          configuredPrefix: speechMessagePrefix,
+          speechTriggered: false,
+          recentSpeech: isRecentSpeechAttribution(),
+        });
         queueHandler(
-          isRecentSpeechAttribution()
-            ? markAsrSubmittedTurn(finalText)
-            : finalText.trim(),
+          prependSpeechMessagePrefix(finalText, deliverySpeechPrefix),
           metadata,
         );
         consumeSpeechAttribution();
@@ -1417,8 +1443,71 @@ export function MessageInput({
       deferSpeechDelivery,
       isRecentSpeechAttribution,
       resetCompositionMetadata,
+      speechMessagePrefix,
     ],
   );
+
+  const submitToProjectQueue = useCallback(
+    (
+      submit:
+        | ((text: string, metadata?: MessageSubmissionMetadata) => void)
+        | undefined,
+      messageOverride?: string,
+      submissionSnapshot?: SubmissionCompositionSnapshot,
+      preserveComposer = false,
+    ) => {
+      if (!submit) return;
+      const finalText = (messageOverride ?? controls.getDraft()).trimEnd();
+
+      const hasContent = finalText.trim() || attachments.length > 0;
+      if (hasContent && !disabled) {
+        const metadata = buildSubmissionMetadata(
+          "deferred",
+          submissionSnapshot,
+        );
+        const deliverySpeechPrefix = resolveDeliverySpeechPrefix({
+          configuredPrefix: speechMessagePrefix,
+          speechTriggered: false,
+          recentSpeech: isRecentSpeechAttribution(),
+        });
+        if (!preserveComposer) {
+          controls.clearInput();
+          resetCompositionMetadata();
+          setInterimTranscript("");
+        }
+        submit(
+          prependSpeechMessagePrefix(finalText, deliverySpeechPrefix),
+          metadata,
+        );
+        consumeSpeechAttribution();
+        textareaRef.current?.focus();
+      }
+    },
+    [
+      attachments.length,
+      buildSubmissionMetadata,
+      controls,
+      consumeSpeechAttribution,
+      disabled,
+      isRecentSpeechAttribution,
+      resetCompositionMetadata,
+      speechMessagePrefix,
+    ],
+  );
+
+  const handleProjectQueue = useCallback(() => {
+    if (deferSpeechDelivery({ kind: "project-queue", newSession: false })) {
+      return;
+    }
+    submitToProjectQueue(onProjectQueue);
+  }, [deferSpeechDelivery, onProjectQueue, submitToProjectQueue]);
+
+  const handleProjectQueueNewSession = useCallback(() => {
+    if (deferSpeechDelivery({ kind: "project-queue", newSession: true })) {
+      return;
+    }
+    submitToProjectQueue(onProjectQueueNewSession);
+  }, [deferSpeechDelivery, onProjectQueueNewSession, submitToProjectQueue]);
 
   const runPendingSpeechDelivery = useCallback(() => {
     if (
@@ -1435,7 +1524,12 @@ export function MessageInput({
     dispatchingSettledSpeechDeliveryRef.current = true;
     try {
       if (pending.intent.kind === "queue") {
-        handleQueue(
+        handleQueue(pending.visibleTextSnapshot, pending.composition, true);
+        return;
+      }
+      if (pending.intent.kind === "project-queue") {
+        submitToProjectQueue(
+          pending.intent.newSession ? onProjectQueueNewSession : onProjectQueue,
           pending.visibleTextSnapshot,
           pending.composition,
           true,
@@ -1453,55 +1547,18 @@ export function MessageInput({
     } finally {
       dispatchingSettledSpeechDeliveryRef.current = false;
     }
-  }, [handleQueue, handleSubmit]);
+  }, [
+    handleQueue,
+    handleSubmit,
+    onProjectQueue,
+    onProjectQueueNewSession,
+    submitToProjectQueue,
+  ]);
   runPendingSpeechDeliveryRef.current = runPendingSpeechDelivery;
 
   const maybeRunPendingSpeechDelivery = useCallback(() => {
     runPendingSpeechDeliveryRef.current();
   }, []);
-
-  const submitToProjectQueue = useCallback(
-    (
-      submit:
-        | ((text: string, metadata?: MessageSubmissionMetadata) => void)
-        | undefined,
-    ) => {
-      if (!submit) return;
-
-      // Stop voice recording and get any pending interim text
-      const pendingVoice = voiceButtonRef.current?.stopAndFinalize() ?? "";
-      const finalText = getSpeechVisibleDraftText(
-        controls.getDraft(),
-        pendingVoice,
-        speechInsertionRangeRef.current,
-      ).trimEnd();
-
-      const hasContent = finalText.trim() || attachments.length > 0;
-      if (hasContent && !disabled) {
-        const metadata = buildSubmissionMetadata("deferred");
-        controls.clearInput();
-        resetCompositionMetadata();
-        setInterimTranscript("");
-        submit(finalText.trim(), metadata);
-        textareaRef.current?.focus();
-      }
-    },
-    [
-      attachments.length,
-      buildSubmissionMetadata,
-      controls,
-      disabled,
-      resetCompositionMetadata,
-    ],
-  );
-
-  const handleProjectQueue = useCallback(() => {
-    submitToProjectQueue(onProjectQueue);
-  }, [onProjectQueue, submitToProjectQueue]);
-
-  const handleProjectQueueNewSession = useCallback(() => {
-    submitToProjectQueue(onProjectQueueNewSession);
-  }, [onProjectQueueNewSession, submitToProjectQueue]);
 
   const handleBtwClick = useCallback(() => {
     if (disabled || !onBtwShortcut) return;
@@ -1524,6 +1581,46 @@ export function MessageInput({
     : effectivePrimaryActionKind === "queue"
       ? handleQueue
       : handleSubmit;
+  const visibleDeliveryDraft = getSpeechVisibleDraftText(
+    controls.getDraft(),
+    interimTranscript,
+    speechInsertionRangeRef.current,
+  );
+  const primaryRunsLocalBang =
+    !!bangSupport &&
+    resolveComposerBangDraft(visibleDeliveryDraft).kind === "bang";
+  const manualDeliverySpeechPrefix =
+    speechMessagePrefix &&
+    asrAttributionMs > 0 &&
+    (speechAttributionActive ||
+      ((speechPending !== null || pendingSpeechDeliveryRef.current !== null) &&
+        (speechTransactionHasTextRef.current ||
+          interimTranscript.trim().length > 0)))
+      ? speechMessagePrefix
+      : null;
+  const primaryDeliverySpeechPrefix = primaryRunsLocalBang
+    ? null
+    : manualDeliverySpeechPrefix;
+  const describePrefixedDelivery = (
+    action: string,
+    prefix = manualDeliverySpeechPrefix,
+  ) =>
+    prefix
+      ? t("speechPrefixDeliveryLabel", {
+          action,
+          prefix,
+        })
+      : action;
+  const describePrefixedTooltip = (
+    tooltip: string,
+    prefix = manualDeliverySpeechPrefix,
+  ) =>
+    prefix
+      ? t("speechPrefixDeliveryTooltip", {
+          tooltip,
+          prefix,
+        })
+      : tooltip;
   const forkSummaryAlternateLabel =
     forkSummaryMode?.noSummarySubmitLabel ?? t("forkSummaryNoSummarySubmit");
   const mobileKeyboardAlternateAction = forkSummaryMode?.onSubmitWithoutSummary
@@ -2435,9 +2532,7 @@ export function MessageInput({
         : pendingSpeechRetargetRef;
       commitSpeechTranscript(
         {
-          textareaRef: commitsPendingDelivery
-            ? { current: null }
-            : textareaRef,
+          textareaRef: commitsPendingDelivery ? { current: null } : textareaRef,
           getDraft: commitsPendingDelivery
             ? () => pendingDelivery.draft
             : controls.getDraft,
@@ -2461,8 +2556,7 @@ export function MessageInput({
             : () => voiceButtonRef.current?.beginInsertionBoundary(),
           onSpeechTargetChanged: commitsPendingDelivery
             ? () => {}
-            : () =>
-                setSpeechPreviewRevision((revision) => revision + 1),
+            : () => setSpeechPreviewRevision((revision) => revision + 1),
           onEdit: commitsPendingDelivery ? undefined : noteComposerEdit,
           onTranscriptionId: (id) => {
             if (commitsPendingDelivery) {
@@ -2779,10 +2873,8 @@ export function MessageInput({
       : undefined,
     canForkAfterSummary: !!onForkSummaryShortcut,
     canSend: canSubmit,
-    asrAttributed:
-      speechPending !== null ||
-      pendingSpeechDeliveryRef.current !== null ||
-      speechAttributionActive,
+    speechMessagePrefix: manualDeliverySpeechPrefix,
+    primarySpeechMessagePrefix: primaryDeliverySpeechPrefix,
     disabled,
   };
   const showMobileKeyboardCompact = mobileKeyboardOpen && canSubmit;
@@ -3381,14 +3473,21 @@ export function MessageInput({
                     onPointerDown={(event) => event.preventDefault()}
                     onClick={handleProjectQueue}
                     disabled={disabled}
-                    aria-label={t("toolbarProjectQueueLabel")}
-                    title={
+                    aria-label={describePrefixedDelivery(
+                      t("toolbarProjectQueueLabel"),
+                    )}
+                    title={describePrefixedTooltip(
                       projectQueueShortcutAvailable
                         ? t("toolbarProjectQueueTooltipWithShortcut")
-                        : t("toolbarProjectQueueTooltip")
-                    }
+                        : t("toolbarProjectQueueTooltip"),
+                    )}
                   >
                     <span aria-hidden="true">⇥</span>
+                    {manualDeliverySpeechPrefix && (
+                      <SpeechPrefixActionCue
+                        prefix={manualDeliverySpeechPrefix}
+                      />
+                    )}
                   </button>
                 </div>
               )}
@@ -3400,8 +3499,12 @@ export function MessageInput({
                     onPointerDown={(event) => event.preventDefault()}
                     onClick={handleProjectQueueNewSession}
                     disabled={disabled}
-                    aria-label={t("toolbarProjectQueueNewSessionLabel")}
-                    title={t("toolbarProjectQueueNewSessionTooltip")}
+                    aria-label={describePrefixedDelivery(
+                      t("toolbarProjectQueueNewSessionLabel"),
+                    )}
+                    title={describePrefixedTooltip(
+                      t("toolbarProjectQueueNewSessionTooltip"),
+                    )}
                   >
                     <span aria-hidden="true">⇥</span>
                     <span
@@ -3410,6 +3513,11 @@ export function MessageInput({
                     >
                       +
                     </span>
+                    {manualDeliverySpeechPrefix && (
+                      <SpeechPrefixActionCue
+                        prefix={manualDeliverySpeechPrefix}
+                      />
+                    )}
                   </button>
                 </div>
               )}
@@ -3421,12 +3529,21 @@ export function MessageInput({
                     onPointerDown={(event) => event.preventDefault()}
                     onClick={mobileKeyboardAlternateAction.onClick}
                     disabled={disabled}
-                    aria-label={mobileKeyboardAlternateAction.label}
-                    title={mobileKeyboardAlternateAction.label}
+                    aria-label={describePrefixedDelivery(
+                      mobileKeyboardAlternateAction.label,
+                    )}
+                    title={describePrefixedTooltip(
+                      mobileKeyboardAlternateAction.label,
+                    )}
                   >
                     <span aria-hidden="true">
                       {mobileKeyboardAlternateAction.icon}
                     </span>
+                    {manualDeliverySpeechPrefix && (
+                      <SpeechPrefixActionCue
+                        prefix={manualDeliverySpeechPrefix}
+                      />
+                    )}
                   </button>
                 </div>
               )}
@@ -3438,12 +3555,22 @@ export function MessageInput({
                     onPointerDown={(event) => event.preventDefault()}
                     onClick={mobileKeyboardAlternateAction.onClick}
                     disabled={disabled}
-                    aria-label={mobileKeyboardAlternateAction.label}
+                    aria-label={describePrefixedDelivery(
+                      mobileKeyboardAlternateAction.label,
+                    )}
+                    title={describePrefixedTooltip(
+                      mobileKeyboardAlternateAction.label,
+                    )}
                   >
                     <span>{mobileKeyboardAlternateAction.displayLabel}</span>
                     <span aria-hidden="true">
                       {mobileKeyboardAlternateAction.icon}
                     </span>
+                    {manualDeliverySpeechPrefix && (
+                      <SpeechPrefixActionCue
+                        prefix={manualDeliverySpeechPrefix}
+                      />
+                    )}
                   </button>
                 )}
               {bangQuery !== null && (
@@ -3506,7 +3633,14 @@ export function MessageInput({
                 onPointerDown={(event) => event.preventDefault()}
                 onClick={submitPrimaryAction}
                 disabled={disabled}
-                aria-label={mobileKeyboardActionLabel}
+                aria-label={describePrefixedDelivery(
+                  mobileKeyboardActionLabel,
+                  primaryDeliverySpeechPrefix,
+                )}
+                title={describePrefixedTooltip(
+                  mobileKeyboardActionLabel,
+                  primaryDeliverySpeechPrefix,
+                )}
               >
                 {mobileKeyboardActionDisplayLabel && (
                   <span className="message-input-keyboard-primary-label">
@@ -3519,6 +3653,9 @@ export function MessageInput({
                 >
                   {mobileKeyboardActionIcon}
                 </span>
+                {primaryDeliverySpeechPrefix && (
+                  <SpeechPrefixActionCue prefix={primaryDeliverySpeechPrefix} />
+                )}
               </button>
             </div>
           </div>

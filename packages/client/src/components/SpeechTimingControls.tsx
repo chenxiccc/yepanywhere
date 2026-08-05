@@ -1,7 +1,9 @@
-import { useId } from "react";
+import { type ChangeEvent, useId } from "react";
 import {
   MAX_SPEECH_ASR_ATTRIBUTION_MS,
   MAX_SPEECH_FOLLOW_UP_LISTEN_MS,
+  MAX_SPEECH_MESSAGE_CUSTOM_PREFIX_LENGTH,
+  type SpeechMessagePrefixMode,
   useSpeechCaptureSettings,
 } from "../hooks/useSpeechCaptureSettings";
 import { useI18n } from "../i18n";
@@ -24,10 +26,62 @@ export function SpeechTimingControls({
     setFollowUpListenMs,
     asrAttributionMs,
     setAsrAttributionMs,
+    speechMessagePrefixMode,
+    setSpeechMessagePrefixMode,
+    speechMessageCustomPrefix,
+    setSpeechMessageCustomPrefix,
+    speechMessagePrefix,
   } = useSpeechCaptureSettings();
+  const handlePrefixModeChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    setSpeechMessagePrefixMode(event.target.value as SpeechMessagePrefixMode);
+  };
 
   return (
     <div className={styles.root}>
+      <div className={styles.control}>
+        <label className={styles.heading} htmlFor={`${id}-prefix`}>
+          {t("speechSettingsMessagePrefixTitle")}
+        </label>
+        <select
+          id={`${id}-prefix`}
+          className={styles.select}
+          value={speechMessagePrefixMode}
+          disabled={disabled}
+          onChange={handlePrefixModeChange}
+        >
+          <option value="off">{t("commonOff")}</option>
+          <option value="asr">[ASR]</option>
+          <option value="stt">[STT]</option>
+          <option value="dictation">[Dictation]</option>
+          <option value="custom">
+            {t("speechSettingsMessagePrefixCustom")}
+          </option>
+        </select>
+        {speechMessagePrefixMode === "custom" && (
+          <input
+            className={styles.textInput}
+            type="text"
+            value={speechMessageCustomPrefix}
+            maxLength={MAX_SPEECH_MESSAGE_CUSTOM_PREFIX_LENGTH}
+            disabled={disabled}
+            aria-label={t("speechSettingsMessagePrefixCustomLabel")}
+            placeholder={t("speechSettingsMessagePrefixCustomPlaceholder")}
+            onChange={(event) =>
+              setSpeechMessageCustomPrefix(event.currentTarget.value)
+            }
+          />
+        )}
+        <p className={styles.hint}>
+          {t("speechSettingsMessagePrefixDescription")}
+        </p>
+        {speechMessagePrefix && (
+          <p className={styles.preview}>
+            {t("speechSettingsMessagePrefixPreview", {
+              example: `${speechMessagePrefix} ${t("speechSettingsMessagePrefixPreviewText")}`,
+            })}
+          </p>
+        )}
+      </div>
       {showFollowUp && (
         <div className={styles.control}>
           <div className={styles.heading}>
@@ -75,11 +129,15 @@ export function SpeechTimingControls({
           max={String(MAX_SPEECH_ASR_ATTRIBUTION_MS)}
           step="100"
           value={asrAttributionMs}
-          disabled={disabled}
+          disabled={disabled || !speechMessagePrefix}
           onCommit={setAsrAttributionMs}
         />
         <p className={styles.hint}>
-          {t("speechSettingsAsrAttributionDescription")}
+          {speechMessagePrefix
+            ? t("speechSettingsAsrAttributionDescription", {
+                prefix: speechMessagePrefix,
+              })
+            : t("speechSettingsAsrAttributionDisabledDescription")}
         </p>
       </div>
     </div>

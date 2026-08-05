@@ -510,6 +510,8 @@ vi.mock("../../i18n", () => ({
           "Summarize from a temporary fork after backgrounding (not closing) for {seconds} s.",
         toolbarProjectQueueTooltipWithShortcut:
           "Send after all sessions in this project are idle\nCtrl+Enter",
+        speechPrefixDeliveryLabel: "{action}. Prepends {prefix}.",
+        speechPrefixDeliveryTooltip: "{tooltip} Prepends {prefix}.",
       };
       let translated = text[key] ?? key;
       if (!vars) return translated;
@@ -790,6 +792,7 @@ describe("NewSessionForm", () => {
         lastActivity: null,
       },
     });
+    window.localStorage.setItem(UI_KEYS.speechMessagePrefixMode, "asr");
   });
 
   afterEach(() => {
@@ -2263,6 +2266,47 @@ describe("NewSessionForm", () => {
     );
   });
 
+  it("uses the selected rapid-speech prefix for new-session Project Queue", async () => {
+    toolbarVisibilityState.projectQueue = true;
+    inboxState.active = [
+      { sessionId: "session-active", projectId: "project-1" },
+    ];
+    serverSettingsState.isLoading = false;
+    window.localStorage.setItem(UI_KEYS.speechAsrAttributionMs, "1000");
+    window.localStorage.setItem(UI_KEYS.speechMessagePrefixMode, "stt");
+
+    render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+
+    act(() => {
+      voicePropsState.current?.onListeningStart?.();
+      voicePropsState.current?.onTranscript?.("queued speech");
+    });
+
+    const projectQueueButton = screen.getByRole("button", {
+      name: /toolbarProjectQueueLabel.*\[STT\]/,
+    });
+    expect(projectQueueButton.textContent).toContain("STT");
+    expect(
+      screen.getByRole("button", { name: /newSessionStartAction.*\[STT\]/ }),
+    ).toBeDefined();
+    fireEvent.click(projectQueueButton);
+
+    await waitFor(() => {
+      expect(mockCreateProjectQueueItem).toHaveBeenCalledWith(
+        "project-1",
+        expect.objectContaining({
+          message: expect.objectContaining({ text: "[STT] queued speech" }),
+        }),
+      );
+    });
+  });
+
   it("shows the selected recap timing description as a caption and tooltip", async () => {
     serverSettingsState.settings = {
       newSessionDefaults: {
@@ -2471,7 +2515,7 @@ describe("NewSessionForm", () => {
       voicePropsState.current?.onInterimTranscript?.("provisional words");
     });
     const start = screen.getByRole("button", {
-      name: "newSessionStartAction",
+      name: /newSessionStartAction/,
     });
     expect(start.textContent).toContain("ASR");
     fireEvent.click(start);
@@ -2483,9 +2527,11 @@ describe("NewSessionForm", () => {
     });
     await waitFor(() => {
       expect(
-        (screen.getByPlaceholderText(
-          "newSessionPlaceholder",
-        ) as HTMLTextAreaElement).value,
+        (
+          screen.getByPlaceholderText(
+            "newSessionPlaceholder",
+          ) as HTMLTextAreaElement
+        ).value,
       ).toBe("backend final words");
     });
     act(() => {

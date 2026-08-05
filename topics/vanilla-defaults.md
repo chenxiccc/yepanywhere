@@ -139,15 +139,16 @@ revisions, acronyms, single letters, and unlisted title-case words remain
 provider-verbatim. Authorized by Kyle on 2026-07-30 as an explicit product
 decision after observing the pause-boundary behavior interactively.
 
-The same speech UI prefixes provider-bound turns with `[ASR]` when speech
-itself triggers submission: Smart Turn endpoint sends and explicit spoken
-`send` commands. A browser-local Quick-send `[ASR]` window may extend that
-attribution to a manual Send, Steer, or Queue shortly after finalized speech,
-but it defaults to 0/off so ordinary manual submissions remain verbatim.
-Authorized by graehl on 2026-08-03 as a deliberate provenance marker for turns
-whose send boundary was chosen through speech recognition rather than a manual
-Send or Enter action; the optional quick-send extension was approved on
-2026-08-04.
+## Worked instance: default-off speech annotations
+
+[mic-button-speech-ui](mic-button-speech-ui.md) offers a browser-local
+**Speech message prefix** selector with `[ASR]`, `[STT]`, `[Dictation]`, and
+Custom choices. The selector defaults to Off, so Smart Turn, spoken `send`, and
+manual delivery all remain provider-verbatim until the user opts into this YA-
+novel annotation. An optional Quick-send window extends the selected prefix to
+one rapid manual delivery after finalized speech; it also defaults to 0/off and
+has no effect while prefixing is Off. This is an ordinary application of the
+provider-text rule above, not a Known Exception.
 
 ## Worked instances: queued-turn delivery
 
