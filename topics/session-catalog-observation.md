@@ -91,6 +91,38 @@ A compact collection request must never become permission to populate every
 complete-summary field. Absence from an incomplete or unreconciled shard is
 unknown, not authoritative nonexistence.
 
+A row's fidelity states what the adapter actually observed, not what its family
+could in principle supply. `head` means the provider keeps its own title where
+the scan already looks — Grok's `summary.json`, OpenCode's session row.
+`identity` means id and times only, which is where pi stays: it has no native
+summary, and a title would mean parsing a transcript, which belongs to explicit
+per-session work. An adapter must not promote its own rows by doing that parse.
+
+## What a catalog adapter owes the coordinator
+
+An adapter enumerates one native store for the whole install; the coordinator
+owns grouping, sharding, and persistence. Three rules keep families joinable:
+
+- **Project membership is a canonical host path**, never the provider's own
+  encoding of one. Grok percent-encodes a cwd into a directory name, pi flattens
+  separators (lossy, so the path comes from each transcript header's `cwd`), and
+  OpenCode hides the worktree behind an opaque project id. Only the decoded path
+  joins rows across families, so adapters derive `projectId`/`projectIdentityKey`
+  through the shared helper rather than each inventing a key.
+- **`sourceVersion` is exact provider identity**, moving on every append,
+  truncation, or replacement — a file's mtime and size, or the store's own
+  updated timestamp. It is what a retained projection of that row stays valid
+  for; a coarser value silently serves stale derived work.
+- **Recent mode is a filter on rows, not a cache key.** It is applied before the
+  adapter opens anything, so a store outside the window costs no read, and the
+  same store scanned in complete mode yields a superset. A later complete pass
+  therefore repairs whatever a recent pass skipped, and no range generation
+  accumulates per store.
+
+A never-created store is not an error: the adapter reports zero rows, because
+eligibility — not directory existence — decides whether a family is scanned at
+all.
+
 ## Freshness priorities
 
 Scheduling uses these priorities while preserving bounded global progress:
@@ -235,6 +267,13 @@ failover can still request the same work concurrently.
   row or mark the newer generation fresh.
 - A write to one project leaves every other shard's generation, retained rows,
   and delta comparison untouched.
+- One adapter pass over a provider-global store yields the same rows every
+  per-project reader would, grouped by canonical host path, without the store
+  being walked once per project.
+- A row whose provider directory name encodes a path is still keyed by the
+  decoded canonical path, so two families in one project land in one shard.
+- A recent-mode pass skips a stale entry before reading it, and a later
+  complete pass over the same store still produces that entry.
 - Unreadable or layout-incompatible durable catalog state starts a new epoch
   and still serves requests, rather than failing initialization.
 - Loss/eviction of browser persistence changes only cold-fetch cost, not visible

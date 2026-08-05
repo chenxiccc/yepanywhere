@@ -94,6 +94,15 @@ export interface OpenCodeDbSessionRow {
   messageCount: number;
 }
 
+/** One install-wide session row, already joined to its project's worktree. */
+export interface OpenCodeDbCatalogRow {
+  id: string;
+  worktree: string;
+  title: string | null;
+  timeCreated: number | null;
+  timeUpdated: number | null;
+}
+
 interface DbRow {
   [column: string]: unknown;
 }
@@ -239,6 +248,39 @@ export class OpenCodeDbReader {
               timeUpdated: numberOrNull(row.time_updated) ?? 0,
             });
           }
+        }
+        return out;
+      })) ?? []
+    );
+  }
+
+  /**
+   * Every session in the store, joined to its project's worktree, in one
+   * query. This is the install-wide catalog primitive: `listSessionRows` and
+   * `getProjectId` answer "this project's sessions", which a per-project
+   * caller multiplies by the project count.
+   */
+  async listAllSessionRows(): Promise<OpenCodeDbCatalogRow[]> {
+    return (
+      (await this.run((db) => {
+        const rows = db
+          .prepare(
+            "SELECT s.id AS id, s.title AS title, s.time_created AS time_created, s.time_updated AS time_updated, p.worktree AS worktree FROM session s JOIN project p ON p.id = s.project_id",
+          )
+          .all() as DbRow[];
+        const out: OpenCodeDbCatalogRow[] = [];
+        for (const row of rows) {
+          if (typeof row.id !== "string") continue;
+          if (typeof row.worktree !== "string" || row.worktree.length === 0) {
+            continue;
+          }
+          out.push({
+            id: row.id,
+            worktree: row.worktree,
+            title: typeof row.title === "string" ? row.title : null,
+            timeCreated: numberOrNull(row.time_created),
+            timeUpdated: numberOrNull(row.time_updated),
+          });
         }
         return out;
       })) ?? []

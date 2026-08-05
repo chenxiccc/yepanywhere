@@ -6,11 +6,13 @@
 
 Status: Implementation in progress. Shared source-versioned work ownership,
 Codex child projection, install-scoped successful-use eligibility, gated
-post-listener file watching, and the durable catalog coordinator are
-implemented and measured. Provider catalog adapters, retained collection
-routes, interest leases, and exact process reconciliation remain pending. The
-provider/storage and process-discovery contracts are accepted in the linked
-topics.
+post-listener file watching, the durable catalog coordinator, and the Pi/Grok/
+OpenCode catalog adapters are implemented and measured. Claude, Codex, and
+Gemini adapters, the process classifier, retained collection routes, interest
+leases, and exact process reconciliation remain pending; nothing wires the
+coordinator into a route yet, which is what the compatibility checkpoint below
+gates. The provider/storage and process-discovery contracts are accepted in the
+linked topics.
 
 Related contracts:
 
@@ -24,6 +26,34 @@ Related contracts:
 - [`089-main-thread-startup-cpu-investigation.md`](089-main-thread-startup-cpu-investigation.md)
 
 ## Implementation progress
+
+- **2026-08-05 — Pi, Grok, and OpenCode catalog adapters.** The three families
+  whose readers rescan a provider-global store for every project now have
+  install-wide `NativeSessionCatalogAdapter` implementations that enumerate
+  their store once and let the coordinator group by project. Project membership
+  is always a canonical host path, never the provider's own encoding of one:
+  Grok percent-encodes a cwd, pi flattens separators (lossy, so the row's path
+  comes from each transcript header's `cwd`), and OpenCode hides the worktree
+  behind an opaque id read once per pass. `OpenCodeDbReader.listAllSessionRows`
+  joins `session` to `project` in one query so the 1.16+ database needs no
+  per-project lookup, while the frozen JSON tree still supplies pre-1.16
+  history; the database wins where both describe a session, and the `opencode`
+  CLI is never spawned. Recent mode is an mtime gate applied before anything is
+  opened, so a stale pi transcript costs no header read. Rows carry the
+  fidelity they actually have — `head` where the provider keeps its own title
+  (Grok's `summary.json`, OpenCode's session row), `identity` for pi, which has
+  no native summary and would need a transcript parse.
+  On a synthetic store of 200 projects × 5 sessions, the per-project readers
+  walked the store 200 times: Grok 330.49 ms and pi 18,916.38 ms, against one
+  adapter pass at 165.57 ms (2.00x) and 141.02 ms (134.14x), with both arms
+  producing the same 1,000 rows. Pi's gap is the larger one because every
+  project's reader opens every transcript header in the store to learn its cwd
+  — 200,000 header reads against the adapter's 1,000. Grok's per-project reader
+  filters on the directory name before opening anything, so its repeated cost
+  is the top-level listing; that term is linear per project and quadratic
+  across the fleet, which is why 200 projects understates a 10,000-project
+  install. Run `pnpm --filter @yep-anywhere/server
+  benchmark:provider-catalog-adapters` to repeat the measurement.
 
 - **2026-08-05 — durable catalog coordinator and shard generation vector.**
   One disk-backed lineage now owns a random epoch, monotonic complete
@@ -322,11 +352,13 @@ install state. Do not infer eligibility from directory existence.
 
 ### 2 — introduce provider catalog and process-classifier adapters
 
-Define complete/recent catalog modes and a bounded row schema. Implement the
-existing provider readers one family at a time, beginning with Pi, Grok, and
-OpenCode because they currently multiply a global scan by every project.
-Move executable/entrypoint recognition out of the generic service while
-preserving transient argv minimization and current false-positive tests.
+Catalog modes, the bounded row schema, and the Pi, Grok, and OpenCode adapters
+are done — those three multiplied a global scan by every project. Claude,
+Codex, and Gemini adapters remain: their stores are already project-keyed on
+disk, so they trade a different cost and should be measured before assuming the
+same shape helps.
+Still to do: move executable/entrypoint recognition out of the generic service
+while preserving transient argv minimization and current false-positive tests.
 
 ### 3 — build the disk-backed catalog coordinator
 
