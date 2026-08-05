@@ -22,7 +22,8 @@ export interface ClaudeGatewayLaunchConfig {
 }
 
 export interface ClaudeGatewayLauncherOptions {
-  probe?: (url: string) => Promise<boolean>;
+  /** Resolves a gateway URL to a base URL pinned to the address that answered. */
+  probe?: (url: string) => Promise<string | null>;
   spawnCommand?: (command: string) => ChildProcess;
   signalChild?: (child: ChildProcess, signal: NodeJS.Signals) => void;
   delay?: (milliseconds: number) => Promise<void>;
@@ -41,8 +42,15 @@ interface OwnedChild {
 
 interface LaunchAttempt {
   generation: number;
-  promise: Promise<boolean>;
+  promise: Promise<string | null>;
 }
+
+/**
+ * Loopback addresses to probe for a `localhost` URL, in resolution preference
+ * order. Probing is concurrent; the preference only decides which answering
+ * address is returned, so a dual-stack gateway is pinned consistently.
+ */
+const LOOPBACK_PROBE_HOSTS = ["127.0.0.1", "::1"];
 
 function stripIpv6Brackets(hostname: string): string {
   return hostname.startsWith("[") && hostname.endsWith("]")
@@ -94,12 +102,30 @@ function connectToHost(
   });
 }
 
-export async function isClaudeGatewayEndpointListening(
+/** Rewrite a gateway URL onto a specific address, preserving port and path. */
+function pinnedBaseUrl(rawUrl: string, host: string): string {
+  const url = new URL(rawUrl);
+  url.hostname = host.includes(":") ? `[${host}]` : host;
+  const pinned = url.toString();
+  return pinned.endsWith("/") ? pinned.slice(0, -1) : pinned;
+}
+
+/**
+ * Resolve which loopback address is actually serving a gateway URL.
+ *
+ * Returns a base URL pinned to the address that answered, so the caller's
+ * request lands on the listener the probe just proved. A server that binds one
+ * address family leaves the other family's socket free on the same port, so
+ * `localhost` can front two unrelated gateways at once — one stale — and an
+ * unpinned client picks between them per request. Null means nothing answered
+ * (or the URL is not loopback, which this launcher does not own).
+ */
+export async function resolveClaudeGatewayEndpoint(
   rawUrl: string,
   timeoutMs = DEFAULT_PROBE_TIMEOUT_MS,
-): Promise<boolean> {
+): Promise<string | null> {
   const loopbackHostname = normalizedLoopbackHostname(rawUrl);
-  if (!loopbackHostname) return false;
+  if (!loopbackHostname) return null;
 
   const url = new URL(rawUrl);
   const port = url.port
@@ -109,12 +135,15 @@ export async function isClaudeGatewayEndpointListening(
       : 80;
   const hosts =
     loopbackHostname === "localhost" || loopbackHostname === "localhost."
-      ? ["127.0.0.1", "::1"]
+      ? LOOPBACK_PROBE_HOSTS
       : [loopbackHostname];
-  const results = await Promise.all(
+  const reachable = await Promise.all(
     hosts.map((host) => connectToHost(host, port, timeoutMs)),
   );
-  return results.some(Boolean);
+  for (const [index, host] of hosts.entries()) {
+    if (reachable[index]) return pinnedBaseUrl(rawUrl, host);
+  }
+  return null;
 }
 
 function delay(milliseconds: number): Promise<void> {
@@ -167,7 +196,7 @@ function normalizeConfig(
 }
 
 export class ClaudeGatewayLauncher {
-  private readonly probe: (url: string) => Promise<boolean>;
+  private readonly probe: (url: string) => Promise<string | null>;
   private readonly spawnCommand: (command: string) => ChildProcess;
   private readonly signalChild: (
     child: ChildProcess,
@@ -188,7 +217,7 @@ export class ClaudeGatewayLauncher {
   private disposed = false;
 
   constructor(options: ClaudeGatewayLauncherOptions = {}) {
-    this.probe = options.probe ?? isClaudeGatewayEndpointListening;
+    this.probe = options.probe ?? resolveClaudeGatewayEndpoint;
     this.spawnCommand = options.spawnCommand ?? spawnGatewayCommand;
     this.signalChild = options.signalChild ?? signalGatewayChild;
     this.wait = options.delay ?? delay;
@@ -223,18 +252,23 @@ export class ClaudeGatewayLauncher {
   /**
    * Ensure a configured local endpoint has a listener.
    *
-   * Returns true when a listener already existed or became ready. False means
-   * no launch was eligible or the bounded launch attempt did not become ready.
+   * Returns the base URL pinned to the address that answered — callers must
+   * send their request there rather than to the configured URL, so it reaches
+   * the listener readiness was proven against. Null means the endpoint is not
+   * a loopback endpoint this launcher owns, or nothing answered and no bounded
+   * launch attempt made it ready; the caller then uses the configured URL.
    */
-  async ensureReady(config: ClaudeGatewayLaunchConfig): Promise<boolean> {
-    if (this.disposed) return false;
+  async ensureReady(config: ClaudeGatewayLaunchConfig): Promise<string | null> {
+    if (this.disposed) return null;
     await this.configure(config);
 
     const { url, startCommand } = this.config;
     const generation = this.generation;
-    if (!url || !startCommand || !isClaudeGatewayLoopbackUrl(url)) return false;
-    if (await this.probe(url)) return true;
-    if (generation !== this.generation || this.disposed) return false;
+    if (!url || !isClaudeGatewayLoopbackUrl(url)) return null;
+    const listening = await this.probe(url);
+    if (listening) return listening;
+    if (!startCommand) return null;
+    if (generation !== this.generation || this.disposed) return null;
 
     if (this.launchAttempt?.generation === generation) {
       return this.launchAttempt.promise;
@@ -277,9 +311,9 @@ export class ClaudeGatewayLauncher {
     url: string,
     startCommand: string,
     generation: number,
-  ): Promise<boolean> {
+  ): Promise<string | null> {
     await this.stopOwnedChild();
-    if (generation !== this.generation || this.disposed) return false;
+    if (generation !== this.generation || this.disposed) return null;
 
     let child: ChildProcess;
     try {
@@ -289,7 +323,7 @@ export class ClaudeGatewayLauncher {
         { error, gatewayUrl: url },
         "Failed to start configured Claude gateway command",
       );
-      return false;
+      return null;
     }
 
     const entry = this.trackChild(child, generation);
@@ -305,19 +339,20 @@ export class ClaudeGatewayLauncher {
       !this.disposed &&
       this.now() <= deadline
     ) {
-      if (await this.probe(url)) {
+      const listening = await this.probe(url);
+      if (listening) {
         getLogger().info(
-          { gatewayUrl: url, pid: child.pid },
+          { gatewayUrl: url, listeningUrl: listening, pid: child.pid },
           "Configured Claude gateway became ready",
         );
-        return true;
+        return listening;
       }
       if (entry.closed) {
         getLogger().warn(
           { gatewayUrl: url },
           "Configured Claude gateway command exited before readiness",
         );
-        return false;
+        return null;
       }
       await this.wait(this.readinessPollMs);
     }
@@ -331,7 +366,7 @@ export class ClaudeGatewayLauncher {
     if (this.ownedChild === entry) {
       await this.stopOwnedChild();
     }
-    return false;
+    return null;
   }
 
   private trackChild(child: ChildProcess, generation: number): OwnedChild {

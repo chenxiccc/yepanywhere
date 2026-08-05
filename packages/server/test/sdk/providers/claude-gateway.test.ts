@@ -68,7 +68,10 @@ describe("ClaudeGatewayProvider", () => {
     vi.stubGlobal("fetch", fetchMock);
     ClaudeGatewayProvider.setGatewayUrl("http://localhost:4141");
 
-    const provider = new ClaudeGatewayProvider();
+    // Nothing answers the probe here, so the configured URL is used as-is.
+    const provider = new ClaudeGatewayProvider({
+      ensureReady: async () => null,
+    });
     await expect(provider.getAvailableModels()).resolves.toEqual([
       {
         id: "gpt-5.6-terra",
@@ -101,8 +104,10 @@ describe("ClaudeGatewayProvider", () => {
     );
   });
 
-  it("ensures the configured local gateway before catalog discovery", async () => {
-    const ensureReady = vi.fn(async () => true);
+  it("reads the catalog from the address readiness was proven against", async () => {
+    // `localhost` can front one gateway on 127.0.0.1 and a stale one on ::1;
+    // re-resolving the hostname for the fetch could reach the other server.
+    const ensureReady = vi.fn(async () => "http://[::1]:4141");
     const fetchMock = vi.fn(
       async () => new Response(JSON.stringify({ data: [] }), { status: 200 }),
     );
@@ -118,6 +123,10 @@ describe("ClaudeGatewayProvider", () => {
       startCommand: "gateway start",
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://[::1]:4141/v1/models",
+      expect.anything(),
+    );
   });
 
   it("retains metadata-less rows but filters known unsupported rows", () => {

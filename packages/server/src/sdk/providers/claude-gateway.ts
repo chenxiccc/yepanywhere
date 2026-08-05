@@ -240,11 +240,14 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
     if (!gatewayUrl) return [];
 
     try {
-      await this.gatewayLauncher.ensureReady({
+      // Read the catalog from the address readiness was proven against, not
+      // from a second resolution of the configured hostname: `localhost` can
+      // front one gateway on 127.0.0.1 and another on ::1.
+      const listeningUrl = await this.gatewayLauncher.ensureReady({
         url: gatewayUrl,
         startCommand: ClaudeGatewayProvider.gatewayStartCommand,
       });
-      const response = await fetch(`${gatewayUrl}/v1/models`, {
+      const response = await fetch(`${listeningUrl ?? gatewayUrl}/v1/models`, {
         headers: { Authorization: "Bearer dummy" },
         signal: AbortSignal.timeout(5000),
       });

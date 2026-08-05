@@ -4,9 +4,28 @@ import { createServer } from "node:net";
 import { describe, expect, it, vi } from "vitest";
 import {
   ClaudeGatewayLauncher,
-  isClaudeGatewayEndpointListening,
   isClaudeGatewayLoopbackUrl,
+  resolveClaudeGatewayEndpoint,
 } from "../../../src/sdk/providers/claude-gateway-launcher.js";
+
+async function listenOn(host: string): Promise<{
+  port: number;
+  close: () => Promise<void>;
+}> {
+  const server = createServer();
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, host, resolve);
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("expected an ephemeral TCP port");
+  }
+  return {
+    port: address.port,
+    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+  };
+}
 
 function fakeChild(pid = 1234): ChildProcess {
   const child = new EventEmitter() as ChildProcess;
@@ -41,31 +60,51 @@ describe("ClaudeGatewayLauncher", () => {
   });
 
   it("detects a real IPv4 loopback TCP listener", async () => {
-    const server = createServer();
-    await new Promise<void>((resolve, reject) => {
-      server.once("error", reject);
-      server.listen(0, "127.0.0.1", resolve);
-    });
-    const address = server.address();
-    if (!address || typeof address === "string") {
-      throw new Error("expected an ephemeral TCP port");
+    const server = await listenOn("127.0.0.1");
+    try {
+      await expect(
+        resolveClaudeGatewayEndpoint(`http://127.0.0.1:${server.port}`),
+      ).resolves.toBe(`http://127.0.0.1:${server.port}`);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("resolves an unreachable loopback endpoint to null", async () => {
+    const server = await listenOn("127.0.0.1");
+    const port = server.port;
+    await server.close();
+
+    await expect(
+      resolveClaudeGatewayEndpoint(`http://127.0.0.1:${port}`),
+    ).resolves.toBeNull();
+  });
+
+  // A one-family bind leaves the other family's socket free on the same port,
+  // so `localhost` can front two unrelated gateways. Pin to the one answering.
+  it("pins localhost to the address family that answers", async () => {
+    let server: Awaited<ReturnType<typeof listenOn>>;
+    try {
+      server = await listenOn("::1");
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "EADDRNOTAVAIL" || code === "EAFNOSUPPORT") return;
+      throw error;
     }
 
     try {
       await expect(
-        isClaudeGatewayEndpointListening(
-          `http://127.0.0.1:${address.port}`,
-        ),
-      ).resolves.toBe(true);
+        resolveClaudeGatewayEndpoint(`http://localhost:${server.port}`),
+      ).resolves.toBe(`http://[::1]:${server.port}`);
     } finally {
-      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await server.close();
     }
   });
 
   it("does not launch when the endpoint already has a listener", async () => {
     const spawnCommand = vi.fn(() => fakeChild());
     const launcher = new ClaudeGatewayLauncher({
-      probe: vi.fn(async () => true),
+      probe: vi.fn(async () => "http://[::1]:4141"),
       spawnCommand,
     });
 
@@ -74,12 +113,25 @@ describe("ClaudeGatewayLauncher", () => {
         url: "http://localhost:4141",
         startCommand: "gateway start",
       }),
-    ).resolves.toBe(true);
+    ).resolves.toBe("http://[::1]:4141");
+    expect(spawnCommand).not.toHaveBeenCalled();
+  });
+
+  it("resolves a listening endpoint with no start command configured", async () => {
+    const spawnCommand = vi.fn(() => fakeChild());
+    const launcher = new ClaudeGatewayLauncher({
+      probe: vi.fn(async () => "http://127.0.0.1:4141"),
+      spawnCommand,
+    });
+
+    await expect(
+      launcher.ensureReady({ url: "http://localhost:4141" }),
+    ).resolves.toBe("http://127.0.0.1:4141");
     expect(spawnCommand).not.toHaveBeenCalled();
   });
 
   it("never launches a command for a non-loopback endpoint", async () => {
-    const probe = vi.fn(async () => false);
+    const probe = vi.fn(async () => null);
     const spawnCommand = vi.fn(() => fakeChild());
     const launcher = new ClaudeGatewayLauncher({ probe, spawnCommand });
 
@@ -88,17 +140,17 @@ describe("ClaudeGatewayLauncher", () => {
         url: "https://gateway.example.com",
         startCommand: "gateway start",
       }),
-    ).resolves.toBe(false);
+    ).resolves.toBeNull();
     expect(probe).not.toHaveBeenCalled();
     expect(spawnCommand).not.toHaveBeenCalled();
   });
 
   it("coalesces concurrent launch attempts until readiness", async () => {
-    let listening = false;
+    let listening: string | null = null;
     const child = fakeChild();
     const probe = vi.fn(async () => listening);
     const spawnCommand = vi.fn(() => {
-      listening = true;
+      listening = "http://127.0.0.1:4141";
       return child;
     });
     const signalChild = vi.fn((target: ChildProcess) => {
@@ -116,7 +168,7 @@ describe("ClaudeGatewayLauncher", () => {
 
     await expect(
       Promise.all([launcher.ensureReady(config), launcher.ensureReady(config)]),
-    ).resolves.toEqual([true, true]);
+    ).resolves.toEqual(["http://127.0.0.1:4141", "http://127.0.0.1:4141"]);
     expect(spawnCommand).toHaveBeenCalledTimes(1);
 
     await launcher.shutdown();
@@ -130,7 +182,7 @@ describe("ClaudeGatewayLauncher", () => {
       target.emit("close", null, "SIGTERM");
     });
     const launcher = new ClaudeGatewayLauncher({
-      probe: vi.fn(async () => false),
+      probe: vi.fn(async () => null),
       spawnCommand: vi.fn(() => child),
       signalChild,
       now: () => now,
@@ -146,12 +198,12 @@ describe("ClaudeGatewayLauncher", () => {
         url: "http://[::1]:4141",
         startCommand: "gateway start",
       }),
-    ).resolves.toBe(false);
+    ).resolves.toBeNull();
     expect(signalChild).toHaveBeenCalledWith(child, "SIGTERM");
   });
 
   it("terminates an owned child when configuration changes", async () => {
-    let listening = false;
+    let listening: string | null = null;
     const child = fakeChild();
     const signalChild = vi.fn((target: ChildProcess) => {
       target.emit("close", 0, "SIGTERM");
@@ -159,7 +211,7 @@ describe("ClaudeGatewayLauncher", () => {
     const launcher = new ClaudeGatewayLauncher({
       probe: vi.fn(async () => listening),
       spawnCommand: vi.fn(() => {
-        listening = true;
+        listening = "http://127.0.0.1:4141";
         return child;
       }),
       signalChild,
