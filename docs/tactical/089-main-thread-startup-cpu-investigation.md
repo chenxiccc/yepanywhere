@@ -698,6 +698,9 @@ The completed investigation, topic contracts, and tacticals 091-093 landed in
 Tacticals 094-099, reopened tactical 022, and the query-controller/queue
 follow-ups extend that completed report with the later New Session,
 client-delivery, server-module, retained-feed, and timer observations.
+The continuous-observer/cache contract and the final collection/timer handoffs
+landed in `986daeef`; evidence is the source audit recorded in those tacticals
+and a warning-free full `pnpm lint` run.
 
 Primary retained evidence runs:
 
