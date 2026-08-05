@@ -13,6 +13,8 @@ interface Harness {
     resolve: number;
     tailReads: number;
   };
+  /** Set to make the next resolutions throw, standing in for a catalog fault. */
+  faults: { resolve: Error | null };
   owned: Set<string>;
   /** Session id -> project id it can be resolved in, or null when missing. */
   placement: Map<string, string | null>;
@@ -41,6 +43,7 @@ function harness(
   ]);
   const pending = new Map<string, boolean>([["s1", true]]);
   const now = { value: 1_000_000 };
+  const faults: { resolve: Error | null } = { resolve: null };
 
   const registry = new HeartbeatCandidateRegistry(
     {
@@ -57,6 +60,7 @@ function harness(
         sessionId,
       ): Promise<HeartbeatCandidateResolution | null> => {
         counts.resolve += 1;
+        if (faults.resolve) throw faults.resolve;
         if (placement.get(sessionId) !== project.id) return null;
         const stamp = updatedAt.get(sessionId) ?? "2026-08-01T00:00:00.000Z";
         return {
@@ -75,7 +79,16 @@ function harness(
     { now: () => now.value, unresolvedBackoffMs: 60_000 },
   );
 
-  return { registry, counts, owned, placement, updatedAt, pending, now };
+  return {
+    registry,
+    counts,
+    faults,
+    owned,
+    placement,
+    updatedAt,
+    pending,
+    now,
+  };
 }
 
 describe("HeartbeatCandidateRegistry", () => {
@@ -251,5 +264,74 @@ describe("HeartbeatCandidateRegistry", () => {
     await test.registry.getCandidates();
     expect(test.counts.listProjects).toBe(2);
     expect(test.counts.tailReads).toBe(2);
+  });
+});
+
+/**
+ * Tactical 098 step 6's adverse states for candidate resolution. Each one is a
+ * way the world moves under a retained location, and the failure they share is
+ * the same: falling back to searching every project on every tick, which is
+ * exactly the cost the registry exists to remove.
+ */
+describe("HeartbeatCandidateRegistry under adverse states", () => {
+  it("does not research every project when a located transcript is deleted", async () => {
+    const test = harness({ projects: 50 });
+    expect(await test.registry.getCandidates()).toHaveLength(1);
+    const searches = test.counts.listProjects;
+
+    // The transcript is gone from everywhere, not moved.
+    test.placement.set("s1", null);
+    expect(await test.registry.getCandidates()).toEqual([]);
+    const afterDeletion = test.counts.listProjects;
+
+    // A second look must ride the unresolved backoff, not search again.
+    expect(await test.registry.getCandidates()).toEqual([]);
+    expect(test.counts.listProjects).toBe(afterDeletion);
+    expect(afterDeletion).toBe(searches + 1);
+    expect(test.registry.getWaitingSessionIds()).toEqual(["s1"]);
+  });
+
+  it("re-reads a tail after the transcript is replaced rather than appended", async () => {
+    const test = harness({ projects: 50 });
+    await test.registry.getCandidates();
+    expect(test.counts.tailReads).toBe(1);
+
+    // A rewrite or truncation moves the source version without moving it
+    // forward. Comparing for equality, not ordering, is what catches this.
+    test.updatedAt.set("s1", "2026-07-01T00:00:00.000Z");
+    await test.registry.getCandidates();
+    expect(test.counts.tailReads).toBe(2);
+  });
+
+  it("keeps a candidate resolvable after a catalog fault", async () => {
+    const test = harness({ projects: 50 });
+    test.faults.resolve = new Error("catalog interrupted");
+
+    await expect(test.registry.getCandidates()).rejects.toThrow(
+      "catalog interrupted",
+    );
+
+    // The fault must not have retained a location that does not exist, nor
+    // dropped the session from consideration.
+    test.faults.resolve = null;
+    expect(await test.registry.getCandidates()).toHaveLength(1);
+  });
+
+  it("skips a candidate that gains an owner before resolution", async () => {
+    const test = harness({ projects: 50 });
+    await test.registry.getCandidates();
+    const reads = test.counts.tailReads;
+
+    // A client attaches, so the session is supervised and needs no heartbeat.
+    test.owned.add("s1");
+    expect(await test.registry.getCandidates()).toEqual([]);
+    expect(test.counts.tailReads).toBe(reads);
+
+    // Losing the owner again must resume from the retained location, not a
+    // fresh all-project search.
+    const searches = test.counts.listProjects;
+    test.owned.delete("s1");
+    expect(await test.registry.getCandidates()).toHaveLength(1);
+    expect(test.counts.listProjects).toBe(searches);
   });
 });

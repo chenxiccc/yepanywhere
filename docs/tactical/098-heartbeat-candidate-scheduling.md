@@ -11,7 +11,13 @@ Ownership decides before any storage work, an exactly located candidate no
 longer searches the project fleet, a source-versioned pending-tool fact keeps
 an unchanged transcript from being reparsed, and one process-wide timer wakes
 at the earliest real deadline instead of every 30 seconds. Catalog-supplied
-tail projections (step 3) and the adverse-state matrix (step 6) remain pending.
+tail projections (step 3) remain pending. Step 6's adverse-state matrix is
+covered for the two modules that exist — clock/sleep faults and shutdown races
+on the scheduler, deletion, replacement, catalog faults, and ownership
+attach/loss on the candidate registry. The rest of the matrix (unknown
+provider/project, explicit Kill, archive/re-enable through the resume path,
+large pending-tool transcripts, background operation with no client) waits on
+the resume path those states run through.
 
 ## Implementation progress
 
