@@ -416,6 +416,14 @@ Generalizing the 050 product invariant from "the remote app" to any source:
   stands); the runtime layer owns the invariant.
 - Suspension of non-current sources is expressed by releasing or downgrading
   the lease, per the topology topic's resource policy.
+- `activityBus.connected` is derived from those stream records, so it changes
+  only on stream open, error, close, and retain changes. It is therefore
+  observable: `subscribeConnected` notifies on change, and consumers must use
+  it rather than polling the getter on an interval. A polled consumer pays a
+  wakeup per period per mounted instance forever and still reports the change
+  up to a period late; a hook mounted by the app shell, Settings, and a
+  settings pane pays that three times over for a value that is usually
+  constant for the life of the tab.
 
 ## Behavior Parity Contract
 

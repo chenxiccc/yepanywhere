@@ -197,8 +197,7 @@ describe("useReloadNotifications dismissal", () => {
     expect(hook.result.current.backendReloadSafetyKnown).toBe(false);
     expect(
       getVisibleReloadBanners(true, hook.result.current.pendingReloads, {
-        backendReloadSafetyKnown:
-          hook.result.current.backendReloadSafetyKnown,
+        backendReloadSafetyKnown: hook.result.current.backendReloadSafetyKnown,
       }),
     ).toEqual({ backend: false, frontend: false });
 
@@ -329,5 +328,72 @@ describe("useReloadNotifications dismissal", () => {
     });
 
     expect(hook.result.current.pendingReloads.backend).toBe(true);
+  });
+});
+
+describe("useReloadNotifications request shape", () => {
+  function urlsRequested(): string[] {
+    return mockFetchJSON.mock.calls.map((call) => String(call[0]));
+  }
+
+  it("reads dev status once on mount, not once per consumer path", async () => {
+    const { result } = renderHook(() => useReloadNotifications());
+    await waitFor(() => expect(result.current.isManualReloadMode).toBe(true));
+    await waitFor(() =>
+      expect(result.current.backendReloadSafetyKnown).toBe(true),
+    );
+
+    // The mode read used to be followed immediately by a second identical read
+    // inside the safety sync it triggered.
+    const devStatusReads = urlsRequested().filter(
+      (url) => url === "/dev/status",
+    );
+    expect(devStatusReads).toHaveLength(1);
+  });
+
+  it("leaves worker and safe-restart state alone with no reload mode active", async () => {
+    mockFetchJSON.mockImplementation(async (url) => {
+      if (url === "/dev/status") {
+        return {
+          noBackendReload: false,
+          noFrontendReload: false,
+          backendDirty: false,
+        } as never;
+      }
+      return {} as never;
+    });
+
+    const { result } = renderHook(() => useReloadNotifications());
+    await waitFor(() => expect(result.current.isManualReloadMode).toBe(false));
+
+    act(() => {
+      activityBus.emitLocal("reconnect", undefined as never);
+      activityBus.emitLocal("refresh", undefined as never);
+    });
+    await waitFor(() =>
+      expect(
+        urlsRequested().filter((url) => url === "/dev/status").length,
+      ).toBeGreaterThan(1),
+    );
+
+    // A deployment in neither reload mode displays none of this, so requesting
+    // it merely because the hook is mounted globally is pure server work.
+    expect(urlsRequested()).not.toContain("/status/workers");
+    expect(urlsRequested()).not.toContain("/dev/safe-restart");
+  });
+
+  it("holds connection state without a timer having fired", async () => {
+    vi.useFakeTimers();
+    const { result } = renderHook(() => useReloadNotifications());
+    const connectedAtMount = result.current.connected;
+
+    // A full second of an interval-driven hook's period, with nothing else
+    // pending: the value must not depend on a timer having fired.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_500);
+    });
+    expect(result.current.connected).toBe(connectedAtMount);
+    expect(result.current.connected).toBe(activityBus.connected);
+    vi.useRealTimers();
   });
 });
