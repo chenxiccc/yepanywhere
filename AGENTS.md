@@ -150,6 +150,29 @@ Reusing a scheme that already exists in a document you are editing is fine;
 extending it into a new document is not. When you rename, leave one compact
 mapping table so older commit messages stay traceable.
 
+## Retiring Completed Tacticals And Gaps
+
+A `docs/tactical/*.md` whose work is landed, validated, and working has no
+remaining job as a plan. Retire it by first migrating its durable content —
+the contracts, invariants, and design reasoning a later reader still needs —
+into the owning `topics/*.md`, then deleting the file in that same commit.
+What does not survive the migration is a finished todo list and its recon
+notes, which the tree and git history already record. Migration first is the
+whole procedure: a deletion that skips it loses knowledge nothing else holds.
+
+Retiring is periodic or at-will, never obligatory — a completed plan may be
+kept, and some carry enough durable design to serve as a topic doc would.
+Retire only plans you authored; leave another author's completed plans alone
+unless they ask.
+
+`gaps/*.md` is stricter: the entry is deleted in the commit that fixes it
+(`gaps/README.md`).
+
+A `topics/*.md` or a code comment that names a retired file needs no scrub.
+The path stays a searchable handle:
+`git log --diff-filter=D -- docs/tactical/<name>.md` finds the removal, and
+`git show <sha>^:docs/tactical/<name>.md` prints the file back.
+
 ## Client/Server Backwards Compatibility
 
 Before making the client depend on a server route, response field, event, or
