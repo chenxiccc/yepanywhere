@@ -15,6 +15,7 @@ Related contracts:
 - [`topics/inbox.md`](../../topics/inbox.md)
 - [`topics/agents-process-observability.md`](../../topics/agents-process-observability.md)
 - [`topics/session-ownership.md`](../../topics/session-ownership.md)
+- [`topics/session-catalog-observation.md`](../../topics/session-catalog-observation.md)
 - [`topics/architecture-mandates.md`](../../topics/architecture-mandates.md)
 - [`topics/server-performance-observability.md`](../../topics/server-performance-observability.md)
 - [`089-main-thread-startup-cpu-investigation.md`](089-main-thread-startup-cpu-investigation.md)
@@ -27,6 +28,22 @@ Collection routes build a provider candidate list per project.
 rescan provider-global storage and filter by cwd. The cold `/api/inbox` probe
 took 4.108 seconds and launched all-project/all-provider enumeration; at the
 accepted 10,000-project scale this Cartesian shape is untenable.
+
+The global session list repeats the same corpus work for each projection. Every
+`GET /api/sessions` lists all projects, builds a provider/project catalog,
+sequentially lists each project's providers, materializes/enriches every
+matching session, and only then sorts/paginates to the requested 50 rows. The
+Sidebar starts unfiltered and starred projections independently; in the cold
+New Session census both requests took about 3.56 seconds. A separate global
+stats route runs another full project/provider scan whenever its five-second
+cache was dirtied by ordinary session/file events.
+
+These routes may share lower index reads in flight, but they still own separate
+project loops, row enrichment, filtering, and allocations. `limit=50` therefore
+does not bound server work, and adding another filter consumer adds another
+corpus projection pass. The retained catalog must be the one global collection
+generation from which Inbox, unfiltered/starred session lists, project filters,
+and stats derive compact views.
 
 The current range caches also treat a moving time threshold as permanent
 identity. `getActiveSessionIndexOptions()` rounds the auto-archive cutoff to UTC
@@ -46,6 +63,15 @@ later internal startup timer reported only 42 ms (47 ms to listener `onReady`).
 A direct repeat of the four initial watcher scans/attachments took about 0.46
 seconds on warm host caches. This is a material pre-timer phase, not the whole
 remaining gap.
+
+Focused session watching has the inverse fault after explicit interest. A
+`session-watch` target is correctly reference-counted by project/session, but
+an unresolved file retries every three seconds by default. Each retry probes
+Claude paths and may enumerate every Codex and Gemini session in the project,
+even when the provider hint is known or the target no longer exists. Exact
+interest justifies an exact refresh, not an indefinite project/provider scan.
+The catalog location row should resolve the watch; unresolved targets await a
+catalog/file/process change plus bounded backoff.
 
 The current project-scoped reader API is still appropriate for explicit
 session detail. It is the wrong owner for a provider-wide inventory. Likewise,
@@ -114,7 +140,8 @@ The startup sequence becomes:
    synchronous recursive initial corpus scan on the main thread;
 4. reattach retained YA provider runtimes;
 5. when host process observability is enabled, take one same-user process
-   snapshot and classify known harness roots;
+   snapshot, classify known harness roots, and arm one bounded process-wide
+   reconciliation cadence;
 6. serve the last persisted Inbox/catalog snapshot immediately; and
 7. run eligible recent/complete catalog reconciliation at bounded concurrency,
    publishing versioned project/provider deltas as shards complete.
@@ -132,6 +159,61 @@ keys; only current/in-flight range generations may remain resident.
 The coordinator exposes bytes/files/shards scanned, queue depth, coalescing,
 duration, and snapshot version without scanning again to answer diagnostics.
 
+Global list pagination, starred/archive/project/search projections, project
+options, and aggregate stats read the same completed catalog generation.
+Changing a filter or asking for 50 versus 100 rows performs bounded index/view
+work and no provider transcript discovery. Provider/file/metadata events update
+the affected row and incrementally repair memberships/counts. Cold server boot
+may serve the last durable generation with explicit freshness/progress while
+reconciliation fills newer shards; it does not make the first Sidebar request
+the discovery owner.
+
+## Observer model, freshness, and client interest
+
+The server is the continuous observer described in
+[`topics/session-catalog-observation.md`](../../topics/session-catalog-observation.md).
+Its disk-backed compact catalog remains the install-wide source of truth across
+ordinary client disconnects and brief server restarts. Clients may still
+receive broad compact list snapshots; they do not need to reconstruct session
+existence from the current viewport.
+
+Schedule derivation work by fidelity and interest:
+
+1. clicked/open detail and live owned sessions;
+2. exactly recognized external harness sessions;
+3. specifically visible or hover-requested rows;
+4. Inbox/navigation/recent and uncertain-shard reconciliation; then
+5. old, offscreen, unowned history.
+
+Old rows remain durable and explicitly stale until changed source evidence or
+a short-lived client interest lease promotes them. Interest leases carry a
+source plus stable session/query/window identity, use overscan and hysteresis,
+expire on disconnect/source switch/TTL, and are unioned across clients. They do
+not mirror pixel scroll state and do not create a per-client watcher or timer.
+Hover refresh is exact-row work; it never starts a neighboring or global
+transcript pass.
+
+The process inventory is the permitted periodic backstop for external-session
+freshness. One same-user snapshot is classified and diffed against its previous
+generation; only changed recognized harness roots trigger exact catalog work.
+Its cadence has one process-wide owner and its cost is bounded by the process
+table. It must not open every provider store or sweep old transcripts. File
+watchers and bounded provider reconciliation cover eligible session stores.
+
+Every accepted catalog lineage carries a durable random epoch and monotonic
+generation. List, Inbox, stats, queue-title, hover, and other projections report
+that lineage plus their source/fidelity versions. A client with the same
+generation can receive no-change or bounded deltas rather than causing another
+projection build. Partial reconciliation never replaces the last complete
+accepted generation.
+
+All provider/filesystem derivation is single-flight under a key containing the
+catalog epoch, session/projection, requested fidelity, and source version.
+Admission/publication use short state locks; asynchronous I/O runs outside the
+lock. Requests, events, background repair, tabs, and devices join the same work.
+Only a result for the still-current source version publishes, and one bounded
+failure/backoff policy serves all waiters.
+
 ## Source map
 
 | Concern | Current owner | Change |
@@ -141,11 +223,13 @@ duration, and snapshot version without scanning again to answer diagnostics.
 | YA metadata migration | `packages/server/src/metadata/SessionMetadataService.ts` | Supply existing YA-owned provider evidence after initialization; do not scan native stores |
 | Project Cartesian resolution | `packages/server/src/sessions/provider-resolution.ts` | Keep explicit per-session/project reads, but replace global collection fan-out with provider catalog shards |
 | Provider readers | `packages/server/src/sessions/*-reader.ts` | Implement provider-global complete/recent bounded catalog projections without full transcript detail |
-| Process recognition | `packages/server/src/services/HostAgentProcessService.ts` | Keep one minimized `ps` snapshot and move provider command/id recognition behind classifier adapters |
+| Process recognition | `packages/server/src/services/HostAgentProcessService.ts` | Keep one minimized boot/periodic `ps` owner, diff snapshots, and move provider command/id recognition behind classifier adapters |
 | Early file watchers | `packages/server/src/index.ts`, `packages/server/src/watcher/FileWatcher.ts` | Activate only eligible families after state load; remove synchronous recursive boot indexing |
+| Focused session watch resolution | `packages/server/src/watcher/FocusedSessionWatchManager.ts` | Resolve exact catalog locations; replace three-second unresolved project/provider enumeration with event-driven repair and bounded backoff |
 | Inbox route | `packages/server/src/routes/inbox.ts` | Read retained reconciled state; never own `Promise.all(project × provider)` |
 | Global session lists | `packages/server/src/routes/global-sessions.ts`, `packages/server/src/routes/projects.ts` | Reuse catalog grouping for collection routes while preserving explicit detail lookup |
 | Ownership | `packages/server/src/supervisor/ExternalSessionTracker.ts` | Consume exact joins; keep uncorrelated process roots separate from session ownership |
+| Client interest/generations | collection routes, activity subscriptions, client query controller | Accept expiring exact/window interest, publish epoch/generation snapshots or deltas, and union duplicate clients |
 
 ## Recommended implementation order
 
@@ -170,7 +254,8 @@ Run each eligible provider once, group rows by canonical project, coalesce an
 identical store generation, and retain only bounded hot shards in memory.
 Persist versioned snapshots atomically in YA app data. Make interruption and
 restart idempotent; a partial generation never replaces the last complete
-snapshot.
+snapshot. Give one catalog lineage a durable epoch plus monotonic generation,
+and single-flight every exact row/projection derivation by source version.
 
 ### 4 — gate and deblock provider file watching
 
@@ -188,40 +273,69 @@ tier ordering, notification/unread semantics, archived filtering, and the
 20-row tier caps. Opening projects and sessions remains independent of Inbox
 completion.
 
-### 6 — reconcile exact process ownership
+### 6 — serve global lists and stats from one retained generation
+
+Replace per-request project/provider loops in unfiltered, starred, filtered,
+and stats routes with indexed projections over the catalog generation. Apply
+metadata/recap/unread/ownership deltas incrementally and preserve current sort,
+pagination, project options, auto-archive, and search semantics. Two Sidebar
+queries may request different memberships but cannot start two corpus scans.
+
+### 7 — publish generations and accept interest leases
+
+Add conditional snapshot/delta reads keyed by catalog epoch/generation. Accept
+debounced, expiring session/query-window interest from capable clients; union it
+across connections and prioritize exact row/hover work without making interest
+the source of existence. Old clients keep the existing collection routes and
+do not need to publish interest. Bound retained deltas by bytes/time; a client
+older than that window receives a compact replacement snapshot.
+
+Route focused `session-watch` acquisition through the same exact location row.
+Keep its resolved-file watch/stat fallback reference-counted, but stop an
+unresolved target from enumerating project provider stores every three seconds.
+Catalog/file/process events retry immediately; repeated failure follows one
+bounded source-level backoff and remains explicit.
+
+### 8 — reconcile exact process ownership
 
 After runtime reattachment, take one boot process snapshot when host process
-observability is enabled. Subtract exact owned trees, expose unmatched
-recognized roots as read-only external agents, and join a session only on exact
+observability is enabled, then retain one bounded periodic process-inventory
+owner. Diff snapshots, subtract exact owned trees, expose unmatched recognized
+roots as read-only external agents, and join a session only on exact
 provider-native evidence. Initial samples may report RSS/tree metrics but no
-CPU percentage until a later delta exists.
+CPU percentage until a later delta exists; later samples compute deltas without
+opening unrelated provider stores.
 
-### 7 — add pressure and lifecycle tests
+### 9 — add pressure and lifecycle tests
 
 Prove bounded concurrency, no duplicate provider scans, watcher teardown,
 snapshot recovery after interruption, byte/age eviction, and zero repeating
-work after reconciliation. Test 10,000 projects with sparse sessions and an
-unused provider whose native directory exists but must never be touched.
+transcript work after reconciliation. Test 10,000 projects with sparse sessions,
+many simultaneous interest leases, and an unused provider whose native
+directory exists but must never be touched.
 
 ## Compatibility review checkpoint
 
-Changing Inbox from request-complete enumeration to a progressive retained
-snapshot is an observable client/server semantic. Before editing that contract,
-inspect the core 60-day stable-release corpus required by
+Changing Inbox/global lists from request-complete enumeration to a progressive
+retained snapshot is an observable client/server semantic. Before editing that
+contract, inspect the core 60-day stable-release corpus required by
 `topics/server-capabilities.md` and present the exact field/event gate. A likely
-shape is a permanent `progressive-inbox-reconciliation` capability plus an
-additive snapshot version/progress field. Without the capability, a new client
-must keep the old request behavior and make no request for a new route/event;
-an old client talking to a new server must still receive valid tier arrays.
+shape is a permanent `progressive-session-catalog` capability plus additive
+catalog epoch/generation/progress fields, delta events, and optional interest
+leases shared by Inbox and global collections.
+Without the capability, a new client must keep the old request behavior and
+make no request for a new route/event; an old client talking to a new server
+must still receive valid tier and session arrays from the existing routes.
 
 Approval prompt to settle at implementation time:
 
-> Compatibility review for progressive Inbox reconciliation: releases
-> `<60-day corpus>` lack `<snapshot version/progress fields and delta event>`.
-> Add permanent capability `progressive-inbox-reconciliation`; without it the
-> client keeps the existing complete-request behavior and makes no unsupported
-> request. Existing provider/session capabilities and explicit session-detail
-> reads remain unchanged. Approve?
+> Compatibility review for progressive session-catalog reconciliation:
+> releases `<60-day corpus>` lack `<catalog epoch/generation/progress fields,
+> delta events, and interest leases>`. Add permanent capability
+> `progressive-session-catalog`; without it
+> the client keeps the existing complete-request behavior and makes no
+> unsupported request. Existing provider/session capabilities and explicit
+> session-detail reads remain unchanged. Approve?
 
 ## Acceptance
 
@@ -236,9 +350,22 @@ Approval prompt to settle at implementation time:
   its first complete catalog pass; failed/auth-only probes do not.
 - Inbox returns its retained snapshot without starting or awaiting global
   discovery, then updates in place as versioned shards arrive.
+- Unfiltered, starred, project/search, pagination, and stats requests reuse one
+  retained catalog generation; changing a filter or row limit performs zero
+  provider transcript discovery and never starts a second corpus scan.
+- Catalog snapshots/deltas expose a coherent epoch/generation. Identical
+  requests and interest from many tabs/devices join one source-versioned
+  computation; stale completion cannot overwrite newer evidence.
+- Old offscreen/unowned rows may remain explicitly stale and perform no
+  periodic transcript parse. Hover, viewport, or click promotes only the exact
+  requested row/window.
+- One unresolved focused session watch performs no fixed-interval Codex/Gemini
+  project enumeration; exact catalog/file/process evidence drives repair under
+  one bounded backoff.
 - With host process observability enabled, one same-user boot snapshot may
-  recognize any known provider, but an external process names a session only
-  through exact native-id evidence.
+  recognize any known provider and one bounded periodic owner keeps that
+  inventory current, but an external process names a session only through
+  exact native-id evidence and never triggers unrelated transcript scans.
 - At 10,000 projects, dormant catalog state is disk-backed and live memory,
   watcher count, and work queues remain within explicit byte/concurrency
   budgets.

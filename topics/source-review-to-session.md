@@ -444,6 +444,17 @@ After a changed complete snapshot is durably ingested, the server emits
 `review-response-changed` on the activity stream so an already-open Inbox can
 refresh the optional feed only after ingestion finishes.
 
+The unread review Inbox is a retained compact projection, not an all-project
+read. Response ingestion, acknowledgment, deletion/migration, and project
+metadata changes update the exact submission row and publish a versioned
+delta. Reading or filtering Inbox performs no project listing, full
+`ReviewStoreFile` loading, Git work, response-file probing, provider work, or
+transcript work. The durable projection and any project manifest live under YA
+app data and must share the central-storage owner described by
+[project-directory-storage](project-directory-storage.md). The implementation
+handoff is
+[`docs/tactical/099-retained-source-review-inbox.md`](../docs/tactical/099-retained-source-review-inbox.md).
+
 ### Turn composition
 
 Lead with the submission's name. An unnamed submission takes the excerpt YA

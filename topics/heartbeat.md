@@ -70,6 +70,21 @@ language, but they do not share ownership or evidence semantics.
 - Server-owned synthetic heartbeat turn scheduling does not depend on an open
   session UI. It runs on the server supervisor interval and reads current
   heartbeat settings plus the process liveness snapshot.
+- Unowned heartbeat candidates are retained, exact session projections rather
+  than the result of a recurring project/provider search. Metadata and provider
+  catalog reconciliation establish provider/transcript project identity; file,
+  ownership, liveness, and metadata events update that row.
+- Whether an unowned candidate ends in a pending tool call is a compact fact
+  tied to an observed transcript source version. Unchanged negative results do
+  not require another full transcript read, while append/replacement/truncation
+  invalidates the fact.
+- Candidate deadlines are scheduled by one process-wide owner. The next due
+  timer compares wall-clock time with the latest real activity anchor; it does
+  not run one interval per session or search all projects on a fixed tick.
+- Older metadata missing exact transcript location is repaired once through
+  bounded provider-catalog reconciliation. An unresolved candidate cannot
+  authorize automatic resume and must not retry by repeatedly scanning every
+  project/provider.
 
 ## Unowned Resume Exemptions
 
@@ -115,6 +130,9 @@ auto-resumed from its rollout three times in one day):
 - A synthetic heartbeat turn queues for a steering-capable session in a
   doubtful long-silent state once the quiet period has elapsed without recent
   real PTY output.
+- One eligible unowned session among many projects performs only an exact
+  candidate/tail lookup at its deadline; unchanged negative pending-tool state
+  and unresolved location do not create fixed-interval corpus reads.
 - If the client handles the PTY exception, it uses server-reported PTY output
   timing and still treats a quiet foreground PTY as non-progress.
 - A client relative-time or stale callback still fires when no new events have

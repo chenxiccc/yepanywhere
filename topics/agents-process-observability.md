@@ -20,7 +20,10 @@ See also:
   — an observed process working directory must not silently reclassify a
   session's effective project.
 - [`architecture-mandates.md`](architecture-mandates.md) — sampling must stop
-  when no visible client owns it.
+  when no visible client owns it, except for the bounded process-existence
+  inventory used by session-catalog observation.
+- [`session-catalog-observation.md`](session-catalog-observation.md) — the
+  process inventory may remain fresh without turning into transcript polling.
 - [`server-capabilities.md`](server-capabilities.md) and
   [`remote-hosted-compatibility.md`](remote-hosted-compatibility.md) — a new
   host-process route requires an exact capability gate.
@@ -55,7 +58,7 @@ control semantics.
 | Surface | Primary question | Source of truth |
 | --- | --- | --- |
 | Inbox | Which sessions need attention, are active, recent, or unread? | Session, pending-input, queue, and notification state. |
-| Agents | Which agent processes exist on this YA host, who supervises them, and what resources are they using? | YA Supervisor state plus a request-driven host process snapshot. |
+| Agents | Which agent processes exist on this YA host, who supervises them, and what resources are they using? | YA Supervisor state plus the retained process-existence inventory and request-driven metric samples. |
 | Agents activity preview | What is each YA-supervised agent doing now? | Bounded normalized provider activity, when explicitly enabled. |
 | Session detail | What happened in this conversation, and what can I do next? | Provider transcript and live session control state. |
 
@@ -70,11 +73,17 @@ The server-owned **Agents process metrics** option is default-on and can be
 disabled under Settings > Performance. This is an explicit product exception
 to [`vanilla-defaults.md`](vanilla-defaults.md), authorized by graehl on
 2026-07-28: a user who does not want the feature can disable it, while someone
-who never opens Agents causes no host-process sampling. With it off:
+who never opens Agents causes no CPU/RSS metric sampling. With it off:
 
 - Agents remains observably unchanged;
 - no host-process route is requested by the client; and
 - YA does not enumerate foreign processes or retain CPU samples.
+
+With the option on, the compact process-existence/classification inventory may
+continue under one bounded server owner even when Agents is closed. It retains
+only the minimized identity needed for provider/root/session correlation and
+diffs later snapshots. CPU rate and expanded tree metrics remain request-owned
+by visible Agents consumers and stop when their last owner leaves.
 
 With it on:
 
@@ -211,7 +220,7 @@ The current `ExternalSessionTracker` may decorate a future exact join, but its
 30-second write window cannot create one. The initial host sampler neither
 reads nor returns cwd.
 
-### Boot reconciliation extension
+### Continuous inventory extension
 
 Accepted 2026-08-05; not yet implemented. When Agents process metrics are
 enabled, YA takes one same-user process snapshot after retained provider
@@ -221,10 +230,12 @@ inventory before any client route asks for it. On the measured Linux host, the
 underlying whole-table `ps` snapshot took 0.01 seconds and about 4.1 MiB maximum
 RSS.
 
-This is one boot phase, not a permanent sampler. It supplies process existence,
-start identity, provider, and initial RSS/tree shape; recent CPU remains absent
-until a later sample supplies a delta. Opening Agents may continue the existing
-five-second request-owned sampling, and leaving Agents stops it.
+One process-wide bounded cadence keeps that existence inventory current. Each
+pass diffs PID plus OS start identity and targets changed recognized roots; it
+does not open provider transcript stores or create a loop per session. It
+supplies process existence, provider, and exact association when available.
+Opening Agents may continue the existing five-second request-owned CPU/RSS tree
+sampling, and leaving Agents stops that richer sampler.
 
 Process discovery does not open provider transcript stores. Command/entrypoint
 classification and exact native session-id extraction belong to the provider

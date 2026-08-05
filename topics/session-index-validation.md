@@ -16,6 +16,8 @@ See also:
   consumer of `/api/sessions` freshness.
 - [`session-summary-fidelity.md`](session-summary-fidelity.md) — the boundary
   between complete indexed summaries and bounded list projections.
+- [`session-catalog-observation.md`](session-catalog-observation.md) — the
+  install-wide observer, generation, and cold-row freshness hierarchy.
 
 ## Validation paths
 
@@ -109,6 +111,21 @@ full dev-machine corpus): summary parsing is serial by default
 Raising the default is the obvious follow-up lever, but it needs its own
 contrastive run — the concurrency=1 default protects the event loop while
 parses run in-process.
+
+## Relationship to the retained catalog
+
+The 30-second full-validation TTL is a backstop once a specific complete-index
+scope is selected; it is not permission for every broad collection request to
+select and validate every project/provider scope. Global Sessions, Inbox,
+stats, queue-title, and hover collection projections read the retained compact
+catalog and target changed, uncertain, live, or client-promoted rows.
+
+An old cold scope does not receive another complete-summary validation merely
+because its last check is older than the TTL. Provider/file evidence, an exact
+complete-summary consumer, or bounded catalog repair selects it. This prevents
+the supported 10,000-project shape from multiplying a per-scope consistency
+backstop into a periodic fleet scan while preserving exact validation for
+explicit detail consumers.
 
 ## Transport head-of-line blocking
 

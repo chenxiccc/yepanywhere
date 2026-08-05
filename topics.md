@@ -269,3 +269,6 @@
 - client-asset-delivery - Immutable generated assets, negotiated precompressed
   representations, bounded static serving, and deploy-generation retention for
   old entrypoints.
+- session-catalog-observation - Durable compact session catalog, continuous
+  server observation, interest-prioritized freshness, coherent generations,
+  and multi-client single-flight refresh.

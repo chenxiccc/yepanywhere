@@ -98,6 +98,14 @@ reconnect, or session metadata changes. That belongs here, not in a separate
   global sessions, Inbox, processes, queue, usage, and development-status work.
   Added a scheduling handoff and located one direct duplicate
   `useReloadNotifications` status read.
+- 2026-08-05: The follow-on timer audit found that retaining a query still does
+  not retain its revalidation owner. Sidebar mounts four feed hooks for two
+  query keys, and Project Queue adds one five-second poll per mounted consumer
+  while backlog exists. Added the query-entry ownership correction below.
+- 2026-08-05: The server observer/catalog contract added coherent catalog
+  epochs/generations and short-lived client interest. Added a browser reuse
+  slice that prevents sequential mounts and capable sibling tabs from
+  requesting an unchanged generation while keeping server dedupe authoritative.
 
 ## Context
 
@@ -147,7 +155,7 @@ Audited 2026-06-28. This is the starting map for migration priority.
 | `useProject` | `/api/projects/:id` | Source-scoped detail snapshot reporting plus retained query lifecycle. Refresh/reconnect revalidate the retained detail query; process/session events revalidate only when they match the selected project. | Completed retained-revalidation target. |
 | `InboxContext` | `/api/inbox` | App-scoped singleton feed owner. Stable tier ordering and source-scoped snapshot reporting stay provider-owned; readiness, retained query lifecycle, and wake/reconnect/activity refetch now go through `useRetainedClientQuery`. Locally patchable `session-updated` rows patch through the summary store without a full inbox snapshot; unknown content updates and unread-tier promotions still revalidate so membership can be discovered. | Completed second retained-revalidation target. Keep tier-order policy local. |
 | `useProcesses` | `/api/processes?includeTerminated=true` | Source-keyed process snapshot plus retained controller query. Revalidates on readiness, refresh/reconnect, process/session events, and patches metadata titles locally. Previously used hook-local rows plus a fixed 30s poll. | Completed first retained-revalidation target. A process summary store slice can wait. |
-| `useProjectQueues` | `/api/project-queue` for the global queue feed; `/api/projects/:id/queue` for mutations | Source-scoped global queue snapshots plus per-project mutation reporting. Retained query lifecycle now owns wake/reconnect refetches, so Projects does not fan out across every project. | Completed adjacent retained-revalidation target. Keep mutations project-scoped. |
+| `useProjectQueues` | `/api/project-queue` for the global queue feed; `/api/projects/:id/queue` for mutations | Source-scoped global queue snapshots plus per-project mutation reporting. Retained lifecycle owns wake/reconnect/events, but every mounted hook also starts a five-second forced poll while relevant queue/recovery rows exist. | Retained feed landed; query-entry revalidation/poll removal remains in step 11. Keep mutations project-scoped. |
 | `useServerSettings` | `/api/settings` | Source-keyed retained query plus a small shared settings snapshot store. Initial GETs and reconnect/refresh revalidation share in-flight work; successful PUT responses update the shared snapshot. | Completed config-feed target. Keep mutations hook-local. |
 | `useVersion` | `/api/version` | Module-level shared in-flight promise for concurrent non-fresh requests, but no retained resolved entry or source scoping. Each later hook mount fetches again; each mounted hook can also own a pending-speech follow-up timer. | Next triggered target. Retain one source snapshot and one follow-up owner; make ordinary server response assembly subprocess-free. |
 | `useProviders` | `/api/providers` | Five-minute provider/model snapshots and in-flight work are source-keyed, but one aggregate response still waits for every provider and survives neither browser nor server restart. | Provider-local/durable catalog redesign belongs to tactical 094; reuse query-controller lifecycle without flattening provider freshness into one flag. |
@@ -219,6 +227,36 @@ global/starred retainers stay app-shell-owned, but can start after the first
 stable page/shell commit and reconcile in place. Process, Inbox, and usage work
 likewise follows its owning urgency instead of racing all selected-route
 prerequisites at mount time.
+
+## Retention currently duplicates revalidation owners
+
+`NavigationLayout` calls `useRetainSidebarSessionFeeds()`, which mounts global
+and starred `useGlobalSessionsFeed()` hooks. The rendered `Sidebar` then mounts
+the same two feeds again to obtain controls. The default app shell therefore
+has four hook-local event subscriptions, debounce timers, connection polls, and
+loading states for two controller query keys.
+
+Initial requests share in-flight work. Forced revalidation has a subtler stale
+generation defect: every `useGlobalSessionsFeed` caller first calls
+`invalidateClientQuery()`, then `ensureClientQuery({ force: true })`. The first
+caller starts the shared request; a duplicate caller advances `staleVersion`
+before joining that in-flight promise. The completed request sees a newer stale
+generation and deliberately cannot clear `stale`, so an otherwise accepted
+shared result remains eligible for another fetch.
+
+`useRetainedClientQuery` avoids that exact invalidation order, but still
+installs one activity listener/debounce owner per hook call. In-flight sharing
+contains simultaneous requests; it does not make event/timer ownership
+source/query-scoped.
+
+Project Queue demonstrates the cost when hooks add their own recovery loop.
+Sidebar plus New Session, Session, Projects, Inbox, or Global Sessions can
+mount several `useProjectQueues()` consumers. When any relevant queue or
+recovered-session row exists, every instance force-refetches the same global
+route every five seconds. The route then recomputes project status and resolves
+existing-session titles through provider/session summary lookup. Activity
+events already invalidate the retained query; any missed-event backstop must be
+one source/query owner with an exact deadline, not one interval per component.
 
 ## Session Observation Semantics
 
@@ -482,6 +520,12 @@ Local reducers still remain the fast path. For example, a
 `session-metadata-changed` event should update any normalized session facts
 immediately when it contains enough data, then invalidate retained server-owned
 memberships only when membership or denormalized row fields may have changed.
+
+Retained collection entries also carry the server's catalog epoch/generation.
+That value is a conditional reconciliation token, not a substitute for query
+coverage or field-group fidelity. Multiple filters can read the same server
+generation while retaining different memberships, and a newer partial event
+can patch one field without proving the full query current.
 
 ## Mutations
 
@@ -785,12 +829,88 @@ Acceptance:
   first page/control readiness, and final navigation/inbox reconciliation for
   local, remote, and production-static modes.
 
+### 11 — make revalidation owned by the retained query entry
+
+Move activity subscriptions, debounce/deadline timers, reconnect/refresh
+handling, and forced-generation transitions from hook instances into the
+`(sourceKey, queryKey)` retained controller entry. Subscribers declare coverage
+and revalidation policy; one compatible owner schedules/acquires the result and
+publishes controller state to all hooks.
+
+Make the Sidebar visual component select retained membership and invoke shared
+query controls without mounting the same two acquisition hooks already owned
+by `NavigationLayout`. Keep the retainer independent of expanded/collapsed or
+mobile-open state.
+
+Remove `useProjectQueues()`'s per-consumer five-second interval. Consume
+`project-queue-changed`, session-queue persistence, process/session, reconnect,
+and refresh events through one query owner. If server scheduler status needs a
+time backstop, arm one source-level timeout for the earliest reported
+`nextAttemptAt`; tactical 040 owns making title/status response assembly a
+retained projection rather than a provider read.
+
+Acceptance:
+
+- two or twenty hooks retaining the same source/query install one event-policy
+  owner and at most one debounce/deadline timer;
+- a duplicate forced revalidation joins the in-flight generation without
+  advancing its stale version, and successful completion makes the entry fresh;
+- Sidebar has exactly two retained feed acquisitions (global and starred), not
+  separate retainer and visual copies;
+- component unmount removes its retention need but does not tear down a query
+  still retained elsewhere; the last release clears owner timers/listeners;
+- Project Queue with backlog performs no five-second per-component polling and
+  remains current through events plus one exact source-level deadline backstop;
+  and
+- tests vary mount order, StrictMode, Sidebar visibility, simultaneous events,
+  source switch, reconnect, one rejected request, and last-subscriber release.
+
+### 12 — reuse catalog generations across browser clients
+
+Consume tactical 093's approved catalog epoch/generation on collection
+snapshots and deltas. A retained query sends its known generation on
+revalidation; the server may answer no-change, bounded deltas, or a replacement
+snapshot. Sequential component mounts therefore reuse both the client entry
+and accepted server generation instead of re-fetching unchanged rows. Falling
+outside the server's bounded delta window cleanly requests a replacement.
+
+Add optional source/auth/schema-scoped compact snapshot persistence in
+IndexedDB, with byte/age eviction. `BroadcastChannel` or a small local-storage
+notice advertises the newest stored generation to same-origin tabs. Where the
+browser supports it, Web Locks or a short renewable lease may elect one tab to
+perform a cold acquisition while followers load the accepted snapshot and
+observe publication. Owner loss, private/evicted storage, unsupported APIs,
+and another device fall back to the ordinary server path.
+
+Do not persist transcripts, provider payloads, credentials, or component-local
+selection/scroll state. Do not make browser election the herd-control boundary:
+all devices and fallback requests must still join tactical 093's server-side
+single-flight computation. Interest messages carry only debounced stable
+session/query-window identities with TTL; one tab's hidden stale viewport must
+not keep a server lease alive.
+
+Acceptance:
+
+- sequential mounts with an accepted generation issue no replacement snapshot
+  request unless coverage, source, epoch, freshness, or fidelity requires it;
+- capable sibling tabs perform at most one cold acquisition for one
+  source/query generation and all accept the same published snapshot;
+- loss, corruption, eviction, quota failure, or lack of browser coordination
+  APIs falls back without correctness loss or retry storms;
+- persisted compact data is source/auth/schema scoped, byte/age bounded, and
+  contains no transcript/provider payload;
+- visible/hover interest is debounced, expiring, and unionable by the server;
+  and
+- multiple devices requesting the same stale projection still cause one
+  server-side derivation.
+
 ## Non-Goals
 
 - Do not replace `clientSummaryStore`.
 - Do not store full transcripts, stream deltas, rendered markdown, or composer
   state in the controller.
 - Do not introduce polling loops as part of this cleanup.
+- Do not require browser storage or cross-tab locking for correctness.
 - Do not adopt React Query/SWR/RTK Query in the first patch.
 - Do not make the controller understand every endpoint on day one.
 - Do not treat a short paginated response as proof that unrelated entities do
@@ -823,6 +943,11 @@ Acceptance:
   without making Sidebar coverage depend on whether Sidebar is visible.
 - Verify reload notifications perform one source-level status acquisition and
   no per-consumer connection interval or inapplicable worker-detail request.
+- Verify duplicate query retainers share one event/debounce owner, successful
+  forced revalidation clears stale state, and Project Queue has no
+  per-component five-second poll.
+- Verify catalog generation reuse across sequential mounts and sibling tabs,
+  including storage eviction/owner-loss fallback and source/epoch changes.
 - Verify star/archive/read mutations update store-backed surfaces immediately
   and invalidate retained server-owned memberships.
 - Verify StrictMode or multiple mounted consumers do not double-fetch the same

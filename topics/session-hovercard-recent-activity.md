@@ -18,6 +18,8 @@ annotates),
 `waiting-input`, which gates the phase-2 live tail),
 [provider-abstraction](provider-abstraction.md) (per-provider readers must each
 populate the new snippet; absence degrades gracefully),
+[session-catalog-observation](session-catalog-observation.md) (the server
+observer, interest, generation, and cold-row freshness hierarchy),
 [recaps](recaps.md) (the away-summary that overrides the excerpt when it is the
 freshest agent line).
 
@@ -80,7 +82,7 @@ prior text block or a short tool label (see Content below).
 | Vertical budget | **Equal small caps**, not greedy. Cap the now-greedy opening body (≈4–5 lines) and clamp the reply (≈3 lines); the reply must not exceed the opening request's allocation. |
 | Surfaces | Sidebar (compact) already fires. **Also fire in card mode** so all-sessions + search get it. |
 | Providers | **Excerpt is provider-independent** via the on-demand refresh (normalized `Message[]`). Claude additionally populates it in the cheap summary/live path; other providers populate on focus/hover. Recaps stay Claude-only. |
-| Freshness | **Rides the existing live `session-updated` event** (same channel that already updates title/messageCount/contextUsage), not a mouseover-repoll. |
+| Freshness | **Rides live `session-updated` events for owned/observed sessions; an explicitly requested stale unowned card gets one exact coalesced refresh.** Never poll every visible or neighboring row. |
 
 ### Requested-card loading contract
 
@@ -194,17 +196,18 @@ Client:
 - Drop the `mode === "compact"` gate on `showCompactPreview` (or widen it to
   card mode) so all-sessions + search rows fire the card.
 
-## Freshness: how the excerpt stays current
+## Freshness: live updates plus exact requested refresh
 
-The list is **not** poll-on-visible. `useGlobalSessions` fetches once on mount
+The list is **not** all-visible or fixed-interval polling.
+`useGlobalSessions` fetches once on mount
 (and on filter change / WS reconnect via `onReconnect: fetch`), then YA keeps it
 live through pushed events from `useFileActivity`: `session-status`,
 `process-state`, `session-created`, `session-metadata-changed`, `session-seen`,
 and `session-updated`. The last already updates `title` / `messageCount` /
 `updatedAt` / `contextUsage` / `model` in place.
 
-`lastAgentText` is therefore wired onto that **same live channel** rather than a
-bespoke refresh:
+For owned/live-observed sessions, `lastAgentText` is wired onto that **same live
+channel** rather than a bespoke refresh:
 
 - Server builds `SessionUpdatedEvent` from a freshly re-read `SessionSummary`
   (`Supervisor.emitReconciledSessionUpdate`, and the two
@@ -217,10 +220,11 @@ bespoke refresh:
   agent turn reliably moves messageCount/contextUsage).
 - Client `handleSessionUpdated` applies `event.lastAgentText` to the row.
 
-This makes the hover excerpt exactly as live as the context-usage chip already
-is — which is why a mouseover-exit repoll or a sidebar-visible recompute was
-**not** added: those would be a parallel mechanism for a freshness path that
-already exists. Reconnect already triggers a full refetch.
+This makes an owned/live-observed hover excerpt exactly as live as the
+context-usage chip already is. A mouseover-exit repoll or sidebar-visible
+recompute is still unnecessary. An unowned cold row follows the exact on-demand
+path below; reconnect conditionally reconciles the retained catalog generation
+rather than granting every old row a transcript read.
 
 **Latency floor.** The remaining lag is not a YA poll interval. For sessions YA
 runs (owned), updates come off the live SDK stream. For sessions an external TUI
@@ -302,10 +306,12 @@ when the user expresses interest:
   scroll-ancestor dismissal remain in `SessionListItem`; a non-list target may
   dismiss on any scroll.
 
-This deliberately does not persist (no index write), so it does not survive
-reyep; the cold-cache excerpt repopulates on the next focus/hover or when the
-file next changes. That matches the accepted "old sessions blank until touched"
-tradeoff.
+The current exact refresh deliberately does not persist (no index write), so it
+does not survive reyep; the cold-cache excerpt repopulates on the next
+focus/hover or when the file next changes. Tactical 093 may later retain the
+bounded excerpt with its source version in the compact catalog. Either form
+preserves the accepted "old sessions may be stale until touched" tradeoff and
+never reparses unrelated rows.
 
 ## Mobile preview access via the row menu (proposal — not built)
 

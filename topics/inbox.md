@@ -11,6 +11,7 @@ See also:
 - [`agents-process-observability.md`](agents-process-observability.md) — the
   separate host process inventory and metrics surface.
 - [`session-summary-fidelity.md`](session-summary-fidelity.md)
+- [`session-catalog-observation.md`](session-catalog-observation.md)
 - [`../docs/tactical/093-provider-session-reconciliation.md`](../docs/tactical/093-provider-session-reconciliation.md)
   — implementation handoff for install-gated provider catalogs and boot
   reconciliation.

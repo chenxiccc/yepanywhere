@@ -11,6 +11,7 @@ See also:
 - [`ui-architecture.md`](ui-architecture.md)
 - [`project-queue.md`](project-queue.md)
 - [`sidebar-session-ordering.md`](sidebar-session-ordering.md)
+- [`session-catalog-observation.md`](session-catalog-observation.md)
 - [`session-summary-fidelity.md`](session-summary-fidelity.md)
 - [`../docs/tactical/025-zustand-client-summary-store.md`](../docs/tactical/025-zustand-client-summary-store.md)
 - [`../docs/tactical/026-client-summary-long-tail.md`](../docs/tactical/026-client-summary-long-tail.md)
@@ -119,6 +120,34 @@ replace it and does not make events durable. Activity events that reduce into
 summary state must carry or capture their backend source so a host switch cannot
 apply an old host event to the new host's cache.
 
+### Catalog generations
+
+Server collection snapshots and deltas carry the catalog lineage described in
+[`session-catalog-observation.md`](session-catalog-observation.md): a
+`catalogEpoch` plus monotonic `catalogGeneration`. The client keeps that pair
+per source/query coverage. It can conditionally reconcile an already accepted
+generation rather than asking the server to rebuild the same projection.
+
+Generation ordering does not flatten observation fidelity. A newer partial
+event can advance selected field groups without proving a full list membership
+or complete transcript summary. Source changes, catalog epoch changes, and
+schema changes make a persisted generation incomparable and require a new
+snapshot.
+
+Within one tab, one retained `(sourceKey, queryKey)` entry owns acquisition,
+event invalidation, debounce/deadline timers, and in-flight work. Component
+subscriptions express coverage and render state; mounting the same hook twice
+must not install two revalidation owners.
+
+An optional browser-persistence adapter may store bounded, serializable compact
+summary snapshots in IndexedDB, keyed by source/auth scope, schema, and catalog
+epoch/generation. `BroadcastChannel` or a small `localStorage` notice can tell
+sibling tabs that a newer generation exists; supported cross-tab locking may
+elect one fetcher. This is only a cold-start optimization. Missing/evicted
+storage, another device, or failed election falls back to the server, whose own
+single-flight computation remains authoritative. Do not persist full
+transcripts or provider payloads in the summary adapter.
+
 ### Recent-visit membership
 
 Recent visits are bounded source-scoped membership: ordered session id,
@@ -140,14 +169,22 @@ The implementation handoff is
 
 ## Fetch Model
 
-Feed hooks own fetch mechanics:
+The retained query controller owns shared fetch mechanics:
 
 - remote connection readiness;
-- current summary source key capture;
+- source/query key capture and compatible coverage;
+- one in-flight acquisition and revalidation owner;
+- event invalidation plus debounce/deadline timers;
+- accepted server catalog epoch/generation;
+- request start timestamps and loading/error state; and
+- snapshot reporting into the store action supplied by the feed.
+
+Feed hooks bind a component's need to that retained entry:
+
+- current summary source key;
 - pagination;
-- loading and error state;
-- request start timestamps;
-- reporting snapshots into the store.
+- required coverage; and
+- controls/selectors exposed to the surface.
 
 Store selectors own UI data:
 

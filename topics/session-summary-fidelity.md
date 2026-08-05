@@ -10,6 +10,7 @@ See also:
 
 - [`client-global-store.md`](client-global-store.md)
 - [`inbox.md`](inbox.md)
+- [`session-catalog-observation.md`](session-catalog-observation.md)
 - [`session-index-validation.md`](session-index-validation.md)
 - [`codex-metadata-scanner.md`](codex-metadata-scanner.md)
 
@@ -98,8 +99,12 @@ For providers with a lightweight list reader, an Inbox refresh:
 - does not wait for a full parse of a changed large transcript;
 - does not alter what later complete-summary consumers receive.
 
-Global Sessions, project session lists, process enrichment, session detail, and
-other complete-summary consumers keep using the complete index path.
+Global Sessions, project session lists, Inbox, process labels, and other
+collection surfaces should read the retained compact catalog described in
+[`session-catalog-observation.md`](session-catalog-observation.md). They may
+project a fresh complete index row but must not require one. Explicit session
+detail and features whose contract names complete-summary fields keep using the
+complete index path.
 
 ## Cleanup ledger
 

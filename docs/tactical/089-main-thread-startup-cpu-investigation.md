@@ -37,6 +37,7 @@ Related contracts:
 - [`topics/project-path-links.md`](../../topics/project-path-links.md)
 - [`topics/glossary-tooltips.md`](../../topics/glossary-tooltips.md)
 - [`topics/session-hovercard-recent-activity.md`](../../topics/session-hovercard-recent-activity.md)
+- [`topics/session-catalog-observation.md`](../../topics/session-catalog-observation.md)
 - [`topics/provider-abstraction.md`](../../topics/provider-abstraction.md)
 - [`topics/session-defaults.md`](../../topics/session-defaults.md)
 - [`031-client-query-controller.md`](031-client-query-controller.md)
@@ -48,6 +49,8 @@ Related contracts:
 - [`095-new-session-recent-project-readiness.md`](095-new-session-recent-project-readiness.md)
 - [`096-client-route-module-loading.md`](096-client-route-module-loading.md)
 - [`097-server-bootstrap-module-staging.md`](097-server-bootstrap-module-staging.md)
+- [`098-heartbeat-candidate-scheduling.md`](098-heartbeat-candidate-scheduling.md)
+- [`099-retained-source-review-inbox.md`](099-retained-source-review-inbox.md)
 
 ## Evidence already established
 
@@ -490,7 +493,9 @@ server-owned reconciliations:
    Supervisor/runtime-host ownership, and records unmatched roots. The
    existing `HostAgentProcessService` supplies the safe classifier; the
    underlying `ps` snapshot measured 0.01 s and about 4.1 MiB maximum RSS on
-   this host. It is a one-shot boot phase, not a permanent sampler.
+   this host. A single process-wide periodic diff is a reasonable freshness
+   backstop because its cost follows the process table; it may target changed
+   roots but must not become a transcript sampler.
 2. Each install-eligible provider session store is scanned once, grouped into
    canonical project shards, and reconciled in the background. Eligibility is
    durable evidence that this YA install has successfully started that provider;
@@ -524,6 +529,71 @@ metadata occupy stable final coordinates. A reserved reply region below them
 then fills asynchronously with the last regular agent excerpt, without
 flashing or moving the top region. Pointer-velocity and adjacent-row prefetch
 remain deferred until the measured requested-card delay shows a need.
+
+The governing observer/cache philosophy is now
+[`topics/session-catalog-observation.md`](../../topics/session-catalog-observation.md).
+YA keeps one disk-backed compact session catalog and a byte-bounded RAM hot set.
+Live/owned sessions, exact external-process evidence, visible rows, and explicit
+hover/detail requests receive progressively stronger freshness. Old offscreen
+unowned sessions may be explicitly stale; absent a changed source version or
+client interest, no timer reparses their transcripts. Broad compact client
+snapshots remain allowed, so viewport interest is a priority hint rather than
+the only record of session existence.
+
+The catalog publishes a durable epoch and monotonic generation. Inbox,
+unfiltered/starred lists, stats, hover projections, and queue titles read one
+accepted generation plus ordered deltas. All filesystem/provider derivation is
+single-flight by source version and fidelity, so simultaneous components, tabs,
+devices, events, and background repair join one computation. Tactical 093 owns
+that server hierarchy and the bounded process/reconciliation owners; tactical
+031 owns one per-tab retained query owner plus optional generation-aware
+IndexedDB/cross-tab reuse. Browser storage remains an optimization because
+server-side herd control must cover unsupported browsers and multiple devices.
+
+### Additional timer and collection amplification
+
+The follow-on source audit found three independent paths with the same
+ownership error:
+
+- Global and starred `/api/sessions` requests each enumerate projects/providers
+  and materialize all matching rows before applying `limit=50`; `/api/sessions`
+  stats performs another invalidation-sensitive corpus pass. Tactical 093 now
+  makes all of them projections of one retained generation.
+- `NavigationLayout` and the visual Sidebar mount four global-session feed
+  hooks for two keys. Their requests can join, but duplicate forced
+  invalidation advances the stale generation while the shared request is in
+  flight. Each hook also retains its own listeners/debounce state. Tactical 031
+  moves revalidation ownership to the `(sourceKey, queryKey)` entry.
+- Every mounted `useProjectQueues()` starts a five-second forced poll while
+  backlog/recovery rows exist. Each global queue response recomputes statuses
+  and may resolve titles through provider/session summary lookup. Tactical 040
+  replaces this with retained title/status projections, versioned events, and
+  at most one exact source-level deadline.
+
+Heartbeat candidate scheduling adds a fourth recurring path. Every 30 seconds,
+eligible unowned metadata can cause all projects to be listed, provider/session
+locations searched, and a complete transcript loaded only to ask whether its
+tail has a pending tool call. The live metadata store contained two eligible
+rows, proving the gate is present but not that both were unowned each tick.
+Tactical 098 retains exact candidates and source-versioned tail facts behind
+one next-deadline scheduler. This was not the demonstrated incident CPU owner;
+it is a structurally repeating risk discovered by the same audit.
+
+The optional Source Review Inbox has the corresponding project-store shape.
+Each mount/manual refresh/`review-response-changed` event lists all projects,
+loads every `ReviewStoreFile` concurrently, and then leaves every touched
+project store in `ReviewCommentService.stores` until reset. The feature is
+default-off and was not part of the incident or cold census. Tactical 099 owns
+one durable compact unread projection, exact deltas, central-storage alignment,
+and byte/age release of clean project stores.
+
+Explicit session interest also has one broad retry seam. A focused
+`session-watch` target is reference-counted correctly, but if its file cannot be
+resolved it retries every three seconds by default, probing Claude and
+enumerating Codex/Gemini sessions in the project. Tactical 093 now routes this
+through the exact catalog location row and event/bounded-backoff repair. The
+resolved per-session watch/stat fallback remains justified while a client
+actually holds the session.
 
 ### Glossary and project-path work is demand-driven
 
@@ -570,6 +640,10 @@ retention or amplification owners:
 | Review project stores | `ReviewCommentService.stores` retains every touched project's complete review sites, entries, submissions, and mutation state until a whole-service `reset()` | After pending mutation/save work is durable, release cold project stores by byte/LRU and reload canonical state on demand |
 | External-session tracker | `createdSessions` and `sessionStateCache` retain every observed id for process lifetime; expired abort records clean only when that session is checked | Compact generation/age bounds and bulk expiry during boot/event batches |
 | Provider/model catalog | Client and server retain one all-provider result for five minutes in memory; an expired request awaits every auth/model probe, while OpenCode launches two high-RSS CLI children and generic Gateway discovery can start a service | Durable bounded last-successful rows per provider; selected-provider priority, provider-local refresh/errors, shared prerequisites, and side-effect-free generic inspection |
+| Global collection projections | Unfiltered/starred/stats requests repeat project/provider traversal and row allocation; query hooks duplicate invalidation/listener owners | One disk-backed catalog generation, source-versioned single-flight derivation, and one retained client owner per query key |
+| Project Queue reads | Every mounted consumer polls at five seconds while backlog exists; each response can recompute project status and resolve target titles through provider/session readers | Retained catalog-backed titles and scheduler statuses, versioned events, and one exact source deadline |
+| Heartbeat candidates | One 30-second supervisor tick may search every project/provider and load a complete transcript per eligible unowned row | Exact retained candidate/tail projection plus one process-wide next-deadline scheduler |
+| Source Review Inbox | Each read/event lists every project, loads every review store concurrently, and retains each touched store for process lifetime | One app-data compact unread projection with exact deltas and byte/age release of clean stores |
 
 The process-wide pressure coordinator should shed rebuildable state in this
 order, refined by least-recent project/view and observed retained bytes:
@@ -621,9 +695,9 @@ and `3c0f70df`. The provider-child, public-share, Inbox, cache-pressure, and
 sparse-path corrections remain handoffs, not implementations in tactical 089.
 The completed investigation, topic contracts, and tacticals 091-093 landed in
 `37794b7c`; the primary-bind provenance correction landed in `df2fc628`.
-Tacticals 094-097, reopened tactical 022, and the query-controller follow-ups
-extend that completed report with the later New Session, client-delivery, and
-server-module observations.
+Tacticals 094-099, reopened tactical 022, and the query-controller/queue
+follow-ups extend that completed report with the later New Session,
+client-delivery, server-module, retained-feed, and timer observations.
 
 Primary retained evidence runs:
 
