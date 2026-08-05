@@ -104,6 +104,32 @@ Claude is never rerouted:
   and there is no automatic migration during the deprecation grace period.
   Existing users see a dismissible notice directing them to Claude Gateway.
 
+## Known gateway failure: 10s idle cut on large tool calls (fixed in fork)
+
+Diagnosed 2026-08-05 on the `copilot-api` deployment. Symptom: Claude Code
+sessions through Claude Gateway abort with "API Error: Connection closed
+mid-response" whenever the model emits a *large* tool call (e.g. a big
+`Edit`); small edits succeed. Root cause is a stack of two behaviors:
+
+- Copilot's `/v1/messages` sends **no bytes while a `tool_use` input is
+  being generated** — all `input_json_delta` events arrive in one burst at
+  the end (observed: 41s of silence, then ~1900 deltas at once). Long
+  time-to-first-byte responses behave the same way.
+- `copilot-api` serves via srvx on Bun, and `Bun.serve` defaults
+  `idleTimeout` to 10 seconds of socket silence. Any generation whose
+  silent stretch exceeds 10s gets its client connection killed
+  mid-stream.
+
+So the operative limit is *seconds of upstream silence*, not message or
+context length; output size only correlates because bigger tool inputs take
+longer than 10s to generate. Fixed in the `graehl/copilot-api` fork
+(`fix: disable Bun idle timeout that cut long generations`) by passing
+`bun: { idleTimeout: 0 }` to srvx's `serve()`; a gateway restart is needed
+to pick it up. Distinct transient failure with a different signature:
+Copilot occasionally 503s Opus requests with "upstream model provider is
+currently experiencing high demand", which surfaces as an HTTP error, not a
+mid-stream cut.
+
 ## Why you'd choose B over A/C
 
 Architecture B is the only one where **Claude Code itself is the harness**, so it
