@@ -301,6 +301,36 @@ export function getSpeechInterimDisplayTranscript(
   );
 }
 
+/**
+ * Snapshot the exact text projected by the composer mirror. Provisional speech
+ * remains absent from the editable textarea, but an explicit delivery action
+ * can use this value without waiting for a later recognizer revision.
+ */
+export function getSpeechVisibleDraftText(
+  base: string,
+  interimTranscript: string,
+  range: SpeechInsertionRange | null,
+): string {
+  const displayTranscript = getSpeechInterimDisplayTranscript(
+    base,
+    interimTranscript,
+    range,
+  );
+  if (!displayTranscript) return base;
+  return range
+    ? getSpeechTranscriptReplacementParts(
+        base,
+        displayTranscript,
+        range.end,
+        range.replaceEnd ?? range.end,
+      ).text
+    : getSpeechTranscriptInsertionParts(
+        base,
+        displayTranscript,
+        base.length,
+      ).text;
+}
+
 function normalizeSpeechTranscriptForReplacementContext(
   base: string,
   transcript: string,

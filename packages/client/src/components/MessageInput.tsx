@@ -70,6 +70,7 @@ import {
   getSpeechInterimDisplayTranscript,
   getSpeechTranscriptInsertionParts,
   getSpeechTranscriptReplacementParts,
+  getSpeechVisibleDraftText,
   mapSpeechInsertionRangeThroughEdit,
   mapSpeechInsertionRangeThroughReplacement,
   retargetSpeechInsertionRange,
@@ -164,6 +165,7 @@ interface SubmissionCompositionSnapshot {
 
 interface PendingSpeechDelivery {
   intent: PendingSpeechDeliveryIntent;
+  visibleTextSnapshot: string;
   draft: string;
   composition: SubmissionCompositionSnapshot;
   speechInsertionRangeRef: { current: SpeechInsertionRange | null };
@@ -1160,13 +1162,20 @@ export function MessageInput({
         pendingSpeechDeliverySettledRef.current = false;
         return false;
       }
-
       // The delivery press owns the current draft and speech target. Detach
-      // both from the live composer so backend-final text can finish that turn
-      // without consuming text the user starts typing for the next turn.
+      // both from the live composer so speech can settle without consuming
+      // text the user starts typing for the next turn. Keep the exact visible
+      // click-time projection immutable while late finals update the detached
+      // draft only for failure recovery and composition metadata.
+      const draft = controls.getDraft();
       pendingSpeechDeliveryRef.current = {
         intent,
-        draft: controls.getDraft(),
+        visibleTextSnapshot: getSpeechVisibleDraftText(
+          draft,
+          interimTranscriptRef.current,
+          speechInsertionRangeRef.current,
+        ),
+        draft,
         composition: {
           typingStartedAt: typingStartedAtRef.current,
           lastEditedAt: lastEditedAtRef.current,
@@ -1338,13 +1347,11 @@ export function MessageInput({
       return;
     }
     const pendingVoice = voiceButtonRef.current?.stopAndFinalize() ?? "";
-    let finalText = controls.getDraft();
-    if (pendingVoice) {
-      const textBeforeVoice = finalText.trimEnd();
-      finalText = textBeforeVoice
-        ? `${textBeforeVoice} ${pendingVoice}`
-        : pendingVoice;
-    }
+    const finalText = getSpeechVisibleDraftText(
+      controls.getDraft(),
+      pendingVoice,
+      speechInsertionRangeRef.current,
+    );
     controls.clearInput();
     resetCompositionMetadata();
     setInterimTranscript("");
@@ -1428,11 +1435,15 @@ export function MessageInput({
     dispatchingSettledSpeechDeliveryRef.current = true;
     try {
       if (pending.intent.kind === "queue") {
-        handleQueue(pending.draft, pending.composition, true);
+        handleQueue(
+          pending.visibleTextSnapshot,
+          pending.composition,
+          true,
+        );
         return;
       }
       void handleSubmit(
-        pending.draft,
+        pending.visibleTextSnapshot,
         pending.intent.actionOverride,
         pending.intent.focusAfterSubmit,
         false,
@@ -1459,11 +1470,11 @@ export function MessageInput({
 
       // Stop voice recording and get any pending interim text
       const pendingVoice = voiceButtonRef.current?.stopAndFinalize() ?? "";
-
-      let finalText = controls.getDraft().trimEnd();
-      if (pendingVoice) {
-        finalText = finalText ? `${finalText} ${pendingVoice}` : pendingVoice;
-      }
+      const finalText = getSpeechVisibleDraftText(
+        controls.getDraft(),
+        pendingVoice,
+        speechInsertionRangeRef.current,
+      ).trimEnd();
 
       const hasContent = finalText.trim() || attachments.length > 0;
       if (hasContent && !disabled) {
@@ -1495,11 +1506,11 @@ export function MessageInput({
   const handleBtwClick = useCallback(() => {
     if (disabled || !onBtwShortcut) return;
     const pendingVoice = voiceButtonRef.current?.stopAndFinalize() ?? "";
-    let finalText = controls.getDraft().trimEnd();
-    if (pendingVoice) {
-      finalText = finalText ? `${finalText} ${pendingVoice}` : pendingVoice;
-    }
-    const message = finalText.trim();
+    const message = getSpeechVisibleDraftText(
+      controls.getDraft(),
+      pendingVoice,
+      speechInsertionRangeRef.current,
+    ).trim();
     if (onBtwShortcut(message) && message) {
       controls.clearInput();
       resetCompositionMetadata();

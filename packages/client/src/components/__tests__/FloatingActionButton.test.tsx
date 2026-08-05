@@ -21,26 +21,40 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const {
   mockVoiceCancelProcessing,
   mockVoicePrewarm,
+  mockVoiceStopAndFinalize,
   mockVoiceToggle,
+  mockNavigate,
+  mockSetNewSessionPrefill,
+  voiceButtonState,
   voicePropsState,
 } = vi.hoisted(() => ({
   mockVoiceCancelProcessing: vi.fn(),
   mockVoicePrewarm: vi.fn(),
+  mockVoiceStopAndFinalize: vi.fn(() => ""),
   mockVoiceToggle: vi.fn(),
+  mockNavigate: vi.fn(),
+  mockSetNewSessionPrefill: vi.fn(),
+  voiceButtonState: { isListening: false },
   voicePropsState: {
     current: null as null | {
       onPendingSpeechChange?: (
         kind: "listening" | "transcribing" | "finalizing" | null,
+        settlement?: "completed" | "failed",
       ) => void;
       onInterimTranscript?: (text: string) => void;
+      onListeningStart?: () => void;
       onListeningStop?: () => void;
     },
   },
 }));
 
 vi.mock("react-router-dom", () => ({
-  useNavigate: () => vi.fn(),
+  useNavigate: () => mockNavigate,
   useLocation: () => ({ pathname: "/" }),
+}));
+
+vi.mock("../../lib/newSessionPrefill", () => ({
+  setNewSessionPrefill: mockSetNewSessionPrefill,
 }));
 
 vi.mock("../../hooks/useDraftPersistence", () => ({
@@ -100,12 +114,12 @@ vi.mock("../VoiceInputButton", () => ({
     useImperativeHandle(
       ref,
       () => ({
-        stopAndFinalize: () => "",
+        stopAndFinalize: mockVoiceStopAndFinalize,
         toggle: mockVoiceToggle,
         cancelProcessing: mockVoiceCancelProcessing,
         prewarm: mockVoicePrewarm,
         beginInsertionBoundary: vi.fn(),
-        isListening: false,
+        isListening: voiceButtonState.isListening,
         isAvailable: true,
       }),
       [],
@@ -120,7 +134,12 @@ afterEach(() => {
   cleanup();
   mockVoiceCancelProcessing.mockReset();
   mockVoicePrewarm.mockReset();
+  mockVoiceStopAndFinalize.mockReset();
+  mockVoiceStopAndFinalize.mockReturnValue("");
   mockVoiceToggle.mockReset();
+  mockNavigate.mockReset();
+  mockSetNewSessionPrefill.mockReset();
+  voiceButtonState.isListening = false;
   voicePropsState.current = null;
 });
 
@@ -195,5 +214,36 @@ describe("FloatingActionButton speech", () => {
     expect(interim.nextElementSibling?.classList).toContain(
       "speech-interim-caret",
     );
+  });
+
+  it("submits the visible interim snapshot after capture settles", async () => {
+    voiceButtonState.isListening = true;
+    render(<FloatingActionButton />);
+
+    fireEvent.click(screen.getByLabelText("fabNewSession"));
+    const textarea = (await screen.findByPlaceholderText(
+      "fabPlaceholder",
+    )) as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "alpha omega" } });
+    textarea.setSelectionRange("alpha".length, "alpha".length);
+    act(() => {
+      voicePropsState.current?.onListeningStart?.();
+      voicePropsState.current?.onPendingSpeechChange?.("listening");
+      voicePropsState.current?.onInterimTranscript?.("provisional words");
+    });
+
+    fireEvent.click(screen.getByLabelText("fabGoToNewSession"));
+    expect(mockVoiceStopAndFinalize).toHaveBeenCalledOnce();
+    expect(mockSetNewSessionPrefill).not.toHaveBeenCalled();
+
+    act(() => {
+      voiceButtonState.isListening = false;
+      voicePropsState.current?.onPendingSpeechChange?.(null, "completed");
+    });
+    expect(mockSetNewSessionPrefill).toHaveBeenCalledWith(
+      expect.any(String),
+      "alpha provisional words omega",
+    );
+    expect(mockNavigate).toHaveBeenCalledWith("/new-session");
   });
 });

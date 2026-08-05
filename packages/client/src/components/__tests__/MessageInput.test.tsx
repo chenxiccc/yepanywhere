@@ -2395,10 +2395,15 @@ describe("MessageInput", () => {
     expect(document.activeElement).toBe(textarea);
   });
 
-  it("keeps Send available and waits for backend-final speech", async () => {
+  it("sends the visible interim snapshot after speech settles", async () => {
     window.localStorage.setItem(UI_KEYS.speechAsrAttributionMs, "1000");
     const onSend = vi.fn();
-    renderMessageInput(vi.fn(), { onSend });
+    const textarea = renderMessageInput(vi.fn(), {
+      onSend,
+    }) as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "alpha omega" } });
+    textarea.setSelectionRange("alpha".length, "alpha".length);
 
     voiceButtonState.isListening = true;
     act(() => {
@@ -2422,9 +2427,13 @@ describe("MessageInput", () => {
     });
 
     await waitFor(() => {
-      expectSubmission(onSend, "[ASR] backend final words", "direct");
+      expectSubmission(
+        onSend,
+        "[ASR] alpha provisional words omega",
+        "direct",
+      );
     });
-    expect(onSend.mock.calls[0]?.[0]).not.toContain("provisional words");
+    expect(onSend.mock.calls[0]?.[0]).not.toContain("backend final words");
   });
 
   it("keeps a new draft typed while a speech queue settles", async () => {
@@ -2453,9 +2462,10 @@ describe("MessageInput", () => {
     });
 
     await waitFor(() => {
-      expectSubmission(onQueue, "previous turn final", "deferred");
+      expectSubmission(onQueue, "previous turn", "deferred");
       expect(textarea.value).toBe("next turn draft");
     });
+    expect(onQueue.mock.calls[0]?.[0]).not.toContain("previous turn final");
   });
 
   it("restores a detached speech draft without replacing newer text", () => {
@@ -2487,7 +2497,11 @@ describe("MessageInput", () => {
     vi.useFakeTimers();
     window.localStorage.setItem(UI_KEYS.speechAsrAttributionMs, "500");
     const onSend = vi.fn();
-    renderMessageInput(vi.fn(), { onSend });
+    const textarea = renderMessageInput(vi.fn(), {
+      onSend,
+    }) as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "visible at press" } });
 
     voiceButtonState.isListening = true;
     act(() => {
@@ -2507,7 +2521,7 @@ describe("MessageInput", () => {
     act(() => {
       voicePropsState.current?.onPendingSpeechChange?.(null, "completed");
     });
-    expectSubmission(onSend, "[ASR] settled backend words", "direct");
+    expectSubmission(onSend, "[ASR] visible at press", "direct");
   });
 
   it("keeps an empty speech-triggered send as a no-op", () => {

@@ -164,6 +164,7 @@ import {
   getSpeechInterimDisplayTranscript,
   getSpeechTranscriptInsertionParts,
   getSpeechTranscriptReplacementParts,
+  getSpeechVisibleDraftText,
   mapSpeechInsertionRangeThroughEdit,
   retargetSpeechInsertionRange,
   type SpeechInsertionRange,
@@ -213,7 +214,12 @@ interface PendingSpeechFinal {
   metadata?: SpeechTranscriptionResultMetadata;
 }
 
-type PendingNewSessionSpeechDelivery = "start" | "project-queue";
+type PendingNewSessionSpeechDeliveryIntent = "start" | "project-queue";
+
+interface PendingNewSessionSpeechDelivery {
+  kind: PendingNewSessionSpeechDeliveryIntent;
+  visibleTextSnapshot: string;
+}
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes}\u202fb`;
@@ -1810,7 +1816,7 @@ export function NewSessionForm({
   );
 
   const deferSpeechDelivery = useCallback(
-    (intent: PendingNewSessionSpeechDelivery) => {
+    (intent: PendingNewSessionSpeechDeliveryIntent) => {
       if (dispatchingSettledSpeechDeliveryRef.current) return false;
       const voice = voiceButtonRef.current;
       const speechWorkPending =
@@ -1822,12 +1828,19 @@ export function NewSessionForm({
         pendingSpeechDeliverySettledRef.current = false;
         return false;
       }
-      pendingSpeechDeliveryRef.current = intent;
+      pendingSpeechDeliveryRef.current = {
+        kind: intent,
+        visibleTextSnapshot: getSpeechVisibleDraftText(
+          draftControls.getDraft(),
+          interimTranscriptRef.current,
+          speechInsertionRangeRef.current,
+        ),
+      };
       pendingSpeechDeliverySettledRef.current = false;
       if (voice?.isListening) voice.stopAndFinalize();
       return true;
     },
-    [],
+    [draftControls],
   );
 
   const handleStartSession = useCallback(
@@ -2312,11 +2325,11 @@ export function NewSessionForm({
     pendingSpeechDeliverySettledRef.current = false;
     dispatchingSettledSpeechDeliveryRef.current = true;
     try {
-      if (pending === "project-queue") {
-        void handleQueueProjectSession();
+      if (pending.kind === "project-queue") {
+        void handleQueueProjectSession(pending.visibleTextSnapshot);
         return;
       }
-      void handleStartSession();
+      void handleStartSession(pending.visibleTextSnapshot);
     } finally {
       dispatchingSettledSpeechDeliveryRef.current = false;
     }

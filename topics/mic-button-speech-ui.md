@@ -217,13 +217,16 @@ That follow-up must preserve the user's click-time insertion target and flush
 the buffered audio without dropping first words.
 
 Send, Steer, and Queue remain visible and actionable while capture or
-post-capture finalization is active. Activating one records that exact delivery
-intent, stops capture, and waits for a successful provider settlement plus any
-held final-text commit before delivery. The mutable interim preview is never
-spliced into the provider-bound turn. A failed speech cycle clears the pending
-delivery instead of sending the pre-speech draft; a later deliberate delivery
-press may still send that retained draft. This contract applies in both the
-active-session and new-session composers.
+post-capture finalization is active. Activating one snapshots the exact text
+currently projected in the composer, including an underlined interim at its
+visible insertion or replacement span, records the delivery intent, stops
+capture, and waits for successful provider settlement. Delivery uses that
+immutable snapshot rather than a later recognizer correction or subsequent
+draft state. Taking the snapshot does not commit provisional text into the
+editable textarea. A failed speech cycle clears the pending delivery instead
+of sending the snapshot; a later deliberate delivery press may still send the
+retained draft. This contract applies to the active-session, new-session, and
+floating composers.
 
 In the active-session composer, that delivery press also transfers the current
 draft and speech insertion target into a delivery-owned transaction and clears

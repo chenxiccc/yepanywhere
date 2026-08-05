@@ -9,6 +9,7 @@ import {
   getSpeechTranscriptInsertionParts,
   getSpeechTranscriptReplacementParts,
   getSpeechTranscriptSeparator,
+  getSpeechVisibleDraftText,
   insertSpeechTranscriptAt,
   mapSpeechInsertionRangeThroughEdit,
   mapSpeechInsertionRangeThroughReplacement,
@@ -166,6 +167,26 @@ describe("speech transcript text edits", () => {
       text: "replace spoken text",
       cursor: "replace spoken".length,
     });
+  });
+
+  it("snapshots provisional speech exactly where the mirror shows it", () => {
+    expect(
+      getSpeechVisibleDraftText(
+        "alpha beta gamma",
+        "spoken",
+        createSpeechInsertionRange(6, 10),
+      ),
+    ).toBe("alpha spoken gamma");
+    expect(
+      getSpeechVisibleDraftText(
+        "existing text",
+        "provisional words",
+        createSpeechInsertionRange(
+          "existing text".length,
+          "existing text".length,
+        ),
+      ),
+    ).toBe("existing text provisional words");
   });
 
   it("decapitalizes selected mid-sentence replacements to match context", () => {

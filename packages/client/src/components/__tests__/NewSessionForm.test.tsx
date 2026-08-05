@@ -2455,7 +2455,7 @@ describe("NewSessionForm", () => {
     expect(mockVoiceContinueAfterSpeechSend).toHaveBeenCalledOnce();
   });
 
-  it("defers an active-capture Start until backend-final speech settles", async () => {
+  it("starts with the visible interim snapshot after speech settles", async () => {
     window.localStorage.setItem(UI_KEYS.speechAsrAttributionMs, "500");
     render(
       <NewSessionForm
@@ -2494,14 +2494,14 @@ describe("NewSessionForm", () => {
     await waitFor(() => {
       expect(mockStartSession).toHaveBeenCalledWith(
         "project-1",
-        "[ASR] backend final words",
+        "[ASR] provisional words",
         expect.any(Object),
         undefined,
         expect.any(Number),
       );
     });
     expect(mockStartSession.mock.calls[0]?.[1]).not.toContain(
-      "provisional words",
+      "backend final words",
     );
   });
 

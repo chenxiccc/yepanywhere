@@ -26,6 +26,7 @@ import {
   getSpeechInterimDisplayTranscript,
   getSpeechTranscriptInsertionParts,
   getSpeechTranscriptReplacementParts,
+  getSpeechVisibleDraftText,
   mapSpeechInsertionRangeThroughEdit,
   retargetSpeechInsertionRange,
   type SpeechInsertionRange,
@@ -43,6 +44,7 @@ import type {
 import { ProviderBadge } from "./ProviderBadge";
 import {
   VoiceInputButton,
+  type SpeechCycleSettlement,
   type SpeechPendingKind,
   type VoiceInputButtonRef,
 } from "./VoiceInputButton";
@@ -116,6 +118,7 @@ export function FloatingActionButton() {
   );
   const pendingSpeechRetargetRef = useRef<PendingSpeechRetarget | null>(null);
   const pendingSpeechFinalRef = useRef<PendingSpeechFinal | null>(null);
+  const pendingSpeechDeliveryRef = useRef<string | null>(null);
   // True once the user manually edits (non-whitespace) during the active mic
   // transaction; holds an automatic Smart Turn endpoint send. Speech-inserted
   // finals go through setDraft (not onChange) and never set this.
@@ -196,9 +199,22 @@ export function FloatingActionButton() {
 
   const handleSubmit = useCallback(
     (messageOverride?: unknown) => {
-      const trimmed = (
-        typeof messageOverride === "string" ? messageOverride : message
-      ).trim();
+      const override =
+        typeof messageOverride === "string" ? messageOverride : undefined;
+      const voice = voiceButtonRef.current;
+      if (
+        override === undefined &&
+        (voice?.isListening === true || speechPendingRef.current !== null)
+      ) {
+        pendingSpeechDeliveryRef.current = getSpeechVisibleDraftText(
+          draftControls.getDraft(),
+          interimTranscriptRef.current,
+          speechInsertionRangeRef.current,
+        );
+        if (voice?.isListening) voice.stopAndFinalize();
+        return;
+      }
+      const trimmed = (override ?? message).trim();
       if (!trimmed) return;
 
       // Store the message for NewSessionForm to pick up
@@ -486,7 +502,10 @@ export function FloatingActionButton() {
   }, []);
 
   const handlePendingSpeechChange = useCallback(
-    (kind: SpeechPendingKind | null) => {
+    (
+      kind: SpeechPendingKind | null,
+      settlement?: SpeechCycleSettlement,
+    ) => {
       speechPendingRef.current = kind;
       if (kind === "listening") handleSpeechSelectionTarget();
       if (kind === null) {
@@ -499,10 +518,15 @@ export function FloatingActionButton() {
         speechInsertionRangeRef.current = null;
         activeSpeechTargetIdRef.current = null;
         pendingSpeechRetargetRef.current = null;
+        const pendingDelivery = pendingSpeechDeliveryRef.current;
+        pendingSpeechDeliveryRef.current = null;
+        if (settlement === "completed" && pendingDelivery !== null) {
+          handleSubmit(pendingDelivery);
+        }
       }
       setSpeechPending(kind);
     },
-    [handleSpeechSelectionTarget],
+    [handleSpeechSelectionTarget, handleSubmit],
   );
 
   // Cancel a pending transcription/finalization. The provider discards the
@@ -518,6 +542,7 @@ export function FloatingActionButton() {
     speechInsertionRangeRef.current = null;
     activeSpeechTargetIdRef.current = null;
     pendingSpeechRetargetRef.current = null;
+    pendingSpeechDeliveryRef.current = null;
     setSpeechPending(null);
     setInterimTranscript("");
   }, [clearPendingSpeechFinal]);
@@ -658,7 +683,13 @@ export function FloatingActionButton() {
               type="button"
               className="fab-submit"
               onClick={handleSubmit}
-              disabled={!message.trim()}
+              disabled={
+                !(
+                  message.trim() ||
+                  speechPending !== null ||
+                  interimTranscript
+                )
+              }
               aria-label={t("fabGoToNewSession")}
             >
               ↵

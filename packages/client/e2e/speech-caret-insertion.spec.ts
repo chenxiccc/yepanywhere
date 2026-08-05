@@ -210,3 +210,32 @@ test("moves a later final-only browser result to the live caret", async ({
   );
   await expect(textarea).toHaveValue("resumed speech spoken first");
 });
+
+test("sends the interim text visible when Send is pressed", async ({
+  page,
+  baseURL,
+}) => {
+  const textarea = await openBrowserSpeechComposer(
+    page,
+    baseURL,
+    "alpha omega",
+  );
+
+  await textarea.click({ position: { x: 12, y: 10 } });
+  await expect(textarea).toHaveJSProperty("selectionStart", 0);
+
+  await emitSpeechResults(page, [
+    { transcript: "provisional words", isFinal: false },
+  ]);
+  await expect(page.locator(".speech-interim-inline")).toHaveText(
+    "provisional words",
+  );
+
+  await page.getByRole("button", { name: "Send" }).click();
+
+  await expect(
+    page.getByRole("main").getByText("provisional words alpha omega", {
+      exact: true,
+    }),
+  ).toBeVisible();
+});
