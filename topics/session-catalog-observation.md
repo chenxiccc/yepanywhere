@@ -267,6 +267,24 @@ Global concurrency and byte budgets prioritize live/visible work over cold
 repair and yield between main-thread units. A slow provider shard cannot make
 unrelated catalog reads wait behind one serialized request/transport queue.
 
+### What a cold restart actually costs, measured
+
+Each collection route has its own retention, so two routes reading the same
+cold store could plausibly parse every transcript twice. They do not:
+`SessionIndexService.getSessionsWithCache` joins in flight per
+`(sessionDir, project, options)` and its index answers the second read, so a
+fresh browser's opening burst across `GET /api/sessions` and `GET /api/inbox`
+parses each transcript exactly once, and a second burst parses nothing. A
+filtered read enumerates only the requested project's storage.
+`test/routes/cold-start-collection-reads.test.ts` pins all three against the
+real service over a real store with no persisted index, which is the actual
+cold state rather than a stub of it.
+
+That bounds the restart cost to one parse per transcript, not one per route
+per transcript — and names what is left. Removing that remaining parse is what
+the durable catalog is for, and it has no production caller, so a restart still
+costs the routes a first read of every project.
+
 ## Client and browser reuse
 
 Within one tab, retained client queries have one `(sourceKey, queryKey)`
