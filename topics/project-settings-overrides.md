@@ -7,6 +7,14 @@
 
 Topic: project-settings-overrides
 
+See also: [settings-ui-placement](settings-ui-placement.md) § Server-definitive
+settings and constants — the global tier this resolution order sits above, and
+the rule that a value an API suffers variation in should be server-definitive
+rather than a constant each client carries. A value that is server-definitive
+because it partitions a server cache is a poor candidate for a project
+override, since a per-project value re-partitions that cache along a different
+axis.
+
 Status: **banked seed (2026-07-24).** From the kzahel chat, in the context of
 "only cool really if it's project specific": rather than a plugin
 architecture ([[server-plugin-arch]]), the lighter project-specific lever

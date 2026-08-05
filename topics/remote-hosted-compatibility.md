@@ -167,3 +167,38 @@ When publishing a hosted remote client with a higher recommended level:
 This level is a product compatibility marker. It should be bumped deliberately,
 with a one-line reason in the release notes or tactical doc, rather than as an
 automatic counter tied to every merged feature.
+
+## Synchronized distribution is the intent, not the guarantee
+
+The maintainer publishes the hosted remote client together with the server code
+it talks to, so in the normal case a connected client is the same vintage as
+its server. Design for that: it is why a routine internal change does not need
+a negotiated protocol, and why the migration cost of a new server-owned value
+is ordinarily one release rather than a dual-path rollout.
+
+Do not promote that intent into an assumption the code may rely on. It is a
+release practice, and release practices have failure modes that are ordinary
+rather than exotic:
+
+- a native/Android client the user has not updated, which no server-side
+  publish can reach;
+- a GitHub Pages deploy that half-lands, so new HTML is served against old
+  hashed assets or the reverse;
+- a browser or service worker serving a cached bundle after a successful
+  publish, which is why the Pages deploy deliberately keeps prior assets
+  (`CLAUDE.local.md` § Remote Client Publish);
+- a publish that was simply forgotten, or a server restarted onto newer code
+  while clients stay connected across it.
+
+In each of those the version skew is real and the user is not at fault, so
+capability gates, [server-capabilities](server-capabilities.md) advertisement,
+and the compatibility level above keep earning their cost. Their job here is
+not to support a long tail of old releases — the support horizon governs that —
+but to make a *transient, accidental* skew degrade legibly instead of throwing.
+The synchronized-publish intent lowers how much dual-path behavior is worth
+building; it does not remove the gate, and a feature that hard-fails against a
+one-release-old client is still a defect.
+
+Upstream (`origin`/kzahel) is a different matter entirely: those users run
+their own servers and clients on their own schedule, so nothing here relaxes
+the review CLAUDE.md requires for changes on that path.
