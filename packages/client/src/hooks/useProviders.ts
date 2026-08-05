@@ -5,6 +5,7 @@ import {
 } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
+import { acquireClientQueryBootstrapSlot } from "../lib/clientQueryBootstrap";
 import {
   getCurrentClientSummarySourceKey,
   type ClientSummarySourceKey,
@@ -270,8 +271,14 @@ interface ProviderRowCacheEntry {
   expiresAt: number;
 }
 
+interface ProviderRowRequest {
+  forced: boolean;
+  promise: Promise<ProviderInfo>;
+  supersededBy?: Promise<ProviderInfo>;
+}
+
 const providerRowCaches = new Map<string, ProviderRowCacheEntry>();
-const providerRowPromises = new Map<string, Promise<ProviderInfo>>();
+const providerRowRequests = new Map<string, ProviderRowRequest>();
 
 function providerRowKey(
   sourceKey: ClientSummarySourceKey,
@@ -280,7 +287,7 @@ function providerRowKey(
   return `${sourceKey} ${providerName}`;
 }
 
-/** A row good enough to skip the single-provider request, or null. */
+/** A current row good enough to skip an ordinary single-provider request. */
 function readCachedProviderRow(
   sourceKey: ClientSummarySourceKey,
   providerName: ProviderName,
@@ -300,75 +307,203 @@ function readCachedProviderRow(
 async function loadProviderRow(
   sourceKey: ClientSummarySourceKey,
   providerName: ProviderName,
+  forceRefresh: boolean,
 ): Promise<ProviderInfo> {
   const key = providerRowKey(sourceKey, providerName);
-  const pending = providerRowPromises.get(key);
-  if (pending) return pending;
-
-  const request = api
-    .getProvider(providerName)
-    .then((data) => data.provider)
-    .catch((err) => {
-      providerRowPromises.delete(key);
-      throw err;
-    });
-  providerRowPromises.set(key, request);
-  try {
-    const row = await request;
-    if (providerRowPromises.get(key) === request) {
-      providerRowCaches.set(key, {
-        row,
-        expiresAt: Date.now() + PROVIDER_CACHE_TTL_MS,
-      });
-    }
-    return row;
-  } finally {
-    if (providerRowPromises.get(key) === request) {
-      providerRowPromises.delete(key);
-    }
+  if (!forceRefresh) {
+    const cached = readCachedProviderRow(sourceKey, providerName);
+    if (cached) return cached;
   }
+
+  const pending = providerRowRequests.get(key);
+  if (pending && (!forceRefresh || pending.forced)) return pending.promise;
+
+  const rawRequest = api
+    .getProvider(providerName, { refresh: forceRefresh })
+    .then((data) => data.provider);
+  let request!: ProviderRowRequest;
+  const promise = rawRequest
+    .then(
+      (row) => {
+        if (request.supersededBy) return request.supersededBy;
+        if (providerRowRequests.get(key) === request) {
+          providerRowCaches.set(key, {
+            row,
+            expiresAt: Date.now() + PROVIDER_CACHE_TTL_MS,
+          });
+        }
+        return row;
+      },
+      (error: unknown) => {
+        if (request.supersededBy) return request.supersededBy;
+        throw error;
+      },
+    )
+    .finally(() => {
+      if (providerRowRequests.get(key) === request) {
+        providerRowRequests.delete(key);
+      }
+    });
+  request = { forced: forceRefresh, promise };
+  if (pending) pending.supersededBy = promise;
+  providerRowRequests.set(key, request);
+  return promise;
+}
+
+interface ProviderRowHookState {
+  sourceKey: ClientSummarySourceKey;
+  providerName: ProviderName | null;
+  row: ProviderInfo | null;
+  refreshing: boolean;
+  fresh: boolean;
+  error: Error | null;
+}
+
+function getInitialProviderRowState(
+  sourceKey: ClientSummarySourceKey,
+  providerName: ProviderName | null,
+  forceRefreshOnMount: boolean,
+): ProviderRowHookState {
+  const row = providerName
+    ? readCachedProviderRow(sourceKey, providerName)
+    : null;
+  const fresh = row !== null && !forceRefreshOnMount;
+  return {
+    sourceKey,
+    providerName,
+    row,
+    refreshing: providerName !== null && !fresh,
+    fresh,
+    error: null,
+  };
+}
+
+export interface UseProviderRowOptions {
+  /** Require a named probe started after this selection became current. */
+  forceRefreshOnMount?: boolean;
 }
 
 /**
  * Resolve one provider's own status and models, independent of the aggregate.
  *
- * New Session needs the selected provider's catalog, not every provider's, and
- * `/providers` cannot answer until its slowest provider does. This asks only
- * for the selected one; the server's per-provider cache and in-flight
- * coalescing mean it costs no extra provider probe when an aggregate request is
- * already running. Returns null until an answer exists.
+ * The display row and its authority are separate: a caller may keep showing a
+ * retained row while `fresh` is false and a current named probe is running or
+ * failed. Initial acquisition participates in the route bootstrap tier; direct
+ * retries never wait for that startup gate.
  */
 export function useProviderRow(
   providerName: ProviderName | null | undefined,
-): ProviderInfo | null {
+  options: UseProviderRowOptions = {},
+) {
   const sourceKey = useClientSummarySourceKey();
-  const [row, setRow] = useState<ProviderInfo | null>(() =>
-    providerName ? readCachedProviderRow(sourceKey, providerName) : null,
+  const normalizedProvider = providerName ?? null;
+  const forceRefreshOnMount = options.forceRefreshOnMount === true;
+  const [state, setState] = useState<ProviderRowHookState>(() =>
+    getInitialProviderRowState(
+      sourceKey,
+      normalizedProvider,
+      forceRefreshOnMount,
+    ),
+  );
+  const requestSequenceRef = useRef(0);
+
+  const fetch = useCallback(
+    async (forceRefresh: boolean) => {
+      if (!normalizedProvider) return;
+      const requestSequence = ++requestSequenceRef.current;
+      setState((current) => {
+        const visible =
+          current.sourceKey === sourceKey &&
+          current.providerName === normalizedProvider
+            ? current
+            : getInitialProviderRowState(
+                sourceKey,
+                normalizedProvider,
+                forceRefresh,
+              );
+        return {
+          ...visible,
+          refreshing: true,
+          fresh: forceRefresh ? false : visible.fresh,
+          error: null,
+        };
+      });
+      try {
+        const row = await loadProviderRow(
+          sourceKey,
+          normalizedProvider,
+          forceRefresh,
+        );
+        if (requestSequence !== requestSequenceRef.current) return;
+        setState({
+          sourceKey,
+          providerName: normalizedProvider,
+          row,
+          refreshing: false,
+          fresh: true,
+          error: null,
+        });
+      } catch (error) {
+        if (requestSequence !== requestSequenceRef.current) return;
+        setState((current) => ({
+          ...(current.sourceKey === sourceKey &&
+          current.providerName === normalizedProvider
+            ? current
+            : getInitialProviderRowState(
+                sourceKey,
+                normalizedProvider,
+                forceRefresh,
+              )),
+          refreshing: false,
+          fresh: false,
+          error: error instanceof Error ? error : new Error(String(error)),
+        }));
+      }
+    },
+    [normalizedProvider, sourceKey],
   );
 
   useEffect(() => {
-    if (!providerName) {
-      setRow(null);
-      return;
-    }
-    const cached = readCachedProviderRow(sourceKey, providerName);
-    setRow(cached);
-    if (cached) return;
+    requestSequenceRef.current += 1;
+    const initial = getInitialProviderRowState(
+      sourceKey,
+      normalizedProvider,
+      forceRefreshOnMount,
+    );
+    setState(initial);
+    if (!normalizedProvider || initial.fresh) return undefined;
 
     let cancelled = false;
-    loadProviderRow(sourceKey, providerName)
-      .then((next) => {
-        if (!cancelled) setRow(next);
-      })
-      .catch(() => {
-        // The aggregate request remains the authority; it reports the error.
-      });
+    const slot = acquireClientQueryBootstrapSlot(sourceKey, "route");
+    void slot.ready().then(() => {
+      if (cancelled) {
+        slot.settle();
+        return;
+      }
+      void fetch(forceRefreshOnMount).finally(() => slot.settle());
+    });
     return () => {
       cancelled = true;
+      requestSequenceRef.current += 1;
+      slot.settle();
     };
-  }, [sourceKey, providerName]);
+  }, [fetch, forceRefreshOnMount, normalizedProvider, sourceKey]);
 
-  return row;
+  const visible =
+    state.sourceKey === sourceKey &&
+    state.providerName === normalizedProvider
+      ? state
+      : getInitialProviderRowState(
+          sourceKey,
+          normalizedProvider,
+          forceRefreshOnMount,
+        );
+
+  return {
+    ...visible,
+    loading: visible.refreshing && visible.row === null,
+    refresh: () => fetch(true),
+  };
 }
 
 /**

@@ -32,6 +32,7 @@ import { NewSessionForm } from "../NewSessionForm";
 const {
   mockNavigate,
   mockRefetchProviders,
+  mockRefreshProviderRow,
   mockUpdateSetting,
   mockStartSession,
   mockStartDetachedSession,
@@ -58,6 +59,7 @@ const {
   draftKeys,
   modelSettingsState,
   providersState,
+  providerRowState,
   serverSettingsState,
   versionState,
   remoteBasePathState,
@@ -69,6 +71,7 @@ const {
 } = vi.hoisted(() => ({
   mockNavigate: vi.fn(),
   mockRefetchProviders: vi.fn(),
+  mockRefreshProviderRow: vi.fn(),
   mockUpdateSetting: vi.fn(),
   mockStartSession: vi.fn(),
   mockStartDetachedSession: vi.fn(),
@@ -151,6 +154,11 @@ const {
       }>;
     }>,
     loading: false,
+  },
+  providerRowState: {
+    fresh: true,
+    refreshing: false,
+    error: null as Error | null,
   },
   serverSettingsState: {
     settings: null as {
@@ -368,10 +376,21 @@ vi.mock("../../hooks/useProviders", () => ({
     refetch: mockRefetchProviders,
     reload: vi.fn(),
   }),
-  useProviderRow: (providerName: string | null | undefined) =>
-    providersState.providers.find(
-      (provider) => provider.name === providerName,
-    ) ?? null,
+  useProviderRow: (providerName: string | null | undefined) => ({
+    row:
+      providersState.providers.find(
+        (provider) => provider.name === providerName,
+      ) ?? null,
+    loading:
+      providerRowState.refreshing &&
+      !providersState.providers.some(
+        (provider) => provider.name === providerName,
+      ),
+    refreshing: providerRowState.refreshing,
+    fresh: providerRowState.fresh,
+    error: providerRowState.error,
+    refresh: mockRefreshProviderRow,
+  }),
   getAvailableProviders: (providers: typeof providersState.providers) =>
     providers.filter(
       (provider) => provider.installed && provider.authenticated,
@@ -685,6 +704,9 @@ describe("NewSessionForm", () => {
       },
     ];
     providersState.loading = false;
+    providerRowState.fresh = true;
+    providerRowState.refreshing = false;
+    providerRowState.error = null;
     serverSettingsState.settings = null;
     serverSettingsState.isLoading = true;
     filterDropdownState.selected = [];
@@ -697,6 +719,8 @@ describe("NewSessionForm", () => {
     mockNavigate.mockReset();
     mockRefetchProviders.mockReset();
     mockRefetchProviders.mockResolvedValue(undefined);
+    mockRefreshProviderRow.mockReset();
+    mockRefreshProviderRow.mockResolvedValue(undefined);
     mockUpdateSetting.mockReset();
     mockStartSession.mockReset();
     mockStartDetachedSession.mockReset();
@@ -1065,7 +1089,7 @@ describe("NewSessionForm", () => {
     ).toBeGreaterThan(0);
   });
 
-  it("refreshes and blocks Claude Gateway until its catalog has a model", async () => {
+  it("keeps stale Gateway models visible but blocked until named validation", async () => {
     providersState.providers.push({
       name: "claude-gateway",
       displayName: "Claude Gateway",
@@ -1073,7 +1097,7 @@ describe("NewSessionForm", () => {
       authenticated: true,
       enabled: true,
       supportsThinkingToggle: true,
-      models: [],
+      models: [{ id: "gpt-5.5", name: "Saved Gateway" }],
     });
     serverSettingsState.settings = {
       newSessionDefaults: {
@@ -1085,6 +1109,8 @@ describe("NewSessionForm", () => {
       },
     };
     serverSettingsState.isLoading = false;
+    providerRowState.fresh = false;
+    providerRowState.refreshing = true;
 
     const { rerender } = render(
       <NewSessionForm
@@ -1094,17 +1120,12 @@ describe("NewSessionForm", () => {
       />,
     );
 
-    await waitFor(() => {
-      expect(mockRefetchProviders).toHaveBeenCalledTimes(1);
-    });
     expect(
-      screen.getByText("newSessionGatewayCatalogUnavailable"),
+      screen.getByText("newSessionGatewayCatalogLoading"),
     ).toBeDefined();
-    expect(screen.queryByRole("button", { name: "gpt-5.5" })).toBeNull();
-    fireEvent.click(
-      screen.getByRole("button", { name: "newSessionGatewayCatalogRetry" }),
-    );
-    expect(mockRefetchProviders).toHaveBeenCalledTimes(2);
+    expect(
+      screen.getAllByRole("button", { name: "Saved Gateway" }).length,
+    ).toBeGreaterThan(0);
 
     const composer = screen.getByPlaceholderText("newSessionPlaceholder");
     fireEvent.change(composer, { target: { value: "hello" } });
@@ -1113,6 +1134,24 @@ describe("NewSessionForm", () => {
     ).toHaveProperty("disabled", true);
     fireEvent.keyDown(composer, { key: "Enter" });
     expect(mockStartSession).not.toHaveBeenCalled();
+
+    providerRowState.refreshing = false;
+    providerRowState.error = new Error("gateway unavailable");
+    rerender(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+    expect(
+      screen.getByText("newSessionGatewayCatalogUnavailable"),
+    ).toBeDefined();
+    fireEvent.click(
+      screen.getByRole("button", { name: "newSessionGatewayCatalogRetry" }),
+    );
+    expect(mockRefreshProviderRow).toHaveBeenCalledTimes(1);
+    expect(mockRefetchProviders).not.toHaveBeenCalled();
 
     const gateway = providersState.providers.find(
       (provider) => provider.name === "claude-gateway",
@@ -1127,6 +1166,8 @@ describe("NewSessionForm", () => {
         supportedEffortLevels: ["low", "high", "xhigh"],
       },
     ];
+    providerRowState.fresh = true;
+    providerRowState.error = null;
     rerender(
       <NewSessionForm
         projectId="project-1"

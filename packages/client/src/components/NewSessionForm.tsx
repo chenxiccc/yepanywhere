@@ -824,7 +824,6 @@ export function NewSessionForm({
     providers,
     loading: providersLoading,
     stale: providersStale,
-    refetch: refetchProviders,
   } = useProviders();
   const { usage: subscriptionUsage } =
     useProviderSubscriptionUsage(selectedProvider);
@@ -873,18 +872,17 @@ export function NewSessionForm({
       native: t("promptSuggestionModeNativeDescription"),
     };
 
-  // Get models and capabilities for the currently selected provider.
-  // The selected provider's own row arrives well before the aggregate request,
-  // which cannot answer until its slowest unselected provider does, so it wins
-  // while the aggregate is missing or is a previous visit's snapshot.
-  const selectedProviderRow = useProviderRow(selectedProvider);
+  // Get models and capabilities for the currently selected provider. Its named
+  // row wins once available because it is independent of the aggregate's
+  // slowest member and can carry stronger freshness than a retained snapshot.
+  const selectedProviderQuery = useProviderRow(selectedProvider, {
+    forceRefreshOnMount: selectedProvider === "claude-gateway",
+  });
   const aggregateProviderInfo = providers.find(
     (p) => p.name === selectedProvider,
   );
   const selectedProviderInfo =
-    !aggregateProviderInfo || providersStale
-      ? (selectedProviderRow ?? aggregateProviderInfo)
-      : aggregateProviderInfo;
+    selectedProviderQuery.row ?? aggregateProviderInfo;
   const availableModels: ModelInfo[] = selectedProviderInfo?.models ?? [];
   const visibleModels = useMemo(
     () =>
@@ -896,11 +894,18 @@ export function NewSessionForm({
       ),
     [availableModels, selectedModel, selectedProvider, t],
   );
-  const hasSelectedProviderModel = hasRequiredProviderModel(
-    selectedProvider,
-    availableModels,
-    selectedModel,
-  );
+  const selectedProviderCatalogCurrent =
+    selectedProvider !== "claude-gateway" ||
+    (selectedProviderQuery.fresh &&
+      !selectedProviderQuery.refreshing &&
+      selectedProviderQuery.error === null);
+  const hasSelectedProviderModel =
+    selectedProviderCatalogCurrent &&
+    hasRequiredProviderModel(
+      selectedProvider,
+      availableModels,
+      selectedModel,
+    );
   const helperSelectableModels = useMemo(
     () => [...visibleModels],
     [visibleModels],
@@ -1475,11 +1480,6 @@ export function NewSessionForm({
       getDefaultHelperSideModel(providerModels, providerDefaults),
     );
   };
-
-  useEffect(() => {
-    if (selectedProvider !== "claude-gateway") return;
-    void refetchProviders();
-  }, [refetchProviders, selectedProvider]);
 
   useEffect(() => {
     if (selectedProvider !== "claude-gateway") return;
@@ -3404,7 +3404,8 @@ export function NewSessionForm({
       </div>
     ) : null;
   const gatewayCatalogStatus =
-    selectedProvider === "claude-gateway" && availableModels.length === 0 ? (
+    selectedProvider === "claude-gateway" &&
+    (!selectedProviderQuery.fresh || availableModels.length === 0) ? (
       <div className="new-session-model-field">
         <h3>{t("newSessionModelTitle")}</h3>
         <div
@@ -3413,15 +3414,15 @@ export function NewSessionForm({
           aria-live="polite"
         >
           <span>
-            {providersLoading
+            {selectedProviderQuery.refreshing
               ? t("newSessionGatewayCatalogLoading")
               : t("newSessionGatewayCatalogUnavailable")}
           </span>
           <button
             type="button"
             className="new-session-provider-catalog-retry"
-            disabled={providersLoading}
-            onClick={() => void refetchProviders()}
+            disabled={selectedProviderQuery.refreshing}
+            onClick={() => void selectedProviderQuery.refresh()}
           >
             {t("newSessionGatewayCatalogRetry")}
           </button>
