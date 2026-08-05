@@ -475,6 +475,7 @@ export function SessionShareModal({
     return (
       <Modal
         anchorRect={anchorRect}
+        anchorAtAnyWidth
         title={t("publicShareManagementTitle")}
         onClose={onClose}
       >
@@ -501,11 +502,16 @@ export function SessionShareModal({
                       disabled={managementWorking !== null}
                       onClick={() => setManagementScope(scope)}
                     >
-                      {scope === "all"
-                        ? t("publicShareManagementScopeAll")
-                        : scope === "project"
-                          ? t("publicShareManagementScopeProject")
-                          : t("publicShareManagementScopeSession")}
+                      <span className={styles.filterIcon}>
+                        <ShareFilterIcon kind={scope} />
+                      </span>
+                      <span>
+                        {scope === "all"
+                          ? t("publicShareManagementScopeAll")
+                          : scope === "project"
+                            ? t("publicShareManagementScopeProject")
+                            : t("publicShareManagementScopeSession")}
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -534,9 +540,14 @@ export function SessionShareModal({
                             : setShowLiveShares((value) => !value)
                         }
                       >
-                        {mode === "live"
-                          ? t("publicShareLiveBadge")
-                          : t("publicShareManagementModeReadOnly")}
+                        <span className={styles.filterIcon}>
+                          <ShareFilterIcon kind={mode} />
+                        </span>
+                        <span>
+                          {mode === "live"
+                            ? t("publicShareLiveBadge")
+                            : t("publicShareManagementModeReadOnly")}
+                        </span>
                       </button>
                       <button
                         type="button"
@@ -556,7 +567,7 @@ export function SessionShareModal({
                               : t("publicShareManagementModeReadOnly"),
                         })}
                       >
-                        +
+                        <PlusIcon />
                       </button>
                     </div>
                   );
@@ -930,6 +941,70 @@ function CopyIcon() {
     >
       <rect x="5" y="5" width="9" height="9" rx="1.5" />
       <path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2H3.5A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5" />
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <path d="M8 3v10M3 8h10" />
+    </svg>
+  );
+}
+
+function ShareFilterIcon({
+  kind,
+}: {
+  kind: "all" | "project" | "session" | PublicSessionShareMode;
+}) {
+  const paths = {
+    all: (
+      <>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M3 12h18M12 3c3 3.2 3 14.8 0 18M12 3c-3 3.2-3 14.8 0 18" />
+      </>
+    ),
+    project: (
+      <path d="M3 6.5h7l2 2h9v10.5H3zM3 6.5V5h7l2 2" />
+    ),
+    session: (
+      <>
+        <rect x="3" y="4" width="18" height="14" rx="3" />
+        <path d="m8 21 4-3h5M7 9h10M7 13h7" />
+      </>
+    ),
+    frozen: (
+      <>
+        <rect x="5" y="10" width="14" height="11" rx="2" />
+        <path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3" />
+      </>
+    ),
+    live: (
+      <>
+        <circle cx="12" cy="12" r="2" fill="currentColor" stroke="none" />
+        <path d="M8.5 8.5a5 5 0 0 0 0 7M15.5 8.5a5 5 0 0 1 0 7M5.5 5.5a9 9 0 0 0 0 13M18.5 5.5a9 9 0 0 1 0 13" />
+      </>
+    ),
+  };
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {paths[kind]}
     </svg>
   );
 }

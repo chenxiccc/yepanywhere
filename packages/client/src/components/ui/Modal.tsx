@@ -28,6 +28,7 @@ interface ModalProps {
   children: ReactNode;
   onClose: () => void;
   anchorRect?: ModalAnchorRect | null;
+  anchorAtAnyWidth?: boolean;
   variant?: "image-viewer";
   /**
    * When true, opening pushes a history entry so a browser "back" — the mobile
@@ -120,6 +121,7 @@ export function Modal({
   children,
   onClose,
   anchorRect,
+  anchorAtAnyWidth = false,
   closeOnBackGesture,
   variant,
 }: ModalProps) {
@@ -131,7 +133,8 @@ export function Modal({
   const isAnchored =
     !!anchorRect &&
     typeof window !== "undefined" &&
-    window.innerWidth > ANCHORED_MODAL_MIN_VIEWPORT_WIDTH_PX;
+    (anchorAtAnyWidth ||
+      window.innerWidth > ANCHORED_MODAL_MIN_VIEWPORT_WIDTH_PX);
   const [anchorStyle, setAnchorStyle] = useState<CSSProperties | null>(null);
 
   // Close on Escape key

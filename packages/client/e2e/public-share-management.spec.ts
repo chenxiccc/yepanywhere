@@ -110,10 +110,25 @@ test("right click opens session share management without creating a link", async
     });
     await page.setViewportSize({ width: 375, height: 812 });
     await expect(dialog.getByRole("listitem")).toHaveCount(2);
+    const mobileDialogBox = await dialog.boundingBox();
+    const mobileIndicatorBox = await indicator.boundingBox();
+    expect(mobileDialogBox).not.toBeNull();
+    expect(mobileIndicatorBox).not.toBeNull();
+    expect(mobileDialogBox?.x).toBeLessThanOrEqual(9);
+    expect(mobileDialogBox?.width).toBeGreaterThanOrEqual(358);
+    expect(mobileDialogBox?.y).toBeGreaterThan(mobileIndicatorBox?.y ?? 0);
+    expect(mobileDialogBox?.y).toBeLessThan(100);
     await page.screenshot({
       path: join(captureDirectory, "mobile-375x812.png"),
     });
     await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.evaluate(() => {
+      localStorage.setItem("yep-anywhere-theme", "dark");
+      document.documentElement.setAttribute("data-theme", "dark");
+    });
+    await page.screenshot({
+      path: join(captureDirectory, "desktop-dark-1920x1080.png"),
+    });
   }
 
   await dialog.getByRole("button", { name: "All projects" }).click();

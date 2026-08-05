@@ -225,12 +225,17 @@ Right-click management uses the same broadcast-icon anchor and dropdown-like
 placement as left-click sharing. Its two-column layout keeps five filter rows in
 the left rail: all projects, this project, and this session are mutually
 exclusive (this session is the default); read-only and live are independent and
-both default on. The right column lists matching grants with active connection
-counts, copy and revoke actions, and scrolling only when available viewport
-height cannot contain the rows. Session-wide revoke is rendered before the
-inventory request resolves. The type-row `+` creates that kind of link for the
-current session, enables its filter, copies it, refreshes inventory, and
-highlights the created row.
+both default on. Each selector uses the same white line-glyph tile, accent fill,
+and tinted-row selected-state grammar as Settings categories; selection does
+not depend on a subtle border alone. The right column lists matching grants
+with active connection counts, copy and revoke actions, and scrolling only
+when available viewport height cannot contain the rows. At narrow widths the
+pane stays anchored below the broadcast icon and expands to the available
+viewport width; it does not switch to the centered or bottom modal placement.
+Session-wide revoke is rendered before the inventory request resolves. The
+type-row `+` is a distinct green action button rather than another toggle-like
+control; it creates that kind of link for the current session, enables its
+filter, copies it, refreshes inventory, and highlights the created row.
 
 Legacy migration is record-at-a-time and streaming. It must not `readFile`,
 `JSON.parse`, or `JSON.stringify` the complete aggregate or one huge embedded
