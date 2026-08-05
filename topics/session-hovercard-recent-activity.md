@@ -82,6 +82,27 @@ prior text block or a short tool label (see Content below).
 | Providers | **Excerpt is provider-independent** via the on-demand refresh (normalized `Message[]`). Claude additionally populates it in the cheap summary/live path; other providers populate on focus/hover. Recaps stay Claude-only. |
 | Freshness | **Rides the existing live `session-updated` event** (same channel that already updates title/messageCount/contextUsage), not a mouseover-repoll. |
 
+### Requested-card loading contract
+
+Accepted 2026-08-05. Neither desktop pointer movement nor tablet sidebar
+adjacency justifies transcript scanning before a particular preview is
+requested. Desktop refresh begins only when that row's card is due to display;
+touch refresh begins only when the user explicitly opens that row's preview.
+Pointer-velocity and adjacent-row prefetch remain deferred until measurement of
+requested-card update delay shows a need.
+
+The card opens immediately from compact list fields. Its opening user request
+and metadata occupy their final coordinates and do not jitter, flash, or repaint
+when the recent-agent excerpt arrives. Allocate the bounded reply region below
+that stable top before asynchronous content is applied, including when the card
+is flipped above its trigger. The later reply fills only that region; failure or
+absence leaves it empty without moving the opening block.
+
+This is distinct from Inbox reconciliation. Inbox starts a provider-wide scan
+eagerly at server boot and publishes progressive count/tier deltas because it
+must observe outside-YA activity. Hovercards have no corpus-wide requirement
+and may never trigger an adjacent or all-row transcript pass.
+
 ## Proposals considered
 
 ### Content version (what text)

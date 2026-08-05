@@ -12,7 +12,9 @@ Status: Implemented 2026-08-04 under
 the shared grammar, resolver, capability-gated delivery, tab-local cache,
 annotation boundary, interaction, authenticated render surfaces, FileViewer
 link convergence, and performance/visual acceptance are complete. Public
-shares deliberately remain unannotated.
+shares deliberately remain unannotated. Demand-driven filesystem correction is
+specified in
+[`docs/tactical/092-demand-driven-glossary-discovery.md`](../docs/tactical/092-demand-driven-glossary-discovery.md).
 
 ## Product contract
 
@@ -276,37 +278,54 @@ unchanged. It must never fall back to a per-character regex or phrase loop.
 The server owns the canonical governing-glossary and include-graph resolver and
 holds parsed glossaries and compiled automata in process memory. V1 has no
 persistent cache format, database table, app-data cache file, project-local
-cache, or restart-recovery obligation. Governing include closures are expected
-to remain below 1,000 entries, so parsing and compilation after a server start
-are bounded ordinary work.
+cache, or restart-recovery obligation. A typical project's glossaries total
+fewer than 1,000 entries across all subdirectories, so any governing include
+closure is smaller still and parsing/compilation is bounded ordinary work.
 
 Governing-file and include-candidate discovery reuse
 `ProjectPathIndex.findExisting` from
-`packages/server/src/projects/projectPathIndex.ts`. Its lazy directory listings
-and directory-mtime validation maintain current presence and absence for each
-single source-context resolution. See
+`packages/server/src/projects/projectPathIndex.ts`. A resolution probes only
+the rendered source directory and its parents through the project root, or the
+referring-directory/project-root bases for an explicit include. It never needs
+a complete project index first. Sparse positive and exact-negative path facts
+are shared with path linkification. See
 [project-path-links](project-path-links.md) for that index's contract.
 
-Directory mtime identifies which glossary path exists, but editing an existing
-glossary need not change its parent directory. The compiled cache therefore
-maps a governing canonical path to the ordered canonical dependency paths,
-their file identities, parsed rows, and compiled automaton. Unchanged dependency
-identities reuse that structure across files, sessions, and Source Control views
-for the life of the server process. A changed dependency rebuilds the closure;
-a changed directory listing re-runs governing or include selection. Successful
-and failed bounded compilations are cached by the same dependency identity so
-a bad graph cannot cause repeated work on every render.
+The path trie distinguishes unknown, present, and exact absent components; a
+directory additionally records whether its immediate listing is complete and
+current. Only a complete/current directory may answer arbitrary child absence.
+An exact missing `GLOSSARY.md` probe may be cached without listing the directory
+or claiming completeness. Initializing the root listing with unknown child
+directories is sufficient; no breadth-first project warm is part of glossary
+resolution.
+
+The compiled cache maps a governing canonical path to the ordered canonical
+dependency paths, their file identities, parsed rows, and compiled automaton.
+Unchanged dependency identities reuse that structure across files, sessions,
+and Source Control views for the life of the server process. A changed
+dependency rebuilds the closure; creation/deletion/rename affecting a governing
+candidate re-runs selection. Successful and failed bounded compilations are
+cached by the same dependency generation so a bad graph cannot cause repeated
+work on every render.
 
 While at least one client subscribes to a project's glossary paths, the server
 holds one reference-counted project watcher. Subscription begins with the
 currently existing candidate and dependency paths learned by on-demand source
 resolution, plus a monotonic process-local generation. It then emits one
-`create`, `modify`, or `delete` notification for each glossary-path change. The
-native watcher notices future `GLOSSARY.md` changes project-wide; the fallback
-poll stats only ancestor candidates and include dependencies already learned by
-queries. Missing candidates remain observed so creating a nearer glossary is
-detected. No subscription startup or poll recursively crawls the project. The
-watcher and poll are torn down when the last subscriber disconnects.
+`create`, `modify`, or `delete` notification for each relevant glossary-path
+change. On Linux, native non-recursive watches attach only to directories
+hydrated by source ancestor or include resolution. Missing candidate names in
+those directories remain observed, so creating a nearer glossary is detected.
+An unknown subtree contains no cached fact and needs no watcher. Watcher
+error/overflow marks the generation uncertain and schedules bounded
+reconciliation; fallback polling checks only learned candidate/dependency
+directories and files. The watcher and poll are torn down when the last
+subscriber disconnects.
+
+The current implementation's recursive project-root `fs.watch` violates this
+contract. On the motivating project, attaching it blocked the Node event loop
+for about 2.5 seconds even though the artifact itself completed in 75 ms. It
+must be replaced rather than treated as acceptable asynchronous initialization.
 
 The client uses the glossary-path stream for invalidation, not governing-file
 selection. One tab-local project store owns the active project's subscription
@@ -325,10 +344,13 @@ changed glossary's directory because nearest-governing resolution may have
 changed. A snapshot generation change after reconnect invalidates the tab's
 cached artifacts without creating one subscription per queried source.
 
-File-identity checks in the artifact resolver remain authoritative even with
-notifications: an artifact request validates the actual current dependency
-graph before reuse. Notifications provide prompt cache invalidation; they do
-not weaken the resolver's correctness boundary.
+Filesystem truth remains authoritative, but cache use must not `stat` directory
+mtime on every render or artifact reuse. A current watcher generation makes
+cached path/dependency facts reusable synchronously. A cold/invalidated artifact
+request reads the actual dependency files before publishing a new generation;
+watcher uncertainty or low-rate reconciliation revalidates learned facts after
+events may have been missed. Notifications are prompt invalidation, not proof
+that external Git operations can never escape observation.
 
 All glossary-specific cache state may disappear on server restart. If later
 measurement shows cold parsing or compilation to be material, a persistent

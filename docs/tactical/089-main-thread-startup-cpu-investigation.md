@@ -4,14 +4,17 @@
 > its high CPU is bounded startup work or a sustained loop, and identify the
 > owning YA subsystem before proposing a fix.
 
-Status: Investigation completed 2026-08-04. The observed `MainThread` was YA's
+Status: Investigation completed 2026-08-05. The observed `MainThread` was YA's
 Node server. It stopped answering before the operator's manual `reyep --full`,
 then aborted with `SIGABRT` near V8's measured heap limit. Heap exhaustion is a
 strong inference, not a proven fatal string. The replacement never reached
 quiescence: process-list provider-child enrichment repeatedly full-parsed
-unchanged Codex rollouts with caching disabled. The owning production fix is
-specified below but not implemented here. The adjacent stale-dev-tree defect
-was fixed in `f3efacfa`.
+unchanged Codex rollouts with caching disabled. A second isolated heap path is
+the monolithic public-share store. Cold production measurements also locate
+global Inbox reconciliation and recursive glossary watching on the first-page
+critical path. The owning production corrections are specified below but not
+implemented here. The adjacent stale-dev-tree defect was fixed in `f3efacfa`;
+the bind-provenance follow-up is included with this investigation.
 
 Related contracts:
 
@@ -21,6 +24,15 @@ Related contracts:
 - [`topics/provider-child-sessions.md`](../../topics/provider-child-sessions.md)
 - [`topics/codex-sessions.md`](../../topics/codex-sessions.md)
 - [`topics/server-performance-observability.md`](../../topics/server-performance-observability.md)
+- [`topics/memory-growth.md`](../../topics/memory-growth.md)
+- [`topics/inbox.md`](../../topics/inbox.md)
+- [`topics/project-path-links.md`](../../topics/project-path-links.md)
+- [`topics/glossary-tooltips.md`](../../topics/glossary-tooltips.md)
+- [`topics/session-hovercard-recent-activity.md`](../../topics/session-hovercard-recent-activity.md)
+- [`topics/provider-abstraction.md`](../../topics/provider-abstraction.md)
+- [`091-project-path-cache.md`](091-project-path-cache.md)
+- [`092-demand-driven-glossary-discovery.md`](092-demand-driven-glossary-discovery.md)
+- [`093-provider-session-reconciliation.md`](093-provider-session-reconciliation.md)
 
 ## Evidence already established
 
@@ -115,9 +127,24 @@ reattachment completed, but the process did not enter a quiescent phase:
 The oscillating RSS/VIRT and heavy V8-worker CPU are a parse/allocation/GC
 sawtooth. Near-zero physical reads and I/O wait reject storage latency as the
 CPU owner. A short `top` sample later reached much higher instantaneous CPU,
-but the ten-minute cumulative deltas are the stable comparison. The sampled
-window rejects monotonic VIRT growth during those ten minutes; it does not yet
-establish a long-horizon VIRT ceiling under continued session activity.
+but the ten-minute cumulative deltas are the stable comparison.
+
+A later 30-minute map census makes the VIRT result stronger. Across 361
+samples, direct Hono VIRT ranged from 46.87-48.65 GiB (47.56 GiB first, 47.47
+GiB last), RSS ranged from 3.715-5.513 GiB, and `VmSwap` stayed zero. Five
+anonymous `PROT_NONE` mappings of exactly 8,589,996,032 bytes remained stable;
+together they account for about 40.96 GiB. Source tracing and a bounded
+`mmap` trace identify them as V8 WebAssembly backing-store guard reservations.
+They reserve address space but do not commit equivalent RAM and are not the
+4.19 GiB V8 JavaScript heap. Development `tsx`/module loading instantiates
+several such guards; the built production server still reserved about 20 GiB
+VIRT but avoided part of that development-loader multiplier.
+
+The operator's observation of roughly 45 GiB VIRT shortly after launch was
+therefore accurate but is not evidence of a 45 GiB heap or continuing physical
+growth. The 30-minute sample rejects monotonic VIRT growth in that interval.
+It does not make the 3.7-5.5 GiB RSS sawtooth safe: RSS and V8 heap headroom are
+the relevant exhaustion signals.
 
 The server subtree also contained two Node parser workers. In one operator
 snapshot, direct Hono was about 47.4 GiB VIRT / 4.4 GiB RSS while Hono plus the
@@ -196,6 +223,216 @@ arrays under pressure. Removing `session-updated` from the whole process query
 would also stale legitimate process state. The provider-child projection is
 the first owning invariant.
 
+### Second heap-exhaustion path: the public-share aggregate
+
+The live `public-shares.json` was 501,910,755 bytes and held 46 still-valid
+links: 28 frozen snapshots and 18 live records. An isolated load of that exact
+file retained about 1.66 GiB of V8 heap after parsing. Pretty-stringifying the
+unchanged state for a save raised live heap to about 2.66 GiB and the process
+peaked near 3.76 GiB RSS. That is enough to collide with a 4.19 GiB heap limit
+when the same process also holds transcript caches or a several-hundred-MiB
+parse transient.
+
+This establishes a second concrete path to the incident class; it does not
+prove a public-share save was the historical abort trigger. The file's mtime
+does not place a save in the fatal window, while the transcript amplification
+is directly recorded there.
+
+The aggregate is canonical share authorization and frozen content, not a
+rebuildable cache, so pressure eviction cannot safely discard it. The owning
+correction is the session-sharded, active-link-gated persistence design in
+[`090-public-share-persistence-and-management.md`](090-public-share-persistence-and-management.md):
+load the compact active-link index, then only the requested session/link
+record; revoked shares cease authorizing reads and their snapshots become
+collectible. Saving one link must never parse and stringify every other
+session's frozen transcript.
+
+### Cold production boot and first session display
+
+The original internal startup timer understated full boot because it begins
+after module evaluation, provider version probing, and synchronous provider
+file-watcher construction. Two built-server runs reported 36-42 ms inside that
+late timer and 40-47 ms through localhost listener `onReady`; a valid external
+measurement from process spawn to the first successful static response was
+1,859 ms. Once listening, the static document response itself took about 4 ms.
+Core construction inside the timer is not the bottleneck, but the roughly
+1.8-second pre-timer/process-start interval is part of cold-load latency.
+
+One concrete pre-timer owner is `FileWatcher.start()`: for every existing
+Claude, Gemini, Codex, and Pi root it synchronously recursively populates
+`knownFileMtimes`, then attaches a recursive native watcher. Repeating those
+four scans and watcher attachments directly took about 0.46 seconds on
+warm host caches. It is a material component, not a complete attribution of the
+remaining interval. The startup clock must move to process entry, and provider
+watching must become eligible, asynchronous reconciliation rather than hidden
+work before the clock.
+
+A second warm probe instrumented the built entrypoint before its imports. The
+server module graph and top-level setup took about 566 ms before the first
+Codex PATH/version-discovery subprocess began. An isolated built-module call
+then took 8 ms to import the CLI detector and 155 ms to find/version Codex. The
+`NO_BACKEND_RELOAD` recursive source watcher added about 39 ms in a standalone
+attach. Together with provider watching, these figures account for about 1.22
+seconds before `startServer()` began in the instrumented warm run. The
+remaining difference from the external cold run includes process bootstrap,
+cold module I/O, and run-to-run variance.
+
+The immediate cold-bind candidates are therefore separable: start the clock at
+process entry; move the advisory Codex version warning and source watching
+after bind; eligibility-gate and asynchronously baseline provider watches; and
+measure a bundled or lazily imported production server graph. Optional
+providers, voice backends, sharing/review support, and other nonessential
+routes should not have to evaluate before the selected-session API is useful.
+Binding static HTML alone is not success if its session API remains blocked, so
+the externally visible readiness metric must include one useful session route.
+
+A fresh browser then opened a 44,026,530-byte Codex session with glossary hints
+off:
+
+| Milestone | Time from client hook start |
+|---|---:|
+| Session API response | 3,075 ms; request duration 2,760 ms |
+| Session data ready | 3,158 ms |
+| Transcript commit effect | 3,265 ms |
+
+The owning transcript read took 477 ms: 333 ms reading and 133 ms parsing
+13,617 entries, adding about 160 MiB heap and 175 MiB RSS during the recorded
+operation. Client preprocessing took only 9.3 ms; the observed render commit's
+long task was 119 ms. Most of the remaining API delay was contention from a
+global Inbox request launched for the sidebar badge.
+
+Route isolation confirmed the owner. On another fresh server,
+`GET /api/projects` completed in 0.463 s and produced no session-index or
+transcript-read events. `GET /api/inbox` took 4.108 s and immediately launched
+all-project/all-provider enumeration, producing 66 session-index, warmup, or
+Codex-entry records in the observation window. Representative cold summary
+work included 1.67 GB across 368 Codex sessions in the YA project, 1.10 GB
+across 86 in `draft`, 563 MB across 43 in `xmt`, and 139 MB across 60 Claude
+sessions in YA. The response is complete only after every project promise
+settles.
+
+Provider resolution adds a scale multiplier. Pi, Grok, and OpenCode currently
+say every project may have their sessions, then readers filter provider-global
+storage by project. The production run showed Pi scopes across essentially
+every project although only a few contained Pi sessions. This is tolerable at
+dozens of projects and structurally wrong at the accepted 10,000-project
+planning scale. A provider store must be enumerated once and grouped by
+canonical project, not rescanned for every project.
+
+The production bundle is another independent cold-load candidate: the main
+JavaScript chunk measured 2,668.84 kB (770.06 kB gzip) and CSS 565.17 kB
+(89.11 kB gzip), with Vite's existing large-chunk warning. Browser code
+splitting merits a separate measured pass after the server-side contention is
+removed; it does not explain the 2.76-second API request.
+
+### Inbox, external processes, and hovercards
+
+Inbox legitimately needs global provider activity, including activity that
+happened outside YA or while YA was down. The route must not own that scan.
+After retained runtime hosts reattach, startup should run these bounded,
+server-owned reconciliations:
+
+1. When host process observability is enabled, one same-user host process
+   snapshot classifies known provider harness roots, subtracts exact YA
+   Supervisor/runtime-host ownership, and records unmatched roots. The
+   existing `HostAgentProcessService` supplies the safe classifier; the
+   underlying `ps` snapshot measured 0.01 s and about 4.1 MiB maximum RSS on
+   this host. It is a one-shot boot phase, not a permanent sampler.
+2. Each install-eligible provider session store is scanned once, grouped into
+   canonical project shards, and reconciled in the background. Eligibility is
+   durable evidence that this YA install has successfully started that provider;
+   migration seeds the set from existing YA-owned launch/session metadata,
+   never from scanning native provider stores. Never-used adapters are not
+   queried. Persisted Inbox counts/tiers are immediately displayable; each
+   completed shard publishes an in-place delta. File events then update touched
+   sessions, and a bounded reconciliation catches changes missed while YA was
+   down. First successful use of a provider records eligibility and triggers
+   its first catalog pass.
+
+The same install-history gate applies to native session file watchers. The
+current server starts watchers before install/session metadata is loaded and
+recursively indexes even an unused provider root. After migration, a
+never-successfully-used provider receives neither catalog queries nor storage
+watches. Process classification remains the deliberate exception because it
+does not open the native store. The implementation handoff is
+[`093-provider-session-reconciliation.md`](093-provider-session-reconciliation.md).
+
+A known retained YA process gives exact per-session ownership. An unmatched
+external harness may name a session only when a provider-native session id,
+pid/lock record, or another exact provider contract correlates it. Process
+existence, cwd, transcript mtime proximity, or a single candidate cannot prove
+the association. Absent that join, YA knows only that the session is not
+YA-owned and that an uncorrelated external provider process exists.
+
+Hovercards do not share Inbox's global requirement. Desktop hover and tablet
+row adjacency may perform no transcript scan before a specific preview is
+requested. The card opens from compact list metadata; its opening request and
+metadata occupy stable final coordinates. A reserved reply region below them
+then fills asynchronously with the last regular agent excerpt, without
+flashing or moving the top region. Pointer-velocity and adjacent-row prefetch
+remain deferred until the measured requested-card delay shows a need.
+
+### Glossary and project-path work is demand-driven
+
+With glossary hints on in a warm production server, the glossary artifact
+itself completed in 75 ms and the browser committed at 3.944 s. The dominating
+new work was subscription startup: Linux recursive `fs.watch(...)`
+synchronously walked the selected project for about 2.5 s and blocked the
+event loop, delaying unrelated APIs. The artifact request is logically async,
+but the watcher made its setup globally blocking.
+
+The accepted correction is a sparse directory-component trie shared by path
+links and glossary discovery. Nodes distinguish unknown, present directory,
+present file, and absent. A directory listing has a separate complete/current
+bit; only that state may answer arbitrary child absence. An exact failed probe
+may cache the first missing edge/suffix without listing the directory. Start
+with at most the project root listed and children unknown, then hydrate only
+directories appearing in distinct path candidates or glossary ancestor/include
+walks. No feature must wait for a 50,000-node project warm pass.
+
+On Linux, attach non-recursive filesystem watches only to hydrated directories.
+Watcher events or YA-owned edits invalidate the affected edge/subtree; watcher
+overflow/error marks the generation uncertain and schedules bounded
+reconciliation. Do not `stat` directory mtime on every cache use. A low-rate
+validation pass remains a correctness backstop for missed external operations,
+not the hot-path truth mechanism. Typical governing glossary closures are below
+1,000 entries, so glossary parse/automaton caches are secondary; recursively
+discovering unrelated run directories is the avoidable cost.
+
+### Cache audit and pressure order
+
+Cache count is not a memory bound. The current audit found these additional
+retention or amplification owners:
+
+| Owner | Current behavior | Required bound/correction |
+|---|---|---|
+| App session-reader cache | FIFO, 500 readers with no hit retouch; a Codex reader may retain complete entry arrays and mapping/file caches, while `close()` only stops its parser worker | Byte/rebuild-cost budget and access retouch; close and release cold project readers and their data caches |
+| Pi parsed transcripts | Keyed by `filePath:mtime`; every append adds a full parsed version and never deletes the old key | One current version per canonical file plus byte-bounded LRU |
+| Session summary index | Up to 10,000 project/provider scopes, FIFO by count; each scope retains all summaries. FIFO eviction deletes only `indexCache`, leaving `lastFullValidationAt` and `persistedIndexScopes` entries behind. The UTC-day auto-archive cutoff is part of each validation key, so the auxiliary map can add another generation per scope/day | Keep 10,000-project discovery viable, but evict every scope-owned auxiliary/cutoff record and bound live memory by estimated bytes/rebuild cost, with disk-backed cold scopes |
+| Codex shared session scans | Process-global cache keys include the UTC-day `activeAfterMs`; expired same-key entries overwrite, but older daily keys and their provider-wide `CodexSessionFile[]` arrays are never trimmed except by uncommon explicit invalidation | Keep only current/in-flight range generations under a byte/entry LRU; a moving cutoff is query input, not permanent cache identity |
+| Session discovery shards | `SessionIndexService.codexDiscoveryIndexes` retains one index per touched Codex source root; each index then retains every loaded date/path shard for its lifetime | Release cold source-root indexes and byte/LRU-release their clean shards; protect dirty or saving shards until persisted |
+| Project path indexes | One 50,000-node warmable trie per touched project; global map has no project eviction | Sparse demand hydration plus cold-project byte/LRU eviction |
+| Glossary service | 512 parsed files and 128 graphs by count; observed-path maps are unbounded | Byte bounds and project release; low priority at typical <1,000 aggregate terms |
+| Git author palettes | Process-global `loaded` retains every touched project's complete author map | Release cold project palettes by byte/LRU; durable app-data copy remains reconstructible |
+| Review project stores | `ReviewCommentService.stores` retains every touched project's complete review sites, entries, submissions, and mutation state until a whole-service `reset()` | After pending mutation/save work is durable, release cold project stores by byte/LRU and reload canonical state on demand |
+| External-session tracker | `createdSessions` and `sessionStateCache` retain every observed id for process lifetime; expired abort records clean only when that session is checked | Compact generation/age bounds and bulk expiry during boot/event batches |
+
+The process-wide pressure coordinator should shed rebuildable state in this
+order, refined by least-recent project/view and observed retained bytes:
+
+1. inactive glossary/path artifacts and cold provider-reader/query caches;
+2. parsed transcript detail arrays for inactive sessions, including obsolete Pi
+   mtime versions;
+3. cold in-memory session-summary scopes whose durable index can be reread;
+4. active-session rebuildable detail only at the critical watermark.
+
+Never evict pending writes, active protocol ownership, the only copy of
+canonical state, or the currently executing parse. Watermarks need hysteresis
+and enough low-water headroom for one largest admissible parse plus garbage
+collection. The public-share monolith and duplicate transcript parses must be
+redesigned at their owners; continual cache shedding is containment, not their
+fix.
+
 ### Adjacent stale development roots
 
 The operator process tree found nine live `scripts/dev.js` roots. Only the
@@ -216,11 +453,27 @@ owns that contract.
 
 ### Completion note
 
-2026-08-04 — investigation complete. Evidence: one 600-second, one-second
-resolution `/proc` sample; structured server read/worker logs from the complete
-replacement lifetime; source trace through the client query, process route,
-and Codex reader; and warning-free focused/lint checks for the adjacent startup
-hardening. Implementation checkpoint: `f3efacfa`.
+2026-08-05 — extended investigation complete. Evidence: a 600-second CPU/I/O
+sample; a 30-minute VMA census; structured transcript read/worker logs from the
+replacement lifetime; isolated parse/stringify of the 502 MB share store;
+fresh built-server/browser timing including an external process-to-response
+clock; route-isolated project and Inbox probes; and source traces through
+process enrichment, Inbox fan-out, provider caches, project paths, glossary
+subscriptions, and external-process discovery.
+Implementation/investigation checkpoints before this extension: `f3efacfa`
+and `3c0f70df`. The provider-child, public-share, Inbox, cache-pressure, and
+sparse-path corrections remain handoffs, not implementations in tactical 089.
+
+Primary retained evidence runs:
+
+- `tactical-089-memory-map/20260804T233857Z` — 30-minute VMA/RSS census;
+- `tactical-089-bind-provenance/20260805T001119Z` — primary-bind provenance;
+- `tactical-089-production-build/20260805T002000Z` — production bundle;
+- `tactical-089-production-cold/20260805T002144Z` — fresh browser/session load;
+- `tactical-089-route-isolation/20260805T002428Z` — project/Inbox isolation;
+  and
+- `tactical-089-production-outer-ready/20260805T004510Z` — 1,859 ms external
+  process-to-first-response clock versus 42/47 ms internal timer/onReady.
 
 ## Investigation method (completed)
 

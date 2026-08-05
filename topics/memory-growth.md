@@ -1,5 +1,41 @@
 # Memory-growth notes
 
+## Server-process address space and heap pressure
+
+- **2026-08-05 VIRT attribution.** The development Hono process's roughly
+  47 GiB VIRT is dominated by five stable 8,589,996,032-byte anonymous
+  `PROT_NONE` mappings. They are V8 WebAssembly backing-store guard
+  reservations, not equivalent JavaScript heap or resident RAM. Across a
+  30-minute, 361-sample census, direct VIRT began at 47.56 GiB and ended at
+  47.47 GiB (46.87-48.65 GiB range), while RSS ranged 3.715-5.513 GiB and
+  `VmSwap` stayed zero. Production build loading reduced, but did not eliminate,
+  the reservation multiplier. Treat heap used/limit, RSS, external memory, and
+  VIRT as separate metrics; a stable VIRT plateau is not a memory-pressure
+  signal.
+- **Heap limit and incident classification.** The measured V8 heap limit is
+  about 4.19 GiB. The 2026-08-04 server aborted with `SIGABRT` after logs had
+  reached about 3.82 GiB heap and 5.12 GiB RSS, with no kernel OOM or swap
+  pressure. V8 heap exhaustion is a strong inference, not a recovered fatal
+  string. Repeated full parsing of unchanged Codex rollouts is directly proven
+  in that window; see
+  [`docs/tactical/089-main-thread-startup-cpu-investigation.md`](../docs/tactical/089-main-thread-startup-cpu-investigation.md).
+- **Canonical public-share aggregate.** Parsing the live 502 MB aggregate
+  retained about 1.66 GiB V8 heap in isolation; pretty-stringifying the same
+  state raised live heap to about 2.66 GiB and peak RSS near 3.76 GiB. Frozen
+  shares and active-link authorization are canonical state, so they cannot be
+  pressure-evicted. Shard persistence by session/link and load only active,
+  unrevoked records. Saving one share must not materialize every other frozen
+  transcript.
+- **Pressure handling.** A count limit is not a memory limit. Rebuildable
+  provider-reader, parsed-transcript, session-summary, path, and glossary state
+  needs measured retained-byte estimates, rebuild-cost classes, least-recent
+  project/access order, and process-wide watermarks with hysteresis. Leave
+  enough low-water headroom for the largest admissible parse plus garbage
+  collection. Duplicate/full-history work and canonical monoliths must be
+  corrected at their owners; eviction is containment. The registry and initial
+  shedding order live in
+  [`server-performance-observability.md`](server-performance-observability.md).
+
 ## Browser-tab lifetime memory
 
 - **2026-07-28 long-session observation and goal.** One long-lived session tab

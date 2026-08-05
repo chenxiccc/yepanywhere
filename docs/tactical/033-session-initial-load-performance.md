@@ -118,6 +118,47 @@ Interpretation:
 - The old `Loading session...` paint remains visible while this work blocks the
   main thread, so adding subtext alone will not make the page interactive.
 
+## 2026-08-05 Built-Server Cold Revisit
+
+Tactical 089 measured a different 44,026,530-byte Codex session against a fresh
+production build on an unused port and disposable YA app-data. The server was
+reported as ready in 36-42 ms and listener-ready in 40-47 ms according to its
+late internal timer, but that clock starts after module evaluation and
+synchronous provider-watcher construction. An external
+process-to-first-static-response clock measured 1,859 ms. A warm pre-entry
+probe attributed about 566 ms to the server module graph/top-level setup before
+Codex discovery, 155 ms to an isolated Codex discovery/version probe, about
+0.46 s to the four provider scans/watcher attachments, and about 39 ms to the
+`NO_BACKEND_RELOAD` source watcher. From the client session hook, the detail
+response arrived at 3,075 ms, data was ready at 3,158 ms, and the transcript
+commit effect ran at 3,265 ms.
+
+That session's server read was 477 ms (333 ms file read, 133 ms parse, 13,617
+entries, roughly +160 MiB heap/+175 MiB RSS). Client preprocessing was only
+9.3 ms and the observed commit long task 119 ms. Route isolation identified the
+larger delay: the sidebar Inbox badge mounted a global `/api/inbox` request,
+which took 4.108 s and launched cold all-project/all-provider summary work. A
+standalone `/api/projects` request took 0.463 s and launched no session parse.
+
+This extends, rather than contradicts, the earlier long-DOM result. Initial
+session latency has at least two independent regimes:
+
+- large returned row count makes browser commit/layout dominant; and
+- a cold server can delay even a bounded client render through competing global
+  reconciliation.
+
+The server-side correction is for boot to reconcile each previously used
+provider store once in the background, publish Inbox shards progressively, and
+keep selected-session routes independent of completion. The browser-side
+progressive/windowed rendering work remains necessary for high-row-count tails.
+Cold boot also needs a process-entry clock, post-bind advisory CLI probing and
+source watching, and a measured bundle/lazy-import pass over the production
+server graph. Readiness must include a useful selected-session route rather
+than only static HTML. See
+[`089-main-thread-startup-cpu-investigation.md`](089-main-thread-startup-cpu-investigation.md),
+[`093-provider-session-reconciliation.md`](093-provider-session-reconciliation.md),
+and [`topics/inbox.md`](../../topics/inbox.md).
+
 ## Existing Tailing Proxy
 
 The URL-level `tailTurns` option gives a useful proxy for what a chunked initial

@@ -212,7 +212,7 @@ export interface SessionIndexServiceOptions {
   dataDir?: string;
   /** Claude projects directory (defaults to ~/.claude/projects) */
   projectsDir?: string;
-  /** Max number of projects to keep in memory cache (default: 100) */
+  /** Max number of project scopes to keep in memory (default: 10,000) */
   maxCacheSize?: number;
   /**
    * Interval in ms between full directory validations.

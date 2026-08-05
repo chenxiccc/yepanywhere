@@ -64,6 +64,74 @@ summary-worker isolation, and pressure eviction do not correct that call site.
 The full incident evidence and completed investigation are kept in
 [`docs/tactical/089-main-thread-startup-cpu-investigation.md`](../docs/tactical/089-main-thread-startup-cpu-investigation.md).
 
+### Address space is not heap
+
+The development Hono process's roughly 47 GiB VIRT is mostly stable V8
+WebAssembly guard reservation, not live JavaScript objects or committed RAM.
+A 30-minute census found five anonymous `PROT_NONE` mappings of exactly
+8,589,996,032 bytes, totaling about 40.96 GiB. Direct VIRT began at 47.56 GiB,
+ended at 47.47 GiB, and stayed within 46.87-48.65 GiB while `VmSwap` remained
+zero. Development module loading creates several backing stores; a built server
+had fewer and still reserved roughly 20 GiB.
+
+Server metrics must therefore show at least V8 heap used/limit, RSS, external
+memory, and VIRT as separate facts. A large stable VIRT reservation is not a
+heap-pressure alarm. A rising heap near the measured 4.19 GiB limit or RSS
+growth is.
+
+### Canonical public-share state is not a cache
+
+The 502 MB aggregate public-share file retained about 1.66 GiB V8 heap after
+parsing in isolation. Pretty-stringifying the unchanged state raised live heap
+to about 2.66 GiB and peak RSS near 3.76 GiB. This is a demonstrated
+heap-exhaustion path when combined with transcript caches or parse transients.
+
+Frozen share content and active-link authorization are canonical state. A
+pressure coordinator may not discard them as if they were a cache. Persistence
+must instead be sharded and gated by active, unrevoked links so loading or
+saving one session/link never materializes the aggregate. See
+[`docs/tactical/090-public-share-persistence-and-management.md`](../docs/tactical/090-public-share-persistence-and-management.md).
+
+### Cold display is a server scheduling contract
+
+The built server's late internal timer reported 36-42 ms and listener `onReady`
+at 40-47 ms, but that timer begins after module evaluation and synchronous
+provider-watcher setup. An external clock measured 1,859 ms from process spawn
+to first successful static response; static HTML itself took about 4 ms after
+the listener was ready. The four current provider-root initial scans plus
+recursive watcher attachments directly took about 0.46 seconds on warm
+host caches. Full cold-start instrumentation must begin at process entry and
+include this pre-timer work.
+
+A warm built-entrypoint probe located the rest of the pre-timer shape. The
+server module graph and top-level setup took about 566 ms before the first
+Codex discovery subprocess; the CLI detector then took about 155 ms in
+isolation. The `NO_BACKEND_RELOAD` source watcher added about 39 ms. Move
+advisory CLI probing and source watching after bind, activate provider watches
+asynchronously only for install-eligible families, and compare a bundled or
+lazily imported production server graph. A useful-ready metric includes the
+selected-session API, not only static HTML.
+
+A fresh browser's selected 44 MB Codex session did not commit until 3.27 s
+because its 477 ms transcript read competed with global Inbox work. Route
+isolation found `/api/projects` caused no transcript work, while `/api/inbox`
+took 4.108 s and launched all-project/all-provider summary enumeration.
+
+Opening an ordinary page must not become the trigger that discovers the global
+session corpus. Startup owns an eager but asynchronous reconciliation: scan
+each install-eligible provider store once, group results into canonical project
+shards, and publish each completed shard into the retained Inbox snapshot.
+Eligibility means this YA install has successfully started that provider;
+never-used adapters are not queried until first successful use. Routes read the
+best completed snapshot and must not await unfinished shards. Main-thread JSON
+parsing in the reconciler must yield between bounded units or run in the parser
+worker.
+
+Provider-global stores must not be rescanned per project. At a supported
+10,000-project scale, live memory is bounded by measured bytes and rebuild cost;
+project count is a discovery/navigation requirement, not permission for a
+project-by-provider Cartesian scan.
+
 ## Server metrics
 
 One process-wide collector should expose a cheap current snapshot. At minimum:
@@ -149,6 +217,27 @@ Active-session state should lose to cold project state only at the critical
 watermark. A cache without a defensible byte estimate or safe eviction
 contract does not silently register as evictable.
 
+The 2026-08-05 audit supplies the initial registry backlog:
+
+| Owner | Current risk | Required pressure contract |
+|---|---|---|
+| App session readers | 500-entry FIFO without hit retouch; individual Codex readers may retain full parsed transcripts and mapping/file caches | Byte/rebuild-cost bound and access retouch; close and release cold project readers |
+| Pi parsed transcripts | Full parsed value per `filePath:mtime`; obsolete append versions remain | One current version per canonical file plus byte-bounded LRU |
+| Session summary index | 10,000 scopes by FIFO count, each holding all summaries; FIFO eviction leaves validation/persisted-scope metadata behind, including another UTC-day cutoff key per scope/day | Evict the complete scope/cutoff record, preserve 10,000-project discovery, and cap live bytes; release disk-rebuildable cold scopes |
+| Codex shared session scans | Every UTC-day auto-archive cutoff can leave a provider-wide file array in the process-global scan cache | Retain only current/in-flight range generations under an entry/byte LRU |
+| Session discovery shards | A source-root index is retained per touched Codex root, and each loaded shard stays in memory for that index's lifetime | Release cold root indexes and byte/LRU-release clean shards; retain dirty/saving shards until durable |
+| Project path indexes | Up to 50,000 component nodes per touched project and no global project eviction | Sparse demand hydration plus project byte/LRU release |
+| Glossary service | 512 parsed files, 128 graphs, and unbounded observed-path maps | Project/byte release; lower priority at typical sub-1,000-entry closure |
+| Git author palettes | Every touched project's author map remains process-global | Byte/LRU-release cold projects; reload durable app-data state on demand |
+| Review project stores | Full canonical review state remains resident for every touched project until whole-service reset | Flush pending work, then release cold project stores by byte/LRU and reload on demand |
+| External-session tracker | Process-lifetime `createdSessions` and state maps | Age/generation bounds and bulk expiry |
+
+Shedding order begins with inactive glossary/path/query state and cold provider
+readers, continues to parsed detail arrays for inactive sessions and then
+disk-backed summary scopes, and touches active-session rebuildable detail only
+at the critical watermark. Never evict the current parse, pending writes,
+active protocol ownership, or canonical share/session state.
+
 Eviction is containment. Identical snapshot reads must still share one
 in-flight parse; growing transcripts need incremental or otherwise bounded
 read work; abandoned generations must become collectible. Pressure events
@@ -195,5 +284,7 @@ Before this draft becomes a shipped contract, demonstrate:
 - performance-event retention survives a server restart within its byte/age
   budget and exposes no transcript or credential content;
 - synthetic pressure evicts only registered rebuildable state in documented
-  order, settles below the low watermark, and does not oscillate; and
+  order, settles below the low watermark, and does not oscillate;
+- a fresh session route remains responsive while boot Inbox shards reconcile,
+  and reading Inbox never starts a second global scan; and
 - an older capable/uncapable server receives no unsupported client request.

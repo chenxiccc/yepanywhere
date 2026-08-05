@@ -5,9 +5,13 @@
 
 Topic: project-path-links
 
-Status: **implemented (2026-08-02).** Highlighted file content links exact
-project files through a bounded, filesystem-backed path trie. Tracked,
-untracked, and gitignored files share the same membership test.
+Status: **implemented (2026-08-02); demand-driven correction accepted
+2026-08-05.** Highlighted file content links exact project files through a
+bounded, filesystem-backed path trie. Tracked, untracked, and gitignored files
+share the same membership test. The current breadth-first warm and per-use
+directory-mtime validation remain implementation debt under the corrected
+contract below. The implementation handoff is
+[`docs/tactical/091-project-path-cache.md`](../docs/tactical/091-project-path-cache.md).
 
 ## Why membership, not shape
 
@@ -64,6 +68,54 @@ the defaults.
 Warm exclusions never restrict lookup. A path under `node_modules`, `.git`, or
 a `.yepignore` entry still links when the file exists; the first reference just
 reads that directory on demand.
+
+## Demand-driven replacement contract
+
+The filesystem remains the authoritative on-disk store. The in-memory index is
+a sparse directory-component trie, with a character-wise matcher allowed as a
+separate accelerator over the path candidates extracted from displayed text.
+Directory structure and substring matching do not need to be the same data
+structure.
+
+Each component edge records one of `unknown`, `present-directory`,
+`present-file`, or `absent`. A directory node separately records whether its
+immediate listing is complete and current. Only a complete/current directory
+may answer arbitrary child absence without I/O. An exact failed probe may cache
+the first missing component and therefore the queried suffix as absent; it does
+not imply the parent directory has a complete listing.
+
+Initialization may list only the project root and create unknown child
+directory nodes. There is no prerequisite to populate the root recursively.
+Distinct path tokens already extracted from displayed content hydrate only the
+prefixes they actually use. A lookup beneath an untracked or ignored run
+directory lists that directory chain on demand; 50,000 unrelated run artifacts
+do not become startup work merely because the project contains them.
+
+Truth maintenance is event-driven on Linux. Attach non-recursive filesystem
+watches only to hydrated directories whose cached facts need invalidation.
+Creation, deletion, or rename clears the affected edge/subtree back to unknown;
+unchanged still-valid descendants may reconnect after their path is confirmed.
+YA-owned edits may invalidate directly. Watcher error/overflow marks the
+generation uncertain and schedules a bounded reconciliation. A low-rate
+directory identity check is a missed-event backstop, not an mtime `stat` paid
+on every cache hit.
+
+Project retention is process-wide and byte-bounded. The product must support
+discovery/navigation across 10,000 projects without retaining 10,000 fully
+populated tries. Least-recent inactive project indexes are rebuildable and may
+be discarded under ordinary LRU/pressure policy; active displayed candidates
+and in-flight lookups remain protected until they settle.
+
+Acceptance for the replacement:
+
+- a cold lookup under one deep ignored subtree reads only its component chain;
+- an unrelated 50,000-path subtree causes no startup I/O or retained nodes;
+- repeated hits and exact misses under a watched, unchanged directory use no
+  per-use `stat`;
+- create/delete/rename invalidates only the affected cached region, with a
+  forced watcher-uncertain test proving reconciliation restores truth; and
+- touching thousands of projects keeps process memory within a measured byte
+  budget while a discarded project still answers correctly on demand.
 
 ## Rendering
 

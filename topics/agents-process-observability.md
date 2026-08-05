@@ -211,6 +211,32 @@ The current `ExternalSessionTracker` may decorate a future exact join, but its
 30-second write window cannot create one. The initial host sampler neither
 reads nor returns cwd.
 
+### Boot reconciliation extension
+
+Accepted 2026-08-05; not yet implemented. When Agents process metrics are
+enabled, YA takes one same-user process snapshot after retained provider
+runtimes reattach. It classifies every known provider harness root, subtracts
+exact Supervisor/runtime-host ownership, and retains the unmatched external
+inventory before any client route asks for it. On the measured Linux host, the
+underlying whole-table `ps` snapshot took 0.01 seconds and about 4.1 MiB maximum
+RSS.
+
+This is one boot phase, not a permanent sampler. It supplies process existence,
+start identity, provider, and initial RSS/tree shape; recent CPU remains absent
+until a later sample supplies a delta. Opening Agents may continue the existing
+five-second request-owned sampling, and leaving Agents stops it.
+
+Process discovery does not open provider transcript stores. Command/entrypoint
+classification and exact native session-id extraction belong to the provider
+adapter described in [provider-abstraction](provider-abstraction.md). A
+recognized root is correlated to a session only when its provider exposes the
+id through argv, a pid/lock record, or another exact contract. The raw command
+text is discarded immediately. A provider never used to start a YA session may
+still appear as an uncorrelated external process; its native session store
+remains excluded from boot Inbox discovery until first successful YA use.
+Implementation is handed off in
+[`docs/tactical/093-provider-session-reconciliation.md`](../docs/tactical/093-provider-session-reconciliation.md).
+
 ## Data And Route Boundary
 
 The wire shape is intentionally unable to carry process command metadata:
@@ -264,6 +290,8 @@ capability meanings and older capable behavior remain unchanged.
 Recent CPU needs two samples, but it does not need a permanent server timer.
 Lifecycle:
 
+- once after retained-runtime reattach, the server takes one boot snapshot
+  when host process observability is enabled;
 - while Agents is visible, the client requests one lightweight host snapshot
   about every five seconds;
 - pause when the page is unmounted or the document is hidden;
@@ -327,6 +355,9 @@ minimization rule.
   memory.
 - Session links and titles appear only after exact process/session
   correlation.
+- With host process observability enabled, one post-reattach boot snapshot
+  exists before Agents first opens; it starts no repeating sampler and opens no
+  provider transcript store.
 - On touch layouts, a non-control tap on an External row toggles its metric
   details; controls are never intercepted and an outside tap dismisses them.
 - Leaving or hiding Agents stops client sampling; no stale page leaves a

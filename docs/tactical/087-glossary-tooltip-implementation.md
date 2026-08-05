@@ -22,6 +22,16 @@ store live above session-keyed routes. Same-project session navigation reuses a
 ready root automaton without another query; a cold or invalidated automaton
 still arrives asynchronously after ordinary transcript text renders.
 
+Follow-up 2026-08-05: tactical 089 measured the current recursive project-root
+watcher blocking the server event loop for about 2.5 seconds on subscription.
+That implementation does not satisfy this plan's no-recursive-crawl contract.
+Replace it with non-recursive watches on only the ancestor/include directories
+hydrated by source queries, plus watcher-uncertain reconciliation. Governing
+lookup probes only the queried source directory and its parents; no complete
+project path index is a prerequisite. See
+[`topics/project-path-links.md`](../../topics/project-path-links.md) and
+[`092-demand-driven-glossary-discovery.md`](092-demand-driven-glossary-discovery.md).
+
 ## Goal and governing contract
 
 Implement the behavior specified in
@@ -168,11 +178,13 @@ bounded diagnostics.
 The same capability owns a project-scoped glossary-path subscription. Its
 initial snapshot contains currently existing candidates and dependencies
 learned by on-demand source resolution, plus a process-local generation.
-Subsequent native-watcher events report project-wide path creation,
-modification, or deletion; fallback polling stats only learned paths, including
-missing ancestor candidates. A client maps those rare path events onto its own
-tab-lifetime source-context artifact cache. Neither side recursively crawls the
-project or creates one subscription per source directory.
+Subsequent native-watcher events from hydrated ancestor/include directories
+report relevant path creation, modification, or deletion; fallback polling
+stats only learned paths, including missing ancestor candidates. A client maps
+those rare path events onto its own tab-lifetime source-context artifact cache.
+Neither side recursively crawls the project. One project subscription may own
+several non-recursive directory watches; it does not create a client
+subscription per source directory.
 
 The compatibility review approved this route, subscription, and absent-
 capability behavior: hide or disable the unsupported preference, make no
