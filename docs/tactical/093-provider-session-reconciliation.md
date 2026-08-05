@@ -9,12 +9,12 @@ Codex child projection, install-scoped successful-use eligibility, gated
 post-listener file watching, the durable catalog coordinator, and the Pi/Grok/
 OpenCode catalog adapters are implemented and measured. Claude, Codex, and
 Gemini adapters are ruled out for list amplification (step 2 records why, and
-corrects a wrong premise about their storage layouts). The process classifier,
-retained collection routes, interest
-leases, and exact process reconciliation remain pending; nothing wires the
-coordinator into a route yet, which is what the compatibility checkpoint below
-gates. The provider/storage and process-discovery contracts are accepted in the
-linked topics.
+corrects a wrong premise about their storage layouts), and command recognition
+is extracted into `services/providerProcessClassifier.ts`. Retained collection
+routes, interest leases, native session id recognition, and exact process
+reconciliation remain pending; nothing wires the coordinator into a route yet,
+which is what the compatibility checkpoint below gates. The provider/storage
+and process-discovery contracts are accepted in the linked topics.
 
 Related contracts:
 
@@ -335,7 +335,7 @@ failure/backoff policy serves all waiters.
 | YA metadata migration | `packages/server/src/metadata/SessionMetadataService.ts` | Supply existing YA-owned provider evidence after initialization; do not scan native stores |
 | Project Cartesian resolution | `packages/server/src/sessions/provider-resolution.ts` | Keep explicit per-session/project reads, but replace global collection fan-out with provider catalog shards |
 | Provider readers | `packages/server/src/sessions/*-reader.ts` | Implement provider-global complete/recent bounded catalog projections without full transcript detail |
-| Process recognition | `packages/server/src/services/HostAgentProcessService.ts` | Keep one minimized boot/periodic `ps` owner, diff snapshots, and move provider command/id recognition behind classifier adapters |
+| Process recognition | `packages/server/src/services/HostAgentProcessService.ts`, `providerProcessClassifier.ts` | Keep one minimized boot/periodic `ps` owner and diff snapshots; command recognition is extracted, native session id recognition is not built |
 | Early file watchers | `packages/server/src/index.ts`, `packages/server/src/watcher/FileWatcher.ts` | Activate only eligible families after state load; remove synchronous recursive boot indexing |
 | Focused session watch resolution | `packages/server/src/watcher/FocusedSessionWatchManager.ts` | Resolve exact catalog locations; replace three-second unresolved project/provider enumeration with event-driven repair and bounded backoff |
 | Inbox route | `packages/server/src/routes/inbox.ts` | Read retained reconciled state; never own `Promise.all(project × provider)` |
@@ -381,11 +381,15 @@ justified later by what the *durable* catalog needs — cheap cold rows after
 restart, which is a different argument from list amplification and should be
 made on its own evidence, not inherited from this step.
 
-Still to do: move executable/entrypoint recognition out of the generic service
-while preserving transient argv minimization and current false-positive tests.
-That extraction is structural — it lets step 8's process reconciliation reuse
-recognition without depending on `HostAgentProcessService` — and carries no
-performance claim.
+**The process classifier is extracted.** `classifyProviderProcess` and its
+three helpers now live in `services/providerProcessClassifier.ts`, so step 8's
+process reconciliation can reuse recognition without depending on
+`HostAgentProcessService`, its `ps` ownership, or its caching. Behavior is
+unchanged and the move carries no performance claim; the false-positive cases
+moved with it into `test/services/providerProcessClassifier.test.ts`, plus
+coverage of the `.exe` and `gemini-cli` names and of the entrypoint window that
+keeps a provider name in a later argument from classifying an unrelated
+process.
 
 ### 3 — build the disk-backed catalog coordinator
 

@@ -39,9 +39,11 @@ Accepted 2026-08-05; the successful-use eligibility boundary and gated watcher
 owner are implemented, while provider catalog/process adapters and the retained
 coordinator remain pending. The implementation handoff is
 [`docs/tactical/093-provider-session-reconciliation.md`](../docs/tactical/093-provider-session-reconciliation.md).
-Generic collection and boot code knows too much about provider storage, while
-host process classification is centralized in `HostAgentProcessService` but
-not yet exposed as a provider capability.
+Generic collection and boot code knows too much about provider storage. Host
+process command recognition is now its own module,
+`services/providerProcessClassifier.ts`, reusable without the host process
+inventory, but it is still a fixed table of names and package paths rather than
+a provider capability, and it recognizes no native session id.
 
 These are two separate provider-owned projections:
 

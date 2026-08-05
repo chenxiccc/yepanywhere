@@ -1,7 +1,6 @@
 import type { ProcessInfo } from "../../src/supervisor/types.js";
 import {
   HostAgentProcessService,
-  classifyProviderProcess,
   parseLinuxProcCpuTicks,
   parseProcessCpuTime,
   parsePsSnapshot,
@@ -37,20 +36,6 @@ function deferred<T>(): {
 }
 
 describe("HostAgentProcessService", () => {
-  it("classifies only direct executables and generic runtime entrypoints", () => {
-    expect(classifyProviderProcess("codex", ["codex"])).toBe("codex");
-    expect(
-      classifyProviderProcess("MainThread", [
-        "node",
-        "/packages/@anthropic-ai/claude-code/cli.js",
-      ]),
-    ).toBe("claude");
-    expect(classifyProviderProcess("bash", ["bash", "codex"])).toBeUndefined();
-    expect(
-      classifyProviderProcess("python3", ["python3", "my-codex-report.py"]),
-    ).toBeUndefined();
-  });
-
   it("parses cumulative CPU time and reduces ps rows to safe fields", () => {
     expect(parseProcessCpuTime("01:02")).toBe(62_000);
     expect(parseProcessCpuTime("02:03:04")).toBe(7_384_000);

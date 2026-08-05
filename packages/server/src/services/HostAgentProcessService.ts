@@ -6,6 +6,7 @@ import type {
   ProviderName,
 } from "@yep-anywhere/shared";
 import type { ProcessInfo } from "../supervisor/types.js";
+import { classifyProviderProcess } from "./providerProcessClassifier.js";
 
 const SNAPSHOT_CACHE_MS = 1_000;
 const PS_MAX_BUFFER_BYTES = 32 * 1024 * 1024;
@@ -47,85 +48,6 @@ interface InFlightSample {
 }
 
 let linuxClockTicksPromise: Promise<number> | null = null;
-
-function basename(value: string): string {
-  const normalized = value.replaceAll("\\", "/");
-  return normalized.slice(normalized.lastIndexOf("/") + 1).toLowerCase();
-}
-
-function providerForExecutableName(value: string): ProviderName | undefined {
-  const name = basename(value).replace(/\.exe$/i, "");
-  switch (name) {
-    case "claude":
-      return "claude";
-    case "codex":
-      return "codex";
-    case "gemini":
-    case "gemini-cli":
-      return "gemini";
-    case "grok":
-      return "grok";
-    case "opencode":
-      return "opencode";
-    case "pi":
-      return "pi";
-    default:
-      return undefined;
-  }
-}
-
-function isGenericRuntime(value: string): boolean {
-  const name = basename(value).replace(/\.exe$/i, "");
-  return (
-    name === "node" ||
-    name === "nodejs" ||
-    name === "bun" ||
-    name === "deno" ||
-    /^python(?:\d+(?:\.\d+)*)?$/.test(name)
-  );
-}
-
-/**
- * Classify only executable-position tokens. Later command arguments may be
- * prompts or paths and must not make an unrelated process look like an agent.
- */
-export function classifyProviderProcess(
-  commandName: string,
-  executableTokens: readonly string[],
-): ProviderName | undefined {
-  const direct = providerForExecutableName(commandName);
-  if (direct) return direct;
-
-  const runtime = executableTokens[0] ?? commandName;
-  if (!isGenericRuntime(runtime)) return undefined;
-
-  for (const token of executableTokens.slice(1, 4)) {
-    const byName = providerForExecutableName(token);
-    if (byName) return byName;
-
-    const normalized = token.replaceAll("\\", "/").toLowerCase();
-    if (
-      normalized.includes("/@anthropic-ai/claude-code/") ||
-      normalized.includes("/node_modules/claude-code/")
-    ) {
-      return "claude";
-    }
-    if (
-      normalized.includes("/@openai/codex/") ||
-      normalized.includes("/node_modules/@openai/codex-")
-    ) {
-      return "codex";
-    }
-    if (
-      normalized.includes("/@google/gemini-cli/") ||
-      normalized.includes("/node_modules/@google/gemini-cli/")
-    ) {
-      return "gemini";
-    }
-  }
-
-  return undefined;
-}
 
 export function parseProcessCpuTime(value: string): number | null {
   const parts = value.split(":");
