@@ -11,9 +11,9 @@ Status: Implemented 2026-08-04. The shared grammar, resolver, capability-gated
 delivery, tab-local cache,
 annotation boundary, interaction, authenticated render surfaces, FileViewer
 link convergence, and performance/visual acceptance are complete. Public
-shares deliberately remain unannotated. Demand-driven filesystem correction is
-specified in
-[`docs/tactical/092-demand-driven-glossary-discovery.md`](../docs/tactical/092-demand-driven-glossary-discovery.md).
+shares deliberately remain unannotated. Demand-driven source resolution landed
+2026-08-04; the recursive project-root watcher it left behind still violates
+the watch contract below and is the one piece of this feature outstanding.
 
 ## Product contract
 
@@ -323,10 +323,23 @@ reconciliation; fallback polling checks only learned candidate/dependency
 directories and files. The watcher and poll are torn down when the last
 subscriber disconnects.
 
-The current implementation's recursive project-root `fs.watch` violates this
-contract. On the motivating project, attaching it blocked the Node event loop
-for about 2.5 seconds even though the artifact itself completed in 75 ms. It
-must be replaced rather than treated as acceptable asynchronous initialization.
+Resolution and watching share one observation set. When resolution observes a
+new candidate directory, the subscription manager attaches or reuses that
+directory's watch promptly, through an explicit observation-change handoff from
+the resolver or an equivalent call after resolution. The fallback poll is a
+missed-event backstop over already-observed candidates; it is not the
+notification path by which a newly observed candidate becomes watched. On
+ambiguous events or errors, reconciliation stats and re-probes only observed
+candidates rather than crawling the project.
+
+The current implementation still attaches one recursive project-root `fs.watch`
+instead. On the motivating project that blocked the Node event loop for about
+2.5 seconds while the artifact itself completed in 75 ms, and it installs
+watches across an entire unrelated tree — roughly 50,000 mostly irrelevant
+paths there — to notice a handful of `GLOSSARY.md` names. Replacing it with the
+observed-directory watches above is the remaining work rather than acceptable
+asynchronous initialization: source resolution is already demand-driven, so
+this watcher is the last project-wide filesystem cost left in the path.
 
 The client uses the glossary-path stream for invalidation, not governing-file
 selection. One tab-local project store owns the active project's subscription

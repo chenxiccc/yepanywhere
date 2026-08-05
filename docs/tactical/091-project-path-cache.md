@@ -15,7 +15,7 @@ Related contracts:
 - [`topics/project-path-links.md`](../../topics/project-path-links.md)
 - [`topics/server-performance-observability.md`](../../topics/server-performance-observability.md)
 - [`topics/project-directory-storage.md`](../../topics/project-directory-storage.md)
-- [`092-demand-driven-glossary-discovery.md`](092-demand-driven-glossary-discovery.md)
+- [`topics/glossary-tooltips.md`](../../topics/glossary-tooltips.md)
 - [`089-main-thread-startup-cpu-investigation.md`](089-main-thread-startup-cpu-investigation.md)
 
 ## Current fault
@@ -99,7 +99,7 @@ projects and cold subtrees by byte budget and least-recent access; a count-only
 | Node states, warming, mtime validation | `packages/server/src/projects/projectPathIndex.ts` | Replace `populated`/recursive warm with explicit edge state and directory completeness; add exact-probe and release accounting |
 | Path-link batches | `packages/server/src/augments/project-path-links.ts` | Preserve one candidate batch; consume sparse results without requesting a warm |
 | Rendered-file call site | `packages/server/src/routes/files.ts` | Preserve scoped index reuse and release inactive project ownership |
-| Glossary existence | `packages/server/src/projects/glossaryIndexService.ts` | Use only governing/include candidates; detailed in tactical 092 |
+| Glossary existence | `packages/server/src/projects/glossaryIndexService.ts` | Use only governing/include candidates; contract in `topics/glossary-tooltips.md` |
 | Contract and diagnostics | `topics/project-path-links.md` | Keep state semantics, watcher uncertainty, and byte/project bounds observable |
 | Existing coverage | `packages/server/test/augments/project-path-links.test.ts`, `packages/server/test/projects/glossaryIndexService.test.ts` | Replace warm assertions with sparse-I/O and invalidation assertions |
 
