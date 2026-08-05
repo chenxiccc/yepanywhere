@@ -84,7 +84,10 @@ vi.mock("../useVersion", () => ({
 import { resetClientQueryControllerForTests } from "../../lib/clientQueryController";
 import { resetClientSummaryStoreForTests } from "../../lib/clientSummaryStore";
 import { PROJECT_QUEUE_CAPABILITY } from "../../lib/projectQueueVisibility";
-import { useProjectQueues } from "../useProjectQueues";
+import {
+  resetProjectQueueBackstopsForTests,
+  useProjectQueues,
+} from "../useProjectQueues";
 
 const PROJECT_ID = "project-1" as ProjectQueueItemSummary["projectId"];
 const PROJECT_ID_2 = "project-2" as ProjectQueueItemSummary["projectId"];
@@ -580,5 +583,122 @@ describe("useProjectQueues", () => {
     expect(result.current.projectStatusesByProject[PROJECT_ID]).toMatchObject({
       state: "empty",
     });
+  });
+});
+
+describe("useProjectQueues backstop", () => {
+  const NOW_MS = Date.parse("2026-08-05T00:00:00.000Z");
+
+  function statusWith(
+    state: ProjectQueueProjectStatus["state"],
+    overrides: Partial<ProjectQueueProjectStatus> = {},
+  ): ProjectQueueProjectStatus {
+    return { ...makeProjectStatus(state), ...overrides };
+  }
+
+  async function settle() {
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW_MS);
+    resetProjectQueueBackstopsForTests();
+  });
+
+  afterEach(() => {
+    resetProjectQueueBackstopsForTests();
+    vi.useRealTimers();
+  });
+
+  it("arms one backstop for the whole source, not one per consumer", async () => {
+    apiMock.getProjectQueueItems.mockResolvedValue({
+      items: [makeItem("1", PROJECT_ID)],
+      projectStatuses: { [PROJECT_ID]: statusWith("dispatching") },
+    });
+
+    renderHook(() => useProjectQueues(["project-1"]));
+    renderHook(() => useProjectQueues(["project-1"]));
+    renderHook(() => useProjectQueues(["project-1"]));
+    await settle();
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+
+    // Three mounted consumers used to mean three five-second intervals.
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(2);
+  });
+
+  it("waits out a reported quiet window instead of sampling through it", async () => {
+    apiMock.getProjectQueueItems.mockResolvedValue({
+      items: [makeItem("1", PROJECT_ID)],
+      projectStatuses: {
+        [PROJECT_ID]: statusWith("waiting-quiet", {
+          quietEligibleAt: new Date(NOW_MS + 30_000).toISOString(),
+        }),
+      },
+    });
+
+    renderHook(() => useProjectQueues(["project-1"]));
+    await settle();
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(1);
+
+    // The old interval would have read six times before the window elapsed.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(29_000);
+    });
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(2);
+  });
+
+  it("arms no timer for a blocked backlog that only events can release", async () => {
+    apiMock.getProjectQueueItems.mockResolvedValue({
+      items: [makeItem("1", PROJECT_ID)],
+      projectStatuses: { [PROJECT_ID]: statusWith("blocked") },
+    });
+
+    renderHook(() => useProjectQueues(["project-1"]));
+    await settle();
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases the backstop when the last consumer unmounts", async () => {
+    apiMock.getProjectQueueItems.mockResolvedValue({
+      items: [makeItem("1", PROJECT_ID)],
+      projectStatuses: { [PROJECT_ID]: statusWith("dispatching") },
+    });
+
+    const first = renderHook(() => useProjectQueues(["project-1"]));
+    const second = renderHook(() => useProjectQueues(["project-1"]));
+    await settle();
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(1);
+
+    first.unmount();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    // One consumer left, so the backstop is still owned.
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(2);
+
+    second.unmount();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(2);
   });
 });

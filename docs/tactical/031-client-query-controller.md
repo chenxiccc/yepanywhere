@@ -106,6 +106,13 @@ reconnect, or session metadata changes. That belongs here, not in a separate
   epochs/generations and short-lived client interest. Added a browser reuse
   slice that prevents sequential mounts and capable sibling tabs from
   requesting an unchanged generation while keeping server dedupe authoritative.
+- 2026-08-05: Replaced Project Queue's per-consumer five-second interval with
+  one source-level backstop owner that arms a single timer for the earliest
+  instant the server reported (`nextAttemptAt` / `quietEligibleAt`), falls back
+  to five seconds only while a project is `ready` or `dispatching`, and arms
+  nothing for a blocked or paused backlog whose transitions arrive as events.
+  Measured 480 -> 8 reads over ten minutes with four mounted consumers, and the
+  deadline-aware owner is also more punctual than the interval it replaced.
 - 2026-08-05: Moved `useVersion` onto a source-keyed retained query with a
   small shared version snapshot store, completing step 9. All 34 consumers
   subscribe to one snapshot, the pending speech-backend follow-up is retained
@@ -873,9 +880,21 @@ Acceptance:
 
 ### 11 — make revalidation owned by the retained query entry
 
+Status: Partially complete 2026-08-05. The Project Queue deadline backstop
+landed; the general migration of activity subscriptions and debounce timers
+into the controller entry, and the Sidebar duplicate-retainer fix, remain.
+
 Move activity subscriptions, debounce/deadline timers, reconnect/refresh
 handling, and forced-generation transitions from hook instances into the
-`(sourceKey, queryKey)` retained controller entry. Subscribers declare coverage
+`(sourceKey, queryKey)` retained controller entry.
+
+The general migration has a constraint worth knowing before starting it: one
+`(sourceKey, queryKey)` entry can have subscribers with *different* coverage
+and different `fetcher`/`applySnapshot` closures — `useGlobalSessionsFeed` at
+50 rows and at 100 rows is the live example. So the owner cannot simply adopt
+the first subscriber's callbacks; it needs the merged coverage (`mergeCoverage`
+already exists for this) and a rule for which subscriber's fetcher runs. Until
+that is settled, moving the timers alone would silently narrow coverage. Subscribers declare coverage
 and revalidation policy; one compatible owner schedules/acquires the result and
 publishes controller state to all hooks.
 
@@ -911,7 +930,7 @@ Acceptance:
   separate retainer and visual copies;
 - component unmount removes its retention need but does not tear down a query
   still retained elsewhere; the last release clears owner timers/listeners;
-- Project Queue with backlog performs no five-second per-component polling and
+- [x] Project Queue with backlog performs no five-second per-component polling and
   remains current through events plus one exact source-level deadline backstop;
   and
 - tests vary mount order, StrictMode, Sidebar visibility, simultaneous events,
