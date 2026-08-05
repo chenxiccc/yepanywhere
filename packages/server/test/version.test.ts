@@ -415,3 +415,45 @@ describe("GET /version", () => {
     expect(capabilities).not.toContain(DEVICE_BRIDGE_UPDATE_CAPABILITY);
   });
 });
+
+describe("process-generation version facts", () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it("probes the install once no matter how many requests arrive", async () => {
+    const { createVersionRoutes, getCurrentVersionInfoComputations } =
+      await importVersion();
+    const app = createVersionRoutes();
+
+    for (let request = 0; request < 20; request += 1) {
+      const response = await app.request("/");
+      expect(response.status).toBe(200);
+    }
+
+    expect(getCurrentVersionInfoComputations()).toBe(1);
+  });
+
+  it("shares one probe across concurrent first requests", async () => {
+    const { createVersionRoutes, getCurrentVersionInfoComputations } =
+      await importVersion();
+    const app = createVersionRoutes();
+
+    await Promise.all(Array.from({ length: 10 }, () => app.request("/")));
+
+    expect(getCurrentVersionInfoComputations()).toBe(1);
+  });
+
+  it("keeps the version snapshot across an explicit fresh request", async () => {
+    const { createVersionRoutes, getCurrentVersionInfoComputations } =
+      await importVersion();
+    const app = createVersionRoutes();
+
+    const first = await (await app.request("/")).json();
+    const fresh = await (await app.request("/?fresh=1")).json();
+
+    // fresh=1 promises a fresh check of dynamic sandbox/device facts only.
+    expect(fresh.version).toBe(first.version);
+    expect(getCurrentVersionInfoComputations()).toBe(1);
+  });
+});

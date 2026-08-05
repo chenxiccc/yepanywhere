@@ -749,8 +749,21 @@ Acceptance:
 
 ### 9. Retain One Version and Capability Snapshot Per Source
 
-Status: Implementation handoff, triggered by the 2026-08-05 New Session
-latency investigation.
+Status: Server half implemented 2026-08-05; the client half remains. Ordinary
+`/api/version` assembly no longer launches a subprocess. The 34 `useVersion()`
+call sites still each own an initial request and pending-state poll, so the
+source-level retained snapshot is still to do.
+
+Measured: the install version, development `git describe` name, package root,
+and install source cannot change while the process runs, so they are computed
+once and shared, with concurrent first callers joining one probe and a failed
+probe clearing itself for retry. Over 20 requests across five samples, the
+previous per-request shape ran 20 probes at a 307.75 ms median (15.39 ms per
+request); the retained snapshot ran 1 probe at a 17.01 ms median (0.85 ms per
+request) — 95.00% of probes avoided, 18.09x. `fresh=1` deliberately does not
+clear it, since its contract promises a fresh check of the dynamic
+sandbox/device facts, which read from their owning services. Run `pnpm --filter
+@yep-anywhere/server benchmark:version-route` to repeat the measurement.
 
 There are currently 34 `useVersion()` call sites. The hook shares only a
 request that is concurrently in flight; after it resolves, a later mount starts

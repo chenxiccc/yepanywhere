@@ -595,6 +595,30 @@ through the exact catalog location row and event/bounded-backoff repair. The
 resolved per-session watch/stat fallback remains justified while a client
 actually holds the session.
 
+### Remediation progress — 2026-08-05
+
+The audit's paths are being closed in commit-sized slices, each measured. What
+has landed, newest first:
+
+| Path | Commit | Measured |
+|---|---|---|
+| Version route probes per request | tactical 031 step 9, server half | 20 probes → 1 over 20 requests (95.00%), 15.39 → 0.85 ms each (18.09x) |
+| Source Review Inbox fan-out and store retention | tactical 099 | 40,000 → 2,000 store loads (95.00%) and 1.26 GB → 63 MB cloned over 20 requests (19.32x); 200 → 101 retained stores under a byte budget |
+| Heartbeat fleet scan | tactical 098 | steady per-tick cost 114,019 → 19 project probes (99.98%, 33.36x); owned fleet 0 probes |
+| Durable catalog and generation vector | tactical 093 | 200,000 → 130 row parses for one project after restart (99.94%, 154.53x); 63 of 64 shards skipped by digest |
+| Provider watcher startup gating | tactical 093 | unused family 100% of probes avoided; eligible request 0.034 ms with the watcher attaching later |
+| Codex provider-child projection | provider-child-sessions | 20 full parses → 1 build, 95.00% of logical source bytes avoided (20.18x) |
+| Source-versioned single-flight owner | infrastructure | 100 → 1 computations (99.00%, 101.94x) |
+
+Still open from this audit: the client-side retained query owner and app-shell
+staging (tactical 031 steps 9–12), exact per-row review deltas and durable
+review projection persistence (tactical 099, gated on tactical 085), the
+heartbeat next-deadline scheduler (tactical 098 step 5), Project Queue polling
+(tactical 040), and provider catalog adapters feeding the durable catalog
+(tactical 093 step 2). The integrated many-tab and restart verification named
+in this document's closing scope has not been run; each slice above carries its
+own reproducible benchmark instead.
+
 ### Glossary and project-path work is demand-driven
 
 With glossary hints on in a warm production server, the glossary artifact

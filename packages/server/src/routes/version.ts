@@ -91,9 +91,46 @@ export interface CurrentVersionInfo {
 }
 
 /**
+ * The installed package version, its `git describe` name in a source checkout,
+ * and the install source cannot change while this process runs — an in-place
+ * upgrade restarts it. Computing them per request spent a `git describe` or
+ * `npm root -g` subprocess on every `/api/version`, including the ordinary
+ * reads that many mounted consumers issue. `fresh=1` deliberately does not
+ * clear this: it promises a fresh check of the dynamic sandbox/device facts,
+ * which read from their own owning services.
+ */
+let currentVersionInfoPromise: Promise<CurrentVersionInfo> | null = null;
+let currentVersionInfoComputations = 0;
+
+function getCurrentVersionInfo(): Promise<CurrentVersionInfo> {
+  if (!currentVersionInfoPromise) {
+    currentVersionInfoComputations += 1;
+    currentVersionInfoPromise = computeCurrentVersionInfo().catch((error) => {
+      // A failed probe must not poison the process; the next request retries.
+      currentVersionInfoPromise = null;
+      throw error;
+    });
+  }
+  return currentVersionInfoPromise;
+}
+
+/**
+ * Test-only: drop the process-generation snapshot. The probe counter keeps
+ * accumulating so a caller can measure how many probes a shape actually cost.
+ */
+export function resetCurrentVersionInfoForTests(): void {
+  currentVersionInfoPromise = null;
+}
+
+/** Test-only: how many times the underlying probes actually ran. */
+export function getCurrentVersionInfoComputations(): number {
+  return currentVersionInfoComputations;
+}
+
+/**
  * Read the current package version and best-effort install source.
  */
-async function getCurrentVersionInfo(): Promise<CurrentVersionInfo> {
+async function computeCurrentVersionInfo(): Promise<CurrentVersionInfo> {
   try {
     // In production (npm package), package.json is in the parent of dist/
     // In development, it's in packages/server/
