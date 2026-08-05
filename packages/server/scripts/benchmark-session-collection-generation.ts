@@ -6,9 +6,14 @@
  * drives the real `SessionCollectionGeneration` off the real `EventBus`, so a
  * revalidation with an unchanged collection costs a comparison.
  *
- * The scenario is deliberately simple — a fixed number of tabs revalidating on
- * a fixed number of events, some of which change nothing a row renders.
+ * The second measurement covers the cold path the conditional read cannot help
+ * with: every tab reconnecting at once, none holding a generation yet, where
+ * the real `SourceVersionedSingleFlight` is what collapses the herd.
+ *
+ * Both scenarios are deliberately simple — fixed tab and event counts, not a
+ * model of any particular install.
  */
+import { SourceVersionedSingleFlight } from "../src/lib/sourceVersionedSingleFlight.js";
 import { SessionCollectionGeneration } from "../src/sessions/sessionCollectionGeneration.js";
 import { EventBus } from "../src/watcher/EventBus.js";
 
@@ -20,6 +25,52 @@ const CONNECTION_EVENTS = 15;
 
 function event(type: string): never {
   return { type, timestamp: new Date(0).toISOString() } as never;
+}
+
+/**
+ * The cold path no conditional read can help with: every tab reconnects at
+ * once, none holding a generation yet.
+ */
+async function measureHerd(): Promise<void> {
+  const walks = new SourceVersionedSingleFlight<string, number>({
+    maxRetainedBytes: 1024 * 1024,
+    estimateBytes: () => 64,
+  });
+  let computations = 0;
+
+  const readOnce = (generation: number): Promise<unknown> =>
+    walks.run({
+      key: "global-sessions",
+      sourceVersion: String(generation),
+      compute: async () => {
+        computations += 1;
+        // Stand in for the project walk; any await is enough to let the rest of
+        // the herd arrive while this one is open.
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        return computations;
+      },
+      isCurrent: () => true,
+    });
+
+  await Promise.all(Array.from({ length: TABS }, () => readOnce(1)));
+  const coldWalks = computations;
+
+  // The collection changes, and the herd arrives again.
+  await Promise.all(Array.from({ length: TABS }, () => readOnce(2)));
+
+  console.log("");
+  console.log(`${TABS} tabs reconnecting at once, then again after a change`);
+  console.log(
+    `cold walks: ${TABS * 2} -> ${computations} ` +
+      `(${(((TABS * 2 - computations) / (TABS * 2)) * 100).toFixed(2)}% avoided, ` +
+      `${((TABS * 2) / computations).toFixed(2)}x)`,
+  );
+
+  if (coldWalks !== 1 || computations !== 2) {
+    throw new Error(
+      `herd cost ${coldWalks} then ${computations} walks, expected one per generation`,
+    );
+  }
 }
 
 function main(): void {
@@ -67,3 +118,7 @@ function main(): void {
 }
 
 main();
+measureHerd().catch((error: unknown) => {
+  console.error(error);
+  process.exit(1);
+});

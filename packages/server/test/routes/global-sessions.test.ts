@@ -328,7 +328,9 @@ describe("Global Sessions Routes", () => {
       expect(second.unchanged).toBe(true);
       expect(second.generation).toBe(first.generation);
       expect(second.sessions).toBeUndefined();
-      expect(vi.mocked(mockScanner.listProjects).mock.calls).toHaveLength(walks);
+      expect(vi.mocked(mockScanner.listProjects).mock.calls).toHaveLength(
+        walks,
+      );
     });
 
     it("re-walks once an event could have changed a row", async () => {
@@ -369,6 +371,45 @@ describe("Global Sessions Routes", () => {
         `?knownGeneration=${first.generation}`,
       );
       expect(second.unchanged).toBe(true);
+    });
+
+    it("walks once for a herd of identical concurrent reads", async () => {
+      const eventBus = new EventBus();
+      const routes = setUpOneSession(eventBus);
+
+      // Twenty tabs reconnecting at the same instant. None of them can hold a
+      // generation yet, so this is the cold path the conditional read cannot
+      // help with.
+      const herd = await Promise.all(
+        Array.from({ length: 20 }, () => readCollection(routes)),
+      );
+
+      for (const result of herd) {
+        expect(result.sessions).toHaveLength(1);
+      }
+      expect(vi.mocked(mockScanner.listProjects).mock.calls).toHaveLength(1);
+    });
+
+    it("re-walks a herd that arrives after the collection changed", async () => {
+      const eventBus = new EventBus();
+      const routes = setUpOneSession(eventBus);
+      await readCollection(routes);
+      const walks = vi.mocked(mockScanner.listProjects).mock.calls.length;
+
+      eventBus.emit({
+        type: "session-metadata-changed",
+        sessionId: "sess1",
+        starred: true,
+        timestamp: new Date().toISOString(),
+      });
+      await Promise.all(
+        Array.from({ length: 20 }, () => readCollection(routes)),
+      );
+
+      // One more walk for the new generation, not twenty, and not zero.
+      expect(vi.mocked(mockScanner.listProjects).mock.calls).toHaveLength(
+        walks + 1,
+      );
     });
 
     it("never short-circuits a cursor page", async () => {

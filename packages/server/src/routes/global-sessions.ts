@@ -35,6 +35,7 @@ import type {
   SessionSummary,
 } from "../supervisor/types.js";
 import type { BusEvent, EventBus } from "../watcher/index.js";
+import { SourceVersionedSingleFlight } from "../lib/sourceVersionedSingleFlight.js";
 import { SessionCollectionGeneration } from "../sessions/sessionCollectionGeneration.js";
 import { buildProviderProjectCatalog } from "./provider-catalog.js";
 import {
@@ -161,6 +162,25 @@ const MAX_LIMIT = 500;
 /** Stats cache TTL in milliseconds */
 const STATS_CACHE_TTL_MS = 5000;
 
+/**
+ * How much enriched collection state to retain across requests. Rows are
+ * compact summaries, not transcripts; this bounds an unusually large install
+ * rather than sizing an expected one.
+ */
+const COLLECTION_RETENTION_BYTES = 16 * 1024 * 1024;
+
+interface CollectionRequest {
+  filterProjectId?: string;
+  searchQuery?: string;
+  afterCursor?: string;
+  includeArchived: boolean;
+  starredOnly: boolean;
+  includeStats: boolean;
+  limit: number;
+  /** The generation observed before the walk; stamped on the response. */
+  generation: number;
+}
+
 function createEmptyStats(): GlobalSessionStats {
   return {
     totalCount: 0,
@@ -180,6 +200,16 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
   let inFlightStats: Promise<GlobalSessionStats> | null = null;
 
   const collectionGeneration = new SessionCollectionGeneration(deps.eventBus);
+  const collectionWalks = new SourceVersionedSingleFlight<
+    string,
+    GlobalSessionsResponse
+  >({
+    maxRetainedBytes: COLLECTION_RETENTION_BYTES,
+    estimateBytes: (value) =>
+      // Row count is the term that actually varies; the constant is a rough
+      // per-row summary size, not a measurement of any particular install.
+      value.sessions.length * 512 + value.projects.length * 64,
+  });
 
   const shouldInvalidateStats = (event: BusEvent): boolean => {
     switch (event.type) {
@@ -370,6 +400,76 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
       };
       return c.json(unchanged);
     }
+
+    return c.json(
+      await readCollection({
+        filterProjectId,
+        searchQuery,
+        afterCursor,
+        includeArchived,
+        starredOnly,
+        includeStats,
+        limit,
+        generation,
+      }),
+    );
+  });
+
+  /**
+   * One walk per (query, generation), however many tabs ask for it.
+   *
+   * Twenty clients reconnecting at once used to run twenty independent walks of
+   * every project, and a client without `progressive-session-catalog` — which
+   * cannot send a known generation — repeats its walk on every revalidation
+   * forever. Retention is what keeps that ungated client's fallback a
+   * performance floor rather than a penalty.
+   *
+   * `isCurrent` is deliberately vacuous. A generation advancing mid-walk does
+   * not invalidate the answer, because the response is stamped with the
+   * generation read *before* the walk: the rows are a correct snapshot for that
+   * generation, and the client's next conditional read is told `changed`.
+   * Discarding the completion instead would leave a busy server unable to
+   * answer at all, and the retained entry is unreachable afterwards anyway
+   * since the generation only moves forward.
+   */
+  async function readCollection(
+    request: CollectionRequest,
+  ): Promise<GlobalSessionsResponse> {
+    const result = await collectionWalks.run({
+      key: JSON.stringify([
+        request.filterProjectId ?? null,
+        request.searchQuery ?? null,
+        request.afterCursor ?? null,
+        request.includeArchived,
+        request.starredOnly,
+        request.includeStats,
+        request.limit,
+      ]),
+      sourceVersion: String(request.generation),
+      compute: () => walkCollection(request),
+      isCurrent: () => true,
+    });
+    if (result.status === "stale") {
+      // Unreachable while `isCurrent` is vacuous; walking again is the only
+      // answer that cannot be wrong if that ever changes.
+      return walkCollection(request);
+    }
+    return result.value;
+  }
+
+  async function walkCollection(
+    request: CollectionRequest,
+  ): Promise<GlobalSessionsResponse> {
+    const {
+      filterProjectId,
+      searchQuery,
+      afterCursor,
+      includeArchived,
+      starredOnly,
+      includeStats,
+      limit,
+      generation,
+    } = request;
 
     // Get all projects
     const allProjects = await deps.scanner.listProjects();
@@ -576,8 +676,8 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
       generation,
     };
 
-    return c.json(response);
-  });
+    return response;
+  }
 
   return routes;
 }

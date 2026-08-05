@@ -214,6 +214,14 @@ serve a stale star, unread badge, or ownership state while reporting no change
 — an error a conditional response makes invisible, which is why the collection
 clock advances on any bus event not proven unable to change a rendered row.
 
+The conditional read only helps a client that already holds a generation, so
+the collection walk is also single-flighted by `(query, generation)` through
+`SourceVersionedSingleFlight`. That covers the cold herd — twenty tabs
+reconnecting at once, none holding a token — and it is what keeps the ungated
+fallback a performance floor rather than a penalty: a client without
+`progressive-session-catalog` cannot send a token, so its repeat reads land on
+the retained walk instead of running their own.
+
 It is also deliberately coarse where the catalog's is a vector: the unfiltered
 global list genuinely depends on every project, so a single counter is the
 right shape for it. A `project=`-filtered read is the case a vector component
