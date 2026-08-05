@@ -24,6 +24,7 @@ import {
   type ClaudeAdditionalModelSelection,
   type HelperTargetConfig,
   type ModelInfo,
+  type ProviderInfo,
   serverHasCapability,
 } from "@yep-anywhere/shared";
 import { api, type ServerSettings } from "../../api/client";
@@ -35,10 +36,15 @@ import { useProviders } from "../../hooks/useProviders";
 import { useServerSettings } from "../../hooks/useServerSettings";
 import { useVersion } from "../../hooks/useVersion";
 import { useI18n } from "../../i18n";
+import {
+  ClaudeAutoCompactPercentOverrideControl,
+  YaCompactContextEarlyControl,
+} from "./compactSettingsControls";
 import { SettingsItem } from "./SettingsItem";
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
 import { HideInSettingsSearch } from "./SettingsSearchContext";
 import { SettingsSection } from "./SettingsSection";
+import { getProviderSessionDefaults } from "../../lib/newSessionDefaults";
 import {
   helperTargetDescription,
   helperTargetValue,
@@ -56,9 +62,8 @@ const SHOW_HELPER_TARGETS_SETTINGS = false;
 function shouldShowClaudeOllamaDeprecation(): boolean {
   try {
     return (
-      window.localStorage.getItem(
-        CLAUDE_OLLAMA_DEPRECATION_DISMISSAL_KEY,
-      ) !== "dismissed"
+      window.localStorage.getItem(CLAUDE_OLLAMA_DEPRECATION_DISMISSAL_KEY) !==
+      "dismissed"
     );
   } catch {
     return true;
@@ -956,9 +961,7 @@ function ClaudeGatewaySettings({
                 value={startCommand}
                 maxLength={10_000}
                 onChange={(event) => setStartCommand(event.target.value)}
-                placeholder={t(
-                  "providersClaudeGatewayStartCommandPlaceholder",
-                )}
+                placeholder={t("providersClaudeGatewayStartCommandPlaceholder")}
                 aria-label={t("providersClaudeGatewayStartCommandAria")}
               />
             </label>
@@ -1004,60 +1007,45 @@ function ClaudeLoginCommandPanel({
   );
 }
 
-function ClaudeAutoCompactPercentOverrideSettings({
-  value,
+function ClaudeYaCompactEarlyMirror({
+  serverProviders,
+  settings,
   updateSetting,
 }: {
-  value: number | undefined;
+  serverProviders: ProviderInfo[];
+  settings: ServerSettings | null;
   updateSetting: UpdateServerSetting;
 }) {
   const { t } = useI18n();
-  const { showToast } = useToastContext();
-
-  const save = useCallback(
-    async (percent: number) => {
-      try {
-        await updateSetting(
-          "claudeAutoCompactPercentOverride",
-          percent === 0 ? undefined : percent,
-        );
-        showToast(t("providersClaudeAutoCompactSaved"), "success");
-      } catch (error) {
-        showToast(
-          error instanceof Error
-            ? error.message
-            : t("providersClaudeAutoCompactSaveError"),
-          "error",
-        );
-      }
-    },
-    [showToast, t, updateSetting],
+  const claudeProvider = serverProviders.find((p) => p.name === "claude");
+  const claudeDefaults = getProviderSessionDefaults(
+    settings?.newSessionDefaults,
+    "claude",
   );
-
+  const claudeModelId =
+    typeof claudeDefaults.model === "string" &&
+    claudeDefaults.model !== "default"
+      ? claudeDefaults.model
+      : claudeProvider?.models?.[0]?.id;
+  if (!claudeModelId || claudeModelId === "default") {
+    return null;
+  }
+  const modelInfo = claudeProvider?.models?.find((m) => m.id === claudeModelId);
+  const stored =
+    settings?.clientDefaults?.compactAtContextPercent?.[claudeModelId] ?? 0;
   return (
-    <SettingsItem
-      id="provider-claude-auto-compact"
-      label={t("providersClaudeAutoCompactTitle")}
-      description={t("providersClaudeAutoCompactDescription")}
-      keywords={["compact", "context", "threshold", "percentage"]}
-      valueText={
-        value === undefined
-          ? t("providersClaudeAutoCompactOff")
-          : `${value}%`
-      }
-      className="settings-item--wide-control"
-    >
-      <CommittedRangeNumberInput
-        id="claude-auto-compact-percent"
-        min={0}
-        max={100}
-        step={1}
-        value={value ?? 0}
-        unit="%"
-        ariaLabel={t("providersClaudeAutoCompactTitle")}
-        onCommit={(percent) => void save(percent)}
-      />
-    </SettingsItem>
+    <YaCompactContextEarlyControl
+      id="provider-ya-compact-early"
+      modelId={claudeModelId}
+      contextWindow={modelInfo?.contextWindow}
+      storedPercent={stored}
+      map={settings?.clientDefaults?.compactAtContextPercent}
+      updateSetting={updateSetting}
+      description={t("providersYaCompactEarlyMirrorDescription", {
+        model: modelInfo?.name ?? claudeModelId,
+      })}
+      searchable={false}
+    />
   );
 }
 
@@ -1444,10 +1432,7 @@ export function ProvidersSettings() {
               after={
                 provider.id === "claude-ollama" &&
                 showClaudeOllamaDeprecation ? (
-                  <div
-                    className="provider-deprecation-notice"
-                    role="status"
-                  >
+                  <div className="provider-deprecation-notice" role="status">
                     <span>{t("providersClaudeOllamaDeprecationNotice")}</span>
                     <button
                       type="button"
@@ -1528,11 +1513,19 @@ export function ProvidersSettings() {
             )}
             {provider.id === "claude" &&
               provider.supportsLaunchCompactPercentOverride && (
-                <ClaudeAutoCompactPercentOverrideSettings
+                <ClaudeAutoCompactPercentOverrideControl
+                  id="provider-claude-auto-compact"
                   value={settings?.claudeAutoCompactPercentOverride}
                   updateSetting={updateSetting}
                 />
               )}
+            {provider.id === "claude" && (
+              <ClaudeYaCompactEarlyMirror
+                serverProviders={serverProviders}
+                settings={settings}
+                updateSetting={updateSetting}
+              />
+            )}
             {provider.id === "claude" && supportsClaudeGateway && (
               <ClaudeGatewaySettings
                 reloadProviders={reloadProviders}

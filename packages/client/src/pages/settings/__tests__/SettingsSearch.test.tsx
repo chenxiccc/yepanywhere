@@ -137,6 +137,32 @@ describe("SettingsItem under search scope", () => {
     expect(screen.getByLabelText("Compact context early")).toBeTruthy();
     expect(screen.queryByLabelText("Unrelated recap")).toBeNull();
   });
+
+  it("omits searchable={false} clones from search even when they would match", () => {
+    render(
+      <SettingsSearchScopeProvider
+        value={makeScope({ query: "compact context early" })}
+      >
+        <SettingsItem
+          id="primary"
+          label="Compact context early"
+          description="Primary home"
+        >
+          <input aria-label="Compact context early primary" type="range" />
+        </SettingsItem>
+        <SettingsItem
+          id="clone"
+          searchable={false}
+          label="Compact context early"
+          description="Clone next to Claude"
+        >
+          <input aria-label="Compact context early clone" type="range" />
+        </SettingsItem>
+      </SettingsSearchScopeProvider>,
+    );
+    expect(screen.getByLabelText("Compact context early primary")).toBeTruthy();
+    expect(screen.queryByLabelText("Compact context early clone")).toBeNull();
+  });
 });
 
 describe("SettingsSection under search scope", () => {

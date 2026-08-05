@@ -54,6 +54,12 @@ export interface SettingsItemProps {
    * container. In search results it appears only when the row matched.
    */
   after?: ReactNode;
+  /**
+   * When false, the row is omitted from settings search results (including
+   * section-wide matches). Use for convenience clones of a control that
+   * already has a primary searchable home elsewhere. Default true.
+   */
+  searchable?: boolean;
 }
 
 const JUMP_FLASH_DURATION_MS = 1800;
@@ -83,6 +89,7 @@ export function SettingsItem({
   info,
   children,
   after,
+  searchable = true,
 }: SettingsItemProps) {
   const { t } = useI18n();
   const scope = useSettingsSearchScope();
@@ -111,6 +118,9 @@ export function SettingsItem({
     const timer = setTimeout(() => setFlash(false), JUMP_FLASH_DURATION_MS);
     return () => clearTimeout(timer);
   }, [flash]);
+
+  // Convenience clones stay out of search entirely so only the primary row hits.
+  if (scope && !searchable) return null;
 
   const matched = scope
     ? scope.sectionMatched ||

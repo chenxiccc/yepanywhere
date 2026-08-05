@@ -44,12 +44,16 @@ import {
   getDefaultProvider,
   useProviders,
 } from "../../hooks/useProviders";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { useForkSummaryAutoOpen } from "../../hooks/useForkSummaryAutoOpen";
 import { useProviderSubscriptionUsage } from "../../hooks/useProviderSubscriptionUsage";
 import { useServerSettings } from "../../hooks/useServerSettings";
 import { useVersion } from "../../hooks/useVersion";
 import { useI18n } from "../../i18n";
+import {
+  ClaudeAutoCompactPercentOverrideControl,
+  YaCompactContextEarlyControl,
+} from "./compactSettingsControls";
 import { SettingsItem } from "./SettingsItem";
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
 import { SettingsSection } from "./SettingsSection";
@@ -59,7 +63,6 @@ import {
   FilterDropdown,
   type FilterOption,
 } from "../../components/FilterDropdown";
-import { CommittedRangeInput } from "../../components/ui/CommittedRangeInput";
 import { ProviderBadge } from "../../components/ProviderBadge";
 import { ModelSubscriptionUsage } from "../../components/ModelSubscriptionUsage";
 import { RecapAfterSecondsControl } from "../../components/RecapAfterSecondsControl";
@@ -307,11 +310,6 @@ export function ModelSettings() {
     (selectedModel
       ? settings?.clientDefaults?.compactAtContextPercent?.[selectedModel]
       : undefined) ?? 0;
-  const [compactPercentDraft, setCompactPercentDraft] =
-    useState(storedCompactPercent);
-  useEffect(() => {
-    setCompactPercentDraft(storedCompactPercent);
-  }, [storedCompactPercent]);
   const forceYaOrchestratedCompaction =
     settings?.clientDefaults?.forceYaOrchestratedCompaction === true;
   const showCompactThreshold =
@@ -322,34 +320,11 @@ export function ModelSettings() {
     // concrete id (e.g. "opus") — never the "default" sentinel. Offering a
     // threshold for "default" would only persist a key that can never fire.
     selectedModel !== "default";
-  const compactWindow = selectedModelInfo?.contextWindow ?? null;
-  const compactTokenPreview =
-    compactWindow && compactPercentDraft > 0
-      ? `${Math.round((compactWindow * compactPercentDraft) / 100 / 1024)}K`
-      : null;
-  const commitCompactPercent = useCallback(
-    (pct: number) => {
-      if (!selectedModel) return;
-      const nextMap: Record<string, number> = {
-        ...settings?.clientDefaults?.compactAtContextPercent,
-      };
-      if (pct > 0 && pct < 100) {
-        nextMap[selectedModel] = Math.round(pct);
-      } else {
-        delete nextMap[selectedModel];
-      }
-      void updateSetting("clientDefaults", {
-        compactAtContextPercent: nextMap,
-      }).catch(() => {
-        // surfaced via the hook's error state
-      });
-    },
-    [
-      selectedModel,
-      settings?.clientDefaults?.compactAtContextPercent,
-      updateSetting,
-    ],
+  const claudeProviderForCompact = availableProviders.find(
+    (p) => p.name === "claude",
   );
+  const showClaudeAutoCompactMirror =
+    claudeProviderForCompact?.supportsLaunchCompactPercentOverride === true;
   const effortOptions = getEffortLevelOptions({
     provider: selectedProvider,
     model: selectedModelInfo,
@@ -884,69 +859,27 @@ export function ModelSettings() {
             </div>
           </SettingsItem>
 
-          {showCompactThreshold && (
-            <SettingsItem
+          {showCompactThreshold && selectedModel && (
+            <YaCompactContextEarlyControl
               id="session-default-compact-early"
-              label={t("modelSettingsCompactThresholdTitle")}
-              description={t("modelSettingsCompactThresholdDescription")}
-              keywords={[
-                "compact",
-                "early compact",
-                "context early",
-                "autocompact",
-                "compaction threshold",
-                "/compact",
-              ]}
-              valueText={
-                compactPercentDraft > 0
-                  ? t("modelSettingsCompactThresholdOnHint", {
-                      percent: String(compactPercentDraft),
-                      tokens: compactTokenPreview ?? "—",
-                    })
-                  : t("modelSettingsCompactThresholdOffHint")
-              }
+              modelId={selectedModel}
+              contextWindow={selectedModelInfo?.contextWindow}
+              storedPercent={storedCompactPercent}
+              map={settings?.clientDefaults?.compactAtContextPercent}
+              updateSetting={updateSetting}
+              disabled={settingsLoading}
               className="new-session-helper-section session-default-compact-section settings-item--session-default-block settings-item--wide-control"
-              after={
-                <span className="settings-hint">
-                  {compactPercentDraft > 0
-                    ? t("modelSettingsCompactThresholdOnHint", {
-                        percent: String(compactPercentDraft),
-                        tokens: compactTokenPreview ?? "—",
-                      })
-                    : t("modelSettingsCompactThresholdOffHint")}
-                </span>
-              }
-            >
-              <span className="output-appearance-slider-row">
-                <CommittedRangeInput
-                  min={0}
-                  max={99}
-                  step={1}
-                  value={compactPercentDraft}
-                  disabled={settingsLoading}
-                  aria-label={t("modelSettingsCompactThresholdTitle")}
-                  onDraftChange={setCompactPercentDraft}
-                  onCommit={commitCompactPercent}
-                />
-                <span className="output-appearance-number-wrap">
-                  <input
-                    type="number"
-                    className="settings-input-small output-appearance-number"
-                    min={0}
-                    max={99}
-                    step={1}
-                    value={compactPercentDraft}
-                    disabled={settingsLoading}
-                    aria-label={t("modelSettingsCompactThresholdTitle")}
-                    onChange={(e) =>
-                      setCompactPercentDraft(Number(e.target.value))
-                    }
-                    onBlur={() => commitCompactPercent(compactPercentDraft)}
-                  />
-                  <span className="output-appearance-unit">%</span>
-                </span>
-              </span>
-            </SettingsItem>
+            />
+          )}
+
+          {showClaudeAutoCompactMirror && (
+            <ClaudeAutoCompactPercentOverrideControl
+              id="session-default-claude-auto-compact"
+              value={settings?.claudeAutoCompactPercentOverride}
+              updateSetting={updateSetting}
+              description={t("providersClaudeAutoCompactMirrorDescription")}
+              searchable={false}
+            />
           )}
 
           {showCompactThreshold &&
