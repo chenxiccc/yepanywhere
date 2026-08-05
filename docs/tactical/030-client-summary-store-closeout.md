@@ -63,7 +63,7 @@ Keep out of the summary store:
 | Projects page rows | Done | `useProjects` reports snapshots; page renders store project records. |
 | Projects page inbox counts | Done | Uses `useInboxCountsByProject()`. |
 | Projects page queue counts | Cleanup candidate | Queue data is store-backed through `useProjectQueues`; direct count selectors would reduce coupling. |
-| New Session project chooser | Good enough | Project rows and active-session ids are store-backed; recent visits are a maybe-later slice. |
+| New Session project chooser | Triggered follow-up | Project rows and active-session ids are store-backed, but the 2026-08-05 probe found that choosing a recent project waits on up to 30 sequential provider-aware session summaries. Tactical 095 owns the narrow recent-project projection. |
 | New Session queue button | Good enough | Store-backed project/queue/active facts plus local form selection. |
 | Session page transcript | Keep local | `useSession` and `useSessionMessages` own heavy live state. |
 | Session page detail/process modal | Keep local | Driven by `useSession` state plus on-demand `getProcessInfo`. |

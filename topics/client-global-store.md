@@ -119,6 +119,25 @@ replace it and does not make events durable. Activity events that reduce into
 summary state must carry or capture their backend source so a host switch cannot
 apply an old host event to the new host's cache.
 
+### Recent-visit membership
+
+Recent visits are bounded source-scoped membership: ordered session id,
+project id, and visit timestamp records. They do not contain or require a
+transcript or provider-aware session summary. A surface that displays recent
+session rows composes membership with existing normalized session/project
+records; a surface that only chooses a recent project reads project ids
+directly.
+
+Fetching recent membership must not resolve every visited session. In
+particular, New Session project defaulting performs no provider, session-index,
+or transcript work and does not delay its composer/provider/model regions.
+Successful visit/clear/remove mutations update the captured source. A browser
+recent-project shortcut is source-scoped as well; the same encoded path on two
+hosts is not one preference.
+
+The implementation handoff is
+[`docs/tactical/095-new-session-recent-project-readiness.md`](../docs/tactical/095-new-session-recent-project-readiness.md).
+
 ## Fetch Model
 
 Feed hooks own fetch mechanics:

@@ -87,6 +87,27 @@ retain their stronger semantics. When a primer overlaps a later explicit
 refresh or reload for the same source, only the later request may update the
 shared cache or mounted consumer state, regardless of response order.
 
+The standing provider/model choice is durable settings state, not a dynamic
+catalog answer. New Session must render the exact saved provider and
+provider-local model identity in its final control region from the retained
+settings snapshot, then revalidate installation, authentication, alternatives,
+and model capabilities in place. An unselected provider's discovery must not
+delay, clear, or replace that choice. The opening composer/project region stays
+stable while catalog rows activate.
+
+The server retains a bounded, non-secret last-successful model snapshot per
+provider across restarts. A stale snapshot may render choices but does not
+prove current authentication or launch validity. Do not persist credentials,
+raw provider command output, user identity, or arbitrary configuration text in
+that snapshot. Provider configuration changes make the snapshot stale and
+schedule provider-local revalidation; errors retain the stale rows with an
+explicit retry rather than making every provider unavailable.
+
+Generic catalog discovery is side-effect-free with respect to provider
+runtimes. It must not start or retain a configured Gateway or other provider
+service merely because a tab opened. Selected-provider refresh and launch may
+perform the provider-specific readiness work their contracts require.
+
 Selecting a configured provider whose model list is authoritative but dynamic
 triggers a background explicit refresh, even when a cached empty catalog made
 the provider eligible to select. The current provider list remains visible
@@ -98,6 +119,15 @@ controls appear. An exact saved model that is absent from an authoritative
 Gateway catalog is neither displayed nor submitted; this applies equally to
 the New Session picker and its informational floating-composer badge. Providers
 whose contracts permit exact unlisted ids retain their existing behavior.
+
+Refresh is provider-local. Selecting or retrying Gateway must not force model
+and authentication probes for Codex, OpenCode, Pi, or any other unrelated
+provider. Supplementary subscription/usage telemetry activates after the
+selected controls are interactive or on direct demand and updates in place; it
+is not part of provider/model readiness.
+
+The implementation handoff is
+[`docs/tactical/094-new-session-provider-catalog-readiness.md`](../docs/tactical/094-new-session-provider-catalog-readiness.md).
 
 ## Recap fallback semantics
 

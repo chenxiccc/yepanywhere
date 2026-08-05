@@ -152,6 +152,29 @@ registry string constants but decide at runtime whether to advertise them.
 Do not hand-write raw capability strings in the version route when a registry
 constant exists.
 
+### Snapshot delivery
+
+`/api/version` is a shared compatibility snapshot, not a per-component probe.
+The client retains one resolved snapshot per connected source and all
+capability consumers subscribe to it. A reconnect or explicit refresh may
+revalidate that source; mounting another component must not issue a new request.
+When a validation field such as speech-backend readiness is temporarily
+pending, one source-level owner schedules the follow-up rather than every hook
+instance starting its own timer.
+
+Ordinary server reads assemble the response from retained state. Static
+process/build facts such as the development `git describe` result and install
+source are computed once per server generation. Dynamic services such as
+sandbox or device-bridge availability own their own bounded snapshots and
+in-flight coalescing. `fresh=1` remains the explicit path for bypassing the
+applicable caches; a normal capability read must not repeatedly launch Git,
+package-manager, sandbox, bridge, or provider subprocesses.
+
+This delivery contract does not change any capability's meaning and therefore
+does not itself require a new capability flag. A new route or response field
+used to implement a feature still follows the compatibility-horizon rules
+above.
+
 ## Client Use
 
 Client code should compare against registry constants or domain helpers rather

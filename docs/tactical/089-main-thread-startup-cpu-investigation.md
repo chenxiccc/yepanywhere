@@ -12,9 +12,12 @@ quiescence: process-list provider-child enrichment repeatedly full-parsed
 unchanged Codex rollouts with caching disabled. A second isolated heap path is
 the monolithic public-share store. Cold production measurements also locate
 global Inbox reconciliation and recursive glossary watching on the first-page
-critical path. The owning production corrections are specified below but not
-implemented here. The adjacent stale-dev-tree defect was fixed in `f3efacfa`;
-the bind-provenance follow-up is included with this investigation.
+critical path. A later New Session probe found a 6.21-second all-provider model
+barrier dominated by unselected OpenCode discovery and a separate 6.50-second
+recent-session enrichment request used only to choose a project. The owning
+production corrections are specified below but not implemented here. The
+adjacent stale-dev-tree defect was fixed in `f3efacfa`; the bind-provenance
+follow-up is included with this investigation.
 
 Related contracts:
 
@@ -30,9 +33,13 @@ Related contracts:
 - [`topics/glossary-tooltips.md`](../../topics/glossary-tooltips.md)
 - [`topics/session-hovercard-recent-activity.md`](../../topics/session-hovercard-recent-activity.md)
 - [`topics/provider-abstraction.md`](../../topics/provider-abstraction.md)
+- [`topics/session-defaults.md`](../../topics/session-defaults.md)
+- [`031-client-query-controller.md`](031-client-query-controller.md)
 - [`091-project-path-cache.md`](091-project-path-cache.md)
 - [`092-demand-driven-glossary-discovery.md`](092-demand-driven-glossary-discovery.md)
 - [`093-provider-session-reconciliation.md`](093-provider-session-reconciliation.md)
+- [`094-new-session-provider-catalog-readiness.md`](094-new-session-provider-catalog-readiness.md)
+- [`095-new-session-recent-project-readiness.md`](095-new-session-recent-project-readiness.md)
 
 ## Evidence already established
 
@@ -325,6 +332,71 @@ JavaScript chunk measured 2,668.84 kB (770.06 kB gzip) and CSS 565.17 kB
 splitting merits a separate measured pass after the server-side contention is
 removed; it does not explain the 2.76-second API request.
 
+### New-session provider and model readiness
+
+The app shell already primes `useProviders()` on the first authenticated or
+connected tab. This only moves the request earlier: on a fresh tab the primer
+and `NewSessionForm` join one aggregate `/api/providers` response, and both the
+client and route retain results only in memory for five minutes. The form then
+waits for providers, settings, and version before assigning `selectedProvider`;
+the model control is absent until that selection and its model rows exist.
+
+A live request after the server route cache expired took 6.211 seconds. Warm
+repeats took 4-33 ms. Forced provider-detail timings isolated the barrier:
+OpenCode took 4.407 seconds, Claude 0.747 seconds, and Codex 0.239 seconds. The
+saved default was Codex, so a provider the user was not selecting owned most of
+the wait.
+
+OpenCode discovery runs two sequential child processes. `opencode models` took
+2.24 seconds and about 437 MB maximum RSS; `opencode models --verbose` took
+2.18 seconds and about 436 MB. Both exposed 87 model headers. The provider has
+no catalog cache of its own, and the verbose command already carries the ids
+needed to build the list plus effort variants. This is child-process CPU/RSS,
+not retained Hono V8 heap, but it is avoidable cold-path work and can contend
+with useful startup.
+
+The all-provider route also starts auth and model methods independently. Some
+model methods repeat auth/install prerequisites; Codex OSS may independently
+run `ollama list` for auth and models. A configured Claude Gateway is more
+consequential: generic model discovery calls `gatewayLauncher.ensureReady()`,
+so startup model-info warming or an unselected tab primer can start and retain
+a provider service. `ModelInfoService.warmProvider()` ingests only context
+windows and does not fill the provider route cache, leaving multiple warm
+owners.
+
+The saved provider/model is already durable in server settings and the live
+settings route returned in under a millisecond. It should occupy the final
+picker region immediately. Installation/authentication, current alternatives,
+and model capabilities then revalidate per provider in place. Unselected model
+catalogs cannot gate the selection; a stale model snapshot does not prove auth
+or authoritative Gateway validity; generic catalog inspection cannot start a
+persistent provider runtime.
+
+Supplementary usage probes are another lower-priority cost. Selecting Codex or
+Claude mounts a one-minute cached subscription query; forced live probes took
+3.589 and 2.656 seconds respectively. They do not currently block the picker,
+but begin optional provider control work during composition startup. Defer them
+until the controls paint or direct demand, using one source/provider owner.
+
+The implementation handoff is
+[`094-new-session-provider-catalog-readiness.md`](094-new-session-provider-catalog-readiness.md).
+The related `useVersion()` audit found 34 call sites, request-only in-flight
+coalescing but no retained resolved/source-scoped snapshot, and ordinary live
+requests ranging from 45-680 ms. Twenty sequential requests added about 989 kB
+of Hono logical reads while the development route reran `git describe` per
+request. Tactical 031 now owns the shared version/capability snapshot; this is
+independent of provider catalog persistence.
+
+The same page starts another oversized request for project defaulting.
+`NewSessionPage` consumes only recent project ids, but `/api/recents` first
+lists projects and then sequentially calls provider-aware session-summary
+resolution for every visit. Live totals were 0.9 ms for zero entries, 5.9 ms
+for one, 3.770 seconds for ten, and 6.496 seconds for the page's 30-entry
+request. The raw restart-durable `RecentsService` list already holds project ids
+and timestamps. Tactical 095 specifies a source-scoped raw recent-project
+projection; defaulting a project must perform no session-index, provider, or
+transcript read and must not gate the rest of New Session.
+
 ### Inbox, external processes, and hovercards
 
 Inbox legitimately needs global provider activity, including activity that
@@ -416,6 +488,7 @@ retention or amplification owners:
 | Git author palettes | Process-global `loaded` retains every touched project's complete author map | Release cold project palettes by byte/LRU; durable app-data copy remains reconstructible |
 | Review project stores | `ReviewCommentService.stores` retains every touched project's complete review sites, entries, submissions, and mutation state until a whole-service `reset()` | After pending mutation/save work is durable, release cold project stores by byte/LRU and reload canonical state on demand |
 | External-session tracker | `createdSessions` and `sessionStateCache` retain every observed id for process lifetime; expired abort records clean only when that session is checked | Compact generation/age bounds and bulk expiry during boot/event batches |
+| Provider/model catalog | Client and server retain one all-provider result for five minutes in memory; an expired request awaits every auth/model probe, while OpenCode launches two high-RSS CLI children and generic Gateway discovery can start a service | Durable bounded last-successful rows per provider; selected-provider priority, provider-local refresh/errors, shared prerequisites, and side-effect-free generic inspection |
 
 The process-wide pressure coordinator should shed rebuildable state in this
 order, refined by least-recent project/view and observed retained bytes:
@@ -457,14 +530,17 @@ owns that contract.
 sample; a 30-minute VMA census; structured transcript read/worker logs from the
 replacement lifetime; isolated parse/stringify of the 502 MB share store;
 fresh built-server/browser timing including an external process-to-response
-clock; route-isolated project and Inbox probes; and source traces through
-process enrichment, Inbox fan-out, provider caches, project paths, glossary
-subscriptions, and external-process discovery.
+clock; route-isolated project and Inbox probes; live provider/version endpoint
+and CLI timing; and source traces through process enrichment, Inbox fan-out,
+provider caches, project paths, glossary subscriptions, and external-process
+discovery.
 Implementation/investigation checkpoints before this extension: `f3efacfa`
 and `3c0f70df`. The provider-child, public-share, Inbox, cache-pressure, and
 sparse-path corrections remain handoffs, not implementations in tactical 089.
 The completed investigation, topic contracts, and tacticals 091-093 landed in
 `37794b7c`; the primary-bind provenance correction landed in `df2fc628`.
+Tacticals 094-095 and the version/query-controller follow-up extend that
+completed report with the later New Session observation.
 
 Primary retained evidence runs:
 

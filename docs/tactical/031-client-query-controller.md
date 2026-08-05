@@ -1,7 +1,9 @@
 # Client Query Controller
 
 Status: In progress; retained query controller and Sidebar starred projection
-landed through 2026-06-29.
+landed through 2026-06-29. A 2026-08-05 new-session audit triggered the next
+slice: retain one source-scoped version/capability snapshot and stop repeated
+route-local `/api/version` work.
 
 This note tracks the next data-fetching cleanup after the client summary store
 work. The immediate forcing bug is Sidebar session coverage: after a browser
@@ -142,10 +144,10 @@ Audited 2026-06-28. This is the starting map for migration priority.
 | `useProcesses` | `/api/processes?includeTerminated=true` | Source-keyed process snapshot plus retained controller query. Revalidates on readiness, refresh/reconnect, process/session events, and patches metadata titles locally. Previously used hook-local rows plus a fixed 30s poll. | Completed first retained-revalidation target. A process summary store slice can wait. |
 | `useProjectQueues` | `/api/project-queue` for the global queue feed; `/api/projects/:id/queue` for mutations | Source-scoped global queue snapshots plus per-project mutation reporting. Retained query lifecycle now owns wake/reconnect refetches, so Projects does not fan out across every project. | Completed adjacent retained-revalidation target. Keep mutations project-scoped. |
 | `useServerSettings` | `/api/settings` | Source-keyed retained query plus a small shared settings snapshot store. Initial GETs and reconnect/refresh revalidation share in-flight work; successful PUT responses update the shared snapshot. | Completed config-feed target. Keep mutations hook-local. |
-| `useVersion` | `/api/version` | Module-level shared in-flight promise for non-fresh requests, but no source scoping and no retained cache entry. Pending speech backend polling is bespoke. | Maybe later. Existing dedupe is useful but source-blind in hosted remote scenarios. |
-| `useProviders` | `/api/providers` | Module-level TTL cache and shared in-flight promise. No source scoping. | Maybe later. Existing shape is close to a generic query entry but must become source-aware first. |
+| `useVersion` | `/api/version` | Module-level shared in-flight promise for concurrent non-fresh requests, but no retained resolved entry or source scoping. Each later hook mount fetches again; each mounted hook can also own a pending-speech follow-up timer. | Next triggered target. Retain one source snapshot and one follow-up owner; make ordinary server response assembly subprocess-free. |
+| `useProviders` | `/api/providers` | Five-minute provider/model snapshots and in-flight work are source-keyed, but one aggregate response still waits for every provider and survives neither browser nor server restart. | Provider-local/durable catalog redesign belongs to tactical 094; reuse query-controller lifecycle without flattening provider freshness into one flag. |
 | `usePublicShareStatus` | `/api/public-shares/status` | Source-keyed retained query plus a small shared status snapshot store. Initial reads and wake/reconnect refreshes share in-flight work; `poll: true` now retains one source-level poll owner instead of one timer per hook. | Completed config/live-status target. A server activity event could later replace the remaining single poll owner. |
-| `useRecentSessions` | `/api/recents` plus mutations | Hook-local rows with optimistic local move/clear. Not currently normalized into `clientSummaryStore`. | Maybe later as a recent-visits membership slice; not needed for Sidebar bug. |
+| `useRecentSessions` | `/api/recents` plus mutations | Hook-local rows with optimistic local move/clear. New Session consumes only project ids, but the server sequentially resolves a provider-aware summary for every recent visit; live `limit=30` took 6.496 s. | Triggered narrow recent-project/source-scoped membership work in tactical 095; do not normalize transcript detail. |
 | `useSessionMessages` / `useSession` | `/api/projects/:projectId/sessions/:sessionId` plus stream endpoints | Specialized transcript logic: source-scoped dev warm cache, JSONL cursoring, stream buffering, replay dedupe, incremental message merge, older-page loading, pending-input/session metadata integration. | Deliberately not a controller target. Keep specialized. |
 
 Findings:
@@ -161,9 +163,9 @@ Findings:
 - Several hooks already solve one query-cache concern locally, but each solves a
   different subset: in-flight dedupe, TTL, debounce, stale response protection,
   or background revalidation.
-- Some module-level caches (`useVersion`, `useProviders`) are not source-keyed.
-  They are not the first bug, but a shared controller should avoid repeating
-  that source-blind shape.
+- `useVersion` remains source-blind and request-only. `useProviders` has since
+  become source-keyed, but its all-provider server barrier and restart lifetime
+  are catalog-ownership faults rather than reasons to copy its cache shape.
 - Inbox remains the reference for feed-local policies that should not move into
   the generic controller: stable tier ordering, accepted-snapshot shaping, and
   manual refresh semantics.
@@ -653,6 +655,54 @@ Acceptance:
 - existing store snapshot reporting remains source-scoped;
 - no transcript/session-stream code moves into the query controller.
 
+### 9. Retain One Version and Capability Snapshot Per Source
+
+Status: Implementation handoff, triggered by the 2026-08-05 New Session
+latency investigation.
+
+There are currently 34 `useVersion()` call sites. The hook shares only a
+request that is concurrently in flight; after it resolves, a later mount starts
+another `/api/version`. On the live development server, ordinary calls ranged
+from 45 ms to 680 ms. Twenty sequential calls caused about 989 kB of server
+logical reads. The server recomputes `getCurrentVersionInfo()` on every request,
+which runs `git describe` in a source checkout, while sandbox/device/update
+subsystems separately apply their own caches.
+
+The same hook-local shape multiplies pending validation: every mounted
+`useVersion()` whose speech backend is pending schedules its own one-second
+timer. Concurrent timers may happen to share one in-flight request, but the
+contract should have one source-level revalidation owner rather than relying on
+timer alignment.
+
+Move the resolved version response into a source-keyed retained snapshot and
+use `useRetainedClientQuery` for readiness, reconnect, and explicit refresh.
+All 34 consumers subscribe; none owns an initial request or pending-state poll.
+Keep `freshOnMount` as a deliberate force-refresh request for the About/update
+surface, coalesced with another compatible fresh request for that source.
+
+On the server, cache process-generation facts such as current version,
+development `git describe`, package root, and install source. Continue to read
+dynamic sandbox/device/voice state from their owning service snapshots; do not
+introduce a second cache that can contradict them. Ordinary `/api/version`
+response assembly launches no subprocess. `fresh=1` explicitly refreshes only
+the dynamic facts whose public contract promises a fresh check.
+
+Acceptance:
+
+- one connected source has at most one ordinary version request in flight and
+  one retained resolved snapshot, independent of mounted consumer count;
+- source switches never expose another host's capabilities, version, voice
+  backends, sandbox state, device bridge, or client defaults;
+- mounting New Session, Sidebar, Message Input, Settings, and usage telemetry
+  after the snapshot resolves issues zero additional ordinary version requests;
+- a pending speech backend schedules one source-level follow-up and stops when
+  the snapshot is no longer pending;
+- ordinary server reads run no Git, npm, sandbox, bridge, or provider child;
+- reconnect and explicit/fresh refresh preserve their current semantics and
+  stale-response ordering; and
+- tests cover multiple consumers, sequential mounts, source transitions,
+  pending-to-ready polling, reconnect, and a forced About refresh.
+
 ## Non-Goals
 
 - Do not replace `clientSummaryStore`.
@@ -685,6 +735,8 @@ Acceptance:
   than one request per project on the Projects page.
 - Verify project list/detail feeds use retained refresh while preserving shared
   project record updates and detail-event filtering.
+- Verify later `useVersion` consumers reuse one source-scoped resolved snapshot
+  and that pending capability validation has one follow-up owner.
 - Verify star/archive/read mutations update store-backed surfaces immediately
   and invalidate retained server-owned memberships.
 - Verify StrictMode or multiple mounted consumers do not double-fetch the same
