@@ -573,15 +573,6 @@ export function SessionShareModal({
                   );
                 })}
               </div>
-              {projectId && sessionId && (
-                <button
-                  type="button"
-                  className="settings-button settings-button-secondary"
-                  onClick={() => setView("session")}
-                >
-                  {t("publicShareManagementBackToSession")}
-                </button>
-              )}
               <button
                 type="button"
                 className="settings-button settings-button-danger"

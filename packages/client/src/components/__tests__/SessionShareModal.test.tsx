@@ -485,6 +485,9 @@ describe("SessionShareModal", () => {
     expect(
       scope.querySelector('button[aria-pressed="true"]')?.textContent,
     ).toBe("This session");
+    expect(
+      screen.queryByRole("button", { name: "Share This Session" }),
+    ).toBeNull();
     const shareType = screen.getByRole("group", { name: "Share type" });
     expect(
       shareType.querySelectorAll('button[aria-pressed="true"]'),

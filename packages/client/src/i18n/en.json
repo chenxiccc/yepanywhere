@@ -787,7 +787,6 @@
   "publicShareReadOnlySecretCaution": "Read, edit, and command output shown so far should be considered public.",
   "publicShareFrozenLinkedFilesLiveWarning": "This frozen share could not snapshot linked files on this operating system. Its authorized file links show the current file contents.",
   "publicShareManagementTitle": "Manage Public Shares",
-  "publicShareManagementBackToSession": "Share This Session",
   "publicShareManagementScopeFilter": "Show",
   "publicShareManagementScopeAll": "All projects",
   "publicShareManagementScopeProject": "This project",

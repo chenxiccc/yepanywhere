@@ -45,7 +45,7 @@ async function dismissOnboardingIfVisible(
   await expect(dialog).not.toBeVisible();
 }
 
-test("right click opens session share management without creating a link", async ({
+test("left and right click open the same share manager", async ({
   page,
   baseURL,
 }) => {
@@ -93,6 +93,9 @@ test("right click opens session share management without creating a link", async
     dialog.getByRole("button", { name: "Live", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
   await expect(
+    dialog.getByRole("button", { name: "Share This Session" }),
+  ).toHaveCount(0);
+  await expect(
     dialog.getByRole("button", { name: "Revoke All Shared Links" }),
   ).toBeEnabled();
   await expect(dialog.getByRole("listitem")).toHaveCount(2);
@@ -101,6 +104,14 @@ test("right click opens session share management without creating a link", async
   expect(dialogBox).not.toBeNull();
   expect(dialogBox?.x).toBeLessThanOrEqual(indicatorBox?.x ?? 0);
   expect(dialogBox?.y).toBeGreaterThan(indicatorBox?.y ?? 0);
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).not.toBeVisible();
+  await indicator.click();
+  await expect(dialog.getByText("Manage Public Shares")).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "This session", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
 
   const captureDirectory = process.env.YEP_PUBLIC_SHARE_CAPTURE_DIR;
   if (captureDirectory) {

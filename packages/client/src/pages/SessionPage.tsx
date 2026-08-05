@@ -4190,9 +4190,11 @@ function SessionPageContent({
 
   const handleShare = useCallback(() => {
     setShareModalAnchor(null);
-    setShareModalView("session");
+    setShareModalView(
+      publicShareManagementAvailable ? "manage" : "session",
+    );
     setShowShareModal(true);
-  }, []);
+  }, [publicShareManagementAvailable]);
 
   const handleShareIndicatorClick = useCallback(
     (event: ReactMouseEvent<HTMLButtonElement>) => {
@@ -4205,29 +4207,21 @@ function SessionPageContent({
         top: rect.top,
         width: rect.width,
       });
-      setShareModalView("session");
+      setShareModalView(
+        publicShareManagementAvailable ? "manage" : "session",
+      );
       setShowShareModal(true);
     },
-    [],
+    [publicShareManagementAvailable],
   );
 
   const handleShareIndicatorContextMenu = useCallback(
     (event: ReactMouseEvent<HTMLButtonElement>) => {
       if (!publicShareManagementAvailable) return;
       event.preventDefault();
-      const rect = event.currentTarget.getBoundingClientRect();
-      setShareModalAnchor({
-        bottom: rect.bottom,
-        height: rect.height,
-        left: rect.left,
-        right: rect.right,
-        top: rect.top,
-        width: rect.width,
-      });
-      setShareModalView("manage");
-      setShowShareModal(true);
+      handleShareIndicatorClick(event);
     },
-    [publicShareManagementAvailable],
+    [handleShareIndicatorClick, publicShareManagementAvailable],
   );
 
   useEffect(() => {
