@@ -189,6 +189,34 @@ describe("SessionMetadataService", () => {
     });
   });
 
+  describe("provider persistence", () => {
+    it("does not save when the provider is already current", async () => {
+      await service.initialize();
+      await service.setProvider("session-1", "codex");
+      const saveSpy = vi.spyOn(
+        service as unknown as { doSave(): Promise<void> },
+        "doSave",
+      );
+
+      await service.setProvider("session-1", "codex");
+
+      expect(saveSpy).not.toHaveBeenCalled();
+      expect(service.getMetadata("session-1")?.provider).toBe("codex");
+    });
+
+    it("returns distinct providers without copying all metadata", async () => {
+      await service.initialize();
+      await service.setProvider("session-1", "codex");
+      await service.setProvider("session-2", "codex");
+      await service.setProvider("session-3", "claude-gateway");
+
+      expect(service.getRecordedProviders()).toEqual([
+        "codex",
+        "claude-gateway",
+      ]);
+    });
+  });
+
   describe("effective launch settings", () => {
     it("persists complete settings and preserves exact default model tokens", async () => {
       await service.initialize();

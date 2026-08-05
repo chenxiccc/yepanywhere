@@ -112,12 +112,13 @@ import {
   registerSpeechBackends,
 } from "./services/voice/registry.js";
 import { ClaudeSessionReader } from "./sessions/reader.js";
+import { providerCatalogFamily } from "./sessions/provider-catalog-family.js";
 import { AttachmentStagingService } from "./uploads/AttachmentStagingService.js";
 import { UploadManager } from "./uploads/manager.js";
 import {
   EventBus,
-  FileWatcher,
   FocusedSessionWatchManager,
+  ProviderSessionWatcherRegistry,
   SourceWatcher,
 } from "./watcher/index.js";
 
@@ -156,6 +157,8 @@ process.on("unhandledRejection", (reason) => {
 const desktopBootstrapService = await readDesktopBootstrapServiceFromStdin();
 const config = loadConfig();
 const ATTACHMENT_STAGING_CLEANUP_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const PROVIDER_WATCH_ACTIVATION_DELAY_MS = 1_000;
+const PROVIDER_WATCH_ACTIVATION_YIELD_MS = 100;
 
 // Track services for graceful shutdown (set after createApp)
 let supervisorForShutdown:
@@ -169,6 +172,8 @@ let projectGlossarySubscriptionsForShutdown: ProjectGlossarySubscriptionManager 
   null;
 let hostAwakeForShutdown: HostAwakeService | null = null;
 let securityClientForShutdown: SecurityClientService | null = null;
+let providerSessionWatchersForShutdown: ProviderSessionWatcherRegistry | null =
+  null;
 let attachmentStagingCleanupTimer: ReturnType<typeof setInterval> | null = null;
 let isShuttingDown = false;
 
@@ -274,10 +279,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
       await ClaudeGatewayProvider.shutdownGateway();
       console.log("[Shutdown] Managed Claude Gateway stopped");
     } catch (error) {
-      console.error(
-        "[Shutdown] Error stopping managed Claude Gateway:",
-        error,
-      );
+      console.error("[Shutdown] Error stopping managed Claude Gateway:", error);
     }
   }
 
@@ -294,6 +296,8 @@ async function gracefulShutdown(signal: string): Promise<void> {
   }
   projectGlossarySubscriptionsForShutdown?.dispose();
   projectGlossarySubscriptionsForShutdown = null;
+  providerSessionWatchersForShutdown?.stop();
+  providerSessionWatchersForShutdown = null;
 
   // Shut down device bridge sidecar
   if (deviceBridgeForShutdown) {
@@ -454,39 +458,41 @@ await warnIfCodexVersionMismatch();
 // Create the real SDK
 const realSdk = new RealClaudeSDK();
 
-// Create EventBus and FileWatchers for all provider directories
+// Create the event bus and the eligibility-gated provider watcher owner.
 const eventBus = new EventBus();
-const fileWatchers: FileWatcher[] = [];
-
-// Helper to create watcher if directory exists
-function createWatcherIfExists(
-  watchDir: string,
-  provider: "claude" | "gemini" | "codex" | "pi",
-): void {
-  if (fs.existsSync(watchDir)) {
-    const periodicRescanMs =
-      provider === "codex" ? config.codexWatchPeriodicRescanMs : 0;
-
-    const watcher = new FileWatcher({
-      watchDir,
-      provider,
-      eventBus,
+const providerSessionWatchers = new ProviderSessionWatcherRegistry({
+  eventBus,
+  activationDelayMs: PROVIDER_WATCH_ACTIVATION_DELAY_MS,
+  activationYieldMs: PROVIDER_WATCH_ACTIVATION_YIELD_MS,
+  specs: [
+    {
+      family: "claude",
+      watchDir: config.claudeSessionsDir,
+      provider: "claude",
       debounceMs: 200,
-      periodicRescanMs,
-    });
-    watcher.start();
-    fileWatchers.push(watcher);
-  } else {
-    console.log(`[FileWatcher] Skipping ${provider} (${watchDir} not found)`);
-  }
-}
-
-// Create watchers for session directories only (not full provider dirs)
-// This reduces inotify pressure and memory usage
-createWatcherIfExists(config.claudeSessionsDir, "claude");
-createWatcherIfExists(config.geminiSessionsDir, "gemini");
-createWatcherIfExists(config.codexSessionsDir, "codex");
-createWatcherIfExists(config.piSessionsDir, "pi");
+    },
+    {
+      family: "gemini",
+      watchDir: config.geminiSessionsDir,
+      provider: "gemini",
+      debounceMs: 200,
+    },
+    {
+      family: "codex",
+      watchDir: config.codexSessionsDir,
+      provider: "codex",
+      debounceMs: 200,
+      periodicRescanMs: config.codexWatchPeriodicRescanMs,
+    },
+    {
+      family: "pi",
+      watchDir: config.piSessionsDir,
+      provider: "pi",
+      debounceMs: 200,
+    },
+  ],
+});
+providerSessionWatchersForShutdown = providerSessionWatchers;
 
 // When running without tsx watch (NO_BACKEND_RELOAD=true), start source watcher
 // to notify the UI when server code changes and needs manual reload
@@ -652,6 +658,21 @@ async function startServer() {
   markStartup("notificationService initialized");
   await sessionMetadataService.initialize();
   markStartup("sessionMetadataService initialized");
+  const migratedCatalogFamilies = installService.needsCatalogMetadataMigration()
+    ? await installService.completeCatalogMetadataMigration(
+        sessionMetadataService.getRecordedProviders(),
+      )
+    : [];
+  getLogger().info(
+    {
+      event: "provider_session_watcher_state_loaded",
+      catalogFamilies: installService.getCatalogFamilies(),
+      migratedCatalogFamilies,
+      ...providerSessionWatchers.getMetrics(),
+    },
+    "FILE_WATCHER: eligible provider watcher state loaded",
+  );
+  markStartup("eligible provider watcher state loaded");
   await projectMetadataService.initialize();
   markStartup("projectMetadataService initialized");
   await projectQueueService.initialize();
@@ -900,6 +921,12 @@ async function startServer() {
     // Note: uploadeWebSocket not passed yet - will be added below
     notificationService,
     sessionMetadataService,
+    onSuccessfulProviderSession: async (_sessionId, provider) => {
+      await installService.recordSuccessfulProviders([provider]);
+      providerSessionWatchers.requestActivation([
+        providerCatalogFamily(provider),
+      ]);
+    },
     projectMetadataService,
     projectQueueService,
     sessionQueuePersistenceService,
@@ -1524,6 +1551,9 @@ async function startServer() {
     "127.0.0.1",
     (info) => {
       markStartup("localhost server onReady");
+      providerSessionWatchers.requestActivation(
+        installService.getCatalogFamilies(),
+      );
       void reportDevWrapperListening({
         host: "127.0.0.1",
         port: info.port,

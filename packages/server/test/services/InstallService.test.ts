@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InstallService } from "../../src/services/InstallService.js";
 
 describe("InstallService", () => {
@@ -16,6 +16,7 @@ describe("InstallService", () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await rm(testDir, { recursive: true, force: true });
   });
 
@@ -49,14 +50,17 @@ describe("InstallService", () => {
       const content = await readFile(join(testDir, "install.json"), "utf-8");
       const state = JSON.parse(content);
 
-      expect(state.version).toBe(1);
+      expect(state.version).toBe(2);
       expect(state.installId).toBe(service.getInstallId());
       expect(state.createdAt).toBeDefined();
+      expect(state.catalogFamilies).toEqual([]);
+      expect(state.catalogMetadataMigrationComplete).toBe(false);
       // Verify createdAt is a valid ISO timestamp
       expect(new Date(state.createdAt).toISOString()).toBe(state.createdAt);
     });
 
     it("handles corrupted JSON by regenerating", async () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
       await writeFile(join(testDir, "install.json"), "not valid json{{{");
 
       // Should not throw
@@ -70,6 +74,7 @@ describe("InstallService", () => {
     });
 
     it("handles missing installId field by regenerating", async () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
       const badState = {
         version: 1,
         createdAt: new Date().toISOString(),
@@ -87,6 +92,7 @@ describe("InstallService", () => {
     });
 
     it("handles empty installId field by regenerating", async () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
       const badState = {
         version: 1,
         installId: "",
@@ -105,6 +111,7 @@ describe("InstallService", () => {
     });
 
     it("handles missing createdAt field by regenerating", async () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
       const badState = {
         version: 1,
         installId: randomUUID(),
@@ -156,7 +163,131 @@ describe("InstallService", () => {
       // Verify file was updated with new version
       const content = await readFile(join(testDir, "install.json"), "utf-8");
       const state = JSON.parse(content);
-      expect(state.version).toBe(1);
+      expect(state.version).toBe(2);
+    });
+  });
+
+  describe("provider catalog eligibility", () => {
+    it("normalizes runtime aliases into one durable native family", async () => {
+      await service.initialize();
+
+      await expect(
+        service.recordSuccessfulProviders([
+          "codex",
+          "codex-oss",
+          "gemini-acp",
+          "gemini",
+          "claude-gateway",
+          "claude-ollama",
+        ]),
+      ).resolves.toEqual(["claude", "codex", "gemini"]);
+      expect(service.getCatalogFamilies()).toEqual([
+        "claude",
+        "codex",
+        "gemini",
+      ]);
+
+      const reloaded = new InstallService({ dataDir: testDir });
+      await reloaded.initialize();
+      expect(reloaded.getCatalogFamilies()).toEqual([
+        "claude",
+        "codex",
+        "gemini",
+      ]);
+    });
+
+    it("performs no write for repeated successful use", async () => {
+      await service.initialize();
+      await service.recordSuccessfulProviders(["codex"]);
+      const before = await readFile(service.getFilePath(), "utf-8");
+
+      await expect(
+        service.recordSuccessfulProviders(["codex-oss", "codex"]),
+      ).resolves.toEqual([]);
+
+      expect(await readFile(service.getFilePath(), "utf-8")).toBe(before);
+    });
+
+    it("serializes concurrent first-use records without losing a family", async () => {
+      await service.initialize();
+
+      await Promise.all([
+        service.recordSuccessfulProviders(["pi"]),
+        service.recordSuccessfulProviders(["grok"]),
+        service.recordSuccessfulProviders(["opencode"]),
+      ]);
+
+      const reloaded = new InstallService({ dataDir: testDir });
+      await reloaded.initialize();
+      expect(reloaded.getCatalogFamilies()).toEqual(["grok", "opencode", "pi"]);
+    });
+
+    it("migrates old install state without inferring native stores", async () => {
+      const installId = randomUUID();
+      await writeFile(
+        join(testDir, "install.json"),
+        JSON.stringify({
+          version: 1,
+          installId,
+          createdAt: "2024-01-01T00:00:00.000Z",
+        }),
+      );
+
+      await service.initialize();
+
+      expect(service.getInstallId()).toBe(installId);
+      expect(service.getCatalogFamilies()).toEqual([]);
+      const state = JSON.parse(await readFile(service.getFilePath(), "utf-8"));
+      expect(state).toMatchObject({
+        version: 2,
+        installId,
+        catalogFamilies: [],
+        catalogMetadataMigrationComplete: false,
+      });
+    });
+
+    it("scans legacy metadata only until migration is durable", async () => {
+      await service.initialize();
+      expect(service.needsCatalogMetadataMigration()).toBe(true);
+
+      await expect(
+        service.completeCatalogMetadataMigration([
+          "codex-oss",
+          "claude-gateway",
+        ]),
+      ).resolves.toEqual(["claude", "codex"]);
+      expect(service.needsCatalogMetadataMigration()).toBe(false);
+
+      const before = await readFile(service.getFilePath(), "utf-8");
+      await expect(
+        service.completeCatalogMetadataMigration(["codex-oss"]),
+      ).resolves.toEqual([]);
+      expect(await readFile(service.getFilePath(), "utf-8")).toBe(before);
+
+      const reloaded = new InstallService({ dataDir: testDir });
+      await reloaded.initialize();
+      expect(reloaded.needsCatalogMetadataMigration()).toBe(false);
+      expect(reloaded.getCatalogFamilies()).toEqual(["claude", "codex"]);
+    });
+
+    it("drops unknown persisted families during migration", async () => {
+      await writeFile(
+        join(testDir, "install.json"),
+        JSON.stringify({
+          version: 2,
+          installId: randomUUID(),
+          createdAt: "2024-01-01T00:00:00.000Z",
+          catalogFamilies: ["codex", "imaginary", "codex"],
+        }),
+      );
+
+      await service.initialize();
+
+      expect(service.getCatalogFamilies()).toEqual(["codex"]);
+      expect(
+        JSON.parse(await readFile(service.getFilePath(), "utf-8"))
+          .catalogFamilies,
+      ).toEqual(["codex"]);
     });
   });
 

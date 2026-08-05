@@ -246,6 +246,16 @@ export class SessionMetadataService {
     return { ...this.state.sessions };
   }
 
+  /** Distinct providers persisted by prior successful YA session boundaries. */
+  getRecordedProviders(): ProviderName[] {
+    const providers = new Set<ProviderName>();
+    for (const sessionId in this.state.sessions) {
+      const metadata = this.state.sessions[sessionId];
+      if (metadata?.provider) providers.add(metadata.provider);
+    }
+    return [...providers];
+  }
+
   getTranscriptDisplayObjects(sessionId: string): TranscriptDisplayObject[] {
     return [
       ...(this.state.sessions[this.resolveSessionId(sessionId)]
@@ -438,9 +448,11 @@ export class SessionMetadataService {
     sessionId: string,
     provider: ProviderName | undefined,
   ): Promise<void> {
+    const normalizedProvider = provider || undefined;
+    if (this.getMetadata(sessionId)?.provider === normalizedProvider) return;
     this.updateSessionMetadata(sessionId, (metadata) => ({
       ...metadata,
-      provider: provider || undefined,
+      provider: normalizedProvider,
     }));
     await this.save();
   }
@@ -663,7 +675,7 @@ export class SessionMetadataService {
 
     this.state.sessions[targetId] = {
       ...source,
-      ...(this.state.sessions[targetId] ?? {}),
+      ...this.state.sessions[targetId],
     };
     const { [sourceId]: _, ...remaining } = this.state.sessions;
     this.state.sessions = remaining;

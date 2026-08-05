@@ -9,6 +9,12 @@
 import { randomUUID } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import type { ProviderName } from "@yep-anywhere/shared";
+import {
+  type ProviderCatalogFamily,
+  normalizeProviderCatalogFamilies,
+  providerCatalogFamily,
+} from "../sessions/provider-catalog-family.js";
 
 export interface InstallState {
   /** Schema version for future migrations */
@@ -17,9 +23,13 @@ export interface InstallState {
   installId: string;
   /** ISO timestamp when this install was first created */
   createdAt: string;
+  /** Native provider stores this install has successfully used. */
+  catalogFamilies: ProviderCatalogFamily[];
+  /** Whether legacy YA session metadata has seeded catalog eligibility. */
+  catalogMetadataMigrationComplete: boolean;
 }
 
-const CURRENT_VERSION = 1;
+const CURRENT_VERSION = 2;
 
 export interface InstallServiceOptions {
   /** Directory to store install state (defaults to ~/.yep-anywhere) */
@@ -30,6 +40,7 @@ export class InstallService {
   private state: InstallState | null = null;
   private dataDir: string;
   private filePath: string;
+  private mutationTail: Promise<void> = Promise.resolve();
 
   constructor(options: InstallServiceOptions = {}) {
     this.dataDir =
@@ -53,7 +64,7 @@ export class InstallService {
 
       // Try to load existing state
       const content = await fs.readFile(this.filePath, "utf-8");
-      const parsed = JSON.parse(content) as InstallState;
+      const parsed = JSON.parse(content) as Partial<InstallState>;
 
       // Validate required fields
       if (
@@ -66,15 +77,25 @@ export class InstallService {
         );
 
         // Handle migrations if needed
-        if (parsed.version === CURRENT_VERSION) {
-          this.state = parsed;
-        } else {
-          // Future: handle migrations here
-          this.state = {
-            version: CURRENT_VERSION,
-            installId: parsed.installId,
-            createdAt: parsed.createdAt,
-          };
+        const catalogFamilies = normalizeProviderCatalogFamilies(
+          parsed.catalogFamilies ?? [],
+        );
+        const catalogMetadataMigrationComplete =
+          parsed.catalogMetadataMigrationComplete === true;
+        this.state = {
+          version: CURRENT_VERSION,
+          installId: parsed.installId,
+          createdAt: parsed.createdAt,
+          catalogFamilies,
+          catalogMetadataMigrationComplete,
+        };
+        if (
+          parsed.version !== CURRENT_VERSION ||
+          JSON.stringify(parsed.catalogFamilies ?? []) !==
+            JSON.stringify(catalogFamilies) ||
+          parsed.catalogMetadataMigrationComplete !==
+            catalogMetadataMigrationComplete
+        ) {
           await this.save();
         }
       } else {
@@ -85,6 +106,9 @@ export class InstallService {
         await this.generateNew();
       }
     } catch (error) {
+      if (this.state) {
+        throw error;
+      }
       // File doesn't exist or is invalid - generate new
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
         console.warn(
@@ -104,6 +128,8 @@ export class InstallService {
       version: CURRENT_VERSION,
       installId: randomUUID(),
       createdAt: new Date().toISOString(),
+      catalogFamilies: [],
+      catalogMetadataMigrationComplete: false,
     };
     console.log(
       `[InstallService] Generated new install ID: ${this.state.installId}`,
@@ -137,6 +163,88 @@ export class InstallService {
     return this.state.createdAt;
   }
 
+  getCatalogFamilies(): ProviderCatalogFamily[] {
+    if (!this.state) {
+      throw new Error(
+        "InstallService not initialized. Call initialize() first.",
+      );
+    }
+    return [...this.state.catalogFamilies];
+  }
+
+  needsCatalogMetadataMigration(): boolean {
+    if (!this.state) {
+      throw new Error(
+        "InstallService not initialized. Call initialize() first.",
+      );
+    }
+    return !this.state.catalogMetadataMigrationComplete;
+  }
+
+  async recordSuccessfulProviders(
+    providers: Iterable<ProviderName>,
+  ): Promise<ProviderCatalogFamily[]> {
+    const families = normalizeProviderCatalogFamilies(
+      [...providers].map(providerCatalogFamily),
+    );
+    return this.updateCatalogFamilies(families, false);
+  }
+
+  async completeCatalogMetadataMigration(
+    providers: Iterable<ProviderName>,
+  ): Promise<ProviderCatalogFamily[]> {
+    const families = normalizeProviderCatalogFamilies(
+      [...providers].map(providerCatalogFamily),
+    );
+    return this.updateCatalogFamilies(families, true);
+  }
+
+  async recordCatalogFamilies(
+    families: Iterable<ProviderCatalogFamily>,
+  ): Promise<ProviderCatalogFamily[]> {
+    const requested = normalizeProviderCatalogFamilies(families);
+    return this.updateCatalogFamilies(requested, false);
+  }
+
+  private async updateCatalogFamilies(
+    requested: readonly ProviderCatalogFamily[],
+    completeMetadataMigration: boolean,
+  ): Promise<ProviderCatalogFamily[]> {
+    return this.enqueueMutation(async () => {
+      if (!this.state) {
+        throw new Error(
+          "InstallService not initialized. Call initialize() first.",
+        );
+      }
+      const current = this.state;
+      const additions = requested.filter(
+        (family) => !current.catalogFamilies.includes(family),
+      );
+      const migrationChanges =
+        completeMetadataMigration && !current.catalogMetadataMigrationComplete;
+      if (additions.length === 0 && !migrationChanges) return [];
+
+      const previous = current;
+      this.state = {
+        ...previous,
+        catalogFamilies: normalizeProviderCatalogFamilies([
+          ...previous.catalogFamilies,
+          ...additions,
+        ]),
+        catalogMetadataMigrationComplete:
+          previous.catalogMetadataMigrationComplete ||
+          completeMetadataMigration,
+      };
+      try {
+        await this.save();
+      } catch (error) {
+        this.state = previous;
+        throw error;
+      }
+      return additions;
+    });
+  }
+
   /**
    * Save state to disk.
    */
@@ -146,7 +254,14 @@ export class InstallService {
     }
     try {
       const content = JSON.stringify(this.state, null, 2);
-      await fs.writeFile(this.filePath, content, "utf-8");
+      const temporaryPath = `${this.filePath}.${process.pid}.${randomUUID()}.tmp`;
+      try {
+        await fs.writeFile(temporaryPath, content, "utf-8");
+        await fs.rename(temporaryPath, this.filePath);
+      } catch (error) {
+        await fs.unlink(temporaryPath).catch(() => {});
+        throw error;
+      }
     } catch (error) {
       console.error("[InstallService] Failed to save state:", error);
       throw error;
@@ -158,5 +273,14 @@ export class InstallService {
    */
   getFilePath(): string {
     return this.filePath;
+  }
+
+  private enqueueMutation<T>(mutation: () => Promise<T>): Promise<T> {
+    const result = this.mutationTail.then(mutation, mutation);
+    this.mutationTail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
   }
 }

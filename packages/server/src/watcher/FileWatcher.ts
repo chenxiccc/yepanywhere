@@ -65,6 +65,26 @@ export interface FileWatcherRescanMetrics {
   overlapSkipsTotal: number;
 }
 
+export interface FileWatcherBaselineMetrics {
+  provider: WatchProvider;
+  watchDir: string;
+  durationMs: number;
+  directoriesVisited: number;
+  filesScanned: number;
+  filesIndexed: number;
+  directoryReadErrors: number;
+  statFailures: number;
+  touchedPathsPreserved: number;
+}
+
+export type FileWatcherBaselineState =
+  | "idle"
+  | "scheduled"
+  | "running"
+  | "complete"
+  | "failed"
+  | "stopped";
+
 const DEFAULT_RESCAN_SLOW_LOG_THRESHOLD_MS = 250;
 const PERIODIC_RESCAN_BACKOFF_RATIO = 0.5;
 const PERIODIC_RESCAN_RECOVERY_RATIO = 0.1;
@@ -88,6 +108,13 @@ export class FileWatcher {
   private lastRescanMetrics: FileWatcherRescanMetrics | null = null;
   private rescanOverlapSkipsSinceLast = 0;
   private rescanOverlapSkipsTotal = 0;
+  private lifecycleGeneration = 0;
+  private initialBaselineState: FileWatcherBaselineState = "idle";
+  private initialBaselinePromise: Promise<FileWatcherBaselineMetrics | null> | null =
+    null;
+  private initialBaselineMetrics: FileWatcherBaselineMetrics | null = null;
+  private initialBaselineTouchedPaths = new Set<string>();
+  private rescanRequestedDuringBaseline = false;
 
   constructor(options: FileWatcherOptions) {
     this.watchDir = options.watchDir;
@@ -106,8 +133,7 @@ export class FileWatcher {
     );
     this.rescanSlowLogThresholdMs = Math.max(
       0,
-      options.rescanSlowLogThresholdMs ??
-        DEFAULT_RESCAN_SLOW_LOG_THRESHOLD_MS,
+      options.rescanSlowLogThresholdMs ?? DEFAULT_RESCAN_SLOW_LOG_THRESHOLD_MS,
     );
   }
 
@@ -119,10 +145,8 @@ export class FileWatcher {
       return; // Already watching
     }
 
-    // Build initial file list for detecting create vs modify
-    this.scanExistingFiles();
-
     try {
+      const lifecycleGeneration = ++this.lifecycleGeneration;
       this.watcher = fs.watch(
         this.watchDir,
         { recursive: true },
@@ -143,6 +167,7 @@ export class FileWatcher {
       });
 
       getLogger().info(`[FileWatcher] Watching ${this.watchDir}`);
+      this.scheduleInitialBaseline(lifecycleGeneration);
 
       if (this.periodicRescanMs > 0) {
         this.periodicRescanCurrentMs = this.periodicRescanMs;
@@ -160,6 +185,7 @@ export class FileWatcher {
    * Stop watching for file changes.
    */
   stop(): void {
+    this.lifecycleGeneration += 1;
     if (this.watcher) {
       this.watcher.close();
       this.watcher = null;
@@ -179,6 +205,9 @@ export class FileWatcher {
       this.periodicRescanTimer = null;
     }
     this.knownFileMtimes.clear();
+    this.initialBaselineTouchedPaths.clear();
+    this.rescanRequestedDuringBaseline = false;
+    this.initialBaselineState = "stopped";
 
     getLogger().info("[FileWatcher] Stopped");
   }
@@ -191,18 +220,179 @@ export class FileWatcher {
   }
 
   getLastRescanMetrics(): FileWatcherRescanMetrics | null {
-    return this.lastRescanMetrics
-      ? { ...this.lastRescanMetrics }
-      : null;
+    return this.lastRescanMetrics ? { ...this.lastRescanMetrics } : null;
   }
 
   getPeriodicRescanDelayMs(): number {
     return this.periodicRescanCurrentMs;
   }
 
-  private scanExistingFiles(): void {
-    this.knownFileMtimes.clear();
-    this.scanDir(this.watchDir, this.knownFileMtimes);
+  getInitialBaselineState(): FileWatcherBaselineState {
+    return this.initialBaselineState;
+  }
+
+  getInitialBaselineMetrics(): FileWatcherBaselineMetrics | null {
+    return this.initialBaselineMetrics
+      ? { ...this.initialBaselineMetrics }
+      : null;
+  }
+
+  async waitForInitialBaseline(): Promise<FileWatcherBaselineMetrics | null> {
+    return this.initialBaselinePromise
+      ? await this.initialBaselinePromise
+      : this.getInitialBaselineMetrics();
+  }
+
+  private scheduleInitialBaseline(lifecycleGeneration: number): void {
+    this.initialBaselineState = "scheduled";
+    this.initialBaselineMetrics = null;
+    this.initialBaselineTouchedPaths.clear();
+    this.initialBaselinePromise = new Promise<void>((resolve) => {
+      setImmediate(resolve);
+    }).then(() => this.buildInitialBaseline(lifecycleGeneration));
+  }
+
+  private async buildInitialBaseline(
+    lifecycleGeneration: number,
+  ): Promise<FileWatcherBaselineMetrics | null> {
+    if (!this.isCurrentLifecycle(lifecycleGeneration)) return null;
+    this.initialBaselineState = "running";
+    const startedAt = Date.now();
+    const metrics: FileWatcherBaselineMetrics = {
+      provider: this.provider,
+      watchDir: this.watchDir,
+      durationMs: 0,
+      directoriesVisited: 0,
+      filesScanned: 0,
+      filesIndexed: 0,
+      directoryReadErrors: 0,
+      statFailures: 0,
+      touchedPathsPreserved: 0,
+    };
+    const baseline = new Map<string, number>();
+
+    try {
+      const completed = await this.scanDirAsync(
+        this.watchDir,
+        baseline,
+        metrics,
+        lifecycleGeneration,
+      );
+      if (!completed || !this.isCurrentLifecycle(lifecycleGeneration)) {
+        return null;
+      }
+
+      for (const filePath of baseline.keys()) {
+        if (this.wasTouchedDuringBaseline(filePath)) {
+          metrics.touchedPathsPreserved += 1;
+          baseline.delete(filePath);
+        }
+      }
+      for (const [filePath, mtimeMs] of this.knownFileMtimes) {
+        baseline.set(filePath, mtimeMs);
+      }
+      this.knownFileMtimes = baseline;
+      metrics.filesIndexed = this.knownFileMtimes.size;
+      metrics.durationMs = Date.now() - startedAt;
+      this.initialBaselineMetrics = { ...metrics };
+      this.initialBaselineState = "complete";
+      getLogger().debug(
+        { event: "file_watcher_initial_baseline", ...metrics },
+        "FILE_WATCHER: initial baseline complete",
+      );
+      return { ...metrics };
+    } catch (error) {
+      if (this.isCurrentLifecycle(lifecycleGeneration)) {
+        this.initialBaselineState = "failed";
+        getLogger().warn(
+          {
+            event: "file_watcher_initial_baseline_failed",
+            provider: this.provider,
+            watchDir: this.watchDir,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "FILE_WATCHER: initial baseline failed",
+        );
+      }
+      return null;
+    } finally {
+      if (this.isCurrentLifecycle(lifecycleGeneration)) {
+        this.initialBaselineTouchedPaths.clear();
+        if (this.rescanRequestedDuringBaseline) {
+          this.rescanRequestedDuringBaseline = false;
+          setImmediate(() => {
+            if (this.isCurrentLifecycle(lifecycleGeneration)) {
+              this.rescanAndEmit("fallback");
+            }
+          });
+        }
+      }
+    }
+  }
+
+  private async scanDirAsync(
+    root: string,
+    index: Map<string, number>,
+    metrics: FileWatcherBaselineMetrics,
+    lifecycleGeneration: number,
+  ): Promise<boolean> {
+    const pendingDirectories = [root];
+    const statBatchSize = 64;
+    while (pendingDirectories.length > 0) {
+      if (!this.isCurrentLifecycle(lifecycleGeneration)) return false;
+      const dir = pendingDirectories.pop();
+      if (!dir) break;
+      metrics.directoriesVisited += 1;
+
+      let entries: fs.Dirent[];
+      try {
+        entries = await fs.promises.readdir(dir, { withFileTypes: true });
+      } catch {
+        metrics.directoryReadErrors += 1;
+        continue;
+      }
+
+      const files: string[] = [];
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) pendingDirectories.push(fullPath);
+        else files.push(fullPath);
+      }
+
+      for (let offset = 0; offset < files.length; offset += statBatchSize) {
+        if (!this.isCurrentLifecycle(lifecycleGeneration)) return false;
+        const batch = files.slice(offset, offset + statBatchSize);
+        metrics.filesScanned += batch.length;
+        await Promise.all(
+          batch.map(async (filePath) => {
+            try {
+              index.set(filePath, (await fs.promises.stat(filePath)).mtimeMs);
+            } catch {
+              metrics.statFailures += 1;
+            }
+          }),
+        );
+      }
+    }
+    return true;
+  }
+
+  private isCurrentLifecycle(lifecycleGeneration: number): boolean {
+    return (
+      lifecycleGeneration === this.lifecycleGeneration && this.watcher !== null
+    );
+  }
+
+  private wasTouchedDuringBaseline(filePath: string): boolean {
+    for (const touchedPath of this.initialBaselineTouchedPaths) {
+      if (
+        filePath === touchedPath ||
+        filePath.startsWith(`${touchedPath}${path.sep}`)
+      ) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private scanDir(
@@ -236,6 +426,12 @@ export class FileWatcher {
 
   private handleFileEvent(eventType: string, filename: string): void {
     const fullPath = path.join(this.watchDir, filename);
+    const duringInitialBaseline =
+      this.initialBaselineState === "scheduled" ||
+      this.initialBaselineState === "running";
+    if (duringInitialBaseline) {
+      this.initialBaselineTouchedPaths.add(fullPath);
+    }
 
     getLogger().debug(
       `[FileWatcher] Raw event provider=${this.provider} type=${eventType} file=${filename} path=${fullPath}`,
@@ -249,13 +445,17 @@ export class FileWatcher {
 
     const timer = setTimeout(() => {
       this.debounceTimers.delete(fullPath);
-      this.emitEvent(fullPath, eventType);
+      this.emitEvent(fullPath, eventType, duringInitialBaseline);
     }, this.debounceMs);
 
     this.debounceTimers.set(fullPath, timer);
   }
 
-  private emitEvent(fullPath: string, _eventType: string): void {
+  private emitEvent(
+    fullPath: string,
+    eventType: string,
+    duringInitialBaseline = false,
+  ): void {
     // Determine change type
     let changeType: FileChangeType;
     const fileExists = fs.existsSync(fullPath);
@@ -264,6 +464,8 @@ export class FileWatcher {
       if (this.knownFileMtimes.has(fullPath)) {
         changeType = "delete";
         this.knownFileMtimes.delete(fullPath);
+      } else if (duringInitialBaseline) {
+        changeType = "delete";
       } else {
         // File never existed from our POV, skip
         return;
@@ -285,7 +487,7 @@ export class FileWatcher {
         }
         changeType = "modify";
       } else {
-        changeType = "create";
+        changeType = eventType === "change" ? "modify" : "create";
       }
       this.knownFileMtimes.set(fullPath, mtimeMs);
     }
@@ -370,6 +572,15 @@ export class FileWatcher {
   }
 
   private rescanAndEmit(reason: FileWatcherRescanReason): void {
+    if (
+      this.initialBaselineState === "scheduled" ||
+      this.initialBaselineState === "running"
+    ) {
+      this.rescanRequestedDuringBaseline = true;
+      this.rescanOverlapSkipsSinceLast += 1;
+      this.rescanOverlapSkipsTotal += 1;
+      return;
+    }
     if (this.rescanInProgress) {
       this.rescanOverlapSkipsSinceLast += 1;
       this.rescanOverlapSkipsTotal += 1;
@@ -469,9 +680,7 @@ export class FileWatcher {
     };
   }
 
-  private updatePeriodicRescanBackoff(
-    metrics: FileWatcherRescanMetrics,
-  ): void {
+  private updatePeriodicRescanBackoff(metrics: FileWatcherRescanMetrics): void {
     if (metrics.reason !== "periodic" || this.periodicRescanMs <= 0) {
       metrics.periodicRescanBackoffReason =
         this.periodicRescanMs > 0 ? "unchanged" : "disabled";

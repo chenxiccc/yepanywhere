@@ -35,8 +35,9 @@ migrate them when they next hit a trigger below.
 
 ### Provider-wide session and process discovery
 
-Accepted 2026-08-05; not yet implemented as one interface. The implementation
-handoff is
+Accepted 2026-08-05; the successful-use eligibility boundary and gated watcher
+owner are implemented, while provider catalog/process adapters and the retained
+coordinator remain pending. The implementation handoff is
 [`docs/tactical/093-provider-session-reconciliation.md`](../docs/tactical/093-provider-session-reconciliation.md).
 Generic collection and boot code knows too much about provider storage, while
 host process classification is centralized in `HostAgentProcessService` but
@@ -64,13 +65,17 @@ generic coordinator owns scheduling, install-history eligibility, bounded
 concurrency, retained snapshots, and project grouping.
 
 Provider-store discovery is opt-in through observed YA use. The install keeps a
-durable set of providers for which it has successfully started a session. Boot
-does not ask an unused provider whether it may have sessions and does not scan
-its native store. Migration seeds this set from existing YA-owned launch/session
-metadata, never by probing native provider stores. A first successful YA launch
-records the provider and starts its first catalog pass. The separate host
+durable, alias-normalized set of native catalog families for which it has
+successfully started a session. Boot does not ask an unused provider whether it
+may have sessions and does not scan or watch its native store. Migration seeds
+this set from existing YA-owned launch/session metadata, never by probing native
+provider stores. A first successful YA launch durably records its actual
+provider and family before registration and queues eligible watcher activation;
+failure aborts the unregistered process. The separate host
 process snapshot may still classify an active external harness from any known
-provider without opening that provider's store.
+provider without opening that provider's store. A durable completion marker
+makes the legacy metadata seed pass one-time rather than recurring at every
+restart.
 
 The existing `mayHave*Sessions(project)` predicates are only coarse storage
 eligibility. They do not inspect `ps`. Returning `true` for every project and

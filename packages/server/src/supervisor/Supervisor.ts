@@ -529,6 +529,11 @@ export type OnSessionExecutorCallback = (
   executor: string | undefined,
 ) => Promise<void>;
 
+export type OnSuccessfulProviderSessionCallback = (
+  sessionId: string,
+  provider: ProviderName,
+) => Promise<void>;
+
 /** Optional callback to fetch authoritative session summary for reconciliation */
 export type OnSessionSummaryCallback = (
   sessionId: string,
@@ -558,6 +563,8 @@ export interface SupervisorOptions {
   maxQueueSize?: number;
   /** Callback to persist executor when session ID is received (for remote execution resume) */
   onSessionExecutor?: OnSessionExecutorCallback;
+  /** Persist install-wide provider use before a live process is registered. */
+  onSuccessfulProviderSession?: OnSuccessfulProviderSessionCallback;
   /** Callback invoked when a process observes a model's real context window. */
   onContextWindowObserved?: (
     model: string,
@@ -616,6 +623,7 @@ export class Supervisor {
   private idlePreemptThresholdMs: number;
   private workerQueue: WorkerQueue;
   private onSessionExecutor?: OnSessionExecutorCallback;
+  private onSuccessfulProviderSession?: OnSuccessfulProviderSessionCallback;
   private onContextWindowObserved?: (
     model: string,
     contextWindow: number,
@@ -675,6 +683,7 @@ export class Supervisor {
       maxQueueSize: options.maxQueueSize,
     });
     this.onSessionExecutor = options.onSessionExecutor;
+    this.onSuccessfulProviderSession = options.onSuccessfulProviderSession;
     this.onContextWindowObserved = options.onContextWindowObserved;
     this.onSessionSummary = options.onSessionSummary;
     this.getHeartbeatTurnSettings = options.getHeartbeatTurnSettings;
@@ -800,14 +809,27 @@ export class Supervisor {
     );
   }
 
-  private async persistProcessLaunchSettingsOrAbort(
+  private async persistSuccessfulSessionBoundaryOrAbort(
     process: Process,
   ): Promise<void> {
     try {
       await this.persistProcessLaunchSettings(process);
+      await this.sessionMetadataService?.setProvider?.(
+        process.sessionId,
+        process.provider,
+      );
+      await this.onSuccessfulProviderSession?.(
+        process.sessionId,
+        process.provider,
+      );
     } catch (error) {
       await process.abort();
-      throw error;
+      throw new Error(
+        `Failed to persist successful ${process.provider} session boundary: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        { cause: error },
+      );
     }
   }
 
@@ -1261,7 +1283,7 @@ export class Supervisor {
       await this.persistProcessSandboxOrAbort(process);
     }
 
-    await this.persistProcessLaunchSettingsOrAbort(process);
+    await this.persistSuccessfulSessionBoundaryOrAbort(process);
     // Recreated processes for an existing session should not emit session-created again.
     this.registerProcess(process, !resumeSessionId);
 
@@ -1829,7 +1851,7 @@ export class Supervisor {
       throw new Error(queued.error ?? "Failed to queue initial message");
     }
 
-    await this.persistProcessLaunchSettingsOrAbort(process);
+    await this.persistSuccessfulSessionBoundaryOrAbort(process);
     this.registerProcess(process, !resumeSessionId);
 
     return process;
@@ -2018,7 +2040,7 @@ export class Supervisor {
       await this.persistProcessSandboxOrAbort(process);
     }
 
-    await this.persistProcessLaunchSettingsOrAbort(process);
+    await this.persistSuccessfulSessionBoundaryOrAbort(process);
     // Recreated processes for an existing session should not emit session-created again.
     this.registerProcess(process, !resumeSessionId);
 
@@ -2218,7 +2240,7 @@ export class Supervisor {
       throw new Error(queued.error ?? "Failed to queue initial message");
     }
 
-    await this.persistProcessLaunchSettingsOrAbort(process);
+    await this.persistSuccessfulSessionBoundaryOrAbort(process);
     this.registerProcess(process, !resumeSessionId);
 
     return process;
@@ -2276,7 +2298,7 @@ export class Supervisor {
     // Queue the initial message
     process.queueMessage(message);
 
-    await this.persistProcessLaunchSettingsOrAbort(process);
+    await this.persistSuccessfulSessionBoundaryOrAbort(process);
     this.registerProcess(process, !resumeSessionId);
 
     return process;

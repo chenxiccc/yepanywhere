@@ -128,6 +128,56 @@ describe("Supervisor", () => {
       // The message was queued
       expect(process.queueDepth).toBeGreaterThanOrEqual(0);
     });
+
+    it("persists provider use before registering a live process", async () => {
+      mockSdk.addScenario(createMockScenario("sess-eligible", "Hello!"));
+      const onSuccessfulProviderSession = vi.fn(async () => {});
+      const providerMetadata = {
+        recordEffectiveLaunchSettings: vi.fn(async () => undefined),
+        remapSessionId: vi.fn(async () => {}),
+        setProvider: vi.fn(async () => {}),
+      };
+      const supervisorWithEligibility = new Supervisor({
+        sdk: mockSdk,
+        idleTimeoutMs: 100,
+        sessionMetadataService:
+          providerMetadata as unknown as SessionMetadataService,
+        onSuccessfulProviderSession,
+      });
+
+      const process = await supervisorWithEligibility.startSession(
+        "/tmp/test",
+        { text: "hi" },
+      );
+
+      expect(providerMetadata.setProvider).toHaveBeenCalledWith(
+        process.sessionId,
+        "claude",
+      );
+      expect(onSuccessfulProviderSession).toHaveBeenCalledWith(
+        process.sessionId,
+        "claude",
+      );
+      expect(supervisorWithEligibility.getAllProcesses()).toEqual([process]);
+    });
+
+    it("aborts instead of reporting success when eligibility is not durable", async () => {
+      mockSdk.addScenario(createMockScenario("sess-failed-eligibility", ""));
+      const supervisorWithEligibility = new Supervisor({
+        sdk: mockSdk,
+        idleTimeoutMs: 100,
+        onSuccessfulProviderSession: async () => {
+          throw new Error("disk full");
+        },
+      });
+
+      await expect(
+        supervisorWithEligibility.startSession("/tmp/test", { text: "hi" }),
+      ).rejects.toThrow(
+        "Failed to persist successful claude session boundary: disk full",
+      );
+      expect(supervisorWithEligibility.getAllProcesses()).toEqual([]);
+    });
   });
 
   describe("resumeSession", () => {
@@ -3161,9 +3211,8 @@ describe("Supervisor", () => {
       );
       expect(metadata.current()?.revision).toBe(9);
 
-      const resumed = supervisorWithQueue.getProcessForSession(
-        "queued-cold-resume",
-      );
+      const resumed =
+        supervisorWithQueue.getProcessForSession("queued-cold-resume");
       await resumed?.abort();
     });
 

@@ -44,6 +44,25 @@ Make a continuing effort to keep the catalog fresh:
   uncertainty; and
 - client interest promotes exact rows and projections for prompt refresh.
 
+Provider storage observation is install-eligible, not directory-discovered.
+Runtime aliases that share one native store collapse to one durable catalog
+family. Migration uses existing YA session metadata only and performs no native
+store probe. A durable completion marker makes that metadata pass a one-time
+migration rather than restart work. A newly successful provider boundary
+persists the actual session provider and catalog family before Supervisor
+registration; persistence failure aborts that process instead of reporting an
+untracked success. Repeated writes of an unchanged provider or catalog family
+are no-ops.
+
+Native file watchers use the same gate. The listener binds before eligible
+watcher activation is queued, never-used families receive no directory
+existence check, and families with no file-watcher adapter receive no probe.
+The one registry staggers eligible watcher attachment after listener readiness
+and owns shutdown teardown. Each attached watcher takes its initial file/mtime
+baseline asynchronously; changes observed during that baseline win over the
+baseline snapshot, and a fallback rescan requested during the build runs once
+after publication.
+
 Staleness is nevertheless an allowed state. An old, offscreen, unowned session
 may remain at its last durable compact observation until a file/process event,
 bounded reconciliation, hover, viewport promotion, or click makes it relevant.
@@ -197,6 +216,9 @@ failover can still request the same work concurrently.
   sweeping unrelated session logs or manufacturing a session-id join.
 - Server restart serves the last durable generation, then repairs changed or
   uncertain shards asynchronously without blocking the first list response.
+- A never-used provider with an existing native directory receives zero
+  directory probes or watcher starts; eligible watcher attachment and baseline
+  work begin only after the server listener is ready.
 - A late computation for an obsolete source version cannot overwrite a newer
   row or mark the newer generation fresh.
 - Loss/eviction of browser persistence changes only cold-fetch cost, not visible

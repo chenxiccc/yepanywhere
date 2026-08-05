@@ -3,6 +3,7 @@ import { RESPONSE_ALREADY_SENT } from "@hono/node-server/utils/response";
 import type {
   AppContentBlock,
   AppSession,
+  ProviderName,
   SafeRestartPreservedWork,
   UrlProjectId,
 } from "@yep-anywhere/shared";
@@ -225,6 +226,11 @@ export interface AppOptions {
   notificationService?: NotificationService;
   /** SessionMetadataService for custom titles and archive status */
   sessionMetadataService?: SessionMetadataService;
+  /** Persist install-wide provider use before registering a live process. */
+  onSuccessfulProviderSession?: (
+    sessionId: string,
+    provider: ProviderName,
+  ) => Promise<void>;
   /** ProjectMetadataService for persisting added projects */
   projectMetadataService?: ProjectMetadataService;
   /** Durable project-scoped message queue service */
@@ -428,8 +434,9 @@ export function createApp(options: AppOptions): AppResult {
       ).some((metadata) => metadata.provider === "claude-ollama"),
     getProviderRuntimeSnapshot: () => ({
       codexCliPath: options.codexCliPath,
-      claudeAdditionalModels:
-        options.serverSettingsService?.getSetting("claudeAdditionalModels"),
+      claudeAdditionalModels: options.serverSettingsService?.getSetting(
+        "claudeAdditionalModels",
+      ),
       claudeGatewayUrl:
         options.serverSettingsService?.getSetting("claudeGatewayUrl"),
       claudeGatewayStartCommand: options.serverSettingsService?.getSetting(
@@ -438,11 +445,13 @@ export function createApp(options: AppOptions): AppResult {
       ollamaUrl: options.serverSettingsService?.getSetting("ollamaUrl"),
       ollamaSystemPrompt:
         options.serverSettingsService?.getSetting("ollamaSystemPrompt"),
-      ollamaUseFullSystemPrompt:
-        options.serverSettingsService?.getSetting("ollamaUseFullSystemPrompt"),
+      ollamaUseFullSystemPrompt: options.serverSettingsService?.getSetting(
+        "ollamaUseFullSystemPrompt",
+      ),
       ambientXaiApiKey: process.env.XAI_API_KEY,
-      grokBuildUseXaiApiKey:
-        options.serverSettingsService?.getSetting("grokBuildUseXaiApiKey"),
+      grokBuildUseXaiApiKey: options.serverSettingsService?.getSetting(
+        "grokBuildUseXaiApiKey",
+      ),
     }),
   });
   const codexSessionsDir = options.codexSessionsDir ?? CODEX_SESSIONS_DIR;
@@ -1047,6 +1056,7 @@ export function createApp(options: AppOptions): AppResult {
           options.sessionMetadataService?.setExecutor(sessionId, executor) ??
           Promise.resolve()
       : undefined,
+    onSuccessfulProviderSession: options.onSuccessfulProviderSession,
     // Durably record a model's real context window the moment a process
     // observes it (in the result message), independent of any client fetch.
     onContextWindowObserved: options.modelInfoService

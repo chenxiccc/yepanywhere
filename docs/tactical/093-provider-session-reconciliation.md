@@ -4,11 +4,12 @@
 > retained snapshot in the background, and identify external harness processes
 > without multiplying storage scans by project count or guessing ownership.
 
-Status: Implementation in progress. The shared source-versioned single-flight
-owner is implemented and measured; provider/catalog consumers remain pending.
-The provider/storage and process-discovery contracts are accepted in the linked
-topics. This plan makes the durable eligibility source, provider interfaces,
-boot ordering, and compatibility checkpoint explicit.
+Status: Implementation in progress. Shared source-versioned work ownership,
+Codex child projection, install-scoped successful-use eligibility, and gated
+post-listener file watching are implemented and measured. Provider catalog
+adapters, the durable coordinator, retained collection routes, interest leases,
+and exact process reconciliation remain pending. The provider/storage and
+process-discovery contracts are accepted in the linked topics.
 
 Related contracts:
 
@@ -47,6 +48,26 @@ Related contracts:
   the retained projection estimated 611 bytes, and the full-entry cache stayed
   empty. Run `pnpm --filter @yep-anywhere/server
   benchmark:codex-child-projection` to repeat the measurement.
+
+- **2026-08-05 — successful-use ledger and provider watcher gate.** Install
+  state now atomically persists alias-normalized native catalog families.
+  Existing YA provider metadata seeds migration without probing native stores;
+  a durable completion marker prevents that metadata pass from repeating on
+  later restarts. A successful live boundary records actual provider metadata
+  and eligibility before process registration, and aborts if that boundary
+  cannot become durable. Unchanged records perform no second write. Never-used
+  families receive no existence probe or watcher. Eligible activation is queued
+  only after listener readiness, staggered under one registry, and torn down at
+  shutdown; each watcher builds its initial mtime baseline asynchronously while
+  preserving events observed during the build.
+  On four synthetic provider trees totaling 164 directories and 8,000 files,
+  five-sample median pre-listener synchronous traversal cost 26.76 ms. The new
+  unused-family request returned in 0.004 ms with zero directory probes and
+  zero watcher starts (100.00% probes avoided); an eligible request returned in
+  0.034 ms while its one 2,000-file watcher attached later (23.45 ms median)
+  and completed the asynchronous baseline in an 18.00 ms median. Run `pnpm
+  --filter @yep-anywhere/server benchmark:provider-watch-startup` to repeat the
+  measurement.
 
 Design decision: use a source-versioned, byte-bounded latest-value owner rather
 than a request-only in-flight map or TTL cache. Request-only coalescing does not

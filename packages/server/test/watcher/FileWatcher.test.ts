@@ -9,6 +9,8 @@ import { FileWatcher } from "../../src/watcher/FileWatcher.js";
 interface FileWatcherTestAccess {
   rescanInProgress: boolean;
   rescanAndEmit(reason: "fallback" | "periodic"): void;
+  emitEvent(filePath: string, eventType: string): void;
+  handleFileEvent(eventType: string, filename: string): void;
 }
 
 function forceRescan(
@@ -27,6 +29,99 @@ describe("FileWatcher", () => {
         .splice(0)
         .map((dir) => rm(dir, { recursive: true, force: true })),
     );
+  });
+
+  it("attaches before building its initial tree baseline", async () => {
+    const watchDir = join(tmpdir(), `file-watcher-${randomUUID()}`);
+    tempDirs.push(watchDir);
+    const dateDir = join(watchDir, "2026", "06", "25");
+    await mkdir(dateDir, { recursive: true });
+    const filePath = join(dateDir, "rollout-existing.jsonl");
+    await writeFile(filePath, "{}\n");
+
+    const events: FileChangeEvent[] = [];
+    const eventBus = new EventBus();
+    eventBus.subscribe((event) => {
+      if (event.type === "file-change") events.push(event);
+    });
+    const watcher = new FileWatcher({
+      watchDir,
+      provider: "codex",
+      eventBus,
+      rescanSlowLogThresholdMs: 60_000,
+    });
+
+    try {
+      watcher.start();
+      expect(watcher.getInitialBaselineState()).toBe("scheduled");
+      const metrics = await watcher.waitForInitialBaseline();
+
+      expect(metrics).toMatchObject({
+        provider: "codex",
+        watchDir,
+        filesScanned: 1,
+        filesIndexed: 1,
+        directoryReadErrors: 0,
+        statFailures: 0,
+      });
+      expect(metrics?.directoriesVisited).toBeGreaterThanOrEqual(4);
+      expect(watcher.getInitialBaselineState()).toBe("complete");
+      expect(events).toEqual([]);
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      await writeFile(filePath, '{"changed":true}\n');
+      (watcher as unknown as FileWatcherTestAccess).emitEvent(
+        filePath,
+        "change",
+      );
+      expect(events.at(-1)).toMatchObject({
+        path: filePath,
+        changeType: "modify",
+      });
+    } finally {
+      watcher.stop();
+    }
+  });
+
+  it("preserves an event observed while the baseline is pending", async () => {
+    const watchDir = join(tmpdir(), `file-watcher-${randomUUID()}`);
+    tempDirs.push(watchDir);
+    await mkdir(watchDir, { recursive: true });
+    const filePath = join(watchDir, "session.jsonl");
+    await writeFile(filePath, "{}\n");
+
+    const events: FileChangeEvent[] = [];
+    const eventBus = new EventBus();
+    eventBus.subscribe((event) => {
+      if (event.type === "file-change") events.push(event);
+    });
+    const watcher = new FileWatcher({
+      watchDir,
+      provider: "claude",
+      eventBus,
+      debounceMs: 0,
+      rescanSlowLogThresholdMs: 60_000,
+    });
+
+    try {
+      watcher.start();
+      (watcher as unknown as FileWatcherTestAccess).handleFileEvent(
+        "change",
+        "session.jsonl",
+      );
+      const metrics = await watcher.waitForInitialBaseline();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      expect(metrics?.touchedPathsPreserved).toBe(1);
+      expect(events).toEqual([
+        expect.objectContaining({
+          path: filePath,
+          changeType: "modify",
+        }),
+      ]);
+    } finally {
+      watcher.stop();
+    }
   });
 
   it("records fallback rescan metrics and emitted change counts", async () => {
@@ -62,7 +157,7 @@ describe("FileWatcher", () => {
 
     events.length = 0;
     await new Promise((resolve) => setTimeout(resolve, 10));
-    await writeFile(keepPath, "{\"changed\":true}\n");
+    await writeFile(keepPath, '{"changed":true}\n');
     await writeFile(createPath, "{}\n");
     await rm(deletePath);
 
