@@ -56,20 +56,14 @@ const IMAGE_ZOOM_MIN = 0.1;
 const IMAGE_ZOOM_MAX = 8;
 const IMAGE_ZOOM_STEP = 1.25;
 
-function ImageViewerChevron({
-  direction,
-}: {
-  direction: "next" | "previous";
-}) {
+function ImageViewerChevron({ direction }: { direction: "next" | "previous" }) {
   return (
     <svg
       className={styles.navigationIcon}
       viewBox="0 0 24 24"
       aria-hidden="true"
     >
-      <path
-        d={direction === "previous" ? "m15 18-6-6 6-6" : "m9 6 6 6-6 6"}
-      />
+      <path d={direction === "previous" ? "m15 18-6-6 6-6" : "m9 6 6 6-6 6"} />
     </svg>
   );
 }
@@ -93,6 +87,7 @@ export function ImageViewer({
   onNavigationInput,
   onClose,
   url,
+  vector = false,
 }: {
   fileName: string;
   initialNavigationChrome?: "all" | "position";
@@ -101,6 +96,12 @@ export function ImageViewer({
   onNavigationInput?: (input: ImageViewerNavigationInput) => void;
   onClose: () => void;
   url: string;
+  /**
+   * Vector sources have no pixel grid to preserve, so "Fit" may enlarge them to
+   * the stage. Raster sources stay shrink-only: scaling one past its natural
+   * size shows interpolation, not detail.
+   */
+  vector?: boolean;
 }) {
   const { t } = useI18n();
   const stageRef = useRef<HTMLDivElement>(null);
@@ -153,10 +154,7 @@ export function ImageViewer({
   );
 
   const revealNavigationChrome = useCallback(
-    (
-      mode: "all" | "position",
-      delay = IMAGE_VIEWER_NAVIGATION_IDLE_MS,
-    ) => {
+    (mode: "all" | "position", delay = IMAGE_VIEWER_NAVIGATION_IDLE_MS) => {
       if (!hasNavigation) {
         return;
       }
@@ -184,9 +182,7 @@ export function ImageViewer({
   ]);
 
   useEffect(() => {
-    if (
-      keyboardNavigationSequenceRef.current === keyboardNavigationSequence
-    ) {
+    if (keyboardNavigationSequenceRef.current === keyboardNavigationSequence) {
       return;
     }
     keyboardNavigationSequenceRef.current = keyboardNavigationSequence;
@@ -198,18 +194,18 @@ export function ImageViewer({
     if (!stage || !dimensions) {
       return 1;
     }
-    return Math.min(
-      1,
-      Math.max(
-        IMAGE_ZOOM_MIN,
-        (stage.clientWidth - IMAGE_VIEWER_PADDING_PX) / dimensions.width,
-      ),
-      Math.max(
-        IMAGE_ZOOM_MIN,
-        (stage.clientHeight - IMAGE_VIEWER_PADDING_PX) / dimensions.height,
-      ),
+    const widthScale =
+      (stage.clientWidth - IMAGE_VIEWER_PADDING_PX) / dimensions.width;
+    const heightScale =
+      (stage.clientHeight - IMAGE_VIEWER_PADDING_PX) / dimensions.height;
+    const contained = Math.min(
+      Math.max(IMAGE_ZOOM_MIN, widthScale),
+      Math.max(IMAGE_ZOOM_MIN, heightScale),
     );
-  }, [dimensions]);
+    return vector
+      ? Math.min(IMAGE_ZOOM_MAX, contained)
+      : Math.min(1, contained);
+  }, [dimensions, vector]);
 
   const getCurrentScale = useCallback(
     () => (viewMode === "fit" ? getFitScale() : scale),
@@ -496,7 +492,7 @@ export function ImageViewer({
           <div className={styles.canvas} style={canvasStyle}>
             <div className={cx(styles.surface, VIEW_MODE_CLASS[viewMode])}>
               <img
-                className={styles.image}
+                className={cx(styles.image, vector && styles.vector)}
                 src={url}
                 alt={fileName}
                 draggable={false}

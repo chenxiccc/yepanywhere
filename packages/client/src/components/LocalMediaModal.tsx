@@ -27,6 +27,11 @@ import {
 } from "../lib/text";
 import type { SourceTransport } from "../lib/transport";
 import {
+  describeImageSizing,
+  type ImageSizing,
+  isVectorImage,
+} from "../lib/vectorImageSizing";
+import {
   FilePathContextMenu,
   useStartNewSessionFromFileAction,
 } from "./FileResourceActions";
@@ -61,6 +66,7 @@ interface DisplayedLocalMedia {
   mediaType: LocalResourceMediaType;
   path: string;
   url: string;
+  vector: boolean;
 }
 
 interface LocalFileModalProps {
@@ -348,6 +354,7 @@ const inlinePreviewClass = {
   copied: styles.inlineCopied ?? "",
   error: styles.inlineError ?? "",
   frame: styles.inlineFrame ?? "",
+  frameVector: styles.inlineFrameVector ?? "",
   image: styles.inlineImage ?? "",
   imageButton: styles.inlineImageButton ?? "",
   loading: styles.inlineLoading ?? "",
@@ -360,9 +367,13 @@ function renderInlinePreview(
   mediaType: LocalResourceMediaType,
   blob: Blob,
   objectUrl: string,
+  sizing: ImageSizing,
 ) {
   const frame = document.createElement("span");
-  frame.className = inlinePreviewClass.frame;
+  frame.className =
+    sizing === "vector-unsized"
+      ? `${inlinePreviewClass.frame} ${inlinePreviewClass.frameVector}`
+      : inlinePreviewClass.frame;
 
   if (mediaType === "video") {
     const video = document.createElement("video");
@@ -463,14 +474,15 @@ export function LocalMediaModal({
           imageNavigation:
             requestedImageCount !== undefined &&
             requestedImageCurrent !== undefined
-            ? {
-                count: requestedImageCount,
-                current: requestedImageCurrent,
-              }
-            : undefined,
+              ? {
+                  count: requestedImageCount,
+                  current: requestedImageCurrent,
+                }
+              : undefined,
           mediaType,
           path,
           url: pendingObjectUrl,
+          vector: isVectorImage(blob.type, path),
         });
         transferredObjectUrl = true;
         setLoading(false);
@@ -583,6 +595,7 @@ export function LocalMediaModal({
             }}
             onClose={onClose}
             url={displayedImage.url}
+            vector={displayedImage.vector}
           />
           {error ? (
             <div className={styles.imageLoadError} role="alert">
@@ -846,9 +859,7 @@ function LocalResourceContextMenu({
           contextMenu.projectFileTarget?.filePath ?? contextMenu.resource.path,
         )
       }
-      onCopyUrl={
-        copyUrl ? () => void writeClipboardText(copyUrl) : undefined
-      }
+      onCopyUrl={copyUrl ? () => void writeClipboardText(copyUrl) : undefined}
       onCopyContents={() => {
         const { projectFileTarget, resource } = contextMenu;
         if (projectFileTarget) {
@@ -1177,10 +1188,18 @@ export function useLocalMediaInlinePreviews(
         element.append(loading);
 
         fetchLocalMediaBlob(path, mediaSource, "inline", transport)
-          .then((blob) => {
+          .then(async (blob) => {
             const objectUrl = URL.createObjectURL(blob);
             objectUrls.add(objectUrl);
-            renderInlinePreview(element, path, mediaType, blob, objectUrl);
+            const sizing = await describeImageSizing(blob, path);
+            renderInlinePreview(
+              element,
+              path,
+              mediaType,
+              blob,
+              objectUrl,
+              sizing,
+            );
           })
           .catch((err) => {
             const error = document.createElement("span");

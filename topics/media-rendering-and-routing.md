@@ -331,7 +331,9 @@ The compact-gallery goals, in priority order, are:
   Natural-size caps may leave unused space or produce ragged alignment; do not
   upscale an image merely to align it with its row or fill the gallery. The
   phone swipe presentation retains the same natural width and height ceilings;
-  its target card width is not permission to enlarge a small image.
+  its target card width is not permission to enlarge a small image. A vector
+  has no natural pixel height for this cap to read; see *Vector sources have no
+  suggested size* below.
 - Use the available vertical budget without treating complete content-width
   fill as a goal. Rows may have different heights.
 - Present ordinary completed rows as justified image rows. The final or
@@ -380,6 +382,56 @@ centered image. This is not required for the first gallery implementation. It
 needs touch testing for accidental activation and conflict with ordinary
 vertical transcript scrolling, plus a complete tap/full-screen path for users
 who do not discover or cannot perform the gesture.
+
+## Vector sources have no suggested size
+
+Every sizing rule above assumes a raster: its pixel dimensions *are* its
+suggested size, which is why a thumbnail never exceeds its natural height and
+why the full-screen **Fit** shrinks but never enlarges. A vector has no pixel
+grid, so those rules need an explicit vector case rather than an implicit
+raster one.
+
+An SVG carries a suggested size only when its root element declares absolute
+`width` and `height`. A `viewBox` alone is an aspect ratio and nothing else —
+and `width="100%"` defers to the container exactly like declaring nothing.
+Both figure shapes are common: matplotlib's `savefig(...)` emits declared
+point sizes, while mermaid, D3, and hand-authored figures routinely ship
+viewBox-only.
+
+The contract:
+
+- **A declared size is honored.** A sized vector draws inline at its declared
+  size, the same as a raster of those dimensions, and **Actual size** in the
+  viewer means 1:1 against it. This is the only size channel: a Markdown image
+  link carries no dimensions, and non-CommonMark extensions (`=600x400`,
+  `?width=`) would break the same document read on GitHub or through pandoc.
+- **An undeclared size is supplied by the container.** An unsized vector needs
+  a definite width to resolve its ratio against; without one it collapses to
+  zero and reads as a missing figure. Inline previews give it a bounded box
+  (currently `min(100%, 640px)`) and let the ratio set the height. Sized
+  vectors keep the ordinary shrink-to-fit frame so their declared size still
+  decides.
+- **Fit may enlarge a vector.** Filling the stage costs a vector nothing,
+  whereas upscaling a raster shows interpolation rather than detail. The
+  reported zoom percentage is relative to the declared size, or to the
+  browser's ratio-derived default when there is none.
+
+The failure mode is worth naming because it is invisible: a shrink-to-fit
+ancestor gives an unsized vector an indefinite width, so the figure renders at
+zero and the page looks like it simply has no image there. A `<button>` counts
+as one — it sizes to its content even when set to `display: block` — so the
+definite width has to be restated on the copy button that wraps the inline
+preview, not only on the frame.
+
+Sizing is all this section changes. Vectors continue to display through an
+`<img>` fed by a relay-safe object URL, which is inert; nothing here permits
+rendering an SVG as a top-level document or inlining its markup into the DOM.
+See [active-content-security](active-content-security.md) — an SVG remains an
+active document by that contract even where this one calls it an image.
+
+Implemented in `lib/vectorImageSizing.ts` (classification),
+`LocalMediaModal.module.css` (inline frame), and `ImageViewer.tsx` +
+`ImageViewer.module.css` (viewer fit).
 
 ## Which route serves the file (the "doors")
 

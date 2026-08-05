@@ -220,6 +220,14 @@
   max-height: calc(100cqh - 2rem);
 }
 
+/* A raster fit is bounded by its natural size; a vector has none to be bounded
+   by, so fitting one means taking the whole stage and letting object-fit keep
+   the aspect ratio. */
+.surface.fit .image.vector {
+  width: calc(100cqw - 2rem);
+  height: calc(100cqh - 2rem);
+}
+
 .surface.zoom .image {
   max-width: none;
   max-height: none;

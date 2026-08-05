@@ -15,6 +15,18 @@
   max-width: min(100%, 900px);
 }
 
+/*
+ * A vector with no declared width/height has an aspect ratio and nothing else,
+ * so it cannot size a shrink-to-fit frame — inside .inlineFrame it collapses to
+ * zero. Such a figure gets a definite frame width to resolve against instead.
+ * Vectors that do declare a size keep the ordinary shrink-to-fit frame, so the
+ * declared size still decides how large they draw.
+ */
+.inlineFrameVector {
+  display: block;
+  width: min(100%, 640px);
+}
+
 .inlineImageButton {
   display: block;
   padding: 0;
@@ -26,6 +38,12 @@
 
 .inlineImageButton:hover {
   border-color: var(--text-secondary);
+}
+
+/* A button sizes to fit its content even when it is display: block, which would
+   hand the image an indefinite width again. */
+.inlineFrameVector .inlineImageButton {
+  width: 100%;
 }
 
 .inlineImage {

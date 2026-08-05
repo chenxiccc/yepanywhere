@@ -98,9 +98,7 @@ describe("LocalMediaModal loading transitions", () => {
       </I18nProvider>,
     );
 
-    expect(
-      document.querySelector(".modal-overlay--image-viewer"),
-    ).toBeTruthy();
+    expect(document.querySelector(".modal-overlay--image-viewer")).toBeTruthy();
     expect(screen.getByRole("dialog").classList).toContain(
       "modal--image-viewer",
     );
@@ -111,9 +109,7 @@ describe("LocalMediaModal loading transitions", () => {
     ).toBeTruthy();
 
     imageBlob.resolve(new Blob(["png"], { type: "image/png" }));
-    expect(
-      await screen.findByRole("img", { name: "first.png" }),
-    ).toBeTruthy();
+    expect(await screen.findByRole("img", { name: "first.png" })).toBeTruthy();
   });
 
   it("keeps the decoded image visible until its replacement is ready", async () => {
@@ -288,9 +284,7 @@ describe("LocalMediaModal loading transitions", () => {
     expect(screen.getByRole("img", { name: "first.png" })).toBeTruthy();
 
     decodedByUrl.get("blob:third-image")?.resolve();
-    expect(
-      await screen.findByRole("img", { name: "third.png" }),
-    ).toBeTruthy();
+    expect(await screen.findByRole("img", { name: "third.png" })).toBeTruthy();
     expect(screen.queryByRole("img", { name: "second.png" })).toBeNull();
     expect(screen.getByText("3 of 3")).toBeTruthy();
   });
@@ -403,9 +397,7 @@ describe("LocalMediaModal", () => {
     expect(downloadLink.getAttribute("download")).toBe("plot.png");
 
     expect(
-      screen
-        .getByRole("dialog")
-        .querySelector(`.${imageViewerStyles.viewer}`),
+      screen.getByRole("dialog").querySelector(`.${imageViewerStyles.viewer}`),
     ).toBeTruthy();
     const imageSurface = screen
       .getByRole("dialog")
@@ -492,10 +484,7 @@ describe("LocalMediaModal", () => {
       fetchBlob: async () => new Blob(["png"], { type: "image/png" }),
     };
 
-    const renderModal = (
-      next: () => void,
-      previous: () => void,
-    ) => (
+    const renderModal = (next: () => void, previous: () => void) => (
       <I18nProvider>
         <LocalMediaModal
           path="/tmp/plot.png"
@@ -651,8 +640,7 @@ describe("LocalMediaModal", () => {
           path="/tmp/plot.png"
           mediaType="image"
           mediaSource={{
-            fetchBlob: async () =>
-              new Blob(["png"], { type: "image/png" }),
+            fetchBlob: async () => new Blob(["png"], { type: "image/png" }),
           }}
           onClose={onClose}
         />
@@ -673,9 +661,7 @@ describe("LocalMediaModal", () => {
     fireEvent.keyDown(stage, { key: "Enter" });
     expect(onClose).not.toHaveBeenCalled();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Close image viewer" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Close image viewer" }));
     expect(onClose).toHaveBeenCalledTimes(1);
 
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
@@ -683,5 +669,58 @@ describe("LocalMediaModal", () => {
 
     fireEvent.keyDown(document, { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(3);
+  });
+
+  it("fits vector sources to the stage instead of stopping at their declared size", () => {
+    const fitZoomLabel = (vector: boolean) => {
+      cleanup();
+      render(
+        <I18nProvider>
+          <ImageViewer
+            fileName={vector ? "figure.svg" : "plot.png"}
+            onClose={() => {}}
+            url="blob:local-media-image"
+            vector={vector}
+          />
+        </I18nProvider>,
+      );
+      const stage = document.querySelector<HTMLElement>(
+        `.${imageViewerStyles.stage}`,
+      );
+      const image = screen.getByRole("img", {
+        name: vector ? "figure.svg" : "plot.png",
+      });
+      if (!stage) throw new Error("missing stage");
+      // A 1000x600 usable stage after the viewer's 32px padding.
+      Object.defineProperty(stage, "clientWidth", {
+        configurable: true,
+        value: 1032,
+      });
+      Object.defineProperty(stage, "clientHeight", {
+        configurable: true,
+        value: 632,
+      });
+      Object.defineProperty(image, "naturalWidth", {
+        configurable: true,
+        value: 200,
+      });
+      Object.defineProperty(image, "naturalHeight", {
+        configurable: true,
+        value: 120,
+      });
+      fireEvent.load(image);
+      return {
+        image,
+        zoom: screen.getByRole("status").textContent,
+      };
+    };
+
+    const raster = fitZoomLabel(false);
+    expect(raster.zoom).toBe("100%");
+    expect(hasClass(raster.image, imageViewerStyles.vector)).toBe(false);
+
+    const vector = fitZoomLabel(true);
+    expect(vector.zoom).toBe("500%");
+    expect(hasClass(vector.image, imageViewerStyles.vector)).toBe(true);
   });
 });
