@@ -42,6 +42,7 @@ export interface PublicShareGrant {
   version: 2;
   shareId: string;
   secretHash: string;
+  publicUrl?: string;
   shareStateId: string;
   mode: PublicSessionShareMode;
   title: string | null;
@@ -95,6 +96,7 @@ interface PublicShareGrantFile {
 
 export interface CreateStoredGrantOptions {
   secretHash: string;
+  publicUrl?: string;
   mode: PublicSessionShareMode;
   title: string | null;
   initialPrompt: string | null;
@@ -534,6 +536,7 @@ export class PublicShareStore {
         version: 2,
         shareId: randomBytes(12).toString("base64url"),
         secretHash: options.secretHash,
+        ...(options.publicUrl ? { publicUrl: options.publicUrl } : {}),
         shareStateId,
         mode: options.mode,
         title: options.title,
@@ -1403,6 +1406,10 @@ export class PublicShareStore {
       OPAQUE_ID_REGEX.test(grant.shareId) &&
       typeof grant.secretHash === "string" &&
       SECRET_HASH_REGEX.test(grant.secretHash) &&
+      (grant.publicUrl === undefined ||
+        (typeof grant.publicUrl === "string" &&
+          grant.publicUrl.length <= 4096 &&
+          URL.canParse(grant.publicUrl))) &&
       typeof grant.shareStateId === "string" &&
       OPAQUE_ID_REGEX.test(grant.shareStateId) &&
       (grant.mode === "live" || grant.mode === "frozen") &&

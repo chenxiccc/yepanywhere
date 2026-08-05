@@ -39,10 +39,12 @@ today's Markdown/HTML.
 
 ## Logical model
 
-A **link grant** is a compact bearer authorization. It maps the hash of one URL
-secret to an opaque share id, one share-state id, source-session identity for
-owner management, and a target of either `live` or one immutable frozen
-revision. Deleting the grant revokes the URL.
+A **link grant** is a compact bearer authorization. It maps one URL secret hash
+to an opaque share id, one share-state id, source-session identity for owner
+management, and a target of either `live` or one immutable frozen revision.
+New grants also retain the exact public URL so the authenticated owner can copy
+an existing authorization; legacy grants remain hash-only because their secret
+cannot be recovered. Deleting the grant revokes the URL.
 
 **Share state** is the independently stored public projection for one source YA
 session. At most one live share state exists for a source session. Multiple
@@ -155,8 +157,13 @@ valid.
 
 YA accepts exactly those decoded lengths, hashes either form with the existing
 SHA-512 function, and compares the supplied secret safely. Keeping SHA-512 as
-the lookup namespace is required because legacy storage contains only that hash;
-the plaintext secret is returned once and never persisted.
+the lookup namespace is required because legacy storage contains only that
+hash. New grants retain the complete public URL in owner-only app data so the
+authenticated management UI can copy it later. This intentionally makes the
+compact grant file bearer-sensitive: anyone who can read YA's app data could
+already control YA, and must now also be treated as able to use its public
+links. Migrated and pre-change grants have no recoverable URL and expose a
+disabled copy action rather than minting or guessing replacement authority.
 
 The legacy URL fragment carries mode, project name, capture time, title, and up
 to 700 characters of initial-prompt preview so the viewer can show something
@@ -214,6 +221,17 @@ The broadcast popup shows an immediate loading or actionable failure management
 region, then resolves a ready session from compact grants without a global
 content scan or blind 10-second delay.
 
+Right-click management uses the same broadcast-icon anchor and dropdown-like
+placement as left-click sharing. Its two-column layout keeps five filter rows in
+the left rail: all projects, this project, and this session are mutually
+exclusive (this session is the default); read-only and live are independent and
+both default on. The right column lists matching grants with active connection
+counts, copy and revoke actions, and scrolling only when available viewport
+height cannot contain the rows. Session-wide revoke is rendered before the
+inventory request resolves. The type-row `+` creates that kind of link for the
+current session, enables its filter, copies it, refreshes inventory, and
+highlights the created row.
+
 Legacy migration is record-at-a-time and streaming. It must not `readFile`,
 `JSON.parse`, or `JSON.stringify` the complete aggregate or one huge embedded
 body. It preserves legacy secret hashes and URL behavior, groups live grants
@@ -246,11 +264,12 @@ legacy viewers and live shares.
 Authenticated inventory and revocation are exposed by the dedicated
 `public-share-management` route module. Inventory uses stable keyset pagination
 with a maximum page size of 100 and optional project, session, and mode filters.
-It returns opaque share ids, public headers, sizes, modes, timestamps, and
-ephemeral viewer counts—never the bearer secret, secret hash, transcript body,
-project root, or authorized path set. One-link revocation and explicitly
-confirmed global revocation commit grant invalidation before best-effort
-content collection; a cleanup failure remains visible as `cleanupPending`.
+It returns opaque share ids, retained public URLs, public headers, sizes, modes,
+timestamps, and ephemeral viewer counts—never the standalone secret, secret
+hash, transcript body, project root, or authorized path set. A URL is absent for
+legacy hash-only grants. One-link revocation and explicitly confirmed global
+revocation commit grant invalidation before best-effort content collection; a
+cleanup failure remains visible as `cleanupPending`.
 
 ## Related contracts
 

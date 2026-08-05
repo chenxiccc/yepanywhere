@@ -1,6 +1,6 @@
-:global(.modal):has(.manager) {
-  max-width: min(720px, calc(100vw - 32px));
-  width: min(720px, calc(100vw - 32px));
+:global(.modal):has(:global(.session-share-modal).manager) {
+  max-width: min(860px, calc(100vw - 32px));
+  width: min(860px, calc(100vw - 32px));
 }
 
 .manager {
@@ -9,36 +9,96 @@
   width: 100%;
 }
 
-.managerToolbar {
-  align-items: end;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  justify-content: space-between;
-}
-
-.modeFilter {
+.managerLayout {
   display: grid;
-  flex: 1 1 180px;
-  font-size: 0.78rem;
-  gap: 4px;
+  gap: 14px;
+  grid-template-columns: 168px minmax(0, 1fr);
 }
 
-.modeFilter select {
-  background: var(--bg-secondary);
+.managerSidebar,
+.managerMain,
+.filterGroup {
+  display: grid;
+  gap: 8px;
+}
+
+.managerSidebar {
+  align-content: start;
+  border-right: 1px solid var(--border-color);
+  padding-right: 14px;
+}
+
+.managerMain {
+  align-content: start;
+  min-width: 0;
+}
+
+.filterGroup {
+  font-size: 0.78rem;
+}
+
+.filterGroup > span {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.filterButton {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text-primary);
+  cursor: pointer;
+  min-height: 30px;
+  min-width: 0;
+  padding: 5px 8px;
+  text-align: left;
+}
+
+.filterRow {
+  display: grid;
+  gap: 4px;
+  grid-template-columns: minmax(0, 1fr) 30px;
+  min-width: 0;
+}
+
+.addButton,
+.iconButton {
+  align-items: center;
+  background: transparent;
   border: 1px solid var(--border-color);
   border-radius: 6px;
   color: var(--text-primary);
-  min-height: 34px;
-  padding: 5px 8px;
+  cursor: pointer;
+  display: inline-flex;
+  justify-content: center;
+  min-height: 30px;
+  min-width: 30px;
+  padding: 4px;
+}
+
+.addButton:hover:not(:disabled),
+.iconButton:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.filterButton:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.filterButtonActive {
+  background: var(--bg-secondary);
+  border-color: var(--border-color);
+  font-weight: 600;
 }
 
 .list {
   border: 1px solid var(--border-color);
   border-radius: 8px;
   display: grid;
-  max-height: min(50vh, 480px);
+  max-height: min(72vh, 720px);
+  overscroll-behavior: contain;
   overflow-y: auto;
+  touch-action: pan-y;
 }
 
 .row {
@@ -51,6 +111,11 @@
 
 .row + .row {
   border-top: 1px solid var(--border-color);
+}
+
+.rowHighlighted {
+  background: color-mix(in srgb, var(--accent-color) 13%, transparent);
+  box-shadow: inset 3px 0 var(--accent-color);
 }
 
 .rowMain {
@@ -77,6 +142,28 @@
   font-size: 0.78rem;
 }
 
+.notice {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+}
+
+.rowActions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.iconButtonDanger {
+  color: var(--error-color);
+}
+
+.addButton:disabled,
+.iconButton:disabled,
+.filterButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .error {
   color: var(--error-color);
 }
@@ -92,7 +179,7 @@
 }
 
 @media (max-width: 600px) {
-  :global(.modal):has(.manager) {
+  :global(.modal):has(:global(.session-share-modal).manager) {
     max-width: calc(100vw - 24px);
     width: calc(100vw - 24px);
   }
@@ -101,13 +188,26 @@
     min-width: 0;
   }
 
-  .managerToolbar,
+  .managerLayout {
+    gap: 10px;
+    grid-template-columns: 112px minmax(0, 1fr);
+  }
+
+  .managerSidebar {
+    padding-right: 10px;
+  }
+
+  .managerSidebar :global(.settings-button) {
+    font-size: 0.7rem;
+    min-width: 0;
+    padding-left: 5px;
+    padding-right: 5px;
+    white-space: normal;
+    width: 100%;
+  }
+
   .row {
     align-items: stretch;
     flex-direction: column;
-  }
-
-  .modeFilter {
-    flex-basis: auto;
   }
 }

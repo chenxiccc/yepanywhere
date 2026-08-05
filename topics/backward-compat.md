@@ -16,6 +16,13 @@ metadata route for an unmarked link. Gate global inventory and opaque-id
 revocation behind the new `public-share-management` capability so older
 servers receive no unsupported management request.
 
+2026-08-05 public-share owner copy — retain the exact URL for new grants and
+return it as an optional authenticated inventory field; pre-change and migrated
+hash-only grants remain valid and revocable but cannot offer copy because their
+bearer secret is unrecoverable. New clients treat an absent URL as a disabled
+copy action, so supported older servers require no new request or response
+shape.
+
 2026-08-04 `idleReapHours` settings contract — advertise the optional field
 with the permanent `idle-reap-hours-setting` capability. New clients hide the
 control and make no settings write against older servers. Until an operator

@@ -111,6 +111,7 @@ export function createPublicShareManagementRoutes(
     const items: PublicShareManagementItem[] = page
       .map((record) => ({
         shareId: record.shareId,
+        url: record.publicUrl,
         mode: record.mode,
         title: record.title,
         projectName: record.source.projectName ?? null,

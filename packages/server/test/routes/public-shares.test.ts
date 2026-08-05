@@ -535,6 +535,17 @@ describe("public share owner routes", () => {
     expect(
       service.getSessionShareStatus(routeProjectId, "session-1").activeCount,
     ).toBe(1);
+
+    const management = createPublicShareManagementRoutes({
+      publicShareService: service,
+    });
+    const inventory = await management.request(
+      `/public-shares?projectId=${routeProjectId}&sessionId=session-1`,
+    );
+    await expect(inventory.json()).resolves.toMatchObject({
+      items: [{ shareId: body.shareId, url: body.url }],
+      totalCount: 1,
+    });
   });
 
   it("lists compact grants and revokes one opaque share id", async () => {

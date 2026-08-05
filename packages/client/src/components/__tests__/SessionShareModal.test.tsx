@@ -25,6 +25,7 @@ describe("SessionShareModal", () => {
     });
     vi.spyOn(api, "createPublicSessionShare").mockResolvedValue({
       url: "https://ya.graehl.org/share/secret?h=test-host",
+      shareId: "share-1",
       mode: "frozen",
       createdAt: "2026-05-01T00:00:00.000Z",
       secretBits: 512,
@@ -77,6 +78,7 @@ describe("SessionShareModal", () => {
       items: [
         {
           shareId: "share-1",
+          url: "https://ya.graehl.org/share/secret?h=test-host",
           mode: "frozen",
           title: "Build logs",
           projectName: "project",
@@ -479,8 +481,114 @@ describe("SessionShareModal", () => {
       sessionId: "session-1",
       mode: undefined,
     });
+    const scope = screen.getByRole("group", { name: "Show" });
+    expect(
+      scope.querySelector('button[aria-pressed="true"]')?.textContent,
+    ).toBe("This session");
+    const shareType = screen.getByRole("group", { name: "Share type" });
+    expect(
+      shareType.querySelectorAll('button[aria-pressed="true"]'),
+    ).toHaveLength(2);
+    expect(screen.getByText(/0 active public viewer/)).toBeTruthy();
     expect(api.createPublicSessionShare).not.toHaveBeenCalled();
     expect(screen.getByText(/could not snapshot linked files/i)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "All projects" }));
+    await waitFor(() => {
+      expect(api.getPublicShares).toHaveBeenLastCalledWith({
+        projectId: undefined,
+        sessionId: undefined,
+        mode: undefined,
+      });
+    });
+    expect(
+      screen.getByRole("button", { name: "Revoke Every Public Link" }),
+    ).toBeTruthy();
+  });
+
+  it("creates, copies, and highlights a managed link from the type rail", async () => {
+    render(
+      <I18nProvider>
+        <SessionShareModal
+          projectId="cHJvamVjdA"
+          sessionId="session-1"
+          title="Build logs"
+          initialView="manage"
+          managementAvailable
+          onClose={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    await screen.findByText("Build logs");
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Create and copy Read-only link",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(api.createPublicSessionShare).toHaveBeenCalledWith(
+        expect.objectContaining({ mode: "frozen" }),
+      );
+      expect(writeText).toHaveBeenCalledWith(
+        "https://ya.graehl.org/share/secret?h=test-host",
+      );
+    });
+    expect(screen.getByRole("listitem").className).toContain("rowHighlighted");
+  });
+
+  it("offers session revoke-all before inventory resolves", async () => {
+    vi.mocked(api.getPublicShares).mockImplementation(() => new Promise(() => {}));
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(
+      <I18nProvider>
+        <SessionShareModal
+          projectId="cHJvamVjdA"
+          sessionId="session-1"
+          initialView="manage"
+          managementAvailable
+          onClose={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    const revokeAll = screen.getByRole("button", {
+      name: "Revoke All Shared Links",
+    });
+    expect((revokeAll as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(revokeAll);
+
+    expect(confirm).toHaveBeenCalledWith(
+      "Revoke every public link for this session? Anyone using one will immediately lose access.",
+    );
+    await waitFor(() => {
+      expect(api.revokePublicSessionShares).toHaveBeenCalledWith(
+        "cHJvamVjdA",
+        "session-1",
+      );
+    });
+  });
+
+  it("copies a retained managed link", async () => {
+    render(
+      <I18nProvider>
+        <SessionShareModal
+          initialView="manage"
+          managementAvailable
+          onClose={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Copy public link" }),
+    );
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith(
+        "https://ya.graehl.org/share/secret?h=test-host",
+      );
+    });
   });
 
   it("revokes one opaque managed link", async () => {
@@ -515,9 +623,9 @@ describe("SessionShareModal", () => {
     );
 
     await screen.findByText("Build logs");
-    fireEvent.change(screen.getByLabelText("Share type"), {
-      target: { value: "live" },
-    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Read-only" }),
+    );
     fireEvent.click(
       screen.getByRole("button", { name: "Revoke Every Public Link" }),
     );

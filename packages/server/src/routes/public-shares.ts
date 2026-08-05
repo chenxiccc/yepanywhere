@@ -1155,6 +1155,8 @@ export function createPublicShareRoutes(deps: PublicShareRoutesDeps): Hono {
       (session ? getInitialPromptPreview(session) : null) ??
       normalizePromptPreview(sessionSummary.fullTitle ?? "") ??
       normalizePromptPreview(body.initialPrompt ?? "");
+    const secretUrl = (secret: string) =>
+      buildPublicShareUrl(secret, relayConfig, yaClientBaseUrl);
     const { secret, secretBits, record } =
       await deps.publicShareService.createShare({
         mode: body.mode,
@@ -1166,6 +1168,7 @@ export function createPublicShareRoutes(deps: PublicShareRoutesDeps): Hono {
           projectName,
           provider: sessionSummary.provider,
         },
+        buildPublicUrl: secretUrl,
         ...(body.mode === "frozen" && session ? { snapshot: session } : {}),
         ...(body.mode === "frozen" && session
           ? await getPublicShareCaptureOptions(session, body.projectId)
@@ -1173,11 +1176,8 @@ export function createPublicShareRoutes(deps: PublicShareRoutesDeps): Hono {
       });
 
     const response: CreatePublicSessionShareResponse = {
-      url: buildPublicShareUrl(
-        secret,
-        relayConfig,
-        yaClientBaseUrl,
-      ),
+      url: record.publicUrl ?? secretUrl(secret),
+      shareId: record.shareId,
       mode: record.mode,
       createdAt: record.createdAt,
       secretBits,

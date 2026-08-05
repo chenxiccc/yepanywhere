@@ -78,29 +78,29 @@ test("right click opens session share management without creating a link", async
 
   const indicator = page.locator("button.session-header-viewer-count");
   await expect(indicator).toBeVisible();
-  await expect
-    .poll(() =>
-      indicator.evaluate((element) =>
-        element.dispatchEvent(
-          new MouseEvent("contextmenu", {
-            bubbles: true,
-            button: 2,
-            cancelable: true,
-          }),
-        ),
-      ),
-    )
-    .toBe(false);
+  const indicatorBox = await indicator.boundingBox();
+  expect(indicatorBox).not.toBeNull();
+  await indicator.click({ button: "right" });
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByText("Manage Public Shares")).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "This session", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    dialog.getByRole("button", { name: "Read-only", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    dialog.getByRole("button", { name: "Live", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    dialog.getByRole("button", { name: "Revoke All Shared Links" }),
+  ).toBeEnabled();
   await expect(dialog.getByRole("listitem")).toHaveCount(2);
   await expect(page.getByText("2 matching public link(s)")).toBeVisible();
-
-  const inventory = await fetch(
-    `${baseURL}/api/public-shares?projectId=${projectId}&sessionId=${sessionId}`,
-  );
-  expect(inventory.ok).toBe(true);
-  expect((await inventory.json()).totalCount).toBe(2);
+  const dialogBox = await dialog.boundingBox();
+  expect(dialogBox).not.toBeNull();
+  expect(dialogBox?.x).toBeLessThanOrEqual(indicatorBox?.x ?? 0);
+  expect(dialogBox?.y).toBeGreaterThan(indicatorBox?.y ?? 0);
 
   const captureDirectory = process.env.YEP_PUBLIC_SHARE_CAPTURE_DIR;
   if (captureDirectory) {
@@ -113,5 +113,21 @@ test("right click opens session share management without creating a link", async
     await page.screenshot({
       path: join(captureDirectory, "mobile-375x812.png"),
     });
+    await page.setViewportSize({ width: 1920, height: 1080 });
   }
+
+  await dialog.getByRole("button", { name: "All projects" }).click();
+  await expect(
+    dialog.getByRole("button", { name: "All projects" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    dialog.getByRole("button", { name: "Revoke Every Public Link" }),
+  ).toBeEnabled();
+
+  const inventory = await fetch(
+    `${baseURL}/api/public-shares?projectId=${projectId}&sessionId=${sessionId}`,
+  );
+  expect(inventory.ok).toBe(true);
+  expect((await inventory.json()).totalCount).toBe(2);
+
 });

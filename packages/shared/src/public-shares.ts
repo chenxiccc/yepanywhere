@@ -21,6 +21,7 @@ export interface CreatePublicSessionShareRequest {
 
 export interface CreatePublicSessionShareResponse {
   url: string;
+  shareId?: string;
   mode: PublicSessionShareMode;
   createdAt: string;
   secretBits: number;
@@ -94,6 +95,7 @@ export interface PublicSessionSharePublicMetadata {
 
 export interface PublicShareManagementItem {
   shareId: string;
+  url?: string;
   mode: PublicSessionShareMode;
   title: string | null;
   projectName: string | null;

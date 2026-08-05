@@ -57,6 +57,7 @@ export interface CreatePublicShareOptions {
   snapshot?: AppSession;
   presentation?: PublicSharePresentation;
   projectRoot?: string;
+  buildPublicUrl?: (secret: string) => string;
 }
 
 function hashSecret(secret: string): string {
@@ -293,8 +294,10 @@ export class PublicShareService {
 
     const secret = randomBytes(PUBLIC_SHARE_SECRET_BYTES).toString("base64url");
     const secretHash = hashSecret(secret);
+    const publicUrl = options.buildPublicUrl?.(secret);
     const { grant: record } = await this.store.createGrant({
       secretHash,
+      ...(publicUrl ? { publicUrl } : {}),
       mode: options.mode,
       title: options.title ?? null,
       initialPrompt: options.initialPrompt ?? null,
