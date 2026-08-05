@@ -7,9 +7,7 @@
 Topic: tooltip-interactions
 
 Status: The passive-tooltip noninterference correction and first labelled-
-control hint audit described in
-[`docs/tactical/088-tooltip-noninterference.md`](../docs/tactical/088-tooltip-noninterference.md)
-were enacted on 2026-08-04.
+control hint audit were enacted on 2026-08-04.
 
 ## Modes and settings
 
@@ -121,6 +119,17 @@ page beneath it. Explicitly activated glossary definitions may remain
 pointer-interactive. Boundary motion accumulates from the last point inside
 the active hover region; up to four CSS pixels is treated as hand/sensor jitter
 rather than an intent to switch targets or dismiss.
+
+Pointer transparency, not early dismissal, is the mechanism here. WCAG 2.2
+success criterion 1.4.13 requires author-rendered hover content to stay
+hoverable, persistent, and dismissible, so closing a tooltip the moment the
+pointer leaves its trigger is not an available fix for the covered-control
+defect; the measured rectangle supplies the hover region instead of
+`event.target`. Passive tooltips traded selectable text for that transparency,
+which full-text copy already covers. Cursor-relative placement is likewise not
+the correctness mechanism: target-aware non-obscuring placement remains
+optional presentation polish and must never replace the unrelated-control
+guard.
 
 The session preview hover card is intentionally slower and does not require
 pointer rest: its first reveal waits three times the configured delay (150 ms

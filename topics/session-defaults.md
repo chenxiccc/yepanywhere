@@ -150,7 +150,9 @@ depend on one browser's storage.
 
 `SessionMetadata.effectiveLaunchSettings` stores the last successfully applied
 permission mode, exact requested-model token, service tier, thinking mode, and
-effort with a session-local monotonic revision. A replacement process resolves
+effort with a session-local monotonic revision. A process lifetime is not a
+settings lifetime: every replacement process for an existing session starts
+from that record. A replacement process resolves
 an explicit validated request first, then this durable record, then applicable
 legacy model metadata, and finally the conservative server/provider default.
 Legacy absence never grants Bypass.

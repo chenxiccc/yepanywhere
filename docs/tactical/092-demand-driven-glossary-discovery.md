@@ -13,7 +13,6 @@ Related contracts:
 
 - [`topics/glossary-tooltips.md`](../../topics/glossary-tooltips.md)
 - [`topics/project-path-links.md`](../../topics/project-path-links.md)
-- [`087-glossary-tooltip-implementation.md`](087-glossary-tooltip-implementation.md)
 - [`091-project-path-cache.md`](091-project-path-cache.md)
 - [`089-main-thread-startup-cpu-investigation.md`](089-main-thread-startup-cpu-investigation.md)
 

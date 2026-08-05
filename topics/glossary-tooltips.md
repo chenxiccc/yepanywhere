@@ -7,9 +7,8 @@
 
 Topic: glossary-tooltips
 
-Status: Implemented 2026-08-04 under
-[`docs/tactical/087-glossary-tooltip-implementation.md`](../docs/tactical/087-glossary-tooltip-implementation.md);
-the shared grammar, resolver, capability-gated delivery, tab-local cache,
+Status: Implemented 2026-08-04. The shared grammar, resolver, capability-gated
+delivery, tab-local cache,
 annotation boundary, interaction, authenticated render surfaces, FileViewer
 link convergence, and performance/visual acceptance are complete. Public
 shares deliberately remain unannotated. Demand-driven filesystem correction is
@@ -378,6 +377,12 @@ then supplies hierarchy-aware invalidation for later additions, edits, and
 deletions. Project discovery is on demand; a large unrelated subtree must not
 delay either the document or its glossary artifact.
 
+Glossary work is presentation data and is independent of provider lifetime. An
+artifact request or path subscription must never start, wake, or retain a
+provider process, and must not count as session liveness. A closed tab leaves
+no continuing client obligation; server work already in flight may finish and
+populate the process-memory cache.
+
 When the artifact becomes ready, the owning Markdown renderer re-renders from
 its original source or sanitized renderer output and replaces the speculative
 unannotated presentation. It does not search and mutate the mounted document.
@@ -416,9 +421,7 @@ direct URLs; it has no selected-project authority and remains unannotated.
 
 ## Render-boundary implementation plan
 
-The detailed, source-anchored task is
-[`docs/tactical/087-glossary-tooltip-implementation.md`](../docs/tactical/087-glossary-tooltip-implementation.md).
-Its intended sequence is:
+The implementation followed this sequence:
 
 1. **Grammar and phrase-automaton compiler.** Add a browser-free shared
    glossary parser, recursive contained includes, finite surface-form
