@@ -486,8 +486,13 @@ export class FileWatcher {
           return;
         }
         changeType = "modify";
-      } else {
+      } else if (duringInitialBaseline) {
+        // The baseline has not published yet, so an unknown path is more
+        // likely pre-existing than new. Trust the raw event: only a rename
+        // can have introduced the file within this window.
         changeType = eventType === "change" ? "modify" : "create";
+      } else {
+        changeType = "create";
       }
       this.knownFileMtimes.set(fullPath, mtimeMs);
     }

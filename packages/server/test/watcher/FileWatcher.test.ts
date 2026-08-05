@@ -124,6 +124,47 @@ describe("FileWatcher", () => {
     }
   });
 
+  it("reports a file first seen after the baseline as a create", async () => {
+    const watchDir = join(tmpdir(), `file-watcher-${randomUUID()}`);
+    tempDirs.push(watchDir);
+    await mkdir(watchDir, { recursive: true });
+
+    const events: FileChangeEvent[] = [];
+    const eventBus = new EventBus();
+    eventBus.subscribe((event) => {
+      if (event.type === "file-change") events.push(event);
+    });
+    const watcher = new FileWatcher({
+      watchDir,
+      provider: "claude",
+      eventBus,
+      debounceMs: 0,
+      rescanSlowLogThresholdMs: 60_000,
+    });
+
+    try {
+      watcher.start();
+      await watcher.waitForInitialBaseline();
+      expect(watcher.getInitialBaselineState()).toBe("complete");
+
+      // A file created and appended within one debounce window collapses to
+      // the later "change" event, which must not hide the create from
+      // SessionIndexService's directory reconciliation.
+      const filePath = join(watchDir, "session.jsonl");
+      await writeFile(filePath, "{}\n");
+      (watcher as unknown as FileWatcherTestAccess).emitEvent(
+        filePath,
+        "change",
+      );
+
+      expect(events).toEqual([
+        expect.objectContaining({ path: filePath, changeType: "create" }),
+      ]);
+    } finally {
+      watcher.stop();
+    }
+  });
+
   it("records fallback rescan metrics and emitted change counts", async () => {
     const watchDir = join(tmpdir(), `file-watcher-${randomUUID()}`);
     tempDirs.push(watchDir);

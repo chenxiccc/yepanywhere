@@ -199,13 +199,6 @@ export class InstallService {
     return this.updateCatalogFamilies(families, true);
   }
 
-  async recordCatalogFamilies(
-    families: Iterable<ProviderCatalogFamily>,
-  ): Promise<ProviderCatalogFamily[]> {
-    const requested = normalizeProviderCatalogFamilies(families);
-    return this.updateCatalogFamilies(requested, false);
-  }
-
   private async updateCatalogFamilies(
     requested: readonly ProviderCatalogFamily[],
     completeMetadataMigration: boolean,
