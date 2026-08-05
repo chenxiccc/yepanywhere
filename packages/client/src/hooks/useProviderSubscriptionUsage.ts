@@ -7,6 +7,10 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import {
+  acquireClientQueryBootstrapSlot,
+  type ClientQueryBootstrapTier,
+} from "../lib/clientQueryBootstrap";
+import {
   type ClientSummarySourceKey,
   useClientSummarySourceKey,
 } from "../lib/clientSummaryStore";
@@ -82,8 +86,14 @@ interface UsageState {
   error: Error | null;
 }
 
+export interface UseProviderSubscriptionUsageOptions {
+  /** Delay only the first acquisition behind earlier startup tiers. */
+  bootstrapTier?: ClientQueryBootstrapTier;
+}
+
 export function useProviderSubscriptionUsage(
   provider: ProviderName | null | undefined,
+  options: UseProviderSubscriptionUsageOptions = {},
 ) {
   const sourceKey = useClientSummarySourceKey();
   const { version } = useVersion();
@@ -156,8 +166,29 @@ export function useProviderSubscriptionUsage(
   );
 
   useEffect(() => {
-    void fetchUsage(false);
-  }, [fetchUsage]);
+    if (!supported || !normalizedProvider || !options.bootstrapTier) {
+      void fetchUsage(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    const slot = acquireClientQueryBootstrapSlot(
+      sourceKey,
+      options.bootstrapTier,
+    );
+    void slot.ready().then(() => {
+      if (cancelled) {
+        slot.settle();
+        return;
+      }
+      void fetchUsage(false).finally(() => slot.settle());
+    });
+    return () => {
+      cancelled = true;
+      sequenceRef.current += 1;
+      slot.settle();
+    };
+  }, [fetchUsage, options.bootstrapTier, sourceKey]);
 
   const visible =
     state.sourceKey === sourceKey && state.provider === normalizedProvider

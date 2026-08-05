@@ -2,6 +2,11 @@
 
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  acquireClientQueryBootstrapSlot,
+  resetClientQueryBootstrapForTests,
+} from "../../lib/clientQueryBootstrap";
+import type { ClientSummarySourceKey } from "../../lib/clientSummaryStore";
 import { useProviderSubscriptionUsage } from "../useProviderSubscriptionUsage";
 
 const { mockGetUsage, state } = vi.hoisted(() => ({
@@ -30,6 +35,7 @@ vi.mock("../../lib/clientSummaryStore", () => ({
 
 describe("useProviderSubscriptionUsage", () => {
   beforeEach(() => {
+    resetClientQueryBootstrapForTests();
     state.capabilities = [];
     state.sourceKey = `usage-source-${Math.random()}`;
     mockGetUsage.mockReset();
@@ -43,6 +49,33 @@ describe("useProviderSubscriptionUsage", () => {
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(mockGetUsage).not.toHaveBeenCalled();
+  });
+
+  it("defers supplementary acquisition but never delays explicit refresh", async () => {
+    state.capabilities = ["provider-subscription-usage"];
+    const routeSlot = acquireClientQueryBootstrapSlot(
+      state.sourceKey as ClientSummarySourceKey,
+      "route",
+    );
+    const { result } = renderHook(() =>
+      useProviderSubscriptionUsage("claude", {
+        bootstrapTier: "supplementary",
+      }),
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mockGetUsage).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await result.current.refresh();
+    });
+    expect(mockGetUsage).toHaveBeenCalledTimes(1);
+    expect(mockGetUsage).toHaveBeenCalledWith("claude", { refresh: true });
+
+    routeSlot.settle();
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(mockGetUsage).toHaveBeenCalledTimes(1);
   });
 
   it("loads and explicitly refreshes source-keyed usage", async () => {

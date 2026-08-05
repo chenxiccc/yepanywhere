@@ -825,8 +825,10 @@ export function NewSessionForm({
     loading: providersLoading,
     stale: providersStale,
   } = useProviders();
-  const { usage: subscriptionUsage } =
-    useProviderSubscriptionUsage(selectedProvider);
+  const { usage: subscriptionUsage } = useProviderSubscriptionUsage(
+    selectedProvider,
+    { bootstrapTier: "supplementary" },
+  );
   const {
     settings,
     isLoading: settingsLoading,
