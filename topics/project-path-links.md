@@ -5,13 +5,12 @@
 
 Topic: project-path-links
 
-Status: **implemented (2026-08-02); demand-driven correction accepted
-2026-08-05.** Highlighted file content links exact project files through a
-bounded, filesystem-backed path trie. Tracked, untracked, and gitignored files
-share the same membership test. The current breadth-first warm and per-use
-directory-mtime validation remain implementation debt under the corrected
-contract below. The implementation handoff is
-[`docs/tactical/091-project-path-cache.md`](../docs/tactical/091-project-path-cache.md).
+Status: **implemented (2026-08-02); demand-driven cache landed 2026-08-05.**
+Highlighted file content links exact project files through a demand-driven,
+watcher-backed directory cache. Tracked, untracked, and gitignored files share
+the same membership test. The breadth-first warm, the per-use directory-mtime
+validation, and the `.yepignore` crawl exclusions this feature originally
+shipped with are gone.
 
 ## Why membership, not shape
 
@@ -32,90 +31,67 @@ here; the Markdown viewer's own local-file handling covers authored links.
 
 ## The index
 
-`packages/server/src/projects/projectPathIndex.ts` holds one lazy trie per
-project. Each cached directory node records its complete child listing and the
-directory mtime observed with that listing. The filesystem is authoritative;
-Git is never consulted, so ignored files need no special case.
+`packages/server/src/projects/projectPathIndex.ts` holds one demand-driven
+cache per project. The filesystem is authoritative; Git is never consulted, so
+ignored files need no special case. The cache is rebuildable app state: it
+lives in memory, and no lookup, cache, watch, or diagnostic ever writes inside
+the selected project or its Git metadata.
 
-**Validation is local to the referenced directory.** One lookup batch groups
-candidates by parent directory. A cached parent takes one `stat`; an unchanged
-mtime makes its child listing authoritative for both presence and absence. A
-changed or cold parent is read between two `stat` calls and cached only when
-the mtime is stable. A directory changing continuously is answered from the
-bounded read but not cached, so the next lookup retries instead of blessing an
-unstable snapshot.
+**Nothing is read until something is asked.** Creating an index performs no I/O
+at all, not even a project-root listing, and starts no warm, timer, or retry
+loop. Only the directory components a candidate actually names are hydrated. A
+project holding 50,000 unrelated run artifacts costs nothing because one
+displayed turn mentions `src/server.ts`, and that lookup performs no I/O under
+`runs/`, `.git/`, or `node_modules/`. Those directories need no exclusion list
+because nothing enumerates them.
 
-Recent directory mtimes receive one conservative settling refresh. This keeps
-creation-after-warm correct on filesystems whose mtimes are coarser than the
-nanosecond timestamps available on the development host; correctness does not
-depend on sub-second precision.
+**Each component edge records only what was proven** — `unknown`, `directory`,
+`file`, or `absent` — and each directory node separately records whether its
+listing is *complete*. The two facts have different strength. Only a complete
+directory answers arbitrary child absence without I/O. An exact failed probe
+caches that one edge as absent and claims nothing about its siblings; a present
+edge likewise implies nothing about unobserved siblings.
 
-**Memory and background work are bounded.** At most 50,000 path-component
-nodes remain cached. A listing that cannot fit is used for the current lookup
-without sticking in the trie. When an index first starts, one breadth-first
-warm walks at most 12 directory levels and stops at the same node bound. It has
-no timer, watcher, retry loop, or session lifetime of its own; a cold lookup is
-always sufficient.
+**A live watcher is what makes a cached fact trustworthy.** Each hydrated
+directory carries a non-recursive `fs.watch`, and facts under a directory with
+no watcher are never read from cache. So a cache hit costs zero `stat`, and
+losing — or never obtaining — a watch makes an answer re-probe rather than go
+wrong: a directory that cannot be watched still answers correctly, just from
+the filesystem every time. A named event clears that one edge back to
+`unknown`, including inserting an edge a complete listing had called absent. An
+event that names no entry, a watch error, or overflow instead makes the whole
+generation uncertain: the directory's cached facts are discarded rather than
+trusted, and one bounded re-listing re-establishes them. Watch ambiguity
+therefore cannot leave a negative answer trusted indefinitely.
 
-The warm skips directories named `.git` and `node_modules` by default. An
-optional project-root `.yepignore` replaces the default `node_modules`
-exclusion; `.git` is always skipped. Its intentionally small format is one
-project-relative directory per line, with blank lines and lines beginning `#`
-ignored. It is not gitignore syntax: globs, negation, and inline comments have
-no special meaning. An unreadable or malformed file logs once and falls back to
-the defaults.
+**Probe or list, whichever is cheaper for the batch.** One lookup batch groups
+candidates by parent directory. A sparse set is probed exactly with `lstat` —
+`lstat`, not `stat`, so a symlink is a leaf and a link cannot walk the
+traversal out of the project. Four or more unknown names in one not-yet-complete
+directory are worth a single `readdir` instead, which then answers every later
+name in that directory. A listing wider than 20,000 entries answers its batch
+without being retained.
 
-Warm exclusions never restrict lookup. A path under `node_modules`, `.git`, or
-a `.yepignore` entry still links when the file exists; the first reference just
-reads that directory on demand.
+**Retention is byte-bounded at two levels.** Within a project, least-recently-used
+hydrated directories are dropped once retained bytes exceed 4 MiB. Across the
+process, `getProjectPathIndex()` hands each caller a refcounted claim, and
+unclaimed projects are dropped least-recently-used past 32 MiB; a claimed
+project is never evicted out from under its holder. Ten thousand dormant
+projects therefore do not mean ten thousand live tries or watchers, and a
+discarded project still answers — it rebuilds only the components it needs.
+Eviction runs only between batches, so a probe in flight keeps its ancestors.
 
-## Demand-driven replacement contract
+`projectPathCacheDiagnostics()` reports project count, retained bytes, and
+evicted projects; per-index counters cover cached answers, exact probes,
+directory listings, oversized listings, watcher invalidations, uncertain
+generations, and evicted directories. Reading either scans no tree.
 
-The filesystem remains the authoritative on-disk store. The in-memory index is
-a sparse directory-component trie, with a character-wise matcher allowed as a
-separate accelerator over the path candidates extracted from displayed text.
-Directory structure and substring matching do not need to be the same data
-structure.
-
-Each component edge records one of `unknown`, `present-directory`,
-`present-file`, or `absent`. A directory node separately records whether its
-immediate listing is complete and current. Only a complete/current directory
-may answer arbitrary child absence without I/O. An exact failed probe may cache
-the first missing component and therefore the queried suffix as absent; it does
-not imply the parent directory has a complete listing.
-
-Initialization may list only the project root and create unknown child
-directory nodes. There is no prerequisite to populate the root recursively.
-Distinct path tokens already extracted from displayed content hydrate only the
-prefixes they actually use. A lookup beneath an untracked or ignored run
-directory lists that directory chain on demand; 50,000 unrelated run artifacts
-do not become startup work merely because the project contains them.
-
-Truth maintenance is event-driven on Linux. Attach non-recursive filesystem
-watches only to hydrated directories whose cached facts need invalidation.
-Creation, deletion, or rename clears the affected edge/subtree back to unknown;
-unchanged still-valid descendants may reconnect after their path is confirmed.
-YA-owned edits may invalidate directly. Watcher error/overflow marks the
-generation uncertain and schedules a bounded reconciliation. A low-rate
-directory identity check is a missed-event backstop, not an mtime `stat` paid
-on every cache hit.
-
-Project retention is process-wide and byte-bounded. The product must support
-discovery/navigation across 10,000 projects without retaining 10,000 fully
-populated tries. Least-recent inactive project indexes are rebuildable and may
-be discarded under ordinary LRU/pressure policy; active displayed candidates
-and in-flight lookups remain protected until they settle.
-
-Acceptance for the replacement:
-
-- a cold lookup under one deep ignored subtree reads only its component chain;
-- an unrelated 50,000-path subtree causes no startup I/O or retained nodes;
-- repeated hits and exact misses under a watched, unchanged directory use no
-  per-use `stat`;
-- create/delete/rename invalidates only the affected cached region, with a
-  forced watcher-uncertain test proving reconciliation restores truth; and
-- touching thousands of projects keeps process memory within a measured byte
-  budget while a discarded project still answers correctly on demand.
+**Completion is an explicit request, not a side effect.** The replacement plan
+sketched an optional `listDirectory()` on the interface; it is deliberately
+unbuilt, because no product surface asks for a complete inventory. A surface
+that later needs one must request and budget that operation, never restore it
+to index construction. The same rule retired the `.yepignore` crawl-exclusion
+file with the warm it configured.
 
 ## Rendering
 
@@ -158,14 +134,29 @@ global freshness sweep also measured 135ms for 10,845 directories against 220ms
 to rebuild. Those results ruled out repairing the flat set with another Git
 enumeration or a wider sweep.
 
-The replacement test suite covers ignored membership, same-timestamp creation,
-absolute and parent-traversal rejection before I/O, cache bounds, default and
-project-defined warm exclusions, `.git`'s unconditional exclusion, malformed
-`.yepignore` fallback, HTML safety, self-link suppression, and batch I/O cost.
+The replacement test suite covers ignored membership, sparse component-chain
+I/O, listing-vs-probe batch choice, absolute and parent-traversal rejection
+before I/O, concurrent-probe coalescing, watcher invalidation, a forced
+watcher-uncertain generation and its reconciliation, unwatchable directories,
+oversized listings, per-project and process-wide eviction, HTML safety,
+self-link suppression, and batch I/O cost.
 
-A 2026-08-02 end-to-end measurement used the motivating ignored file under
-`trtllm-speculative/draft`: 10,000 highlighted tokens, 191 distinct candidates
-in one parent directory, and 500 occurrences of the existing file.
+The warm the demand-driven cache replaced was itself the second design. It
+started a breadth-first crawl of up to 50,000 path-component nodes and 12
+directory levels for every touched project, validated each traversed directory
+by mtime `stat` on every use, and left the process-wide project map with no
+eviction. Auditing the real consumers — `linkifyProjectPaths`, `GlossaryIndexService`
+governing/include resolution, and Markdown rendering in `routes/files.ts` —
+found that none asks for an inventory: each asks `findExisting()`/`has()` about
+a handful of paths already displayed on screen. The crawl was therefore paying
+for an answer nothing requested, which is why the cache now hydrates only the
+components a candidate names and why a future completion surface must budget
+its own listing rather than reinstate a crawl.
+
+A 2026-08-02 end-to-end measurement of the warm-based index used the motivating
+ignored file under `trtllm-speculative/draft`: 10,000 highlighted tokens, 191
+distinct candidates in one parent directory, and 500 occurrences of the
+existing file.
 
 | state | elapsed | `stat` | `readdir` | links |
 |---|---:|---:|---:|---:|
@@ -174,5 +165,8 @@ in one parent directory, and 500 occurrences of the existing file.
 
 The five cached-parent timings ranged from 7.0–11.2ms. This is a local
 regression measurement, not a cross-machine latency guarantee; the structural
-result is the stable part: 10,000 tokens and 191 distinct candidates in one
-directory required one validation `stat`, with no global tree sweep.
+result is the stable part, and the demand-driven cache holds it while removing
+the crawl behind it. The same 191-candidate shape is asserted in the test
+suite: cold, one exact probe for the parent component plus one listing that
+answers all 191 names; warm, no filesystem call at all, where the warm model
+still paid one validation `stat`.

@@ -207,10 +207,12 @@ project is protected; the compatibility fallback below explains the limitation.
 | Source-review capture ref | When the default-off submission workflow captures a projection, it writes Git objects and updates `refs/yep/source-review/captures`. | `sourceReviewSubmissionsEnabled`, default off; no project-storage gate. | Added after `0.7.0`; no stable npm release contains it. | App-data mode cannot create YA-owned Git refs or objects. Use central snapshots or require project-local opt-in. |
 | Managed-directory exclusion | First creation of `.yep/` or `.attachments/` may append to the resolved `.git/info/exclude`. | None. | Added after `0.7.0`; no stable npm release contains it. | Resolve the global policy before directory creation; exclude only after project-local opt-in. |
 
-The audit also checked `.yepignore` and the project path index: `.yepignore` is
-user-authored crawl input and YA only reads it. Explicit file-edit, Git
-Pull/Push, and workstream operations are outside this storage-state table; they
-remain governed by their own explicit-action and safety contracts.
+The audit also checked the project path index, which reads the filesystem on
+demand and writes nothing anywhere; the user-authored `.yepignore` crawl input
+it once read was removed with the crawl (`project-path-links.md`). Explicit
+file-edit, Git Pull/Push, and workstream operations are outside this
+storage-state table; they remain governed by their own explicit-action and
+safety contracts.
 
 ## Released-Server Corpus
 

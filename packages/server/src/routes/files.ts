@@ -916,11 +916,18 @@ export function createFilesRoutes(deps: FilesDeps): Hono {
             // here, so an agent handing over a JSON manifest of run outputs
             // becomes navigable without the reader copying paths out.
             const pathIndex = await getProjectPathIndex(projectRoot);
-            response.highlightedHtml = await linkifyProjectPaths(result.html, {
-              projectPath: projectRoot,
-              index: pathIndex,
-              selfRelativePath: relativePath,
-            });
+            try {
+              response.highlightedHtml = await linkifyProjectPaths(
+                result.html,
+                {
+                  projectPath: projectRoot,
+                  index: pathIndex,
+                  selfRelativePath: relativePath,
+                },
+              );
+            } finally {
+              pathIndex.release();
+            }
             response.highlightedLanguage = result.language;
             response.highlightedTruncated = result.truncated;
           }

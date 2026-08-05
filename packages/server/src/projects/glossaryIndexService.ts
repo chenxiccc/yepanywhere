@@ -373,6 +373,22 @@ export class GlossaryIndexService {
     sourcePath: string | null,
   ): Promise<GlossaryResolutionResult> {
     const pathIndex = await this.io.getPathIndex(canonicalProject);
+    try {
+      return await this.resolveGoverning(
+        canonicalProject,
+        sourcePath,
+        pathIndex,
+      );
+    } finally {
+      pathIndex.release();
+    }
+  }
+
+  private async resolveGoverning(
+    canonicalProject: string,
+    sourcePath: string | null,
+    pathIndex: ProjectPathIndex,
+  ): Promise<GlossaryResolutionResult> {
     const candidates = governingCandidates(sourcePath);
     this.observePaths(canonicalProject, candidates);
     const existing = await pathIndex.findExisting(candidates);

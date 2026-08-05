@@ -181,3 +181,11 @@ release corpus audited at that point was `v0.7.0` (2026-07-25), `v0.6.2`
 fallback and receives no `knownGeneration`. No existing capability's meaning
 changed. See [Server Capabilities](server-capabilities.md) § Session-catalog
 gate.
+
+2026-08-05 `.yepignore` — removed with the project path index's breadth-first
+warm. The file was read only to narrow that crawl, so with no crawl it
+configures nothing. It is user-authored project-local input, never a YA-written
+file, and it never restricted lookup: a path under an excluded directory always
+linked when the file existed. A project still holding one is unaffected, since
+the index now hydrates only the directory components a displayed candidate
+names. See [Project path links](project-path-links.md) § The index.

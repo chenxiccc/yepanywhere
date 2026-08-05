@@ -1,46 +1,77 @@
-import type { Dirent, Stats } from "node:fs";
-import { readdir, readFile, stat } from "node:fs/promises";
+import type { Dirent, FSWatcher } from "node:fs";
+import { watch } from "node:fs";
+import { lstat, readdir } from "node:fs/promises";
 import { isAbsolute, join, normalize, resolve, sep } from "node:path";
 import { getLogger } from "../logging/logger.js";
 
-const MAX_CACHED_NODES = 50_000;
-const MAX_WARM_DEPTH = 12;
-const LOOKUP_CONCURRENCY = 8;
-const COARSE_MTIME_WINDOW_MS = 2_000;
-const STABLE_READ_ATTEMPTS = 2;
+/**
+ * Demand-driven project path cache.
+ *
+ * Consumers ask whether a handful of explicitly displayed paths are files in
+ * one project. The cache therefore hydrates only the directory components those
+ * candidates use: a project holding 50,000 unrelated run artifacts pays nothing
+ * because one displayed turn mentions `src/server.ts`.
+ *
+ * Cached facts are trusted only while their directory carries a live watcher,
+ * so a hit costs no `stat`. Losing or never obtaining that watcher does not
+ * make an answer wrong; it only makes it re-probe.
+ */
 
-type IoPhase = "lookup" | "warm";
+/** One listing is cheaper than this many exact probes in the same directory. */
+const DIRECTORY_LISTING_THRESHOLD = 4;
+/** A wider listing answers its batch but is never retained. */
+const MAX_RETAINED_DIRECTORY_ENTRIES = 20_000;
+const PROBE_CONCURRENCY = 8;
+/** Estimated retained bytes per cached path component. */
+const NODE_BASE_BYTES = 96;
+/** Per-project ceiling before the least recently used subtrees are dropped. */
+const MAX_INDEX_BYTES = 4 * 1024 * 1024;
+/** Process-wide ceiling before the least recently used projects are dropped. */
+const MAX_PROCESS_BYTES = 32 * 1024 * 1024;
+/** Fraction of a ceiling that eviction returns below, so it runs in batches. */
+const EVICTION_LOW_WATERMARK = 0.75;
+const RECONCILE_DELAY_MS = 100;
+
+/** What one directory-component edge is known to be. */
+type NodeState = "absent" | "directory" | "file" | "unknown";
+
+interface PathNode {
+  children: Map<string, PathNode> | undefined;
+  /** Whether `children` names every entry, so an unlisted name is absent. */
+  complete: boolean;
+  name: string;
+  state: NodeState;
+  watcher: FSWatcher | undefined;
+}
 
 interface MutablePathIndexStats {
+  /** Candidates answered from cache with no filesystem call. */
+  cachedAnswers: number;
+  directoryListings: number;
+  /** Subtrees dropped to stay within the per-project byte ceiling. */
+  evictedDirectories: number;
+  exactProbes: number;
   lookupBatches: number;
   lookupCandidates: number;
-  lookupReaddirCalls: number;
-  lookupStatCalls: number;
-  unstableDirectoryReads: number;
-  warmDirectories: number;
-  warmReaddirCalls: number;
-  warmStatCalls: number;
+  /** Listings too wide to retain, used for their batch only. */
+  oversizedListings: number;
+  /** Watch errors that discarded a directory's cached generation. */
+  uncertainGenerations: number;
+  /** Cached edges invalidated by a filesystem event. */
+  watcherInvalidations: number;
 }
 
 export interface ProjectPathIndexStats extends MutablePathIndexStats {
-  cachedNodes: number;
-  cacheLimitHit: boolean;
+  completeDirectories: number;
+  hydratedDirectories: number;
+  retainedBytes: number;
+  watchers: number;
 }
 
-interface PathNode {
-  cacheResident: boolean;
-  children: Map<string, PathNode>;
-  isDirectory: boolean;
-  mtimeMs: number | undefined;
-  needsSettledRefresh: boolean;
-  populated: boolean;
-  refreshing: Promise<DirectorySnapshot> | undefined;
-}
-
-interface DirectorySnapshot {
-  cached: boolean;
-  directories: ReadonlyArray<readonly [string, PathNode]>;
-  get(name: string): PathNode | undefined;
+export interface ProjectPathCacheStats {
+  evictedProjects: number;
+  projects: number;
+  retainedBytes: number;
 }
 
 interface ParsedCandidate {
@@ -48,42 +79,47 @@ interface ParsedCandidate {
   original: string;
 }
 
-interface PathIndexOptions {
-  maxCachedNodes?: number;
-  maxWarmDepth?: number;
-  startWarm?: boolean;
+type WatchListener = (event: string, filename: string | Buffer | null) => void;
+
+/** Filesystem access, injectable so tests can count and fault-inject I/O. */
+export interface PathIndexIo {
+  lstat(path: string): Promise<{ isDirectory(): boolean }>;
+  readdir(path: string): Promise<Dirent[]>;
+  watch(path: string, listener: WatchListener): FSWatcher;
 }
 
-interface CrawlExclusions {
-  paths: ReadonlySet<string>;
-  useDefaults: boolean;
-}
-
-const DEFAULT_CRAWL_EXCLUSIONS: CrawlExclusions = {
-  paths: new Set<string>(),
-  useDefaults: true,
+const DEFAULT_IO: PathIndexIo = {
+  lstat: (path) => lstat(path),
+  readdir: (path) => readdir(path, { withFileTypes: true }),
+  watch: (path, listener) =>
+    watch(path, { persistent: false }, (event, filename) =>
+      listener(event, filename),
+    ),
 };
 
-const indexes = new Map<string, Promise<LazyProjectPathIndex>>();
-const warnedYepignoreProjects = new Set<string>();
+interface PathIndexOptions {
+  io?: PathIndexIo;
+  maxIndexBytes?: number;
+  maxRetainedEntries?: number;
+}
 
-function createNode(isDirectory: boolean, cacheResident = false): PathNode {
+function createNode(name: string, state: NodeState): PathNode {
   return {
-    cacheResident,
-    children: new Map(),
-    isDirectory,
-    mtimeMs: undefined,
-    needsSettledRefresh: false,
-    populated: false,
-    refreshing: undefined,
+    children: undefined,
+    complete: false,
+    name,
+    state,
+    watcher: undefined,
   };
+}
+
+function nodeBytes(name: string): number {
+  return NODE_BASE_BYTES + name.length * 2;
 }
 
 function isPortableAbsolute(path: string): boolean {
   return (
-    isAbsolute(path) ||
-    /^[A-Za-z]:[\\/]/.test(path) ||
-    /^[/\\]{2}/.test(path)
+    isAbsolute(path) || /^[A-Za-z]:[\\/]/.test(path) || /^[/\\]{2}/.test(path)
   );
 }
 
@@ -104,6 +140,12 @@ function parseRelativeComponents(path: string): string[] | null {
   return components.length > 0 ? components : null;
 }
 
+/** Whether this error proves the queried path is not there. */
+function provesAbsence(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException).code;
+  return code === "ENOENT" || code === "ENOTDIR";
+}
+
 function isUnavailablePathError(error: unknown): boolean {
   const code = (error as NodeJS.ErrnoException).code;
   return (
@@ -113,40 +155,6 @@ function isUnavailablePathError(error: unknown): boolean {
     code === "EPERM"
   );
 }
-
-function cachedSnapshot(node: PathNode): DirectorySnapshot {
-  return {
-    cached: true,
-    directories: Array.from(node.children).filter(
-      (entry): entry is [string, PathNode] => entry[1].isDirectory,
-    ),
-    get: (name) => node.children.get(name),
-  };
-}
-
-function ephemeralSnapshot(entries: readonly Dirent[]): DirectorySnapshot {
-  const kinds = new Map(entries.map((entry) => [entry.name, entry.isDirectory()]));
-  const requestedNodes = new Map<string, PathNode>();
-  return {
-    cached: false,
-    directories: [],
-    get(name) {
-      if (!kinds.has(name)) return undefined;
-      let node = requestedNodes.get(name);
-      if (!node) {
-        node = createNode(kinds.get(name) === true);
-        requestedNodes.set(name, node);
-      }
-      return node;
-    },
-  };
-}
-
-const MISSING_DIRECTORY: DirectorySnapshot = {
-  cached: false,
-  directories: [],
-  get: () => undefined,
-};
 
 async function forEachConcurrent<T>(
   values: readonly T[],
@@ -168,86 +176,48 @@ async function forEachConcurrent<T>(
   await Promise.all(workers);
 }
 
-function parseYepignore(content: string): ReadonlySet<string> {
-  const paths = new Set<string>();
-  for (const sourceLine of content.split("\n")) {
-    const line = sourceLine.trim();
-    if (!line || line.startsWith("#")) continue;
-    const components = parseRelativeComponents(line);
-    if (!components) {
-      throw new Error(`invalid project-relative directory: ${line}`);
-    }
-    paths.add(components.join("/"));
-  }
-  return paths;
-}
-
-function warnYepignoreOnce(projectPath: string, error: unknown): void {
-  if (warnedYepignoreProjects.has(projectPath)) return;
-  warnedYepignoreProjects.add(projectPath);
-  getLogger().warn(
-    { err: error, projectPath },
-    "PROJECT_PATH_INDEX: invalid .yepignore; using default crawl exclusions",
-  );
-}
-
-async function readCrawlExclusions(
-  projectPath: string,
-): Promise<CrawlExclusions> {
-  try {
-    const content = await readFile(join(projectPath, ".yepignore"), "utf8");
-    return { paths: parseYepignore(content), useDefaults: false };
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-      warnYepignoreOnce(projectPath, error);
-    }
-    return DEFAULT_CRAWL_EXCLUSIONS;
-  }
-}
-
-class LazyProjectPathIndex implements ProjectPathIndex {
-  private readonly maxCachedNodes: number;
-  private readonly maxWarmDepth: number;
-  private readonly root = createNode(true, true);
+class SparseProjectPathIndex implements ProjectPathIndex {
+  private readonly io: PathIndexIo;
+  private readonly maxIndexBytes: number;
+  private readonly maxRetainedEntries: number;
+  private readonly root = createNode("", "directory");
+  /** Watched directory nodes, in least-recently-used order. */
+  private readonly hydrated = new Map<PathNode, string>();
+  private readonly listings = new Map<
+    string,
+    Promise<Map<string, NodeState> | null>
+  >();
+  private readonly probes = new Map<string, Promise<NodeState>>();
+  private readonly reconciling = new Map<PathNode, NodeJS.Timeout>();
   private readonly stats: MutablePathIndexStats = {
+    cachedAnswers: 0,
+    directoryListings: 0,
+    evictedDirectories: 0,
+    exactProbes: 0,
     lookupBatches: 0,
     lookupCandidates: 0,
-    lookupReaddirCalls: 0,
-    lookupStatCalls: 0,
-    unstableDirectoryReads: 0,
-    warmDirectories: 0,
-    warmReaddirCalls: 0,
-    warmStatCalls: 0,
+    oversizedListings: 0,
+    uncertainGenerations: 0,
+    watcherInvalidations: 0,
   };
-  private cacheLimitHit = false;
-  private cachedNodes = 1;
+  private activeBatches = 0;
+  private completeDirectories = 0;
   private disposed = false;
-  private readonly warmPromise: Promise<void>;
+  private retainedBytes = 0;
+  private watchers = 0;
 
   constructor(
     private readonly projectPath: string,
-    private readonly crawlExclusions: CrawlExclusions,
-    options: PathIndexOptions,
+    options: PathIndexOptions = {},
   ) {
-    this.maxCachedNodes = Math.max(1, options.maxCachedNodes ?? MAX_CACHED_NODES);
-    this.maxWarmDepth = options.maxWarmDepth ?? MAX_WARM_DEPTH;
-    this.warmPromise =
-      options.startWarm === false
-        ? Promise.resolve()
-        : this.warm().catch((error) => {
-            getLogger().warn(
-              { err: error, projectPath: this.projectPath },
-              "PROJECT_PATH_INDEX: bounded warm stopped after an error",
-            );
-          });
+    this.io = options.io ?? DEFAULT_IO;
+    this.maxIndexBytes = options.maxIndexBytes ?? MAX_INDEX_BYTES;
+    this.maxRetainedEntries =
+      options.maxRetainedEntries ?? MAX_RETAINED_DIRECTORY_ENTRIES;
   }
 
-  get size(): number {
-    return Math.max(0, this.cachedNodes - 1);
-  }
-
-  get truncated(): boolean {
-    return this.cacheLimitHit;
+  get bytes(): number {
+    return this.retainedBytes;
   }
 
   async has(path: string): Promise<boolean> {
@@ -273,291 +243,422 @@ class LazyProjectPathIndex implements ProjectPathIndex {
     }
 
     const found = new Set<string>();
-    const batchDirectories = new Map<string, Promise<DirectorySnapshot>>();
-    await forEachConcurrent(
-      Array.from(groups.values()),
-      LOOKUP_CONCURRENCY,
-      async (group) => {
-        const first = group[0];
-        if (!first) return;
-        const parent = await this.resolveDirectory(
-          first.components.slice(0, -1),
-          batchDirectories,
-        );
-        if (!parent) return;
-        const snapshot = await this.validateOnce(
-          parent.node,
-          parent.absolutePath,
-          "lookup",
-          batchDirectories,
-        );
-        for (const candidate of group) {
-          const name = candidate.components.at(-1);
-          if (!name) continue;
-          const node = snapshot.get(name);
-          if (node && !node.isDirectory) found.add(candidate.original);
-        }
-      },
-    );
+    this.activeBatches += 1;
+    try {
+      await forEachConcurrent(
+        Array.from(groups.values()),
+        PROBE_CONCURRENCY,
+        async (group) => {
+          const first = group[0];
+          if (!first) return;
+          const parent = await this.resolveDirectory(
+            first.components.slice(0, -1),
+          );
+          if (!parent) return;
+          const names = group.flatMap((candidate) => {
+            const name = candidate.components.at(-1);
+            return name ? [name] : [];
+          });
+          const states = await this.resolveChildren(
+            parent.node,
+            parent.absolutePath,
+            names,
+          );
+          for (const candidate of group) {
+            const name = candidate.components.at(-1);
+            if (name && states.get(name) === "file")
+              found.add(candidate.original);
+          }
+        },
+      );
+    } finally {
+      this.activeBatches -= 1;
+      // Only evict between batches, so a probe in flight keeps its ancestors.
+      if (this.activeBatches === 0) this.enforceIndexBudget();
+    }
     return found;
+  }
+
+  release(): void {
+    this.dispose();
   }
 
   diagnostics(): ProjectPathIndexStats {
     return {
       ...this.stats,
-      cachedNodes: this.cachedNodes,
-      cacheLimitHit: this.cacheLimitHit,
+      completeDirectories: this.completeDirectories,
+      hydratedDirectories: this.hydrated.size,
+      retainedBytes: this.retainedBytes,
+      watchers: this.watchers,
     };
   }
 
   resetDiagnostics(): void {
-    for (const key of Object.keys(this.stats) as Array<keyof MutablePathIndexStats>) {
+    for (const key of Object.keys(this.stats) as Array<
+      keyof MutablePathIndexStats
+    >) {
       this.stats[key] = 0;
     }
   }
 
-  async waitForWarm(): Promise<void> {
-    await this.warmPromise;
-  }
-
   dispose(): void {
+    if (this.disposed) return;
     this.disposed = true;
+    for (const timer of this.reconciling.values()) clearTimeout(timer);
+    this.reconciling.clear();
+    for (const node of Array.from(this.hydrated.keys())) this.evict(node);
+    this.hydrated.clear();
   }
 
+  /** Walk to the directory node named by `components`, hydrating on demand. */
   private async resolveDirectory(
     components: readonly string[],
-    batchDirectories: Map<string, Promise<DirectorySnapshot>>,
   ): Promise<{ absolutePath: string; node: PathNode } | null> {
     let absolutePath = this.projectPath;
     let node = this.root;
     for (const component of components) {
-      let child = node.children.get(component);
-      if (!child?.isDirectory) {
-        const snapshot = await this.validateOnce(
-          node,
-          absolutePath,
-          "lookup",
-          batchDirectories,
-        );
-        child = snapshot.get(component);
-      }
-      if (!child?.isDirectory) return null;
+      const states = await this.resolveChildren(node, absolutePath, [
+        component,
+      ]);
+      if (states.get(component) !== "directory") return null;
       absolutePath = join(absolutePath, component);
-      node = child;
+      node =
+        node.children?.get(component) ?? createNode(component, "directory");
     }
     return { absolutePath, node };
   }
 
-  private validateOnce(
-    node: PathNode,
-    absolutePath: string,
-    phase: IoPhase,
-    batchDirectories: Map<string, Promise<DirectorySnapshot>>,
-  ): Promise<DirectorySnapshot> {
-    const existing = batchDirectories.get(absolutePath);
-    if (existing) return existing;
-    const pending = this.validateDirectory(node, absolutePath, phase);
-    batchDirectories.set(absolutePath, pending);
+  /**
+   * Resolve several names in one directory. A cached fact costs nothing; a
+   * sparse set of unknowns is probed exactly; a wide set is worth one listing,
+   * which also answers every later name in that directory.
+   */
+  private async resolveChildren(
+    parent: PathNode,
+    parentAbsolutePath: string,
+    names: readonly string[],
+  ): Promise<Map<string, NodeState>> {
+    const states = new Map<string, NodeState>();
+    const unresolved: string[] = [];
+    for (const name of new Set(names)) {
+      const cached = this.cachedChildState(parent, name);
+      if (cached) {
+        this.stats.cachedAnswers += 1;
+        states.set(name, cached);
+      } else {
+        unresolved.push(name);
+      }
+    }
+    if (unresolved.length === 0) return states;
+
+    if (unresolved.length >= DIRECTORY_LISTING_THRESHOLD && !parent.complete) {
+      const listing = await this.listDirectory(parent, parentAbsolutePath);
+      for (const name of unresolved) {
+        states.set(name, listing?.get(name) ?? "absent");
+      }
+      return states;
+    }
+
+    await forEachConcurrent(unresolved, PROBE_CONCURRENCY, async (name) => {
+      states.set(name, await this.probeChild(parent, parentAbsolutePath, name));
+    });
+    return states;
+  }
+
+  private cachedChildState(
+    parent: PathNode,
+    name: string,
+  ): NodeState | undefined {
+    // Without a live watcher nothing keeps these facts true.
+    if (!parent.watcher) return undefined;
+    const child = parent.children?.get(name);
+    if (child && child.state !== "unknown") {
+      this.touch(parent);
+      return child.state;
+    }
+    if (!child && parent.complete) {
+      this.touch(parent);
+      return "absent";
+    }
+    return undefined;
+  }
+
+  private probeChild(
+    parent: PathNode,
+    parentAbsolutePath: string,
+    name: string,
+  ): Promise<NodeState> {
+    const absolutePath = join(parentAbsolutePath, name);
+    const inFlight = this.probes.get(absolutePath);
+    if (inFlight) return inFlight;
+    const pending = this.runProbe(
+      parent,
+      parentAbsolutePath,
+      absolutePath,
+      name,
+    ).finally(() => {
+      if (this.probes.get(absolutePath) === pending) {
+        this.probes.delete(absolutePath);
+      }
+    });
+    this.probes.set(absolutePath, pending);
     return pending;
   }
 
-  private async validateDirectory(
-    node: PathNode,
+  private async runProbe(
+    parent: PathNode,
+    parentAbsolutePath: string,
     absolutePath: string,
-    phase: IoPhase,
-  ): Promise<DirectorySnapshot> {
-    if (node.refreshing) return node.refreshing;
-    const pending = this.readDirectory(node, absolutePath, phase);
-    node.refreshing = pending;
+    name: string,
+  ): Promise<NodeState> {
+    this.stats.exactProbes += 1;
+    let state: NodeState;
+    let proven = true;
     try {
-      return await pending;
-    } finally {
-      if (node.refreshing === pending) node.refreshing = undefined;
-    }
-  }
-
-  private async readDirectory(
-    node: PathNode,
-    absolutePath: string,
-    phase: IoPhase,
-  ): Promise<DirectorySnapshot> {
-    let before: Stats;
-    try {
-      before = await this.statDirectory(absolutePath, phase);
+      // `lstat`, not `stat`: a symlink is a leaf here, so a link cannot make
+      // the walk leave the project.
+      const entry = await this.io.lstat(absolutePath);
+      state = entry.isDirectory() ? "directory" : "file";
     } catch (error) {
       if (!isUnavailablePathError(error)) throw error;
-      this.clearListing(node);
-      return MISSING_DIRECTORY;
+      // A permission error answers this lookup but proves nothing to cache.
+      proven = provesAbsence(error);
+      state = "absent";
     }
-    if (!before.isDirectory()) {
-      this.clearListing(node);
-      return MISSING_DIRECTORY;
-    }
-
-    if (
-      node.populated &&
-      node.mtimeMs === before.mtimeMs &&
-      !node.needsSettledRefresh
-    ) {
-      return cachedSnapshot(node);
-    }
-
-    let entries: Dirent[] = [];
-    for (let attempt = 0; attempt < STABLE_READ_ATTEMPTS; attempt += 1) {
-      try {
-        entries = await this.readEntries(absolutePath, phase);
-      } catch (error) {
-        if (!isUnavailablePathError(error)) throw error;
-        this.clearListing(node);
-        return MISSING_DIRECTORY;
-      }
-
-      let after: Stats;
-      try {
-        after = await this.statDirectory(absolutePath, phase);
-      } catch (error) {
-        if (!isUnavailablePathError(error)) throw error;
-        this.clearListing(node);
-        return MISSING_DIRECTORY;
-      }
-      if (!after.isDirectory()) {
-        this.clearListing(node);
-        return MISSING_DIRECTORY;
-      }
-      if (before.mtimeMs === after.mtimeMs) {
-        return this.cacheListing(node, entries, after.mtimeMs);
-      }
-      before = after;
-    }
-
-    this.stats.unstableDirectoryReads += 1;
-    this.clearListing(node);
-    return ephemeralSnapshot(entries);
+    if (proven) this.cacheChildState(parent, parentAbsolutePath, name, state);
+    return state;
   }
 
-  private async statDirectory(absolutePath: string, phase: IoPhase) {
-    if (phase === "lookup") this.stats.lookupStatCalls += 1;
-    else this.stats.warmStatCalls += 1;
-    return stat(absolutePath);
+  private cacheChildState(
+    parent: PathNode,
+    parentAbsolutePath: string,
+    name: string,
+    state: NodeState,
+  ): void {
+    if (!this.hydrate(parent, parentAbsolutePath)) return;
+    const existing = parent.children?.get(name);
+    if (existing) {
+      if (existing.state !== state) this.dropChildren(existing);
+      existing.state = state;
+      return;
+    }
+    this.addChild(parent, name, state);
   }
 
-  private async readEntries(
-    absolutePath: string,
-    phase: IoPhase,
-  ): Promise<Dirent[]> {
-    if (phase === "lookup") this.stats.lookupReaddirCalls += 1;
-    else this.stats.warmReaddirCalls += 1;
-    return readdir(absolutePath, { withFileTypes: true });
+  /** Insert one new child edge, allocating the child map on first use. */
+  private addChild(parent: PathNode, name: string, state: NodeState): void {
+    if (!parent.children) parent.children = new Map();
+    parent.children.set(name, createNode(name, state));
+    this.addBytes(nodeBytes(name));
   }
 
-  private cacheListing(
+  /** Read one directory completely, coalescing concurrent requests. */
+  private listDirectory(
     node: PathNode,
-    entries: readonly Dirent[],
-    mtimeMs: number,
-  ): DirectorySnapshot {
-    if (!node.cacheResident) return ephemeralSnapshot(entries);
-    const oldDescendants = this.countDescendants(node);
-    const remaining =
-      this.maxCachedNodes - (this.cachedNodes - oldDescendants);
-    if (entries.length > remaining) {
-      this.cacheLimitHit = true;
-      this.clearListing(node);
-      return ephemeralSnapshot(entries);
-    }
-
-    this.clearListing(node);
-    for (const entry of entries) {
-      node.children.set(entry.name, createNode(entry.isDirectory(), true));
-    }
-    this.cachedNodes += entries.length;
-    node.mtimeMs = mtimeMs;
-    node.needsSettledRefresh =
-      Date.now() - mtimeMs <= COARSE_MTIME_WINDOW_MS;
-    node.populated = true;
-    return cachedSnapshot(node);
-  }
-
-  private countDescendants(node: PathNode): number {
-    let count = 0;
-    for (const child of node.children.values()) {
-      count += 1 + this.countDescendants(child);
-    }
-    return count;
-  }
-
-  private detachDescendants(node: PathNode): number {
-    let count = 0;
-    for (const child of node.children.values()) {
-      count += 1 + this.detachDescendants(child);
-      child.cacheResident = false;
-      child.children.clear();
-    }
-    return count;
-  }
-
-  private clearListing(node: PathNode): void {
-    this.cachedNodes -= this.detachDescendants(node);
-    node.children.clear();
-    node.mtimeMs = undefined;
-    node.needsSettledRefresh = false;
-    node.populated = false;
-  }
-
-  private async warm(): Promise<void> {
-    const queue: Array<{
-      absolutePath: string;
-      depth: number;
-      node: PathNode;
-      relativeParts: string[];
-    }> = [
-      {
-        absolutePath: this.projectPath,
-        depth: 0,
-        node: this.root,
-        relativeParts: [],
-      },
-    ];
-
-    for (let cursor = 0; cursor < queue.length && !this.disposed; cursor += 1) {
-      if (this.cacheLimitHit) break;
-      const current = queue[cursor];
-      if (!current) continue;
-      const snapshot = await this.validateDirectory(
-        current.node,
-        current.absolutePath,
-        "warm",
-      );
-      if (!snapshot.cached) continue;
-      this.stats.warmDirectories += 1;
-      if (current.depth >= this.maxWarmDepth) continue;
-
-      for (const [name, child] of snapshot.directories) {
-        const relativeParts = [...current.relativeParts, name];
-        if (this.isCrawlExcluded(relativeParts, name)) continue;
-        queue.push({
-          absolutePath: join(current.absolutePath, name),
-          depth: current.depth + 1,
-          node: child,
-          relativeParts,
-        });
+    absolutePath: string,
+  ): Promise<Map<string, NodeState> | null> {
+    const inFlight = this.listings.get(absolutePath);
+    if (inFlight) return inFlight;
+    const pending = this.runListing(node, absolutePath).finally(() => {
+      if (this.listings.get(absolutePath) === pending) {
+        this.listings.delete(absolutePath);
       }
+    });
+    this.listings.set(absolutePath, pending);
+    return pending;
+  }
+
+  private async runListing(
+    node: PathNode,
+    absolutePath: string,
+  ): Promise<Map<string, NodeState> | null> {
+    this.stats.directoryListings += 1;
+    // Watch before reading: a change during the read then invalidates the
+    // listing instead of being missed by it.
+    const watched = this.hydrate(node, absolutePath);
+    let entries: Dirent[];
+    try {
+      entries = await this.io.readdir(absolutePath);
+    } catch (error) {
+      if (!isUnavailablePathError(error)) throw error;
+      this.evict(node);
+      return null;
+    }
+
+    const kinds = new Map<string, NodeState>();
+    for (const entry of entries) {
+      kinds.set(entry.name, entry.isDirectory() ? "directory" : "file");
+    }
+    if (entries.length > this.maxRetainedEntries) {
+      this.stats.oversizedListings += 1;
+    } else if (watched) {
+      this.replaceChildren(node, kinds);
+    }
+    return kinds;
+  }
+
+  private replaceChildren(node: PathNode, kinds: Map<string, NodeState>): void {
+    this.dropChildren(node);
+    const children = new Map<string, PathNode>();
+    let bytes = 0;
+    for (const [name, state] of kinds) {
+      children.set(name, createNode(name, state));
+      bytes += nodeBytes(name);
+    }
+    node.children = children;
+    node.complete = true;
+    this.completeDirectories += 1;
+    this.addBytes(bytes);
+  }
+
+  /**
+   * Attach this directory's watcher, which is what makes its cached facts
+   * trustworthy. Facts gathered before the watch existed are not covered by it,
+   * so a first attachment starts a clean generation.
+   */
+  private hydrate(node: PathNode, absolutePath: string): boolean {
+    if (node.watcher) {
+      this.touch(node);
+      return true;
+    }
+    if (this.disposed) return false;
+    let watcher: FSWatcher;
+    try {
+      watcher = this.io.watch(absolutePath, (_event, filename) => {
+        this.onWatchEvent(node, absolutePath, watcher, filename);
+      });
+    } catch (error) {
+      getLogger().debug(
+        { err: error, path: absolutePath },
+        "PROJECT_PATH_INDEX: directory watch unavailable; answers stay uncached",
+      );
+      return false;
+    }
+    watcher.on("error", (error) => {
+      this.onWatchFailure(node, absolutePath, watcher, error);
+    });
+    this.dropChildren(node);
+    node.watcher = watcher;
+    this.watchers += 1;
+    this.hydrated.set(node, absolutePath);
+    return true;
+  }
+
+  private onWatchEvent(
+    node: PathNode,
+    absolutePath: string,
+    watcher: FSWatcher,
+    filename: string | Buffer | null,
+  ): void {
+    if (node.watcher !== watcher) return;
+    if (!filename) {
+      // An event that does not name its entry cannot invalidate one edge.
+      this.onWatchFailure(node, absolutePath, watcher, undefined);
+      return;
+    }
+    const name =
+      typeof filename === "string" ? filename : filename.toString("utf8");
+    this.stats.watcherInvalidations += 1;
+    const child = node.children?.get(name);
+    if (child) {
+      this.dropChildren(child);
+      child.state = "unknown";
+      return;
+    }
+    if (!node.complete) return;
+    // A name this listing called absent may now exist.
+    this.addChild(node, name, "unknown");
+  }
+
+  /**
+   * A watch error or overflow leaves this directory's generation uncertain.
+   * Every cached fact under it is discarded rather than trusted, and one
+   * bounded listing re-establishes the truth.
+   */
+  private onWatchFailure(
+    node: PathNode,
+    absolutePath: string,
+    watcher: FSWatcher,
+    error: unknown,
+  ): void {
+    if (node.watcher !== watcher) return;
+    this.stats.uncertainGenerations += 1;
+    getLogger().debug(
+      { err: error, path: absolutePath },
+      "PROJECT_PATH_INDEX: watch generation uncertain; reconciling",
+    );
+    this.evict(node);
+    this.scheduleReconcile(node, absolutePath);
+  }
+
+  private scheduleReconcile(node: PathNode, absolutePath: string): void {
+    if (this.disposed || this.reconciling.has(node)) return;
+    const timer = setTimeout(() => {
+      this.reconciling.delete(node);
+      if (this.disposed) return;
+      void this.listDirectory(node, absolutePath).catch(() => undefined);
+    }, RECONCILE_DELAY_MS);
+    timer.unref?.();
+    this.reconciling.set(node, timer);
+  }
+
+  private touch(node: PathNode): void {
+    const absolutePath = this.hydrated.get(node);
+    if (absolutePath === undefined) return;
+    this.hydrated.delete(node);
+    this.hydrated.set(node, absolutePath);
+  }
+
+  private addBytes(bytes: number): void {
+    this.retainedBytes += bytes;
+  }
+
+  private dropChildren(node: PathNode): void {
+    const children = node.children;
+    if (children) {
+      for (const child of children.values()) {
+        this.dropChildren(child);
+        this.closeWatcher(child);
+        this.hydrated.delete(child);
+        this.retainedBytes -= nodeBytes(child.name);
+      }
+      node.children = undefined;
+    }
+    if (node.complete) {
+      node.complete = false;
+      this.completeDirectories -= 1;
     }
   }
 
-  private isCrawlExcluded(relativeParts: readonly string[], name: string): boolean {
-    if (name === ".git") return true;
-    if (this.crawlExclusions.useDefaults && name === "node_modules") return true;
-    return this.crawlExclusions.paths.has(relativeParts.join("/"));
+  private closeWatcher(node: PathNode): void {
+    if (!node.watcher) return;
+    const watcher = node.watcher;
+    node.watcher = undefined;
+    this.watchers -= 1;
+    try {
+      watcher.close();
+    } catch {
+      // A watcher already closed by the platform needs nothing here.
+    }
   }
-}
 
-async function createIndex(
-  projectPath: string,
-  options: PathIndexOptions = {},
-): Promise<LazyProjectPathIndex> {
-  const resolvedPath = resolve(projectPath);
-  const exclusions = await readCrawlExclusions(resolvedPath);
-  return new LazyProjectPathIndex(resolvedPath, exclusions, options);
+  private evict(node: PathNode): void {
+    this.dropChildren(node);
+    this.closeWatcher(node);
+    this.hydrated.delete(node);
+  }
+
+  /** Drop least-recently-used subtrees until this project fits its ceiling. */
+  private enforceIndexBudget(): void {
+    if (this.retainedBytes <= this.maxIndexBytes) return;
+    const target = this.maxIndexBytes * EVICTION_LOW_WATERMARK;
+    for (const node of Array.from(this.hydrated.keys())) {
+      if (this.retainedBytes <= target) break;
+      if (!this.hydrated.has(node)) continue;
+      this.evict(node);
+      this.stats.evictedDirectories += 1;
+    }
+  }
 }
 
 export interface ProjectPathIndex {
@@ -565,62 +666,117 @@ export interface ProjectPathIndex {
   findExisting(paths: readonly string[]): Promise<ReadonlySet<string>>;
   /** Whether this exact project-relative path is a file in the project. */
   has(path: string): Promise<boolean>;
-  /** Cached path-component count, for diagnostics. */
-  readonly size: number;
-  /** Whether the cache bound has prevented a directory listing from sticking. */
-  readonly truncated: boolean;
+  /** Give up this caller's claim on the project's cache. */
+  release(): void;
+}
+
+interface RegistryEntry {
+  index: SparseProjectPathIndex;
+  lastAccess: number;
+  refs: number;
+}
+
+const registry = new Map<string, RegistryEntry>();
+let evictedProjects = 0;
+
+/** One caller's claim on a shared project cache. */
+class ProjectPathIndexHandle implements ProjectPathIndex {
+  private released = false;
+
+  constructor(private readonly entry: RegistryEntry) {}
+
+  findExisting(paths: readonly string[]): Promise<ReadonlySet<string>> {
+    this.entry.lastAccess = Date.now();
+    return this.entry.index.findExisting(paths);
+  }
+
+  has(path: string): Promise<boolean> {
+    this.entry.lastAccess = Date.now();
+    return this.entry.index.has(path);
+  }
+
+  release(): void {
+    if (this.released) return;
+    this.released = true;
+    this.entry.refs -= 1;
+    this.entry.lastAccess = Date.now();
+    enforceProcessBudget();
+  }
 }
 
 /**
- * Return the project's lazy filesystem index. Starting an index reads its
- * crawl-only `.yepignore` and launches one bounded warm pass; lookups never
- * wait for that warm pass and remain unrestricted by crawl exclusions.
+ * Claim the project's path cache. Creating one reads nothing: the first lookup
+ * hydrates only the components it needs. Release the claim when the caller is
+ * done, so a cold project becomes evictable.
  */
 export async function getProjectPathIndex(
   projectPath: string,
 ): Promise<ProjectPathIndex> {
   const resolvedPath = resolve(projectPath);
-  let pending = indexes.get(resolvedPath);
-  if (!pending) {
-    pending = createIndex(resolvedPath).catch((error) => {
-      indexes.delete(resolvedPath);
-      throw error;
-    });
-    indexes.set(resolvedPath, pending);
+  let entry = registry.get(resolvedPath);
+  if (!entry) {
+    entry = {
+      index: new SparseProjectPathIndex(resolvedPath),
+      lastAccess: Date.now(),
+      refs: 0,
+    };
+    registry.set(resolvedPath, entry);
   }
-  return pending;
+  entry.refs += 1;
+  entry.lastAccess = Date.now();
+  return new ProjectPathIndexHandle(entry);
 }
 
-/** Drop a project's cached trie and stop its bounded warm after current I/O. */
+/** Drop a project's cached paths and watchers; a later lookup rebuilds them. */
 export function invalidateProjectPathIndex(projectPath: string): void {
   const resolvedPath = resolve(projectPath);
-  const pending = indexes.get(resolvedPath);
-  indexes.delete(resolvedPath);
-  void pending?.then((index) => index.dispose(), () => undefined);
+  const entry = registry.get(resolvedPath);
+  if (!entry) return;
+  registry.delete(resolvedPath);
+  entry.index.dispose();
 }
 
-function requireTestIndex(index: ProjectPathIndex): LazyProjectPathIndex {
-  if (!(index instanceof LazyProjectPathIndex)) {
-    throw new Error("Expected a project path index created by this module");
+/** Cache effectiveness and pressure, without walking any cached tree. */
+export function projectPathCacheDiagnostics(): ProjectPathCacheStats {
+  let retainedBytes = 0;
+  for (const entry of registry.values()) retainedBytes += entry.index.bytes;
+  return { evictedProjects, projects: registry.size, retainedBytes };
+}
+
+/** Discard least-recently-used unclaimed projects until the process fits. */
+function enforceProcessBudget(maxBytes = MAX_PROCESS_BYTES): void {
+  let total = 0;
+  for (const entry of registry.values()) total += entry.index.bytes;
+  if (total <= maxBytes) return;
+
+  const target = maxBytes * EVICTION_LOW_WATERMARK;
+  const byAge = Array.from(registry.entries()).sort(
+    ([, left], [, right]) => left.lastAccess - right.lastAccess,
+  );
+  for (const [path, entry] of byAge) {
+    if (total <= target) break;
+    if (entry.refs > 0) continue;
+    total -= entry.index.bytes;
+    registry.delete(path);
+    entry.index.dispose();
+    evictedProjects += 1;
   }
-  return index;
 }
 
 export const __test__ = {
-  COARSE_MTIME_WINDOW_MS,
-  LOOKUP_CONCURRENCY,
-  MAX_CACHED_NODES,
-  MAX_WARM_DEPTH,
-  createIndex,
-  diagnostics: (index: ProjectPathIndex) => requireTestIndex(index).diagnostics(),
+  DIRECTORY_LISTING_THRESHOLD,
+  MAX_PROCESS_BYTES,
+  MAX_RETAINED_DIRECTORY_ENTRIES,
+  RECONCILE_DELAY_MS,
+  createIndex: (projectPath: string, options?: PathIndexOptions) =>
+    new SparseProjectPathIndex(resolve(projectPath), options),
+  diagnostics: (index: SparseProjectPathIndex) => index.diagnostics(),
+  enforceProcessBudget,
+  registryEntry: (projectPath: string) => registry.get(resolve(projectPath)),
   reset: () => {
-    for (const pending of indexes.values()) {
-      void pending.then((index) => index.dispose(), () => undefined);
-    }
-    indexes.clear();
-    warnedYepignoreProjects.clear();
+    for (const entry of registry.values()) entry.index.dispose();
+    registry.clear();
+    evictedProjects = 0;
   },
-  resetDiagnostics: (index: ProjectPathIndex) =>
-    requireTestIndex(index).resetDiagnostics(),
-  waitForWarm: (index: ProjectPathIndex) => requireTestIndex(index).waitForWarm(),
+  resetDiagnostics: (index: SparseProjectPathIndex) => index.resetDiagnostics(),
 };
