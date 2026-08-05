@@ -188,14 +188,14 @@ function compactMetadataDetail(msg: Message): string | null {
   return `compactMetadata:\n${JSON.stringify(metadata, null, 2)}`;
 }
 
-const DEFAULT_COMPACT_LABELS = new Set([
-  "context compacted",
-  "conversation compacted",
-]);
-
 /**
  * Human-readable compact body first, then raw provider metadata — so expand
  * shows the compression summary before machine JSON.
+ *
+ * Deliberately excludes `msg.content`: the chip's own label already renders it
+ * verbatim, so repeating it here made the expanded body restate its own
+ * heading. When neither a retained summary nor metadata exists the chip stays
+ * expandable and the renderer supplies its empty-detail line instead.
  */
 function compactBoundaryDetails(msg: Message): Array<string | ContentBlock[]> {
   const details: Array<string | ContentBlock[]> = [];
@@ -203,12 +203,6 @@ function compactBoundaryDetails(msg: Message): Array<string | ContentBlock[]> {
     .compactSummaryText;
   if (typeof summaryText === "string" && summaryText.trim()) {
     details.push(summaryText.trim());
-  }
-  if (typeof msg.content === "string") {
-    const content = msg.content.trim();
-    if (content && !DEFAULT_COMPACT_LABELS.has(content.toLowerCase())) {
-      details.push(content);
-    }
   }
   const metadata = compactMetadataDetail(msg);
   if (metadata) {
