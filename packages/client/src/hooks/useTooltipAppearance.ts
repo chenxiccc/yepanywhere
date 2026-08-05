@@ -48,6 +48,7 @@ export const TOOLTIP_WARM_GRACE_MULTIPLIER = 6;
 const visibleTooltipTokens = new Set<symbol>();
 const visibleTooltipDismissers = new Map<symbol, () => void>();
 const tooltipSuppressionListeners = new Set<() => void>();
+const tooltipSuppressionHolds = new Set<symbol>();
 let warmUntilMs = 0;
 let tooltipSuppressedUntilMs = 0;
 
@@ -273,7 +274,7 @@ export function isTooltipWarm(nowMs = Date.now()): boolean {
 }
 
 export function areTooltipsSuppressed(nowMs = Date.now()): boolean {
-  return nowMs < tooltipSuppressedUntilMs;
+  return tooltipSuppressionHolds.size > 0 || nowMs < tooltipSuppressedUntilMs;
 }
 
 export function subscribeTooltipSuppression(
@@ -281,6 +282,17 @@ export function subscribeTooltipSuppression(
 ): () => void {
   tooltipSuppressionListeners.add(listener);
   return () => tooltipSuppressionListeners.delete(listener);
+}
+
+function dismissVisibleTooltips(): void {
+  const dismissers = new Set([
+    ...tooltipSuppressionListeners,
+    ...visibleTooltipDismissers.values(),
+  ]);
+  visibleTooltipDismissers.clear();
+  visibleTooltipTokens.clear();
+  for (const dismiss of dismissers) dismiss();
+  warmUntilMs = 0;
 }
 
 export function suppressTooltipsFor(
@@ -291,14 +303,21 @@ export function suppressTooltipsFor(
     tooltipSuppressedUntilMs,
     nowMs + Math.max(0, durationMs),
   );
-  const dismissers = new Set([
-    ...tooltipSuppressionListeners,
-    ...visibleTooltipDismissers.values(),
-  ]);
-  visibleTooltipDismissers.clear();
-  visibleTooltipTokens.clear();
-  for (const dismiss of dismissers) dismiss();
-  warmUntilMs = 0;
+  dismissVisibleTooltips();
+}
+
+/**
+ * Hold tooltips off for as long as something else owns the pointer position —
+ * a context menu stays up until the reader dismisses it, which no duration can
+ * predict. Returns the release so a menu can tie the hold to its own mount.
+ */
+export function beginTooltipSuppression(): () => void {
+  const hold = Symbol("tooltip-suppression");
+  tooltipSuppressionHolds.add(hold);
+  dismissVisibleTooltips();
+  return () => {
+    tooltipSuppressionHolds.delete(hold);
+  };
 }
 
 export function getEffectiveTooltipDelayMs(
@@ -349,6 +368,7 @@ export function endTooltipVisibility(
 export function clearTooltipWarmth(): void {
   visibleTooltipDismissers.clear();
   visibleTooltipTokens.clear();
+  tooltipSuppressionHolds.clear();
   warmUntilMs = 0;
   tooltipSuppressedUntilMs = 0;
 }

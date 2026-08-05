@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { beginTooltipSuppression } from "../hooks/useTooltipAppearance";
 import type { TranslationFn } from "../i18n";
 import styles from "./SourceContextMenu.module.css";
 
@@ -339,6 +340,10 @@ function SourceContextMenu({
   t: TranslationFn;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // A row's hover tooltip is normally still up when its context menu opens, and
+  // the pointer then holds still over the menu. See FilePathContextMenu.
+  useEffect(() => beginTooltipSuppression(), []);
 
   useLayoutEffect(() => {
     menuRef.current

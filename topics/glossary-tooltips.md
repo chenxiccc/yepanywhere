@@ -228,10 +228,12 @@ when long; passive pointer hover remains compact. Both glossary treatments are
 one pixel larger than the corresponding ordinary themed tooltip treatment so
 definitions remain readable with compact UI metrics. Its secondary click and
 touch long-press stay browser-owned for text selection because activation
-already copied the exact definition. Keyboard focus reveals the definition;
-Enter or Space performs the same reveal-and-copy action. A non-collapsed text
-selection wins over activation so selecting prose does not unexpectedly write
-to the clipboard.
+already copied the exact definition. Secondary-clicking the term itself instead
+dismisses the revealed definition, so the browser's menu is not covered by the
+enlarged box sitting at that same position. Keyboard focus reveals the
+definition; Enter or Space performs the same reveal-and-copy action. A
+non-collapsed text selection wins over activation so selecting prose does not
+unexpectedly write to the clipboard.
 
 The term interaction is semantic and keyboard-operable, not a click handler
 inferred from arbitrary generated DOM. Tooltip text remains selectable in

@@ -200,7 +200,15 @@ copies its full text and immediately increases the tooltip by one text-size
 step, without animation or changing primary hit-testing. A nonempty existing
 selection or an app-owned context menu retains browser/application behavior;
 right-click outside the visible tooltip bounds likewise remains owned by its
-page target. The compact tooltip reserves no empty enlarged-state space. On
+page target. Whenever the tooltip declines a secondary click this way, it also
+dismisses itself and stays dismissed until the pointer leaves the trigger: the
+menu that opens claims the same screen position, and the pointer then rests, so
+nothing else would clear the hint before it had covered the menu's first
+entries. Menus the tooltip layer never sees — an app menu whose handler stops
+propagation, such as the file link's Copy path menu — assert the same
+invariant for their mounted lifetime through the shared suppression hold, so
+a hover hint cannot reappear over an open menu. The compact tooltip reserves
+no empty enlarged-state space. On
 enlargement, the box retains the ordinary maximum width and its existing top-
 left position when that fits; each axis moves only the minimum needed to keep
 the enlarged box inside the viewport. This limits rewrapping and aspect-ratio
@@ -281,8 +289,10 @@ not the surface into a card.
 - Touch activation of a session row or Recent Sessions link navigates without
   opening, warming, or leaving behind a session preview or text tooltip.
 - Secondary-click inside passive tooltip bounds copies/enlarges the full text
-  while respecting existing-selection and app-context-menu exclusions. The
-  compact box reserves no enlarged-state gap; enlargement preserves its top-
+  while respecting existing-selection and app-context-menu exclusions. A
+  declined secondary click dismisses the tooltip until pointer departure, and
+  no hover hint is visible while an app context menu is mounted. The compact
+  box reserves no enlarged-state gap; enlargement preserves its top-
   left position unless the viewport requires the minimum per-axis clamp and
   retains the ordinary maximum width to limit reflow.
 - Wheel input over an overflowing passive tooltip scrolls its content without

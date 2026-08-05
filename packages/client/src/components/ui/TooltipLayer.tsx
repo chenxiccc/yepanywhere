@@ -918,14 +918,24 @@ export function TooltipLayer() {
         !activeTarget ||
         !(event.target instanceof Node) ||
         (!activeTarget.contains(event.target) &&
-          !tooltip?.contains(event.target)) ||
-        isContextMenuOperable(event)
+          !tooltip?.contains(event.target))
       ) {
         return;
       }
       // Glossary activation already copied and enlarged the definition. Keep
       // its context menu native so touch long-press can establish selection.
-      if (currentTooltip.forcedThemed) return;
+      if (currentTooltip.forcedThemed || isContextMenuOperable(event)) {
+        // Right-clicking the definition itself acts on the tooltip, so that
+        // one stays. Everywhere else some other menu — the browser's, or an
+        // app menu such as the file link's "Copy path" — is taking this
+        // position, and a hover hint must not cover it. The pointer then
+        // holds still over the menu, so nothing else would clear the tooltip
+        // until it travelled past the jitter tolerance.
+        if (tooltip?.contains(event.target)) return;
+        movementDismissedTargetRef.current = activeTarget;
+        dismissUntilDeparture();
+        return;
+      }
       event.preventDefault();
       setEnlarged(true);
       void writeClipboardText(currentTooltip.text);

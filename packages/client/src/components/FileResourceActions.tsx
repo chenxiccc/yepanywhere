@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
+import { beginTooltipSuppression } from "../hooks/useTooltipAppearance";
 import { useI18n } from "../i18n";
 import { useClientSummarySourceKey } from "../lib/clientSummaryStore";
 import { setNewSessionPrefill } from "../lib/newSessionPrefill";
@@ -78,6 +79,12 @@ export function FilePathContextMenu({
   onView,
 }: FilePathContextMenuProps) {
   const { t } = useI18n();
+
+  // The right-click that opened this menu came from a link that was almost
+  // certainly showing its hover tooltip, and the pointer then holds still — so
+  // without this the tooltip sits over the menu's first entries until the
+  // reader moves far enough to shake it off.
+  useEffect(() => beginTooltipSuppression(), []);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {

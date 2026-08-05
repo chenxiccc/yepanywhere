@@ -9,6 +9,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  beginTooltipSuppression,
   clearTooltipWarmth,
   DEFAULT_TOOLTIP_DELAY_MS,
   TOOLTIP_CLOSE_DELAY_MULTIPLIER,
@@ -916,6 +917,48 @@ describe("TooltipLayer", () => {
     expect(tooltip.style.top).toBe("34px");
   });
 
+  it("clears a hover tooltip while an app context menu is mounted", () => {
+    render(
+      <>
+        <TooltipLayer />
+        <button type="button" title="Copy this tail">
+          Ran
+        </button>
+      </>,
+    );
+    const target = screen.getByRole("button", { name: "Ran" });
+    fireEvent.pointerOver(target, {
+      pointerType: "mouse",
+      clientX: 10,
+      clientY: 10,
+    });
+    act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
+    expect(screen.getByRole("tooltip")).toBeTruthy();
+
+    let release = () => {};
+    act(() => {
+      release = beginTooltipSuppression();
+    });
+    expect(screen.queryByRole("tooltip")).toBeNull();
+
+    fireEvent.pointerMove(target, {
+      pointerType: "mouse",
+      clientX: 40,
+      clientY: 40,
+    });
+    act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
+    expect(screen.queryByRole("tooltip")).toBeNull();
+
+    act(() => release());
+    fireEvent.pointerMove(target, {
+      pointerType: "mouse",
+      clientX: 60,
+      clientY: 60,
+    });
+    act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
+    expect(screen.getByRole("tooltip")).toBeTruthy();
+  });
+
   it("preserves an existing page selection on a passive context click", () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
@@ -1039,7 +1082,7 @@ describe("TooltipLayer", () => {
     expect(onCoveredWheel).toHaveBeenCalledTimes(1);
   });
 
-  it("preserves an app-owned context click instead of copying", () => {
+  it("yields to an app-owned context click instead of copying", () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
@@ -1064,16 +1107,15 @@ describe("TooltipLayer", () => {
       clientY: 10,
     });
     act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
+    expect(screen.getByRole("tooltip")).toBeTruthy();
 
     fireEvent.contextMenu(target);
 
     expect(writeText).not.toHaveBeenCalled();
-    expect(screen.getByRole("tooltip").classList).not.toContain(
-      styles.enlarged,
-    );
+    expect(screen.queryByRole("tooltip")).toBeNull();
   });
 
-  it("preserves a browser-owned link context menu instead of copying", () => {
+  it("yields to a browser-owned link context menu instead of copying", () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
@@ -1095,13 +1137,22 @@ describe("TooltipLayer", () => {
       clientY: 10,
     });
     act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
+    expect(screen.getByRole("tooltip")).toBeTruthy();
 
-    fireEvent.contextMenu(target);
+    fireEvent.contextMenu(target, { clientX: 10, clientY: 10 });
 
     expect(writeText).not.toHaveBeenCalled();
-    expect(screen.getByRole("tooltip").classList).not.toContain(
-      styles.enlarged,
-    );
+    expect(screen.queryByRole("tooltip")).toBeNull();
+
+    // The pointer is still parked on the link, so re-hovering it must not put
+    // the tooltip back over the menu that just opened.
+    fireEvent.pointerMove(target, {
+      pointerType: "mouse",
+      clientX: 12,
+      clientY: 12,
+    });
+    act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
+    expect(screen.queryByRole("tooltip")).toBeNull();
   });
 
   it("uses the themed tooltip layer by default", () => {
