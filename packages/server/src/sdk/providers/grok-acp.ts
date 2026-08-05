@@ -8,8 +8,8 @@
  * agent_message_chunk, plan) into SDKMessage (thinking blocks + tool_use/tool_result + approvals).
  * Grok's x.ai AskUserQuestion and ExitPlanMode extension requests reuse YA's
  * existing pending-input flow.
- * Steering uses a second ACP session/prompt call against the same live Grok
- * session while the current prompt is still active.
+ * Grok exposes no current-turn steering, so busy sessions use YA's deferred
+ * Queue; continuation of an existing session uses stable ACP session/load.
  *
  * Effort mapping: YA EffortLevel is passed through to Grok's top-level --effort flag.
  *
@@ -124,9 +124,7 @@ const GROK_EFFORT_LEVELS = new Set<EffortLevel>([
   "max",
 ]);
 
-function asRecordValue(
-  value: unknown,
-): Record<string, unknown> | undefined {
+function asRecordValue(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined;
@@ -140,9 +138,7 @@ function nonemptyString(value: unknown): string | undefined {
 
 function effortLevel(value: unknown): EffortLevel | undefined {
   const candidate = nonemptyString(value) as EffortLevel | undefined;
-  return candidate && GROK_EFFORT_LEVELS.has(candidate)
-    ? candidate
-    : undefined;
+  return candidate && GROK_EFFORT_LEVELS.has(candidate) ? candidate : undefined;
 }
 
 function parseGrokModelsOutput(output: string | undefined): {
@@ -214,9 +210,7 @@ export function normalizeGrokModels(
         .map((value) => effortLevel(value.value ?? value.id))
         .find((value): value is EffortLevel => value !== undefined);
     const contextWindow =
-      typeof info.context_window === "number"
-        ? info.context_window
-        : undefined;
+      typeof info.context_window === "number" ? info.context_window : undefined;
     const supportsEffort =
       info.supports_reasoning_effort === true ||
       supportedEffortLevels.length > 0;
@@ -266,8 +260,7 @@ export function normalizeGrokModels(
         name: id,
       },
   );
-  const defaultModelId =
-    listing.defaultModelId ?? models[0]?.id;
+  const defaultModelId = listing.defaultModelId ?? models[0]?.id;
   return models.map((model) => ({
     ...model,
     ...(model.id === defaultModelId ? { isDefault: true } : {}),
@@ -329,7 +322,15 @@ export class GrokACPProvider implements AgentProvider {
   readonly supportsPermissionMode = true;
   readonly supportsThinkingToggle = true; // Effort via CLI --effort flag (attempted even if model cache says false)
   readonly supportsSlashCommands = true;
-  readonly supportsSteering = true;
+  /**
+   * Grok has no current-turn steering. A second `session/prompt` sent mid-turn
+   * does not interrupt the running one; Grok finishes it and answers the second
+   * as a later turn (measured against 0.2.118: a "stop counting" prompt sent at
+   * 7.9s left the turn counting to 40 and ending at 19.2s). x.ai exposes a
+   * separate `x.ai/interject` extension for real interruption, which YA does
+   * not implement. YA's deferred Queue is the busy-session path.
+   */
+  readonly supportsSteering = false;
 
   private readonly grokPath?: string;
   private readonly createClient: () => ACPClient;
@@ -503,14 +504,8 @@ export class GrokACPProvider implements AgentProvider {
       get pid() {
         return client.pid;
       },
-      steer: (message) =>
-        this.steerActivePrompt(
-          client,
-          runtime,
-          message,
-          abortController.signal,
-          commandInventory.commands,
-        ),
+      // No `steer`: see supportsSteering. Omitting it keeps the runtime honest,
+      // so callers queue instead of believing a mid-turn prompt steered.
       supportedCommands: async () => [...commandInventory.commands],
     };
   }
@@ -600,24 +595,31 @@ export class GrokACPProvider implements AgentProvider {
         "Grok ACP initialized",
       );
 
-      // Create or resume (ACP protocol, same as other ACP providers)
+      // Continue or create. Grok implements the stable `session/load`
+      // (`agentCapabilities.loadSession: true` on 0.2.118) and has no
+      // `session/resume` at all — the unstable method YA used answers
+      // "Method not found", which is why an interrupted session could not be
+      // picked back up. `_meta.noReplay` keeps Grok from re-emitting the whole
+      // history as fresh notifications; GrokSessionReader already owns the
+      // durable transcript, so a replay would only duplicate it.
       let sessionId: string;
       if (options.resumeSessionId) {
         try {
-          sessionId = await client.resumeSession(
-            options.resumeSessionId,
-            options.cwd,
-          );
-          this.log.debug({ sessionId }, "Grok ACP session resumed");
-        } catch (resumeErr) {
+          await client.loadSession(options.resumeSessionId, options.cwd, {
+            noReplay: true,
+          });
+          // The loaded session keeps its native id; never substitute a new one.
+          sessionId = options.resumeSessionId;
+          this.log.debug({ sessionId }, "Grok ACP session loaded");
+        } catch (loadErr) {
           this.log.error(
-            { err: resumeErr, resumeSessionId: options.resumeSessionId },
-            "Failed to resume Grok ACP session",
+            { err: loadErr, resumeSessionId: options.resumeSessionId },
+            "Failed to load Grok ACP session",
           );
           const detail =
-            resumeErr instanceof Error ? resumeErr.message : String(resumeErr);
+            loadErr instanceof Error ? loadErr.message : String(loadErr);
           throw new Error(
-            `Failed to resume Grok session ${options.resumeSessionId}: ${detail}`,
+            `Failed to load Grok session ${options.resumeSessionId}: ${detail}`,
           );
         }
       } else {
@@ -873,8 +875,7 @@ export class GrokACPProvider implements AgentProvider {
       return [
         {
           question: text,
-          header:
-            nonemptyString(question?.header) ?? `Question ${index + 1}`,
+          header: nonemptyString(question?.header) ?? `Question ${index + 1}`,
           options,
           multiSelect:
             question?.multiSelect === true || question?.multi_select === true,
@@ -889,10 +890,8 @@ export class GrokACPProvider implements AgentProvider {
   ): Record<string, unknown> {
     const answers = asRecordValue(asRecordValue(updatedInput)?.answers);
     const accepted: Record<string, string[]> = {};
-    const annotations: Record<
-      string,
-      { notes?: string; preview?: string }
-    > = {};
+    const annotations: Record<string, { notes?: string; preview?: string }> =
+      {};
 
     for (const question of questions) {
       const rawAnswer = answers?.[question.question];
@@ -1115,10 +1114,7 @@ export class GrokACPProvider implements AgentProvider {
   ): AsyncIterableIterator<SDKMessage> {
     let assistantTextBuffer = "";
     let assistantMessageId: string | null = null;
-    const toolStates = new Map<
-      string,
-      GrokLiveToolState
-    >();
+    const toolStates = new Map<string, GrokLiveToolState>();
 
     // Accumulate agent_thought_chunk deltas so we emit growing (not per-token) thinking blocks.
     // Prevents the "Thinking ▸ word Thinking ▸ user ..." cascade seen in live testing.
@@ -1270,41 +1266,6 @@ export class GrokACPProvider implements AgentProvider {
     }
   }
 
-  private async steerActivePrompt(
-    client: ACPClient,
-    runtime: GrokPromptRuntime,
-    message: unknown,
-    signal: AbortSignal,
-    commands: readonly SlashCommand[],
-  ): Promise<boolean> {
-    if (
-      signal.aborted ||
-      !runtime.sessionId ||
-      runtime.activePromptCount <= 0
-    ) {
-      return false;
-    }
-
-    const text = canonicalizeSkillInvocations(
-      this.extractTextFromMessage(message).trim(),
-      commands,
-    ).text;
-    if (!text) {
-      return true;
-    }
-
-    try {
-      await this.promptWithTracking(client, runtime.sessionId, text, runtime);
-      return true;
-    } catch (err) {
-      this.log.warn(
-        { err },
-        "Grok steer prompt failed; caller should queue message instead",
-      );
-      return false;
-    }
-  }
-
   /**
    * Convert ACP SessionUpdate to SDKMessage (Phase 1 normalization for Grok events).
    * Handles: agent_thought_chunk (thinking), agent_message_chunk, tool_call/tool_call_update,
@@ -1393,16 +1354,12 @@ export class GrokACPProvider implements AgentProvider {
                   is_error:
                     toolResultUpdate.status === "failed" ||
                     !!toolResultUpdate.error,
-                  content: formatGrokToolResultContent(
-                    toolResultUpdate,
-                    state,
-                  ),
+                  content: formatGrokToolResultContent(toolResultUpdate, state),
                 },
               ],
             },
           } as SDKMessage;
-          const mediaCandidate =
-            grokToolResultMediaCandidate(toolResultUpdate);
+          const mediaCandidate = grokToolResultMediaCandidate(toolResultUpdate);
           if (mediaCandidate) {
             attachToolResultMediaCandidates(message, [mediaCandidate]);
           }
@@ -1677,7 +1634,6 @@ export class GrokACPProvider implements AgentProvider {
     const value = record?.[field];
     return typeof value === "string" && value.length > 0 ? value : undefined;
   }
-
 }
 
 /**

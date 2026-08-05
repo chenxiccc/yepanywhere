@@ -195,8 +195,14 @@ quiet window in seconds.
 ## On what level is "only Codex steers" true?
 
 Historically, only at the YA-integration level: YA wired `steerFn` for
-`codex` and `grok-acp` (`turn/steer`) while Claude busy sends were held in
-YA's deferred queue. As of 2026-06-11, that is no longer true in YA:
+`codex` (`turn/steer`) and for `grok-acp`, while Claude busy sends were held
+in YA's deferred queue. The Grok half of that was never real steering — YA
+sent a second ordinary `session/prompt`, which Grok answers as a later turn,
+so Grok's `steerFn` was withdrawn on 2026-08-05 (measurement in
+[grok.md](grok.md)). Distinguish that from Codex's `turn/steer`, which does
+act on the running turn: a provider-native *queued follow-up prompt* is not
+steering, whatever the call site is named. As of 2026-06-11, the Claude half
+is also no longer true in YA:
 Claude advertises `supportsSteering`, steer sends enter `MessageQueue`
 immediately with `priority: "next"`, and the optional `Now` checkbox uses
 `priority: "now"`. The Claude platform itself always supported both the

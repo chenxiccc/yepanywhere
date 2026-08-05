@@ -69,8 +69,8 @@ describe("GrokACPProvider", () => {
       expect(provider.supportsThinkingToggle).toBe(true);
     });
 
-    it("should report supportsSteering true", () => {
-      expect(provider.supportsSteering).toBe(true);
+    it("should report supportsSteering false (Grok has no current-turn steering)", () => {
+      expect(provider.supportsSteering).toBe(false);
     });
 
     it("should report supportsSlashCommands true", () => {
@@ -343,10 +343,16 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
   let sessionCalls: Array<
     | { type: "new"; cwd: string; id: string }
     | { type: "resume"; cwd: string; id: string }
+    | {
+        type: "load";
+        cwd: string;
+        id: string;
+        meta?: Record<string, unknown>;
+      }
   > = [];
   let holdFirstPrompt = false;
   let releaseHeldPrompt: (() => void) | null = null;
-  let failResume = false;
+  let failLoad = false;
   let extensionMethodCallback: ExtensionMethodCallback | null = null;
   let promptUpdates: Array<Record<string, unknown>> = [];
 
@@ -404,13 +410,19 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
       this.emitCommandInventory(id);
       return id;
     }
+    // Grok 0.2.118 answers `session/resume` with "Method not found", so the
+    // fake refuses it outright: reaching for the unstable method is the bug
+    // this suite exists to catch, not a fallback worth exercising.
     async resumeSession(id: string, cwd: string) {
       sessionCalls.push({ type: "resume", id, cwd });
-      if (failResume) {
-        throw new Error("mock resume failed");
+      throw new Error("Method not found");
+    }
+    async loadSession(id: string, cwd: string, meta?: Record<string, unknown>) {
+      sessionCalls.push({ type: "load", id, cwd, meta });
+      if (failLoad) {
+        throw new Error("mock load failed");
       }
       this.emitCommandInventory(id);
-      return id;
     }
     async prompt(_sessionId: string, _text: string) {
       promptCalls.push({ sessionId: _sessionId, text: _text });
@@ -447,7 +459,7 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
     sessionCalls = [];
     holdFirstPrompt = false;
     releaseHeldPrompt = null;
-    failResume = false;
+    failLoad = false;
     extensionMethodCallback = null;
     promptUpdates = [];
     acpClientMock = vi.fn(() => new FakeACPClient());
@@ -797,7 +809,7 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
     expect(argsCustom).toContain("other-model");
   });
 
-  it("uses resumeSessionId path", async () => {
+  it("continues a session through stable session/load, not unstable resume", async () => {
     const provider = await loadFreshGrokProvider({ grokPath: "/fake/grok" });
 
     const session = await provider.startSession({
@@ -805,23 +817,30 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
       resumeSessionId: "existing_ses_123",
     });
 
-    // First message should be init (resume path succeeds in fake)
     const first = await session.iterator.next();
     expect(first.value).toMatchObject({
       type: "system",
       subtype: "init",
+      // The loaded session keeps its exact native id.
       session_id: "existing_ses_123",
     });
 
-    expect(
-      sessionCalls.some(
-        (c) => c.type === "resume" && c.id === "existing_ses_123",
-      ),
-    ).toBe(true);
+    // One load, with the original id, the session cwd, and the replay
+    // suppression Grok honors (GrokSessionReader already owns the history).
+    expect(sessionCalls).toEqual([
+      {
+        type: "load",
+        id: "existing_ses_123",
+        cwd: "/tmp",
+        meta: { noReplay: true },
+      },
+    ]);
+    expect(sessionCalls.some((c) => c.type === "resume")).toBe(false);
+    expect(sessionCalls.some((c) => c.type === "new")).toBe(false);
   });
 
-  it("surfaces resume failures without creating a new native session", async () => {
-    failResume = true;
+  it("surfaces load failures without creating a new native session", async () => {
+    failLoad = true;
     const provider = await loadFreshGrokProvider({ grokPath: "/fake/grok" });
 
     const session = await provider.startSession({
@@ -834,13 +853,14 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
       const error = await session.iterator.next();
       expect(error.value).toMatchObject({ type: "error" });
       expect(String(error.value.error)).toContain(
-        "Failed to resume Grok session missing-session: mock resume failed",
+        "Failed to load Grok session missing-session: mock load failed",
       );
       expect(
         sessionCalls.some(
-          (c) => c.type === "resume" && c.id === "missing-session",
+          (c) => c.type === "load" && c.id === "missing-session",
         ),
       ).toBe(true);
+      // Fail closed: a lost session must not silently become a fresh one.
       expect(sessionCalls.some((c) => c.type === "new")).toBe(false);
     } finally {
       session.abort();
@@ -1029,7 +1049,10 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
     }
   });
 
-  it("steers an active Grok prompt with a second ACP prompt", async () => {
+  it("offers no runtime steer function, so a busy session queues instead", async () => {
+    // A second session/prompt does not interrupt Grok's running turn; it is
+    // answered as a later turn. Exposing `steer` here would have told callers a
+    // mid-turn message had taken effect when it had not.
     holdFirstPrompt = true;
     const provider = await loadFreshGrokProvider({ grokPath: "/fake/grok" });
 
@@ -1056,12 +1079,7 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
         expect(promptCalls).toHaveLength(1);
       });
 
-      const steered = await session.steer?.({ text: "mid turn interject" });
-      expect(steered).toBe(true);
-      expect(promptCalls).toEqual([
-        { sessionId: init.value.session_id, text: "hold the first prompt" },
-        { sessionId: init.value.session_id, text: "mid turn interject" },
-      ]);
+      expect(session.steer).toBeUndefined();
 
       releaseHeldPrompt?.();
       const firstAssistant = await firstAssistantPromise;

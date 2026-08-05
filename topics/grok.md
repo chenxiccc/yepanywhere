@@ -13,6 +13,49 @@ Related topics: [claude.md](claude.md),
 [media-rendering-and-routing.md](media-rendering-and-routing.md), and
 architecture-mandates.md.
 
+## Session continuation and steering contract (0.2.118, 2026-08-05)
+
+Two contracts below were wrong in YA and are corrected here. Both were
+re-measured against installed `grok 0.2.118 (1e1687c1cf) [stable]` by probing
+`grok agent stdio` directly.
+
+**Continuation is `session/load`, not `session/resume`.** Grok's initialize
+response advertises `agentCapabilities.loadSession: true` and implements no
+resume method at all: both `session/resume` and the unstable extension form
+answer JSON-RPC `-32601 Method not found`. YA had been calling the unstable
+`session/resume`, so a Grok session whose YA-owned process ended could never be
+picked back up — the load path was never tried. `GrokACPProvider` now calls
+`ACPClient.loadSession(resumeSessionId, cwd, { noReplay: true })`, keeps the
+native id exactly as given, and emits `init` only after the load succeeds. A
+load failure stays fail-closed: it surfaces an actionable provider error and
+never falls back to `session/new`, because silently substituting a fresh
+session loses the conversation the user asked to continue.
+
+**`_meta.noReplay` suppresses history replay, and is needed.** A plain
+`session/load` re-emits the stored conversation as ordinary `session/update`
+notifications — measured: three history chunks including the prior turn's
+answer. `GrokSessionReader` already owns the durable transcript, so replaying
+would duplicate it. Adding `_meta: { noReplay: true }` drops that to zero
+replayed chunks while the model keeps full context: a second turn on the
+loaded session correctly recalled a word from before the reload.
+
+**Grok has no current-turn steering.** YA advertised `supportsSteering = true`
+and implemented "steer" as a second `session/prompt` on the same session. Grok
+does not interject on that; it finishes the running turn and answers the second
+prompt as a later turn. Measured on 0.2.118: a "stop counting immediately"
+prompt sent 7.9s into a counting turn left that turn counting to 40 and ending
+at 19.2s, with the second prompt resolving separately at 22.9s. YA now reports
+`supportsSteering = false`, exposes no runtime `steer`, and drops `grok` from
+the client's static steering fallback, so a busy Grok session offers YA's
+deferred Queue instead of a control that never worked. x.ai exposes a separate
+`x.ai/interject` extension for real interruption; wiring it is separate work
+needing its own request-shape, lifecycle, and failure coverage, and it is not
+advertised in the 0.2.118 initialize capabilities.
+
+This supersedes the steering plan in *Steering, Interject, and /btw Forking
+Support* and the 2026-05-28 smoke below: that smoke proved the second prompt
+was *accepted*, not that it steered the running turn.
+
 ## Current upstream and local surface (2026-07-29)
 
 Grok Build is xAI's terminal-first coding agent. It supports an interactive
@@ -364,9 +407,11 @@ What is already in place:
 - Rich live ACP normalization now preserves `agent_thought_chunk` as thinking
   blocks, tool names mapped from kind/title (`Read`, `Bash`, etc.), tool
   kind/status, locations, raw input/content, and structured read/bash results.
-- Active-turn steering is implemented by sending a second ACP
-  `session/prompt` on the same live Grok session while keeping YA's update
-  drain open until all active Grok prompt calls settle.
+- ~~Active-turn steering is implemented by sending a second ACP
+  `session/prompt` on the same live Grok session~~ — withdrawn 2026-08-05: the
+  second prompt is answered as a later turn, not as steering (see *Session
+  continuation and steering contract*). YA keeps its update drain open until
+  all active Grok prompt calls settle; that part still holds.
 - Client provider registry/badges/filter colors/model glyphs are wired.
 - `topics/grok.md` remains the active progress tracker; related reliability
   context lives in [`session-liveness.md`](session-liveness.md).

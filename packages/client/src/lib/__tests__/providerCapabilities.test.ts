@@ -58,13 +58,32 @@ describe("resolveSessionProviderCapabilities", () => {
 
   it("honors non-Codex providers that advertise steering", () => {
     const capabilities = resolveSessionProviderCapabilities({
-      providers: [provider("grok", true)],
-      providerName: "grok",
+      providers: [provider("gemini", true)],
+      providerName: "gemini",
     });
 
     expect(capabilities.generallySupportsSteering).toBe(true);
     expect(capabilities.supportsCurrentTurnSteering).toBe(true);
     expect(capabilities.supportsSteerNow).toBe(false);
+  });
+
+  it("never offers steering for grok, before or after metadata arrives", () => {
+    // Grok answers a mid-turn prompt as a later turn rather than steering the
+    // running one, so the client must not offer it during the metadata gap.
+    const beforeMetadata = resolveSessionProviderCapabilities({
+      providers: [],
+      providerName: "grok",
+    });
+    expect(beforeMetadata.generallySupportsSteering).toBe(false);
+    expect(beforeMetadata.supportsCurrentTurnSteering).toBe(false);
+
+    const withMetadata = resolveSessionProviderCapabilities({
+      providers: [provider("grok", false)],
+      providerName: "grok",
+    });
+    expect(withMetadata.generallySupportsSteering).toBe(false);
+    expect(withMetadata.supportsCurrentTurnSteering).toBe(false);
+    expect(withMetadata.supportsSteerNow).toBe(false);
   });
 
   it("reports soft-immediate steering only when metadata says so", () => {
@@ -87,10 +106,14 @@ describe("providerSupportsLocalSessionSandbox", () => {
     },
   );
 
-  it.each(["codex-oss", "gemini", "gemini-acp", "grok", "opencode", "pi"] as const)(
-    "hides the unimplemented %s backend",
-    (providerName) => {
-      expect(providerSupportsLocalSessionSandbox(providerName)).toBe(false);
-    },
-  );
+  it.each([
+    "codex-oss",
+    "gemini",
+    "gemini-acp",
+    "grok",
+    "opencode",
+    "pi",
+  ] as const)("hides the unimplemented %s backend", (providerName) => {
+    expect(providerSupportsLocalSessionSandbox(providerName)).toBe(false);
+  });
 });
