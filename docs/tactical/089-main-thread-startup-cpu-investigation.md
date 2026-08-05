@@ -463,6 +463,8 @@ subscriptions, and external-process discovery.
 Implementation/investigation checkpoints before this extension: `f3efacfa`
 and `3c0f70df`. The provider-child, public-share, Inbox, cache-pressure, and
 sparse-path corrections remain handoffs, not implementations in tactical 089.
+The completed investigation, topic contracts, and tacticals 091-093 landed in
+`37794b7c`; the primary-bind provenance correction landed in `df2fc628`.
 
 Primary retained evidence runs:
 
