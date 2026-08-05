@@ -12,6 +12,7 @@
     "benchmark:heartbeat-candidates": "tsx --conditions source scripts/benchmark-heartbeat-candidates.ts",
     "benchmark:heartbeat-schedule": "tsx --conditions source scripts/benchmark-heartbeat-schedule.ts",
     "benchmark:provider-catalog-adapters": "tsx --conditions source scripts/benchmark-provider-catalog-adapters.ts",
+    "benchmark:provider-model-route": "tsx --conditions source scripts/benchmark-provider-model-route.ts",
     "benchmark:review-inbox": "tsx --conditions source scripts/benchmark-review-inbox.ts",
     "benchmark:version-route": "tsx --conditions source scripts/benchmark-version-route.ts",
     "benchmark:session-collection-generation": "tsx --conditions source scripts/benchmark-session-collection-generation.ts",
