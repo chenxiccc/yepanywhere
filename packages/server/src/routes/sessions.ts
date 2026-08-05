@@ -6472,6 +6472,17 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
 
     await deps.sessionMetadataService.updateMetadata(sessionId, patch);
 
+    if (
+      patch.heartbeatTurnsEnabled !== undefined ||
+      patch.heartbeatTurnsAfterMinutes !== undefined ||
+      patch.heartbeatForceAfterMinutes !== undefined
+    ) {
+      // Heartbeat deadlines are scheduled, not polled, so a fresh opt-in has
+      // to announce itself; otherwise an already-quiet session would wait for
+      // some unrelated event to re-plan the timer.
+      deps.supervisor.notifyHeartbeatScheduleChanged();
+    }
+
     // Emit SSE event so sidebar and other clients can update
     if (deps.eventBus) {
       deps.eventBus.emit({

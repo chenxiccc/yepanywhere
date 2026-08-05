@@ -3678,6 +3678,132 @@ describe("Supervisor", () => {
       }
     });
 
+    it("visits an opted-in idle session at its deadline, not on an interval", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-05-06T00:00:00.000Z"));
+      let aborted = false;
+
+      try {
+        const realSdk: RealClaudeSDKInterface = {
+          startSession: async () => {
+            const queue = new MessageQueue();
+            async function* iterator() {
+              yield {
+                type: "system",
+                subtype: "init",
+                session_id: "heartbeat-deadline-session",
+              };
+              await queue[Symbol.asyncIterator]().next();
+              yield { type: "result", session_id: "heartbeat-deadline-session" };
+
+              while (!aborted) {
+                await new Promise((resolve) => setTimeout(resolve, 10));
+              }
+            }
+
+            return {
+              iterator: iterator(),
+              queue,
+              abort: () => {
+                aborted = true;
+              },
+              isProcessAlive: () => !aborted,
+            };
+          },
+        };
+
+        const supervisorWithHeartbeat = new Supervisor({
+          realSdk,
+          idleTimeoutMs: 100,
+          getHeartbeatTurnSettings: () => ({
+            enabled: true,
+            afterMinutes: 10,
+            text: "heartbeat check",
+          }),
+        });
+
+        const started = await supervisorWithHeartbeat.startSession("/tmp/test", {
+          text: "start",
+        });
+        if (!("id" in started)) {
+          throw new Error("expected process");
+        }
+        await vi.advanceTimersByTimeAsync(0);
+        expect(started.state.type).toBe("idle");
+
+        // Five minutes of an idle, opted-in session. The fixed tick this
+        // replaced would have swept ten times over the same span.
+        await vi.advanceTimersByTimeAsync(5 * 60_000);
+        expect(started.queueDepth).toBe(0);
+        expect(
+          supervisorWithHeartbeat.getHeartbeatScheduleMetrics().sweeps,
+        ).toBeLessThanOrEqual(2);
+
+        // The deadline itself still fires.
+        await vi.advanceTimersByTimeAsync(5 * 60_000 + 1_000);
+        expect(started.queueDepth).toBe(1);
+
+        const abortPromise = supervisorWithHeartbeat.abortProcess(started.id);
+        await vi.advanceTimersByTimeAsync(5000);
+        await expect(abortPromise).resolves.toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("arms no timer at all while nothing is opted in", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-05-06T00:00:00.000Z"));
+
+      try {
+        const supervisorWithoutHeartbeat = new Supervisor({
+          realSdk: { startSession: async () => ({}) as never },
+          getHeartbeatTurnSettings: () => ({
+            enabled: false,
+            afterMinutes: 5,
+            text: "heartbeat check",
+          }),
+        });
+
+        await vi.advanceTimersByTimeAsync(10 * 60_000);
+
+        const metrics = supervisorWithoutHeartbeat.getHeartbeatScheduleMetrics();
+        expect(metrics.sweeps).toBe(1);
+        expect(metrics.armedAtMs).toBeNull();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("rechecks a settled unowned candidate once per idle threshold", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-05-06T00:00:00.000Z"));
+      const getCandidates = vi.fn(() => []);
+
+      try {
+        new Supervisor({
+          realSdk: { startSession: async () => ({}) as never },
+          getHeartbeatTurnSettings: () => ({
+            enabled: true,
+            afterMinutes: 5,
+            text: "heartbeat check",
+          }),
+          getHeartbeatTurnCandidates: getCandidates,
+          // Eligible, unowned, and currently settled: an external append can
+          // still make it due, but never sooner than one idle threshold.
+          getHeartbeatWaitingSessionIds: () => ["settled-session"],
+        });
+
+        await vi.advanceTimersByTimeAsync(10 * 60_000);
+
+        // Twenty fixed ticks would have reached storage twenty times.
+        expect(getCandidates.mock.calls.length).toBeLessThanOrEqual(3);
+        expect(getCandidates.mock.calls.length).toBeGreaterThan(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it("resets the heartbeat timeout on real liveness signals", async () => {
       vi.useFakeTimers();
       vi.setSystemTime(new Date("2026-05-06T00:00:00.000Z"));

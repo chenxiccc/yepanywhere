@@ -1080,6 +1080,9 @@ export function createApp(options: AppOptions): AppResult {
     getHeartbeatTurnCandidates: options.sessionMetadataService
       ? getHeartbeatTurnCandidates
       : undefined,
+    getHeartbeatWaitingSessionIds: options.sessionMetadataService
+      ? () => heartbeatCandidates.getWaitingSessionIds()
+      : undefined,
     getPromptCacheKeepaliveSettings: (providerName) => {
       const capability = getProvider(providerName)?.promptCacheKeepalive;
       if (!capability?.supportsNoContextPollutionNudge) {
@@ -1840,6 +1843,9 @@ export function createApp(options: AppOptions): AppResult {
           ClaudeGatewayProvider.configureGateway(settings),
         onOllamaUrlChanged: (url) => {
           ClaudeOllamaProvider.setOllamaUrl(url);
+        },
+        onHeartbeatSettingsChanged: () => {
+          supervisor.notifyHeartbeatScheduleChanged();
         },
         onOllamaSystemPromptChanged: (prompt) => {
           ClaudeOllamaProvider.setSystemPrompt(prompt);

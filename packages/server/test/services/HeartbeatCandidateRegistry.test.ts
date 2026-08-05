@@ -199,6 +199,41 @@ describe("HeartbeatCandidateRegistry", () => {
     expect(test.counts.listProjects).toBe(2);
   });
 
+  it("reports a settled tail as waiting so the scheduler looks again", async () => {
+    const test = harness();
+    test.pending.set("s1", false);
+
+    expect(await test.registry.getCandidates()).toEqual([]);
+    expect(test.registry.getWaitingSessionIds()).toEqual(["s1"]);
+
+    // Once it is due, it is a row rather than a wait.
+    test.pending.set("s1", true);
+    test.updatedAt.set("s1", "2026-08-02T00:00:00.000Z");
+    expect(await test.registry.getCandidates()).toHaveLength(1);
+    expect(test.registry.getWaitingSessionIds()).toEqual([]);
+  });
+
+  it("reports an unlocatable candidate as waiting, not as absent", async () => {
+    const test = harness({ projects: 10 });
+    test.placement.set("s1", null);
+
+    expect(await test.registry.getCandidates()).toEqual([]);
+    expect(test.registry.getWaitingSessionIds()).toEqual(["s1"]);
+
+    // Still waiting while its retry is deferred; the deadline owner must not
+    // conclude the session went away.
+    expect(await test.registry.getCandidates()).toEqual([]);
+    expect(test.registry.getWaitingSessionIds()).toEqual(["s1"]);
+  });
+
+  it("reports no waiting sessions when every eligible session is owned", async () => {
+    const test = harness();
+    test.owned.add("s1");
+
+    await test.registry.getCandidates();
+    expect(test.registry.getWaitingSessionIds()).toEqual([]);
+  });
+
   it("forgets retained state once a session stops being eligible", async () => {
     const eligible: Array<[string, HeartbeatCandidateMetadata]> = [["s1", {}]];
     const test = harness({ projects: 50, eligible });

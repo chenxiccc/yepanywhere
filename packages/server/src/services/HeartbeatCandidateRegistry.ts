@@ -109,6 +109,7 @@ export class HeartbeatCandidateRegistry<
 > {
   private readonly locations = new Map<string, HeartbeatCandidateLocation>();
   private readonly unresolved = new Map<string, UnresolvedState>();
+  private waiting: string[] = [];
   private readonly tails: SourceVersionedSingleFlight<string, TailFact>;
   private readonly unresolvedBackoffMs: number;
   private readonly maxUnresolvedBackoffMs: number;
@@ -150,6 +151,8 @@ export class HeartbeatCandidateRegistry<
     this.generations += 1;
     const pending: Array<[string, HeartbeatCandidateMetadata]> = [];
     const eligibleNow = new Set<string>();
+    const waiting: string[] = [];
+    this.waiting = waiting;
     for (const [sessionId, metadata] of this.deps.listEligible()) {
       this.eligible += 1;
       eligibleNow.add(sessionId);
@@ -180,10 +183,16 @@ export class HeartbeatCandidateRegistry<
           return projects;
         },
       );
-      if (!resolution) continue;
+      if (!resolution) {
+        waiting.push(sessionId);
+        continue;
+      }
 
       const tail = await this.readTail(sessionId, resolution);
-      if (!tail.hasPendingToolCall) continue;
+      if (!tail.hasPendingToolCall) {
+        waiting.push(sessionId);
+        continue;
+      }
       this.candidates += 1;
       rows.push({
         sessionId,
@@ -203,14 +212,26 @@ export class HeartbeatCandidateRegistry<
     return rows;
   }
 
+  /**
+   * Eligible unowned sessions that produced no due row in the most recent
+   * generation: a settled tail, an unlocated transcript, or a deferred retry.
+   * The deadline scheduler still owes them a later look, because an external
+   * append can make any of them due — but never sooner than one idle
+   * threshold, since a pending tool call appearing now carries a transcript
+   * timestamp of now.
+   */
+  getWaitingSessionIds(): readonly string[] {
+    return this.waiting;
+  }
+
   private forgetIneligible(eligibleNow: ReadonlySet<string>): void {
-    for (const sessionId of [...this.locations.keys()]) {
+    for (const sessionId of this.locations.keys()) {
       if (eligibleNow.has(sessionId)) continue;
       this.locations.delete(sessionId);
       this.tails.invalidate(sessionId);
       this.forgotten += 1;
     }
-    for (const sessionId of [...this.unresolved.keys()]) {
+    for (const sessionId of this.unresolved.keys()) {
       if (!eligibleNow.has(sessionId)) this.unresolved.delete(sessionId);
     }
   }

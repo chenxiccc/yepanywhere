@@ -76,6 +76,8 @@ export interface SettingsRoutesDeps {
   }) => Promise<void> | void;
   /** Callback to apply Ollama URL changes at runtime */
   onOllamaUrlChanged?: (url: string | undefined) => void;
+  /** Callback to re-plan heartbeat deadlines when the global quiet period moves. */
+  onHeartbeatSettingsChanged?: () => void;
   /** Callback to apply Ollama system prompt changes at runtime */
   onOllamaSystemPromptChanged?: (prompt: string | undefined) => void;
   /** Callback to apply Ollama full system prompt toggle at runtime */
@@ -102,6 +104,7 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
     onRemoteSessionPersistenceChanged,
     onClaudeGatewaySettingsChanged,
     onOllamaUrlChanged,
+    onHeartbeatSettingsChanged,
     onOllamaSystemPromptChanged,
     onOllamaUseFullSystemPromptChanged,
     onGrokBuildUseXaiApiKeyChanged,
@@ -811,6 +814,11 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
     }
     if ("ollamaUrl" in updates && onOllamaUrlChanged) {
       onOllamaUrlChanged(settings.ollamaUrl);
+    }
+    if ("heartbeatTurnsAfterMinutes" in updates && onHeartbeatSettingsChanged) {
+      // A shorter global quiet period can make an already-quiet session due
+      // right now, which a scheduled deadline would otherwise not learn.
+      onHeartbeatSettingsChanged();
     }
     if (
       ("claudeGatewayUrl" in updates ||

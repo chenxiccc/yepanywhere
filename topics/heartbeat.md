@@ -20,7 +20,7 @@ language, but they do not share ownership or evidence semantics.
   and provider probes. They are not derived from the last React render, DOM
   change, spinner tick, relative-time update, or other UI-visible movement.
 - Synthetic heartbeat turns are currently server-owned. The client owns the
-  settings UI and local optimistic state, but `Supervisor.queueHeartbeatTurns()`
+  settings UI and local optimistic state, but `Supervisor.runHeartbeatSweep()`
   decides whether to queue the configured user-message text for an opted-in
   idle session.
 - Synthetic heartbeat turns must use the shared session-liveness contract:
@@ -68,8 +68,17 @@ language, but they do not share ownership or evidence semantics.
 - When the server confirms activity or inactivity, the client should display
   that server snapshot instead of replacing it with a locally inferred status.
 - Server-owned synthetic heartbeat turn scheduling does not depend on an open
-  session UI. It runs on the server supervisor interval and reads current
-  heartbeat settings plus the process liveness snapshot.
+  session UI. One process-wide timer wakes at the earliest deadline any source
+  reports, then reads current heartbeat settings plus the process liveness
+  snapshot.
+- A source that cannot prove a later deadline — queued work draining, liveness
+  YA has not verified, a patient entry waiting on a state change — asks for the
+  fallback recheck instead. That recheck is the fixed interval this scheduler
+  replaced, so no situation is visited more often than it used to be.
+- A heartbeat opt-in or a shorter global quiet period must announce itself to
+  the supervisor (`notifyHeartbeatScheduleChanged`). With deadlines rather than
+  a poll, an already-quiet session that becomes eligible would otherwise wait
+  for some unrelated event to re-plan the timer.
 - Unowned heartbeat candidates are retained, exact session projections rather
   than the result of a recurring project/provider search. Metadata and provider
   catalog reconciliation establish provider/transcript project identity; file,
@@ -133,6 +142,12 @@ auto-resumed from its rollout three times in one day):
 - One eligible unowned session among many projects performs only an exact
   candidate/tail lookup at its deadline; unchanged negative pending-tool state
   and unresolved location do not create fixed-interval corpus reads.
+- A server with nothing opted in and no patient entries arms no heartbeat timer
+  at all, and an opted-in idle session is visited at its threshold rather than
+  on every fixed tick in between.
+- A settled unowned candidate is rechecked no more often than one idle
+  threshold, and a fresh opt-in still schedules without waiting for unrelated
+  activity.
 - If the client handles the PTY exception, it uses server-reported PTY output
   timing and still treats a quiet foreground PTY as non-progress.
 - A client relative-time or stale callback still fires when no new events have

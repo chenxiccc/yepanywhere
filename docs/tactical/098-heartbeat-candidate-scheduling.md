@@ -6,14 +6,37 @@
 > seconds.
 
 Status: Partially implemented. The retained candidate registry (steps 1, 2,
-and 4) has landed and is measured below: ownership decides before any storage
-work, an exactly located candidate no longer searches the project fleet, and a
-source-versioned pending-tool fact keeps an unchanged transcript from being
-reparsed on the interval. The deadline scheduler (step 5), catalog-supplied
-tail projections (step 3), and the adverse-state matrix (step 6) remain
-pending; the 30-second supervisor tick still drives the registry.
+and 4) and the deadline scheduler (step 5) have landed and are measured below.
+Ownership decides before any storage work, an exactly located candidate no
+longer searches the project fleet, a source-versioned pending-tool fact keeps
+an unchanged transcript from being reparsed, and one process-wide timer wakes
+at the earliest real deadline instead of every 30 seconds. Catalog-supplied
+tail projections (step 3) and the adverse-state matrix (step 6) remain pending.
 
 ## Implementation progress
+
+- **2026-08-05 — heartbeat deadline scheduler.** `HeartbeatSweepScheduler`
+  (`supervisor/heartbeatSchedule.ts`) replaced the fixed 30-second supervisor
+  tick. Every source — a live process, a due candidate row, a settled
+  candidate awaiting an external append — reports the earliest instant it could
+  need attention, and one timer is armed for the earliest of them. A source
+  that cannot prove a later instant asks for the fallback recheck, which is the
+  interval it replaced, so nothing is visited more often than before. A server
+  with nothing opted in arms no timer at all; a fresh opt-in or a shorter
+  global quiet period announces itself through
+  `Supervisor.notifyHeartbeatScheduleChanged()`. The candidate half, which
+  reaches storage, keeps its own deadline instead of riding along with whatever
+  process deadline fired, and a settled candidate is rechecked no sooner than
+  one idle threshold — a pending tool call appearing now carries a transcript
+  stamp of now, so it could not be actioned before then anyway.
+  Over one simulated hour with 200 live sessions, three opted in at a
+  ten-minute quiet period, 10,000 projects, and one settled unowned candidate,
+  the fixed tick swept 120 times (24,000 liveness snapshots, 120 candidate
+  lookups, 6,120 project probes) in 69.18 ms; deadlines swept 29 times (5,800
+  snapshots, 12 lookups, 6,012 probes) in 14.50 ms — 75.83% of wakeups avoided,
+  4.77x. Both arms delivered the same 17 heartbeats, and mean delivery lateness
+  fell from 1,235 ms to 0. Run `pnpm --filter @yep-anywhere/server
+  benchmark:heartbeat-schedule` to repeat the measurement.
 
 - **2026-08-05 — retained heartbeat candidate registry.**
   `HeartbeatCandidateRegistry` owns eligibility, exact location, and a
@@ -42,10 +65,13 @@ Related contracts and plans:
 - [`089-main-thread-startup-cpu-investigation.md`](089-main-thread-startup-cpu-investigation.md)
 - [`093-provider-session-reconciliation.md`](093-provider-session-reconciliation.md)
 
-## Current recurring scan
+## The recurring scan this plan replaced
 
-`Supervisor` runs `queueHeartbeatTurns()` every 30 seconds. Its owned-process
-branch walks the bounded live process map, but the unowned branch delegates to
+This is the shape the plan set out to remove, kept because the acceptance
+criteria and adverse states below are stated against it.
+
+`Supervisor` ran `queueHeartbeatTurns()` every 30 seconds. Its owned-process
+branch walked the bounded live process map, but the unowned branch delegated to
 `app.ts:getHeartbeatTurnCandidates()`:
 
 1. `SessionMetadataService.getAllMetadata()` is filtered for enabled,
@@ -142,7 +168,7 @@ heartbeat timer.
 
 | Concern | Current owner | Change |
 |---|---|---|
-| Fixed scheduler | `Supervisor` heartbeat interval | One process-wide next-deadline scheduler with event-driven recomputation |
+| Fixed scheduler | ~~`Supervisor` heartbeat interval~~ `HeartbeatSweepScheduler` | Done: one process-wide next-deadline scheduler with event-driven recomputation |
 | Candidate discovery | `app.ts:getHeartbeatTurnCandidates()` | Read exact retained candidate rows; remove nested project/provider search |
 | Eligibility/exemptions | `SessionMetadataService`, `resume-exemption.ts` | Incrementally maintain candidate membership and durable kill/archive behavior |
 | Transcript location | YA metadata plus tactical 093 catalog | Retain exact provider/project mapping; bounded one-time migration for older rows |
@@ -178,9 +204,12 @@ candidate × project × provider loop and complete-session read.
 
 ### 5 — replace the fixed candidate tick with deadlines
 
-Arm one timer for the earliest candidate. Recompute from events, compare stored
-timestamps after sleep, and keep owned-process and patient-queue behavior
-covered while the scheduler converges.
+Done. Arm one timer for the earliest candidate. Recompute from events, compare
+stored timestamps after sleep, and keep owned-process and patient-queue
+behavior covered while the scheduler converges. The patient queue keeps both of
+its existing backstops: its own precise one-shot re-check while entries hold
+unelapsed patience, and the fallback recheck while the process is not yet in a
+shape that can accept them.
 
 ### 6 — verify restart and adverse states
 
