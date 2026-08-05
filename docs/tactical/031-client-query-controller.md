@@ -106,6 +106,14 @@ reconnect, or session metadata changes. That belongs here, not in a separate
   epochs/generations and short-lived client interest. Added a browser reuse
   slice that prevents sequential mounts and capable sibling tabs from
   requesting an unchanged generation while keeping server dedupe authoritative.
+- 2026-08-05: Moved `useVersion` onto a source-keyed retained query with a
+  small shared version snapshot store, completing step 9. All 34 consumers
+  subscribe to one snapshot, the pending speech-backend follow-up is retained
+  once per source instead of once per mounted hook, and `freshOnMount` became a
+  `{ fresh: true }` coverage query so an update check cannot be answered by an
+  ordinary read. Requests now wait for remote secure-connection readiness and
+  accept snapshots by request-started time, neither of which the previous hook
+  did.
 
 ## Context
 
@@ -157,7 +165,7 @@ Audited 2026-06-28. This is the starting map for migration priority.
 | `useProcesses` | `/api/processes?includeTerminated=true` | Source-keyed process snapshot plus retained controller query. Revalidates on readiness, refresh/reconnect, process/session events, and patches metadata titles locally. Previously used hook-local rows plus a fixed 30s poll. | Completed first retained-revalidation target. A process summary store slice can wait. |
 | `useProjectQueues` | `/api/project-queue` for the global queue feed; `/api/projects/:id/queue` for mutations | Source-scoped global queue snapshots plus per-project mutation reporting. Retained lifecycle owns wake/reconnect/events, but every mounted hook also starts a five-second forced poll while relevant queue/recovery rows exist. | Retained feed landed; query-entry revalidation/poll removal remains in step 11. Keep mutations project-scoped. |
 | `useServerSettings` | `/api/settings` | Source-keyed retained query plus a small shared settings snapshot store. Initial GETs and reconnect/refresh revalidation share in-flight work; successful PUT responses update the shared snapshot. | Completed config-feed target. Keep mutations hook-local. |
-| `useVersion` | `/api/version` | Module-level shared in-flight promise for concurrent non-fresh requests, but no retained resolved entry or source scoping. Each later hook mount fetches again; each mounted hook can also own a pending-speech follow-up timer. | Next triggered target. Retain one source snapshot and one follow-up owner; make ordinary server response assembly subprocess-free. |
+| `useVersion` | `/api/version` | Source-keyed retained snapshot plus a small shared version snapshot store. Every consumer subscribes; a mount after the snapshot resolves issues no request. One retained follow-up owner per source re-reads while a speech backend is validating. `freshOnMount` retains a `{ fresh: true }` coverage query so an update check never settles for an in-flight ordinary read. | Completed config/capability target. Per-hook debounce timers remain until step 11. |
 | `useProviders` | `/api/providers` | Five-minute provider/model snapshots and in-flight work are source-keyed, but one aggregate response still waits for every provider and survives neither browser nor server restart. | Provider-local/durable catalog redesign belongs to tactical 094; reuse query-controller lifecycle without flattening provider freshness into one flag. |
 | `usePublicShareStatus` | `/api/public-shares/status` | Source-keyed retained query plus a small shared status snapshot store. Initial reads and wake/reconnect refreshes share in-flight work; `poll: true` now retains one source-level poll owner instead of one timer per hook. | Completed config/live-status target. A server activity event could later replace the remaining single poll owner. |
 | `useRecentSessions` | `/api/recents` plus mutations | Hook-local rows with optimistic local move/clear. New Session consumes only project ids, but the server sequentially resolves a provider-aware summary for every recent visit; live `limit=30` took 6.496 s. | Triggered narrow recent-project/source-scoped membership work in tactical 095; do not normalize transcript detail. |
@@ -749,10 +757,9 @@ Acceptance:
 
 ### 9. Retain One Version and Capability Snapshot Per Source
 
-Status: Server half implemented 2026-08-05; the client half remains. Ordinary
-`/api/version` assembly no longer launches a subprocess. The 34 `useVersion()`
-call sites still each own an initial request and pending-state poll, so the
-source-level retained snapshot is still to do.
+Status: Completed 2026-08-05. Ordinary `/api/version` assembly no longer
+launches a subprocess, and the 34 `useVersion()` call sites now share one
+source-keyed retained snapshot with one pending-validation follow-up owner.
 
 Measured: the install version, development `git describe` name, package root,
 and install source cannot change while the process runs, so they are computed
@@ -792,21 +799,43 @@ introduce a second cache that can contradict them. Ordinary `/api/version`
 response assembly launches no subprocess. `fresh=1` explicitly refreshes only
 the dynamic facts whose public contract promises a fresh check.
 
+Measured (client): over one 58-second session in which the app's 34 consumers
+mount as routes and settings panes open, against a server that reports a
+validating speech backend for its first three seconds, the previous hook issued
+25 requests (1.18 MB) and armed 39 retry timers; the retained snapshot issues 4
+requests (189 kB) and arms 3. Consumers needing to wait for a response fell
+from 34 to 12, and total consumer wait from 8,076 ms to 540 ms (14.96x) — the
+22 consumers mounting after the snapshot resolves now render with it already in
+hand. Both arms end with every consumer holding a snapshot and with validation
+followed until it settles; the benchmark asserts both. Run `pnpm --filter
+@yep-anywhere/client benchmark:version-snapshot` to repeat it.
+
+The measured arm-B dedupe is the real `ensureClientQuery`, not a restatement of
+it, so the benchmark cannot drift from the shipped controller. What it does
+model is the React layer: the mount effect and the 500 ms revalidation debounce.
+
 Acceptance:
 
-- one connected source has at most one ordinary version request in flight and
+- [x] one connected source has at most one ordinary version request in flight and
   one retained resolved snapshot, independent of mounted consumer count;
-- source switches never expose another host's capabilities, version, voice
+- [x] source switches never expose another host's capabilities, version, voice
   backends, sandbox state, device bridge, or client defaults;
-- mounting New Session, Sidebar, Message Input, Settings, and usage telemetry
+- [x] mounting New Session, Sidebar, Message Input, Settings, and usage telemetry
   after the snapshot resolves issues zero additional ordinary version requests;
-- a pending speech backend schedules one source-level follow-up and stops when
+- [x] a pending speech backend schedules one source-level follow-up and stops when
   the snapshot is no longer pending;
-- ordinary server reads run no Git, npm, sandbox, bridge, or provider child;
-- reconnect and explicit/fresh refresh preserve their current semantics and
+- [x] ordinary server reads run no Git, npm, sandbox, bridge, or provider child;
+- [x] reconnect and explicit/fresh refresh preserve their current semantics and
   stale-response ordering; and
-- tests cover multiple consumers, sequential mounts, source transitions,
+- [x] tests cover multiple consumers, sequential mounts, source transitions,
   pending-to-ready polling, reconnect, and a forced About refresh.
+
+One deliberate semantic change: because the About surface retains a
+`{ fresh: true }` coverage query rather than issuing a one-off check, *every*
+acquisition it owns is an update check — including its reconnect revalidation,
+which previously was an ordinary read. That keeps About from showing a stale
+update verdict after a reconnect, and it is scoped to the one mounted surface
+that asked for fresh data. Every other consumer's reconnect stays ordinary.
 
 ### 10 — stage app-shell feeds after selected-page readiness
 
@@ -854,6 +883,16 @@ Make the Sidebar visual component select retained membership and invoke shared
 query controls without mounting the same two acquisition hooks already owned
 by `NavigationLayout`. Keep the retainer independent of expanded/collapsed or
 mobile-open state.
+
+Step 9 pinned down what the per-hook timer actually costs. Two mounted
+`useVersion()` consumers each arm their own 500 ms debounce on `reconnect`. If
+the first hook's revalidation is still open when the second timer fires, the
+second joins it and the event costs one request. If the response landed first —
+which is the common case for a fast endpoint — the entry has no in-flight
+request to join, and the second hook's forced revalidation starts a second
+round trip for the same event. So the duplicate is real but latency-dependent,
+which is why it is invisible in tests that use a deferred response and shows up
+under a fast one. `useVersion.test.tsx` documents that boundary.
 
 Remove `useProjectQueues()`'s per-consumer five-second interval. Consume
 `project-queue-changed`, session-queue persistence, process/session, reconnect,

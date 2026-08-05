@@ -20,7 +20,8 @@
     "test:e2e:chromeos": "CHROMEOS_HOST=${CHROMEOS_HOST:-chromeroot} playwright test --grep \"streams ChromeOS\"",
     "request:census": "node scripts/request-census.mjs",
     "transcript:artifacts": "node scripts/transcript-artifact-smoke.mjs",
-    "transcript:benchmark": "tsx scripts/transcript-projection-benchmark.ts"
+    "transcript:benchmark": "tsx scripts/transcript-projection-benchmark.ts",
+    "benchmark:version-snapshot": "tsx scripts/version-snapshot-benchmark.ts"
   },
   "dependencies": {
     "@yep-anywhere/shared": "workspace:*",
