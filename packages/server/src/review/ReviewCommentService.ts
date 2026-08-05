@@ -43,6 +43,8 @@ const REVIEW_COMMENTS_FILENAME = "review-comments.json";
 const SOURCE_REVIEW_DIR = "source-review";
 const REQUEST_FILENAME = "request.json";
 const RESPONSE_FILENAME = "response.json";
+const DEFAULT_MAX_RETAINED_STORE_BYTES = 8 * 1024 * 1024;
+const DEFAULT_MAX_RETAINED_STORE_AGE_MS = 10 * 60 * 1000;
 
 class InvalidSubmissionRequestError extends HttpError {
   constructor() {
@@ -58,6 +60,10 @@ interface ProjectStore {
   dirEnsured: boolean;
   save: () => Promise<void>;
   mutationTail: Promise<void>;
+  /** Mutations and saves in flight; a store is releasable only at zero. */
+  activeOperations: number;
+  lastAccessMs: number;
+  estimatedBytes: number;
 }
 
 export interface ReviewCaptureWriter {
@@ -116,6 +122,22 @@ export interface ReviewCommentServiceOptions {
   newId?: () => string;
   captureWriter?: ReviewCaptureWriter;
   storagePolicy?: ProjectStoragePolicy;
+  /** Byte budget for retained clean project stores. */
+  maxRetainedStoreBytes?: number;
+  /** Release a clean store untouched for this long even when under budget. */
+  maxRetainedStoreAgeMs?: number;
+  monotonicNowMs?: () => number;
+}
+
+export interface ReviewStoreRetentionMetrics {
+  retainedStores: number;
+  retainedBytes: number;
+  releases: number;
+  releasesByAge: number;
+  protectedSkips: number;
+  reloadsAfterRelease: number;
+  /** Bumped by every accepted mutation; source version for projections. */
+  stateRevision: number;
 }
 
 export class ReviewCommentService {
@@ -124,11 +146,30 @@ export class ReviewCommentService {
   private newId: () => string;
   private captureWriter?: ReviewCaptureWriter;
   private storagePolicy: ProjectStoragePolicy;
+  private readonly maxRetainedStoreBytes: number;
+  private readonly maxRetainedStoreAgeMs: number;
+  private readonly monotonicNowMs: () => number;
+  private retainedBytes = 0;
+  private stateRevision = 0;
+  private releases = 0;
+  private releasesByAge = 0;
+  private protectedSkips = 0;
+  private reloadsAfterRelease = 0;
+  private releasedKeys = new Set<string>();
 
   constructor(options: ReviewCommentServiceOptions = {}) {
     this.now = options.now ?? (() => new Date().toISOString());
     this.newId = options.newId ?? (() => randomUUID());
     this.captureWriter = options.captureWriter;
+    this.maxRetainedStoreBytes = Math.max(
+      0,
+      options.maxRetainedStoreBytes ?? DEFAULT_MAX_RETAINED_STORE_BYTES,
+    );
+    this.maxRetainedStoreAgeMs = Math.max(
+      0,
+      options.maxRetainedStoreAgeMs ?? DEFAULT_MAX_RETAINED_STORE_AGE_MS,
+    );
+    this.monotonicNowMs = options.monotonicNowMs ?? Date.now;
     this.storagePolicy =
       options.storagePolicy ??
       new ProjectStoragePolicy({
@@ -675,6 +716,8 @@ export class ReviewCommentService {
 
   reset(): void {
     this.stores.clear();
+    this.releasedKeys.clear();
+    this.retainedBytes = 0;
   }
 
   private async capture(
@@ -887,6 +930,7 @@ export class ReviewCommentService {
     const storeKey = this.filePathFor(projectPath);
     let store = this.stores.get(storeKey);
     if (!store) {
+      if (this.releasedKeys.has(storeKey)) this.reloadsAfterRelease += 1;
       const created: ProjectStore = {
         state: emptyReviewStoreFile(),
         loadPromise: null,
@@ -894,17 +938,36 @@ export class ReviewCommentService {
         dirEnsured: false,
         save: () => Promise.resolve(),
         mutationTail: Promise.resolve(),
+        activeOperations: 0,
+        lastAccessMs: this.monotonicNowMs(),
+        estimatedBytes: 0,
       };
-      created.save = createCoalescingSaver(() =>
+      const saver = createCoalescingSaver(() =>
         this.doSave(projectPath, created),
-      ).save;
+      );
+      // A save in flight pins the store: releasing it would strand the only
+      // copy of state the writer has not yet reached disk with.
+      created.save = () => {
+        created.activeOperations += 1;
+        // In-memory state has already changed by the time a save is issued, and
+        // getStoreFile reads that state, so retained projections go stale here
+        // rather than when the write lands.
+        this.stateRevision += 1;
+        return saver.save().finally(() => {
+          created.activeOperations -= 1;
+          this.measureStore(created);
+        });
+      };
       this.stores.set(storeKey, created);
       store = created;
     }
+    store.lastAccessMs = this.monotonicNowMs();
     if (!store.loaded) {
       if (!store.loadPromise) store.loadPromise = this.load(projectPath, store);
       await store.loadPromise;
+      this.measureStore(store);
     }
+    this.releaseIdleStores(storeKey);
     return store;
   }
 
@@ -913,6 +976,7 @@ export class ReviewCommentService {
     mutate: (store: ProjectStore) => Promise<T>,
   ): Promise<T> {
     const store = await this.getStore(projectPath);
+    store.activeOperations += 1;
     const run = store.mutationTail.then(
       () => mutate(store),
       () => mutate(store),
@@ -921,7 +985,73 @@ export class ReviewCommentService {
       () => undefined,
       () => undefined,
     );
-    return run;
+    return run.finally(() => {
+      store.activeOperations -= 1;
+      this.measureStore(store);
+    });
+  }
+
+  /** Monotonic marker every retained review projection can key against. */
+  getStateRevision(): number {
+    return this.stateRevision;
+  }
+
+  getRetentionMetrics(): ReviewStoreRetentionMetrics {
+    return {
+      retainedStores: this.stores.size,
+      retainedBytes: this.retainedBytes,
+      releases: this.releases,
+      releasesByAge: this.releasesByAge,
+      protectedSkips: this.protectedSkips,
+      reloadsAfterRelease: this.reloadsAfterRelease,
+      stateRevision: this.stateRevision,
+    };
+  }
+
+  private measureStore(store: ProjectStore): void {
+    const bytes = Buffer.byteLength(JSON.stringify(store.state));
+    this.retainedBytes += bytes - store.estimatedBytes;
+    store.estimatedBytes = bytes;
+  }
+
+  private isReleasable(store: ProjectStore): boolean {
+    return store.loaded && store.activeOperations === 0;
+  }
+
+  /**
+   * Release clean, inactive project stores. One Inbox pass must not keep every
+   * project's sites, entries, and outcomes resident for the server's lifetime.
+   */
+  private releaseIdleStores(keepKey: string): void {
+    const now = this.monotonicNowMs();
+    if (this.maxRetainedStoreAgeMs > 0) {
+      for (const [key, store] of [...this.stores]) {
+        if (key === keepKey) continue;
+        if (now - store.lastAccessMs < this.maxRetainedStoreAgeMs) continue;
+        if (!this.isReleasable(store)) {
+          this.protectedSkips += 1;
+          continue;
+        }
+        this.releaseStore(key, store);
+        this.releasesByAge += 1;
+      }
+    }
+    if (this.retainedBytes <= this.maxRetainedStoreBytes) return;
+
+    const releasable = [...this.stores]
+      .filter(([key, store]) => key !== keepKey && this.isReleasable(store))
+      .sort(([, left], [, right]) => left.lastAccessMs - right.lastAccessMs);
+    for (const [key, store] of releasable) {
+      if (this.retainedBytes <= this.maxRetainedStoreBytes) return;
+      this.releaseStore(key, store);
+    }
+  }
+
+  private releaseStore(key: string, store: ProjectStore): void {
+    this.retainedBytes -= store.estimatedBytes;
+    this.stores.delete(key);
+    this.releasedKeys.add(key);
+    this.releases += 1;
   }
 
   private async load(projectPath: string, store: ProjectStore): Promise<void> {

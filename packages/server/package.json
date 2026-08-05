@@ -10,6 +10,7 @@
     "benchmark:provider-watch-startup": "tsx --conditions source scripts/benchmark-provider-watch-startup.ts",
     "benchmark:session-catalog": "tsx --conditions source scripts/benchmark-session-catalog.ts",
     "benchmark:heartbeat-candidates": "tsx --conditions source scripts/benchmark-heartbeat-candidates.ts",
+    "benchmark:review-inbox": "tsx --conditions source scripts/benchmark-review-inbox.ts",
     "dev": "node ../../scripts/run-with-safe-home.js tsx --conditions source src/index.ts",
     "dev:watch": "node ../../scripts/run-with-safe-home.js tsx watch --conditions source src/index.ts",
     "dev:mock": "AUTH_DISABLED=true node ../../scripts/run-with-safe-home.js tsx --conditions source src/index.ts",

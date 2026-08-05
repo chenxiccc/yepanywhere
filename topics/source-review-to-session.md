@@ -726,6 +726,27 @@ Pull/Push actions:
   not a general file manager (the #95 rename/delete items are intentionally
   unimplemented).
 
+## Inbox projection and store lifetime
+
+The unread-outcome Inbox is a derived projection, not a per-request scan of
+canonical state. One server-side owner builds it; concurrent mounts, manual
+refreshes, and repeated response events join that build rather than each
+starting an all-project store load. A project filter narrows the retained
+projection and never builds a separate one from canonical stores.
+
+The projection's source version is a monotonic review state revision that every
+accepted mutation bumps, because canonical state changes in memory before its
+save reaches disk. A project appearing with review state already on disk
+publishes no review event today, so a coarse time bucket bounds that staleness
+until exact per-row deltas exist.
+
+Retained project stores are a byte- and age-bounded cache, not process-lifetime
+state. A clean, inactive store may be released after its canonical state is
+durable and reloaded on exact project demand. A store with a mutation, a
+coalesced save, or a load in flight is pinned: releasing it would strand the
+only copy of state the writer has not yet written. Budgets are enforced on
+access, so the newest store may briefly exceed them.
+
 ## Design decisions
 
 - **Uncommitted provenance class** (vs. commit-only anchors): the hottest

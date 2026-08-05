@@ -4,9 +4,41 @@
 > projection instead of listing every project and loading every review store on
 > each Inbox mount or response event.
 
-Status: Implementation handoff, not yet implemented. Tactical 089's follow-on
-collection audit located this optional/default-off amplification path. It is
-not evidence for the 2026-08-04 incident.
+Status: Partially implemented. The route now serves one retained, single-flight
+projection with server-side project filtering, and `ReviewCommentService` bounds
+retained project stores by bytes and age instead of holding every touched store
+for the process lifetime. Durable persistence (step 3, which waits on tactical
+085), exact per-row deltas (step 4), and the retained client feed owner (step 6,
+which waits on tactical 031) remain pending. Tactical 089's follow-on collection
+audit located this optional/default-off amplification path. It is not evidence
+for the 2026-08-04 incident.
+
+## Implementation progress
+
+- **2026-08-05 — retained Inbox projection and bounded store retention.**
+  `GET /api/review/inbox` builds one projection behind the shared
+  source-versioned single-flight owner, keyed by a review state revision that
+  every accepted mutation bumps, plus a coarse time bucket as the backstop for
+  a project appearing with review state already on disk (no review event covers
+  that yet). Concurrent mounts, manual refreshes, and repeated
+  `review-response-changed` events therefore share one build instead of each
+  starting an all-project store load, and `?projectId=` filters the retained
+  projection rather than building a per-project one from canonical stores.
+  `ReviewCommentService` now tracks per-store estimated bytes and last access,
+  and releases clean inactive stores under byte and age budgets. A store is
+  releasable only with no mutation or save in flight, so a pending coalesced
+  save, an active mutation tail, or an in-progress load pins it; released state
+  reloads from disk on exact project demand.
+  With 2,000 projects and 20 requests, the previous shape performed 20 project
+  listings, 40,000 store loads, and 1,263,203,600 bytes of canonical-state
+  cloning in 6,624.57 ms. The retained projection performed 1 listing, 2,000
+  store loads, and 63,160,180 cloned bytes in 342.95 ms (95.00% of store loads
+  avoided, 19.32x). Twenty project-filtered requests after a warm build cost 0
+  additional store loads and 1.62 ms total. Across 200 real project stores, an
+  unbounded service retained all 200 stores and 130,360 bytes; a 64 KiB budget
+  retained 101 stores and 66,050 bytes (49.33% less), with state preserved
+  across release and reload. Run `pnpm --filter @yep-anywhere/server
+  benchmark:review-inbox` to repeat the measurement.
 
 Related contracts and plans:
 
