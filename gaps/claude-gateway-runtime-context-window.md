@@ -16,17 +16,26 @@ Evidence: profile `claude-gateway-test`, session
 
 Found 2026-07-27 while verifying Terra through the Claude Gateway provider.
 
-**Layer identified, fix landed, runtime confirmation still owed
-(2026-08-05).** Claude Code is the clamping layer, and it is documented
-behavior rather than a bug in it: behind `ANTHROPIC_BASE_URL` it cannot verify
-a proxied model's window, so it budgets the session at 200,000 tokens. That is
-the 200,000 the runtime status reported. `ClaudeGatewayProvider` now passes the
-catalog's window as `CLAUDE_CODE_AUTO_COMPACT_WINDOW` on every gateway launch,
-which should make both numbers describe the same window (see
-`topics/resume-compaction.md`).
+**Layer identified, corrected mapping awaiting runtime confirmation
+(2026-08-05).** Claude Code is the clamping layer: behind
+`ANTHROPIC_BASE_URL` it cannot discover a proxied model's limits and gave the
+non-Claude `gpt-5.6-sol` model a 200,000-token effective envelope. The first YA
+fix set only `CLAUDE_CODE_AUTO_COMPACT_WINDOW`; that controls automatic
+compaction but does not enlarge Claude Code's separately resolved model
+envelope, so the runtime remained at 200K.
 
-Keep this entry open until that is confirmed against a live gateway session —
-the fix is unit-tested only, and it needs a server restart to take effect. The
-same 200K clamp wedged a `gpt-5.6-sol` session at 200,935 tokens with no
-compaction anywhere in its transcript, so confirm the compaction point moved,
-not just the reported number.
+`ClaudeGatewayProvider` now preserves the catalog's total and prompt-only
+limits separately. Gateway launches pass total `max_context_window_tokens` as
+`CLAUDE_CODE_MAX_CONTEXT_TOKENS` and prompt `max_prompt_tokens` as
+`CLAUDE_CODE_AUTO_COMPACT_WINDOW`. The current default Sol catalog therefore
+maps to 400,000 total and 272,000 prompt tokens. Values below Claude Code's
+100K automatic-window minimum omit that override rather than exceeding the
+model's hard limit. See `topics/resume-compaction.md`.
+
+Keep this entry open until a live non-`claude-*` gateway session reports the
+larger effective window and crosses the former 200K boundary successfully. The
+change is unit-tested but needs a server restart to affect new provider
+processes. Gateway IDs beginning `claude-` remain a separate limitation:
+Claude Code ignores the generic maximum-context override for those IDs behind
+a custom base URL, so Copilot `claude-opus-5` long context is not yet proven
+effective.

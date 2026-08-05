@@ -30,6 +30,7 @@ interface GatewayModel {
     type?: unknown;
     limits?: {
       max_context_window_tokens?: unknown;
+      max_prompt_tokens?: unknown;
     };
     supports?: {
       reasoning_effort?: unknown;
@@ -44,39 +45,51 @@ interface GatewayModelsResponse {
   data?: GatewayModel[];
 }
 
+interface GatewayModelWindows {
+  contextWindow: number;
+  promptWindow: number;
+}
+
 /**
- * Claude Code cannot verify a proxied model's context window through a gateway,
- * so it budgets every gateway session at 200K tokens and auto-compacts at that
- * boundary regardless of the real model. The gateway catalog knows the true
- * window, and `CLAUDE_CODE_AUTO_COMPACT_WINDOW` is the documented way to state
- * it. Claude Code accepts only 100K through 1M, so a smaller advertised window
- * takes the floor: still tighter than the 200K default it replaces.
+ * Claude Code resolves a gateway model's effective context window separately
+ * from its automatic-compaction window. The total catalog window becomes the
+ * former; the prompt-only ceiling bounds the latter. Automatic windows below
+ * 100K cannot be expressed, so omit them rather than rounding above a model's
+ * advertised hard limit.
  */
 const AUTO_COMPACT_WINDOW_MIN = 100_000;
 const AUTO_COMPACT_WINDOW_MAX = 1_000_000;
 
 export function gatewayAutoCompactWindow(
-  contextWindow: number | undefined,
+  promptWindow: number | undefined,
 ): number | undefined {
   if (
-    typeof contextWindow !== "number" ||
-    !Number.isFinite(contextWindow) ||
-    contextWindow <= 0
+    typeof promptWindow !== "number" ||
+    !Number.isFinite(promptWindow) ||
+    promptWindow < AUTO_COMPACT_WINDOW_MIN
   ) {
     return undefined;
   }
-  return Math.min(
-    AUTO_COMPACT_WINDOW_MAX,
-    Math.max(AUTO_COMPACT_WINDOW_MIN, Math.round(contextWindow)),
-  );
+  return Math.min(AUTO_COMPACT_WINDOW_MAX, Math.round(promptWindow));
+}
+
+function gatewayMaxContextTokens(
+  contextWindow: number | undefined,
+): number | undefined {
+  return typeof contextWindow === "number" &&
+    Number.isFinite(contextWindow) &&
+    contextWindow > 0
+    ? Math.round(contextWindow)
+    : undefined;
 }
 
 function gatewayEnvironment(
   baseUrl: string,
   model?: string,
-  contextWindow?: number,
+  windows?: GatewayModelWindows,
 ): Record<string, string> {
-  const autoCompactWindow = gatewayAutoCompactWindow(contextWindow);
+  const maxContextTokens = gatewayMaxContextTokens(windows?.contextWindow);
+  const autoCompactWindow = gatewayAutoCompactWindow(windows?.promptWindow);
   return {
     ANTHROPIC_BASE_URL: baseUrl,
     ANTHROPIC_AUTH_TOKEN: "dummy",
@@ -91,6 +104,9 @@ function gatewayEnvironment(
           ANTHROPIC_SMALL_FAST_MODEL: model,
           ANTHROPIC_DEFAULT_HAIKU_MODEL: model,
         }
+      : {}),
+    ...(maxContextTokens !== undefined
+      ? { CLAUDE_CODE_MAX_CONTEXT_TOKENS: String(maxContextTokens) }
       : {}),
     ...(autoCompactWindow !== undefined
       ? { CLAUDE_CODE_AUTO_COMPACT_WINDOW: String(autoCompactWindow) }
@@ -138,19 +154,39 @@ function modelEffortLevels(item: GatewayModel): EffortLevel[] {
   );
 }
 
-function modelContextWindow(item: GatewayModel): number | undefined {
-  const value = item.capabilities?.limits?.max_context_window_tokens;
+function positiveLimit(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) && value > 0
     ? value
     : undefined;
 }
 
-export function parseClaudeGatewayModels(value: unknown): ModelInfo[] {
+function modelWindows(item: GatewayModel): GatewayModelWindows | undefined {
+  const limits = item.capabilities?.limits;
+  const contextWindow = positiveLimit(limits?.max_context_window_tokens);
+  if (contextWindow === undefined) return undefined;
+
+  const advertisedPromptWindow = positiveLimit(limits?.max_prompt_tokens);
+  return {
+    contextWindow,
+    promptWindow: Math.min(
+      advertisedPromptWindow ?? contextWindow,
+      contextWindow,
+    ),
+  };
+}
+
+interface ParsedGatewayCatalog {
+  models: ModelInfo[];
+  windows: Map<string, GatewayModelWindows>;
+}
+
+function parseClaudeGatewayCatalog(value: unknown): ParsedGatewayCatalog {
   const data = (value as GatewayModelsResponse | null)?.data;
-  if (!Array.isArray(data)) return [];
+  if (!Array.isArray(data)) return { models: [], windows: new Map() };
 
   const seen = new Set<string>();
   const models: ModelInfo[] = [];
+  const windows = new Map<string, GatewayModelWindows>();
   for (const item of data) {
     const id = typeof item.id === "string" ? item.id.trim() : "";
     if (!id || seen.has(id) || !isGatewayModelVisible(item, id)) continue;
@@ -162,11 +198,14 @@ export function parseClaudeGatewayModels(value: unknown): ModelInfo[] {
           ? item.name.trim()
           : "";
     const supportedEffortLevels = modelEffortLevels(item);
-    const contextWindow = modelContextWindow(item);
+    const advertisedWindows = modelWindows(item);
+    if (advertisedWindows) windows.set(id, advertisedWindows);
     models.push({
       id,
       name: displayName || id,
-      ...(contextWindow !== undefined ? { contextWindow } : {}),
+      ...(advertisedWindows
+        ? { contextWindow: advertisedWindows.contextWindow }
+        : {}),
       supportsEffort: supportedEffortLevels.length > 0,
       ...(supportedEffortLevels.length > 0
         ? {
@@ -179,7 +218,11 @@ export function parseClaudeGatewayModels(value: unknown): ModelInfo[] {
       supportsAdaptiveThinking: supportedEffortLevels.length > 0,
     });
   }
-  return models;
+  return { models, windows };
+}
+
+export function parseClaudeGatewayModels(value: unknown): ModelInfo[] {
+  return parseClaudeGatewayCatalog(value).models;
 }
 
 export class ClaudeGatewayProvider extends ClaudeProvider {
@@ -195,11 +238,11 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
   private static gatewayUrl: string | undefined;
   private static gatewayStartCommand: string | undefined;
   /**
-   * Context windows from the last catalog read, so a launch can state the
-   * proxied model's real window. A launch before any successful read simply
-   * omits the override and keeps Claude Code's own gateway default.
+   * Total and prompt windows from the last catalog read. A launch before any
+   * successful read omits both overrides and keeps Claude Code's gateway
+   * defaults rather than asserting limits YA has not seen.
    */
-  private static modelContextWindows = new Map<string, number>();
+  private static modelWindows = new Map<string, GatewayModelWindows>();
 
   constructor(
     private readonly gatewayLauncher: Pick<
@@ -243,18 +286,14 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
     return ClaudeGatewayProvider.gatewayUrl;
   }
 
-  private static rememberContextWindows(models: ModelInfo[]): void {
-    ClaudeGatewayProvider.modelContextWindows = new Map(
-      models.flatMap((model) =>
-        typeof model.contextWindow === "number"
-          ? [[model.id, model.contextWindow] as const]
-          : [],
-      ),
-    );
+  private static rememberModelWindows(
+    windows: Map<string, GatewayModelWindows>,
+  ): void {
+    ClaudeGatewayProvider.modelWindows = windows;
   }
 
   static forgetContextWindows(): void {
-    ClaudeGatewayProvider.modelContextWindows = new Map();
+    ClaudeGatewayProvider.modelWindows = new Map();
   }
 
   static isConfigured(): boolean {
@@ -305,9 +344,9 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
         signal: AbortSignal.timeout(5000),
       });
       if (!response.ok) return [];
-      const models = parseClaudeGatewayModels(await response.json());
-      ClaudeGatewayProvider.rememberContextWindows(models);
-      return models;
+      const catalog = parseClaudeGatewayCatalog(await response.json());
+      ClaudeGatewayProvider.rememberModelWindows(catalog.windows);
+      return catalog.models;
     } catch (error) {
       getLogger().debug(
         { error, gatewayUrl },
@@ -321,10 +360,8 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
     return this.getAvailableModels();
   }
 
-  private static contextWindowFor(model?: string): number | undefined {
-    return model
-      ? ClaudeGatewayProvider.modelContextWindows.get(model)
-      : undefined;
+  private static windowsFor(model?: string): GatewayModelWindows | undefined {
+    return model ? ClaudeGatewayProvider.modelWindows.get(model) : undefined;
   }
 
   protected override getSettings(model?: string): Settings | undefined {
@@ -334,7 +371,7 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
       env: gatewayEnvironment(
         gatewayUrl,
         model,
-        ClaudeGatewayProvider.contextWindowFor(model),
+        ClaudeGatewayProvider.windowsFor(model),
       ),
     };
   }
@@ -349,7 +386,7 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
           ...gatewayEnvironment(
             gatewayUrl,
             model,
-            ClaudeGatewayProvider.contextWindowFor(model),
+            ClaudeGatewayProvider.windowsFor(model),
           ),
         }
       : super.getEnv(model);

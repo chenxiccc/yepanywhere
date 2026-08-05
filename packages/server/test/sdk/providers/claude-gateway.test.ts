@@ -201,9 +201,9 @@ describe("ClaudeGatewayProvider", () => {
     );
   });
 
-  it("states the proxied model's real window so compaction is not budgeted at 200K", async () => {
-    // Claude Code cannot verify a window through a gateway, so without this it
-    // auto-compacts every gateway session at 200K whatever the real model is.
+  it("keeps Claude Code inside the catalog's total and prompt windows", async () => {
+    // Claude Code resolves its model and automatic-compaction windows
+    // independently; the catalog provides both parts of that launch contract.
     const fetchMock = vi.fn(
       async () =>
         new Response(
@@ -213,14 +213,30 @@ describe("ClaudeGatewayProvider", () => {
                 id: "gpt-5.6-sol",
                 capabilities: {
                   type: "chat",
-                  limits: { max_context_window_tokens: 400_000 },
+                  limits: {
+                    max_context_window_tokens: 400_000,
+                    max_prompt_tokens: 272_000,
+                  },
                 },
               },
               {
                 id: "gpt-4",
                 capabilities: {
                   type: "chat",
-                  limits: { max_context_window_tokens: 32_768 },
+                  limits: {
+                    max_context_window_tokens: 32_768,
+                    max_prompt_tokens: 24_576,
+                  },
+                },
+              },
+              {
+                id: "gpt-5.6-sol-long",
+                capabilities: {
+                  type: "chat",
+                  limits: {
+                    max_context_window_tokens: 1_050_000,
+                    max_prompt_tokens: 922_000,
+                  },
                 },
               },
               { id: "windowless-model" },
@@ -238,34 +254,56 @@ describe("ClaudeGatewayProvider", () => {
 
     // A launch before any catalog read keeps Claude Code's own default.
     expect(provider.getLaunchSettings("gpt-5.6-sol")?.env).not.toHaveProperty(
+      "CLAUDE_CODE_MAX_CONTEXT_TOKENS",
+    );
+    expect(provider.getLaunchSettings("gpt-5.6-sol")?.env).not.toHaveProperty(
       "CLAUDE_CODE_AUTO_COMPACT_WINDOW",
     );
 
     await provider.getAvailableModels();
 
-    expect(provider.getLaunchSettings("gpt-5.6-sol")?.env).toMatchObject({
-      CLAUDE_CODE_AUTO_COMPACT_WINDOW: "400000",
-    });
-    expect(provider.getLaunchEnvironment("gpt-5.6-sol")).toMatchObject({
-      CLAUDE_CODE_AUTO_COMPACT_WINDOW: "400000",
-    });
-    // Claude Code rejects anything under 100K, so a smaller model takes the
-    // floor rather than silently keeping the wider 200K default.
+    const solEnvironment = {
+      CLAUDE_CODE_MAX_CONTEXT_TOKENS: "400000",
+      CLAUDE_CODE_AUTO_COMPACT_WINDOW: "272000",
+    };
+    expect(provider.getLaunchSettings("gpt-5.6-sol")?.env).toMatchObject(
+      solEnvironment,
+    );
+    expect(provider.getLaunchEnvironment("gpt-5.6-sol")).toMatchObject(
+      solEnvironment,
+    );
+    // Never round a compaction window above an advertised hard limit. The
+    // effective model window still narrows through MAX_CONTEXT_TOKENS.
     expect(provider.getLaunchSettings("gpt-4")?.env).toMatchObject({
-      CLAUDE_CODE_AUTO_COMPACT_WINDOW: "100000",
+      CLAUDE_CODE_MAX_CONTEXT_TOKENS: "32768",
+    });
+    expect(provider.getLaunchSettings("gpt-4")?.env).not.toHaveProperty(
+      "CLAUDE_CODE_AUTO_COMPACT_WINDOW",
+    );
+    expect(provider.getLaunchSettings("gpt-5.6-sol-long")?.env).toMatchObject({
+      CLAUDE_CODE_MAX_CONTEXT_TOKENS: "1050000",
+      CLAUDE_CODE_AUTO_COMPACT_WINDOW: "922000",
     });
     expect(
       provider.getLaunchSettings("windowless-model")?.env,
+    ).not.toHaveProperty("CLAUDE_CODE_MAX_CONTEXT_TOKENS");
+    expect(
+      provider.getLaunchSettings("windowless-model")?.env,
     ).not.toHaveProperty("CLAUDE_CODE_AUTO_COMPACT_WINDOW");
+    expect(provider.getLaunchSettings()?.env).not.toHaveProperty(
+      "CLAUDE_CODE_MAX_CONTEXT_TOKENS",
+    );
     expect(provider.getLaunchSettings()?.env).not.toHaveProperty(
       "CLAUDE_CODE_AUTO_COMPACT_WINDOW",
     );
   });
 
-  it("clamps an oversized advertised window to what Claude Code accepts", () => {
+  it("only emits automatic-compaction windows Claude Code can express safely", () => {
     expect(gatewayAutoCompactWindow(2_000_000)).toBe(1_000_000);
     expect(gatewayAutoCompactWindow(400_000)).toBe(400_000);
-    expect(gatewayAutoCompactWindow(32_768)).toBe(100_000);
+    expect(gatewayAutoCompactWindow(100_000)).toBe(100_000);
+    expect(gatewayAutoCompactWindow(99_999)).toBeUndefined();
+    expect(gatewayAutoCompactWindow(32_768)).toBeUndefined();
     expect(gatewayAutoCompactWindow(undefined)).toBeUndefined();
     expect(gatewayAutoCompactWindow(0)).toBeUndefined();
     expect(gatewayAutoCompactWindow(Number.NaN)).toBeUndefined();
