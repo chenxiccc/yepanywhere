@@ -121,8 +121,7 @@ describe("MessageList rendering", () => {
     const galleryItems = container.querySelectorAll(`.${galleryStyles.item}`);
     fireEvent.pointerEnter(galleryItems[1] as HTMLElement);
     expect(
-      container.querySelector(`.${galleryStyles.caption} > span`)
-        ?.textContent,
+      container.querySelector(`.${galleryStyles.caption} > span`)?.textContent,
     ).toBe("Phone result");
 
     galleryItems[0]!.getBoundingClientRect = vi.fn(
@@ -159,13 +158,11 @@ describe("MessageList rendering", () => {
     };
     movePointer(110, 500);
     expect(
-      container.querySelector(`.${galleryStyles.caption} > span`)
-        ?.textContent,
+      container.querySelector(`.${galleryStyles.caption} > span`)?.textContent,
     ).toBe("Desktop result");
     movePointer(210, 500);
     expect(
-      container.querySelector(`.${galleryStyles.caption} > span`)
-        ?.textContent,
+      container.querySelector(`.${galleryStyles.caption} > span`)?.textContent,
     ).toBe("Phone result");
 
     const phoneLink = Array.from(
@@ -178,8 +175,7 @@ describe("MessageList rendering", () => {
     ).toBe("phone.png");
     expect(container.querySelector(`.${galleryStyles.gallery}`)).toBeTruthy();
     expect(
-      container.querySelector(`.${galleryStyles.caption} > span`)
-        ?.textContent,
+      container.querySelector(`.${galleryStyles.caption} > span`)?.textContent,
     ).toBe("Phone result");
     fireEvent.keyDown(document, { key: "ArrowRight" });
     expect(
@@ -189,12 +185,12 @@ describe("MessageList rendering", () => {
     expect(
       screen.getByRole("dialog").querySelector(".modal-title")?.textContent,
     ).toBe("phone.png");
-    fireEvent.click(document.querySelector(".modal-close") as HTMLButtonElement);
+    fireEvent.click(
+      document.querySelector(".modal-close") as HTMLButtonElement,
+    );
 
     fireEvent.click(
-      container.querySelector(
-        `.${galleryStyles.caption}`,
-      ) as HTMLButtonElement,
+      container.querySelector(`.${galleryStyles.caption}`) as HTMLButtonElement,
     );
     expect(document.activeElement).toBe(phoneLink);
 
@@ -210,20 +206,16 @@ describe("MessageList rendering", () => {
     fireEvent.click(galleryAction as HTMLButtonElement);
     expect(container.querySelector(`.${galleryStyles.gallery}`)).toBeTruthy();
     expect(
-      container.querySelector(`.${galleryStyles.caption} > span`)
-        ?.textContent,
-      ).toBe("Phone result");
+      container.querySelector(`.${galleryStyles.caption} > span`)?.textContent,
+    ).toBe("Phone result");
 
     fireEvent.click(
-      container.querySelector(
-        `.${galleryStyles.dismiss}`,
-      ) as HTMLButtonElement,
+      container.querySelector(`.${galleryStyles.dismiss}`) as HTMLButtonElement,
     );
     fireEvent.click(sourceToggles[1] as HTMLButtonElement);
     expect(container.querySelector(`.${galleryStyles.gallery}`)).toBeTruthy();
     expect(
-      container.querySelector(`.${galleryStyles.caption} > span`)
-        ?.textContent,
+      container.querySelector(`.${galleryStyles.caption} > span`)?.textContent,
     ).toBe("Phone result");
   });
 
@@ -280,15 +272,13 @@ describe("MessageList rendering", () => {
       )[0] as HTMLButtonElement,
     );
     expect(
-      container.querySelector(`.${galleryStyles.caption} > span`)
-        ?.textContent,
+      container.querySelector(`.${galleryStyles.caption} > span`)?.textContent,
     ).toBe("One");
 
     fireEvent.click(galleryAction as HTMLButtonElement);
     fireEvent.click(galleryAction as HTMLButtonElement);
     expect(
-      container.querySelector(`.${galleryStyles.caption} > span`)
-        ?.textContent,
+      container.querySelector(`.${galleryStyles.caption} > span`)?.textContent,
     ).toBe("One");
   });
 
@@ -332,7 +322,9 @@ describe("MessageList rendering", () => {
       screen.getByRole("dialog").querySelector(".modal-title")?.textContent,
     ).toBe("two.png");
 
-    fireEvent.click(document.querySelector(".modal-close") as HTMLButtonElement);
+    fireEvent.click(
+      document.querySelector(".modal-close") as HTMLButtonElement,
+    );
     expect(container.querySelector(`.${galleryStyles.gallery}`)).toBeNull();
   });
 
@@ -433,8 +425,7 @@ describe("MessageList rendering", () => {
     act(() => scrollFrame?.(0));
 
     expect(
-      container.querySelector(`.${galleryStyles.caption} > span`)
-        ?.textContent,
+      container.querySelector(`.${galleryStyles.caption} > span`)?.textContent,
     ).toBe("Two");
   });
 
@@ -978,7 +969,32 @@ describe("MessageList rendering", () => {
     fireEvent.click(summary as HTMLElement);
     expect(compactDetails?.open).toBe(true);
     expect(screen.getByText(/hidden detail/)).toBeTruthy();
-    expect(screen.getByText(/compactMetadata/)).toBeTruthy();
+  });
+
+  it("keeps bare compact boundaries outline-expandable without a summary body", () => {
+    const { container } = render(
+      <MessageList
+        messages={[
+          {
+            type: "system",
+            uuid: "compact-bare",
+            subtype: "compact_boundary",
+            content: "Context compacted",
+          },
+        ]}
+      />,
+    );
+
+    const compactDetails = container.querySelector(
+      "details.system-message-compact-boundary",
+    ) as HTMLDetailsElement | null;
+    expect(compactDetails).toBeTruthy();
+    expect(compactDetails?.open).toBe(false);
+    fireEvent.click(compactDetails!.querySelector("summary") as HTMLElement);
+    expect(compactDetails?.open).toBe(true);
+    expect(
+      screen.getByText("No provider summary was retained for this compaction."),
+    ).toBeTruthy();
   });
 
   it("does not restart progressive loading after the session is revealed", async () => {

@@ -115,8 +115,34 @@ function getPreprocessMessageContent(
   );
 }
 
+/** Claude's durable compact-summary body opener (JSONL + live stream). */
+const CLAUDE_COMPACT_SUMMARY_PREAMBLE =
+  "This session is being continued from a previous conversation that ran out of context";
+
+/**
+ * Compact-summary rows are user-role in the provider log but must never paint
+ * as a user bubble. Prefer the explicit flag; fall back to Claude's stable
+ * preamble (and transcript-only marker) when live SDK stream omits the flag.
+ */
 function isCompactSummaryMessage(msg: Message): boolean {
-  return msg.isCompactSummary === true;
+  if (msg.isCompactSummary === true) {
+    return true;
+  }
+  const content = getPreprocessMessageContent(msg);
+  if (content === undefined) {
+    return false;
+  }
+  const text =
+    typeof content === "string" ? content : contentBlocksText(content);
+  const trimmed = text.trimStart();
+  if (!trimmed.startsWith(CLAUDE_COMPACT_SUMMARY_PREAMBLE)) {
+    return false;
+  }
+  // Preamble alone is extremely distinctive; still require a user-role row.
+  const role =
+    (msg.message as { role?: "user" | "assistant" } | undefined)?.role ??
+    msg.role;
+  return msg.type === "user" || role === "user";
 }
 
 function isCompactCommand(command: string): boolean {
@@ -162,8 +188,28 @@ function compactMetadataDetail(msg: Message): string | null {
   return `compactMetadata:\n${JSON.stringify(metadata, null, 2)}`;
 }
 
+const DEFAULT_COMPACT_LABELS = new Set([
+  "context compacted",
+  "conversation compacted",
+]);
+
+/**
+ * Human-readable compact body first, then raw provider metadata — so expand
+ * shows the compression summary before machine JSON.
+ */
 function compactBoundaryDetails(msg: Message): Array<string | ContentBlock[]> {
   const details: Array<string | ContentBlock[]> = [];
+  const summaryText = (msg as { compactSummaryText?: unknown })
+    .compactSummaryText;
+  if (typeof summaryText === "string" && summaryText.trim()) {
+    details.push(summaryText.trim());
+  }
+  if (typeof msg.content === "string") {
+    const content = msg.content.trim();
+    if (content && !DEFAULT_COMPACT_LABELS.has(content.toLowerCase())) {
+      details.push(content);
+    }
+  }
   const metadata = compactMetadataDetail(msg);
   if (metadata) {
     details.push(metadata);
@@ -466,6 +512,18 @@ function processMessage(
 
   // Check if this is a real user prompt (not tool results)
   if (isUserMessage) {
+    if (isCompactSummaryMessage(msg)) {
+      items.push({
+        type: "system",
+        id: msgId,
+        subtype: "compact_boundary",
+        content: "Context compacted",
+        details: compactSummaryDetails(content),
+        sourceMessages: [msg],
+        isSubagent: msg.isSubagent,
+      });
+      return;
+    }
     items.push({
       type: "user_prompt",
       id: msgId,

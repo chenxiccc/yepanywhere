@@ -1184,16 +1184,89 @@ function convertCodexExecCommandEndPayload(
   };
 }
 
+const CODEX_COMPACT_HISTORY_PREVIEW_MAX_ITEMS = 12;
+const CODEX_COMPACT_HISTORY_PREVIEW_MAX_CHARS = 4_000;
+
+/**
+ * Build a short, expandable preview of turns Codex kept after compaction.
+ * The full replacement_history can be huge; this is for the transcript chip.
+ */
+function formatCodexCompactReplacementHistory(
+  history: unknown[] | undefined,
+): string | undefined {
+  if (!history || history.length === 0) {
+    return undefined;
+  }
+  const lines: string[] = [];
+  for (const item of history) {
+    if (lines.length >= CODEX_COMPACT_HISTORY_PREVIEW_MAX_ITEMS) {
+      lines.push(
+        `…and ${history.length - CODEX_COMPACT_HISTORY_PREVIEW_MAX_ITEMS} more retained items`,
+      );
+      break;
+    }
+    if (!item || typeof item !== "object") continue;
+    const record = item as Record<string, unknown>;
+    const role =
+      typeof record.role === "string"
+        ? record.role
+        : record.type === "message" && typeof record.role === "string"
+          ? record.role
+          : undefined;
+    const content = record.content;
+    let text = "";
+    if (typeof content === "string") {
+      text = content;
+    } else if (Array.isArray(content)) {
+      text = content
+        .map((block) => {
+          if (!block || typeof block !== "object") return "";
+          const b = block as Record<string, unknown>;
+          if (typeof b.text === "string") return b.text;
+          if (typeof b.input_text === "string") return b.input_text;
+          if (typeof b.output_text === "string") return b.output_text;
+          return "";
+        })
+        .filter(Boolean)
+        .join("\n");
+    }
+    text = text.trim();
+    if (!text) continue;
+    const label =
+      role ?? (typeof record.type === "string" ? record.type : "item");
+    const clipped =
+      text.length > 500 ? `${text.slice(0, 500).trimEnd()}…` : text;
+    lines.push(`[${label}] ${clipped}`);
+  }
+  if (lines.length === 0) {
+    return undefined;
+  }
+  let body = `Preserved after compact (${history.length} history item${history.length === 1 ? "" : "s"}):\n\n${lines.join("\n\n")}`;
+  if (body.length > CODEX_COMPACT_HISTORY_PREVIEW_MAX_CHARS) {
+    body = `${body.slice(0, CODEX_COMPACT_HISTORY_PREVIEW_MAX_CHARS).trimEnd()}…`;
+  }
+  return body;
+}
+
 function convertCodexCompactedEntry(
   entry: CodexCompactedEntry,
   index: number,
 ): Message {
   const uuid = `codex-compacted-${index}-${entry.timestamp}`;
+  const providerMessage =
+    typeof entry.payload.message === "string"
+      ? entry.payload.message.trim()
+      : "";
+  const compactSummaryText =
+    providerMessage ||
+    formatCodexCompactReplacementHistory(entry.payload.replacement_history);
   return {
     uuid,
     type: "system",
     subtype: "compact_boundary",
-    content: entry.payload.message || "Context compacted",
+    // Short chip label; expandable body lives in compactSummaryText.
+    content: "Context compacted",
+    ...(compactSummaryText ? { compactSummaryText } : {}),
     timestamp: entry.timestamp,
   };
 }
@@ -1275,10 +1348,7 @@ function convertCodexEventMsg(
         uuid,
         type: "system",
         subtype: "subagent_activity",
-        content: formatCodexSubagentActivity(
-          payload.kind,
-          payload.agent_path,
-        ),
+        content: formatCodexSubagentActivity(payload.kind, payload.agent_path),
         codexSubagentKind: payload.kind,
         codexSubagentThreadId: payload.agent_thread_id,
         codexSubagentPath: payload.agent_path,

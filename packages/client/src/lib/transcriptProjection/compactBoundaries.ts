@@ -14,6 +14,22 @@ function hasSystemCompactBoundarySource(item: SystemItem): boolean {
   );
 }
 
+function orderCompactDetails(
+  details: NonNullable<SystemItem["details"]>,
+): NonNullable<SystemItem["details"]> {
+  // Prefer human summary bodies before compactMetadata JSON dumps.
+  const meta: NonNullable<SystemItem["details"]> = [];
+  const rest: NonNullable<SystemItem["details"]> = [];
+  for (const detail of details) {
+    if (typeof detail === "string" && detail.startsWith("compactMetadata:")) {
+      meta.push(detail);
+    } else {
+      rest.push(detail);
+    }
+  }
+  return [...rest, ...meta];
+}
+
 function mergeCompactBoundaryRun(
   run: Array<SystemItem & { subtype: "compact_boundary" }>,
 ): SystemItem {
@@ -23,7 +39,9 @@ function mergeCompactBoundaryRun(
   }
   const preferred = run.find(hasSystemCompactBoundarySource) ?? first;
   const sourceMessages = run.flatMap((item) => item.sourceMessages);
-  const details = run.flatMap((item) => item.details ?? []);
+  const details = orderCompactDetails(
+    run.flatMap((item) => item.details ?? []),
+  );
   return {
     type: "system",
     id: preferred.id,

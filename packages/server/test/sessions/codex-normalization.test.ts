@@ -1188,7 +1188,8 @@ describe("Codex Normalization", () => {
           type: "function_call",
           call_id: "call-wait",
           name: "wait",
-          arguments: '{"cell_id":"39","yield_time_ms":10000,"max_tokens":12000}',
+          arguments:
+            '{"cell_id":"39","yield_time_ms":10000,"max_tokens":12000}',
         },
       },
       {
@@ -1526,9 +1527,7 @@ describe("Codex Normalization", () => {
     const result = normalizeSession(buildLoadedSession(entries));
     expect(result.messages).toHaveLength(1);
     expect(result.messages[0]?.message?.role).toBe("user");
-    expect(result.messages[0]?.codexUserTurnProvenance).toBe(
-      "legacy-response",
-    );
+    expect(result.messages[0]?.codexUserTurnProvenance).toBe("legacy-response");
     const content = result.messages[0]?.message?.content;
     expect(Array.isArray(content) ? content[0] : content).toMatchObject({
       type: "text",
@@ -1576,9 +1575,7 @@ describe("Codex Normalization", () => {
     const result = normalizeSession(buildLoadedSession(entries));
     expect(result.messages).toHaveLength(1);
     expect(result.messages[0]?.message?.role).toBe("user");
-    expect(result.messages[0]?.codexUserTurnProvenance).toBe(
-      "legacy-response",
-    );
+    expect(result.messages[0]?.codexUserTurnProvenance).toBe("legacy-response");
     const content = result.messages[0]?.message?.content;
     expect(Array.isArray(content) ? content[0] : content).toMatchObject({
       type: "text",
@@ -1724,8 +1721,47 @@ describe("Codex Normalization", () => {
     expect(result.messages[0]).toMatchObject({
       type: "system",
       subtype: "compact_boundary",
-      content: "Compacted 12 messages",
+      content: "Context compacted",
+      compactSummaryText: "Compacted 12 messages",
     });
+  });
+
+  it("attaches a preserved-history preview when Codex compact message is empty", () => {
+    const entries: CodexSessionEntry[] = [
+      {
+        type: "compacted",
+        timestamp: "2024-01-01T00:00:03Z",
+        payload: {
+          message: "",
+          replacement_history: [
+            {
+              type: "message",
+              role: "user",
+              content: [{ type: "input_text", text: "/goal ship it" }],
+            },
+            {
+              type: "message",
+              role: "user",
+              content: [{ type: "input_text", text: "continue" }],
+            },
+          ],
+        },
+      },
+    ];
+
+    const result = normalizeSession(buildLoadedSession(entries));
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]).toMatchObject({
+      type: "system",
+      subtype: "compact_boundary",
+      content: "Context compacted",
+    });
+    expect(String(result.messages[0]?.compactSummaryText)).toContain(
+      "/goal ship it",
+    );
+    expect(String(result.messages[0]?.compactSummaryText)).toContain(
+      "Preserved after compact",
+    );
   });
 
   it("dedupes paired Codex compacted events while preserving later ids", () => {

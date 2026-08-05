@@ -7436,6 +7436,13 @@ a.linkified-url:hover {
   max-width: min(100%, 980px);
 }
 
+/* Compact chips are always expandable — outline them so the chevron affordance
+   is obvious even when the provider retained no summary body. */
+.system-message-compact-boundary.system-message--details {
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.12));
+  border-left: 3px solid var(--accent-secondary, #6b7280);
+}
+
 .system-message.system-message--details {
   display: block;
 }

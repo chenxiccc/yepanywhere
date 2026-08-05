@@ -209,6 +209,9 @@ function systemDetailToText(detail: string | ContentBlock[]): string {
     .join("\n");
 }
 
+const COMPACT_EMPTY_DETAIL =
+  "No provider summary was retained for this compaction.";
+
 function CollapsibleSystemMessage({
   item,
   icon,
@@ -220,16 +223,18 @@ function CollapsibleSystemMessage({
     .map(systemDetailToText)
     .map((text) => text.trim())
     .filter(Boolean);
-  const variantClass =
-    item.subtype === "compact_boundary"
-      ? "system-message-compact-boundary"
-      : "system-message-local-command";
-  const summaryClass =
-    item.subtype === "compact_boundary"
-      ? "system-message-summary system-message-compact-summary"
-      : "system-message-summary system-message-local-command-summary";
+  const isCompactBoundary = item.subtype === "compact_boundary";
+  const variantClass = isCompactBoundary
+    ? "system-message-compact-boundary"
+    : "system-message-local-command";
+  const summaryClass = isCompactBoundary
+    ? "system-message-summary system-message-compact-summary"
+    : "system-message-summary system-message-local-command-summary";
 
-  if (details.length === 0) {
+  // All compact boundaries stay outline-expandable so users can inspect what
+  // was kept/summarized; local-command rows still collapse to a flat chip when
+  // they have no detail body.
+  if (!isCompactBoundary && details.length === 0) {
     return (
       <div className={`system-message ${variantClass}`}>
         <span className="system-message-icon">{icon}</span>
@@ -239,6 +244,8 @@ function CollapsibleSystemMessage({
       </div>
     );
   }
+
+  const resolvedDetails = details.length > 0 ? details : [COMPACT_EMPTY_DETAIL];
 
   return (
     <details
@@ -254,7 +261,7 @@ function CollapsibleSystemMessage({
         </span>
       </summary>
       <div className="system-message-details">
-        {details.map((detail, index) => (
+        {resolvedDetails.map((detail, index) => (
           <pre
             className="system-message-detail"
             key={`${item.id}-system-detail-${index}`}
