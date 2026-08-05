@@ -840,7 +840,10 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
       onIdleReapHoursChanged(updates.idleReapHours);
     }
     if (updates.publicSharesEnabled === false && publicShareService) {
-      await publicShareService.revokeAllShares();
+      await publicShareService.disableAndRevoke();
+    }
+    if (updates.publicSharesEnabled === true && publicShareService) {
+      await publicShareService.enable();
     }
 
     return c.json({

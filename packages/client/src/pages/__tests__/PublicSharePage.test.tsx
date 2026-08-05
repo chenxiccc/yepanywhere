@@ -144,4 +144,18 @@ describe("rewritePublicShareLocalAppHref", () => {
       "/public-api/shares/share-secret/files/raw?path=ui-report%2Fplot.png",
     );
   });
+
+  it("keeps viewer-specific freezes on rewritten file requests", () => {
+    const viewerContext = { ...context, viewerId: "viewer-token-1" };
+    expect(
+      rewritePublicShareLocalAppHref(
+        `/projects/${projectId}/file?path=topics%2Fsecurity.md`,
+        viewerContext,
+        shareUrl,
+      ),
+    ).toContain("viewerId=viewer-token-1");
+    expect(
+      buildPublicShareRawFileApiPath(viewerContext, "topics/security.md"),
+    ).toContain("viewerId=viewer-token-1");
+  });
 });

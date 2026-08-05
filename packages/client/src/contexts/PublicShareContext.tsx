@@ -15,6 +15,7 @@ export interface PublicShareContextValue {
   relayUrl: string;
   relayUsername: string;
   secret: string;
+  viewerId?: string;
 }
 
 export type PublicShareFileViewMode = "full" | "range";
@@ -129,6 +130,9 @@ export function buildPublicShareFileHref(
   url.searchParams.set("r", context.relayUrl);
   if (context.projectId) {
     url.searchParams.set("projectId", context.projectId);
+  }
+  if (context.viewerId) {
+    url.searchParams.set("viewerId", context.viewerId);
   }
   const lineNumber = options.lineNumber ?? normalized.lineNumber;
   if (lineNumber !== undefined) {
@@ -290,6 +294,7 @@ export function buildPublicShareRawFileApiPath(
     return null;
   }
   const params = new URLSearchParams({ path: normalized.path });
+  if (context.viewerId) params.set("viewerId", context.viewerId);
   return `/public-api/shares/${encodeURIComponent(context.secret)}/files/raw?${params}`;
 }
 

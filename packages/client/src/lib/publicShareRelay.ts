@@ -1,7 +1,19 @@
 import type {
+  PublicSessionSharePublicMetadata,
   PublicSessionShareResponse,
   RelayResponse,
 } from "@yep-anywhere/shared";
+
+export class PublicShareRelayError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly retryable: boolean,
+  ) {
+    super(message);
+    this.name = "PublicShareRelayError";
+  }
+}
 
 function generateRequestId(): string {
   if (globalThis.crypto?.randomUUID) {
@@ -115,7 +127,28 @@ export async function fetchPublicShareJsonViaRelay<T>(
 ): Promise<T> {
   const response = await fetchPublicShareRelayResponse(options);
   if (response.status >= 400) {
-    throw new Error("Share not found");
+    const body = response.body as
+      | { error?: unknown; retryable?: unknown }
+      | string
+      | null;
+    const message =
+      body && typeof body === "object" && typeof body.error === "string"
+        ? body.error
+        : "Share not found";
+    throw new PublicShareRelayError(
+      message,
+      response.status,
+      Boolean(body && typeof body === "object" && body.retryable === true),
+    );
+  }
+  if (typeof response.body === "string") {
+    const contentType =
+      response.headers?.["content-type"] ??
+      response.headers?.["Content-Type"] ??
+      "";
+    if (contentType.includes("json")) {
+      return JSON.parse(response.body) as T;
+    }
   }
   return response.body as T;
 }
@@ -162,14 +195,30 @@ export async function fetchPublicShareViaRelay(options: {
   relayUsername: string;
   secret: string;
   viewerId: string;
+  rawJson?: boolean;
 }): Promise<PublicSessionShareResponse> {
   const shareParams = new URLSearchParams({ viewerId: options.viewerId });
   if (options.afterMessageId) {
     shareParams.set("afterMessageId", options.afterMessageId);
   }
+  if (options.rawJson) {
+    shareParams.set("wire", "raw-json");
+  }
   return await fetchPublicShareJsonViaRelay<PublicSessionShareResponse>({
     relayUrl: options.relayUrl,
     relayUsername: options.relayUsername,
     path: `/public-api/shares/${encodeURIComponent(options.secret)}?${shareParams}`,
+  });
+}
+
+export async function fetchPublicShareMetadataViaRelay(options: {
+  relayUrl: string;
+  relayUsername: string;
+  secret: string;
+}): Promise<PublicSessionSharePublicMetadata> {
+  return await fetchPublicShareJsonViaRelay<PublicSessionSharePublicMetadata>({
+    relayUrl: options.relayUrl,
+    relayUsername: options.relayUsername,
+    path: `/public-api/shares/${encodeURIComponent(options.secret)}/metadata`,
   });
 }

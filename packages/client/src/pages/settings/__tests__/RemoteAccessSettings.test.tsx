@@ -21,6 +21,7 @@ const {
   mockHostAwakeRefetch,
   mockUpdateSetting,
   mockUpdateSettings,
+  publicShareState,
   remoteConnectionState,
 } = vi.hoisted(() => ({
   hostAwakeState: {
@@ -41,6 +42,10 @@ const {
   mockHostAwakeRefetch: vi.fn(),
   mockUpdateSetting: vi.fn(),
   mockUpdateSettings: vi.fn(),
+  publicShareState: {
+    managementSupported: false,
+    status: null as null | { totalValidLinks: number },
+  },
   remoteConnectionState: {
     value: null as null | {
       currentHostId: string | null;
@@ -62,6 +67,10 @@ vi.mock("../../../components/RemoteAccessSetup", () => ({
   RemoteAccessSetup: () => <div>remoteAccessSetup</div>,
 }));
 
+vi.mock("../../../components/SessionShareModal", () => ({
+  SessionShareModal: () => <div>publicShareManager</div>,
+}));
+
 vi.mock("../../../contexts/HostIdentityContext", () => ({
   useHostIdentity: () => ({
     supported: hostIdentityState.supported,
@@ -78,7 +87,7 @@ vi.mock("../../../hooks/useDeveloperMode", () => ({
 }));
 
 vi.mock("../../../hooks/usePublicShareStatus", () => ({
-  usePublicShareStatus: () => ({ status: null }),
+  usePublicShareStatus: () => ({ status: publicShareState.status }),
 }));
 
 vi.mock("../../../hooks/useHostAwakeStatus", () => ({
@@ -101,7 +110,12 @@ vi.mock("../../../hooks/useServerSettings", () => ({
 vi.mock("../../../hooks/useVersion", () => ({
   useVersion: () => ({
     version: {
-      capabilities: hostAwakeState.supported ? ["host-awake-control"] : [],
+      capabilities: [
+        ...(hostAwakeState.supported ? ["host-awake-control"] : []),
+        ...(publicShareState.managementSupported
+          ? ["public-share-management"]
+          : []),
+      ],
     },
   }),
 }));
@@ -132,6 +146,8 @@ describe("RemoteAccessSettings host identity", () => {
     hostAwakeState.supported = false;
     hostAwakeState.status = null;
     hostAwakeState.error = null;
+    publicShareState.managementSupported = false;
+    publicShareState.status = null;
     developerModeState.multiHostMonitorEnabled = false;
     remoteConnectionState.value = null;
     mockHostAwakeRefetch.mockResolvedValue(undefined);
@@ -356,5 +372,41 @@ describe("RemoteAccessSettings host identity", () => {
     expect(
       screen.getByRole("button", { name: "multiHostMonitorOpen" }),
     ).toBeTruthy();
+  });
+
+  it("gates the public-share manager on the server capability", () => {
+    const view = render(<RemoteAccessSettings />);
+    expect(
+      screen.queryByRole("button", { name: "advancedPublicShareManageButton" }),
+    ).toBeNull();
+
+    publicShareState.managementSupported = true;
+    view.rerender(<RemoteAccessSettings />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "advancedPublicShareManageButton" }),
+    );
+    expect(screen.getByText("publicShareManager")).toBeTruthy();
+  });
+
+  it("confirms destructive disable with the valid-link count", async () => {
+    publicShareState.managementSupported = true;
+    publicShareState.status = { totalValidLinks: 3 };
+    hookState.settings = {
+      ...hookState.settings,
+      publicSharesEnabled: true,
+    };
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<RemoteAccessSettings />);
+
+    fireEvent.click(
+      screen.getByText("advancedPublicShareTitle").closest(".settings-item")!
+        .querySelector('input[type="checkbox"]')!,
+    );
+
+    expect(confirm).toHaveBeenCalledWith("advancedPublicShareDisableConfirm");
+    expect(mockUpdateSetting).not.toHaveBeenCalledWith(
+      "publicSharesEnabled",
+      false,
+    );
   });
 });

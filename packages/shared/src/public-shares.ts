@@ -3,6 +3,13 @@ import type { UrlProjectId } from "./projectId.js";
 import type { ProviderName } from "./types.js";
 
 export type PublicSessionShareMode = "frozen" | "live";
+export type PublicShareLinkedFileMode = "cow" | "live";
+export type PublicShareStorageState =
+  | "opening"
+  | "migrating"
+  | "ready"
+  | "failed"
+  | "disabled";
 
 export interface CreatePublicSessionShareRequest {
   projectId: UrlProjectId;
@@ -17,9 +24,12 @@ export interface CreatePublicSessionShareResponse {
   mode: PublicSessionShareMode;
   createdAt: string;
   secretBits: number;
+  linkedFileMode?: PublicShareLinkedFileMode;
 }
 
 export interface PublicSessionShareSessionStatusResponse {
+  storageState?: PublicShareStorageState;
+  storageError?: string | null;
   activeCount: number;
   frozenCount: number;
   liveCount: number;
@@ -61,12 +71,57 @@ export interface PublicSessionShareMetadata {
   updatedAt: string;
   activeViewerCount?: number;
   capturedAt?: string;
+  linkedFileMode?: PublicShareLinkedFileMode;
   source: {
     projectId: UrlProjectId;
     sessionId: string;
     projectName?: string;
     provider?: ProviderName;
   };
+}
+
+export interface PublicSessionSharePublicMetadata {
+  mode: PublicSessionShareMode;
+  title: string | null;
+  initialPrompt: string | null;
+  projectName: string | null;
+  provider?: ProviderName;
+  createdAt: string;
+  updatedAt: string;
+  capturedAt?: string;
+  linkedFileMode?: PublicShareLinkedFileMode;
+}
+
+export interface PublicShareManagementItem {
+  shareId: string;
+  mode: PublicSessionShareMode;
+  title: string | null;
+  projectName: string | null;
+  sessionId: string;
+  provider?: ProviderName;
+  createdAt: string;
+  updatedAt: string;
+  capturedAt?: string;
+  linkedFileMode?: PublicShareLinkedFileMode;
+  snapshotBytes?: number;
+  activeViewerCount: number;
+  hasViewerSnapshots: boolean;
+}
+
+export interface PublicShareManagementListResponse {
+  items: PublicShareManagementItem[];
+  nextCursor: string | null;
+  totalCount: number;
+}
+
+export interface RevokePublicShareResponse {
+  revoked: boolean;
+  cleanupPending?: boolean;
+}
+
+export interface RevokeAllPublicSharesResponse {
+  revokedCount: number;
+  cleanupPending?: boolean;
 }
 
 export interface PublicSessionShareResponse {

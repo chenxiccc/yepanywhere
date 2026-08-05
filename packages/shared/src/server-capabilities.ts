@@ -54,6 +54,36 @@ export interface ServerCapabilityDefinition {
 }
 
 export const SERVER_CAPABILITIES = {
+  publicShareManagement: {
+    name: "public-share-management",
+    kind: "permanent",
+    area: "remoteAccess",
+    introducedIn: "0.7.1",
+    description:
+      "Server exposes compact authenticated inventory and bearer-link revocation independently from public-share creation readiness.",
+    clientFallback:
+      "Hide global and direct management entries, preserve the browser context menu, and make no management request.",
+    serverContract: {
+      routes: [
+        "GET /api/public-shares",
+        "DELETE /api/public-shares/:shareId",
+        "POST /api/public-shares/revoke-all",
+      ],
+      routeModules: [
+        "packages/server/src/routes/public-share-management.ts",
+      ],
+      responseFields: [
+        "publicShares.items",
+        "publicShares.nextCursor",
+        "publicShares.totalCount",
+      ],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Hosted clients can outpace installed servers that lack compact inventory and one-link revocation routes.",
+    },
+  },
   glossaryTooltips: {
     name: "glossary-tooltips",
     kind: "permanent",
@@ -950,6 +980,8 @@ export type ServerCapabilityName =
 
 export const PROJECT_DIRECTORY_STORAGE_POLICY_CAPABILITY =
   SERVER_CAPABILITIES.projectDirectoryStoragePolicy.name;
+export const PUBLIC_SHARE_MANAGEMENT_CAPABILITY =
+  SERVER_CAPABILITIES.publicShareManagement.name;
 export const IDLE_REAP_HOURS_SETTING_CAPABILITY =
   SERVER_CAPABILITIES.idleReapHoursSetting.name;
 export const GLOSSARY_TOOLTIPS_CAPABILITY =

@@ -81,6 +81,7 @@ describe("PublicShareFilePage", () => {
       path: "docs/guide.md",
       projectId,
       r: "wss://relay.graehl.org/ws",
+      viewerId: "viewer-token-1",
     });
 
     render(
@@ -108,6 +109,14 @@ describe("PublicShareFilePage", () => {
     const mediaLink = screen.getByRole("link", { name: /diagram/i });
     expect(mediaLink.getAttribute("href")).toContain(
       "/share/share-secret/file",
+    );
+    expect(mediaLink.getAttribute("href")).toContain(
+      "viewerId=viewer-token-1",
+    );
+    expect(fetchPublicShareJsonViaRelayMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: expect.stringContaining("viewerId=viewer-token-1"),
+      }),
     );
     expect(fetchPublicShareBlobViaRelayMock).not.toHaveBeenCalled();
   });

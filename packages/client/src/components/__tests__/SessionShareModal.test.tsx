@@ -73,6 +73,31 @@ describe("SessionShareModal", () => {
       viewers: [],
       viewerId: "viewer-token-1",
     });
+    vi.spyOn(api, "getPublicShares").mockResolvedValue({
+      items: [
+        {
+          shareId: "share-1",
+          mode: "frozen",
+          title: "Build logs",
+          projectName: "project",
+          sessionId: "session-1",
+          provider: "codex",
+          createdAt: "2026-05-01T00:00:00.000Z",
+          updatedAt: "2026-05-01T00:01:00.000Z",
+          capturedAt: "2026-05-01T00:01:00.000Z",
+          linkedFileMode: "live",
+          snapshotBytes: 2048,
+          activeViewerCount: 0,
+          hasViewerSnapshots: false,
+        },
+      ],
+      nextCursor: null,
+      totalCount: 1,
+    });
+    vi.spyOn(api, "revokePublicShare").mockResolvedValue({ revoked: true });
+    vi.spyOn(api, "revokeAllPublicShares").mockResolvedValue({
+      revokedCount: 1,
+    });
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: { writeText },
@@ -428,6 +453,80 @@ describe("SessionShareModal", () => {
         "session-1",
         "viewer-token-1",
       );
+    });
+  });
+
+  it("opens compact session management without creating a link", async () => {
+    render(
+      <I18nProvider>
+        <SessionShareModal
+          projectId="cHJvamVjdA"
+          sessionId="session-1"
+          title="Build logs"
+          managementAvailable
+          onClose={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Manage This Session’s Shares" }),
+    );
+
+    expect(await screen.findByText("Build logs")).toBeTruthy();
+    expect(api.getPublicShares).toHaveBeenCalledWith({
+      projectId: "cHJvamVjdA",
+      sessionId: "session-1",
+      mode: undefined,
+    });
+    expect(api.createPublicSessionShare).not.toHaveBeenCalled();
+    expect(screen.getByText(/could not snapshot linked files/i)).toBeTruthy();
+  });
+
+  it("revokes one opaque managed link", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(
+      <I18nProvider>
+        <SessionShareModal
+          initialView="manage"
+          managementAvailable
+          onClose={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Revoke" }));
+    await waitFor(() => {
+      expect(api.revokePublicShare).toHaveBeenCalledWith("share-1");
+    });
+    expect(screen.getByText("No matching public links.")).toBeTruthy();
+  });
+
+  it("describes global revoke-all independently of the mode filter", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(
+      <I18nProvider>
+        <SessionShareModal
+          initialView="manage"
+          managementAvailable
+          onClose={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    await screen.findByText("Build logs");
+    fireEvent.change(screen.getByLabelText("Share type"), {
+      target: { value: "live" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Revoke Every Public Link" }),
+    );
+
+    expect(confirm).toHaveBeenCalledWith(
+      "Revoke every public link on this server? Anyone using one will immediately lose access.",
+    );
+    await waitFor(() => {
+      expect(api.revokeAllPublicShares).toHaveBeenCalledTimes(1);
     });
   });
 });

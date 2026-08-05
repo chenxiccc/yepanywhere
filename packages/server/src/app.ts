@@ -112,6 +112,7 @@ import {
   createPublicSharePublicRoutes,
   createPublicShareRoutes,
 } from "./routes/public-shares.js";
+import { createPublicShareManagementRoutes } from "./routes/public-share-management.js";
 import { createRecentsRoutes } from "./routes/recents.js";
 import {
   createServerAdminRoutes,
@@ -2016,6 +2017,7 @@ export function createApp(options: AppOptions): AppResult {
         lineEnd?: number;
         lineNumber?: number;
         raw?: boolean;
+        projectRoot?: string;
         viewMode?: "full" | "range";
       },
     ): Promise<Response> => {
@@ -2036,6 +2038,16 @@ export function createApp(options: AppOptions): AppResult {
         searchParams.set("download", "true");
       }
       const route = fileOptions.raw ? "files/raw" : "files";
+      if (fileOptions.projectRoot) {
+        const snapshotFiles = createFilesRoutes({
+          scanner: {
+            getProject: async () => ({ path: fileOptions.projectRoot }),
+          } as unknown as ProjectScanner,
+        });
+        return await snapshotFiles.request(
+          `/${projectId}/${route}?${searchParams}`,
+        );
+      }
       return await app.fetch(
         new Request(
           `http://127.0.0.1/api/projects/${projectId}/${route}?${searchParams}`,
@@ -2067,6 +2079,12 @@ export function createApp(options: AppOptions): AppResult {
     };
 
     app.route("/api/public-shares", createPublicShareRoutes(publicShareDeps));
+    app.route(
+      "/api",
+      createPublicShareManagementRoutes({
+        publicShareService: options.publicShareService,
+      }),
+    );
     app.route(
       "/public-api/shares",
       createPublicSharePublicRoutes(publicShareDeps),

@@ -24,6 +24,7 @@ export function PublicShareFilePage() {
   const filePath = searchParams.get("path") ?? "";
   const projectId = searchParams.get("projectId");
   const relayUsername = searchParams.get("h") ?? "";
+  const viewerId = searchParams.get("viewerId") ?? undefined;
   const lineNumber = parsePositiveInteger(searchParams.get("line"));
   const lineEnd = parsePositiveInteger(searchParams.get("lineEnd"));
   const viewMode =
@@ -52,8 +53,9 @@ export function PublicShareFilePage() {
       relayUrl: relayConfig.url,
       relayUsername,
       secret,
+      viewerId,
     };
-  }, [projectId, relayConfig.url, relayUsername, secret]);
+  }, [projectId, relayConfig.url, relayUsername, secret, viewerId]);
 
   const shareHref = useMemo(() => {
     if (!secret) {
@@ -63,9 +65,10 @@ export function PublicShareFilePage() {
     if (relayUsername) params.set("h", relayUsername);
     if (relayConfig.url) params.set("r", relayConfig.url);
     if (projectId) params.set("projectId", projectId);
+    if (viewerId) params.set("viewerId", viewerId);
     const query = params.toString();
     return `/share/${encodeURIComponent(secret)}${query ? `?${query}` : ""}`;
-  }, [projectId, relayConfig.url, relayUsername, secret]);
+  }, [projectId, relayConfig.url, relayUsername, secret, viewerId]);
 
   const source = useMemo<FileViewerSource | null>(() => {
     if (!publicShareContext || !filePath || relayConfig.error) {

@@ -90,7 +90,7 @@ Frozen share content and active-link authorization are canonical state. A
 pressure coordinator may not discard them as if they were a cache. Persistence
 must instead be sharded and gated by active, unrevoked links so loading or
 saving one session/link never materializes the aggregate. See
-[`docs/tactical/090-public-share-persistence-and-management.md`](../docs/tactical/090-public-share-persistence-and-management.md).
+[Public Share Persistence](public-share-persistence.md).
 
 ### Cold display is a server scheduling contract
 

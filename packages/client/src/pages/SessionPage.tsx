@@ -14,8 +14,10 @@ import type {
   UserQuestionAnswers,
 } from "@yep-anywhere/shared";
 import {
+  PUBLIC_SHARE_MANAGEMENT_CAPABILITY,
   getCanonicalInvocationToken,
   isClaudeProviderName,
+  serverHasCapability,
   thinkingOptionToConfig,
 } from "@yep-anywhere/shared";
 import {
@@ -1873,11 +1875,22 @@ function SessionPageContent({
   const [showHeartbeatModal, setShowHeartbeatModal] = useState(false);
   const [showRecapModal, setShowRecapModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [shareModalView, setShareModalView] = useState<"manage" | "session">(
+    "session",
+  );
   const [shareModalAnchor, setShareModalAnchor] =
     useState<ModalAnchorRect | null>(null);
   const [publicShareStatus, setPublicShareStatus] =
     useState<PublicSessionShareSessionStatusResponse | null>(null);
-  const showPublicShareControls = publicShareGlobalStatus?.canCreate ?? false;
+  const canCreatePublicShares = publicShareGlobalStatus?.canCreate ?? false;
+  const publicShareManagementAvailable = serverHasCapability(
+    versionInfo,
+    PUBLIC_SHARE_MANAGEMENT_CAPABILITY,
+  );
+  const showPublicShareIndicator =
+    canCreatePublicShares ||
+    (publicShareStatus?.activeCount ?? 0) > 0 ||
+    (publicShareManagementAvailable && publicSharesEnabled);
   const [pendingElsewhereDismissedToolId, setPendingElsewhereDismissedToolId] =
     useState<string | null>(null);
 
@@ -4177,6 +4190,7 @@ function SessionPageContent({
 
   const handleShare = useCallback(() => {
     setShareModalAnchor(null);
+    setShareModalView("session");
     setShowShareModal(true);
   }, []);
 
@@ -4191,9 +4205,21 @@ function SessionPageContent({
         top: rect.top,
         width: rect.width,
       });
+      setShareModalView("session");
       setShowShareModal(true);
     },
     [],
+  );
+
+  const handleShareIndicatorContextMenu = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      if (!publicShareManagementAvailable) return;
+      event.preventDefault();
+      setShareModalAnchor(null);
+      setShareModalView("manage");
+      setShowShareModal(true);
+    },
+    [publicShareManagementAvailable],
   );
 
   useEffect(() => {
@@ -4201,7 +4227,11 @@ function SessionPageContent({
     let timer: ReturnType<typeof setTimeout> | null = null;
     setPublicShareStatus(null);
 
-    if (!showPublicShareControls) {
+    if (
+      !publicSharesEnabled ||
+      (publicShareGlobalStatus?.storageState !== undefined &&
+        publicShareGlobalStatus.storageState !== "ready")
+    ) {
       return () => {
         cancelled = true;
       };
@@ -4238,7 +4268,12 @@ function SessionPageContent({
         clearTimeout(timer);
       }
     };
-  }, [actualSessionId, projectId, showPublicShareControls]);
+  }, [
+    actualSessionId,
+    projectId,
+    publicShareGlobalStatus?.storageState,
+    publicSharesEnabled,
+  ]);
 
   const handleToggleHeartbeat = useCallback(async () => {
     const previousEnabled = heartbeatTurnsEnabled;
@@ -4751,7 +4786,7 @@ function SessionPageContent({
                   }
                   onTerminate={handleTerminate}
                   onReload={() => window.location.reload()}
-                  onShare={showPublicShareControls ? handleShare : undefined}
+                  onShare={canCreatePublicShares ? handleShare : undefined}
                   useFixedPositioning
                   useEllipsisIcon
                   onOpenChange={(open) => {
@@ -4763,7 +4798,7 @@ function SessionPageContent({
           </div>
           <div className="session-header-right">
             <ClientLogRecordingBadge inline />
-            {showPublicShareControls && (
+            {showPublicShareIndicator && (
               <ViewerCountIndicator
                 className="session-header-viewer-count"
                 count={
@@ -4782,6 +4817,11 @@ function SessionPageContent({
                     : t("sessionShareOpenTitle")
                 }
                 onClick={handleShareIndicatorClick}
+                onContextMenu={
+                  publicShareManagementAvailable
+                    ? handleShareIndicatorContextMenu
+                    : undefined
+                }
               />
             )}
             {canStopOwnedProcess && (
@@ -4880,7 +4920,9 @@ function SessionPageContent({
           sessionId={actualSessionId}
           initialPrompt={publicShareInitialPrompt}
           title={displayTitle}
-          canCreateShares={showPublicShareControls}
+          canCreateShares={canCreatePublicShares}
+          initialView={shareModalView}
+          managementAvailable={publicShareManagementAvailable}
           onStatusChange={setPublicShareStatus}
           onClose={() => {
             setShowShareModal(false);

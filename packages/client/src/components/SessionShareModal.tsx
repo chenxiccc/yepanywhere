@@ -1,4 +1,6 @@
 import type {
+  PublicShareLinkedFileMode,
+  PublicShareManagementItem,
   PublicSessionShareMode,
   PublicSessionShareSessionStatusResponse,
   PublicSessionShareViewerSummary,
@@ -10,19 +12,20 @@ import { useI18n } from "../i18n";
 import { writeClipboardTextLater } from "../lib/clipboard";
 import { Modal, type ModalAnchorRect } from "./ui/Modal";
 import { ViewerCountIndicator } from "./ViewerCountIndicator";
+import styles from "./SessionShareModal.module.css";
 
 interface SessionShareModalProps {
   anchorRect?: ModalAnchorRect | null;
   initialPrompt?: string | null;
-  projectId: string;
-  sessionId: string;
+  projectId?: string;
+  sessionId?: string;
   title?: string | null;
   canCreateShares?: boolean;
   onStatusChange?: (status: PublicSessionShareSessionStatusResponse) => void;
   onClose: () => void;
+  initialView?: "manage" | "session";
+  managementAvailable?: boolean;
 }
-
-const STATUS_POLL_MS = 10_000;
 
 type ShareWorkingState =
   | PublicSessionShareMode
@@ -30,6 +33,13 @@ type ShareWorkingState =
   | "revoke"
   | `disconnect:${string}`
   | `freeze:${string}`;
+
+function formatShareBytes(bytes: number | undefined): string | null {
+  if (bytes === undefined) return null;
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+}
 
 export function SessionShareModal({
   anchorRect,
@@ -40,14 +50,34 @@ export function SessionShareModal({
   canCreateShares = true,
   onStatusChange,
   onClose,
+  initialView = "session",
+  managementAvailable = false,
 }: SessionShareModalProps) {
   const { t } = useI18n();
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] =
     useState<PublicSessionShareSessionStatusResponse | null>(null);
+  const [statusLoading, setStatusLoading] = useState(true);
+  const [statusError, setStatusError] = useState<string | null>(null);
   const [isWorking, setIsWorking] = useState<ShareWorkingState | null>(null);
   const [result, setResult] = useState<string | null>(null);
+  const [view, setView] = useState(initialView);
+  const [createdLinkedFileMode, setCreatedLinkedFileMode] =
+    useState<PublicShareLinkedFileMode | null>(null);
+  const [managementItems, setManagementItems] = useState<
+    PublicShareManagementItem[]
+  >([]);
+  const [managementCursor, setManagementCursor] = useState<string | null>(null);
+  const [managementTotal, setManagementTotal] = useState(0);
+  const [managementMode, setManagementMode] = useState<
+    "all" | PublicSessionShareMode
+  >("all");
+  const [managementLoading, setManagementLoading] = useState(false);
+  const [managementError, setManagementError] = useState<string | null>(null);
+  const [managementWorking, setManagementWorking] = useState<string | null>(
+    null,
+  );
   const urlInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -57,10 +87,12 @@ export function SessionShareModal({
   }, [onStatusChange, status]);
 
   useEffect(() => {
+    if (!projectId || !sessionId || view !== "session") return undefined;
     let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
 
     const refreshStatus = async () => {
+      setStatusLoading(true);
+      setStatusError(null);
       try {
         const nextStatus = await api.getPublicSessionShareStatus(
           projectId,
@@ -69,14 +101,17 @@ export function SessionShareModal({
         if (!cancelled) {
           setStatus(nextStatus);
         }
-      } catch {
+      } catch (loadError) {
         if (!cancelled) {
           setStatus(null);
+          setStatusError(
+            loadError instanceof Error
+              ? loadError.message
+              : t("publicShareManagementLoadFailed"),
+          );
         }
       } finally {
-        if (!cancelled) {
-          timer = setTimeout(refreshStatus, STATUS_POLL_MS);
-        }
+        if (!cancelled) setStatusLoading(false);
       }
     };
 
@@ -84,13 +119,45 @@ export function SessionShareModal({
 
     return () => {
       cancelled = true;
-      if (timer) {
-        clearTimeout(timer);
+    };
+  }, [projectId, sessionId, t, view]);
+
+  useEffect(() => {
+    if (view !== "manage" || !managementAvailable) return undefined;
+    let cancelled = false;
+    const load = async () => {
+      setManagementLoading(true);
+      setManagementError(null);
+      try {
+        const response = await api.getPublicShares({
+          projectId,
+          sessionId,
+          mode: managementMode === "all" ? undefined : managementMode,
+        });
+        if (cancelled) return;
+        setManagementItems(response.items);
+        setManagementCursor(response.nextCursor);
+        setManagementTotal(response.totalCount);
+      } catch (loadError) {
+        if (!cancelled) {
+          setManagementError(
+            loadError instanceof Error
+              ? loadError.message
+              : t("publicShareManagementLoadFailed"),
+          );
+        }
+      } finally {
+        if (!cancelled) setManagementLoading(false);
       }
     };
-  }, [projectId, sessionId]);
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [managementAvailable, managementMode, projectId, sessionId, t, view]);
 
   const createAndCopyShare = async (mode: PublicSessionShareMode) => {
+    if (!projectId || !sessionId) return;
     setIsWorking(mode);
     setError(null);
     setResult(null);
@@ -111,6 +178,7 @@ export function SessionShareModal({
     try {
       const result = await sharePromise;
       setUrl(result.url);
+      setCreatedLinkedFileMode(result.linkedFileMode ?? null);
       if (await copyPromise) {
         setResult(t("sessionShareCopiedReadOnly"));
       } else {
@@ -140,6 +208,7 @@ export function SessionShareModal({
   };
 
   const revokeAll = async () => {
+    if (!projectId || !sessionId) return;
     setIsWorking("revoke");
     setError(null);
     setResult(null);
@@ -161,6 +230,7 @@ export function SessionShareModal({
   };
 
   const freezeAllLive = async () => {
+    if (!projectId || !sessionId) return;
     setIsWorking("freeze-all");
     setError(null);
     setResult(null);
@@ -185,6 +255,7 @@ export function SessionShareModal({
   };
 
   const freezeViewerToken = async (viewer: PublicSessionShareViewerSummary) => {
+    if (!projectId || !sessionId) return;
     setIsWorking(`freeze:${viewer.viewerId}`);
     setError(null);
     setResult(null);
@@ -208,6 +279,7 @@ export function SessionShareModal({
   const disconnectViewerToken = async (
     viewer: PublicSessionShareViewerSummary,
   ) => {
+    if (!projectId || !sessionId) return;
     setIsWorking(`disconnect:${viewer.viewerId}`);
     setError(null);
     setResult(null);
@@ -228,7 +300,91 @@ export function SessionShareModal({
     }
   };
 
-  const hasActiveShares = canCreateShares && (status?.activeCount ?? 0) > 0;
+  const revokeManagedShare = async (item: PublicShareManagementItem) => {
+    if (!window.confirm(t("publicShareManagementRevokeOneConfirm"))) return;
+    setManagementWorking(item.shareId);
+    setManagementError(null);
+    try {
+      const response = await api.revokePublicShare(item.shareId);
+      if (response.revoked) {
+        setManagementItems((items) =>
+          items.filter((candidate) => candidate.shareId !== item.shareId),
+        );
+        setManagementTotal((count) => Math.max(0, count - 1));
+      }
+    } catch (revokeError) {
+      setManagementError(
+        revokeError instanceof Error
+          ? revokeError.message
+          : t("sessionShareRevokeFailed"),
+      );
+    } finally {
+      setManagementWorking(null);
+    }
+  };
+
+  const revokeEveryManagedShare = async () => {
+    if (
+      !window.confirm(
+        projectId && sessionId
+          ? t("publicShareManagementRevokeSessionConfirm")
+          : t("publicShareManagementRevokeAllConfirm"),
+      )
+    ) {
+      return;
+    }
+    setManagementWorking("all");
+    setManagementError(null);
+    try {
+      if (projectId && sessionId) {
+        const response = await api.revokePublicSessionShares(
+          projectId,
+          sessionId,
+        );
+        setStatus(response);
+      } else {
+        await api.revokeAllPublicShares();
+      }
+      setManagementItems([]);
+      setManagementCursor(null);
+      setManagementTotal(0);
+    } catch (revokeError) {
+      setManagementError(
+        revokeError instanceof Error
+          ? revokeError.message
+          : t("sessionShareRevokeFailed"),
+      );
+    } finally {
+      setManagementWorking(null);
+    }
+  };
+
+  const loadMoreManagedShares = async () => {
+    if (!managementCursor) return;
+    setManagementLoading(true);
+    setManagementError(null);
+    try {
+      const response = await api.getPublicShares({
+        cursor: managementCursor,
+        projectId,
+        sessionId,
+        mode: managementMode === "all" ? undefined : managementMode,
+      });
+      setManagementItems((items) => [...items, ...response.items]);
+      setManagementCursor(response.nextCursor);
+      setManagementTotal(response.totalCount);
+    } catch (loadError) {
+      setManagementError(
+        loadError instanceof Error
+          ? loadError.message
+          : t("publicShareManagementLoadFailed"),
+      );
+    } finally {
+      setManagementLoading(false);
+    }
+  };
+
+  const hasActiveShares = (status?.activeCount ?? 0) > 0;
   const activeViewerCount = status?.activeViewerCount ?? 0;
   const viewers = status?.viewers ?? [];
   const viewerSummary = t("sessionShareViewerSummary", {
@@ -237,6 +393,135 @@ export function SessionShareModal({
     live: status?.liveCount ?? 0,
     frozen: status?.frozenCount ?? 0,
   });
+
+  if (view === "manage") {
+    return (
+      <Modal title={t("publicShareManagementTitle")} onClose={onClose}>
+        <div className={`session-share-modal ${styles.manager}`}>
+          <div className={styles.managerToolbar}>
+            {projectId && sessionId && (
+              <button
+                type="button"
+                className="settings-button settings-button-secondary"
+                onClick={() => setView("session")}
+              >
+                {t("publicShareManagementBackToSession")}
+              </button>
+            )}
+            <label className={styles.modeFilter}>
+              <span>{t("publicShareManagementModeFilter")}</span>
+              <select
+                value={managementMode}
+                disabled={managementLoading || managementWorking !== null}
+                onChange={(event) =>
+                  setManagementMode(
+                    event.target.value as "all" | PublicSessionShareMode,
+                  )
+                }
+              >
+                <option value="all">{t("publicShareManagementModeAll")}</option>
+                <option value="live">{t("publicShareLiveBadge")}</option>
+                <option value="frozen">{t("publicShareFrozenBadge")}</option>
+              </select>
+            </label>
+            <button
+              type="button"
+              className="settings-button settings-button-danger"
+              disabled={managementWorking !== null || managementTotal === 0}
+              onClick={() => void revokeEveryManagedShare()}
+            >
+              {managementWorking === "all"
+                ? t("sessionShareRevoking")
+                : projectId && sessionId
+                  ? t("sessionShareRevokeAll")
+                  : t("publicShareManagementRevokeAll")}
+            </button>
+          </div>
+
+          {managementError && (
+            <div className={styles.error} role="alert">
+              {managementError}
+            </div>
+          )}
+          {managementLoading && managementItems.length === 0 ? (
+            <div className={styles.empty} role="status">
+              {t("publicShareManagementLoading")}
+            </div>
+          ) : managementItems.length === 0 ? (
+            <div className={styles.empty}>
+              {t("publicShareManagementEmpty")}
+            </div>
+          ) : (
+            <div className={styles.list} role="list">
+              {managementItems.map((item) => {
+                const bytes = formatShareBytes(item.snapshotBytes);
+                return (
+                  <div
+                    className={styles.row}
+                    role="listitem"
+                    key={item.shareId}
+                  >
+                    <div className={styles.rowMain}>
+                      <strong>{item.title ?? t("publicShareUntitled")}</strong>
+                      <span className={styles.rowMeta}>
+                        {item.projectName ??
+                          t("publicShareManagementUnknownProject")}
+                        {" · "}
+                        {item.mode === "live"
+                          ? t("publicShareLiveBadge")
+                          : t("publicShareFrozenBadge")}
+                        {bytes ? ` · ${bytes}` : ""}
+                      </span>
+                      <span className={styles.rowMeta}>
+                        {new Date(item.createdAt).toLocaleString()}
+                        {item.activeViewerCount > 0
+                          ? ` · ${t("publicShareActiveViewers", {
+                              count: item.activeViewerCount,
+                            })}`
+                          : ""}
+                      </span>
+                      {item.mode === "frozen" &&
+                        item.linkedFileMode === "live" && (
+                          <span className={styles.warning}>
+                            {t("publicShareFrozenLinkedFilesLiveWarning")}
+                          </span>
+                        )}
+                    </div>
+                    <button
+                      type="button"
+                      className="settings-button settings-button-danger"
+                      disabled={managementWorking !== null}
+                      onClick={() => void revokeManagedShare(item)}
+                    >
+                      {managementWorking === item.shareId
+                        ? t("sessionShareRevoking")
+                        : t("publicShareManagementRevokeOne")}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {managementCursor && (
+            <button
+              type="button"
+              className="settings-button settings-button-secondary"
+              disabled={managementLoading}
+              onClick={() => void loadMoreManagedShares()}
+            >
+              {managementLoading
+                ? t("publicShareManagementLoading")
+                : t("publicShareManagementLoadMore")}
+            </button>
+          )}
+          <div className={styles.count}>
+            {t("publicShareManagementCount", { count: managementTotal })}
+          </div>
+        </div>
+      </Modal>
+    );
+  }
 
   return (
     <Modal
@@ -301,6 +586,31 @@ export function SessionShareModal({
 
         {error && <div className="session-share-error">{error}</div>}
         {result && <div className="session-share-status">{result}</div>}
+        {createdLinkedFileMode === "live" && (
+          <div className="session-share-error" role="note">
+            {t("publicShareFrozenLinkedFilesLiveWarning")}
+          </div>
+        )}
+
+        {statusLoading && (
+          <div className="session-share-status" role="status">
+            {t("publicShareManagementLoadingExisting")}
+          </div>
+        )}
+        {statusError && (
+          <div className="session-share-error" role="alert">
+            {statusError}
+          </div>
+        )}
+        {managementAvailable && (
+          <button
+            type="button"
+            className="session-share-small-button"
+            onClick={() => setView("manage")}
+          >
+            {t("publicShareManagementManageSession")}
+          </button>
+        )}
 
         {hasActiveShares && (
           <div className="session-share-management">
@@ -338,74 +648,79 @@ export function SessionShareModal({
               </div>
             </div>
             {viewers.length > 0 && (
-              <div
-                className="session-share-viewer-list"
-                role="list"
-                aria-label={t("sessionShareViewerList")}
-              >
-                {viewers.map((viewer) => (
-                  <div
-                    className="session-share-viewer-row"
-                    key={viewer.viewerId}
-                  >
-                    <div className="session-share-viewer-main">
-                      <span className="session-share-viewer-token">
-                        {viewer.shortId}
-                      </span>
-                      <span className="session-share-viewer-meta">
-                        {t("sessionShareViewerMeta", {
-                          count: viewer.accessCount,
-                          time: new Date(viewer.lastSeenAt).toLocaleString(),
-                        })}
-                      </span>
+              <>
+                <p className="session-share-readonly-note">
+                  {t("sessionShareViewerOperationalWarning")}
+                </p>
+                <div
+                  className="session-share-viewer-list"
+                  role="list"
+                  aria-label={t("sessionShareViewerList")}
+                >
+                  {viewers.map((viewer) => (
+                    <div
+                      className="session-share-viewer-row"
+                      key={viewer.viewerId}
+                    >
+                      <div className="session-share-viewer-main">
+                        <span className="session-share-viewer-token">
+                          {viewer.shortId}
+                        </span>
+                        <span className="session-share-viewer-meta">
+                          {t("sessionShareViewerMeta", {
+                            count: viewer.accessCount,
+                            time: new Date(viewer.lastSeenAt).toLocaleString(),
+                          })}
+                        </span>
+                      </div>
+                      <div className="session-share-viewer-state">
+                        {viewer.disconnected
+                          ? t("sessionShareViewerDisconnectedState")
+                          : viewer.frozen
+                            ? t("sessionShareViewerFrozenState")
+                            : viewer.active
+                              ? t("sessionShareViewerActiveState")
+                              : t("sessionShareViewerInactiveState")}
+                      </div>
+                      <div className="session-share-viewer-actions">
+                        <button
+                          type="button"
+                          className="session-share-icon-button"
+                          onClick={() => void freezeViewerToken(viewer)}
+                          disabled={
+                            isWorking !== null ||
+                            viewer.disconnected ||
+                            viewer.frozen ||
+                            (status?.liveCount ?? 0) === 0
+                          }
+                          title={t("sessionShareFreezeViewerTitle", {
+                            token: viewer.shortId,
+                          })}
+                          aria-label={t("sessionShareFreezeViewerTitle", {
+                            token: viewer.shortId,
+                          })}
+                        >
+                          |||
+                        </button>
+                        <button
+                          type="button"
+                          className="session-share-icon-button session-share-icon-button-danger"
+                          onClick={() => void disconnectViewerToken(viewer)}
+                          disabled={isWorking !== null || viewer.disconnected}
+                          title={t("sessionShareDisconnectViewerTitle", {
+                            token: viewer.shortId,
+                          })}
+                          aria-label={t("sessionShareDisconnectViewerTitle", {
+                            token: viewer.shortId,
+                          })}
+                        >
+                          x
+                        </button>
+                      </div>
                     </div>
-                    <div className="session-share-viewer-state">
-                      {viewer.disconnected
-                        ? t("sessionShareViewerDisconnectedState")
-                        : viewer.frozen
-                          ? t("sessionShareViewerFrozenState")
-                          : viewer.active
-                            ? t("sessionShareViewerActiveState")
-                            : t("sessionShareViewerInactiveState")}
-                    </div>
-                    <div className="session-share-viewer-actions">
-                      <button
-                        type="button"
-                        className="session-share-icon-button"
-                        onClick={() => void freezeViewerToken(viewer)}
-                        disabled={
-                          isWorking !== null ||
-                          viewer.disconnected ||
-                          viewer.frozen ||
-                          (status?.liveCount ?? 0) === 0
-                        }
-                        title={t("sessionShareFreezeViewerTitle", {
-                          token: viewer.shortId,
-                        })}
-                        aria-label={t("sessionShareFreezeViewerTitle", {
-                          token: viewer.shortId,
-                        })}
-                      >
-                        |||
-                      </button>
-                      <button
-                        type="button"
-                        className="session-share-icon-button session-share-icon-button-danger"
-                        onClick={() => void disconnectViewerToken(viewer)}
-                        disabled={isWorking !== null || viewer.disconnected}
-                        title={t("sessionShareDisconnectViewerTitle", {
-                          token: viewer.shortId,
-                        })}
-                        aria-label={t("sessionShareDisconnectViewerTitle", {
-                          token: viewer.shortId,
-                        })}
-                      >
-                        x
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              </>
             )}
           </div>
         )}

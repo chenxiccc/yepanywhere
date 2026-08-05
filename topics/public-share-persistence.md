@@ -6,10 +6,10 @@
 
 Topic: public-share-persistence
 
-Status: Target contract; not implemented. The executable migration and
-verification sequence lives in
-[`docs/tactical/090-public-share-persistence-and-management.md`](../docs/tactical/090-public-share-persistence-and-management.md).
-Delete that tactical ledger after this contract is implemented and verified.
+The implemented store is owned by `PublicShareStore`; the specialized legacy
+aggregate reader is `LegacyPublicShareReader`. `PublicShareService` retains the
+product-level authorization and viewer-presence interface while delegating
+durable content and grants to that store.
 
 ## Why the aggregate must go
 
@@ -73,10 +73,12 @@ public-shares/
 └─ migration.json
 ```
 
-This is a logical layout, not a mandate that the grant store use JSON. A small
-atomic file, an embedded database, or separately keyed compact records are all
-valid. Its size is proportional to valid-link metadata and it contains no
-transcript or project-file bytes. It need not be organized by session.
+The current implementation uses an atomic `grants.json`, per-state
+`state.json`, response-ready `session.json.gz`, and `presentation.json`. The
+grant file's size is proportional to valid-link metadata and it contains no
+transcript or project-file bytes. It is intentionally not organized by
+session; management filters that bounded control data without touching state
+directories.
 
 The grant store is the sole source of truth for valid URLs and supports direct
 secret-hash lookup, authenticated inventory, and per-session filtering. A
@@ -104,6 +106,17 @@ bytes without an eager full physical copy.
 The clone is storage, not authority. Public file views remain limited to paths
 already linked or visible in share content and bounded render assets; unlinked
 clone content is never exposed. Git metadata is not a public asset.
+
+Symlinks are omitted from a successful clone. Preserving one could escape the
+immutable tree and expose current external bytes while the revision claimed
+copy-on-write semantics. An authorized linked symlink is therefore unavailable
+from a CoW-backed frozen revision rather than silently becoming live.
+
+Project-backed captures do not reuse an older revision merely because the
+sanitized transcript bytes are identical. Each capture attempt has a distinct
+revision identity so a worktree changed between two freezes cannot make the
+second link alias the first link's project snapshot. Grants created by one
+freeze operation may still share that operation's revision.
 
 If the filesystem does not support the CoW operation, YA deliberately keeps the
 legacy behavior for linked files: an authorized link reads the current project
@@ -179,6 +192,15 @@ the immutable revision first and then atomically retargets the valid grant from
 `live` to that revision. Per-session and global revoke select grants from the
 compact store; they do not open transcript bodies.
 
+The immutable revision directory is renamed into place before its state entry
+commits. For a body-only content-addressed capture, a later byte-identical body
+and presentation validates and adopts the complete orphan directory before
+creating authority. Project-backed captures have distinct revision identities;
+an interrupted one can remain only as unreferenced content and cannot become
+authority. An incomplete or malformed matching orphan fails explicitly. A
+state directory without a remaining grant never recreates a bearer
+authorization.
+
 The Settings **Public Read-Only Share** toggle remains a destructive global kill
 switch. Disable persists the false gate first, invalidates all grants, and then
 resumes cleanup. Re-enable finishes interrupted disable cleanup and starts with
@@ -205,6 +227,30 @@ authenticated session use remains available, and the global kill switch can
 disable/revoke the legacy source during migration. The original aggregate is
 renamed to a non-serving backup before completion and retained for an explicit
 later cleanup decision.
+
+Migration starts only after the listening server is available. Its durable
+completion marker and log record the migrated grant count, source byte offset,
+body bytes, elapsed time, and observed peak heap. A malformed source remains in
+place; a successful source becomes a non-serving backup. A frozen legacy body
+whose stored message count cannot be satisfied remains explicitly unavailable
+instead of being repaired from later live session contents.
+
+## Serving and management bounds
+
+The compact metadata route reads a grant and its already-persisted public
+header without opening `session.json.gz`. A new frozen viewer requests the
+`raw-json` wire form; the server streams the one selected gzip revision between
+the small response envelope fields. The ordinary combined response remains for
+legacy viewers and live shares.
+
+Authenticated inventory and revocation are exposed by the dedicated
+`public-share-management` route module. Inventory uses stable keyset pagination
+with a maximum page size of 100 and optional project, session, and mode filters.
+It returns opaque share ids, public headers, sizes, modes, timestamps, and
+ephemeral viewer counts—never the bearer secret, secret hash, transcript body,
+project root, or authorized path set. One-link revocation and explicitly
+confirmed global revocation commit grant invalidation before best-effort
+content collection; a cleanup failure remains visible as `cleanupPending`.
 
 ## Related contracts
 

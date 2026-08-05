@@ -98,6 +98,9 @@ filesystem discovery facility:
 - Public endpoints should use captured opaque targets or exact allowed entries,
   not raw absolute paths, `..` traversal, or symlink-sensitive filesystem
   resolution chosen by the browser.
+- CoW project snapshots omit symlinks. A symlink can otherwise escape the
+  immutable clone and expose later external bytes while the share reports that
+  linked files are frozen.
 
 The design point is intentionally narrower than "the user could ask the agent to
 cat that file." That argument applies to the authenticated operator, not to an

@@ -28,6 +28,8 @@ import type {
   ProjectQueuePromoteNowResponse,
   ProjectQueueResponse,
   ProjectWorkstreamsResponse,
+  PublicShareManagementListResponse,
+  PublicShareStorageState,
   WorkstreamCheckoutPreviewResponse,
   PromptSuggestionMode,
   PromptCacheKeepaliveSettings,
@@ -39,6 +41,8 @@ import type {
   PublicSessionShareSessionStatusResponse,
   PublicSessionShareViewerActionResponse,
   RevokePublicSessionSharesResponse,
+  RevokeAllPublicSharesResponse,
+  RevokePublicShareResponse,
   SessionMetadataResponse,
   SessionQueuedMessageSummary,
   SessionLivenessSnapshot,
@@ -1508,6 +1512,37 @@ export const api = {
       `/public-shares/sessions/${encodeURIComponent(projectId)}/${encodeURIComponent(sessionId)}`,
     ),
 
+  getPublicShares: (options: {
+    cursor?: string;
+    limit?: number;
+    projectId?: string;
+    sessionId?: string;
+    mode?: "frozen" | "live";
+  } = {}) => {
+    const params = new URLSearchParams();
+    if (options.cursor) params.set("cursor", options.cursor);
+    if (options.limit) params.set("limit", String(options.limit));
+    if (options.projectId) params.set("projectId", options.projectId);
+    if (options.sessionId) params.set("sessionId", options.sessionId);
+    if (options.mode) params.set("mode", options.mode);
+    const query = params.toString();
+    return fetchJSON<PublicShareManagementListResponse>(
+      `/public-shares${query ? `?${query}` : ""}`,
+    );
+  },
+
+  revokePublicShare: (shareId: string) =>
+    fetchJSON<RevokePublicShareResponse>(
+      `/public-shares/${encodeURIComponent(shareId)}`,
+      { method: "DELETE" },
+    ),
+
+  revokeAllPublicShares: () =>
+    fetchJSON<RevokeAllPublicSharesResponse>("/public-shares/revoke-all", {
+      method: "POST",
+      body: JSON.stringify({ confirmation: "revoke-all-public-shares" }),
+    }),
+
   createPublicSessionShare: (body: CreatePublicSessionShareRequest) =>
     fetchJSON<CreatePublicSessionShareResponse>("/public-shares", {
       method: "POST",
@@ -1770,6 +1805,9 @@ export interface PublicShareStatusResponse {
   relayUrl?: string | null;
   relayUsername?: string | null;
   canCreate: boolean;
+  storageState?: PublicShareStorageState;
+  storageError?: string | null;
+  totalValidLinks?: number | null;
   yaClientBaseUrl: string | null;
   defaultYaClientBaseUrl: string;
   yaClientBaseUrlError?: string;

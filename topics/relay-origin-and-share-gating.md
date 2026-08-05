@@ -83,7 +83,7 @@ keeps the existing per-session popup and destructive Settings toggle, hides
 the two manager entries, and sends no inventory or opaque-id revocation
 request. The detailed storage, migration, API, and verification sequence lives
 in [Public Share Persistence](public-share-persistence.md); its temporary
-implementation ledger is deleted after the contract is implemented and
+implementation ledger was deleted after the contract was implemented and
 verified.
 
 Valid links do not expire because a viewer disconnects or because a snapshot
@@ -153,7 +153,8 @@ explicitly linked from shared session content and for bounded transitive
 render assets from visible Markdown/HTML sources. A frozen revision attempts a
 whole-project copy-on-write snapshot only when the actual source/app-data
 filesystem pair supports it. That clone does not broaden authorization beyond
-the captured path set. When CoW cloning is unsupported, frozen shares retain
+the captured path set, and symlinks are omitted so a clone cannot escape to
+later external bytes while claiming frozen semantics. When CoW cloning is unsupported, frozen shares retain
 the current behavior of reading an authorized path from the live project and
 both owner and viewer see a persistent warning that later file contents may be
 exposed. An unexpected clone failure must not silently select that fallback.

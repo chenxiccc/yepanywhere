@@ -3,6 +3,7 @@ import {
   DEFAULT_HOST_AWAKE_BATTERY_FLOOR_PERCENT,
   DEFAULT_YA_CLIENT_BASE_URL,
   HOST_AWAKE_CONTROL_CAPABILITY,
+  PUBLIC_SHARE_MANAGEMENT_CAPABILITY,
   type HostAwakeStatus,
   type HostIdentity,
   MAX_HOST_IDENTITY_ICON_CODE_UNITS,
@@ -14,6 +15,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { PublicShareStatusResponse } from "../../api/client";
 import { RemoteAccessSetup } from "../../components/RemoteAccessSetup";
+import { SessionShareModal } from "../../components/SessionShareModal";
 import { useHostIdentity } from "../../contexts/HostIdentityContext";
 import { useOptionalRemoteConnection } from "../../contexts/RemoteConnectionContext";
 import { useDeveloperMode } from "../../hooks/useDeveloperMode";
@@ -352,6 +354,12 @@ export function RemoteAccessSettings() {
     version,
     HOST_AWAKE_CONTROL_CAPABILITY,
   );
+  const publicShareManagementSupported = serverHasCapability(
+    version,
+    PUBLIC_SHARE_MANAGEMENT_CAPABILITY,
+  );
+  const [showPublicShareManagement, setShowPublicShareManagement] =
+    useState(false);
   const {
     status: hostAwakeStatus,
     isLoading: hostAwakeStatusLoading,
@@ -414,6 +422,23 @@ export function RemoteAccessSettings() {
   };
 
   const shareReadinessMessage = getShareReadinessMessage(publicShareStatus);
+  const updatePublicSharesEnabled = async (enabled: boolean) => {
+    if (
+      !enabled &&
+      publicShareManagementSupported &&
+      !window.confirm(
+        typeof publicShareStatus?.totalValidLinks === "number"
+          ? t("advancedPublicShareDisableConfirm", {
+              count: publicShareStatus.totalValidLinks,
+            })
+          : t("advancedPublicShareDisableConfirmUnknown"),
+      )
+    ) {
+      return;
+    }
+    await updateSetting("publicSharesEnabled", enabled);
+    if (!enabled) setShowPublicShareManagement(false);
+  };
   const hostIdentityItem = hostIdentitySupported ? (
     <HostIdentitySettings
       currentIcon={settings?.hostIdentity?.icon ?? ""}
@@ -471,13 +496,35 @@ export function RemoteAccessSettings() {
             type="checkbox"
             checked={publicSharesEnabled}
             disabled={isLoading}
-            onChange={(e) =>
-              void updateSetting("publicSharesEnabled", e.target.checked)
-            }
+            onChange={(e) => void updatePublicSharesEnabled(e.target.checked)}
           />
           <span className="toggle-slider" />
         </label>
       </SettingsItem>
+
+      {publicShareManagementSupported && (
+        <SettingsItem
+          id="manage-public-shares"
+          label={t("advancedPublicShareManageTitle")}
+          description={t("advancedPublicShareManageDescription")}
+          keywords={[
+            "public share",
+            "broadcast",
+            "link",
+            "manage",
+            "revoke",
+            "viewer",
+          ]}
+        >
+          <button
+            type="button"
+            className="settings-button settings-button-secondary"
+            onClick={() => setShowPublicShareManagement(true)}
+          >
+            {t("advancedPublicShareManageButton")}
+          </button>
+        </SettingsItem>
+      )}
 
       <HideInSettingsSearch>
         <div
@@ -505,6 +552,13 @@ export function RemoteAccessSettings() {
           </div>
         </div>
       </HideInSettingsSearch>
+      {showPublicShareManagement && (
+        <SessionShareModal
+          initialView="manage"
+          managementAvailable
+          onClose={() => setShowPublicShareManagement(false)}
+        />
+      )}
     </div>
   );
 

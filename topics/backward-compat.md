@@ -7,7 +7,7 @@ Topic: backward-compat
 
 ## Decisions
 
-2026-08-05 planned public-share grants and compact URLs — preserve every
+2026-08-05 public-share grants and compact URLs — preserve every
 legacy 64-byte/86-character bearer secret and display-hint fragment while new
 links use a 16-byte/22-character secret plus a compact protocol marker and
 server-persisted header. Old viewers ignore the marker and keep using the

@@ -478,6 +478,7 @@ export {
   PROJECT_QUEUE_CAPABILITY,
   PROJECT_QUEUE_NEW_SESSION_SHORTCUT_SETTING_CAPABILITY,
   PROJECT_DIRECTORY_STORAGE_POLICY_CAPABILITY,
+  PUBLIC_SHARE_MANAGEMENT_CAPABILITY,
   PROVIDER_SUBSCRIPTION_USAGE_CAPABILITY,
   RELOAD_SAFE_CODEX_RUNTIME_CAPABILITY,
   RELOAD_SAFE_CODEX_RUNTIME_SETTINGS_CAPABILITY,
@@ -695,12 +696,19 @@ export type {
   CreatePublicSessionShareResponse,
   FreezePublicSessionLiveSharesResponse,
   PublicSessionShareMetadata,
+  PublicShareLinkedFileMode,
+  PublicShareManagementItem,
+  PublicShareManagementListResponse,
+  PublicShareStorageState,
+  PublicSessionSharePublicMetadata,
   PublicSessionShareMode,
   PublicSessionShareSessionStatusResponse,
   PublicSessionShareViewerActionResponse,
   PublicSessionShareViewerSummary,
   PublicSessionShareResponse,
   RevokePublicSessionSharesResponse,
+  RevokeAllPublicSharesResponse,
+  RevokePublicShareResponse,
 } from "./public-shares.js";
 
 // Tool result schemas (for runtime validation)

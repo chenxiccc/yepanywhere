@@ -12,11 +12,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createPublicSharePublicRoutes,
   createPublicShareRoutes,
+  buildPublicSharePresentation,
 } from "../../src/routes/public-shares.js";
+import { createPublicShareManagementRoutes } from "../../src/routes/public-share-management.js";
 import { PublicShareService } from "../../src/services/PublicShareService.js";
 import { normalizeStartupEnv } from "../../src/startupEnv.js";
 
-const projectId = "cHJvamVjdA" as UrlProjectId;
+let projectId = "cHJvamVjdA" as UrlProjectId;
 
 function makeSession(overrides: Partial<AppSession> = {}): AppSession {
   return {
@@ -49,6 +51,9 @@ describe("public share public routes", () => {
     testDir = await fs.mkdtemp(
       path.join(os.tmpdir(), "public-share-routes-test-"),
     );
+    const projectRoot = path.join(testDir, "project");
+    await fs.mkdir(projectRoot);
+    projectId = toUrlProjectId(projectRoot);
     service = new PublicShareService({ dataDir: testDir });
     await service.initialize();
   });
@@ -59,51 +64,24 @@ describe("public share public routes", () => {
     await fs.rm(testDir, { recursive: true, force: true });
   });
 
-  it("repairs frozen shares captured without embedded messages", async () => {
-    const { secret } = await service.createShare({
-      mode: "frozen",
-      title: "Broken old snapshot",
-      source: {
-        projectId,
-        sessionId: "session-1",
-        projectName: "project",
-        provider: "codex",
-      },
-      snapshot: {
-        ...makeSession({ messageCount: 2 }),
-        messages: undefined,
-      } as unknown as AppSession,
-    });
-    const sourceSession = makeSession({
-      messageCount: 2,
-      messages: [
-        ...makeSession().messages,
-        {
-          type: "assistant",
-          uuid: "message-2",
-          message: {
-            role: "assistant",
-            content: [{ type: "text", text: "repaired" }],
-          },
-          timestamp: "2026-05-01T00:00:01.000Z",
+  it("rejects incomplete frozen captures instead of leaking later turns", async () => {
+    await expect(
+      service.createShare({
+        mode: "frozen",
+        title: "Broken snapshot",
+        source: {
+          projectId,
+          sessionId: "session-1",
+          projectName: "project",
+          provider: "codex",
         },
-      ],
-    });
-    const loadSession = vi.fn(async () => sourceSession);
-    const app = createPublicSharePublicRoutes({
-      publicShareService: service,
-      loadSession,
-      getPublicSharesEnabled: () => true,
-    });
-
-    const response = await app.request(`/${secret}`);
-    const body = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(loadSession).toHaveBeenCalledWith(projectId, "session-1");
-    expect(body.share.mode).toBe("frozen");
-    expect(body.session.messages).toHaveLength(2);
-    expect(body.session.ownership).toEqual({ owner: "none" });
+        snapshot: {
+          ...makeSession({ messageCount: 2 }),
+          messages: undefined,
+        } as unknown as AppSession,
+      }),
+    ).rejects.toThrow(/missing its persisted messages/);
+    expect(service.getValidShareCount()).toBe(0);
   });
 
   it("does not expose a public viewer heartbeat mutation route", async () => {
@@ -134,6 +112,57 @@ describe("public share public routes", () => {
     ).toBe(0);
   });
 
+  it("streams one frozen revision through the compact wire format", async () => {
+    const snapshot = makeSession({ title: "Streamed snapshot" });
+    const { secret } = await service.createShare({
+      mode: "frozen",
+      title: "Snapshot",
+      source: {
+        projectId,
+        sessionId: "session-1",
+        projectName: "project",
+        provider: "codex",
+      },
+      snapshot,
+    });
+    const materialize = vi.spyOn(service, "getFrozenShareBySecret");
+    const app = createPublicSharePublicRoutes({
+      publicShareService: service,
+      loadSession: vi.fn(async () => null),
+      getPublicSharesEnabled: () => true,
+    });
+
+    const response = await app.request(`/${secret}?wire=raw-json`);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toContain(
+      "application/x-yep-public-share+json",
+    );
+    expect(body).toMatchObject({
+      share: { mode: "frozen", title: "Snapshot" },
+      session: { title: "Streamed snapshot" },
+    });
+    expect(materialize).not.toHaveBeenCalled();
+  });
+
+  it("returns retryable unavailability while the control store is opening", async () => {
+    const openingService = new PublicShareService({ dataDir: testDir });
+    const app = createPublicSharePublicRoutes({
+      publicShareService: openingService,
+      loadSession: vi.fn(async () => null),
+      getPublicSharesEnabled: () => true,
+    });
+
+    const response = await app.request(`/${"a".repeat(22)}/metadata`);
+    await expect(response.json()).resolves.toMatchObject({
+      retryable: true,
+      storageState: "opening",
+    });
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Retry-After")).toBe("2");
+  });
+
   it("does not resolve secret links when the feature is disabled", async () => {
     const { secret } = await service.createShare({
       mode: "frozen",
@@ -161,6 +190,20 @@ describe("public share public routes", () => {
     const projectRoot = path.join(testDir, "project");
     const publicProjectId = toUrlProjectId(projectRoot);
     const linkedPath = path.join(projectRoot, "ui-report", "README.md");
+    const snapshot = makeSession({
+      projectId: publicProjectId,
+      messages: [
+        {
+          type: "assistant",
+          uuid: "message-1",
+          message: {
+            role: "assistant",
+            content: `See /api/local-file?path=${encodeURIComponent(linkedPath)}&render=1`,
+          },
+          timestamp: "2026-05-01T00:00:00.000Z",
+        },
+      ],
+    });
     const { secret } = await service.createShare({
       mode: "frozen",
       title: "Snapshot",
@@ -170,20 +213,12 @@ describe("public share public routes", () => {
         projectName: "project",
         provider: "codex",
       },
-      snapshot: makeSession({
-        projectId: publicProjectId,
-        messages: [
-          {
-            type: "assistant",
-            uuid: "message-1",
-            message: {
-              role: "assistant",
-              content: `See /api/local-file?path=${encodeURIComponent(linkedPath)}&render=1`,
-            },
-            timestamp: "2026-05-01T00:00:00.000Z",
-          },
-        ],
-      }),
+      snapshot,
+      presentation: await buildPublicSharePresentation(
+        snapshot,
+        projectRoot,
+        publicProjectId,
+      ),
     });
     const fileResponse: FileContentResponse = {
       metadata: {
@@ -233,6 +268,20 @@ describe("public share public routes", () => {
     const readmePath = path.join(projectRoot, "ui-report", "README.md");
     await fs.mkdir(path.dirname(readmePath), { recursive: true });
     await fs.writeFile(readmePath, "![plot](plot.png)\n", "utf-8");
+    const snapshot = makeSession({
+      projectId: publicProjectId,
+      messages: [
+        {
+          type: "assistant",
+          uuid: "message-1",
+          message: {
+            role: "assistant",
+            content: `See /api/local-file?path=${encodeURIComponent(readmePath)}&render=1`,
+          },
+          timestamp: "2026-05-01T00:00:00.000Z",
+        },
+      ],
+    });
     const { secret } = await service.createShare({
       mode: "frozen",
       title: "Snapshot",
@@ -242,20 +291,12 @@ describe("public share public routes", () => {
         projectName: "project",
         provider: "codex",
       },
-      snapshot: makeSession({
-        projectId: publicProjectId,
-        messages: [
-          {
-            type: "assistant",
-            uuid: "message-1",
-            message: {
-              role: "assistant",
-              content: `See /api/local-file?path=${encodeURIComponent(readmePath)}&render=1`,
-            },
-            timestamp: "2026-05-01T00:00:00.000Z",
-          },
-        ],
-      }),
+      snapshot,
+      presentation: await buildPublicSharePresentation(
+        snapshot,
+        projectRoot,
+        publicProjectId,
+      ),
     });
     const fetchProjectFile = vi.fn(
       async () =>
@@ -314,6 +355,66 @@ describe("public share public routes", () => {
     expect(response.status).toBe(404);
     expect(fetchProjectFile).not.toHaveBeenCalled();
   });
+
+  it("keeps viewer-frozen file authorization at the captured manifest", async () => {
+    const { secret } = await service.createShare({
+      mode: "live",
+      title: "Live",
+      source: { projectId, sessionId: "session-1" },
+    });
+    await service.freezeSessionViewerToken(
+      projectId,
+      "session-1",
+      "viewer-token-1",
+      makeSession(),
+      {
+        presentation: { version: 1, authorizedPaths: ["old.md"] },
+      },
+    );
+    const fetchProjectFile = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            metadata: {
+              isText: true,
+              mimeType: "text/markdown",
+              path: "old.md",
+              size: 3,
+            },
+            content: "old",
+          }),
+          { headers: { "Content-Type": "application/json" } },
+        ),
+    );
+    const app = createPublicSharePublicRoutes({
+      publicShareService: service,
+      loadSession: vi.fn(async () =>
+        makeSession({
+          messages: [
+            {
+              type: "assistant",
+              uuid: "message-new",
+              message: { role: "assistant", content: "new.md" },
+              timestamp: "2026-05-01T00:01:00.000Z",
+            },
+          ],
+        }),
+      ),
+      getPublicSharesEnabled: () => true,
+      fetchProjectFile,
+    });
+
+    const captured = await app.request(
+      `/${secret}/files?path=old.md&viewerId=viewer-token-1`,
+    );
+    const later = await app.request(
+      `/${secret}/files?path=new.md&viewerId=viewer-token-1`,
+    );
+
+    expect(captured.status).toBe(200);
+    expect(later.status).toBe(404);
+    expect(fetchProjectFile).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("public share owner routes", () => {
@@ -324,6 +425,9 @@ describe("public share owner routes", () => {
     testDir = await fs.mkdtemp(
       path.join(os.tmpdir(), "public-share-owner-routes-test-"),
     );
+    const projectRoot = path.join(testDir, "project");
+    await fs.mkdir(projectRoot);
+    projectId = toUrlProjectId(projectRoot);
     service = new PublicShareService({ dataDir: testDir });
     await service.initialize();
   });
@@ -392,9 +496,12 @@ describe("public share owner routes", () => {
   });
 
   it("creates new shares when the feature is enabled", async () => {
+    const routeProjectId = projectId;
     const app = createPublicShareRoutes({
       publicShareService: service,
-      loadSession: vi.fn(async () => makeSession()),
+      loadSession: vi.fn(async () =>
+        makeSession({ projectId: routeProjectId }),
+      ),
       getRelayConfig: () => ({
         url: DEFAULT_RELAY_URL,
         username: "host-one",
@@ -408,7 +515,7 @@ describe("public share owner routes", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        projectId,
+        projectId: routeProjectId,
         sessionId: "session-1",
         mode: "frozen",
       }),
@@ -419,9 +526,122 @@ describe("public share owner routes", () => {
     expect(body.url).toContain("https://yepanywhere.com/remote/share/");
     expect(body.url).toContain("?h=host-one");
     expect(new URL(body.url).searchParams.get("r")).toBeNull();
+    const createdUrl = new URL(body.url);
+    expect(createdUrl.hash).toBe("#v=2");
+    expect(createdUrl.hash).not.toContain("Test session");
     expect(
-      service.getSessionShareStatus(projectId, "session-1").activeCount,
+      Buffer.from(createdUrl.pathname.split("/").at(-1)!, "base64url"),
+    ).toHaveLength(16);
+    expect(
+      service.getSessionShareStatus(routeProjectId, "session-1").activeCount,
     ).toBe(1);
+  });
+
+  it("lists compact grants and revokes one opaque share id", async () => {
+    await service.createShare({
+      mode: "live",
+      title: "Managed link",
+      source: {
+        projectId,
+        sessionId: "session-1",
+        projectName: "project",
+        provider: "codex",
+      },
+    });
+    const app = createPublicShareManagementRoutes({
+      publicShareService: service,
+    });
+
+    const listResponse = await app.request(
+      `/public-shares?projectId=${projectId}&sessionId=session-1`,
+    );
+    const list = await listResponse.json();
+
+    expect(listResponse.status).toBe(200);
+    expect(list).toMatchObject({ totalCount: 1, nextCursor: null });
+    expect(list.items[0]).toMatchObject({
+      mode: "live",
+      title: "Managed link",
+      sessionId: "session-1",
+    });
+    expect(list.items[0]).not.toHaveProperty("secretHash");
+
+    const revokeResponse = await app.request(
+      `/public-shares/${list.items[0].shareId}`,
+      {
+      method: "DELETE",
+      },
+    );
+    expect(revokeResponse.status).toBe(200);
+    await expect(revokeResponse.json()).resolves.toMatchObject({
+      revoked: true,
+    });
+    expect(service.getValidShareCount()).toBe(0);
+  });
+
+  it("paginates management stably across a revocation", async () => {
+    for (const title of ["first", "second", "third"]) {
+      await service.createShare({
+        mode: "live",
+        title,
+        source: {
+          projectId,
+          sessionId: `session-${title}`,
+          projectName: "project",
+          provider: "codex",
+        },
+      });
+    }
+    const app = createPublicShareManagementRoutes({
+      publicShareService: service,
+    });
+    const firstResponse = await app.request("/public-shares?limit=1");
+    const firstPage = await firstResponse.json();
+    expect(firstPage.items).toHaveLength(1);
+    expect(firstPage.nextCursor).toEqual(expect.any(String));
+
+    await app.request(`/public-shares/${firstPage.items[0].shareId}`, {
+      method: "DELETE",
+    });
+    const secondResponse = await app.request(
+      `/public-shares?limit=2&cursor=${encodeURIComponent(firstPage.nextCursor)}`,
+    );
+    const secondPage = await secondResponse.json();
+
+    expect(secondPage.items).toHaveLength(2);
+    expect(new Set(secondPage.items.map((item: { title: string }) => item.title))).toEqual(
+      new Set(["first", "second", "third"].filter(
+        (title) => title !== firstPage.items[0].title,
+      )),
+    );
+    expect(secondPage.nextCursor).toBeNull();
+  });
+
+  it("requires explicit confirmation before global revocation", async () => {
+    await service.createShare({
+      mode: "live",
+      title: "managed",
+      source: { projectId, sessionId: "session-1" },
+    });
+    const app = createPublicShareManagementRoutes({
+      publicShareService: service,
+    });
+
+    const rejected = await app.request("/public-shares/revoke-all", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirmation: "no" }),
+    });
+    expect(rejected.status).toBe(400);
+    expect(service.getValidShareCount()).toBe(1);
+
+    const revoked = await app.request("/public-shares/revoke-all", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirmation: "revoke-all-public-shares" }),
+    });
+    await expect(revoked.json()).resolves.toMatchObject({ revokedCount: 1 });
+    expect(service.getValidShareCount()).toBe(0);
   });
 
   it("uses normalized user-turn provenance for context-shaped share prompts", async () => {
@@ -460,10 +680,18 @@ describe("public share owner routes", () => {
       }),
     });
     const body = await response.json();
-    const display = new URLSearchParams(new URL(body.url).hash.slice(1));
+    const secret = new URL(body.url).pathname.split("/").at(-1)!;
+    const publicRoutes = createPublicSharePublicRoutes({
+      publicShareService: service,
+      loadSession: vi.fn(async () => session),
+      getPublicSharesEnabled: () => true,
+    });
+    const metadataResponse = await publicRoutes.request(`/${secret}/metadata`);
+    const metadata = await metadataResponse.json();
 
     expect(response.status).toBe(200);
-    expect(display.get("q")).toBe(
+    expect(metadataResponse.status).toBe(200);
+    expect(metadata.initialPrompt).toBe(
       "<environment_context> I typed this myself </environment_context>",
     );
   });

@@ -41,6 +41,7 @@ export function createPublicShareFileViewerSource(
       throw new Error("File is outside this public share");
     }
     const params = new URLSearchParams({ path: normalized.path });
+    if (context.viewerId) params.set("viewerId", context.viewerId);
     return await fetchPublicShareBlobViaRelay({
       relayUrl: context.relayUrl,
       relayUsername: context.relayUsername,
@@ -58,6 +59,7 @@ export function createPublicShareFileViewerSource(
       viewMode,
     ) => {
       const params = new URLSearchParams({ path: rawPath });
+      if (context.viewerId) params.set("viewerId", context.viewerId);
       if (highlight) {
         params.set("highlight", "true");
       }

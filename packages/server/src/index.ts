@@ -711,7 +711,7 @@ async function startServer() {
   // share routes default to EMPTY_STATE until it resolves (same tradeoff as the
   // deferred speech-backend init).
   void publicShareService
-    .initialize()
+    .initialize(serverSettingsService.getSetting("publicSharesEnabled"))
     .then(() => {
       console.log(
         `[public-shares] Loaded (deferred) at +${Date.now() - startupStart}ms`,

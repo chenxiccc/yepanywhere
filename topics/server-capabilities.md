@@ -38,6 +38,14 @@ unified surface is hidden and no fork request is made; legacy server parsing is
 not treated as a client fallback. This transitional gate was introduced in
 `0.7.1` and is reviewed after 2026-09-01.
 
+For authenticated public-share management, `public-share-management`
+advertises compact inventory plus opaque-id single-link and confirmed global
+revocation. A client without it preserves the existing session sharing popup
+and Settings kill switch, hides the direct/global manager entries, leaves the
+browser context menu unchanged, and sends no management request. Storage
+readiness is reported by the routes themselves and is not inferred from an
+empty inventory.
+
 ## Capability Classes
 
 Use `kind: "permanent"` for capabilities that may vary indefinitely across

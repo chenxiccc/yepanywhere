@@ -1658,11 +1658,11 @@ describe("Settings Routes", () => {
     });
 
     it("revokes stored public shares when disabling the feature", async () => {
-      const revokeAllShares = vi.fn(async () => 2);
+      const disableAndRevoke = vi.fn(async () => 2);
       const routes = createSettingsRoutes({
         serverSettingsService: mockServerSettingsService,
         publicShareService: {
-          revokeAllShares,
+          disableAndRevoke,
         } as unknown as PublicShareService,
       });
 
@@ -1678,7 +1678,7 @@ describe("Settings Routes", () => {
       expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
         publicSharesEnabled: false,
       });
-      expect(revokeAllShares).toHaveBeenCalled();
+      expect(disableAndRevoke).toHaveBeenCalled();
     });
 
     it("accepts and normalizes helper target settings", async () => {

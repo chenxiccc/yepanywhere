@@ -6,6 +6,7 @@ interface ViewerCountIndicatorProps {
   count?: number | null;
   label: string;
   onClick?: (event: MouseEvent<HTMLButtonElement>) => void;
+  onContextMenu?: (event: MouseEvent<HTMLButtonElement>) => void;
 }
 
 export function ViewerCountIndicator({
@@ -13,6 +14,7 @@ export function ViewerCountIndicator({
   count,
   label,
   onClick,
+  onContextMenu,
 }: ViewerCountIndicatorProps) {
   const content = (
     <>
@@ -25,11 +27,12 @@ export function ViewerCountIndicator({
       {typeof count === "number" && <span>{count}</span>}
     </>
   );
-  const classes = [styles.root, onClick ? styles.button : null, className]
+  const interactive = onClick || onContextMenu;
+  const classes = [styles.root, interactive ? styles.button : null, className]
     .filter(Boolean)
     .join(" ");
 
-  if (onClick) {
+  if (interactive) {
     return (
       <button
         type="button"
@@ -37,6 +40,7 @@ export function ViewerCountIndicator({
         title={label}
         aria-label={label}
         onClick={onClick}
+        onContextMenu={onContextMenu}
       >
         {content}
       </button>

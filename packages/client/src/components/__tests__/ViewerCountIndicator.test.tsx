@@ -69,6 +69,22 @@ describe("ViewerCountIndicator", () => {
     );
   });
 
+  it("can expose a direct context-menu action without a click action", () => {
+    const onContextMenu = vi.fn((event) => event.preventDefault());
+    render(
+      <ViewerCountIndicator
+        label="Manage public shares"
+        onContextMenu={onContextMenu}
+      />,
+    );
+
+    const button = screen.getByRole("button", {
+      name: "Manage public shares",
+    });
+    expect(fireEvent.contextMenu(button)).toBe(false);
+    expect(onContextMenu).toHaveBeenCalledTimes(1);
+  });
+
   it("preserves a caller-supplied class on both variants", () => {
     const { container, rerender } = render(
       <ViewerCountIndicator

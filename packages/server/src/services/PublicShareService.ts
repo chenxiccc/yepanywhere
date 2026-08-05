@@ -2,6 +2,7 @@ import type {
   AppSession,
   FreezePublicSessionLiveSharesResponse,
   PublicSessionShareMetadata,
+  PublicSessionSharePublicMetadata,
   PublicSessionShareMode,
   PublicSessionShareResponse,
   PublicSessionShareSessionStatusResponse,
@@ -11,39 +12,23 @@ import type {
   UrlProjectId,
 } from "@yep-anywhere/shared";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import * as fs from "node:fs/promises";
-import * as path from "node:path";
-import { enforceOwnerReadWriteFilePermissions } from "../utils/filePermissions.js";
+import type { Readable } from "node:stream";
+import {
+  type PublicShareGrant,
+  type PublicShareLinkedFileMode,
+  type PublicSharePresentation,
+  type PublicShareStoreReadiness,
+  PublicShareStore,
+} from "./PublicShareStore.js";
 
-export const PUBLIC_SHARE_SECRET_BYTES = 64;
+export const PUBLIC_SHARE_SECRET_BYTES = 16;
 export const PUBLIC_SHARE_SECRET_BITS = PUBLIC_SHARE_SECRET_BYTES * 8;
+export const LEGACY_PUBLIC_SHARE_SECRET_BYTES = 64;
 const PUBLIC_SHARE_VIEWER_TTL_MS = 120_000;
 const PUBLIC_SHARE_VIEWER_UPDATE_GRACE_MS = 30_000;
 const PUBLIC_SHARE_VIEWER_ID_REGEX = /^[A-Za-z0-9_-]{8,128}$/;
 
-export interface PublicShareRecord {
-  version: 1;
-  secretHash: string;
-  mode: PublicSessionShareMode;
-  title: string | null;
-  createdAt: string;
-  updatedAt: string;
-  capturedAt?: string;
-  source: PublicSessionShareMetadata["source"];
-  frozenSession?: AppSession;
-  disconnectedViewerIds?: string[];
-  viewerSnapshots?: Record<
-    string,
-    {
-      capturedAt: string;
-      frozenSession: AppSession;
-    }
-  >;
-}
-
-interface PublicShareState {
-  shares: PublicShareRecord[];
-}
+export type PublicShareRecord = PublicShareGrant;
 
 interface ViewerAccessRecord {
   firstSeenAt: string;
@@ -55,6 +40,11 @@ interface PublicShareStatusOptions {
   sessionUpdatedAt?: string | null;
 }
 
+export interface PublicShareCaptureOptions {
+  presentation?: PublicSharePresentation;
+  projectRoot?: string;
+}
+
 export interface PublicShareServiceOptions {
   dataDir: string;
 }
@@ -63,10 +53,11 @@ export interface CreatePublicShareOptions {
   mode: PublicSessionShareMode;
   source: PublicShareRecord["source"];
   title?: string | null;
+  initialPrompt?: string | null;
   snapshot?: AppSession;
+  presentation?: PublicSharePresentation;
+  projectRoot?: string;
 }
-
-const EMPTY_STATE: PublicShareState = { shares: [] };
 
 function hashSecret(secret: string): string {
   return createHash("sha512").update(secret, "utf8").digest("base64url");
@@ -77,7 +68,11 @@ function isValidSecret(secret: string): boolean {
     return false;
   }
   try {
-    return Buffer.from(secret, "base64url").length >= PUBLIC_SHARE_SECRET_BYTES;
+    const byteLength = Buffer.from(secret, "base64url").length;
+    return (
+      byteLength === PUBLIC_SHARE_SECRET_BYTES ||
+      byteLength === LEGACY_PUBLIC_SHARE_SECRET_BYTES
+    );
   } catch {
     return false;
   }
@@ -118,23 +113,22 @@ function sanitizeSessionForPublicShare(session: AppSession): AppSession {
 
 function toPublicResponse(
   record: PublicShareRecord,
+  session: AppSession,
+  options?: { capturedAt?: string; linkedFileMode?: PublicShareLinkedFileMode },
 ): PublicSessionShareResponse {
-  if (!record.frozenSession) {
-    throw new Error("Frozen share is missing its captured session");
-  }
-
   const share: PublicSessionShareMetadata = {
-    mode: record.mode,
+    mode: options?.capturedAt ? "frozen" : record.mode,
     title: record.title,
     createdAt: record.createdAt,
-    updatedAt: record.updatedAt,
-    capturedAt: record.capturedAt,
+    updatedAt: session.updatedAt,
+    capturedAt: options?.capturedAt ?? record.capturedAt,
+    linkedFileMode: options?.linkedFileMode ?? record.linkedFileMode,
     source: record.source,
   };
 
   return {
     share,
-    session: record.frozenSession,
+    session,
   };
 }
 
@@ -207,8 +201,7 @@ function summarizeRecords(
 }
 
 export class PublicShareService {
-  private state: PublicShareState = EMPTY_STATE;
-  private readonly filePath: string;
+  private readonly store: PublicShareStore;
   private readonly viewerHeartbeats = new Map<string, Map<string, number>>();
   private readonly viewerAccesses = new Map<
     string,
@@ -216,29 +209,66 @@ export class PublicShareService {
   >();
 
   constructor(options: PublicShareServiceOptions) {
-    this.filePath = path.join(options.dataDir, "public-shares.json");
+    this.store = new PublicShareStore(options.dataDir);
   }
 
-  async initialize(): Promise<void> {
-    try {
-      await enforceOwnerReadWriteFilePermissions(
-        this.filePath,
-        "[public-shares]",
-      );
-      const content = await fs.readFile(this.filePath, "utf-8");
-      const parsed = JSON.parse(content);
-      if (this.validateState(parsed)) {
-        this.state = parsed;
-        console.log(
-          `[public-shares] Loaded ${this.state.shares.length} share(s)`,
-        );
-      }
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        return;
-      }
-      console.warn("[public-shares] Failed to load state:", error);
+  async initialize(enabled = true): Promise<void> {
+    await this.store.initialize(enabled);
+    console.log(
+      `[public-shares] Loaded ${this.store.getAllGrants().length} grant(s)`,
+    );
+  }
+
+  async disableAndRevoke(): Promise<number> {
+    const revokedCount = await this.store.disable();
+    this.viewerHeartbeats.clear();
+    this.viewerAccesses.clear();
+    return revokedCount;
+  }
+
+  async enable(): Promise<void> {
+    await this.store.enable();
+  }
+
+  getReadiness(): { state: PublicShareStoreReadiness; error: string | null } {
+    return this.store.getReadiness();
+  }
+
+  getValidShareCount(): number {
+    return this.store.getAllGrants().length;
+  }
+
+  isCleanupPending(): boolean {
+    return this.store.isCleanupPending();
+  }
+
+  getAllRecords(): PublicShareRecord[] {
+    return this.store.getAllGrants();
+  }
+
+  getPublicMetadata(record: PublicShareRecord): PublicSessionSharePublicMetadata {
+    return {
+      mode: record.mode,
+      title: record.title,
+      initialPrompt: record.initialPrompt,
+      projectName: record.source.projectName ?? null,
+      provider: record.source.provider,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+      capturedAt: record.capturedAt,
+      linkedFileMode: record.linkedFileMode,
+    };
+  }
+
+  async revokeShare(shareId: string): Promise<boolean> {
+    const revoked = await this.store.revokeMatching(
+      (record) => record.shareId === shareId,
+    );
+    for (const record of revoked) {
+      this.viewerHeartbeats.delete(record.secretHash);
+      this.viewerAccesses.delete(record.secretHash);
     }
+    return revoked.length > 0;
   }
 
   async createShare(options: CreatePublicShareOptions): Promise<{
@@ -249,28 +279,32 @@ export class PublicShareService {
     if (options.mode === "frozen" && !options.snapshot) {
       throw new Error("Frozen shares require a session snapshot");
     }
+    if (
+      options.mode === "frozen" &&
+      options.snapshot &&
+      options.snapshot.messageCount > 0 &&
+      (!Array.isArray(options.snapshot.messages) ||
+        options.snapshot.messages.length === 0)
+    ) {
+      throw new Error(
+        "Frozen share snapshot is missing its persisted messages",
+      );
+    }
 
     const secret = randomBytes(PUBLIC_SHARE_SECRET_BYTES).toString("base64url");
     const secretHash = hashSecret(secret);
-    const now = new Date().toISOString();
-    const record: PublicShareRecord = {
-      version: 1,
+    const { grant: record } = await this.store.createGrant({
       secretHash,
       mode: options.mode,
       title: options.title ?? null,
-      createdAt: now,
-      updatedAt: now,
-      ...(options.mode === "frozen" ? { capturedAt: now } : {}),
+      initialPrompt: options.initialPrompt ?? null,
       source: options.source,
       ...(options.snapshot
-        ? { frozenSession: sanitizeSessionForPublicShare(options.snapshot) }
+        ? { snapshot: sanitizeSessionForPublicShare(options.snapshot) }
         : {}),
-    };
-
-    this.state = {
-      shares: [...this.state.shares, record],
-    };
-    await this.save();
+      ...(options.presentation ? { presentation: options.presentation } : {}),
+      ...(options.projectRoot ? { projectRoot: options.projectRoot } : {}),
+    });
 
     return {
       secret,
@@ -279,12 +313,18 @@ export class PublicShareService {
     };
   }
 
-  getFrozenShareBySecret(secret: string): PublicSessionShareResponse | null {
+  async getFrozenShareBySecret(
+    secret: string,
+  ): Promise<PublicSessionShareResponse | null> {
     const record = this.getRecordBySecret(secret);
-    if (record?.mode !== "frozen") {
+    if (record?.mode !== "frozen" || !record.revisionId) {
       return null;
     }
-    return toPublicResponse(record);
+    const session = await this.store.readRevisionSession(
+      record,
+      record.revisionId,
+    );
+    return toPublicResponse(record, session);
   }
 
   getRecordBySecret(secret: string): PublicShareRecord | null {
@@ -292,12 +332,10 @@ export class PublicShareService {
       return null;
     }
     const secretHash = hashSecret(secret);
-    for (const record of this.state.shares) {
-      if (timingSafeStringEqual(record.secretHash, secretHash)) {
-        return record;
-      }
-    }
-    return null;
+    const record = this.store.getGrantBySecretHash(secretHash);
+    return record && timingSafeStringEqual(record.secretHash, secretHash)
+      ? record
+      : null;
   }
 
   getSessionShareStatus(
@@ -305,7 +343,7 @@ export class PublicShareService {
     sessionId: string,
     options: PublicShareStatusOptions = {},
   ): PublicSessionShareSessionStatusResponse {
-    const records = this.state.shares.filter((record) =>
+    const records = this.store.getAllGrants().filter((record) =>
       matchesSession(record, projectId, sessionId),
     );
     return {
@@ -319,70 +357,40 @@ export class PublicShareService {
     projectId: UrlProjectId,
     sessionId: string,
   ): Promise<RevokePublicSessionSharesResponse> {
-    const revokedRecords = this.state.shares.filter((record) =>
+    const revokedRecords = await this.store.revokeMatching((record) =>
       matchesSession(record, projectId, sessionId),
     );
-    const remaining = this.state.shares.filter(
-      (record) => !matchesSession(record, projectId, sessionId),
-    );
-    const revokedCount = this.state.shares.length - remaining.length;
-    if (revokedCount > 0) {
-      this.state = { shares: remaining };
-      for (const record of revokedRecords) {
-        this.viewerHeartbeats.delete(record.secretHash);
-        this.viewerAccesses.delete(record.secretHash);
-      }
-      await this.save();
+    for (const record of revokedRecords) {
+      this.viewerHeartbeats.delete(record.secretHash);
+      this.viewerAccesses.delete(record.secretHash);
     }
     return {
-      revokedCount,
+      revokedCount: revokedRecords.length,
       ...this.getSessionShareStatus(projectId, sessionId),
     };
   }
 
   async revokeAllShares(): Promise<number> {
-    const revokedCount = this.state.shares.length;
-    if (revokedCount === 0) {
-      return 0;
-    }
-    this.state = { shares: [] };
+    const revokedRecords = await this.store.revokeMatching(() => true);
     this.viewerHeartbeats.clear();
     this.viewerAccesses.clear();
-    await this.save();
-    return revokedCount;
+    return revokedRecords.length;
   }
 
   async freezeSessionLiveShares(
     projectId: UrlProjectId,
     sessionId: string,
     session: AppSession,
+    capture: PublicShareCaptureOptions = {},
   ): Promise<FreezePublicSessionLiveSharesResponse> {
-    const now = new Date().toISOString();
     const frozenSession = sanitizeSessionForPublicShare(session);
-    let convertedCount = 0;
-    const shares = this.state.shares.map((record) => {
-      if (
-        !matchesSession(record, projectId, sessionId) ||
-        record.mode !== "live"
-      ) {
-        return record;
-      }
-      convertedCount += 1;
-      return {
-        ...record,
-        mode: "frozen" as const,
-        updatedAt: now,
-        capturedAt: now,
-        frozenSession,
-        viewerSnapshots: undefined,
-      };
+    const converted = await this.store.freezeMatching({
+      matches: (record) => matchesSession(record, projectId, sessionId),
+      snapshot: frozenSession,
+      ...capture,
     });
-    if (convertedCount > 0) {
-      this.state = { shares };
-      await this.save();
-    }
     return {
-      convertedCount,
+      convertedCount: converted.length,
       ...this.getSessionShareStatus(projectId, sessionId),
     };
   }
@@ -392,6 +400,7 @@ export class PublicShareService {
     sessionId: string,
     viewerId: string,
     session: AppSession,
+    capture: PublicShareCaptureOptions = {},
   ): Promise<PublicSessionShareViewerActionResponse> {
     if (!PUBLIC_SHARE_VIEWER_ID_REGEX.test(viewerId)) {
       return {
@@ -401,40 +410,21 @@ export class PublicShareService {
       };
     }
 
-    const now = new Date().toISOString();
     const frozenSession = sanitizeSessionForPublicShare(session);
-    let convertedCount = 0;
-    const shares = this.state.shares.map((record) => {
-      if (
-        !matchesSession(record, projectId, sessionId) ||
-        record.mode !== "live"
-      ) {
-        return record;
-      }
-      if (this.isViewerDisconnected(record, viewerId)) {
-        return record;
-      }
-      convertedCount += 1;
-      return {
-        ...record,
-        updatedAt: now,
-        viewerSnapshots: {
-          ...record.viewerSnapshots,
-          [viewerId]: {
-            capturedAt: now,
-            frozenSession,
-          },
-        },
-      };
+    const converted = await this.store.freezeMatching({
+      matches: (record) =>
+        matchesSession(record, projectId, sessionId) &&
+        !this.isViewerDisconnected(record, viewerId),
+      snapshot: frozenSession,
+      viewerId,
+      ...capture,
     });
-    if (convertedCount > 0) {
-      this.state = { shares };
+    if (converted.length > 0) {
       this.removeViewerHeartbeatForSession(projectId, sessionId, viewerId);
-      await this.save();
     }
     return {
       viewerId,
-      convertedCount,
+      convertedCount: converted.length,
       ...this.getSessionShareStatus(projectId, sessionId),
     };
   }
@@ -451,31 +441,12 @@ export class PublicShareService {
       };
     }
 
-    let changed = false;
-    const shares = this.state.shares.map((record) => {
-      if (!matchesSession(record, projectId, sessionId)) {
-        return record;
-      }
-      const disconnectedViewerIds = new Set(record.disconnectedViewerIds ?? []);
-      if (!disconnectedViewerIds.has(viewerId)) {
-        disconnectedViewerIds.add(viewerId);
-        changed = true;
-      }
-      const { [viewerId]: _removedSnapshot, ...remainingViewerSnapshots } =
-        record.viewerSnapshots ?? {};
-      return {
-        ...record,
-        disconnectedViewerIds: [...disconnectedViewerIds],
-        viewerSnapshots:
-          Object.keys(remainingViewerSnapshots).length > 0
-            ? remainingViewerSnapshots
-            : undefined,
-      };
-    });
+    const changed = await this.store.disconnectViewer(
+      (record) => matchesSession(record, projectId, sessionId),
+      viewerId,
+    );
     if (changed) {
-      this.state = { shares };
       this.removeViewerHeartbeatForSession(projectId, sessionId, viewerId);
-      await this.save();
     }
     return {
       viewerId,
@@ -505,48 +476,71 @@ export class PublicShareService {
     };
   }
 
-  buildFrozenRepairResponse(
-    record: PublicShareRecord,
-    session: AppSession,
-  ): PublicSessionShareResponse {
-    const sanitizedSession = sanitizeSessionForPublicShare(session);
-    return {
-      share: {
-        mode: "frozen",
-        title: record.title,
-        createdAt: record.createdAt,
-        updatedAt: record.updatedAt,
-        activeViewerCount: this.getActiveViewerCount(record),
-        capturedAt: record.capturedAt,
-        source: {
-          ...record.source,
-          provider: sanitizedSession.provider,
-        },
-      },
-      session: sanitizedSession,
-    };
-  }
-
-  getViewerSnapshotResponse(
+  async getViewerSnapshotResponse(
     record: PublicShareRecord,
     viewerId: string,
-  ): PublicSessionShareResponse | null {
+  ): Promise<PublicSessionShareResponse | null> {
     const snapshot = record.viewerSnapshots?.[viewerId];
     if (!snapshot) {
       return null;
     }
+    const session = await this.store.readRevisionSession(
+      record,
+      snapshot.revisionId,
+    );
+    const response = toPublicResponse(record, session, snapshot);
+    response.share.activeViewerCount = this.getActiveViewerCount(record);
+    return response;
+  }
+
+  getFrozenSessionStream(
+    record: PublicShareRecord,
+    viewerId?: string,
+  ): {
+    capturedAt: string;
+    linkedFileMode: PublicShareLinkedFileMode;
+    revisionId: string;
+    stream: Readable;
+  } | null {
+    const viewerSnapshot = viewerId
+      ? record.viewerSnapshots?.[viewerId]
+      : undefined;
+    const revisionId = viewerSnapshot?.revisionId ?? record.revisionId;
+    const capturedAt = viewerSnapshot?.capturedAt ?? record.capturedAt;
+    const linkedFileMode =
+      viewerSnapshot?.linkedFileMode ?? record.linkedFileMode;
+    if (!revisionId || !capturedAt || !linkedFileMode) return null;
     return {
-      share: {
-        mode: "frozen",
-        title: record.title,
-        createdAt: record.createdAt,
-        updatedAt: snapshot.frozenSession.updatedAt,
-        capturedAt: snapshot.capturedAt,
-        activeViewerCount: this.getActiveViewerCount(record),
-        source: record.source,
-      },
-      session: snapshot.frozenSession,
+      revisionId,
+      capturedAt,
+      linkedFileMode,
+      stream: this.store.getRevisionSessionStream(record, revisionId),
     };
+  }
+
+  async getFrozenPresentation(
+    record: PublicShareRecord,
+    viewerId?: string,
+  ): Promise<PublicSharePresentation | null> {
+    const revisionId =
+      (viewerId ? record.viewerSnapshots?.[viewerId]?.revisionId : undefined) ??
+      record.revisionId;
+    return revisionId
+      ? await this.store.readPresentation(record, revisionId)
+      : null;
+  }
+
+  getFrozenProjectRoot(
+    record: PublicShareRecord,
+    viewerId?: string,
+  ): string | null {
+    const snapshot = viewerId ? record.viewerSnapshots?.[viewerId] : undefined;
+    const revisionId = snapshot?.revisionId ?? record.revisionId;
+    const linkedFileMode =
+      snapshot?.linkedFileMode ?? record.linkedFileMode;
+    return revisionId && linkedFileMode === "cow"
+      ? this.store.getRevisionProjectRoot(record, revisionId)
+      : null;
   }
 
   isViewerDisconnected(record: PublicShareRecord, viewerId: string): boolean {
@@ -674,7 +668,7 @@ export class PublicShareService {
     sessionId: string,
     viewerId: string,
   ): void {
-    for (const record of this.state.shares) {
+    for (const record of this.store.getAllGrants()) {
       if (matchesSession(record, projectId, sessionId)) {
         this.viewerHeartbeats.get(record.secretHash)?.delete(viewerId);
       }
@@ -706,39 +700,4 @@ export class PublicShareService {
     }
   }
 
-  private async save(): Promise<void> {
-    await fs.mkdir(path.dirname(this.filePath), { recursive: true });
-    await fs.writeFile(this.filePath, JSON.stringify(this.state, null, 2), {
-      mode: 0o600,
-    });
-    await enforceOwnerReadWriteFilePermissions(
-      this.filePath,
-      "[public-shares]",
-    );
-  }
-
-  private validateState(value: unknown): value is PublicShareState {
-    if (!value || typeof value !== "object") {
-      return false;
-    }
-    const shares = (value as { shares?: unknown }).shares;
-    if (!Array.isArray(shares)) {
-      return false;
-    }
-    return shares.every((share) => {
-      if (!share || typeof share !== "object") return false;
-      const record = share as Partial<PublicShareRecord>;
-      return (
-        record.version === 1 &&
-        typeof record.secretHash === "string" &&
-        (record.mode === "frozen" || record.mode === "live") &&
-        typeof record.createdAt === "string" &&
-        typeof record.updatedAt === "string" &&
-        !!record.source &&
-        typeof record.source.projectId === "string" &&
-        typeof record.source.sessionId === "string" &&
-        (record.mode === "live" || !!record.frozenSession)
-      );
-    });
-  }
 }

@@ -255,8 +255,8 @@ is directly recorded there.
 
 The aggregate is canonical share authorization and frozen content, not a
 rebuildable cache, so pressure eviction cannot safely discard it. The owning
-correction is the session-sharded, active-link-gated persistence design in
-[`090-public-share-persistence-and-management.md`](090-public-share-persistence-and-management.md):
+correction is the session-sharded, active-link-gated design in
+[`topics/public-share-persistence.md`](../../topics/public-share-persistence.md):
 load the compact active-link index, then only the requested session/link
 record; revoked shares cease authorizing reads and their snapshots become
 collectible. Saving one link must never parse and stringify every other
