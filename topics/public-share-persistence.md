@@ -232,11 +232,22 @@ subtle border alone. The right column lists matching grants with active
 connection counts, copy and revoke actions, and scrolling only when available
 viewport height cannot contain the rows. At narrow widths the pane stays
 anchored below the broadcast icon and expands to the available viewport width;
-it does not switch to the centered or bottom modal placement. Session-wide
-revoke is rendered before the inventory request resolves. The type-row `+` is
-the sole session-link creation affordance in the manager: its distinct green
-action button creates that kind of link, enables its filter, copies it,
-refreshes inventory, and highlights the created row.
+it does not switch to the centered or bottom modal placement. Each type row
+keeps its actions available before inventory resolves. Its green `+` is the
+sole session-link creation affordance in the manager: it creates that kind of
+link, enables its filter, copies it, refreshes inventory, and highlights the
+created row. Strong red `×` actions beside all five selectors use an inline
+two-step flow. A location `×` selects that location and both types; a type `×`
+keeps the selected location and isolates that type. The first click therefore
+makes the visible inventory exactly the set that a second click will revoke,
+then resolves every metadata page so its `×` can become a `✓`. The bottom red
+action is the all-projects/all-types shortcut while idle; when armed, that slot
+becomes a wordy confirmation stating the exact type/location intersection,
+link count, and active-client count. A second click on either confirmation
+control revokes. Any other in-pane control cancels the armed action;
+outside-click or clicking the broadcast icon dismisses the pane. Each listed
+share carries a compact right-side live/read-only glyph before its copy and
+smaller red revoke actions.
 
 Legacy migration is record-at-a-time and streaming. It must not `readFile`,
 `JSON.parse`, or `JSON.stringify` the complete aggregate or one huge embedded

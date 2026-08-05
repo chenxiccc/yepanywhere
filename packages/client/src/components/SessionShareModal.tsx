@@ -34,6 +34,21 @@ type ShareWorkingState =
   | `disconnect:${string}`
   | `freeze:${string}`;
 
+type PublicShareManagementScope = "all" | "project" | "session";
+
+interface RevokeCategoryTarget {
+  key: `scope:${PublicShareManagementScope}` | `mode:${PublicSessionShareMode}`;
+  mode?: PublicSessionShareMode;
+  scope: PublicShareManagementScope;
+  scopeLabel: string;
+  typeLabel?: string;
+}
+
+interface PendingCategoryRevoke extends RevokeCategoryTarget {
+  shareIds: string[];
+  viewerCount: number;
+}
+
 function formatShareBytes(bytes: number | undefined): string | null {
   if (bytes === undefined) return null;
   if (bytes < 1024) return `${bytes} B`;
@@ -70,9 +85,10 @@ export function SessionShareModal({
   >([]);
   const [managementCursor, setManagementCursor] = useState<string | null>(null);
   const [managementTotal, setManagementTotal] = useState(0);
-  const [managementScope, setManagementScope] = useState<
-    "all" | "project" | "session"
-  >(projectId && sessionId ? "session" : "all");
+  const [managementScope, setManagementScope] =
+    useState<PublicShareManagementScope>(
+      projectId && sessionId ? "session" : "all",
+    );
   const [showFrozenShares, setShowFrozenShares] = useState(true);
   const [showLiveShares, setShowLiveShares] = useState(true);
   const [managementLoading, setManagementLoading] = useState(false);
@@ -87,6 +103,8 @@ export function SessionShareModal({
     null,
   );
   const [managementNotice, setManagementNotice] = useState<string | null>(null);
+  const [pendingCategoryRevoke, setPendingCategoryRevoke] =
+    useState<PendingCategoryRevoke | null>(null);
   const urlInputRef = useRef<HTMLInputElement>(null);
   const managementMode =
     showFrozenShares && showLiveShares
@@ -378,6 +396,7 @@ export function SessionShareModal({
   };
 
   const createManagedShare = (mode: PublicSessionShareMode) => {
+    setPendingCategoryRevoke(null);
     if (mode === "frozen") {
       setShowFrozenShares(true);
     } else {
@@ -386,44 +405,86 @@ export function SessionShareModal({
     void createAndCopyShare(mode);
   };
 
-  const revokeEveryManagedShare = async () => {
-    if (
-      !window.confirm(
-        managementScope === "session"
-          ? t("publicShareManagementRevokeSessionConfirm")
-          : managementScope === "project"
-            ? t("publicShareManagementRevokeProjectConfirm")
-            : t("publicShareManagementRevokeAllConfirm"),
-      )
-    ) {
-      return;
-    }
-    setManagementWorking("all");
-    setManagementError(null);
-    try {
-      if (managementScope === "session" && projectId && sessionId) {
-        const response = await api.revokePublicSessionShares(
-          projectId,
-          sessionId,
+  const managementScopeLabel =
+    managementScope === "session"
+      ? t("publicShareManagementScopeSession")
+      : managementScope === "project"
+        ? t("publicShareManagementScopeProject")
+        : t("publicShareManagementScopeAll");
+
+  const categoryConfirmLabel = (
+    pending: PendingCategoryRevoke,
+    clickAgain: boolean,
+  ) =>
+    pending.typeLabel
+      ? t(
+          clickAgain
+            ? "publicShareManagementRevokeTypeConfirmAgain"
+            : "publicShareManagementRevokeTypeConfirm",
+          {
+            count: pending.shareIds.length,
+            viewers: pending.viewerCount,
+            type: pending.typeLabel,
+            scope: pending.scopeLabel,
+          },
+        )
+      : t(
+          clickAgain
+            ? "publicShareManagementRevokeScopeConfirmAgain"
+            : "publicShareManagementRevokeScopeConfirm",
+          {
+            count: pending.shareIds.length,
+            viewers: pending.viewerCount,
+            scope: pending.scopeLabel,
+          },
         );
-        setStatus(response);
-      } else if (managementScope === "project" && projectId) {
-        const shareIds: string[] = [];
-        let cursor: string | undefined;
-        do {
-          const response = await api.getPublicShares({ projectId, cursor });
-          shareIds.push(...response.items.map((item) => item.shareId));
-          cursor = response.nextCursor ?? undefined;
-        } while (cursor);
-        for (const shareId of shareIds) {
-          await api.revokePublicShare(shareId);
-        }
-      } else {
-        await api.revokeAllPublicShares();
+
+  const prepareManagedCategoryRevoke = async (
+    target: RevokeCategoryTarget,
+  ) => {
+    setPendingCategoryRevoke(null);
+    setManagementScope(target.scope);
+    setShowFrozenShares(target.mode === undefined || target.mode === "frozen");
+    setShowLiveShares(target.mode === undefined || target.mode === "live");
+    setManagementWorking(`prepare-revoke:${target.key}`);
+    setManagementError(null);
+    setManagementNotice(null);
+    try {
+      const shares: PublicShareManagementItem[] = [];
+      let cursor: string | undefined;
+      do {
+        const response = await api.getPublicShares({
+          projectId: target.scope === "all" ? undefined : projectId,
+          sessionId: target.scope === "session" ? sessionId : undefined,
+          mode: target.mode,
+          cursor,
+        });
+        shares.push(...response.items);
+        cursor = response.nextCursor ?? undefined;
+      } while (cursor);
+
+      if (shares.length === 0) {
+        setManagementNotice(
+          target.typeLabel
+            ? t("publicShareManagementRevokeTypeEmpty", {
+                type: target.typeLabel,
+                scope: target.scopeLabel,
+              })
+            : t("publicShareManagementRevokeScopeEmpty", {
+                scope: target.scopeLabel,
+              }),
+        );
+        return;
       }
-      setManagementItems([]);
-      setManagementCursor(null);
-      setManagementTotal(0);
+
+      setPendingCategoryRevoke({
+        ...target,
+        shareIds: shares.map((share) => share.shareId),
+        viewerCount: shares.reduce(
+          (total, share) => total + share.activeViewerCount,
+          0,
+        ),
+      });
     } catch (revokeError) {
       setManagementError(
         revokeError instanceof Error
@@ -431,6 +492,51 @@ export function SessionShareModal({
           : t("sessionShareRevokeFailed"),
       );
     } finally {
+      setManagementWorking(null);
+    }
+  };
+
+  const confirmManagedCategoryRevoke = async () => {
+    if (!pendingCategoryRevoke) return;
+    const pending = pendingCategoryRevoke;
+    setManagementWorking(`confirm-revoke:${pending.key}`);
+    setManagementError(null);
+    const revokedShareIds = new Set<string>();
+    try {
+      for (const shareId of pending.shareIds) {
+        const response = await api.revokePublicShare(shareId);
+        if (response.revoked) revokedShareIds.add(shareId);
+      }
+
+      setManagementNotice(
+        pending.typeLabel
+          ? t("publicShareManagementRevokeTypeRevoked", {
+              count: revokedShareIds.size,
+              type: pending.typeLabel,
+              scope: pending.scopeLabel,
+            })
+          : t("publicShareManagementRevokeScopeRevoked", {
+              count: revokedShareIds.size,
+              scope: pending.scopeLabel,
+            }),
+      );
+    } catch (revokeError) {
+      setManagementError(
+        revokeError instanceof Error
+          ? revokeError.message
+          : t("sessionShareRevokeFailed"),
+      );
+    } finally {
+      if (revokedShareIds.size > 0) {
+        setManagementItems((items) =>
+          items.filter((item) => !revokedShareIds.has(item.shareId)),
+        );
+        setManagementTotal((count) =>
+          Math.max(0, count - revokedShareIds.size),
+        );
+        setManagementRefresh((value) => value + 1);
+      }
+      setPendingCategoryRevoke(null);
       setManagementWorking(null);
     }
   };
@@ -479,7 +585,19 @@ export function SessionShareModal({
         title={t("publicShareManagementTitle")}
         onClose={onClose}
       >
-        <div className={`session-share-modal ${styles.manager}`}>
+        <div
+          className={`session-share-modal ${styles.manager}`}
+          onClickCapture={(event) => {
+            const target = event.target;
+            if (
+              target instanceof Element &&
+              target.closest("[data-revoke-confirm-action]")
+            ) {
+              return;
+            }
+            setPendingCategoryRevoke(null);
+          }}
+        >
           <div className={styles.managerLayout}>
             <aside className={styles.managerSidebar}>
               {projectId && sessionId && (
@@ -489,31 +607,69 @@ export function SessionShareModal({
                   aria-label={t("publicShareManagementScopeFilter")}
                 >
                   <span>{t("publicShareManagementScopeFilter")}</span>
-                  {(["all", "project", "session"] as const).map((scope) => (
-                    <button
-                      key={scope}
-                      type="button"
-                      className={`${styles.filterButton} ${
-                        managementScope === scope
-                          ? styles.filterButtonActive
-                          : ""
-                      }`}
-                      aria-pressed={managementScope === scope}
-                      disabled={managementWorking !== null}
-                      onClick={() => setManagementScope(scope)}
-                    >
-                      <span className={styles.filterIcon}>
-                        <ShareFilterIcon kind={scope} />
-                      </span>
-                      <span>
-                        {scope === "all"
-                          ? t("publicShareManagementScopeAll")
-                          : scope === "project"
-                            ? t("publicShareManagementScopeProject")
-                            : t("publicShareManagementScopeSession")}
-                      </span>
-                    </button>
-                  ))}
+                  {(["all", "project", "session"] as const).map((scope) => {
+                    const scopeLabel =
+                      scope === "all"
+                        ? t("publicShareManagementScopeAll")
+                        : scope === "project"
+                          ? t("publicShareManagementScopeProject")
+                          : t("publicShareManagementScopeSession");
+                    const categoryKey = `scope:${scope}` as const;
+                    const pendingRevoke =
+                      pendingCategoryRevoke?.key === categoryKey
+                        ? pendingCategoryRevoke
+                        : null;
+                    const revokeLabel = pendingRevoke
+                      ? categoryConfirmLabel(pendingRevoke, false)
+                      : t("publicShareManagementRevokeScope", {
+                          scope: scopeLabel,
+                        });
+                    return (
+                      <div className={styles.scopeRow} key={scope}>
+                        <button
+                          type="button"
+                          className={`${styles.filterButton} ${
+                            managementScope === scope
+                              ? styles.filterButtonActive
+                              : ""
+                          }`}
+                          aria-pressed={managementScope === scope}
+                          disabled={managementWorking !== null}
+                          onClick={() => setManagementScope(scope)}
+                        >
+                          <span className={styles.filterIcon}>
+                            <ShareFilterIcon kind={scope} />
+                          </span>
+                          <span>{scopeLabel}</span>
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.revokeTypeButton}
+                          disabled={managementWorking !== null}
+                          onClick={() =>
+                            void (pendingRevoke
+                              ? confirmManagedCategoryRevoke()
+                              : prepareManagedCategoryRevoke({
+                                  key: categoryKey,
+                                  scope,
+                                  scopeLabel,
+                                }))
+                          }
+                          title={revokeLabel}
+                          aria-label={revokeLabel}
+                          data-revoke-confirm-action
+                        >
+                          {managementWorking?.endsWith(categoryKey) ? (
+                            "…"
+                          ) : pendingRevoke ? (
+                            <ConfirmIcon />
+                          ) : (
+                            <RevokeIcon />
+                          )}
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
               <div
@@ -525,6 +681,20 @@ export function SessionShareModal({
                 {(["frozen", "live"] as const).map((mode) => {
                   const selected =
                     mode === "frozen" ? showFrozenShares : showLiveShares;
+                  const pendingRevoke =
+                    pendingCategoryRevoke?.key === `mode:${mode}` &&
+                    pendingCategoryRevoke.scope === managementScope
+                      ? pendingCategoryRevoke
+                      : null;
+                  const revokeLabel = pendingRevoke
+                    ? categoryConfirmLabel(pendingRevoke, false)
+                    : t("publicShareManagementRevokeType", {
+                        type:
+                          mode === "live"
+                            ? t("publicShareLiveBadge")
+                            : t("publicShareManagementModeReadOnly"),
+                        scope: managementScopeLabel,
+                      });
                   return (
                     <div className={styles.filterRow} key={mode}>
                       <button
@@ -569,24 +739,42 @@ export function SessionShareModal({
                       >
                         <PlusIcon />
                       </button>
+                      <button
+                        type="button"
+                        className={styles.revokeTypeButton}
+                        disabled={managementWorking !== null}
+                        onClick={() =>
+                          void (pendingRevoke
+                            ? confirmManagedCategoryRevoke()
+                            : prepareManagedCategoryRevoke({
+                                key: `mode:${mode}`,
+                                mode,
+                                scope: managementScope,
+                                scopeLabel: managementScopeLabel,
+                                typeLabel:
+                                  mode === "live"
+                                    ? t("publicShareLiveBadge")
+                                    : t(
+                                        "publicShareManagementModeReadOnly",
+                                      ),
+                              }))
+                        }
+                        title={revokeLabel}
+                        aria-label={revokeLabel}
+                        data-revoke-confirm-action
+                      >
+                        {managementWorking?.endsWith(`mode:${mode}`) ? (
+                          "…"
+                        ) : pendingRevoke ? (
+                          <ConfirmIcon />
+                        ) : (
+                          <RevokeIcon />
+                        )}
+                      </button>
                     </div>
                   );
                 })}
               </div>
-              <button
-                type="button"
-                className="settings-button settings-button-danger"
-                disabled={managementWorking !== null}
-                onClick={() => void revokeEveryManagedShare()}
-              >
-                {managementWorking === "all"
-                  ? t("sessionShareRevoking")
-                  : managementScope === "session"
-                    ? t("sessionShareRevokeAll")
-                    : managementScope === "project"
-                      ? t("publicShareManagementRevokeProject")
-                      : t("publicShareManagementRevokeAll")}
-              </button>
             </aside>
 
             <div className={styles.managerMain}>
@@ -654,6 +842,26 @@ export function SessionShareModal({
                             )}
                         </div>
                         <div className={styles.rowActions}>
+                          <span
+                            className={`${styles.rowTypeIcon} ${
+                              item.mode === "live"
+                                ? styles.rowTypeIconLive
+                                : ""
+                            }`}
+                            title={
+                              item.mode === "live"
+                                ? t("publicShareLiveBadge")
+                                : t("publicShareManagementModeReadOnly")
+                            }
+                            aria-label={
+                              item.mode === "live"
+                                ? t("publicShareLiveBadge")
+                                : t("publicShareManagementModeReadOnly")
+                            }
+                            role="img"
+                          >
+                            <ShareFilterIcon kind={item.mode} />
+                          </span>
                           <button
                             type="button"
                             className={styles.iconButton}
@@ -680,7 +888,11 @@ export function SessionShareModal({
                             title={t("publicShareManagementRevokeOne")}
                             aria-label={t("publicShareManagementRevokeOne")}
                           >
-                            {managementWorking === item.shareId ? "…" : "×"}
+                            {managementWorking === item.shareId ? (
+                              "…"
+                            ) : (
+                              <RevokeIcon />
+                            )}
                           </button>
                         </div>
                       </div>
@@ -706,6 +918,28 @@ export function SessionShareModal({
               </div>
             </div>
           </div>
+          <button
+            type="button"
+            className={styles.confirmRevokeBanner}
+            disabled={managementWorking !== null}
+            onClick={() =>
+              void (pendingCategoryRevoke
+                ? confirmManagedCategoryRevoke()
+                : prepareManagedCategoryRevoke({
+                    key: "scope:all",
+                    scope: "all",
+                    scopeLabel: t("publicShareManagementScopeAll"),
+                  }))
+            }
+            data-revoke-confirm-action
+          >
+            {pendingCategoryRevoke ? <ConfirmIcon /> : <RevokeIcon />}
+            <span>
+              {pendingCategoryRevoke
+                ? categoryConfirmLabel(pendingCategoryRevoke, true)
+                : t("publicShareManagementRevokeEverything")}
+            </span>
+          </button>
         </div>
       </Modal>
     );
@@ -947,6 +1181,37 @@ function PlusIcon() {
       aria-hidden="true"
     >
       <path d="M8 3v10M3 8h10" />
+    </svg>
+  );
+}
+
+function RevokeIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.25"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <path d="m4 4 8 8M12 4l-8 8" />
+    </svg>
+  );
+}
+
+function ConfirmIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.25"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m3 8.5 3.2 3.2L13 4.8" />
     </svg>
   );
 }

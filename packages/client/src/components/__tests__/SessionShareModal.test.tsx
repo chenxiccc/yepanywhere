@@ -97,9 +97,6 @@ describe("SessionShareModal", () => {
       totalCount: 1,
     });
     vi.spyOn(api, "revokePublicShare").mockResolvedValue({ revoked: true });
-    vi.spyOn(api, "revokeAllPublicShares").mockResolvedValue({
-      revokedCount: 1,
-    });
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: { writeText },
@@ -493,6 +490,14 @@ describe("SessionShareModal", () => {
       shareType.querySelectorAll('button[aria-pressed="true"]'),
     ).toHaveLength(2);
     expect(screen.getByText(/0 active public viewer/)).toBeTruthy();
+    expect(
+      screen.getByRole("img", { name: "Read-only" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", {
+        name: "Review every public share link across all projects for revocation",
+      }),
+    ).toBeTruthy();
     expect(api.createPublicSessionShare).not.toHaveBeenCalled();
     expect(screen.getByText(/could not snapshot linked files/i)).toBeTruthy();
 
@@ -505,7 +510,9 @@ describe("SessionShareModal", () => {
       });
     });
     expect(
-      screen.getByRole("button", { name: "Revoke Every Public Link" }),
+      screen.getByRole("button", {
+        name: "Review all Read-only share links in All projects for revocation",
+      }),
     ).toBeTruthy();
   });
 
@@ -541,9 +548,8 @@ describe("SessionShareModal", () => {
     expect(screen.getByRole("listitem").className).toContain("rowHighlighted");
   });
 
-  it("offers session revoke-all before inventory resolves", async () => {
+  it("offers scoped type revokes before inventory resolves", () => {
     vi.mocked(api.getPublicShares).mockImplementation(() => new Promise(() => {}));
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
     render(
       <I18nProvider>
         <SessionShareModal
@@ -556,21 +562,16 @@ describe("SessionShareModal", () => {
       </I18nProvider>,
     );
 
-    const revokeAll = screen.getByRole("button", {
-      name: "Revoke All Shared Links",
-    });
-    expect((revokeAll as HTMLButtonElement).disabled).toBe(false);
-    fireEvent.click(revokeAll);
-
-    expect(confirm).toHaveBeenCalledWith(
-      "Revoke every public link for this session? Anyone using one will immediately lose access.",
-    );
-    await waitFor(() => {
-      expect(api.revokePublicSessionShares).toHaveBeenCalledWith(
-        "cHJvamVjdA",
-        "session-1",
-      );
-    });
+    expect(
+      screen.getByRole("button", {
+        name: "Review all Read-only share links in This session for revocation",
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", {
+        name: "Review all Live share links in This session for revocation",
+      }),
+    ).toBeTruthy();
   });
 
   it("copies a retained managed link", async () => {
@@ -613,11 +614,12 @@ describe("SessionShareModal", () => {
     expect(screen.getByText("No matching public links.")).toBeTruthy();
   });
 
-  it("describes global revoke-all independently of the mode filter", async () => {
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+  it("confirms exact type, scope, link, and viewer counts", async () => {
     render(
       <I18nProvider>
         <SessionShareModal
+          projectId="cHJvamVjdA"
+          sessionId="session-1"
           initialView="manage"
           managementAvailable
           onClose={vi.fn()}
@@ -627,17 +629,138 @@ describe("SessionShareModal", () => {
 
     await screen.findByText("Build logs");
     fireEvent.click(
-      screen.getByRole("button", { name: "Read-only" }),
-    );
-    fireEvent.click(
-      screen.getByRole("button", { name: "Revoke Every Public Link" }),
+      screen.getByRole("button", {
+        name: "Review all Read-only share links in This session for revocation",
+      }),
     );
 
-    expect(confirm).toHaveBeenCalledWith(
-      "Revoke every public link on this server? Anyone using one will immediately lose access.",
+    await waitFor(() => {
+      expect(api.getPublicShares).toHaveBeenCalledWith({
+        projectId: "cHJvamVjdA",
+        sessionId: "session-1",
+        mode: "frozen",
+        cursor: undefined,
+      });
+      expect(
+        screen.getByRole("button", {
+          name: "Confirm: revoke 1 Read-only share link(s) in This session (0 active client(s))",
+        }),
+      ).toBeTruthy();
+    });
+    expect(
+      screen.getByText(
+        "Click again to revoke 1 Read-only share link(s) in This session (0 active client(s)). Anyone using one will immediately lose access.",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Read-only" }).getAttribute(
+        "aria-pressed",
+      ),
+    ).toBe("true");
+    expect(
+      screen.getByRole("button", { name: "Live" }).getAttribute(
+        "aria-pressed",
+      ),
+    ).toBe("false");
+    expect(api.revokePublicShare).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Confirm: revoke 1 Read-only share link(s) in This session (0 active client(s))",
+      }),
     );
     await waitFor(() => {
-      expect(api.revokeAllPublicShares).toHaveBeenCalledTimes(1);
+      expect(api.revokePublicShare).toHaveBeenCalledWith("share-1");
     });
   });
+
+  it("cancels an armed category revoke when another control is used", async () => {
+    render(
+      <I18nProvider>
+        <SessionShareModal
+          projectId="cHJvamVjdA"
+          sessionId="session-1"
+          initialView="manage"
+          managementAvailable
+          onClose={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    await screen.findByText("Build logs");
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Review all Read-only share links in This session for revocation",
+      }),
+    );
+    await screen.findByRole("button", {
+      name: "Confirm: revoke 1 Read-only share link(s) in This session (0 active client(s))",
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /^All projects$/ }),
+    );
+    await waitFor(() => {
+      expect(api.getPublicShares).toHaveBeenLastCalledWith({
+        projectId: undefined,
+        sessionId: undefined,
+        mode: "frozen",
+      });
+      expect(
+        screen.queryByText(/Click again to revoke 1 Read-only share link/),
+      ).toBeNull();
+    });
+    expect(api.revokePublicShare).not.toHaveBeenCalled();
+  });
+
+  it("makes a location category the exact shown confirmation set", async () => {
+    render(
+      <I18nProvider>
+        <SessionShareModal
+          projectId="cHJvamVjdA"
+          sessionId="session-1"
+          initialView="manage"
+          managementAvailable
+          onClose={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    await screen.findByText("Build logs");
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Review all share links in This project for revocation",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(api.getPublicShares).toHaveBeenCalledWith({
+        projectId: "cHJvamVjdA",
+        sessionId: undefined,
+        mode: undefined,
+        cursor: undefined,
+      });
+      expect(
+        screen.getByRole("button", {
+          name: "Confirm: revoke 1 share link(s) in This project (0 active client(s))",
+        }),
+      ).toBeTruthy();
+    });
+    expect(
+      screen
+        .getByRole("button", { name: /^This project$/ })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(
+      screen.getByRole("button", { name: "Read-only" }).getAttribute(
+        "aria-pressed",
+      ),
+    ).toBe("true");
+    expect(
+      screen.getByRole("button", { name: "Live" }).getAttribute(
+        "aria-pressed",
+      ),
+    ).toBe("true");
+  });
+
 });

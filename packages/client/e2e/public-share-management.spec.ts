@@ -96,9 +96,28 @@ test("left and right click open the same share manager", async ({
     dialog.getByRole("button", { name: "Share This Session" }),
   ).toHaveCount(0);
   await expect(
-    dialog.getByRole("button", { name: "Revoke All Shared Links" }),
+    dialog.getByRole("button", {
+      name: "Review all Read-only share links in This session for revocation",
+    }),
+  ).toBeEnabled();
+  await expect(
+    dialog.getByRole("button", {
+      name: "Review all Live share links in This session for revocation",
+    }),
+  ).toBeEnabled();
+  await expect(
+    dialog.getByRole("button", {
+      name: "Review all share links in This project for revocation",
+    }),
+  ).toBeEnabled();
+  await expect(
+    dialog.getByRole("button", {
+      name: "Review every public share link across all projects for revocation",
+    }),
   ).toBeEnabled();
   await expect(dialog.getByRole("listitem")).toHaveCount(2);
+  await expect(dialog.getByRole("img", { name: "Live" })).toBeVisible();
+  await expect(dialog.getByRole("img", { name: "Read-only" })).toBeVisible();
   await expect(page.getByText("2 matching public link(s)")).toBeVisible();
   const dialogBox = await dialog.boundingBox();
   expect(dialogBox).not.toBeNull();
@@ -114,8 +133,33 @@ test("left and right click open the same share manager", async ({
   ).toHaveAttribute("aria-pressed", "true");
 
   const captureDirectory = process.env.YEP_PUBLIC_SHARE_CAPTURE_DIR;
+  await dialog
+    .getByRole("button", {
+      name: "Review all Read-only share links in This session for revocation",
+    })
+    .click();
+  await expect(
+    dialog.getByRole("button", {
+      name: "Confirm: revoke 1 Read-only share link(s) in This session (0 active client(s))",
+    }),
+  ).toBeEnabled();
+  await expect(
+    dialog.getByText(
+      "Click again to revoke 1 Read-only share link(s) in This session (0 active client(s)). Anyone using one will immediately lose access.",
+    ),
+  ).toBeVisible();
   if (captureDirectory) {
     mkdirSync(captureDirectory, { recursive: true });
+    await page.screenshot({
+      path: join(captureDirectory, "desktop-confirm-1920x1080.png"),
+    });
+  }
+
+  await dialog.getByRole("button", { name: "Live", exact: true }).click();
+  await expect(dialog.getByText(/Click again to revoke/)).toHaveCount(0);
+  await expect(dialog.getByRole("listitem")).toHaveCount(2);
+
+  if (captureDirectory) {
     await page.screenshot({
       path: join(captureDirectory, "desktop-1920x1080.png"),
     });
@@ -142,12 +186,16 @@ test("left and right click open the same share manager", async ({
     });
   }
 
-  await dialog.getByRole("button", { name: "All projects" }).click();
+  await dialog
+    .getByRole("button", { name: "All projects", exact: true })
+    .click();
   await expect(
-    dialog.getByRole("button", { name: "All projects" }),
+    dialog.getByRole("button", { name: "All projects", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
   await expect(
-    dialog.getByRole("button", { name: "Revoke Every Public Link" }),
+    dialog.getByRole("button", {
+      name: "Review all Live share links in All projects for revocation",
+    }),
   ).toBeEnabled();
 
   const inventory = await fetch(
@@ -156,4 +204,13 @@ test("left and right click open the same share manager", async ({
   expect(inventory.ok).toBe(true);
   expect((await inventory.json()).totalCount).toBe(2);
 
+  const finalIndicatorBox = await indicator.boundingBox();
+  expect(finalIndicatorBox).not.toBeNull();
+  if (finalIndicatorBox) {
+    await page.mouse.click(
+      finalIndicatorBox.x + finalIndicatorBox.width / 2,
+      finalIndicatorBox.y + finalIndicatorBox.height / 2,
+    );
+  }
+  await expect(dialog).not.toBeVisible();
 });
