@@ -336,6 +336,74 @@ describe("clientQueryController", () => {
     expect(getClientQueryState(SOURCE_A, "global")?.stale).toBe(false);
   });
 
+  it("clears staleness when several consumers invalidate and force one event", async () => {
+    const fetcher = vi.fn(async () => "loaded");
+    await ensureClientQuery({
+      sourceKey: SOURCE_A,
+      key: "global",
+      coverage: { minRows: 50 },
+      fetcher,
+    });
+
+    // Four mounted consumers of one query reacting to one reconnect: each
+    // invalidates, the first issues the request, the rest join it.
+    const refetches = Array.from({ length: 4 }, () => {
+      invalidateClientQuery(SOURCE_A, "global");
+      return ensureClientQuery({
+        sourceKey: SOURCE_A,
+        key: "global",
+        coverage: { minRows: 50 },
+        force: true,
+        fetcher,
+      });
+    });
+    await Promise.all(refetches);
+
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    // Left stale, `staleTimeMs` would never short-circuit this query again.
+    expect(getClientQueryState(SOURCE_A, "global")?.stale).toBe(false);
+  });
+
+  it("keeps a query stale when an unforced invalidation races a joined force", async () => {
+    const revalidation = deferred<string>();
+    const fetcher = vi
+      .fn<() => Promise<string>>()
+      .mockResolvedValueOnce("first")
+      .mockReturnValueOnce(revalidation.promise);
+
+    await ensureClientQuery({
+      sourceKey: SOURCE_A,
+      key: "global",
+      coverage: { minRows: 50 },
+      fetcher,
+    });
+
+    invalidateClientQuery(SOURCE_A, "global");
+    const forced = ensureClientQuery({
+      sourceKey: SOURCE_A,
+      key: "global",
+      coverage: { minRows: 50 },
+      force: true,
+      fetcher,
+    });
+    const joined = ensureClientQuery({
+      sourceKey: SOURCE_A,
+      key: "global",
+      coverage: { minRows: 50 },
+      force: true,
+      fetcher,
+    });
+    expect(joined).toBe(forced);
+
+    // Not a joining consumer: a real change landed while the request was open,
+    // so its response is already behind.
+    invalidateClientQuery(SOURCE_A, "global");
+    revalidation.resolve("second");
+    await forced;
+
+    expect(getClientQueryState(SOURCE_A, "global")?.stale).toBe(true);
+  });
+
   it("invalidates matching queries with a predicate", async () => {
     const fetcher = vi.fn(async () => "loaded");
     await ensureClientQuery({

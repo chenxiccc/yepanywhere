@@ -23,7 +23,8 @@
     "transcript:benchmark": "tsx scripts/transcript-projection-benchmark.ts",
     "benchmark:version-snapshot": "tsx scripts/version-snapshot-benchmark.ts",
     "benchmark:project-queue-backstop": "tsx scripts/project-queue-backstop-benchmark.ts",
-    "benchmark:query-revalidation-owner": "tsx scripts/query-revalidation-owner-benchmark.ts"
+    "benchmark:query-revalidation-owner": "tsx scripts/query-revalidation-owner-benchmark.ts",
+    "benchmark:forced-refetch-staleness": "tsx scripts/forced-refetch-staleness-benchmark.ts"
   },
   "dependencies": {
     "@yep-anywhere/shared": "workspace:*",

@@ -54,7 +54,15 @@ interface ClientQueryInFlight {
   coverage: ClientQueryCoverage;
   promise: Promise<void>;
   requestStartedAt: number;
-  staleVersionAtStart: number;
+  /**
+   * The invalidation generation this request answers for. A settling request
+   * clears `stale` only when the entry is still at this generation, so an
+   * invalidation arriving mid-flight survives the response it raced.
+   *
+   * A forced caller that joins this request raises it (see `ensureClientQuery`),
+   * because joining declares this request sufficient for that caller's force.
+   */
+  satisfiesStaleVersion: number;
 }
 
 interface ClientQueryEntry {
@@ -277,6 +285,15 @@ export function ensureClientQuery<T>(
 
   for (const inFlight of entry.inFlights) {
     if (coverageSatisfies(inFlight.coverage, requestedCoverage)) {
+      if (options.force) {
+        // Joining says this request answers our force, so it also answers the
+        // invalidation we raised on the way in. Without this, N consumers
+        // reacting to one event each invalidate and then join the first
+        // consumer's request, which then settles against a generation it can
+        // never match — leaving the entry stale forever and disabling
+        // `staleTimeMs` for the rest of the session.
+        inFlight.satisfiesStaleVersion = entry.staleVersion;
+      }
       return inFlight.promise;
     }
   }
@@ -297,7 +314,7 @@ export function ensureClientQuery<T>(
   const inFlight: ClientQueryInFlight = {
     coverage: requestedCoverage,
     requestStartedAt,
-    staleVersionAtStart: entry.staleVersion,
+    satisfiesStaleVersion: entry.staleVersion,
     promise: Promise.resolve()
       .then(() => options.fetcher(context))
       .then(async (result) => {
@@ -309,7 +326,7 @@ export function ensureClientQuery<T>(
           requestStartedAt,
         );
         entry.error = undefined;
-        if (entry.staleVersion === inFlight.staleVersionAtStart) {
+        if (entry.staleVersion === inFlight.satisfiesStaleVersion) {
           entry.stale = false;
         }
       })
@@ -358,6 +375,12 @@ export function getClientQueryStates(): ClientQueryState[] {
   return Array.from(entries.values(), toState);
 }
 
+/**
+ * Marks the cached value obsolete as of now. Pair it with a `force` fetch when
+ * the caller must also defeat an in-flight request that started earlier — a
+ * plain `force` happily joins one, and a response begun before the event that
+ * triggered the refetch is exactly what a reconnect must not settle for.
+ */
 export function invalidateClientQuery(
   sourceKey: ClientSummarySourceKey,
   key: ClientQueryKey | unknown,
