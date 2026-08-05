@@ -77,22 +77,6 @@ function pendingSpeechVersion(
   });
 }
 
-interface Deferred<T> {
-  promise: Promise<T>;
-  resolve: (value: T) => void;
-  reject: (error: unknown) => void;
-}
-
-function deferred<T>(): Deferred<T> {
-  let resolve!: (value: T) => void;
-  let reject!: (error: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
-}
-
 async function settle() {
   await act(async () => {
     await Promise.resolve();
@@ -228,30 +212,26 @@ describe("useVersion", () => {
   });
 
   it("coalesces reconnect revalidation across consumers", async () => {
-    // Each hook still owns a debounce timer, so this proves in-flight sharing:
-    // the second hook's revalidation joins the first's open request. Collapsing
-    // the timers themselves into one per (source, query) owner is step 11 of
-    // the client query controller plan, not this slice.
-    const revalidation = deferred<VersionInfo>();
-    mocks.getVersion
-      .mockResolvedValueOnce(versionInfo({ current: "1.0.0" }))
-      .mockReturnValueOnce(revalidation.promise);
+    // An instantly-resolving response is deliberate: it is the case that used
+    // to cost two round trips, because each hook owned a debounce timer and the
+    // first revalidation completed before the second timer fired. One owner per
+    // (source, query) now makes it one.
+    mocks.getVersion.mockResolvedValue(versionInfo({ current: "1.0.0" }));
 
     const first = renderHook(() => useVersion());
     const second = renderHook(() => useVersion());
     await settle();
     expect(mocks.getVersion).toHaveBeenCalledTimes(1);
 
+    mocks.getVersion.mockResolvedValue(versionInfo({ current: "3.0.0" }));
     await act(async () => {
       mocks.activityBus.emit("reconnect");
       await vi.advanceTimersByTimeAsync(500);
     });
-    expect(mocks.getVersion).toHaveBeenCalledTimes(2);
-    expect(mocks.getVersion).toHaveBeenLastCalledWith({ fresh: false });
-
-    revalidation.resolve(versionInfo({ current: "3.0.0" }));
     await settle();
 
+    expect(mocks.getVersion).toHaveBeenCalledTimes(2);
+    expect(mocks.getVersion).toHaveBeenLastCalledWith({ fresh: false });
     expect(first.result.current.version?.current).toBe("3.0.0");
     expect(second.result.current.version?.current).toBe("3.0.0");
   });

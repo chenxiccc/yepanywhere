@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { activityBus, type ActivityEventType } from "../lib/activityBus";
+import type { ActivityEventType } from "../lib/activityBus";
 import {
   createClientQueryKey,
   ensureClientQuery,
@@ -7,6 +7,10 @@ import {
   type ClientQueryCoverage,
   type ClientQueryRequestContext,
 } from "../lib/clientQueryController";
+import {
+  retainQueryRevalidation,
+  type QueryRevalidationHandle,
+} from "../lib/clientQueryRevalidation";
 import type { ClientSummarySourceKey } from "../lib/clientSummaryStore";
 
 const DEFAULT_REVALIDATE_DEBOUNCE_MS = 500;
@@ -83,7 +87,6 @@ export function useRetainedClientQuery<T>({
   const [loading, setLoading] = useState(enabled && !hasData);
   const [error, setError] = useState<Error | null>(null);
   const hasSuccessfulFetchRef = useRef(hasData);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
   const runSequenceRef = useRef(0);
   const coverageRef = useRef(coverage);
@@ -114,10 +117,8 @@ export function useRetainedClientQuery<T>({
     hasSuccessfulFetchRef.current = hasData;
     setError(null);
     setLoading(enabled && !hasData);
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
+    // A pending debounce is the owner's, and releasing this subscriber on a
+    // source/query change already drops it when nobody else wants it.
   }, [enabled, hasData, sourceKey, queryKey, coverageKey]);
 
   useEffect(() => {
@@ -181,51 +182,66 @@ export function useRetainedClientQuery<T>({
     [enabled, ready, sourceKey, queryKey, coverageKey, staleTimeMs],
   );
 
+  // Event listening and the debounce timer belong to the shared
+  // `(sourceKey, queryKey)` owner, not to this hook instance, so twenty mounted
+  // consumers of one query install one listener set and arm one timer.
+  const revalidationRef = useRef<QueryRevalidationHandle | null>(null);
+  const runRef = useRef(run);
+  runRef.current = run;
+
+  useEffect(() => {
+    if (!enabled) {
+      revalidationRef.current = null;
+      return undefined;
+    }
+    const handle = retainQueryRevalidation({
+      sourceKey,
+      key: queryKey,
+      subscriber: {
+        coverage: coverageRef.current,
+        events: revalidateEvents,
+        debounceMs,
+        shouldRevalidateEvent: (event) =>
+          shouldRevalidateEventRef.current?.(event) !== false,
+        run: () => {
+          void runRef.current({ force: true, background: true });
+        },
+      },
+    });
+    revalidationRef.current = handle;
+    return () => {
+      revalidationRef.current = null;
+      handle.release();
+    };
+  }, [enabled, sourceKey, queryKey, revalidateEvents, debounceMs]);
+
+  // Closures and coverage change between renders; the owner needs the current
+  // ones without the retention itself churning.
+  useEffect(() => {
+    revalidationRef.current?.update({
+      coverage: coverageRef.current,
+      events: revalidateEvents,
+      debounceMs,
+      shouldRevalidateEvent: (event) =>
+        shouldRevalidateEventRef.current?.(event) !== false,
+      run: () => {
+        void runRef.current({ force: true, background: true });
+      },
+    });
+  });
+
   const scheduleRevalidation = useCallback(() => {
     if (!enabled) {
       return;
     }
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-    }
-    timerRef.current = setTimeout(() => {
-      timerRef.current = null;
-      void run({ force: true, background: true });
-    }, debounceMs);
-  }, [debounceMs, enabled, run]);
-
-  useEffect(() => {
-    if (!enabled || revalidateEvents.length === 0) {
-      return undefined;
-    }
-    const unsubscribers = revalidateEvents.map((eventType) =>
-      activityBus.on(eventType, (data) => {
-        if (shouldRevalidateEventRef.current?.({ eventType, data }) === false) {
-          return;
-        }
-        scheduleRevalidation();
-      }),
-    );
-    return () => {
-      for (const unsubscribe of unsubscribers) {
-        unsubscribe();
-      }
-    };
-  }, [enabled, revalidateEvents, scheduleRevalidation]);
+    revalidationRef.current?.schedule();
+  }, [enabled]);
 
   useEffect(() => {
     if (enabled && ready) {
       void run();
     }
   }, [enabled, ready, run]);
-
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
-      }
-    };
-  }, []);
 
   return {
     loading,

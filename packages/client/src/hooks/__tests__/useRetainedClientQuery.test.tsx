@@ -5,6 +5,10 @@ import {
   resetClientQueryControllerForTests,
 } from "../../lib/clientQueryController";
 import {
+  getQueryRevalidationMetrics,
+  resetQueryRevalidationForTests,
+} from "../../lib/clientQueryRevalidation";
+import {
   asClientSummarySourceKey,
   type ClientSummarySourceKey,
 } from "../../lib/clientSummaryStore";
@@ -101,10 +105,12 @@ beforeEach(() => {
   busMock.reset();
   busMock.on.mockClear();
   resetClientQueryControllerForTests();
+  resetQueryRevalidationForTests();
 });
 
 afterEach(() => {
   cleanup();
+  resetQueryRevalidationForTests();
   resetClientQueryControllerForTests();
   vi.useRealTimers();
 });
@@ -254,5 +260,80 @@ describe("useRetainedClientQuery", () => {
       await vi.advanceTimersByTimeAsync(50);
     });
     expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("useRetainedClientQuery revalidation ownership", () => {
+  it("installs one listener set and one timer for many consumers", async () => {
+    const fetcher = vi.fn(async () => "loaded");
+    for (let i = 0; i < 20; i += 1) renderRetainedQuery({ fetcher });
+    await settle();
+
+    const metrics = getQueryRevalidationMetrics();
+    expect(metrics.owners).toBe(1);
+    expect(metrics.subscribers).toBe(20);
+    // The union of `revalidateOn`, once — not once per consumer.
+    expect(metrics.eventSubscriptions).toBe(2);
+
+    await act(async () => {
+      busMock.emit("reconnect");
+    });
+    expect(getQueryRevalidationMetrics().armedTimers).toBe(1);
+  });
+
+  it("costs one request per event even when the response beats the debounce", async () => {
+    // The defect this ownership change exists to remove. With a per-consumer
+    // debounce, the first hook's revalidation could complete before the second
+    // hook's timer fired, leaving no in-flight request to join, so one
+    // `reconnect` cost two round trips. It is latency-dependent, so an
+    // instantly-resolving fetcher is the case that reproduces it.
+    const fetcher = vi.fn(async () => "loaded");
+    renderRetainedQuery({ fetcher });
+    renderRetainedQuery({ fetcher });
+    await settle();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      busMock.emit("reconnect");
+      await vi.advanceTimersByTimeAsync(50);
+    });
+    await settle();
+
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("releases listeners only when the last consumer unmounts", async () => {
+    const fetcher = vi.fn(async () => "loaded");
+    const first = renderRetainedQuery({ fetcher });
+    const second = renderRetainedQuery({ fetcher });
+    await settle();
+    expect(getQueryRevalidationMetrics().owners).toBe(1);
+
+    first.unmount();
+    expect(getQueryRevalidationMetrics()).toMatchObject({
+      owners: 1,
+      subscribers: 1,
+      eventSubscriptions: 2,
+    });
+
+    second.unmount();
+    expect(getQueryRevalidationMetrics()).toMatchObject({
+      owners: 0,
+      subscribers: 0,
+      eventSubscriptions: 0,
+      armedTimers: 0,
+    });
+  });
+
+  it("keeps separate owners per source", async () => {
+    const fetcher = vi.fn(async () => "loaded");
+    renderRetainedQuery({ fetcher, sourceKey: SOURCE });
+    renderRetainedQuery({
+      fetcher,
+      sourceKey: asClientSummarySourceKey("host:other"),
+    });
+    await settle();
+
+    expect(getQueryRevalidationMetrics().owners).toBe(2);
   });
 });

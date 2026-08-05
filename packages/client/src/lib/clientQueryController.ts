@@ -126,7 +126,12 @@ function normalizeCoverage(
   return coverage ? { ...coverage } : {};
 }
 
-function coverageSatisfies(
+/**
+ * Whether work done for `available` also answers a need for `requested`.
+ * Exported for the revalidation owner, which uses it to pick the one
+ * subscriber whose refetch satisfies every other subscriber of the same query.
+ */
+export function coverageSatisfies(
   available: ClientQueryCoverage,
   requested: ClientQueryCoverage,
 ): boolean {
@@ -242,7 +247,9 @@ function isFresh(
   if (!coverageSatisfies(entry.coverage, requestedCoverage)) {
     return false;
   }
-  return staleTimeMs === undefined || Date.now() - entry.fetchedAt <= staleTimeMs;
+  return (
+    staleTimeMs === undefined || Date.now() - entry.fetchedAt <= staleTimeMs
+  );
 }
 
 function markStaleForForcedFetch(entry: ClientQueryEntry): void {
@@ -261,7 +268,10 @@ export function ensureClientQuery<T>(
   const requestedCoverage = normalizeCoverage(options.coverage);
   const entry = getOrCreateEntry(options.sourceKey, key);
 
-  if (!options.force && isFresh(entry, requestedCoverage, options.staleTimeMs)) {
+  if (
+    !options.force &&
+    isFresh(entry, requestedCoverage, options.staleTimeMs)
+  ) {
     return Promise.resolve();
   }
 
@@ -318,7 +328,9 @@ export function ensureClientQuery<T>(
   return inFlight.promise;
 }
 
-export function retainClientQuery(options: RetainClientQueryOptions): () => void {
+export function retainClientQuery(
+  options: RetainClientQueryOptions,
+): () => void {
   const key = createClientQueryKey(options.key);
   const entry = getOrCreateEntry(options.sourceKey, key);
   entry.retainedCount += 1;

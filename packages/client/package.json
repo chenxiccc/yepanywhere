@@ -22,7 +22,8 @@
     "transcript:artifacts": "node scripts/transcript-artifact-smoke.mjs",
     "transcript:benchmark": "tsx scripts/transcript-projection-benchmark.ts",
     "benchmark:version-snapshot": "tsx scripts/version-snapshot-benchmark.ts",
-    "benchmark:project-queue-backstop": "tsx scripts/project-queue-backstop-benchmark.ts"
+    "benchmark:project-queue-backstop": "tsx scripts/project-queue-backstop-benchmark.ts",
+    "benchmark:query-revalidation-owner": "tsx scripts/query-revalidation-owner-benchmark.ts"
   },
   "dependencies": {
     "@yep-anywhere/shared": "workspace:*",

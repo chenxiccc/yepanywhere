@@ -106,6 +106,13 @@ reconnect, or session metadata changes. That belongs here, not in a separate
   epochs/generations and short-lived client interest. Added a browser reuse
   slice that prevents sequential mounts and capable sibling tabs from
   requesting an unchanged generation while keeping server dedupe authoritative.
+- 2026-08-05: Moved activity subscriptions and the revalidation debounce out of
+  hook instances into one owner per `(sourceKey, queryKey)`
+  (`lib/clientQueryRevalidation.ts`). The owner unions its subscribers' events,
+  keeps one timer, and revalidates with the widest coverage among them so a
+  50-row consumer is satisfied by the 100-row consumer's refetch. This removes
+  the fast-response duplicate recorded below: one `reconnect` across two
+  consumers now costs one request rather than two.
 - 2026-08-05: Replaced Project Queue's per-consumer five-second interval with
   one source-level backstop owner that arms a single timer for the earliest
   instant the server reported (`nextAttemptAt` / `quietEligibleAt`), falls back
@@ -880,9 +887,19 @@ Acceptance:
 
 ### 11 — make revalidation owned by the retained query entry
 
-Status: Partially complete 2026-08-05. The Project Queue deadline backstop
-landed; the general migration of activity subscriptions and debounce timers
-into the controller entry, and the Sidebar duplicate-retainer fix, remain.
+Status: Mostly complete 2026-08-05. The Project Queue deadline backstop landed,
+and activity subscriptions plus debounce timers now belong to a per-`(sourceKey,
+queryKey)` owner in `lib/clientQueryRevalidation.ts`. The Sidebar
+duplicate-retainer fix (four hook instances for two query keys) remains, as does
+consuming forced-generation transitions through the owner.
+
+Measured: 26 mounted consumers across 8 retained queries over 15 activity
+events — 64 `activityBus` listeners become 21 (67.19%), 165 debounce timers
+become 54, and 165 revalidation requests become 54 (3.06x). The request figure
+is arm A's fast-response case; when a response outlives the gap between consumer
+timers its extra requests join the open one, and both arms issue one per event.
+Run `pnpm --filter @yep-anywhere/client benchmark:query-revalidation-owner`.
+The measured arm drives the real owner and the real `activityBus`.
 
 Move activity subscriptions, debounce/deadline timers, reconnect/refresh
 handling, and forced-generation transitions from hook instances into the
@@ -922,7 +939,7 @@ retained projection rather than a provider read.
 
 Acceptance:
 
-- two or twenty hooks retaining the same source/query install one event-policy
+- [x] two or twenty hooks retaining the same source/query install one event-policy
   owner and at most one debounce/deadline timer;
 - a duplicate forced revalidation joins the in-flight generation without
   advancing its stale version, and successful completion makes the entry fresh;
