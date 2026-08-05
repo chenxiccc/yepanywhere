@@ -160,3 +160,16 @@ the vanilla-defaults established-convention carve-out. Key kept because it is
 a persisted server setting named in the `bang-commands` capability contract;
 older co-deployed clients that still gate the composer on it merely under-use
 the server.
+
+2026-08-05 progressive session catalog — gate the client's move from
+request-complete session/Inbox enumeration to generation-reusing progressive
+snapshots behind a permanent `progressive-session-catalog` capability, rather
+than changing the existing responses in place. Permanent because YA is
+self-hosted with no forced upgrade, so old servers persist indefinitely and the
+gate never becomes removable. The approved obligation is a performance floor,
+not a feature floor: an out-of-date client against a current server, and a
+current client against an out-of-date server, must still perform basic actions
+at some non-optimal performance level, so the ungated path stays a working
+enumeration rather than a degraded stub. Field list and release corpus are
+filled in when the wire shape exists; see
+[Server Capabilities](server-capabilities.md) § Planned session-catalog gate.
