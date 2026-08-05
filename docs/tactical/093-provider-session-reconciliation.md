@@ -34,6 +34,20 @@ Related contracts:
   (101.94x). Run `pnpm --filter @yep-anywhere/server
   benchmark:single-flight` to repeat the measurement.
 
+- **2026-08-05 — Codex provider-child projection.** Process snapshots now use
+  latest accepted child summaries and start source refresh in the background,
+  so a cold decorative projection cannot delay basic process rows. Fresh
+  readers share an 8 MiB byte-bounded projection owner, join concurrent work,
+  stream only child lifecycle records, read plain-file appends incrementally,
+  and rebuild on truncation or replacement. With 20 callers and a 6,289,985
+  byte parent rollout, the reproducible benchmark measured 20 legacy full
+  parses versus one projection build and 125,799,700 versus 6,289,985 logical
+  source bytes (95.00% avoided). Median wall time fell from 183.08 ms to 9.07
+  ms across five samples (20.18x); cold accepted lookup returned in 0.535 ms,
+  the retained projection estimated 611 bytes, and the full-entry cache stayed
+  empty. Run `pnpm --filter @yep-anywhere/server
+  benchmark:codex-child-projection` to repeat the measurement.
+
 Design decision: use a source-versioned, byte-bounded latest-value owner rather
 than a request-only in-flight map or TTL cache. Request-only coalescing does not
 stop sequential unchanged reads; TTL freshness can publish obsolete work and

@@ -18,6 +18,7 @@ export type SourceVersionedWorkResult<Value> =
 
 export interface SourceVersionedSingleFlightStats {
   cacheHits: number;
+  acceptedPeeks: number;
   joinedCalls: number;
   workStarts: number;
   staleCompletions: number;
@@ -75,6 +76,7 @@ export class SourceVersionedSingleFlight<Key, Value> {
   private accessSequence = 0;
   private retainedBytes = 0;
   private cacheHits = 0;
+  private acceptedPeeks = 0;
   private joinedCalls = 0;
   private workStarts = 0;
   private staleCompletions = 0;
@@ -198,6 +200,21 @@ export class SourceVersionedSingleFlight<Key, Value> {
     return promise;
   }
 
+  /**
+   * Return the latest accepted value without asserting that its source is
+   * still current. This is for non-blocking consumers that prefer boundedly
+   * stale enrichment while a separate refresh runs in the background.
+   */
+  getAccepted(
+    key: Key,
+  ): Readonly<SourceVersionedAcceptedValue<Value>> | undefined {
+    const retained = this.entries.get(key)?.retained;
+    if (!retained) return undefined;
+    this.acceptedPeeks += 1;
+    retained.lastAccess = ++this.accessSequence;
+    return { sourceVersion: retained.sourceVersion, value: retained.value };
+  }
+
   invalidate(key: Key): void {
     const entry = this.entries.get(key);
     if (!entry) return;
@@ -223,6 +240,7 @@ export class SourceVersionedSingleFlight<Key, Value> {
     }
     return {
       cacheHits: this.cacheHits,
+      acceptedPeeks: this.acceptedPeeks,
       joinedCalls: this.joinedCalls,
       workStarts: this.workStarts,
       staleCompletions: this.staleCompletions,

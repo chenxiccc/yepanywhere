@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "benchmark:markdown": "tsx --conditions source scripts/benchmark-safe-markdown.ts",
+    "benchmark:codex-child-projection": "tsx --conditions source scripts/benchmark-codex-child-projection.ts",
     "benchmark:single-flight": "tsx --conditions source scripts/benchmark-source-versioned-single-flight.ts",
     "dev": "node ../../scripts/run-with-safe-home.js tsx --conditions source src/index.ts",
     "dev:watch": "node ../../scripts/run-with-safe-home.js tsx watch --conditions source src/index.ts",

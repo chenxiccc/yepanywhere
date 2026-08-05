@@ -1,0 +1,53 @@
+import { describe, expect, it, vi } from "vitest";
+import { MergedSessionReader } from "../../src/sessions/merged-reader.js";
+import type { ISessionReader } from "../../src/sessions/types.js";
+
+function childReader(options: {
+  accepted?: ReturnType<typeof vi.fn>;
+}): ISessionReader {
+  return {
+    listProviderChildSessions: vi.fn(async () => []),
+    ...(options.accepted
+      ? { listAcceptedProviderChildSessions: options.accepted }
+      : {}),
+  } as unknown as ISessionReader;
+}
+
+describe("MergedSessionReader provider child freshness", () => {
+  it("merges latest accepted projections without provider reads", () => {
+    const first = vi.fn(() => [
+      {
+        id: "child-1",
+        parentSessionId: "parent",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+      },
+    ]);
+    const second = vi.fn(() => [
+      {
+        id: "child-2",
+        parentSessionId: "parent",
+        updatedAt: "2026-08-05T00:00:01.000Z",
+      },
+    ]);
+    const reader = new MergedSessionReader([
+      childReader({ accepted: first }),
+      childReader({ accepted: second }),
+    ]);
+
+    expect(reader.listAcceptedProviderChildSessions("parent")).toEqual([
+      expect.objectContaining({ id: "child-1" }),
+      expect.objectContaining({ id: "child-2" }),
+    ]);
+    expect(first).toHaveBeenCalledWith("parent");
+    expect(second).toHaveBeenCalledWith("parent");
+  });
+
+  it("declines the tier when any child reader cannot serve accepted state", () => {
+    const reader = new MergedSessionReader([
+      childReader({ accepted: vi.fn(() => []) }),
+      childReader({}),
+    ]);
+
+    expect(reader.listAcceptedProviderChildSessions("parent")).toBeUndefined();
+  });
+});

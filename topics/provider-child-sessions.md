@@ -70,22 +70,47 @@ parse. Child creation may invalidate the bounded child projection. An append
 with no child lifecycle record must cost at most incremental append inspection,
 not a replay from byte zero.
 
-The Codex implementation currently violates this contract.
-`createProcessesRoutes` enriches every active and recently terminated row with
-`listProviderChildSessions`. `CodexSessionReader.listProviderChildSessions`
-then calls `readEntries` with `cache: false`, parsing the complete parent
-rollout on every process-snapshot refresh. The 2026-08-04 investigation in
+The Codex implementation uses a source-versioned child projection shared across
+reader instances. The projection retains launch and child facts, its byte
+offset, and an incomplete final line, but never the full entry array. Exact
+unchanged versions are cache hits; concurrent readers join one build; plain
+JSONL growth inspects only the appended range; truncation, replacement, and
+compressed-file changes rebuild from byte zero. Published work is re-statted
+against device, inode, size, mtime, and ctime, and a late completion cannot
+replace accepted state for another source version. The retained projections
+share an 8 MiB process-wide byte budget.
+
+The process-list route consumes the latest accepted projection and starts
+refresh in the background. A cold projection therefore omits child enrichment
+from that response instead of delaying the basic process row; a later snapshot
+attaches it after publication. Direct reader callers retain fresh-by-default
+semantics, retry one source race, and fall back to the last accepted projection
+if the source keeps changing.
+
+This replaces the prior violation: `createProcessesRoutes` enriched every
+active and recently terminated row by awaiting
+`listProviderChildSessions`, while `CodexSessionReader` called `readEntries`
+with `cache: false` and parsed the complete parent rollout on every process
+snapshot. The 2026-08-04 investigation in
 [`docs/tactical/089-main-thread-startup-cpu-investigation.md`](../docs/tactical/089-main-thread-startup-cpu-investigation.md)
 demonstrated sustained multi-core CPU and hundreds of logical GiB of repeated
-input from that path. The owning correction is a shared, versioned child-summary
-projection with in-flight coalescing and bounded/incremental append handling;
-generic process refresh must consume that projection rather than full entries.
+input from that path.
 
-A regression for this boundary should issue repeated process refreshes against
-one unchanged large parent rollout. After at most one initial child-projection
-build, it must observe zero full-entry parses. Appending ordinary non-child
-records must not rebuild from byte zero; appending a spawn/lifecycle record
-must update the child summary without retaining the complete entry array.
+The reproducible server benchmark uses a 6,289,985-byte synthetic parent
+rollout and 20 simultaneous callers. It measured 20 legacy full parses versus
+one projection build, 125,799,700 versus 6,289,985 logical source bytes (95.00%
+avoided), and 183.08 ms versus 9.07 ms median wall time across five samples
+(20.18x). Cold latest-accepted lookup returned in 0.535 ms. The accepted value
+retained 611 estimated bytes and populated zero full-entry-cache sessions. Run
+`pnpm --filter @yep-anywhere/server benchmark:codex-child-projection` to repeat
+the measurement.
+
+A regression for this boundary issues repeated process refreshes against one
+unchanged large parent rollout. After at most one initial child-projection
+build, it observes zero full-entry parses. Appending ordinary non-child records
+does not rebuild from byte zero; appending a spawn/lifecycle record updates the
+child summary without retaining the complete entry array. Truncation removes
+children that are no longer in the source.
 
 Inline content follows the heavier session-detail path. Current Claude streams
 route content by the provider child ID and map a parent tool call only when that

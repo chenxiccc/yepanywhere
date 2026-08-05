@@ -96,6 +96,27 @@ describe("SourceVersionedSingleFlight", () => {
     expect(workStarts).toBe(1);
   });
 
+  it("exposes the latest accepted value without a freshness claim", async () => {
+    const work = new SourceVersionedSingleFlight<string, string>({
+      maxRetainedBytes: 1024,
+      estimateBytes: (value) => value.length,
+    });
+
+    expect(work.getAccepted("session-1:children")).toBeUndefined();
+    await work.run({
+      key: "session-1:children",
+      sourceVersion: "v1",
+      compute: async () => "projection",
+      isCurrent: async () => true,
+    });
+
+    expect(work.getAccepted("session-1:children")).toEqual({
+      sourceVersion: "v1",
+      value: "projection",
+    });
+    expect(work.getStats()).toMatchObject({ acceptedPeeks: 1 });
+  });
+
   it("passes the last accepted version into an incremental rebuild", async () => {
     const work = new SourceVersionedSingleFlight<string, string>({
       maxRetainedBytes: 1024,

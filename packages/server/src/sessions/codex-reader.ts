@@ -25,6 +25,7 @@ import {
   truncateSessionTitle,
 } from "@yep-anywhere/shared";
 import type { SessionDiscoveryIndex } from "../indexes/SessionDiscoveryIndex.js";
+import type { SourceVersionedSingleFlightStats } from "../lib/sourceVersionedSingleFlight.js";
 import { getLogger } from "../logging/logger.js";
 import {
   canonicalizeProjectPath,
@@ -41,6 +42,11 @@ import {
   preferPlainCodexRollouts,
 } from "../utils/codexRolloutFiles.js";
 import { iterateJsonlLines, readJsonlLines } from "../utils/jsonl.js";
+import {
+  type CodexProviderChildProjection,
+  codexProviderChildProjections,
+  parseCodexSpawnAgentOutput,
+} from "./codex-provider-child-projection.js";
 import {
   type CodexRolloutDiscoveryStats,
   createCodexSessionDiscoveryIndex,
@@ -209,6 +215,20 @@ interface CodexAgentMappingCache {
   mtimeMs: number;
   size: number;
   mappings: CodexAgentMapping[];
+}
+
+export interface CodexProviderChildProjectionMetrics {
+  event: "codex_provider_child_projection";
+  status: "accepted" | "computed" | "hit" | "joined" | "stale";
+  durationMs: number;
+  fileSize: number;
+  fullRebuild: boolean;
+  startOffset: number;
+  sourceBytesRead: number;
+  linesInspected: number;
+  parsedEntries: number;
+  childCount: number;
+  retainedBytes: number;
 }
 
 type CodexEntryReadPurpose =
@@ -538,6 +558,9 @@ export class CodexSessionReader implements ISessionReader {
   private summaryParserClient?: SummaryParserClient;
   private lastScanMetrics: CodexSessionReaderScanMetrics | null = null;
   private lastSummaryStreamMetrics: CodexSummaryStreamMetrics | null = null;
+  private lastProviderChildProjectionMetrics: CodexProviderChildProjectionMetrics | null =
+    null;
+  private providerChildProjectionKeys = new Set<string>();
 
   // Cache of session ID -> file path for quick lookups
   private sessionFileCache: Map<string, CodexSessionFile> = new Map();
@@ -574,6 +597,10 @@ export class CodexSessionReader implements ISessionReader {
     this.sessionFileCache.clear();
     this.entryCache.clear();
     this.agentMappingCache.clear();
+    for (const key of this.providerChildProjectionKeys) {
+      codexProviderChildProjections.invalidate(key);
+    }
+    this.providerChildProjectionKeys.clear();
     for (const cacheKey of codexSharedScanCache.keys()) {
       if (cacheKey.startsWith(`${this.sessionsDir}::`)) {
         codexSharedScanCache.delete(cacheKey);
@@ -612,6 +639,16 @@ export class CodexSessionReader implements ISessionReader {
       mappings += cached.mappings.length;
     }
     return { sessions: this.agentMappingCache.size, mappings };
+  }
+
+  getProviderChildProjectionCacheStats(): SourceVersionedSingleFlightStats {
+    return codexProviderChildProjections.getStats();
+  }
+
+  getLastProviderChildProjectionMetrics(): CodexProviderChildProjectionMetrics | null {
+    return this.lastProviderChildProjectionMetrics
+      ? { ...this.lastProviderChildProjectionMetrics }
+      : null;
   }
 
   getLastSummaryStreamMetrics(): CodexSummaryStreamMetrics | null {
@@ -996,43 +1033,138 @@ export class CodexSessionReader implements ISessionReader {
   async listProviderChildSessions(
     parentSessionId: string,
   ): Promise<ProviderChildSessionSummary[]> {
-    const parentSession = (await this.scanSessions()).find(
-      (session) => session.id === parentSessionId,
+    const projection =
+      await this.refreshProviderChildProjection(parentSessionId);
+    return this.materializeProviderChildSessions(parentSessionId, projection);
+  }
+
+  listAcceptedProviderChildSessions(
+    parentSessionId: string,
+  ): ProviderChildSessionSummary[] {
+    const key = this.getProviderChildProjectionKey(parentSessionId);
+    this.providerChildProjectionKeys.add(key);
+    const projection = codexProviderChildProjections.getAccepted(key);
+    this.lastProviderChildProjectionMetrics = {
+      event: "codex_provider_child_projection",
+      status: "accepted",
+      durationMs: 0,
+      fileSize: projection?.readThroughBytes ?? 0,
+      fullRebuild: false,
+      startOffset: projection?.readThroughBytes ?? 0,
+      sourceBytesRead: 0,
+      linesInspected: 0,
+      parsedEntries: 0,
+      childCount: projection?.children.size ?? 0,
+      retainedBytes: projection?.retainedBytes ?? 0,
+    };
+    void this.refreshProviderChildProjection(parentSessionId).catch(
+      (error: unknown) => {
+        getLogger().debug(
+          {
+            event: "codex_provider_child_projection_refresh_failed",
+            sessionId: parentSessionId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "CODEX_READER: provider child projection refresh failed",
+        );
+      },
     );
-    if (!parentSession) return [];
+    return this.materializeProviderChildSessions(parentSessionId, projection);
+  }
 
-    const entries = await this.readEntries(
-      parentSession.id,
-      parentSession.filePath,
-      { purpose: "agent-mapping", cache: false },
-    );
-    const launches = new Map<string, { title?: string; agentType?: string }>();
-    const children: ProviderChildSessionSummary[] = [];
+  private async refreshProviderChildProjection(
+    parentSessionId: string,
+  ): Promise<CodexProviderChildProjection | undefined> {
+    const startedAt = Date.now();
+    const key = this.getProviderChildProjectionKey(parentSessionId);
+    this.providerChildProjectionKeys.add(key);
 
-    for (const entry of entries) {
-      if (entry.type !== "response_item") continue;
-      const payload = entry.payload;
-
-      if (payload.type === "function_call" && payload.name === "spawn_agent") {
-        const args = parseJsonRecord(payload.arguments);
-        const prompt = stringField(args, "prompt");
-        const agentType =
-          stringField(args, "role") ?? stringField(args, "agent_type");
-        launches.set(payload.call_id, {
-          ...(prompt && { title: truncateSessionTitle(prompt) }),
-          ...(agentType && { agentType }),
-        });
-        continue;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const parentSession = (await this.scanSessions()).find(
+        (session) => session.id === parentSessionId,
+      );
+      if (!parentSession) {
+        codexProviderChildProjections.invalidate(key);
+        return undefined;
       }
 
-      if (payload.type !== "function_call_output") continue;
-      const launch = launches.get(payload.call_id);
+      let stats: Awaited<ReturnType<typeof stat>>;
+      try {
+        stats = await stat(parentSession.filePath);
+      } catch {
+        codexProviderChildProjections.invalidate(key);
+        return undefined;
+      }
+      const result = await codexProviderChildProjections.run({
+        key,
+        filePath: parentSession.filePath,
+        parentUpdatedAt: parentSession.timestamp,
+        stats,
+      });
+
+      if (result.status === "stale") {
+        if (attempt === 0) continue;
+        const fallback =
+          result.previous?.value ??
+          codexProviderChildProjections.getAccepted(key);
+        this.recordProviderChildProjectionMetrics({
+          startedAt,
+          status: "stale",
+          fileSize: Number(stats.size),
+          projection: fallback,
+        });
+        return fallback;
+      }
+
+      this.recordProviderChildProjectionMetrics({
+        startedAt,
+        status: result.status,
+        fileSize: Number(stats.size),
+        projection: result.value,
+      });
+      return result.value;
+    }
+
+    return undefined;
+  }
+
+  private recordProviderChildProjectionMetrics(options: {
+    startedAt: number;
+    status: CodexProviderChildProjectionMetrics["status"];
+    fileSize: number;
+    projection?: CodexProviderChildProjection;
+  }): void {
+    const build =
+      options.status === "computed" ? options.projection?.lastBuild : undefined;
+    this.lastProviderChildProjectionMetrics = {
+      event: "codex_provider_child_projection",
+      status: options.status,
+      durationMs: Date.now() - options.startedAt,
+      fileSize: options.fileSize,
+      fullRebuild: build?.fullRebuild ?? false,
+      startOffset: build?.startOffset ?? options.fileSize,
+      sourceBytesRead: build?.sourceBytesRead ?? 0,
+      linesInspected: build?.linesInspected ?? 0,
+      parsedEntries: build?.parsedEntries ?? 0,
+      childCount: options.projection?.children.size ?? 0,
+      retainedBytes: options.projection?.retainedBytes ?? 0,
+    };
+  }
+
+  private materializeProviderChildSessions(
+    parentSessionId: string,
+    projection?: CodexProviderChildProjection,
+  ): ProviderChildSessionSummary[] {
+    if (!projection) return [];
+    const parentUpdatedAt =
+      this.getCachedSessionFile(parentSessionId)?.timestamp ??
+      projection.parentUpdatedAt;
+    const children: ProviderChildSessionSummary[] = [];
+    for (const child of projection.children.values()) {
+      const launch = projection.launches.get(child.toolUseId);
       if (!launch) continue;
-      const child = parseCodexSpawnAgentDetails(payload.output);
-      if (!child) continue;
-      const childFile = await this.findSessionFile(child.agentId);
       children.push({
-        id: child.agentId,
+        id: child.id,
         parentSessionId,
         ...(child.nickname
           ? { title: child.nickname }
@@ -1040,15 +1172,30 @@ export class CodexSessionReader implements ISessionReader {
             ? { title: launch.title }
             : {}),
         ...(launch.agentType && { agentType: launch.agentType }),
-        toolUseId: payload.call_id,
-        updatedAt: childFile?.timestamp ?? parentSession.timestamp,
+        toolUseId: child.toolUseId,
+        updatedAt:
+          this.getCachedSessionFile(child.id)?.timestamp ?? parentUpdatedAt,
       });
     }
-
     return children.sort(
-      (a, b) =>
-        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      (left, right) =>
+        new Date(right.updatedAt).getTime() -
+        new Date(left.updatedAt).getTime(),
     );
+  }
+
+  private getProviderChildProjectionKey(parentSessionId: string): string {
+    return `${this.sessionsDir}\0${parentSessionId}`;
+  }
+
+  private getCachedSessionFile(
+    sessionId: string,
+  ): CodexSessionFile | undefined {
+    const local = this.sessionFileCache.get(sessionId);
+    if (local) return local;
+    return codexSharedScanCache
+      .get(this.getSharedScanCacheKey())
+      ?.sessions.find((session) => session.id === sessionId);
   }
 
   /**
@@ -2286,68 +2433,6 @@ function codexSessionSourceLabel(source: unknown): string | undefined {
   }
 
   return undefined;
-}
-
-function parseCodexSpawnAgentDetails(
-  output: unknown,
-): { agentId: string; nickname?: string } | null {
-  const text = codexToolOutputText(output);
-  if (!text) {
-    return null;
-  }
-
-  const parsed = parseJsonRecord(text);
-  const agentId =
-    stringField(parsed, "agent_id") ?? stringField(parsed, "agentId");
-  if (agentId) {
-    const nickname = stringField(parsed, "nickname");
-    return { agentId, ...(nickname && { nickname }) };
-  }
-
-  const fallbackAgentId =
-    text.match(/"agent_id"\s*:\s*"([^"]+)"/)?.[1] ??
-    text.match(/"agentId"\s*:\s*"([^"]+)"/)?.[1] ??
-    null;
-  return fallbackAgentId ? { agentId: fallbackAgentId } : null;
-}
-
-function parseCodexSpawnAgentOutput(output: unknown): string | null {
-  return parseCodexSpawnAgentDetails(output)?.agentId ?? null;
-}
-
-function codexToolOutputText(output: unknown): string {
-  if (typeof output === "string") {
-    return output.trim();
-  }
-
-  if (!Array.isArray(output)) {
-    return "";
-  }
-
-  return output
-    .map((item) =>
-      isRecord(item) && typeof item.text === "string" ? item.text : "",
-    )
-    .filter(Boolean)
-    .join("\n")
-    .trim();
-}
-
-function parseJsonRecord(text: string): Record<string, unknown> | null {
-  try {
-    const parsed = JSON.parse(text) as unknown;
-    return isRecord(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-function stringField(
-  record: Record<string, unknown> | null | undefined,
-  field: string,
-): string | undefined {
-  const value = record?.[field];
-  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
 function inferCodexAgentStatus(

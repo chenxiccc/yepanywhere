@@ -132,9 +132,12 @@ async function enrichProcessInfo(
       enriched.contextUsage = summary.contextUsage;
     }
 
-    const providerChildren = await reader.listProviderChildSessions?.(
+    const acceptedProviderChildren = reader.listAcceptedProviderChildSessions?.(
       process.sessionId,
     );
+    const providerChildren =
+      acceptedProviderChildren ??
+      (await reader.listProviderChildSessions?.(process.sessionId));
     if (providerChildren?.length) {
       enriched.providerChildren = providerChildren;
     }
@@ -513,8 +516,7 @@ export function createProcessesRoutes(deps: ProcessesDeps): Hono {
       return c.json({ error: "Process not found" }, 404);
     }
     const updatedProcess = await deps.supervisor.reconfigureProcess(processId, {
-      model:
-        body.model && body.model !== "default" ? body.model : undefined,
+      model: body.model && body.model !== "default" ? body.model : undefined,
       requestedModel: body.model,
     });
     if (!updatedProcess) {

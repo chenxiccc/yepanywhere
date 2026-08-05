@@ -193,6 +193,16 @@ export interface ISessionReader {
   ): Promise<ProviderChildSessionSummary[]>;
 
   /**
+   * Return the latest accepted child projection and start any needed refresh
+   * in the background. Implementations must not wait for provider storage.
+   * `undefined` means this freshness tier is unsupported; an empty array is a
+   * supported cold or child-free projection.
+   */
+  listAcceptedProviderChildSessions?(
+    parentSessionId: string,
+  ): ProviderChildSessionSummary[] | undefined;
+
+  /**
    * Get the file path for a session by ID.
    * Used for operations that need direct file access (e.g., cloning).
    * Returns null if the session is not found.
