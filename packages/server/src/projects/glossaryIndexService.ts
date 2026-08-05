@@ -22,6 +22,7 @@ import {
   type GlossaryRowInput,
   type ParsedGlossaryTable,
 } from "@yep-anywhere/shared";
+import { getLogger } from "../logging/logger.js";
 import {
   getProjectPathIndex,
   type ProjectPathIndex,
@@ -46,6 +47,9 @@ export interface GlossaryPathObservation {
   identity: FileStatsIdentity | null;
   path: string;
 }
+
+/** Called with a canonical project root whose observation set just grew. */
+export type GlossaryObservationListener = (projectRoot: string) => void;
 
 interface GlossarySnapshot {
   canonicalPath: string;
@@ -233,6 +237,7 @@ export class GlossaryIndexService {
     string,
     Map<string, FileStatsIdentity | null>
   >();
+  private readonly observationListeners = new Set<GlossaryObservationListener>();
 
   constructor(options: GlossaryIndexServiceOptions = {}) {
     this.compile = options.compile ?? compileGlossaryArtifact;
@@ -297,13 +302,18 @@ export class GlossaryIndexService {
       }));
   }
 
-  /** Add a project-relative path reported by the project-wide watcher. */
-  observeGlossaryPath(projectPath: string, glossaryPath: string): boolean {
-    const normalized = normalizeSourcePath(glossaryPath);
-    if (!normalized || basename(normalized) !== "GLOSSARY.md") return false;
-    this.observePaths(resolve(projectPath), [normalized]);
-    return true;
+  /**
+   * Watch the observation set grow. Resolution learns candidate and include
+   * paths on demand, so a subscriber registers here to attach a watch to a
+   * newly observed directory instead of waiting for its next poll.
+   */
+  onObservationsChanged(listener: GlossaryObservationListener): () => void {
+    this.observationListeners.add(listener);
+    return () => {
+      this.observationListeners.delete(listener);
+    };
   }
+
 
   invalidateProject(projectPath: string): void {
     const projectRoot = resolve(projectPath);
@@ -730,8 +740,22 @@ export class GlossaryIndexService {
       observations = new Map();
       this.observedPaths.set(projectRoot, observations);
     }
+    let learned = false;
     for (const glossaryPath of glossaryPaths) {
-      if (!observations.has(glossaryPath)) observations.set(glossaryPath, null);
+      if (observations.has(glossaryPath)) continue;
+      observations.set(glossaryPath, null);
+      learned = true;
+    }
+    if (!learned) return;
+    for (const listener of this.observationListeners) {
+      try {
+        listener(projectRoot);
+      } catch (error) {
+        getLogger().warn(
+          { error, projectRoot },
+          "GLOSSARY_OBSERVE: observation listener failed",
+        );
+      }
     }
   }
 

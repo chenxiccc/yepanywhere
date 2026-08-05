@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import { realpath, stat } from "node:fs/promises";
-import { basename, isAbsolute, join, relative, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import type {
   GlossaryPathChangedEvent,
   GlossaryPathChangeType,
@@ -31,6 +31,14 @@ interface GlossarySubscriber {
   ready: boolean;
 }
 
+/** One observed directory's non-recursive watch and the names it answers for. */
+interface WatchedDirectory {
+  /** Observed candidate basenames in this directory. */
+  names: Set<string>;
+  /** Null while the directory could not be watched; the next sync retries. */
+  watcher: fs.FSWatcher | null;
+}
+
 interface ProjectGlossaryState {
   projectId: UrlProjectId;
   projectPath: string;
@@ -40,7 +48,7 @@ interface ProjectGlossaryState {
   observedPaths: Set<string>;
   paths: Map<string, GlossaryPathIdentity>;
   subscribers: Map<number, GlossarySubscriber>;
-  watcher: fs.FSWatcher | null;
+  directories: Map<string, WatchedDirectory>;
   pollTimer: NodeJS.Timeout | null;
   debounceTimer: NodeJS.Timeout | null;
   refreshPromise: Promise<void> | null;
@@ -50,7 +58,10 @@ interface ProjectGlossaryState {
 
 export interface ProjectGlossarySubscriptionManagerOptions {
   scanner: Pick<ProjectScanner, "getProject">;
-  glossaryIndexService: GlossaryIndexService;
+  glossaryIndexService: Pick<
+    GlossaryIndexService,
+    "getObservedGlossaryPaths" | "invalidateProject" | "onObservationsChanged"
+  >;
   debounceMs?: number;
   pollMs?: number;
   maxRetainedProjects?: number;
@@ -62,6 +73,12 @@ function isContained(root: string, candidate: string): boolean {
     rel === "" ||
     (!rel.startsWith(`..${sep}`) && rel !== ".." && !isAbsolute(rel))
   );
+}
+
+/** The project-relative directory holding a candidate; "" is the project root. */
+function candidateDirectory(projectRelativePath: string): string {
+  const directory = dirname(projectRelativePath).replaceAll("\\", "/");
+  return directory === "." || directory === "/" ? "" : directory;
 }
 
 function identityEquals(
@@ -84,18 +101,19 @@ function sortedPaths(paths: Map<string, GlossaryPathIdentity>): string[] {
 /**
  * Project-scoped glossary path subscriptions.
  *
- * One native watcher and fallback poll are reference-counted across every tab
- * subscribed to the same project. The service stats only candidates learned
- * from source-context resolution; the watcher adds newly changed glossary
- * paths without requiring an exhaustive project crawl.
+ * One watch set and fallback poll are reference-counted across every tab
+ * subscribed to the same project. Resolution and watching share the service's
+ * observation set: each directory holding an observed candidate gets its own
+ * non-recursive watch, and nothing else in the project is watched or read.
  */
 export class ProjectGlossarySubscriptionManager {
   private readonly scanner: ProjectGlossarySubscriptionManagerOptions["scanner"];
-  private readonly glossaryIndexService: GlossaryIndexService;
+  private readonly glossaryIndexService: ProjectGlossarySubscriptionManagerOptions["glossaryIndexService"];
   private readonly debounceMs: number;
   private readonly pollMs: number;
   private readonly maxRetainedProjects: number;
   private readonly projects = new Map<string, ProjectGlossaryState>();
+  private readonly releaseObservationListener: () => void;
   private nextSubscriberId = 1;
 
   constructor(options: ProjectGlossarySubscriptionManagerOptions) {
@@ -107,6 +125,10 @@ export class ProjectGlossarySubscriptionManager {
       1,
       options.maxRetainedProjects ?? DEFAULT_MAX_RETAINED_PROJECTS,
     );
+    this.releaseObservationListener =
+      this.glossaryIndexService.onObservationsChanged((projectRoot) => {
+        this.observationsChanged(projectRoot);
+      });
   }
 
   async subscribe(
@@ -155,6 +177,7 @@ export class ProjectGlossarySubscriptionManager {
   }
 
   dispose(): void {
+    this.releaseObservationListener();
     for (const state of this.projects.values()) {
       this.deactivate(state);
       state.subscribers.clear();
@@ -166,17 +189,23 @@ export class ProjectGlossarySubscriptionManager {
     activeProjects: number;
     retainedProjects: number;
     subscribers: number;
+    watchedDirectories: number;
   } {
     let activeProjects = 0;
     let subscribers = 0;
+    let watchedDirectories = 0;
     for (const state of this.projects.values()) {
       if (state.subscribers.size > 0) activeProjects += 1;
       subscribers += state.subscribers.size;
+      for (const directory of state.directories.values()) {
+        if (directory.watcher) watchedDirectories += 1;
+      }
     }
     return {
       activeProjects,
       retainedProjects: this.projects.size,
       subscribers,
+      watchedDirectories,
     };
   }
 
@@ -201,7 +230,7 @@ export class ProjectGlossarySubscriptionManager {
       observedPaths: new Set(),
       paths: new Map(),
       subscribers: new Map(),
-      watcher: null,
+      directories: new Map(),
       pollTimer: null,
       debounceTimer: null,
       refreshPromise: null,
@@ -217,7 +246,6 @@ export class ProjectGlossarySubscriptionManager {
       if (state.refreshPromise) await state.refreshPromise;
       return;
     }
-    this.attachWatcher(state);
     state.pollTimer = setInterval(() => {
       void this.refresh(state, true);
     }, this.pollMs);
@@ -225,39 +253,105 @@ export class ProjectGlossarySubscriptionManager {
     await this.refresh(state, false);
   }
 
-  private attachWatcher(state: ProjectGlossaryState): void {
+  /**
+   * Watch exactly the directories holding an observed candidate.
+   *
+   * Called on every refresh, so a directory learned since the last one is
+   * watched as soon as the observation handoff schedules that refresh, and a
+   * directory that could not be watched is retried rather than abandoned.
+   */
+  private syncWatchers(
+    state: ProjectGlossaryState,
+    observedPaths: readonly string[],
+  ): void {
+    const wanted = new Map<string, Set<string>>();
+    for (const observedPath of observedPaths) {
+      const directory = candidateDirectory(observedPath);
+      const names = wanted.get(directory);
+      if (names) names.add(basename(observedPath));
+      else wanted.set(directory, new Set([basename(observedPath)]));
+    }
+
+    for (const [directory, watched] of state.directories) {
+      if (wanted.has(directory)) continue;
+      watched.watcher?.close();
+      state.directories.delete(directory);
+    }
+    for (const [directory, names] of wanted) {
+      const existing = state.directories.get(directory);
+      if (existing) {
+        existing.names = names;
+        if (!existing.watcher) {
+          existing.watcher = this.attachDirectoryWatcher(state, directory);
+        }
+        continue;
+      }
+      state.directories.set(directory, {
+        names,
+        watcher: this.attachDirectoryWatcher(state, directory),
+      });
+    }
+  }
+
+  private attachDirectoryWatcher(
+    state: ProjectGlossaryState,
+    directory: string,
+  ): fs.FSWatcher | null {
+    const absolute = directory
+      ? join(state.projectPath, directory)
+      : state.projectPath;
     try {
-      state.watcher = fs.watch(
-        state.projectPath,
-        { recursive: true },
+      const watcher = fs.watch(
+        absolute,
+        { persistent: false },
         (_eventType, filename) => {
-          if (!filename) {
-            this.scheduleRefresh(state);
-            return;
-          }
-          const changedPath = filename.toString().replaceAll("\\", "/");
-          if (basename(changedPath) !== "GLOSSARY.md") return;
-          this.glossaryIndexService.observeGlossaryPath(
-            state.projectPath,
-            changedPath,
-          );
-          this.scheduleRefresh(state);
+          this.onDirectoryEvent(state, directory, filename);
         },
       );
-      state.watcher.on("error", (error) => {
+      watcher.on("error", (error) => {
         getLogger().warn(
-          { error, projectId: state.projectId },
-          "GLOSSARY_WATCH: native watcher error; polling remains active",
+          { directory, error, projectId: state.projectId },
+          "GLOSSARY_WATCH: directory watch failed; reconciling observed candidates",
         );
+        this.dropDirectoryWatcher(state, directory);
         this.scheduleRefresh(state);
       });
+      return watcher;
     } catch (error) {
-      getLogger().warn(
-        { error, projectId: state.projectId },
-        "GLOSSARY_WATCH: native watcher unavailable; using polling",
+      // A candidate whose directory does not exist yet is normal; the poll
+      // remains the backstop and the next sync retries the attach.
+      getLogger().debug(
+        { directory, error, projectId: state.projectId },
+        "GLOSSARY_WATCH: directory not watchable; polling covers it",
       );
-      state.watcher = null;
+      return null;
     }
+  }
+
+  private onDirectoryEvent(
+    state: ProjectGlossaryState,
+    directory: string,
+    filename: Buffer | string | null,
+  ): void {
+    if (!filename) {
+      // An unnamed event says only that something in this directory moved, so
+      // re-stat the observed candidates rather than trusting current facts.
+      this.scheduleRefresh(state);
+      return;
+    }
+    const changed = basename(filename.toString().replaceAll("\\", "/"));
+    if (!state.directories.get(directory)?.names.has(changed)) return;
+    this.scheduleRefresh(state);
+  }
+
+  private dropDirectoryWatcher(
+    state: ProjectGlossaryState,
+    directory: string,
+  ): void {
+    const watched = state.directories.get(directory);
+    if (!watched) return;
+    watched.watcher?.close();
+    watched.watcher = null;
   }
 
   private scheduleRefresh(state: ProjectGlossaryState): void {
@@ -296,29 +390,33 @@ export class ProjectGlossarySubscriptionManager {
       const observations = this.glossaryIndexService.getObservedGlossaryPaths(
         state.projectPath,
       );
+      const observedPaths = observations.map(({ path }) => path);
+      this.syncWatchers(state, observedPaths);
       const nextPaths = await this.scanObservedPaths(
         state.projectPath,
-        observations.map(({ path }) => path),
+        observedPaths,
       );
       if (!state.initialized) {
         state.paths = nextPaths;
-        state.observedPaths = new Set(observations.map(({ path }) => path));
+        state.observedPaths = new Set(observedPaths);
         state.initialized = true;
         continue;
       }
 
       const previousPaths = new Map(state.paths);
       for (const observation of observations) {
-        if (
-          !state.observedPaths.has(observation.path) &&
-          observation.identity
-        ) {
-          previousPaths.set(observation.path, observation.identity);
-        }
+        if (state.observedPaths.has(observation.path)) continue;
+        // A candidate observed since the last refresh is newly *known*, not
+        // newly created: seed it so discovery alone raises no change. The
+        // resolver's identity wins when it has one, so an edit made since it
+        // read the file still reports a modification.
+        const discovered =
+          observation.identity ?? nextPaths.get(observation.path);
+        if (discovered) previousPaths.set(observation.path, discovered);
       }
       const changes = this.diffPaths(previousPaths, nextPaths);
       state.paths = nextPaths;
-      state.observedPaths = new Set(observations.map(({ path }) => path));
+      state.observedPaths = new Set(observedPaths);
       if (changes.length === 0) continue;
 
       this.glossaryIndexService.invalidateProject(state.projectPath);
@@ -423,13 +521,20 @@ export class ProjectGlossarySubscriptionManager {
   }
 
   private deactivate(state: ProjectGlossaryState): void {
-    state.watcher?.close();
-    state.watcher = null;
+    for (const watched of state.directories.values()) watched.watcher?.close();
+    state.directories.clear();
     if (state.pollTimer) clearInterval(state.pollTimer);
     state.pollTimer = null;
     if (state.debounceTimer) clearTimeout(state.debounceTimer);
     state.debounceTimer = null;
     state.refreshQueued = false;
+  }
+
+  /** Attach watches for directories resolution learned about just now. */
+  private observationsChanged(projectRoot: string): void {
+    for (const state of this.projects.values()) {
+      if (state.projectPath === projectRoot) this.scheduleRefresh(state);
+    }
   }
 
   private evictInactiveProjects(): void {

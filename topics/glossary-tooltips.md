@@ -12,8 +12,8 @@ delivery, tab-local cache,
 annotation boundary, interaction, authenticated render surfaces, FileViewer
 link convergence, and performance/visual acceptance are complete. Public
 shares deliberately remain unannotated. Demand-driven source resolution landed
-2026-08-04; the recursive project-root watcher it left behind still violates
-the watch contract below and is the one piece of this feature outstanding.
+2026-08-04 and the observed-directory watches it implied landed 2026-08-05, so
+nothing in this feature reaches past the directories resolution actually named.
 
 ## Product contract
 
@@ -332,14 +332,27 @@ notification path by which a newly observed candidate becomes watched. On
 ambiguous events or errors, reconciliation stats and re-probes only observed
 candidates rather than crawling the project.
 
-The current implementation still attaches one recursive project-root `fs.watch`
-instead. On the motivating project that blocked the Node event loop for about
-2.5 seconds while the artifact itself completed in 75 ms, and it installs
-watches across an entire unrelated tree — roughly 50,000 mostly irrelevant
-paths there — to notice a handful of `GLOSSARY.md` names. Replacing it with the
-observed-directory watches above is the remaining work rather than acceptable
-asynchronous initialization: source resolution is already demand-driven, so
-this watcher is the last project-wide filesystem cost left in the path.
+`ProjectGlossarySubscriptionManager` implements that as one non-recursive
+`fs.watch` per directory holding an observed candidate, filtered to that
+directory's observed basenames, resynced on every refresh so a directory
+learned since the last one becomes watched and a directory that could not be
+watched is retried rather than abandoned. A candidate whose directory does not
+exist yet gets no watch and no error; the poll covers it until a later sync's
+attach succeeds. A candidate observed after subscription is seeded from its
+current identity, so merely learning about an existing file reports no
+`create` — which would make the client discard every artifact it holds. The
+recursive project-root watch this replaced blocked the Node event loop for
+about 2.5 seconds on the motivating project while the artifact itself completed
+in 75 ms, and installed watches across an entire unrelated tree — roughly
+50,000 mostly irrelevant paths there — to notice a handful of `GLOSSARY.md`
+names.
+
+These are deliberately not the directory watches of the project path index
+([project-path-links](project-path-links.md)), which keep best-effort cached
+facts honest and are torn down whenever byte-budget eviction releases their
+project. A glossary subscriber needs its watch to last as long as the
+subscription, so the subscription manager owns these for the reference-counted
+lifetime described above.
 
 The client uses the glossary-path stream for invalidation, not governing-file
 selection. One tab-local project store owns the active project's subscription
