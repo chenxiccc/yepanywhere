@@ -50,6 +50,7 @@ import { useProviderSubscriptionUsage } from "../../hooks/useProviderSubscriptio
 import { useServerSettings } from "../../hooks/useServerSettings";
 import { useVersion } from "../../hooks/useVersion";
 import { useI18n } from "../../i18n";
+import styles from "./ModelSettings.module.css";
 import {
   ClaudeAutoCompactPercentOverrideControl,
   YaCompactContextEarlyControl,
@@ -583,7 +584,9 @@ export function ModelSettings() {
       ]}
     >
       <div className="settings-group">
-        <div className="settings-session-defaults-panel">
+        <div
+          className={`settings-session-defaults-panel ${styles.sessionDefaultsPanel}`}
+        >
           {canConfigureSessionSandbox && (
             <SettingsItem
               id="session-default-sandbox"

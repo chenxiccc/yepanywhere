@@ -7436,13 +7436,6 @@ a.linkified-url:hover {
   max-width: min(100%, 980px);
 }
 
-/* Compact chips are always expandable — outline them so the chevron affordance
-   is obvious even when the provider retained no summary body. */
-.system-message-compact-boundary.system-message--details {
-  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.12));
-  border-left: 3px solid var(--accent-secondary, #6b7280);
-}
-
 .system-message.system-message--details {
   display: block;
 }
@@ -8785,27 +8778,6 @@ a.linkified-url:hover {
   gap: 0.75rem 1rem;
   align-items: start;
   container-type: inline-size;
-}
-
-/* Searchable SettingsItem rows fill the panel grid as stacked cards. */
-.settings-session-defaults-panel > .settings-item,
-.settings-session-defaults-panel
-  .session-default-discovery-row
-  > .settings-item {
-  flex-direction: column;
-  align-items: stretch;
-  justify-content: flex-start;
-  gap: var(--space-2);
-  margin-bottom: 0;
-  height: 100%;
-}
-
-.settings-session-defaults-panel > .settings-item > .settings-item-info,
-.settings-session-defaults-panel
-  .session-default-discovery-row
-  > .settings-item
-  > .settings-item-info {
-  flex: 0 0 auto;
 }
 
 .settings-session-defaults-panel .new-session-provider-section,

@@ -83,3 +83,17 @@
 .activityHeightReserve {
   min-height: var(--conversation-activity-reserved-height, 0);
 }
+
+/*
+ * Compact chips are always expandable — outline them so the chevron affordance
+ * is obvious even when the provider retained no summary body.
+ *
+ * Order-independent against the global `.system-message` (equal specificity):
+ * that rule sets only `border-left`, and this rule re-declares it to the same
+ * value, so whichever wins the cascade the chip looks the same. The `border`
+ * shorthand's other three sides have no global competitor.
+ */
+.compactBoundaryOutline {
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.12));
+  border-left: 3px solid var(--accent-secondary, #6b7280);
+}

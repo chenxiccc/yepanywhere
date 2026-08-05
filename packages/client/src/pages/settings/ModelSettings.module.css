@@ -1,0 +1,34 @@
+/*
+ * Session Defaults grid additions.
+ *
+ * The panel's own grid and the per-section rules still live in the legacy
+ * global sheet under `.settings-session-defaults-panel`; `pnpm css:touched`
+ * defers extracting that slice (165 owned lines, 117 coupled rules), so only
+ * these bounded rules are owned here.
+ *
+ * They reach global class names because the rows are rendered by SettingsItem,
+ * whose vocabulary is global. Specificity matches the selectors these replaced
+ * (`.settings-session-defaults-panel > .settings-item`, 0-2-0), so they still
+ * beat the 0-1-0 `.settings-item` base rule regardless of injection order.
+ */
+
+/* Searchable SettingsItem rows fill the panel grid as stacked cards. */
+.sessionDefaultsPanel > :global(.settings-item),
+.sessionDefaultsPanel
+  :global(.session-default-discovery-row)
+  > :global(.settings-item) {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: var(--space-2);
+  margin-bottom: 0;
+  height: 100%;
+}
+
+.sessionDefaultsPanel > :global(.settings-item) > :global(.settings-item-info),
+.sessionDefaultsPanel
+  :global(.session-default-discovery-row)
+  > :global(.settings-item)
+  > :global(.settings-item-info) {
+  flex: 0 0 auto;
+}

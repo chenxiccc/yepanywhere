@@ -254,7 +254,9 @@ function CollapsibleSystemMessage({
 
   return (
     <details
-      className={`system-message ${variantClass} ${variantClass}--details system-message--details`}
+      className={`system-message ${variantClass} ${variantClass}--details system-message--details${
+        isCompactBoundary ? ` ${styles.compactBoundaryOutline}` : ""
+      }`}
     >
       <summary className={summaryClass}>
         <span className="collapsible__icon" aria-hidden="true">
