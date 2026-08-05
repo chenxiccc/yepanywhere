@@ -31,7 +31,11 @@ const mocks = vi.hoisted(() => ({
       </div>
     ),
   ),
-  useRetainSidebarSessionFeeds: vi.fn(),
+  SidebarSessionFeedsProvider: vi.fn(
+    ({ children }: { children: React.ReactNode }) => (
+      <div data-testid="sidebar-session-feeds-provider">{children}</div>
+    ),
+  ),
   Sidebar: vi.fn(
     ({
       isDesktop,
@@ -61,7 +65,7 @@ vi.mock("../../contexts/GlossaryContext", () => ({
 }));
 
 vi.mock("../../hooks/useSidebarSessionFeeds", () => ({
-  useRetainSidebarSessionFeeds: mocks.useRetainSidebarSessionFeeds,
+  SidebarSessionFeedsProvider: mocks.SidebarSessionFeedsProvider,
 }));
 
 import {
@@ -158,7 +162,7 @@ function enableSessionDomLinger() {
 describe("NavigationLayout", () => {
   beforeEach(() => {
     mocks.GlossaryProjectProvider.mockClear();
-    mocks.useRetainSidebarSessionFeeds.mockClear();
+    mocks.SidebarSessionFeedsProvider.mockClear();
     mocks.Sidebar.mockClear();
     window.localStorage.clear();
     Object.defineProperty(window, "innerWidth", {
@@ -173,11 +177,17 @@ describe("NavigationLayout", () => {
     window.localStorage.clear();
   });
 
-  it("mounts sidebar session coverage from the app shell", () => {
+  it("mounts sidebar session coverage once, above everything that reads it", () => {
     renderNavigationLayout();
 
-    expect(screen.getByTestId("route-content")).toBeTruthy();
-    expect(mocks.useRetainSidebarSessionFeeds).toHaveBeenCalledTimes(1);
+    const provider = screen.getByTestId("sidebar-session-feeds-provider");
+    expect(provider).toBeTruthy();
+    // Both the rail and the overlay read the feeds the provider owns, so the
+    // provider has to enclose them rather than sit beside them.
+    expect(
+      provider.querySelector('[data-testid="route-content"]'),
+    ).toBeTruthy();
+    expect(mocks.SidebarSessionFeedsProvider).toHaveBeenCalledTimes(1);
   });
 
   it("removes the collapsed desktop rail and restores it from the floating toggle", () => {

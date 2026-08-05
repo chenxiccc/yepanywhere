@@ -1,4 +1,5 @@
 import { renderHook } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -12,9 +13,13 @@ vi.mock("../useGlobalSessionsFeed", () => ({
 
 import {
   SIDEBAR_SESSION_FEED_LIMIT,
-  useRetainSidebarSessionFeeds,
+  SidebarSessionFeedsProvider,
   useSidebarSessionFeeds,
 } from "../useSidebarSessionFeeds";
+
+function withProvider({ children }: { children: ReactNode }) {
+  return <SidebarSessionFeedsProvider>{children}</SidebarSessionFeedsProvider>;
+}
 
 beforeEach(() => {
   mocks.loadMore.mockReset();
@@ -27,9 +32,9 @@ beforeEach(() => {
   });
 });
 
-describe("useRetainSidebarSessionFeeds", () => {
+describe("SidebarSessionFeedsProvider", () => {
   it("retains global and starred sidebar coverage", () => {
-    renderHook(() => useRetainSidebarSessionFeeds());
+    renderHook(() => useSidebarSessionFeeds(), { wrapper: withProvider });
 
     expect(mocks.useGlobalSessionsFeed).toHaveBeenCalledTimes(2);
     expect(mocks.useGlobalSessionsFeed).toHaveBeenNthCalledWith(1, {
@@ -41,6 +46,19 @@ describe("useRetainSidebarSessionFeeds", () => {
       limit: SIDEBAR_SESSION_FEED_LIMIT,
       includeStats: false,
     });
+  });
+
+  it("mounts one feed pair however many consumers read it", () => {
+    renderHook(
+      () => {
+        useSidebarSessionFeeds();
+        useSidebarSessionFeeds();
+        useSidebarSessionFeeds();
+      },
+      { wrapper: withProvider },
+    );
+
+    expect(mocks.useGlobalSessionsFeed).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -62,7 +80,9 @@ describe("useSidebarSessionFeeds", () => {
         loadMore: starredLoadMore,
       });
 
-    const { result } = renderHook(() => useSidebarSessionFeeds());
+    const { result } = renderHook(() => useSidebarSessionFeeds(), {
+      wrapper: withProvider,
+    });
 
     expect(mocks.useGlobalSessionsFeed).toHaveBeenCalledTimes(2);
     expect(result.current.globalQuery).toEqual({ scope: "global-sessions" });
@@ -75,5 +95,14 @@ describe("useSidebarSessionFeeds", () => {
     expect(result.current.loadMoreGlobalSessions).toBe(globalLoadMore);
     expect(result.current.hasMoreStarredSessions).toBe(false);
     expect(result.current.loadMoreStarredSessions).toBe(starredLoadMore);
+  });
+
+  it("refuses to mount its own feeds when the provider is missing", () => {
+    // A fallback that mounted feeds here would silently restore the duplicate
+    // pair the provider exists to remove, so the absence has to be loud.
+    expect(() => renderHook(() => useSidebarSessionFeeds())).toThrow(
+      /SidebarSessionFeedsProvider/,
+    );
+    expect(mocks.useGlobalSessionsFeed).not.toHaveBeenCalled();
   });
 });

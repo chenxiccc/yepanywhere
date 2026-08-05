@@ -21,10 +21,7 @@ import { usePublicShareStatus } from "../hooks/usePublicShareStatus";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useServerSettings } from "../hooks/useServerSettings";
 import { useSidebarDuplicateHiding } from "../hooks/useSidebarDuplicateHiding";
-import {
-  SIDEBAR_SESSION_FEED_LIMIT,
-  useSidebarSessionFeeds,
-} from "../hooks/useSidebarSessionFeeds";
+import { useSidebarSessionFeeds } from "../hooks/useSidebarSessionFeeds";
 import { SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from "../hooks/useSidebarWidth";
 import { useVersion } from "../hooks/useVersion";
 import { useI18n } from "../i18n";
@@ -396,7 +393,7 @@ export function Sidebar({
     loadMoreGlobalSessions,
     hasMoreStarredSessions,
     loadMoreStarredSessions,
-  } = useSidebarSessionFeeds(SIDEBAR_SESSION_FEED_LIMIT);
+  } = useSidebarSessionFeeds();
 
   const globalQueryRecords = useSessionCollectionQueryRecords(globalQuery);
   const starredSessionRecords = useStarredSessionRecords();

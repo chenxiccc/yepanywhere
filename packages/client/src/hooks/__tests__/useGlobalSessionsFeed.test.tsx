@@ -6,7 +6,15 @@ import type {
   GlobalSessionStats,
   ProjectOption,
 } from "../../api/client";
-import { resetClientQueryControllerForTests } from "../../lib/clientQueryController";
+import { activityBus } from "../../lib/activityBus";
+import {
+  getClientQueryStates,
+  resetClientQueryControllerForTests,
+} from "../../lib/clientQueryController";
+import {
+  getQueryRevalidationMetrics,
+  resetQueryRevalidationForTests,
+} from "../../lib/clientQueryRevalidation";
 import {
   resetClientSummaryStoreForTests,
   useSessionCollectionQueryRecords,
@@ -88,7 +96,9 @@ function globalSessionsResponse(
   };
 }
 
-function stats(overrides: Partial<GlobalSessionStats> = {}): GlobalSessionStats {
+function stats(
+  overrides: Partial<GlobalSessionStats> = {},
+): GlobalSessionStats {
   return {
     ...DEFAULT_GLOBAL_SESSION_STATS,
     ...overrides,
@@ -104,6 +114,7 @@ function useFeedWithRecords(options?: UseGlobalSessionsOptions) {
 beforeEach(() => {
   resetClientSummaryStoreForTests();
   resetClientQueryControllerForTests();
+  resetQueryRevalidationForTests();
   resetGlobalSessionsFeedForTests();
   mocks.getGlobalSessions.mockReset();
   mocks.getGlobalSessionStats.mockReset();
@@ -115,8 +126,10 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   resetClientSummaryStoreForTests();
   resetClientQueryControllerForTests();
+  resetQueryRevalidationForTests();
   resetGlobalSessionsFeedForTests();
 });
 
@@ -128,7 +141,9 @@ describe("useGlobalSessionsFeed", () => {
     const full = renderHook(() => useFeedWithRecords());
     const sidebar = renderHook(() => useFeedWithRecords({ limit: 50 }));
 
-    await waitFor(() => expect(mocks.getGlobalSessions).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(mocks.getGlobalSessions).toHaveBeenCalledTimes(1),
+    );
     expect(sidebar.result.current.feed.query.limit).toBeUndefined();
 
     await act(async () => {
@@ -137,7 +152,9 @@ describe("useGlobalSessionsFeed", () => {
     });
 
     await waitFor(() => expect(full.result.current.feed.loading).toBe(false));
-    await waitFor(() => expect(sidebar.result.current.feed.loading).toBe(false));
+    await waitFor(() =>
+      expect(sidebar.result.current.feed.loading).toBe(false),
+    );
     expect(full.result.current.records.map((record) => record.id)).toEqual([
       "session-a",
       "session-b",
@@ -159,7 +176,9 @@ describe("useGlobalSessionsFeed", () => {
     await waitFor(() => expect(recent.result.current.feed.loading).toBe(false));
 
     const sidebar = renderHook(() => useFeedWithRecords({ limit: 50 }));
-    await waitFor(() => expect(sidebar.result.current.feed.loading).toBe(false));
+    await waitFor(() =>
+      expect(sidebar.result.current.feed.loading).toBe(false),
+    );
 
     expect(mocks.getGlobalSessions).toHaveBeenCalledTimes(2);
     expect(mocks.getGlobalSessions.mock.calls[0]?.[0]).toMatchObject({
@@ -205,7 +224,9 @@ describe("useGlobalSessionsFeed", () => {
     );
     const sidebar = renderHook(() => useFeedWithRecords({ limit: 50 }));
 
-    await waitFor(() => expect(mocks.getGlobalSessions).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(mocks.getGlobalSessions).toHaveBeenCalledTimes(1),
+    );
     await waitFor(() =>
       expect(mocks.getGlobalSessionStats).toHaveBeenCalledTimes(1),
     );
@@ -217,7 +238,9 @@ describe("useGlobalSessionsFeed", () => {
     });
 
     await waitFor(() => expect(full.result.current.feed.loading).toBe(false));
-    await waitFor(() => expect(sidebar.result.current.feed.loading).toBe(false));
+    await waitFor(() =>
+      expect(sidebar.result.current.feed.loading).toBe(false),
+    );
     expect(full.result.current.feed.stats.totalCount).toBe(7);
     expect(sidebar.result.current.feed.stats.totalCount).toBe(0);
     expect(full.result.current.feed.projects).toEqual([PROJECT]);
@@ -239,5 +262,72 @@ describe("useGlobalSessionsFeed", () => {
     expect(feed.result.current.records.map((record) => record.id)).toEqual([
       "second",
     ]);
+  });
+
+  it("revalidates one query key once however many feeds are mounted", async () => {
+    mocks.getGlobalSessions.mockResolvedValue(
+      globalSessionsResponse(["session-a"]),
+    );
+
+    // The sidebar rail, the Global Sessions page, and the recent-sessions
+    // dropdown all mount this key with different row coverage.
+    const sidebar = renderHook(() => useFeedWithRecords({ limit: 50 }));
+    const page = renderHook(() => useFeedWithRecords({ limit: 100 }));
+    const dropdown = renderHook(() => useFeedWithRecords({ limit: 15 }));
+    await waitFor(() =>
+      expect(sidebar.result.current.feed.loading).toBe(false),
+    );
+    await waitFor(() => expect(page.result.current.feed.loading).toBe(false));
+    await waitFor(() =>
+      expect(dropdown.result.current.feed.loading).toBe(false),
+    );
+
+    const metrics = getQueryRevalidationMetrics();
+    expect(metrics.subscribers).toBe(3);
+    // One owner, so one `reconnect` listener rather than one per mount.
+    expect(metrics.eventSubscriptions).toBe(1);
+
+    const requestsBefore = mocks.getGlobalSessions.mock.calls.length;
+    vi.useFakeTimers();
+    await act(async () => {
+      activityBus.emitLocal("reconnect", undefined as never);
+      await vi.advanceTimersByTimeAsync(600);
+    });
+    vi.useRealTimers();
+
+    const refetches = mocks.getGlobalSessions.mock.calls.slice(requestsBefore);
+    expect(refetches).toHaveLength(1);
+    // The widest subscriber runs, so the 15- and 50-row feeds are served by the
+    // 100-row refetch instead of issuing their own.
+    expect(refetches[0]?.[0]).toMatchObject({ limit: 100 });
+  });
+
+  it("returns the query to fresh after a reconnect refetch", async () => {
+    mocks.getGlobalSessions.mockResolvedValue(
+      globalSessionsResponse(["session-a"]),
+    );
+
+    const sidebar = renderHook(() => useFeedWithRecords({ limit: 50 }));
+    const page = renderHook(() => useFeedWithRecords({ limit: 100 }));
+    await waitFor(() =>
+      expect(sidebar.result.current.feed.loading).toBe(false),
+    );
+    await waitFor(() => expect(page.result.current.feed.loading).toBe(false));
+
+    vi.useFakeTimers();
+    await act(async () => {
+      activityBus.emitLocal("reconnect", undefined as never);
+      await vi.advanceTimersByTimeAsync(600);
+    });
+    vi.useRealTimers();
+
+    // A query left stale fails every freshness check afterwards, so the
+    // 30-second stale time would stop short-circuiting reads for the rest of
+    // the session.
+    const states = getClientQueryStates().filter(
+      (state) => state.fetchedAt !== undefined,
+    );
+    expect(states.length).toBeGreaterThan(0);
+    expect(states.filter((state) => state.stale)).toEqual([]);
   });
 });

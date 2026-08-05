@@ -19,7 +19,7 @@ import {
   MIN_CONTENT_WIDTH,
   useSidebarWidth,
 } from "../hooks/useSidebarWidth";
-import { useRetainSidebarSessionFeeds } from "../hooks/useSidebarSessionFeeds";
+import { SidebarSessionFeedsProvider } from "../hooks/useSidebarSessionFeeds";
 import { useI18n } from "../i18n";
 
 export interface NavigationLayoutContext {
@@ -136,8 +136,17 @@ export function SessionDomLingerRouteMarker() {
  * Shared layout for all pages that need a sidebar.
  * Renders the Sidebar once so it persists across route changes.
  */
-export function NavigationLayout({ sessionElement }: NavigationLayoutProps) {
-  useRetainSidebarSessionFeeds();
+export function NavigationLayout(props: NavigationLayoutProps) {
+  // The provider, not the layout, mounts the sidebar feeds: a feed update then
+  // re-renders `Sidebar` alone instead of the route stack and session layer.
+  return (
+    <SidebarSessionFeedsProvider>
+      <NavigationLayoutFrame {...props} />
+    </SidebarSessionFeedsProvider>
+  );
+}
+
+function NavigationLayoutFrame({ sessionElement }: NavigationLayoutProps) {
   const { sessionDomLingerEnabled } = useSessionPerformanceSettings();
   const { t } = useI18n();
 

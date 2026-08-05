@@ -202,6 +202,44 @@ request and pass that key to report functions. A late response from
 `host:macbook` updates the MacBook cache, even if the visible current source has
 since changed to `host:winnative`.
 
+### Retained query invariants
+
+Four contracts hold the shared-fetch mechanics together. They are easy to
+"simplify" into something that looks equivalent and is not.
+
+**Coverage is a partial order, not a total one.** A request answers a need when
+its coverage satisfies that need — more rows, stats included, more pages. Two
+consumers of one key can therefore be mutually non-dominating, differing on
+unrelated dimensions. Anywhere the code picks "the widest" it must tolerate
+selecting several and fall back to running each; first-subscriber-wins silently
+narrows coverage for everyone else.
+
+**One revalidation owner per `(sourceKey, queryKey)`.** Retaining a query shares
+its result; the machinery deciding *when* to refetch is shared separately, in
+`lib/clientQueryRevalidation.ts`. Subscribers declare the events they care about
+and how to run a revalidation; the owner unions the events, subscribes once to
+each, keeps one debounce timer, and runs the widest subscribers. A feed hook
+must not install its own activity listener and debounce timer beside the owner —
+per-hook timers make one event cost one refetch per mounted consumer, and
+whether those refetches collapse into one request depends on response latency.
+
+**A response clears staleness only for the generation it answers for.** Each
+entry carries an invalidation generation; a request records the generation it
+answers for and clears `stale` on settling only if the entry is still there.
+That is what keeps an invalidation arriving mid-flight from being erased by the
+response it raced. A forced caller that *joins* an in-flight request raises that
+request's generation to the current one, because joining declares the request
+sufficient for its own force — without that, N consumers reacting to one event
+strand the entry as permanently stale and `staleTimeMs` stops short-circuiting
+that query for the rest of the session.
+
+**The app shell mounts each feed once.** Where a component both needs a feed and
+is unmounted by ordinary navigation, the feed belongs in a provider above it
+rather than mounted twice — once to retain coverage and once to read it. The
+sidebar's `SidebarSessionFeedsProvider` is the worked example; its hook throws
+when the provider is absent rather than falling back to mounting its own pair,
+because a silent fallback restores the duplication it exists to remove.
+
 ## Shape
 
 Each per-source store should remain normalized:

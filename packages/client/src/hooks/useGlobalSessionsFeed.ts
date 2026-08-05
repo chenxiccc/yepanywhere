@@ -23,6 +23,10 @@ import {
   retainClientQuery,
 } from "../lib/clientQueryController";
 import {
+  type QueryRevalidationHandle,
+  retainQueryRevalidation,
+} from "../lib/clientQueryRevalidation";
+import {
   type ClientSummarySourceKey,
   useSessionCollectionQueryRecords,
   useSessionCollectionQueryState,
@@ -37,6 +41,13 @@ import {
 } from "./useFileActivity";
 
 const REFETCH_DEBOUNCE_MS = 500;
+/**
+ * Reconnect is the only event the owner reacts to on its own. The rest arrive
+ * through `useFileActivity` because this feed patches its collection from the
+ * event before deciding whether a refetch is even needed, and that patch is
+ * per-query bookkeeping rather than a revalidation.
+ */
+const GLOBAL_SESSIONS_REVALIDATE_EVENTS = ["reconnect"] as const;
 const GLOBAL_SESSIONS_DEFAULT_LIMIT = 100;
 const GLOBAL_SESSIONS_STALE_TIME_MS = 30_000;
 const GLOBAL_SESSION_STATS_STALE_TIME_MS = 30_000;
@@ -244,17 +255,15 @@ export function useGlobalSessionsFeed(
   readyRef.current = ready;
   const projectsRef = useRef<ProjectOption[]>([]);
   projectsRef.current = auxiliary.projects;
-  const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestSequenceRef = useRef(0);
 
   useEffect(() => {
     void sourceKey;
     void queryKey;
     requestSequenceRef.current += 1;
-    if (refetchTimerRef.current) {
-      clearTimeout(refetchTimerRef.current);
-      refetchTimerRef.current = null;
-    }
+    // A pending debounce belongs to the shared owner, and releasing this
+    // subscriber on a source/query change already drops it when nobody else
+    // wants it.
     setError(null);
     setLoading(!queryStateRef.current);
   }, [sourceKey, queryKey]);
@@ -438,17 +447,51 @@ export function useGlobalSessionsFeed(
     sourceSummary,
   ]);
 
+  // The debounce timer and the reconnect listener belong to the shared
+  // `(sourceKey, queryKey)` owner. This feed's key is mounted from the sidebar,
+  // the Global Sessions page, and the recent-sessions dropdown at once, so
+  // per-hook timers meant one activity event scheduled one refetch per mount.
+  const revalidationRef = useRef<QueryRevalidationHandle | null>(null);
+  const fetchRef = useRef(fetch);
+  fetchRef.current = fetch;
+
+  const revalidationSubscriber = useCallback(
+    () => ({
+      coverage: { minRows: requestedRows },
+      events: GLOBAL_SESSIONS_REVALIDATE_EVENTS,
+      debounceMs: REFETCH_DEBOUNCE_MS,
+      run: () => {
+        void fetchRef.current({ force: true });
+      },
+    }),
+    [requestedRows],
+  );
+
+  useEffect(() => {
+    const handle = retainQueryRevalidation({
+      sourceKey,
+      key: queryKey,
+      subscriber: revalidationSubscriber(),
+    });
+    revalidationRef.current = handle;
+    return () => {
+      revalidationRef.current = null;
+      handle.release();
+    };
+  }, [sourceKey, queryKey, revalidationSubscriber]);
+
+  // Coverage and closures change between renders; the owner needs the current
+  // ones without the retention itself churning.
+  useEffect(() => {
+    revalidationRef.current?.update(revalidationSubscriber());
+  });
+
   const debouncedRefetch = useCallback(() => {
     if (!readyRef.current) {
       return;
     }
-    if (refetchTimerRef.current) {
-      clearTimeout(refetchTimerRef.current);
-    }
-    refetchTimerRef.current = setTimeout(() => {
-      void fetch({ force: true });
-    }, REFETCH_DEBOUNCE_MS);
-  }, [fetch]);
+    revalidationRef.current?.schedule();
+  }, []);
 
   const handleProcessStateChange = useCallback(
     (event: ProcessStateEvent) => {
@@ -522,9 +565,6 @@ export function useGlobalSessionsFeed(
     onSessionCreated: handleSessionCreated,
     onProcessStateChange: handleProcessStateChange,
     onSessionMetadataChange: handleSessionMetadataChange,
-    onReconnect: () => {
-      void fetch({ force: true });
-    },
   });
 
   useEffect(() => {
@@ -532,14 +572,6 @@ export function useGlobalSessionsFeed(
       void fetch();
     }
   }, [fetch, ready]);
-
-  useEffect(() => {
-    return () => {
-      if (refetchTimerRef.current) {
-        clearTimeout(refetchTimerRef.current);
-      }
-    };
-  }, []);
 
   return {
     query,
@@ -550,7 +582,9 @@ export function useGlobalSessionsFeed(
     loadMore,
     refetch: () => fetch({ force: true }),
     stats:
-      includeStats && !projectId ? auxiliary.stats : DEFAULT_GLOBAL_SESSION_STATS,
+      includeStats && !projectId
+        ? auxiliary.stats
+        : DEFAULT_GLOBAL_SESSION_STATS,
     projects: auxiliary.projects,
   };
 }
