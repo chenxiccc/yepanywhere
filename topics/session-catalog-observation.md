@@ -222,6 +222,13 @@ fallback a performance floor rather than a penalty: a client without
 `progressive-session-catalog` cannot send a token, so its repeat reads land on
 the retained walk instead of running their own.
 
+`GET /api/inbox` shares that clock for its own walk, which is the same
+enumeration over every project. It has no conditional read — that would need
+its own gate — so the herd fix is the whole of it there. Inbox retains only the
+*walk*: its tiers are wall-clock windows, so tier membership is recomputed per
+request. A response whose shape depends on time, or on state the deny-list does
+not cover, cannot be retained against this generation.
+
 The client that sends the token is `useGlobalSessionsFeed`, and it does so only
 on automatic revalidation. What makes that safe alongside the local patching
 this feed does from `session-created` and `session-metadata-changed` is that

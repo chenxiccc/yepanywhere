@@ -1608,6 +1608,7 @@ export function createApp(options: AppOptions): AppResult {
       grokReaderFactory,
       piSessionsDir,
       piReaderFactory,
+      eventBus: options.eventBus,
       sessionAutoArchiveDays: options.sessionAutoArchiveDays,
     }),
   );

@@ -1004,7 +1004,11 @@ predicate. The server-side herd figure is separate and multiplies with this
 one: `pnpm --filter @yep-anywhere/server benchmark:session-collection-generation`.
 
 Not built: bounded deltas, and the IndexedDB persistence plus cross-tab
-generation advertisement described below. Inbox still enumerates.
+generation advertisement described below. Inbox has the herd half only — its
+walk is single-flighted on the same generation
+(`benchmark:inbox-collection-walk`), but it has no conditional read, which
+would need its own capability gate rather than a broadened
+`progressive-session-catalog`.
 
 Consume tactical 093's approved catalog epoch/generation on collection
 snapshots and deltas. A retained query sends its known generation on

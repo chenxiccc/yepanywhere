@@ -2,6 +2,7 @@ import type {
   ProjectQueueItemSummary,
   UrlProjectId,
 } from "@yep-anywhere/shared";
+import type { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionIndexService } from "../../src/indexes/index.js";
 import type { NotificationService } from "../../src/notifications/index.js";
@@ -16,6 +17,7 @@ import type { CodexSessionReader } from "../../src/sessions/codex-reader.js";
 import type { ISessionReader } from "../../src/sessions/types.js";
 import type { Supervisor } from "../../src/supervisor/Supervisor.js";
 import type { Project, SessionSummary } from "../../src/supervisor/types.js";
+import { EventBus } from "../../src/watcher/index.js";
 
 // Helper to create ISO timestamps relative to now
 function minutesAgo(minutes: number): string {
@@ -933,6 +935,104 @@ describe("Inbox Routes", () => {
       expect(result.recentActivity).toHaveLength(1);
       expect(result.recentActivity[0]?.sessionId).toBe("codex-sess");
       expect(result.recentActivity[0]?.sessionTitle).toBe("Codex session");
+    });
+  });
+
+  /**
+   * The Inbox is app-shell mounted, so every tab reads it on reconnect. What
+   * may be shared is the walk; what may not is the tier decision, which is a
+   * wall-clock window over the same rows.
+   */
+  describe("shared collection walk", () => {
+    function setUpOneSession(eventBus?: EventBus): Hono {
+      const project = createProject("proj1", "myproject", "/sessions/proj1");
+      vi.mocked(mockScanner.listProjects).mockResolvedValue([project]);
+      sessionsByDir.set("/sessions/proj1", [
+        createSession("sess1", "proj1", minutesAgo(5)),
+      ]);
+      return createInboxRoutes({
+        scanner: mockScanner,
+        readerFactory: mockReaderFactory,
+        supervisor: mockSupervisor,
+        notificationService: mockNotificationService,
+        sessionIndexService: mockSessionIndexService,
+        sessionMetadataService: mockSessionMetadataService,
+        eventBus,
+      });
+    }
+
+    async function readInbox(routes: Hono, path = "/"): Promise<InboxResponse> {
+      const response = await routes.request(path);
+      expect(response.status).toBe(200);
+      return response.json();
+    }
+
+    function walks(): number {
+      return vi.mocked(mockScanner.listProjects).mock.calls.length;
+    }
+
+    it("walks every project once for a herd of concurrent reads", async () => {
+      const routes = setUpOneSession();
+
+      const herd = await Promise.all(
+        Array.from({ length: 20 }, () => readInbox(routes)),
+      );
+
+      for (const result of herd) {
+        expect(result.recentActivity).toHaveLength(1);
+      }
+      expect(walks()).toBe(1);
+    });
+
+    it("reuses the walk for a later read at the same generation", async () => {
+      const routes = setUpOneSession();
+      await readInbox(routes);
+      await readInbox(routes);
+      expect(walks()).toBe(1);
+    });
+
+    it("walks again once an event advances the collection", async () => {
+      const eventBus = new EventBus();
+      const routes = setUpOneSession(eventBus);
+      await readInbox(routes);
+
+      eventBus.emit({
+        type: "session-metadata-changed",
+        sessionId: "sess1",
+        starred: true,
+        timestamp: new Date().toISOString(),
+      });
+      await Promise.all(Array.from({ length: 20 }, () => readInbox(routes)));
+
+      // One more walk for the new generation, not twenty, and not zero.
+      expect(walks()).toBe(2);
+    });
+
+    it("re-tiers a retained walk against the current clock", async () => {
+      const routes = setUpOneSession();
+      expect((await readInbox(routes)).recentActivity).toHaveLength(1);
+
+      // Nothing on the bus moved, so the walk is still the retained one. The
+      // 30-minute window has to move anyway, or a session would sit in Recent
+      // Activity until something unrelated happened.
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.now() + 31 * 60 * 1000);
+      try {
+        const later = await readInbox(routes);
+        expect(later.recentActivity).toHaveLength(0);
+      } finally {
+        vi.useRealTimers();
+      }
+      expect(walks()).toBe(1);
+    });
+
+    it("keeps a filtered read separate from the unfiltered one", async () => {
+      const routes = setUpOneSession();
+      await readInbox(routes);
+      await readInbox(routes, "/?projectId=proj1");
+
+      // Same generation, different collection: the filter is part of the key.
+      expect(walks()).toBe(2);
     });
   });
 });

@@ -14,6 +14,7 @@
 import { getSessionDisplayTitle } from "@yep-anywhere/shared";
 import { Hono } from "hono";
 import type { SessionIndexService } from "../indexes/index.js";
+import { SourceVersionedSingleFlight } from "../lib/sourceVersionedSingleFlight.js";
 import { getLogger } from "../logging/logger.js";
 import type { SessionMetadataService } from "../metadata/SessionMetadataService.js";
 import type { NotificationService } from "../notifications/index.js";
@@ -23,6 +24,7 @@ import type { ProjectScanner } from "../projects/scanner.js";
 import type { CodexSessionReader } from "../sessions/codex-reader.js";
 import type { GeminiSessionReader } from "../sessions/gemini-reader.js";
 import { listSessionListSummariesAcrossProviders } from "../sessions/provider-resolution.js";
+import { SessionCollectionGeneration } from "../sessions/sessionCollectionGeneration.js";
 import type { GrokSessionReader } from "../sessions/grok-reader.js";
 import type { PiSessionReader } from "../sessions/pi-reader.js";
 import type {
@@ -36,6 +38,7 @@ import type {
   PendingInputType,
   Project,
 } from "../supervisor/types.js";
+import type { EventBus } from "../watcher/index.js";
 import { buildProviderProjectCatalog } from "./provider-catalog.js";
 import { getActiveSessionIndexOptions } from "./session-list-options.js";
 
@@ -57,6 +60,7 @@ export interface InboxDeps {
   grokReaderFactory?: (projectPath: string) => GrokSessionReader;
   piSessionsDir?: string;
   piReaderFactory?: (projectPath: string) => PiSessionReader;
+  eventBus?: EventBus;
   sessionAutoArchiveDays?: number;
 }
 
@@ -84,6 +88,24 @@ export interface InboxResponse {
 /** Maximum items per tier to keep response size manageable */
 const MAX_ITEMS_PER_TIER = 20;
 
+/**
+ * How much enriched inbox state to retain across requests. Rows are compact
+ * summaries, not transcripts; this bounds an unusually large install rather
+ * than sizing an expected one.
+ */
+const INBOX_RETENTION_BYTES = 8 * 1024 * 1024;
+
+/** One session, walked and enriched, before any tier decision is made. */
+interface EnrichedInboxSession {
+  session: SessionListSummary;
+  projectName: string;
+  pendingInputType?: PendingInputType;
+  activity?: AgentActivity;
+  hasUnread?: boolean;
+  customTitle?: string;
+  isStarred?: boolean;
+}
+
 /** Time thresholds in milliseconds */
 const THIRTY_MINUTES_MS = 30 * 60 * 1000;
 const EIGHT_HOURS_MS = 8 * 60 * 60 * 1000;
@@ -110,11 +132,30 @@ function getActiveProjectQueueSessionIds(
 export function createInboxRoutes(deps: InboxDeps): Hono {
   const routes = new Hono();
 
-  // GET /api/inbox - Get prioritized inbox of sessions
-  // Optional query param: projectId - filter to a single project
-  routes.get("/", async (c) => {
-    const now = Date.now();
-    const filterProjectId = c.req.query("projectId");
+  const collectionGeneration = new SessionCollectionGeneration(deps.eventBus);
+  /**
+   * One walk per (project filter, generation), however many tabs ask for it.
+   *
+   * The Inbox is mounted by the app shell, so a herd of tabs reconnecting used
+   * to run a herd of independent walks over every project — the same defect
+   * `GET /api/sessions` had. The generation is the collection's, so the same
+   * deny-list over bus events decides when a retained walk stops being usable.
+   *
+   * `isCurrent` is vacuous for the reason it is on the global session walk: the
+   * generation is read before the walk, so a change landing mid-walk leaves the
+   * retained entry unreachable rather than wrong.
+   */
+  const inboxWalks = new SourceVersionedSingleFlight<
+    string,
+    EnrichedInboxSession[]
+  >({
+    maxRetainedBytes: INBOX_RETENTION_BYTES,
+    estimateBytes: (value) => value.length * 512,
+  });
+
+  async function walkInbox(
+    filterProjectId: string | undefined,
+  ): Promise<EnrichedInboxSession[]> {
     const allProjects = await deps.scanner.listProjects();
 
     // Filter to single project if projectId query param provided
@@ -122,25 +163,13 @@ export function createInboxRoutes(deps: InboxDeps): Hono {
       ? allProjects.filter((p) => p.id === filterProjectId)
       : allProjects;
 
-    // Collect all sessions with enriched data
-    const allSessions: Array<{
-      session: SessionListSummary;
-      projectName: string;
-      pendingInputType?: PendingInputType;
-      activity?: AgentActivity;
-      hasUnread?: boolean;
-      customTitle?: string;
-      isStarred?: boolean;
-    }> = [];
+    const allSessions: EnrichedInboxSession[] = [];
 
     const logger = getLogger();
     const providerCatalog = await buildProviderProjectCatalog({
       codexScanner: deps.codexScanner,
       geminiScanner: deps.geminiScanner,
     });
-    const activeProjectQueueSessionIds = getActiveProjectQueueSessionIds(
-      deps.projectQueueService,
-    );
     const listOptions = getActiveSessionIndexOptions(
       deps.sessionAutoArchiveDays,
     );
@@ -224,6 +253,41 @@ export function createInboxRoutes(deps: InboxDeps): Hono {
       }
     }
 
+    return allSessions;
+  }
+
+  async function readInbox(
+    filterProjectId: string | undefined,
+  ): Promise<EnrichedInboxSession[]> {
+    const result = await inboxWalks.run({
+      key: filterProjectId ?? "",
+      sourceVersion: String(collectionGeneration.current),
+      compute: () => walkInbox(filterProjectId),
+      isCurrent: () => true,
+    });
+    if (result.status === "stale") {
+      // Unreachable while `isCurrent` is vacuous; walking again is the only
+      // answer that cannot be wrong if that ever changes.
+      return walkInbox(filterProjectId);
+    }
+    return result.value;
+  }
+
+  // GET /api/inbox - Get prioritized inbox of sessions
+  // Optional query param: projectId - filter to a single project
+  routes.get("/", async (c) => {
+    const now = Date.now();
+    const filterProjectId = c.req.query("projectId");
+
+    // Only the walk is retained. Tier membership is a wall-clock decision —
+    // 30 minutes, 8 hours, 24 hours — so retaining a tiered response would
+    // freeze those windows at the instant of the walk, and a session would
+    // stay in "Recent Activity" for as long as nothing on the bus moved.
+    const allSessions = await readInbox(filterProjectId);
+    const activeProjectQueueSessionIds = getActiveProjectQueueSessionIds(
+      deps.projectQueueService,
+    );
+
     // Build the inbox response by categorizing into tiers
     const needsAttention: InboxItem[] = [];
     const active: InboxItem[] = [];
@@ -235,7 +299,7 @@ export function createInboxRoutes(deps: InboxDeps): Hono {
     const assignedSessionIds = new Set<string>();
 
     // Helper to convert to InboxItem
-    const toInboxItem = (item: (typeof allSessions)[0]): InboxItem => ({
+    const toInboxItem = (item: EnrichedInboxSession): InboxItem => ({
       sessionId: item.session.id,
       projectId: item.session.projectId,
       projectName: item.projectName,

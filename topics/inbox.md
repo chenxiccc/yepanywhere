@@ -40,6 +40,20 @@ The tier order is:
 Each tier is sorted by `updatedAt` descending and capped at 20 items. Archived
 sessions are skipped before tiering.
 
+**The walk is shared; the tiering is not.** Inbox is app-shell mounted, so a
+herd of tabs reconnecting would otherwise run a herd of independent walks over
+every project. The enriched row collection is single-flighted per
+`(project filter, session-collection generation)` — the same clock and the same
+deny-list over bus events that `GET /api/sessions` uses, described in
+[`session-catalog-observation.md`](session-catalog-observation.md). Tier
+membership is recomputed per request against the current clock and the current
+Project Queue, because the tiers are wall-clock windows: retaining a tiered
+response would freeze the 30-minute, 8-hour, and 24-hour boundaries at the
+instant of the walk, and a session would sit in `recentActivity` until
+something unrelated moved on the bus. Anything else added to the response that
+depends on wall-clock time or on state outside the deny-list belongs on the
+per-request side of that split.
+
 Inbox's collection read requires only session identity, title, and recency. A
 provider with a bounded list-summary reader may use it for dirty or uncached
 sessions instead of completing a transcript-tail summary. That projection must
