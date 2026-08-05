@@ -140,12 +140,16 @@ const vitePort = process.env.VITE_PORT
   : basePort + 2;
 const protocol = process.env.HTTPS_SELF_SIGNED === "true" ? "https" : "http";
 const configuredHost = process.env.HOST?.trim();
+// The primary Hono listener is always loopback. HOST may describe an explicit
+// additional network listener (or merely be an ambient shell variable), so it
+// cannot identify the bind whose successful acquisition authorizes cleanup.
+const primaryBindHost = "127.0.0.1";
 const displayHost =
   configuredHost && configuredHost !== "0.0.0.0" && configuredHost !== "::"
     ? configuredHost
     : "localhost";
 const devInstanceProvenance = createDevInstanceProvenance({
-  host: configuredHost,
+  host: primaryBindHost,
   port: basePort,
   sourceRoot: realpathSync(rootDir),
 });
