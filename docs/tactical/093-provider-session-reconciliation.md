@@ -8,7 +8,9 @@ Status: Implementation in progress. Shared source-versioned work ownership,
 Codex child projection, install-scoped successful-use eligibility, gated
 post-listener file watching, the durable catalog coordinator, and the Pi/Grok/
 OpenCode catalog adapters are implemented and measured. Claude, Codex, and
-Gemini adapters, the process classifier, retained collection routes, interest
+Gemini adapters are ruled out for list amplification (step 2 records why, and
+corrects a wrong premise about their storage layouts). The process classifier,
+retained collection routes, interest
 leases, and exact process reconciliation remain pending; nothing wires the
 coordinator into a route yet, which is what the compatibility checkpoint below
 gates. The provider/storage and process-discovery contracts are accepted in the
@@ -353,12 +355,37 @@ install state. Do not infer eligibility from directory existence.
 ### 2 — introduce provider catalog and process-classifier adapters
 
 Catalog modes, the bounded row schema, and the Pi, Grok, and OpenCode adapters
-are done — those three multiplied a global scan by every project. Claude,
-Codex, and Gemini adapters remain: their stores are already project-keyed on
-disk, so they trade a different cost and should be measured before assuming the
-same shape helps.
+are done — those three multiplied a global scan by every project.
+
+**Claude, Codex, and Gemini adapters are not justified by list amplification.**
+Checked 2026-08-05, against the readers rather than by assumption, because this
+plan previously recorded that all three were "already project-keyed on disk"
+and that is only true of one:
+
+- **Claude** is genuinely project-keyed. `sessions/reader.ts` takes a
+  `sessionDir` per project and reads only that directory, so per-project cost
+  scales with that project's own sessions, not the fleet's.
+- **Codex is not project-keyed** — it stores
+  `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`, a date tree. It avoids the
+  amplification a different way: `codex-reader.ts` scans through the
+  module-level `codexSharedScanCache`, keyed by `sessionsDir::activeAfter`,
+  with a TTL and in-flight joining, so every project's reader shares one store
+  scan.
+- **Gemini** is hash-keyed, and `buildProviderProjectCatalog` resolves
+  `hashToCwd` once per request and hands the same map to every reader, so the
+  store is enumerated once per request rather than once per project.
+
+None of the three repeats a whole-store walk per project the way pi and Grok
+did, so the 134x-shaped win is not available. An adapter for them may still be
+justified later by what the *durable* catalog needs — cheap cold rows after
+restart, which is a different argument from list amplification and should be
+made on its own evidence, not inherited from this step.
+
 Still to do: move executable/entrypoint recognition out of the generic service
 while preserving transient argv minimization and current false-positive tests.
+That extraction is structural — it lets step 8's process reconciliation reuse
+recognition without depending on `HostAgentProcessService` — and carries no
+performance claim.
 
 ### 3 — build the disk-backed catalog coordinator
 
