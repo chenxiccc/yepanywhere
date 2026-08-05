@@ -105,7 +105,8 @@ const {
           smartTurnAutoSend?: boolean;
         },
       ) => void;
-      onListeningStop?: () => void;
+      onListeningStart?: () => void;
+      onListeningStop?: () => boolean | undefined;
     },
   },
   draftKeys: [] as string[],
@@ -2539,6 +2540,35 @@ describe("NewSessionForm", () => {
     fireEvent.keyDown(textarea, { key: "Escape" });
     expect(mockVoiceCancelProcessing).toHaveBeenCalledTimes(1);
     expect(textarea.value).toBe("typed while transcribing");
+  });
+
+  it("commits the visible interim when the new-session mic stops", async () => {
+    render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+    const textarea = screen.getByPlaceholderText(
+      "newSessionPlaceholder",
+    ) as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "alpha omega" } });
+    textarea.setSelectionRange("alpha".length, "alpha".length);
+
+    act(() => {
+      voicePropsState.current?.onListeningStart?.();
+      voicePropsState.current?.onInterimTranscript?.("visible words");
+    });
+    let committed = false;
+    act(() => {
+      committed = voicePropsState.current?.onListeningStop?.() === true;
+    });
+
+    await waitFor(() => {
+      expect(textarea.value).toBe("alpha visible words omega");
+    });
+    expect(committed).toBe(true);
   });
 
   it("keeps Listening out of the draft and places the caret after provisional speech", async () => {

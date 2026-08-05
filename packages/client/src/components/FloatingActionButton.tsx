@@ -272,8 +272,7 @@ export function FloatingActionButton() {
     ) {
       e.preventDefault();
       e.stopPropagation();
-      handleListeningStop();
-      voiceButtonRef.current.stopAndFinalize();
+      voiceButtonRef.current.toggle();
       return;
     }
 
@@ -489,12 +488,19 @@ export function FloatingActionButton() {
   }, [commitVoiceTranscript]);
 
   const handleListeningStop = useCallback(() => {
+    const visibleInterim = getSpeechInterimDisplayTranscript(
+      draftControls.getDraft(),
+      interimTranscriptRef.current,
+      speechInsertionRangeRef.current,
+    );
     flushPendingSpeechFinal();
+    if (visibleInterim) commitVoiceTranscript(visibleInterim);
     pendingSpeechRetargetRef.current = null;
     interimTranscriptRef.current = "";
     setInterimTranscript("");
     textareaRef.current?.focus();
-  }, [flushPendingSpeechFinal]);
+    return Boolean(visibleInterim);
+  }, [commitVoiceTranscript, draftControls, flushPendingSpeechFinal]);
 
   const handleInterimTranscript = useCallback((transcript: string) => {
     interimTranscriptRef.current = transcript;

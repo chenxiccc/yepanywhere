@@ -204,7 +204,7 @@ export interface MessageInputToolbarProps {
   ) => void;
   onInterimTranscript?: (transcript: string) => void;
   onListeningStart?: () => void;
-  onListeningStop?: () => void;
+  onListeningStop?: () => boolean | undefined;
   onPendingSpeechChange?: (
     kind: SpeechPendingKind | null,
     settlement?: SpeechCycleSettlement,
@@ -529,7 +529,7 @@ type ToolbarVoiceButtonControl =
       ) => void;
       onInterimTranscript: (transcript: string) => void;
       onListeningStart?: () => void;
-      onListeningStop?: () => void;
+      onListeningStop?: () => boolean | undefined;
       onPendingSpeechChange?: (
         kind: SpeechPendingKind | null,
         settlement?: SpeechCycleSettlement,

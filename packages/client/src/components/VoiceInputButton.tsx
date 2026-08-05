@@ -107,8 +107,12 @@ interface VoiceInputButtonProps {
   onInterimTranscript?: (text: string) => void;
   /** Callback when listening starts - useful for focusing input */
   onListeningStart?: () => void;
-  /** Callback when the user explicitly stops active capture. */
-  onListeningStop?: () => void;
+  /**
+   * Callback when the user explicitly stops active capture. Return true when
+   * the composer committed its visible provisional text and later provider
+   * revisions for that capture must be ignored.
+   */
+  onListeningStop?: () => boolean | undefined;
   /** Callback when a post-capture pending state (transcribing/finalizing) starts or ends. */
   onPendingSpeechChange?: (
     kind: SpeechPendingKind | null,
@@ -234,9 +238,11 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
   // Show status text on desktop with sufficient width
   const showStatusText =
     !hasCoarsePointer() && viewportWidth >= 600 && voiceInputEnabled;
+  const suppressResultsAfterVisibleStopRef = useRef(false);
 
   const handleResult = useCallback(
     (transcript: string, metadata?: SpeechTranscriptionResultMetadata) => {
+      if (suppressResultsAfterVisibleStopRef.current) return;
       onTranscript(transcript, metadata);
     },
     [onTranscript],
@@ -332,6 +338,34 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
     if (!keepMicWarm) releaseSharedSpeechMicStream();
   }, [keepMicWarm, stopListening]);
 
+  const handleUserToggle = useCallback(() => {
+    if (isActive) {
+      suppressResultsAfterVisibleStopRef.current =
+        suppressResultsAfterVisibleStopRef.current ||
+        onListeningStop?.() === true;
+      if (
+        followUpSnapshot.active &&
+        (followUpSnapshot.owner === null ||
+          followUpSnapshot.owner === speechCaptureOwnerRef.current)
+      ) {
+        cancelSpeechFollowUp(speechCaptureOwnerRef.current);
+        return;
+      }
+      toggleListening();
+      return;
+    }
+    suppressResultsAfterVisibleStopRef.current = false;
+    onListeningStart?.();
+    toggleListening();
+  }, [
+    followUpSnapshot.active,
+    followUpSnapshot.owner,
+    isActive,
+    onListeningStart,
+    onListeningStop,
+    toggleListening,
+  ]);
+
   // Expose methods and state to parent
   useImperativeHandle(
     ref,
@@ -351,7 +385,7 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
         }
         return pending;
       },
-      toggle: toggleListening,
+      toggle: handleUserToggle,
       cancelProcessing,
       prewarm,
       beginInsertionBoundary,
@@ -376,9 +410,9 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
       cancelProcessing,
       beginInsertionBoundary,
       endFollowUpListening,
+      handleUserToggle,
       prewarm,
       stopListening,
-      toggleListening,
       isAvailable,
     ],
   );
@@ -488,33 +522,6 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
     };
   }, [inlineWaveform, onWaveformActiveChange, waveformVisible]);
 
-  // Handle click - toggle listening and notify when starting
-  const handleClick = useCallback(() => {
-    const wasActive = isActive;
-    if (wasActive) {
-      onListeningStop?.();
-      if (
-        followUpSnapshot.active &&
-        (followUpSnapshot.owner === null ||
-          followUpSnapshot.owner === speechCaptureOwnerRef.current)
-      ) {
-        cancelSpeechFollowUp(speechCaptureOwnerRef.current);
-        return;
-      }
-      toggleListening();
-      return;
-    }
-    onListeningStart?.();
-    toggleListening();
-  }, [
-    followUpSnapshot.active,
-    followUpSnapshot.owner,
-    isActive,
-    toggleListening,
-    onListeningStart,
-    onListeningStop,
-  ]);
-
   // A disabled setting or a host without speech support removes the control.
   // Provider discovery leaves a disabled Mic in place until it can run.
   if (!voiceInputEnabled || !serverVoiceEnabled) {
@@ -550,7 +557,7 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
       data-inline-waveform={inlineWaveform || undefined}
       data-speech-method={speechMethod}
       data-speech-phase={speechCapturePhase ?? "idle"}
-      onClick={handleClick}
+      onClick={handleUserToggle}
       disabled={disabled || !isSupported}
       title={
         error

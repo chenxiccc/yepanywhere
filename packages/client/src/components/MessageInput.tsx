@@ -2017,8 +2017,7 @@ export function MessageInput({
     ) {
       e.preventDefault();
       e.stopPropagation();
-      handleListeningStop();
-      voiceButtonRef.current.stopAndFinalize();
+      voiceButtonRef.current.toggle();
       return;
     }
 
@@ -2555,14 +2554,21 @@ export function MessageInput({
   }, [commitVoiceTranscript]);
 
   const handleListeningStop = useCallback(() => {
+    const visibleInterim = getSpeechInterimDisplayTranscript(
+      controls.getDraft(),
+      interimTranscriptRef.current,
+      speechInsertionRangeRef.current,
+    );
     flushPendingSpeechFinal();
+    if (visibleInterim) commitVoiceTranscript(visibleInterim);
     pendingSpeechRetargetRef.current = null;
     interimTranscriptRef.current = "";
     setInterimTranscript("");
     // Preserve desktop's ready-to-type caret without summoning a touch
     // keyboard merely because YA-owned dictation finished.
     if (!hasCoarsePointer()) textareaRef.current?.focus();
-  }, [flushPendingSpeechFinal]);
+    return Boolean(visibleInterim);
+  }, [commitVoiceTranscript, controls, flushPendingSpeechFinal]);
 
   const restorePendingSpeechDeliveryDraft = useCallback(() => {
     const pending = pendingSpeechDeliveryRef.current;
@@ -2683,16 +2689,9 @@ export function MessageInput({
       event.stopPropagation();
       const voice = voiceButtonRef.current;
       if (!voice?.isAvailable) return;
-      const wasActive = voice.isListening;
-      if (wasActive) {
-        handleListeningStop();
-        voice.toggle();
-        return;
-      }
-      handleListeningStart();
       voice.toggle();
     },
-    [handleListeningStart, handleListeningStop],
+    [],
   );
 
   const toolbarProps: MessageInputToolbarProps = {

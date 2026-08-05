@@ -205,28 +205,32 @@ final partials in order and uses them only if the final done event has no text,
 preserving protection against bad stop-flush partials when `transcript.done`
 does contain text.
 
-Manual stop for streaming STT is a flush/finalize operation, not cancellation.
-It stops capturing new audio immediately, but final transcript updates for
-audio already sent must still reach the composer and retain their Smart Turn
-command metadata. Only one streaming provider request is active at a time in
-the current implementation, so a reclick during streaming finalization does not
+Manual stop for streaming STT stops capturing new audio immediately. When no
+provisional speech is visible, it remains a flush/finalize operation and final
+transcript updates for audio already sent may still reach the composer. When
+provisional speech is visible, Stop instead commits the exact click-time
+projection at its displayed insertion or replacement span; later provider
+revisions settle the capture but must not rewrite or duplicate that committed
+snapshot. Only one streaming provider request is active at a time in the
+current implementation, so a reclick during streaming finalization does not
 start a competing stream. Future work may make that reclick start local
 prerecording immediately, buffer PCM into a new speech transaction, and open
 the next provider stream only after the previous `transcript.done` resolves.
 That follow-up must preserve the user's click-time insertion target and flush
 the buffered audio without dropping first words.
 
-Send, Steer, and Queue remain visible and actionable while capture or
-post-capture finalization is active. Activating one snapshots the exact text
-currently projected in the composer, including an underlined interim at its
-visible insertion or replacement span, records the delivery intent, stops
-capture, and waits for successful provider settlement. Delivery uses that
-immutable snapshot rather than a later recognizer correction or subsequent
-draft state. Taking the snapshot does not commit provisional text into the
-editable textarea. A failed speech cycle clears the pending delivery instead
-of sending the snapshot; a later deliberate delivery press may still send the
-retained draft. This contract applies to the active-session, new-session, and
-floating composers.
+The governing visible-speech action invariant is that an explicit composer
+action operates on exactly the text projected when the user invokes it,
+including an underlined interim at its visible insertion or replacement span.
+Stop commits that snapshot into the editable draft. Send, Steer, and Queue
+record the delivery intent, stop capture, wait for successful provider
+settlement, and deliver that immutable snapshot rather than a later recognizer
+correction or subsequent draft state. Delivery snapshots do not first commit
+provisional text into the editable textarea. A failed speech cycle clears the
+pending delivery instead of sending the snapshot; a later deliberate delivery
+press may still send the retained draft. This contract applies to the
+active-session, new-session, and floating composers and to mic-button or
+keyboard-shortcut invocation of the same action.
 
 In the active-session composer, that delivery press also transfers the current
 draft and speech insertion target into a delivery-owned transaction and clears
@@ -410,12 +414,13 @@ off using the provider's normal stop behavior. For xAI streaming STT, manual
 stop sends `audio.done` immediately and waits for `transcript.done`. The mic
 button must clear its red/listening state as soon as capture stops, but the
 speech provider remains in a non-recording finalizing state until the final
-response lands. YA should not treat the live interim preview as final unless
-the final response fails and the preview is being salvaged. Smart
-Turn/endpointing finalizes through `is_final` transcript partials, but manual
-stop does not require or promise one last `is_final` partial. In the initial
-implementation, Esc may duplicate that same toggle behavior when focus is in
-the composer.
+response lands. If an interim preview is visible at the explicit stop, YA
+commits that exact preview immediately and ignores later text revisions from
+the stopped capture. With no visible interim, normal provider finalization
+continues, which preserves batch and non-preview streaming behavior. Smart
+Turn/endpointing still finalizes through `is_final` transcript partials. In the
+initial implementation, Esc may duplicate that same toggle behavior when focus
+is in the composer.
 
 Proposed stronger Esc behavior: while a mic transaction is active, Esc should
 remove all speech inserted since the button press and stop recognition. That

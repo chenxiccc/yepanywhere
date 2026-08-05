@@ -2366,8 +2366,7 @@ export function NewSessionForm({
     ) {
       e.preventDefault();
       e.stopPropagation();
-      handleListeningStop();
-      voiceButtonRef.current.stopAndFinalize();
+      voiceButtonRef.current.toggle();
       return;
     }
 
@@ -2653,12 +2652,19 @@ export function NewSessionForm({
   }, [commitVoiceTranscript]);
 
   const handleListeningStop = useCallback(() => {
+    const visibleInterim = getSpeechInterimDisplayTranscript(
+      draftControls.getDraft(),
+      interimTranscriptRef.current,
+      speechInsertionRangeRef.current,
+    );
     flushPendingSpeechFinal();
+    if (visibleInterim) commitVoiceTranscript(visibleInterim);
     pendingSpeechRetargetRef.current = null;
     interimTranscriptRef.current = "";
     setInterimTranscript("");
     textareaRef.current?.focus();
-  }, [flushPendingSpeechFinal]);
+    return Boolean(visibleInterim);
+  }, [commitVoiceTranscript, draftControls, flushPendingSpeechFinal]);
 
   const handleInterimTranscript = useCallback((transcript: string) => {
     interimTranscriptRef.current = transcript;
@@ -2729,16 +2735,9 @@ export function NewSessionForm({
       event.stopPropagation();
       const voice = voiceButtonRef.current;
       if (!voice?.isAvailable) return;
-      const wasActive = voice.isListening;
-      if (wasActive) {
-        handleListeningStop();
-        voice.toggle();
-        return;
-      }
-      handleListeningStart();
       voice.toggle();
     },
-    [handleListeningStart, handleListeningStop],
+    [],
   );
 
   const hasContent =
@@ -2950,12 +2949,14 @@ export function NewSessionForm({
             }
             smartTurnDisabled={isStarting}
             onBeforeOpen={() => {
-              handleListeningStop();
-              voiceButtonRef.current?.stopAndFinalize();
+              if (voiceButtonRef.current?.isListening) {
+                voiceButtonRef.current.toggle();
+              }
             }}
             onBeforeCaptureChange={() => {
-              handleListeningStop();
-              voiceButtonRef.current?.stopAndFinalize();
+              if (voiceButtonRef.current?.isListening) {
+                voiceButtonRef.current.toggle();
+              }
             }}
             onPointerNearTrigger={() => voiceButtonRef.current?.prewarm?.()}
             trigger={

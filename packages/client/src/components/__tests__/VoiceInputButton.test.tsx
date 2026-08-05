@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { VOICE_INPUT_CAPABILITY } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { UseSpeechRecognitionOptions } from "../../hooks/useSpeechRecognition";
@@ -35,6 +35,7 @@ const {
         | "finalizing"
         | "reconnecting"
         | "error",
+      interimTranscript: "",
     },
     versionState: {
       capabilities: [] as string[],
@@ -78,7 +79,7 @@ vi.mock("../../hooks/useSpeechRecognition", () => ({
       isSupported: speechState.isSupported,
       isListening: speechState.isListening,
       status: speechState.status,
-      interimTranscript: "",
+      interimTranscript: speechState.interimTranscript,
       startListening: vi.fn(),
       stopListening: vi.fn(),
       toggleListening: vi.fn(),
@@ -139,6 +140,7 @@ describe("VoiceInputButton", () => {
     speechState.isListening = false;
     speechState.isSupported = true;
     speechState.status = "idle";
+    speechState.interimTranscript = "";
     versionState.loading = false;
   });
 
@@ -245,6 +247,81 @@ describe("VoiceInputButton", () => {
     // The composer surfaces capture as a cancellable chip too, so the ✕ can
     // abandon the in-flight utterance — not just the post-capture waits.
     expect(onPendingSpeechChange).toHaveBeenCalledWith("listening");
+  });
+
+  it("ignores provider revisions after Stop commits the visible interim", () => {
+    speechState.status = "receiving";
+    speechState.isListening = true;
+    speechState.interimTranscript = "visible words";
+    const onTranscript = vi.fn();
+    const onListeningStop = vi.fn(() => true);
+
+    render(
+      <VoiceInputButton
+        onTranscript={onTranscript}
+        onInterimTranscript={vi.fn()}
+        onListeningStop={onListeningStop}
+        speechMethod="browser-native"
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "voiceInputStopLabel" }),
+    );
+    expect(onListeningStop).toHaveBeenCalledOnce();
+
+    observedSpeechOptions.at(-1)?.onResult?.("later backend correction");
+    expect(onTranscript).not.toHaveBeenCalled();
+  });
+
+  it("keeps revisions suppressed if Stop is clicked while finalizing", () => {
+    speechState.status = "receiving";
+    speechState.isListening = true;
+    const onTranscript = vi.fn();
+    const onListeningStop = vi
+      .fn<() => boolean | undefined>()
+      .mockReturnValueOnce(true)
+      .mockReturnValue(false);
+    const props = {
+      onTranscript,
+      onInterimTranscript: vi.fn(),
+      onListeningStop,
+      speechMethod: "browser-native",
+    } as const;
+    const { rerender } = render(<VoiceInputButton {...props} />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "voiceInputStopLabel" }),
+    );
+    speechState.status = "finalizing";
+    speechState.isListening = false;
+    rerender(<VoiceInputButton {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: "Finalizing..." }));
+
+    observedSpeechOptions.at(-1)?.onResult?.("late final revision");
+    expect(onListeningStop).toHaveBeenCalledOnce();
+    expect(onTranscript).not.toHaveBeenCalled();
+  });
+
+  it("keeps a post-stop result when no visible interim was committed", () => {
+    speechState.status = "listening";
+    speechState.isListening = true;
+    const onTranscript = vi.fn();
+
+    render(
+      <VoiceInputButton
+        onTranscript={onTranscript}
+        onInterimTranscript={vi.fn()}
+        onListeningStop={() => false}
+        speechMethod="browser-native"
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "voiceInputStopLabel" }),
+    );
+    observedSpeechOptions.at(-1)?.onResult?.("batch result");
+    expect(onTranscript).toHaveBeenCalledWith("batch result", undefined);
   });
 
   it("does not clear the parent speech target while capture is starting", () => {

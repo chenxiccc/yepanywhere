@@ -109,7 +109,7 @@ const {
       ) => void;
       onInterimTranscript?: (text: string) => void;
       onListeningStart?: () => void;
-      onListeningStop?: () => void;
+      onListeningStop?: () => boolean | undefined;
       onPendingSpeechChange?: (
         kind: "listening" | "transcribing" | "finalizing" | null,
         settlement?: "completed" | "failed",
@@ -409,7 +409,7 @@ vi.mock("../VoiceInputButton", async () => {
           ) => void;
           onInterimTranscript?: (text: string) => void;
           onListeningStart?: () => void;
-          onListeningStop?: () => void;
+          onListeningStop?: () => boolean | undefined;
           onPendingSpeechChange?: (
             kind: "listening" | "transcribing" | "finalizing" | null,
             settlement?: "completed" | "failed",
@@ -1766,12 +1766,15 @@ describe("MessageInput", () => {
     expect(textarea.value).toBe("typed while transcribing");
   });
 
-  it("previews interim inline, then restores the real field while finalizing", async () => {
+  it("commits the visible interim at its displayed span on manual stop", async () => {
     const textarea = renderMessageInput() as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "alpha omega" } });
+    textarea.setSelectionRange("alpha".length, "alpha".length);
 
     // Active streaming: provisional text previews inline with a mirror caret
     // immediately after the visible dictated phrase.
     act(() => {
+      voicePropsState.current?.onListeningStart?.();
       voicePropsState.current?.onInterimTranscript?.("live words");
     });
     const interim = await waitFor(() => {
@@ -1782,17 +1785,21 @@ describe("MessageInput", () => {
     expect(interim.nextElementSibling?.classList).toContain(
       "speech-interim-caret",
     );
-    // Flush (stop): provisional text disappears and the textarea returns to
-    // native rendering/caret behavior. Finalizing status belongs to the mic.
+    // Explicit Stop freezes exactly what the mirror showed into the editable
+    // draft before finalization clears the provisional rendering.
+    let committedVisibleInterim = false;
     act(() => {
       screen.getAllByRole("button", { name: "voice" })[0]?.focus();
-      voicePropsState.current?.onListeningStop?.();
+      committedVisibleInterim =
+        voicePropsState.current?.onListeningStop?.() === true;
       voicePropsState.current?.onInterimTranscript?.("");
       voicePropsState.current?.onPendingSpeechChange?.("finalizing");
     });
     await waitFor(() => {
       expect(document.querySelector(".speech-draft-mirror")).toBeNull();
+      expect(textarea.value).toBe("alpha live words omega");
     });
+    expect(committedVisibleInterim).toBe(true);
     expect(
       document.querySelector(".speech-draft-field")?.classList,
     ).not.toContain("has-interim");
@@ -3123,7 +3130,7 @@ describe("MessageInput", () => {
 
     fireEvent.keyDown(textarea, { key: "Escape" });
 
-    expect(mockVoiceStopAndFinalize).toHaveBeenCalledTimes(1);
+    expect(mockVoiceToggle).toHaveBeenCalledTimes(1);
     expect(onStop).not.toHaveBeenCalled();
   });
 

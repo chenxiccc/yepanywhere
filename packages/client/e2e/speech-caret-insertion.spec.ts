@@ -239,3 +239,28 @@ test("sends the interim text visible when Send is pressed", async ({
     }),
   ).toBeVisible();
 });
+
+test("commits the interim text visible when Stop is pressed", async ({
+  page,
+  baseURL,
+}) => {
+  const textarea = await openBrowserSpeechComposer(
+    page,
+    baseURL,
+    "alpha omega",
+  );
+
+  await textarea.click({ position: { x: 12, y: 10 } });
+  await expect(textarea).toHaveJSProperty("selectionStart", 0);
+  await emitSpeechResults(page, [
+    { transcript: "provisional words", isFinal: false },
+  ]);
+  await expect(page.locator(".speech-interim-inline")).toHaveText(
+    "provisional words",
+  );
+
+  await page.getByRole("button", { name: "Stop voice input" }).click();
+
+  await expect(textarea).toHaveValue("provisional words alpha omega");
+  await expect(page.locator(".speech-interim-inline")).toHaveCount(0);
+});
