@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ClaudeGatewayProvider,
+  gatewayAutoCompactWindow,
   parseClaudeGatewayModels,
 } from "../../../src/sdk/providers/claude-gateway.js";
 import { ClaudeOllamaProvider } from "../../../src/sdk/providers/claude-ollama.js";
@@ -23,6 +24,7 @@ describe("ClaudeGatewayProvider", () => {
   afterEach(() => {
     ClaudeGatewayProvider.setGatewayUrl(undefined);
     ClaudeGatewayProvider.setGatewayStartCommand(undefined);
+    ClaudeGatewayProvider.forgetContextWindows();
     ClaudeOllamaProvider.setOllamaUrl(undefined);
     configureProviderRuntime({ isClaudeOllamaVisible: () => false });
     vi.unstubAllGlobals();
@@ -197,6 +199,76 @@ describe("ClaudeGatewayProvider", () => {
     expect(provider.getLaunchEnvironment("kimi-k2.7-code")).toMatchObject(
       expectedGatewayEnvironment,
     );
+  });
+
+  it("states the proxied model's real window so compaction is not budgeted at 200K", async () => {
+    // Claude Code cannot verify a window through a gateway, so without this it
+    // auto-compacts every gateway session at 200K whatever the real model is.
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: "gpt-5.6-sol",
+                capabilities: {
+                  type: "chat",
+                  limits: { max_context_window_tokens: 400_000 },
+                },
+              },
+              {
+                id: "gpt-4",
+                capabilities: {
+                  type: "chat",
+                  limits: { max_context_window_tokens: 32_768 },
+                },
+              },
+              { id: "windowless-model" },
+            ],
+          }),
+          { status: 200 },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    ClaudeGatewayProvider.setGatewayUrl("http://localhost:4141");
+
+    const provider = new ExposedClaudeGatewayProvider({
+      ensureReady: async () => null,
+    });
+
+    // A launch before any catalog read keeps Claude Code's own default.
+    expect(provider.getLaunchSettings("gpt-5.6-sol")?.env).not.toHaveProperty(
+      "CLAUDE_CODE_AUTO_COMPACT_WINDOW",
+    );
+
+    await provider.getAvailableModels();
+
+    expect(provider.getLaunchSettings("gpt-5.6-sol")?.env).toMatchObject({
+      CLAUDE_CODE_AUTO_COMPACT_WINDOW: "400000",
+    });
+    expect(provider.getLaunchEnvironment("gpt-5.6-sol")).toMatchObject({
+      CLAUDE_CODE_AUTO_COMPACT_WINDOW: "400000",
+    });
+    // Claude Code rejects anything under 100K, so a smaller model takes the
+    // floor rather than silently keeping the wider 200K default.
+    expect(provider.getLaunchSettings("gpt-4")?.env).toMatchObject({
+      CLAUDE_CODE_AUTO_COMPACT_WINDOW: "100000",
+    });
+    expect(
+      provider.getLaunchSettings("windowless-model")?.env,
+    ).not.toHaveProperty("CLAUDE_CODE_AUTO_COMPACT_WINDOW");
+    expect(provider.getLaunchSettings()?.env).not.toHaveProperty(
+      "CLAUDE_CODE_AUTO_COMPACT_WINDOW",
+    );
+  });
+
+  it("clamps an oversized advertised window to what Claude Code accepts", () => {
+    expect(gatewayAutoCompactWindow(2_000_000)).toBe(1_000_000);
+    expect(gatewayAutoCompactWindow(400_000)).toBe(400_000);
+    expect(gatewayAutoCompactWindow(32_768)).toBe(100_000);
+    expect(gatewayAutoCompactWindow(undefined)).toBeUndefined();
+    expect(gatewayAutoCompactWindow(0)).toBeUndefined();
+    expect(gatewayAutoCompactWindow(Number.NaN)).toBeUndefined();
   });
 
   it("is hidden and has no fallback catalog until configured", async () => {

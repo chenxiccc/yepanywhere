@@ -44,10 +44,39 @@ interface GatewayModelsResponse {
   data?: GatewayModel[];
 }
 
+/**
+ * Claude Code cannot verify a proxied model's context window through a gateway,
+ * so it budgets every gateway session at 200K tokens and auto-compacts at that
+ * boundary regardless of the real model. The gateway catalog knows the true
+ * window, and `CLAUDE_CODE_AUTO_COMPACT_WINDOW` is the documented way to state
+ * it. Claude Code accepts only 100K through 1M, so a smaller advertised window
+ * takes the floor: still tighter than the 200K default it replaces.
+ */
+const AUTO_COMPACT_WINDOW_MIN = 100_000;
+const AUTO_COMPACT_WINDOW_MAX = 1_000_000;
+
+export function gatewayAutoCompactWindow(
+  contextWindow: number | undefined,
+): number | undefined {
+  if (
+    typeof contextWindow !== "number" ||
+    !Number.isFinite(contextWindow) ||
+    contextWindow <= 0
+  ) {
+    return undefined;
+  }
+  return Math.min(
+    AUTO_COMPACT_WINDOW_MAX,
+    Math.max(AUTO_COMPACT_WINDOW_MIN, Math.round(contextWindow)),
+  );
+}
+
 function gatewayEnvironment(
   baseUrl: string,
   model?: string,
+  contextWindow?: number,
 ): Record<string, string> {
+  const autoCompactWindow = gatewayAutoCompactWindow(contextWindow);
   return {
     ANTHROPIC_BASE_URL: baseUrl,
     ANTHROPIC_AUTH_TOKEN: "dummy",
@@ -62,6 +91,9 @@ function gatewayEnvironment(
           ANTHROPIC_SMALL_FAST_MODEL: model,
           ANTHROPIC_DEFAULT_HAIKU_MODEL: model,
         }
+      : {}),
+    ...(autoCompactWindow !== undefined
+      ? { CLAUDE_CODE_AUTO_COMPACT_WINDOW: String(autoCompactWindow) }
       : {}),
   };
 }
@@ -161,6 +193,12 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
 
   private static gatewayUrl: string | undefined;
   private static gatewayStartCommand: string | undefined;
+  /**
+   * Context windows from the last catalog read, so a launch can state the
+   * proxied model's real window. A launch before any successful read simply
+   * omits the override and keeps Claude Code's own gateway default.
+   */
+  private static modelContextWindows = new Map<string, number>();
 
   constructor(
     private readonly gatewayLauncher: Pick<
@@ -202,6 +240,20 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
 
   static getGatewayUrl(): string | undefined {
     return ClaudeGatewayProvider.gatewayUrl;
+  }
+
+  private static rememberContextWindows(models: ModelInfo[]): void {
+    ClaudeGatewayProvider.modelContextWindows = new Map(
+      models.flatMap((model) =>
+        typeof model.contextWindow === "number"
+          ? [[model.id, model.contextWindow] as const]
+          : [],
+      ),
+    );
+  }
+
+  static forgetContextWindows(): void {
+    ClaudeGatewayProvider.modelContextWindows = new Map();
   }
 
   static isConfigured(): boolean {
@@ -252,7 +304,9 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
         signal: AbortSignal.timeout(5000),
       });
       if (!response.ok) return [];
-      return parseClaudeGatewayModels(await response.json());
+      const models = parseClaudeGatewayModels(await response.json());
+      ClaudeGatewayProvider.rememberContextWindows(models);
+      return models;
     } catch (error) {
       getLogger().debug(
         { error, gatewayUrl },
@@ -266,10 +320,22 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
     return this.getAvailableModels();
   }
 
+  private static contextWindowFor(model?: string): number | undefined {
+    return model
+      ? ClaudeGatewayProvider.modelContextWindows.get(model)
+      : undefined;
+  }
+
   protected override getSettings(model?: string): Settings | undefined {
     const gatewayUrl = ClaudeGatewayProvider.gatewayUrl;
     if (!gatewayUrl) return undefined;
-    return { env: gatewayEnvironment(gatewayUrl, model) };
+    return {
+      env: gatewayEnvironment(
+        gatewayUrl,
+        model,
+        ClaudeGatewayProvider.contextWindowFor(model),
+      ),
+    };
   }
 
   protected override getEnv(
@@ -277,7 +343,14 @@ export class ClaudeGatewayProvider extends ClaudeProvider {
   ): Record<string, string | undefined> {
     const gatewayUrl = ClaudeGatewayProvider.gatewayUrl;
     return gatewayUrl
-      ? { ...super.getEnv(model), ...gatewayEnvironment(gatewayUrl, model) }
+      ? {
+          ...super.getEnv(model),
+          ...gatewayEnvironment(
+            gatewayUrl,
+            model,
+            ClaudeGatewayProvider.contextWindowFor(model),
+          ),
+        }
       : super.getEnv(model);
   }
 }

@@ -257,10 +257,41 @@ auto-compaction window** at which Claude may compact proactively:
   environment/default.
 - The override can only lower Claude's default. Values above the effective
   default have no effect, and the variable only takes effect in the Claude Code
-  cases where proactive auto-compaction is active. YA does not set
-  `CLAUDE_CODE_AUTO_COMPACT_WINDOW`; therefore this option does not redefine
-  Claude's effective window or the status line's full-context
-  `used_percentage`.
+  cases where proactive auto-compaction is active. For the plain Claude
+  provider YA does not set `CLAUDE_CODE_AUTO_COMPACT_WINDOW`; therefore this
+  option does not redefine Claude's effective window or the status line's
+  full-context `used_percentage`. Claude Gateway is the one exception, below.
+
+## Claude Gateway auto-compaction window
+
+Claude Code cannot verify a proxied model's context window through a gateway.
+Anthropic documents the consequence for its own models — behind
+`ANTHROPIC_BASE_URL` a 1M-window Sonnet 5 session is budgeted at 200K — and a
+non-Anthropic proxied model gets the same 200K budget with no way to discover
+the truth. The gateway's own `/v1/models` catalog is that truth, and YA already
+parses `capabilities.limits.max_context_window_tokens` from it.
+
+So `ClaudeGatewayProvider` passes that window to each launch as
+`CLAUDE_CODE_AUTO_COMPACT_WINDOW`, and only that provider does:
+
+- The value comes from the last successful catalog read. A launch before any
+  read omits the variable and keeps Claude Code's own gateway default, rather
+  than asserting a window YA has not seen.
+- Claude Code accepts 100,000 through 1,000,000 as a plain integer, so
+  `gatewayAutoCompactWindow` clamps into that range. A model advertising less
+  than 100K takes the floor — still tighter than the 200K it replaces, and the
+  closest Claude Code can express.
+- Diagnosed 2026-08-05 from a wedged `gpt-5.6-sol` session (real window
+  400K): context climbed to 200,935 tokens with zero compaction anywhere in
+  the transcript, and the session then accepted no further input. YA's own
+  early compaction could not have covered this — it fires only at an idle
+  boundary, and this turn ran from below the threshold to the ceiling without
+  one. Whether the wedge itself lives in Claude Code or the gateway is
+  unresolved; agreeing on the window removes the boundary it wedged at.
+- Because Claude Code's `used_percentage` measures against the model's full
+  window rather than this override, YA's own percentage and Claude Code's
+  compaction point now describe the same window instead of differing by the
+  ratio of real window to 200K.
 - Anthropic documents manual `/compact`, but no interactive SDK/command setter
   for the automatic percentage. The percentage is launch-scoped. If the global
   setting changed while YA still owns a live Claude process, the next ordinary
