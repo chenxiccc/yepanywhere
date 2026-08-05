@@ -4,10 +4,11 @@
 > retained snapshot in the background, and identify external harness processes
 > without multiplying storage scans by project count or guessing ownership.
 
-Status: Implementation handoff, not yet implemented. The provider/storage and
-process-discovery contracts are accepted in the linked topics. This plan makes
-the durable eligibility source, provider interfaces, boot ordering, and
-compatibility checkpoint explicit.
+Status: Implementation in progress. The shared source-versioned single-flight
+owner is implemented and measured; provider/catalog consumers remain pending.
+The provider/storage and process-discovery contracts are accepted in the linked
+topics. This plan makes the durable eligibility source, provider interfaces,
+boot ordering, and compatibility checkpoint explicit.
 
 Related contracts:
 
@@ -19,6 +20,24 @@ Related contracts:
 - [`topics/architecture-mandates.md`](../../topics/architecture-mandates.md)
 - [`topics/server-performance-observability.md`](../../topics/server-performance-observability.md)
 - [`089-main-thread-startup-cpu-investigation.md`](089-main-thread-startup-cpu-investigation.md)
+
+## Implementation progress
+
+- **2026-08-05 — source-versioned single-flight infrastructure.** The server
+  now has one byte-bounded owner that joins exact-version computations, retains
+  only accepted values, passes the prior accepted version to incremental work,
+  clears failures for retry, and discards late completions after newer source
+  evidence. This is server-only infrastructure; no collection route uses it
+  yet. A synthetic 100-caller, 512 KiB CPU projection performed 100 baseline
+  computations versus one coordinated computation (99.00% repeated work
+  avoided); across five samples, median wall time was 519.70 ms versus 5.10 ms
+  (101.94x). Run `pnpm --filter @yep-anywhere/server
+  benchmark:single-flight` to repeat the measurement.
+
+Design decision: use a source-versioned, byte-bounded latest-value owner rather
+than a request-only in-flight map or TTL cache. Request-only coalescing does not
+stop sequential unchanged reads; TTL freshness can publish obsolete work and
+retain source generations after the source has moved.
 
 ## Current fault and measured cost
 
