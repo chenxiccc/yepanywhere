@@ -271,6 +271,101 @@ describe("useProviders", () => {
     });
   });
 
+  it("stores a versioned allowlisted provider snapshot", async () => {
+    const provider = {
+      name: "claude" as const,
+      displayName: "Claude",
+      installed: true,
+      authenticated: true,
+      enabled: true,
+      expiresAt: "2026-08-06T00:00:00.000Z",
+      user: { email: "private@example.com", name: "Private User" },
+      loginCommand: "secret-login --token hidden",
+      authorization: "Bearer hidden",
+      models: [
+        {
+          id: "opus",
+          name: "Opus",
+          contextWindow: 200_000,
+          supportsEffort: true,
+          supportedEffortLevels: ["high" as const],
+        },
+      ],
+      supportsThinkingToggle: true,
+    };
+    mockGetProviders.mockResolvedValueOnce({ providers: [provider] });
+
+    const { result } = renderHook(() => providersModule.useProviders());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(localStorage).toHaveLength(1);
+    const storageKey = localStorage.key(0);
+    if (!storageKey) throw new Error("expected provider snapshot key");
+    const raw = localStorage.getItem(storageKey);
+    if (!raw) throw new Error("expected provider snapshot value");
+    const snapshot = JSON.parse(raw) as {
+      version: number;
+      providers: Array<Record<string, unknown>>;
+    };
+    expect(snapshot.version).toBe(1);
+    expect(snapshot.providers[0]).toEqual(
+      expect.objectContaining({
+        name: "claude",
+        displayName: "Claude",
+        models: [
+          expect.objectContaining({
+            id: "opus",
+            contextWindow: 200_000,
+            supportsEffort: true,
+          }),
+        ],
+        supportsThinkingToggle: true,
+      }),
+    );
+    expect(snapshot.providers[0]).not.toHaveProperty("user");
+    expect(snapshot.providers[0]).not.toHaveProperty("expiresAt");
+    expect(snapshot.providers[0]).not.toHaveProperty("loginCommand");
+    expect(snapshot.providers[0]).not.toHaveProperty("authorization");
+    expect(raw).not.toContain("private@example.com");
+    expect(raw).not.toContain("secret-login");
+    expect(raw.length).toBeLessThan(
+      JSON.stringify({ version: 1, savedAt: Date.now(), providers: [provider] })
+        .length,
+    );
+  });
+
+  it("ignores an unversioned provider snapshot", async () => {
+    const { getCurrentClientSummarySourceKey } = await import(
+      "../../lib/clientSummaryStore"
+    );
+    const sourceKey = getCurrentClientSummarySourceKey();
+    const storageKey = `ya:providers:${sourceKey}`;
+    localStorage.setItem(
+      storageKey,
+      JSON.stringify({
+        savedAt: Date.now(),
+        providers: [
+          {
+            name: "claude",
+            displayName: "Old Claude",
+            installed: true,
+            authenticated: true,
+            enabled: true,
+          },
+        ],
+      }),
+    );
+    vi.resetModules();
+    const reloadedModule = await import("../useProviders");
+    mockGetProviders.mockReturnValueOnce(new Promise(() => {}));
+
+    const { result } = renderHook(() => reloadedModule.useProviders());
+
+    expect(result.current.providers).toEqual([]);
+    expect(result.current.loading).toBe(true);
+    expect(localStorage.getItem(storageKey)).toBeNull();
+  });
+
   it("resolves the selected provider without waiting for the aggregate", async () => {
     mockGetProviders.mockReturnValueOnce(new Promise(() => {}));
     mockGetProvider.mockResolvedValueOnce({

@@ -1,5 +1,6 @@
 import {
   DEFAULT_PROVIDER,
+  type ModelInfo,
   type ProviderInfo,
   type ProviderName,
 } from "@yep-anywhere/shared";
@@ -23,6 +24,94 @@ const PROVIDER_CACHE_TTL_MS = 5 * 60_000;
  */
 const PROVIDER_SNAPSHOT_TTL_MS = 7 * 24 * 60 * 60_000;
 const PROVIDER_SNAPSHOT_PREFIX = "ya:providers:";
+const PROVIDER_SNAPSHOT_VERSION = 1;
+
+interface ProviderSnapshot {
+  version: typeof PROVIDER_SNAPSHOT_VERSION;
+  savedAt: number;
+  providers: ProviderInfo[];
+}
+
+function snapshotModel(model: ModelInfo): ModelInfo {
+  return {
+    id: model.id,
+    name: model.name,
+    description: model.description,
+    size: model.size,
+    contextWindow: model.contextWindow,
+    parameterSize: model.parameterSize,
+    parentModel: model.parentModel,
+    quantizationLevel: model.quantizationLevel,
+    isDefault: model.isDefault,
+    defaultReasoningEffort: model.defaultReasoningEffort,
+    supportedReasoningEfforts: model.supportedReasoningEfforts?.map(
+      (effort) => ({
+        reasoningEffort: effort.reasoningEffort,
+        description: effort.description,
+      }),
+    ),
+    supportsEffort: model.supportsEffort,
+    supportedEffortLevels: model.supportedEffortLevels
+      ? [...model.supportedEffortLevels]
+      : undefined,
+    defaultEffortLevel: model.defaultEffortLevel,
+    supportsAdaptiveThinking: model.supportsAdaptiveThinking,
+    supportsFastMode: model.supportsFastMode,
+    supportsAutoMode: model.supportsAutoMode,
+    inputModalities: model.inputModalities
+      ? [...model.inputModalities]
+      : undefined,
+    supportsPersonality: model.supportsPersonality,
+    serviceTiers: model.serviceTiers?.map((tier) => ({
+      id: tier.id,
+      name: tier.name,
+      description: tier.description,
+    })),
+    catalogGroup: model.catalogGroup,
+  };
+}
+
+/** Keep only fields used to paint provider/model controls between visits. */
+function snapshotProvider(provider: ProviderInfo): ProviderInfo {
+  return {
+    name: provider.name,
+    displayName: provider.displayName,
+    installed: provider.installed,
+    applicationDetected: provider.applicationDetected,
+    authenticated: provider.authenticated,
+    enabled: provider.enabled,
+    models: provider.models?.map(snapshotModel),
+    additionalModelOptions: provider.additionalModelOptions?.map(snapshotModel),
+    imageSizing: provider.imageSizing
+      ? {
+          defaultLongEdgePx: provider.imageSizing.defaultLongEdgePx,
+          maxUsefulLongEdgePx: provider.imageSizing.maxUsefulLongEdgePx,
+          note: provider.imageSizing.note,
+        }
+      : undefined,
+    supportsPermissionMode: provider.supportsPermissionMode,
+    supportsThinkingToggle: provider.supportsThinkingToggle,
+    supportsSlashCommands: provider.supportsSlashCommands,
+    supportsSteering: provider.supportsSteering,
+    supportsSteerNow: provider.supportsSteerNow,
+    supportsRecaps: provider.supportsRecaps,
+    supportsNativeRecaps: provider.supportsNativeRecaps,
+    supportsNativePromptSuggestions: provider.supportsNativePromptSuggestions,
+    supportsNativeCompactThreshold: provider.supportsNativeCompactThreshold,
+    supportsLaunchCompactPercentOverride:
+      provider.supportsLaunchCompactPercentOverride,
+    promptCacheKeepalive: provider.promptCacheKeepalive
+      ? {
+          supportsNoContextPollutionNudge:
+            provider.promptCacheKeepalive.supportsNoContextPollutionNudge,
+          defaultMode: provider.promptCacheKeepalive.defaultMode,
+          defaultInactivityMinutes:
+            provider.promptCacheKeepalive.defaultInactivityMinutes,
+        }
+      : undefined,
+    supportsForkSession: provider.supportsForkSession,
+  };
+}
 
 interface ProviderCacheEntry {
   providers: ProviderInfo[];
@@ -56,11 +145,13 @@ function hydrateProviderSnapshot(sourceKey: ClientSummarySourceKey): void {
   try {
     const raw = storage.getItem(`${PROVIDER_SNAPSHOT_PREFIX}${sourceKey}`);
     if (!raw) return;
-    const parsed = JSON.parse(raw) as {
-      savedAt?: number;
-      providers?: ProviderInfo[];
-    };
-    if (!Array.isArray(parsed.providers) || parsed.providers.length === 0) {
+    const parsed = JSON.parse(raw) as Partial<ProviderSnapshot>;
+    if (
+      parsed.version !== PROVIDER_SNAPSHOT_VERSION ||
+      !Array.isArray(parsed.providers) ||
+      parsed.providers.length === 0
+    ) {
+      storage.removeItem(`${PROVIDER_SNAPSHOT_PREFIX}${sourceKey}`);
       return;
     }
     if (
@@ -90,7 +181,11 @@ function writeProviderSnapshot(
   try {
     storage.setItem(
       `${PROVIDER_SNAPSHOT_PREFIX}${sourceKey}`,
-      JSON.stringify({ savedAt: Date.now(), providers }),
+      JSON.stringify({
+        version: PROVIDER_SNAPSHOT_VERSION,
+        savedAt: Date.now(),
+        providers: providers.map(snapshotProvider),
+      } satisfies ProviderSnapshot),
     );
   } catch {
     // Storage pressure only costs the next visit its opening guess.
