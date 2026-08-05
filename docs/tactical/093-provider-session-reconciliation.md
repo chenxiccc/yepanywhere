@@ -5,11 +5,12 @@
 > without multiplying storage scans by project count or guessing ownership.
 
 Status: Implementation in progress. Shared source-versioned work ownership,
-Codex child projection, install-scoped successful-use eligibility, and gated
-post-listener file watching are implemented and measured. Provider catalog
-adapters, the durable coordinator, retained collection routes, interest leases,
-and exact process reconciliation remain pending. The provider/storage and
-process-discovery contracts are accepted in the linked topics.
+Codex child projection, install-scoped successful-use eligibility, gated
+post-listener file watching, and the durable catalog coordinator are
+implemented and measured. Provider catalog adapters, retained collection
+routes, interest leases, and exact process reconciliation remain pending. The
+provider/storage and process-discovery contracts are accepted in the linked
+topics.
 
 Related contracts:
 
@@ -23,6 +24,31 @@ Related contracts:
 - [`089-main-thread-startup-cpu-investigation.md`](089-main-thread-startup-cpu-investigation.md)
 
 ## Implementation progress
+
+- **2026-08-05 — durable catalog coordinator and shard generation vector.**
+  One disk-backed lineage now owns a random epoch, monotonic complete
+  generations, hash-sharded rows, bounded deltas, and a byte-bounded
+  source-versioned project hot set. Publication is atomic: rows stage under a
+  temporary directory, rename into place, and only then replace the manifest,
+  so an interrupted or failed pass never displaces the last complete
+  generation. Each shard carries a digest and the generation in which that
+  digest last changed, which makes the global generation one component of a
+  vector rather than the whole clock — a write to one project leaves other
+  shards' tokens, retained rows, and delta comparisons untouched. Unreadable
+  or layout-incompatible state starts a fresh epoch instead of failing
+  initialization.
+  On a 2,000-project, 10,000-row synthetic corpus, twenty readers asking for
+  one project cost 200,000 row parses and a 304.24 ms median through the
+  current per-reader store enumeration, versus 130 row parses, one shard read,
+  and a 2.14 ms median through a restarted catalog (99.94% of row parses
+  avoided, 142.41x). A second generation touching one project read 1 of 64
+  shards and skipped 63 by digest (98.44%), producing 5 delta changes, and the
+  unchanged project's conditional read answered no-change. Replacing the
+  recent-row window's per-row sort and whole-array re-serialization with
+  bounded insertion cut that window's cost over 10,000 rows from a 2,067.74 ms
+  to a 23.90 ms median (86.51x) with identical retained contents. Run `pnpm
+  --filter @yep-anywhere/server benchmark:session-catalog` to repeat the
+  measurement.
 
 - **2026-08-05 — source-versioned single-flight infrastructure.** The server
   now has one byte-bounded owner that joins exact-version computations, retains

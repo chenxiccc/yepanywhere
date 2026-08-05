@@ -139,9 +139,20 @@ that name/mtime inventory as a reason to parse unchanged cold transcripts.
 
 Every durable catalog lineage has a random `catalogEpoch` and a monotonic
 `catalogGeneration`. Resetting/rebuilding incompatible catalog state changes
-the epoch; restart over valid persisted state preserves it. Each accepted row,
+the epoch; restart over valid persisted state preserves it. Durable state is a
+cache and must never keep the server from starting: state that cannot be read
+or that no longer matches the current shard layout ends its lineage at a fresh
+epoch and generation 0, and reconciliation refills it. Each accepted row,
 membership, count, and delta identifies the catalog generation and provider
 source version from which it was derived.
+
+The global generation is one component of a vector, not the whole clock. Each
+shard carries a digest of its rows plus the generation in which that digest
+last changed, so a caller holding a shard's generation is unaffected by writes
+landing in other shards. Publication compares digests: an unchanged shard keeps
+its generation, is never re-read to compute a delta, and lets its retained rows
+survive into the new generation. Split the clock further — per projection kind
+— only when measurement shows the shard component is too coarse.
 
 Unfiltered, starred, project/search, Inbox, queue-title, hover, and stats
 projections read one accepted generation plus ordered overlay deltas. A client
@@ -156,7 +167,8 @@ window receives a compact replacement snapshot; the server does not preserve
 an unbounded event history merely to satisfy a very old browser cache. An
 unrelated row change may advance the global generation without changing a
 given query membership, in which case conditional reconciliation advances the
-token with no replacement rows.
+token with no replacement rows — and where that query maps to one shard, its
+shard generation answers no-change without consulting the delta window at all.
 
 The global generation orders server catalog publication; it does not replace
 field fidelity or provider source versions. A newer compact title observation
@@ -221,5 +233,9 @@ failover can still request the same work concurrently.
   work begin only after the server listener is ready.
 - A late computation for an obsolete source version cannot overwrite a newer
   row or mark the newer generation fresh.
+- A write to one project leaves every other shard's generation, retained rows,
+  and delta comparison untouched.
+- Unreadable or layout-incompatible durable catalog state starts a new epoch
+  and still serves requests, rather than failing initialization.
 - Loss/eviction of browser persistence changes only cold-fetch cost, not visible
   correctness or the ability to reconnect.
