@@ -6,11 +6,13 @@ import type {
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { detectDesktopProviderApplication } from "../desktop/providerDetection.js";
+import { SourceVersionedSingleFlight } from "../lib/sourceVersionedSingleFlight.js";
 import { getAllProviders } from "../sdk/providers/index.js";
 import type { AgentProvider } from "../sdk/providers/types.js";
 import type { ModelInfoService } from "../services/ModelInfoService.js";
 
 const PROVIDER_INFO_CACHE_TTL_MS = 5 * 60_000;
+const PROVIDER_INFO_CACHE_BYTES = 4 * 1024 * 1024;
 const PROVIDER_USAGE_CACHE_TTL_MS = 60_000;
 
 interface ProviderRouteDeps {
@@ -29,12 +31,20 @@ interface ProviderRouteDeps {
   applicationDetector?: (provider: ProviderName) => boolean;
 }
 
-interface ProviderInfoCacheEntry {
+interface ProviderInfoCacheValue {
   expiresAt: number;
   catalogCacheKey?: string;
-  value?: ProviderInfo;
-  inFlight?: Promise<ProviderInfo>;
-  inFlightCatalogCacheKey?: string;
+  info: ProviderInfo;
+}
+
+interface ProviderInfoGeneration {
+  nextGeneration: number;
+  current?: {
+    sourceVersion: string;
+    catalogCacheKey?: string;
+    forced: boolean;
+    inFlight: boolean;
+  };
 }
 
 function getProviderImageSizing(
@@ -69,7 +79,17 @@ function getProviderImageSizing(
  */
 export function createProvidersRoutes(deps: ProviderRouteDeps = {}): Hono {
   const routes = new Hono();
-  const cache = new Map<ProviderName, ProviderInfoCacheEntry>();
+  const providerInfoOwner = new SourceVersionedSingleFlight<
+    ProviderName,
+    ProviderInfoCacheValue
+  >({
+    maxRetainedBytes: PROVIDER_INFO_CACHE_BYTES,
+    estimateBytes: (value) => Buffer.byteLength(JSON.stringify(value)),
+  });
+  const providerInfoGenerations = new Map<
+    ProviderName,
+    ProviderInfoGeneration
+  >();
   const usageCache = new Map<
     ProviderName,
     {
@@ -94,36 +114,19 @@ export function createProvidersRoutes(deps: ProviderRouteDeps = {}): Hono {
   const getExposedProvider = (name: string): AgentProvider | undefined =>
     getExposedProviders().find((provider) => provider.name === name);
 
-  const getProviderInfo = async (
+  const readProviderInfo = async (
     provider: AgentProvider,
-    forceRefresh: boolean,
-  ): Promise<ProviderInfo> => {
-    const providerName = provider.name as ProviderName;
-    const now = Date.now();
-    const cached = cache.get(providerName);
-    const catalogCacheKey = provider.getModelCatalogCacheKey?.();
-    if (
-      !forceRefresh &&
-      cached?.value &&
-      cached.expiresAt > now &&
-      cached.catalogCacheKey === catalogCacheKey
-    ) {
-      return cached.value;
-    }
-    if (
-      cached?.inFlight &&
-      cached.inFlightCatalogCacheKey === catalogCacheKey
-    ) {
-      return cached.inFlight;
-    }
-
-    const inFlight = (async () => {
-      const [authStatus, models] = await Promise.all([
-        provider.getAuthStatus(),
-        provider.getAvailableModels(),
-      ]);
-      deps.modelInfoService?.ingestModels(providerName, models);
-      return {
+    providerName: ProviderName,
+  ): Promise<ProviderInfoCacheValue> => {
+    const [authStatus, models] = await Promise.all([
+      provider.getAuthStatus(),
+      provider.getAvailableModels(),
+    ]);
+    deps.modelInfoService?.ingestModels(providerName, models);
+    return {
+      expiresAt: Date.now() + cacheTtlMs,
+      catalogCacheKey: provider.getModelCatalogCacheKey?.(),
+      info: {
         name: provider.name,
         displayName: provider.displayName,
         installed: authStatus.installed,
@@ -158,28 +161,83 @@ export function createProvidersRoutes(deps: ProviderRouteDeps = {}): Hono {
           provider.supportsLaunchCompactPercentOverride,
         promptCacheKeepalive: provider.promptCacheKeepalive,
         supportsForkSession: typeof provider.forkSession === "function",
-      } satisfies ProviderInfo;
-    })();
+      } satisfies ProviderInfo,
+    };
+  };
 
-    cache.set(providerName, {
-      expiresAt: cached?.expiresAt ?? 0,
-      catalogCacheKey: cached?.catalogCacheKey,
-      value: forceRefresh ? undefined : cached?.value,
-      inFlight,
-      inFlightCatalogCacheKey: catalogCacheKey,
-    });
+  const getProviderInfo = async (
+    provider: AgentProvider,
+    forceRefresh: boolean,
+  ): Promise<ProviderInfo> => {
+    const providerName = provider.name as ProviderName;
+    const admission = providerInfoGenerations.get(providerName) ?? {
+      nextGeneration: 0,
+    };
+    providerInfoGenerations.set(providerName, admission);
+    let requireForce = forceRefresh;
 
-    try {
-      const value = await inFlight;
-      cache.set(providerName, {
-        value,
-        expiresAt: Date.now() + cacheTtlMs,
-        catalogCacheKey,
-      });
-      return value;
-    } catch (error) {
-      cache.delete(providerName);
-      throw error;
+    for (;;) {
+      const catalogCacheKey = provider.getModelCatalogCacheKey?.();
+      let generation = admission.current;
+      const canJoinCurrent =
+        generation?.inFlight === true &&
+        generation.catalogCacheKey === catalogCacheKey &&
+        (!requireForce || generation.forced);
+
+      if (!canJoinCurrent) {
+        if (!requireForce) {
+          const accepted = providerInfoOwner.getAccepted(providerName);
+          if (
+            accepted &&
+            accepted.value.expiresAt > Date.now() &&
+            accepted.value.catalogCacheKey === catalogCacheKey
+          ) {
+            return accepted.value.info;
+          }
+        }
+
+        if (requireForce) {
+          providerInfoOwner.invalidate(providerName);
+        }
+        const generationNumber = ++admission.nextGeneration;
+        generation = {
+          sourceVersion: `${generationNumber}\0${catalogCacheKey ?? ""}`,
+          catalogCacheKey,
+          forced: requireForce,
+          inFlight: true,
+        };
+        admission.current = generation;
+      }
+      if (!generation) {
+        throw new Error(`Failed to admit provider info work for ${providerName}`);
+      }
+
+      const sourceVersion = generation.sourceVersion;
+      try {
+        const result = await providerInfoOwner.run({
+          key: providerName,
+          sourceVersion,
+          compute: () => readProviderInfo(provider, providerName),
+          isCurrent: (candidate) =>
+            admission.current?.sourceVersion === candidate &&
+            provider.getModelCatalogCacheKey?.() === generation.catalogCacheKey,
+        });
+        if (admission.current?.sourceVersion === sourceVersion) {
+          admission.current.inFlight = false;
+        }
+        if (result.status !== "stale") {
+          return result.value.info;
+        }
+      } catch (error) {
+        if (admission.current?.sourceVersion === sourceVersion) {
+          admission.current.inFlight = false;
+          throw error;
+        }
+      }
+
+      // Newer forced work superseded this request. Follow that generation so a
+      // legacy complete-response caller never publishes or receives old facts.
+      requireForce = false;
     }
   };
 

@@ -1,4 +1,4 @@
-import type { ModelInfo } from "@yep-anywhere/shared";
+import type { ModelInfo, ProviderInfo } from "@yep-anywhere/shared";
 import { describe, expect, it, vi } from "vitest";
 import { createProvidersRoutes } from "../../src/routes/providers.js";
 import type {
@@ -32,12 +32,15 @@ function createProvider(overrides: Partial<AgentProvider> = {}): AgentProvider {
 function deferred<T>(): {
   promise: Promise<T>;
   resolve: (value: T) => void;
+  reject: (reason: unknown) => void;
 } {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((nextResolve) => {
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((nextResolve, nextReject) => {
     resolve = nextResolve;
+    reject = nextReject;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 describe("Providers Routes", () => {
@@ -140,6 +143,123 @@ describe("Providers Routes", () => {
         name: "claude",
         models: [{ id: "opus", name: "Opus" }],
       }),
+    ]);
+  });
+
+  it("lets a forced refresh supersede older ordinary work", async () => {
+    const ordinaryModels = deferred<ModelInfo[]>();
+    const refreshedModels = deferred<ModelInfo[]>();
+    const provider = createProvider({
+      getAvailableModels: vi
+        .fn()
+        .mockImplementationOnce(() => ordinaryModels.promise)
+        .mockImplementationOnce(() => refreshedModels.promise),
+    });
+    const routes = createProvidersRoutes({
+      providers: [provider],
+      cacheTtlMs: 60_000,
+    });
+
+    const ordinary = routes.request("/claude");
+    await vi.waitFor(() =>
+      expect(provider.getAvailableModels).toHaveBeenCalledTimes(1),
+    );
+    const forced = routes.request("/claude?refresh=1");
+    await vi.waitFor(() =>
+      expect(provider.getAvailableModels).toHaveBeenCalledTimes(2),
+    );
+
+    refreshedModels.resolve([{ id: "opus", name: "Opus" }]);
+    const forcedJson = (await (await forced).json()) as {
+      provider: ProviderInfo;
+    };
+    ordinaryModels.resolve([{ id: "sonnet", name: "Sonnet" }]);
+    const ordinaryJson = (await (await ordinary).json()) as {
+      provider: ProviderInfo;
+    };
+
+    expect(forcedJson.provider.models).toEqual([{ id: "opus", name: "Opus" }]);
+    expect(ordinaryJson.provider.models).toEqual([
+      { id: "opus", name: "Opus" },
+    ]);
+    const cachedJson = (await (await routes.request("/claude")).json()) as {
+      provider: ProviderInfo;
+    };
+    expect(cachedJson.provider.models).toEqual([{ id: "opus", name: "Opus" }]);
+  });
+
+  it("keeps newer provider state when superseded work fails late", async () => {
+    const ordinaryModels = deferred<ModelInfo[]>();
+    const refreshedModels = deferred<ModelInfo[]>();
+    const provider = createProvider({
+      getAvailableModels: vi
+        .fn()
+        .mockImplementationOnce(() => ordinaryModels.promise)
+        .mockImplementationOnce(() => refreshedModels.promise),
+    });
+    const routes = createProvidersRoutes({
+      providers: [provider],
+      cacheTtlMs: 60_000,
+    });
+
+    const ordinary = routes.request("/claude");
+    await vi.waitFor(() =>
+      expect(provider.getAvailableModels).toHaveBeenCalledTimes(1),
+    );
+    const forced = routes.request("/claude?refresh=1");
+    await vi.waitFor(() =>
+      expect(provider.getAvailableModels).toHaveBeenCalledTimes(2),
+    );
+
+    refreshedModels.resolve([{ id: "opus", name: "Opus" }]);
+    expect((await forced).status).toBe(200);
+    ordinaryModels.reject(new Error("old probe failed"));
+    const ordinaryJson = (await (await ordinary).json()) as {
+      provider: ProviderInfo;
+    };
+
+    expect(ordinaryJson.provider.models).toEqual([
+      { id: "opus", name: "Opus" },
+    ]);
+    expect((await routes.request("/claude")).status).toBe(200);
+    expect(provider.getAvailableModels).toHaveBeenCalledTimes(2);
+  });
+
+  it("coalesces forced refreshes and lets ordinary callers join them", async () => {
+    const refreshedModels = deferred<ModelInfo[]>();
+    const provider = createProvider({
+      getAvailableModels: vi
+        .fn()
+        .mockResolvedValueOnce([{ id: "sonnet", name: "Sonnet" }])
+        .mockImplementationOnce(() => refreshedModels.promise),
+    });
+    const routes = createProvidersRoutes({
+      providers: [provider],
+      cacheTtlMs: 60_000,
+    });
+    await routes.request("/claude");
+
+    const firstForced = routes.request("/claude?refresh=1");
+    await vi.waitFor(() =>
+      expect(provider.getAvailableModels).toHaveBeenCalledTimes(2),
+    );
+    const secondForced = routes.request("/claude?refresh=1");
+    const ordinary = routes.request("/claude");
+    await Promise.resolve();
+
+    expect(provider.getAvailableModels).toHaveBeenCalledTimes(2);
+    refreshedModels.resolve([{ id: "opus", name: "Opus" }]);
+    const responses = await Promise.all([firstForced, secondForced, ordinary]);
+    const rows = await Promise.all(
+      responses.map(async (response) => {
+        const body = (await response.json()) as { provider: ProviderInfo };
+        return body.provider.models;
+      }),
+    );
+    expect(rows).toEqual([
+      [{ id: "opus", name: "Opus" }],
+      [{ id: "opus", name: "Opus" }],
+      [{ id: "opus", name: "Opus" }],
     ]);
   });
 
