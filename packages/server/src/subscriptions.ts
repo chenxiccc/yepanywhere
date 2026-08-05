@@ -16,6 +16,10 @@ import {
   markSubagent,
 } from "./augments/index.js";
 import { getLogger } from "./logging/logger.js";
+import {
+  type ProjectPathIndex,
+  tryClaimProjectPathIndex,
+} from "./projects/projectPathIndex.js";
 import type { Process } from "./supervisor/Process.js";
 import type { ProcessEvent } from "./supervisor/types.js";
 import type { BusEvent, EventBus } from "./watcher/index.js";
@@ -101,28 +105,42 @@ export function createSessionSubscription(
   // Lazy augmenter
   let augmenter: StreamAugmenter | null = null;
   let augmenterPromise: Promise<StreamAugmenter> | null = null;
+  // One path-cache claim for the augmenter's life. A streaming session renders
+  // many turns against the same few directories, so re-claiming per turn would
+  // let the project be evicted between them and re-probe from cold each time.
+  let pathIndex: ProjectPathIndex | null = null;
 
   const getAugmenter = async (): Promise<StreamAugmenter> => {
     if (augmenter) return augmenter;
     if (!augmenterPromise) {
-      augmenterPromise = createStreamAugmenter({
-        safeMarkdownOptions: {
-          projectFileLinks: {
-            projectId: process.projectId,
-            projectPath: process.projectPath,
+      augmenterPromise = (async () => {
+        pathIndex = await tryClaimProjectPathIndex(process.projectPath);
+        // The claim can land after teardown, and an unreleased one pins the
+        // project's cached directories for as long as the process lives.
+        if (completed) {
+          pathIndex?.release();
+          pathIndex = null;
+        }
+        return createStreamAugmenter({
+          safeMarkdownOptions: {
+            projectFileLinks: {
+              projectId: process.projectId,
+              projectPath: process.projectPath,
+              ...(pathIndex ? { index: pathIndex } : {}),
+            },
           },
-        },
-        onMarkdownAugment: (data) => {
-          if (!completed) emit("markdown-augment", data);
-        },
-        onPending: (data) => {
-          if (!completed) emit("pending", data);
-        },
-        onError: (err, context) => {
-          options?.onError?.(err);
-          console.warn(`[subscription] ${context}:`, err);
-        },
-      });
+          onMarkdownAugment: (data) => {
+            if (!completed) emit("markdown-augment", data);
+          },
+          onPending: (data) => {
+            if (!completed) emit("pending", data);
+          },
+          onError: (err, context) => {
+            options?.onError?.(err);
+            console.warn(`[subscription] ${context}:`, err);
+          },
+        });
+      })();
     }
     augmenter = await augmenterPromise;
     return augmenter;
@@ -338,6 +356,8 @@ export function createSessionSubscription(
       unsubscribe();
       unregisterLiveDeltaSubscriber?.();
       unregisterViewer();
+      pathIndex?.release();
+      pathIndex = null;
       if (currentStreamingMessageId) {
         process.clearStreamingText();
         currentStreamingMessageId = null;

@@ -74,6 +74,7 @@ async function createHarness(options: { pollMs?: number } = {}) {
     return {
       findExisting: async () => new Set<string>(),
       has: async () => false,
+      knownFile: () => false,
       release: () => {
         if (released) return;
         released = true;
@@ -305,9 +306,8 @@ describe("ProjectGlossarySubscriptionManager", () => {
   });
 
   it("polls as the backstop for a candidate whose directory is unwatchable", async () => {
-    const { manager, observePath, projectId, projectPath } = await createHarness(
-      { pollMs: 1_000 },
-    );
+    const { manager, observePath, projectId, projectPath } =
+      await createHarness({ pollMs: 1_000 });
     await writeFile(join(projectPath, "GLOSSARY.md"), "root");
     observePath("GLOSSARY.md");
     // No `absent` directory exists, so this candidate gets no watch at all.

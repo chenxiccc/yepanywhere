@@ -24,12 +24,54 @@ const PATH_TOKEN = /[^\s"'`<>&,:;()[\]{}=|]+/g;
 /** Trailing punctuation a writer adds that is not part of the path. */
 const TRAILING_NOISE = /[.!?]+$/;
 
+/** Longest trailing run still read as an extension: `.jsonl`, not a hash. */
+const MAX_EXTENSION_LENGTH = 8;
+
+/**
+ * Whether a token may cost a filesystem call.
+ *
+ * A separator, a leading dot, or a trailing extension is what distinguishes a
+ * path from an ordinary word. The extension must contain a letter, so a version
+ * like `1.2.3` stays a word.
+ *
+ * This gates *I/O*, not linking. A token failing it is still linked when the
+ * cache already proves it, so a bare `Makefile` in a directory that has been
+ * listed links for free and only an unlisted one goes unlinked.
+ */
+function mayCostLookup(token: string): boolean {
+  // Only project-relative paths are ever linked, so a leading separator rules
+  // the token out outright — which is also what a URL's `//host/path` becomes
+  // once the tokenizer drops the scheme at its colon.
+  if (token.startsWith("/")) return false;
+  if (token.includes("/") || token.startsWith(".")) return true;
+  const dot = token.lastIndexOf(".");
+  if (dot <= 0 || dot === token.length - 1) return false;
+  const extension = token.slice(dot + 1);
+  return (
+    extension.length <= MAX_EXTENSION_LENGTH &&
+    /^[A-Za-z0-9]+$/.test(extension) &&
+    /[A-Za-z]/.test(extension)
+  );
+}
+
+/** Whether this markup opens or closes an element, and which. */
+function tagName(tag: string): { closing: boolean; name: string } | null {
+  const match = /^<(\/?)([A-Za-z][A-Za-z0-9]*)/.exec(tag);
+  if (!match) return null;
+  return { closing: match[1] === "/", name: match[2]!.toLowerCase() };
+}
+
 /**
  * Rewrite the text between tags, leaving markup untouched.
  *
  * Highlighted HTML nests spans per token, so a match is only looked for inside
  * one text run: a path split across two spans stays unlinked rather than
  * risking a rewrite that crosses a tag boundary.
+ *
+ * Text inside an existing `<a>` is left alone. Highlighted source contains no
+ * anchors, but rendered turn text does — from Markdown links and from the
+ * inline-code file linker — and an anchor nested inside an anchor is not
+ * markup any browser can be asked to render.
  */
 function mapHtmlTextRuns(
   html: string,
@@ -37,19 +79,27 @@ function mapHtmlTextRuns(
 ): string {
   let out = "";
   let index = 0;
+  let anchorDepth = 0;
   while (index < html.length) {
     const tagStart = html.indexOf("<", index);
     if (tagStart < 0) {
-      out += mapText(html.slice(index));
+      out += anchorDepth > 0 ? html.slice(index) : mapText(html.slice(index));
       break;
     }
-    out += mapText(html.slice(index, tagStart));
+    const text = html.slice(index, tagStart);
+    out += anchorDepth > 0 ? text : mapText(text);
     const tagEnd = html.indexOf(">", tagStart);
     if (tagEnd < 0) {
       out += html.slice(tagStart);
       break;
     }
-    out += html.slice(tagStart, tagEnd + 1);
+    const tag = html.slice(tagStart, tagEnd + 1);
+    out += tag;
+    const parsed = tagName(tag);
+    if (parsed?.name === "a") {
+      if (parsed.closing) anchorDepth = Math.max(0, anchorDepth - 1);
+      else anchorDepth += 1;
+    }
     index = tagEnd + 1;
   }
   return out;
@@ -61,6 +111,37 @@ export interface ProjectPathLinkOptions {
   index: ProjectPathIndex;
   /** Path of the file being viewed, so it does not link to itself. */
   selfRelativePath?: string;
+  /**
+   * Spend filesystem I/O only on path-shaped tokens.
+   *
+   * Set for prose, where most words are words. The file viewer leaves it off:
+   * every token there came out of a file the reader is already looking at, and
+   * one batch groups them by directory anyway.
+   */
+  gateLookupsByShape?: boolean;
+}
+
+/**
+ * Hydrate the index for every path-shaped token in raw source text.
+ *
+ * Rendering asks about membership synchronously — the inline-code file linker
+ * has no place to await — so one batched asynchronous pass over the source runs
+ * first and turns those later questions into cache hits. Batching is also what
+ * lets the index list a directory once instead of probing each name in it.
+ */
+export async function resolveShapedPaths(
+  text: string,
+  index: ProjectPathIndex,
+): Promise<void> {
+  const shaped = new Set<string>();
+  PATH_TOKEN.lastIndex = 0;
+  let match: RegExpExecArray | null = PATH_TOKEN.exec(text);
+  while (match !== null) {
+    const trimmed = match[0].replace(TRAILING_NOISE, "");
+    if (trimmed && mayCostLookup(trimmed)) shaped.add(trimmed);
+    match = PATH_TOKEN.exec(text);
+  }
+  if (shaped.size > 0) await index.findExisting(Array.from(shaped));
 }
 
 function collectCandidatePaths(
@@ -88,20 +169,38 @@ function collectCandidatePaths(
  */
 export async function linkifyProjectPaths(
   html: string,
-  { projectPath, index, selfRelativePath }: ProjectPathLinkOptions,
+  {
+    projectPath,
+    index,
+    selfRelativePath,
+    gateLookupsByShape,
+  }: ProjectPathLinkOptions,
 ): Promise<string> {
   if (!html) return html;
 
   const candidates = collectCandidatePaths(html, selfRelativePath);
   if (candidates.length === 0) return html;
 
-  let existing: ReadonlySet<string>;
+  const worthLookup = gateLookupsByShape
+    ? candidates.filter(mayCostLookup)
+    : candidates;
+
+  let existing: Set<string>;
   try {
-    existing = await index.findExisting(candidates);
+    existing = new Set(await index.findExisting(worthLookup));
   } catch {
     // Link discovery is advisory. An unavailable index must not fail the file
     // view that owns the highlighted source.
     return html;
+  }
+  if (gateLookupsByShape) {
+    // A token not worth a lookup is still worth an answer the cache already
+    // holds, which is what keeps `Makefile` and `LICENSE` linking.
+    for (const token of candidates) {
+      if (!mayCostLookup(token) && index.knownFile(token) === true) {
+        existing.add(token);
+      }
+    }
   }
   if (existing.size === 0) return html;
 
@@ -114,11 +213,7 @@ export async function linkifyProjectPaths(
     while (match !== null) {
       const token = match[0];
       const trimmed = token.replace(TRAILING_NOISE, "");
-      if (
-        trimmed &&
-        trimmed !== selfRelativePath &&
-        existing.has(trimmed)
-      ) {
+      if (trimmed && trimmed !== selfRelativePath && existing.has(trimmed)) {
         const start = match.index;
         out += text.slice(cursor, start);
         out += renderLocalFileLink(

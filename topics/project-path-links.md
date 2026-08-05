@@ -5,12 +5,14 @@
 
 Topic: project-path-links
 
-Status: **implemented (2026-08-02); demand-driven cache landed 2026-08-05.**
-Highlighted file content links exact project files through a demand-driven,
-watcher-backed directory cache. Tracked, untracked, and gitignored files share
-the same membership test. The breadth-first warm, the per-use directory-mtime
-validation, and the `.yepignore` crawl exclusions this feature originally
-shipped with are gone.
+Status: **implemented (2026-08-02); demand-driven cache and turn-text
+annotation landed 2026-08-05.** Highlighted file content and assistant turn
+text both link exact project files through a demand-driven, watcher-backed
+directory cache — the same cache that now also decides the inline-code file
+references turn text already linked. Tracked, untracked, and gitignored files
+share the same membership test. The breadth-first warm, the per-use
+directory-mtime validation, and the `.yepignore` crawl exclusions this feature
+originally shipped with are gone.
 
 ## Why membership, not shape
 
@@ -69,7 +71,14 @@ candidates by parent directory. A sparse set is probed exactly with `lstat` —
 `lstat`, not `stat`, so a symlink is a leaf and a link cannot walk the
 traversal out of the project. Four or more unknown names in one not-yet-complete
 directory are worth a single `readdir` instead, which then answers every later
-name in that directory. A listing wider than 20,000 entries is not retained
+name in that directory. **The four are counted cumulatively, not per batch.**
+Each directory remembers how many distinct names it has probed since its
+generation began, and a batch that pushes that running total over the threshold
+earns the listing. One wide batch is not the only way to deserve one: turn-text
+annotation asks about two or three names per rendered body, so on a per-batch
+test alone a directory the reader keeps referring to would pay an `lstat` per
+name forever. Discarding the generation resets the count with the facts it
+proved. A listing wider than 20,000 entries is not retained
 whole — one directory would otherwise claim a large share of the project's
 entire budget — but the names that batch asked about are kept as ordinary
 proven edges, since the watch was already attached when the read covered them.
@@ -114,6 +123,10 @@ Constraints that keep it safe over arbitrary markup:
 
 - Only text between tags is rewritten. Markup is never matched, so a real
   project path appearing inside a tag attribute cannot corrupt the HTML.
+- Text already inside an `<a>` is left alone. Highlighted source contains no
+  anchors, but rendered turn text does — from Markdown links and from the
+  inline-code file linker — and an anchor nested inside an anchor is not markup
+  a browser can be asked to render.
 - A match must fall inside one text run. Highlighted output nests spans per
   token, and a path split across two spans stays unlinked rather than risking a
   rewrite across a tag boundary.
@@ -126,15 +139,60 @@ Constraints that keep it safe over arbitrary markup:
 An empty or unavailable index returns the content unchanged, so the feature
 degrades to plain content rather than failing the view.
 
+## Turn text
+
+Assistant prose runs the same seam, wired at `renderMarkdownToHtml`
+(`packages/server/src/augments/markdown-augments.ts`) — the one funnel both
+render paths share, the streaming coordinator's completed-block render and the
+settled/replayed `augmentTextBlocks`. Per completed body, never per streamed
+delta: the coordinator's per-delta path goes through the synchronous
+`renderSafeMarkdown`, which reaches no filesystem. Callers claim the index for
+the right lifetime — one claim for a session subscription's augmenter, per
+request in `routes/sessions.ts` — and a claim that fails yields plain text
+rather than an error.
+
+**One oracle, not two.** Turn text already linked a subset of paths before
+this: `resolveProjectFileCodeReference` links assistant *inline-code* filename
+references, and decided membership with a blocking `statSync` plus an
+unbounded, never-invalidated module map. Two oracles for one question can
+disagree, and that one had no way to learn a file was deleted. The trie is now
+the authority; `statSync` remains only as the backstop for what the trie cannot
+prove, which is the same degradation the index already uses when a watch is
+unavailable. The module map memoizes only that backstop — layering it over the
+trie would let an answer outlive the fact behind it.
+
+Rendering asks synchronously, so one batched asynchronous pass over the raw
+source runs first (`resolveShapedPaths`) and turns the mid-render questions
+into cache hits. Batching is also what lets a directory be listed once instead
+of probed per name. `PATH_TOKEN` excludes `:`, so an inline `src/server.ts:42`
+already tokenizes to the `src/server.ts` key the inline-code path needs.
+
+**Gate I/O, not linking.** In prose most words are words, so a token earns a
+filesystem call only by shape: it contains `/`, starts with `.`, or ends in a
+short alphanumeric extension containing a letter — which keeps `1.2.3` a
+version. A token failing that test is still *answered* from what the cache
+already holds, so `Makefile` and `LICENSE` link wherever their directory is
+already listed and only an unlisted one goes unlinked. A token starting with
+`/` is never worth a lookup: only project-relative paths are linked, and that
+is also what a URL becomes once the tokenizer drops its scheme at the colon.
+The file viewer leaves the gate off — every token there came out of a file the
+reader is already looking at, and one batch groups them by directory anyway.
+
+The gate is a shape test, not a character-level automaton over the trie. The
+early-fail property is already present at component granularity: a token whose
+first component is a cached `absent` costs one cache hit regardless of its
+length. Scanning character by character would save regex and allocation work,
+not the filesystem I/O that is the actual cost.
+
 ## Not yet covered
 
-Only the file viewer's highlighted source runs this. Other viewers showing
-project content — diff panes, tool-result bodies, turn text — would use the same
+Turn text and the file viewer's highlighted source run this. Other viewers
+showing project content — diff panes, tool-result bodies — would use the same
 `linkifyProjectPaths` seam.
 
-**Server annotation, not a client corpus.** Extending to streaming turn text
-raises the option of shipping the path set to the client and matching there, the
-way glossary tooltips ship a compiled automaton
+**Server annotation, not a client corpus.** Turn text raised the option of
+shipping the path set to the client and matching there, the way glossary
+tooltips ship a compiled automaton
 ([glossary-tooltips](glossary-tooltips.md) § Compiled matcher contract). That
 was considered and rejected in 2026-08-05 design discussion. The path set is
 three to five orders of magnitude larger than a glossary's — 131,956 files here
@@ -144,15 +202,16 @@ anywhere changes it, whereas glossary terms change only on an edit the
 subscription already streams. Against that, a path link is decided once per body
 the server is already rendering, so nothing needs re-deriving client-side.
 
+The general rule the two surfaces settle: ship the matcher client-side when the
+pattern set is small, closed, and slow-changing; annotate server-side when it is
+large, open, and filesystem-derived.
+
 Server annotation also keeps the demand-driven cache sufficient. A shipped
 corpus would require enumeration — the `git ls-files` set this feature's own
 history rules out on correctness, since it omits the ignored run outputs that
 motivated the feature — while the server only ever answers about text it is
 currently rendering. So the mandate against a project-wide crawl stands
-unamended, and the open questions for a turn-text surface are annotation
-granularity (per completed block rather than per streamed delta, which would put
-a filesystem-backed pass on a token-rate path) and holding a path-cache claim
-for the viewed project rather than per request.
+unamended.
 
 ## Replacement evidence
 
@@ -164,10 +223,13 @@ to rebuild. Those results ruled out repairing the flat set with another Git
 enumeration or a wider sweep.
 
 The replacement test suite covers ignored membership, sparse component-chain
-I/O, listing-vs-probe batch choice, absolute and parent-traversal rejection
-before I/O, concurrent-probe coalescing, watcher invalidation, a forced
-watcher-uncertain generation and its reconciliation, unwatchable directories,
-oversized listings, per-project and process-wide eviction, HTML safety,
+I/O, listing-vs-probe batch choice, cumulative promotion across small batches,
+absolute and parent-traversal rejection before I/O, concurrent-probe coalescing,
+watcher invalidation, a forced watcher-uncertain generation and its
+reconciliation, unwatchable directories, oversized listings, per-project and
+process-wide eviction, HTML safety, anchor nesting, the shape gate's lookup
+budget, the extensionless name a listed directory still links, the inline-code
+reference decided by the trie and the one that falls back to the filesystem,
 self-link suppression, and batch I/O cost.
 
 The warm the demand-driven cache replaced was itself the second design. It

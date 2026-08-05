@@ -40,6 +40,15 @@ interface PathNode {
   /** Whether `children` names every entry, so an unlisted name is absent. */
   complete: boolean;
   name: string;
+  /**
+   * Names probed here since this generation began, across all batches.
+   *
+   * One wide batch is not the only way a directory earns a listing. Turn-text
+   * annotation asks about two or three names per rendered body, so a directory
+   * the reader keeps referring to would pay an `lstat` per name forever on the
+   * per-batch test alone.
+   */
+  probedNames: number;
   state: NodeState;
   watcher: FSWatcher | undefined;
   /** Whether one listing proved this directory too wide to retain whole. */
@@ -110,6 +119,7 @@ function createNode(name: string, state: NodeState): PathNode {
     children: undefined,
     complete: false,
     name,
+    probedNames: 0,
     state,
     watcher: undefined,
     wide: false,
@@ -225,6 +235,27 @@ class SparseProjectPathIndex implements ProjectPathIndex {
 
   async has(path: string): Promise<boolean> {
     return (await this.findExisting([path])).has(path);
+  }
+
+  knownFile(path: string): boolean | undefined {
+    const components = parseRelativeComponents(path);
+    // A path that is not project-relative at all is proven not to be a file
+    // here, so a caller needs no filesystem call to rule it out.
+    if (!components) return false;
+
+    let node = this.root;
+    for (const component of components.slice(0, -1)) {
+      const state = this.cachedChildState(node, component);
+      if (state === undefined) return undefined;
+      if (state !== "directory") return false;
+      const child = node.children?.get(component);
+      if (!child) return undefined;
+      node = child;
+    }
+    const name = components.at(-1);
+    if (!name) return false;
+    const state = this.cachedChildState(node, name);
+    return state === undefined ? undefined : state === "file";
   }
 
   async findExisting(paths: readonly string[]): Promise<ReadonlySet<string>> {
@@ -355,7 +386,7 @@ class SparseProjectPathIndex implements ProjectPathIndex {
     if (unresolved.length === 0) return states;
 
     if (
-      unresolved.length >= DIRECTORY_LISTING_THRESHOLD &&
+      unresolved.length + parent.probedNames >= DIRECTORY_LISTING_THRESHOLD &&
       !parent.complete &&
       !parent.wide
     ) {
@@ -378,6 +409,7 @@ class SparseProjectPathIndex implements ProjectPathIndex {
     await forEachConcurrent(unresolved, PROBE_CONCURRENCY, async (name) => {
       states.set(name, await this.probeChild(parent, parentAbsolutePath, name));
     });
+    parent.probedNames += unresolved.length;
     return states;
   }
 
@@ -652,6 +684,9 @@ class SparseProjectPathIndex implements ProjectPathIndex {
     // directory that has since shrunk is listed again rather than probed
     // forever.
     node.wide = false;
+    // The probes that earned a listing proved facts this generation no longer
+    // holds, so the count starts over with them.
+    node.probedNames = 0;
   }
 
   private closeWatcher(node: PathNode): void {
@@ -690,6 +725,16 @@ export interface ProjectPathIndex {
   findExisting(paths: readonly string[]): Promise<ReadonlySet<string>>;
   /** Whether this exact project-relative path is a file in the project. */
   has(path: string): Promise<boolean>;
+  /**
+   * Whether this path is a file, answered from already-cached facts alone.
+   *
+   * Performs no filesystem call and starts no probe, so a caller may ask about
+   * a token it would never spend I/O on. `undefined` means nothing cached
+   * proves it either way — which includes every directory on the way that
+   * carries no live watcher, so an unproven answer degrades to "ask properly"
+   * rather than to a wrong one.
+   */
+  knownFile(path: string): boolean | undefined;
   /** Give up this caller's claim on the project's cache. */
   release(): void;
 }
@@ -717,6 +762,11 @@ class ProjectPathIndexHandle implements ProjectPathIndex {
   has(path: string): Promise<boolean> {
     this.entry.lastAccess = Date.now();
     return this.entry.index.has(path);
+  }
+
+  knownFile(path: string): boolean | undefined {
+    this.entry.lastAccess = Date.now();
+    return this.entry.index.knownFile(path);
   }
 
   release(): void {
@@ -749,6 +799,22 @@ export async function getProjectPathIndex(
   entry.refs += 1;
   entry.lastAccess = Date.now();
   return new ProjectPathIndexHandle(entry);
+}
+
+/**
+ * Claim the path cache for a surface where links are a nicety, not the answer.
+ *
+ * Returns `null` rather than throwing, so a render that merely wanted to link
+ * paths still produces its body when the cache is unavailable.
+ */
+export async function tryClaimProjectPathIndex(
+  projectPath: string,
+): Promise<ProjectPathIndex | null> {
+  try {
+    return await getProjectPathIndex(projectPath);
+  } catch {
+    return null;
+  }
 }
 
 /** Drop a project's cached paths and watchers; a later lookup rebuilds them. */

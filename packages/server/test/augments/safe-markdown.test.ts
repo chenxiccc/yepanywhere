@@ -159,6 +159,58 @@ x \\] + y
     expect(html).not.toContain("topics%2Fmissing.md");
   });
 
+  it("decides inline-code links from the path trie, not a filesystem call", () => {
+    const asked: string[] = [];
+    const html = renderSafeMarkdown(
+      "See `topics/security.md:12` and `topics/deleted.md`.",
+      {
+        projectFileLinks: {
+          projectId: "project-1",
+          projectPath: "/workspace/project",
+          index: {
+            findExisting: async () => new Set<string>(),
+            has: async () => false,
+            knownFile: (path: string) => {
+              asked.push(path);
+              return path === "topics/security.md";
+            },
+            release: () => undefined,
+          },
+        },
+      },
+    );
+
+    // Both answers came from the trie, so neither reference reached `statSync`
+    // on a path a rendered turn is streaming through.
+    expect(asked).toEqual(["topics/security.md", "topics/deleted.md"]);
+    expect(html).toContain(
+      'href="/projects/project-1/file?path=topics%2Fsecurity.md&amp;line=12"',
+    );
+    expect(html).toContain("<code>topics/deleted.md</code>");
+    expect(html).not.toContain("topics%2Fdeleted.md");
+  });
+
+  it("falls back to the filesystem for a path the trie cannot prove", () => {
+    // An unproven answer — no live watcher above it — must re-ask rather than
+    // silently drop a link the reader sees today.
+    const html = renderSafeMarkdown("See `topics/unproven.md`.", {
+      projectFileLinks: {
+        projectId: "project-1",
+        projectPath: "/workspace/project",
+        index: {
+          findExisting: async () => new Set<string>(),
+          has: async () => false,
+          knownFile: () => undefined,
+          release: () => undefined,
+        },
+        fileExists: (_absolutePath, relativePath) =>
+          relativePath === "topics/unproven.md",
+      },
+    });
+
+    expect(html).toContain("path=topics%2Funproven.md");
+  });
+
   it("leaves inline code unlinked without authenticated project context", () => {
     const html = renderSafeMarkdown("See `topics/security.md`.");
 

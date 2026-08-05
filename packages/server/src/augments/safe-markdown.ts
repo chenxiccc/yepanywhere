@@ -10,6 +10,7 @@ import MarkdownIt, {
   type Token,
 } from "markdown-it";
 import sanitizeHtml from "sanitize-html";
+import type { ProjectPathIndex } from "../projects/projectPathIndex.js";
 
 const ALLOWED_LINK_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
 const ALLOWED_IMAGE_PROTOCOLS = new Set(["http:", "https:"]);
@@ -59,6 +60,15 @@ let projectFileCodeLinkCache = new Map<string, ProjectFileCodeLink | null>();
 export interface ProjectFileLinkOptions {
   projectId: string;
   projectPath: string;
+  /**
+   * Watcher-backed membership oracle for this project.
+   *
+   * Supplying it makes the trie the authority for "is this a file", so an
+   * inline-code reference and a bare prose path are decided by one cache rather
+   * than by two that can disagree. `statSync` stays only as the backstop for
+   * what the trie cannot prove.
+   */
+  index?: ProjectPathIndex;
   fileExists?: (absolutePath: string, relativePath: string) => boolean;
 }
 
@@ -499,6 +509,26 @@ function defaultProjectFileExists(absolutePath: string): boolean {
   }
 }
 
+/**
+ * Whether this reference names a file, preferring the watcher-backed trie.
+ *
+ * The trie answers from cache with no filesystem call, and `undefined` means it
+ * proves nothing — which includes every path under a directory whose watch was
+ * lost. That degrades to the `statSync` this resolver used before the trie
+ * existed, so an unproven path re-asks rather than going unlinked.
+ */
+function projectFileExists(
+  options: ProjectFileLinkOptions,
+  absolutePath: string,
+  relativePath: string,
+): boolean {
+  const known = options.index?.knownFile(relativePath);
+  if (known !== undefined) return known;
+  return options.fileExists
+    ? options.fileExists(absolutePath, relativePath)
+    : defaultProjectFileExists(absolutePath);
+}
+
 function resolveProjectFileCodeReference(
   text: string,
   options: ProjectFileLinkOptions,
@@ -527,7 +557,11 @@ function resolveProjectFileCodeReference(
   }
 
   const cacheKey = `${options.projectId}\0${options.projectPath}\0${trimmed}`;
-  if (projectFileCodeLinkCache.has(cacheKey)) {
+  // The trie invalidates on a watch event; this module-level map never does. So
+  // it memoizes only the `statSync` oracle it was built for — layering it over
+  // the trie would let an answer outlive the fact behind it.
+  const memoize = !options.index;
+  if (memoize && projectFileCodeLinkCache.has(cacheKey)) {
     return projectFileCodeLinkCache.get(cacheKey) ?? null;
   }
 
@@ -538,7 +572,7 @@ function resolveProjectFileCodeReference(
     : resolveProjectPath(projectRoot, filePath, flavor);
 
   if (!isPathInsideProject(absolutePath, projectRoot, flavor)) {
-    projectFileCodeLinkCache.set(cacheKey, null);
+    if (memoize) projectFileCodeLinkCache.set(cacheKey, null);
     return null;
   }
 
@@ -548,15 +582,13 @@ function resolveProjectFileCodeReference(
     flavor,
   ).replaceAll("\\", "/");
   if (!relativePath || relativePath.startsWith("..")) {
-    projectFileCodeLinkCache.set(cacheKey, null);
+    if (memoize) projectFileCodeLinkCache.set(cacheKey, null);
     return null;
   }
 
-  const exists = options.fileExists
-    ? options.fileExists(absolutePath, relativePath)
-    : defaultProjectFileExists(absolutePath);
+  const exists = projectFileExists(options, absolutePath, relativePath);
   if (!exists) {
-    projectFileCodeLinkCache.set(cacheKey, null);
+    if (memoize) projectFileCodeLinkCache.set(cacheKey, null);
     return null;
   }
 
@@ -566,7 +598,7 @@ function resolveProjectFileCodeReference(
     lineNumber: parsed.lineNumber,
     columnNumber: parsed.columnNumber,
   };
-  projectFileCodeLinkCache.set(cacheKey, target);
+  if (memoize) projectFileCodeLinkCache.set(cacheKey, target);
   return target;
 }
 

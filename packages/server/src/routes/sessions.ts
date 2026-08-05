@@ -38,6 +38,7 @@ import type { NotificationService } from "../notifications/index.js";
 import type { CodexSessionScanner } from "../projects/codex-scanner.js";
 import type { GeminiSessionScanner } from "../projects/gemini-scanner.js";
 import { DETACHED_PROJECT_PATH, encodeProjectId } from "../projects/paths.js";
+import { tryClaimProjectPathIndex } from "../projects/projectPathIndex.js";
 import type { ProjectScanner } from "../projects/scanner.js";
 import { resolveCanonicalProjectRedirect } from "./session-project-routing.js";
 import { ensureRemoteDirectory } from "../sdk/remote-spawn.js";
@@ -2191,12 +2192,20 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       }
 
       // Add server-rendered HTML to text blocks for markdown display
-      await augmentTextBlocks(agentSession.messages, {
-        projectFileLinks: {
-          projectId: routing.workingProjectId,
-          projectPath: routing.workingProject.path,
-        },
-      });
+      const pathIndex = await tryClaimProjectPathIndex(
+        routing.workingProject.path,
+      );
+      try {
+        await augmentTextBlocks(agentSession.messages, {
+          projectFileLinks: {
+            projectId: routing.workingProjectId,
+            projectPath: routing.workingProject.path,
+            ...(pathIndex ? { index: pathIndex } : {}),
+          },
+        });
+      } finally {
+        pathIndex?.release();
+      }
 
       return c.json(agentSession);
     },
@@ -2911,12 +2920,18 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     if (publicShare) {
       await augmentEditToolUses(session.messages);
     } else {
-      await augmentPersistedSessionMessages(session.messages, {
-        projectFileLinks: {
-          projectId: effectiveProjectId,
-          projectPath: project.path,
-        },
-      });
+      const pathIndex = await tryClaimProjectPathIndex(project.path);
+      try {
+        await augmentPersistedSessionMessages(session.messages, {
+          projectFileLinks: {
+            projectId: effectiveProjectId,
+            projectPath: project.path,
+            ...(pathIndex ? { index: pathIndex } : {}),
+          },
+        });
+      } finally {
+        pathIndex?.release();
+      }
     }
     // The overlay reassigns `session` below; hasUnreadProviderContent needs
     // the pre-overlay timestamp.

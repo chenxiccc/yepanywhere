@@ -12,6 +12,10 @@ import {
   createAugmentGenerator,
 } from "./augment-generator.js";
 import { BlockDetector } from "./block-detector.js";
+import {
+  linkifyProjectPaths,
+  resolveShapedPaths,
+} from "./project-path-links.js";
 import type { SafeMarkdownRenderOptions } from "./safe-markdown.js";
 
 /**
@@ -58,6 +62,12 @@ async function getGenerator(): Promise<AugmentGenerator> {
  * This uses the same BlockDetector and AugmentGenerator as the streaming
  * path, ensuring identical output for the same input.
  *
+ * When the caller supplies a project path index, bare project-relative paths in
+ * the prose become local-file links too, decided by the same membership test
+ * that already governs inline-code references. That runs here rather than on the
+ * streaming coordinator's per-delta path: this is per completed body, so no
+ * filesystem-backed pass lands at token rate.
+ *
  * @param markdown - The markdown text to render
  * @returns The rendered HTML string
  */
@@ -67,6 +77,18 @@ export async function renderMarkdownToHtml(
 ): Promise<string> {
   if (!markdown.trim()) {
     return "";
+  }
+
+  const projectLinks = safeMarkdownOptions?.projectFileLinks;
+  const index = projectLinks?.index;
+  if (index) {
+    try {
+      // Before rendering, so the synchronous membership questions the inline-code
+      // linker asks mid-render are answered from cache.
+      await resolveShapedPaths(markdown, index);
+    } catch {
+      // Path links are advisory; an unavailable index must not fail the render.
+    }
   }
 
   const generator = await getGenerator();
@@ -90,7 +112,13 @@ export async function renderMarkdownToHtml(
     htmlParts.push(augment.html);
   }
 
-  return htmlParts.join("\n");
+  const html = htmlParts.join("\n");
+  if (!index || !projectLinks) return html;
+  return linkifyProjectPaths(html, {
+    projectPath: projectLinks.projectPath,
+    index,
+    gateLookupsByShape: true,
+  });
 }
 
 /**

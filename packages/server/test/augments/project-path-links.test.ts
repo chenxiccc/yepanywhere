@@ -223,6 +223,60 @@ describe("project path index", () => {
     index.dispose();
   });
 
+  it("answers knownFile from cache without any filesystem call", async () => {
+    const repo = await createRepo();
+    await mkdir(join(repo, "runs"), { recursive: true });
+    await writeFile(join(repo, "runs/first.json"), "{}\n");
+    await writeFile(join(repo, "Makefile"), "all:\n");
+    const io = recordingIo(repo);
+    const index = __test__.createIndex(repo, { io });
+
+    // Nothing is hydrated yet, so nothing is proven either way.
+    expect(index.knownFile("runs/first.json")).toBeUndefined();
+    expect(index.knownFile("Makefile")).toBeUndefined();
+    // A path that is not project-relative needs no filesystem call to rule out.
+    expect(index.knownFile("/etc/passwd")).toBe(false);
+    expect(index.knownFile("../outside.txt")).toBe(false);
+    expect(io.probed).toEqual([]);
+    expect(io.listed).toEqual([]);
+
+    // One wide batch lists the project root, which proves every root name.
+    await index.findExisting([
+      "Makefile",
+      "missing-a.json",
+      "missing-b.json",
+      "missing-c.json",
+    ]);
+    io.probed.length = 0;
+    io.listed.length = 0;
+
+    // An extensionless name the shape gate would never spend I/O on is now
+    // free, because the directory holding it is complete.
+    expect(index.knownFile("Makefile")).toBe(true);
+    expect(index.knownFile("LICENSE")).toBe(false);
+    // `runs` is a directory, not a file, and its children stay unproven.
+    expect(index.knownFile("runs")).toBe(false);
+    expect(index.knownFile("runs/first.json")).toBeUndefined();
+    expect(io.probed).toEqual([]);
+    expect(io.listed).toEqual([]);
+    index.dispose();
+  });
+
+  it("refuses a cached knownFile answer once the watcher is gone", async () => {
+    const repo = await createRepo();
+    await writeFile(join(repo, "one.json"), "{}\n");
+    const io = recordingIo(repo);
+    const index = __test__.createIndex(repo, { io });
+
+    expect(await index.has("one.json")).toBe(true);
+    expect(index.knownFile("one.json")).toBe(true);
+
+    // Losing the watch must degrade to "ask properly", never to a stale answer.
+    io.emitError(".");
+    expect(index.knownFile("one.json")).toBeUndefined();
+    index.dispose();
+  });
+
   it("probes a sparse candidate set instead of listing its directory", async () => {
     const repo = await createRepo();
     await mkdir(join(repo, "runs"), { recursive: true });
@@ -242,6 +296,37 @@ describe("project path index", () => {
     io.probed.length = 0;
     expect(await index.has("runs/first.json")).toBe(true);
     expect(io.probed).toEqual([]);
+    index.dispose();
+  });
+
+  it("lists a directory a stream of small batches keeps probing", async () => {
+    const repo = await createRepo();
+    await mkdir(join(repo, "runs"), { recursive: true });
+    for (const name of ["a.json", "b.json", "c.json", "d.json"]) {
+      await writeFile(join(repo, "runs", name), "{}\n");
+    }
+    const io = recordingIo(repo);
+    const index = __test__.createIndex(repo, { io });
+
+    // Turn-text annotation asks about a couple of names per rendered body, so
+    // no single batch is ever wide enough to earn a listing on its own.
+    await index.findExisting(["runs/a.json", "runs/b.json"]);
+    expect(io.listed).toEqual([]);
+    await index.findExisting(["runs/c.json", "runs/d.json"]);
+
+    // The directory's probes have accumulated past the threshold, so it is read
+    // once instead of paying an `lstat` per name for the rest of the session.
+    expect(io.listed).toEqual(["runs"]);
+    expect(__test__.diagnostics(index).completeDirectories).toBe(1);
+    io.probed.length = 0;
+    io.listed.length = 0;
+
+    // Every later name in it — present or absent — is now free.
+    expect(await index.findExisting(["runs/e.json", "runs/a.json"])).toEqual(
+      new Set(["runs/a.json"]),
+    );
+    expect(io.probed).toEqual([]);
+    expect(io.listed).toEqual([]);
     index.dispose();
   });
 
@@ -489,6 +574,7 @@ describe("linkifyProjectPaths", () => {
     findExisting: async (paths: readonly string[]) =>
       new Set(paths.filter((path) => existsInFake(path))),
     has: async (path: string) => existsInFake(path),
+    knownFile: (path: string) => existsInFake(path),
     release: () => undefined,
   };
 
@@ -553,12 +639,87 @@ describe("linkifyProjectPaths", () => {
     const empty: ProjectPathIndex = {
       findExisting: async () => new Set<string>(),
       has: async () => false,
+      knownFile: () => false,
       release: () => undefined,
     };
 
     expect(
       await linkifyProjectPaths(html, { projectPath: "/repo", index: empty }),
     ).toBe(html);
+  });
+
+  it("leaves text inside an existing anchor alone", async () => {
+    // Turn text carries anchors the markdown renderer and the inline-code file
+    // linker already emitted; an `<a>` nested inside one renders as neither.
+    const html =
+      '<p>See <a href="/x" data-ya-resource="local-file">scripts/run.py</a> ' +
+      "and scripts/run.py</p>";
+
+    const out = await linkifyProjectPaths(html, {
+      projectPath: "/repo",
+      index,
+    });
+
+    expect(out).toContain('data-ya-resource="local-file">scripts/run.py</a>');
+    // Exactly one new link: the bare occurrence outside the anchor.
+    expect(out.match(/<a /g)).toHaveLength(2);
+    expect(out).toContain("/repo/scripts/run.py");
+  });
+
+  it("spends lookups only on path-shaped tokens when gated", async () => {
+    const asked: string[][] = [];
+    const gatedIndex: ProjectPathIndex = {
+      findExisting: async (paths: readonly string[]) => {
+        asked.push([...paths]);
+        return new Set(paths.filter((path) => existsInFake(path)));
+      },
+      has: async (path: string) => existsInFake(path),
+      knownFile: () => undefined,
+      release: () => undefined,
+    };
+    const html =
+      "<p>The run wrote scripts/run.py after reading config, which the " +
+      "operator kept at version 1.2.3 and reviewed before merging.</p>";
+
+    const out = await linkifyProjectPaths(html, {
+      projectPath: "/repo",
+      index: gatedIndex,
+      gateLookupsByShape: true,
+    });
+
+    expect(out).toContain("/repo/scripts/run.py");
+    // Ordinary prose costs nothing: only the separator-bearing token is asked
+    // about. `1.2.3` has no letter in its trailing run, so it stays a version,
+    // and every bare word is skipped without a lookup.
+    expect(asked).toEqual([["scripts/run.py"]]);
+  });
+
+  it("links an extensionless name the cache already proves", async () => {
+    const asked: string[][] = [];
+    const cachedIndex: ProjectPathIndex = {
+      findExisting: async (paths: readonly string[]) => {
+        asked.push([...paths]);
+        return new Set<string>();
+      },
+      has: async () => false,
+      // Stands in for a listed, complete root: `Makefile` is proven present and
+      // `LICENSE` proven absent, both without I/O.
+      knownFile: (path: string) =>
+        path === "Makefile" ? true : path === "LICENSE" ? false : undefined,
+      release: () => undefined,
+    };
+    const html = "<p>Run Makefile, not LICENSE.</p>";
+
+    const out = await linkifyProjectPaths(html, {
+      projectPath: "/repo",
+      index: cachedIndex,
+      gateLookupsByShape: true,
+    });
+
+    expect(out).toContain("/repo/Makefile");
+    expect(out).not.toContain("/repo/LICENSE");
+    // Neither name is path-shaped, so neither was allowed to cost a lookup.
+    expect(asked).toEqual([[]]);
   });
 
   it("does lookup I/O per referenced directory, not per token", async () => {
