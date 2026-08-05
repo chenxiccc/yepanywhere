@@ -7,6 +7,15 @@ Topic: backward-compat
 
 ## Decisions
 
+2026-08-05 planned public-share grants and compact URLs — preserve every
+legacy 64-byte/86-character bearer secret and display-hint fragment while new
+links use a 16-byte/22-character secret plus a compact protocol marker and
+server-persisted header. Old viewers ignore the marker and keep using the
+combined response; new viewers use legacy fragments and do not call the new
+metadata route for an unmarked link. Gate global inventory and opaque-id
+revocation behind the new `public-share-management` capability so older
+servers receive no unsupported management request.
+
 2026-08-04 `idleReapHours` settings contract — advertise the optional field
 with the permanent `idle-reap-hours-setting` capability. New clients hide the
 control and make no settings write against older servers. Until an operator

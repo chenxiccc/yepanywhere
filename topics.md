@@ -258,6 +258,8 @@
   Codex-first Linux proposal.
 - project-path-links - Filesystem-authoritative project path membership and
   highlighted-source linkification.
+- public-share-persistence - Independent per-session share state, compact
+  bearer-link grants, frozen revisions, and aggregate-store migration.
 - project-directory-storage - App-data-only default for YA-managed state,
   explicit global opt-in for project-local assets, and no ambient project or
   Git-metadata writes from browsing, rendering, indexing, or replay.
