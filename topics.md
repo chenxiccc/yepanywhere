@@ -266,3 +266,6 @@
 - glossary-tooltips - Default-off glossary annotations backed by one governing
   contained include graph, a compiled phrase matcher, and nonblocking render
   integration.
+- client-asset-delivery - Immutable generated assets, negotiated precompressed
+  representations, bounded static serving, and deploy-generation retention for
+  old entrypoints.

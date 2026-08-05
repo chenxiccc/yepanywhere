@@ -15,9 +15,12 @@ global Inbox reconciliation and recursive glossary watching on the first-page
 critical path. A later New Session probe found a 6.21-second all-provider model
 barrier dominated by unselected OpenCode discovery and a separate 6.50-second
 recent-session enrichment request used only to choose a project. The owning
-production corrections are specified below but not implemented here. The
-adjacent stale-dev-tree defect was fixed in `f3efacfa`; the bind-provenance
-follow-up is included with this investigation.
+production corrections are specified below but not implemented here. A final
+cold-client/server-graph pass found uncompressed effectively uncached static
+assets, eager all-route client bundles, a 305-module pre-bind server graph, and
+21 concurrently started New Session requests. The adjacent stale-dev-tree
+defect was fixed in `f3efacfa`; the bind-provenance follow-up is included with
+this investigation.
 
 Related contracts:
 
@@ -27,6 +30,8 @@ Related contracts:
 - [`topics/provider-child-sessions.md`](../../topics/provider-child-sessions.md)
 - [`topics/codex-sessions.md`](../../topics/codex-sessions.md)
 - [`topics/server-performance-observability.md`](../../topics/server-performance-observability.md)
+- [`topics/client-asset-delivery.md`](../../topics/client-asset-delivery.md)
+- [`topics/ui-architecture.md`](../../topics/ui-architecture.md)
 - [`topics/memory-growth.md`](../../topics/memory-growth.md)
 - [`topics/inbox.md`](../../topics/inbox.md)
 - [`topics/project-path-links.md`](../../topics/project-path-links.md)
@@ -35,11 +40,14 @@ Related contracts:
 - [`topics/provider-abstraction.md`](../../topics/provider-abstraction.md)
 - [`topics/session-defaults.md`](../../topics/session-defaults.md)
 - [`031-client-query-controller.md`](031-client-query-controller.md)
+- [`022-api-response-compression.md`](022-api-response-compression.md)
 - [`091-project-path-cache.md`](091-project-path-cache.md)
 - [`092-demand-driven-glossary-discovery.md`](092-demand-driven-glossary-discovery.md)
 - [`093-provider-session-reconciliation.md`](093-provider-session-reconciliation.md)
 - [`094-new-session-provider-catalog-readiness.md`](094-new-session-provider-catalog-readiness.md)
 - [`095-new-session-recent-project-readiness.md`](095-new-session-recent-project-readiness.md)
+- [`096-client-route-module-loading.md`](096-client-route-module-loading.md)
+- [`097-server-bootstrap-module-staging.md`](097-server-bootstrap-module-staging.md)
 
 ## Evidence already established
 
@@ -284,6 +292,22 @@ seconds before `startServer()` began in the instrumented warm run. The
 remaining difference from the external cold run includes process bootstrap,
 cold module I/O, and run-to-run variance.
 
+The static server graph explains why module evaluation is material. `index.ts`
+has 55 direct imports, `app.ts` 133, and the provider index 14 while importing
+every implementation. An esbuild reachability probe from the built entry found
+305 internal modules, including 69 routes and 3.84 MB of input source; an
+internal-only bundle was about 2.96 MB before external packages. The graph also
+reaches the Claude and Agent Client Protocol SDKs, Shiki, KaTeX/Markdown,
+bcrypt, Web Push, and other optional owners before a route selects them.
+
+Root/barrel imports amplify this. `@yep-anywhere/shared` exposes one root that
+re-exports almost the whole package; server source contains 188 root imports
+across 169 files. The service and provider indexes repeat the pattern.
+Production Node's ECMAScript Module runtime evaluates modules reached through
+static imports rather than applying browser-bundler tree shaking. Narrow
+additive shared subpath exports, side-effect-free provider descriptors, and
+demand route/provider groups are the measured handoff in tactical 097.
+
 The immediate cold-bind candidates are therefore separable: start the clock at
 process entry; move the advisory Codex version warning and source watching
 after bind; eligibility-gate and asynchronously baseline provider watches; and
@@ -326,11 +350,68 @@ dozens of projects and structurally wrong at the accepted 10,000-project
 planning scale. A provider store must be enumerated once and grouped by
 canonical project, not rescanned for every project.
 
-The production bundle is another independent cold-load candidate: the main
-JavaScript chunk measured 2,668.84 kB (770.06 kB gzip) and CSS 565.17 kB
-(89.11 kB gzip), with Vite's existing large-chunk warning. Browser code
-splitting merits a separate measured pass after the server-side contention is
-removed; it does not explain the 2.76-second API request.
+#### Client entry graph and static delivery
+
+The local production build emits one 2,668,843-byte application JavaScript
+file and 565,170-byte CSS file; its only other JavaScript chunks are locale
+overlays. The remote build similarly emits one 2,753,737-byte application file
+and 566,079-byte CSS file. `main.tsx` statically imports 15 page modules,
+`remote-main.tsx` about 20 page/gate modules, and `SettingsLayout` all 21
+category panes. Public-share/login and lightweight authenticated routes
+therefore evaluate substantial unselected page trees.
+
+On the isolated production server with browser cache disabled, warm server data
+gave 191-201 ms to document-content-loaded, 249-251 ms to the New Session form,
+290-347 ms to provider/model controls, and a 108-116 ms initial long task. A
+cold provider-cache sample still showed the form at about 276 ms but controls at
+6.22 seconds, so the monolithic client is a real transfer/evaluation cost and
+not the owner of the multi-second catalog delay. Slower/mobile clients will
+amplify it. The separate Vite development graph fetched 250 modules and about
+10.4-10.5 MB decoded in fresh contexts; live server/document contention made
+form time vary from 1.36-4.56 seconds, so that is a development-waterfall
+diagnostic rather than a production estimate.
+
+Static delivery makes the build cost worse than its gzip report suggests.
+`frontend/static.ts` uses whole-file `readFile`; compression covers only API
+routes. Its immutable test accepts hexadecimal suffixes, but Vite emitted hash
+tokens such as `D3zWbkxu` and `BPXPYV9_`. The 2.67 MB JavaScript response was
+therefore sent in full with `max-age=0, must-revalidate` and no
+`Content-Encoding`, `ETag`, or `Last-Modified`. Ten repeat GETs added 26.70 MB
+of logical reads and new whole-file request work even though the OS page cache
+prevented physical reads.
+
+Tactical 022 is reopened for build-proven immutable identity, negotiated
+precompressed sidecars, bounded streaming, and deploy-generation retention.
+Tactical 096 owns semantic route/Settings splitting. The delivery contract
+must land first or with route chunks: a long-lived old entrypoint must still be
+able to request its uncached chunk after a deployment. Global KaTeX/font CSS is
+still imported by `styles/index.css`, so route JavaScript splitting does not by
+itself remove the 565 KB CSS response.
+
+#### App-shell request concurrency
+
+A fresh production New Session issued 21 API fetches in its first roughly 650
+ms. They included provider/settings/recents and the selected project, version,
+auth/onboarding/share status, global and starred sessions, projects, Inbox,
+processes, project queue, incremental sessions, provider usage, and the
+development reload-status family. Most are distinct retained owners rather
+than duplicates; the fault is that all compete immediately with the selected
+page's minimum facts.
+
+In one cold disposable-data sample, `/api/providers` took about 5.21 seconds,
+both initial session-list requests about 3.56 seconds, Inbox about 0.50 seconds,
+and provider controls appeared at about 5.50 seconds. This is a second sample
+from the 6.21-second provider barrier above, not a replacement timing.
+Tactical 031 now owns source-level start priority and exact-query coalescing;
+the selected page goes first, while Sidebar coverage remains retained and fills
+in place.
+
+One duplicate is direct: `useReloadNotifications()` first reads
+`/api/dev/status` to choose its mode, then manual synchronization reads the
+same route again before workers/safe-restart. Each hook instance also owns a
+one-second connection-state interval. That family should become one
+source-level snapshot and shared connection signal rather than multiplying
+reads/timers across the global app and Settings consumers.
 
 ### New-session provider and model readiness
 
@@ -531,16 +612,18 @@ sample; a 30-minute VMA census; structured transcript read/worker logs from the
 replacement lifetime; isolated parse/stringify of the 502 MB share store;
 fresh built-server/browser timing including an external process-to-response
 clock; route-isolated project and Inbox probes; live provider/version endpoint
-and CLI timing; and source traces through process enrichment, Inbox fan-out,
-provider caches, project paths, glossary subscriptions, and external-process
-discovery.
+and CLI timing; production and development client graph/request censuses; static
+asset header/read probes; server module-graph reachability; and source traces
+through process enrichment, Inbox fan-out, provider caches, project paths,
+glossary subscriptions, and external-process discovery.
 Implementation/investigation checkpoints before this extension: `f3efacfa`
 and `3c0f70df`. The provider-child, public-share, Inbox, cache-pressure, and
 sparse-path corrections remain handoffs, not implementations in tactical 089.
 The completed investigation, topic contracts, and tacticals 091-093 landed in
 `37794b7c`; the primary-bind provenance correction landed in `df2fc628`.
-Tacticals 094-095 and the version/query-controller follow-up extend that
-completed report with the later New Session observation.
+Tacticals 094-097, reopened tactical 022, and the query-controller follow-ups
+extend that completed report with the later New Session, client-delivery, and
+server-module observations.
 
 Primary retained evidence runs:
 

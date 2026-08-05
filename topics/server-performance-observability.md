@@ -112,6 +112,23 @@ asynchronously only for install-eligible families, and compare a bundled or
 lazily imported production server graph. A useful-ready metric includes the
 selected-session API, not only static HTML.
 
+The statically reachable built entry contains 305 internal server modules,
+including 69 route modules and about 3.84 MB of input source; an internal-only
+bundle was about 2.96 MB before external packages. `index.ts`, `app.ts`, the
+provider index, the service barrel, and the root `@yep-anywhere/shared` export
+make optional provider SDKs, rendering, sharing/review, speech, push, and
+diagnostic modules reachable before a route selects them. Production Node ESM
+evaluates modules reached through these static barrels; it does not run the
+browser bundler's unused-export elimination at startup.
+
+Useful readiness therefore needs module-owner evidence as well as a timer:
+evaluated module count, module-graph heap/resident delta, secured-bind time, and
+first useful projects/New Session/selected-session route. Narrow shared subpath
+exports and demand-loaded provider/route groups must preserve authentication
+and middleware before accepting traffic. Background imports cannot simply move
+the same main-thread spike just after bind. The implementation handoff is
+[`docs/tactical/097-server-bootstrap-module-staging.md`](../docs/tactical/097-server-bootstrap-module-staging.md).
+
 A fresh browser's selected 44 MB Codex session did not commit until 3.27 s
 because its 477 ms transcript read competed with global Inbox work. Route
 isolation found `/api/projects` caused no transcript work, while `/api/inbox`
@@ -131,6 +148,17 @@ Provider-global stores must not be rescanned per project. At a supported
 10,000-project scale, live memory is bounded by measured bytes and rebuild cost;
 project count is a discovery/navigation requirement, not permission for a
 project-by-provider Cartesian scan.
+
+A fresh production New Session also issued 21 API fetches in its first roughly
+650 ms. Most represented distinct retained owners, but selected provider,
+settings, project, and version work immediately competed with global/starred
+sessions, Inbox, processes, queue, usage, and development-reload status. Cold
+provider and both initial session-list requests took about 5.21 and 3.56
+seconds respectively in that disposable-data run. Client observability should
+therefore record request start priority and exact query identity, not only
+completion duration. Tactical 031 owns the source-level coordinator and its
+located duplicate reload-status read; tactical 093 owns server-side global
+session reconciliation.
 
 ## Server metrics
 

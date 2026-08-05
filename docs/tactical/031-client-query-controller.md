@@ -93,6 +93,11 @@ reconnect, or session metadata changes. That belongs here, not in a separate
   pagination, and server reconciliation. This fixes the metadata-toggle window
   where a row left Last 24 Hours before the server-owned starred membership had
   refetched.
+- 2026-08-05: A fresh production New Session request census found 21 initial
+  fetches. Most have distinct owners, but selected-page readiness competes with
+  global sessions, Inbox, processes, queue, usage, and development-status work.
+  Added a scheduling handoff and located one direct duplicate
+  `useReloadNotifications` status read.
 
 ## Context
 
@@ -171,6 +176,49 @@ Findings:
   manual refresh semantics.
 - Transcript/session detail loading is intentionally outside the scope. Its
   merge and stream rules are endpoint-specific and load-bearing.
+
+## Fresh New Session request census
+
+An isolated production server with fresh browser context issued 21 fetches
+during the first roughly 650 ms of an ordinary New Session load:
+
+| Owner group | Requests observed |
+|---|---|
+| New Session | `/api/providers`, `/api/settings/remote-executors`, `/api/recents?limit=30`, selected `/api/projects/:id`, provider subscription usage |
+| Shared configuration/capabilities | `/api/version`, `/api/auth/status`, `/api/onboarding`, `/api/settings`, `/api/public-shares/status` |
+| Navigation/summary feeds | `/api/sessions?limit=50`, starred sessions, `/api/projects`, `/api/inbox`, `/api/project-queue`, incremental sessions |
+| Process/development shell | `/api/processes?includeTerminated=true`, two `/api/dev/status` reads, `/api/status/workers`, `/api/dev/safe-restart` |
+
+This is not a claim of 21 duplicate queries. Most requests return different
+facts and several retained feeds deliberately outlive the current route. It is
+a scheduling finding: a selected page competes immediately with global
+collection and diagnostic work even when the selected controls need only
+settings plus the selected provider/project facts.
+
+The cold disposable-data sample made that competition visible. The provider
+request took about 5.21 seconds, both initial session-list requests about 3.56
+seconds, and Inbox about 0.50 seconds; provider controls appeared at about 5.50
+seconds. Tactical 094 owns provider readiness, tactical 095 owns recent-project
+defaulting, and tactical 093 owns server-side asynchronous Inbox/session-corpus
+reconciliation. This tactical owns client request retention, coalescing, and
+start priority.
+
+One request is directly redundant. `useReloadNotifications()` calls
+`/api/dev/status` to determine the mode, then manual mode calls
+`syncFromServer()`, which calls `/api/dev/status` again before requesting
+workers and safe-restart state. Each hook instance also owns its own one-second
+connection-state interval. The app mounts the hook globally; Settings and the
+Development pane can add consumers. The isolated production build still had
+`noFrontendReload: true`, so the development-status family was present in the
+ordinary page census.
+
+Retained app-shell feeds should begin from one source-level coordinator and
+yield the first scheduling turn to the selected route's minimum facts. This is
+not permission to make Sidebar coverage visual-state-dependent again: the
+global/starred retainers stay app-shell-owned, but can start after the first
+stable page/shell commit and reconcile in place. Process, Inbox, and usage work
+likewise follows its owning urgency instead of racing all selected-route
+prerequisites at mount time.
 
 ## Session Observation Semantics
 
@@ -703,6 +751,40 @@ Acceptance:
 - tests cover multiple consumers, sequential mounts, source transitions,
   pending-to-ready polling, reconnect, and a forced About refresh.
 
+### 10 — stage app-shell feeds after selected-page readiness
+
+Status: Implementation handoff, triggered by the 2026-08-05 request census.
+
+Give each retained source one bootstrap coordinator that schedules selected
+route requirements, stable navigation counts/coverage, and supplementary
+diagnostic/usage work in that order. Reuse the existing query keys and retained
+owners; do not create a second cache or route-local copy of global feeds.
+
+Fold reload notification status/workers/safe-restart into one source-level
+snapshot/acquisition. Determine the mode from that result once, remove the
+second `/api/dev/status` read, and replace hook-instance connection intervals
+with the shared connection/activity signal already used for retained-query
+revalidation. Production/static deployments with no development reload work
+should not request worker or safe-restart detail merely because the hook is
+globally mounted.
+
+Acceptance:
+
+- one source generation performs at most one initial request for each exact
+  retained query key, independent of StrictMode or mounted consumer count;
+- New Session's settings/provider/project minimum facts are scheduled before
+  global sessions, Inbox, process enrichment, and subscription telemetry;
+- Sidebar global/starred coverage remains app-shell-retained and appears in
+  place after its query settles, without waiting for a route visit;
+- app-shell scheduling never starts a second server-owned global reconciliation
+  already in progress under tactical 093;
+- reload notifications issue one mode/status acquisition, no hook-local
+  one-second connection intervals, and no inapplicable worker/safe-restart
+  detail requests; and
+- a fresh-browser request census records start order, exact-key duplicates,
+  first page/control readiness, and final navigation/inbox reconciliation for
+  local, remote, and production-static modes.
+
 ## Non-Goals
 
 - Do not replace `clientSummaryStore`.
@@ -737,6 +819,10 @@ Acceptance:
   project record updates and detail-event filtering.
 - Verify later `useVersion` consumers reuse one source-scoped resolved snapshot
   and that pending capability validation has one follow-up owner.
+- Verify selected-route facts start before retained global/diagnostic feeds,
+  without making Sidebar coverage depend on whether Sidebar is visible.
+- Verify reload notifications perform one source-level status acquisition and
+  no per-consumer connection interval or inapplicable worker-detail request.
 - Verify star/archive/read mutations update store-backed surfaces immediately
   and invalidate retained server-owned memberships.
 - Verify StrictMode or multiple mounted consumers do not double-fetch the same

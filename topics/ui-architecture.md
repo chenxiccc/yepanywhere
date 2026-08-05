@@ -136,6 +136,37 @@ Choosing any action consumes the current notice instead of morphing it into a
 status or confirmation panel. The requested reload or safe-restart schedule
 continues; after a reload, later source changes may produce a fresh notice.
 
+## Selected-Route Module Ownership
+
+The initial client module graph contains the stable source/authentication,
+navigation, error, and layout shell plus the selected page. A page that is not
+selected must not be evaluated merely because its route exists. Local and
+remote entrypoints apply the same rule; login and public bearer-link entry do
+not reach the authenticated session-management page graph.
+
+A route-level loading boundary preserves the shell and final page geometry.
+It never flashes an unauthenticated surface, loses the URL, or substitutes a
+temporary 404. A module generation has one shared acquisition promise, and a
+failure becomes an actionable route error rather than an indefinite spinner.
+
+Session DOM linger belongs outside the module-acquisition boundary. Making
+`SessionPage` lazy must not create a second module instance, tear down a view
+that `NavigationLayout` is deliberately retaining, or convert an already-warm
+back/reselect into a remount.
+
+Settings is layered. Ordinary entry loads the layout and selected category;
+inactive panes are not evaluated. Settings search is the explicit consumer
+that may need every pane because results are operable instances of the same
+controls. It loads those panes progressively only after search starts, reports
+incomplete loading/failure honestly, and keeps already found results stable.
+
+Dynamic route assets remain part of one deployed entrypoint generation. Old
+loaded entrypoints must be able to acquire chunks they name after a deployment,
+or recover once through a state-preserving fresh entry. The delivery contract
+is in [`client-asset-delivery.md`](client-asset-delivery.md); the implementation
+handoff is
+[`docs/tactical/096-client-route-module-loading.md`](../docs/tactical/096-client-route-module-loading.md).
+
 ## Settings Pane Conventions
 
 Settings panes apply changes immediately on interaction — the house style
