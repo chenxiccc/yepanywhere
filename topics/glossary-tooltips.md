@@ -354,6 +354,18 @@ project. A glossary subscriber needs its watch to last as long as the
 subscription, so the subscription manager owns these for the reference-counted
 lifetime described above.
 
+What the subscription does share with that index is retention. Source
+resolution hydrates its candidate directories by asking the index, and then
+releases its claim, so the next artifact request can find those directories
+evicted and re-probe them. A subscription therefore takes one claim of its own
+for its whole reference-counted lifetime, dropped when the last subscriber
+leaves. That exempts the project from the process-wide byte budget without
+exempting it from its own per-project ceiling, so a subscribed project keeps
+the paths resolution just proved and still stays bounded. The claim is
+retention only: the subscription never reads answers through the index, because
+its poll is the missed-event backstop and must do real I/O rather than trust
+watcher-backed cache.
+
 The client uses the glossary-path stream for invalidation, not governing-file
 selection. One tab-local project store owns the active project's subscription
 and artifacts above session-keyed route content. Same-project session and file

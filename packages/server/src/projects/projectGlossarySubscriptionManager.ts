@@ -13,6 +13,10 @@ import type {
 import { getLogger } from "../logging/logger.js";
 import type { ProjectScanner } from "./scanner.js";
 import type { GlossaryIndexService } from "./glossaryIndexService.js";
+import {
+  getProjectPathIndex,
+  type ProjectPathIndex,
+} from "./projectPathIndex.js";
 
 const DEFAULT_DEBOUNCE_MS = 150;
 const DEFAULT_POLL_MS = 5 * 60_000;
@@ -49,6 +53,8 @@ interface ProjectGlossaryState {
   paths: Map<string, GlossaryPathIdentity>;
   subscribers: Map<number, GlossarySubscriber>;
   directories: Map<string, WatchedDirectory>;
+  /** Held while subscribed, so this project's cached paths survive pressure. */
+  pathIndex: ProjectPathIndex | null;
   pollTimer: NodeJS.Timeout | null;
   debounceTimer: NodeJS.Timeout | null;
   refreshPromise: Promise<void> | null;
@@ -65,6 +71,8 @@ export interface ProjectGlossarySubscriptionManagerOptions {
   debounceMs?: number;
   pollMs?: number;
   maxRetainedProjects?: number;
+  /** Claim the shared path cache; defaults to the process-wide registry. */
+  getPathIndex?: (projectPath: string) => Promise<ProjectPathIndex>;
 }
 
 function isContained(root: string, candidate: string): boolean {
@@ -112,6 +120,9 @@ export class ProjectGlossarySubscriptionManager {
   private readonly debounceMs: number;
   private readonly pollMs: number;
   private readonly maxRetainedProjects: number;
+  private readonly getPathIndex: (
+    projectPath: string,
+  ) => Promise<ProjectPathIndex>;
   private readonly projects = new Map<string, ProjectGlossaryState>();
   private readonly releaseObservationListener: () => void;
   private nextSubscriberId = 1;
@@ -125,6 +136,7 @@ export class ProjectGlossarySubscriptionManager {
       1,
       options.maxRetainedProjects ?? DEFAULT_MAX_RETAINED_PROJECTS,
     );
+    this.getPathIndex = options.getPathIndex ?? getProjectPathIndex;
     this.releaseObservationListener =
       this.glossaryIndexService.onObservationsChanged((projectRoot) => {
         this.observationsChanged(projectRoot);
@@ -231,6 +243,7 @@ export class ProjectGlossarySubscriptionManager {
       paths: new Map(),
       subscribers: new Map(),
       directories: new Map(),
+      pathIndex: null,
       pollTimer: null,
       debounceTimer: null,
       refreshPromise: null,
@@ -246,6 +259,12 @@ export class ProjectGlossarySubscriptionManager {
       if (state.refreshPromise) await state.refreshPromise;
       return;
     }
+    // Resolution probes this project's candidate paths through the shared path
+    // cache, so a claim held for the subscription's life keeps the directories
+    // it hydrated from being evicted between two artifact requests. The claim
+    // exempts the project from the process byte budget, not from its own
+    // per-project ceiling, so a subscribed project stays bounded.
+    state.pathIndex = await this.getPathIndex(state.projectPath);
     state.pollTimer = setInterval(() => {
       void this.refresh(state, true);
     }, this.pollMs);
@@ -528,6 +547,8 @@ export class ProjectGlossarySubscriptionManager {
     if (state.debounceTimer) clearTimeout(state.debounceTimer);
     state.debounceTimer = null;
     state.refreshQueued = false;
+    state.pathIndex?.release();
+    state.pathIndex = null;
   }
 
   /** Attach watches for directories resolution learned about just now. */

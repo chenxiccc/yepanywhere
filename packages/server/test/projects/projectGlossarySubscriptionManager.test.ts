@@ -63,16 +63,36 @@ async function createHarness(options: { pollMs?: number } = {}) {
         };
       }),
     };
+  // Stands in for the shared path cache. The subscription only holds the
+  // claim — it never reads through it — so counting live claims is the whole
+  // contract under test.
+  const pathIndexClaims = { held: 0, taken: 0 };
+  const getPathIndex = vi.fn(async () => {
+    pathIndexClaims.held += 1;
+    pathIndexClaims.taken += 1;
+    let released = false;
+    return {
+      findExisting: async () => new Set<string>(),
+      has: async () => false,
+      release: () => {
+        if (released) return;
+        released = true;
+        pathIndexClaims.held -= 1;
+      },
+    };
+  });
   const manager = new ProjectGlossarySubscriptionManager({
     scanner,
     glossaryIndexService,
     debounceMs: 25,
     pollMs: options.pollMs ?? 600_000,
+    getPathIndex,
   });
   return {
     glossaryIndexService,
     invalidateProject,
     manager,
+    pathIndexClaims,
     observePath: (path: string) => {
       if (observations.has(path)) return;
       observations.set(path, null);
@@ -355,5 +375,35 @@ describe("ProjectGlossarySubscriptionManager", () => {
 
     unsubscribeResumed();
     manager.dispose();
+  });
+
+  it("holds one path-cache claim for as long as the project is subscribed", async () => {
+    const { manager, observePath, pathIndexClaims, projectId, projectPath } =
+      await createHarness();
+    await writeFile(join(projectPath, "GLOSSARY.md"), "root");
+    observePath("GLOSSARY.md");
+    expect(pathIndexClaims).toEqual({ held: 0, taken: 0 });
+
+    const unsubscribeFirst = await manager.subscribe(projectId, () => {});
+    const unsubscribeSecond = await manager.subscribe(projectId, () => {});
+    // Resolution hydrated these directories through the shared cache; the claim
+    // is what keeps them from being evicted between two artifact requests. A
+    // second tab shares the project's one claim rather than taking another.
+    expect(pathIndexClaims).toEqual({ held: 1, taken: 1 });
+
+    unsubscribeFirst();
+    expect(pathIndexClaims.held).toBe(1);
+
+    // The last subscriber leaving makes the project evictable again, so an
+    // unwatched project cannot pin cached paths indefinitely.
+    unsubscribeSecond();
+    expect(pathIndexClaims.held).toBe(0);
+
+    const unsubscribeResumed = await manager.subscribe(projectId, () => {});
+    expect(pathIndexClaims).toEqual({ held: 1, taken: 2 });
+
+    unsubscribeResumed();
+    manager.dispose();
+    expect(pathIndexClaims.held).toBe(0);
   });
 });
