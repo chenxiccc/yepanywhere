@@ -248,6 +248,7 @@ export function useVersion(options?: UseVersionOptions) {
   const { loading, error, refetch } = useRetainedClientQuery({
     sourceKey,
     key: VERSION_QUERY_KEY,
+    bootstrapTier: "route",
     coverage: freshOnMount ? FRESH_VERSION_COVERAGE : undefined,
     // An update check must not be answered from a cached entry, so this
     // consumer's own acquisitions always reach the server.

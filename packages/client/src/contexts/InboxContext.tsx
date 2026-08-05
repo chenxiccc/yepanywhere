@@ -303,6 +303,7 @@ export function InboxProvider({
   } = useRetainedClientQuery<InboxResponse>({
     sourceKey,
     key: INBOX_QUERY_KEY,
+    bootstrapTier: "navigation",
     enabled: queryEnabled,
     ready: isRemoteConnectionReady,
     hasData: hasInitialLoad,

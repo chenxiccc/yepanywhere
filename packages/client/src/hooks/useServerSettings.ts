@@ -156,6 +156,7 @@ export function useServerSettings(): UseServerSettingsResult {
   const { loading, error: queryError, refetch } = useRetainedClientQuery({
     sourceKey,
     key: SERVER_SETTINGS_QUERY_KEY,
+    bootstrapTier: "route",
     ready,
     hasData: snapshot.observedAt !== undefined,
     revalidateOn: SERVER_SETTINGS_REVALIDATE_EVENTS,

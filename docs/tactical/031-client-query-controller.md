@@ -853,7 +853,25 @@ that asked for fresh data. Every other consumer's reconnect stays ordinary.
 
 ### 10 — stage app-shell feeds after selected-page readiness
 
-Status: Implementation handoff, triggered by the 2026-08-05 request census.
+Status: Complete 2026-08-05. The reload-status family moved onto one shared
+per-source snapshot (`lib/devReloadStatusStore.ts`), and
+`lib/clientQueryBootstrap.ts` gives each source the bootstrap coordinator, wired
+through a `bootstrapTier` option on `useRetainedClientQuery` plus a direct slot
+in `useGlobalSessionsFeed`. Contract and the properties that are easy to lose:
+`topics/client-global-store.md` § Startup ordering.
+
+Measured: `benchmark:reload-status-shared-snapshot` — 20 mounted consumers, 2
+query keys, 10 reconnects: 440 to 22 acquisitions (95.00%, 20.00x).
+`benchmark:query-bootstrap-order` — 18 startup acquisitions across 3 tiers: 13
+competing with the selected route's 5 facts, now 0.
+
+Two acceptance items are not closed by this step. The fresh-browser request
+census for local, remote, and production-static modes has not been re-run
+against the coordinator, so the recorded start order is the benchmark's rather
+than a browser's. And requests that never went through the retained controller
+— `/api/providers`, `/api/recents`, `/api/auth/status`, `/api/onboarding`, and
+provider subscription usage — are still unordered; tiering them means moving
+them onto the controller first.
 
 Give each retained source one bootstrap coordinator that schedules selected
 route requirements, stable navigation counts/coverage, and supplementary

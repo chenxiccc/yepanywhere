@@ -77,6 +77,7 @@ export function useHostAwakeStatus(enabled: boolean) {
   const query = useRetainedClientQuery<HostAwakeStatusResponse>({
     sourceKey,
     key: QUERY_KEY,
+    bootstrapTier: "supplementary",
     enabled,
     ready,
     hasData: snapshot.observedAt !== undefined,

@@ -225,6 +225,7 @@ export function usePublicShareStatus(
   const { loading, error, refetch } = useRetainedClientQuery({
     sourceKey,
     key: PUBLIC_SHARE_STATUS_QUERY_KEY,
+    bootstrapTier: "supplementary",
     ready,
     hasData: snapshot.observedAt !== undefined,
     revalidateOn: PUBLIC_SHARE_STATUS_REVALIDATE_EVENTS,

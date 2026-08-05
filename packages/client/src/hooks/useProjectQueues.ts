@@ -285,6 +285,7 @@ export function useProjectQueues(
   } = useRetainedClientQuery({
     sourceKey,
     key: PROJECT_QUEUE_QUERY_KEY,
+    bootstrapTier: "navigation",
     enabled: queryEnabled,
     ready,
     hasData,

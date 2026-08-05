@@ -70,6 +70,8 @@ export function useProject(projectId: string | undefined) {
   } = useRetainedClientQuery<ProjectResponse>({
     sourceKey,
     key: queryKey,
+    // The selected project is one of the facts the route needs to paint.
+    bootstrapTier: "route",
     enabled,
     ready,
     hasData: project !== null,
@@ -138,6 +140,7 @@ export function useProjects() {
   const { loading, error, refetch } = useRetainedClientQuery<ProjectsResponse>({
     sourceKey,
     key: PROJECTS_QUERY_KEY,
+    bootstrapTier: "navigation",
     ready,
     hasData: projects.length > 0,
     revalidateOn: PROJECTS_REVALIDATE_EVENTS,

@@ -102,6 +102,8 @@ function useDevStatusSnapshot() {
   useRetainedClientQuery({
     sourceKey,
     key: DEV_STATUS_QUERY_KEY,
+    // Development-shell diagnostics: nothing a selected route paints.
+    bootstrapTier: "supplementary",
     ready: offLoginRoute,
     hasData: snapshot.observedAt !== undefined,
     debounceMs: RELOAD_STATUS_DEBOUNCE_MS,
@@ -172,6 +174,7 @@ export function useReloadNotifications() {
   useRetainedClientQuery({
     sourceKey,
     key: RESTART_SAFETY_QUERY_KEY,
+    bootstrapTier: "supplementary",
     // A deployment in neither reload mode displays none of this, so it must not
     // be requested merely because the hook is mounted globally.
     enabled: isManualReloadMode === true,

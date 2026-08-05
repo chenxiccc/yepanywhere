@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ActivityEventType } from "../lib/activityBus";
 import {
+  type ClientQueryBootstrapTier,
+  acquireClientQueryBootstrapSlot,
+} from "../lib/clientQueryBootstrap";
+import {
   createClientQueryKey,
   ensureClientQuery,
   retainClientQuery,
@@ -24,6 +28,11 @@ export interface UseRetainedClientQueryOptions<T> {
   hasData?: boolean;
   staleTimeMs?: number;
   debounceMs?: number;
+  /**
+   * Which startup tier this query's *first* acquisition belongs to. Omitted
+   * means ungated. Revalidations never wait, whatever this says.
+   */
+  bootstrapTier?: ClientQueryBootstrapTier;
   meta?: unknown;
   revalidateOn?: readonly ActivityEventType[];
   shouldRevalidateEvent?: (event: RetainedClientQueryEvent) => boolean;
@@ -61,6 +70,7 @@ export function useRetainedClientQuery<T>({
   hasData = false,
   staleTimeMs,
   debounceMs = DEFAULT_REVALIDATE_DEBOUNCE_MS,
+  bootstrapTier,
   meta,
   revalidateOn = [],
   shouldRevalidateEvent,
@@ -237,11 +247,32 @@ export function useRetainedClientQuery<T>({
     revalidationRef.current?.schedule();
   }, [enabled]);
 
+  // Only this first acquisition waits for its startup tier. The revalidation
+  // owner above calls `run` directly, so a reconnect recovers at full speed
+  // even while a slow route request still holds the bootstrap gate.
   useEffect(() => {
-    if (enabled && ready) {
-      void run();
+    if (!enabled || !ready) {
+      return undefined;
     }
-  }, [enabled, ready, run]);
+    if (!bootstrapTier) {
+      void run();
+      return undefined;
+    }
+
+    let cancelled = false;
+    const slot = acquireClientQueryBootstrapSlot(sourceKey, bootstrapTier);
+    void slot.ready().then(() => {
+      if (cancelled) {
+        slot.settle();
+        return;
+      }
+      void run().finally(() => slot.settle());
+    });
+    return () => {
+      cancelled = true;
+      slot.settle();
+    };
+  }, [enabled, ready, run, sourceKey, bootstrapTier]);
 
   return {
     loading,

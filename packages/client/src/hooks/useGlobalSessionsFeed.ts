@@ -16,6 +16,7 @@ import {
 import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext";
 import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import { isRemoteClient } from "../lib/connection";
+import { acquireClientQueryBootstrapSlot } from "../lib/clientQueryBootstrap";
 import {
   createClientQueryKey,
   ensureClientQuery,
@@ -567,11 +568,28 @@ export function useGlobalSessionsFeed(
     onSessionMetadataChange: handleSessionMetadataChange,
   });
 
+  // This feed owns its acquisition rather than going through
+  // `useRetainedClientQuery`, so it joins the startup ordering here. Only the
+  // first fetch waits; `debouncedRefetch` and `refetch` never do.
   useEffect(() => {
-    if (ready) {
-      void fetch();
+    if (!ready) {
+      return undefined;
     }
-  }, [fetch, ready]);
+
+    let cancelled = false;
+    const slot = acquireClientQueryBootstrapSlot(sourceKey, "navigation");
+    void slot.ready().then(() => {
+      if (cancelled) {
+        slot.settle();
+        return;
+      }
+      void fetch().finally(() => slot.settle());
+    });
+    return () => {
+      cancelled = true;
+      slot.settle();
+    };
+  }, [fetch, ready, sourceKey]);
 
   return {
     query,

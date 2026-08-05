@@ -237,6 +237,7 @@ export function useProcesses() {
   const { loading, error, refetch } = useRetainedClientQuery<ProcessesResponse>({
     sourceKey,
     key: PROCESS_LIST_QUERY_KEY,
+    bootstrapTier: "supplementary",
     ready,
     hasData,
     revalidateOn: PROCESS_LIST_REVALIDATE_EVENTS,

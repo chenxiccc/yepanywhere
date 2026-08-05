@@ -27,7 +27,8 @@
     "benchmark:forced-refetch-staleness": "tsx scripts/forced-refetch-staleness-benchmark.ts",
     "benchmark:global-sessions-feed-owner": "tsx scripts/global-sessions-feed-owner-benchmark.ts",
     "benchmark:reload-status-fanout": "tsx scripts/reload-status-fanout-benchmark.ts",
-    "benchmark:reload-status-shared-snapshot": "tsx scripts/reload-status-shared-snapshot-benchmark.ts"
+    "benchmark:reload-status-shared-snapshot": "tsx scripts/reload-status-shared-snapshot-benchmark.ts",
+    "benchmark:query-bootstrap-order": "tsx scripts/query-bootstrap-order-benchmark.ts"
   },
   "dependencies": {
     "@yep-anywhere/shared": "workspace:*",

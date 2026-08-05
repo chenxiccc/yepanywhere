@@ -1,6 +1,7 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ServerSettings } from "../../api/client";
+import { resetClientQueryBootstrapForTests } from "../../lib/clientQueryBootstrap";
 import { resetClientQueryControllerForTests } from "../../lib/clientQueryController";
 import {
   asClientSummarySourceKey,
@@ -125,6 +126,7 @@ beforeEach(() => {
   vi.setSystemTime(0);
   resetClientSummaryStoreForTests();
   resetClientQueryControllerForTests();
+  resetClientQueryBootstrapForTests();
   resetServerSettingsForTests();
   mocks.getServerSettings.mockReset();
   mocks.updateServerSettings.mockReset();
@@ -248,6 +250,10 @@ describe("useServerSettings", () => {
       setCurrentClientSummarySourceKey(remoteSource);
     });
     renderHook(() => useServerSettings());
+    // Let the acquisition start before the source moves under it: the point
+    // being pinned is which source the request was issued for, and a startup
+    // tier defers that start by a microtask.
+    await settle();
 
     act(() => {
       setCurrentClientSummarySourceKey(LOCAL_CLIENT_SUMMARY_SOURCE_KEY);

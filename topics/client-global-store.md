@@ -253,6 +253,36 @@ sidebar's `SidebarSessionFeedsProvider` is the worked example; its hook throws
 when the provider is absent rather than falling back to mounting its own pair,
 because a silent fallback restores the duplication it exists to remove.
 
+### Startup ordering
+
+A fresh tab mounts every app-shell hook in one commit, so without an ordering
+the selected page's own facts compete with global feeds and diagnostics for
+connection slots and the server's first turn. `lib/clientQueryBootstrap.ts`
+gives each source one coordinator, and retained work declares a tier: `route`
+for what the selected page needs to paint, `navigation` for shell counts and
+coverage retained across routes, `supplementary` for diagnostics, enrichment,
+and usage telemetry. A tier starts only once every earlier tier's registered
+work has settled.
+
+Three properties are load-bearing and easy to lose:
+
+- **Only the first acquisition is gated.** Revalidation — reconnect, visibility
+  restore, explicit refetch — never waits, so a stalled bootstrap cannot also
+  stall recovery. Once the last tier opens the source is done and never gates
+  again.
+- **Opening is deferred by at least a microtask.** Everything in the mount
+  commit registers before any tier is evaluated. Advancing eagerly lets a
+  navigation hook that mounts first find no route work registered and open the
+  gate on itself, which silently restores the unordered shape.
+- **A blocked tier has a deadline.** Withholding decorative work is the goal;
+  losing the shell to a hung route request is not.
+
+A hook that owns its own acquisition rather than going through
+`useRetainedClientQuery` joins by acquiring a slot directly;
+`useGlobalSessionsFeed` is the worked example. Tiering is advisory ordering, not
+a dependency graph: it must never be used to make one query's *correctness*
+depend on another having run.
+
 ## Shape
 
 Each per-source store should remain normalized:
